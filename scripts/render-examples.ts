@@ -11,7 +11,7 @@ const files = (await readdir(examplesDir))
     .sort()
 
 const manifest: Array<{ name: string; source: string; outputs: string[] }> = []
-const sources: Array<{ name: string; title: string; source: string; code: string; html: string }> = []
+const sources: Array<{ name: string; title: string; source: string; code: string; html: Record<(typeof themes)[number], string> }> = []
 
 function titleFor(name: string): string {
     return name
@@ -43,10 +43,13 @@ for (const file of files) {
 
     const name = basename(file, '.tsx')
     const code = await readFile(source, 'utf8')
-    const html = await codeToHtml(code, {
-        lang: 'tsx',
-        theme: 'github-dark',
-    })
+    const html = Object.fromEntries(await Promise.all(themes.map(async (theme) => [
+        theme,
+        await codeToHtml(code, {
+            lang: 'tsx',
+            theme: theme === 'light' ? 'github-light' : 'github-dark',
+        }),
+    ]))) as Record<(typeof themes)[number], string>
 
     sources.push({
         name,

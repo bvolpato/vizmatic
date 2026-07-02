@@ -11,11 +11,11 @@
   <meta property="og:description" content="Theme-aware visuals from structured scenes. Built for AI agents, docs, decks, and CI.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bvolpato.github.io/vizmatic/">
-  <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/agent-pipeline_dark.png">
+  <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/attention-head_dark.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Vizmatic">
   <meta name="twitter:description" content="Theme-aware visuals from structured scenes.">
-  <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/agent-pipeline_dark.png">
+  <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/attention-head_dark.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,7 +63,7 @@
       <div class="install"><span>$</span> pnpm add vizmatic react<br><span>$</span> pnpm add github:bvolpato/vizmatic react</div>
     </div>
     <div class="hero-frame">
-      <img data-theme-image src="assets/examples/agent-pipeline_dark.png" alt="Vizmatic agent visual pipeline example">
+      <img data-theme-image src="assets/examples/attention-head_dark.png" alt="Vizmatic attention head example">
     </div>
   </header>
 
@@ -295,6 +295,18 @@
     </div>
   </dialog>
 
+  <dialog class="image-dialog" id="imageDialog">
+    <div class="image-dialog-panel">
+      <div class="image-dialog-header">
+        <h2 id="imageDialogTitle">Example preview</h2>
+        <button class="button" type="button" id="closeImageButton">Close</button>
+      </div>
+      <div class="image-dialog-viewport">
+        <img id="imageDialogImage" src="" alt="">
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const copyPromptButton = document.getElementById('copyPromptButton')
     const promptPreview = document.getElementById('promptPreview')
@@ -303,6 +315,10 @@
     const sourceCode = document.getElementById('sourceCode')
     const copySourceButton = document.getElementById('copySourceButton')
     const closeSourceButton = document.getElementById('closeSourceButton')
+    const imageDialog = document.getElementById('imageDialog')
+    const imageDialogTitle = document.getElementById('imageDialogTitle')
+    const imageDialogImage = document.getElementById('imageDialogImage')
+    const closeImageButton = document.getElementById('closeImageButton')
     const themeColorMeta = document.querySelector('meta[name="theme-color"]')
     const themeButtons = document.querySelectorAll('[data-theme-choice]')
     const themedImages = document.querySelectorAll('[data-theme-image]')
@@ -315,6 +331,7 @@
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
     let sourceCache
     let activeSource
+    let activeImageCard
     let scrollAnimationFrame
 
     function themedSrc(src, theme) {
@@ -361,10 +378,43 @@
       themedImages.forEach((image) => {
         image.setAttribute('src', themedSrc(image.getAttribute('src'), resolved))
       })
+      if (activeSource && sourceDialog.open) {
+        renderActiveSource()
+      }
+      if (activeImageCard && imageDialog.open) {
+        renderActiveImage()
+      }
+    }
+
+    function installCodeCopyButtons() {
+      document.querySelectorAll('main pre.shiki').forEach((pre) => {
+        if (pre.querySelector('.code-copy-button')) return
+        const button = document.createElement('button')
+        button.className = 'code-copy-button'
+        button.type = 'button'
+        button.textContent = 'Copy'
+        button.addEventListener('click', async (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          const previous = button.textContent
+          try {
+            await navigator.clipboard.writeText(pre.querySelector('code')?.innerText ?? '')
+            button.textContent = 'Copied'
+          } catch {
+            button.textContent = 'Failed'
+          } finally {
+            setTimeout(() => {
+              button.textContent = previous
+            }, 1400)
+          }
+        })
+        pre.append(button)
+      })
     }
 
     const savedTheme = normalizeThemeChoice(getSavedTheme())
     setSiteTheme(savedTheme)
+    installCodeCopyButtons()
 
     themeButtons.forEach((button) => {
       button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice))
@@ -469,13 +519,24 @@
       return sourceCache
     }
 
+    function sourceHtml(source) {
+      const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
+      if (typeof source.html === 'string') return source.html
+      return source.html?.[theme] ?? source.html?.dark ?? ''
+    }
+
+    function renderActiveSource() {
+      if (!activeSource) return
+      sourceTitle.textContent = activeSource.title
+      sourceCode.innerHTML = sourceHtml(activeSource)
+    }
+
     async function openSource(name) {
       const sources = await loadSources()
       const source = sources.get(name)
       if (!source) return
       activeSource = source
-      sourceTitle.textContent = source.title
-      sourceCode.innerHTML = source.html
+      renderActiveSource()
       sourceDialog.showModal()
     }
 
@@ -483,6 +544,36 @@
       button.addEventListener('click', (event) => {
         event.stopPropagation()
         openSource(button.dataset.source)
+      })
+    })
+
+    function renderActiveImage() {
+      if (!activeImageCard) return
+      const image = activeImageCard.querySelector('[data-theme-image]')
+      const title = activeImageCard.querySelector('h3')?.textContent?.trim() ?? 'Example preview'
+      if (!image) return
+      const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
+      imageDialogTitle.textContent = title
+      imageDialogImage.src = themedSrc(image.currentSrc || image.getAttribute('src'), theme)
+      imageDialogImage.alt = image.getAttribute('alt') || title
+    }
+
+    function openImage(card) {
+      activeImageCard = card
+      renderActiveImage()
+      imageDialog.showModal()
+    }
+
+    document.querySelectorAll('.gallery-card').forEach((card) => {
+      const title = card.querySelector('h3')?.textContent?.trim() ?? 'example'
+      card.tabIndex = 0
+      card.setAttribute('role', 'button')
+      card.setAttribute('aria-label', `View ${title} full size`)
+      card.addEventListener('click', () => openImage(card))
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        openImage(card)
       })
     })
 
@@ -502,6 +593,10 @@
     closeSourceButton?.addEventListener('click', () => sourceDialog.close())
     sourceDialog?.addEventListener('click', (event) => {
       if (event.target === sourceDialog) sourceDialog.close()
+    })
+    closeImageButton?.addEventListener('click', () => imageDialog.close())
+    imageDialog?.addEventListener('click', (event) => {
+      if (event.target === imageDialog) imageDialog.close()
     })
   </script>
 </body>
