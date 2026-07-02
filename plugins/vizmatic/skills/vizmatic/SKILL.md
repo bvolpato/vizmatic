@@ -18,7 +18,7 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
    ```bash
    pnpm add vizmatic react
    ```
-3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and auto-grows omitted axes on overflow. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports. `Scene` title/subtitle are optional.
+3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and grows to fit content on overflow. Generated wrappers that export the default `960x540` size get the same auto-fit behavior; add `autoSize = false` only when strict clipping errors are desired. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports. `Scene` title/subtitle are optional.
 4. Choose primitives by intent. Read `references/patterns.md` when deciding component structure.
 5. Render dark and light outputs:
    ```bash

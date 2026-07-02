@@ -50,7 +50,7 @@ PNG and SVG renders use an alpha-transparent canvas by default. Add `--backgroun
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --background theme
 ```
 
-If a CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows omitted axes when overflow is detected. Explicit dimensions stay strict and fail on clipping.
+If a CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows to fit content when overflow is detected. Generated wrappers that export the default `960x540` size get the same fit-to-content behavior. Add `autoSize = false` when exact dimensions should stay strict and fail on clipping.
 
 Bare CLI frames auto-import Vizmatic primitives and inject theme colors. Use normal imports when a frame needs helpers, data loading, custom dependencies, or direct renderer APIs.
 

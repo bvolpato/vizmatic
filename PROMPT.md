@@ -119,7 +119,7 @@ Or set it in the frame:
 </Scene>
 ```
 
-If a direct CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows omitted axes when overflow is detected. Explicit dimensions stay strict and should be used when exact output size matters.
+If a direct CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows to fit content when overflow is detected. Generated wrappers that export the default `960x540` size get the same fit-to-content behavior. Add `autoSize = false` when exact dimensions should stay strict and fail on clipping.
 
 For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Reference `c` only when you need explicit theme tokens such as `background={c.bg}`. `Scene` title/subtitle are optional; omit both for visual-only figures, badges, inline blog diagrams, or frames where surrounding copy already supplies the title. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
 
@@ -418,13 +418,13 @@ height = 560;
 
 - Use semantic tones, not hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
 - Keep canvas sizes explicit. Good defaults: `1040x560` for article figures, `1280x720` for slide frames, `900x520` for compact diagrams.
-- For exploratory direct CLI frames, dimensions may be omitted; Vizmatic auto-grows omitted axes if content overflows.
+- For exploratory direct CLI frames, dimensions may be omitted; Vizmatic starts at `960x540` and grows to fit content if overflow is detected.
 - Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.
 - Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` props to stabilize layout.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
 - Render both dark and light when shipping reusable assets: `--theme dark,light`.
 - Use GIF only when motion explains state change. Keep scenes short, export `createScenes(theme)`, and keep a static `create(theme)` fallback.
-- If render fails with `Canvas overflow detected`, increase canvas dimensions or reduce content density. Do not ignore the error.
+- If render fails with `Canvas overflow detected`, the frame has strict dimensions. Increase canvas dimensions, reduce content density, or remove strict sizing for CLI auto-fit. Do not ignore the error.
 - Verify generated PNGs/GIFs exist and are non-empty. Open at least one rendered image before finalizing.
 
 ## Common recipes

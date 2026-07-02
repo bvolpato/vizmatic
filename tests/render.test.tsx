@@ -494,6 +494,161 @@ height = 300;
         }
     }, 30_000)
 
+    it('auto-expands generated default CLI dimensions when content overflows', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-generated-auto-size-cli-'))
+        const framePath = join(outDir, 'generated-default.tsx')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await writeFile(framePath, `import React from 'react'
+import { CalloutCard, defineIllustration, Row, Scene } from 'vizmatic'
+
+export const width = 960
+export const height = 540
+
+const frame = defineIllustration((c) => (
+    <Scene c={c} title="Generated default">
+        <Row gap={18} width="100%" justify="center">
+            <CalloutCard c={c} title="First wide panel" detail="Generated wrappers often set default dimensions." tone="blue" width={470} />
+            <CalloutCard c={c} title="Second wide panel" detail="The CLI should still fit content." tone="purple" width={470} />
+            <CalloutCard c={c} title="Third wide panel" detail="No user size was provided upstream." tone="green" width={470} />
+        </Row>
+    </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
+            expect(manifest[0]?.width).toBeGreaterThan(960)
+            expect(manifest[0]?.height).toBe(540)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('auto-expands generated default CLI height when content overflows vertically', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-generated-auto-height-cli-'))
+        const framePath = join(outDir, 'generated-tall.tsx')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await writeFile(framePath, `import React from 'react'
+import { defineIllustration, Scene } from 'vizmatic'
+
+export const width = 960
+export const height = 540
+
+const frame = defineIllustration((c) => (
+    <Scene c={c} title="Generated tall">
+        <div
+            style={{
+                width: '100%',
+                height: 620,
+                borderRadius: 10,
+                background: c.bgCard,
+                border: \`1px solid \${c.border}\`,
+            }}
+        />
+    </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
+            expect(manifest[0]?.width).toBe(960)
+            expect(manifest[0]?.height).toBeGreaterThan(540)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('keeps generated default CLI dimensions strict when autoSize is disabled', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-generated-strict-size-cli-'))
+        const framePath = join(outDir, 'generated-strict.tsx')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await writeFile(framePath, `import React from 'react'
+import { CalloutCard, defineIllustration, Row, Scene } from 'vizmatic'
+
+export const width = 960
+export const height = 540
+export const autoSize = false
+
+const frame = defineIllustration((c) => (
+    <Scene c={c} title="Generated strict">
+        <Row gap={18} width="100%" justify="center">
+            <CalloutCard c={c} title="First wide panel" detail="Default width overflows." tone="blue" width={470} />
+            <CalloutCard c={c} title="Second wide panel" detail="Auto-fit disabled." tone="purple" width={470} />
+            <CalloutCard c={c} title="Third wide panel" detail="Surface the error." tone="green" width={470} />
+        </Row>
+    </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status).not.toBe(0)
+            expect(result.stderr || result.stdout).toContain('Canvas overflow detected')
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
     it('keeps explicit CLI dimensions strict when content overflows', async () => {
         ensurePackageBuild()
 

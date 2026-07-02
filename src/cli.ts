@@ -559,18 +559,21 @@ function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     const defaultObject = typeof mod.default === 'object' && mod.default && 'create' in mod.default
         ? mod.default as Exclude<FrameModule['default'], ReactNode>
         : undefined
+    const hasAutoSizeSetting = mod.autoSize != null || mod.__vizmaticAutoSize != null
     const hasWidth = mod.width != null || defaultObject?.width != null
     const hasHeight = mod.height != null || defaultObject?.height != null
+    const width = mod.width ?? defaultObject?.width ?? DEFAULT_FRAME_WIDTH
+    const height = mod.height ?? defaultObject?.height ?? DEFAULT_FRAME_HEIGHT
     const autoSize = normalizeAutoSize(mod.autoSize ?? mod.__vizmaticAutoSize, {
-        width: !hasWidth,
-        height: !hasHeight,
+        width: !hasWidth || (!hasAutoSizeSetting && width === DEFAULT_FRAME_WIDTH),
+        height: !hasHeight || (!hasAutoSizeSetting && height === DEFAULT_FRAME_HEIGHT),
     })
 
     return {
         ...mod,
         ...(defaultObject ?? {}),
-        width: mod.width ?? defaultObject?.width ?? DEFAULT_FRAME_WIDTH,
-        height: mod.height ?? defaultObject?.height ?? DEFAULT_FRAME_HEIGHT,
+        width,
+        height,
         autoSize,
     }
 }

@@ -129,7 +129,7 @@ height = 560;
       <div class="section-head compact">
         <span>Backgrounds</span>
         <h2>Alpha by default, theme fill when requested.</h2>
-        <p>PNG and SVG renders keep the canvas transparent unless a frame sets <code>background={c.bg}</code> or the render command asks for one. Omitted CLI dimensions start at <code>960x540</code> and auto-grow on overflow; explicit sizes stay strict. Titleless scenes are valid.</p>
+        <p>PNG and SVG renders keep the canvas transparent unless a frame sets <code>background={c.bg}</code> or the render command asks for one. Omitted CLI dimensions start at <code>960x540</code> and grow to fit content on overflow; generated default-size wrappers do too. Add <code>autoSize = false</code> only when strict clipping errors are desired. Titleless scenes are valid.</p>
       </div>
       <pre data-shiki="bash"><code># alpha-transparent PNG
 vizmatic ./badge.tsx --out ./dist/frames --theme dark,light
