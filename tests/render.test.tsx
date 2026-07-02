@@ -17,6 +17,8 @@ import {
     StepCard,
     Watermark,
     wrapWithWatermark,
+    BarChart,
+    Panel,
 } from '../src'
 
 let packageBuilt = false
@@ -126,6 +128,30 @@ function pixelAt(image: { width: number; pixels: Uint8Array }, x: number, y: num
         image.pixels[offset + 2],
         image.pixels[offset + 3],
     ]
+}
+
+function pixelBounds(
+    image: { width: number; height: number; pixels: Uint8Array },
+    matches: (r: number, g: number, b: number, a: number) => boolean,
+): { minX: number; maxX: number; minY: number; maxY: number } {
+    let minX = image.width
+    let minY = image.height
+    let maxX = -1
+    let maxY = -1
+
+    for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+            const offset = (y * image.width + x) * 4
+            if (matches(image.pixels[offset], image.pixels[offset + 1], image.pixels[offset + 2], image.pixels[offset + 3])) {
+                minX = Math.min(minX, x)
+                minY = Math.min(minY, y)
+                maxX = Math.max(maxX, x)
+                maxY = Math.max(maxY, y)
+            }
+        }
+    }
+
+    return { minX, maxX, minY, maxY }
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -294,6 +320,51 @@ describe('vizmatic render pipeline', () => {
         expect(image.height).toBe(320)
         expect(pixelAt(image, 0, 0)[3]).toBe(0)
     }, 30_000)
+
+    it('keeps the final bar inset from the chart edge', async () => {
+        const frame = defineIllustration((c) => (
+            <BarChart
+                c={c}
+                title="Token mix"
+                width={360}
+                height={250}
+                format="percent"
+                data={[
+                    { label: 'cache read', value: 0.78, color: 'positive', valueLabel: '78%' },
+                    { label: 'uncached', value: 0.14, color: 'warning', valueLabel: '14%' },
+                    { label: 'write', value: 0.08, color: 'secondary', valueLabel: '8%' },
+                ]}
+            />
+        ))
+
+        const buffer = await renderToBuffer(frame.create('light'), 430, 360, { scale: 1 })
+        const image = decodePng(buffer)
+        const opaqueBounds = pixelBounds(image, (_r, _g, _b, a) => a > 240)
+        const blueBounds = pixelBounds(
+            image,
+            (r, g, b, a) => a > 240 && Math.abs(r - 53) < 6 && Math.abs(g - 111) < 6 && Math.abs(b - 236) < 6,
+        )
+
+        expect(blueBounds.maxX).toBeGreaterThan(0)
+        expect(opaqueBounds.maxX - blueBounds.maxX).toBeGreaterThanOrEqual(30)
+    }, 30_000)
+
+    it('applies panel gap between direct body children', () => {
+        const panel = Panel({
+            c: getThemeColors('light'),
+            title: 'Cache breakers',
+            gap: 14,
+            children: [
+                React.createElement('div', { key: 'rows' }, 'rows'),
+                React.createElement('div', { key: 'callout' }, 'callout'),
+            ],
+        })
+        const panelElement = panel as React.ReactElement<{ children?: React.ReactNode }>
+        const children = React.Children.toArray(panelElement.props.children)
+        const body = children[1] as React.ReactElement<{ style: React.CSSProperties }>
+
+        expect(body.props.style.gap).toBe(14)
+    })
 
     it('renders the theme background when requested', async () => {
         const frame = defineIllustration((c) => (

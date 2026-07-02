@@ -370,6 +370,7 @@ export function Panel({
                 width: '100%',
                 display: 'flex',
                 flexDirection: 'column' as const,
+                gap,
                 ...bodyStyle,
             }
         }, children),
@@ -4729,17 +4730,17 @@ export function BarChart({
     yAxisLabel,
     footer,
 }: BarChartProps): React.ReactElement {
-    const margin: ChartMargins = { top: 18, right: 18, bottom: 40, left: yAxisLabel ? 52 : 38 }
+    const margin: ChartMargins = { top: 18, right: 38, bottom: 40, left: yAxisLabel ? 52 : 38 }
     const plot = createPlotArea(width, height, margin)
     const domain = chartDomain(data.map((item) => item.value), min, max)
     const ticks = chartTicks(domain.min, domain.max, 4)
-    const barGap = Math.max(8, plot.innerWidth / Math.max(data.length, 1) * 0.18)
-    const barWidth = Math.max(12, (plot.innerWidth - barGap * (data.length - 1)) / Math.max(data.length, 1))
+    const barSlot = plot.innerWidth / Math.max(data.length, 1)
+    const barWidth = Math.max(8, Math.min(76, barSlot * 0.72))
     const zeroY = yInPlot(0, domain, plot)
     const baselineY = clamp(zeroY, plot.y, plot.bottom)
 
     const barGeometries = data.map((item, index) => {
-        const x = plot.x + index * (barWidth + barGap)
+        const x = plot.x + index * barSlot + (barSlot - barWidth) / 2
         const valueY = yInPlot(item.value, domain, plot)
         const y = Math.min(valueY, baselineY)
         const barHeight = Math.max(4, Math.abs(baselineY - valueY))
