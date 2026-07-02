@@ -1,5 +1,6 @@
 export * from './theme'
 export * from './primitives'
 export * from './render'
+export * from './animate'
 export * from './autocrop'
 export * from './brand'

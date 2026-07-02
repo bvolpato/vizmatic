@@ -1,0 +1,12 @@
+[
+  {
+    "name": "animated-pipeline",
+    "source": "examples/animated-pipeline.tsx",
+    "width": 1040,
+    "height": 560,
+    "outputs": [
+      "animated-pipeline_dark.gif",
+      "animated-pipeline_light.gif"
+    ]
+  }
+]

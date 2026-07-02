@@ -2,7 +2,7 @@ import React from 'react'
 import { DataTable, defineIllustration, Flow, Panel, Row, Scene, TextLabel } from 'vizmatic'
 
 export const width = 1040
-export const height = 560
+export const height = 680
 
 const frame = defineIllustration((c) =>
     <Scene c={c} title="Scene spec anatomy" subtitle="strong defaults with escape hatches" gap={18}>

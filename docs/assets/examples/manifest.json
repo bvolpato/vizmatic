@@ -3,84 +3,106 @@
     "name": "agent-pipeline",
     "source": "examples/agent-pipeline.tsx",
     "outputs": [
-      "agent-pipeline_dark.png"
+      "agent-pipeline_dark.png",
+      "agent-pipeline_light.png"
+    ]
+  },
+  {
+    "name": "animated-pipeline",
+    "source": "examples/animated-pipeline.tsx",
+    "outputs": [
+      "animated-pipeline_dark.png",
+      "animated-pipeline_light.png",
+      "animated-pipeline_dark.gif",
+      "animated-pipeline_light.gif"
     ]
   },
   {
     "name": "attention-head",
     "source": "examples/attention-head.tsx",
     "outputs": [
-      "attention-head_dark.png"
+      "attention-head_dark.png",
+      "attention-head_light.png"
     ]
   },
   {
     "name": "embedding-map",
     "source": "examples/embedding-map.tsx",
     "outputs": [
-      "embedding-map_dark.png"
+      "embedding-map_dark.png",
+      "embedding-map_light.png"
     ]
   },
   {
     "name": "eval-dashboard",
     "source": "examples/eval-dashboard.tsx",
     "outputs": [
-      "eval-dashboard_dark.png"
+      "eval-dashboard_dark.png",
+      "eval-dashboard_light.png"
     ]
   },
   {
     "name": "model-router",
     "source": "examples/model-router.tsx",
     "outputs": [
-      "model-router_dark.png"
+      "model-router_dark.png",
+      "model-router_light.png"
     ]
   },
   {
     "name": "presentation-frame",
     "source": "examples/presentation-frame.tsx",
     "outputs": [
-      "presentation-frame_dark.png"
+      "presentation-frame_dark.png",
+      "presentation-frame_light.png"
     ]
   },
   {
     "name": "rag-graph",
     "source": "examples/rag-graph.tsx",
     "outputs": [
-      "rag-graph_dark.png"
+      "rag-graph_dark.png",
+      "rag-graph_light.png"
     ]
   },
   {
     "name": "release-card",
     "source": "examples/release-card.tsx",
     "outputs": [
-      "release-card_dark.png"
+      "release-card_dark.png",
+      "release-card_light.png"
     ]
   },
   {
     "name": "research-landscape",
     "source": "examples/research-landscape.tsx",
     "outputs": [
-      "research-landscape_dark.png"
+      "research-landscape_dark.png",
+      "research-landscape_light.png"
     ]
   },
   {
     "name": "spec-anatomy",
     "source": "examples/spec-anatomy.tsx",
     "outputs": [
-      "spec-anatomy_dark.png"
+      "spec-anatomy_dark.png",
+      "spec-anatomy_light.png"
     ]
   },
   {
     "name": "theme-system",
     "source": "examples/theme-system.tsx",
     "outputs": [
-      "theme-system_dark.png"
+      "theme-system_dark.png",
+      "theme-system_light.png"
     ]
   },
   {
     "name": "token-matrix",
     "source": "examples/token-matrix.tsx",
     "outputs": [
-      "token-matrix_dark.png"
+      "token-matrix_dark.png",
+      "token-matrix_light.png"
     ]
   }
 ]

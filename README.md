@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Theme-aware visuals from structured scenes.</strong><br/>
-  Give AI agents typed primitives. Get polished diagrams, figures, dashboards, and slide frames.
+  Give AI agents typed primitives. Get polished diagrams, figures, dashboards, slide frames, and animated GIFs.
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/examples/agent-pipeline_dark.png" alt="Vizmatic agent visual pipeline" width="760" />
+  <img src="docs/assets/examples/animated-pipeline_dark.gif" alt="Vizmatic animated render pipeline" width="760" />
 </p>
 
 <p align="center">
@@ -56,7 +56,7 @@ const frame = defineIllustration((c) => (
       stages={[
         { title: "Prompt", subtitle: "intent", tone: "blue" },
         { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
-        { title: "PNG / SVG", subtitle: "rendered artifact", tone: "green" },
+        { title: "PNG / SVG / GIF", subtitle: "rendered artifact", tone: "green" },
       ]}
     />
   </Scene>
@@ -70,6 +70,12 @@ Render it:
 
 ```bash
 vizmatic render ./frame.tsx --out ./dist/frames --theme dark,light --brand "Acme"
+```
+
+Render an animation:
+
+```bash
+vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --brand "Acme"
 ```
 
 Or call the renderer directly:
@@ -99,26 +105,54 @@ Vizmatic gives them a constrained visual language:
 | Agent-friendly authoring | JSX scene modules with simple props |
 | Reproducible artifacts | Pure Node render path, no browser required |
 | Safer generated visuals | Overflow detection, autocrop, wrapping-safe labels |
+| Animated explainers | GIF export from ordered scene states |
 | Docs and decks | Same frame can become article art, report figure, or presentation slide |
 
 ## Gallery
 
 <p>
+  <img src="docs/assets/examples/animated-pipeline_dark.gif" alt="Animated pipeline" width="380" />
   <img src="docs/assets/examples/attention-head_dark.png" alt="Attention head" width="380" />
+</p>
+<p>
   <img src="docs/assets/examples/rag-graph_dark.png" alt="RAG graph" width="380" />
-</p>
-<p>
   <img src="docs/assets/examples/eval-dashboard_dark.png" alt="Evaluation dashboard" width="380" />
-  <img src="docs/assets/examples/token-matrix_dark.png" alt="Token matrix" width="380" />
 </p>
 <p>
+  <img src="docs/assets/examples/token-matrix_dark.png" alt="Token matrix" width="380" />
   <img src="docs/assets/examples/theme-system_dark.png" alt="Theme system" width="380" />
+</p>
+<p>
   <img src="docs/assets/examples/presentation-frame_dark.png" alt="Presentation frame" width="380" />
 </p>
 
 More examples live in [`examples/`](examples) and on the [website](https://bvolpato.github.io/vizmatic/).
 
 ## Copy-Paste Examples
+
+### Minimal flow
+
+Use this for small docs snippets and quick agent-generated frames.
+
+```tsx
+import { defineIllustration, Flow, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const frame = defineIllustration((c) =>
+  <Scene c={c} title="Agent pipeline">
+    <Flow c={c} stages={[
+      { title: "Prompt", tone: "blue" },
+      { title: "Scene spec", tone: "purple" },
+      { title: "PNG / GIF", tone: "green" },
+    ]} />
+  </Scene>
+)
+
+export const create = frame.create
+export default frame.default
+```
 
 ### Flow + callouts
 
@@ -140,7 +174,7 @@ const frame = defineIllustration((c) => (
         { eyebrow: "input", title: "Prompt", subtitle: "intent", tone: "blue", lines: ["goal", "audience", "constraints"], width: 190 },
         { eyebrow: "contract", title: "Scene spec", subtitle: "typed structure", tone: "purple", lines: ["cards", "flows", "charts"], width: 190 },
         { eyebrow: "render", title: "Satori", subtitle: "React primitives", tone: "cyan", lines: ["layout", "theme", "safe text"], width: 190 },
-        { eyebrow: "output", title: "PNG / SVG", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
+        { eyebrow: "output", title: "PNG / GIF", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
       ]}
     />
     <Row width="100%" gap={14}>
@@ -152,6 +186,67 @@ const frame = defineIllustration((c) => (
 
 export const create = frame.create
 export default frame.default
+```
+
+### Animated GIF
+
+Use this for state changes, product flows, lesson steps, and timelines. Static frames export `create(theme)`. Animated frames also export `createScenes(theme)`.
+
+```tsx
+import React from "react"
+import {
+  CalloutCard,
+  defineIllustration,
+  Flow,
+  Scene,
+  getThemeColors,
+  type AnimatedScene,
+  type ThemeColors,
+  type ThemeMode,
+} from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const stages = [
+  { title: "Prompt", tone: "blue" as const },
+  { title: "Scene spec", tone: "purple" as const },
+  { title: "PNG / GIF", tone: "green" as const },
+]
+
+function buildFrame(c: ThemeColors, active: number) {
+  return (
+    <Scene c={c} title="Animated agent pipeline">
+      <Flow
+        c={c}
+        stages={stages.map((stage, index) => ({
+          ...stage,
+          title: index <= active ? stage.title : "Pending",
+          tone: index <= active ? stage.tone : "neutral",
+        }))}
+      />
+      <CalloutCard c={c} title="Scene changes over time" detail="Render with vizmatic gif." tone="green" />
+    </Scene>
+  )
+}
+
+const frame = defineIllustration((c) => buildFrame(c, stages.length - 1))
+
+export function createScenes(theme: ThemeMode): AnimatedScene[] {
+  const c = getThemeColors(theme)
+  return stages.map((_, index) => ({
+    element: buildFrame(c, index),
+    duration: index === stages.length - 1 ? 1000 : 700,
+    transition: index === 0 ? "appear" : "fade",
+  }))
+}
+
+export const create = frame.create
+export default frame.default
+```
+
+```bash
+vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --brand "Acme" --scale 1
 ```
 
 ### RAG graph
@@ -356,6 +451,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | API | Use |
 |---|---|
 | `renderToPng` | Render React scene to PNG through Satori and resvg, with optional brand mark, crop, scale, and overflow check. |
+| `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
 | `renderToBuffer` | Render PNG to memory for tests and pipelines. |
 | `renderToSvg` | Render SVG markup directly. |
 | `wrapWithBrand` | Add an optional top-right brand label to a frame. |
@@ -367,7 +463,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 ### Rendering
 
 ```ts
-import { renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
+import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
 `renderToPng` renders at 2x scale by default, checks for clipped content, crops extra vertical whitespace, and can apply an optional brand mark.
@@ -383,6 +479,19 @@ await renderToPng(element, {
 })
 ```
 
+`renderAnimatedGif` turns ordered scene states into a looping GIF.
+
+```ts
+await renderAnimatedGif(createScenes("dark"), {
+  width: 1040,
+  height: 560,
+  outputPath: "dist/agent-pipeline.gif",
+  brand: "Your Product",
+  theme: "dark",
+  scale: 1,
+})
+```
+
 ## Project Layout
 
 ```text
@@ -390,8 +499,9 @@ src/
   theme.ts        semantic colors, tones, typography
   primitives.ts   reusable scene building blocks
   render.ts       Satori -> SVG -> resvg -> PNG
+  animate.ts      ordered scene states -> GIF
   autocrop.ts     content bounds and overflow checks
-  cli.ts          vizmatic render
+  cli.ts          vizmatic render / vizmatic gif
 examples/
   *.tsx           generated gallery frames
 docs/

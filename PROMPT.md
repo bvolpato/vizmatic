@@ -1,6 +1,6 @@
 # Vizmatic Agent Prompt
 
-Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, and presentation frames from structured React scene primitives.
+Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
 
 ## Install
 
@@ -72,7 +72,7 @@ const frame = defineIllustration((c) => (
         },
         {
           eyebrow: "output",
-          title: "PNG / SVG",
+          title: "PNG / GIF",
           subtitle: "CI-ready asset",
           tone: "green",
           lines: ["autocrop", "overflow checks", "retina scale"],
@@ -109,6 +109,69 @@ Render it:
 pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"
 ```
 
+Render animated frames with `createScenes(theme)`:
+
+```bash
+pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --brand "Your Product" --scale 1
+```
+
+## Create an animated frame
+
+Animated frames keep the same static `create(theme)` export and add `createScenes(theme)` for GIF output.
+
+```tsx
+import React from "react"
+import {
+  CalloutCard,
+  defineIllustration,
+  Flow,
+  Scene,
+  getThemeColors,
+  type AnimatedScene,
+  type ThemeColors,
+  type ThemeMode,
+} from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const stages = [
+  { title: "Prompt", tone: "blue" as const },
+  { title: "Scene spec", tone: "purple" as const },
+  { title: "PNG / GIF", tone: "green" as const },
+]
+
+function buildFrame(c: ThemeColors, active: number) {
+  return (
+    <Scene c={c} title="Animated agent pipeline">
+      <Flow
+        c={c}
+        stages={stages.map((stage, index) => ({
+          ...stage,
+          title: index <= active ? stage.title : "Pending",
+          tone: index <= active ? stage.tone : "neutral",
+        }))}
+      />
+      <CalloutCard c={c} title="Scene changes over time" detail="Render with vizmatic gif." tone="green" />
+    </Scene>
+  )
+}
+
+const frame = defineIllustration((c) => buildFrame(c, stages.length - 1))
+
+export function createScenes(theme: ThemeMode): AnimatedScene[] {
+  const c = getThemeColors(theme)
+  return stages.map((_, index) => ({
+    element: buildFrame(c, index),
+    duration: index === stages.length - 1 ? 1000 : 700,
+    transition: index === 0 ? "appear" : "fade",
+  }))
+}
+
+export const create = frame.create
+export default frame.default
+```
+
 ## Pick primitives first
 
 Use Vizmatic primitives instead of raw SVG or absolute-positioned divs whenever possible.
@@ -130,8 +193,9 @@ Drop to raw SVG only for custom geometry that a primitive cannot express.
 - Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` props to stabilize layout.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
 - Render both dark and light when shipping reusable assets: `--theme dark,light`.
+- Use GIF only when motion explains state change. Keep scenes short, export `createScenes(theme)`, and keep a static `create(theme)` fallback.
 - If render fails with `Canvas overflow detected`, increase canvas dimensions or reduce content density. Do not ignore the error.
-- Verify generated PNGs exist and are non-empty. Open at least one rendered image before finalizing.
+- Verify generated PNGs/GIFs exist and are non-empty. Open at least one rendered image before finalizing.
 
 ## Common recipes
 
@@ -223,6 +287,6 @@ After creating a Vizmatic visual, report:
 
 - files created or changed
 - render command used
-- output image paths
+- output image paths, including GIF paths when generated
 - whether dark/light variants rendered
 - any overflow or layout fixes made

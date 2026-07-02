@@ -9,7 +9,7 @@ const frame = defineIllustration((c) =>
         <QuadrantChart
             c={c}
             width={860}
-            height={390}
+            height={360}
             xAxisLabel="retrieval confidence"
             yAxisLabel="answer usefulness"
             regions={{
