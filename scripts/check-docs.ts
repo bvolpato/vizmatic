@@ -75,6 +75,10 @@ for (const required of [
     }
 }
 
+if (!rootPrompt.includes('title/subtitle are optional') || !html.includes('Titleless scenes are valid')) {
+    fail('docs must mention titleless scenes')
+}
+
 const skill = await readFile(skillPath, 'utf8')
 if (!skill.includes('name: vizmatic') || !skill.includes('Create polished theme-aware diagrams')) {
     fail('Vizmatic skill frontmatter is missing required metadata')

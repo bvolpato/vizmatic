@@ -13,6 +13,7 @@
 ## Bare Static Frame
 
 Omit dimensions during exploration if content size is uncertain; the CLI starts at `960x540` and grows omitted axes on overflow. Add explicit dimensions when final output size matters.
+`Scene` title/subtitle are optional. Omit them for visual-only figures, badges, or inline article diagrams.
 
 ```tsx
 width = 1040;

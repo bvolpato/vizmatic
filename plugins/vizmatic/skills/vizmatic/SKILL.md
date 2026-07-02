@@ -18,7 +18,7 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
    ```bash
    pnpm add vizmatic react
    ```
-3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and auto-grows omitted axes on overflow. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports.
+3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and auto-grows omitted axes on overflow. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports. `Scene` title/subtitle are optional.
 4. Choose primitives by intent. Read `references/patterns.md` when deciding component structure.
 5. Render dark and light outputs:
    ```bash
@@ -48,6 +48,7 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
 
 - Use supported tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
 - Render both `dark` and `light` unless the user asks for one theme.
+- Omit `Scene` title/subtitle for badges, inline blog figures, or visuals where surrounding copy already provides title context.
 - Prefer alpha-transparent PNG/SVG backgrounds for blog posts and docs cards. Use `--background theme` or `<Scene background={c.bg}>` only when the destination needs opaque theme fill.
 - Omit dimensions for exploratory CLI frames when content density is uncertain; use explicit dimensions for deterministic final assets.
 - Keep labels short. Prefer cards, rows, grids, and tables that wrap safely.

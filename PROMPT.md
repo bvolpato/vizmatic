@@ -121,7 +121,7 @@ Or set it in the frame:
 
 If a direct CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows omitted axes when overflow is detected. Explicit dimensions stay strict and should be used when exact output size matters.
 
-For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Reference `c` only when you need explicit theme tokens such as `background={c.bg}`. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
+For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Reference `c` only when you need explicit theme tokens such as `background={c.bg}`. `Scene` title/subtitle are optional; omit both for visual-only figures, badges, inline blog diagrams, or frames where surrounding copy already supplies the title. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
 
 Frame modules can also export a watermark element when code-owned branding is clearer than CLI flags:
 
@@ -231,7 +231,7 @@ Frame helpers:
 
 - `defineIllustration(build, defaultTheme?)`: `build: (c: ThemeColors) => ReactElement`, `defaultTheme?: ThemeMode = "dark"`. Returns `{ create(theme), default }`.
 - `Canvas`: `children?`, `c`, `padding?: number = 40`, `justify?: "center" | "flex-start" | "space-between" | "space-around" = "center"`, `background?: string`. Default root background is alpha-transparent during PNG/SVG rendering.
-- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: Canvas.justify = "flex-start"`, `align?: FlexAlign = "stretch"`, `contentWidth?: number | string = "100%"`, `background?`, `contentStyle?: React.CSSProperties`. Use `background={c.bg}` for an opaque theme frame.
+- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: Canvas.justify = "flex-start"`, `align?: FlexAlign = "stretch"`, `contentWidth?: number | string = "100%"`, `background?`, `contentStyle?: React.CSSProperties`. Title/subtitle are optional and the title bar is omitted when no title is provided. Use `background={c.bg}` for an opaque theme frame.
 - `TitleBar`: `title`, `subtitle?`, `c`.
 
 Layout primitives:

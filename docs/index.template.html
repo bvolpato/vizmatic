@@ -111,7 +111,7 @@
       <div class="section-head compact">
         <span>API</span>
         <h2>Write scenes, not SVG paths.</h2>
-        <p>Use React primitives with semantic tones. Render to PNG in Node for docs, websites, or generated decks.</p>
+        <p>Use React primitives with semantic tones. Render to PNG in Node for docs, websites, or generated decks. Scene titles and subtitles are optional when the visual should stand alone.</p>
       </div>
       <pre data-shiki="tsx"><code>width = 1040;
 height = 560;
@@ -129,7 +129,7 @@ height = 560;
       <div class="section-head compact">
         <span>Backgrounds</span>
         <h2>Alpha by default, theme fill when requested.</h2>
-        <p>PNG and SVG renders keep the canvas transparent unless a frame sets <code>background={c.bg}</code> or the render command asks for one. Omitted CLI dimensions start at <code>960x540</code> and auto-grow on overflow; explicit sizes stay strict.</p>
+        <p>PNG and SVG renders keep the canvas transparent unless a frame sets <code>background={c.bg}</code> or the render command asks for one. Omitted CLI dimensions start at <code>960x540</code> and auto-grow on overflow; explicit sizes stay strict. Titleless scenes are valid.</p>
       </div>
       <pre data-shiki="bash"><code># alpha-transparent PNG
 vizmatic ./badge.tsx --out ./dist/frames --theme dark,light

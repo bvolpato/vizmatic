@@ -205,6 +205,20 @@ describe('vizmatic render pipeline', () => {
         expect(pixelAt(image, 0, 0)[3]).toBe(0)
     }, 30_000)
 
+    it('renders scenes without a title or subtitle', async () => {
+        const frame = defineIllustration((c) => (
+            <Scene c={c} align="center" contentWidth={420}>
+                <StepCard c={c} title="Titleless" subtitle="visual-only" tone="cyan" width={240} />
+            </Scene>
+        ))
+
+        const buffer = await renderToBuffer(frame.create('light'), 520, 320, { scale: 1 })
+        const image = decodePng(buffer)
+        expect(image.width).toBe(520)
+        expect(image.height).toBe(320)
+        expect(pixelAt(image, 0, 0)[3]).toBe(0)
+    }, 30_000)
+
     it('renders the theme background when requested', async () => {
         const frame = defineIllustration((c) => (
             <Scene c={c} title="Opaque theme">

@@ -153,6 +153,8 @@ height = 560;
 </Scene>
 ```
 
+`Scene` title and subtitle are optional. Omit both for visual-only figures, badges, inline blog diagrams, or frames where surrounding copy already supplies the title.
+
 Render it:
 
 ```bash
@@ -464,7 +466,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 |---|---|
 | `defineIllustration` | Wraps a theme-aware frame builder and exports `create(theme)` plus a default element. |
 | `Canvas` | Low-level full-frame root with alpha-transparent default background, optional background fill, padding, and vertical alignment. |
-| `Scene` | Standard frame wrapper with title, subtitle, content column, and theme-aware typography. |
+| `Scene` | Standard frame wrapper with optional title/subtitle, content column, and theme-aware typography. |
 | `TitleBar` | Shared title/subtitle block used by `Scene`. |
 | `Row` / `Column` | Flex layout primitives with gap, alignment, wrapping, width, and height props. |
 | `Stack` | Layered vertical stack for repeated cards, tokens, or processing layers. |
