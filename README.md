@@ -20,6 +20,7 @@
 <p align="center">
   <a href="https://bvolpato.github.io/vizmatic/">Website</a> ·
   <a href="examples">Examples</a> ·
+  <a href="PROMPT.md">Agent Prompt</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#why-vizmatic">Why Vizmatic</a> ·
   <a href="#api">API</a>
@@ -31,6 +32,12 @@
 
 ```bash
 pnpm add vizmatic react
+```
+
+If npm has not been published yet, install from GitHub:
+
+```bash
+pnpm add github:bvolpato/vizmatic react
 ```
 
 Create a frame:
@@ -110,6 +117,132 @@ Vizmatic gives them a constrained visual language:
 </p>
 
 More examples live in [`examples/`](examples) and on the [website](https://bvolpato.github.io/vizmatic/).
+
+## Copy-Paste Examples
+
+### Flow + callouts
+
+Use this for process diagrams, architecture walkthroughs, and agent pipelines.
+
+```tsx
+import React from "react"
+import { CalloutCard, defineIllustration, Flow, Row, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const frame = defineIllustration((c) => (
+  <Scene c={c} title="Agent visual pipeline" subtitle="prompt -> scene spec -> verified artifact" gap={26}>
+    <Flow
+      c={c}
+      connectorTone="purple"
+      stages={[
+        { eyebrow: "input", title: "Prompt", subtitle: "intent", tone: "blue", lines: ["goal", "audience", "constraints"], width: 190 },
+        { eyebrow: "contract", title: "Scene spec", subtitle: "typed structure", tone: "purple", lines: ["cards", "flows", "charts"], width: 190 },
+        { eyebrow: "render", title: "Satori", subtitle: "React primitives", tone: "cyan", lines: ["layout", "theme", "safe text"], width: 190 },
+        { eyebrow: "output", title: "PNG / SVG", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
+      ]}
+    />
+    <Row width="100%" gap={14}>
+      <CalloutCard c={c} title="Model writes structure" detail="No hand-written SVG paths." tone="purple" width={470} />
+      <CalloutCard c={c} title="Theme stays in control" detail="Colors and typography come from tokens." tone="green" width={470} />
+    </Row>
+  </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+```
+
+### RAG graph
+
+Use this for workflows with branches, retries, and validation loops.
+
+```tsx
+import React from "react"
+import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const frame = defineIllustration((c) => (
+  <Scene c={c} title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
+    <GraphDiagram
+      c={c}
+      width={820}
+      height={390}
+      nodes={[
+        { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
+        { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
+        { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
+        { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
+        { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
+      ]}
+      edges={[
+        { from: "query", to: "retrieve", label: "search", tone: "blue" },
+        { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
+        { from: "rerank", to: "answer", label: "context", tone: "green" },
+        { from: "answer", to: "verify", label: "claims", tone: "critical" },
+        { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
+      ]}
+    />
+  </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+```
+
+### Evaluation dashboard
+
+Use this for compact report figures and release decks.
+
+```tsx
+import React from "react"
+import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 620
+
+const frame = defineIllustration((c) => (
+  <Scene c={c} title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
+    <Row gap={18} align="stretch">
+      <BarChart
+        c={c}
+        width={440}
+        height={260}
+        title="Pass rate by task"
+        format="percent"
+        data={[
+          { label: "tools", value: 0.82, color: "positive" },
+          { label: "math", value: 0.71, color: "secondary" },
+          { label: "code", value: 0.77, color: "primary" },
+          { label: "long", value: 0.58, color: "warning" },
+        ]}
+      />
+      <LineChart
+        c={c}
+        width={440}
+        height={260}
+        title="Quality over releases"
+        format="percent"
+        labels={["v1", "v2", "v3", "v4", "v5"]}
+        series={[
+          { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
+          { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
+        ]}
+      />
+    </Row>
+  </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+```
+
+## Agent Prompt
+
+[`PROMPT.md`](PROMPT.md) is a plug-and-play instruction file for coding agents. It covers install, frame structure, primitive selection, render commands, quality rules, and final verification.
 
 ## API
 

@@ -22,4 +22,10 @@ if (missing.length > 0) {
     throw new Error(`missing docs assets:\n${missing.map((ref) => `- ${ref}`).join('\n')}`)
 }
 
+const rootPrompt = await readFile(join(root, 'PROMPT.md'), 'utf8')
+const docsPrompt = await readFile(join(root, 'docs', 'PROMPT.md'), 'utf8')
+if (rootPrompt !== docsPrompt) {
+    throw new Error('docs/PROMPT.md must match root PROMPT.md')
+}
+
 console.log(`docs ok: ${refs.length} local references checked`)

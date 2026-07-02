@@ -33,6 +33,8 @@
     </a>
     <div class="nav-links">
       <a href="#gallery">Gallery</a>
+      <a href="#recipes">Recipes</a>
+      <a href="#prompt">Prompt</a>
       <a href="#api">API</a>
       <a href="#themes">Themes</a>
       <a href="https://github.com/bvolpato/vizmatic">GitHub</a>
@@ -46,9 +48,10 @@
       <p>Vizmatic gives models a small, typed visual language: flows, cards, graphs, matrices, charts, and slide frames. Satori and resvg handle rendering. Your design system stays in control.</p>
       <div class="cta-row">
         <a class="button primary" href="https://github.com/bvolpato/vizmatic">View source</a>
+        <a class="button" href="#prompt">Copy agent prompt</a>
         <a class="button" href="#gallery">See examples</a>
       </div>
-      <div class="install"><span>$</span> pnpm add vizmatic react</div>
+      <div class="install"><span>$</span> pnpm add vizmatic react<br><span>$</span> pnpm add github:bvolpato/vizmatic react</div>
     </div>
     <div class="hero-frame">
       <img src="assets/examples/agent-pipeline_dark.png" alt="Vizmatic agent visual pipeline example">
@@ -110,6 +113,116 @@ export const create = frame.create
 export default frame.default</code></pre>
     </section>
 
+    <section id="recipes" class="section">
+      <div class="section-head">
+        <span>Recipes</span>
+        <h2>Copy a frame, swap the content, render.</h2>
+        <p>These are the same patterns used by the generated gallery. Agents should start here before writing custom SVG.</p>
+      </div>
+      <div class="recipe-grid">
+        <article class="recipe-card">
+          <img src="assets/examples/agent-pipeline_dark.png" alt="Flow and callouts recipe">
+          <div>
+            <h3>Flow + callouts</h3>
+            <p>Best for process diagrams, architecture walkthroughs, and agent pipelines.</p>
+          </div>
+          <pre><code>import { CalloutCard, defineIllustration, Flow, Row, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const frame = defineIllustration((c) =&gt; (
+  &lt;Scene c={c} title="Agent visual pipeline"&gt;
+    &lt;Flow c={c} connectorTone="purple" stages={[
+      { title: "Prompt", subtitle: "intent", tone: "blue" },
+      { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
+      { title: "PNG / SVG", subtitle: "verified asset", tone: "green" },
+    ]} /&gt;
+    &lt;Row gap={14} width="100%"&gt;
+      &lt;CalloutCard c={c} tone="purple" title="Model writes structure" /&gt;
+      &lt;CalloutCard c={c} tone="green" title="Theme stays in control" /&gt;
+    &lt;/Row&gt;
+  &lt;/Scene&gt;
+))</code></pre>
+        </article>
+
+        <article class="recipe-card">
+          <img src="assets/examples/rag-graph_dark.png" alt="Graph diagram recipe">
+          <div>
+            <h3>Graph diagram</h3>
+            <p>Best for branches, retries, validation loops, and systems with non-linear flow.</p>
+          </div>
+          <pre><code>import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+
+const frame = defineIllustration((c) =&gt; (
+  &lt;Scene c={c} title="RAG control graph" align="center"&gt;
+    &lt;GraphDiagram
+      c={c}
+      width={820}
+      height={390}
+      nodes={[
+        { id: "query", label: "Query", x: 0.08, y: 0.52, tone: "blue" },
+        { id: "retrieve", label: "Retrieve", x: 0.40, y: 0.25, tone: "cyan" },
+        { id: "answer", label: "Answer", x: 0.92, y: 0.52, tone: "green" },
+      ]}
+      edges={[
+        { from: "query", to: "retrieve", label: "search", tone: "blue" },
+        { from: "retrieve", to: "answer", label: "context", tone: "green" },
+      ]}
+    /&gt;
+  &lt;/Scene&gt;
+))</code></pre>
+        </article>
+
+        <article class="recipe-card">
+          <img src="assets/examples/eval-dashboard_dark.png" alt="Dashboard charts recipe">
+          <div>
+            <h3>Dashboard charts</h3>
+            <p>Best for report figures, eval summaries, launch reviews, and release decks.</p>
+          </div>
+          <pre><code>import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+
+const frame = defineIllustration((c) =&gt; (
+  &lt;Scene c={c} title="Evaluation snapshot"&gt;
+    &lt;Row gap={18} align="stretch"&gt;
+      &lt;BarChart c={c} title="Pass rate" format="percent" data={[
+        { label: "tools", value: 0.82, color: "positive" },
+        { label: "long", value: 0.58, color: "warning" },
+      ]} /&gt;
+      &lt;LineChart c={c} title="Quality" format="percent" labels={["v1", "v2"]} series={[
+        { name: "quality", points: [0.61, 0.81], color: "positive", area: true },
+      ]} /&gt;
+    &lt;/Row&gt;
+  &lt;/Scene&gt;
+))</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="prompt" class="section prompt-section">
+      <div class="prompt-copy">
+        <span>Agent Prompt</span>
+        <h2>Paste this into Codex, Claude Code, Cursor, or any coding agent.</h2>
+        <p>It teaches the agent how to install Vizmatic, choose primitives, write a frame, render dark/light PNGs, and fix overflow errors.</p>
+        <div class="cta-row">
+          <button class="button primary" type="button" id="copyPromptButton">Copy PROMPT.md</button>
+          <a class="button" href="PROMPT.md">Open prompt file</a>
+        </div>
+      </div>
+      <pre class="prompt-preview"><code id="promptPreview"># Vizmatic Agent Prompt
+
+Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, and presentation frames from structured React scene primitives.
+
+Install:
+pnpm add vizmatic react
+
+Fallback before npm publish:
+pnpm add github:bvolpato/vizmatic react
+
+Create frames/*.tsx, export width/height, use defineIllustration, render with:
+pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"</code></pre>
+    </section>
+
     <section id="themes" class="section themes">
       <div class="theme-card">
         <img src="assets/examples/theme-system_dark.png" alt="Dark theme system example">
@@ -132,5 +245,25 @@ export default frame.default</code></pre>
     <img src="assets/logo.svg" alt="Vizmatic" width="260">
     <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p>
   </footer>
+  <script>
+    const copyPromptButton = document.getElementById('copyPromptButton')
+    const promptPreview = document.getElementById('promptPreview')
+
+    copyPromptButton?.addEventListener('click', async () => {
+      const previous = copyPromptButton.textContent
+      try {
+        const response = await fetch('PROMPT.md', { cache: 'no-store' })
+        const prompt = response.ok ? await response.text() : promptPreview.textContent
+        await navigator.clipboard.writeText(prompt)
+        copyPromptButton.textContent = 'Copied'
+      } catch {
+        copyPromptButton.textContent = 'Copy failed'
+      } finally {
+        setTimeout(() => {
+          copyPromptButton.textContent = previous
+        }, 1800)
+      }
+    })
+  </script>
 </body>
 </html>
