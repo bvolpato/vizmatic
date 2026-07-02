@@ -244,24 +244,7 @@ const frame = defineIllustration((c) =&gt; (
           <a class="button" href="PROMPT.md">Open prompt file</a>
         </div>
       </div>
-      <pre class="prompt-preview" data-shiki="md"><code id="promptPreview"># Vizmatic Agent Prompt
-
-Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
-
-One-off render, no package.json change:
-pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
-
-Install for project scripts, editor types, or renderer APIs:
-pnpm add vizmatic react
-
-Optional edge build:
-pnpm add github:bvolpato/vizmatic react
-
-Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:
-pnpm exec vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg
-
-For animation, export createScenes(theme), then run:
-pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</code></pre>
+      <pre class="prompt-preview" data-shiki="md"><code id="promptPreview">{{PROMPT_MD}}</code></pre>
     </section>
 
     <section id="quality" class="section quality-section">

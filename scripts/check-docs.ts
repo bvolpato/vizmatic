@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url'
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const htmlPath = join(root, 'docs', 'index.html')
 const html = await readFile(htmlPath, 'utf8')
+const templateHtml = await readFile(join(root, 'docs', 'index.template.html'), 'utf8')
 
 function fail(message: string): never {
     throw new Error(message)
@@ -31,6 +32,18 @@ const rootPrompt = await readFile(join(root, 'PROMPT.md'), 'utf8')
 const docsPrompt = await readFile(join(root, 'docs', 'PROMPT.md'), 'utf8')
 if (rootPrompt !== docsPrompt) {
     fail('docs/PROMPT.md must match root PROMPT.md')
+}
+
+if (!templateHtml.includes('{{PROMPT_MD}}')) {
+    fail('homepage prompt preview must be generated from PROMPT.md')
+}
+
+if (html.includes('{{PROMPT_MD}}')) {
+    fail('homepage prompt preview contains unreplaced placeholder')
+}
+
+if (!html.includes('Final answer checklist') || !html.includes('any overflow or layout fixes made')) {
+    fail('homepage prompt preview must include full PROMPT.md')
 }
 
 if (!html.includes('code-copy-button')) {

@@ -804,7 +804,7 @@ code {
   display: grid;
   grid-template-columns: 0.88fr 1.12fr;
   gap: 28px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .prompt-copy {
@@ -814,6 +814,7 @@ code {
 
 .prompt-preview {
   min-height: 420px;
+  max-height: min(760px, calc(100vh - 120px));
   background: var(--code-bg);
 }
 
