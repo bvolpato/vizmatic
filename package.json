@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Theme-aware visual primitives and render pipeline for AI-generated diagrams, figures, and presentation frames.",
   "type": "module",
   "license": "MIT",
