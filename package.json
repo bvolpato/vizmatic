@@ -64,6 +64,7 @@
     "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
+    "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
     "security:audit": "pnpm audit --audit-level low",
     "deps:check": "pnpm security:audit && npm pack --dry-run",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm docs:check && pnpm deps:check",

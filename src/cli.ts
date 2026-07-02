@@ -35,6 +35,7 @@ interface RenderArgs {
 }
 
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
+const IMPORT_RESOLUTION_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json']
 const cliRequire = createRequire(import.meta.url)
 let frameDependencyAliasesInstalled = false
 const BARE_FRAME_EXTRA_EXPORTS = new Set([
@@ -142,15 +143,13 @@ function resolveSelfEntry(): string | undefined {
     }
 }
 
-function resolveSelfImportSpecifier(): string {
-    const moduleDir = dirname(fileURLToPath(import.meta.url))
-    const bundledEntry = join(moduleDir, 'index.js')
-    if (existsSync(bundledEntry)) return bundledEntry
+function resolveSelfRequireSpecifier(): string {
+    return resolveSelfEntry() ?? 'vizmatic'
+}
 
-    const sourceEntry = join(moduleDir, 'index.ts')
-    if (existsSync(sourceEntry)) return sourceEntry
-
-    return 'vizmatic'
+function resolveReactRequireSpecifier(): string {
+    const reactEntry = resolveFrameDependency('react')
+    return reactEntry ?? 'react'
 }
 
 function resolveFrameDependency(request: string): string | undefined {
@@ -178,11 +177,28 @@ function rewriteRelativeImports(line: string, framePath: string): string {
     const frameDir = dirname(framePath)
     return line
         .replace(/(from\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
-            `${before}${resolve(frameDir, specifier)}${after}`,
+            `${before}${resolveRelativeImportSpecifier(frameDir, specifier)}${after}`,
         )
         .replace(/(^\s*import\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
-            `${before}${resolve(frameDir, specifier)}${after}`,
+            `${before}${resolveRelativeImportSpecifier(frameDir, specifier)}${after}`,
         )
+}
+
+function resolveRelativeImportSpecifier(frameDir: string, specifier: string): string {
+    const absolute = resolve(frameDir, specifier)
+    if (existsSync(absolute)) return absolute
+
+    for (const extension of IMPORT_RESOLUTION_EXTENSIONS) {
+        const candidate = `${absolute}${extension}`
+        if (existsSync(candidate)) return candidate
+    }
+
+    for (const extension of IMPORT_RESOLUTION_EXTENSIONS) {
+        const candidate = join(absolute, `index${extension}`)
+        if (existsSync(candidate)) return candidate
+    }
+
+    return absolute
 }
 
 function readDimensionLine(line: string): { name: 'width' | 'height'; value: number } | undefined {
@@ -222,8 +238,8 @@ function bareFrameExportsForSource(source: string): string[] {
 }
 
 function buildAutoImportStatement(names: string[]): string {
-    const specifiers = names.map((name) => `${name} as ${bareFrameAlias(name)}`).join(',\n    ')
-    return `import {\n    ${specifiers}\n} from ${JSON.stringify(resolveSelfImportSpecifier())}`
+    const specifiers = names.map((name) => `    ${name}: ${bareFrameAlias(name)}`).join(',\n')
+    return `const {\n${specifiers}\n} = __require(${JSON.stringify(resolveSelfRequireSpecifier())})`
 }
 
 function buildAutoImportDeclarations(names: string[]): string {
@@ -271,7 +287,10 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     height ??= readFrameDimension(jsx, 'height') ?? 540
     const autoImports = bareFrameExportsForSource(body)
 
-    return `import React from 'react'
+    return `/** @jsxRuntime classic */
+import { createRequire as __createRequire } from 'module'
+const __require = __createRequire(${JSON.stringify(import.meta.url)})
+const React = __require(${JSON.stringify(resolveReactRequireSpecifier())})
 ${buildAutoImportStatement(autoImports)}
 ${imports.join('\n')}
 

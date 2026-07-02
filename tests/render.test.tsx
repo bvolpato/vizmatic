@@ -6,6 +6,19 @@ import { join } from 'path'
 import { describe, expect, it, vi } from 'vitest'
 import { defineIllustration, renderAnimatedGif, renderToBuffer, Scene, StepCard, getThemeColors, Watermark, wrapWithWatermark } from '../src'
 
+let packageBuilt = false
+
+function ensurePackageBuild() {
+    if (packageBuilt) return
+
+    const build = spawnSync('pnpm', ['build'], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+    })
+    expect(build.status, build.stderr || build.stdout).toBe(0)
+    packageBuilt = true
+}
+
 describe('vizmatic render pipeline', () => {
     it('renders with vendored fonts and emoji without network fetches', async () => {
         const fetchMock = vi.fn(async () => {
@@ -41,11 +54,7 @@ describe('vizmatic render pipeline', () => {
     }, 30_000)
 
     it('renders through the built CommonJS entrypoint with packaged assets outside the repo cwd', async () => {
-        const build = spawnSync('pnpm', ['build'], {
-            cwd: process.cwd(),
-            encoding: 'utf8',
-        })
-        expect(build.status, build.stderr || build.stdout).toBe(0)
+        ensurePackageBuild()
 
         const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cjs-assets-'))
         const packageRoot = process.cwd()
@@ -260,6 +269,56 @@ height = 300;
 
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
             expect(manifest[0]).toMatchObject({ width: 520, height: 300 })
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('renders a bare TSX frame through the built CLI outside the repo cwd', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-built-bare-cli-'))
+        const framePath = join(outDir, 'bare-global.tsx')
+        const helperPath = join(outDir, 'copy.ts')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await writeFile(helperPath, `export const title = 'Bare global'\n`)
+            await writeFile(framePath, `import { title } from './copy'
+
+width = 560
+height = 320
+
+const detail = 'package-owned imports'
+
+<Scene title={title} subtitle={detail}>
+    <Row gap={12} width="100%">
+        <StepCard title="React" subtitle="resolved by CLI" tone="green" />
+        <CalloutCard title="Relative import" detail="resolved by CLI" tone="cyan" width={240} />
+    </Row>
+</Scene>
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+                '--scale',
+                '2',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            expect(result.stdout).toContain('rendered')
+
+            const buffer = await readFile(join(renderDir, 'bare-global_light.png'))
+            expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
