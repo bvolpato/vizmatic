@@ -124,14 +124,112 @@ const light = getThemeColors("light")
 
 Primitives receive `c`, the resolved theme object. This keeps every visual connected to one palette, typography scale, and contrast model.
 
-### Core primitives
+### Component catalog
 
-- `Scene`, `Row`, `Column`
-- `Panel`, `Card`, `StepCard`, `MetricCard`, `CalloutCard`
-- `Flow`, `FlowArrow`, `LayeredNetwork`, `GraphDiagram`
-- `Grid`, `DataTable`
-- `MiniBarChart`, `BarChart`, `LineChart`, `ScatterPlot`, `QuadrantChart`
-- `TextLabel`, `BadgePill`, `ToneStrip`
+Vizmatic exports a fairly complete visual kit. Common cases should use these primitives before dropping to raw SVG or absolute positioning.
+
+#### Frame and layout
+
+| Component | Use |
+|---|---|
+| `defineIllustration` | Wraps a theme-aware frame builder and exports `create(theme)` plus a default element. |
+| `Canvas` | Low-level full-frame root with background, padding, and vertical alignment. |
+| `Scene` | Standard frame wrapper with title, subtitle, content column, and theme-aware typography. |
+| `TitleBar` | Shared title/subtitle block used by `Scene`. |
+| `Row` / `Column` | Flex layout primitives with gap, alignment, wrapping, width, and height props. |
+| `Stack` | Layered vertical stack for repeated cards, tokens, or processing layers. |
+
+#### Surfaces, labels, and cards
+
+| Component | Use |
+|---|---|
+| `Panel` | Titled card surface with tone strip, subtitle, footer, shadow, and body controls. |
+| `Card` | Flexible surface for custom content without a forced title. |
+| `StepCard` | Compact stage card for flows, choices, and process steps. |
+| `MetricCard` | KPI/value card with label, value, detail, tone, and monospace value support. |
+| `CalloutCard` | Highlight block for takeaways, warnings, decisions, and summaries. |
+| `WindowFrame` | Browser/terminal-style framed panel for code, UI, or tool output. |
+| `Box` | Gradient or outlined labeled rectangle with optional icon and sublabel. |
+| `Tile` / `TileGrid` | Uniform repeated tiles with tone, title, detail, and metric layouts. |
+| `Badge` / `BadgePill` | Small labels for status, categories, and annotations. |
+| `ValuePill` | Compact value badge for numbers or short state labels. |
+| `GradientChip` | Small colored chip with gradient fill for legends and tone keys. |
+| `ToneStrip` | Small semantic accent strip for visual grouping. |
+| `TextLabel` | Wrapping-safe text with variant, color, math formatting, width, and alignment. |
+| `MathText` / `formatMathText` | Converts simple `x_i` / `x^2` style strings into readable unicode math text. |
+| `SvgMathText` | SVG text helper for math labels inside custom plots. |
+
+#### Arrows, connectors, and SVG helpers
+
+| Component | Use |
+|---|---|
+| `Arrow` | Simple directional arrow element. |
+| `FlowArrow` / `Connector` | Theme-aware connector between flow stages. |
+| `VectorArrow` | SVG vector arrow for coordinate-style diagrams. |
+| `VectorSegment` | Labeled segment/vector primitive for geometry and embedding visuals. |
+| `SvgFrame` | SVG container with theme-aware background and border. |
+| `SvgPoint` / `DotPoint` | Point markers with optional labels. |
+| `ArrowMarkerDef` | SVG arrowhead marker definition for custom line charts and graph edges. |
+| `DashedLine` | Dotted/dashed SVG line helper. |
+| `Legend` | Reusable legend block with colored items and optional title. |
+
+#### Lists, comparisons, and status blocks
+
+| Component | Use |
+|---|---|
+| `DetailList` | Compact repeated detail rows inside panels and flow stages. |
+| `ProgressRow` / `ProgressList` | Progress bars with labels, values, tones, and optional math text. |
+| `StatusRow` / `StatusList` | Check, cross, warning, info, pending, and dot rows. |
+| `KeyValueList` | Structured label/value rows for configs and metadata. |
+| `CodeBlock` | Themed code panel with highlighted lines and optional annotations. |
+| `EquationCard` | Formula card with title, equation, and supporting detail. |
+| `Comparison` | Side-by-side comparison panel with two titled sides and detail rows. |
+
+#### Flows, pipelines, and graph diagrams
+
+| Component | Use |
+|---|---|
+| `Flow` | Horizontal or vertical staged process diagram with optional detail rows. |
+| `Pipeline` | Process pipeline with stage labels and a shared title. |
+| `LayeredNetwork` | Neural-network/DAG diagram with layers, nodes, active path, annotations, and formula. |
+| `GraphDiagram` | Positioned node-edge graph with labels, dashed/muted edges, and tone-aware nodes. |
+
+#### Matrices, tables, and grids
+
+| Component | Use |
+|---|---|
+| `Matrix` | Numeric matrix visualization for linear algebra and attention examples. |
+| `Heatmap` | Color-scaled matrix/attention heatmap. |
+| `TiledMatrix` | Matrix with region labels and grouped tiles. |
+| `DataTable` | Compact text table with header rows/columns and monospace cells. |
+| `Grid` | General-purpose cell grid with per-cell label, tone, color, border, and opacity. |
+
+#### Charts and plots
+
+| Component | Use |
+|---|---|
+| `ChartFrame` | Shared chart wrapper with title, subtitle, footer, and theme-aware shell. |
+| `AxisPlot` | Low-level axis plot for custom lines, paths, and plotted values. |
+| `MiniBarChart` | Small bar chart for cards and dashboards. |
+| `StackedBar` | Segmented horizontal bar with labels and percentages. |
+| `BarChart` | Full bar chart with ticks, labels, values, grids, and formats. |
+| `LineChart` | Multi-series line chart with optional area fill, points, labels, and grid. |
+| `ScatterPlot` | Labeled scatter plot with axes, ticks, point sizing, and collision-aware labels. |
+| `QuadrantChart` | 2x2 decision matrix with regions, labeled points, and axis labels. |
+| `IntervalPlot` | Timeline/range plot for spans, phases, latencies, and schedules. |
+
+#### Rendering and verification
+
+| API | Use |
+|---|---|
+| `renderToPng` | Render React scene to PNG through Satori and resvg, with optional brand mark, crop, scale, and overflow check. |
+| `renderToBuffer` | Render PNG to memory for tests and pipelines. |
+| `renderToSvg` | Render SVG markup directly. |
+| `wrapWithBrand` | Add an optional top-right brand label to a frame. |
+| `detectBackgroundColor` | Find dominant transparent/background color for cropping. |
+| `detectContentBounds` | Compute non-background bounds for autocrop. |
+| `cropPixels` | Crop raw pixel buffers. |
+| `detectOverflow` | Fail frames that clip content at canvas edges. |
 
 ### Rendering
 
