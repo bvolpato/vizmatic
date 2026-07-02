@@ -18,6 +18,7 @@ import {
     Watermark,
     wrapWithWatermark,
     BarChart,
+    LineChart,
     Panel,
 } from '../src'
 
@@ -152,6 +153,26 @@ function pixelBounds(
     }
 
     return { minX, maxX, minY, maxY }
+}
+
+function reactProps(element: React.ReactElement): Record<string, unknown> {
+    return element.props as Record<string, unknown>
+}
+
+function collectElements(
+    node: React.ReactNode,
+    matches: (element: React.ReactElement) => boolean,
+): React.ReactElement[] {
+    const elements: React.ReactElement[] = []
+
+    React.Children.forEach(node, (child) => {
+        if (!React.isValidElement(child)) return
+        const element = child as React.ReactElement
+        if (matches(element)) elements.push(element)
+        elements.push(...collectElements(reactProps(element).children as React.ReactNode, matches))
+    })
+
+    return elements
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -348,6 +369,26 @@ describe('vizmatic render pipeline', () => {
         expect(blueBounds.maxX).toBeGreaterThan(0)
         expect(opaqueBounds.maxX - blueBounds.maxX).toBeGreaterThanOrEqual(30)
     }, 30_000)
+
+    it('keeps line chart endpoints inset from plot edges', () => {
+        const chart = LineChart({
+            c: getThemeColors('light'),
+            width: 460,
+            height: 250,
+            format: 'percent',
+            labels: ['cold', 't+1', 't+2', 't+3', 't+4'],
+            series: [
+                { name: 'cache read', points: [0.05, 0.42, 0.71, 0.86, 0.90], color: 'positive', area: true },
+                { name: 'relative cost', points: [1.00, 0.58, 0.35, 0.20, 0.16], color: 'warning' },
+            ],
+        })
+        const circles = collectElements(chart, (element) => element.type === 'circle')
+        const circleXs = circles.map((circle) => Number(reactProps(circle).cx))
+
+        expect(circleXs.length).toBe(10)
+        expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(60)
+        expect(Math.max(...circleXs)).toBeLessThanOrEqual(420)
+    })
 
     it('applies panel gap between direct body children', () => {
         const panel = Panel({

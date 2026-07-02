@@ -4849,11 +4849,14 @@ export function LineChart({
     const allValues = series.flatMap((item) => item.points)
     const domain = chartDomain(allValues, min, max)
     const maxPoints = Math.max(...series.map((item) => item.points.length), 1)
-    const xStep = maxPoints <= 1 ? plot.innerWidth : plot.innerWidth / (maxPoints - 1)
+    const xInset = maxPoints <= 1 ? 0 : Math.min(26, Math.max(14, plot.innerWidth * 0.06))
+    const xStart = maxPoints <= 1 ? plot.x + plot.innerWidth / 2 : plot.x + xInset
+    const xSpan = maxPoints <= 1 ? 0 : Math.max(1, plot.innerWidth - xInset * 2)
+    const xStep = maxPoints <= 1 ? 0 : xSpan / (maxPoints - 1)
     const ticks = chartTicks(domain.min, domain.max, 4)
 
     const pointFor = (value: number, index: number) => {
-        const x = plot.x + index * xStep
+        const x = xStart + index * xStep
         const y = yInPlot(value, domain, plot)
         return { x, y }
     }
@@ -4894,9 +4897,12 @@ export function LineChart({
                     if (item.points.length === 0) return []
                     const color = chartColor(item.color, c, seriesIndex)
                     const linePath = pathFor(item.points)
-                    const areaPath = item.area && item.points.length > 1
-                        ? `${linePath} L ${plot.x + (item.points.length - 1) * xStep} ${plot.bottom} L ${plot.x} ${plot.bottom} Z`
-                        : ''
+                    let areaPath = ''
+                    if (item.area && item.points.length > 1) {
+                        const firstPoint = pointFor(item.points[0], 0)
+                        const lastPoint = pointFor(item.points[item.points.length - 1], item.points.length - 1)
+                        areaPath = `${linePath} L ${lastPoint.x} ${plot.bottom} L ${firstPoint.x} ${plot.bottom} Z`
+                    }
                     const elements: React.ReactElement[] = []
                     if (areaPath) {
                         elements.push(React.createElement('path', { key: `${item.name}-area`, d: areaPath, fill: color, opacity: 0.12 }))
@@ -4937,10 +4943,9 @@ export function LineChart({
                 fontWeight: 700,
                 transform: 'translate(-50%, -50%) rotate(-90deg)',
             }),
-            ...(labels ?? []).map((label, index, allLabels) => {
-                const x = plot.x + index * xStep
-                const align = index === 0 ? 'left' : index === (allLabels.length - 1) ? 'right' : 'center'
-                return chartLabel(`line-x-${label}`, label, x, height - 14, c, { align, width: 72 })
+            ...(labels ?? []).map((label, index) => {
+                const x = xStart + index * xStep
+                return chartLabel(`line-x-${label}`, label, x, height - 14, c, { width: 72 })
             }),
         )
     })
