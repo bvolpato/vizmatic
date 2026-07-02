@@ -4,7 +4,6 @@ import { codeToHtml } from 'shiki'
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
 const promptPath = 'PROMPT.md'
-const skillPath = 'plugins/vizmatic/skills/vizmatic/SKILL.md'
 const generatedNotice = '<!-- Generated from docs/index.template.html by pnpm site:build. Edit template. -->'
 
 function encodeHtml(value: string): string {
@@ -65,10 +64,8 @@ async function replaceAsync(input: string, pattern: RegExp): Promise<string> {
 }
 
 const prompt = await readFile(promptPath, 'utf8')
-const skill = await readFile(skillPath, 'utf8')
 const template = (await readFile(templatePath, 'utf8'))
     .replace('{{PROMPT_MD}}', () => encodeHtml(prompt))
-    .replace('{{VIZMATIC_SKILL_MD}}', () => encodeHtml(skill))
 const highlighted = await replaceAsync(template, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g)
 const output = highlighted.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice}\n`)
 

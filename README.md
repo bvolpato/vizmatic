@@ -22,7 +22,7 @@
   <a href="https://bvolpato.github.io/vizmatic/">Website</a> ·
   <a href="examples">Examples</a> ·
   <a href="PROMPT.md">Agent Prompt</a> ·
-  <a href="#codex-skill">Codex Skill</a> ·
+  <a href="#agent-skills">Agent Skills</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#why-vizmatic">Why Vizmatic</a> ·
   <a href="#api">API</a>
@@ -58,7 +58,9 @@ Optional edge build from GitHub:
 pnpm add github:bvolpato/vizmatic react
 ```
 
-## Codex Skill
+## Agent Skills
+
+### Codex
 
 Vizmatic also ships as a Codex plugin with a bundled `$vizmatic` skill. Add this repo as a marketplace, install the Vizmatic plugin from Codex, then ask for visual assets directly:
 
@@ -72,6 +74,41 @@ Example prompts:
 Use $vizmatic to create a theme-aware architecture diagram and render dark/light PNG files.
 Use $vizmatic to turn this release workflow into an animated GIF for docs.
 ```
+
+### Claude Code, OpenCode, and Cursor
+
+The portable skill lives at `plugins/vizmatic/skills/vizmatic`. Copy that folder into the agent-specific skills directory:
+
+```bash
+tmp="$(mktemp -d)"
+git clone --depth 1 https://github.com/bvolpato/vizmatic.git "$tmp/vizmatic"
+```
+
+Claude Code:
+
+```bash
+mkdir -p ~/.claude/skills
+rm -rf ~/.claude/skills/vizmatic
+cp -R "$tmp/vizmatic/plugins/vizmatic/skills/vizmatic" ~/.claude/skills/vizmatic
+```
+
+OpenCode:
+
+```bash
+mkdir -p ~/.config/opencode/skills
+rm -rf ~/.config/opencode/skills/vizmatic
+cp -R "$tmp/vizmatic/plugins/vizmatic/skills/vizmatic" ~/.config/opencode/skills/vizmatic
+```
+
+Cursor:
+
+```bash
+mkdir -p .cursor/skills
+rm -rf .cursor/skills/vizmatic
+cp -R "$tmp/vizmatic/plugins/vizmatic/skills/vizmatic" .cursor/skills/vizmatic
+```
+
+In Cursor, you can also use **Customize -> Rules -> Add Rule -> Remote Rule (GitHub)** and enter `https://github.com/bvolpato/vizmatic`.
 
 Create a frame:
 

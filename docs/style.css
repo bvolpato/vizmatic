@@ -594,6 +594,10 @@ pre,
   min-width: 0;
 }
 
+.agent-install-grid > * {
+  min-width: 0;
+}
+
 .gif-showcase {
   display: grid;
   grid-template-columns: 0.92fr 1.08fr;
@@ -836,7 +840,7 @@ li code {
 
 .skill-section {
   display: grid;
-  grid-template-columns: 0.9fr 1.1fr;
+  grid-template-columns: 0.88fr 1.12fr;
   gap: 28px;
   align-items: start;
 }
@@ -878,8 +882,46 @@ li code {
   line-height: 1.55;
 }
 
-.prompt-preview,
-.skill-preview {
+.agent-install-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.agent-install-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 22px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.agent-install-card > span {
+  color: var(--green);
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.agent-install-card h3 {
+  margin-top: 10px;
+  font-size: 22px;
+  line-height: 1.08;
+}
+
+.agent-install-card p {
+  margin-top: 10px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.agent-install-card pre {
+  margin-top: 14px;
+  border-radius: 12px;
+}
+
+.prompt-preview {
   min-height: 420px;
   max-height: min(760px, calc(100vh - 120px));
   background: var(--code-bg);

@@ -41,16 +41,8 @@ if (!templateHtml.includes('{{PROMPT_MD}}')) {
     fail('homepage prompt preview must be generated from PROMPT.md')
 }
 
-if (!templateHtml.includes('{{VIZMATIC_SKILL_MD}}')) {
-    fail('homepage skill preview must be generated from Vizmatic SKILL.md')
-}
-
 if (html.includes('{{PROMPT_MD}}')) {
     fail('homepage prompt preview contains unreplaced placeholder')
-}
-
-if (html.includes('{{VIZMATIC_SKILL_MD}}')) {
-    fail('homepage skill preview contains unreplaced placeholder')
 }
 
 if (!html.includes('Final answer checklist') || !html.includes('any overflow or layout fixes made')) {
@@ -70,8 +62,15 @@ if (!templateHtml.includes('codex plugin marketplace add bvolpato/vizmatic --ref
     fail('homepage must show Codex marketplace install command')
 }
 
-if (!html.includes('name: vizmatic') || !html.includes('Create polished theme-aware diagrams')) {
-    fail('homepage skill preview must include full Vizmatic SKILL.md')
+for (const required of [
+    '~/.claude/skills/vizmatic',
+    '~/.config/opencode/skills/vizmatic',
+    '.cursor/skills/vizmatic',
+    'Remote Rule (GitHub)',
+]) {
+    if (!html.includes(required)) {
+        fail(`homepage agent skill instructions must include ${required}`)
+    }
 }
 
 const plugin = JSON.parse(await readFile(pluginPath, 'utf8')) as { name?: string; skills?: string }

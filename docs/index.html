@@ -720,17 +720,21 @@
 
     <section id="skill" class="section skill-section">
       <div class="skill-copy">
-        <span>Codex Skill</span>
-        <h2>Install Vizmatic as an agent-ready skill.</h2>
-        <p>The repo also exposes a Codex plugin marketplace. Add it once, install the Vizmatic plugin, then ask Codex for diagrams, dashboards, figures, or GIFs directly.</p>
+        <span>Agent Skills</span>
+        <h2>Install Vizmatic in the agent you already use.</h2>
+        <p>The repo exposes a Codex marketplace plugin and a portable Agent Skills folder. For Claude Code, OpenCode, and Cursor, clone the repo once and copy <code>plugins/vizmatic/skills/vizmatic</code> into the agent's skill directory.</p>
         <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">codex</span><span style="color:#9ECBFF"> plugin</span><span style="color:#9ECBFF"> marketplace</span><span style="color:#9ECBFF"> add</span><span style="color:#9ECBFF"> bvolpato/vizmatic</span><span style="color:#79B8FF"> --ref</span><span style="color:#9ECBFF"> main</span></span></code></pre>
         <div class="skill-examples">
           <div>
-            <strong>Static asset</strong>
+            <strong>Codex</strong>
+            <p>Install from the marketplace, then use <code>$vizmatic</code> for rendered visual assets.</p>
+          </div>
+          <div>
+            <strong>Prompt</strong>
             <p>Use <code>$vizmatic</code> to create a theme-aware system architecture diagram and render dark/light PNG files.</p>
           </div>
           <div>
-            <strong>Animated asset</strong>
+            <strong>Animation</strong>
             <p>Use <code>$vizmatic</code> to turn this release workflow into an animated GIF for docs.</p>
           </div>
         </div>
@@ -739,64 +743,32 @@
           <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/.agents/plugins/marketplace.json">Marketplace JSON</a>
         </div>
       </div>
-      <pre data-shiki="md" class="shiki github-dark skill-preview" tabindex="0"><code><span class="line"><span style="color:#79B8FF;font-weight:bold">---</span></span>
-<span class="line"><span style="color:#E1E4E8">name: vizmatic</span></span>
-<span class="line"><span style="color:#E1E4E8">description: Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic. Use when Codex needs to design or render visual assets such as architecture diagrams, process flows, RAG graphs, eval dashboards, product figures, docs images, slide frames, launch cards, or animated pipeline GIFs.</span></span>
-<span class="line"><span style="color:#79B8FF;font-weight:bold">---</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#79B8FF;font-weight:bold"># Vizmatic</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Use Vizmatic when the user wants a concrete image or GIF artifact, not only an explanation. Prefer structured React scene primitives over hand-written SVG for common diagrams, dashboards, and frames.</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#79B8FF;font-weight:bold">## Workflow</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#FFAB70">1.</span><span style="color:#E1E4E8"> Pick output scope: static PNGs, animated GIF, or both. Ask only if target size, brand, or destination is truly ambiguous.</span></span>
-<span class="line"><span style="color:#FFAB70">2.</span><span style="color:#E1E4E8"> Install or reuse the CLI:</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```bash</span></span>
-<span class="line"><span style="color:#E1E4E8">   command -v vizmatic </span><span style="color:#F97583">||</span><span style="color:#B392F0"> pnpm</span><span style="color:#9ECBFF"> add</span><span style="color:#79B8FF"> -g</span><span style="color:#9ECBFF"> vizmatic</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```</span></span>
-<span class="line"><span style="color:#E1E4E8">   If the project needs direct renderer APIs, editor types, or committed scripts, add project deps instead:</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```bash</span></span>
-<span class="line"><span style="color:#E1E4E8">   pnpm add vizmatic react</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```</span></span>
-<span class="line"><span style="color:#FFAB70">3.</span><span style="color:#E1E4E8"> Create a bare </span><span style="color:#79B8FF">`.tsx`</span><span style="color:#E1E4E8"> frame by default: set </span><span style="color:#79B8FF">`width`</span><span style="color:#E1E4E8"> and </span><span style="color:#79B8FF">`height`</span><span style="color:#E1E4E8">, then write JSX directly. Skip imports, </span><span style="color:#79B8FF">`defineIllustration`</span><span style="color:#E1E4E8">, and </span><span style="color:#79B8FF">`c`</span><span style="color:#E1E4E8"> props unless the frame needs custom dependencies, helper functions, data loading, or animation exports.</span></span>
-<span class="line"><span style="color:#FFAB70">4.</span><span style="color:#E1E4E8"> Choose primitives by intent. Read </span><span style="color:#79B8FF">`references/patterns.md`</span><span style="color:#E1E4E8"> when deciding component structure.</span></span>
-<span class="line"><span style="color:#FFAB70">5.</span><span style="color:#E1E4E8"> Render dark and light outputs:</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```bash</span></span>
-<span class="line"><span style="color:#E1E4E8">   vizmatic ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```</span></span>
-<span class="line"><span style="color:#E1E4E8">   For directories:</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```bash</span></span>
-<span class="line"><span style="color:#E1E4E8">   vizmatic frames --out ./public/vizmatic --theme dark,light</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```</span></span>
-<span class="line"><span style="color:#FFAB70">6.</span><span style="color:#E1E4E8"> For GIFs, export </span><span style="color:#79B8FF">`createScenes(theme)`</span><span style="color:#E1E4E8"> from a full module and render:</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```bash</span></span>
-<span class="line"><span style="color:#E1E4E8">   vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --scale 1</span></span>
-<span class="line"><span style="color:#E1E4E8">   ```</span></span>
-<span class="line"><span style="color:#FFAB70">7.</span><span style="color:#E1E4E8"> Verify actual artifacts. Check file existence, dimensions, and visual layout. Use browser screenshots when assets are shown on a page. Fix clipped labels, overlap, low contrast, and unbalanced spacing before finishing.</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#79B8FF;font-weight:bold">## Starting Points</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Copy </span><span style="color:#79B8FF">`assets/starter-frame.tsx`</span><span style="color:#E1E4E8"> for static diagrams and dashboards.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Copy </span><span style="color:#79B8FF">`assets/animated-frame.tsx`</span><span style="color:#E1E4E8"> for GIFs.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Read </span><span style="color:#79B8FF">`references/patterns.md`</span><span style="color:#E1E4E8"> for primitive selection, tone usage, and render commands.</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#79B8FF;font-weight:bold">## Design Rules</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Use supported tones such as </span><span style="color:#79B8FF">`blue`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`purple`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`cyan`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`green`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`warm`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`critical`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`neutral`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">`ocean`</span><span style="color:#E1E4E8">, and </span><span style="color:#79B8FF">`sunset`</span><span style="color:#E1E4E8">.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Render both </span><span style="color:#79B8FF">`dark`</span><span style="color:#E1E4E8"> and </span><span style="color:#79B8FF">`light`</span><span style="color:#E1E4E8"> unless the user asks for one theme.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Keep labels short. Prefer cards, rows, grids, and tables that wrap safely.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Use Vizmatic charts for data summaries instead of screenshotting tables.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Keep presentation frames dense and inspectable. Avoid marketing-style filler.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> Return generated file paths and the exact render command that produced them.</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#79B8FF;font-weight:bold">## Common Requests</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> "Create an architecture diagram for this service" -> write a flow, graph, or layered network frame and render PNGs.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> "Turn this eval data into a figure" -> use metric cards plus bar or line charts.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> "Make this pipeline animated" -> create </span><span style="color:#79B8FF">`createScenes(theme)`</span><span style="color:#E1E4E8"> and render GIFs.</span></span>
-<span class="line"><span style="color:#FFAB70">-</span><span style="color:#E1E4E8"> "Add a docs visual" -> put output under the repo's docs/public asset path and verify the page if present.</span></span>
-<span class="line"></span></code></pre>
+      <div class="agent-install-grid">
+        <article class="agent-install-card">
+          <span>Claude Code</span>
+          <h3>Personal skill</h3>
+          <p>Copy the portable skill folder to Claude Code's global skill directory, then invoke <code>/vizmatic</code> or ask Claude to use Vizmatic.</p>
+          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> ~/.claude/skills</span></span>
+<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> ~/.claude/skills/vizmatic</span></span>
+<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> plugins/vizmatic/skills/vizmatic</span><span style="color:#9ECBFF"> ~/.claude/skills/vizmatic</span></span></code></pre>
+        </article>
+        <article class="agent-install-card">
+          <span>OpenCode</span>
+          <h3>Global or project skill</h3>
+          <p>OpenCode reads its own skill path and also supports Claude-compatible and agent-compatible paths.</p>
+          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> ~/.config/opencode/skills</span></span>
+<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> ~/.config/opencode/skills/vizmatic</span></span>
+<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> plugins/vizmatic/skills/vizmatic</span><span style="color:#9ECBFF"> ~/.config/opencode/skills/vizmatic</span></span></code></pre>
+        </article>
+        <article class="agent-install-card">
+          <span>Cursor</span>
+          <h3>Project skill or remote import</h3>
+          <p>Copy into the project, or use Customize -> Rules -> Add Rule -> Remote Rule (GitHub) with this repo URL.</p>
+          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> .cursor/skills</span></span>
+<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> .cursor/skills/vizmatic</span></span>
+<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> plugins/vizmatic/skills/vizmatic</span><span style="color:#9ECBFF"> .cursor/skills/vizmatic</span></span></code></pre>
+        </article>
+      </div>
     </section>
 
     <section id="quality" class="section quality-section">
