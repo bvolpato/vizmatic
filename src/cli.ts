@@ -158,13 +158,28 @@ function resolveSelfEntry(): string | undefined {
     }
 }
 
-function resolveSelfRequireSpecifier(): string {
-    return resolveSelfEntry() ?? 'vizmatic'
+function resolveSelfImportEntry(): string | undefined {
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    const bundledEntry = join(moduleDir, 'index.js')
+    if (existsSync(bundledEntry)) return bundledEntry
+
+    const sourceEntry = join(moduleDir, 'index.ts')
+    if (existsSync(sourceEntry)) return sourceEntry
+
+    return undefined
+}
+
+function resolveSelfImportSpecifier(): string {
+    return resolveSelfImportEntry() ?? 'vizmatic'
 }
 
 function resolveReactRequireSpecifier(): string {
     const reactEntry = resolveFrameDependency('react')
     return reactEntry ?? 'react'
+}
+
+function resolveReactImportSpecifier(): string {
+    return resolveReactRequireSpecifier()
 }
 
 function resolveFrameDependency(request: string): string | undefined {
@@ -253,8 +268,8 @@ function bareFrameExportsForSource(source: string): string[] {
 }
 
 function buildAutoImportStatement(names: string[]): string {
-    const specifiers = names.map((name) => `    ${name}: ${bareFrameAlias(name)}`).join(',\n')
-    return `const {\n${specifiers}\n} = __require(${JSON.stringify(resolveSelfRequireSpecifier())})`
+    const specifiers = names.map((name) => `    ${name} as ${bareFrameAlias(name)}`).join(',\n')
+    return `import {\n${specifiers}\n} from ${JSON.stringify(resolveSelfImportSpecifier())}`
 }
 
 function buildAutoImportDeclarations(names: string[]): string {
@@ -309,9 +324,7 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     const autoImports = bareFrameExportsForSource(body)
 
     return `/** @jsxRuntime classic */
-import { createRequire as __createRequire } from 'module'
-const __require = __createRequire(${JSON.stringify(import.meta.url)})
-const React = __require(${JSON.stringify(resolveReactRequireSpecifier())})
+import React from ${JSON.stringify(resolveReactImportSpecifier())}
 ${buildAutoImportStatement(autoImports)}
 ${imports.join('\n')}
 
@@ -335,7 +348,7 @@ ${setup}
     return (${jsx})
 }
 
-export default create('dark')
+export default { create, width, height }
 `
 }
 
@@ -359,6 +372,7 @@ async function importBareFrame(filePath: string, source?: string): Promise<Frame
 
     const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-frame-'))
     const tempPath = join(tempDir, `${basename(filePath).replace(/\.[^.]+$/, '')}.generated.tsx`)
+    await writeFile(join(tempDir, 'package.json'), '{"type":"module"}\n')
     await writeFile(tempPath, `${moduleSource}\n`)
 
     try {
@@ -753,6 +767,10 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error))
+    if (process.env.VIZMATIC_DEBUG === '1' && error instanceof Error) {
+        console.error(error.stack ?? error.message)
+    } else {
+        console.error(error instanceof Error ? error.message : String(error))
+    }
     process.exit(1)
 })

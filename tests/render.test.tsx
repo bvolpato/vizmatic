@@ -1,6 +1,6 @@
 import React from 'react'
 import { spawnSync } from 'child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { inflateSync } from 'zlib'
@@ -129,6 +129,52 @@ function hexToRgb(hex: string): [number, number, number] {
     ]
 }
 
+async function renderBuiltCliFrame(prefix: string, frameName: string, source: string) {
+    ensurePackageBuild()
+
+    const outDir = await mkdtemp(join(tmpdir(), prefix))
+    const framePath = join(outDir, frameName)
+    const renderDir = join(outDir, 'renders')
+    const packageRoot = process.cwd()
+
+    try {
+        await writeFile(framePath, source)
+
+        const result = spawnSync(process.execPath, [
+            join(packageRoot, 'dist', 'cli.js'),
+            framePath,
+            '--out',
+            renderDir,
+            '--theme',
+            'light',
+            '--scale',
+            '1',
+        ], {
+            cwd: outDir,
+            encoding: 'utf8',
+        })
+
+        expect(result.status, result.stderr || result.stdout).toBe(0)
+
+        const outputName = `${frameName.replace(/\.[^.]+$/, '')}_light.png`
+        const buffer = await readFile(join(renderDir, outputName))
+        const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
+
+        return { buffer, manifest }
+    } finally {
+        await rm(outDir, { recursive: true, force: true })
+    }
+}
+
+function expectBottomPadding(image: { width: number; height: number; pixels: Uint8Array }) {
+    const bg = detectBackgroundColor(image.pixels)
+    const overflow = detectOverflow(image.pixels, image.width, image.height, bg)
+    const bounds = detectContentBounds(image.pixels, image.width, image.height, bg, 0)
+
+    expect(overflow.overflows, overflow.message).toBe(false)
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(image.height - 4)
+}
+
 describe('vizmatic render pipeline', () => {
     it('keeps opaque black content visible on transparent backgrounds', () => {
         const width = 12
@@ -158,6 +204,19 @@ describe('vizmatic render pipeline', () => {
         const overflow = detectOverflow(pixels, width, height, bg)
         expect(overflow.overflows).toBe(true)
         expect(overflow.edges.left).toBe(true)
+
+        const lowAlphaEdgePixels = new Uint8Array(width * height * 4)
+        for (let x = 0; x < width; x++) {
+            const offset = ((height - 1) * width + x) * 4
+            lowAlphaEdgePixels[offset] = 12
+            lowAlphaEdgePixels[offset + 1] = 20
+            lowAlphaEdgePixels[offset + 2] = 36
+            lowAlphaEdgePixels[offset + 3] = 32
+        }
+
+        const lowAlphaOverflow = detectOverflow(lowAlphaEdgePixels, width, height, bg)
+        expect(lowAlphaOverflow.overflows).toBe(true)
+        expect(lowAlphaOverflow.edges.bottom).toBe(true)
     })
 
     it('renders with vendored fonts and emoji without network fetches', async () => {
@@ -372,7 +431,7 @@ renderToBuffer(frame.create('dark'), 720, 420)
 import { defineIllustration, Scene, StepCard } from 'vizmatic'
 
 export const width = 320
-export const height = 180
+export const height = 240
 
 const frame = defineIllustration((c) => (
     <Scene c={c} title="Ad hoc">
@@ -595,6 +654,229 @@ export default frame.default
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
             expect(manifest[0]?.width).toBe(960)
             expect(manifest[0]?.height).toBeGreaterThan(540)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('auto-expands omitted CLI height for dashboard rows that clip at the bottom', async () => {
+        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-dashboard-autofit-', 'dashboard.tsx', String.raw`<Scene gap={18}>
+  <Row gap={14} width="100%" align="stretch">
+    <MetricCard
+      label="Cost per task"
+      value="10-20%"
+      detail="relative to baseline"
+      tone="green"
+      width={220}
+      valueFontSize={24}
+    />
+    <MetricCard
+      label="Warm cache read"
+      value="target: >80%"
+      detail="long-running sessions"
+      tone="purple"
+      width={220}
+      valueFontSize={18}
+    />
+    <MetricCard
+      label="Cache writes"
+      value="spike watch"
+      detail="deploy regression signal"
+      tone="warm"
+      width={220}
+      valueFontSize={18}
+    />
+    <MetricCard
+      label="Service tier"
+      value="route mix"
+      detail="standard, Flex, Batch"
+      tone="cyan"
+      width={220}
+      valueFontSize={18}
+    />
+  </Row>
+  <Row gap={18} align="stretch">
+    <LineChart
+      title="Cache and cost after deploy"
+      width={460}
+      height={250}
+      format="percent"
+      labels={["cold", "t+1", "t+2", "t+3", "t+4"]}
+      series={[
+        { name: "cache read", points: [0.05, 0.42, 0.71, 0.86, 0.90], color: "positive", area: true },
+        { name: "relative cost", points: [1.00, 0.58, 0.35, 0.20, 0.16], color: "warning" },
+      ]}
+    />
+    <BarChart
+      title="Token mix"
+      width={360}
+      height={250}
+      format="percent"
+      data={[
+        { label: "cache read", value: 0.78, color: "positive", valueLabel: "78%" },
+        { label: "uncached", value: 0.14, color: "warning", valueLabel: "14%" },
+        { label: "write", value: 0.08, color: "secondary", valueLabel: "8%" },
+      ]}
+    />
+  </Row>
+  <StatusList
+    width="100%"
+    rows={[
+      { label: "Monitor warm-turn cache-read rate by route and model", detail: "drop after deploy usually means request-shape regression", status: "check", tone: "green" },
+      { label: "Watch cache-write spikes without traffic growth", detail: "often points to prefix churn", status: "warn", tone: "warm" },
+      { label: "Compare p95 latency for standard, Flex, and Batch paths", detail: "cost work should not hide product latency changes", status: "info", tone: "cyan" },
+    ]}
+  />
+</Scene>
+`)
+
+        const image = decodePng(buffer)
+        expect(manifest[0]?.width).toBe(960)
+        expect(manifest[0]?.height).toBeGreaterThan(540)
+        expect(image.height).toBeGreaterThan(540)
+        expectBottomPadding(image)
+    }, 30_000)
+
+    it('does not let final autocrop reintroduce clipping after CLI auto-size', async () => {
+        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-routing-autocrop-', 'routing.tsx', String.raw`<Scene>
+  <GraphDiagram
+    width={900}
+    height={410}
+    nodeWidth={150}
+    nodeHeight={64}
+    nodes={[
+      { id: "apm", label: "APM trace", detail: "request context", x: 0.10, y: 0.50, tone: "blue" },
+      { id: "wait", label: "User waiting?", detail: "blocking path", x: 0.32, y: 0.50, tone: "purple" },
+      { id: "standard", label: "Standard tier", detail: "chat, UI, response path", x: 0.56, y: 0.28, tone: "green" },
+      { id: "background", label: "Background work", detail: "evals, enrichment, backfills", x: 0.56, y: 0.72, tone: "cyan" },
+      { id: "batch", label: "Batch", detail: "finite independent jobs", x: 0.80, y: 0.62, tone: "green" },
+      { id: "flex", label: "Flex", detail: "can wait, not batch-shaped", x: 0.80, y: 0.84, tone: "warm" },
+      { id: "measure", label: "Measure task", detail: "cost, latency, quality", x: 0.90, y: 0.28, tone: "purple" },
+    ]}
+    edges={[
+      { from: "apm", to: "wait", label: "inspect", tone: "blue" },
+      { from: "wait", to: "standard", label: "yes", tone: "green" },
+      { from: "wait", to: "background", label: "no", tone: "cyan" },
+      { from: "background", to: "batch", label: "finite", tone: "green" },
+      { from: "background", to: "flex", label: "can wait", tone: "warm" },
+      { from: "standard", to: "measure", label: "verify", tone: "purple" },
+      { from: "batch", to: "measure", label: "verify", tone: "purple" },
+      { from: "flex", to: "measure", label: "verify", tone: "purple" },
+    ]}
+  />
+  <Row gap={14} width="100%">
+    <MetricCard
+      label="Interactive"
+      value="standard"
+      detail="optimize cache and model choice first"
+      tone="green"
+      width={300}
+      valueFontSize={20}
+    />
+    <MetricCard
+      label="Background"
+      value="Flex / Batch"
+      detail="when completion time can move"
+      tone="cyan"
+      width={300}
+      valueFontSize={20}
+    />
+    <CalloutCard
+      title="Route by workflow, not habit"
+      detail="Agent Observability shows model cost. APM shows whether anyone waited."
+      tone="purple"
+      width={330}
+    />
+  </Row>
+</Scene>
+`)
+
+        const image = decodePng(buffer)
+        expect(manifest[0]?.width).toBeGreaterThan(960)
+        expect(manifest[0]?.height).toBeGreaterThan(540)
+        expectBottomPadding(image)
+    }, 30_000)
+
+    it('renders a directory of multiple bare TSX frames through the built CLI', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-bare-directory-'))
+        const framesDir = join(outDir, 'frames')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await mkdir(framesDir, { recursive: true })
+            await writeFile(join(framesDir, '01-flow.tsx'), String.raw`<Scene gap={18}>
+  <Flow
+    stages={[
+      { title: "Find", subtitle: "owner", tone: "purple", width: 180 },
+      { title: "Explain", subtitle: "trace", tone: "blue", width: 180 },
+      { title: "Verify", subtitle: "result", tone: "green", width: 180 },
+    ]}
+  />
+</Scene>
+`)
+            await writeFile(join(framesDir, '02-graph.tsx'), String.raw`<Scene>
+  <GraphDiagram
+    width={720}
+    height={320}
+    nodes={[
+      { id: "a", label: "APM", detail: "context", x: 0.18, y: 0.50, tone: "blue" },
+      { id: "b", label: "Agent trace", detail: "span fields", x: 0.50, y: 0.30, tone: "purple" },
+      { id: "c", label: "Fix", detail: "verify", x: 0.82, y: 0.50, tone: "green" },
+    ]}
+    edges={[
+      { from: "a", to: "b", label: "open", tone: "blue" },
+      { from: "b", to: "c", label: "patch", tone: "green" },
+    ]}
+  />
+</Scene>
+`)
+            await writeFile(join(framesDir, '03-panel.tsx'), String.raw`<Scene>
+  <Row gap={14} width="100%" align="stretch">
+    <Panel title="Cache layout" tone="green" width={460}>
+      <StatusList
+        rows={[
+          { label: "Stable prefix", detail: "same bytes across turns", status: "check", tone: "green" },
+          { label: "Volatile fields", detail: "move late", status: "warn", tone: "warm" },
+        ]}
+      />
+    </Panel>
+    <CalloutCard
+      title="Directory render"
+      detail="Multiple generated bare-frame wrappers stay ESM."
+      tone="purple"
+      width={360}
+    />
+  </Row>
+</Scene>
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framesDir,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+                '--scale',
+                '1',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ outputs: string[] }>
+            expect(manifest).toHaveLength(3)
+            for (const entry of manifest) {
+                const output = entry.outputs[0]
+                expect(output).toBeTruthy()
+                const buffer = await readFile(join(renderDir, output))
+                expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+            }
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }

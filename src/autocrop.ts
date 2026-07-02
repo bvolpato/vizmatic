@@ -201,15 +201,15 @@ export function detectOverflow(
     bgColor: string,
     edgeTolerance: number = 3,
     minDensity: number = 0.05,
-    alphaThreshold: number = 128,
+    alphaThreshold: number = 10,
 ): OverflowResult {
     const isBackground = createBackgroundMatcher(bgColor)
 
     function isContentPixel(x: number, y: number): boolean {
         const idx = (y * width + x) * 4
         const a = pixels[idx + 3]
-        // Ignore semi-transparent pixels (shadows, anti-aliasing) at edges.
-        // Only substantially opaque pixels (alpha >= threshold) count as content.
+        // Count low-alpha shadows at edges. Clipped cards often leave only
+        // shadow pixels at the canvas boundary after Satori clips the body.
         if (a < alphaThreshold) return false
         return !isBackground(pixels[idx], pixels[idx + 1], pixels[idx + 2], a)
     }

@@ -418,25 +418,45 @@ async function renderToPngInContext(
         }
     }
 
-    // Step 4: Final render with optional watermark at the cropped dimensions
+    // Step 4: Final render with optional watermark at the cropped dimensions.
     const watermark = resolveWatermark(options)
-    const outputElement = watermark
-        ? wrapWithWatermark(
-            finalElement,
-            finalWidth,
-            finalHeight,
-            (theme as 'dark' | 'light') || 'dark',
-            watermark,
-        )
-        : finalElement
+    const renderFinalSvg = async (targetElement: ReactNode, targetWidth: number, targetHeight: number) => {
+        const outputElement = watermark
+            ? wrapWithWatermark(
+                targetElement,
+                targetWidth,
+                targetHeight,
+                (theme as 'dark' | 'light') || 'dark',
+                watermark,
+            )
+            : targetElement
 
-    let finalSvg = await satori(outputElement as React.ReactElement, {
-        width: finalWidth,
-        height: finalHeight,
-        fonts,
-        loadAdditionalAsset,
-    })
-    finalSvg = sanitizeSvg(finalSvg)
+        const renderedSvg = await satori(outputElement as React.ReactElement, {
+            width: targetWidth,
+            height: targetHeight,
+            fonts,
+            loadAdditionalAsset,
+        })
+        return sanitizeSvg(renderedSvg)
+    }
+
+    let finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+
+    if (finalHeight < options.height) {
+        const cropCheck = new Resvg(finalSvg, {
+            fitTo: { mode: 'width', value: finalWidth },
+            background: 'rgba(0, 0, 0, 0)',
+        }).render()
+        const cropPixels = new Uint8Array(cropCheck.pixels.buffer)
+        const cropBg = detectBackgroundColor(cropPixels)
+        const cropOverflow = detectOverflow(cropPixels, finalWidth, cropCheck.height, cropBg)
+
+        if (cropOverflow.overflows) {
+            finalHeight = options.height
+            finalElement = element
+            finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+        }
+    }
 
     // Step 5: SVG → PNG at 2x for retina (with transparent background)
     const resvg = new Resvg(finalSvg, {
