@@ -337,7 +337,7 @@ export default frame.default
 
 ## Agent Prompt
 
-[`PROMPT.md`](PROMPT.md) is a plug-and-play instruction file for coding agents. It covers install, frame structure, primitive selection, render commands, quality rules, and final verification.
+[`PROMPT.md`](PROMPT.md) is a plug-and-play instruction file for coding agents. It covers install, frame structure, every visual component with props, render commands, examples, quality rules, and final verification.
 
 ## API
 

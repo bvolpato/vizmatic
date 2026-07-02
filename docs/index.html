@@ -230,7 +230,7 @@ const frame = defineIllustration((c) =&gt; (
       <div class="prompt-copy">
         <span>Agent Prompt</span>
         <h2>Paste this into Codex, Claude Code, Cursor, or any coding agent.</h2>
-        <p>It teaches the agent how to install Vizmatic, choose primitives, write frames, render dark/light PNGs, export GIFs, and fix overflow errors.</p>
+        <p>It teaches the agent how to install Vizmatic, choose primitives, use every component prop, write frames, render dark/light PNGs, export GIFs, and fix overflow errors.</p>
         <div class="cta-row">
           <button class="button primary" type="button" id="copyPromptButton">Copy PROMPT.md</button>
           <a class="button" href="PROMPT.md">Open prompt file</a>
@@ -246,7 +246,7 @@ pnpm add vizmatic react
 Fallback before npm publish:
 pnpm add github:bvolpato/vizmatic react
 
-Create frames/*.tsx, export width/height, use defineIllustration, render with:
+Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:
 pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"
 
 For animation, export createScenes(theme), then run:
