@@ -33,7 +33,7 @@ jobs:
       - name: Ensure generated site is committed
         run: git diff --exit-code -- docs
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
       - id: deployment
