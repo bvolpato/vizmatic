@@ -109,6 +109,29 @@ Render it:
 pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
 
+Frame modules can also export a watermark element when code-owned branding is clearer than CLI flags:
+
+```tsx
+import { Watermark } from "vizmatic"
+
+export const watermark = (
+  <Watermark position="bottom-right" opacity={0.82}>
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      color: "#7c3aed",
+      fontFamily: "Inter",
+      fontWeight: 800,
+      fontSize: 12,
+    }}>
+      <img src="data:image/svg+xml;base64,..." width={14} height={14} />
+      LeetLLM
+    </div>
+  </Watermark>
+)
+```
+
 Render animated frames with `createScenes(theme)`:
 
 ```bash
@@ -289,9 +312,10 @@ Theme and render APIs:
 - `getThemeColors(mode)`: `mode: ThemeMode`.
 - `getToneColor(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
-- `WatermarkInput`: `boolean | string | WatermarkOptions`. `true` uses Vizmatic defaults. A string sets the watermark text.
+- `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.
+- `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
-- `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
+- `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
 - `RenderOptions`: `width`, `height`, `outputPath`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean = true`, `scale?: number = 2`.
 - `renderToBuffer(element, width, height, options?)`: `options` supports `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `watermark?`, `brand?`.

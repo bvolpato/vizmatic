@@ -19,12 +19,17 @@ export interface WatermarkOptions {
     text?: string | false
     image?: string | WatermarkImageOptions
     icon?: ReactNode | string | false
+    element?: ReactNode
     position?: WatermarkPosition
     opacity?: number
     color?: string
 }
 
-export type WatermarkInput = boolean | string | WatermarkOptions
+export interface WatermarkElementProps extends WatermarkOptions {
+    children?: ReactNode
+}
+
+export type WatermarkInput = boolean | string | WatermarkOptions | React.ReactElement<WatermarkElementProps>
 
 const DEFAULT_WATERMARK_TEXT = 'Vizmatic'
 const WATERMARK_COLOR_DARK = '#a78bfa'
@@ -55,7 +60,19 @@ export function normalizeWatermark(watermark: WatermarkInput | undefined): Water
     if (watermark == null || watermark === false) return undefined
     if (watermark === true) return {}
     if (typeof watermark === 'string') return { text: watermark }
+    if (React.isValidElement<WatermarkElementProps>(watermark)) {
+        if (watermark.type !== Watermark) return { element: watermark }
+        const { children, ...props } = watermark.props
+        return {
+            ...props,
+            element: children ?? props.element,
+        }
+    }
     return watermark
+}
+
+export function Watermark(_props: WatermarkElementProps): null {
+    return null
 }
 
 function positionStyle(position: WatermarkPosition): React.CSSProperties {
@@ -128,6 +145,19 @@ export function wrapWithWatermark(
     const opacity = options?.opacity ?? (isDark ? 0.55 : 0.40)
     const icon = options ? imageNode(options.image) ?? iconNode(options.icon, color) : undefined
     const text = options?.text ?? DEFAULT_WATERMARK_TEXT
+    const content = options?.element ?? [
+        icon,
+        text !== false && text && React.createElement('div', {
+            key: 'text',
+            style: {
+                fontSize: 11,
+                fontWeight: 600,
+                color,
+                fontFamily: 'Inter',
+                letterSpacing: 0.3,
+            },
+        }, text),
+    ]
 
     return React.createElement('div', {
         style: {
@@ -148,16 +178,7 @@ export function wrapWithWatermark(
                 opacity,
             },
         },
-            icon,
-            text !== false && text && React.createElement('div', {
-                style: {
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color,
-                    fontFamily: 'Inter',
-                    letterSpacing: 0.3,
-                },
-            }, text),
+            content,
         ),
     )
 }

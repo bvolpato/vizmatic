@@ -104,10 +104,15 @@
         <h2>Write scenes, not SVG paths.</h2>
         <p>Use React primitives with semantic tones. Render to PNG in Node for docs, websites, or generated decks.</p>
       </div>
-      <pre data-shiki="tsx"><code>import { defineIllustration, Flow, Scene } from "vizmatic"
+      <pre data-shiki="tsx"><code>import { defineIllustration, Flow, Scene, Watermark } from "vizmatic"
 
 export const width = 1040
 export const height = 560
+export const watermark = (
+  &lt;Watermark position="bottom-right" opacity={0.82}&gt;
+    &lt;div style={{ color: "#7c3aed", fontWeight: 800 }}&gt;Acme&lt;/div&gt;
+  &lt;/Watermark&gt;
+)
 
 const frame = defineIllustration((c) =&gt;
   &lt;Scene c={c} title="Agent pipeline"&gt;

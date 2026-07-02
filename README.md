@@ -93,6 +93,21 @@ await renderToPng(create("dark"), {
 })
 ```
 
+Code-owned watermark:
+
+```tsx
+import { Watermark } from "vizmatic"
+
+export const watermark = (
+  <Watermark position="bottom-right" opacity={0.82}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#7c3aed", fontWeight: 800 }}>
+      <img src="data:image/svg+xml;base64,..." width={14} height={14} />
+      Acme
+    </div>
+  </Watermark>
+)
+```
+
 ## Why Vizmatic
 
 Models can write structure reliably. They are worse at raw SVG path work, fragile coordinate math, and one-off design choices.
@@ -475,7 +490,8 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
 | `renderToBuffer` | Render PNG to memory for tests and pipelines. |
 | `renderToSvg` | Render SVG markup directly. |
-| `wrapWithWatermark` | Add optional watermark text, image/icon, and position to a frame. |
+| `Watermark` | JSX marker component for expressive frame-module watermarks. |
+| `wrapWithWatermark` | Add optional watermark text, image/icon, custom element, and position to a frame. |
 | `detectBackgroundColor` | Find dominant transparent/background color for cropping. |
 | `detectContentBounds` | Compute non-background bounds for autocrop. |
 | `cropPixels` | Crop raw pixel buffers. |
@@ -487,7 +503,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
-`renderToPng` renders at 2x scale by default, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. `brand` still works as a compatibility alias.
+`renderToPng` renders at 2x scale by default, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
 
 ```ts
 await renderToPng(element, {
@@ -498,6 +514,20 @@ await renderToPng(element, {
   crop: true,
   scale: 2,
 })
+```
+
+Frame modules can export watermark config directly:
+
+```tsx
+import { Watermark } from "vizmatic"
+
+export const watermark = (
+  <Watermark position="bottom-right">
+    <div style={{ color: "#7c3aed", fontFamily: "Inter", fontWeight: 800 }}>
+      Acme Research
+    </div>
+  </Watermark>
+)
 ```
 
 `renderAnimatedGif` turns ordered scene states into a looping GIF.

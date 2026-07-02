@@ -3,6 +3,7 @@
 import { mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { basename, extname, join, relative, resolve } from 'path'
 import { pathToFileURL } from 'url'
+import { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import { renderAnimatedGif, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
@@ -77,7 +78,7 @@ async function imageSourceToDataUri(source: string): Promise<string> {
 
 async function resolveWatermarkAssets(watermark: WatermarkInput | undefined): Promise<WatermarkInput | undefined> {
     if (watermark == null || typeof watermark !== 'object') return watermark
-    if (!watermark.image) return watermark
+    if (isValidElement(watermark) || !('image' in watermark) || !watermark.image) return watermark
 
     if (typeof watermark.image === 'string') {
         return {
@@ -107,7 +108,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
 
     function mutableWatermark(): WatermarkOptions {
         if (!watermarkOptions) {
-            watermarkOptions = typeof watermark === 'object' && watermark !== null
+            watermarkOptions = typeof watermark === 'object' && watermark !== null && !isValidElement(watermark)
                 ? { ...watermark }
                 : {}
             if (typeof watermark === 'string') watermarkOptions.text = watermark
