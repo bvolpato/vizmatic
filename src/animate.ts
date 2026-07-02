@@ -1,4 +1,3 @@
-import satori from 'satori'
 import { Resvg } from '@resvg/resvg-js'
 import { mkdir, writeFile } from 'fs/promises'
 import { dirname } from 'path'
@@ -6,6 +5,7 @@ import type { ReactNode } from 'react'
 import * as gifenc from 'gifenc'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { getFonts, loadAdditionalAsset } from './render'
+import { satori } from './satori'
 
 interface GifencApi {
     GIFEncoder: typeof gifenc.GIFEncoder

@@ -19,6 +19,35 @@ describe('vizmatic render pipeline', () => {
         expect(buffer.length).toBeGreaterThan(10_000)
     }, 30_000)
 
+    it('renders through the built CommonJS entrypoint', async () => {
+        const build = spawnSync('pnpm', ['build'], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+        })
+        expect(build.status, build.stderr || build.stdout).toBe(0)
+
+        const result = spawnSync(process.execPath, ['-e', `
+const React = require('react')
+const { defineIllustration, renderToBuffer, Scene, StepCard } = require('./dist/index.cjs')
+const frame = defineIllustration((c) => React.createElement(Scene, { c, title: 'CJS smoke' },
+  React.createElement(StepCard, { c, title: 'Rendered', subtitle: 'CommonJS', tone: 'green' })
+))
+renderToBuffer(frame.create('dark'), 720, 420)
+  .then((buffer) => {
+    if (buffer.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') process.exit(2)
+    if (buffer.length <= 10000) process.exit(3)
+  })
+  .catch((error) => {
+    console.error(error)
+    process.exit(1)
+  })
+`], {
+            cwd: process.cwd(),
+            encoding: 'utf8',
+        })
+        expect(result.status, result.stderr || result.stdout).toBe(0)
+    }, 30_000)
+
     it('resolves dark and light theme tokens', () => {
         expect(getThemeColors('dark').bg).not.toBe(getThemeColors('light').bg)
         expect(getThemeColors('dark').primary).toBe(getThemeColors('light').primary)

@@ -11,7 +11,6 @@
  * The watermark is applied AFTER cropping so it's always positioned correctly.
  */
 
-import satori, { type Font } from 'satori'
 import { Resvg } from '@resvg/resvg-js'
 import { homedir } from 'os'
 import { readFile, writeFile, mkdir } from 'fs/promises'
@@ -20,6 +19,7 @@ import { existsSync } from 'fs'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow } from './autocrop'
+import { satori, type Font } from './satori'
 
 // ─── Font Loading ────────────────────────────────────────────────────────────
 
