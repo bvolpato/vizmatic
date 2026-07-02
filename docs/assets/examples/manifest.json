@@ -1,0 +1,86 @@
+[
+  {
+    "name": "agent-pipeline",
+    "source": "examples/agent-pipeline.tsx",
+    "outputs": [
+      "agent-pipeline_dark.png"
+    ]
+  },
+  {
+    "name": "attention-head",
+    "source": "examples/attention-head.tsx",
+    "outputs": [
+      "attention-head_dark.png"
+    ]
+  },
+  {
+    "name": "embedding-map",
+    "source": "examples/embedding-map.tsx",
+    "outputs": [
+      "embedding-map_dark.png"
+    ]
+  },
+  {
+    "name": "eval-dashboard",
+    "source": "examples/eval-dashboard.tsx",
+    "outputs": [
+      "eval-dashboard_dark.png"
+    ]
+  },
+  {
+    "name": "model-router",
+    "source": "examples/model-router.tsx",
+    "outputs": [
+      "model-router_dark.png"
+    ]
+  },
+  {
+    "name": "presentation-frame",
+    "source": "examples/presentation-frame.tsx",
+    "outputs": [
+      "presentation-frame_dark.png"
+    ]
+  },
+  {
+    "name": "rag-graph",
+    "source": "examples/rag-graph.tsx",
+    "outputs": [
+      "rag-graph_dark.png"
+    ]
+  },
+  {
+    "name": "release-card",
+    "source": "examples/release-card.tsx",
+    "outputs": [
+      "release-card_dark.png"
+    ]
+  },
+  {
+    "name": "research-landscape",
+    "source": "examples/research-landscape.tsx",
+    "outputs": [
+      "research-landscape_dark.png"
+    ]
+  },
+  {
+    "name": "spec-anatomy",
+    "source": "examples/spec-anatomy.tsx",
+    "outputs": [
+      "spec-anatomy_dark.png"
+    ]
+  },
+  {
+    "name": "theme-system",
+    "source": "examples/theme-system.tsx",
+    "outputs": [
+      "theme-system_dark.png"
+    ]
+  },
+  {
+    "name": "token-matrix",
+    "source": "examples/token-matrix.tsx",
+    "outputs": [
+      "token-matrix_dark.png"
+    ]
+  }
+]

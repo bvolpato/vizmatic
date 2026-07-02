@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+  <title id="title">Vizmatic</title>
+  <desc id="desc">Vizmatic logo with theme-aware frame grid mark</desc>
+  <defs>
+    <linearGradient id="vizmatic-a" x1="120" y1="24" x2="210" y2="166" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.52" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="vizmatic-b" x1="260" y1="52" x2="642" y2="170" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.55" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#22d3ee"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="720" height="220" rx="44" fill="#070912"/>
+  <g filter="url(#soft-shadow)">
+    <rect x="54" y="44" width="142" height="132" rx="28" fill="#101827" stroke="#334155" stroke-width="2"/>
+    <rect x="76" y="66" width="42" height="42" rx="14" fill="#1e293b" stroke="#475569"/>
+    <rect x="130" y="66" width="42" height="42" rx="14" fill="url(#vizmatic-a)"/>
+    <rect x="76" y="120" width="42" height="34" rx="13" fill="url(#vizmatic-a)" opacity="0.82"/>
+    <rect x="130" y="120" width="42" height="34" rx="13" fill="#1e293b" stroke="#475569"/>
+    <path d="M97 87h54M97 137h54M97 87v50M151 87v50" stroke="#e2e8f0" stroke-width="5" stroke-linecap="round" opacity="0.9"/>
+  </g>
+  <text x="236" y="125" fill="url(#vizmatic-b)" font-family="Inter, ui-sans-serif, system-ui" font-size="76" font-weight="850" letter-spacing="0">vizmatic</text>
+  <text x="241" y="164" fill="#94a3b8" font-family="Inter, ui-sans-serif, system-ui" font-size="22" font-weight="560">theme-aware visuals from structured scenes</text>
+</svg>

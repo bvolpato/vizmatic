@@ -1,0 +1,79 @@
+{
+  "name": "vizmatic",
+  "version": "0.1.0",
+  "description": "Theme-aware visual primitives and render pipeline for AI-generated diagrams, figures, and presentation frames.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Bruno Volpato",
+  "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://bvolpato.github.io/vizmatic/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bvolpato/vizmatic.git"
+  },
+  "bugs": {
+    "url": "https://github.com/bvolpato/vizmatic/issues"
+  },
+  "keywords": [
+    "visualization",
+    "satori",
+    "resvg",
+    "react",
+    "diagrams",
+    "presentations",
+    "theme-aware",
+    "ai-agents",
+    "structured-visuals"
+  ],
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "examples",
+    "docs/assets",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "vizmatic": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/cli.ts --format esm --dts --target node20 --clean --external react",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "render:examples": "pnpm build && tsx scripts/render-examples.ts",
+    "docs:check": "tsx scripts/check-docs.ts",
+    "site:serve": "npx http-server docs -p 4173 -c-1",
+    "prepublishOnly": "pnpm test && pnpm render:examples && npm pack --dry-run"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "satori": "^0.19.2",
+    "tsx": "^4.20.4"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.10",
+    "@types/react": "^19.1.8",
+    "http-server": "^14.1.1",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0",
+    "react": "^19.1.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

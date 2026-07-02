@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Vizmatic icon">
+  <defs>
+    <linearGradient id="g" x1="18" y1="14" x2="112" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="0.46" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="30" fill="#070912"/>
+  <rect x="23" y="23" width="82" height="82" rx="22" fill="#101827" stroke="#334155" stroke-width="3"/>
+  <rect x="36" y="36" width="24" height="24" rx="8" fill="#1e293b" stroke="#475569"/>
+  <rect x="68" y="36" width="24" height="24" rx="8" fill="url(#g)"/>
+  <rect x="36" y="68" width="24" height="24" rx="8" fill="url(#g)" opacity="0.86"/>
+  <rect x="68" y="68" width="24" height="24" rx="8" fill="#1e293b" stroke="#475569"/>
+  <path d="M48 48h32M48 80h32M48 48v32M80 48v32" stroke="#f8fafc" stroke-width="5" stroke-linecap="round"/>
+</svg>
