@@ -57,29 +57,27 @@
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
     "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
-    "site:serve": "npx http-server docs -p 4173 -c-1",
-    "verify": "pnpm typecheck && pnpm test && pnpm render:examples && pnpm docs:check && npm pack --dry-run",
-    "prepublishOnly": "pnpm test && pnpm render:examples && npm pack --dry-run"
+    "site:serve": "node scripts/serve-docs.mjs docs 4173",
+    "security:audit": "pnpm audit --audit-level low",
+    "verify": "pnpm typecheck && pnpm test && pnpm render:examples && pnpm docs:check && pnpm security:audit && npm pack --dry-run",
+    "prepublishOnly": "pnpm test && pnpm render:examples && pnpm security:audit && npm pack --dry-run"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "gifenc": "^1.0.3",
-    "satori": "^0.19.2",
+    "satori": "^0.26.0",
     "tsx": "^4.20.4"
   },
   "peerDependencies": {
     "react": ">=18"
   },
   "devDependencies": {
-    "@types/node": "^24.0.10",
+    "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
-    "http-server": "^14.1.1",
-    "pixelmatch": "^7.1.0",
-    "pngjs": "^7.0.0",
     "react": "^19.1.0",
     "shiki": "^4.3.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

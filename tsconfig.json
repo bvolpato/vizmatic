@@ -9,12 +9,12 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": false,
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
       "vizmatic": ["./src/index.ts"]
     },

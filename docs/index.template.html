@@ -271,7 +271,7 @@ pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --them
         <article class="quality-item">
           <span>CI</span>
           <h3>Full verification on every push</h3>
-          <p>TypeScript, Vitest, gallery rendering, docs checks, generated-file drift, and npm pack validation all run before a change is considered green.</p>
+          <p>TypeScript, Vitest, gallery rendering, docs checks, npm audit, generated-file drift, and npm pack validation all run before a change is considered green.</p>
         </article>
         <article class="quality-item">
           <span>Pages</span>
@@ -286,7 +286,7 @@ pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --them
         <article class="quality-item">
           <span>Maintenance</span>
           <h3>Dependency and PR hygiene</h3>
-          <p>Dependabot watches npm and GitHub Actions, and PRs carry a checklist for verification, generated assets, and browser review.</p>
+          <p>Dependabot watches npm and GitHub Actions. pnpm holds timestamped package releases for seven days before selecting them.</p>
         </article>
       </div>
     </section>

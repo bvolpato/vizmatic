@@ -365,6 +365,7 @@ Vizmatic treats generated visuals as source-controlled build artifacts. CI fails
 | `pnpm test` | Render pipeline behavior, watermark options, and output validation |
 | `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
+| `pnpm security:audit` | Fails on known low-or-higher npm advisories |
 | `npm pack --dry-run` | Published package contents before release |
 | CI generated-file check | Ensures rendered docs/examples are committed |
 
@@ -374,6 +375,17 @@ Run the full local gate:
 pnpm verify
 git diff --exit-code
 ```
+
+## Supply Chain Posture
+
+Vizmatic keeps runtime dependencies narrow: `satori` for JSX layout, `@resvg/resvg-js` for rasterization, `gifenc` for animated GIF output, and `tsx` so the CLI can load TSX scene files directly.
+
+Package resolution is intentionally conservative:
+
+- `minimumReleaseAge: 10080` requires timestamped package releases to age seven days before pnpm can select them.
+- `strictPeerDependencies`, `engineStrict`, and `packageManagerStrict` make install drift fail loudly.
+- `overrides.esbuild: 0.28.1` keeps the build graph on the patched esbuild line used by `tsx` and `tsup`.
+- `pnpm security:audit` runs inside `pnpm verify`, `prepublishOnly`, and CI.
 
 ## API
 
