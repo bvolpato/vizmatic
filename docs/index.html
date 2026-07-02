@@ -41,7 +41,12 @@
         <a href="#prompt" data-nav-link>Prompt</a>
         <a href="#quality" data-nav-link>Quality</a>
         <a href="#themes" data-nav-link>Themes</a>
-        <a href="https://github.com/bvolpato/vizmatic">GitHub</a>
+        <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="GitHub repository">
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.45.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+          </svg>
+          <span>GitHub</span>
+        </a>
       </div>
       <div class="theme-toggle" role="group" aria-label="Site theme">
         <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
@@ -61,7 +66,7 @@
         <a class="button" href="#prompt">Copy agent prompt</a>
         <a class="button" href="#gallery">See examples</a>
       </div>
-      <div class="install"><span>$</span> pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light<br><span>$</span> pnpm add vizmatic react <em># optional project dependency</em></div>
+      <div class="install"><span>$</span> pnpm add -g vizmatic<br><span>$</span> vizmatic ./frame.tsx --out ./dist/frames --theme dark,light</div>
     </div>
     <div class="hero-frame">
       <img data-theme-image src="assets/examples/attention-head_dark.png" alt="Vizmatic attention head example">
@@ -121,7 +126,7 @@
       <div class="gif-copy">
         <span>Animated GIF</span>
         <h2>Export motion from the same scene language.</h2>
-        <p>Static frames use `create(theme)`. Animated frames export `createScenes(theme)` and render with `vizmatic gif`. Perfect for showing state machines, learning steps, product flows, and release timelines.</p>
+        <p>Static frames use <code>create(theme)</code>. Animated frames export <code>createScenes(theme)</code> and render with <code>vizmatic gif</code>. Perfect for showing state machines, learning steps, product flows, and release timelines.</p>
         <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> createScenes</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">theme</span><span style="color:#E1E4E8">) {</span></span>
 <span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> [</span></span>
 <span class="line"><span style="color:#E1E4E8">    { element: </span><span style="color:#B392F0">step</span><span style="color:#E1E4E8">(theme, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">), duration: </span><span style="color:#79B8FF">760</span><span style="color:#E1E4E8">, transition: </span><span style="color:#9ECBFF">"appear"</span><span style="color:#E1E4E8"> },</span></span>
@@ -234,13 +239,19 @@
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">Use the package manager already present in the project.</span></span>
 <span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">For one-off renders, use the binary without changing </span><span style="color:#79B8FF">`package.json`</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">Install the CLI once:</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">```bash</span></span>
-<span class="line"><span style="color:#B392F0">pnpm</span><span style="color:#9ECBFF"> dlx</span><span style="color:#9ECBFF"> vizmatic</span><span style="color:#9ECBFF"> ./frame.tsx</span><span style="color:#79B8FF"> --out</span><span style="color:#9ECBFF"> ./dist/frames</span><span style="color:#79B8FF"> --theme</span><span style="color:#9ECBFF"> dark,light</span></span>
+<span class="line"><span style="color:#B392F0">pnpm</span><span style="color:#9ECBFF"> add</span><span style="color:#79B8FF"> -g</span><span style="color:#9ECBFF"> vizmatic</span></span>
 <span class="line"><span style="color:#E1E4E8">```</span></span>
 <span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Install when the project needs scripts, editor types, or direct renderer APIs:</span></span>
+<span class="line"><span style="color:#E1E4E8">Then render any frame directly:</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">```bash</span></span>
+<span class="line"><span style="color:#B392F0">vizmatic</span><span style="color:#9ECBFF"> ./frame.tsx</span><span style="color:#79B8FF"> --out</span><span style="color:#9ECBFF"> ./dist/frames</span><span style="color:#79B8FF"> --theme</span><span style="color:#9ECBFF"> dark,light</span></span>
+<span class="line"><span style="color:#E1E4E8">```</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">Install in the project when the project needs scripts, editor types, or direct renderer APIs:</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">```bash</span></span>
 <span class="line"><span style="color:#B392F0">pnpm</span><span style="color:#9ECBFF"> add</span><span style="color:#9ECBFF"> vizmatic</span><span style="color:#9ECBFF"> react</span></span>
@@ -324,7 +335,7 @@
 <span class="line"><span style="color:#E1E4E8">Render it:</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">```bash</span></span>
-<span class="line"><span style="color:#B392F0">pnpm</span><span style="color:#9ECBFF"> exec</span><span style="color:#9ECBFF"> vizmatic</span><span style="color:#9ECBFF"> frames</span><span style="color:#79B8FF"> --out</span><span style="color:#9ECBFF"> public/vizmatic</span><span style="color:#79B8FF"> --theme</span><span style="color:#9ECBFF"> dark,light</span><span style="color:#79B8FF"> --watermark</span><span style="color:#9ECBFF"> "Your Product"</span><span style="color:#79B8FF"> --watermark-image</span><span style="color:#9ECBFF"> ./logo.svg</span><span style="color:#79B8FF"> --watermark-position</span><span style="color:#9ECBFF"> top-right</span></span>
+<span class="line"><span style="color:#B392F0">vizmatic</span><span style="color:#9ECBFF"> frames</span><span style="color:#79B8FF"> --out</span><span style="color:#9ECBFF"> public/vizmatic</span><span style="color:#79B8FF"> --theme</span><span style="color:#9ECBFF"> dark,light</span><span style="color:#79B8FF"> --watermark</span><span style="color:#9ECBFF"> "Your Product"</span><span style="color:#79B8FF"> --watermark-image</span><span style="color:#9ECBFF"> ./logo.svg</span><span style="color:#79B8FF"> --watermark-position</span><span style="color:#9ECBFF"> top-right</span></span>
 <span class="line"><span style="color:#E1E4E8">```</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">For direct CLI frames, skip imports, </span><span style="color:#79B8FF">`defineIllustration`</span><span style="color:#E1E4E8">, and </span><span style="color:#79B8FF">`c`</span><span style="color:#E1E4E8"> props by default. The CLI injects Vizmatic primitives and theme colors. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.</span></span>
@@ -355,7 +366,7 @@
 <span class="line"><span style="color:#E1E4E8">Render animated frames with </span><span style="color:#79B8FF">`createScenes(theme)`</span><span style="color:#E1E4E8">:</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">```bash</span></span>
-<span class="line"><span style="color:#B392F0">pnpm</span><span style="color:#9ECBFF"> exec</span><span style="color:#9ECBFF"> vizmatic</span><span style="color:#9ECBFF"> gif</span><span style="color:#9ECBFF"> frames/animated-pipeline.tsx</span><span style="color:#79B8FF"> --out</span><span style="color:#9ECBFF"> public/vizmatic</span><span style="color:#79B8FF"> --theme</span><span style="color:#9ECBFF"> dark,light</span><span style="color:#79B8FF"> --watermark</span><span style="color:#9ECBFF"> "Your Product"</span><span style="color:#79B8FF"> --watermark-image</span><span style="color:#9ECBFF"> ./logo.svg</span><span style="color:#79B8FF"> --watermark-position</span><span style="color:#9ECBFF"> top-right</span><span style="color:#79B8FF"> --scale</span><span style="color:#79B8FF"> 1</span></span>
+<span class="line"><span style="color:#B392F0">vizmatic</span><span style="color:#9ECBFF"> gif</span><span style="color:#9ECBFF"> frames/animated-pipeline.tsx</span><span style="color:#79B8FF"> --out</span><span style="color:#9ECBFF"> public/vizmatic</span><span style="color:#79B8FF"> --theme</span><span style="color:#9ECBFF"> dark,light</span><span style="color:#79B8FF"> --watermark</span><span style="color:#9ECBFF"> "Your Product"</span><span style="color:#79B8FF"> --watermark-image</span><span style="color:#9ECBFF"> ./logo.svg</span><span style="color:#79B8FF"> --watermark-position</span><span style="color:#9ECBFF"> top-right</span><span style="color:#79B8FF"> --scale</span><span style="color:#79B8FF"> 1</span></span>
 <span class="line"><span style="color:#E1E4E8">```</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#79B8FF;font-weight:bold">## Create an animated frame</span></span>
@@ -716,7 +727,7 @@
         <article class="quality-item">
           <span>CI</span>
           <h3>Full verification on every push</h3>
-          <p>`./test.sh` runs install, lint, Vitest, gallery rendering, docs checks, npm audit, package dry-run, and generated-file drift before a change is considered green.</p>
+          <p><code>./test.sh</code> runs install, lint, Vitest, gallery rendering, docs checks, npm audit, package dry-run, and generated-file drift before a change is considered green.</p>
         </article>
         <article class="quality-item">
           <span>Pages</span>

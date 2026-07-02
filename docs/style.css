@@ -166,6 +166,19 @@ img {
   padding: 8px 0;
 }
 
+.nav-links .github-link {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.github-link svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: currentColor;
+}
+
 .nav-actions {
   gap: 18px;
   justify-content: flex-end;
@@ -217,12 +230,12 @@ img {
 }
 
 .hero {
-  width: min(1180px, calc(100% - 40px));
+  width: min(1360px, calc(100% - 40px));
   min-height: 680px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(500px, 1.08fr);
-  gap: 44px;
+  grid-template-columns: minmax(0, 1.22fr) minmax(420px, 0.78fr);
+  gap: 36px;
   align-items: center;
   padding: 34px 0 82px;
 }
@@ -247,15 +260,15 @@ p {
 
 h1 {
   margin-top: 18px;
-  max-width: 620px;
-  font-size: clamp(48px, 6vw, 84px);
-  line-height: 0.92;
+  max-width: 860px;
+  font-size: clamp(46px, 4.4vw, 64px);
+  line-height: 1;
   font-weight: 920;
 }
 
 .hero-copy p {
   margin-top: 24px;
-  max-width: 620px;
+  max-width: 720px;
   color: var(--muted);
   font-size: 20px;
   line-height: 1.55;
@@ -628,6 +641,8 @@ pre.shiki code {
   display: block;
   min-width: max-content;
   color: inherit;
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 pre.shiki .line {
@@ -659,8 +674,13 @@ pre.shiki .line {
 code {
   color: var(--code);
   font-family: "Fira Code", ui-monospace, monospace;
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: 1em;
+  line-height: inherit;
+}
+
+p code,
+li code {
+  font-weight: 600;
 }
 
 .source-dialog {
@@ -933,7 +953,8 @@ footer a {
   }
 
   h1 {
-    font-size: 46px;
+    font-size: 38px;
+    line-height: 1.05;
   }
 
   .hero-copy p {

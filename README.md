@@ -31,15 +31,21 @@
 
 ## Quick Start
 
-Use Vizmatic as a one-off binary without touching `package.json`:
+Install the CLI once:
 
 ```bash
-pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+pnpm add -g vizmatic
+```
+
+Then render any frame directly:
+
+```bash
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
 Bare CLI frames auto-import Vizmatic primitives and inject theme colors. Use normal imports when a frame needs helpers, data loading, custom dependencies, or direct renderer APIs.
 
-Install it when you want project scripts, editor types, or direct renderer APIs:
+Install it in the project when you want scripts, editor types, or direct renderer APIs:
 
 ```bash
 pnpm add vizmatic react

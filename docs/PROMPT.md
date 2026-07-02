@@ -6,13 +6,19 @@ Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, pres
 
 Use the package manager already present in the project.
 
-For one-off renders, use the binary without changing `package.json`:
+Install the CLI once:
 
 ```bash
-pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+pnpm add -g vizmatic
 ```
 
-Install when the project needs scripts, editor types, or direct renderer APIs:
+Then render any frame directly:
+
+```bash
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+```
+
+Install in the project when the project needs scripts, editor types, or direct renderer APIs:
 
 ```bash
 pnpm add vizmatic react
@@ -96,7 +102,7 @@ height = 560;
 Render it:
 
 ```bash
-pnpm exec vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
+vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
 
 For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
@@ -127,7 +133,7 @@ export const watermark = (
 Render animated frames with `createScenes(theme)`:
 
 ```bash
-pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right --scale 1
+vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right --scale 1
 ```
 
 ## Create an animated frame
