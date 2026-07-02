@@ -31,84 +31,66 @@ For npm/yarn/bun projects, use the equivalent package-manager command.
 Create `frames/agent-pipeline.tsx`:
 
 ```tsx
-import React from "react"
-import {
-  CalloutCard,
-  defineIllustration,
-  Flow,
-  Row,
-  Scene,
-} from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene
-    c={c}
-    title="Agent visual pipeline"
-    subtitle="prompt -> scene spec -> verified artifact"
-    gap={26}
-  >
-    <Flow
-      c={c}
-      connectorTone="purple"
-      stages={[
-        {
-          eyebrow: "input",
-          title: "Prompt",
-          subtitle: "intent and constraints",
-          tone: "blue",
-          lines: ["domain language", "audience", "theme tokens"],
-          width: 190,
-        },
-        {
-          eyebrow: "contract",
-          title: "Scene spec",
-          subtitle: "typed structure",
-          tone: "purple",
-          lines: ["cards", "flows", "charts", "tables"],
-          width: 190,
-        },
-        {
-          eyebrow: "render",
-          title: "Satori frame",
-          subtitle: "React primitives",
-          tone: "cyan",
-          lines: ["layout defaults", "safe text", "semantic tones"],
-          width: 190,
-        },
-        {
-          eyebrow: "output",
-          title: "PNG / GIF",
-          subtitle: "CI-ready asset",
-          tone: "green",
-          lines: ["autocrop", "overflow checks", "retina scale"],
-          width: 190,
-        },
-      ]}
+<Scene
+  title="Agent visual pipeline"
+  subtitle="prompt -> scene spec -> verified artifact"
+  gap={26}
+>
+  <Flow
+    connectorTone="purple"
+    stages={[
+      {
+        eyebrow: "input",
+        title: "Prompt",
+        subtitle: "intent and constraints",
+        tone: "blue",
+        lines: ["domain language", "audience", "theme tokens"],
+        width: 190,
+      },
+      {
+        eyebrow: "contract",
+        title: "Scene spec",
+        subtitle: "typed structure",
+        tone: "purple",
+        lines: ["cards", "flows", "charts", "tables"],
+        width: 190,
+      },
+      {
+        eyebrow: "render",
+        title: "Satori frame",
+        subtitle: "React primitives",
+        tone: "cyan",
+        lines: ["layout defaults", "safe text", "semantic tones"],
+        width: 190,
+      },
+      {
+        eyebrow: "output",
+        title: "PNG / GIF",
+        subtitle: "CI-ready asset",
+        tone: "green",
+        lines: ["autocrop", "overflow checks", "retina scale"],
+        width: 190,
+      },
+    ]}
+  />
+  <Row width="100%" gap={14}>
+    <CalloutCard
+      title="Model writes structure"
+      detail="No hand-written SVG paths or brittle x/y layout for common cases."
+      tone="purple"
+      width={470}
     />
-    <Row width="100%" gap={14}>
-      <CalloutCard
-        c={c}
-        title="Model writes structure"
-        detail="No hand-written SVG paths or brittle x/y layout for common cases."
-        tone="purple"
-        width={470}
-      />
-      <CalloutCard
-        c={c}
-        title="Design system stays in control"
-        detail="Theme tokens decide color, typography, radius, spacing, and contrast."
-        tone="green"
-        width={470}
-      />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+    <CalloutCard
+      title="Design system stays in control"
+      detail="Theme tokens decide color, typography, radius, spacing, and contrast."
+      tone="green"
+      width={470}
+    />
+  </Row>
+</Scene>
 ```
 
 Render it:
@@ -116,6 +98,8 @@ Render it:
 ```bash
 pnpm exec vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
+
+For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
 
 Frame modules can also export a watermark element when code-owned branding is clearer than CLI flags:
 
@@ -214,7 +198,8 @@ Shared values:
 - `ColorName`: `"primary" | "secondary" | "positive" | "warning" | "critical" | "info" | "accent" | "neutral"`.
 - `FlexAlign`: `"start" | "center" | "end" | "stretch"`.
 - `FlexJustify`: `"start" | "center" | "end" | "space-between" | "space-around"`.
-- Most visual components require `c: ThemeColors`; inside `defineIllustration((c) => ...)`, pass that same `c` down.
+- In bare CLI frames, omit `c`; the CLI injects theme colors into Vizmatic components.
+- In full modules, most visual components require `c: ThemeColors`; inside `defineIllustration((c) => ...)`, pass that same `c` down.
 
 ## Component API
 
@@ -336,94 +321,73 @@ Theme and render APIs:
 ### Window + code + status
 
 ```tsx
-import React from "react"
-import { CodeBlock, StatusList, WindowFrame, defineIllustration, Row, Scene } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Release gate" subtitle="tool output and checklist">
-    <Row gap={18} align="stretch">
-      <WindowFrame c={c} title="ci.log" variant="terminal" tone="green" width={520}>
-        <CodeBlock
-          c={c}
-          fontSize={12}
-          showLineNumbers
-          lines={[
-            { text: "pnpm typecheck", tone: "green", prefix: "$" },
-            { text: "pnpm test", tone: "green", prefix: "$" },
-            { text: "pnpm render:examples", tone: "cyan", prefix: "$" },
-          ]}
-        />
-      </WindowFrame>
-      <StatusList
-        c={c}
-        width={360}
-        rows={[
-          { label: "Types", detail: "clean", status: "check", tone: "green" },
-          { label: "Visuals", detail: "dark/light generated", status: "check", tone: "cyan" },
-          { label: "NPM", detail: "auth required", status: "warn", tone: "warm" },
+<Scene title="Release gate" subtitle="tool output and checklist">
+  <Row gap={18} align="stretch">
+    <WindowFrame title="ci.log" variant="terminal" tone="green" width={520}>
+      <CodeBlock
+        fontSize={12}
+        showLineNumbers
+        lines={[
+          { text: "pnpm typecheck", tone: "green", prefix: "$" },
+          { text: "pnpm test", tone: "green", prefix: "$" },
+          { text: "pnpm render:examples", tone: "cyan", prefix: "$" },
         ]}
       />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+    </WindowFrame>
+    <StatusList
+      width={360}
+      rows={[
+        { label: "Types", detail: "clean", status: "check", tone: "green" },
+        { label: "Visuals", detail: "dark/light generated", status: "check", tone: "cyan" },
+        { label: "NPM", detail: "auth required", status: "warn", tone: "warm" },
+      ]}
+    />
+  </Row>
+</Scene>
 ```
 
 ### Matrix + chart
 
 ```tsx
-import React from "react"
-import { Heatmap, Matrix, Row, Scene, StackedBar, defineIllustration } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Attention audit" subtitle="weights, scores, and distribution">
-    <Row gap={18} align="stretch">
-      <Heatmap
-        c={c}
-        title="Attention"
-        xLabels={["q1", "q2", "q3"]}
-        yLabels={["k1", "k2", "k3"]}
-        data={[
-          [0.9, 0.2, 0.1],
-          [0.4, 0.8, 0.2],
-          [0.1, 0.3, 0.7],
-        ]}
-      />
-      <Matrix
-        c={c}
-        title="Scores"
-        format="decimal"
-        rowLabels={["A", "B", "C"]}
-        colLabels={["x", "y", "z"]}
-        data={[
-          [0.4, 0.7, 0.2],
-          [0.5, 0.2, 0.8],
-        ]}
-      />
-      <StackedBar
-        c={c}
-        width={300}
-        title="Token budget"
-        segments={[
-          { label: "prompt", value: 42, color: "primary" },
-          { label: "context", value: 38, color: "info" },
-          { label: "answer", value: 20, color: "positive" },
-        ]}
-      />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Attention audit" subtitle="weights, scores, and distribution">
+  <Row gap={18} align="stretch">
+    <Heatmap
+      title="Attention"
+      xLabels={["q1", "q2", "q3"]}
+      yLabels={["k1", "k2", "k3"]}
+      data={[
+        [0.9, 0.2, 0.1],
+        [0.4, 0.8, 0.2],
+        [0.1, 0.3, 0.7],
+      ]}
+    />
+    <Matrix
+      title="Scores"
+      format="decimal"
+      rowLabels={["A", "B", "C"]}
+      colLabels={["x", "y", "z"]}
+      data={[
+        [0.4, 0.7, 0.2],
+        [0.5, 0.2, 0.8],
+      ]}
+    />
+    <StackedBar
+      width={300}
+      title="Token budget"
+      segments={[
+        { label: "prompt", value: 42, color: "primary" },
+        { label: "context", value: 38, color: "info" },
+        { label: "answer", value: 20, color: "positive" },
+      ]}
+    />
+  </Row>
+</Scene>
 ```
 
 ## Quality rules
@@ -442,83 +406,64 @@ export default frame.default
 ### RAG graph
 
 ```tsx
-import React from "react"
-import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
-    <GraphDiagram
-      c={c}
-      width={820}
-      height={390}
-      nodes={[
-        { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
-        { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
-        { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
-        { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
-        { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
-      ]}
-      edges={[
-        { from: "query", to: "retrieve", label: "search", tone: "blue" },
-        { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
-        { from: "rerank", to: "answer", label: "context", tone: "green" },
-        { from: "answer", to: "verify", label: "claims", tone: "critical" },
-        { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
-      ]}
-    />
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
+  <GraphDiagram
+    width={820}
+    height={390}
+    nodes={[
+      { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
+      { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
+      { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
+      { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
+      { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
+    ]}
+    edges={[
+      { from: "query", to: "retrieve", label: "search", tone: "blue" },
+      { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
+      { from: "rerank", to: "answer", label: "context", tone: "green" },
+      { from: "answer", to: "verify", label: "claims", tone: "critical" },
+      { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
+    ]}
+  />
+</Scene>
 ```
 
 ### Evaluation dashboard
 
 ```tsx
-import React from "react"
-import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+width = 1040
+height = 620
 
-export const width = 1040
-export const height = 620
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
-    <Row gap={18} align="stretch">
-      <BarChart
-        c={c}
-        width={440}
-        height={260}
-        title="Pass rate by task"
-        format="percent"
-        data={[
-          { label: "tools", value: 0.82, color: "positive" },
-          { label: "math", value: 0.71, color: "secondary" },
-          { label: "code", value: 0.77, color: "primary" },
-          { label: "long", value: 0.58, color: "warning" },
-        ]}
-      />
-      <LineChart
-        c={c}
-        width={440}
-        height={260}
-        title="Quality over releases"
-        format="percent"
-        labels={["v1", "v2", "v3", "v4", "v5"]}
-        series={[
-          { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
-          { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
-        ]}
-      />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
+  <Row gap={18} align="stretch">
+    <BarChart
+      width={440}
+      height={260}
+      title="Pass rate by task"
+      format="percent"
+      data={[
+        { label: "tools", value: 0.82, color: "positive" },
+        { label: "math", value: 0.71, color: "secondary" },
+        { label: "code", value: 0.77, color: "primary" },
+        { label: "long", value: 0.58, color: "warning" },
+      ]}
+    />
+    <LineChart
+      width={440}
+      height={260}
+      title="Quality over releases"
+      format="percent"
+      labels={["v1", "v2", "v3", "v4", "v5"]}
+      series={[
+        { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
+        { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
+      ]}
+    />
+  </Row>
+</Scene>
 ```
 
 ## Final answer checklist

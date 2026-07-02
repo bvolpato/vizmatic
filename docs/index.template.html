@@ -104,28 +104,16 @@
         <h2>Write scenes, not SVG paths.</h2>
         <p>Use React primitives with semantic tones. Render to PNG in Node for docs, websites, or generated decks.</p>
       </div>
-      <pre data-shiki="tsx"><code>import { defineIllustration, Flow, Scene, Watermark } from "vizmatic"
+      <pre data-shiki="tsx"><code>width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-export const watermark = (
-  &lt;Watermark position="bottom-right" opacity={0.82}&gt;
-    &lt;div style={{ color: "#7c3aed", fontWeight: 800 }}&gt;Acme&lt;/div&gt;
-  &lt;/Watermark&gt;
-)
-
-const frame = defineIllustration((c) =&gt;
-  &lt;Scene c={c} title="Agent pipeline"&gt;
-    &lt;Flow c={c} stages={[
+&lt;Scene title="Agent pipeline"&gt;
+  &lt;Flow stages={[
       { title: "Prompt", tone: "blue" },
       { title: "Scene spec", tone: "purple" },
       { title: "PNG / GIF", tone: "green" },
     ]} /&gt;
-  &lt;/Scene&gt;
-)
-
-export const create = frame.create
-export default frame.default</code></pre>
+&lt;/Scene&gt;</code></pre>
     </section>
 
     <section id="gif" class="section gif-showcase">
@@ -161,24 +149,20 @@ vizmatic gif frames/animated.tsx --out public/vizmatic --theme dark,light --wate
             <h3>Flow + callouts</h3>
             <p>Best for process diagrams, architecture walkthroughs, and agent pipelines.</p>
           </div>
-          <pre data-shiki="tsx"><code>import { CalloutCard, defineIllustration, Flow, Row, Scene } from "vizmatic"
+          <pre data-shiki="tsx"><code>width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) =&gt; (
-  &lt;Scene c={c} title="Agent visual pipeline"&gt;
-    &lt;Flow c={c} connectorTone="purple" stages={[
+&lt;Scene title="Agent visual pipeline"&gt;
+  &lt;Flow connectorTone="purple" stages={[
       { title: "Prompt", subtitle: "intent", tone: "blue" },
       { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
       { title: "PNG / GIF", subtitle: "verified asset", tone: "green" },
     ]} /&gt;
-    &lt;Row gap={14} width="100%"&gt;
-      &lt;CalloutCard c={c} tone="purple" title="Model writes structure" /&gt;
-      &lt;CalloutCard c={c} tone="green" title="Theme stays in control" /&gt;
-    &lt;/Row&gt;
-  &lt;/Scene&gt;
-))</code></pre>
+  &lt;Row gap={14} width="100%"&gt;
+    &lt;CalloutCard tone="purple" title="Model writes structure" /&gt;
+    &lt;CalloutCard tone="green" title="Theme stays in control" /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;</code></pre>
         </article>
 
         <article class="recipe-card">
@@ -187,26 +171,24 @@ const frame = defineIllustration((c) =&gt; (
             <h3>Graph diagram</h3>
             <p>Best for branches, retries, validation loops, and systems with non-linear flow.</p>
           </div>
-          <pre data-shiki="tsx"><code>import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+          <pre data-shiki="tsx"><code>width = 1040
+height = 560
 
-const frame = defineIllustration((c) =&gt; (
-  &lt;Scene c={c} title="RAG control graph" align="center"&gt;
-    &lt;GraphDiagram
-      c={c}
-      width={820}
-      height={390}
-      nodes={[
+&lt;Scene title="RAG control graph" align="center"&gt;
+  &lt;GraphDiagram
+    width={820}
+    height={390}
+    nodes={[
         { id: "query", label: "Query", x: 0.08, y: 0.52, tone: "blue" },
         { id: "retrieve", label: "Retrieve", x: 0.40, y: 0.25, tone: "cyan" },
         { id: "answer", label: "Answer", x: 0.92, y: 0.52, tone: "green" },
       ]}
-      edges={[
+    edges={[
         { from: "query", to: "retrieve", label: "search", tone: "blue" },
         { from: "retrieve", to: "answer", label: "context", tone: "green" },
       ]}
-    /&gt;
-  &lt;/Scene&gt;
-))</code></pre>
+  /&gt;
+&lt;/Scene&gt;</code></pre>
         </article>
 
         <article class="recipe-card">
@@ -215,21 +197,20 @@ const frame = defineIllustration((c) =&gt; (
             <h3>Dashboard charts</h3>
             <p>Best for report figures, eval summaries, launch reviews, and release decks.</p>
           </div>
-          <pre data-shiki="tsx"><code>import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+          <pre data-shiki="tsx"><code>width = 1040
+height = 560
 
-const frame = defineIllustration((c) =&gt; (
-  &lt;Scene c={c} title="Evaluation snapshot"&gt;
-    &lt;Row gap={18} align="stretch"&gt;
-      &lt;BarChart c={c} title="Pass rate" format="percent" data={[
+&lt;Scene title="Evaluation snapshot"&gt;
+  &lt;Row gap={18} align="stretch"&gt;
+    &lt;BarChart title="Pass rate" format="percent" data={[
         { label: "tools", value: 0.82, color: "positive" },
         { label: "long", value: 0.58, color: "warning" },
       ]} /&gt;
-      &lt;LineChart c={c} title="Quality" format="percent" labels={["v1", "v2"]} series={[
+    &lt;LineChart title="Quality" format="percent" labels={["v1", "v2"]} series={[
         { name: "quality", points: [0.61, 0.81], color: "positive", area: true },
       ]} /&gt;
-    &lt;/Row&gt;
-  &lt;/Scene&gt;
-))</code></pre>
+  &lt;/Row&gt;
+&lt;/Scene&gt;</code></pre>
         </article>
       </div>
     </section>

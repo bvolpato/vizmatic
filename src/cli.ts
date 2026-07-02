@@ -218,7 +218,7 @@ function bareFrameExportsForSource(source: string): string[] {
 
 function buildAutoImportStatement(names: string[]): string {
     const specifiers = names.map((name) => `${name} as ${bareFrameAlias(name)}`).join(',\n    ')
-    return `import {\n    ${specifiers}\n} from '${resolveSelfImportSpecifier()}'`
+    return `import {\n    ${specifiers}\n} from ${JSON.stringify(resolveSelfImportSpecifier())}`
 }
 
 function buildAutoImportDeclarations(names: string[]): string {

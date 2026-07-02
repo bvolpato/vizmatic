@@ -255,38 +255,29 @@ vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --water
 Use this for workflows with branches, retries, and validation loops.
 
 ```tsx
-import React from "react"
-import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
-    <GraphDiagram
-      c={c}
-      width={820}
-      height={390}
-      nodes={[
-        { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
-        { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
-        { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
-        { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
-        { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
-      ]}
-      edges={[
-        { from: "query", to: "retrieve", label: "search", tone: "blue" },
-        { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
-        { from: "rerank", to: "answer", label: "context", tone: "green" },
-        { from: "answer", to: "verify", label: "claims", tone: "critical" },
-        { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
-      ]}
-    />
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
+  <GraphDiagram
+    width={820}
+    height={390}
+    nodes={[
+      { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
+      { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
+      { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
+      { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
+      { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
+    ]}
+    edges={[
+      { from: "query", to: "retrieve", label: "search", tone: "blue" },
+      { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
+      { from: "rerank", to: "answer", label: "context", tone: "green" },
+      { from: "answer", to: "verify", label: "claims", tone: "critical" },
+      { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
+    ]}
+  />
+</Scene>
 ```
 
 ### Evaluation dashboard
@@ -294,46 +285,36 @@ export default frame.default
 Use this for compact report figures and release decks.
 
 ```tsx
-import React from "react"
-import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+width = 1040
+height = 620
 
-export const width = 1040
-export const height = 620
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
-    <Row gap={18} align="stretch">
-      <BarChart
-        c={c}
-        width={440}
-        height={260}
-        title="Pass rate by task"
-        format="percent"
-        data={[
-          { label: "tools", value: 0.82, color: "positive" },
-          { label: "math", value: 0.71, color: "secondary" },
-          { label: "code", value: 0.77, color: "primary" },
-          { label: "long", value: 0.58, color: "warning" },
-        ]}
-      />
-      <LineChart
-        c={c}
-        width={440}
-        height={260}
-        title="Quality over releases"
-        format="percent"
-        labels={["v1", "v2", "v3", "v4", "v5"]}
-        series={[
-          { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
-          { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
-        ]}
-      />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
+  <Row gap={18} align="stretch">
+    <BarChart
+      width={440}
+      height={260}
+      title="Pass rate by task"
+      format="percent"
+      data={[
+        { label: "tools", value: 0.82, color: "positive" },
+        { label: "math", value: 0.71, color: "secondary" },
+        { label: "code", value: 0.77, color: "primary" },
+        { label: "long", value: 0.58, color: "warning" },
+      ]}
+    />
+    <LineChart
+      width={440}
+      height={260}
+      title="Quality over releases"
+      format="percent"
+      labels={["v1", "v2", "v3", "v4", "v5"]}
+      series={[
+        { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
+        { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
+      ]}
+    />
+  </Row>
+</Scene>
 ```
 
 ## Agent Prompt
