@@ -9,6 +9,7 @@
 
 <p align="center">
   <a href="https://github.com/bvolpato/vizmatic/actions/workflows/ci.yml"><img src="https://github.com/bvolpato/vizmatic/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/bvolpato/vizmatic/actions/workflows/pages.yml"><img src="https://github.com/bvolpato/vizmatic/actions/workflows/pages.yml/badge.svg" alt="Pages" /></a>
   <a href="https://github.com/bvolpato/vizmatic/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://www.npmjs.com/package/vizmatic"><img src="https://img.shields.io/npm/v/vizmatic?color=%2334d058" alt="npm version" /></a>
 </p>
@@ -34,7 +35,7 @@
 pnpm add vizmatic react
 ```
 
-If npm has not been published yet, install from GitHub:
+Optional edge build from GitHub:
 
 ```bash
 pnpm add github:bvolpato/vizmatic react
@@ -339,6 +340,26 @@ export default frame.default
 
 [`PROMPT.md`](PROMPT.md) is a plug-and-play instruction file for coding agents. It covers install, frame structure, every visual component with props, render commands, examples, quality rules, and final verification.
 
+## Quality Gates
+
+Vizmatic treats generated visuals as source-controlled build artifacts. CI fails if examples, site assets, source snippets, or prompt copies drift from the repo source.
+
+| Gate | What it protects |
+|---|---|
+| `pnpm typecheck` | Type safety across `src/`, `examples/`, `scripts/`, and tests |
+| `pnpm test` | Render pipeline behavior, watermark options, and output validation |
+| `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
+| `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
+| `npm pack --dry-run` | Published package contents before release |
+| CI generated-file check | Ensures rendered docs/examples are committed |
+
+Run the full local gate:
+
+```bash
+pnpm verify
+git diff --exit-code
+```
+
 ## API
 
 ### Themes
@@ -512,16 +533,24 @@ docs/
 
 ```bash
 pnpm install
-pnpm test
-pnpm render:examples
+pnpm verify
 pnpm site:serve
 ```
 
 ## Publishing
 
+Preferred release path is the GitHub `Release` workflow. It runs the full verification gate, bumps the package version, publishes to npm with provenance, pushes the tag, and creates a GitHub release.
+
 ```bash
-pnpm test
-pnpm render:examples
+gh workflow run release.yml -f version=patch
+```
+
+The workflow requires an `NPM_TOKEN` repository secret with publish access.
+
+Manual release fallback:
+
+```bash
+pnpm verify
 npm publish --access public
 ```
 

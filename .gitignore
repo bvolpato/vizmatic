@@ -6,3 +6,4 @@ dist/
 .cache/
 coverage/
 *.tgz
+.playwright-mcp/

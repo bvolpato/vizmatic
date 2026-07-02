@@ -58,6 +58,7 @@
     "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
     "site:serve": "npx http-server docs -p 4173 -c-1",
+    "verify": "pnpm typecheck && pnpm test && pnpm render:examples && pnpm docs:check && npm pack --dry-run",
     "prepublishOnly": "pnpm test && pnpm render:examples && npm pack --dry-run"
   },
   "dependencies": {

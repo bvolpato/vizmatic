@@ -10,7 +10,7 @@ Use the package manager already present in the project.
 pnpm add vizmatic react
 ```
 
-If the npm package is not available yet, install from GitHub:
+Optional edge build from GitHub:
 
 ```bash
 pnpm add github:bvolpato/vizmatic react
