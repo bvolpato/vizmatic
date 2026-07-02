@@ -1,8 +1,6 @@
-import React from 'react'
 import {
     CalloutCard,
     Column,
-    defineIllustration,
     Flow,
     MetricCard,
     Row,
@@ -53,10 +51,9 @@ function buildFrame(theme: ThemeMode, active: number) {
     )
 }
 
-const frame = defineIllustration((c) => {
-    const theme: ThemeMode = c.bg === getThemeColors('light').bg ? 'light' : 'dark'
+export function create(theme: ThemeMode = 'dark') {
     return buildFrame(theme, stages.length - 1)
-})
+}
 
 export function createScenes(theme: ThemeMode): AnimatedScene[] {
     return stages.map((_, index) => ({
@@ -68,5 +65,4 @@ export function createScenes(theme: ThemeMode): AnimatedScene[] {
     }))
 }
 
-export const create = frame.create
-export default frame.default
+export default create('dark')

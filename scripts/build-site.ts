@@ -3,7 +3,17 @@ import { codeToHtml } from 'shiki'
 
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
+const promptPath = 'PROMPT.md'
 const generatedNotice = '<!-- Generated from docs/index.template.html by pnpm site:build. Edit template. -->'
+
+function encodeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+}
 
 function decodeHtml(value: string): string {
     return value
@@ -53,7 +63,8 @@ async function replaceAsync(input: string, pattern: RegExp): Promise<string> {
     return input.replace(pattern, () => replacements[index++] ?? '')
 }
 
-const template = await readFile(templatePath, 'utf8')
+const prompt = await readFile(promptPath, 'utf8')
+const template = (await readFile(templatePath, 'utf8')).replace('{{PROMPT_MD}}', () => encodeHtml(prompt))
 const highlighted = await replaceAsync(template, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g)
 const output = highlighted.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice}\n`)
 

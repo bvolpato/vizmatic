@@ -1,2 +1,10 @@
 allowBuilds:
   esbuild: true
+engineStrict: true
+minimumReleaseAge: 10080
+minimumReleaseAgeIgnoreMissingTime: true
+minimumReleaseAgeStrict: false
+overrides:
+  esbuild: 0.28.1
+packageManagerStrict: true
+strictPeerDependencies: true

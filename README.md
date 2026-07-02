@@ -31,6 +31,16 @@
 
 ## Quick Start
 
+Use Vizmatic as a one-off binary without touching `package.json`:
+
+```bash
+pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+```
+
+Bare CLI frames auto-import Vizmatic primitives and inject theme colors. Use normal imports when a frame needs helpers, data loading, custom dependencies, or direct renderer APIs.
+
+Install it when you want project scripts, editor types, or direct renderer APIs:
+
 ```bash
 pnpm add vizmatic react
 ```
@@ -44,33 +54,24 @@ pnpm add github:bvolpato/vizmatic react
 Create a frame:
 
 ```tsx
-import React from "react"
-import { defineIllustration, Flow, Scene } from "vizmatic"
+width = 1040;
+height = 560;
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Agent visual pipeline">
-    <Flow
-      c={c}
-      stages={[
-        { title: "Prompt", subtitle: "intent", tone: "blue" },
-        { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
-        { title: "PNG / SVG / GIF", subtitle: "rendered artifact", tone: "green" },
-      ]}
-    />
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Agent visual pipeline">
+  <Flow
+    stages={[
+      { title: "Prompt", subtitle: "intent", tone: "blue" },
+      { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
+      { title: "PNG / SVG / GIF", subtitle: "rendered artifact", tone: "green" },
+    ]}
+  />
+</Scene>
 ```
 
 Render it:
 
 ```bash
-vizmatic render ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
 ```
 
 Render an animation:
@@ -151,23 +152,16 @@ More examples live in [`examples/`](examples) and on the [website](https://bvolp
 Use this for small docs snippets and quick agent-generated frames.
 
 ```tsx
-import { defineIllustration, Flow, Scene } from "vizmatic"
+width = 1040;
+height = 560;
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) =>
-  <Scene c={c} title="Agent pipeline">
-    <Flow c={c} stages={[
-      { title: "Prompt", tone: "blue" },
-      { title: "Scene spec", tone: "purple" },
-      { title: "PNG / GIF", tone: "green" },
-    ]} />
-  </Scene>
-)
-
-export const create = frame.create
-export default frame.default
+<Scene title="Agent pipeline">
+  <Flow stages={[
+    { title: "Prompt", tone: "blue" },
+    { title: "Scene spec", tone: "purple" },
+    { title: "PNG / GIF", tone: "green" },
+  ]} />
+</Scene>
 ```
 
 ### Flow + callouts
@@ -175,33 +169,24 @@ export default frame.default
 Use this for process diagrams, architecture walkthroughs, and agent pipelines.
 
 ```tsx
-import React from "react"
-import { CalloutCard, defineIllustration, Flow, Row, Scene } from "vizmatic"
+width = 1040;
+height = 560;
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Agent visual pipeline" subtitle="prompt -> scene spec -> verified artifact" gap={26}>
-    <Flow
-      c={c}
-      connectorTone="purple"
-      stages={[
-        { eyebrow: "input", title: "Prompt", subtitle: "intent", tone: "blue", lines: ["goal", "audience", "constraints"], width: 190 },
-        { eyebrow: "contract", title: "Scene spec", subtitle: "typed structure", tone: "purple", lines: ["cards", "flows", "charts"], width: 190 },
-        { eyebrow: "render", title: "Satori", subtitle: "React primitives", tone: "cyan", lines: ["layout", "theme", "safe text"], width: 190 },
-        { eyebrow: "output", title: "PNG / GIF", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
-      ]}
-    />
-    <Row width="100%" gap={14}>
-      <CalloutCard c={c} title="Model writes structure" detail="No hand-written SVG paths." tone="purple" width={470} />
-      <CalloutCard c={c} title="Theme stays in control" detail="Colors and typography come from tokens." tone="green" width={470} />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Agent visual pipeline" subtitle="prompt -> scene spec -> verified artifact" gap={26}>
+  <Flow
+    connectorTone="purple"
+    stages={[
+      { eyebrow: "input", title: "Prompt", subtitle: "intent", tone: "blue", lines: ["goal", "audience", "constraints"], width: 190 },
+      { eyebrow: "contract", title: "Scene spec", subtitle: "typed structure", tone: "purple", lines: ["cards", "flows", "charts"], width: 190 },
+      { eyebrow: "render", title: "Satori", subtitle: "React primitives", tone: "cyan", lines: ["layout", "theme", "safe text"], width: 190 },
+      { eyebrow: "output", title: "PNG / GIF", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
+    ]}
+  />
+  <Row width="100%" gap={14}>
+    <CalloutCard title="Model writes structure" detail="No hand-written SVG paths." tone="purple" width={470} />
+    <CalloutCard title="Theme stays in control" detail="Colors and typography come from tokens." tone="green" width={470} />
+  </Row>
+</Scene>
 ```
 
 ### Animated GIF
@@ -270,38 +255,29 @@ vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --water
 Use this for workflows with branches, retries, and validation loops.
 
 ```tsx
-import React from "react"
-import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+width = 1040;
+height = 560;
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
-    <GraphDiagram
-      c={c}
-      width={820}
-      height={390}
-      nodes={[
-        { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
-        { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
-        { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
-        { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
-        { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
-      ]}
-      edges={[
-        { from: "query", to: "retrieve", label: "search", tone: "blue" },
-        { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
-        { from: "rerank", to: "answer", label: "context", tone: "green" },
-        { from: "answer", to: "verify", label: "claims", tone: "critical" },
-        { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
-      ]}
-    />
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
+  <GraphDiagram
+    width={820}
+    height={390}
+    nodes={[
+      { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
+      { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
+      { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
+      { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
+      { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
+    ]}
+    edges={[
+      { from: "query", to: "retrieve", label: "search", tone: "blue" },
+      { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
+      { from: "rerank", to: "answer", label: "context", tone: "green" },
+      { from: "answer", to: "verify", label: "claims", tone: "critical" },
+      { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
+    ]}
+  />
+</Scene>
 ```
 
 ### Evaluation dashboard
@@ -309,46 +285,36 @@ export default frame.default
 Use this for compact report figures and release decks.
 
 ```tsx
-import React from "react"
-import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+width = 1040;
+height = 620;
 
-export const width = 1040
-export const height = 620
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
-    <Row gap={18} align="stretch">
-      <BarChart
-        c={c}
-        width={440}
-        height={260}
-        title="Pass rate by task"
-        format="percent"
-        data={[
-          { label: "tools", value: 0.82, color: "positive" },
-          { label: "math", value: 0.71, color: "secondary" },
-          { label: "code", value: 0.77, color: "primary" },
-          { label: "long", value: 0.58, color: "warning" },
-        ]}
-      />
-      <LineChart
-        c={c}
-        width={440}
-        height={260}
-        title="Quality over releases"
-        format="percent"
-        labels={["v1", "v2", "v3", "v4", "v5"]}
-        series={[
-          { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
-          { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
-        ]}
-      />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
+  <Row gap={18} align="stretch">
+    <BarChart
+      width={440}
+      height={260}
+      title="Pass rate by task"
+      format="percent"
+      data={[
+        { label: "tools", value: 0.82, color: "positive" },
+        { label: "math", value: 0.71, color: "secondary" },
+        { label: "code", value: 0.77, color: "primary" },
+        { label: "long", value: 0.58, color: "warning" },
+      ]}
+    />
+    <LineChart
+      width={440}
+      height={260}
+      title="Quality over releases"
+      format="percent"
+      labels={["v1", "v2", "v3", "v4", "v5"]}
+      series={[
+        { name: "quality", points: [0.55, 0.61, 0.69, 0.74, 0.81], color: "positive", area: true },
+        { name: "latency", points: [0.72, 0.69, 0.66, 0.62, 0.59], color: "warning" },
+      ]}
+    />
+  </Row>
+</Scene>
 ```
 
 ## Agent Prompt
@@ -361,19 +327,29 @@ Vizmatic treats generated visuals as source-controlled build artifacts. CI fails
 
 | Gate | What it protects |
 |---|---|
-| `pnpm typecheck` | Type safety across `src/`, `examples/`, `scripts/`, and tests |
+| `pnpm lint` | Static TypeScript coverage across `src/`, `examples/`, `scripts/`, and tests |
 | `pnpm test` | Render pipeline behavior, watermark options, and output validation |
 | `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
-| `npm pack --dry-run` | Published package contents before release |
-| CI generated-file check | Ensures rendered docs/examples are committed |
+| `pnpm deps:check` | npm audit plus package tarball contents before release |
+| `./test.sh` drift check | Ensures render/docs commands do not create extra changes |
 
 Run the full local gate:
 
 ```bash
-pnpm verify
-git diff --exit-code
+./test.sh
 ```
+
+## Supply Chain Posture
+
+Vizmatic keeps runtime dependencies narrow: `react` for JSX frames, `satori` for JSX layout, `@resvg/resvg-js` for rasterization, `gifenc` for animated GIF output, and `tsx` so the CLI can load TSX scene files directly.
+
+Package resolution is intentionally conservative:
+
+- `minimumReleaseAge: 10080` requires timestamped package releases to age seven days before pnpm can select them.
+- `strictPeerDependencies`, `engineStrict`, and `packageManagerStrict` make install drift fail loudly.
+- `overrides.esbuild: 0.28.1` keeps the build graph on the patched esbuild line used by `tsx` and `tsup`.
+- `pnpm security:audit` runs inside `pnpm verify`, `prepublishOnly`, and CI.
 
 ## API
 
@@ -552,7 +528,7 @@ src/
   render.ts       Satori -> SVG -> resvg -> PNG
   animate.ts      ordered scene states -> GIF
   autocrop.ts     content bounds and overflow checks
-  cli.ts          vizmatic render / vizmatic gif
+  cli.ts          vizmatic file.tsx / vizmatic render / vizmatic gif
 examples/
   *.tsx           generated gallery frames
 docs/
