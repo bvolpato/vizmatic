@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
 import { existsSync } from 'fs'
-import { mkdir, readFile, readdir, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { createRequire, Module } from 'module'
+import { tmpdir } from 'os'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { isValidElement } from 'react'
 import type { ReactNode } from 'react'
+import * as publicApi from './index'
 import { renderAnimatedGif, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { renderToPng } from './render'
@@ -35,6 +37,26 @@ interface RenderArgs {
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 const cliRequire = createRequire(import.meta.url)
 let frameDependencyAliasesInstalled = false
+const BARE_FRAME_EXTRA_EXPORTS = new Set([
+    'canvas',
+    'colors',
+    'defineIllustration',
+    'getColor',
+    'getGradient',
+    'getStyles',
+    'getThemeColors',
+    'getToneColor',
+    'getToneGradient',
+    'gradients',
+    'heatColor',
+    'styles',
+    'toneGradients',
+    'typography',
+])
+const BARE_FRAME_EXPORTS = Object.keys(publicApi)
+    .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name))
+    .filter((name) => /^[A-Z]/.test(name) || BARE_FRAME_EXTRA_EXPORTS.has(name))
+    .sort()
 
 type ResolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown) => string
 
@@ -120,6 +142,17 @@ function resolveSelfEntry(): string | undefined {
     }
 }
 
+function resolveSelfImportSpecifier(): string {
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    const bundledEntry = join(moduleDir, 'index.js')
+    if (existsSync(bundledEntry)) return bundledEntry
+
+    const sourceEntry = join(moduleDir, 'index.ts')
+    if (existsSync(sourceEntry)) return sourceEntry
+
+    return 'vizmatic'
+}
+
 function resolveFrameDependency(request: string): string | undefined {
     try {
         if (request === 'vizmatic') return resolveSelfEntry()
@@ -138,6 +171,155 @@ function installFrameDependencyAliases() {
     const resolveFilename = moduleWithResolver._resolveFilename
     moduleWithResolver._resolveFilename = function resolveFrameDependencyAlias(request, parent, isMain, options) {
         return resolveFrameDependency(request) ?? resolveFilename.call(this, request, parent, isMain, options)
+    }
+}
+
+function rewriteRelativeImports(line: string, framePath: string): string {
+    const frameDir = dirname(framePath)
+    return line
+        .replace(/(from\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
+            `${before}${resolve(frameDir, specifier)}${after}`,
+        )
+        .replace(/(^\s*import\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
+            `${before}${resolve(frameDir, specifier)}${after}`,
+        )
+}
+
+function readDimensionLine(line: string): { name: 'width' | 'height'; value: number } | undefined {
+    const match = line.match(/^\s*(?:(?:\/\/\s*)?)(?:export\s+)?(?:(?:const|let|var)\s+)?(width|height)\s*[:=]\s*(\d+)\s*;?\s*$/i)
+    if (!match?.[1] || !match[2]) return undefined
+    return { name: match[1].toLowerCase() as 'width' | 'height', value: Number(match[2]) }
+}
+
+function readFrameDimension(jsx: string, name: 'width' | 'height'): number | undefined {
+    const frameOpen = jsx.match(/<Frame\b[^>]*>/)?.[0]
+    const value = frameOpen?.match(new RegExp(`${name}\\s*=\\s*(?:{(\\d+)}|"(\\d+)"|'(\\d+)'|(\\d+))`))
+    const raw = value?.[1] ?? value?.[2] ?? value?.[3] ?? value?.[4]
+    return raw ? Number(raw) : undefined
+}
+
+function findRootJsxStart(source: string): number {
+    const match = source.match(/(^|\n)\s*(?:export\s+default\s+)?<(?:[A-Z]|\>)/)
+    if (!match || match.index == null) return -1
+    return match.index + (match[1] ? match[1].length : 0)
+}
+
+function bareFrameAlias(name: string): string {
+    return `__Vizmatic_${name}`
+}
+
+function bareFrameExportsForSource(source: string): string[] {
+    return BARE_FRAME_EXPORTS.filter((name) => {
+        if (name === 'getThemeColors') return true
+        if (/^[A-Z]/.test(name)) return new RegExp(`<\\/?${name}(?:\\s|>|/)`).test(source)
+        return new RegExp(`\\b${name}\\b`).test(source)
+    })
+}
+
+function buildAutoImportStatement(names: string[]): string {
+    const specifiers = names.map((name) => `${name} as ${bareFrameAlias(name)}`).join(',\n    ')
+    return `import {\n    ${specifiers}\n} from '${resolveSelfImportSpecifier()}'`
+}
+
+function buildAutoImportDeclarations(names: string[]): string {
+    return names.map((name) => {
+        if (/^[A-Z]/.test(name)) return `const ${name} = __withTheme(${bareFrameAlias(name)});`
+        return `const ${name} = ${bareFrameAlias(name)};`
+    }).join('\n')
+}
+
+function buildBareFrameModule(framePath: string, source: string): string | undefined {
+    const imports: string[] = []
+    const bodyLines: string[] = []
+    let width: number | undefined
+    let height: number | undefined
+
+    for (const line of source.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (trimmed.startsWith('import ')) {
+            if (!/['"](?:react|vizmatic)['"]/.test(trimmed)) {
+                imports.push(rewriteRelativeImports(line, framePath))
+            }
+            continue
+        }
+
+        const dimension = readDimensionLine(line)
+        if (dimension) {
+            if (dimension.name === 'width') width = dimension.value
+            if (dimension.name === 'height') height = dimension.value
+            continue
+        }
+
+        bodyLines.push(line)
+    }
+
+    const body = bodyLines.join('\n')
+    const jsxStart = findRootJsxStart(body)
+    if (jsxStart < 0) return undefined
+
+    const setup = body.slice(0, jsxStart).replace(/^\s*export\s+/gm, '')
+    const jsx = body.slice(jsxStart).trim()
+        .replace(/^export\s+default\s+/, '')
+        .replace(/;\s*$/, '')
+
+    width ??= readFrameDimension(jsx, 'width') ?? 960
+    height ??= readFrameDimension(jsx, 'height') ?? 540
+    const autoImports = bareFrameExportsForSource(body)
+
+    return `import React from 'react'
+${buildAutoImportStatement(autoImports)}
+${imports.join('\n')}
+
+let __theme = __Vizmatic_getThemeColors('dark')
+function __withTheme(Component) {
+    return function VizmaticAutoTheme(props) {
+        return React.createElement(Component, props?.c ? props : { ...props, c: __theme })
+    }
+}
+const Frame = ({ children }) => React.createElement(React.Fragment, null, children)
+${buildAutoImportDeclarations(autoImports)}
+
+export const width = ${width}
+export const height = ${height}
+
+export function create(theme = 'dark') {
+    __theme = __Vizmatic_getThemeColors(theme)
+    const c = __theme
+${setup}
+    return (${jsx})
+}
+
+export default create('dark')
+`
+}
+
+function isBareFrameSource(source: string): boolean {
+    if (/\bdefineIllustration\s*\(/.test(source)) return false
+    if (/\bcreateScenes\s*\(/.test(source)) return false
+    if (/\bexport\s+(?:const|function)\s+create\b/.test(source)) return false
+
+    const body = source.split(/\r?\n/)
+        .filter((line) => !line.trim().startsWith('import '))
+        .filter((line) => !readDimensionLine(line))
+        .join('\n')
+
+    return findRootJsxStart(body) >= 0
+}
+
+async function importBareFrame(filePath: string, source?: string): Promise<FrameModule | undefined> {
+    source ??= await readFile(filePath, 'utf8')
+    const moduleSource = buildBareFrameModule(filePath, source)
+    if (!moduleSource) return undefined
+
+    const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-frame-'))
+    const tempPath = join(tempDir, `${basename(filePath).replace(/\.[^.]+$/, '')}.generated.tsx`)
+    await writeFile(tempPath, `${moduleSource}\n`)
+
+    try {
+        const { tsImport } = await import('tsx/esm/api')
+        return await tsImport<FrameModule>(pathToFileURL(tempPath).href, import.meta.url)
+    } finally {
+        await rm(tempDir, { recursive: true, force: true })
     }
 }
 
@@ -288,10 +470,25 @@ async function importFrame(filePath: string): Promise<FrameModule> {
     const url = pathToFileURL(filePath).href
     try {
         return await import(url) as FrameModule
-    } catch (error) {
-        if (!RENDER_EXTENSIONS.has(extname(filePath))) throw error
+    } catch (nativeError) {
+        if (!RENDER_EXTENSIONS.has(extname(filePath))) throw nativeError
+        const source = await readFile(filePath, 'utf8')
+        const isBareFrame = isBareFrameSource(source)
+        if (isBareFrame) {
+            const bareFrame = await importBareFrame(filePath, source)
+            if (bareFrame) return bareFrame
+        }
+
         const { tsImport } = await import('tsx/esm/api')
-        return await tsImport<FrameModule>(url, import.meta.url)
+        try {
+            return await tsImport<FrameModule>(url, import.meta.url)
+        } catch (tsxError) {
+            if (!isBareFrame) {
+                const bareFrame = await importBareFrame(filePath, source)
+                if (bareFrame) return bareFrame
+            }
+            throw tsxError
+        }
     }
 }
 

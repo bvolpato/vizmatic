@@ -37,7 +37,7 @@ Use Vizmatic as a one-off binary without touching `package.json`:
 pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
-Frame files can import `react` and `vizmatic`; the CLI resolves those from its own package runtime in `dlx`/`npx` mode.
+Bare CLI frames auto-import Vizmatic primitives and inject theme colors. Use normal imports when a frame needs helpers, data loading, custom dependencies, or direct renderer APIs.
 
 Install it when you want project scripts, editor types, or direct renderer APIs:
 
@@ -54,27 +54,18 @@ pnpm add github:bvolpato/vizmatic react
 Create a frame:
 
 ```tsx
-import React from "react"
-import { defineIllustration, Flow, Scene } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Agent visual pipeline">
-    <Flow
-      c={c}
-      stages={[
-        { title: "Prompt", subtitle: "intent", tone: "blue" },
-        { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
-        { title: "PNG / SVG / GIF", subtitle: "rendered artifact", tone: "green" },
-      ]}
-    />
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Agent visual pipeline">
+  <Flow
+    stages={[
+      { title: "Prompt", subtitle: "intent", tone: "blue" },
+      { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
+      { title: "PNG / SVG / GIF", subtitle: "rendered artifact", tone: "green" },
+    ]}
+  />
+</Scene>
 ```
 
 Render it:
@@ -161,23 +152,16 @@ More examples live in [`examples/`](examples) and on the [website](https://bvolp
 Use this for small docs snippets and quick agent-generated frames.
 
 ```tsx
-import { defineIllustration, Flow, Scene } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) =>
-  <Scene c={c} title="Agent pipeline">
-    <Flow c={c} stages={[
-      { title: "Prompt", tone: "blue" },
-      { title: "Scene spec", tone: "purple" },
-      { title: "PNG / GIF", tone: "green" },
-    ]} />
-  </Scene>
-)
-
-export const create = frame.create
-export default frame.default
+<Scene title="Agent pipeline">
+  <Flow stages={[
+    { title: "Prompt", tone: "blue" },
+    { title: "Scene spec", tone: "purple" },
+    { title: "PNG / GIF", tone: "green" },
+  ]} />
+</Scene>
 ```
 
 ### Flow + callouts
@@ -185,33 +169,24 @@ export default frame.default
 Use this for process diagrams, architecture walkthroughs, and agent pipelines.
 
 ```tsx
-import React from "react"
-import { CalloutCard, defineIllustration, Flow, Row, Scene } from "vizmatic"
+width = 1040
+height = 560
 
-export const width = 1040
-export const height = 560
-
-const frame = defineIllustration((c) => (
-  <Scene c={c} title="Agent visual pipeline" subtitle="prompt -> scene spec -> verified artifact" gap={26}>
-    <Flow
-      c={c}
-      connectorTone="purple"
-      stages={[
-        { eyebrow: "input", title: "Prompt", subtitle: "intent", tone: "blue", lines: ["goal", "audience", "constraints"], width: 190 },
-        { eyebrow: "contract", title: "Scene spec", subtitle: "typed structure", tone: "purple", lines: ["cards", "flows", "charts"], width: 190 },
-        { eyebrow: "render", title: "Satori", subtitle: "React primitives", tone: "cyan", lines: ["layout", "theme", "safe text"], width: 190 },
-        { eyebrow: "output", title: "PNG / GIF", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
-      ]}
-    />
-    <Row width="100%" gap={14}>
-      <CalloutCard c={c} title="Model writes structure" detail="No hand-written SVG paths." tone="purple" width={470} />
-      <CalloutCard c={c} title="Theme stays in control" detail="Colors and typography come from tokens." tone="green" width={470} />
-    </Row>
-  </Scene>
-))
-
-export const create = frame.create
-export default frame.default
+<Scene title="Agent visual pipeline" subtitle="prompt -> scene spec -> verified artifact" gap={26}>
+  <Flow
+    connectorTone="purple"
+    stages={[
+      { eyebrow: "input", title: "Prompt", subtitle: "intent", tone: "blue", lines: ["goal", "audience", "constraints"], width: 190 },
+      { eyebrow: "contract", title: "Scene spec", subtitle: "typed structure", tone: "purple", lines: ["cards", "flows", "charts"], width: 190 },
+      { eyebrow: "render", title: "Satori", subtitle: "React primitives", tone: "cyan", lines: ["layout", "theme", "safe text"], width: 190 },
+      { eyebrow: "output", title: "PNG / GIF", subtitle: "verified asset", tone: "green", lines: ["autocrop", "overflow checks"], width: 190 },
+    ]}
+  />
+  <Row width="100%" gap={14}>
+    <CalloutCard title="Model writes structure" detail="No hand-written SVG paths." tone="purple" width={470} />
+    <CalloutCard title="Theme stays in control" detail="Colors and typography come from tokens." tone="green" width={470} />
+  </Row>
+</Scene>
 ```
 
 ### Animated GIF

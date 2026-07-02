@@ -149,4 +149,48 @@ export default frame.default
             await rm(outDir, { recursive: true, force: true })
         }
     }, 30_000)
+
+    it('renders a bare TSX frame through the CLI without imports or theme wiring', async () => {
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-bare-cli-'))
+        const framePath = join(outDir, 'bare-frame.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(framePath, `width = 520
+height = 300
+
+<Scene title="Bare frame" subtitle="CLI adds imports and theme">
+    <Row gap={12} width="100%">
+        <StepCard title="No imports" subtitle="binary render" tone="green" />
+        <CalloutCard title="No c prop" detail="Theme is injected automatically." tone="purple" width={220} />
+    </Row>
+</Scene>
+`)
+
+            const result = spawnSync(process.execPath, [
+                '--import',
+                'tsx',
+                'src/cli.ts',
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'dark',
+            ], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            expect(result.stdout).toContain('rendered')
+
+            const buffer = await readFile(join(renderDir, 'bare-frame_dark.png'))
+            expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
+            expect(manifest[0]).toMatchObject({ width: 520, height: 300 })
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
 })
