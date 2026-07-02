@@ -1013,9 +1013,18 @@ footer a {
 
   .nav {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px 12px;
     align-items: center;
+  }
+
+  .brand {
+    min-width: 0;
+  }
+
+  .brand span {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .nav-actions {
@@ -1040,6 +1049,11 @@ footer a {
     grid-column: 2;
     grid-row: 1;
     justify-self: end;
+  }
+
+  .theme-toggle button {
+    padding: 0 9px;
+    font-size: 11px;
   }
 
   h1 {

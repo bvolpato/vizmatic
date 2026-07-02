@@ -18,7 +18,7 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
    ```bash
    pnpm add vizmatic react
    ```
-3. Create a bare `.tsx` frame by default: set `width` and `height`, then write JSX directly. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, or animation exports.
+3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and auto-grows omitted axes on overflow. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports.
 4. Choose primitives by intent. Read `references/patterns.md` when deciding component structure.
 5. Render dark and light outputs:
    ```bash
@@ -27,6 +27,10 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
    For directories:
    ```bash
    vizmatic frames --out ./public/vizmatic --theme dark,light
+   ```
+   PNG/SVG renders use alpha-transparent backgrounds by default. For full-frame theme fill, render with:
+   ```bash
+   vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
 6. For GIFs, export `createScenes(theme)` from a full module and render:
    ```bash
@@ -44,6 +48,8 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
 
 - Use supported tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
 - Render both `dark` and `light` unless the user asks for one theme.
+- Prefer alpha-transparent PNG/SVG backgrounds for blog posts and docs cards. Use `--background theme` or `<Scene background={c.bg}>` only when the destination needs opaque theme fill.
+- Omit dimensions for exploratory CLI frames when content density is uncertain; use explicit dimensions for deterministic final assets.
 - Keep labels short. Prefer cards, rows, grids, and tables that wrap safely.
 - Use Vizmatic charts for data summaries instead of screenshotting tables.
 - Keep presentation frames dense and inspectable. Avoid marketing-style filler.

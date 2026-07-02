@@ -8,6 +8,7 @@ declare global {
     var width: number
     var height: number
 
+    const c: import('../src').ThemeColors
     const BarChart: AutoTheme<typeof import('../src').BarChart>
     const CalloutCard: AutoTheme<typeof import('../src').CalloutCard>
     const Column: AutoTheme<typeof import('../src').Column>

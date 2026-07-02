@@ -44,6 +44,14 @@ Then render any frame directly:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
+PNG and SVG renders use an alpha-transparent canvas by default. Add `--background theme` when the output needs the actual dark/light theme fill:
+
+```bash
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --background theme
+```
+
+If a CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows omitted axes when overflow is detected. Explicit dimensions stay strict and fail on clipping.
+
 Bare CLI frames auto-import Vizmatic primitives and inject theme colors. Use normal imports when a frame needs helpers, data loading, custom dependencies, or direct renderer APIs.
 
 Install it in the project when you want scripts, editor types, or direct renderer APIs:
@@ -151,6 +159,8 @@ Render it:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
 ```
 
+The PNG canvas is alpha-transparent by default. Use `--background theme` for an opaque theme-colored frame, or set `background={c.bg}` on `Scene` / `Canvas`.
+
 Render an animation:
 
 ```bash
@@ -167,6 +177,7 @@ await renderToPng(create("dark"), {
   width,
   height,
   outputPath: "dist/agent-pipeline.png",
+  background: "theme", // omit for alpha-transparent output
   watermark: { text: "Acme", image: "data:image/svg+xml;base64,...", position: "top-right" },
 })
 ```
@@ -452,7 +463,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | Component | Use |
 |---|---|
 | `defineIllustration` | Wraps a theme-aware frame builder and exports `create(theme)` plus a default element. |
-| `Canvas` | Low-level full-frame root with background, padding, and vertical alignment. |
+| `Canvas` | Low-level full-frame root with alpha-transparent default background, optional background fill, padding, and vertical alignment. |
 | `Scene` | Standard frame wrapper with title, subtitle, content column, and theme-aware typography. |
 | `TitleBar` | Shared title/subtitle block used by `Scene`. |
 | `Row` / `Column` | Flex layout primitives with gap, alignment, wrapping, width, and height props. |
@@ -558,13 +569,14 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
-`renderToPng` renders at 2x scale by default, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
+`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
 
 ```ts
 await renderToPng(element, {
   width: 1040,
   height: 560,
   outputPath: "dist/frame.png",
+  background: "theme",
   watermark: { text: "Your Product", image: "https://example.com/logo.svg", position: "top-right" },
   crop: true,
   scale: 2,

@@ -90,6 +90,14 @@
     ]
   },
   {
+    "name": "theme-background",
+    "source": "examples/theme-background.tsx",
+    "outputs": [
+      "theme-background_dark.png",
+      "theme-background_light.png"
+    ]
+  },
+  {
     "name": "theme-system",
     "source": "examples/theme-system.tsx",
     "outputs": [
@@ -103,6 +111,14 @@
     "outputs": [
       "token-matrix_dark.png",
       "token-matrix_light.png"
+    ]
+  },
+  {
+    "name": "transparent-badge",
+    "source": "examples/transparent-badge.tsx",
+    "outputs": [
+      "transparent-badge_dark.png",
+      "transparent-badge_light.png"
     ]
   }
 ]

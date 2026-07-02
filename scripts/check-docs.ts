@@ -64,6 +64,17 @@ if (!html.includes('Final answer checklist') || !html.includes('any overflow or 
     fail('homepage prompt preview must include full PROMPT.md')
 }
 
+for (const required of [
+    'alpha-transparent',
+    '--background theme',
+    'background={c.bg}',
+    'auto-grow',
+]) {
+    if (!rootPrompt.includes(required) || !html.includes(required)) {
+        fail(`docs must mention background mode: ${required}`)
+    }
+}
+
 const skill = await readFile(skillPath, 'utf8')
 if (!skill.includes('name: vizmatic') || !skill.includes('Create polished theme-aware diagrams')) {
     fail('Vizmatic skill frontmatter is missing required metadata')

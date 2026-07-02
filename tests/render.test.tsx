@@ -3,8 +3,21 @@ import { spawnSync } from 'child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { inflateSync } from 'zlib'
 import { describe, expect, it, vi } from 'vitest'
-import { defineIllustration, renderAnimatedGif, renderToBuffer, Scene, StepCard, getThemeColors, Watermark, wrapWithWatermark } from '../src'
+import {
+    defineIllustration,
+    detectBackgroundColor,
+    detectContentBounds,
+    detectOverflow,
+    getThemeColors,
+    renderAnimatedGif,
+    renderToBuffer,
+    Scene,
+    StepCard,
+    Watermark,
+    wrapWithWatermark,
+} from '../src'
 
 let packageBuilt = false
 
@@ -19,7 +32,134 @@ function ensurePackageBuild() {
     packageBuilt = true
 }
 
+function decodePng(buffer: Buffer): { width: number; height: number; pixels: Uint8Array } {
+    expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+
+    let offset = 8
+    let width = 0
+    let height = 0
+    let bitDepth = 0
+    let colorType = 0
+    const idat: Buffer[] = []
+
+    while (offset < buffer.length) {
+        const length = buffer.readUInt32BE(offset)
+        const type = buffer.subarray(offset + 4, offset + 8).toString('ascii')
+        const data = buffer.subarray(offset + 8, offset + 8 + length)
+        offset += length + 12
+
+        if (type === 'IHDR') {
+            width = data.readUInt32BE(0)
+            height = data.readUInt32BE(4)
+            bitDepth = data[8]
+            colorType = data[9]
+        } else if (type === 'IDAT') {
+            idat.push(data)
+        } else if (type === 'IEND') {
+            break
+        }
+    }
+
+    expect(bitDepth).toBe(8)
+    expect(colorType).toBe(6)
+
+    const bytesPerPixel = 4
+    const stride = width * bytesPerPixel
+    const inflated = inflateSync(Buffer.concat(idat))
+    const pixels = new Uint8Array(width * height * bytesPerPixel)
+    let sourceOffset = 0
+    let previous = new Uint8Array(stride)
+
+    for (let y = 0; y < height; y++) {
+        const filter = inflated[sourceOffset++]
+        const row = inflated.subarray(sourceOffset, sourceOffset + stride)
+        sourceOffset += stride
+        const outOffset = y * stride
+
+        for (let x = 0; x < stride; x++) {
+            const left = x >= bytesPerPixel ? pixels[outOffset + x - bytesPerPixel] : 0
+            const up = previous[x]
+            const upLeft = x >= bytesPerPixel ? previous[x - bytesPerPixel] : 0
+            const raw = row[x]
+            let value: number
+
+            if (filter === 0) {
+                value = raw
+            } else if (filter === 1) {
+                value = raw + left
+            } else if (filter === 2) {
+                value = raw + up
+            } else if (filter === 3) {
+                value = raw + Math.floor((left + up) / 2)
+            } else if (filter === 4) {
+                const p = left + up - upLeft
+                const pa = Math.abs(p - left)
+                const pb = Math.abs(p - up)
+                const pc = Math.abs(p - upLeft)
+                value = raw + (pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft)
+            } else {
+                throw new Error(`unsupported PNG filter ${filter}`)
+            }
+
+            pixels[outOffset + x] = value & 0xff
+        }
+
+        previous = pixels.subarray(outOffset, outOffset + stride)
+    }
+
+    return { width, height, pixels }
+}
+
+function pixelAt(image: { width: number; pixels: Uint8Array }, x: number, y: number): [number, number, number, number] {
+    const offset = (y * image.width + x) * 4
+    return [
+        image.pixels[offset],
+        image.pixels[offset + 1],
+        image.pixels[offset + 2],
+        image.pixels[offset + 3],
+    ]
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+    const value = hex.startsWith('#') ? hex.slice(1) : hex
+    return [
+        parseInt(value.slice(0, 2), 16),
+        parseInt(value.slice(2, 4), 16),
+        parseInt(value.slice(4, 6), 16),
+    ]
+}
+
 describe('vizmatic render pipeline', () => {
+    it('keeps opaque black content visible on transparent backgrounds', () => {
+        const width = 12
+        const height = 12
+        const pixels = new Uint8Array(width * height * 4)
+
+        for (let y = 4; y < 8; y++) {
+            for (let x = 4; x < 8; x++) {
+                const offset = (y * width + x) * 4
+                pixels[offset] = 0
+                pixels[offset + 1] = 0
+                pixels[offset + 2] = 0
+                pixels[offset + 3] = 255
+            }
+        }
+
+        const bg = detectBackgroundColor(pixels)
+        expect(bg).toBe('transparent')
+        expect(detectContentBounds(pixels, width, height, bg, 0)).toEqual({ x: 4, y: 4, width: 4, height: 4 })
+        expect(detectOverflow(pixels, width, height, bg).overflows).toBe(false)
+
+        for (let y = 0; y < height; y++) {
+            const offset = y * width * 4
+            pixels[offset + 3] = 255
+        }
+
+        const overflow = detectOverflow(pixels, width, height, bg)
+        expect(overflow.overflows).toBe(true)
+        expect(overflow.edges.left).toBe(true)
+    })
+
     it('renders with vendored fonts and emoji without network fetches', async () => {
         const fetchMock = vi.fn(async () => {
             throw new Error('network disabled in test')
@@ -51,6 +191,30 @@ describe('vizmatic render pipeline', () => {
         const buffer = await renderToBuffer(frame.create('dark'), 720, 420)
         expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
         expect(buffer.length).toBeGreaterThan(10_000)
+    }, 30_000)
+
+    it('renders alpha-transparent PNG backgrounds by default', async () => {
+        const frame = defineIllustration((c) => (
+            <Scene c={c} title="Transparent default">
+                <StepCard c={c} title="Alpha" subtitle="no canvas fill" tone="green" />
+            </Scene>
+        ))
+
+        const buffer = await renderToBuffer(frame.create('dark'), 520, 320, { scale: 1 })
+        const image = decodePng(buffer)
+        expect(pixelAt(image, 0, 0)[3]).toBe(0)
+    }, 30_000)
+
+    it('renders the theme background when requested', async () => {
+        const frame = defineIllustration((c) => (
+            <Scene c={c} title="Opaque theme">
+                <StepCard c={c} title="Theme" subtitle="canvas fill" tone="purple" />
+            </Scene>
+        ))
+
+        const buffer = await renderToBuffer(frame.create('dark'), 520, 320, { scale: 1, background: 'theme' })
+        const image = decodePng(buffer)
+        expect(pixelAt(image, 0, 0)).toEqual([...hexToRgb(getThemeColors('dark').bg), 255])
     }, 30_000)
 
     it('renders through the built CommonJS entrypoint with packaged assets outside the repo cwd', async () => {
@@ -274,6 +438,88 @@ height = 300;
         }
     }, 30_000)
 
+    it('auto-expands omitted CLI dimensions when content overflows', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-auto-size-cli-'))
+        const framePath = join(outDir, 'auto-size.tsx')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await writeFile(framePath, `<Scene title="Auto-sized frame" subtitle="dimensions omitted">
+    <Row gap={18} width="100%" justify="center">
+        <CalloutCard title="First wide panel" detail="Default width would overflow." tone="blue" width={470} />
+        <CalloutCard title="Second wide panel" detail="The CLI grows width." tone="purple" width={470} />
+        <CalloutCard title="Third wide panel" detail="The render succeeds." tone="green" width={470} />
+    </Row>
+</Scene>
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            const buffer = await readFile(join(renderDir, 'auto-size_light.png'))
+            expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
+            expect(manifest[0]?.width).toBeGreaterThan(960)
+            expect(manifest[0]?.height).toBe(540)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('keeps explicit CLI dimensions strict when content overflows', async () => {
+        ensurePackageBuild()
+
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-explicit-overflow-cli-'))
+        const framePath = join(outDir, 'explicit-overflow.tsx')
+        const renderDir = join(outDir, 'renders')
+        const packageRoot = process.cwd()
+
+        try {
+            await writeFile(framePath, `width = 960
+height = 540
+
+<Scene title="Explicit frame" subtitle="dimensions should stay strict">
+    <Row gap={18} width="100%" justify="center">
+        <CalloutCard title="First wide panel" detail="Default width overflows." tone="blue" width={470} />
+        <CalloutCard title="Second wide panel" detail="No auto-grow." tone="purple" width={470} />
+        <CalloutCard title="Third wide panel" detail="Surface the error." tone="green" width={470} />
+    </Row>
+</Scene>
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(result.status).not.toBe(0)
+            expect(result.stderr || result.stdout).toContain('Canvas overflow detected')
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
     it('renders a bare TSX frame through the built CLI outside the repo cwd', async () => {
         ensurePackageBuild()
 
@@ -319,6 +565,26 @@ const detail = 'package-owned imports'
 
             const buffer = await readFile(join(renderDir, 'bare-global_light.png'))
             expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+            expect(pixelAt(decodePng(buffer), 0, 0)[3]).toBe(0)
+
+            const opaqueRenderDir = join(outDir, 'opaque-renders')
+            const opaqueResult = spawnSync(process.execPath, [
+                join(packageRoot, 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                opaqueRenderDir,
+                '--theme',
+                'dark',
+                '--background',
+                'theme',
+            ], {
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+
+            expect(opaqueResult.status, opaqueResult.stderr || opaqueResult.stdout).toBe(0)
+            const opaqueBuffer = await readFile(join(opaqueRenderDir, 'bare-global_dark.png'))
+            expect(pixelAt(decodePng(opaqueBuffer), 0, 0)).toEqual([...hexToRgb(getThemeColors('dark').bg), 255])
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }

@@ -35,6 +35,7 @@
       <div class="nav-links">
         <a href="#gallery" data-nav-link>Gallery</a>
         <a href="#api" data-nav-link>API</a>
+        <a href="#backgrounds" data-nav-link>Backgrounds</a>
         <a href="#gif" data-nav-link>GIF</a>
         <a href="#recipes" data-nav-link>Recipes</a>
         <a href="#prompt" data-nav-link>Prompt</a>
@@ -75,7 +76,7 @@
 
   <main>
     <section class="metrics">
-      <div><strong>13</strong><span>example frames</span></div>
+      <div><strong>15</strong><span>example frames</span></div>
       <div><strong>2x</strong><span>retina PNG output</span></div>
       <div><strong>GIF</strong><span>animated export</span></div>
       <div><strong>2</strong><span>built-in themes</span></div>
@@ -101,6 +102,8 @@
         <article class="gallery-card" data-source="research-landscape"><div class="media-wrap"><img data-theme-image src="assets/examples/research-landscape_dark.png" alt="Research landscape frame"><button class="source-button" type="button" data-source="research-landscape" aria-label="View source for research landscape"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div><h3>Research landscape</h3></article>
         <article class="gallery-card" data-source="release-card"><div class="media-wrap"><img data-theme-image src="assets/examples/release-card_dark.png" alt="Release card frame"><button class="source-button" type="button" data-source="release-card" aria-label="View source for release card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div><h3>Release card</h3></article>
         <article class="gallery-card" data-source="agent-pipeline"><div class="media-wrap"><img data-theme-image src="assets/examples/agent-pipeline_dark.png" alt="Agent pipeline frame"><button class="source-button" type="button" data-source="agent-pipeline" aria-label="View source for agent pipeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div><h3>Agent pipeline</h3></article>
+        <article class="gallery-card" data-source="transparent-badge"><div class="media-wrap"><img data-theme-image src="assets/examples/transparent-badge_dark.png" alt="Transparent PNG badge frame"><button class="source-button" type="button" data-source="transparent-badge" aria-label="View source for transparent PNG badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div><h3>Transparent badge</h3></article>
+        <article class="gallery-card" data-source="theme-background"><div class="media-wrap"><img data-theme-image src="assets/examples/theme-background_dark.png" alt="Opaque theme background frame"><button class="source-button" type="button" data-source="theme-background" aria-label="View source for opaque theme background"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div><h3>Theme background</h3></article>
       </div>
     </section>
 
@@ -120,6 +123,19 @@ height = 560;
       { title: "PNG / GIF", tone: "green" },
     ]} /&gt;
 &lt;/Scene&gt;</code></pre>
+    </section>
+
+    <section id="backgrounds" class="section split">
+      <div class="section-head compact">
+        <span>Backgrounds</span>
+        <h2>Alpha by default, theme fill when requested.</h2>
+        <p>PNG and SVG renders keep the canvas transparent unless a frame sets <code>background={c.bg}</code> or the render command asks for one. Omitted CLI dimensions start at <code>960x540</code> and auto-grow on overflow; explicit sizes stay strict.</p>
+      </div>
+      <pre data-shiki="bash"><code># alpha-transparent PNG
+vizmatic ./badge.tsx --out ./dist/frames --theme dark,light
+
+# opaque theme background
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --background theme</code></pre>
     </section>
 
     <section id="gif" class="section gif-showcase">

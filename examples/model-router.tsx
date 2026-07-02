@@ -1,5 +1,5 @@
 width = 1040;
-height = 560;
+height = 620;
 
 <Scene title="Model routing board" subtitle="operational diagrams without custom drawing code" gap={18}>
     <Row gap={18} align="stretch">

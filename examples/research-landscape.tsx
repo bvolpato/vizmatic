@@ -1,5 +1,5 @@
 width = 1040;
-height = 560;
+height = 620;
 
 <Scene title="Research landscape" subtitle="scatterplots stay legible without hand-placed labels" align="center">
     <ScatterPlot

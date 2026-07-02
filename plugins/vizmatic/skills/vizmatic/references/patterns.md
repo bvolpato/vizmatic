@@ -12,6 +12,8 @@
 
 ## Bare Static Frame
 
+Omit dimensions during exploration if content size is uncertain; the CLI starts at `960x540` and grows omitted axes on overflow. Add explicit dimensions when final output size matters.
+
 ```tsx
 width = 1040;
 height = 560;
@@ -55,7 +57,12 @@ export default create("dark")
 ## Render Commands
 
 ```bash
+# alpha-transparent PNG/SVG background
 vizmatic ./frames/frame.tsx --out ./public/vizmatic --theme dark,light
+
+# opaque theme background
+vizmatic ./frames/frame.tsx --out ./public/vizmatic --theme dark,light --background theme
+
 vizmatic frames --out ./public/vizmatic --theme dark,light --watermark "Product"
 vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --scale 1
 ```

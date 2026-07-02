@@ -22,9 +22,8 @@ export interface CropRegion {
 /**
  * Detect background color from top-left corner pixel.
  *
- * Transparent canvases still rely on alpha-based background detection, so the
- * exact RGB value is only relevant when the illustration paints an opaque root
- * background.
+ * Transparent canvases are tracked separately so opaque black content is not
+ * mistaken for a transparent background.
  */
 export function detectBackgroundColor(pixels: Uint8Array): string {
     const r = pixels[0]
@@ -33,7 +32,7 @@ export function detectBackgroundColor(pixels: Uint8Array): string {
     const a = pixels[3]
 
     if (a < 10) {
-        return '#000000'
+        return 'transparent'
     }
 
     return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
@@ -55,20 +54,22 @@ function parseHexColor(hex: string): [number, number, number] {
  * Check if a pixel (RGBA) matches the background color within a tolerance.
  * This accounts for anti-aliasing and sub-pixel rendering.
  */
-function isBackground(
-    r: number, g: number, b: number, a: number,
-    bgR: number, bgG: number, bgB: number,
-    tolerance: number = 6,
-): boolean {
-    // Fully transparent pixels are considered background
-    if (a < 10) return true
+function createBackgroundMatcher(bgColor: string, tolerance: number = 6) {
+    if (bgColor === 'transparent') {
+        return (_r: number, _g: number, _b: number, a: number) => a < 10
+    }
 
-    // Compare to background color
-    return (
-        Math.abs(r - bgR) <= tolerance &&
-        Math.abs(g - bgG) <= tolerance &&
-        Math.abs(b - bgB) <= tolerance
-    )
+    const [bgR, bgG, bgB] = parseHexColor(bgColor)
+
+    return (r: number, g: number, b: number, a: number): boolean => {
+        if (a < 10) return true
+
+        return (
+            Math.abs(r - bgR) <= tolerance &&
+            Math.abs(g - bgG) <= tolerance &&
+            Math.abs(b - bgB) <= tolerance
+        )
+    }
 }
 
 /**
@@ -88,7 +89,7 @@ export function detectContentBounds(
     bgColor: string,
     padding: number = 20,
 ): CropRegion {
-    const [bgR, bgG, bgB] = parseHexColor(bgColor)
+    const isBackground = createBackgroundMatcher(bgColor)
 
     let minX = width
     let minY = height
@@ -104,7 +105,7 @@ export function detectContentBounds(
             const b = pixels[idx + 2]
             const a = pixels[idx + 3]
 
-            if (!isBackground(r, g, b, a, bgR, bgG, bgB)) {
+            if (!isBackground(r, g, b, a)) {
                 if (x < minX) minX = x
                 if (x > maxX) maxX = x
                 if (y < minY) minY = y
@@ -202,7 +203,7 @@ export function detectOverflow(
     minDensity: number = 0.05,
     alphaThreshold: number = 128,
 ): OverflowResult {
-    const [bgR, bgG, bgB] = parseHexColor(bgColor)
+    const isBackground = createBackgroundMatcher(bgColor)
 
     function isContentPixel(x: number, y: number): boolean {
         const idx = (y * width + x) * 4
@@ -210,10 +211,7 @@ export function detectOverflow(
         // Ignore semi-transparent pixels (shadows, anti-aliasing) at edges.
         // Only substantially opaque pixels (alpha >= threshold) count as content.
         if (a < alphaThreshold) return false
-        return !isBackground(
-            pixels[idx], pixels[idx + 1], pixels[idx + 2], a,
-            bgR, bgG, bgB,
-        )
+        return !isBackground(pixels[idx], pixels[idx + 1], pixels[idx + 2], a)
     }
 
     function checkEdge(

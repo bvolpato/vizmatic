@@ -20,7 +20,10 @@ import { fileURLToPath } from 'url'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow } from './autocrop'
+import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori, type Font } from './satori'
+
+export type { RenderBackground } from './renderContext'
 
 // ─── Font Loading ────────────────────────────────────────────────────────────
 
@@ -307,6 +310,8 @@ export interface RenderOptions {
     crop?: boolean
     /** Retina output scale. */
     scale?: number
+    /** Root background for Vizmatic primitives. Defaults to alpha-transparent PNG/SVG output. */
+    background?: RenderBackground
 }
 
 function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): WatermarkInput | undefined {
@@ -329,6 +334,17 @@ function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): 
  * @param theme - Theme mode for re-rendering (if createFn provided)
  */
 export async function renderToPng(
+    element: ReactNode,
+    options: RenderOptions,
+    createFn?: (theme: 'dark' | 'light') => ReactNode,
+    theme?: 'dark' | 'light',
+): Promise<void> {
+    return withRenderContext({ background: options.background ?? 'transparent' }, () =>
+        renderToPngInContext(element, options, createFn, theme)
+    )
+}
+
+async function renderToPngInContext(
     element: ReactNode,
     options: RenderOptions,
     createFn?: (theme: 'dark' | 'light') => ReactNode,
@@ -446,7 +462,18 @@ export async function renderToBuffer(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background'> = {},
+): Promise<Buffer> {
+    return withRenderContext({ background: options.background ?? 'transparent' }, () =>
+        renderToBufferInContext(element, width, height, options)
+    )
+}
+
+async function renderToBufferInContext(
+    element: ReactNode,
+    width: number,
+    height: number,
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background'>,
 ): Promise<Buffer> {
     const fonts = await getFonts()
     const watermark = resolveWatermark(options)
@@ -472,6 +499,7 @@ export async function renderToBuffer(
 
     const resvg = new Resvg(svg, {
         fitTo: { mode: 'width', value: width * (options.scale ?? 2) },
+        background: 'rgba(0, 0, 0, 0)',
     })
 
     const pngData = resvg.render()
@@ -485,7 +513,18 @@ export async function renderToSvg(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background'> = {},
+): Promise<string> {
+    return withRenderContext({ background: options.background ?? 'transparent' }, () =>
+        renderToSvgInContext(element, width, height, options)
+    )
+}
+
+async function renderToSvgInContext(
+    element: ReactNode,
+    width: number,
+    height: number,
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background'>,
 ): Promise<string> {
     const fonts = await getFonts()
     const watermark = resolveWatermark(options)

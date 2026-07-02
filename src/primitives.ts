@@ -26,6 +26,7 @@ import {
     getToneColor,
     getToneGradient,
 } from './theme'
+import { getRenderBackground } from './renderContext'
 
 export type IllustrationBuilder = (c: ThemeColors) => React.ReactElement
 
@@ -57,6 +58,9 @@ interface CanvasProps {
 }
 
 export function Canvas({ children, c, padding = 40, justify = 'center', background }: CanvasProps): React.ReactElement {
+    const renderBackground = getRenderBackground()
+    const canvasBackground = background ?? (renderBackground === 'theme' ? c.bg : renderBackground)
+
     return React.createElement('div', {
         style: {
             width: '100%',
@@ -66,7 +70,7 @@ export function Canvas({ children, c, padding = 40, justify = 'center', backgrou
             flexDirection: 'column' as const,
             alignItems: 'center',
             justifyContent: justify,
-            backgroundColor: background ?? c.bg,
+            backgroundColor: canvasBackground,
             fontFamily: 'Inter',
             padding,
         }

@@ -5,7 +5,9 @@ import type { ReactNode } from 'react'
 import * as gifenc from 'gifenc'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { getFonts, loadAdditionalAsset } from './render'
+import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori } from './satori'
+import { getThemeColors } from './theme'
 
 interface GifencApi {
     GIFEncoder: typeof gifenc.GIFEncoder
@@ -60,6 +62,7 @@ export interface AnimationOptions {
     watermark?: WatermarkInput
     brand?: boolean | string
     theme?: 'dark' | 'light'
+    background?: RenderBackground
 }
 
 interface PixelFrame {
@@ -74,14 +77,15 @@ async function renderToPixels(
     width: number,
     height: number,
     scale: number,
+    background: RenderBackground,
 ): Promise<{ pixels: Uint8Array; width: number; height: number }> {
     const fonts = await getFonts()
-    const svg = await satori(element as React.ReactElement, {
+    const svg = await withRenderContext({ background }, () => satori(element as React.ReactElement, {
         width,
         height,
         fonts,
         loadAdditionalAsset,
-    })
+    }))
 
     const resvg = new Resvg(svg, {
         fitTo: { mode: 'width', value: width * scale },
@@ -109,17 +113,42 @@ function blendPixels(base: Uint8Array, overlay: Uint8Array, opacity: number): Ui
     return result
 }
 
-function backgroundPixels(width: number, height: number, theme: 'dark' | 'light'): Uint8Array {
+function colorForBackground(background: RenderBackground, theme: 'dark' | 'light'): { r: number; g: number; b: number; a: number } {
+    if (background === 'transparent') return { r: 0, g: 0, b: 0, a: 0 }
+
+    const value = background === 'theme' ? getThemeColors(theme).bg : background
+    const hex = value.match(/^#([0-9a-f]{6})$/i)?.[1]
+    if (hex) {
+        return {
+            r: parseInt(hex.slice(0, 2), 16),
+            g: parseInt(hex.slice(2, 4), 16),
+            b: parseInt(hex.slice(4, 6), 16),
+            a: 255,
+        }
+    }
+
+    const rgb = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([0-9.]+))?\s*\)$/i)
+    if (rgb) {
+        return {
+            r: Number(rgb[1]),
+            g: Number(rgb[2]),
+            b: Number(rgb[3]),
+            a: Math.round(Number(rgb[4] ?? '1') * 255),
+        }
+    }
+
+    return { r: 0, g: 0, b: 0, a: 0 }
+}
+
+function backgroundPixels(width: number, height: number, theme: 'dark' | 'light', background: RenderBackground): Uint8Array {
     const buffer = new Uint8Array(width * height * 4)
-    const color = theme === 'light'
-        ? { r: 245, g: 247, b: 250 }
-        : { r: 21, g: 22, b: 32 }
+    const color = colorForBackground(background, theme)
 
     for (let index = 0; index < buffer.length; index += 4) {
         buffer[index] = color.r
         buffer[index + 1] = color.g
         buffer[index + 2] = color.b
-        buffer[index + 3] = 255
+        buffer[index + 3] = color.a
     }
 
     return buffer
@@ -149,7 +178,7 @@ const MIN_TRANSITION_FRAMES = 3
 
 async function scenesToFrames(
     scenes: AnimatedScene[],
-    options: Required<Pick<AnimationOptions, 'width' | 'height' | 'loop' | 'scale' | 'theme'>> & Pick<AnimationOptions, 'brand' | 'watermark'>,
+    options: Required<Pick<AnimationOptions, 'width' | 'height' | 'loop' | 'scale' | 'theme' | 'background'>> & Pick<AnimationOptions, 'brand' | 'watermark'>,
 ): Promise<PixelFrame[]> {
     if (scenes.length === 0) throw new Error('Animated GIF requires at least one scene')
 
@@ -159,7 +188,7 @@ async function scenesToFrames(
         const element = watermark
             ? wrapWithWatermark(scene.element, options.width, options.height, options.theme, watermark)
             : scene.element
-        renderedScenes.push(await renderToPixels(element, options.width, options.height, options.scale))
+        renderedScenes.push(await renderToPixels(element, options.width, options.height, options.scale, options.background))
     }
 
     const frames: PixelFrame[] = []
@@ -184,7 +213,7 @@ async function scenesToFrames(
                 const amount = (frameIndex + 1) / transitionFrames
                 const pixels = transition === 'fade'
                     ? blendPixels(previous.pixels, current.pixels, amount)
-                    : blendPixels(backgroundPixels(scaledWidth, scaledHeight, options.theme), current.pixels, amount)
+                    : blendPixels(backgroundPixels(scaledWidth, scaledHeight, options.theme, options.background), current.pixels, amount)
                 frames.push({ pixels, delay: frameDelay, width: scaledWidth, height: scaledHeight })
             }
         }
@@ -209,6 +238,7 @@ export async function renderAnimatedGif(
         loop: options.loop ?? 0,
         scale: options.scale ?? 1,
         theme: options.theme ?? 'dark',
+        background: options.background ?? 'theme',
     }
 
     await mkdir(dirname(options.outputPath), { recursive: true })

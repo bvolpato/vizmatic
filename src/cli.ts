@@ -11,17 +11,24 @@ import type { ReactNode } from 'react'
 import * as publicApi from './index'
 import { renderAnimatedGif, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
-import { renderToPng } from './render'
+import { renderToPng, type RenderBackground } from './render'
 import type { ThemeMode } from './theme'
 
 interface FrameModule {
     width?: number
     height?: number
+    autoSize?: boolean | Partial<AutoSizeAxes>
+    __vizmaticAutoSize?: Partial<AutoSizeAxes>
     create?: (theme: ThemeMode) => ReactNode
     createScenes?: (theme: ThemeMode) => AnimatedScene[]
     default?: ReactNode | { create?: (theme: ThemeMode) => ReactNode; default?: ReactNode; width?: number; height?: number }
     watermark?: WatermarkInput
     brand?: boolean | string
+}
+
+interface AutoSizeAxes {
+    width: boolean
+    height: boolean
 }
 
 interface RenderArgs {
@@ -32,10 +39,17 @@ interface RenderArgs {
     force: boolean
     crop: boolean
     scale?: number
+    background?: RenderBackground
 }
 
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 const IMPORT_RESOLUTION_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json']
+const DEFAULT_FRAME_WIDTH = 960
+const DEFAULT_FRAME_HEIGHT = 540
+const AUTO_SIZE_MAX_WIDTH = 1920
+const AUTO_SIZE_MAX_HEIGHT = 1440
+const AUTO_SIZE_GROWTH = 1.25
+const AUTO_SIZE_ATTEMPTS = 6
 const cliRequire = createRequire(import.meta.url)
 let frameDependencyAliasesInstalled = false
 const BARE_FRAME_EXTRA_EXPORTS = new Set([
@@ -63,13 +77,14 @@ type ResolveFilename = (request: string, parent: unknown, isMain: boolean, optio
 
 function usageText() {
     return `Usage:
-  vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
-  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
+  vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
+  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
 
 Examples:
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
   vizmatic ./frame.tsx --out ./dist/frames --theme dark
+  vizmatic ./frame.tsx --out ./dist/frames --theme light --background theme
   vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
   vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`
@@ -283,8 +298,14 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
         .replace(/^export\s+default\s+/, '')
         .replace(/;\s*$/, '')
 
-    width ??= readFrameDimension(jsx, 'width') ?? 960
-    height ??= readFrameDimension(jsx, 'height') ?? 540
+    const frameWidth = readFrameDimension(jsx, 'width')
+    const frameHeight = readFrameDimension(jsx, 'height')
+    const autoSize = {
+        width: width == null && frameWidth == null,
+        height: height == null && frameHeight == null,
+    }
+    width ??= frameWidth ?? DEFAULT_FRAME_WIDTH
+    height ??= frameHeight ?? DEFAULT_FRAME_HEIGHT
     const autoImports = bareFrameExportsForSource(body)
 
     return `/** @jsxRuntime classic */
@@ -305,6 +326,7 @@ ${buildAutoImportDeclarations(autoImports)}
 
 export const width = ${width}
 export const height = ${height}
+export const __vizmaticAutoSize = ${JSON.stringify(autoSize)}
 
 export function create(theme = 'dark') {
     __theme = __Vizmatic_getThemeColors(theme)
@@ -356,6 +378,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     let force = false
     let crop = true
     let scale: number | undefined
+    let background: RenderBackground | undefined
 
     function mutableWatermark(): WatermarkOptions {
         if (!watermarkOptions) {
@@ -443,6 +466,10 @@ function parseRenderArgs(argv: string[]): RenderArgs {
             force = true
         } else if (arg === '--no-crop') {
             crop = false
+        } else if (arg === '--transparent' || arg === '--transparent-background') {
+            background = 'transparent'
+        } else if (arg === '--background') {
+            background = argv[++index] ?? usage()
         } else if (arg === '--scale') {
             const rawScale = Number(argv[++index])
             if (!Number.isFinite(rawScale) || rawScale <= 0) usage()
@@ -455,7 +482,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, outDir, themes, watermark, force, crop, scale }
+    return { inputs, outDir, themes, watermark, force, crop, scale, background }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
@@ -512,16 +539,39 @@ async function importFrame(filePath: string): Promise<FrameModule> {
     }
 }
 
-function normalizeFrameModule(mod: FrameModule): Required<Pick<FrameModule, 'width' | 'height'>> & FrameModule {
+type NormalizedFrameModule = Required<Pick<FrameModule, 'width' | 'height'>> & FrameModule & {
+    autoSize: AutoSizeAxes
+}
+
+function normalizeAutoSize(value: FrameModule['autoSize'] | FrameModule['__vizmaticAutoSize'] | undefined, defaults: AutoSizeAxes): AutoSizeAxes {
+    if (value === true) return { width: true, height: true }
+    if (value === false) return { width: false, height: false }
+    if (value && typeof value === 'object') {
+        return {
+            width: value.width ?? defaults.width,
+            height: value.height ?? defaults.height,
+        }
+    }
+    return defaults
+}
+
+function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     const defaultObject = typeof mod.default === 'object' && mod.default && 'create' in mod.default
         ? mod.default as Exclude<FrameModule['default'], ReactNode>
         : undefined
+    const hasWidth = mod.width != null || defaultObject?.width != null
+    const hasHeight = mod.height != null || defaultObject?.height != null
+    const autoSize = normalizeAutoSize(mod.autoSize ?? mod.__vizmaticAutoSize, {
+        width: !hasWidth,
+        height: !hasHeight,
+    })
 
     return {
         ...mod,
         ...(defaultObject ?? {}),
-        width: mod.width ?? defaultObject?.width ?? 960,
-        height: mod.height ?? defaultObject?.height ?? 540,
+        width: mod.width ?? defaultObject?.width ?? DEFAULT_FRAME_WIDTH,
+        height: mod.height ?? defaultObject?.height ?? DEFAULT_FRAME_HEIGHT,
+        autoSize,
     }
 }
 
@@ -529,6 +579,62 @@ function frameElement(mod: FrameModule, theme: ThemeMode): ReactNode {
     if (mod.create) return mod.create(theme)
     if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
     throw new Error('frame module must export create(theme) or default React element')
+}
+
+type OverflowEdge = 'top' | 'right' | 'bottom' | 'left'
+
+function overflowEdges(error: unknown): OverflowEdge[] | undefined {
+    const message = error instanceof Error ? error.message : String(error)
+    const match = message.match(/Content overflows canvas at: ([^.]+)/)
+    if (!match?.[1]) return undefined
+    const edges = match[1].split(',').map((edge) => edge.trim()).filter(Boolean)
+    if (edges.some((edge) => edge !== 'top' && edge !== 'right' && edge !== 'bottom' && edge !== 'left')) {
+        return undefined
+    }
+    return edges as OverflowEdge[]
+}
+
+function growDimension(value: number, max: number): number {
+    return Math.min(max, Math.ceil((value * AUTO_SIZE_GROWTH) / 10) * 10)
+}
+
+function nextAutoSize(width: number, height: number, autoSize: AutoSizeAxes, edges: OverflowEdge[]): { width: number; height: number } | undefined {
+    const growWidth = autoSize.width && (edges.includes('left') || edges.includes('right'))
+    const growHeight = autoSize.height && (edges.includes('top') || edges.includes('bottom'))
+
+    const nextWidth = growWidth ? growDimension(width, AUTO_SIZE_MAX_WIDTH) : width
+    const nextHeight = growHeight ? growDimension(height, AUTO_SIZE_MAX_HEIGHT) : height
+
+    if (nextWidth === width && nextHeight === height) return undefined
+    return { width: nextWidth, height: nextHeight }
+}
+
+async function renderFrameToPng(
+    mod: NormalizedFrameModule,
+    theme: ThemeMode,
+    options: Omit<Parameters<typeof renderToPng>[1], 'width' | 'height'> & { width: number; height: number },
+): Promise<{ width: number; height: number }> {
+    let width = options.width
+    let height = options.height
+
+    for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
+        try {
+            await renderToPng(frameElement(mod, theme), {
+                ...options,
+                width,
+                height,
+            }, mod.create, theme)
+            return { width, height }
+        } catch (error) {
+            const edges = overflowEdges(error)
+            const next = edges ? nextAutoSize(width, height, mod.autoSize, edges) : undefined
+            if (!next || attempt === AUTO_SIZE_ATTEMPTS - 1) throw error
+            width = next.width
+            height = next.height
+        }
+    }
+
+    return { width, height }
 }
 
 async function renderCommand(argv: string[]) {
@@ -546,18 +652,23 @@ async function renderCommand(argv: string[]) {
         const name = basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
+        let renderWidth = mod.width
+        let renderHeight = mod.height
 
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.png`
             const outputPath = join(args.outDir, outputName)
-            await renderToPng(frameElement(mod, theme), {
-                width: mod.width,
-                height: mod.height,
+            const rendered = await renderFrameToPng(mod, theme, {
+                width: renderWidth,
+                height: renderHeight,
                 outputPath,
                 watermark: cliWatermark ?? moduleWatermark,
                 crop: args.crop,
                 scale: args.scale,
-            }, mod.create, theme)
+                background: args.background,
+            })
+            renderWidth = rendered.width
+            renderHeight = rendered.height
             outputs.push(outputName)
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)
         }
@@ -565,8 +676,8 @@ async function renderCommand(argv: string[]) {
         manifest.push({
             name,
             source: relative(process.cwd(), file),
-            width: mod.width,
-            height: mod.height,
+            width: renderWidth,
+            height: renderHeight,
             outputs,
         })
     }
@@ -604,6 +715,7 @@ async function gifCommand(argv: string[]) {
                 watermark: cliWatermark ?? moduleWatermark,
                 scale: args.scale ?? 1,
                 theme,
+                background: args.background,
             })
             outputs.push(outputName)
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)

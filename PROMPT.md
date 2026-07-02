@@ -105,7 +105,23 @@ Render it:
 vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
 
-For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
+PNG and SVG renders use alpha-transparent canvas backgrounds by default. Use the actual theme background when the host needs a full-frame image:
+
+```bash
+vizmatic frames --out public/vizmatic --theme dark,light --background theme
+```
+
+Or set it in the frame:
+
+```tsx
+<Scene background={c.bg} title="Opaque article figure">
+  <Flow stages={[{ title: "Theme fill", tone: "purple" }]} />
+</Scene>
+```
+
+If a direct CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows omitted axes when overflow is detected. Explicit dimensions stay strict and should be used when exact output size matters.
+
+For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Reference `c` only when you need explicit theme tokens such as `background={c.bg}`. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
 
 Frame modules can also export a watermark element when code-owned branding is clearer than CLI flags:
 
@@ -204,16 +220,18 @@ Shared values:
 - `ColorName`: `"primary" | "secondary" | "positive" | "warning" | "critical" | "info" | "accent" | "neutral"`.
 - `FlexAlign`: `"start" | "center" | "end" | "stretch"`.
 - `FlexJustify`: `"start" | "center" | "end" | "space-between" | "space-around"`.
-- In bare CLI frames, omit `c`; the CLI injects theme colors into Vizmatic components.
+- In bare CLI frames, omit `c` props; the CLI injects theme colors into Vizmatic components. The local `c` token object is still available for explicit values like `background={c.bg}`.
 - In full modules, most visual components require `c: ThemeColors`; inside `defineIllustration((c) => ...)`, pass that same `c` down.
+- PNG/SVG renders are alpha-transparent by default. Use `--background theme`, `background: "theme"`, or `<Scene background={c.bg}>` for opaque theme fill.
+- Omitted CLI dimensions auto-grow on overflow. Explicit `width` / `height` remain fixed and fail on clipping.
 
 ## Component API
 
 Frame helpers:
 
 - `defineIllustration(build, defaultTheme?)`: `build: (c: ThemeColors) => ReactElement`, `defaultTheme?: ThemeMode = "dark"`. Returns `{ create(theme), default }`.
-- `Canvas`: `children?`, `c`, `padding?: number = 40`, `justify?: "center" | "flex-start" | "space-between" | "space-around" = "center"`, `background?: string`.
-- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: Canvas.justify = "flex-start"`, `align?: FlexAlign = "stretch"`, `contentWidth?: number | string = "100%"`, `background?`, `contentStyle?: React.CSSProperties`.
+- `Canvas`: `children?`, `c`, `padding?: number = 40`, `justify?: "center" | "flex-start" | "space-between" | "space-around" = "center"`, `background?: string`. Default root background is alpha-transparent during PNG/SVG rendering.
+- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: Canvas.justify = "flex-start"`, `align?: FlexAlign = "stretch"`, `contentWidth?: number | string = "100%"`, `background?`, `contentStyle?: React.CSSProperties`. Use `background={c.bg}` for an opaque theme frame.
 - `TitleBar`: `title`, `subtitle?`, `c`.
 
 Layout primitives:
@@ -315,12 +333,12 @@ Theme and render APIs:
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
 - `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
-- `RenderOptions`: `width`, `height`, `outputPath`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean = true`, `scale?: number = 2`.
-- `renderToBuffer(element, width, height, options?)`: `options` supports `watermark?`, `brand?`, `scale?`.
-- `renderToSvg(element, width, height, options?)`: `options` supports `watermark?`, `brand?`.
+- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean = true`, `scale?: number = 2`.
+- `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `watermark?`, `brand?`, `scale?`.
+- `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `watermark?`, `brand?`.
 - `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.
 - `AnimatedScene`: `element`, `duration` in ms, `transition?: "none" | "fade" | "appear"`, `transitionDuration?`, `label?`.
-- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`.
+- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `background?: "theme" | "transparent" | CSS color = "theme"` for GIF reliability, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`.
 
 ## Prop-aware examples
 
@@ -400,6 +418,8 @@ height = 560;
 
 - Use semantic tones, not hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
 - Keep canvas sizes explicit. Good defaults: `1040x560` for article figures, `1280x720` for slide frames, `900x520` for compact diagrams.
+- For exploratory direct CLI frames, dimensions may be omitted; Vizmatic auto-grows omitted axes if content overflows.
+- Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.
 - Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` props to stabilize layout.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
 - Render both dark and light when shipping reusable assets: `--theme dark,light`.
