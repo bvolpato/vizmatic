@@ -54,8 +54,8 @@ pnpm add github:bvolpato/vizmatic react
 Create a frame:
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="Agent visual pipeline">
   <Flow
@@ -152,8 +152,8 @@ More examples live in [`examples/`](examples) and on the [website](https://bvolp
 Use this for small docs snippets and quick agent-generated frames.
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="Agent pipeline">
   <Flow stages={[
@@ -169,8 +169,8 @@ height = 560
 Use this for process diagrams, architecture walkthroughs, and agent pipelines.
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="Agent visual pipeline" subtitle="prompt -> scene spec -> verified artifact" gap={26}>
   <Flow
@@ -255,8 +255,8 @@ vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --water
 Use this for workflows with branches, retries, and validation loops.
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
   <GraphDiagram
@@ -285,8 +285,8 @@ height = 560
 Use this for compact report figures and release decks.
 
 ```tsx
-width = 1040
-height = 620
+width = 1040;
+height = 620;
 
 <Scene title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
   <Row gap={18} align="stretch">

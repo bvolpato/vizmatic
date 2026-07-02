@@ -31,8 +31,8 @@ For npm/yarn/bun projects, use the equivalent package-manager command.
 Create `frames/agent-pipeline.tsx`:
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene
   title="Agent visual pipeline"
@@ -321,8 +321,8 @@ Theme and render APIs:
 ### Window + code + status
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="Release gate" subtitle="tool output and checklist">
   <Row gap={18} align="stretch">
@@ -352,8 +352,8 @@ height = 560
 ### Matrix + chart
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="Attention audit" subtitle="weights, scores, and distribution">
   <Row gap={18} align="stretch">
@@ -406,8 +406,8 @@ height = 560
 ### RAG graph
 
 ```tsx
-width = 1040
-height = 560
+width = 1040;
+height = 560;
 
 <Scene title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
   <GraphDiagram
@@ -434,8 +434,8 @@ height = 560
 ### Evaluation dashboard
 
 ```tsx
-width = 1040
-height = 620
+width = 1040;
+height = 620;
 
 <Scene title="Evaluation snapshot" subtitle="charts inherit theme, labels, and contrast">
   <Row gap={18} align="stretch">

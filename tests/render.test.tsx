@@ -156,8 +156,8 @@ export default frame.default
         const renderDir = join(outDir, 'renders')
 
         try {
-            await writeFile(framePath, `width = 520
-height = 300
+            await writeFile(framePath, `width = 520;
+height = 300;
 
 <Scene title="Bare frame" subtitle="CLI adds imports and theme">
     <Row gap={12} width="100%">

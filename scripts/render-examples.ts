@@ -32,6 +32,14 @@ function previewFor(outputs: string[], theme: (typeof themes)[number]): string {
         ?? ''
 }
 
+function sourceForGallery(code: string): string {
+    if (!code.includes('createScenes')) return code
+    return code
+        .replace(/\nexport function create\(theme: ThemeMode = 'dark'\) \{\n    return buildFrame\(theme, stages\.length - 1\)\n\}\n(?=\nexport function createScenes)/, '\n')
+        .replace(/\nexport default create\('dark'\)\n?$/, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+}
+
 function generateExamplesReadme(entries: typeof manifest): string {
     const rows = entries.map((entry) => {
         const title = titleFor(entry.name)
@@ -78,7 +86,7 @@ for (const file of files) {
     }
 
     const name = basename(file, '.tsx')
-    const code = await readFile(source, 'utf8')
+    const code = sourceForGallery(await readFile(source, 'utf8'))
     const html = Object.fromEntries(await Promise.all(themes.map(async (theme) => [
         theme,
         await codeToHtml(code, {
