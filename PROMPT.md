@@ -106,13 +106,13 @@ export default frame.default
 Render it:
 
 ```bash
-pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"
+pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
 
 Render animated frames with `createScenes(theme)`:
 
 ```bash
-pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --brand "Your Product" --scale 1
+pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right --scale 1
 ```
 
 ## Create an animated frame
@@ -289,12 +289,15 @@ Theme and render APIs:
 - `getThemeColors(mode)`: `mode: ThemeMode`.
 - `getToneColor(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
-- `RenderOptions`: `width`, `height`, `outputPath`, `brand?: boolean | string`, `crop?: boolean = true`, `scale?: number = 2`.
-- `renderToBuffer(element, width, height, options?)`: `options` supports `brand?`, `scale?`.
-- `renderToSvg(element, width, height, options?)`: `options` supports `brand?`.
+- `WatermarkInput`: `boolean | string | WatermarkOptions`. `true` uses Vizmatic defaults. A string sets the watermark text.
+- `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
+- `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
+- `RenderOptions`: `width`, `height`, `outputPath`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean = true`, `scale?: number = 2`.
+- `renderToBuffer(element, width, height, options?)`: `options` supports `watermark?`, `brand?`, `scale?`.
+- `renderToSvg(element, width, height, options?)`: `options` supports `watermark?`, `brand?`.
 - `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.
 - `AnimatedScene`: `element`, `duration` in ms, `transition?: "none" | "fade" | "appear"`, `transitionDuration?`, `label?`.
-- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `brand?: boolean | string`, `theme?: "dark" | "light" = "dark"`.
+- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`.
 
 ## Prop-aware examples
 

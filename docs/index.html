@@ -136,7 +136,7 @@
 <span class="line"><span style="color:#E1E4E8">  ]</span></span>
 <span class="line"><span style="color:#E1E4E8">}</span></span>
 <span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">vizmatic gif frames</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">animated.tsx </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">out public</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">vizmatic </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">theme dark,light </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">brand Acme</span></span></code></pre>
+<span class="line"><span style="color:#E1E4E8">vizmatic gif frames</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">animated.tsx </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">out public</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">vizmatic </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">theme dark,light </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">watermark Acme </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">watermark</span><span style="color:#F97583">-</span><span style="color:#E1E4E8">image .</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">logo.svg</span></span></code></pre>
       </div>
       <div class="gif-card">
         <img data-theme-image src="assets/examples/animated-pipeline_dark.gif" alt="Animated Vizmatic pipeline GIF">
@@ -250,10 +250,10 @@
 <span class="line"><span style="color:#E1E4E8">pnpm add github:bvolpato/vizmatic react</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"</span></span>
+<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">For animation, export createScenes(theme), then run:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --brand "Your Product"</span></span></code></pre>
+<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</span></span></code></pre>
     </section>
 
     <section id="themes" class="section themes">
@@ -268,7 +268,7 @@
           <li>Shared typography and spacing</li>
           <li>Wrapping-safe labels and cards</li>
           <li>Overflow detection before files are written</li>
-          <li>Optional brand mark per render</li>
+          <li>Optional watermark text, image/icon, and position per render</li>
         </ul>
       </div>
     </section>

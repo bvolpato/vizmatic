@@ -3,12 +3,12 @@
  *
  * Converts JSX elements to PNG images using Satori + Resvg.
  * This is the engine that powers all illustration generation.
- * Can apply an optional brand mark without making branding part of
+ * Can apply an optional watermark without making branding part of
  * the illustration source.
  *
  * Auto-crop: Renders once to detect content bounds, then re-renders at
  * tighter dimensions so illustrations fill the frame with no wasted space.
- * The brand is applied AFTER cropping so it's always positioned correctly.
+ * The watermark is applied AFTER cropping so it's always positioned correctly.
  */
 
 import satori, { type Font } from 'satori'
@@ -18,7 +18,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import type { ReactNode } from 'react'
-import { wrapWithBrand } from './brand'
+import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow } from './autocrop'
 
 // ─── Font Loading ────────────────────────────────────────────────────────────
@@ -240,7 +240,9 @@ export interface RenderOptions {
     height: number
     /** Output path for the PNG file */
     outputPath: string
-    /** Optional bottom-right brand mark. Use true for "Vizmatic", string for a custom label. */
+    /** Optional watermark. Use true for "Vizmatic", string for a custom label, or an object for text/icon/position. */
+    watermark?: WatermarkInput
+    /** Backward-compatible alias for watermark. */
     brand?: boolean | string
     /** Disable height autocrop for fixed-size frames. */
     crop?: boolean
@@ -248,14 +250,18 @@ export interface RenderOptions {
     scale?: number
 }
 
+function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): WatermarkInput | undefined {
+    return options.watermark ?? options.brand
+}
+
 /**
- * Render a JSX element to a PNG file, with auto-crop and optional brand.
+ * Render a JSX element to a PNG file, with auto-crop and optional watermark.
  *
  * Pipeline:
- * 1. Render WITHOUT brand at declared dimensions
+ * 1. Render WITHOUT watermark at declared dimensions
  * 2. Detect content bounding box (scan pixels for non-background)
  * 3. If significant blank space detected, re-render at tighter dimensions
- * 4. Apply brand to final render unless disabled
+ * 4. Apply watermark to final render unless disabled
  * 5. Write PNG to disk
  *
  * @param element - React JSX element (must be pure, no hooks/state)
@@ -271,7 +277,7 @@ export async function renderToPng(
 ): Promise<void> {
     const fonts = await getFonts()
 
-    // Step 1: Render WITHOUT brand to detect content bounds
+    // Step 1: Render WITHOUT watermark to detect content bounds
     let svg = await satori(element as React.ReactElement, {
         width: options.width,
         height: options.height,
@@ -337,14 +343,15 @@ export async function renderToPng(
         }
     }
 
-    // Step 4: Final render with optional brand at the cropped dimensions
-    const outputElement = options.brand
-        ? wrapWithBrand(
+    // Step 4: Final render with optional watermark at the cropped dimensions
+    const watermark = resolveWatermark(options)
+    const outputElement = watermark
+        ? wrapWithWatermark(
             finalElement,
             finalWidth,
             finalHeight,
             (theme as 'dark' | 'light') || 'dark',
-            typeof options.brand === 'string' ? options.brand : 'Vizmatic',
+            watermark,
         )
         : finalElement
 
@@ -380,17 +387,18 @@ export async function renderToBuffer(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'scale'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale'> = {},
 ): Promise<Buffer> {
     const fonts = await getFonts()
+    const watermark = resolveWatermark(options)
 
-    const outputElement = options.brand
-        ? wrapWithBrand(
+    const outputElement = watermark
+        ? wrapWithWatermark(
             element,
             width,
             height,
             'dark',
-            typeof options.brand === 'string' ? options.brand : 'Vizmatic',
+            watermark,
         )
         : element
 
@@ -418,16 +426,17 @@ export async function renderToSvg(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark'> = {},
 ): Promise<string> {
     const fonts = await getFonts()
-    const outputElement = options.brand
-        ? wrapWithBrand(
+    const watermark = resolveWatermark(options)
+    const outputElement = watermark
+        ? wrapWithWatermark(
             element,
             width,
             height,
             'dark',
-            typeof options.brand === 'string' ? options.brand : 'Vizmatic',
+            watermark,
         )
         : element
 

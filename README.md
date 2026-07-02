@@ -69,13 +69,13 @@ export default frame.default
 Render it:
 
 ```bash
-vizmatic render ./frame.tsx --out ./dist/frames --theme dark,light --brand "Acme"
+vizmatic render ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
 ```
 
 Render an animation:
 
 ```bash
-vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --brand "Acme"
+vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
 ```
 
 Or call the renderer directly:
@@ -88,7 +88,7 @@ await renderToPng(create("dark"), {
   width,
   height,
   outputPath: "dist/agent-pipeline.png",
-  brand: "Acme",
+  watermark: { text: "Acme", image: "data:image/svg+xml;base64,...", position: "top-right" },
 })
 ```
 
@@ -246,7 +246,7 @@ export default frame.default
 ```
 
 ```bash
-vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --brand "Acme" --scale 1
+vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg --scale 1
 ```
 
 ### RAG graph
@@ -450,11 +450,11 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 
 | API | Use |
 |---|---|
-| `renderToPng` | Render React scene to PNG through Satori and resvg, with optional brand mark, crop, scale, and overflow check. |
+| `renderToPng` | Render React scene to PNG through Satori and resvg, with optional watermark, crop, scale, and overflow check. |
 | `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
 | `renderToBuffer` | Render PNG to memory for tests and pipelines. |
 | `renderToSvg` | Render SVG markup directly. |
-| `wrapWithBrand` | Add an optional top-right brand label to a frame. |
+| `wrapWithWatermark` | Add optional watermark text, image/icon, and position to a frame. |
 | `detectBackgroundColor` | Find dominant transparent/background color for cropping. |
 | `detectContentBounds` | Compute non-background bounds for autocrop. |
 | `cropPixels` | Crop raw pixel buffers. |
@@ -466,14 +466,14 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
-`renderToPng` renders at 2x scale by default, checks for clipped content, crops extra vertical whitespace, and can apply an optional brand mark.
+`renderToPng` renders at 2x scale by default, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. `brand` still works as a compatibility alias.
 
 ```ts
 await renderToPng(element, {
   width: 1040,
   height: 560,
   outputPath: "dist/frame.png",
-  brand: "Your Product",
+  watermark: { text: "Your Product", image: "https://example.com/logo.svg", position: "top-right" },
   crop: true,
   scale: 2,
 })
@@ -486,7 +486,7 @@ await renderAnimatedGif(createScenes("dark"), {
   width: 1040,
   height: 560,
   outputPath: "dist/agent-pipeline.gif",
-  brand: "Your Product",
+  watermark: { text: "Your Product", image: "data:image/png;base64,...", position: "bottom-right" },
   theme: "dark",
   scale: 1,
 })

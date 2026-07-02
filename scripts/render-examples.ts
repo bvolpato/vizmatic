@@ -30,7 +30,7 @@ for (const file of files) {
         outDir,
         '--theme',
         themes.join(','),
-        '--brand',
+        '--watermark',
         'Vizmatic',
         '--force',
     ], {
@@ -67,7 +67,7 @@ for (const file of files) {
             outDir,
             '--theme',
             themes.join(','),
-            '--brand',
+            '--watermark',
             'Vizmatic',
             '--scale',
             '1',

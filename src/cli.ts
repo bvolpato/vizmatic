@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
-import { mkdir, readdir, writeFile } from 'fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { basename, extname, join, relative, resolve } from 'path'
 import { pathToFileURL } from 'url'
 import type { ReactNode } from 'react'
 import { renderAnimatedGif, type AnimatedScene } from './animate'
+import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { renderToPng } from './render'
 import type { ThemeMode } from './theme'
 
@@ -14,6 +15,7 @@ interface FrameModule {
     create?: (theme: ThemeMode) => ReactNode
     createScenes?: (theme: ThemeMode) => AnimatedScene[]
     default?: ReactNode | { create?: (theme: ThemeMode) => ReactNode; default?: ReactNode; width?: number; height?: number }
+    watermark?: WatermarkInput
     brand?: boolean | string
 }
 
@@ -21,7 +23,7 @@ interface RenderArgs {
     inputs: string[]
     outDir: string
     themes: ThemeMode[]
-    brand?: boolean | string
+    watermark?: WatermarkInput
     force: boolean
     crop: boolean
     scale?: number
@@ -31,24 +33,102 @@ const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 
 function usage(): never {
     console.error(`Usage:
-  vizmatic render <file-or-directory...> --out <dir> [--theme dark,light] [--brand Label] [--no-crop] [--force]
-  vizmatic gif <file-or-directory...> --out <dir> [--theme dark] [--brand Label] [--scale 1]
+  vizmatic render <file-or-directory...> --out <dir> [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
+  vizmatic gif <file-or-directory...> --out <dir> [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
 
 Examples:
-  vizmatic render examples --out docs/assets/examples --theme dark --brand Vizmatic
+  vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
-  vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --brand Vizmatic`)
+  vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`)
     process.exit(1)
+}
+
+const WATERMARK_POSITIONS = new Set<WatermarkPosition>(['top-left', 'top-right', 'bottom-left', 'bottom-right'])
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+    '.apng': 'image/apng',
+    '.avif': 'image/avif',
+    '.gif': 'image/gif',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.webp': 'image/webp',
+}
+
+function imageMime(source: string): string {
+    return IMAGE_MIME_BY_EXT[extname(source).toLowerCase()] ?? 'application/octet-stream'
+}
+
+async function imageSourceToDataUri(source: string): Promise<string> {
+    if (/^(data:|https?:\/\/)/i.test(source)) return source
+    const filePath = resolve(source)
+    const data = await readFile(filePath)
+    return `data:${imageMime(filePath)};base64,${data.toString('base64')}`
+}
+
+async function resolveWatermarkAssets(watermark: WatermarkInput | undefined): Promise<WatermarkInput | undefined> {
+    if (watermark == null || typeof watermark !== 'object') return watermark
+    if (!watermark.image) return watermark
+
+    if (typeof watermark.image === 'string') {
+        return {
+            ...watermark,
+            image: await imageSourceToDataUri(watermark.image),
+        }
+    }
+
+    return {
+        ...watermark,
+        image: {
+            ...watermark.image,
+            src: await imageSourceToDataUri(watermark.image.src),
+        },
+    }
 }
 
 function parseRenderArgs(argv: string[]): RenderArgs {
     const inputs: string[] = []
     let outDir = 'dist/frames'
     let themes: ThemeMode[] = ['dark', 'light']
-    let brand: boolean | string | undefined
+    let watermark: WatermarkInput | undefined
+    let watermarkOptions: WatermarkOptions | undefined
     let force = false
     let crop = true
     let scale: number | undefined
+
+    function mutableWatermark(): WatermarkOptions {
+        if (!watermarkOptions) {
+            watermarkOptions = typeof watermark === 'object' && watermark !== null
+                ? { ...watermark }
+                : {}
+            if (typeof watermark === 'string') watermarkOptions.text = watermark
+            watermark = watermarkOptions
+        }
+        return watermarkOptions
+    }
+
+    function readOptionalValue(index: number): string | undefined {
+        const next = argv[index + 1]
+        if (!next || next.startsWith('-')) return undefined
+        return next
+    }
+
+    function setWatermarkImageSource(src: string) {
+        const current = mutableWatermark().image
+        if (current && typeof current === 'object') {
+            current.src = src
+        } else {
+            mutableWatermark().image = src
+        }
+    }
+
+    function mutableWatermarkImage(): WatermarkImageOptions {
+        const watermarkConfig = mutableWatermark()
+        if (!watermarkConfig.image || typeof watermarkConfig.image === 'string') {
+            watermarkConfig.image = { src: watermarkConfig.image ?? '' }
+        }
+        return watermarkConfig.image
+    }
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index]
@@ -61,9 +141,43 @@ function parseRenderArgs(argv: string[]): RenderArgs {
             themes = raw.split(',').map((theme) => theme.trim()).filter(Boolean) as ThemeMode[]
             if (themes.some((theme) => theme !== 'dark' && theme !== 'light')) usage()
         } else if (arg === '--brand') {
-            brand = argv[++index] ?? 'Vizmatic'
+            const label = argv[++index] ?? 'Vizmatic'
+            mutableWatermark().text = label
+        } else if (arg === '--watermark') {
+            const label = readOptionalValue(index)
+            if (label) {
+                mutableWatermark().text = label
+                index += 1
+            } else {
+                watermark = true
+                watermarkOptions = undefined
+            }
+        } else if (arg === '--watermark-text') {
+            const rawText = argv[++index] ?? usage()
+            mutableWatermark().text = rawText === 'false' || rawText === 'none' ? false : rawText
+        } else if (arg === '--watermark-icon') {
+            const rawIcon = argv[++index] ?? usage()
+            mutableWatermark().icon = rawIcon === 'false' || rawIcon === 'none' ? false : rawIcon
+        } else if (arg === '--watermark-image') {
+            setWatermarkImageSource(argv[++index] ?? usage())
+        } else if (arg === '--watermark-image-width') {
+            const width = Number(argv[++index])
+            if (!Number.isFinite(width) || width <= 0) usage()
+            mutableWatermarkImage().width = width
+        } else if (arg === '--watermark-image-height') {
+            const height = Number(argv[++index])
+            if (!Number.isFinite(height) || height <= 0) usage()
+            mutableWatermarkImage().height = height
+        } else if (arg === '--watermark-position') {
+            const position = argv[++index] as WatermarkPosition | undefined
+            if (!position || !WATERMARK_POSITIONS.has(position)) usage()
+            mutableWatermark().position = position
         } else if (arg === '--no-brand') {
-            brand = false
+            watermark = false
+            watermarkOptions = undefined
+        } else if (arg === '--no-watermark') {
+            watermark = false
+            watermarkOptions = undefined
         } else if (arg === '--force') {
             force = true
         } else if (arg === '--no-crop') {
@@ -80,7 +194,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, outDir, themes, brand, force, crop, scale }
+    return { inputs, outDir, themes, watermark, force, crop, scale }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
@@ -146,6 +260,7 @@ function frameElement(mod: FrameModule, theme: ThemeMode): ReactNode {
 
 async function renderCommand(argv: string[]) {
     const args = parseRenderArgs(argv)
+    const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
 
@@ -157,6 +272,7 @@ async function renderCommand(argv: string[]) {
         const mod = normalizeFrameModule(rawMod)
         const name = basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
+        const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
 
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.png`
@@ -165,7 +281,7 @@ async function renderCommand(argv: string[]) {
                 width: mod.width,
                 height: mod.height,
                 outputPath,
-                brand: args.brand ?? mod.brand,
+                watermark: cliWatermark ?? moduleWatermark,
                 crop: args.crop,
                 scale: args.scale,
             }, mod.create, theme)
@@ -187,6 +303,7 @@ async function renderCommand(argv: string[]) {
 
 async function gifCommand(argv: string[]) {
     const args = parseRenderArgs(argv)
+    const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
 
@@ -198,6 +315,7 @@ async function gifCommand(argv: string[]) {
         const mod = normalizeFrameModule(rawMod)
         const name = basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
+        const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
 
         if (!mod.createScenes) {
             throw new Error(`${relative(process.cwd(), file)} must export createScenes(theme) for GIF rendering`)
@@ -210,7 +328,7 @@ async function gifCommand(argv: string[]) {
                 width: mod.width,
                 height: mod.height,
                 outputPath,
-                brand: args.brand ?? mod.brand,
+                watermark: cliWatermark ?? moduleWatermark,
                 scale: args.scale ?? 1,
                 theme,
             })

@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 import type { ReactNode } from 'react'
 import * as gifenc from 'gifenc'
-import { wrapWithBrand } from './brand'
+import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { getFonts, loadAdditionalAsset } from './render'
 
 interface GifencApi {
@@ -57,6 +57,7 @@ export interface AnimationOptions {
     outputPath: string
     loop?: number
     scale?: number
+    watermark?: WatermarkInput
     brand?: boolean | string
     theme?: 'dark' | 'light'
 }
@@ -148,15 +149,15 @@ const MIN_TRANSITION_FRAMES = 3
 
 async function scenesToFrames(
     scenes: AnimatedScene[],
-    options: Required<Pick<AnimationOptions, 'width' | 'height' | 'loop' | 'scale' | 'theme'>> & Pick<AnimationOptions, 'brand'>,
+    options: Required<Pick<AnimationOptions, 'width' | 'height' | 'loop' | 'scale' | 'theme'>> & Pick<AnimationOptions, 'brand' | 'watermark'>,
 ): Promise<PixelFrame[]> {
     if (scenes.length === 0) throw new Error('Animated GIF requires at least one scene')
 
     const renderedScenes = []
     for (const scene of scenes) {
-        const label = typeof options.brand === 'string' ? options.brand : 'Vizmatic'
-        const element = options.brand
-            ? wrapWithBrand(scene.element, options.width, options.height, options.theme, label)
+        const watermark = options.watermark ?? options.brand
+        const element = watermark
+            ? wrapWithWatermark(scene.element, options.width, options.height, options.theme, watermark)
             : scene.element
         renderedScenes.push(await renderToPixels(element, options.width, options.height, options.scale))
     }

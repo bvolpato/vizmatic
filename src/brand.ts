@@ -1,81 +1,133 @@
 /**
  * Vizmatic — Brand
  *
- * Wraps illustration elements with a "🧠 Vizmatic" brand
- * in the bottom-right corner. Applied automatically by the renderer
- * so individual illustrations don't need to add it.
- *
- * The brand uses the brand brain icon (from icon.svg SVG paths)
- * rendered via Satori-compatible JSX, plus the "Vizmatic" text.
+ * Adds a small theme-aware watermark to rendered artifacts.
  */
 
-import React from 'react'
+import React, { type ReactNode } from 'react'
 
-// ─── Brain Icon (SVG paths from /public/icon.svg) ────────────────────────────
+export type WatermarkPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+export interface WatermarkImageOptions {
+    src: string
+    width?: number
+    height?: number
+    alt?: string
+}
+
+export interface WatermarkOptions {
+    text?: string | false
+    image?: string | WatermarkImageOptions
+    icon?: ReactNode | string | false
+    position?: WatermarkPosition
+    opacity?: number
+    color?: string
+}
+
+export type WatermarkInput = boolean | string | WatermarkOptions
+
+const DEFAULT_WATERMARK_TEXT = 'Vizmatic'
+const WATERMARK_COLOR_DARK = '#a78bfa'
+const WATERMARK_COLOR_LIGHT = '#7c3aed'
 
 /**
- * Builds the brain circuit icon using nested divs with absolute positioning.
- * Since Satori has limited SVG support, we embed a minimal inline SVG
- * that Satori CAN handle (simple paths + circles).
- *
- * Note: Satori supports basic <svg> with <path> elements.
+ * Compact Vizmatic frame-grid mark. Kept as JSX so Satori can embed it in PNG,
+ * SVG, and GIF renders without reading external assets.
  */
-function BrainIcon({ size = 14, color }: { size?: number; color: string }): React.ReactElement {
-    // Satori supports basic inline SVG with path elements
+function VizmaticIcon({ size = 14, color }: { size?: number; color: string }): React.ReactElement {
     return React.createElement('svg', {
         xmlns: 'http://www.w3.org/2000/svg',
         width: size,
         height: size,
-        viewBox: '0 0 24 24',
+        viewBox: '0 0 28 28',
         fill: 'none',
-        stroke: color,
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
     },
-        React.createElement('path', {
-            d: 'M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z',
-        }),
-        React.createElement('path', { d: 'M9 13a4.5 4.5 0 0 0 3-4' }),
-        React.createElement('path', { d: 'M6.003 5.125A3 3 0 0 0 6.401 6.5' }),
-        React.createElement('path', { d: 'M3.477 10.896a4 4 0 0 1 .585-.396' }),
-        React.createElement('path', { d: 'M6 18a4 4 0 0 1-1.967-.516' }),
-        React.createElement('path', { d: 'M12 13h4' }),
-        React.createElement('path', { d: 'M12 18h6a2 2 0 0 1 2 2v1' }),
-        React.createElement('path', { d: 'M12 8h8' }),
-        React.createElement('path', { d: 'M16 8V5a2 2 0 0 1 2-2' }),
-        React.createElement('circle', { cx: 16, cy: 13, r: 0.5, fill: color }),
-        React.createElement('circle', { cx: 18, cy: 3, r: 0.5, fill: color }),
-        React.createElement('circle', { cx: 20, cy: 21, r: 0.5, fill: color }),
-        React.createElement('circle', { cx: 20, cy: 8, r: 0.5, fill: color }),
+        React.createElement('rect', { x: 2.5, y: 2.5, width: 23, height: 23, rx: 6.5, stroke: color, strokeWidth: 2, opacity: 0.54 }),
+        React.createElement('rect', { x: 7, y: 7, width: 5.5, height: 5.5, rx: 1.8, fill: color, opacity: 0.35 }),
+        React.createElement('rect', { x: 15.5, y: 7, width: 5.5, height: 5.5, rx: 1.8, fill: color }),
+        React.createElement('rect', { x: 7, y: 15.5, width: 5.5, height: 5.5, rx: 1.8, fill: color, opacity: 0.82 }),
+        React.createElement('rect', { x: 15.5, y: 15.5, width: 5.5, height: 5.5, rx: 1.8, stroke: color, strokeWidth: 1.5, opacity: 0.72 }),
+        React.createElement('path', { d: 'M9.75 9.75h8.5M9.75 18.25h8.5M9.75 9.75v8.5M18.25 9.75v8.5', stroke: color, strokeWidth: 1.6, strokeLinecap: 'round', opacity: 0.88 }),
     )
 }
 
-// ─── Brand Component ─────────────────────────────────────────────────────
+export function normalizeWatermark(watermark: WatermarkInput | undefined): WatermarkOptions | undefined {
+    if (watermark == null || watermark === false) return undefined
+    if (watermark === true) return {}
+    if (typeof watermark === 'string') return { text: watermark }
+    return watermark
+}
 
-const WATERMARK_COLOR_DARK = '#a78bfa'   // Lighter purple — visible on dark backgrounds
-const WATERMARK_COLOR_LIGHT = '#7c3aed'  // Brand purple — visible on light backgrounds
+function positionStyle(position: WatermarkPosition): React.CSSProperties {
+    switch (position) {
+        case 'top-left':
+            return { top: 8, left: 10 }
+        case 'bottom-left':
+            return { bottom: 8, left: 10 }
+        case 'bottom-right':
+            return { bottom: 8, right: 10 }
+        case 'top-right':
+        default:
+            return { top: 8, right: 10 }
+    }
+}
+
+function imageNode(image: WatermarkOptions['image']): ReactNode {
+    if (!image) return undefined
+    const imageOptions = typeof image === 'string' ? { src: image } : image
+
+    return React.createElement('img', {
+        src: imageOptions.src,
+        alt: imageOptions.alt ?? '',
+        width: imageOptions.width ?? 14,
+        height: imageOptions.height ?? 14,
+        style: {
+            display: 'block',
+            width: imageOptions.width ?? 14,
+            height: imageOptions.height ?? 14,
+            objectFit: 'contain' as const,
+        },
+    })
+}
+
+function iconNode(icon: WatermarkOptions['icon'], color: string): ReactNode {
+    if (icon === false) return undefined
+    if (icon == null) return React.createElement(VizmaticIcon, { size: 13, color })
+    if (typeof icon !== 'string') return icon
+
+    return React.createElement('div', {
+        style: {
+            minWidth: 13,
+            height: 13,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color,
+            fontSize: icon.length > 2 ? 8 : 10,
+            fontWeight: 800,
+            fontFamily: 'Inter',
+            lineHeight: 1,
+        },
+    }, icon)
+}
 
 /**
- * Wrap an illustration element with a brand at the top right.
- *
- * Layout:
- * ┌─────────────────────────────────────┐
- * │                      🧠 Vizmatic │
- * │                                     │
- * │       [original illustration]       │
- * │                                     │
- * └─────────────────────────────────────┘
+ * Wrap an illustration element with a watermark overlay.
  */
-export function wrapWithBrand(
+export function wrapWithWatermark(
     element: React.ReactNode,
     width: number,
     height: number,
     theme: 'dark' | 'light' = 'dark',
-    label = 'Vizmatic',
+    watermark: WatermarkInput = true,
 ): React.ReactElement {
     const isDark = theme === 'dark'
-    const color = isDark ? WATERMARK_COLOR_DARK : WATERMARK_COLOR_LIGHT
+    const options = normalizeWatermark(watermark)
+    const color = options?.color ?? (isDark ? WATERMARK_COLOR_DARK : WATERMARK_COLOR_LIGHT)
+    const position = options?.position ?? 'top-right'
+    const opacity = options?.opacity ?? (isDark ? 0.55 : 0.40)
+    const icon = options ? imageNode(options.image) ?? iconNode(options.icon, color) : undefined
+    const text = options?.text ?? DEFAULT_WATERMARK_TEXT
 
     return React.createElement('div', {
         style: {
@@ -85,31 +137,37 @@ export function wrapWithBrand(
             position: 'relative' as const,
         }
     },
-        // Original illustration fills the full canvas
         element,
-
-        // Brand overlay — top right
-        React.createElement('div', {
+        options && React.createElement('div', {
             style: {
                 position: 'absolute' as const,
-                top: 8,
-                right: 10,
+                ...positionStyle(position),
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
-                opacity: isDark ? 0.55 : 0.40,
-            }
+                opacity,
+            },
         },
-            BrainIcon({ size: 13, color }),
-            React.createElement('div', {
+            icon,
+            text !== false && text && React.createElement('div', {
                 style: {
                     fontSize: 11,
                     fontWeight: 600,
                     color,
                     fontFamily: 'Inter',
                     letterSpacing: 0.3,
-                }
-            }, label),
+                },
+            }, text),
         ),
     )
+}
+
+export function wrapWithBrand(
+    element: React.ReactNode,
+    width: number,
+    height: number,
+    theme: 'dark' | 'light' = 'dark',
+    label = DEFAULT_WATERMARK_TEXT,
+): React.ReactElement {
+    return wrapWithWatermark(element, width, height, theme, label)
 }

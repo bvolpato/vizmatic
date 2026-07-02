@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { describe, expect, it } from 'vitest'
-import { defineIllustration, renderAnimatedGif, renderToBuffer, Scene, StepCard, getThemeColors } from '../src'
+import { defineIllustration, renderAnimatedGif, renderToBuffer, Scene, StepCard, getThemeColors, wrapWithWatermark } from '../src'
 
 describe('vizmatic render pipeline', () => {
     it('renders a PNG buffer from a themed scene', async () => {
@@ -21,6 +21,28 @@ describe('vizmatic render pipeline', () => {
     it('resolves dark and light theme tokens', () => {
         expect(getThemeColors('dark').bg).not.toBe(getThemeColors('light').bg)
         expect(getThemeColors('dark').primary).toBe(getThemeColors('light').primary)
+    })
+
+    it('supports custom watermark text, image, and position', () => {
+        const image = 'data:image/svg+xml;base64,PHN2Zy8+'
+        const wrapped = wrapWithWatermark(<div />, 320, 180, 'dark', {
+            text: 'LeetLLM',
+            image: { src: image, width: 18, height: 12 },
+            position: 'bottom-left',
+        }) as React.ReactElement<{ children: React.ReactNode }>
+        const children = React.Children.toArray(wrapped.props.children)
+        const watermark = children[1] as React.ReactElement<{ style: Record<string, unknown>; children: React.ReactNode }>
+        const watermarkChildren = React.Children.toArray(watermark.props.children)
+        const logo = watermarkChildren[0] as React.ReactElement<{ src: string; width: number; height: number }>
+        const label = watermarkChildren[1] as React.ReactElement<{ children: React.ReactNode }>
+
+        expect(watermark.props.style.bottom).toBe(8)
+        expect(watermark.props.style.left).toBe(10)
+        expect(watermark.props.style.top).toBeUndefined()
+        expect(logo.props.src).toBe(image)
+        expect(logo.props.width).toBe(18)
+        expect(logo.props.height).toBe(12)
+        expect(label.props.children).toBe('LeetLLM')
     })
 
     it('renders an animated GIF from scene frames', async () => {
