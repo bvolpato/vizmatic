@@ -31,16 +31,25 @@ interface RenderArgs {
 
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 
-function usage(): never {
-    console.error(`Usage:
+function usageText() {
+    return `Usage:
   vizmatic render <file-or-directory...> --out <dir> [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
   vizmatic gif <file-or-directory...> --out <dir> [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
 
 Examples:
   vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
-  vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`)
+  vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`
+}
+
+function usage(): never {
+    console.error(usageText())
     process.exit(1)
+}
+
+function help(): never {
+    console.log(usageText())
+    process.exit(0)
 }
 
 const WATERMARK_POSITIONS = new Set<WatermarkPosition>(['top-left', 'top-right', 'bottom-left', 'bottom-right'])
@@ -354,6 +363,8 @@ async function main() {
         await renderCommand(rest)
     } else if (command === 'gif') {
         await gifCommand(rest)
+    } else if (!command || command === 'help' || command === '--help' || command === '-h') {
+        help()
     } else {
         usage()
     }
