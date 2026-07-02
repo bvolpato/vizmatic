@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "Theme-aware visual primitives and render pipeline for AI-generated diagrams, figures, and presentation frames.",
   "type": "module",
   "license": "MIT",
@@ -32,6 +32,9 @@
     "structured-visuals"
   ],
   "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist",
     "examples",
@@ -43,15 +46,17 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "bin": {
     "vizmatic": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts --format esm --dts --target node20 --clean --external react",
+    "build": "tsup src/index.ts --format esm,cjs --dts --target node20 --clean --external react && tsup src/cli.ts --format esm --dts --target node20 --external react",
     "prepare": "pnpm build",
+    "lint": "pnpm typecheck",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
@@ -59,12 +64,14 @@
     "docs:check": "tsx scripts/check-docs.ts",
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
     "security:audit": "pnpm audit --audit-level low",
-    "verify": "pnpm typecheck && pnpm test && pnpm render:examples && pnpm docs:check && pnpm security:audit && npm pack --dry-run",
-    "prepublishOnly": "pnpm test && pnpm render:examples && pnpm security:audit && npm pack --dry-run"
+    "deps:check": "pnpm security:audit && npm pack --dry-run",
+    "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm docs:check && pnpm deps:check",
+    "prepublishOnly": "pnpm test && pnpm render:examples && pnpm deps:check"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "gifenc": "^1.0.3",
+    "react": "^19.1.0",
     "satori": "^0.26.0",
     "tsx": "^4.20.4"
   },
@@ -74,7 +81,6 @@
   "devDependencies": {
     "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
-    "react": "^19.1.0",
     "shiki": "^4.3.0",
     "tsup": "^8.5.0",
     "typescript": "^6.0.3",

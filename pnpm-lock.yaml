@@ -17,6 +17,9 @@ importers:
       gifenc:
         specifier: ^1.0.3
         version: 1.0.3
+      react:
+        specifier: ^19.1.0
+        version: 19.2.7
       satori:
         specifier: ^0.26.0
         version: 0.26.0
@@ -30,9 +33,6 @@ importers:
       '@types/react':
         specifier: ^19.1.8
         version: 19.2.17
-      react:
-        specifier: ^19.1.0
-        version: 19.2.7
       shiki:
         specifier: ^4.3.0
         version: 4.3.0

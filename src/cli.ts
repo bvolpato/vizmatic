@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
+import { existsSync } from 'fs'
 import { mkdir, readFile, readdir, writeFile } from 'fs/promises'
-import { basename, extname, join, relative, resolve } from 'path'
-import { pathToFileURL } from 'url'
+import { createRequire, Module } from 'module'
+import { basename, dirname, extname, join, relative, resolve } from 'path'
+import { fileURLToPath, pathToFileURL } from 'url'
 import { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import { renderAnimatedGif, type AnimatedScene } from './animate'
@@ -31,13 +33,20 @@ interface RenderArgs {
 }
 
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
+const cliRequire = createRequire(import.meta.url)
+let frameDependencyAliasesInstalled = false
+
+type ResolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown) => string
 
 function usageText() {
     return `Usage:
-  vizmatic render <file-or-directory...> --out <dir> [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
-  vizmatic gif <file-or-directory...> --out <dir> [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
+  vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
+  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
+  vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
 
 Examples:
+  vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
+  pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark
   vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
   vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`
@@ -93,6 +102,42 @@ async function resolveWatermarkAssets(watermark: WatermarkInput | undefined): Pr
             ...watermark.image,
             src: await imageSourceToDataUri(watermark.image.src),
         },
+    }
+}
+
+function resolveSelfEntry(): string | undefined {
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    const bundledEntry = join(moduleDir, 'index.cjs')
+    if (existsSync(bundledEntry)) return bundledEntry
+
+    const sourceEntry = join(moduleDir, 'index.ts')
+    if (existsSync(sourceEntry)) return sourceEntry
+
+    try {
+        return cliRequire.resolve('vizmatic')
+    } catch {
+        return undefined
+    }
+}
+
+function resolveFrameDependency(request: string): string | undefined {
+    try {
+        if (request === 'vizmatic') return resolveSelfEntry()
+        if (request === 'react' || request.startsWith('react/')) return cliRequire.resolve(request)
+    } catch {
+        return undefined
+    }
+    return undefined
+}
+
+function installFrameDependencyAliases() {
+    if (frameDependencyAliasesInstalled) return
+    frameDependencyAliasesInstalled = true
+
+    const moduleWithResolver = Module as unknown as { _resolveFilename: ResolveFilename }
+    const resolveFilename = moduleWithResolver._resolveFilename
+    moduleWithResolver._resolveFilename = function resolveFrameDependencyAlias(request, parent, isMain, options) {
+        return resolveFrameDependency(request) ?? resolveFilename.call(this, request, parent, isMain, options)
     }
 }
 
@@ -239,11 +284,12 @@ async function findFrameFiles(inputs: string[]): Promise<string[]> {
 }
 
 async function importFrame(filePath: string): Promise<FrameModule> {
+    installFrameDependencyAliases()
     const url = pathToFileURL(filePath).href
     try {
         return await import(url) as FrameModule
     } catch (error) {
-        if (!/\.[tj]sx?$/.test(filePath)) throw error
+        if (!RENDER_EXTENSIONS.has(extname(filePath))) throw error
         const { tsImport } = await import('tsx/esm/api')
         return await tsImport<FrameModule>(url, import.meta.url)
     }
@@ -359,13 +405,16 @@ async function gifCommand(argv: string[]) {
 }
 
 async function main() {
-    const [command, ...rest] = process.argv.slice(2)
+    const args = process.argv.slice(2)
+    const [command, ...rest] = args
     if (command === 'render') {
         await renderCommand(rest)
     } else if (command === 'gif') {
         await gifCommand(rest)
     } else if (!command || command === 'help' || command === '--help' || command === '-h') {
         help()
+    } else if (!command.startsWith('-')) {
+        await renderCommand(args)
     } else {
         usage()
     }

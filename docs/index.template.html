@@ -60,7 +60,7 @@
         <a class="button" href="#prompt">Copy agent prompt</a>
         <a class="button" href="#gallery">See examples</a>
       </div>
-      <div class="install"><span>$</span> pnpm add vizmatic react<br><span>$</span> pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light</div>
+      <div class="install"><span>$</span> pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light<br><span>$</span> pnpm add vizmatic react <em># optional project dependency</em></div>
     </div>
     <div class="hero-frame">
       <img data-theme-image src="assets/examples/attention-head_dark.png" alt="Vizmatic attention head example">
@@ -248,14 +248,17 @@ const frame = defineIllustration((c) =&gt; (
 
 Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
 
-Install:
+One-off render, no package.json change:
+pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+
+Install for project scripts, editor types, or renderer APIs:
 pnpm add vizmatic react
 
 Optional edge build:
 pnpm add github:bvolpato/vizmatic react
 
 Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:
-pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg
+pnpm exec vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg
 
 For animation, export createScenes(theme), then run:
 pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</code></pre>
@@ -271,7 +274,7 @@ pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --them
         <article class="quality-item">
           <span>CI</span>
           <h3>Full verification on every push</h3>
-          <p>TypeScript, Vitest, gallery rendering, docs checks, npm audit, generated-file drift, and npm pack validation all run before a change is considered green.</p>
+          <p>`./test.sh` runs install, lint, Vitest, gallery rendering, docs checks, npm audit, package dry-run, and generated-file drift before a change is considered green.</p>
         </article>
         <article class="quality-item">
           <span>Pages</span>

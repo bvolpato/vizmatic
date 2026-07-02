@@ -22,7 +22,4 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm verify
-      - name: Ensure generated files are committed
-        run: git diff --exit-code
+      - run: ./test.sh

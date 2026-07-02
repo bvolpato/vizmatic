@@ -2,9 +2,17 @@
 
 Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
 
-## Install
+## Install Or Run
 
 Use the package manager already present in the project.
+
+For one-off renders, use the binary without changing `package.json`:
+
+```bash
+pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+```
+
+Install when the project needs scripts, editor types, or direct renderer APIs:
 
 ```bash
 pnpm add vizmatic react
@@ -106,7 +114,7 @@ export default frame.default
 Render it:
 
 ```bash
-pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
+pnpm exec vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
 
 Frame modules can also export a watermark element when code-owned branding is clearer than CLI flags:

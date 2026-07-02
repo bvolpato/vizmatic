@@ -61,7 +61,7 @@
         <a class="button" href="#prompt">Copy agent prompt</a>
         <a class="button" href="#gallery">See examples</a>
       </div>
-      <div class="install"><span>$</span> pnpm add vizmatic react<br><span>$</span> pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light</div>
+      <div class="install"><span>$</span> pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light<br><span>$</span> pnpm add vizmatic react <em># optional project dependency</em></div>
     </div>
     <div class="hero-frame">
       <img data-theme-image src="assets/examples/attention-head_dark.png" alt="Vizmatic attention head example">
@@ -249,14 +249,17 @@
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.</span></span>
 <span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Install:</span></span>
+<span class="line"><span style="color:#E1E4E8">One-off render, no package.json change:</span></span>
+<span class="line"><span style="color:#E1E4E8">pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">Install for project scripts, editor types, or renderer APIs:</span></span>
 <span class="line"><span style="color:#E1E4E8">pnpm add vizmatic react</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">Optional edge build:</span></span>
 <span class="line"><span style="color:#E1E4E8">pnpm add github:bvolpato/vizmatic react</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</span></span>
+<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</span></span>
 <span class="line"></span>
 <span class="line"><span style="color:#E1E4E8">For animation, export createScenes(theme), then run:</span></span>
 <span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg</span></span></code></pre>
@@ -272,7 +275,7 @@
         <article class="quality-item">
           <span>CI</span>
           <h3>Full verification on every push</h3>
-          <p>TypeScript, Vitest, gallery rendering, docs checks, npm audit, generated-file drift, and npm pack validation all run before a change is considered green.</p>
+          <p>`./test.sh` runs install, lint, Vitest, gallery rendering, docs checks, npm audit, package dry-run, and generated-file drift before a change is considered green.</p>
         </article>
         <article class="quality-item">
           <span>Pages</span>

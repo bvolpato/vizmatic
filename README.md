@@ -31,6 +31,16 @@
 
 ## Quick Start
 
+Use Vizmatic as a one-off binary without touching `package.json`:
+
+```bash
+pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+```
+
+Frame files can import `react` and `vizmatic`; the CLI resolves those from its own package runtime in `dlx`/`npx` mode.
+
+Install it when you want project scripts, editor types, or direct renderer APIs:
+
 ```bash
 pnpm add vizmatic react
 ```
@@ -70,7 +80,7 @@ export default frame.default
 Render it:
 
 ```bash
-vizmatic render ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
 ```
 
 Render an animation:
@@ -361,24 +371,22 @@ Vizmatic treats generated visuals as source-controlled build artifacts. CI fails
 
 | Gate | What it protects |
 |---|---|
-| `pnpm typecheck` | Type safety across `src/`, `examples/`, `scripts/`, and tests |
+| `pnpm lint` | Static TypeScript coverage across `src/`, `examples/`, `scripts/`, and tests |
 | `pnpm test` | Render pipeline behavior, watermark options, and output validation |
 | `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
-| `pnpm security:audit` | Fails on known low-or-higher npm advisories |
-| `npm pack --dry-run` | Published package contents before release |
-| CI generated-file check | Ensures rendered docs/examples are committed |
+| `pnpm deps:check` | npm audit plus package tarball contents before release |
+| `./test.sh` drift check | Ensures render/docs commands do not create extra changes |
 
 Run the full local gate:
 
 ```bash
-pnpm verify
-git diff --exit-code
+./test.sh
 ```
 
 ## Supply Chain Posture
 
-Vizmatic keeps runtime dependencies narrow: `satori` for JSX layout, `@resvg/resvg-js` for rasterization, `gifenc` for animated GIF output, and `tsx` so the CLI can load TSX scene files directly.
+Vizmatic keeps runtime dependencies narrow: `react` for JSX frames, `satori` for JSX layout, `@resvg/resvg-js` for rasterization, `gifenc` for animated GIF output, and `tsx` so the CLI can load TSX scene files directly.
 
 Package resolution is intentionally conservative:
 
@@ -564,7 +572,7 @@ src/
   render.ts       Satori -> SVG -> resvg -> PNG
   animate.ts      ordered scene states -> GIF
   autocrop.ts     content bounds and overflow checks
-  cli.ts          vizmatic render / vizmatic gif
+  cli.ts          vizmatic file.tsx / vizmatic render / vizmatic gif
 examples/
   *.tsx           generated gallery frames
 docs/
