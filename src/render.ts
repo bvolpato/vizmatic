@@ -16,6 +16,7 @@ import { homedir } from 'os'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
+import { fileURLToPath } from 'url'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow } from './autocrop'
@@ -30,12 +31,39 @@ interface FontData {
     style: 'normal' | 'italic'
 }
 
-const FONT_DIR = process.env.VIZMATIC_FONT_DIR
+const FONT_CACHE_DIR = process.env.VIZMATIC_FONT_DIR
     ?? join(process.env.XDG_CACHE_HOME ?? join(homedir(), '.cache'), 'vizmatic', 'fonts')
+const NETWORK_FALLBACK_DISABLED = process.env.VIZMATIC_DISABLE_NETWORK === '1'
+    || process.env.VIZMATIC_OFFLINE === '1'
+
+function moduleDirectory(): string {
+    if (typeof __dirname !== 'undefined') return __dirname
+    return dirname(fileURLToPath(import.meta.url))
+}
+
+function unique(values: Array<string | undefined>): string[] {
+    return [...new Set(values.filter((value): value is string => Boolean(value)))]
+}
+
+function resolveAssetDir(): string | undefined {
+    const moduleDir = moduleDirectory()
+    const candidates = unique([
+        process.env.VIZMATIC_ASSET_DIR,
+        join(moduleDir, '..', 'assets'),
+        join(moduleDir, 'assets'),
+        join(process.cwd(), 'assets'),
+    ])
+
+    return candidates.find((candidate) => existsSync(candidate))
+}
+
+const ASSET_DIR = resolveAssetDir()
+const VENDORED_FONT_DIR = ASSET_DIR ? join(ASSET_DIR, 'fonts') : undefined
+const VENDORED_EMOJI_DIR = ASSET_DIR ? join(ASSET_DIR, 'emoji') : undefined
 
 /**
- * Google Fonts gstatic CDN — TTF files for text rendering.
- * All fonts are auto-downloaded on first run and cached in the fonts/ directory.
+ * TTF files for text rendering. Vizmatic ships default font files in assets/fonts.
+ * Public download URLs remain as a fallback for source-tree installs with missing assets.
  *
  * Font chain:
  * 1. Inter (Regular/SemiBold/Bold) — primary text font
@@ -56,10 +84,21 @@ const FONT_URLS = {
     notoSansMath: 'https://fonts.gstatic.com/s/notosansmath/v18/7Aump_cpkSecTWaHRlH2hyV5UHkG.ttf',
 } as const
 
+function fontReadPaths(filename: string): string[] {
+    return unique([
+        process.env.VIZMATIC_FONT_DIR ? join(process.env.VIZMATIC_FONT_DIR, filename) : undefined,
+        VENDORED_FONT_DIR ? join(VENDORED_FONT_DIR, filename) : undefined,
+        join(FONT_CACHE_DIR, filename),
+    ])
+}
+
 async function ensureFont(filename: string, url: string): Promise<Buffer> {
-    const localPath = join(FONT_DIR, filename)
-    if (existsSync(localPath)) {
-        return readFile(localPath)
+    for (const localPath of fontReadPaths(filename)) {
+        if (existsSync(localPath)) return readFile(localPath)
+    }
+
+    if (NETWORK_FALLBACK_DISABLED) {
+        throw new Error(`Font ${filename} was not found in local Vizmatic assets and network fallback is disabled`)
     }
 
     console.log(`  ↓ Downloading font: ${filename}`)
@@ -68,8 +107,8 @@ async function ensureFont(filename: string, url: string): Promise<Buffer> {
         throw new Error(`Failed to download font ${filename}: ${response.statusText}`)
     }
     const buffer = Buffer.from(await response.arrayBuffer())
-    await mkdir(FONT_DIR, { recursive: true })
-    await writeFile(localPath, buffer)
+    await mkdir(FONT_CACHE_DIR, { recursive: true })
+    await writeFile(join(FONT_CACHE_DIR, filename), buffer)
     return buffer
 }
 
@@ -78,7 +117,7 @@ function toArrayBuffer(buffer: Buffer): ArrayBuffer {
 }
 
 async function loadFonts(): Promise<FontData[]> {
-    await mkdir(FONT_DIR, { recursive: true })
+    await mkdir(FONT_CACHE_DIR, { recursive: true })
 
     const fonts: FontData[] = []
 
@@ -137,30 +176,50 @@ async function loadFonts(): Promise<FontData[]> {
 // ─── Emoji Support ───────────────────────────────────────────────────────────
 
 /**
- * Resolve emoji characters to Twemoji SVG images via jsDelivr CDN.
- * SVGs are cached locally in the fonts directory to avoid repeated downloads.
+ * Resolve emoji characters to Twemoji SVG images.
+ * Vizmatic ships Twemoji SVGs in assets/emoji and only uses jsDelivr as fallback.
  * Satori calls this when it encounters an emoji grapheme.
  */
-const EMOJI_CACHE_DIR = join(FONT_DIR, 'emoji')
+const EMOJI_CACHE_DIR = join(FONT_CACHE_DIR, 'emoji')
+
+function emojiCodepoints(segment: string): string[] {
+    return [...segment].map(c => c.codePointAt(0)!.toString(16))
+}
+
+function emojiFilenames(segment: string): string[] {
+    const codepoints = emojiCodepoints(segment)
+    const full = codepoints.join('-')
+    const withoutVariationSelectors = codepoints.filter(cp => cp !== 'fe0f').join('-')
+    return unique([full, withoutVariationSelectors]).map((codepoints) => `${codepoints}.svg`)
+}
+
+async function svgFileToDataUri(path: string): Promise<string> {
+    const svgData = await readFile(path, 'utf8')
+    return `data:image/svg+xml;base64,${Buffer.from(svgData).toString('base64')}`
+}
 
 async function loadEmoji(segment: string): Promise<string> {
-    // Convert emoji to Twemoji-style codepoint filename (e.g. 1f4a1 or 1f3af)
-    const codepoints = [...segment]
-        .map(c => c.codePointAt(0)!.toString(16))
-        .filter(cp => cp !== 'fe0f')  // Remove variation selector
-        .join('-')
+    const filenames = emojiFilenames(segment)
 
-    const filename = `${codepoints}.svg`
-    const localPath = join(EMOJI_CACHE_DIR, filename)
-
-    // Return cached SVG if available
-    if (existsSync(localPath)) {
-        const svgData = await readFile(localPath, 'utf8')
-        return `data:image/svg+xml;base64,${Buffer.from(svgData).toString('base64')}`
+    for (const filename of filenames) {
+        const paths = unique([
+            VENDORED_EMOJI_DIR ? join(VENDORED_EMOJI_DIR, filename) : undefined,
+            join(EMOJI_CACHE_DIR, filename),
+        ])
+        for (const localPath of paths) {
+            if (existsSync(localPath)) return svgFileToDataUri(localPath)
+        }
     }
 
-    // Download from Twemoji CDN via jsDelivr
-    const url = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/${codepoints}.svg`
+    if (NETWORK_FALLBACK_DISABLED) {
+        console.warn(`Warning: Emoji asset not found locally: ${filenames.join(' or ')}`)
+        return ''
+    }
+
+    // Download from Twemoji CDN via jsDelivr.
+    const filename = filenames[0]
+    if (!filename) return ''
+    const url = `https://cdn.jsdelivr.net/npm/@twemoji/svg@15.0.0/${filename}`
     try {
         console.log(`  ↓ Downloading emoji: ${filename}`)
         const response = await fetch(url)
@@ -170,7 +229,7 @@ async function loadEmoji(segment: string): Promise<string> {
         }
         const svgData = await response.text()
         await mkdir(EMOJI_CACHE_DIR, { recursive: true })
-        await writeFile(localPath, svgData)
+        await writeFile(join(EMOJI_CACHE_DIR, filename), svgData)
         return `data:image/svg+xml;base64,${Buffer.from(svgData).toString('base64')}`
     } catch (e) {
         console.warn(`Warning: Could not fetch emoji ${filename}:`, e)

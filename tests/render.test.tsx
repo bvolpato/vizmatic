@@ -3,10 +3,31 @@ import { spawnSync } from 'child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { defineIllustration, renderAnimatedGif, renderToBuffer, Scene, StepCard, getThemeColors, Watermark, wrapWithWatermark } from '../src'
 
 describe('vizmatic render pipeline', () => {
+    it('renders with vendored fonts and emoji without network fetches', async () => {
+        const fetchMock = vi.fn(async () => {
+            throw new Error('network disabled in test')
+        })
+        vi.stubGlobal('fetch', fetchMock)
+
+        try {
+            const buffer = await renderToBuffer((
+                <div style={{ display: 'flex', fontFamily: 'Inter', fontSize: 32, fontWeight: 700 }}>
+                    Offline assets 💡
+                </div>
+            ), 560, 180)
+
+            expect(fetchMock).not.toHaveBeenCalled()
+            expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+            expect(buffer.length).toBeGreaterThan(5_000)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    }, 30_000)
+
     it('renders a PNG buffer from a themed scene', async () => {
         const frame = defineIllustration((c) => (
             <Scene c={c} title="Smoke test">
@@ -19,21 +40,39 @@ describe('vizmatic render pipeline', () => {
         expect(buffer.length).toBeGreaterThan(10_000)
     }, 30_000)
 
-    it('renders through the built CommonJS entrypoint', async () => {
+    it('renders through the built CommonJS entrypoint with packaged assets outside the repo cwd', async () => {
         const build = spawnSync('pnpm', ['build'], {
             cwd: process.cwd(),
             encoding: 'utf8',
         })
         expect(build.status, build.stderr || build.stdout).toBe(0)
 
-        const result = spawnSync(process.execPath, ['-e', `
-const React = require('react')
-const { defineIllustration, renderToBuffer, Scene, StepCard } = require('./dist/index.cjs')
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cjs-assets-'))
+        const packageRoot = process.cwd()
+
+        try {
+            const result = spawnSync(process.execPath, ['-e', `
+const React = require(${JSON.stringify(join(packageRoot, 'node_modules', 'react'))})
+const originalFetch = global.fetch.bind(global)
+const externalFetches = []
+global.fetch = async (input, init) => {
+  const url = String(input)
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    externalFetches.push(url)
+    throw new Error('network disabled in test: ' + url)
+  }
+  return originalFetch(input, init)
+}
+const { defineIllustration, renderToBuffer, Scene, StepCard } = require(${JSON.stringify(join(packageRoot, 'dist', 'index.cjs'))})
 const frame = defineIllustration((c) => React.createElement(Scene, { c, title: 'CJS smoke' },
-  React.createElement(StepCard, { c, title: 'Rendered', subtitle: 'CommonJS', tone: 'green' })
+  React.createElement(StepCard, { c, title: 'Rendered 💡', subtitle: 'CommonJS', tone: 'green' })
 ))
 renderToBuffer(frame.create('dark'), 720, 420)
   .then((buffer) => {
+    if (externalFetches.length !== 0) {
+      console.error('external fetches', externalFetches)
+      process.exit(4)
+    }
     if (buffer.subarray(0, 8).toString('hex') !== '89504e470d0a1a0a') process.exit(2)
     if (buffer.length <= 10000) process.exit(3)
   })
@@ -42,10 +81,13 @@ renderToBuffer(frame.create('dark'), 720, 420)
     process.exit(1)
   })
 `], {
-            cwd: process.cwd(),
-            encoding: 'utf8',
-        })
-        expect(result.status, result.stderr || result.stdout).toBe(0)
+                cwd: outDir,
+                encoding: 'utf8',
+            })
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
     }, 30_000)
 
     it('resolves dark and light theme tokens', () => {

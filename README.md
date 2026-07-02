@@ -421,6 +421,8 @@ Run the full local gate:
 
 Vizmatic keeps runtime dependencies narrow: `react` for JSX frames, `satori` for JSX layout, `@resvg/resvg-js` for rasterization, `gifenc` for animated GIF output, and `tsx` so the CLI can load TSX scene files directly.
 
+The published package vendors its default renderer assets under `assets/`: Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and Twemoji SVGs. Normal CLI rendering should not need `fonts.gstatic.com` or `cdn.jsdelivr.net` at runtime. `VIZMATIC_FONT_DIR` can still point at a custom/cache font directory, `VIZMATIC_ASSET_DIR` can point at a relocated asset bundle, and `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` prevents fallback to public downloads.
+
 Package resolution is intentionally conservative:
 
 - `minimumReleaseAge: 10080` requires timestamped package releases to age seven days before pnpm can select them.
