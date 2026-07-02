@@ -19,6 +19,7 @@
   --code: #c4b5fd;
   --media-bg: rgba(2, 6, 23, 0.22);
   --source-bg: rgba(2, 6, 23, 0.72);
+  --nav-bg: rgba(7, 9, 18, 0.74);
 }
 
 :root[data-site-theme="light"] {
@@ -42,6 +43,7 @@
   --code: #c4b5fd;
   --media-bg: rgba(226, 232, 240, 0.42);
   --source-bg: rgba(15, 23, 42, 0.82);
+  --nav-bg: rgba(255, 255, 255, 0.78);
 }
 
 * {
@@ -49,7 +51,7 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 body {
@@ -108,9 +110,17 @@ img {
 }
 
 .nav {
+  position: sticky;
+  top: 12px;
+  z-index: 50;
   width: min(1180px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 22px 0;
+  margin: 12px auto 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--nav-bg);
+  box-shadow: 0 16px 50px rgba(2, 6, 23, 0.22);
+  backdrop-filter: blur(18px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -137,6 +147,11 @@ img {
   font-weight: 650;
 }
 
+.nav-links a {
+  position: relative;
+  padding: 8px 0;
+}
+
 .nav-actions {
   gap: 18px;
   justify-content: flex-end;
@@ -144,6 +159,21 @@ img {
 
 .nav-links a:hover {
   color: var(--text);
+}
+
+.nav-links a[aria-current="page"] {
+  color: var(--text);
+}
+
+.nav-links a[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--green);
 }
 
 .theme-toggle {
@@ -180,7 +210,7 @@ img {
   grid-template-columns: minmax(0, 0.92fr) minmax(500px, 1.08fr);
   gap: 44px;
   align-items: center;
-  padding: 46px 0 82px;
+  padding: 34px 0 82px;
 }
 
 .eyebrow,
@@ -538,6 +568,21 @@ pre {
   overflow: auto;
 }
 
+pre.shiki {
+  background: var(--code-bg) !important;
+  color: #e1e4e8;
+}
+
+pre.shiki code {
+  display: block;
+  min-width: max-content;
+  color: inherit;
+}
+
+pre.shiki .line {
+  min-height: 1.7em;
+}
+
 code {
   color: var(--code);
   font-family: "Fira Code", ui-monospace, monospace;
@@ -602,6 +647,7 @@ code {
 .source-code .shiki {
   margin: 0;
   min-height: 520px;
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent !important;
@@ -721,6 +767,37 @@ footer a {
   footer,
   .metrics {
     width: min(100% - 28px, 1180px);
+  }
+
+  .nav {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px 12px;
+    align-items: center;
+  }
+
+  .nav-actions {
+    display: contents;
+  }
+
+  .nav-links {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    flex-wrap: nowrap;
+    gap: 18px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .theme-toggle {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
   }
 
   h1 {

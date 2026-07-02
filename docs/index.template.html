@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-<!-- Generated from docs/index.template.html by pnpm site:build. Edit template. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -104,23 +103,23 @@
         <h2>Write scenes, not SVG paths.</h2>
         <p>Use React primitives with semantic tones. Render to PNG in Node for docs, websites, or generated decks.</p>
       </div>
-      <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { defineIllustration, Flow, Scene } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> "vizmatic"</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> width</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 1040</span></span>
-<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> height</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 560</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> frame</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> defineIllustration</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">c</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;</span><span style="color:#79B8FF">Scene</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Agent pipeline"</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">Flow</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">stages</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
-<span class="line"><span style="color:#E1E4E8">      { title: </span><span style="color:#9ECBFF">"Prompt"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"blue"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      { title: </span><span style="color:#9ECBFF">"Scene spec"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"purple"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      { title: </span><span style="color:#9ECBFF">"PNG / GIF"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"green"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">    ]} /></span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;/</span><span style="color:#79B8FF">Scene</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">)</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> create</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> frame.create</span></span>
-<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#E1E4E8"> frame.default</span></span></code></pre>
+      <pre data-shiki="tsx"><code>import { defineIllustration, Flow, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const frame = defineIllustration((c) =&gt;
+  &lt;Scene c={c} title="Agent pipeline"&gt;
+    &lt;Flow c={c} stages={[
+      { title: "Prompt", tone: "blue" },
+      { title: "Scene spec", tone: "purple" },
+      { title: "PNG / GIF", tone: "green" },
+    ]} /&gt;
+  &lt;/Scene&gt;
+)
+
+export const create = frame.create
+export default frame.default</code></pre>
     </section>
 
     <section id="gif" class="section gif-showcase">
@@ -128,15 +127,15 @@
         <span>Animated GIF</span>
         <h2>Export motion from the same scene language.</h2>
         <p>Static frames use `create(theme)`. Animated frames export `createScenes(theme)` and render with `vizmatic gif`. Perfect for showing state machines, learning steps, product flows, and release timelines.</p>
-        <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> createScenes</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">theme</span><span style="color:#E1E4E8">) {</span></span>
-<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> [</span></span>
-<span class="line"><span style="color:#E1E4E8">    { element: </span><span style="color:#B392F0">step</span><span style="color:#E1E4E8">(theme, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">), duration: </span><span style="color:#79B8FF">760</span><span style="color:#E1E4E8">, transition: </span><span style="color:#9ECBFF">"appear"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">    { element: </span><span style="color:#B392F0">step</span><span style="color:#E1E4E8">(theme, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">), duration: </span><span style="color:#79B8FF">760</span><span style="color:#E1E4E8">, transition: </span><span style="color:#9ECBFF">"fade"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">    { element: </span><span style="color:#B392F0">step</span><span style="color:#E1E4E8">(theme, </span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">), duration: </span><span style="color:#79B8FF">1100</span><span style="color:#E1E4E8">, transition: </span><span style="color:#9ECBFF">"fade"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">  ]</span></span>
-<span class="line"><span style="color:#E1E4E8">}</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">vizmatic gif frames</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">animated.tsx </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">out public</span><span style="color:#F97583">/</span><span style="color:#E1E4E8">vizmatic </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">theme dark,light </span><span style="color:#F97583">--</span><span style="color:#E1E4E8">brand Acme</span></span></code></pre>
+        <pre data-shiki="tsx"><code>export function createScenes(theme) {
+  return [
+    { element: step(theme, 0), duration: 760, transition: "appear" },
+    { element: step(theme, 1), duration: 760, transition: "fade" },
+    { element: step(theme, 2), duration: 1100, transition: "fade" },
+  ]
+}
+
+vizmatic gif frames/animated.tsx --out public/vizmatic --theme dark,light --brand Acme</code></pre>
       </div>
       <div class="gif-card">
         <img data-theme-image src="assets/examples/animated-pipeline_dark.gif" alt="Animated Vizmatic pipeline GIF">
@@ -156,24 +155,24 @@
             <h3>Flow + callouts</h3>
             <p>Best for process diagrams, architecture walkthroughs, and agent pipelines.</p>
           </div>
-          <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { CalloutCard, defineIllustration, Flow, Row, Scene } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> "vizmatic"</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> width</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 1040</span></span>
-<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> height</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 560</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> frame</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> defineIllustration</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">c</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> (</span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;</span><span style="color:#79B8FF">Scene</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Agent visual pipeline"</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">Flow</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">connectorTone</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"purple"</span><span style="color:#B392F0"> stages</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
-<span class="line"><span style="color:#E1E4E8">      { title: </span><span style="color:#9ECBFF">"Prompt"</span><span style="color:#E1E4E8">, subtitle: </span><span style="color:#9ECBFF">"intent"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"blue"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      { title: </span><span style="color:#9ECBFF">"Scene spec"</span><span style="color:#E1E4E8">, subtitle: </span><span style="color:#9ECBFF">"typed structure"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"purple"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      { title: </span><span style="color:#9ECBFF">"PNG / GIF"</span><span style="color:#E1E4E8">, subtitle: </span><span style="color:#9ECBFF">"verified asset"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"green"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">    ]} /></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">Row</span><span style="color:#B392F0"> gap</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{</span><span style="color:#79B8FF">14</span><span style="color:#E1E4E8">} </span><span style="color:#B392F0">width</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"100%"</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">      &#x3C;</span><span style="color:#79B8FF">CalloutCard</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">tone</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"purple"</span><span style="color:#B392F0"> title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Model writes structure"</span><span style="color:#E1E4E8"> /></span></span>
-<span class="line"><span style="color:#E1E4E8">      &#x3C;</span><span style="color:#79B8FF">CalloutCard</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">tone</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"green"</span><span style="color:#B392F0"> title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Theme stays in control"</span><span style="color:#E1E4E8"> /></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;/</span><span style="color:#79B8FF">Row</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;/</span><span style="color:#79B8FF">Scene</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">))</span></span></code></pre>
+          <pre data-shiki="tsx"><code>import { CalloutCard, defineIllustration, Flow, Row, Scene } from "vizmatic"
+
+export const width = 1040
+export const height = 560
+
+const frame = defineIllustration((c) =&gt; (
+  &lt;Scene c={c} title="Agent visual pipeline"&gt;
+    &lt;Flow c={c} connectorTone="purple" stages={[
+      { title: "Prompt", subtitle: "intent", tone: "blue" },
+      { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
+      { title: "PNG / GIF", subtitle: "verified asset", tone: "green" },
+    ]} /&gt;
+    &lt;Row gap={14} width="100%"&gt;
+      &lt;CalloutCard c={c} tone="purple" title="Model writes structure" /&gt;
+      &lt;CalloutCard c={c} tone="green" title="Theme stays in control" /&gt;
+    &lt;/Row&gt;
+  &lt;/Scene&gt;
+))</code></pre>
         </article>
 
         <article class="recipe-card">
@@ -182,26 +181,26 @@
             <h3>Graph diagram</h3>
             <p>Best for branches, retries, validation loops, and systems with non-linear flow.</p>
           </div>
-          <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { defineIllustration, GraphDiagram, Scene } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> "vizmatic"</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> frame</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> defineIllustration</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">c</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> (</span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;</span><span style="color:#79B8FF">Scene</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"RAG control graph"</span><span style="color:#B392F0"> align</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"center"</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">GraphDiagram</span></span>
-<span class="line"><span style="color:#B392F0">      c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c}</span></span>
-<span class="line"><span style="color:#B392F0">      width</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{</span><span style="color:#79B8FF">820</span><span style="color:#E1E4E8">}</span></span>
-<span class="line"><span style="color:#B392F0">      height</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{</span><span style="color:#79B8FF">390</span><span style="color:#E1E4E8">}</span></span>
-<span class="line"><span style="color:#B392F0">      nodes</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
-<span class="line"><span style="color:#E1E4E8">        { id: </span><span style="color:#9ECBFF">"query"</span><span style="color:#E1E4E8">, label: </span><span style="color:#9ECBFF">"Query"</span><span style="color:#E1E4E8">, x: </span><span style="color:#79B8FF">0.08</span><span style="color:#E1E4E8">, y: </span><span style="color:#79B8FF">0.52</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"blue"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">        { id: </span><span style="color:#9ECBFF">"retrieve"</span><span style="color:#E1E4E8">, label: </span><span style="color:#9ECBFF">"Retrieve"</span><span style="color:#E1E4E8">, x: </span><span style="color:#79B8FF">0.40</span><span style="color:#E1E4E8">, y: </span><span style="color:#79B8FF">0.25</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"cyan"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">        { id: </span><span style="color:#9ECBFF">"answer"</span><span style="color:#E1E4E8">, label: </span><span style="color:#9ECBFF">"Answer"</span><span style="color:#E1E4E8">, x: </span><span style="color:#79B8FF">0.92</span><span style="color:#E1E4E8">, y: </span><span style="color:#79B8FF">0.52</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"green"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      ]}</span></span>
-<span class="line"><span style="color:#B392F0">      edges</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
-<span class="line"><span style="color:#E1E4E8">        { from: </span><span style="color:#9ECBFF">"query"</span><span style="color:#E1E4E8">, to: </span><span style="color:#9ECBFF">"retrieve"</span><span style="color:#E1E4E8">, label: </span><span style="color:#9ECBFF">"search"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"blue"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">        { from: </span><span style="color:#9ECBFF">"retrieve"</span><span style="color:#E1E4E8">, to: </span><span style="color:#9ECBFF">"answer"</span><span style="color:#E1E4E8">, label: </span><span style="color:#9ECBFF">"context"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"green"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      ]}</span></span>
-<span class="line"><span style="color:#E1E4E8">    /></span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;/</span><span style="color:#79B8FF">Scene</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">))</span></span></code></pre>
+          <pre data-shiki="tsx"><code>import { defineIllustration, GraphDiagram, Scene } from "vizmatic"
+
+const frame = defineIllustration((c) =&gt; (
+  &lt;Scene c={c} title="RAG control graph" align="center"&gt;
+    &lt;GraphDiagram
+      c={c}
+      width={820}
+      height={390}
+      nodes={[
+        { id: "query", label: "Query", x: 0.08, y: 0.52, tone: "blue" },
+        { id: "retrieve", label: "Retrieve", x: 0.40, y: 0.25, tone: "cyan" },
+        { id: "answer", label: "Answer", x: 0.92, y: 0.52, tone: "green" },
+      ]}
+      edges={[
+        { from: "query", to: "retrieve", label: "search", tone: "blue" },
+        { from: "retrieve", to: "answer", label: "context", tone: "green" },
+      ]}
+    /&gt;
+  &lt;/Scene&gt;
+))</code></pre>
         </article>
 
         <article class="recipe-card">
@@ -210,21 +209,21 @@
             <h3>Dashboard charts</h3>
             <p>Best for report figures, eval summaries, launch reviews, and release decks.</p>
           </div>
-          <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { BarChart, defineIllustration, LineChart, Row, Scene } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> "vizmatic"</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> frame</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> defineIllustration</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">c</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> (</span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;</span><span style="color:#79B8FF">Scene</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Evaluation snapshot"</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">Row</span><span style="color:#B392F0"> gap</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{</span><span style="color:#79B8FF">18</span><span style="color:#E1E4E8">} </span><span style="color:#B392F0">align</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"stretch"</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">      &#x3C;</span><span style="color:#79B8FF">BarChart</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Pass rate"</span><span style="color:#B392F0"> format</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"percent"</span><span style="color:#B392F0"> data</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
-<span class="line"><span style="color:#E1E4E8">        { label: </span><span style="color:#9ECBFF">"tools"</span><span style="color:#E1E4E8">, value: </span><span style="color:#79B8FF">0.82</span><span style="color:#E1E4E8">, color: </span><span style="color:#9ECBFF">"positive"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">        { label: </span><span style="color:#9ECBFF">"long"</span><span style="color:#E1E4E8">, value: </span><span style="color:#79B8FF">0.58</span><span style="color:#E1E4E8">, color: </span><span style="color:#9ECBFF">"warning"</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      ]} /></span></span>
-<span class="line"><span style="color:#E1E4E8">      &#x3C;</span><span style="color:#79B8FF">LineChart</span><span style="color:#B392F0"> c</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{c} </span><span style="color:#B392F0">title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Quality"</span><span style="color:#B392F0"> format</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"percent"</span><span style="color:#B392F0"> labels</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span><span style="color:#9ECBFF">"v1"</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">"v2"</span><span style="color:#E1E4E8">]} </span><span style="color:#B392F0">series</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
-<span class="line"><span style="color:#E1E4E8">        { name: </span><span style="color:#9ECBFF">"quality"</span><span style="color:#E1E4E8">, points: [</span><span style="color:#79B8FF">0.61</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">0.81</span><span style="color:#E1E4E8">], color: </span><span style="color:#9ECBFF">"positive"</span><span style="color:#E1E4E8">, area: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> },</span></span>
-<span class="line"><span style="color:#E1E4E8">      ]} /></span></span>
-<span class="line"><span style="color:#E1E4E8">    &#x3C;/</span><span style="color:#79B8FF">Row</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">  &#x3C;/</span><span style="color:#79B8FF">Scene</span><span style="color:#E1E4E8">></span></span>
-<span class="line"><span style="color:#E1E4E8">))</span></span></code></pre>
+          <pre data-shiki="tsx"><code>import { BarChart, defineIllustration, LineChart, Row, Scene } from "vizmatic"
+
+const frame = defineIllustration((c) =&gt; (
+  &lt;Scene c={c} title="Evaluation snapshot"&gt;
+    &lt;Row gap={18} align="stretch"&gt;
+      &lt;BarChart c={c} title="Pass rate" format="percent" data={[
+        { label: "tools", value: 0.82, color: "positive" },
+        { label: "long", value: 0.58, color: "warning" },
+      ]} /&gt;
+      &lt;LineChart c={c} title="Quality" format="percent" labels={["v1", "v2"]} series={[
+        { name: "quality", points: [0.61, 0.81], color: "positive", area: true },
+      ]} /&gt;
+    &lt;/Row&gt;
+  &lt;/Scene&gt;
+))</code></pre>
         </article>
       </div>
     </section>
@@ -239,21 +238,21 @@
           <a class="button" href="PROMPT.md">Open prompt file</a>
         </div>
       </div>
-      <pre data-shiki="md" class="shiki github-dark prompt-preview" tabindex="0"><code id="promptPreview"><span class="line"><span style="color:#79B8FF;font-weight:bold"># Vizmatic Agent Prompt</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Install:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm add vizmatic react</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Fallback before npm publish:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm add github:bvolpato/vizmatic react</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"</span></span>
-<span class="line"></span>
-<span class="line"><span style="color:#E1E4E8">For animation, export createScenes(theme), then run:</span></span>
-<span class="line"><span style="color:#E1E4E8">pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --brand "Your Product"</span></span></code></pre>
+      <pre class="prompt-preview" data-shiki="md"><code id="promptPreview"># Vizmatic Agent Prompt
+
+Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
+
+Install:
+pnpm add vizmatic react
+
+Fallback before npm publish:
+pnpm add github:bvolpato/vizmatic react
+
+Create frames/*.tsx, export width/height, use defineIllustration, pick from the full component prop catalog below, render with:
+pnpm exec vizmatic render frames --out public/vizmatic --theme dark,light --brand "Your Product"
+
+For animation, export createScenes(theme), then run:
+pnpm exec vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --brand "Your Product"</code></pre>
     </section>
 
     <section id="themes" class="section themes">

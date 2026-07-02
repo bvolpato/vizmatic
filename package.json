@@ -54,7 +54,8 @@
     "prepare": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "render:examples": "pnpm build && tsx scripts/render-examples.ts",
+    "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
+    "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
     "site:serve": "npx http-server docs -p 4173 -c-1",
     "prepublishOnly": "pnpm test && pnpm render:examples && npm pack --dry-run"
