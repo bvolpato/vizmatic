@@ -38,6 +38,7 @@
         <a href="#gif" data-nav-link>GIF</a>
         <a href="#recipes" data-nav-link>Recipes</a>
         <a href="#prompt" data-nav-link>Prompt</a>
+        <a href="#skill" data-nav-link>Skill</a>
         <a href="#quality" data-nav-link>Quality</a>
         <a href="#themes" data-nav-link>Themes</a>
         <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="GitHub repository">
@@ -231,6 +232,30 @@ height = 560;
         </div>
       </div>
       <pre class="prompt-preview" data-shiki="md"><code id="promptPreview">{{PROMPT_MD}}</code></pre>
+    </section>
+
+    <section id="skill" class="section skill-section">
+      <div class="skill-copy">
+        <span>Codex Skill</span>
+        <h2>Install Vizmatic as an agent-ready skill.</h2>
+        <p>The repo also exposes a Codex plugin marketplace. Add it once, install the Vizmatic plugin, then ask Codex for diagrams, dashboards, figures, or GIFs directly.</p>
+        <pre data-shiki="bash"><code>codex plugin marketplace add bvolpato/vizmatic --ref main</code></pre>
+        <div class="skill-examples">
+          <div>
+            <strong>Static asset</strong>
+            <p>Use <code>$vizmatic</code> to create a theme-aware system architecture diagram and render dark/light PNG files.</p>
+          </div>
+          <div>
+            <strong>Animated asset</strong>
+            <p>Use <code>$vizmatic</code> to turn this release workflow into an animated GIF for docs.</p>
+          </div>
+        </div>
+        <div class="cta-row">
+          <a class="button primary" href="https://github.com/bvolpato/vizmatic/tree/main/plugins/vizmatic">Open plugin source</a>
+          <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/.agents/plugins/marketplace.json">Marketplace JSON</a>
+        </div>
+      </div>
+      <pre class="skill-preview" data-shiki="md"><code>{{VIZMATIC_SKILL_MD}}</code></pre>
     </section>
 
     <section id="quality" class="section quality-section">

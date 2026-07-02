@@ -243,7 +243,8 @@ img {
 .eyebrow,
 .section-head span,
 .theme-copy > span,
-.prompt-copy > span {
+.prompt-copy > span,
+.skill-copy > span {
   color: var(--green);
   text-transform: uppercase;
   font-size: 12px;
@@ -324,7 +325,8 @@ h1 {
 pre,
 .metrics,
 .theme-copy,
-.prompt-copy {
+.prompt-copy,
+.skill-copy {
   border: 1px solid var(--border);
   background: var(--panel);
   box-shadow: var(--shadow);
@@ -585,6 +587,7 @@ pre,
 .gif-showcase > *,
 .themes > *,
 .prompt-section > *,
+.skill-section > *,
 .gallery > *,
 .recipe-grid > *,
 .quality-grid > * {
@@ -635,6 +638,10 @@ pre.shiki {
   position: relative;
   background: var(--code-bg) !important;
   color: #e1e4e8;
+}
+
+pre.shiki:has(.code-copy-button) {
+  padding-top: 48px;
 }
 
 pre.shiki code {
@@ -827,12 +834,52 @@ li code {
   align-items: start;
 }
 
-.prompt-copy {
+.skill-section {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 28px;
+  align-items: start;
+}
+
+.prompt-copy,
+.skill-copy {
   border-radius: 18px;
   padding: 32px;
 }
 
-.prompt-preview {
+.skill-copy pre {
+  margin-top: 22px;
+  background: var(--code-bg);
+}
+
+.skill-examples {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.skill-examples div {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--media-bg);
+}
+
+.skill-examples strong {
+  display: block;
+  font-size: 14px;
+}
+
+.skill-examples p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.prompt-preview,
+.skill-preview {
   min-height: 420px;
   max-height: min(760px, calc(100vh - 120px));
   background: var(--code-bg);
@@ -891,7 +938,8 @@ footer a {
   .split,
   .gif-showcase,
   .themes,
-  .prompt-section {
+  .prompt-section,
+  .skill-section {
     grid-template-columns: 1fr;
   }
 

@@ -68,7 +68,7 @@ function usageText() {
 
 Examples:
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
-  pnpm dlx vizmatic ./frame.tsx --out ./dist/frames --theme dark
+  vizmatic ./frame.tsx --out ./dist/frames --theme dark
   vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
   vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`
@@ -208,11 +208,16 @@ function bareFrameAlias(name: string): string {
     return `__Vizmatic_${name}`
 }
 
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function bareFrameExportsForSource(source: string): string[] {
     return BARE_FRAME_EXPORTS.filter((name) => {
         if (name === 'getThemeColors') return true
-        if (/^[A-Z]/.test(name)) return new RegExp(`<\\/?${name}(?:\\s|>|/)`).test(source)
-        return new RegExp(`\\b${name}\\b`).test(source)
+        const escapedName = escapeRegExp(name)
+        if (/^[A-Z]/.test(name)) return new RegExp(`<\\/?${escapedName}(?:\\s|>|/)`).test(source)
+        return new RegExp(`\\b${escapedName}\\b`).test(source)
     })
 }
 
@@ -483,10 +488,6 @@ async function importFrame(filePath: string): Promise<FrameModule> {
         try {
             return await tsImport<FrameModule>(url, import.meta.url)
         } catch (tsxError) {
-            if (!isBareFrame) {
-                const bareFrame = await importBareFrame(filePath, source)
-                if (bareFrame) return bareFrame
-            }
             throw tsxError
         }
     }

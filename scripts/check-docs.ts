@@ -6,6 +6,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const htmlPath = join(root, 'docs', 'index.html')
 const html = await readFile(htmlPath, 'utf8')
 const templateHtml = await readFile(join(root, 'docs', 'index.template.html'), 'utf8')
+const skillPath = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic', 'SKILL.md')
+const pluginPath = join(root, 'plugins', 'vizmatic', '.codex-plugin', 'plugin.json')
+const marketplacePath = join(root, '.agents', 'plugins', 'marketplace.json')
 
 function fail(message: string): never {
     throw new Error(message)
@@ -38,12 +41,55 @@ if (!templateHtml.includes('{{PROMPT_MD}}')) {
     fail('homepage prompt preview must be generated from PROMPT.md')
 }
 
+if (!templateHtml.includes('{{VIZMATIC_SKILL_MD}}')) {
+    fail('homepage skill preview must be generated from Vizmatic SKILL.md')
+}
+
 if (html.includes('{{PROMPT_MD}}')) {
     fail('homepage prompt preview contains unreplaced placeholder')
 }
 
+if (html.includes('{{VIZMATIC_SKILL_MD}}')) {
+    fail('homepage skill preview contains unreplaced placeholder')
+}
+
 if (!html.includes('Final answer checklist') || !html.includes('any overflow or layout fixes made')) {
     fail('homepage prompt preview must include full PROMPT.md')
+}
+
+const skill = await readFile(skillPath, 'utf8')
+if (!skill.includes('name: vizmatic') || !skill.includes('Create polished theme-aware diagrams')) {
+    fail('Vizmatic skill frontmatter is missing required metadata')
+}
+
+if (skill.includes('TODO')) {
+    fail('Vizmatic skill must not contain TODO placeholders')
+}
+
+if (!templateHtml.includes('codex plugin marketplace add bvolpato/vizmatic --ref main')) {
+    fail('homepage must show Codex marketplace install command')
+}
+
+if (!html.includes('name: vizmatic') || !html.includes('Create polished theme-aware diagrams')) {
+    fail('homepage skill preview must include full Vizmatic SKILL.md')
+}
+
+const plugin = JSON.parse(await readFile(pluginPath, 'utf8')) as { name?: string; skills?: string }
+if (plugin.name !== 'vizmatic' || plugin.skills !== './skills/') {
+    fail('Vizmatic plugin manifest must expose bundled skills')
+}
+
+const marketplace = JSON.parse(await readFile(marketplacePath, 'utf8')) as { plugins?: Array<{ name?: string; source?: { source?: string; url?: string; path?: string } }> }
+const marketplacePlugin = marketplace.plugins?.find((entry) => entry.name === 'vizmatic')
+if (!marketplacePlugin) {
+    fail('marketplace.json must expose Vizmatic plugin')
+}
+if (
+    marketplacePlugin.source?.source !== 'git-subdir'
+    || marketplacePlugin.source.url !== 'https://github.com/bvolpato/vizmatic.git'
+    || marketplacePlugin.source.path !== './plugins/vizmatic'
+) {
+    fail('marketplace.json must point to Vizmatic plugin git subdir')
 }
 
 if (!html.includes('code-copy-button')) {

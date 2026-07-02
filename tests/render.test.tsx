@@ -222,4 +222,72 @@ height = 300;
             await rm(outDir, { recursive: true, force: true })
         }
     }, 30_000)
+
+    it('renders an imported createScenes module through the GIF CLI', async () => {
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-gif-'))
+        const framePath = join(outDir, 'animated.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(framePath, `import React from 'react'
+import {
+    Scene,
+    StepCard,
+    getThemeColors,
+    type AnimatedScene,
+    type ThemeMode,
+} from 'vizmatic'
+
+export const width = 420
+export const height = 240
+
+function frame(theme: ThemeMode, title: string) {
+    const c = getThemeColors(theme)
+    return (
+        <Scene c={c} title={title}>
+            <StepCard c={c} title="GIF" subtitle="module import" tone="green" />
+        </Scene>
+    )
+}
+
+export function create(theme: ThemeMode = 'dark') {
+    return frame(theme, 'Static fallback')
+}
+
+export function createScenes(theme: ThemeMode): AnimatedScene[] {
+    return [
+        { element: frame(theme, 'First'), duration: 200, transition: 'appear' },
+        { element: frame(theme, 'Second'), duration: 200, transition: 'fade' },
+    ]
+}
+
+export default create('dark')
+`)
+
+            const result = spawnSync(process.execPath, [
+                '--import',
+                'tsx',
+                'src/cli.ts',
+                'gif',
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'dark',
+                '--scale',
+                '1',
+            ], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            expect(result.stdout).toContain('rendered')
+
+            const buffer = await readFile(join(renderDir, 'animated_dark.gif'))
+            expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
 })

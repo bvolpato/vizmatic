@@ -22,6 +22,7 @@
   <a href="https://bvolpato.github.io/vizmatic/">Website</a> ·
   <a href="examples">Examples</a> ·
   <a href="PROMPT.md">Agent Prompt</a> ·
+  <a href="#codex-skill">Codex Skill</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#why-vizmatic">Why Vizmatic</a> ·
   <a href="#api">API</a>
@@ -55,6 +56,21 @@ Optional edge build from GitHub:
 
 ```bash
 pnpm add github:bvolpato/vizmatic react
+```
+
+## Codex Skill
+
+Vizmatic also ships as a Codex plugin with a bundled `$vizmatic` skill. Add this repo as a marketplace, install the Vizmatic plugin from Codex, then ask for visual assets directly:
+
+```bash
+codex plugin marketplace add bvolpato/vizmatic --ref main
+```
+
+Example prompts:
+
+```text
+Use $vizmatic to create a theme-aware architecture diagram and render dark/light PNG files.
+Use $vizmatic to turn this release workflow into an animated GIF for docs.
 ```
 
 Create a frame:
