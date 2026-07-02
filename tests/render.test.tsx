@@ -21,6 +21,14 @@ import {
 
 let packageBuilt = false
 
+type CliManifestEntry = {
+    width: number
+    height: number
+    outputWidth?: number
+    outputHeight?: number
+    outputs?: string[]
+}
+
 function ensurePackageBuild() {
     if (packageBuilt) return
 
@@ -158,7 +166,7 @@ async function renderBuiltCliFrame(prefix: string, frameName: string, source: st
 
         const outputName = `${frameName.replace(/\.[^.]+$/, '')}_light.png`
         const buffer = await readFile(join(renderDir, outputName))
-        const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
+        const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
 
         return { buffer, manifest }
     } finally {
@@ -173,6 +181,15 @@ function expectBottomPadding(image: { width: number; height: number; pixels: Uin
 
     expect(overflow.overflows, overflow.message).toBe(false)
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(image.height - 4)
+}
+
+function expectTightHorizontalPadding(image: { width: number; height: number; pixels: Uint8Array }) {
+    const bg = detectBackgroundColor(image.pixels)
+    const bounds = detectContentBounds(image.pixels, image.width, image.height, bg, 0)
+    const rightPadding = image.width - (bounds.x + bounds.width)
+
+    expect(bounds.x).toBeLessThanOrEqual(32)
+    expect(rightPadding).toBeLessThanOrEqual(32)
 }
 
 describe('vizmatic render pipeline', () => {
@@ -735,6 +752,80 @@ export default frame.default
         expect(manifest[0]?.height).toBeGreaterThan(540)
         expect(image.height).toBeGreaterThan(540)
         expectBottomPadding(image)
+    }, 30_000)
+
+    it('crops horizontal gutters after CLI auto-size without reflow', async () => {
+        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-loop-horizontal-crop-', 'loop.tsx', String.raw`<Scene gap={22}>
+  <Flow
+    connectorTone="purple"
+    stages={[
+      {
+        eyebrow: "find",
+        title: "Cloud Cost Management",
+        subtitle: "where spend moved",
+        tone: "purple",
+        lines: ["service", "team", "deploy window"],
+        width: 205,
+      },
+      {
+        eyebrow: "explain",
+        title: "Agent Observability",
+        subtitle: "what reached the provider",
+        tone: "blue",
+        lines: ["token mix", "cache reads", "cache writes"],
+        width: 205,
+      },
+      {
+        eyebrow: "classify",
+        title: "APM",
+        subtitle: "whether a user waited",
+        tone: "cyan",
+        lines: ["interactive", "background", "batchable"],
+        width: 205,
+      },
+      {
+        eyebrow: "verify",
+        title: "DDSQL and monitors",
+        subtitle: "whether the fix held",
+        tone: "green",
+        lines: ["cache rate", "cost per task", "latency"],
+        width: 205,
+      },
+    ]}
+  />
+  <Row width="100%" gap={16} align="stretch">
+    <MetricCard
+      label="Relative cost per task"
+      value="100% -> 10-20%"
+      detail="sanitized representative workflow"
+      tone="green"
+      width={250}
+      valueFontSize={20}
+    />
+    <MetricCard
+      label="Opportunity from request shape"
+      value="80-90%"
+      detail="caching and prefix stability"
+      tone="purple"
+      width={250}
+      valueFontSize={24}
+    />
+    <CalloutCard
+      title="No model downgrade required"
+      detail="The largest wins came from keeping repeated context stable, preserving cache controls, and routing background work separately."
+      tone="blue"
+      width={460}
+    />
+  </Row>
+</Scene>
+`)
+
+        const image = decodePng(buffer)
+        expect(image.width).toBeLessThan(1140)
+        expect(image.width).toBeGreaterThan(1040)
+        expect(manifest[0]?.outputWidth).toBe(image.width)
+        expect(manifest[0]?.outputHeight).toBe(image.height)
+        expectTightHorizontalPadding(image)
     }, 30_000)
 
     it('does not let final autocrop reintroduce clipping after CLI auto-size', async () => {

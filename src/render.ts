@@ -19,7 +19,7 @@ import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
-import { detectBackgroundColor, detectContentBounds, detectOverflow } from './autocrop'
+import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion } from './autocrop'
 import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori, type Font } from './satori'
 
@@ -295,6 +295,32 @@ const AUTOCROP_PADDING = 24
  */
 const CROP_THRESHOLD_PERCENT = 10
 
+function replaceSvgAttribute(attrs: string, name: string, value: string): string {
+    const pattern = new RegExp(`\\s${name}="[^"]*"`)
+    if (pattern.test(attrs)) return attrs.replace(pattern, ` ${name}="${value}"`)
+    return `${attrs} ${name}="${value}"`
+}
+
+function cropSvgViewport(svg: string, region: CropRegion): string {
+    const x = Math.max(0, Math.floor(region.x))
+    const y = Math.max(0, Math.floor(region.y))
+    const width = Math.max(1, Math.ceil(region.width))
+    const height = Math.max(1, Math.ceil(region.height))
+
+    return svg.replace(/^<svg\b([^>]*)>/, (_match, attrs: string) => {
+        let nextAttrs = attrs
+        nextAttrs = replaceSvgAttribute(nextAttrs, 'width', String(width))
+        nextAttrs = replaceSvgAttribute(nextAttrs, 'height', String(height))
+        nextAttrs = replaceSvgAttribute(nextAttrs, 'viewBox', `${x} ${y} ${width} ${height}`)
+        return `<svg${nextAttrs}>`
+    })
+}
+
+function cropSavesEnough(source: number, target: number): boolean {
+    if (source <= 0 || target >= source) return false
+    return ((source - target) / source) * 100 >= CROP_THRESHOLD_PERCENT
+}
+
 // ─── Core Render Function ────────────────────────────────────────────────────
 
 export interface RenderOptions {
@@ -312,6 +338,13 @@ export interface RenderOptions {
     scale?: number
     /** Root background for Vizmatic primitives. Defaults to alpha-transparent PNG/SVG output. */
     background?: RenderBackground
+}
+
+export interface RenderOutput {
+    /** Final logical output width before scale is applied. */
+    width: number
+    /** Final logical output height before scale is applied. */
+    height: number
 }
 
 function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): WatermarkInput | undefined {
@@ -339,6 +372,15 @@ export async function renderToPng(
     createFn?: (theme: 'dark' | 'light') => ReactNode,
     theme?: 'dark' | 'light',
 ): Promise<void> {
+    await renderToPngWithOutput(element, options, createFn, theme)
+}
+
+export async function renderToPngWithOutput(
+    element: ReactNode,
+    options: RenderOptions,
+    createFn?: (theme: 'dark' | 'light') => ReactNode,
+    theme?: 'dark' | 'light',
+): Promise<RenderOutput> {
     return withRenderContext({ background: options.background ?? 'transparent' }, () =>
         renderToPngInContext(element, options, createFn, theme)
     )
@@ -349,7 +391,7 @@ async function renderToPngInContext(
     options: RenderOptions,
     createFn?: (theme: 'dark' | 'light') => ReactNode,
     theme?: 'dark' | 'light',
-): Promise<void> {
+): Promise<RenderOutput> {
     const fonts = await getFonts()
 
     // Step 1: Render WITHOUT watermark to detect content bounds
@@ -395,12 +437,12 @@ async function renderToPngInContext(
         )
     }
 
-    // Step 3: Determine if we should crop height only.
-    // We never shrink the width because Satori flex layouts are responsive —
+    // Step 3: Determine if we should crop height by re-rendering.
+    // We do not shrink width here because Satori flex layouts are responsive —
     // a narrower canvas causes text to wrap and bars to shrink, which makes
     // content taller and can overflow the cropped height.  Keeping the
-    // original width avoids layout reflow entirely.
-    const finalWidth = options.width
+    // layout width avoids reflow; horizontal crop happens later by SVG viewBox.
+    let finalWidth = options.width
     let finalHeight = options.height
     let finalElement: ReactNode = element
 
@@ -458,7 +500,35 @@ async function renderToPngInContext(
         }
     }
 
-    // Step 5: SVG → PNG at 2x for retina (with transparent background)
+    // Step 5: Crop final SVG viewport without reflowing the Satori layout.
+    // Width shrink via re-render can wrap text; viewport crop removes only
+    // transparent gutters from the already-rendered SVG.
+    if (options.crop !== false) {
+        const viewportCheck = new Resvg(finalSvg, {
+            fitTo: { mode: 'width', value: finalWidth },
+            background: 'rgba(0, 0, 0, 0)',
+        }).render()
+        const viewportPixels = new Uint8Array(viewportCheck.pixels.buffer)
+        const viewportBg = detectBackgroundColor(viewportPixels)
+        const viewportBounds = detectContentBounds(
+            viewportPixels,
+            finalWidth,
+            viewportCheck.height,
+            viewportBg,
+            AUTOCROP_PADDING,
+        )
+
+        if (
+            cropSavesEnough(finalWidth, viewportBounds.width)
+            || cropSavesEnough(viewportCheck.height, viewportBounds.height)
+        ) {
+            finalSvg = cropSvgViewport(finalSvg, viewportBounds)
+            finalWidth = viewportBounds.width
+            finalHeight = viewportBounds.height
+        }
+    }
+
+    // Step 6: SVG → PNG at 2x for retina (with transparent background)
     const resvg = new Resvg(finalSvg, {
         fitTo: {
             mode: 'width',
@@ -470,9 +540,10 @@ async function renderToPngInContext(
     const pngData = resvg.render()
     const pngBuffer = pngData.asPng()
 
-    // Step 6: Write to disk
+    // Step 7: Write to disk
     await mkdir(dirname(options.outputPath), { recursive: true })
     await writeFile(options.outputPath, pngBuffer)
+    return { width: finalWidth, height: finalHeight }
 }
 
 /**

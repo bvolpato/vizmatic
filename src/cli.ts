@@ -11,7 +11,7 @@ import type { ReactNode } from 'react'
 import * as publicApi from './index'
 import { renderAnimatedGif, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
-import { renderToPng, type RenderBackground } from './render'
+import { renderToPngWithOutput, type RenderBackground } from './render'
 import type { ThemeMode } from './theme'
 
 interface FrameModule {
@@ -629,19 +629,19 @@ function nextAutoSize(width: number, height: number, autoSize: AutoSizeAxes, edg
 async function renderFrameToPng(
     mod: NormalizedFrameModule,
     theme: ThemeMode,
-    options: Omit<Parameters<typeof renderToPng>[1], 'width' | 'height'> & { width: number; height: number },
-): Promise<{ width: number; height: number }> {
+    options: Omit<Parameters<typeof renderToPngWithOutput>[1], 'width' | 'height'> & { width: number; height: number },
+): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number }> {
     let width = options.width
     let height = options.height
 
     for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
         try {
-            await renderToPng(frameElement(mod, theme), {
+            const output = await renderToPngWithOutput(frameElement(mod, theme), {
                 ...options,
                 width,
                 height,
             }, mod.create, theme)
-            return { width, height }
+            return { width, height, outputWidth: output.width, outputHeight: output.height }
         } catch (error) {
             const edges = overflowEdges(error)
             const next = edges ? nextAutoSize(width, height, mod.autoSize, edges) : undefined
@@ -651,7 +651,7 @@ async function renderFrameToPng(
         }
     }
 
-    return { width, height }
+    return { width, height, outputWidth: width, outputHeight: height }
 }
 
 async function renderCommand(argv: string[]) {
@@ -661,7 +661,15 @@ async function renderCommand(argv: string[]) {
     if (files.length === 0) throw new Error('no frame files found')
 
     await mkdir(args.outDir, { recursive: true })
-    const manifest: Array<{ name: string; source: string; width: number; height: number; outputs: string[] }> = []
+    const manifest: Array<{
+        name: string
+        source: string
+        width: number
+        height: number
+        outputWidth: number
+        outputHeight: number
+        outputs: string[]
+    }> = []
 
     for (const file of files) {
         const rawMod = await importFrame(file)
@@ -671,6 +679,8 @@ async function renderCommand(argv: string[]) {
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
         let renderWidth = mod.width
         let renderHeight = mod.height
+        let outputWidth = renderWidth
+        let outputHeight = renderHeight
 
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.png`
@@ -686,6 +696,8 @@ async function renderCommand(argv: string[]) {
             })
             renderWidth = rendered.width
             renderHeight = rendered.height
+            outputWidth = rendered.outputWidth
+            outputHeight = rendered.outputHeight
             outputs.push(outputName)
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)
         }
@@ -695,6 +707,8 @@ async function renderCommand(argv: string[]) {
             source: relative(process.cwd(), file),
             width: renderWidth,
             height: renderHeight,
+            outputWidth,
+            outputHeight,
             outputs,
         })
     }
