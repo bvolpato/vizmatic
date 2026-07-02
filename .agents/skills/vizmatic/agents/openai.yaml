@@ -1,0 +1,7 @@
+interface:
+  display_name: "Vizmatic"
+  short_description: "Create polished theme-aware visual assets"
+  default_prompt: "Use $vizmatic to create a polished theme-aware diagram and render dark/light PNG assets."
+
+policy:
+  allow_implicit_invocation: true

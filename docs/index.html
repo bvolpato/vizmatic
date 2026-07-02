@@ -721,8 +721,8 @@
     <section id="skill" class="section skill-section">
       <div class="skill-copy">
         <span>Agent Skills</span>
-        <h2>Install Vizmatic in the agent you already use.</h2>
-        <p>The repo exposes a Codex marketplace plugin and a portable Agent Skills folder. For Claude Code, OpenCode, and Cursor, clone the repo once and copy <code>plugins/vizmatic/skills/vizmatic</code> into the agent's skill directory.</p>
+        <h2>Import Vizmatic where agents support it.</h2>
+        <p>Codex and Claude Code can add this repo as a plugin marketplace. Cursor can import the repo through Remote Rule (Github). OpenCode discovers the same skill from its supported skill directories.</p>
         <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">codex</span><span style="color:#9ECBFF"> plugin</span><span style="color:#9ECBFF"> marketplace</span><span style="color:#9ECBFF"> add</span><span style="color:#9ECBFF"> bvolpato/vizmatic</span><span style="color:#79B8FF"> --ref</span><span style="color:#9ECBFF"> main</span></span></code></pre>
         <div class="skill-examples">
           <div>
@@ -730,43 +730,41 @@
             <p>Install from the marketplace, then use <code>$vizmatic</code> for rendered visual assets.</p>
           </div>
           <div>
-            <strong>Prompt</strong>
-            <p>Use <code>$vizmatic</code> to create a theme-aware system architecture diagram and render dark/light PNG files.</p>
+            <strong>Claude Code</strong>
+            <p>Add the Claude marketplace, install <code>vizmatic@vizmatic</code>, then invoke <code>/vizmatic:vizmatic</code>.</p>
           </div>
           <div>
-            <strong>Animation</strong>
-            <p>Use <code>$vizmatic</code> to turn this release workflow into an animated GIF for docs.</p>
+            <strong>Portable skill</strong>
+            <p><code>.agents/skills/vizmatic</code> works with Cursor and OpenCode project discovery.</p>
           </div>
         </div>
         <div class="cta-row">
           <a class="button primary" href="https://github.com/bvolpato/vizmatic/tree/main/plugins/vizmatic">Open plugin source</a>
-          <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/.agents/plugins/marketplace.json">Marketplace JSON</a>
+          <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/.claude-plugin/marketplace.json">Claude marketplace</a>
+          <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/.agents/plugins/marketplace.json">Codex marketplace</a>
         </div>
       </div>
       <div class="agent-install-grid">
         <article class="agent-install-card">
           <span>Claude Code</span>
-          <h3>Personal skill</h3>
-          <p>Copy the portable skill folder to Claude Code's global skill directory, then invoke <code>/vizmatic</code> or ask Claude to use Vizmatic.</p>
-          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> ~/.claude/skills</span></span>
-<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> ~/.claude/skills/vizmatic</span></span>
-<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> plugins/vizmatic/skills/vizmatic</span><span style="color:#9ECBFF"> ~/.claude/skills/vizmatic</span></span></code></pre>
-        </article>
-        <article class="agent-install-card">
-          <span>OpenCode</span>
-          <h3>Global or project skill</h3>
-          <p>OpenCode reads its own skill path and also supports Claude-compatible and agent-compatible paths.</p>
-          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> ~/.config/opencode/skills</span></span>
-<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> ~/.config/opencode/skills/vizmatic</span></span>
-<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> plugins/vizmatic/skills/vizmatic</span><span style="color:#9ECBFF"> ~/.config/opencode/skills/vizmatic</span></span></code></pre>
+          <h3>Marketplace plugin</h3>
+          <p>Add the repository marketplace, install the plugin to user scope, then reload active sessions.</p>
+          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">claude</span><span style="color:#9ECBFF"> plugin</span><span style="color:#9ECBFF"> marketplace</span><span style="color:#9ECBFF"> add</span><span style="color:#9ECBFF"> bvolpato/vizmatic</span></span>
+<span class="line"><span style="color:#B392F0">claude</span><span style="color:#9ECBFF"> plugin</span><span style="color:#9ECBFF"> install</span><span style="color:#9ECBFF"> vizmatic@vizmatic</span><span style="color:#79B8FF"> --scope</span><span style="color:#9ECBFF"> user</span></span></code></pre>
         </article>
         <article class="agent-install-card">
           <span>Cursor</span>
-          <h3>Project skill or remote import</h3>
-          <p>Copy into the project, or use Customize -> Rules -> Add Rule -> Remote Rule (GitHub) with this repo URL.</p>
-          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> .cursor/skills</span></span>
-<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> .cursor/skills/vizmatic</span></span>
-<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> plugins/vizmatic/skills/vizmatic</span><span style="color:#9ECBFF"> .cursor/skills/vizmatic</span></span></code></pre>
+          <h3>GitHub remote import</h3>
+          <p>Use Customize -> Rules -> Add Rule -> Remote Rule (Github), then enter this repository URL.</p>
+          <pre data-shiki="text" class="shiki github-dark" tabindex="0"><code><span class="line"><span>https://github.com/bvolpato/vizmatic</span></span></code></pre>
+        </article>
+        <article class="agent-install-card">
+          <span>OpenCode</span>
+          <h3>Skill directory</h3>
+          <p>OpenCode loads skills from project and global skill folders; its plugin marketplace path is npm/config based.</p>
+          <pre data-shiki="bash" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#B392F0">mkdir</span><span style="color:#79B8FF"> -p</span><span style="color:#9ECBFF"> ~/.config/opencode/skills</span></span>
+<span class="line"><span style="color:#B392F0">rm</span><span style="color:#79B8FF"> -rf</span><span style="color:#9ECBFF"> ~/.config/opencode/skills/vizmatic</span></span>
+<span class="line"><span style="color:#B392F0">cp</span><span style="color:#79B8FF"> -R</span><span style="color:#9ECBFF"> .agents/skills/vizmatic</span><span style="color:#9ECBFF"> ~/.config/opencode/skills/vizmatic</span></span></code></pre>
         </article>
       </div>
     </section>

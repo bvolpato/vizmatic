@@ -1,5 +1,5 @@
-import { access, readFile } from 'fs/promises'
-import { basename, dirname, join } from 'path'
+import { access, readFile, readdir } from 'fs/promises'
+import { basename, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -7,8 +7,23 @@ const htmlPath = join(root, 'docs', 'index.html')
 const html = await readFile(htmlPath, 'utf8')
 const templateHtml = await readFile(join(root, 'docs', 'index.template.html'), 'utf8')
 const skillPath = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic', 'SKILL.md')
-const pluginPath = join(root, 'plugins', 'vizmatic', '.codex-plugin', 'plugin.json')
-const marketplacePath = join(root, '.agents', 'plugins', 'marketplace.json')
+const pluginSkillDir = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic')
+const portableSkillDir = join(root, '.agents', 'skills', 'vizmatic')
+const codexPluginPath = join(root, 'plugins', 'vizmatic', '.codex-plugin', 'plugin.json')
+const claudePluginPath = join(root, 'plugins', 'vizmatic', '.claude-plugin', 'plugin.json')
+const codexMarketplacePath = join(root, '.agents', 'plugins', 'marketplace.json')
+const claudeMarketplacePath = join(root, '.claude-plugin', 'marketplace.json')
+
+async function listFiles(dir: string): Promise<string[]> {
+    const entries = await readdir(dir, { withFileTypes: true })
+    const files = await Promise.all(entries.map(async (entry) => {
+        const path = join(dir, entry.name)
+        if (entry.isDirectory()) return listFiles(path)
+        if (entry.isFile()) return [path]
+        return []
+    }))
+    return files.flat()
+}
 
 function fail(message: string): never {
     throw new Error(message)
@@ -63,32 +78,70 @@ if (!templateHtml.includes('codex plugin marketplace add bvolpato/vizmatic --ref
 }
 
 for (const required of [
-    '~/.claude/skills/vizmatic',
+    'claude plugin marketplace add bvolpato/vizmatic',
+    'claude plugin install vizmatic@vizmatic --scope user',
+    '.agents/skills/vizmatic',
     '~/.config/opencode/skills/vizmatic',
-    '.cursor/skills/vizmatic',
-    'Remote Rule (GitHub)',
+    'Remote Rule (Github)',
+    'https://github.com/bvolpato/vizmatic',
 ]) {
-    if (!html.includes(required)) {
+    if (!templateHtml.includes(required) && !html.includes(required)) {
         fail(`homepage agent skill instructions must include ${required}`)
     }
 }
 
-const plugin = JSON.parse(await readFile(pluginPath, 'utf8')) as { name?: string; skills?: string }
-if (plugin.name !== 'vizmatic' || plugin.skills !== './skills/') {
-    fail('Vizmatic plugin manifest must expose bundled skills')
+const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version?: string }
+for (const [name, path] of [
+    ['Codex plugin', codexPluginPath],
+    ['Claude plugin', claudePluginPath],
+] as const) {
+    const plugin = JSON.parse(await readFile(path, 'utf8')) as { name?: string; version?: string; skills?: string }
+    if (plugin.name !== 'vizmatic' || plugin.skills !== './skills/') {
+        fail(`${name} manifest must expose bundled skills`)
+    }
+    if (plugin.version !== packageJson.version) {
+        fail(`${name} manifest version must match package.json`)
+    }
 }
 
-const marketplace = JSON.parse(await readFile(marketplacePath, 'utf8')) as { plugins?: Array<{ name?: string; source?: { source?: string; url?: string; path?: string } }> }
-const marketplacePlugin = marketplace.plugins?.find((entry) => entry.name === 'vizmatic')
-if (!marketplacePlugin) {
-    fail('marketplace.json must expose Vizmatic plugin')
+const portableFiles = await listFiles(portableSkillDir)
+const pluginFiles = await listFiles(pluginSkillDir)
+const portableRelative = portableFiles.map((path) => relative(portableSkillDir, path)).sort()
+const pluginRelative = pluginFiles.map((path) => relative(pluginSkillDir, path)).sort()
+if (portableRelative.join('\n') !== pluginRelative.join('\n')) {
+    fail('.agents/skills/vizmatic must mirror plugin skill files')
+}
+for (const rel of pluginRelative) {
+    const pluginFile = await readFile(join(pluginSkillDir, rel), 'utf8')
+    const portableFile = await readFile(join(portableSkillDir, rel), 'utf8')
+    if (pluginFile !== portableFile) {
+        fail(`.agents/skills/vizmatic/${rel} must match plugin skill source`)
+    }
+}
+
+const codexMarketplace = JSON.parse(await readFile(codexMarketplacePath, 'utf8')) as { plugins?: Array<{ name?: string; source?: { source?: string; url?: string; path?: string } }> }
+const codexMarketplacePlugin = codexMarketplace.plugins?.find((entry) => entry.name === 'vizmatic')
+if (!codexMarketplacePlugin) {
+    fail('Codex marketplace.json must expose Vizmatic plugin')
 }
 if (
-    marketplacePlugin.source?.source !== 'git-subdir'
-    || marketplacePlugin.source.url !== 'https://github.com/bvolpato/vizmatic.git'
-    || marketplacePlugin.source.path !== './plugins/vizmatic'
+    codexMarketplacePlugin.source?.source !== 'git-subdir'
+    || codexMarketplacePlugin.source.url !== 'https://github.com/bvolpato/vizmatic.git'
+    || codexMarketplacePlugin.source.path !== './plugins/vizmatic'
 ) {
-    fail('marketplace.json must point to Vizmatic plugin git subdir')
+    fail('Codex marketplace.json must point to Vizmatic plugin git subdir')
+}
+
+const claudeMarketplace = JSON.parse(await readFile(claudeMarketplacePath, 'utf8')) as { name?: string; plugins?: Array<{ name?: string; source?: string; version?: string }> }
+const claudeMarketplacePlugin = claudeMarketplace.plugins?.find((entry) => entry.name === 'vizmatic')
+if (claudeMarketplace.name !== 'vizmatic' || !claudeMarketplacePlugin) {
+    fail('Claude marketplace.json must expose Vizmatic plugin')
+}
+if (claudeMarketplacePlugin.source !== './plugins/vizmatic') {
+    fail('Claude marketplace.json must point to Vizmatic plugin directory')
+}
+if (claudeMarketplacePlugin.version !== packageJson.version) {
+    fail('Claude marketplace plugin version must match package.json')
 }
 
 if (!html.includes('code-copy-button')) {

@@ -75,40 +75,58 @@ Use $vizmatic to create a theme-aware architecture diagram and render dark/light
 Use $vizmatic to turn this release workflow into an animated GIF for docs.
 ```
 
-### Claude Code, OpenCode, and Cursor
+### Claude Code
 
-The portable skill lives at `plugins/vizmatic/skills/vizmatic`. Copy that folder into the agent-specific skills directory:
+Claude Code can import Vizmatic as a plugin marketplace directly from this repository:
+
+```bash
+claude plugin marketplace add bvolpato/vizmatic
+claude plugin install vizmatic@vizmatic --scope user
+```
+
+In an active Claude Code session, run `/reload-plugins`. Claude can then auto-select the Vizmatic skill, or you can invoke it with `/vizmatic:vizmatic`.
+
+### Cursor
+
+Cursor can import skills from GitHub repositories through Remote Rule:
+
+1. Open **Customize** in the sidebar.
+2. Go to **Rules** and click **Add Rule**.
+3. Select **Remote Rule (Github)**.
+4. Enter `https://github.com/bvolpato/vizmatic`.
+
+The repo exposes the portable skill at `.agents/skills/vizmatic`, which Cursor discovers as a project skill. Manual install also works:
+
+```bash
+mkdir -p ~/.cursor/skills
+rm -rf ~/.cursor/skills/vizmatic
+cp -R .agents/skills/vizmatic ~/.cursor/skills/vizmatic
+```
+
+### OpenCode
+
+OpenCode discovers skills from repo and home-directory skill folders. Its plugin ecosystem is npm/config based; for Vizmatic, use the native skill directory.
+
+The GitHub-importable skill lives at `.agents/skills/vizmatic`. Copy that folder into the agent-specific skills directory:
 
 ```bash
 tmp="$(mktemp -d)"
 git clone --depth 1 https://github.com/bvolpato/vizmatic.git "$tmp/vizmatic"
 ```
 
-Claude Code:
-
-```bash
-mkdir -p ~/.claude/skills
-rm -rf ~/.claude/skills/vizmatic
-cp -R "$tmp/vizmatic/plugins/vizmatic/skills/vizmatic" ~/.claude/skills/vizmatic
-```
-
-OpenCode:
-
 ```bash
 mkdir -p ~/.config/opencode/skills
 rm -rf ~/.config/opencode/skills/vizmatic
-cp -R "$tmp/vizmatic/plugins/vizmatic/skills/vizmatic" ~/.config/opencode/skills/vizmatic
+cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.config/opencode/skills/vizmatic
 ```
 
-Cursor:
+For a shared Cursor/OpenCode global location, use `~/.agents/skills` instead:
 
 ```bash
-mkdir -p .cursor/skills
-rm -rf .cursor/skills/vizmatic
-cp -R "$tmp/vizmatic/plugins/vizmatic/skills/vizmatic" .cursor/skills/vizmatic
+mkdir -p ~/.agents/skills
+rm -rf ~/.agents/skills/vizmatic
+cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.agents/skills/vizmatic
 ```
-
-In Cursor, you can also use **Customize -> Rules -> Add Rule -> Remote Rule (GitHub)** and enter `https://github.com/bvolpato/vizmatic`.
 
 Create a frame:
 

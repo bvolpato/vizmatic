@@ -1,0 +1,21 @@
+{
+  "name": "vizmatic",
+  "displayName": "Vizmatic",
+  "version": "0.1.12",
+  "description": "Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic.",
+  "author": {
+    "name": "Bruno Volpato",
+    "url": "https://github.com/bvolpato"
+  },
+  "homepage": "https://bvolpato.github.io/vizmatic/",
+  "repository": "https://github.com/bvolpato/vizmatic",
+  "license": "MIT",
+  "keywords": [
+    "visualization",
+    "diagrams",
+    "skills",
+    "react",
+    "satori"
+  ],
+  "skills": "./skills/"
+}
