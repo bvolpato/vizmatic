@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "description": "Theme-aware visual primitives and render pipeline for AI-generated diagrams, figures, and presentation frames.",
   "type": "module",
   "license": "MIT",
@@ -55,7 +55,7 @@
     "vizmatic": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --target node20 --clean --external react && tsup src/cli.ts --format esm --dts --target node20 --external react",
+    "build": "tsup src/index.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts --format esm --dts --target node20 --external react",
     "prepare": "pnpm build",
     "lint": "pnpm typecheck",
     "typecheck": "tsc --noEmit",
