@@ -333,7 +333,7 @@ Theme and render APIs:
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
 - `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
-- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean = true`, `scale?: number = 2`.
+- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
 - `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `watermark?`, `brand?`.
 - `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.

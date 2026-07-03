@@ -323,6 +323,8 @@ function cropSavesEnough(source: number, target: number): boolean {
 
 // ─── Core Render Function ────────────────────────────────────────────────────
 
+export type CropMode = boolean | 'both' | 'height'
+
 export interface RenderOptions {
     width: number
     height: number
@@ -332,8 +334,8 @@ export interface RenderOptions {
     watermark?: WatermarkInput
     /** Backward-compatible alias for watermark. */
     brand?: boolean | string
-    /** Disable height autocrop for fixed-size frames. */
-    crop?: boolean
+    /** Auto-crop mode. true/"both" crops height and transparent gutters; "height" preserves declared width; false disables crop. */
+    crop?: CropMode
     /** Retina output scale. */
     scale?: number
     /** Root background for Vizmatic primitives. Defaults to alpha-transparent PNG/SVG output. */
@@ -349,6 +351,14 @@ export interface RenderOutput {
 
 function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): WatermarkInput | undefined {
     return options.watermark ?? options.brand
+}
+
+function shouldCropHeight(crop: CropMode | undefined): boolean {
+    return crop !== false
+}
+
+function shouldCropViewport(crop: CropMode | undefined): boolean {
+    return crop !== false && crop !== 'height'
 }
 
 /**
@@ -449,7 +459,7 @@ async function renderToPngInContext(
     const heightSaved = options.height - bounds.height
     const heightSavedPercent = (heightSaved / options.height) * 100
 
-    if (options.crop !== false && heightSavedPercent >= CROP_THRESHOLD_PERCENT) {
+    if (shouldCropHeight(options.crop) && heightSavedPercent >= CROP_THRESHOLD_PERCENT) {
         // Significant vertical blank space: crop height only.
         finalHeight = bounds.height
 
@@ -503,7 +513,7 @@ async function renderToPngInContext(
     // Step 5: Crop final SVG viewport without reflowing the Satori layout.
     // Width shrink via re-render can wrap text; viewport crop removes only
     // transparent gutters from the already-rendered SVG.
-    if (options.crop !== false) {
+    if (shouldCropViewport(options.crop)) {
         const viewportCheck = new Resvg(finalSvg, {
             fitTo: { mode: 'width', value: finalWidth },
             background: 'rgba(0, 0, 0, 0)',

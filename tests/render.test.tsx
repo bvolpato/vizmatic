@@ -20,6 +20,7 @@ import {
     BarChart,
     LineChart,
     Panel,
+    renderToPngWithOutput,
 } from '../src'
 
 let packageBuilt = false
@@ -938,6 +939,38 @@ export default frame.default
         expect(manifest[0]?.outputWidth).toBe(image.width)
         expect(manifest[0]?.outputHeight).toBe(image.height)
         expectTightHorizontalPadding(image)
+    }, 30_000)
+
+    it('can crop height while preserving declared width for fixed-frame consumers', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'vizmatic-height-crop-'))
+        const outputPath = join(dir, 'frame.png')
+
+        try {
+            const c = getThemeColors('dark')
+            const output = await renderToPngWithOutput(
+                <Scene c={c} title="Fixed width" background={c.bg} contentWidth={520}>
+                    <Panel c={c} title="Compact content" tone="green" width={480}>
+                        <StepCard c={c} title="Done" subtitle="height-only crop" tone="green" />
+                    </Panel>
+                </Scene>,
+                {
+                    width: 760,
+                    height: 620,
+                    outputPath,
+                    scale: 1,
+                    background: 'theme',
+                    crop: 'height',
+                },
+            )
+
+            const image = decodePng(await readFile(outputPath))
+            expect(output.width).toBe(760)
+            expect(image.width).toBe(760)
+            expect(output.height).toBeLessThan(620)
+            expect(image.height).toBe(output.height)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
     }, 30_000)
 
     it('does not let final autocrop reintroduce clipping after CLI auto-size', async () => {

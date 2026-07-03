@@ -571,7 +571,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
-`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
+`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Use `crop: "height"` when a downstream layout needs fixed width but still wants vertical whitespace trimmed. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
 
 ```ts
 await renderToPng(element, {
@@ -580,7 +580,7 @@ await renderToPng(element, {
   outputPath: "dist/frame.png",
   background: "theme",
   watermark: { text: "Your Product", image: "https://example.com/logo.svg", position: "top-right" },
-  crop: true,
+  crop: "height",
   scale: 2,
 })
 ```
