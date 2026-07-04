@@ -247,6 +247,7 @@ Cards, labels, and compact UI:
 - `TextLabel`: `text`, `c`, `variant?: keyof typography = "body"`, `color?`, `fontSize?`, `fontWeight?`, `width?`, `align?: "left" | "center" | "right" = "left"`, `math?: boolean = false`, `mono?: boolean = false`.
 - `MathText`: `text`. Returns formatted unicode-ish math text for simple `_` and `^` notation.
 - `formatMathText(text)`: `text: string`.
+- `Icon`: `name`, `c`, `tone?: ToneName = "blue"`, `color?`, `size?: number = 24`, `strokeWidth?: number = 2`, `label?`, `muted?: boolean = false`. `IconName`: `"agent" | "chart" | "check" | "code" | "database" | "file" | "git" | "globe" | "image" | "layers" | "lock" | "play" | "spark" | "terminal" | "tool" | "warning"`.
 - `ToneStrip`: `tone`, `width?: number = 34`, `height?: number = 4`.
 - `StepCard`: `title`, `c`, `subtitle?`, `eyebrow?`, `tone?: ToneName = "blue"`, `width?: number | string = 210`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "12px 14px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`.
 - `MetricCard`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "10px 12px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`, `valueMono?: boolean = true`, `valueFontSize?: number = 10`, `valueColor?`.
@@ -264,6 +265,7 @@ Lists, tables, status, and comparison:
 - `ProgressList`: `rows: ProgressRowSpec[]`, `c`, `gap?: number = 8`, `labelWidth?`, `valueWidth?`, `barHeight?`, `fontSize?`. `ProgressRowSpec`: `label`, `value`, `valueLabel?`, `tone?`, `muted?`.
 - `StatusRow`: `label`, `detail?`, `status?: "check" | "cross" | "warn" | "info" | "pending" | "dot" = "check"`, `tone?`, `c`, `boxed?: boolean = true`, `fontSize?: number = 11`, `width?`, `math?: boolean = false`.
 - `StatusList`: `rows: StatusRowSpec[]`, `c`, `gap?: number = 7`, `boxed?: boolean = true`, `fontSize?`, `width?`, `math?: boolean = false`. `StatusRowSpec`: `label`, `detail?`, `status?`, `tone?`.
+- `Timeline`: `events: TimelineEventSpec[]`, `c`, `title?`, `subtitle?`, `direction?: "vertical" | "horizontal" = "vertical"`, `width?`, `eventWidth?`, `gap?: number = 12`, `markerSize?: number = 14`, `math?: boolean = false`. `TimelineEventSpec`: `title`, `detail?`, `time?`, `tone?`, `status?`, `width?`.
 - `KeyValueList`: `rows: KeyValueRow[]`, `c`, `title?`, `width?`, `minWidth?`, `keyWidth?`, `gap?: number = 0`, `fontSize?: number = 11`, `divider?: boolean = true`, `keyMono?: boolean = false`, `math?: boolean = false`. `KeyValueRow`: `key`, `value`, `tone?`, `valueMono?`.
 - `Comparison`: `sides: ComparisonSideSpec[]`, `c`, `divider?: ReactNode | boolean = false`, `gap?: number = 14`, `sideWidth?`, `minHeight?`, `align?: FlexAlign = "stretch"`, `math?: boolean = false`. `ComparisonSideSpec`: `title`, `subtitle?`, `eyebrow?`, `tone?`, `lines?`, `children?`, `footer?`, `width?`.
 - `DataTable`: `rows: ReactNode[][]`, `c`, `cellWidth?: number = 54`, `firstColWidth?: number = cellWidth`, `cellHeight?: number = 28`, `gap?: number = 5`, `headerRows?: number = 1`, `headerCols?: number = 1`, `fontSize?: number = 10`, `math?: boolean = false`.
@@ -286,6 +288,7 @@ Graphs and networks:
 
 - `LayeredNetwork`: `c`, `layers: LayeredNetworkLayer[]`, `activePath?: number[] = []`, `annotations?: string[] = []`, `formula?`, `legend?: string = "highlighted path"`, `width?: number = 900`, `height?: number = 400`, `nodeSize?: number = 56`, `showFormula?: boolean = true`. `LayeredNetworkLayer`: `title`, `nodes: string[]`, `tone?`.
 - `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `padding?: number = 28`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x`, `y`, `tone?`, `muted?`, `width?`, `height?`. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`.
+- `TreeDiagram`: `root: TreeNodeSpec`, `c`, `title?`, `subtitle?`, `width?`, `height?`, `nodeWidth?: number = 156`, `nodeHeight?: number = 64`, `levelGap?: number = 58`, `siblingGap?: number = 24`, `padding?: number = 28`, `math?: boolean = false`. `TreeNodeSpec`: `label`, `id?`, `detail?`, `tone?`, `muted?`, `children?`.
 
 Matrices and heatmaps:
 
@@ -296,6 +299,7 @@ Matrices and heatmaps:
 Charts and plots:
 
 - `ChartFrame`: `children`, `c`, `title?`, `subtitle?`, `legend?: ChartLegendItem[]`, `footer?`, `width?: number | string = "100%"`, `height?`, `padding?: number = 16`. `ChartLegendItem`: `label`, `color: ColorName | string`.
+- `DonutChart`: `segments: DonutChartSegment[]`, `c`, `title?`, `subtitle?`, `width?: number = 360`, `height?: number = 230`, `size?`, `thickness?`, `format?: ChartValueFormat = "decimal"`, `centerLabel?`, `centerValue?`, `showLegend?: boolean = true`, `footer?`. `DonutChartSegment`: `label`, `value`, `color?`, `valueLabel?`.
 - `BarChart`: `data: BarChartDatum[]`, `c`, `title?`, `subtitle?`, `width?: number = 320`, `height?: number = 220`, `min?`, `max?`, `format?: ChartValueFormat = "decimal"`, `showGrid?: boolean = true`, `showValues?: boolean = true`, `yAxisLabel?`, `footer?`. `BarChartDatum`: `label`, `value`, `color?`, `valueLabel?`.
 - `LineChart`: `series: LineChartSeries[]`, `c`, `title?`, `subtitle?`, `width?: number = 420`, `height?: number = 240`, `labels?`, `min?`, `max?`, `format?: ChartValueFormat = "decimal"`, `showGrid?: boolean = true`, `showPoints?: boolean = true`, `yAxisLabel?`, `footer?`. `LineChartSeries`: `name`, `points`, `color?`, `area?`.
 - `ScatterPlot`: `points: ScatterPoint[]`, `c`, `title?`, `subtitle?`, `width?: number = 380`, `height?: number = 260`, `xMin?`, `xMax?`, `yMin?`, `yMax?`, `xAxisLabel?`, `yAxisLabel?`, `formatX?: ChartValueFormat = "decimal"`, `formatY?: ChartValueFormat = "decimal"`, `showGrid?: boolean = true`, `footer?`. `ScatterPoint`: `x`, `y`, `label?`, `color?`, `size?`.

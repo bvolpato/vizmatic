@@ -18,9 +18,14 @@ import {
     Watermark,
     wrapWithWatermark,
     BarChart,
+    DonutChart,
+    Icon,
     LineChart,
     Panel,
+    Row,
     renderToPngWithOutput,
+    Timeline,
+    TreeDiagram,
 } from '../src'
 
 let packageBuilt = false
@@ -390,6 +395,92 @@ describe('vizmatic render pipeline', () => {
         expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(60)
         expect(Math.max(...circleXs)).toBeLessThanOrEqual(420)
     })
+
+    it('renders donut, timeline, tree, and icon primitives together', async () => {
+        const c = getThemeColors('light')
+        const donut = DonutChart({
+            c,
+            width: 300,
+            height: 230,
+            segments: [
+                { label: 'charts', value: 0.4, color: 'positive' },
+                { label: 'flows', value: 0.35, color: 'primary' },
+                { label: 'icons', value: 0.25, color: 'warning' },
+            ],
+        })
+        const tree = TreeDiagram({
+            c,
+            width: 320,
+            height: 220,
+            nodeWidth: 120,
+            root: {
+                label: 'Scene',
+                tone: 'purple',
+                children: [
+                    { label: 'Chart', tone: 'green' },
+                    { label: 'Narrative', tone: 'blue' },
+                ],
+            },
+        })
+
+        expect(collectElements(donut, (element) => element.type === 'path')).toHaveLength(3)
+        expect(collectElements(tree, (element) => element.type === 'path')).toHaveLength(2)
+
+        const frame = defineIllustration((themeColors) => (
+            <Scene c={themeColors} title="Primitive family" gap={16}>
+                <Row gap={16} align="stretch">
+                    <DonutChart
+                        c={themeColors}
+                        width={300}
+                        height={230}
+                        title="Share"
+                        format="percent"
+                        centerValue="100%"
+                        centerLabel="total"
+                        segments={[
+                            { label: 'charts', value: 0.4, color: 'positive' },
+                            { label: 'flows', value: 0.35, color: 'primary' },
+                            { label: 'icons', value: 0.25, color: 'warning' },
+                        ]}
+                    />
+                    <Timeline
+                        c={themeColors}
+                        title="Timeline"
+                        width={300}
+                        events={[
+                            { time: 'plan', title: 'Choose primitive', detail: 'match intent', tone: 'blue' },
+                            { time: 'ship', title: 'Render output', detail: 'dark and light', tone: 'green' },
+                        ]}
+                    />
+                    <TreeDiagram
+                        c={themeColors}
+                        title="Tree"
+                        width={320}
+                        height={230}
+                        nodeWidth={120}
+                        root={{
+                            label: 'Scene',
+                            tone: 'purple',
+                            children: [
+                                { label: 'Chart', tone: 'green' },
+                                { label: 'Narrative', tone: 'blue' },
+                            ],
+                        }}
+                    />
+                </Row>
+                <Icon c={themeColors} name="spark" tone="warm" size={28} />
+            </Scene>
+        ))
+
+        const buffer = await renderToBuffer(frame.create('light'), 1040, 520, { scale: 1 })
+        const image = decodePng(buffer)
+        const opaqueBounds = pixelBounds(image, (_r, _g, _b, a) => a > 0)
+
+        expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+        expect(opaqueBounds.maxX).toBeGreaterThan(opaqueBounds.minX)
+        expect(opaqueBounds.maxY).toBeGreaterThan(opaqueBounds.minY)
+        expect(pixelAt(image, 0, 0)[3]).toBe(0)
+    }, 30_000)
 
     it('applies panel gap between direct body children', () => {
         const panel = Panel({

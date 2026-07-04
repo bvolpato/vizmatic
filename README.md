@@ -487,6 +487,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | `ValuePill` | Compact value badge for numbers or short state labels. |
 | `GradientChip` | Small colored chip with gradient fill for legends and tone keys. |
 | `ToneStrip` | Small semantic accent strip for visual grouping. |
+| `Icon` | Curated SVG icon set for cards, callouts, compact rows, and presentation frames. |
 | `TextLabel` | Wrapping-safe text with variant, color, math formatting, width, and alignment. |
 | `MathText` / `formatMathText` | Converts simple `x_i` / `x^2` style strings into readable unicode math text. |
 | `SvgMathText` | SVG text helper for math labels inside custom plots. |
@@ -512,6 +513,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | `DetailList` | Compact repeated detail rows inside panels and flow stages. |
 | `ProgressRow` / `ProgressList` | Progress bars with labels, values, tones, and optional math text. |
 | `StatusRow` / `StatusList` | Check, cross, warning, info, pending, and dot rows. |
+| `Timeline` | Vertical or horizontal milestone list with tone markers, time labels, and compact event cards. |
 | `KeyValueList` | Structured label/value rows for configs and metadata. |
 | `CodeBlock` | Themed code panel with highlighted lines and optional annotations. |
 | `EquationCard` | Formula card with title, equation, and supporting detail. |
@@ -525,6 +527,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | `Pipeline` | Process pipeline with stage labels and a shared title. |
 | `LayeredNetwork` | Neural-network/DAG diagram with layers, nodes, active path, annotations, and formula. |
 | `GraphDiagram` | Positioned node-edge graph with labels, dashed/muted edges, and tone-aware nodes. |
+| `TreeDiagram` | Auto-laid parent/child hierarchy for ownership, routing, taxonomy, and decision trees. |
 
 #### Matrices, tables, and grids
 
@@ -542,6 +545,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 |---|---|
 | `ChartFrame` | Shared chart wrapper with title, subtitle, footer, and theme-aware shell. |
 | `AxisPlot` | Low-level axis plot for custom lines, paths, and plotted values. |
+| `DonutChart` | Part-to-whole chart with center label/value, segment labels, and shared chart styling. |
 | `MiniBarChart` | Small bar chart for cards and dashboards. |
 | `StackedBar` | Segmented horizontal bar with labels and percentages. |
 | `BarChart` | Full bar chart with ticks, labels, values, grids, and formats. |

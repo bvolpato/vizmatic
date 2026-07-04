@@ -26,6 +26,14 @@
     ]
   },
   {
+    "name": "building-blocks",
+    "source": "examples/building-blocks.tsx",
+    "outputs": [
+      "building-blocks_dark.png",
+      "building-blocks_light.png"
+    ]
+  },
+  {
     "name": "embedding-map",
     "source": "examples/embedding-map.tsx",
     "outputs": [

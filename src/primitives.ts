@@ -261,6 +261,150 @@ export function ToneStrip({ tone, width = 34, height = 4 }: ToneStripProps): Rea
     }, '')
 }
 
+export type IconName =
+    | 'agent'
+    | 'chart'
+    | 'check'
+    | 'code'
+    | 'database'
+    | 'file'
+    | 'git'
+    | 'globe'
+    | 'image'
+    | 'layers'
+    | 'lock'
+    | 'play'
+    | 'spark'
+    | 'terminal'
+    | 'tool'
+    | 'warning'
+
+type IconShape = {
+    tag: 'circle' | 'line' | 'path' | 'polyline' | 'rect'
+    attrs: Record<string, string | number>
+}
+
+const iconShapes: Record<IconName, IconShape[]> = {
+    agent: [
+        { tag: 'rect', attrs: { x: 5, y: 7, width: 14, height: 12, rx: 4 } },
+        { tag: 'path', attrs: { d: 'M12 7V4' } },
+        { tag: 'circle', attrs: { cx: 12, cy: 3, r: 1 } },
+        { tag: 'circle', attrs: { cx: 9, cy: 13, r: 1 } },
+        { tag: 'circle', attrs: { cx: 15, cy: 13, r: 1 } },
+        { tag: 'path', attrs: { d: 'M9 17h6' } },
+    ],
+    chart: [
+        { tag: 'path', attrs: { d: 'M4 19V5' } },
+        { tag: 'path', attrs: { d: 'M4 19h16' } },
+        { tag: 'polyline', attrs: { points: '7 15 11 11 14 13 19 7' } },
+    ],
+    check: [{ tag: 'polyline', attrs: { points: '20 6 9 17 4 12' } }],
+    code: [
+        { tag: 'polyline', attrs: { points: '8 9 4 12 8 15' } },
+        { tag: 'polyline', attrs: { points: '16 9 20 12 16 15' } },
+        { tag: 'path', attrs: { d: 'M13 5l-2 14' } },
+    ],
+    database: [
+        { tag: 'path', attrs: { d: 'M4 7c0-2 16-2 16 0s-16 2-16 0Z' } },
+        { tag: 'path', attrs: { d: 'M4 7v5c0 2 16 2 16 0V7' } },
+        { tag: 'path', attrs: { d: 'M4 12v5c0 2 16 2 16 0v-5' } },
+    ],
+    file: [
+        { tag: 'path', attrs: { d: 'M6 3h8l4 4v14H6Z' } },
+        { tag: 'path', attrs: { d: 'M14 3v5h5' } },
+        { tag: 'path', attrs: { d: 'M9 13h6' } },
+        { tag: 'path', attrs: { d: 'M9 17h4' } },
+    ],
+    git: [
+        { tag: 'circle', attrs: { cx: 6, cy: 6, r: 2 } },
+        { tag: 'circle', attrs: { cx: 18, cy: 18, r: 2 } },
+        { tag: 'circle', attrs: { cx: 6, cy: 18, r: 2 } },
+        { tag: 'path', attrs: { d: 'M8 6h3a5 5 0 0 1 5 5v5' } },
+        { tag: 'path', attrs: { d: 'M6 8v8' } },
+    ],
+    globe: [
+        { tag: 'circle', attrs: { cx: 12, cy: 12, r: 9 } },
+        { tag: 'path', attrs: { d: 'M3 12h18' } },
+        { tag: 'path', attrs: { d: 'M12 3a14 14 0 0 1 0 18' } },
+        { tag: 'path', attrs: { d: 'M12 3a14 14 0 0 0 0 18' } },
+    ],
+    image: [
+        { tag: 'rect', attrs: { x: 4, y: 5, width: 16, height: 14, rx: 3 } },
+        { tag: 'circle', attrs: { cx: 9, cy: 10, r: 1.5 } },
+        { tag: 'polyline', attrs: { points: '7 17 11 13 14 16 16 14 20 18' } },
+    ],
+    layers: [
+        { tag: 'path', attrs: { d: 'M12 3 3 8l9 5 9-5Z' } },
+        { tag: 'path', attrs: { d: 'm3 13 9 5 9-5' } },
+        { tag: 'path', attrs: { d: 'm3 18 9 5 9-5' } },
+    ],
+    lock: [
+        { tag: 'rect', attrs: { x: 5, y: 10, width: 14, height: 10, rx: 2 } },
+        { tag: 'path', attrs: { d: 'M8 10V7a4 4 0 0 1 8 0v3' } },
+    ],
+    play: [{ tag: 'path', attrs: { d: 'M8 5v14l11-7Z' } }],
+    spark: [
+        { tag: 'path', attrs: { d: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z' } },
+        { tag: 'path', attrs: { d: 'M5 16l.8 2.2L8 19l-2.2.8L5 22l-.8-2.2L2 19l2.2-.8Z' } },
+    ],
+    terminal: [
+        { tag: 'polyline', attrs: { points: '5 7 10 12 5 17' } },
+        { tag: 'path', attrs: { d: 'M12 17h7' } },
+    ],
+    tool: [
+        { tag: 'path', attrs: { d: 'M14 6a5 5 0 0 0 6 6L11 21l-6-6 9-9Z' } },
+        { tag: 'path', attrs: { d: 'M8 18l-2-2' } },
+    ],
+    warning: [
+        { tag: 'path', attrs: { d: 'M12 4 22 20H2Z' } },
+        { tag: 'path', attrs: { d: 'M12 9v5' } },
+        { tag: 'path', attrs: { d: 'M12 17h.01' } },
+    ],
+}
+
+export interface IconProps {
+    c: ThemeColors
+    name: IconName
+    tone?: ToneName
+    color?: string
+    size?: number
+    strokeWidth?: number
+    label?: string
+    muted?: boolean
+}
+
+export function Icon({
+    c,
+    name,
+    tone = 'blue',
+    color,
+    size = 24,
+    strokeWidth = 2,
+    label,
+    muted = false,
+}: IconProps): React.ReactElement {
+    const stroke = muted ? c.textMuted : (color ?? getToneColor(tone, c))
+    const shapes = iconShapes[name]
+
+    return React.createElement('svg', {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke,
+        strokeWidth,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        role: label ? 'img' : undefined,
+        'aria-hidden': label ? undefined : 'true',
+        'aria-label': label,
+        style: { flex: `0 0 ${size}px` },
+    }, shapes.map((shape, index) => React.createElement(shape.tag, {
+        key: `${name}-${index}`,
+        ...shape.attrs,
+    })))
+}
+
 interface PanelProps {
     title: React.ReactNode
     c: ThemeColors
@@ -2788,6 +2932,287 @@ export function StatusList({
     })
 }
 
+// ─── Timeline — Chronological milestones with compact cards ─────────────────
+
+export interface TimelineEventSpec {
+    title: React.ReactNode
+    detail?: React.ReactNode
+    time?: React.ReactNode
+    tone?: ToneName
+    status?: StatusKind
+    width?: number | string
+}
+
+interface TimelineProps {
+    events: TimelineEventSpec[]
+    c: ThemeColors
+    title?: React.ReactNode
+    subtitle?: React.ReactNode
+    direction?: 'vertical' | 'horizontal'
+    width?: number | string
+    eventWidth?: number | string
+    gap?: number
+    markerSize?: number
+    math?: boolean
+}
+
+function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: boolean, width?: number | string): React.ReactElement {
+    const accent = getToneColor(event.tone ?? statusTones[event.status ?? 'dot'], c)
+    const resolvedWidth = event.width ?? width
+
+    return React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: 5,
+            ...(resolvedWidth != null ? { width: resolvedWidth } : {}),
+            ...(typeof resolvedWidth === 'string' ? { minWidth: 0 } : {}),
+            padding: '10px 12px',
+            borderRadius: 8,
+            border: `1px solid ${accent}44`,
+            backgroundColor: c.bgCard,
+            boxShadow: `0 7px 18px ${c.shadow}`,
+            boxSizing: 'border-box' as const,
+        }
+    },
+        ...compactChildren([
+        event.time != null && React.createElement('div', {
+            style: {
+                display: 'flex',
+                color: accent,
+                fontFamily: 'JetBrains Mono',
+                fontSize: 9,
+                fontWeight: 900,
+                lineHeight: 1.15,
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.04em',
+            }
+        }, renderMaybeMath(event.time, math)),
+        React.createElement('div', {
+            style: {
+                display: 'flex',
+                color: c.textPrimary,
+                fontFamily: 'Inter',
+                fontSize: 14,
+                fontWeight: 900,
+                lineHeight: 1.18,
+                ...textFitStyle(),
+            }
+        }, renderMaybeMath(event.title, math)),
+        event.detail != null && React.createElement('div', {
+            style: {
+                display: 'flex',
+                color: c.textSecondary,
+                fontFamily: 'Inter',
+                fontSize: 11,
+                fontWeight: 500,
+                lineHeight: 1.35,
+                ...textFitStyle(),
+            }
+        }, renderMaybeMath(event.detail, math)),
+        ])
+    )
+}
+
+export function Timeline({
+    events,
+    c,
+    title,
+    subtitle,
+    direction = 'vertical',
+    width,
+    eventWidth,
+    gap = 12,
+    markerSize = 14,
+    math = false,
+}: TimelineProps): React.ReactElement {
+    const header = (title != null || subtitle != null) && React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: subtitle != null ? 4 : 0,
+            width: '100%',
+        }
+    },
+        ...compactChildren([
+        title != null && React.createElement('div', {
+            style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: c.textPrimary,
+                fontFamily: 'Inter',
+                fontSize: 16,
+                fontWeight: 900,
+                lineHeight: 1.2,
+            }
+        }, ToneStrip({ tone: events[0]?.tone ?? 'blue' }), renderMaybeMath(title, math)),
+        subtitle != null && React.createElement('div', {
+            style: {
+                display: 'flex',
+                color: c.textSecondary,
+                fontFamily: 'Inter',
+                fontSize: 11,
+                fontWeight: 500,
+                lineHeight: 1.35,
+            }
+        }, renderMaybeMath(subtitle, math)),
+        ])
+    )
+
+    if (direction === 'horizontal') {
+        return React.createElement('div', {
+            style: {
+                display: 'flex',
+                flexDirection: 'column' as const,
+                gap,
+                ...(width != null ? { width } : {}),
+            }
+        },
+            ...compactChildren([
+            header,
+            React.createElement('div', {
+                style: {
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    gap: 0,
+                    width: '100%',
+                }
+            }, ...events.map((event, index) => {
+                const accent = getToneColor(event.tone ?? statusTones[event.status ?? 'dot'], c)
+                return React.createElement('div', {
+                    key: `timeline-h-${index}`,
+                    style: {
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        gap: 8,
+                        ...(eventWidth == null ? { flex: 1 } : {}),
+                        ...((event.width ?? eventWidth) != null ? { width: event.width ?? eventWidth } : {}),
+                        minWidth: 0,
+                    }
+                },
+                    React.createElement('div', {
+                        style: {
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                        }
+                    },
+                        React.createElement('div', {
+                            style: {
+                                display: 'flex',
+                                flex: 1,
+                                height: 2,
+                                backgroundColor: c.borderLight,
+                                opacity: index === 0 ? 0 : 1,
+                            }
+                        }),
+                        React.createElement('div', {
+                            style: {
+                                display: 'flex',
+                                width: markerSize,
+                                height: markerSize,
+                                borderRadius: 999,
+                                backgroundColor: accent,
+                                border: `3px solid ${c.bg}`,
+                                boxShadow: `0 0 0 1px ${accent}`,
+                                flexShrink: 0,
+                            }
+                        }),
+                        React.createElement('div', {
+                            style: {
+                                display: 'flex',
+                                flex: 1,
+                                height: 2,
+                                backgroundColor: c.borderLight,
+                                opacity: index === events.length - 1 ? 0 : 1,
+                            }
+                        }),
+                    ),
+                    renderTimelineCard(event, c, math, eventWidth),
+                )
+            })),
+            ])
+        )
+    }
+
+    return React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap,
+            ...(width != null ? { width } : {}),
+        }
+    },
+        ...compactChildren([
+        header,
+        React.createElement('div', {
+            style: {
+                display: 'flex',
+                flexDirection: 'column' as const,
+                gap,
+                width: '100%',
+            }
+        }, ...events.map((event, index) => {
+            const accent = getToneColor(event.tone ?? statusTones[event.status ?? 'dot'], c)
+            return React.createElement('div', {
+                key: `timeline-v-${index}`,
+                style: {
+                    display: 'flex',
+                    alignItems: 'stretch',
+                    gap: 11,
+                    width: '100%',
+                }
+            },
+                React.createElement('div', {
+                    style: {
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        alignItems: 'center',
+                        width: markerSize + 8,
+                        flexShrink: 0,
+                    }
+                },
+                    React.createElement('div', {
+                        style: {
+                            display: 'flex',
+                            flex: 1,
+                            minHeight: 4,
+                            width: 2,
+                            backgroundColor: c.borderLight,
+                            opacity: index === 0 ? 0 : 1,
+                        }
+                    }),
+                    React.createElement('div', {
+                        style: {
+                            display: 'flex',
+                            width: markerSize,
+                            height: markerSize,
+                            borderRadius: 999,
+                            backgroundColor: accent,
+                            border: `3px solid ${c.bg}`,
+                            boxShadow: `0 0 0 1px ${accent}`,
+                            flexShrink: 0,
+                        }
+                    }),
+                    React.createElement('div', {
+                        style: {
+                            display: 'flex',
+                            flex: 1,
+                            minHeight: 4,
+                            width: 2,
+                            backgroundColor: c.borderLight,
+                            opacity: index === events.length - 1 ? 0 : 1,
+                        }
+                    }),
+                ),
+                renderTimelineCard(event, c, math),
+            )
+        })),
+        ])
+    )
+}
+
 // ─── Flow — Common linear stage flow with optional detail rows ──────────────
 
 export interface FlowStageSpec {
@@ -3322,6 +3747,253 @@ export function GraphDiagram({
                 }, node.detail),
             )
         }),
+    )
+}
+
+// ─── TreeDiagram — Auto-laid hierarchy for orgs, routes, and decisions ──────
+
+export interface TreeNodeSpec {
+    label: React.ReactNode
+    id?: string
+    detail?: React.ReactNode
+    tone?: ToneName
+    muted?: boolean
+    children?: TreeNodeSpec[]
+}
+
+interface TreeDiagramProps {
+    root: TreeNodeSpec
+    c: ThemeColors
+    title?: React.ReactNode
+    subtitle?: React.ReactNode
+    width?: number
+    height?: number
+    nodeWidth?: number
+    nodeHeight?: number
+    levelGap?: number
+    siblingGap?: number
+    padding?: number
+    math?: boolean
+}
+
+type PositionedTreeNode = TreeNodeSpec & {
+    key: string
+    depth: number
+    cx: number
+    cy: number
+}
+
+type TreeEdgeLayout = {
+    key: string
+    from: PositionedTreeNode
+    to: PositionedTreeNode
+}
+
+function countTreeLeaves(node: TreeNodeSpec): number {
+    if (!node.children?.length) return 1
+    return node.children.reduce((sum, child) => sum + countTreeLeaves(child), 0)
+}
+
+function maxTreeDepth(node: TreeNodeSpec): number {
+    if (!node.children?.length) return 0
+    return 1 + Math.max(...node.children.map(maxTreeDepth))
+}
+
+export function TreeDiagram({
+    root,
+    c,
+    title,
+    subtitle,
+    width,
+    height,
+    nodeWidth = 156,
+    nodeHeight = 64,
+    levelGap = 58,
+    siblingGap = 24,
+    padding = 28,
+    math = false,
+}: TreeDiagramProps): React.ReactElement {
+    const leafCount = Math.max(1, countTreeLeaves(root))
+    const depthCount = maxTreeDepth(root)
+    const resolvedWidth = width ?? Math.max(520, padding * 2 + leafCount * nodeWidth + Math.max(0, leafCount - 1) * siblingGap)
+    const resolvedHeight = height ?? padding * 2 + (depthCount + 1) * nodeHeight + depthCount * levelGap
+    const levelStep = depthCount === 0
+        ? 0
+        : Math.max(nodeHeight + 18, (resolvedHeight - padding * 2 - nodeHeight) / depthCount)
+    const usableWidth = Math.max(0, resolvedWidth - padding * 2 - nodeWidth)
+    const leafStep = leafCount <= 1 ? 0 : usableWidth / (leafCount - 1)
+    const positioned: PositionedTreeNode[] = []
+    const edges: TreeEdgeLayout[] = []
+    let nextLeaf = 0
+
+    const placeWithEdges = (node: TreeNodeSpec, depth: number, path: string): number => {
+        const children = node.children ?? []
+        let centerIndex: number
+        const childPlacements: Array<{ node: TreeNodeSpec; index: number; center: number }> = []
+
+        if (!children.length) {
+            centerIndex = nextLeaf
+            nextLeaf += 1
+        } else {
+            for (let index = 0; index < children.length; index += 1) {
+                const child = children[index]
+                childPlacements.push({
+                    node: child,
+                    index,
+                    center: placeWithEdges(child, depth + 1, `${path}-${index}`),
+                })
+            }
+            centerIndex = childPlacements.reduce((sum, child) => sum + child.center, 0) / childPlacements.length
+        }
+
+        const placed: PositionedTreeNode = {
+            ...node,
+            key: node.id ?? path,
+            depth,
+            cx: leafCount <= 1 ? resolvedWidth / 2 : padding + nodeWidth / 2 + centerIndex * leafStep,
+            cy: padding + nodeHeight / 2 + depth * levelStep,
+        }
+        positioned.push(placed)
+
+        for (const childPlacement of childPlacements) {
+            const childKey = childPlacement.node.id ?? `${path}-${childPlacement.index}`
+            const childNode = positioned.find((candidate) => candidate.key === childKey)
+            if (childNode) edges.push({ key: `${placed.key}-${childNode.key}`, from: placed, to: childNode })
+        }
+
+        return centerIndex
+    }
+
+    placeWithEdges(root, 0, 'root')
+
+    const header = (title != null || subtitle != null) && React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: subtitle != null ? 4 : 0,
+            width: resolvedWidth,
+            maxWidth: '100%',
+        }
+    },
+        ...compactChildren([
+        title != null && React.createElement('div', {
+            style: {
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: c.textPrimary,
+                fontFamily: 'Inter',
+                fontSize: 16,
+                fontWeight: 900,
+                lineHeight: 1.2,
+            }
+        }, ToneStrip({ tone: root.tone ?? 'blue' }), renderMaybeMath(title, math)),
+        subtitle != null && React.createElement('div', {
+            style: {
+                display: 'flex',
+                color: c.textSecondary,
+                fontFamily: 'Inter',
+                fontSize: 11,
+                fontWeight: 500,
+                lineHeight: 1.35,
+            }
+        }, renderMaybeMath(subtitle, math)),
+        ])
+    )
+
+    return React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: header ? 10 : 0,
+            width: resolvedWidth,
+            maxWidth: '100%',
+        }
+    },
+        ...compactChildren([
+        header,
+        React.createElement('div', {
+            role: 'img',
+            style: {
+                position: 'relative' as const,
+                display: 'flex',
+                width: resolvedWidth,
+                height: resolvedHeight,
+                maxWidth: '100%',
+                flexShrink: 0,
+            }
+        },
+            React.createElement('svg', {
+                width: resolvedWidth,
+                height: resolvedHeight,
+                viewBox: `0 0 ${resolvedWidth} ${resolvedHeight}`,
+                style: { position: 'absolute' as const, inset: 0, overflow: 'visible' },
+            }, ...edges.map((edge) => {
+                const tone = edge.to.muted ? 'neutral' : (edge.to.tone ?? edge.from.tone ?? 'blue')
+                const color = edge.to.muted ? c.textMuted : getToneColor(tone, c)
+                const startY = edge.from.cy + nodeHeight / 2
+                const endY = edge.to.cy - nodeHeight / 2
+                const midY = startY + (endY - startY) / 2
+                return React.createElement('path', {
+                    key: `tree-edge-${edge.key}`,
+                    d: `M ${edge.from.cx} ${startY} C ${edge.from.cx} ${midY}, ${edge.to.cx} ${midY}, ${edge.to.cx} ${endY}`,
+                    fill: 'none',
+                    stroke: color,
+                    strokeWidth: edge.to.muted ? 1.4 : 2.4,
+                    strokeLinecap: 'round',
+                    opacity: edge.to.muted ? 0.4 : 0.74,
+                })
+            })),
+            ...positioned.map((node) => {
+                const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
+                return React.createElement('div', {
+                    key: `tree-node-${node.key}`,
+                    style: {
+                        position: 'absolute' as const,
+                        left: node.cx - nodeWidth / 2,
+                        top: node.cy - nodeHeight / 2,
+                        width: nodeWidth,
+                        height: nodeHeight,
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: node.detail ? 4 : 0,
+                        padding: '8px 10px',
+                        boxSizing: 'border-box' as const,
+                        borderRadius: 8,
+                        backgroundColor: node.muted ? c.bgSubtle : c.bgCard,
+                        border: `1.5px solid ${node.muted ? c.borderLight : `${accent}88`}`,
+                        ...(!node.muted ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
+                        opacity: node.muted ? 0.62 : 1,
+                        color: accent,
+                        textAlign: 'center' as const,
+                    }
+                },
+                    React.createElement('div', {
+                        style: {
+                            color: accent,
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: 900,
+                            lineHeight: 1.15,
+                            ...textFitStyle('center'),
+                        }
+                    }, renderMaybeMath(node.label, math)),
+                    node.detail != null && React.createElement('div', {
+                        style: {
+                            color: c.textMuted,
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 9,
+                            fontWeight: 650,
+                            lineHeight: 1.2,
+                            ...textFitStyle('center'),
+                        }
+                    }, renderMaybeMath(node.detail, math)),
+                )
+            }),
+        ),
+        ])
     )
 }
 
@@ -4566,6 +5238,230 @@ export function ChartFrame({
             }, footer),
         ),
     )
+}
+
+function polarPoint(cx: number, cy: number, radius: number, angleDegrees: number): { x: number; y: number } {
+    const radians = (angleDegrees * Math.PI) / 180
+    return {
+        x: cx + radius * Math.cos(radians),
+        y: cy + radius * Math.sin(radians),
+    }
+}
+
+function donutArcPath(
+    cx: number,
+    cy: number,
+    outerRadius: number,
+    innerRadius: number,
+    startAngle: number,
+    endAngle: number,
+): string {
+    const span = Math.min(359.99, Math.max(0.01, endAngle - startAngle))
+    const safeEnd = startAngle + span
+    const outerStart = polarPoint(cx, cy, outerRadius, startAngle)
+    const outerEnd = polarPoint(cx, cy, outerRadius, safeEnd)
+    const innerEnd = polarPoint(cx, cy, innerRadius, safeEnd)
+    const innerStart = polarPoint(cx, cy, innerRadius, startAngle)
+    const largeArc = span > 180 ? 1 : 0
+
+    return [
+        `M ${outerStart.x} ${outerStart.y}`,
+        `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+        `L ${innerEnd.x} ${innerEnd.y}`,
+        `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+        'Z',
+    ].join(' ')
+}
+
+export interface DonutChartSegment {
+    label: string
+    value: number
+    color?: ColorName | string
+    valueLabel?: string
+}
+
+interface DonutChartProps {
+    segments: DonutChartSegment[]
+    c: ThemeColors
+    title?: string
+    subtitle?: string
+    width?: number
+    height?: number
+    size?: number
+    thickness?: number
+    format?: ChartValueFormat
+    centerLabel?: React.ReactNode
+    centerValue?: React.ReactNode
+    showLegend?: boolean
+    footer?: string
+}
+
+export function DonutChart({
+    segments,
+    c,
+    title,
+    subtitle,
+    width = 360,
+    height = 230,
+    size,
+    thickness,
+    format = 'decimal',
+    centerLabel,
+    centerValue,
+    showLegend = true,
+    footer,
+}: DonutChartProps): React.ReactElement {
+    const positiveSegments = segments.filter((segment) => segment.value > 0)
+    const total = positiveSegments.reduce((sum, segment) => sum + segment.value, 0)
+    const resolvedSize = size ?? Math.min(162, Math.max(128, height - 44), Math.max(128, width * 0.48))
+    const resolvedThickness = thickness ?? Math.max(20, Math.round(resolvedSize * 0.18))
+    const outerRadius = resolvedSize / 2 - 2
+    const innerRadius = Math.max(18, outerRadius - resolvedThickness)
+    const cx = resolvedSize / 2
+    const cy = resolvedSize / 2
+    let cursor = -90
+    const resolvedCenterValue = centerValue ?? (centerLabel != null ? formatChartValue(total, format) : undefined)
+
+    const paths = positiveSegments.map((segment, index) => {
+        const rawSpan = total > 0 ? (segment.value / total) * 360 : 0
+        const gap = positiveSegments.length > 1 ? Math.min(1.5, rawSpan * 0.28) : 0
+        const start = cursor + gap / 2
+        const end = cursor + rawSpan - gap / 2
+        cursor += rawSpan
+        if (end <= start) return null
+
+        return React.createElement('path', {
+            key: `donut-segment-${segment.label}-${index}`,
+            d: donutArcPath(cx, cy, outerRadius, innerRadius, start, end),
+            fill: chartColor(segment.color, c, index),
+        })
+    }).filter(Boolean)
+
+    const legend = showLegend && positiveSegments.length > 0 && React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: 8,
+            flex: 1,
+            minWidth: 112,
+        }
+    }, ...positiveSegments.map((segment, index) => React.createElement('div', {
+        key: `donut-legend-${segment.label}-${index}`,
+        style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            minWidth: 0,
+        }
+    },
+        React.createElement('span', {
+            style: {
+                display: 'flex',
+                width: 10,
+                height: 10,
+                borderRadius: 3,
+                backgroundColor: chartColor(segment.color, c, index),
+                flexShrink: 0,
+            }
+        }),
+        React.createElement('span', {
+            style: {
+                ...typography.tiny,
+                ...textFitStyle(),
+                color: c.textSecondary,
+                flex: 1,
+            }
+        }, segment.label),
+        React.createElement('span', {
+            style: {
+                ...typography.tiny,
+                color: c.textPrimary,
+                fontFamily: 'JetBrains Mono',
+                fontWeight: 850,
+                flexShrink: 0,
+            }
+        }, segment.valueLabel ?? formatChartValue(segment.value, format)),
+    )))
+
+    return ChartFrame({
+        c,
+        title,
+        subtitle,
+        footer,
+        width,
+        height,
+        padding: 16,
+        children: React.createElement('div', {
+            style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: showLegend ? 'space-between' : 'center',
+                gap: 18,
+                minHeight: resolvedSize,
+                width: '100%',
+            }
+        },
+            React.createElement('div', {
+                style: {
+                    position: 'relative' as const,
+                    display: 'flex',
+                    width: resolvedSize,
+                    height: resolvedSize,
+                    flexShrink: 0,
+                }
+            },
+                React.createElement('svg', {
+                    width: resolvedSize,
+                    height: resolvedSize,
+                    viewBox: `0 0 ${resolvedSize} ${resolvedSize}`,
+                },
+                    positiveSegments.length === 0
+                        ? React.createElement('circle', {
+                            cx,
+                            cy,
+                            r: (outerRadius + innerRadius) / 2,
+                            fill: 'none',
+                            stroke: c.borderLight,
+                            strokeWidth: resolvedThickness,
+                        })
+                        : paths,
+                ),
+                (centerLabel != null || resolvedCenterValue != null) && React.createElement('div', {
+                    style: {
+                        position: 'absolute' as const,
+                        inset: resolvedThickness,
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 3,
+                        textAlign: 'center' as const,
+                    }
+                },
+                    resolvedCenterValue != null && React.createElement('div', {
+                        style: {
+                            ...typography.small,
+                            color: c.textPrimary,
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 18,
+                            fontWeight: 900,
+                            lineHeight: 1.05,
+                            ...textFitStyle('center'),
+                        }
+                    }, resolvedCenterValue),
+                    centerLabel != null && React.createElement('div', {
+                        style: {
+                            ...typography.tiny,
+                            color: c.textMuted,
+                            lineHeight: 1.2,
+                            ...textFitStyle('center'),
+                        }
+                    }, centerLabel),
+                ),
+            ),
+            legend,
+        ),
+    })
 }
 
 export interface BarChartDatum {

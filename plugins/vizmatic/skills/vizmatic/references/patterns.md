@@ -4,10 +4,12 @@
 
 - Linear workflow: `Flow` with 3-5 stages. Add `CalloutCard` or `MetricCard` below for key details.
 - Branching system: `GraphDiagram` with explicit `x` and `y` positions. Keep labels under 24 characters.
-- Dashboard or report figure: `MetricCard`, `BarChart`, `LineChart`, `DataTable`, and `ProgressList`.
+- Dashboard or report figure: `MetricCard`, `DonutChart`, `BarChart`, `LineChart`, `DataTable`, and `ProgressList`.
 - Architecture layers: `LayeredNetwork`, `Pipeline`, `Panel`, `TileGrid`, and `StatusList`.
 - Model internals: `Matrix`, `Heatmap`, `TiledMatrix`, `AxisPlot`, and `ScatterPlot`.
-- Timeline or schedule: `IntervalPlot`, `ProgressRow`, `StatusRow`, and `BadgePill`.
+- Timeline or schedule: `Timeline`, `IntervalPlot`, `ProgressRow`, `StatusRow`, and `BadgePill`.
+- Hierarchy or ownership: `TreeDiagram` for parent/child structure; use `GraphDiagram` when edges are non-hierarchical.
+- Small visual anchors: `Icon` inside cards, callouts, compact rows, and presentation frames.
 - Code or terminal state: `WindowFrame`, `CodeBlock`, `KeyValueList`, and `StatusList`.
 
 ## Bare Static Frame
