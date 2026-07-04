@@ -236,6 +236,34 @@
 <span class="line"><span style="color:#E1E4E8">  &#x3C;/</span><span style="color:#79B8FF">Row</span><span style="color:#E1E4E8">></span></span>
 <span class="line"><span style="color:#E1E4E8">&#x3C;/</span><span style="color:#79B8FF">Scene</span><span style="color:#E1E4E8">></span></span></code></pre>
         </article>
+
+        <article class="recipe-card">
+          <img data-theme-image src="assets/examples/building-blocks_dark.png" alt="Building block palette recipe">
+          <div>
+            <h3>Building blocks</h3>
+            <p>Best for part-to-whole summaries, milestones, hierarchy, and compact visual anchors.</p>
+          </div>
+          <pre data-shiki="tsx" class="shiki github-dark" tabindex="0"><code><span class="line"><span style="color:#E1E4E8">width </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 1120</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">height </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 650</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">&#x3C;</span><span style="color:#79B8FF">Scene</span><span style="color:#B392F0"> title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Launch overview"</span><span style="color:#E1E4E8">></span></span>
+<span class="line"><span style="color:#E1E4E8">  &#x3C;</span><span style="color:#79B8FF">Row</span><span style="color:#B392F0"> gap</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{</span><span style="color:#79B8FF">18</span><span style="color:#E1E4E8">} </span><span style="color:#B392F0">align</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"stretch"</span><span style="color:#E1E4E8">></span></span>
+<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">DonutChart</span><span style="color:#B392F0"> title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Mix"</span><span style="color:#B392F0"> segments</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
+<span class="line"><span style="color:#E1E4E8">        { label: </span><span style="color:#9ECBFF">"charts"</span><span style="color:#E1E4E8">, value: </span><span style="color:#79B8FF">0.36</span><span style="color:#E1E4E8">, color: </span><span style="color:#9ECBFF">"positive"</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { label: </span><span style="color:#9ECBFF">"process"</span><span style="color:#E1E4E8">, value: </span><span style="color:#79B8FF">0.27</span><span style="color:#E1E4E8">, color: </span><span style="color:#9ECBFF">"primary"</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      ]} /></span></span>
+<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">Timeline</span><span style="color:#B392F0"> title</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"Path"</span><span style="color:#B392F0"> events</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{[</span></span>
+<span class="line"><span style="color:#E1E4E8">        { time: </span><span style="color:#9ECBFF">"draft"</span><span style="color:#E1E4E8">, title: </span><span style="color:#9ECBFF">"Sketch"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"blue"</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { time: </span><span style="color:#9ECBFF">"ship"</span><span style="color:#E1E4E8">, title: </span><span style="color:#9ECBFF">"Verify"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"green"</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      ]} /></span></span>
+<span class="line"><span style="color:#E1E4E8">    &#x3C;</span><span style="color:#79B8FF">TreeDiagram</span><span style="color:#B392F0"> root</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{{ label: </span><span style="color:#9ECBFF">"Scene"</span><span style="color:#E1E4E8">, children: [</span></span>
+<span class="line"><span style="color:#E1E4E8">        { label: </span><span style="color:#9ECBFF">"Metrics"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"green"</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { label: </span><span style="color:#9ECBFF">"Flow"</span><span style="color:#E1E4E8">, tone: </span><span style="color:#9ECBFF">"blue"</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      ] }} /></span></span>
+<span class="line"><span style="color:#E1E4E8">  &#x3C;/</span><span style="color:#79B8FF">Row</span><span style="color:#E1E4E8">></span></span>
+<span class="line"><span style="color:#E1E4E8">  &#x3C;</span><span style="color:#79B8FF">Icon</span><span style="color:#B392F0"> name</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"spark"</span><span style="color:#B392F0"> tone</span><span style="color:#F97583">=</span><span style="color:#9ECBFF">"warm"</span><span style="color:#B392F0"> size</span><span style="color:#F97583">=</span><span style="color:#E1E4E8">{</span><span style="color:#79B8FF">32</span><span style="color:#E1E4E8">} /></span></span>
+<span class="line"><span style="color:#E1E4E8">&#x3C;/</span><span style="color:#79B8FF">Scene</span><span style="color:#E1E4E8">></span></span></code></pre>
+        </article>
       </div>
     </section>
 

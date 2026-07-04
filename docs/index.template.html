@@ -235,6 +235,34 @@ height = 560;
   &lt;/Row&gt;
 &lt;/Scene&gt;</code></pre>
         </article>
+
+        <article class="recipe-card">
+          <img data-theme-image src="assets/examples/building-blocks_dark.png" alt="Building block palette recipe">
+          <div>
+            <h3>Building blocks</h3>
+            <p>Best for part-to-whole summaries, milestones, hierarchy, and compact visual anchors.</p>
+          </div>
+          <pre data-shiki="tsx"><code>width = 1120;
+height = 650;
+
+&lt;Scene title="Launch overview"&gt;
+  &lt;Row gap={18} align="stretch"&gt;
+    &lt;DonutChart title="Mix" segments={[
+        { label: "charts", value: 0.36, color: "positive" },
+        { label: "process", value: 0.27, color: "primary" },
+      ]} /&gt;
+    &lt;Timeline title="Path" events={[
+        { time: "draft", title: "Sketch", tone: "blue" },
+        { time: "ship", title: "Verify", tone: "green" },
+      ]} /&gt;
+    &lt;TreeDiagram root={{ label: "Scene", children: [
+        { label: "Metrics", tone: "green" },
+        { label: "Flow", tone: "blue" },
+      ] }} /&gt;
+  &lt;/Row&gt;
+  &lt;Icon name="spark" tone="warm" size={32} /&gt;
+&lt;/Scene&gt;</code></pre>
+        </article>
       </div>
     </section>
 
