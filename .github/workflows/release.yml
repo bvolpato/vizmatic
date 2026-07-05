@@ -63,4 +63,41 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          gh release create "v${VERSION}" --generate-notes --verify-tag
+          CURRENT_TAG="v${VERSION}"
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || true)"
+
+          {
+            echo "## Changes since latest version"
+            echo
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "- Previous version: \`${PREVIOUS_TAG}\`"
+              echo "- Current version: \`${CURRENT_TAG}\`"
+              echo "- Diff: https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS_TAG}...${CURRENT_TAG}"
+              echo
+              echo "### Commits"
+              echo
+              if git log --format='%H' "${PREVIOUS_TAG}..HEAD^" | grep -q .; then
+                git log --reverse --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..HEAD^"
+                echo
+              else
+                echo "- No product commits since ${PREVIOUS_TAG}; release metadata only."
+              fi
+            else
+              echo "- Current version: \`${CURRENT_TAG}\`"
+              echo "- Diff: initial release"
+              echo
+              echo "### Commits"
+              echo
+              git log --reverse --pretty=format:"- %s (%h)"
+              echo
+            fi
+            echo
+          } > release-notes.md
+
+          cat release-notes.md
+
+          if [ -n "$PREVIOUS_TAG" ]; then
+            gh release create "$CURRENT_TAG" --generate-notes --notes-start-tag "$PREVIOUS_TAG" --notes-file release-notes.md --verify-tag
+          else
+            gh release create "$CURRENT_TAG" --generate-notes --notes-file release-notes.md --verify-tag
+          fi

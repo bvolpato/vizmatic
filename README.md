@@ -642,7 +642,7 @@ pnpm site:serve
 
 ## Publishing
 
-Preferred release path is the GitHub `Release` workflow. It runs the full verification gate, bumps the package version, publishes to npm with provenance, pushes the tag, and creates a GitHub release.
+Preferred release path is the GitHub `Release` workflow. It runs the full verification gate, bumps the package version, publishes to npm with provenance, pushes the tag, and creates a GitHub release. Release notes always start with a "Changes since latest version" section containing the previous tag, current tag, compare link, and commits before GitHub's generated notes.
 
 ```bash
 gh workflow run release.yml -f version=patch
