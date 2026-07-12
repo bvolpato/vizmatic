@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vizmatic - Theme-aware visuals from structured scenes</title>
-  <meta name="description" content="Vizmatic renders theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.">
+  <title>Vizmatic - Structured visual assets for coding agents</title>
+  <meta name="description" content="Give coding agents structured primitives. Get polished PNG, SVG, and GIF assets with deterministic, theme-aware, headless rendering.">
   <meta name="theme-color" content="#070912">
   <meta property="og:title" content="Vizmatic">
-  <meta property="og:description" content="Theme-aware visuals from structured scenes. Built for AI agents, docs, decks, and CI.">
+  <meta property="og:description" content="Give coding agents structured primitives. Get polished PNG, SVG, and GIF assets.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bvolpato.github.io/vizmatic/">
   <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/attention-head_dark.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Vizmatic">
-  <meta name="twitter:description" content="Theme-aware visuals from structured scenes.">
+  <meta name="twitter:description" content="Give coding agents structured primitives. Get polished PNG, SVG, and GIF assets.">
   <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/attention-head_dark.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -33,15 +33,10 @@
     </a>
     <div class="nav-actions">
       <div class="nav-links">
-        <a href="#gallery" data-nav-link>Gallery</a>
-        <a href="#api" data-nav-link>API</a>
-        <a href="#backgrounds" data-nav-link>Backgrounds</a>
-        <a href="#gif" data-nav-link>GIF</a>
-        <a href="#recipes" data-nav-link>Recipes</a>
+        <a href="#gallery" data-nav-link>Examples</a>
+        <a href="#quick-start" data-nav-link>Quick Start</a>
         <a href="#prompt" data-nav-link>Prompt</a>
-        <a href="#skill" data-nav-link>Skill</a>
-        <a href="#quality" data-nav-link>Quality</a>
-        <a href="#themes" data-nav-link>Themes</a>
+        <a href="#skill" data-nav-link>Skills</a>
         <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="GitHub repository">
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.45.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
@@ -60,14 +55,14 @@
   <header class="hero">
     <div class="hero-copy">
       <div class="eyebrow">structured visuals for agents, docs, and decks</div>
-      <h1>Theme-aware visuals from structured scenes.</h1>
-      <p>Vizmatic gives models a small, typed visual language: flows, cards, graphs, timelines, icons, matrices, charts, slide frames, and animated GIFs. Satori and resvg handle rendering. Your design system stays in control.</p>
+      <h1>Vizmatic</h1>
+      <p>Give coding agents structured primitives. Get polished PNG, SVG, and GIF assets.</p>
       <div class="cta-row">
-        <a class="button primary" href="https://github.com/bvolpato/vizmatic">View source</a>
-        <a class="button" href="#prompt">Copy agent prompt</a>
+        <button class="button primary" type="button" data-copy-prompt>Copy agent prompt</button>
+        <a class="button" href="#skill">Install skill</a>
         <a class="button" href="#gallery">See examples</a>
       </div>
-      <div class="install"><span>$</span> pnpm add -g vizmatic<br><span>$</span> vizmatic ./frame.tsx --out ./dist/frames --theme dark,light</div>
+      <div class="install"><span>$</span> npm install -g vizmatic<br><span>$</span> vizmatic ./frame.tsx --out ./dist/frames --theme dark,light</div>
     </div>
     <div class="hero-frame">
       <img data-theme-image src="assets/examples/attention-head_dark.png" alt="Vizmatic attention head example">
@@ -76,10 +71,23 @@
 
   <main>
     <section class="metrics">
-      <div><strong>16</strong><span>example frames</span></div>
-      <div><strong>2x</strong><span>retina PNG output</span></div>
-      <div><strong>GIF</strong><span>animated export</span></div>
-      <div><strong>2</strong><span>built-in themes</span></div>
+      <div><strong>1 TSX file</strong><span>editable source</span></div>
+      <div><strong>dark + light</strong><span>one render command</span></div>
+      <div><strong>offline</strong><span>bundled renderer assets</span></div>
+      <div><strong>PNG / SVG / GIF</strong><span>production outputs</span></div>
+    </section>
+
+    <section class="positioning" aria-labelledby="positioning-title">
+      <div class="positioning-intro">
+        <span>Why Vizmatic</span>
+        <h2 id="positioning-title">Visual assets agents can author and teams can own.</h2>
+      </div>
+      <dl class="positioning-grid">
+        <div><dt>Richer than Mermaid</dt><dd>Compose charts, cards, matrices, timelines, trees, icons, and diagrams in one scene.</dd></div>
+        <div><dt>Deterministic and editable</dt><dd>Source-controlled TSX stays inspectable and repeatable, unlike generated images.</dd></div>
+        <div><dt>Headless rendering</dt><dd>Produce assets directly in Node and CI without browser screenshot workflows.</dd></div>
+        <div><dt>Theme-aware output</dt><dd>Render dark and light variants from the same semantic scene definition.</dd></div>
+      </dl>
     </section>
 
     <section id="gallery" class="section">
@@ -108,22 +116,24 @@
       </div>
     </section>
 
-    <section id="api" class="section split">
+    <section id="quick-start" class="section split">
       <div class="section-head compact">
-        <span>API</span>
-        <h2>Write scenes, not SVG paths.</h2>
-        <p>Use React primitives with semantic tones. Render to PNG in Node for docs, websites, or generated decks. Scene titles and subtitles are optional when the visual should stand alone.</p>
+        <span>Quick Start</span>
+        <h2>One frame. One command.</h2>
+        <p>Save this as <code>frame.tsx</code>. Imports, fixed dimensions, and scene titles are optional for direct CLI frames.</p>
       </div>
-      <pre data-shiki="tsx"><code>width = 1040;
-height = 560;
-
-&lt;Scene title="Agent pipeline"&gt;
-  &lt;Flow stages={[
+      <div class="quick-start-code">
+        <pre data-shiki="tsx"><code>&lt;Scene title="Agent visual pipeline"&gt;
+  &lt;Flow
+    stages={[
       { title: "Prompt", tone: "blue" },
       { title: "Scene spec", tone: "purple" },
-      { title: "PNG / GIF", tone: "green" },
-    ]} /&gt;
+      { title: "PNG / SVG / GIF", tone: "green" },
+    ]}
+  /&gt;
 &lt;/Scene&gt;</code></pre>
+        <pre data-shiki="bash"><code>vizmatic ./frame.tsx --out ./dist/frames --theme dark,light</code></pre>
+      </div>
     </section>
 
     <section id="backgrounds" class="section split">
@@ -272,7 +282,7 @@ height = 650;
         <h2>Paste this into Codex, Claude Code, Cursor, or any coding agent.</h2>
         <p>It teaches the agent how to install Vizmatic, choose primitives, use every component prop, write frames, render dark/light PNGs, export GIFs, and fix overflow errors.</p>
         <div class="cta-row">
-          <button class="button primary" type="button" id="copyPromptButton">Copy PROMPT.md</button>
+          <button class="button primary" type="button" data-copy-prompt>Copy PROMPT.md</button>
           <a class="button" href="PROMPT.md">Open prompt file</a>
         </div>
       </div>
@@ -322,10 +332,13 @@ claude plugin install vizmatic@vizmatic --scope user</code></pre>
         <article class="agent-install-card">
           <span>OpenCode</span>
           <h3>Skill directory</h3>
-          <p>OpenCode loads skills from project and global skill folders; its plugin marketplace path is npm/config based.</p>
-          <pre data-shiki="bash"><code>mkdir -p ~/.config/opencode/skills
-rm -rf ~/.config/opencode/skills/vizmatic
-cp -R .agents/skills/vizmatic ~/.config/opencode/skills/vizmatic</code></pre>
+          <p>Clone the portable skill into OpenCode's global skill directory from any working directory.</p>
+          <pre data-shiki="bash"><code>tmp="$(mktemp -d)" &amp;&amp;
+git clone --depth 1 https://github.com/bvolpato/vizmatic.git "$tmp/vizmatic" &amp;&amp;
+mkdir -p ~/.config/opencode/skills &amp;&amp;
+rm -rf ~/.config/opencode/skills/vizmatic &amp;&amp;
+cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.config/opencode/skills/vizmatic
+rm -rf "$tmp"</code></pre>
         </article>
       </div>
     </section>
@@ -412,7 +425,7 @@ cp -R .agents/skills/vizmatic ~/.config/opencode/skills/vizmatic</code></pre>
   </dialog>
 
   <script>
-    const copyPromptButton = document.getElementById('copyPromptButton')
+    const copyPromptButtons = document.querySelectorAll('[data-copy-prompt]')
     const promptPreview = document.getElementById('promptPreview')
     const sourceDialog = document.getElementById('sourceDialog')
     const sourceTitle = document.getElementById('sourceTitle')
@@ -598,20 +611,22 @@ cp -R .agents/skills/vizmatic ~/.config/opencode/skills/vizmatic</code></pre>
     window.addEventListener('scroll', updateActiveNav, { passive: true })
     window.addEventListener('resize', updateActiveNav)
 
-    copyPromptButton?.addEventListener('click', async () => {
-      const previous = copyPromptButton.textContent
-      try {
-        const response = await fetch('PROMPT.md', { cache: 'no-store' })
-        const prompt = response.ok ? await response.text() : promptPreview.textContent
-        await navigator.clipboard.writeText(prompt)
-        copyPromptButton.textContent = 'Copied'
-      } catch {
-        copyPromptButton.textContent = 'Copy failed'
-      } finally {
-        setTimeout(() => {
-          copyPromptButton.textContent = previous
-        }, 1800)
-      }
+    copyPromptButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const previous = button.textContent
+        try {
+          const response = await fetch('PROMPT.md', { cache: 'no-store' })
+          const prompt = response.ok ? await response.text() : promptPreview.textContent
+          await navigator.clipboard.writeText(prompt)
+          button.textContent = 'Copied'
+        } catch {
+          button.textContent = 'Copy failed'
+        } finally {
+          setTimeout(() => {
+            button.textContent = previous
+          }, 1800)
+        }
+      })
     })
 
     async function loadSources() {

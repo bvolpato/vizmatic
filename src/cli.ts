@@ -4,7 +4,7 @@ import { existsSync } from 'fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { createRequire, Module } from 'module'
 import { tmpdir } from 'os'
-import { basename, dirname, extname, join, relative, resolve } from 'path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { isValidElement } from 'react'
 import type { ReactNode } from 'react'
@@ -36,7 +36,6 @@ interface RenderArgs {
     outDir: string
     themes: ThemeMode[]
     watermark?: WatermarkInput
-    force: boolean
     crop: boolean
     scale?: number
     background?: RenderBackground
@@ -77,8 +76,8 @@ type ResolveFilename = (request: string, parent: unknown, isMain: boolean, optio
 
 function usageText() {
     return `Usage:
-  vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
-  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--force]
+  vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
+  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
 
 Examples:
@@ -212,6 +211,18 @@ function rewriteRelativeImports(line: string, framePath: string): string {
         .replace(/(^\s*import\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
             `${before}${resolveRelativeImportSpecifier(frameDir, specifier)}${after}`,
         )
+}
+
+function rewriteFrameModuleImports(source: string, framePath: string): string {
+    const selfImport = JSON.stringify(resolveSelfImportSpecifier())
+    const reactImport = JSON.stringify(resolveReactImportSpecifier())
+    const rewritten = rewriteRelativeImports(source, framePath)
+        .replace(/(from\s+)["']vizmatic["']/g, `$1${selfImport}`)
+        .replace(/(^\s*import\s+)["']vizmatic["']/gm, `$1${selfImport}`)
+        .replace(/(from\s+)["']react["']/g, `$1${reactImport}`)
+        .replace(/(^\s*import\s+)["']react["']/gm, `$1${reactImport}`)
+    const hasReactBinding = /^\s*import\s+(?:React(?:\s*,|\s+from)|\*\s+as\s+React\s+from)/m.test(rewritten)
+    return `/** @jsxRuntime classic */\n${hasReactBinding ? '' : `import React from ${reactImport}\n`}${rewritten}`
 }
 
 function resolveRelativeImportSpecifier(frameDir: string, specifier: string): string {
@@ -383,13 +394,26 @@ async function importBareFrame(filePath: string, source?: string): Promise<Frame
     }
 }
 
+async function importRewrittenFrame(filePath: string, source: string): Promise<FrameModule> {
+    const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-module-'))
+    const tempPath = join(tempDir, basename(filePath))
+    await writeFile(join(tempDir, 'package.json'), '{"type":"module"}\n')
+    await writeFile(tempPath, rewriteFrameModuleImports(source, filePath))
+
+    try {
+        const { tsImport } = await import('tsx/esm/api')
+        return await tsImport<FrameModule>(pathToFileURL(tempPath).href, import.meta.url)
+    } finally {
+        await rm(tempDir, { recursive: true, force: true })
+    }
+}
+
 function parseRenderArgs(argv: string[]): RenderArgs {
     const inputs: string[] = []
     let outDir = 'dist/frames'
     let themes: ThemeMode[] = ['dark', 'light']
     let watermark: WatermarkInput | undefined
     let watermarkOptions: WatermarkOptions | undefined
-    let force = false
     let crop = true
     let scale: number | undefined
     let background: RenderBackground | undefined
@@ -437,7 +461,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
         } else if (arg === '--theme') {
             const raw = argv[++index] ?? usage()
             themes = raw.split(',').map((theme) => theme.trim()).filter(Boolean) as ThemeMode[]
-            if (themes.some((theme) => theme !== 'dark' && theme !== 'light')) usage()
+            if (themes.length === 0 || themes.some((theme) => theme !== 'dark' && theme !== 'light')) usage()
         } else if (arg === '--brand') {
             const label = argv[++index] ?? 'Vizmatic'
             mutableWatermark().text = label
@@ -476,8 +500,6 @@ function parseRenderArgs(argv: string[]): RenderArgs {
         } else if (arg === '--no-watermark') {
             watermark = false
             watermarkOptions = undefined
-        } else if (arg === '--force') {
-            force = true
         } else if (arg === '--no-crop') {
             crop = false
         } else if (arg === '--transparent' || arg === '--transparent-background') {
@@ -496,18 +518,18 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, outDir, themes, watermark, force, crop, scale, background }
+    return { inputs, outDir, themes, watermark, crop, scale, background }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
-    const files: string[] = []
+    const files = new Set<string>()
 
     async function walk(path: string) {
         const resolved = resolve(path)
         const entries = await readdir(resolved, { withFileTypes: true }).catch(() => undefined)
         if (!entries) {
             if (RENDER_EXTENSIONS.has(extname(resolved)) && !resolved.endsWith('.d.ts')) {
-                files.push(resolved)
+                files.add(resolved)
             }
             return
         }
@@ -518,7 +540,7 @@ async function findFrameFiles(inputs: string[]): Promise<string[]> {
                 if (entry.name === 'node_modules' || entry.name === 'dist') continue
                 await walk(next)
             } else if (RENDER_EXTENSIONS.has(extname(entry.name)) && !entry.name.endsWith('.d.ts')) {
-                files.push(next)
+                files.add(next)
             }
         }
     }
@@ -527,7 +549,45 @@ async function findFrameFiles(inputs: string[]): Promise<string[]> {
         await walk(input)
     }
 
-    return files.sort()
+    return [...files].sort()
+}
+
+function commonDirectory(paths: string[]): string {
+    let candidate = dirname(paths[0] ?? process.cwd())
+    while (!paths.every((path) => {
+        const rel = relative(candidate, path)
+        return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+    })) {
+        const parent = dirname(candidate)
+        if (parent === candidate) return candidate
+        candidate = parent
+    }
+    return candidate
+}
+
+function outputStems(files: string[]): Map<string, string> {
+    const basenameCounts = new Map<string, number>()
+    for (const file of files) {
+        const name = basename(file, extname(file))
+        basenameCounts.set(name, (basenameCounts.get(name) ?? 0) + 1)
+    }
+
+    const root = commonDirectory(files)
+    const stems = new Map<string, string>()
+    const used = new Map<string, string>()
+    for (const file of files) {
+        const base = basename(file, extname(file))
+        const stem = basenameCounts.get(base) === 1
+            ? base
+            : relative(root, file).slice(0, -extname(file).length).split(sep).join('__')
+        const previous = used.get(stem)
+        if (previous) {
+            throw new Error(`output name collision for ${relative(process.cwd(), previous)} and ${relative(process.cwd(), file)}: ${stem}`)
+        }
+        used.set(stem, file)
+        stems.set(file, stem)
+    }
+    return stems
 }
 
 async function importFrame(filePath: string): Promise<FrameModule> {
@@ -539,17 +599,32 @@ async function importFrame(filePath: string): Promise<FrameModule> {
         if (!RENDER_EXTENSIONS.has(extname(filePath))) throw nativeError
         const source = await readFile(filePath, 'utf8')
         const isBareFrame = isBareFrameSource(source)
-        if (isBareFrame) {
+        const preferBareFrame = isBareFrame && !/\bexport\s+default\b/.test(source)
+        const { tsImport } = await import('tsx/esm/api')
+        try {
+            const mod = await tsImport<FrameModule>(url, import.meta.url)
+            if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+        } catch {
+            // Fall through to CLI-owned module loading.
+        }
+
+        if (preferBareFrame) {
             const bareFrame = await importBareFrame(filePath, source)
             if (bareFrame) return bareFrame
         }
 
-        const { tsImport } = await import('tsx/esm/api')
         try {
-            return await tsImport<FrameModule>(url, import.meta.url)
-        } catch (tsxError) {
-            throw tsxError
+            const mod = await importRewrittenFrame(filePath, source)
+            if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+        } catch (rewrittenError) {
+            if (!isBareFrame) throw rewrittenError
         }
+
+        if (!preferBareFrame) {
+            const bareFrame = await importBareFrame(filePath, source)
+            if (bareFrame) return bareFrame
+        }
+        throw nativeError
     }
 }
 
@@ -659,6 +734,7 @@ async function renderCommand(argv: string[]) {
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
+    const stems = outputStems(files)
 
     await mkdir(args.outDir, { recursive: true })
     const manifest: Array<{
@@ -669,18 +745,25 @@ async function renderCommand(argv: string[]) {
         outputWidth: number
         outputHeight: number
         outputs: string[]
+        outputDetails: Array<{
+            theme: ThemeMode
+            path: string
+            width: number
+            height: number
+        }>
     }> = []
 
     for (const file of files) {
         const rawMod = await importFrame(file)
         const mod = normalizeFrameModule(rawMod)
-        const name = basename(file).replace(/\.[^.]+$/, '')
+        const name = stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
+        const outputDetails: Array<{ theme: ThemeMode; path: string; width: number; height: number }> = []
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
         let renderWidth = mod.width
         let renderHeight = mod.height
-        let outputWidth = renderWidth
-        let outputHeight = renderHeight
+        let outputWidth = 0
+        let outputHeight = 0
 
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.png`
@@ -696,9 +779,15 @@ async function renderCommand(argv: string[]) {
             })
             renderWidth = rendered.width
             renderHeight = rendered.height
-            outputWidth = rendered.outputWidth
-            outputHeight = rendered.outputHeight
+            outputWidth = Math.max(outputWidth, rendered.outputWidth)
+            outputHeight = Math.max(outputHeight, rendered.outputHeight)
             outputs.push(outputName)
+            outputDetails.push({
+                theme,
+                path: outputName,
+                width: rendered.outputWidth,
+                height: rendered.outputHeight,
+            })
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)
         }
 
@@ -710,6 +799,7 @@ async function renderCommand(argv: string[]) {
             outputWidth,
             outputHeight,
             outputs,
+            outputDetails,
         })
     }
 
@@ -721,16 +811,26 @@ async function gifCommand(argv: string[]) {
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
+    const stems = outputStems(files)
 
     await mkdir(args.outDir, { recursive: true })
-    const manifest: Array<{ name: string; source: string; width: number; height: number; outputs: string[] }> = []
+    const manifest: Array<{
+        name: string
+        source: string
+        width: number
+        height: number
+        outputs: string[]
+        outputDetails: Array<{ theme: ThemeMode; path: string; width: number; height: number }>
+    }> = []
 
     for (const file of files) {
         const rawMod = await importFrame(file)
         const mod = normalizeFrameModule(rawMod)
-        const name = basename(file).replace(/\.[^.]+$/, '')
+        const name = stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
+        const outputDetails: Array<{ theme: ThemeMode; path: string; width: number; height: number }> = []
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
+        const outputScale = args.scale ?? 1
 
         if (!mod.createScenes) {
             throw new Error(`${relative(process.cwd(), file)} must export createScenes(theme) for GIF rendering`)
@@ -744,11 +844,17 @@ async function gifCommand(argv: string[]) {
                 height: mod.height,
                 outputPath,
                 watermark: cliWatermark ?? moduleWatermark,
-                scale: args.scale ?? 1,
+                scale: outputScale,
                 theme,
                 background: args.background,
             })
             outputs.push(outputName)
+            outputDetails.push({
+                theme,
+                path: outputName,
+                width: mod.width * outputScale,
+                height: mod.height * outputScale,
+            })
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)
         }
 
@@ -758,6 +864,7 @@ async function gifCommand(argv: string[]) {
             width: mod.width,
             height: mod.height,
             outputs,
+            outputDetails,
         })
     }
 

@@ -18,10 +18,11 @@ runtime fetches.
   Copyright 2022 Google LLC. All Rights Reserved.
   Source: https://github.com/notofonts/math
 
-SIL Open Font License 1.1 text: https://openfontlicense.org/open-font-license-official-text/
+Full license: [`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt).
 
 ## Emoji
 
 - Twemoji SVG assets from `@twemoji/svg@15.0.0`: MIT.
   Copyright (c) 2023 Samuel Kopp.
   Source: https://github.com/boywithkeyboard/twemoji_svg
+  Full license: [`licenses/twemoji-svg-MIT.txt`](licenses/twemoji-svg-MIT.txt).

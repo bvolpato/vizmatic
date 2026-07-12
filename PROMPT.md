@@ -2,21 +2,38 @@
 
 Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
 
-## Install Or Run
-
-Use the package manager already present in the project.
+## Fastest Path
 
 Install the CLI once:
 
 ```bash
-pnpm add -g vizmatic
+npm install -g vizmatic
 ```
 
-Then render any frame directly:
+Create `frame.tsx`:
+
+```tsx
+<Scene title="Agent visual pipeline">
+  <Flow
+    connectorTone="purple"
+    stages={[
+      { title: "Prompt", tone: "blue" },
+      { title: "Scene spec", tone: "purple" },
+      { title: "PNG / SVG / GIF", tone: "green" },
+    ]}
+  />
+</Scene>
+```
+
+Render dark and light assets:
 
 ```bash
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
+
+## Project Installation
+
+Use the package manager already present in the project.
 
 Install in the project when the project needs scripts, editor types, or direct renderer APIs:
 
@@ -32,7 +49,7 @@ pnpm add github:bvolpato/vizmatic react
 
 For npm/yarn/bun projects, use the equivalent package-manager command.
 
-## Create a frame
+## Larger Example
 
 Create `frames/agent-pipeline.tsx`:
 
@@ -104,6 +121,8 @@ Render it:
 ```bash
 vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
+
+The generated `manifest.json` keeps `outputs` for compatibility and adds `outputDetails` with each file's theme, path, width, and height.
 
 PNG and SVG renders use alpha-transparent canvas backgrounds by default. Use the actual theme background when the host needs a full-frame image:
 
@@ -337,12 +356,12 @@ Theme and render APIs:
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
 - `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
-- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
-- `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `watermark?`, `brand?`, `scale?`.
-- `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `watermark?`, `brand?`.
+- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `theme?: "dark" | "light" = "dark"` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
+- `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
+- `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.
 - `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.
 - `AnimatedScene`: `element`, `duration` in ms, `transition?: "none" | "fade" | "appear"`, `transitionDuration?`, `label?`.
-- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `background?: "theme" | "transparent" | CSS color = "theme"` for GIF reliability, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`.
+- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `background?: "theme" | "transparent" | CSS color = "theme"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`. Transparent GIFs use one-bit transparency; use PNG/SVG when smooth alpha edges matter.
 
 ## Prop-aware examples
 

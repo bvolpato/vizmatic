@@ -7,6 +7,20 @@
     "outputs": [
       "animated-pipeline_dark.gif",
       "animated-pipeline_light.gif"
+    ],
+    "outputDetails": [
+      {
+        "theme": "dark",
+        "path": "animated-pipeline_dark.gif",
+        "width": 1040,
+        "height": 560
+      },
+      {
+        "theme": "light",
+        "path": "animated-pipeline_light.gif",
+        "width": 1040,
+        "height": 560
+      }
     ]
   }
 ]

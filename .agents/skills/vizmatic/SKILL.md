@@ -12,7 +12,7 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
 1. Pick output scope: static PNGs, animated GIF, or both. Ask only if target size, brand, or destination is truly ambiguous.
 2. Install or reuse the CLI:
    ```bash
-   command -v vizmatic || pnpm add -g vizmatic
+   command -v vizmatic || npm install -g vizmatic
    ```
    If the project needs direct renderer APIs, editor types, or committed scripts, add project deps instead:
    ```bash

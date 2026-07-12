@@ -4,6 +4,7 @@ import { codeToHtml } from 'shiki'
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
 const promptPath = 'PROMPT.md'
+const docsPromptPath = 'docs/PROMPT.md'
 const generatedNotice = '<!-- Generated from docs/index.template.html by pnpm site:build. Edit template. -->'
 
 function encodeHtml(value: string): string {
@@ -69,5 +70,8 @@ const template = (await readFile(templatePath, 'utf8'))
 const highlighted = await replaceAsync(template, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g)
 const output = highlighted.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice}\n`)
 
-await writeFile(outPath, output)
-console.log(`built ${outPath} from ${templatePath}`)
+await Promise.all([
+    writeFile(outPath, output),
+    writeFile(docsPromptPath, prompt),
+])
+console.log(`built ${outPath} and ${docsPromptPath} from ${templatePath} and ${promptPath}`)

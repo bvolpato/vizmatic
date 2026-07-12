@@ -105,7 +105,23 @@ for (const required of [
     }
 }
 
-const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version?: string }
+const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version?: string; files?: string[] }
+const packageFiles = packageJson.files ?? []
+if (packageFiles.includes('docs/assets')) {
+    fail('npm package must not include generated website gallery assets')
+}
+if (!html.includes('assets/examples/animated-pipeline_dark.gif')) {
+    fail('website must retain rendered gallery assets')
+}
+
+const ofl = await readFile(join(root, 'assets', 'licenses', 'OFL-1.1.txt'), 'utf8')
+const twemojiLicense = await readFile(join(root, 'assets', 'licenses', 'twemoji-svg-MIT.txt'), 'utf8')
+if (!ofl.includes('SIL OPEN FONT LICENSE Version 1.1') || !ofl.includes('PERMISSION & CONDITIONS')) {
+    fail('vendored fonts must include full OFL 1.1 text')
+}
+if (!twemojiLicense.includes('Copyright (c) 2023 Samuel Kopp') || !twemojiLicense.includes('Permission is hereby granted')) {
+    fail('vendored Twemoji assets must include full MIT license text')
+}
 for (const [name, path] of [
     ['Codex plugin', codexPluginPath],
     ['Claude plugin', claudePluginPath],
@@ -210,7 +226,7 @@ for (const entry of manifest) {
     for (const theme of ['dark', 'light'] as const) {
         const preview = previewFor(entry.outputs, theme)
         if (!preview) fail(`${entry.name} missing ${theme} preview`)
-        if (!examplesReadme.includes(`../docs/assets/examples/${preview}`)) {
+        if (!examplesReadme.includes(`https://bvolpato.github.io/vizmatic/assets/examples/${preview}`)) {
             fail(`examples README missing ${entry.name} ${theme} preview`)
         }
     }

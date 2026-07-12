@@ -29,10 +29,9 @@ jobs:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      - name: Refresh release branch
+        run: git pull --ff-only origin "${{ github.ref_name }}"
       - run: pnpm install --frozen-lockfile
-      - run: pnpm verify
-      - name: Ensure generated files are committed
-        run: git diff --exit-code
       - name: Validate npm token
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -41,8 +40,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      - name: Refresh release branch
-        run: git pull --ff-only origin "${{ github.ref_name }}"
       - name: Version package
         run: |
           npm version "${{ inputs.version }}" --no-git-tag-version
@@ -52,12 +49,25 @@ jobs:
           git add package.json plugins/vizmatic/.codex-plugin/plugin.json plugins/vizmatic/.claude-plugin/plugin.json .claude-plugin/marketplace.json
           git commit -m "Release v${VERSION}"
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
-      - name: Push release commit and tag
-        run: git push origin HEAD:${{ github.ref_name }} --follow-tags
+      - run: pnpm verify
+      - name: Ensure generated files are committed
+        run: test -z "$(git status --porcelain)"
+      - name: Ensure tested branch did not advance
+        run: |
+          TESTED_SHA="$(git rev-parse HEAD^)"
+          REMOTE_SHA="$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | cut -f1)"
+          if [ "$TESTED_SHA" != "$REMOTE_SHA" ]; then
+            echo "Release branch advanced after verification: tested ${TESTED_SHA}, remote ${REMOTE_SHA}" >&2
+            exit 1
+          fi
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public --provenance
+        run: npm publish --ignore-scripts --access public --provenance
+      - name: Push release commit and tag atomically
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          git push --atomic origin "HEAD:${{ github.ref_name }}" "refs/tags/v${VERSION}"
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

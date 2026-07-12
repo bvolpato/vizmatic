@@ -373,7 +373,8 @@ pre,
 }
 
 .metrics strong {
-  font-size: 32px;
+  font-size: 24px;
+  line-height: 1.1;
   color: var(--text);
 }
 
@@ -382,6 +383,53 @@ pre,
   color: var(--muted);
   font-size: 13px;
   font-weight: 650;
+}
+
+.positioning {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 96px 0 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
+  gap: 56px;
+  align-items: start;
+}
+
+.positioning-intro span {
+  color: var(--green);
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+}
+
+.positioning-intro h2 {
+  margin-top: 10px;
+  font-size: clamp(30px, 3.6vw, 48px);
+  line-height: 1.05;
+}
+
+.positioning-grid {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.positioning-grid div {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  gap: 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.positioning-grid dt {
+  font-weight: 800;
+}
+
+.positioning-grid dd {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .section {
@@ -582,8 +630,15 @@ pre,
   align-items: start;
 }
 
+.quick-start-code {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
 .hero > *,
 .split > *,
+.positioning > *,
 .gif-showcase > *,
 .themes > *,
 .prompt-section > *,
@@ -981,7 +1036,8 @@ footer a {
   .gif-showcase,
   .themes,
   .prompt-section,
-  .skill-section {
+  .skill-section,
+  .positioning {
     grid-template-columns: 1fr;
   }
 
@@ -1000,6 +1056,10 @@ footer a {
   .quality-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .positioning {
+    gap: 28px;
+  }
 }
 
 @media (max-width: 640px) {
@@ -1007,7 +1067,8 @@ footer a {
   .section,
   .nav,
   footer,
-  .metrics {
+  .metrics,
+  .positioning {
     width: min(100% - 28px, 1180px);
   }
 
@@ -1075,6 +1136,11 @@ footer a {
   .metrics div {
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .positioning-grid div {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   footer {

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.svg" alt="Vizmatic logo" width="460" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/logo.svg" alt="Vizmatic logo" width="460" />
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/examples/animated-pipeline_dark.gif" alt="Vizmatic animated render pipeline" width="760" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/animated-pipeline_dark.gif" alt="Vizmatic animated render pipeline" width="760" />
 </p>
 
 <p align="center">
@@ -35,10 +35,26 @@
 Install the CLI once:
 
 ```bash
-pnpm add -g vizmatic
+npm install -g vizmatic
 ```
 
-Then render any frame directly:
+Create `frame.tsx`:
+
+```tsx
+<Scene title="Agent visual pipeline">
+  <Flow
+    stages={[
+      { title: "Prompt", subtitle: "intent", tone: "blue" },
+      { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
+      { title: "PNG / SVG / GIF", subtitle: "artifact", tone: "green" },
+    ]}
+  />
+</Scene>
+```
+
+`Scene` title and subtitle are optional. Omit both when surrounding copy already names the visual.
+
+Render it directly:
 
 ```bash
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
@@ -136,32 +152,16 @@ rm -rf ~/.agents/skills/vizmatic
 cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.agents/skills/vizmatic
 ```
 
-Create a frame:
+## Rendering Options
 
-```tsx
-width = 1040;
-height = 560;
-
-<Scene title="Agent visual pipeline">
-  <Flow
-    stages={[
-      { title: "Prompt", subtitle: "intent", tone: "blue" },
-      { title: "Scene spec", subtitle: "typed structure", tone: "purple" },
-      { title: "PNG / SVG / GIF", subtitle: "rendered artifact", tone: "green" },
-    ]}
-  />
-</Scene>
-```
-
-`Scene` title and subtitle are optional. Omit both for visual-only figures, badges, inline blog diagrams, or frames where surrounding copy already supplies the title.
-
-Render it:
+Add optional branding:
 
 ```bash
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
 ```
 
 The PNG canvas is alpha-transparent by default. Use `--background theme` for an opaque theme-colored frame, or set `background={c.bg}` on `Scene` / `Canvas`.
+Each output directory includes `manifest.json`. `outputs` lists generated files; `outputDetails` records theme, path, and exact rendered dimensions for each file.
 
 Render an animation:
 
@@ -207,6 +207,10 @@ Vizmatic gives them a constrained visual language:
 
 | Need | Vizmatic answer |
 |---|---|
+| Richer figures than Mermaid | Charts, cards, matrices, timelines, trees, icons, and free composition |
+| Deterministic output unlike image generation | Source-controlled TSX stays editable and renders consistently |
+| Headless output without browser screenshots | Node renderer produces assets directly in local workflows and CI |
+| Dark and light variants | One command renders both themes from semantic color tokens |
 | Rich educational illustrations | React primitives rendered through Satori and resvg |
 | Theme-aware output | Semantic tones and dark/light theme tokens |
 | Agent-friendly authoring | JSX scene modules with simple props |
@@ -218,19 +222,19 @@ Vizmatic gives them a constrained visual language:
 ## Gallery
 
 <p>
-  <img src="docs/assets/examples/animated-pipeline_dark.gif" alt="Animated pipeline" width="380" />
-  <img src="docs/assets/examples/attention-head_dark.png" alt="Attention head" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/animated-pipeline_dark.gif" alt="Animated pipeline" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/attention-head_dark.png" alt="Attention head" width="380" />
 </p>
 <p>
-  <img src="docs/assets/examples/rag-graph_dark.png" alt="RAG graph" width="380" />
-  <img src="docs/assets/examples/eval-dashboard_dark.png" alt="Evaluation dashboard" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/rag-graph_dark.png" alt="RAG graph" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/eval-dashboard_dark.png" alt="Evaluation dashboard" width="380" />
 </p>
 <p>
-  <img src="docs/assets/examples/token-matrix_dark.png" alt="Token matrix" width="380" />
-  <img src="docs/assets/examples/theme-system_dark.png" alt="Theme system" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/token-matrix_dark.png" alt="Token matrix" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/theme-system_dark.png" alt="Theme system" width="380" />
 </p>
 <p>
-  <img src="docs/assets/examples/presentation-frame_dark.png" alt="Presentation frame" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_dark.png" alt="Presentation frame" width="380" />
 </p>
 
 More examples live in [`examples/`](examples) and on the [website](https://bvolpato.github.io/vizmatic/).
@@ -417,7 +421,7 @@ Vizmatic treats generated visuals as source-controlled build artifacts. CI fails
 
 | Gate | What it protects |
 |---|---|
-| `pnpm lint` | Static TypeScript coverage across `src/`, `examples/`, `scripts/`, and tests |
+| `pnpm lint` | TypeScript coverage plus GitHub Actions validation with actionlint |
 | `pnpm test` | Render pipeline behavior, watermark options, and output validation |
 | `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
@@ -575,7 +579,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
-`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Use `crop: "height"` when a downstream layout needs fixed width but still wants vertical whitespace trimmed. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
+`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Pass `theme: "light"` when direct renderer calls should use light watermark defaults. Use `crop: "height"` when a downstream layout needs fixed width but still wants vertical whitespace trimmed. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
 
 ```ts
 await renderToPng(element, {
@@ -583,6 +587,7 @@ await renderToPng(element, {
   height: 560,
   outputPath: "dist/frame.png",
   background: "theme",
+  theme: "dark",
   watermark: { text: "Your Product", image: "https://example.com/logo.svg", position: "top-right" },
   crop: "height",
   scale: 2,
@@ -603,7 +608,7 @@ export const watermark = (
 )
 ```
 
-`renderAnimatedGif` turns ordered scene states into a looping GIF.
+`renderAnimatedGif` turns ordered scene states into a looping GIF. Transparent GIFs use GIF's one-bit transparency; PNG and SVG remain the better choice for full alpha edges.
 
 ```ts
 await renderAnimatedGif(createScenes("dark"), {

@@ -104,10 +104,15 @@ function blendPixels(base: Uint8Array, overlay: Uint8Array, opacity: number): Ui
     const inverse = 1 - opacity
 
     for (let index = 0; index < base.length; index += 4) {
-        result[index] = Math.round(base[index] * inverse + overlay[index] * opacity)
-        result[index + 1] = Math.round(base[index + 1] * inverse + overlay[index + 1] * opacity)
-        result[index + 2] = Math.round(base[index + 2] * inverse + overlay[index + 2] * opacity)
-        result[index + 3] = 255
+        const baseAlpha = (base[index + 3] / 255) * inverse
+        const overlayAlpha = (overlay[index + 3] / 255) * opacity
+        const outputAlpha = baseAlpha + overlayAlpha
+
+        if (outputAlpha === 0) continue
+        result[index] = Math.round((base[index] * baseAlpha + overlay[index] * overlayAlpha) / outputAlpha)
+        result[index + 1] = Math.round((base[index + 1] * baseAlpha + overlay[index + 1] * overlayAlpha) / outputAlpha)
+        result[index + 2] = Math.round((base[index + 2] * baseAlpha + overlay[index + 2] * overlayAlpha) / outputAlpha)
+        result[index + 3] = Math.round(outputAlpha * 255)
     }
 
     return result
@@ -160,12 +165,15 @@ function encodeGif(frames: PixelFrame[], loop: number): Uint8Array {
     const gif = GIFEncoder()
 
     for (const frame of frames) {
-        const palette = quantize(frame.pixels, 256, { format: 'rgba4444' })
+        const palette = quantize(frame.pixels, 256, { format: 'rgba4444', oneBitAlpha: true })
         const index = applyPalette(frame.pixels, palette, 'rgba4444')
+        const transparentIndex = palette.findIndex((color) => color[3] === 0)
         gif.writeFrame(index, firstFrame.width, firstFrame.height, {
             palette,
             delay: Math.max(2, Math.round(frame.delay / 10)),
             repeat: loop,
+            transparent: transparentIndex >= 0,
+            transparentIndex,
         })
     }
 
@@ -182,14 +190,13 @@ async function scenesToFrames(
 ): Promise<PixelFrame[]> {
     if (scenes.length === 0) throw new Error('Animated GIF requires at least one scene')
 
-    const renderedScenes = []
-    for (const scene of scenes) {
+    const renderedScenes = await Promise.all(scenes.map((scene) => {
         const watermark = options.watermark ?? options.brand
         const element = watermark
             ? wrapWithWatermark(scene.element, options.width, options.height, options.theme, watermark)
             : scene.element
-        renderedScenes.push(await renderToPixels(element, options.width, options.height, options.scale, options.background))
-    }
+        return renderToPixels(element, options.width, options.height, options.scale, options.background)
+    }))
 
     const frames: PixelFrame[] = []
     const scaledWidth = options.width * options.scale

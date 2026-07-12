@@ -1,5 +1,6 @@
 import React from 'react'
 import { spawnSync } from 'child_process'
+import { existsSync } from 'fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -13,6 +14,7 @@ import {
     getThemeColors,
     renderAnimatedGif,
     renderToBuffer,
+    renderToSvg,
     Scene,
     StepCard,
     Watermark,
@@ -36,10 +38,21 @@ type CliManifestEntry = {
     outputWidth?: number
     outputHeight?: number
     outputs?: string[]
+    outputDetails?: Array<{
+        theme: 'dark' | 'light'
+        path: string
+        width: number
+        height: number
+    }>
 }
 
 function ensurePackageBuild() {
     if (packageBuilt) return
+    if (process.env.VIZMATIC_TEST_USE_EXISTING_BUILD === '1') {
+        expect(existsSync(join(process.cwd(), 'dist', 'cli.js'))).toBe(true)
+        packageBuilt = true
+        return
+    }
 
     const build = spawnSync('pnpm', ['build'], {
         cwd: process.cwd(),
@@ -135,6 +148,16 @@ function pixelAt(image: { width: number; pixels: Uint8Array }, x: number, y: num
         image.pixels[offset + 2],
         image.pixels[offset + 3],
     ]
+}
+
+function gifTransparencyFlags(buffer: Buffer): boolean[] {
+    const flags: boolean[] = []
+    for (let index = 0; index <= buffer.length - 8; index += 1) {
+        if (buffer[index] === 0x21 && buffer[index + 1] === 0xf9 && buffer[index + 2] === 0x04) {
+            flags.push((buffer[index + 3] & 0x01) === 0x01)
+        }
+    }
+    return flags
 }
 
 function pixelBounds(
@@ -642,6 +665,53 @@ renderToBuffer(frame.create('dark'), 720, 420)
         }
     }, 30_000)
 
+    it('preserves one-bit transparency in animated GIF frames and transitions', async () => {
+        const c = getThemeColors('light')
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-transparent-gif-'))
+        const outputPath = join(outDir, 'frame.gif')
+
+        try {
+            await renderAnimatedGif([
+                {
+                    element: <Scene c={c}><StepCard c={c} title="One" tone="blue" width={180} /></Scene>,
+                    duration: 100,
+                },
+                {
+                    element: <Scene c={c}><StepCard c={c} title="Two" tone="green" width={180} /></Scene>,
+                    duration: 100,
+                    transition: 'appear',
+                    transitionDuration: 300,
+                },
+            ], {
+                width: 320,
+                height: 200,
+                outputPath,
+                theme: 'light',
+                background: 'transparent',
+            })
+
+            const buffer = await readFile(outputPath)
+            const transparencyFlags = gifTransparencyFlags(buffer)
+            expect(transparencyFlags.length).toBeGreaterThan(2)
+            expect(transparencyFlags.every(Boolean)).toBe(true)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('uses explicit light theme defaults for direct-render watermarks', async () => {
+        const c = getThemeColors('light')
+        const svg = await renderToSvg(
+            <Scene c={c}><StepCard c={c} title="Light" tone="green" /></Scene>,
+            320,
+            200,
+            { watermark: true, theme: 'light' },
+        )
+
+        expect(svg).toContain('#7c3aed')
+        expect(svg).not.toContain('#a78bfa')
+    }, 30_000)
+
     it('renders an ad hoc TSX frame through the CLI shortcut', async () => {
         const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-'))
         const framePath = join(outDir, 'frame.tsx')
@@ -727,6 +797,102 @@ height = 300;
 
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
             expect(manifest[0]).toMatchObject({ width: 520, height: 300 })
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('loads default-element TSX modules with multiline imports', async () => {
+        const { buffer } = await renderBuiltCliFrame('vizmatic-cli-multiline-', 'multiline.tsx', `import {
+  getThemeColors,
+  Scene,
+  StepCard,
+} from 'vizmatic'
+
+const c = getThemeColors('light')
+
+export default (
+  <Scene c={c}>
+    <StepCard c={c} title="Multiline import" tone="green" />
+  </Scene>
+)
+`)
+
+        expect(decodePng(buffer).width).toBeGreaterThan(0)
+    }, 30_000)
+
+    it('uses collision-safe output stems for duplicate frame basenames', async () => {
+        ensurePackageBuild()
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-collision-'))
+        const firstDir = join(outDir, 'a')
+        const secondDir = join(outDir, 'b')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await mkdir(firstDir, { recursive: true })
+            await mkdir(secondDir, { recursive: true })
+            await writeFile(join(firstDir, 'frame.tsx'), '<Scene><StepCard title="First" tone="green" /></Scene>\n')
+            await writeFile(join(secondDir, 'frame.tsx'), '<Scene><StepCard title="Second" tone="purple" /></Scene>\n')
+
+            const result = spawnSync(process.execPath, [
+                join(process.cwd(), 'dist', 'cli.js'),
+                firstDir,
+                secondDir,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+                '--scale',
+                '1',
+            ], { cwd: outDir, encoding: 'utf8' })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
+            expect(manifest.map((entry) => entry.outputs?.[0])).toEqual([
+                'a__frame_light.png',
+                'b__frame_light.png',
+            ])
+            await expect(readFile(join(renderDir, 'a__frame_light.png'))).resolves.toBeDefined()
+            await expect(readFile(join(renderDir, 'b__frame_light.png'))).resolves.toBeDefined()
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('records exact dimensions for every themed CLI output', async () => {
+        ensurePackageBuild()
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-manifest-'))
+        const framePath = join(outDir, 'theme-size.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(framePath, `<Scene>
+  <div style={{ display: 'flex', width: c.bg === '#f5f7fa' ? 1300 : 400, height: 120, backgroundColor: c.primary }} />
+</Scene>
+`)
+            const result = spawnSync(process.execPath, [
+                join(process.cwd(), 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'dark,light',
+                '--scale',
+                '1',
+            ], { cwd: outDir, encoding: 'utf8' })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
+            const details = manifest[0]?.outputDetails ?? []
+            expect(details).toHaveLength(2)
+
+            for (const detail of details) {
+                const image = decodePng(await readFile(join(renderDir, detail.path)))
+                expect({ width: detail.width, height: detail.height }).toEqual({ width: image.width, height: image.height })
+            }
+            expect(details[0]?.width).not.toBe(details[1]?.width)
+            expect(manifest[0]?.outputWidth).toBe(Math.max(...details.map((detail) => detail.width)))
+            expect(manifest[0]?.outputHeight).toBe(Math.max(...details.map((detail) => detail.height)))
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
@@ -1420,7 +1586,7 @@ export default create('dark')
                 '--theme',
                 'dark',
                 '--scale',
-                '1',
+                '2',
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
@@ -1431,6 +1597,15 @@ export default create('dark')
 
             const buffer = await readFile(join(renderDir, 'animated_dark.gif'))
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
+            expect({ width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) }).toEqual({ width: 840, height: 480 })
+
+            const manifest = JSON.parse(await readFile(join(renderDir, 'gif-manifest.json'), 'utf8')) as CliManifestEntry[]
+            expect(manifest[0]?.outputDetails).toEqual([{
+                theme: 'dark',
+                path: 'animated_dark.gif',
+                width: 840,
+                height: 480,
+            }])
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }

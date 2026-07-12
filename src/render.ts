@@ -340,6 +340,8 @@ export interface RenderOptions {
     scale?: number
     /** Root background for Vizmatic primitives. Defaults to alpha-transparent PNG/SVG output. */
     background?: RenderBackground
+    /** Theme used for watermark defaults when calling renderer APIs directly. */
+    theme?: 'dark' | 'light'
 }
 
 export interface RenderOutput {
@@ -403,6 +405,7 @@ async function renderToPngInContext(
     theme?: 'dark' | 'light',
 ): Promise<RenderOutput> {
     const fonts = await getFonts()
+    const renderTheme = options.theme ?? theme ?? 'dark'
 
     // Step 1: Render WITHOUT watermark to detect content bounds
     let svg = await satori(element as React.ReactElement, {
@@ -478,7 +481,7 @@ async function renderToPngInContext(
                 targetElement,
                 targetWidth,
                 targetHeight,
-                (theme as 'dark' | 'light') || 'dark',
+                renderTheme,
                 watermark,
             )
             : targetElement
@@ -563,7 +566,7 @@ export async function renderToBuffer(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme'> = {},
 ): Promise<Buffer> {
     return withRenderContext({ background: options.background ?? 'transparent' }, () =>
         renderToBufferInContext(element, width, height, options)
@@ -574,7 +577,7 @@ async function renderToBufferInContext(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background'>,
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme'>,
 ): Promise<Buffer> {
     const fonts = await getFonts()
     const watermark = resolveWatermark(options)
@@ -584,7 +587,7 @@ async function renderToBufferInContext(
             element,
             width,
             height,
-            'dark',
+            options.theme ?? 'dark',
             watermark,
         )
         : element
@@ -614,7 +617,7 @@ export async function renderToSvg(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme'> = {},
 ): Promise<string> {
     return withRenderContext({ background: options.background ?? 'transparent' }, () =>
         renderToSvgInContext(element, width, height, options)
@@ -625,7 +628,7 @@ async function renderToSvgInContext(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background'>,
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme'>,
 ): Promise<string> {
     const fonts = await getFonts()
     const watermark = resolveWatermark(options)
@@ -634,7 +637,7 @@ async function renderToSvgInContext(
             element,
             width,
             height,
-            'dark',
+            options.theme ?? 'dark',
             watermark,
         )
         : element

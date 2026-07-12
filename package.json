@@ -39,7 +39,6 @@
     "assets",
     "dist",
     "examples",
-    "docs/assets",
     "PROMPT.md",
     "README.md",
     "LICENSE"
@@ -57,18 +56,19 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts --format esm --dts --target node20 --external react",
     "prepare": "pnpm build",
-    "lint": "pnpm typecheck",
+    "lint": "pnpm typecheck && pnpm workflows:check",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
     "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
+    "workflows:check": "github-actionlint .github/workflows/*.yml",
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
     "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
     "security:audit": "pnpm audit --audit-level low",
     "deps:check": "pnpm security:audit && npm pack --dry-run",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm docs:check && pnpm deps:check",
-    "prepublishOnly": "pnpm test && pnpm render:examples && pnpm deps:check"
+    "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
@@ -83,6 +83,7 @@
   "devDependencies": {
     "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
+    "github-actionlint": "1.7.12",
     "shiki": "^4.3.0",
     "tsup": "^8.5.0",
     "typescript": "^6.0.3",
