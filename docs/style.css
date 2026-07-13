@@ -1197,6 +1197,21 @@ footer > a:last-child:hover {
     opacity: 1;
   }
 
+  .image-dialog {
+    width: calc(100vw - 28px);
+    height: fit-content;
+    max-height: calc(100vh - 28px);
+  }
+
+  .image-dialog-panel {
+    height: auto;
+    grid-template-rows: auto auto;
+  }
+
+  .image-dialog-viewport {
+    aspect-ratio: 16 / 10;
+  }
+
   .difference-list > div {
     grid-template-columns: 1fr;
     gap: 8px;

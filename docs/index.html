@@ -777,7 +777,7 @@
   <dialog class="image-dialog" id="imageDialog">
     <div class="image-dialog-panel">
       <div class="image-dialog-header"><h2 id="imageDialogTitle">Example preview</h2><button class="button" type="button" id="closeImageButton">Close</button></div>
-      <div class="image-dialog-viewport"><img id="imageDialogImage" src="" alt=""></div>
+      <div class="image-dialog-viewport"><img id="imageDialogImage" alt=""></div>
     </div>
   </dialog>
 
@@ -1045,10 +1045,15 @@
       })
     })
 
+    function cardTitle(card) {
+      const heading = card.querySelector('h3')
+      return heading?.firstChild?.textContent?.trim() || heading?.textContent?.trim() || 'Example preview'
+    }
+
     function renderActiveImage() {
       if (!activeImageCard) return
       const image = activeImageCard.querySelector('[data-theme-image]')
-      const title = activeImageCard.querySelector('h3')?.textContent?.trim() ?? 'Example preview'
+      const title = cardTitle(activeImageCard)
       if (!image) return
       const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
       imageDialogTitle.textContent = title
@@ -1063,7 +1068,7 @@
     }
 
     document.querySelectorAll('.gallery-card').forEach((card) => {
-      const title = card.querySelector('h3')?.textContent?.trim() ?? 'example'
+      const title = cardTitle(card)
       card.tabIndex = 0
       card.setAttribute('role', 'button')
       card.setAttribute('aria-label', `View ${title} full size`)

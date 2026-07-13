@@ -66,7 +66,8 @@ function generateExamplesReadme(entries: typeof manifest): string {
 
 for (const file of files) {
     const source = join(examplesDir, file)
-    const result = spawnSync(process.execPath, [
+    const name = basename(file, '.tsx')
+    const renderArgs = [
         'dist/cli.js',
         'render',
         source,
@@ -74,9 +75,10 @@ for (const file of files) {
         outDir,
         '--theme',
         themes.join(','),
-        '--watermark',
-        'Vizmatic',
-    ], {
+    ]
+    if (name !== 'vizmatic-hero') renderArgs.push('--watermark', 'Vizmatic')
+
+    const result = spawnSync(process.execPath, renderArgs, {
         stdio: 'inherit',
     })
 
@@ -84,7 +86,6 @@ for (const file of files) {
         process.exit(result.status ?? 1)
     }
 
-    const name = basename(file, '.tsx')
     const code = sourceForGallery(await readFile(source, 'utf8'))
     const html = Object.fromEntries(await Promise.all(themes.map(async (theme) => [
         theme,
