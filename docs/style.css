@@ -511,6 +511,37 @@ h1 {
   text-transform: uppercase;
 }
 
+.gallery-more-label {
+  margin: 70px 0 22px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.gallery-more-label strong {
+  font-size: 20px;
+}
+
+.gallery-more-label span {
+  color: var(--faint);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.gallery-more {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: 18px;
+  row-gap: 30px;
+}
+
+.gallery-more .gallery-card {
+  grid-column: auto;
+}
+
 .source-button {
   position: absolute;
   top: 10px;
@@ -1002,6 +1033,10 @@ footer > a:last-child:hover {
   .onboarding {
     grid-template-columns: 1fr;
     gap: 44px;
+  }
+
+  .gallery-more {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .difference-section .section-kicker,
