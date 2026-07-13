@@ -270,7 +270,7 @@ Cards, labels, and compact UI:
 - `ToneStrip`: `tone`, `width?: number = 34`, `height?: number = 4`.
 - `StepCard`: `title`, `c`, `subtitle?`, `eyebrow?`, `tone?: ToneName = "blue"`, `width?: number | string = 210`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "12px 14px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`.
 - `MetricCard`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "10px 12px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`, `valueMono?: boolean = true`, `valueFontSize?: number = 10`, `valueColor?`.
-- `CalloutCard`: `c`, `children?`, `title?`, `detail?`, `tone?: ToneName = "blue"`, `width?`, `minHeight?`, `padding?: number | string = 12`, `filled?: boolean = true`, `align?: "left" | "center" = "center"`.
+- `CalloutCard`: `c`, `children?`, `title?`, `detail?`, `tone?: ToneName = "blue"`, `width?`, `minHeight?`, `padding?: number | string = 12`, `titleFontSize?: number`, `detailFontSize?: number`, `filled?: boolean = true`, `align?: "left" | "center" = "center"`.
 - `ValuePill`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?: number | string = 112`, `math?: boolean = false`.
 - `BadgePill`: `text`, `c`, `tone?: ToneName = "blue"`, `width?`, `minWidth?: number | string = 34`, `height?: number | string = 20`, `padding?: number | string = "0 8px"`, `radius?: number = 6`, `fontSize?: number = 9`, `mono?: boolean = true`, `filled?: boolean = false`, `math?: boolean = false`.
 - `Badge`: `label`, `c`, `color?: ColorName = "primary"`.
@@ -306,7 +306,7 @@ Flows and process diagrams:
 Graphs and networks:
 
 - `LayeredNetwork`: `c`, `layers: LayeredNetworkLayer[]`, `activePath?: number[] = []`, `annotations?: string[] = []`, `formula?`, `legend?: string = "highlighted path"`, `width?: number = 900`, `height?: number = 400`, `nodeSize?: number = 56`, `showFormula?: boolean = true`. `LayeredNetworkLayer`: `title`, `nodes: string[]`, `tone?`.
-- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `padding?: number = 28`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x`, `y`, `tone?`, `muted?`, `width?`, `height?`. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`.
+- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 9`, `arrowSize?: number = 5`, `padding?: number = 28`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x`, `y`, `tone?`, `muted?`, `width?`, `height?`. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`.
 - `TreeDiagram`: `root: TreeNodeSpec`, `c`, `title?`, `subtitle?`, `width?`, `height?`, `nodeWidth?: number = 156`, `nodeHeight?: number = 64`, `levelGap?: number = 58`, `siblingGap?: number = 24`, `padding?: number = 28`, `math?: boolean = false`. `TreeNodeSpec`: `label`, `id?`, `detail?`, `tone?`, `muted?`, `children?`.
 
 Matrices and heatmaps:

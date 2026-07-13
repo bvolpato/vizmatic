@@ -291,6 +291,9 @@ interface GraphDiagramProps {
     height?: number
     nodeWidth?: number
     nodeHeight?: number
+    labelFontSize?: number
+    detailFontSize?: number
+    arrowSize?: number
     padding?: number
 }
 
@@ -302,6 +305,9 @@ export function GraphDiagram({
     height = 420,
     nodeWidth = 150,
     nodeHeight = 66,
+    labelFontSize = 14,
+    detailFontSize = 9,
+    arrowSize = 5,
     padding = 28,
 }: GraphDiagramProps): React.ReactElement {
     const layout = new Map(nodes.map((node) => {
@@ -369,7 +375,7 @@ export function GraphDiagram({
                 ...edgeLayouts.map((edge) => ArrowMarkerDef({
                     id: edge.markerId,
                     color: edge.color,
-                    size: 5,
+                    size: arrowSize,
                 }))
             ),
             ...edgeLayouts.map((edge) => React.createElement('line', {
@@ -436,7 +442,7 @@ export function GraphDiagram({
                 React.createElement('div', {
                     style: {
                         fontFamily: 'Inter',
-                        fontSize: 14,
+                        fontSize: labelFontSize,
                         fontWeight: 900,
                         lineHeight: 1.15,
                     }
@@ -445,7 +451,7 @@ export function GraphDiagram({
                     style: {
                         color: c.textMuted,
                         fontFamily: 'JetBrains Mono',
-                        fontSize: 9,
+                        fontSize: detailFontSize,
                         fontWeight: 650,
                         lineHeight: 1.2,
                     }
@@ -713,6 +719,8 @@ interface CalloutCardProps {
     width?: number | string
     minHeight?: number | string
     padding?: number | string
+    titleFontSize?: number
+    detailFontSize?: number
     filled?: boolean
     align?: 'left' | 'center'
 }
@@ -726,6 +734,8 @@ export function CalloutCard({
     width,
     minHeight,
     padding = 12,
+    titleFontSize,
+    detailFontSize,
     filled = true,
     align = 'center',
 }: CalloutCardProps): React.ReactElement {
@@ -755,6 +765,7 @@ export function CalloutCard({
         title && React.createElement('div', {
             style: {
                 ...typography.small,
+                ...(titleFontSize != null ? { fontSize: titleFontSize } : {}),
                 color: filled ? c.textOnColor : accent,
                 fontWeight: 900,
                 lineHeight: 1.2,
@@ -764,6 +775,7 @@ export function CalloutCard({
         detail && React.createElement('div', {
             style: {
                 ...typography.tiny,
+                ...(detailFontSize != null ? { fontSize: detailFontSize } : {}),
                 color: filled ? 'rgba(255,255,255,0.84)' : c.textSecondary,
                 lineHeight: 1.3,
                 textAlign,
@@ -845,4 +857,3 @@ export function Pipeline({ stages, c, title }: PipelineProps): React.ReactElemen
         ),
     )
 }
-

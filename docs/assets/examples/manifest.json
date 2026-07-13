@@ -128,5 +128,13 @@
       "transparent-badge_dark.png",
       "transparent-badge_light.png"
     ]
+  },
+  {
+    "name": "vizmatic-hero",
+    "source": "examples/vizmatic-hero.tsx",
+    "outputs": [
+      "vizmatic-hero_dark.png",
+      "vizmatic-hero_light.png"
+    ]
   }
 ]
