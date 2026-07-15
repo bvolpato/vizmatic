@@ -17,6 +17,9 @@ importers:
       gifenc:
         specifier: ^1.0.3
         version: 1.0.3
+      parse-css-color:
+        specifier: 0.2.1
+        version: 0.2.1
       react:
         specifier: ^19.1.0
         version: 19.2.7

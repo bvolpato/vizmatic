@@ -5,12 +5,12 @@ description: Create polished theme-aware diagrams, figures, dashboards, presenta
 
 # Vizmatic
 
-Use Vizmatic when the user wants a concrete image or GIF artifact, not only an explanation. Prefer structured React scene primitives over hand-written SVG for common diagrams, dashboards, and frames.
+Use Vizmatic when a request needs an image or GIF artifact. Prefer structured React scene primitives over hand-written SVG for common diagrams, dashboards, and frames.
 
 ## Workflow
 
 1. Pick output scope: static PNGs, animated GIF, or both. Ask only if target size, brand, or destination is truly ambiguous.
-2. Install or reuse the CLI:
+2. Confirm Node.js 20 or newer is available, then install or reuse the CLI:
    ```bash
    command -v vizmatic || npm install -g vizmatic
    ```
@@ -38,13 +38,13 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
    ```
 7. Verify actual artifacts. Check file existence, dimensions, and visual layout. Use browser screenshots when assets are shown on a page. Fix clipped labels, overlap, low contrast, and unbalanced spacing before finishing.
 
-## Starting Points
+## Starting points
 
 - Copy `assets/starter-frame.tsx` for static diagrams and dashboards.
 - Copy `assets/animated-frame.tsx` for GIFs.
 - Read `references/patterns.md` for primitive selection, tone usage, and render commands.
 
-## Design Rules
+## Design rules
 
 - Use supported tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
 - Render both `dark` and `light` unless the user asks for one theme.
@@ -56,7 +56,7 @@ Use Vizmatic when the user wants a concrete image or GIF artifact, not only an e
 - Keep presentation frames dense and inspectable. Avoid marketing-style filler.
 - Return generated file paths and the exact render command that produced them.
 
-## Common Requests
+## Common requests
 
 - "Create an architecture diagram for this service" -> write a flow, graph, or layered network frame and render PNGs.
 - "Turn this eval data into a figure" -> use metric cards plus bar or line charts.

@@ -1,12 +1,9 @@
 import React from 'react'
 import {
     typography,
-    heatColor,
     type ThemeColors,
     type ColorName,
     type ToneName,
-    getColor,
-    getGradient,
     getToneColor,
     getToneGradient,
 } from '../theme'

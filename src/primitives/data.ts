@@ -3,12 +3,8 @@ import {
     typography,
     heatColor,
     type ThemeColors,
-    type ColorName,
     type ToneName,
-    getColor,
-    getGradient,
     getToneColor,
-    getToneGradient,
 } from '../theme'
 
 import { compactChildren, formatMathText, textFitStyle } from './layout'
@@ -452,7 +448,12 @@ interface GridProps {
 
 function isGridCell(cell: React.ReactNode | GridCell): cell is GridCell {
     return typeof cell === 'object' && cell !== null && !React.isValidElement(cell) && (
-        'label' in cell || 'tone' in cell || 'backgroundColor' in cell || 'borderColor' in cell
+        'label' in cell
+        || 'tone' in cell
+        || 'color' in cell
+        || 'backgroundColor' in cell
+        || 'borderColor' in cell
+        || 'opacity' in cell
     )
 }
 
@@ -808,4 +809,3 @@ export function AxisPlot({
         }, yAxisLabel),
     )
 }
-

@@ -1,10 +1,10 @@
-# Vizmatic Agent Prompt
+# Vizmatic agent prompt
 
 Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
 
-## Fastest Path
+## Quick start
 
-Install the CLI once:
+Vizmatic requires Node.js 20 or newer. Install the CLI once:
 
 ```bash
 npm install -g vizmatic
@@ -31,7 +31,7 @@ Render dark and light assets:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
-## Project Installation
+## Project installation
 
 Use the package manager already present in the project.
 
@@ -49,7 +49,7 @@ pnpm add github:bvolpato/vizmatic react
 
 For npm/yarn/bun projects, use the equivalent package-manager command.
 
-## Larger Example
+## Larger example
 
 Create `frames/agent-pipeline.tsx`:
 
@@ -352,6 +352,7 @@ Theme and render APIs:
 - `getThemeColors(mode)`: `mode: ThemeMode`.
 - `getToneColor(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
+- `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height` and physical `pixelWidth` / `pixelHeight`.
 - `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
@@ -360,6 +361,7 @@ Theme and render APIs:
 - `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.
 - `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.
+- `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns physical `width` and `height`.
 - `AnimatedScene`: `element`, `duration` in ms, `transition?: "none" | "fade" | "appear"`, `transitionDuration?`, `label?`.
 - `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `background?: "theme" | "transparent" | CSS color = "theme"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`. Transparent GIFs use one-bit transparency; use PNG/SVG when smooth alpha edges matter.
 
@@ -439,7 +441,7 @@ height = 560;
 
 ## Quality rules
 
-- Use semantic tones, not hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
+- Use semantic tones instead of hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
 - Keep canvas sizes explicit. Good defaults: `1040x560` for article figures, `1280x720` for slide frames, `900x520` for compact diagrams.
 - For exploratory direct CLI frames, dimensions may be omitted; Vizmatic starts at `960x540` and grows to fit content if overflow is detected.
 - Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.

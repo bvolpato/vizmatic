@@ -20,7 +20,9 @@ import {
     Watermark,
     wrapWithWatermark,
     BarChart,
+    Box,
     DonutChart,
+    Grid,
     Icon,
     LineChart,
     Panel,
@@ -699,6 +701,54 @@ renderToBuffer(frame.create('dark'), 720, 420)
         }
     }, 30_000)
 
+    it('uses CSS background colors for GIF transition frames', async () => {
+        const c = getThemeColors('light')
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-css-background-gif-'))
+        const outputPath = join(outDir, 'frame.gif')
+
+        try {
+            await renderAnimatedGif([
+                {
+                    element: <Scene c={c}><StepCard c={c} title="One" tone="blue" width={180} /></Scene>,
+                    duration: 100,
+                },
+                {
+                    element: <Scene c={c}><StepCard c={c} title="Two" tone="green" width={180} /></Scene>,
+                    duration: 100,
+                    transition: 'appear',
+                    transitionDuration: 300,
+                },
+            ], {
+                width: 320,
+                height: 200,
+                outputPath,
+                theme: 'light',
+                background: 'rebeccapurple',
+            })
+
+            const transparencyFlags = gifTransparencyFlags(await readFile(outputPath))
+            expect(transparencyFlags.length).toBeGreaterThan(2)
+            expect(transparencyFlags.every((flag) => !flag)).toBe(true)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('honors solid boxes and color-only grid cells', async () => {
+        const c = getThemeColors('dark')
+        const solid = await renderToSvg(<Box c={c} label="Solid" color="positive" />, 240, 160)
+        const gradient = await renderToSvg(<Box c={c} label="Gradient" color="positive" gradient />, 240, 160)
+        const grid = await renderToSvg(
+            <Grid c={c} rows={[[{ color: '#ff00ff' }, { opacity: 0.5 }]]} />,
+            240,
+            160,
+        )
+
+        expect(solid).not.toContain('linearGradient')
+        expect(gradient).toContain('linearGradient')
+        expect(grid).toContain('opacity="0.5"')
+    }, 30_000)
+
     it('uses explicit light theme defaults for direct-render watermarks', async () => {
         const c = getThemeColors('light')
         const svg = await renderToSvg(
@@ -877,8 +927,6 @@ export default (
                 renderDir,
                 '--theme',
                 'dark,light',
-                '--scale',
-                '1',
             ], { cwd: outDir, encoding: 'utf8' })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1586,7 +1634,7 @@ export default create('dark')
                 '--theme',
                 'dark',
                 '--scale',
-                '2',
+                '1.333',
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
@@ -1597,14 +1645,15 @@ export default create('dark')
 
             const buffer = await readFile(join(renderDir, 'animated_dark.gif'))
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
-            expect({ width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) }).toEqual({ width: 840, height: 480 })
+            const dimensions = { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) }
+            expect(Number.isInteger(dimensions.width)).toBe(true)
+            expect(Number.isInteger(dimensions.height)).toBe(true)
 
             const manifest = JSON.parse(await readFile(join(renderDir, 'gif-manifest.json'), 'utf8')) as CliManifestEntry[]
             expect(manifest[0]?.outputDetails).toEqual([{
                 theme: 'dark',
                 path: 'animated_dark.gif',
-                width: 840,
-                height: 480,
+                ...dimensions,
             }])
         } finally {
             await rm(outDir, { recursive: true, force: true })

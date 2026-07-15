@@ -224,7 +224,7 @@ code {
   width: 100%;
   min-height: 620px;
   height: calc(100svh - 108px);
-  max-height: 760px;
+  max-height: 800px;
   overflow: hidden;
   border-bottom: 1px solid var(--border);
 }
@@ -372,6 +372,25 @@ h1 {
 
 .hero-command code {
   color: var(--text);
+}
+
+.hero-install {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hero-install .hero-command {
+  margin: 0;
+}
+
+.hero-requirement {
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .proof {
@@ -1018,6 +1037,10 @@ footer > a:last-child:hover {
     margin-left: 0;
   }
 
+  .hero-install {
+    justify-content: flex-start;
+  }
+
   .hero-art {
     top: auto;
     right: auto;
@@ -1051,7 +1074,7 @@ footer > a:last-child:hover {
   }
 }
 
-@media (max-height: 800px) and (min-width: 981px) {
+@media (max-height: 900px) and (min-width: 981px) {
   .hero-inner {
     padding-top: 24px;
   }
@@ -1075,8 +1098,12 @@ footer > a:last-child:hover {
     margin-top: 10px;
   }
 
+  .hero-install {
+    margin-top: 10px;
+  }
+
   .hero-art {
-    width: min(620px, 64vw);
+    width: min(720px, 64vw, calc((100svh - 420px) * 1.9));
   }
 }
 

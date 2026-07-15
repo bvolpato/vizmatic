@@ -349,6 +349,10 @@ export interface RenderOutput {
     width: number
     /** Final logical output height before scale is applied. */
     height: number
+    /** PNG width in physical pixels after scale is applied. */
+    pixelWidth: number
+    /** PNG height in physical pixels after scale is applied. */
+    pixelHeight: number
 }
 
 function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): WatermarkInput | undefined {
@@ -556,7 +560,12 @@ async function renderToPngInContext(
     // Step 7: Write to disk
     await mkdir(dirname(options.outputPath), { recursive: true })
     await writeFile(options.outputPath, pngBuffer)
-    return { width: finalWidth, height: finalHeight }
+    return {
+        width: finalWidth,
+        height: finalHeight,
+        pixelWidth: pngData.width,
+        pixelHeight: pngData.height,
+    }
 }
 
 /**

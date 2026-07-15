@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Theme-aware visuals from structured scenes.</strong><br/>
-  Give AI agents typed primitives. Get polished diagrams, figures, dashboards, slide frames, and animated GIFs.
+  <strong>Structured visual assets for coding agents.</strong><br/>
+  Write one TSX scene and render theme-aware diagrams, figures, dashboards, slide frames, and animated GIFs.
 </p>
 
 <p align="center">
@@ -30,9 +30,9 @@
 
 ---
 
-## Quick Start
+## Quick start
 
-Install the CLI once:
+Vizmatic requires Node.js 20 or newer. Install the CLI once:
 
 ```bash
 npm install -g vizmatic
@@ -82,14 +82,15 @@ Optional edge build from GitHub:
 pnpm add github:bvolpato/vizmatic react
 ```
 
-## Agent Skills
+## Agent skills
 
 ### Codex
 
-Vizmatic also ships as a Codex plugin with a bundled `$vizmatic` skill. Add this repo as a marketplace, install the Vizmatic plugin from Codex, then ask for visual assets directly:
+Vizmatic ships as a Codex plugin with a bundled `$vizmatic` skill. Add this repository as a marketplace, then install the plugin:
 
 ```bash
 codex plugin marketplace add bvolpato/vizmatic --ref main
+codex plugin add vizmatic@vizmatic
 ```
 
 Example prompts:
@@ -152,7 +153,7 @@ rm -rf ~/.agents/skills/vizmatic
 cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.agents/skills/vizmatic
 ```
 
-## Rendering Options
+## Rendering options
 
 Add optional branding:
 
@@ -161,7 +162,7 @@ vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" -
 ```
 
 The PNG canvas is alpha-transparent by default. Use `--background theme` for an opaque theme-colored frame, or set `background={c.bg}` on `Scene` / `Canvas`.
-Each output directory includes `manifest.json`. `outputs` lists generated files; `outputDetails` records theme, path, and exact rendered dimensions for each file.
+Each output directory includes `manifest.json`. `outputs` lists generated files; `outputDetails` records theme, path, and physical pixel dimensions for each file.
 
 Render an animation:
 
@@ -207,17 +208,12 @@ Vizmatic gives them a constrained visual language:
 
 | Need | Vizmatic answer |
 |---|---|
-| Richer figures than Mermaid | Charts, cards, matrices, timelines, trees, icons, and free composition |
-| Deterministic output unlike image generation | Source-controlled TSX stays editable and renders consistently |
-| Headless output without browser screenshots | Node renderer produces assets directly in local workflows and CI |
-| Dark and light variants | One command renders both themes from semantic color tokens |
-| Rich educational illustrations | React primitives rendered through Satori and resvg |
-| Theme-aware output | Semantic tones and dark/light theme tokens |
-| Agent-friendly authoring | JSX scene modules with simple props |
-| Reproducible artifacts | Pure Node render path, no browser required |
-| Safer generated visuals | Overflow detection, autocrop, wrapping-safe labels |
-| Animated explainers | GIF export from ordered scene states |
-| Docs and decks | Same frame can become article art, report figure, or presentation slide |
+| More than flowcharts | Charts, cards, matrices, timelines, trees, icons, and free composition |
+| Editable output | Source-controlled TSX stays inspectable and renders consistently |
+| Headless rendering | Node produces assets directly in local workflows and CI |
+| Theme variants | One command renders dark and light output from semantic color tokens |
+| Layout checks | Overflow detection, autocrop, and wrapping-safe labels catch common failures |
+| Animation | Ordered scene states export as GIFs |
 
 ## Gallery
 
@@ -239,7 +235,7 @@ Vizmatic gives them a constrained visual language:
 
 More examples live in [`examples/`](examples) and on the [website](https://bvolpato.github.io/vizmatic/).
 
-## Copy-Paste Examples
+## Copy-paste examples
 
 ### Minimal flow
 
@@ -411,11 +407,11 @@ height = 620;
 </Scene>
 ```
 
-## Agent Prompt
+## Agent prompt
 
-[`PROMPT.md`](PROMPT.md) is a plug-and-play instruction file for coding agents. It covers install, frame structure, every visual component with props, render commands, examples, quality rules, and final verification.
+[`PROMPT.md`](PROMPT.md) gives coding agents installation steps, frame structure, component props, render commands, examples, quality rules, and a final verification checklist.
 
-## Quality Gates
+## Quality gates
 
 Vizmatic treats generated visuals as source-controlled build artifacts. CI fails if examples, site assets, source snippets, or prompt copies drift from the repo source.
 
@@ -434,9 +430,9 @@ Run the full local gate:
 ./test.sh
 ```
 
-## Supply Chain Posture
+## Supply chain
 
-Vizmatic keeps runtime dependencies narrow: `react` for JSX frames, `satori` for JSX layout, `@resvg/resvg-js` for rasterization, `gifenc` for animated GIF output, and `tsx` so the CLI can load TSX scene files directly.
+Vizmatic uses `react` for JSX frames, `satori` for layout, `@resvg/resvg-js` for rasterization, `gifenc` for GIF output, `parse-css-color` for animation backgrounds, and `tsx` so the CLI can load TSX scene files directly.
 
 The published package vendors its default renderer assets under `assets/`: Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and Twemoji SVGs. Normal CLI rendering should not need `fonts.gstatic.com` or `cdn.jsdelivr.net` at runtime. `VIZMATIC_FONT_DIR` can still point at a custom/cache font directory, `VIZMATIC_ASSET_DIR` can point at a relocated asset bundle, and `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` prevents fallback to public downloads.
 
@@ -563,7 +559,9 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 | API | Use |
 |---|---|
 | `renderToPng` | Render React scene to PNG through Satori and resvg, with optional watermark, crop, scale, and overflow check. |
+| `renderToPngWithOutput` | Render PNG and return logical plus physical pixel dimensions. |
 | `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
+| `renderAnimatedGifWithOutput` | Render GIF and return its physical pixel dimensions. |
 | `renderToBuffer` | Render PNG to memory for tests and pipelines. |
 | `renderToSvg` | Render SVG markup directly. |
 | `Watermark` | JSX marker component for expressive frame-module watermarks. |
@@ -621,7 +619,7 @@ await renderAnimatedGif(createScenes("dark"), {
 })
 ```
 
-## Project Layout
+## Project layout
 
 ```text
 src/

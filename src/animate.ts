@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { dirname } from 'path'
 import type { ReactNode } from 'react'
 import * as gifenc from 'gifenc'
+import parseCssColor from 'parse-css-color'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { getFonts, loadAdditionalAsset } from './render'
 import { withRenderContext, type RenderBackground } from './renderContext'
@@ -65,6 +66,11 @@ export interface AnimationOptions {
     background?: RenderBackground
 }
 
+export interface AnimationOutput {
+    width: number
+    height: number
+}
+
 interface PixelFrame {
     pixels: Uint8Array
     delay: number
@@ -118,31 +124,38 @@ function blendPixels(base: Uint8Array, overlay: Uint8Array, opacity: number): Ui
     return result
 }
 
+function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
+    const h = ((hue % 360) + 360) % 360
+    const s = saturation / 100
+    const l = lightness / 100
+    const chroma = (1 - Math.abs(2 * l - 1)) * s
+    const segment = h / 60
+    const intermediate = chroma * (1 - Math.abs((segment % 2) - 1))
+    let channels: [number, number, number]
+    if (segment < 1) channels = [chroma, intermediate, 0]
+    else if (segment < 2) channels = [intermediate, chroma, 0]
+    else if (segment < 3) channels = [0, chroma, intermediate]
+    else if (segment < 4) channels = [0, intermediate, chroma]
+    else if (segment < 5) channels = [intermediate, 0, chroma]
+    else channels = [chroma, 0, intermediate]
+
+    const offset = l - chroma / 2
+    return [
+        Math.round((channels[0] + offset) * 255),
+        Math.round((channels[1] + offset) * 255),
+        Math.round((channels[2] + offset) * 255),
+    ]
+}
+
 function colorForBackground(background: RenderBackground, theme: 'dark' | 'light'): { r: number; g: number; b: number; a: number } {
-    if (background === 'transparent') return { r: 0, g: 0, b: 0, a: 0 }
-
     const value = background === 'theme' ? getThemeColors(theme).bg : background
-    const hex = value.match(/^#([0-9a-f]{6})$/i)?.[1]
-    if (hex) {
-        return {
-            r: parseInt(hex.slice(0, 2), 16),
-            g: parseInt(hex.slice(2, 4), 16),
-            b: parseInt(hex.slice(4, 6), 16),
-            a: 255,
-        }
-    }
+    const parsed = parseCssColor(value)
+    if (!parsed) throw new Error(`Invalid animation background color: ${value}`)
 
-    const rgb = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([0-9.]+))?\s*\)$/i)
-    if (rgb) {
-        return {
-            r: Number(rgb[1]),
-            g: Number(rgb[2]),
-            b: Number(rgb[3]),
-            a: Math.round(Number(rgb[4] ?? '1') * 255),
-        }
-    }
-
-    return { r: 0, g: 0, b: 0, a: 0 }
+    const [r, g, b] = parsed.type === 'hsl'
+        ? hslToRgb(parsed.values[0], parsed.values[1], parsed.values[2])
+        : [parsed.values[0], parsed.values[1], parsed.values[2]]
+    return { r, g, b, a: Math.round(parsed.alpha * 255) }
 }
 
 function backgroundPixels(width: number, height: number, theme: 'dark' | 'light', background: RenderBackground): Uint8Array {
@@ -199,8 +212,8 @@ async function scenesToFrames(
     }))
 
     const frames: PixelFrame[] = []
-    const scaledWidth = options.width * options.scale
-    const scaledHeight = options.height * options.scale
+    const scaledWidth = renderedScenes[0].width
+    const scaledHeight = renderedScenes[0].height
 
     for (let index = 0; index < scenes.length; index += 1) {
         const scene = scenes[index]
@@ -240,6 +253,13 @@ export async function renderAnimatedGif(
     scenes: AnimatedScene[],
     options: AnimationOptions,
 ): Promise<void> {
+    await renderAnimatedGifWithOutput(scenes, options)
+}
+
+export async function renderAnimatedGifWithOutput(
+    scenes: AnimatedScene[],
+    options: AnimationOptions,
+): Promise<AnimationOutput> {
     const normalized = {
         ...options,
         loop: options.loop ?? 0,
@@ -252,4 +272,5 @@ export async function renderAnimatedGif(
     const frames = await scenesToFrames(scenes, normalized)
     const bytes = encodeGif(frames, normalized.loop)
     await writeFile(options.outputPath, bytes)
+    return { width: frames[0].width, height: frames[0].height }
 }

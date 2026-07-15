@@ -1,14 +1,11 @@
 import React from 'react'
 import {
-    typography,
-    heatColor,
     type ThemeColors,
     type ColorName,
     type ToneName,
     getColor,
     getGradient,
     getToneColor,
-    getToneGradient,
 } from '../theme'
 
 // ─── Box — Gradient or solid colored rectangle with label ────────────────────
@@ -67,7 +64,7 @@ export function Box({
         style.backgroundImage = gradientBg
         style.boxShadow = `0 4px 20px ${solidColor}30`
     } else {
-        style.backgroundImage = gradientBg
+        style.backgroundColor = solidColor
         style.boxShadow = `0 4px 20px ${solidColor}30`
     }
 
@@ -426,4 +423,3 @@ export function ArrowMarkerDef({ id, color, size = 5 }: ArrowMarkerDefProps): Re
         }),
     )
 }
-

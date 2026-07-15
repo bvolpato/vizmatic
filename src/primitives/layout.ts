@@ -1,28 +1,10 @@
-/**
- * Vizmatic — Primitives
- *
- * High-level, THEME-AWARE building blocks for creating illustrations.
- * All primitives accept a ThemeColors object so they render correctly
- * in both dark and light modes.
- *
- * Design goals:
- * - Simple API: minimal props, beautiful defaults
- * - Theme-aware: all colors come from ThemeColors
- * - Composable: nest freely, flexbox layout
- * - AI-friendly: no coordinate math, just CSS
- */
-
 import React from 'react'
 import {
     typography,
-    heatColor,
     getThemeColors,
     type ThemeColors,
     type ThemeMode,
-    type ColorName,
     type ToneName,
-    getColor,
-    getGradient,
     getToneColor,
     getToneGradient,
 } from '../theme'
@@ -797,4 +779,3 @@ export function SvgMathText({
 export function clamp(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value))
 }
-

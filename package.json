@@ -73,6 +73,7 @@
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "gifenc": "^1.0.3",
+    "parse-css-color": "0.2.1",
     "react": "^19.1.0",
     "satori": "^0.26.0",
     "tsx": "^4.20.4"

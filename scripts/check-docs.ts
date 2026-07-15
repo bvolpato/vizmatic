@@ -75,7 +75,7 @@ for (const required of [
     }
 }
 
-if (!rootPrompt.includes('title/subtitle are optional') || !html.includes('Titleless scenes are valid')) {
+if (!rootPrompt.includes('title/subtitle are optional') || !html.includes('titles are optional')) {
     fail('docs must mention titleless scenes')
 }
 
@@ -90,6 +90,9 @@ if (skill.includes('TODO')) {
 
 if (!templateHtml.includes('codex plugin marketplace add bvolpato/vizmatic --ref main')) {
     fail('homepage must show Codex marketplace install command')
+}
+if (!templateHtml.includes('codex plugin add vizmatic@vizmatic')) {
+    fail('homepage must show Codex plugin install command')
 }
 
 for (const required of [
@@ -226,7 +229,7 @@ for (const entry of manifest) {
     for (const theme of ['dark', 'light'] as const) {
         const preview = previewFor(entry.outputs, theme)
         if (!preview) fail(`${entry.name} missing ${theme} preview`)
-        if (!examplesReadme.includes(`https://bvolpato.github.io/vizmatic/assets/examples/${preview}`)) {
+        if (!examplesReadme.includes(`../docs/assets/examples/${preview}`)) {
             fail(`examples README missing ${entry.name} ${theme} preview`)
         }
     }

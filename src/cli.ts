@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import * as publicApi from './index'
-import { renderAnimatedGif, type AnimatedScene } from './animate'
+import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { renderToPngWithOutput, type RenderBackground } from './render'
 import type { ThemeMode } from './theme'
@@ -716,7 +716,12 @@ async function renderFrameToPng(
                 width,
                 height,
             }, mod.create, theme)
-            return { width, height, outputWidth: output.width, outputHeight: output.height }
+            return {
+                width,
+                height,
+                outputWidth: output.pixelWidth,
+                outputHeight: output.pixelHeight,
+            }
         } catch (error) {
             const edges = overflowEdges(error)
             const next = edges ? nextAutoSize(width, height, mod.autoSize, edges) : undefined
@@ -839,7 +844,7 @@ async function gifCommand(argv: string[]) {
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.gif`
             const outputPath = join(args.outDir, outputName)
-            await renderAnimatedGif(mod.createScenes(theme), {
+            const rendered = await renderAnimatedGifWithOutput(mod.createScenes(theme), {
                 width: mod.width,
                 height: mod.height,
                 outputPath,
@@ -852,8 +857,8 @@ async function gifCommand(argv: string[]) {
             outputDetails.push({
                 theme,
                 path: outputName,
-                width: mod.width * outputScale,
-                height: mod.height * outputScale,
+                width: rendered.width,
+                height: rendered.height,
             })
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)
         }

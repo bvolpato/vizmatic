@@ -32,7 +32,7 @@ jobs:
       - run: pnpm render:examples
       - run: pnpm docs:check
       - name: Ensure generated site is committed
-        run: git diff --exit-code -- docs
+        run: git diff --exit-code -- docs examples/README.md
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -81,7 +81,31 @@ jobs:
 
           response="$(gh api --method POST "repos/$GITHUB_REPOSITORY/pages/deployments" --input "$payload")"
           page_url="$(printf '%s' "$response" | jq -r '.page_url // empty')"
-          deployment_id="$(printf '%s' "$response" | jq -r '.id // .status_url // empty')"
+          deployment_id="$(printf '%s' "$response" | jq -r '.id // empty')"
+
+          if [ -z "$deployment_id" ]; then
+            echo "Pages deployment ID missing from response" >&2
+            exit 1
+          fi
 
           echo "page_url=${page_url:-https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/}" >> "$GITHUB_OUTPUT"
-          echo "Created Pages deployment ${deployment_id:-unknown}; GitHub will publish it asynchronously."
+          echo "Created Pages deployment $deployment_id; waiting for publication."
+
+          status=""
+          for _ in {1..60}; do
+            status="$(gh api "repos/$GITHUB_REPOSITORY/pages/deployments/$deployment_id" --jq '.status' 2>/dev/null || true)"
+            case "$status" in
+              succeed)
+                echo "Pages deployment $deployment_id succeeded."
+                exit 0
+                ;;
+              error|failed|cancelled|canceled)
+                echo "Pages deployment $deployment_id failed with status: $status" >&2
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+
+          echo "Pages deployment $deployment_id did not complete; last status: ${status:-unavailable}" >&2
+          exit 1

@@ -1,14 +1,8 @@
 import React from 'react'
 import {
-    typography,
-    heatColor,
     type ThemeColors,
-    type ColorName,
     type ToneName,
-    getColor,
-    getGradient,
     getToneColor,
-    getToneGradient,
 } from '../theme'
 
 import { Column, compactChildren, type FlexAlign, Panel, Row, textFitStyle, ToneStrip } from './layout'
@@ -533,4 +527,3 @@ export function Flow({
         children,
     })
 }
-
