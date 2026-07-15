@@ -896,6 +896,46 @@ height = 300;
         }
     }, 30_000)
 
+    it('warns and uses the default theme for an unknown bare-frame preset', async () => {
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-unknown-preset-cli-'))
+        const framePath = join(outDir, 'unknown-preset.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(framePath, `preset = "missing"; // fall back instead of executing this assignment
+width = 320;
+height = 240;
+
+<Scene title="Unknown preset" background={c.bg}>
+    <StepCard title="Default theme" tone="green" />
+</Scene>
+`)
+
+            const result = spawnSync(process.execPath, [
+                '--import',
+                'tsx',
+                'src/cli.ts',
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            expect(result.stderr).toContain('Unknown preset "missing"; using "default"')
+
+            const buffer = await readFile(join(renderDir, 'unknown-preset_light.png'))
+            expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+            expect(pixelAt(decodePng(buffer), 0, 0)).toEqual([...hexToRgb(getThemeColors('light').bg), 255])
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
     it('loads default-element TSX modules with multiline imports', async () => {
         const { buffer } = await renderBuiltCliFrame('vizmatic-cli-multiline-', 'multiline.tsx', `import {
   getThemeColors,

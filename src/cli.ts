@@ -249,9 +249,25 @@ function readDimensionLine(line: string): { name: 'width' | 'height'; value: num
     return { name: match[1].toLowerCase() as 'width' | 'height', value: Number(match[2]) }
 }
 
-function readPresetLine(line: string): ThemePreset | undefined {
-    const match = line.match(/^\s*(?:export\s+)?(?:(?:const|let|var)\s+)?preset\s*[:=]\s*["'](default|engineering)["']\s*;?\s*$/i)
-    return match?.[1]?.toLowerCase() as ThemePreset | undefined
+type PresetLine = {
+    preset?: ThemePreset
+    requested: string
+}
+
+function readPresetLine(line: string): PresetLine | undefined {
+    const withoutComment = line.replace(/\s*\/\/.*$/, '').trim()
+    const match = withoutComment.match(/^(?:export\s+)?(?:(?:const|let|var)\s+)?preset(?:\s*:\s*ThemePreset)?\s*[:=]\s*(.+)$/i)
+    if (!match?.[1]) return undefined
+
+    const expression = match[1].trim().replace(/;\s*$/, '').trim()
+    const quoted = expression.match(/^(["'])(.*)\1$/)
+    const requested = (quoted?.[2] ?? expression).trim()
+    const normalized = requested.toLowerCase()
+    const preset = quoted && (normalized === 'default' || normalized === 'engineering')
+        ? normalized
+        : undefined
+
+    return { preset, requested }
 }
 
 function readFrameDimension(jsx: string, name: 'width' | 'height'): number | undefined {
@@ -321,7 +337,13 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
 
         const framePreset = readPresetLine(line)
         if (framePreset) {
-            preset = framePreset
+            if (framePreset.preset) {
+                preset = framePreset.preset
+            } else {
+                console.warn(
+                    `warning: Unknown preset ${JSON.stringify(framePreset.requested)}; using "default". Available presets: "default", "engineering".`,
+                )
+            }
             continue
         }
 
