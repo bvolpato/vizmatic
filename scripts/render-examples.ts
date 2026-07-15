@@ -6,6 +6,7 @@ import { codeToHtml } from 'shiki'
 const examplesDir = 'examples'
 const examplesReadmePath = join(examplesDir, 'README.md')
 const outDir = 'docs/assets/examples'
+const galleryAssetUrl = 'https://bvolpato.github.io/vizmatic/assets/examples'
 const themes = ['dark', 'light'] as const
 const files = (await readdir(examplesDir))
     .filter((file) => file.endsWith('.tsx'))
@@ -47,7 +48,7 @@ function generateExamplesReadme(entries: typeof manifest): string {
         const dark = previewFor(entry.outputs, 'dark')
         const light = previewFor(entry.outputs, 'light')
 
-        return `| [${title}](${sourceFile}) | <img src="../docs/assets/examples/${dark}" alt="${title} dark render" width="360" /> | <img src="../docs/assets/examples/${light}" alt="${title} light render" width="360" /> |`
+        return `| [${title}](${sourceFile}) | <img src="${galleryAssetUrl}/${dark}" alt="${title} dark render" width="360" /> | <img src="${galleryAssetUrl}/${light}" alt="${title} light render" width="360" /> |`
     })
 
     return [

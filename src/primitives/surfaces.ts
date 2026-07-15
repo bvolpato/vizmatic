@@ -100,6 +100,7 @@ export function Card({
     bodyStyle,
 }: CardProps): React.ReactElement {
     const hasHeader = title || subtitle || tone
+    const engineering = c.preset === 'engineering'
 
     return React.createElement('div', {
         style: {
@@ -109,14 +110,14 @@ export function Card({
             justifyContent: flexJustify(justify),
             gap: gap ?? (hasHeader || footer ? 10 : 0),
             backgroundColor: background ?? c.bgCard,
-            borderRadius: radius,
+            borderRadius: engineering ? Math.min(radius, 5) : radius,
             border: `1px solid ${borderColor ?? c.borderSubtle}`,
             padding,
             ...(width !== undefined ? { width } : {}),
             ...(minWidth !== undefined ? { minWidth } : {}),
             ...(height !== undefined ? { height } : {}),
             ...(minHeight !== undefined ? { minHeight } : {}),
-            ...(shadow ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            ...(shadow && !engineering ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }
     },
         ...compactChildren([
@@ -136,6 +137,7 @@ export function Card({
                     gap: 8,
                     color: c.textPrimary,
                     ...typography.small,
+                    fontFamily: c.fontSans,
                     ...textFitStyle(),
                     fontWeight: 900,
                     lineHeight: 1.2,
@@ -149,6 +151,7 @@ export function Card({
                     display: 'flex',
                     color: c.textSecondary,
                     ...typography.tiny,
+                    fontFamily: c.fontSans,
                     ...textFitStyle(),
                     lineHeight: 1.35,
                 }
@@ -169,6 +172,7 @@ export function Card({
                 display: 'flex',
                 color: c.textMuted,
                 ...typography.tiny,
+                fontFamily: c.fontSans,
                 ...textFitStyle(),
             }
         }, footer),
@@ -226,7 +230,7 @@ export function ValuePill({
             React.createElement('div', {
                 style: {
                     color: accent,
-                    fontFamily: 'JetBrains Mono',
+                    fontFamily: c.fontMono,
                     fontSize: 24,
                     fontWeight: 900,
                     lineHeight: 1,
@@ -293,7 +297,7 @@ export function EquationCard({
             React.createElement('div', {
                 style: {
                     color: c.textPrimary,
-                    fontFamily: 'JetBrains Mono',
+                    fontFamily: c.fontMono,
                     fontSize: 15,
                     fontWeight: 800,
                     lineHeight: 1.3,
@@ -303,7 +307,7 @@ export function EquationCard({
             result && React.createElement('div', {
                 style: {
                     color: accent,
-                    fontFamily: 'JetBrains Mono',
+                    fontFamily: c.fontMono,
                     fontSize: 28,
                     fontWeight: 900,
                     lineHeight: 1,
@@ -354,6 +358,7 @@ export function BadgePill({
     math = false,
 }: BadgePillProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const engineering = c.preset === 'engineering'
 
     return React.createElement('div', {
         style: {
@@ -364,14 +369,18 @@ export function BadgePill({
             ...(minWidth != null ? { minWidth } : {}),
             ...(height != null ? { height } : {}),
             padding,
-            borderRadius: radius,
-            ...(filled ? { backgroundImage: getToneGradient(tone) } : { backgroundColor: `${accent}18` }),
-            border: `1px solid ${filled ? `${accent}00` : `${accent}55`}`,
-            color: filled ? c.textOnColor : accent,
+            borderRadius: engineering ? Math.min(radius, 5) : radius,
+            ...(engineering
+                ? { backgroundColor: getToneFill(tone, c) }
+                : filled
+                    ? { backgroundImage: getToneGradient(tone) }
+                    : { backgroundColor: `${accent}18` }),
+            border: `1px solid ${engineering ? accent : filled ? `${accent}00` : `${accent}55`}`,
+            color: engineering ? c.textPrimary : filled ? c.textOnColor : accent,
             fontSize,
             fontWeight: 800,
             lineHeight: 1,
-            fontFamily: mono ? 'JetBrains Mono' : 'Inter',
+            fontFamily: mono ? c.fontMono : c.fontSans,
             boxSizing: 'border-box' as const,
             whiteSpace: 'nowrap' as const,
         }
@@ -416,6 +425,9 @@ export function GradientChip({
     math = false,
 }: GradientChipProps): React.ReactElement {
     const textAlign = align
+    const engineering = c.preset === 'engineering' && gradient == null
+    const textColor = engineering ? c.textPrimary : c.textOnColor
+    const accent = getToneColor(tone, c)
 
     return React.createElement('div', {
         style: {
@@ -424,22 +436,25 @@ export function GradientChip({
             ...(height != null ? { height } : {}),
             ...(minHeight != null ? { minHeight } : {}),
             boxSizing: 'border-box' as const,
-            borderRadius: radius,
-            ...(gradient != null ? { backgroundImage: gradient } : { backgroundImage: getToneGradient(tone) }),
-            color: c.textOnColor,
+            borderRadius: engineering ? Math.min(radius, 5) : radius,
+            ...(engineering
+                ? { backgroundColor: getToneFill(tone, c), border: `1px solid ${accent}` }
+                : { backgroundImage: gradient ?? getToneGradient(tone) }),
+            color: textColor,
             display: 'flex',
             flexDirection: 'column' as const,
             justifyContent: 'center',
             alignItems: align === 'center' ? 'center' : 'flex-start',
             gap: 5,
             padding,
-            ...(shadow ? { boxShadow: `0 12px 30px ${c.shadow}` } : {}),
+            ...(shadow && !engineering ? { boxShadow: `0 12px 30px ${c.shadow}` } : {}),
         },
     },
         React.createElement('div', {
             style: {
                 ...typography.label,
-                color: c.textOnColor,
+                color: textColor,
+                fontFamily: c.fontSans,
                 fontWeight: 900,
                 lineHeight: 1.1,
                 textAlign,
@@ -448,10 +463,10 @@ export function GradientChip({
         subtitle && React.createElement('div', {
             style: {
                 fontSize: 11,
-                color: 'rgba(255,255,255,0.86)',
+                color: engineering ? c.textSecondary : 'rgba(255,255,255,0.86)',
                 lineHeight: 1.2,
                 textAlign,
-                fontFamily: subtitleMono ? 'JetBrains Mono' : 'Inter',
+                fontFamily: subtitleMono ? c.fontMono : c.fontSans,
             }
         }, renderMaybeMath(subtitle, math)),
     )
@@ -616,6 +631,7 @@ export function MetricCard({
                     fontSize: 11,
                     fontWeight: 800,
                     color: accent,
+                    fontFamily: c.fontSans,
                     lineHeight: 1.1,
                     ...textFitStyle(textAlign),
                 }
@@ -627,12 +643,13 @@ export function MetricCard({
                     color: valueColor ?? c.textPrimary,
                     lineHeight: 1.15,
                     ...textFitStyle(textAlign),
-                    fontFamily: valueMono ? 'JetBrains Mono' : 'Inter',
+                    fontFamily: valueMono ? c.fontMono : c.fontSans,
                 }
             }, renderMaybeMath(value, math)),
             detail && React.createElement('div', {
                 style: {
                     ...typography.tiny,
+                    fontFamily: c.fontSans,
                     color: c.textMuted,
                     lineHeight: 1.2,
                     ...textFitStyle(textAlign),

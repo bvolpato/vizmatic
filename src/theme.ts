@@ -191,7 +191,10 @@ export function getThemeColors(mode: ThemeMode, preset: ThemePreset = 'default')
 }
 
 /** Default for backward-compat: dark */
-export const colors = darkColors
+export const colors: ThemeColors = {
+    ...darkColors,
+    ...defaultStyleTokens,
+}
 
 // ─── Gradients ───────────────────────────────────────────────────────────────
 

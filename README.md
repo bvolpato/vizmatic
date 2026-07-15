@@ -262,7 +262,7 @@ preset = "engineering";
 width = 1040;
 height = 560;
 
-<Scene title="How requests reach the model">
+<Scene title="How requests reach the model" background={c.bg}>
   <Flow stages={[
     { title: "Stable prefix", tone: "blue" },
     { title: "Dynamic turn", tone: "warm" },
@@ -271,11 +271,12 @@ height = 560;
 </Scene>
 ```
 
-The preset keeps the light gray article canvas, left-aligned black heading,
+The preset supplies a light gray article palette, left-aligned black heading,
 flat pastel nodes, thin connectors, restrained corners, Inter labels, and
-JetBrains Mono annotations. It deliberately removes card shadows and decorative
-chrome. Continue to render with `--theme light`; the preset is a visual style,
-not a light/dark mode.
+JetBrains Mono annotations. It removes card shadows and decorative chrome.
+`background={c.bg}` paints that palette across the canvas; omit it for alpha
+transparency. Continue to render with `--theme light`; the preset is a visual
+style, not a light/dark mode.
 
 ### Flow + callouts
 
@@ -471,11 +472,12 @@ Package resolution is intentionally conservative:
 ### Themes
 
 ```ts
-import { getThemeColors } from "vizmatic"
+import { getThemeColors, getToneFill } from "vizmatic"
 
 const dark = getThemeColors("dark")
 const light = getThemeColors("light")
 const engineering = getThemeColors("light", "engineering")
+const engineeringNodeFill = getToneFill("purple", engineering)
 ```
 
 Primitives receive `c`, the resolved theme object. This keeps every visual connected to one palette, typography scale, and contrast model.
@@ -680,12 +682,8 @@ gh workflow run release.yml -f version=patch
 
 The workflow requires an `NPM_TOKEN` repository secret with publish access.
 
-Manual release fallback:
-
-```bash
-pnpm verify
-npm publish --access public
-```
+Publishing stays in the workflow so package version, plugin metadata, tag,
+release notes, and npm provenance remain synchronized.
 
 ## License
 

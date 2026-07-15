@@ -11,7 +11,11 @@ import {
     detectBackgroundColor,
     detectContentBounds,
     detectOverflow,
+    colors,
+    CalloutCard,
+    getToneFill,
     getThemeColors,
+    MetricCard,
     renderAnimatedGif,
     renderToBuffer,
     renderToSvg,
@@ -585,6 +589,11 @@ renderToBuffer(frame.create('dark'), 720, 420)
     it('resolves dark and light theme tokens', () => {
         expect(getThemeColors('dark').bg).not.toBe(getThemeColors('light').bg)
         expect(getThemeColors('dark').primary).toBe(getThemeColors('light').primary)
+        expect(colors).toMatchObject({
+            preset: 'default',
+            fontSans: 'Inter',
+            fontMono: 'JetBrains Mono',
+        })
 
         const engineering = getThemeColors('light', 'engineering')
         expect(engineering).toMatchObject({
@@ -594,6 +603,31 @@ renderToBuffer(frame.create('dark'), 720, 420)
             fontSans: 'Inter',
             fontMono: 'JetBrains Mono',
         })
+    })
+
+    it('uses flat shared surfaces for the engineering preset', async () => {
+        const c = getThemeColors('light', 'engineering')
+        const metric = MetricCard({ c, label: 'Cache read', value: '84%', tone: 'green', shadow: true }) as React.ReactElement<{ style: React.CSSProperties }>
+        const callout = CalloutCard({ c, title: 'Stable prefix', detail: 'Repeated context stays cacheable.', tone: 'purple' }) as React.ReactElement<{ style: React.CSSProperties }>
+
+        expect(metric.props.style).toMatchObject({ borderRadius: 5 })
+        expect(metric.props.style.boxShadow).toBeUndefined()
+        expect(callout.props.style).toMatchObject({
+            backgroundColor: getToneFill('purple', c),
+            borderRadius: 5,
+        })
+        expect(callout.props.style.backgroundImage).toBeUndefined()
+        expect(callout.props.style.boxShadow).toBeUndefined()
+
+        const svg = await renderToSvg(
+            <Scene c={c}>
+                {metric}
+                {callout}
+            </Scene>,
+            520,
+            320,
+        )
+        expect(svg).not.toContain('linearGradient')
     })
 
     it('supports custom watermark text, image, and position', () => {

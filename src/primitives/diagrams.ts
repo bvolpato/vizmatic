@@ -746,6 +746,7 @@ export function CalloutCard({
     align = 'center',
 }: CalloutCardProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const engineering = c.preset === 'engineering'
     const textAlign = align
 
     return React.createElement('div', {
@@ -753,9 +754,11 @@ export function CalloutCard({
             ...(width != null ? { width } : {}),
             ...(minHeight != null ? { minHeight } : {}),
             padding,
-            borderRadius: 10,
+            borderRadius: engineering ? 5 : 10,
             boxSizing: 'border-box' as const,
-            ...(filled
+            ...(engineering
+                ? { backgroundColor: getToneFill(tone, c), color: c.textPrimary, border: `1px solid ${accent}` }
+                : filled
                 ? { backgroundImage: getToneGradient(tone), color: c.textOnColor, border: `1px solid ${accent}00` }
                 : { backgroundColor: c.bgCard, color: c.textPrimary, border: `1px solid ${accent}66` }),
             display: 'flex',
@@ -763,7 +766,7 @@ export function CalloutCard({
             alignItems: align === 'center' ? 'center' : 'flex-start',
             justifyContent: 'center',
             gap: detail ? 5 : 0,
-            boxShadow: `0 10px 24px ${c.shadow}`,
+            ...(!engineering ? { boxShadow: `0 10px 24px ${c.shadow}` } : {}),
             textAlign,
         }
     },
@@ -772,7 +775,8 @@ export function CalloutCard({
             style: {
                 ...typography.small,
                 ...(titleFontSize != null ? { fontSize: titleFontSize } : {}),
-                color: filled ? c.textOnColor : accent,
+                color: engineering ? c.textPrimary : filled ? c.textOnColor : accent,
+                fontFamily: c.fontSans,
                 fontWeight: 900,
                 lineHeight: 1.2,
                 textAlign,
@@ -782,7 +786,8 @@ export function CalloutCard({
             style: {
                 ...typography.tiny,
                 ...(detailFontSize != null ? { fontSize: detailFontSize } : {}),
-                color: filled ? 'rgba(255,255,255,0.84)' : c.textSecondary,
+                color: engineering ? c.textSecondary : filled ? 'rgba(255,255,255,0.84)' : c.textSecondary,
+                fontFamily: engineering ? c.fontMono : typography.tiny.fontFamily,
                 lineHeight: 1.3,
                 textAlign,
             }

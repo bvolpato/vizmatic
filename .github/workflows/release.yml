@@ -20,6 +20,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      - name: Require main branch
+        run: test "$GITHUB_REF_NAME" = "main"
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0

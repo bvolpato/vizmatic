@@ -463,7 +463,7 @@ async function renderToPngInContext(
     let finalHeight = options.height
     let finalElement: ReactNode = element
 
-    // Height-only cropping preserves the original y origin.
+    // Keep the detected bottom edge, including autocrop padding.
     const croppedHeight = bounds.y + bounds.height
     const heightSaved = options.height - croppedHeight
     const heightSavedPercent = (heightSaved / options.height) * 100

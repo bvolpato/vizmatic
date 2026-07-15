@@ -31,8 +31,9 @@ height = 560;
 ```
 
 For minimal engineering-blog figures, add `preset = "engineering";` before the
-dimensions and render `--theme light`. The preset uses a light gray canvas,
+dimensions and render `--theme light`. The preset uses a light gray palette,
 left-aligned title, flat pastel nodes, thin connectors, and mono annotations.
+Add `background={c.bg}` for an opaque canvas; omit it for alpha transparency.
 Keep the figure to one architectural transition or tradeoff.
 
 ## Full Module Frame

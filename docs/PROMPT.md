@@ -349,8 +349,8 @@ SVG and geometry helpers:
 
 Theme and render APIs:
 
-- `getThemeColors(mode, preset?)`: `mode: ThemeMode`; `preset?: "default" | "engineering"`. Use `engineering` for flat technical-blog figures with a light gray canvas, left-aligned black titles, pastel nodes, thin neutral connectors, compact corners, no shadows, Inter labels, and JetBrains Mono annotations. In a bare frame, set `preset = "engineering";` before the JSX.
-- `getToneColor(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
+- `getThemeColors(mode, preset?)`: `mode: ThemeMode`; `preset?: "default" | "engineering"`. Use `engineering` for flat technical-blog figures with a light gray palette, left-aligned black titles, pastel nodes, thin neutral connectors, compact corners, no shadows, Inter labels, and JetBrains Mono annotations. In a bare frame, set `preset = "engineering";` before the JSX. Add `background={c.bg}` to `Scene` for an opaque light gray canvas; omit it for alpha transparency.
+- `getToneColor(tone, c)`, `getToneFill(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
 - `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height` and physical `pixelWidth` / `pixelHeight`.
 - `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.

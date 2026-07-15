@@ -37,12 +37,9 @@ jobs:
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
       - run: node node_modules/vitest/vitest.mjs run
         env:
           VIZMATIC_TEST_USE_EXISTING_BUILD: "1"

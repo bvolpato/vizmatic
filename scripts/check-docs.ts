@@ -13,6 +13,7 @@ const codexPluginPath = join(root, 'plugins', 'vizmatic', '.codex-plugin', 'plug
 const claudePluginPath = join(root, 'plugins', 'vizmatic', '.claude-plugin', 'plugin.json')
 const codexMarketplacePath = join(root, '.agents', 'plugins', 'marketplace.json')
 const claudeMarketplacePath = join(root, '.claude-plugin', 'marketplace.json')
+const galleryAssetUrl = 'https://bvolpato.github.io/vizmatic/assets/examples'
 
 async function listFiles(dir: string): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true })
@@ -229,7 +230,7 @@ for (const entry of manifest) {
     for (const theme of ['dark', 'light'] as const) {
         const preview = previewFor(entry.outputs, theme)
         if (!preview) fail(`${entry.name} missing ${theme} preview`)
-        if (!examplesReadme.includes(`../docs/assets/examples/${preview}`)) {
+        if (!examplesReadme.includes(`${galleryAssetUrl}/${preview}`)) {
             fail(`examples README missing ${entry.name} ${theme} preview`)
         }
     }

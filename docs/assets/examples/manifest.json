@@ -42,6 +42,14 @@
     ]
   },
   {
+    "name": "engineering-flow",
+    "source": "examples/engineering-flow.tsx",
+    "outputs": [
+      "engineering-flow_dark.png",
+      "engineering-flow_light.png"
+    ]
+  },
+  {
     "name": "eval-dashboard",
     "source": "examples/eval-dashboard.tsx",
     "outputs": [
