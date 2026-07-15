@@ -53,7 +53,7 @@ export function Canvas({ children, c, padding = 40, justify = 'center', backgrou
             alignItems: 'center',
             justifyContent: justify,
             backgroundColor: canvasBackground,
-            fontFamily: 'Inter',
+            fontFamily: c.fontSans,
             padding,
         }
     }, children)
@@ -68,18 +68,24 @@ interface TitleBarProps {
 }
 
 export function TitleBar({ title, subtitle, c }: TitleBarProps): React.ReactElement {
+    const engineering = c.preset === 'engineering'
     return React.createElement('div', {
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            alignItems: 'center',
+            alignItems: engineering ? 'flex-start' : 'center',
             gap: 6,
-            marginBottom: 24,
+            ...(engineering ? { width: '100%' } : {}),
+            marginBottom: engineering ? 20 : 24,
         }
     },
         React.createElement('div', {
             style: {
                 ...typography.title,
+                fontFamily: c.fontSans,
+                fontSize: engineering ? 34 : typography.title.fontSize,
+                fontWeight: 700,
+                ...(engineering ? { lineHeight: 1.12 } : {}),
                 color: c.textPrimary,
             }
         }, title),
@@ -87,7 +93,9 @@ export function TitleBar({ title, subtitle, c }: TitleBarProps): React.ReactElem
             style: {
                 ...typography.body,
                 color: c.textSecondary,
-                fontFamily: 'JetBrains Mono',
+                fontFamily: c.fontMono,
+                fontSize: engineering ? 14 : typography.body.fontSize,
+                lineHeight: 1.35,
             }
         }, subtitle),
     )
@@ -436,6 +444,7 @@ export function Panel({
     accentHeight = 4,
     bodyStyle,
 }: PanelProps): React.ReactElement {
+    const engineering = c.preset === 'engineering'
     return React.createElement('div', {
         style: {
             display: 'flex',
@@ -448,10 +457,10 @@ export function Panel({
             ...(height != null ? { height } : {}),
             ...(minHeight != null ? { minHeight } : {}),
             padding,
-            borderRadius: radius,
+            borderRadius: engineering ? 5 : radius,
             border: `1px solid ${borderColor ?? c.borderSubtle}`,
             backgroundColor: background ?? c.bgCard,
-            ...(shadow ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            ...(shadow && !engineering ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }
     },
         ...compactChildren([
@@ -471,6 +480,7 @@ export function Panel({
                     gap: 8,
                     color: c.textPrimary,
                     ...typography.small,
+                    fontFamily: c.fontSans,
                     ...textFitStyle(),
                     fontSize: titleFontSize ?? typography.small.fontSize,
                     fontWeight: 900,
@@ -485,6 +495,7 @@ export function Panel({
                     display: 'flex',
                     color: c.textSecondary,
                     ...typography.tiny,
+                    fontFamily: engineering ? c.fontMono : typography.tiny.fontFamily,
                     ...textFitStyle(),
                     lineHeight: 1.35,
                 }

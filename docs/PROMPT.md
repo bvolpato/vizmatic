@@ -349,7 +349,7 @@ SVG and geometry helpers:
 
 Theme and render APIs:
 
-- `getThemeColors(mode)`: `mode: ThemeMode`.
+- `getThemeColors(mode, preset?)`: `mode: ThemeMode`; `preset?: "default" | "engineering"`. Use `engineering` for flat technical-blog figures with a light gray canvas, left-aligned black titles, pastel nodes, thin neutral connectors, compact corners, no shadows, Inter labels, and JetBrains Mono annotations. In a bare frame, set `preset = "engineering";` before the JSX.
 - `getToneColor(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
 - `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height` and physical `pixelWidth` / `pixelHeight`.
@@ -357,7 +357,7 @@ Theme and render APIs:
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
 - `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
-- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `theme?: "dark" | "light" = "dark"` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
+- `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `theme?: "dark" | "light" = "dark"` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Default autocrop retains 24 source pixels around detected content. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
 - `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.
 - `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.
@@ -442,6 +442,7 @@ height = 560;
 ## Quality rules
 
 - Use semantic tones instead of hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
+- For Datadog Engineering-style article diagrams, set `preset = "engineering";` and render the light theme. Keep each figure focused on one transition or tradeoff.
 - Keep canvas sizes explicit. Good defaults: `1040x560` for article figures, `1280x720` for slide frames, `900x520` for compact diagrams.
 - For exploratory direct CLI frames, dimensions may be omitted; Vizmatic starts at `960x540` and grows to fit content if overflow is detected.
 - Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.

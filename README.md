@@ -254,6 +254,29 @@ height = 560;
 </Scene>
 ```
 
+For the flat visual language used in technical engineering articles, set the
+`engineering` preset at the top of a bare frame:
+
+```tsx
+preset = "engineering";
+width = 1040;
+height = 560;
+
+<Scene title="How requests reach the model">
+  <Flow stages={[
+    { title: "Stable prefix", tone: "blue" },
+    { title: "Dynamic turn", tone: "warm" },
+    { title: "Model", tone: "purple" },
+  ]} />
+</Scene>
+```
+
+The preset keeps the light gray article canvas, left-aligned black heading,
+flat pastel nodes, thin connectors, restrained corners, Inter labels, and
+JetBrains Mono annotations. It deliberately removes card shadows and decorative
+chrome. Continue to render with `--theme light`; the preset is a visual style,
+not a light/dark mode.
+
 ### Flow + callouts
 
 Use this for process diagrams, architecture walkthroughs, and agent pipelines.
@@ -452,9 +475,13 @@ import { getThemeColors } from "vizmatic"
 
 const dark = getThemeColors("dark")
 const light = getThemeColors("light")
+const engineering = getThemeColors("light", "engineering")
 ```
 
 Primitives receive `c`, the resolved theme object. This keeps every visual connected to one palette, typography scale, and contrast model.
+
+Bare frames can select the same style with `preset = "engineering";`. Full
+modules pass the optional second argument to `getThemeColors`.
 
 ### Component catalog
 
@@ -577,7 +604,7 @@ Vizmatic exports a fairly complete visual kit. Common cases should use these pri
 import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
-`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, crops extra vertical whitespace, and can apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Pass `theme: "light"` when direct renderer calls should use light watermark defaults. Use `crop: "height"` when a downstream layout needs fixed width but still wants vertical whitespace trimmed. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
+`renderToPng` renders at 2x scale by default, uses alpha transparency unless `background` is set, checks for clipped content, and crops extra whitespace while retaining 24 source pixels of padding around the detected content. It can also apply an optional watermark. Use `background: "theme"` to paint `c.bg`, or any CSS color string for a fixed fill. Pass `theme: "light"` when direct renderer calls should use light watermark defaults. Use `crop: "height"` when a downstream layout needs fixed width but still wants vertical whitespace trimmed. Use `watermark.image` for a URL or data URI; the CLI also accepts local image paths through `--watermark-image`. For frame-owned branding, export `watermark = <Watermark>...</Watermark>` from the frame module. `brand` still works as a compatibility alias.
 
 ```ts
 await renderToPng(element, {

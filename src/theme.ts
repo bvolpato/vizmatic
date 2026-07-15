@@ -6,6 +6,7 @@
  */
 
 export type ThemeMode = 'dark' | 'light'
+export type ThemePreset = 'default' | 'engineering'
 
 // ─── Dark Colors ─────────────────────────────────────────────────────────────
 
@@ -119,10 +120,74 @@ const lightColors = {
 
 // ─── Theme Accessor ──────────────────────────────────────────────────────────
 
-export type ThemeColors = { [K in keyof typeof darkColors]: string }
+interface ThemeStyleTokens {
+    preset: ThemePreset
+    fontSans: string
+    fontMono: string
+}
 
-export function getThemeColors(mode: ThemeMode): ThemeColors {
-    return mode === 'light' ? lightColors : darkColors
+export type ThemeColors = { [K in keyof typeof darkColors]: string } & ThemeStyleTokens
+
+const defaultStyleTokens: ThemeStyleTokens = {
+    preset: 'default',
+    fontSans: 'Inter',
+    fontMono: 'JetBrains Mono',
+}
+
+const engineeringColors = {
+    ...lightColors,
+    bg: '#f4f4f5',
+    bgCard: '#ffffff',
+    bgCardAlt: '#ececee',
+    bgHover: '#e4e4e7',
+    bgSubtle: '#eeeeef',
+    primary: '#632ca6',
+    primaryLight: '#6d28d9',
+    primaryDark: '#4c1d95',
+    secondary: '#124fc7',
+    secondaryLight: '#1556d1',
+    secondaryDark: '#123d96',
+    positive: '#087a55',
+    positiveLight: '#0a8060',
+    positiveDark: '#05543c',
+    warning: '#c96c00',
+    warningLight: '#d97800',
+    warningDark: '#9a4f00',
+    critical: '#b83232',
+    criticalLight: '#c43d3d',
+    criticalDark: '#8f2626',
+    info: '#0b7185',
+    infoLight: '#0d7d92',
+    infoDark: '#075565',
+    accent: '#a83c76',
+    accentLight: '#b74583',
+    neutral: '#52525b',
+    neutralLight: '#71717a',
+    neutralDark: '#3f3f46',
+    textPrimary: '#101012',
+    textSecondary: '#3f3f46',
+    textMuted: '#68686f',
+    textOnColor: '#ffffff',
+    border: '#3f3f46',
+    borderSubtle: '#d4d4d8',
+    borderLight: '#a1a1aa',
+    shadow: 'rgba(0, 0, 0, 0)',
+} as const
+
+export function getThemeColors(mode: ThemeMode, preset: ThemePreset = 'default'): ThemeColors {
+    if (preset === 'engineering') {
+        return {
+            ...engineeringColors,
+            preset,
+            fontSans: 'Inter',
+            fontMono: 'JetBrains Mono',
+        }
+    }
+
+    return {
+        ...(mode === 'light' ? lightColors : darkColors),
+        ...defaultStyleTokens,
+    }
 }
 
 /** Default for backward-compat: dark */
@@ -182,6 +247,26 @@ export function getToneColor(tone: ToneName, c: ThemeColors): string {
     }[tone]
 }
 
+/** Low-chroma fills for diagrams. The engineering preset uses opaque pastels. */
+export function getToneFill(tone: ToneName, c: ThemeColors): string {
+    if (c.preset !== 'engineering') return `${getToneColor(tone, c)}16`
+
+    return {
+        blue: '#cddcfa',
+        purple: '#dfcff8',
+        green: '#d5ede4',
+        warm: '#fde7ce',
+        cyan: '#d7edf1',
+        pink: '#f3d9e7',
+        red: '#f4d7d7',
+        critical: '#f4d7d7',
+        neutral: '#e4e4e7',
+        sunset: '#fde1d6',
+        ocean: '#d8e2f6',
+        dark: '#dedee2',
+    }[tone]
+}
+
 // ─── Typography ──────────────────────────────────────────────────────────────
 
 export const typography = {
@@ -215,7 +300,7 @@ export function getStyles(c: ThemeColors) {
             display: 'flex' as const,
             flexDirection: 'column' as const,
             backgroundColor: c.bg,
-            fontFamily: 'Inter',
+            fontFamily: c.fontSans,
             padding: 40,
         },
 

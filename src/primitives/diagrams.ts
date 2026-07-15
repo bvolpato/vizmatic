@@ -5,6 +5,7 @@ import {
     type ColorName,
     type ToneName,
     getToneColor,
+    getToneFill,
     getToneGradient,
 } from '../theme'
 
@@ -336,7 +337,11 @@ export function GraphDiagram({
             absDx > 0 ? (to.width / 2) / absDx : Infinity,
             absDy > 0 ? (to.height / 2) / absDy : Infinity,
         )
-        const color = edge.muted ? c.textMuted : getToneColor(edge.tone ?? 'blue', c)
+        const color = edge.muted
+            ? c.textMuted
+            : c.preset === 'engineering' && edge.tone == null
+                ? c.textSecondary
+                : getToneColor(edge.tone ?? 'blue', c)
         const markerId = `graph-arrow-${edge.from}-${edge.to}-${index}`.replace(/[^a-zA-Z0-9_-]/g, '-')
 
         return [{
@@ -382,7 +387,7 @@ export function GraphDiagram({
                 x2: edge.x2,
                 y2: edge.y2,
                 stroke: edge.color,
-                strokeWidth: edge.muted ? 1.6 : 2.8,
+                strokeWidth: edge.muted ? 1.4 : (c.preset === 'engineering' ? 1.7 : 2.8),
                 strokeDasharray: edge.dashed ? '7 6' : undefined,
                 strokeLinecap: 'round',
                 opacity: edge.muted ? 0.48 : 0.9,
@@ -397,15 +402,19 @@ export function GraphDiagram({
                     left: (edge.x1 + edge.x2) / 2,
                     top: (edge.y1 + edge.y2) / 2,
                     transform: 'translate(-50%, -50%)',
-                    padding: '3px 7px',
-                    borderRadius: 999,
-                    backgroundColor: c.bgCard,
-                    border: `1px solid ${c.borderSubtle}`,
-                    color: edge.muted ? c.textMuted : edge.color,
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 9,
-                    fontWeight: 800,
+                    padding: c.preset === 'engineering' ? '3px 5px' : '3px 7px',
+                    borderRadius: c.preset === 'engineering' ? 0 : 999,
+                    backgroundColor: c.preset === 'engineering' ? c.bg : c.bgCard,
+                    border: c.preset === 'engineering' ? 'none' : `1px solid ${c.borderSubtle}`,
+                    color: edge.muted ? c.textMuted : (c.preset === 'engineering' ? c.textSecondary : edge.color),
+                    fontFamily: c.fontMono,
+                    fontSize: c.preset === 'engineering' ? 10 : 9,
+                    fontWeight: c.preset === 'engineering' ? 400 : 800,
                     lineHeight: 1,
+                    ...(c.preset === 'engineering' ? {
+                        textTransform: 'uppercase' as const,
+                        letterSpacing: '0.02em',
+                    } : {}),
                     whiteSpace: 'nowrap' as const,
                 }
             }, edge.label),
@@ -427,29 +436,29 @@ export function GraphDiagram({
                     gap: node.detail ? 5 : 0,
                     padding: '8px 10px',
                     boxSizing: 'border-box' as const,
-                    borderRadius: 10,
-                    backgroundColor: node.muted ? c.bgSubtle : `${accent}16`,
-                    border: `1.5px solid ${node.muted ? c.borderLight : `${accent}88`}`,
-                    ...(!node.muted ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
+                    borderRadius: c.preset === 'engineering' ? 5 : 10,
+                    backgroundColor: node.muted ? c.bgSubtle : getToneFill(node.tone ?? 'blue', c),
+                    border: `${c.preset === 'engineering' ? 1.25 : 1.5}px solid ${node.muted ? c.borderLight : `${accent}${c.preset === 'engineering' ? '' : '88'}`}`,
+                    ...(!node.muted && c.preset !== 'engineering' ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                     opacity: node.muted ? 0.62 : 1,
-                    color: accent,
+                    color: c.preset === 'engineering' ? c.textPrimary : accent,
                     textAlign: 'center' as const,
                 }
             },
                 React.createElement('div', {
                     style: {
-                        fontFamily: 'Inter',
+                        fontFamily: c.fontSans,
                         fontSize: labelFontSize,
-                        fontWeight: 900,
+                        fontWeight: c.preset === 'engineering' ? 700 : 900,
                         lineHeight: 1.15,
                     }
                 }, node.label),
                 node.detail && React.createElement('div', {
                     style: {
                         color: c.textMuted,
-                        fontFamily: 'JetBrains Mono',
+                        fontFamily: c.fontMono,
                         fontSize: detailFontSize,
-                        fontWeight: 650,
+                        fontWeight: c.preset === 'engineering' ? 400 : 650,
                         lineHeight: 1.2,
                     }
                 }, node.detail),

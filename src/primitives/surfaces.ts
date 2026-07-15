@@ -4,6 +4,7 @@ import {
     type ThemeColors,
     type ToneName,
     getToneColor,
+    getToneFill,
     getToneGradient,
 } from '../theme'
 
@@ -490,6 +491,7 @@ export function StepCard({
     math = false,
 }: StepCardProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const engineering = c.preset === 'engineering'
     const textAlign = align
 
     return Card({
@@ -498,9 +500,10 @@ export function StepCard({
         minWidth,
         minHeight,
         padding,
-        radius,
-        shadow,
-        borderColor: `${accent}88`,
+        radius: engineering ? 5 : radius,
+        shadow: engineering ? false : shadow,
+        background: engineering ? getToneFill(tone, c) : undefined,
+        borderColor: engineering ? accent : `${accent}88`,
         children: React.createElement('div', {
             style: {
                 width: '100%',
@@ -514,8 +517,9 @@ export function StepCard({
             eyebrow && React.createElement('div', {
                 style: {
                     ...typography.tiny,
+                    fontFamily: c.fontMono,
                     color: c.textMuted,
-                    fontWeight: 800,
+                    fontWeight: engineering ? 400 : 800,
                     textTransform: 'uppercase' as const,
                     letterSpacing: '0.05em',
                     ...textFitStyle(textAlign),
@@ -525,7 +529,8 @@ export function StepCard({
             React.createElement('div', {
                 style: {
                     ...typography.label,
-                    color: accent,
+                    fontFamily: c.fontSans,
+                    color: engineering ? c.textPrimary : accent,
                     fontWeight: 700,
                     lineHeight: 1.15,
                     ...textFitStyle(textAlign),
@@ -534,6 +539,7 @@ export function StepCard({
             subtitle && React.createElement('div', {
                 style: {
                     ...typography.tiny,
+                    fontFamily: c.fontMono,
                     color: c.textMuted,
                     lineHeight: 1.25,
                     ...textFitStyle(textAlign),

@@ -12,7 +12,7 @@ import * as publicApi from './index'
 import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { renderToPngWithOutput, type RenderBackground } from './render'
-import type { ThemeMode } from './theme'
+import type { ThemeMode, ThemePreset } from './theme'
 
 interface FrameModule {
     width?: number
@@ -59,6 +59,7 @@ const BARE_FRAME_EXTRA_EXPORTS = new Set([
     'getGradient',
     'getStyles',
     'getThemeColors',
+    'getToneFill',
     'getToneColor',
     'getToneGradient',
     'gradients',
@@ -248,6 +249,11 @@ function readDimensionLine(line: string): { name: 'width' | 'height'; value: num
     return { name: match[1].toLowerCase() as 'width' | 'height', value: Number(match[2]) }
 }
 
+function readPresetLine(line: string): ThemePreset | undefined {
+    const match = line.match(/^\s*(?:export\s+)?(?:(?:const|let|var)\s+)?preset\s*[:=]\s*["'](default|engineering)["']\s*;?\s*$/i)
+    return match?.[1]?.toLowerCase() as ThemePreset | undefined
+}
+
 function readFrameDimension(jsx: string, name: 'width' | 'height'): number | undefined {
     const frameOpen = jsx.match(/<Frame\b[^>]*>/)?.[0]
     const value = frameOpen?.match(new RegExp(`${name}\\s*=\\s*(?:{(\\d+)}|"(\\d+)"|'(\\d+)'|(\\d+))`))
@@ -295,6 +301,7 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     const bodyLines: string[] = []
     let width: number | undefined
     let height: number | undefined
+    let preset: ThemePreset = 'default'
 
     for (const line of source.split(/\r?\n/)) {
         const trimmed = line.trim()
@@ -309,6 +316,12 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
         if (dimension) {
             if (dimension.name === 'width') width = dimension.value
             if (dimension.name === 'height') height = dimension.value
+            continue
+        }
+
+        const framePreset = readPresetLine(line)
+        if (framePreset) {
+            preset = framePreset
             continue
         }
 
@@ -339,7 +352,7 @@ import React from ${JSON.stringify(resolveReactImportSpecifier())}
 ${buildAutoImportStatement(autoImports)}
 ${imports.join('\n')}
 
-let __theme = __Vizmatic_getThemeColors('dark')
+let __theme = __Vizmatic_getThemeColors('dark', ${JSON.stringify(preset)})
 function __withTheme(Component) {
     return function VizmaticAutoTheme(props) {
         return React.createElement(Component, props?.c ? props : { ...props, c: __theme })
@@ -353,7 +366,7 @@ export const height = ${height}
 export const __vizmaticAutoSize = ${JSON.stringify(autoSize)}
 
 export function create(theme = 'dark') {
-    __theme = __Vizmatic_getThemeColors(theme)
+    __theme = __Vizmatic_getThemeColors(theme, ${JSON.stringify(preset)})
     const c = __theme
 ${setup}
     return (${jsx})
@@ -371,6 +384,7 @@ function isBareFrameSource(source: string): boolean {
     const body = source.split(/\r?\n/)
         .filter((line) => !line.trim().startsWith('import '))
         .filter((line) => !readDimensionLine(line))
+        .filter((line) => !readPresetLine(line))
         .join('\n')
 
     return findRootJsxStart(body) >= 0

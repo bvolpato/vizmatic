@@ -30,6 +30,11 @@ height = 560;
 </Scene>
 ```
 
+For minimal engineering-blog figures, add `preset = "engineering";` before the
+dimensions and render `--theme light`. The preset uses a light gray canvas,
+left-aligned title, flat pastel nodes, thin connectors, and mono annotations.
+Keep the figure to one architectural transition or tradeoff.
+
 ## Full Module Frame
 
 Use the full module form when the frame needs loops, helper functions, data loading, reusable components, non-Vizmatic imports, or animation.

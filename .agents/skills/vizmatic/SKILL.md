@@ -19,6 +19,7 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
    pnpm add vizmatic react
    ```
 3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and grows to fit content on overflow. Generated wrappers that export the default `960x540` size get the same auto-fit behavior; add `autoSize = false` only when strict clipping errors are desired. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports. `Scene` title/subtitle are optional.
+   For minimal technical-blog figures, add `preset = "engineering";` above the dimensions and render with the light theme. This selects the flat article canvas, pastel nodes, thin connectors, left-aligned title, compact corners, and mono annotations.
 4. Choose primitives by intent. Read `references/patterns.md` when deciding component structure.
 5. Render dark and light outputs:
    ```bash
@@ -32,6 +33,7 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
    ```bash
    vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
+   Default autocrop retains 24 source pixels around detected content so figures do not end at the last painted pixel. Use `--no-crop` only when the declared canvas itself is part of the composition.
 6. For GIFs, export `createScenes(theme)` from a full module and render:
    ```bash
    vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --scale 1
@@ -47,6 +49,7 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
 ## Design rules
 
 - Use supported tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
+- Use `preset = "engineering";` for Datadog Engineering-style article figures. Keep each figure single-purpose and avoid dashboard chrome, shadows, gradients, or decorative color.
 - Render both `dark` and `light` unless the user asks for one theme.
 - Omit `Scene` title/subtitle for badges, inline blog figures, or visuals where surrounding copy already provides title context.
 - Prefer alpha-transparent PNG/SVG backgrounds for blog posts and docs cards. Use `--background theme` or `<Scene background={c.bg}>` only when the destination needs opaque theme fill.

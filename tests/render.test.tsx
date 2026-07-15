@@ -585,6 +585,15 @@ renderToBuffer(frame.create('dark'), 720, 420)
     it('resolves dark and light theme tokens', () => {
         expect(getThemeColors('dark').bg).not.toBe(getThemeColors('light').bg)
         expect(getThemeColors('dark').primary).toBe(getThemeColors('light').primary)
+
+        const engineering = getThemeColors('light', 'engineering')
+        expect(engineering).toMatchObject({
+            preset: 'engineering',
+            bg: '#f4f4f5',
+            shadow: 'rgba(0, 0, 0, 0)',
+            fontSans: 'Inter',
+            fontMono: 'JetBrains Mono',
+        })
     })
 
     it('supports custom watermark text, image, and position', () => {
@@ -814,7 +823,8 @@ export default frame.default
         const renderDir = join(outDir, 'renders')
 
         try {
-            await writeFile(framePath, `width = 520;
+            await writeFile(framePath, `preset = "engineering";
+width = 520;
 height = 300;
 
 <Scene title="Bare frame" subtitle="CLI adds imports and theme">
@@ -1273,6 +1283,17 @@ export default frame.default
             expect(image.width).toBe(760)
             expect(output.height).toBeLessThan(620)
             expect(image.height).toBe(output.height)
+
+            const background = detectBackgroundColor(image.pixels)
+            const content = detectContentBounds(
+                image.pixels,
+                image.width,
+                image.height,
+                background,
+                0,
+            )
+            const bottomPadding = image.height - (content.y + content.height)
+            expect(bottomPadding).toBeGreaterThanOrEqual(20)
         } finally {
             await rm(dir, { recursive: true, force: true })
         }

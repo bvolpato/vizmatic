@@ -77,7 +77,7 @@ export function Box({
                 fontSize,
                 fontWeight: 700,
                 color: outlined ? solidColor : c.textOnColor,
-                fontFamily: 'Inter',
+                fontFamily: c.fontSans,
                 textAlign: 'center' as const,
                 lineHeight: 1.3,
             }
@@ -87,7 +87,7 @@ export function Box({
                 fontSize: fontSize - 2,
                 fontWeight: 400,
                 color: outlined ? c.textMuted : `${c.textOnColor}b3`,
-                fontFamily: 'JetBrains Mono',
+                fontFamily: c.fontMono,
                 textAlign: 'center' as const,
             }
         }, sublabel),
@@ -176,7 +176,7 @@ export function Arrow({
             style: {
                 fontSize: 10,
                 color: c.textMuted,
-                fontFamily: 'Inter',
+                fontFamily: c.fontSans,
                 fontWeight: 500,
                 position: 'absolute' as const,
                 ...(isVertical ? { left: 8 } : { bottom: 12 }),

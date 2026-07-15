@@ -463,12 +463,14 @@ async function renderToPngInContext(
     let finalHeight = options.height
     let finalElement: ReactNode = element
 
-    const heightSaved = options.height - bounds.height
+    // Height-only cropping preserves the original y origin.
+    const croppedHeight = bounds.y + bounds.height
+    const heightSaved = options.height - croppedHeight
     const heightSavedPercent = (heightSaved / options.height) * 100
 
     if (shouldCropHeight(options.crop) && heightSavedPercent >= CROP_THRESHOLD_PERCENT) {
         // Significant vertical blank space: crop height only.
-        finalHeight = bounds.height
+        finalHeight = croppedHeight
 
         // Re-create the illustration element if possible (for responsive resize)
         // The illustration's CSS uses width/height: 100% so it adapts automatically
