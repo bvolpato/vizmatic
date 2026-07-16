@@ -87,7 +87,7 @@
     "github-actionlint": "1.7.12",
     "shiki": "^4.3.0",
     "tsup": "^8.5.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.9"
   }
 }
