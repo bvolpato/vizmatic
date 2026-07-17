@@ -10,7 +10,7 @@
       "name": "vizmatic",
       "source": "./plugins/vizmatic",
       "description": "Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic.",
-      "version": "0.1.30",
+      "version": "0.1.31",
       "author": {
         "name": "Bruno Volpato",
         "url": "https://github.com/bvolpato"
