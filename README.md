@@ -20,9 +20,10 @@
 
 <p align="center">
   <a href="https://bvolpato.github.io/vizmatic/">Website</a> ·
+  <a href="https://bvolpato.github.io/vizmatic/#playground">Playground</a> ·
   <a href="examples">Examples</a> ·
   <a href="PROMPT.md">Agent Prompt</a> ·
-  <a href="#agent-skills">Agent Skills</a> ·
+  <a href="#agent-skill">Agent Skill</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#why-vizmatic">Why Vizmatic</a> ·
   <a href="#api">API</a>
@@ -60,6 +61,12 @@ Render it directly:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
+Validate both themes before publishing. `--json` returns structured errors, warnings, overflow edges, and suggested dimensions for agents and CI:
+
+```bash
+vizmatic check ./frame.tsx --theme dark,light --json
+```
+
 PNG and SVG renders use an alpha-transparent canvas by default. Add `--background theme` when the output needs the actual dark/light theme fill:
 
 ```bash
@@ -82,75 +89,39 @@ Optional edge build from GitHub:
 pnpm add github:bvolpato/vizmatic react
 ```
 
-## Agent skills
+## Agent skill
 
-### Codex
+Install the portable Vizmatic skill globally. The installer detects Codex, Claude Code, Cursor, OpenCode, and other compatible agents:
 
-Vizmatic ships as a Codex plugin with a bundled `$vizmatic` skill. Add this repository as a marketplace, then install the plugin:
+```bash
+npx skills add bvolpato/vizmatic --skill vizmatic -g -y
+```
+
+Target specific agents when more than one is installed:
+
+```bash
+npx skills add bvolpato/vizmatic --skill vizmatic -g -a codex -a claude-code -a cursor -a opencode -y
+```
+
+Example prompts:
+
+```text
+Use the Vizmatic skill to create a theme-aware architecture diagram and render dark/light PNG files.
+Use the Vizmatic skill to turn this release workflow into an animated GIF for docs.
+```
+
+The skill source lives at [`.agents/skills/vizmatic`](.agents/skills/vizmatic). Preview it before installation with `npx skills add bvolpato/vizmatic --list`.
+
+Native Codex and Claude Code plugin marketplaces remain available:
 
 ```bash
 codex plugin marketplace add bvolpato/vizmatic --ref main
 codex plugin add vizmatic@vizmatic
 ```
 
-Example prompts:
-
-```text
-Use $vizmatic to create a theme-aware architecture diagram and render dark/light PNG files.
-Use $vizmatic to turn this release workflow into an animated GIF for docs.
-```
-
-### Claude Code
-
-Claude Code can import Vizmatic as a plugin marketplace directly from this repository:
-
 ```bash
 claude plugin marketplace add bvolpato/vizmatic
 claude plugin install vizmatic@vizmatic --scope user
-```
-
-In an active Claude Code session, run `/reload-plugins`. Claude can then auto-select the Vizmatic skill, or you can invoke it with `/vizmatic:vizmatic`.
-
-### Cursor
-
-Cursor can import skills from GitHub repositories through Remote Rule:
-
-1. Open **Customize** in the sidebar.
-2. Go to **Rules** and click **Add Rule**.
-3. Select **Remote Rule (Github)**.
-4. Enter `https://github.com/bvolpato/vizmatic`.
-
-The repo exposes the portable skill at `.agents/skills/vizmatic`, which Cursor discovers as a project skill. Manual install also works:
-
-```bash
-mkdir -p ~/.cursor/skills
-rm -rf ~/.cursor/skills/vizmatic
-cp -R .agents/skills/vizmatic ~/.cursor/skills/vizmatic
-```
-
-### OpenCode
-
-OpenCode discovers skills from repo and home-directory skill folders. Its plugin ecosystem is npm/config based; for Vizmatic, use the native skill directory.
-
-The GitHub-importable skill lives at `.agents/skills/vizmatic`. Copy that folder into the agent-specific skills directory:
-
-```bash
-tmp="$(mktemp -d)"
-git clone --depth 1 https://github.com/bvolpato/vizmatic.git "$tmp/vizmatic"
-```
-
-```bash
-mkdir -p ~/.config/opencode/skills
-rm -rf ~/.config/opencode/skills/vizmatic
-cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.config/opencode/skills/vizmatic
-```
-
-For a shared Cursor/OpenCode global location, use `~/.agents/skills` instead:
-
-```bash
-mkdir -p ~/.agents/skills
-rm -rf ~/.agents/skills/vizmatic
-cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.agents/skills/vizmatic
 ```
 
 ## Rendering options

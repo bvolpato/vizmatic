@@ -11,7 +11,8 @@ import type { ReactNode } from 'react'
 import * as publicApi from './index'
 import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
-import { renderToPngWithOutput, type RenderBackground } from './render'
+import { analyzeContrast, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
+import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
 import type { ThemeMode, ThemePreset } from './theme'
 
 interface FrameModule {
@@ -41,10 +42,37 @@ interface RenderArgs {
     background?: RenderBackground
 }
 
+interface CheckArgs {
+    inputs: string[]
+    themes: ThemeMode[]
+    background?: RenderBackground
+    json: boolean
+}
+
+interface CheckThemeReport {
+    theme: ThemeMode
+    ok: boolean
+    dimensions: {
+        input: { width: number; height: number }
+        resolved?: { width: number; height: number }
+        output?: { width: number; height: number }
+    }
+    diagnostics: CheckDiagnostic[]
+}
+
+interface CheckFileReport {
+    source: string
+    ok: boolean
+    autoSize?: AutoSizeAxes
+    diagnostics: CheckDiagnostic[]
+    themes: CheckThemeReport[]
+}
+
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 const IMPORT_RESOLUTION_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json']
 const DEFAULT_FRAME_WIDTH = 960
 const DEFAULT_FRAME_HEIGHT = 540
+const CONTRAST_TRUSTED_COMPONENTS = new Set(Object.values(publicApi))
 const AUTO_SIZE_MAX_WIDTH = 1920
 const AUTO_SIZE_MAX_HEIGHT = 1440
 const AUTO_SIZE_GROWTH = 1.25
@@ -79,12 +107,14 @@ function usageText() {
     return `Usage:
   vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
   vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
+  vizmatic check <file-or-directory...> [--theme dark,light] [--background transparent|theme|color] [--json]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
 
 Examples:
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
   vizmatic ./frame.tsx --out ./dist/frames --theme dark
   vizmatic ./frame.tsx --out ./dist/frames --theme light --background theme
+  vizmatic check ./frame.tsx --theme dark,light --json
   vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
   vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`
@@ -376,9 +406,11 @@ ${imports.join('\n')}
 
 let __theme = __Vizmatic_getThemeColors('dark', ${JSON.stringify(preset)})
 function __withTheme(Component) {
-    return function VizmaticAutoTheme(props) {
+    function VizmaticAutoTheme(props) {
         return React.createElement(Component, props?.c ? props : { ...props, c: __theme })
     }
+    VizmaticAutoTheme.__vizmaticPrimitive = true
+    return VizmaticAutoTheme
 }
 const Frame = ({ children }) => React.createElement(React.Fragment, null, children)
 ${buildAutoImportDeclarations(autoImports)}
@@ -557,6 +589,37 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     return { inputs, outDir, themes, watermark, crop, scale, background }
 }
 
+function parseCheckArgs(argv: string[]): CheckArgs {
+    const inputs: string[] = []
+    let themes: ThemeMode[] = ['dark', 'light']
+    let background: RenderBackground | undefined
+    let json = false
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index]
+        if (!arg) continue
+
+        if (arg === '--theme') {
+            const raw = argv[++index] ?? usage()
+            themes = raw.split(',').map((theme) => theme.trim()).filter(Boolean) as ThemeMode[]
+            if (themes.length === 0 || themes.some((theme) => theme !== 'dark' && theme !== 'light')) usage()
+        } else if (arg === '--transparent' || arg === '--transparent-background') {
+            background = 'transparent'
+        } else if (arg === '--background') {
+            background = argv[++index] ?? usage()
+        } else if (arg === '--json') {
+            json = true
+        } else if (arg.startsWith('-')) {
+            usage()
+        } else {
+            inputs.push(arg)
+        }
+    }
+
+    if (inputs.length === 0) usage()
+    return { inputs, themes, background, json }
+}
+
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
     const files = new Set<string>()
 
@@ -712,6 +775,11 @@ function frameElement(mod: FrameModule, theme: ThemeMode): ReactNode {
 type OverflowEdge = 'top' | 'right' | 'bottom' | 'left'
 
 function overflowEdges(error: unknown): OverflowEdge[] | undefined {
+    if (error instanceof CanvasOverflowError) {
+        return (Object.entries(error.overflow.edges) as Array<[OverflowEdge, boolean]>)
+            .filter(([, overflows]) => overflows)
+            .map(([edge]) => edge)
+    }
     const message = error instanceof Error ? error.message : String(error)
     const match = message.match(/Content overflows canvas at: ([^.]+)/)
     if (!match?.[1]) return undefined
@@ -847,6 +915,240 @@ async function renderCommand(argv: string[]) {
     await writeFile(join(args.outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
+interface CapturedConsoleMessage {
+    severity: 'error' | 'warning'
+    message: string
+}
+
+function formatConsoleArgs(args: unknown[]): string {
+    return args.map((value) => {
+        if (value instanceof Error) return value.message
+        if (typeof value === 'string') return value
+        try {
+            return JSON.stringify(value)
+        } catch {
+            return String(value)
+        }
+    }).join(' ')
+}
+
+async function captureConsole<T>(run: () => Promise<T>): Promise<{
+    value?: T
+    error?: unknown
+    messages: CapturedConsoleMessage[]
+}> {
+    const messages: CapturedConsoleMessage[] = []
+    const original = {
+        error: console.error,
+        log: console.log,
+        warn: console.warn,
+    }
+
+    console.log = () => undefined
+    console.warn = (...args: unknown[]) => messages.push({ severity: 'warning', message: formatConsoleArgs(args) })
+    console.error = (...args: unknown[]) => messages.push({ severity: 'error', message: formatConsoleArgs(args) })
+
+    try {
+        return { value: await run(), messages }
+    } catch (error) {
+        return { error, messages }
+    } finally {
+        console.error = original.error
+        console.log = original.log
+        console.warn = original.warn
+    }
+}
+
+function checkDiagnosticCounts(files: CheckFileReport[]) {
+    const diagnostics = files.flatMap((file) => [
+        ...file.diagnostics,
+        ...file.themes.flatMap((theme) => theme.diagnostics),
+    ])
+    return {
+        errors: diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length,
+        warnings: diagnostics.filter((diagnostic) => diagnostic.severity === 'warning').length,
+        info: diagnostics.filter((diagnostic) => diagnostic.severity === 'info').length,
+    }
+}
+
+function printCheckReport(files: CheckFileReport[]) {
+    for (const file of files) {
+        console.log(`${file.ok ? 'ok' : 'error'} ${file.source}`)
+        for (const theme of file.themes) {
+            const resolved = theme.dimensions.resolved ?? theme.dimensions.input
+            const output = theme.dimensions.output
+            const outputLabel = output ? ` -> ${output.width}×${output.height}` : ''
+            console.log(`  ${theme.ok ? 'ok' : 'error'} ${theme.theme} ${resolved.width}×${resolved.height}${outputLabel}`)
+            for (const diagnostic of theme.diagnostics) {
+                console.log(`    ${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}`)
+                if (diagnostic.suggestion) console.log(`      ${diagnostic.suggestion}`)
+            }
+        }
+        for (const diagnostic of file.diagnostics) {
+            console.log(`  ${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}`)
+        }
+    }
+}
+
+async function checkCommand(argv: string[]) {
+    const args = parseCheckArgs(argv)
+    const files = await findFrameFiles(args.inputs)
+    if (files.length === 0) throw new Error('no frame files found')
+
+    const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-check-'))
+    const reports: CheckFileReport[] = []
+
+    try {
+        for (const [fileIndex, file] of files.entries()) {
+            const source = relative(process.cwd(), file)
+            const imported = await captureConsole(() => importFrame(file))
+            const diagnostics = imported.messages.map((message) =>
+                diagnosticFromMessage(message.message, message.severity),
+            )
+
+            if (!imported.value) {
+                diagnostics.push({
+                    code: 'frame.load_error',
+                    severity: 'error',
+                    message: imported.error instanceof Error ? imported.error.message : String(imported.error),
+                })
+                reports.push({ source, ok: false, diagnostics, themes: [] })
+                continue
+            }
+
+            const mod = normalizeFrameModule(imported.value)
+            const themes: CheckThemeReport[] = []
+
+            for (const [themeIndex, theme] of args.themes.entries()) {
+                const input = { width: mod.width, height: mod.height }
+                const themeDiagnostics: CheckDiagnostic[] = []
+                const prepared = await captureConsole(async () => {
+                    const element = frameElement(mod, theme)
+                    return analyzeContrast(element, theme, CONTRAST_TRUSTED_COMPONENTS)
+                })
+                themeDiagnostics.push(...prepared.messages.map((message) =>
+                    diagnosticFromMessage(message.message, message.severity, theme),
+                ))
+
+                if (!prepared.value) {
+                    themeDiagnostics.push(diagnosticFromMessage(
+                        prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
+                        'error',
+                        theme,
+                    ))
+                    themes.push({ theme, ok: false, dimensions: { input }, diagnostics: themeDiagnostics })
+                    continue
+                }
+                themeDiagnostics.push(...prepared.value)
+
+                const outputPath = join(tempDir, `${fileIndex}-${themeIndex}.png`)
+                const rendered = await captureConsole(() => renderFrameToPng(mod, theme, {
+                    ...input,
+                    outputPath,
+                    crop: true,
+                    scale: 1,
+                    background: args.background,
+                }))
+                themeDiagnostics.push(...rendered.messages.map((message) =>
+                    diagnosticFromMessage(message.message, message.severity, theme),
+                ))
+
+                if (rendered.value) {
+                    if (rendered.value.width !== input.width || rendered.value.height !== input.height) {
+                        themeDiagnostics.push({
+                            code: 'layout.auto_size',
+                            severity: 'info',
+                            theme,
+                            message: `Canvas auto-sized from ${input.width}×${input.height} to ${rendered.value.width}×${rendered.value.height}.`,
+                            suggestedDimensions: {
+                                width: rendered.value.width,
+                                height: rendered.value.height,
+                            },
+                        })
+                    }
+                    themes.push({
+                        theme,
+                        ok: !themeDiagnostics.some((diagnostic) => diagnostic.severity === 'error'),
+                        dimensions: {
+                            input,
+                            resolved: { width: rendered.value.width, height: rendered.value.height },
+                            output: { width: rendered.value.outputWidth, height: rendered.value.outputHeight },
+                        },
+                        diagnostics: themeDiagnostics,
+                    })
+                    continue
+                }
+
+                const edges = overflowEdges(rendered.error)
+                if (edges) {
+                    const suggestionMod = { ...mod, autoSize: { width: true, height: true } }
+                    const suggestion = await captureConsole(() => renderFrameToPng(suggestionMod, theme, {
+                        ...input,
+                        outputPath: join(tempDir, `${fileIndex}-${themeIndex}-suggestion.png`),
+                        crop: true,
+                        scale: 1,
+                        background: args.background,
+                    }))
+                    const suggestedDimensions = suggestion.value
+                        ? { width: suggestion.value.width, height: suggestion.value.height }
+                        : undefined
+                    themeDiagnostics.push({
+                        code: 'layout.overflow',
+                        severity: 'error',
+                        theme,
+                        edges,
+                        message: rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
+                        suggestion: suggestedDimensions
+                            ? `Increase the canvas to at least ${suggestedDimensions.width}×${suggestedDimensions.height}, or remove fixed dimensions to enable auto-sizing.`
+                            : 'Increase the canvas dimensions or remove fixed dimensions to enable auto-sizing.',
+                        suggestedDimensions,
+                    })
+                } else {
+                    themeDiagnostics.push(diagnosticFromMessage(
+                        rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
+                        'error',
+                        theme,
+                    ))
+                }
+
+                themes.push({
+                    theme,
+                    ok: false,
+                    dimensions: { input },
+                    diagnostics: themeDiagnostics,
+                })
+            }
+
+            const ok = !diagnostics.some((diagnostic) => diagnostic.severity === 'error')
+                && themes.every((theme) => theme.ok)
+            reports.push({ source, ok, autoSize: mod.autoSize, diagnostics, themes })
+        }
+    } finally {
+        await rm(tempDir, { recursive: true, force: true })
+    }
+
+    const summary = checkDiagnosticCounts(reports)
+    const report = {
+        schemaVersion: 1,
+        command: 'check',
+        ok: summary.errors === 0,
+        files: reports,
+        summary: {
+            files: reports.length,
+            ...summary,
+        },
+    }
+
+    if (args.json) {
+        console.log(JSON.stringify(report, null, 2))
+    } else {
+        printCheckReport(reports)
+        console.log(`checked ${report.summary.files} file(s): ${summary.errors} error(s), ${summary.warnings} warning(s), ${summary.info} info`)
+    }
+
+    if (!report.ok) process.exitCode = 1
+}
+
 async function gifCommand(argv: string[]) {
     const args = parseRenderArgs(argv)
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
@@ -917,6 +1219,8 @@ async function main() {
     const [command, ...rest] = args
     if (command === 'render') {
         await renderCommand(rest)
+    } else if (command === 'check') {
+        await checkCommand(rest)
     } else if (command === 'gif') {
         await gifCommand(rest)
     } else if (!command || command === 'help' || command === '--help' || command === '-h') {

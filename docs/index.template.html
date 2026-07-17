@@ -33,6 +33,7 @@
       <div class="nav-actions">
         <div class="nav-links">
           <a href="#gallery" data-nav-link>Examples</a>
+          <a href="#playground" data-nav-link>Playground</a>
           <a href="#quick-start" data-nav-link>Quick Start</a>
           <a href="#onboarding" data-nav-link>Prompt + Skills</a>
           <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
@@ -61,7 +62,7 @@
         <div class="cta-row">
           <button class="button primary" type="button" data-copy-prompt>Copy agent prompt</button>
           <a class="button" href="#onboarding">Install skill</a>
-          <a class="text-link" href="#gallery">See examples <span aria-hidden="true">↓</span></a>
+          <a class="text-link" href="#playground">Try playground <span aria-hidden="true">↓</span></a>
         </div>
         <div class="hero-install">
           <div class="hero-command"><span>$</span><code>npm install -g vizmatic</code></div>
@@ -75,12 +76,65 @@
     <section class="proof" aria-label="Product capabilities">
       <div><strong>1 TSX file</strong><span>editable source</span></div>
       <div><strong>dark + light</strong><span>one command</span></div>
-      <div><strong>offline CLI render</strong><span>bundled assets</span></div>
+      <div><strong>machine checked</strong><span>structured diagnostics</span></div>
       <div><strong>PNG · SVG · GIF</strong><span>ready to publish</span></div>
     </section>
 
+    <section id="playground" class="playground-band">
+      <div class="section playground-section">
+        <div class="section-kicker">Live playground <span>01</span></div>
+        <div class="section-intro">
+          <h2>Edit the scene. See the asset.</h2>
+          <p>Start from a template, switch output themes, and share or download the result without installing anything.</p>
+        </div>
+        <div class="playground-tool">
+          <div class="playground-toolbar">
+            <label class="playground-template-control" for="playgroundTemplate">
+              <span>Template</span>
+              <select id="playgroundTemplate" aria-label="Playground template"></select>
+            </label>
+            <div class="playground-theme-control" role="group" aria-label="Output theme">
+              <button type="button" data-playground-theme="dark" aria-pressed="true">Dark</button>
+              <button type="button" data-playground-theme="light" aria-pressed="false">Light</button>
+            </div>
+            <div class="playground-actions">
+              <button class="button primary" type="button" id="playgroundRunButton" title="Render source">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
+                <span>Run</span>
+              </button>
+              <button class="button" type="button" id="playgroundShareButton" title="Copy share link">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M13 7l5 5-5 5M5 5h6M5 19h6"/></svg>
+                <span>Share</span>
+              </button>
+              <button class="button" type="button" id="playgroundSvgButton" title="Download SVG">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>
+                <span>SVG</span>
+              </button>
+              <button class="button" type="button" id="playgroundPngButton" title="Download PNG">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>
+                <span>PNG</span>
+              </button>
+            </div>
+          </div>
+          <div class="playground-workspace">
+            <div class="playground-editor-panel">
+              <div class="playground-panel-header"><strong>frame.tsx</strong><span id="playgroundStatus" role="status">Ready</span></div>
+              <textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+            </div>
+            <div class="playground-preview-panel">
+              <div class="playground-panel-header"><strong>Preview</strong><span id="playgroundDimensions">960 × 540</span></div>
+              <div class="playground-viewport" id="playgroundViewport">
+                <div id="playgroundCanvas" aria-label="Rendered Vizmatic preview"></div>
+              </div>
+              <div class="playground-error" id="playgroundError" role="alert" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="gallery" class="section gallery-section">
-      <div class="section-kicker">Selected work <span>01</span></div>
+      <div class="section-kicker">Selected work <span>02</span></div>
       <div class="section-intro">
         <h2>Scenes for diagrams, data, and motion.</h2>
         <p>Use the same component set for dashboards, architecture diagrams, research figures, explainers, and GIFs.</p>
@@ -166,7 +220,7 @@
 
     <section id="quick-start" class="quick-start-band">
       <div class="quick-start section">
-        <div class="section-kicker">First render <span>02</span></div>
+        <div class="section-kicker">First render <span>03</span></div>
         <div class="quick-copy">
           <h2>Render your first frame.</h2>
           <p>Write JSX directly. Imports, wrapper code, fixed dimensions, and titles are optional. Vizmatic expands the transparent canvas when content needs more room.</p>
@@ -188,7 +242,7 @@
     </section>
 
     <section class="section difference-section">
-      <div class="section-kicker">Why it exists <span>03</span></div>
+      <div class="section-kicker">Why it exists <span>04</span></div>
       <div class="section-intro">
         <h2>Editable source with more visual range.</h2>
         <p>Vizmatic keeps output deterministic while supporting charts, layout, diagrams, and animation.</p>
@@ -203,7 +257,7 @@
 
     <section id="onboarding" class="onboarding-band">
       <div class="section onboarding">
-        <div class="section-kicker">Agent ready <span>04</span></div>
+        <div class="section-kicker">Agent ready <span>05</span></div>
         <div class="onboarding-intro">
           <h2>Add Vizmatic to your agent.</h2>
           <p>Copy the full prompt for one task, or install the skill to reuse the instructions across sessions.</p>
@@ -214,20 +268,14 @@
         </div>
 
         <div id="skill" class="skill-panel">
-          <div class="skill-tabs" role="tablist" aria-label="Agent skill installation">
-            <button type="button" role="tab" aria-selected="true" data-skill-tab="codex">Codex</button>
-            <button type="button" role="tab" aria-selected="false" data-skill-tab="claude">Claude Code</button>
-            <button type="button" role="tab" aria-selected="false" data-skill-tab="cursor">Cursor</button>
-            <button type="button" role="tab" aria-selected="false" data-skill-tab="opencode">OpenCode</button>
-          </div>
           <div class="skill-content">
             <div>
-              <span class="skill-label" id="skillLabel">Codex marketplace</span>
-              <h3 id="skillTitle">Add the marketplace and install Vizmatic.</h3>
-              <p id="skillDescription">After installation, call $vizmatic whenever a task needs a rendered visual asset.</p>
+              <span class="skill-label">Universal agent skill</span>
+              <h3>Install once. Use it from your coding agent.</h3>
+              <p>One portable skill works across Codex, Claude Code, Cursor, OpenCode, and other compatible agents.</p>
             </div>
-            <pre class="skill-command"><code id="skillCommand">codex plugin marketplace add bvolpato/vizmatic --ref main
-codex plugin add vizmatic@vizmatic</code><button class="code-copy-button skill-copy-button" type="button" id="copySkillButton">Copy</button></pre>
+            <pre class="skill-command"><code id="skillCommand">npx skills add bvolpato/vizmatic --skill vizmatic -g -y</code><button class="code-copy-button skill-copy-button" type="button" id="copySkillButton">Copy</button></pre>
+            <div class="skill-agent-list" aria-label="Compatible coding agents"><span>Codex</span><span>Claude Code</span><span>Cursor</span><span>OpenCode</span></div>
           </div>
         </div>
 
@@ -262,6 +310,7 @@ codex plugin add vizmatic@vizmatic</code><button class="code-copy-button skill-c
     </div>
   </dialog>
 
+  <script type="module" src="playground.js"></script>
   <script>
     const copyPromptButtons = document.querySelectorAll('[data-copy-prompt]')
     const promptPreview = document.getElementById('promptPreview')
@@ -282,43 +331,12 @@ codex plugin add vizmatic@vizmatic</code><button class="code-copy-button skill-c
     const sectionLinks = navLinks.map((link) => ({ link, section: document.querySelector(link.hash) })).filter((item) => item.section)
     const systemThemeQuery = window.matchMedia('(prefers-color-scheme: light)')
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const skillTabs = document.querySelectorAll('[data-skill-tab]')
-    const skillLabel = document.getElementById('skillLabel')
-    const skillTitle = document.getElementById('skillTitle')
-    const skillDescription = document.getElementById('skillDescription')
     const skillCommand = document.getElementById('skillCommand')
     const copySkillButton = document.getElementById('copySkillButton')
     let sourceCache
     let activeSource
     let activeImageCard
     let scrollAnimationFrame
-
-    const skills = {
-      codex: {
-        label: 'Codex marketplace',
-        title: 'Add the marketplace and install Vizmatic.',
-        description: 'After installation, call $vizmatic whenever a task needs a rendered visual asset.',
-        command: 'codex plugin marketplace add bvolpato/vizmatic --ref main\ncodex plugin add vizmatic@vizmatic',
-      },
-      claude: {
-        label: 'Claude Code marketplace',
-        title: 'Install Vizmatic for your user.',
-        description: 'Add the repository marketplace, install the plugin, then invoke /vizmatic:vizmatic.',
-        command: 'claude plugin marketplace add bvolpato/vizmatic\nclaude plugin install vizmatic@vizmatic --scope user',
-      },
-      cursor: {
-        label: 'Cursor remote rule',
-        title: 'Import Vizmatic as a remote rule.',
-        description: 'Open Customize → Rules → Add Rule → Remote Rule (Github), then paste the repository URL.',
-        command: 'https://github.com/bvolpato/vizmatic',
-      },
-      opencode: {
-        label: 'OpenCode skill directory',
-        title: 'Copy Vizmatic into OpenCode skills.',
-        description: 'This command installs the portable skill from any working directory.',
-        command: 'tmp="$(mktemp -d)" && git clone --depth 1 https://github.com/bvolpato/vizmatic.git "$tmp/vizmatic" && mkdir -p ~/.config/opencode/skills && rm -rf ~/.config/opencode/skills/vizmatic && cp -R "$tmp/vizmatic/.agents/skills/vizmatic" ~/.config/opencode/skills/vizmatic && rm -rf "$tmp"',
-      },
-    }
 
     function themedSrc(src, theme) {
       return src.replace(/_(dark|light)(\.(png|gif))$/, `_${theme}$2`)
@@ -384,18 +402,6 @@ codex plugin add vizmatic@vizmatic</code><button class="code-copy-button skill-c
     themeButtons.forEach((button) => button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice)))
     systemThemeQuery.addEventListener('change', () => {
       if (document.documentElement.dataset.themeMode === 'system') setSiteTheme('system')
-    })
-
-    skillTabs.forEach((button) => {
-      button.addEventListener('click', () => {
-        const skill = skills[button.dataset.skillTab]
-        if (!skill) return
-        skillTabs.forEach((tab) => tab.setAttribute('aria-selected', String(tab === button)))
-        skillLabel.textContent = skill.label
-        skillTitle.textContent = skill.title
-        skillDescription.textContent = skill.description
-        skillCommand.textContent = skill.command
-      })
     })
 
     copySkillButton?.addEventListener('click', async () => {

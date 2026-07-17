@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from 'fs/promises'
+import { access, readFile, readdir, stat } from 'fs/promises'
 import { basename, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -89,24 +89,47 @@ if (skill.includes('TODO')) {
     fail('Vizmatic skill must not contain TODO placeholders')
 }
 
-if (!templateHtml.includes('codex plugin marketplace add bvolpato/vizmatic --ref main')) {
-    fail('homepage must show Codex marketplace install command')
-}
-if (!templateHtml.includes('codex plugin add vizmatic@vizmatic')) {
-    fail('homepage must show Codex plugin install command')
-}
-
 for (const required of [
-    'claude plugin marketplace add bvolpato/vizmatic',
-    'claude plugin install vizmatic@vizmatic --scope user',
-    '.agents/skills/vizmatic',
-    '~/.config/opencode/skills/vizmatic',
-    'Remote Rule (Github)',
-    'https://github.com/bvolpato/vizmatic',
+    'npx skills add bvolpato/vizmatic --skill vizmatic -g -y',
+    'Codex',
+    'Claude Code',
+    'Cursor',
+    'OpenCode',
 ]) {
     if (!templateHtml.includes(required) && !html.includes(required)) {
         fail(`homepage agent skill instructions must include ${required}`)
     }
+}
+
+if (!rootPrompt.includes('vizmatic check ./frame.tsx --theme dark,light --json')) {
+    fail('agent prompt must include structured validation command')
+}
+
+for (const required of [
+    'id="playgroundSource"',
+    'id="playgroundCanvas"',
+    'id="playgroundRunButton"',
+    'src="playground.js"',
+]) {
+    if (!templateHtml.includes(required) && !html.includes(required)) {
+        fail(`homepage must include ${required}`)
+    }
+}
+
+const playgroundMain = await stat(join(root, 'docs', 'playground.js'))
+const playgroundWorker = await stat(join(root, 'docs', 'playground-worker.js'))
+const playgroundAssetFiles = await readdir(join(root, 'docs', 'assets', 'playground'))
+if (playgroundMain.size > 100 * 1024) {
+    fail('playground main bundle must stay below 100 KiB')
+}
+if (playgroundWorker.size > 1_500 * 1024) {
+    fail('playground worker bundle must stay below 1.5 MiB')
+}
+if (playgroundAssetFiles.filter((file) => file.endsWith('.ttf')).length !== 6) {
+    fail('playground must ship six self-hosted font files')
+}
+if (playgroundAssetFiles.filter((file) => file.endsWith('.wasm')).length !== 2) {
+    fail('playground must ship Satori and Resvg WASM files')
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version?: string; files?: string[] }
@@ -251,11 +274,11 @@ for (const source of sources) {
     if (typeof source.html === 'string') {
         fail(`${source.name} source html must include dark and light variants`)
     }
-    if (!source.html?.dark?.includes('github-dark')) {
-        fail(`${source.name} source html missing github-dark`)
+    if (!source.html?.dark?.includes('github-dark-high-contrast')) {
+        fail(`${source.name} source html missing github-dark-high-contrast`)
     }
-    if (!source.html.light?.includes('github-light')) {
-        fail(`${source.name} source html missing github-light`)
+    if (!source.html.light?.includes('github-light-high-contrast')) {
+        fail(`${source.name} source html missing github-light-high-contrast`)
     }
 }
 

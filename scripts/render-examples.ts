@@ -92,7 +92,7 @@ for (const file of files) {
         theme,
         await codeToHtml(code, {
             lang: 'tsx',
-            theme: theme === 'light' ? 'github-light' : 'github-dark',
+            theme: theme === 'light' ? 'github-light-high-contrast' : 'github-dark-high-contrast',
         }),
     ]))) as Record<(typeof themes)[number], string>
 

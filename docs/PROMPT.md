@@ -31,6 +31,14 @@ Render dark and light assets:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
+Validate the scene with structured diagnostics before publishing:
+
+```bash
+vizmatic check ./frame.tsx --theme dark,light --json
+```
+
+Fix errors before rendering final assets. Warnings identify concerns such as low text contrast or asset fallbacks; overflow errors include affected edges and suggested dimensions.
+
 ## Project installation
 
 Use the package manager already present in the project.
@@ -449,6 +457,7 @@ height = 560;
 - Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` props to stabilize layout.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
 - Render both dark and light when shipping reusable assets: `--theme dark,light`.
+- Run `vizmatic check <frame> --theme dark,light --json` before final render and fix every error.
 - Use GIF only when motion explains state change. Keep scenes short, export `createScenes(theme)`, and keep a static `create(theme)` fallback.
 - If render fails with `Canvas overflow detected`, the frame has strict dimensions. Increase canvas dimensions, reduce content density, or remove strict sizing for CLI auto-fit. Do not ignore the error.
 - Verify generated PNGs/GIFs exist and are non-empty. Open at least one rendered image before finalizing.
@@ -526,4 +535,5 @@ After creating a Vizmatic visual, report:
 - render command used
 - output image paths, including GIF paths when generated
 - whether dark/light variants rendered
+- whether structured validation passed
 - any overflow or layout fixes made

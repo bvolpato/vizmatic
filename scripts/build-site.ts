@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'fs/promises'
 import { codeToHtml } from 'shiki'
+import { buildPlayground } from './build-playground'
 
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
@@ -42,11 +43,15 @@ async function highlightCodeBlock(_match: string, beforeDataAttr: string, lang: 
     const rawPreAttrs = `${beforeDataAttr}${afterDataAttr}`
     const originalClass = getAttribute(rawPreAttrs, 'class')
     const preAttrs = removeAttribute(removeAttribute(rawPreAttrs, 'class'), 'tabindex')
-    const classes = ['shiki', 'github-dark', originalClass].filter(Boolean).join(' ')
+    const classes = ['shiki', 'shiki-themes', 'github-light-high-contrast', 'github-dark-high-contrast', originalClass].filter(Boolean).join(' ')
     const code = decodeHtml(encodedCode)
     const highlighted = await codeToHtml(code, {
         lang,
-        theme: 'github-dark',
+        themes: {
+            light: 'github-light-high-contrast',
+            dark: 'github-dark-high-contrast',
+        },
+        defaultColor: false,
     })
 
     return highlighted
@@ -63,6 +68,8 @@ async function replaceAsync(input: string, pattern: RegExp): Promise<string> {
     let index = 0
     return input.replace(pattern, () => replacements[index++] ?? '')
 }
+
+await buildPlayground()
 
 const prompt = await readFile(promptPath, 'utf8')
 const template = (await readFile(templatePath, 'utf8'))

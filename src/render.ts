@@ -19,7 +19,7 @@ import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
-import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion } from './autocrop'
+import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
 import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori, type Font } from './satori'
 
@@ -355,6 +355,20 @@ export interface RenderOutput {
     pixelHeight: number
 }
 
+export class CanvasOverflowError extends Error {
+    readonly width: number
+    readonly height: number
+    readonly overflow: OverflowResult
+
+    constructor(width: number, height: number, overflow: OverflowResult) {
+        super(`Canvas overflow detected (${width}×${height}): ${overflow.message}`)
+        this.name = 'CanvasOverflowError'
+        this.width = width
+        this.height = height
+        this.overflow = overflow
+    }
+}
+
 function resolveWatermark(options: Pick<RenderOptions, 'watermark' | 'brand'>): WatermarkInput | undefined {
     return options.watermark ?? options.brand
 }
@@ -449,9 +463,7 @@ async function renderToPngInContext(
         detectedBg,
     )
     if (overflow.overflows) {
-        throw new Error(
-            `Canvas overflow detected (${options.width}×${options.height}): ${overflow.message}`
-        )
+        throw new CanvasOverflowError(options.width, options.height, overflow)
     }
 
     // Step 3: Determine if we should crop height by re-rendering.

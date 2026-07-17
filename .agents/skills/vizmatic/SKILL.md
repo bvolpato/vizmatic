@@ -1,6 +1,6 @@
 ---
 name: vizmatic
-description: Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic. Use when Codex needs to design or render visual assets such as architecture diagrams, process flows, RAG graphs, eval dashboards, product figures, docs images, slide frames, launch cards, or animated pipeline GIFs.
+description: Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic. Use when a coding agent needs to design or render visual assets such as architecture diagrams, process flows, RAG graphs, eval dashboards, product figures, docs images, slide frames, launch cards, or animated pipeline GIFs.
 ---
 
 # Vizmatic
@@ -21,7 +21,11 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
 3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and grows to fit content on overflow. Generated wrappers that export the default `960x540` size get the same auto-fit behavior; add `autoSize = false` only when strict clipping errors are desired. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports. `Scene` title/subtitle are optional.
    For minimal technical-blog figures, add `preset = "engineering";` above the dimensions and render with the light theme. This selects the flat article palette, pastel nodes, thin connectors, left-aligned title, compact corners, and mono annotations. Add `background={c.bg}` to `Scene` when the figure needs an opaque light gray canvas.
 4. Choose primitives by intent. Read `references/patterns.md` when deciding component structure.
-5. Render dark and light outputs:
+5. Validate both themes and fix reported errors. Use JSON so overflow edges, unsupported styles, asset failures, contrast warnings, and suggested dimensions stay machine-readable:
+   ```bash
+   vizmatic check ./frames/diagram.tsx --theme dark,light --json
+   ```
+6. Render dark and light outputs:
    ```bash
    vizmatic ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light
    ```
@@ -34,11 +38,11 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
    vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
    Default autocrop retains 24 source pixels around detected content so figures do not end at the last painted pixel. Use `--no-crop` only when the declared canvas itself is part of the composition.
-6. For GIFs, export `createScenes(theme)` from a full module and render:
+7. For GIFs, export `createScenes(theme)` from a full module and render:
    ```bash
    vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --scale 1
    ```
-7. Verify actual artifacts. Check file existence, dimensions, and visual layout. Use browser screenshots when assets are shown on a page. Fix clipped labels, overlap, low contrast, and unbalanced spacing before finishing.
+8. Verify actual artifacts. Check file existence, dimensions, and visual layout. Use browser screenshots when assets are shown on a page. Fix clipped labels, overlap, low contrast, and unbalanced spacing before finishing.
 
 ## Starting points
 

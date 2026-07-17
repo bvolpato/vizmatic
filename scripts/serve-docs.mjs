@@ -14,6 +14,8 @@ const types = new Map([
     ['.json', 'application/json; charset=utf-8'],
     ['.png', 'image/png'],
     ['.svg', 'image/svg+xml'],
+    ['.ttf', 'font/ttf'],
+    ['.wasm', 'application/wasm'],
 ])
 
 function resolvePath(url) {

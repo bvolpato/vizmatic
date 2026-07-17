@@ -60,6 +60,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
+    "playground:build": "tsx scripts/build-playground.ts",
     "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
     "workflows:check": "github-actionlint .github/workflows/*.yml",
@@ -82,10 +83,13 @@
     "react": ">=18"
   },
   "devDependencies": {
+    "@resvg/resvg-wasm": "2.6.2",
     "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
+    "esbuild": "0.28.1",
     "github-actionlint": "1.7.12",
     "shiki": "^4.3.0",
+    "sucrase": "3.35.1",
     "tsup": "^8.5.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"

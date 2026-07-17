@@ -30,18 +30,27 @@ importers:
         specifier: ^4.20.4
         version: 4.23.0
     devDependencies:
+      '@resvg/resvg-wasm':
+        specifier: 2.6.2
+        version: 2.6.2
       '@types/node':
         specifier: ^26.0.1
         version: 26.1.1
       '@types/react':
         specifier: ^19.1.8
         version: 19.2.17
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       github-actionlint:
         specifier: 1.7.12
         version: 1.7.12
       shiki:
         specifier: ^4.3.0
         version: 4.3.1
+      sucrase:
+        specifier: 3.35.1
+        version: 3.35.1
       tsup:
         specifier: ^8.5.0
         version: 8.5.1(postcss@8.5.16)(tsx@4.23.0)(typescript@6.0.3)
@@ -305,6 +314,10 @@ packages:
 
   '@resvg/resvg-js@2.6.2':
     resolution: {integrity: sha512-xBaJish5OeGmniDj9cW5PRa/PtmuVU3ziqrbr5xJj901ZDN4TosrVaNZpEiLZAxdfnhAe7uQ7QFWfjPe9d9K2Q==}
+    engines: {node: '>= 10'}
+
+  '@resvg/resvg-wasm@2.6.2':
+    resolution: {integrity: sha512-FqALmHI8D4o6lk/LRWDnhw95z5eO+eAa6ORjVg09YRR7BkcM6oPHU9uyC0gtQG5vpFLvgpeU4+zEAz2H8APHNw==}
     engines: {node: '>= 10'}
 
   '@rollup/rollup-android-arm-eabi@4.62.2':
@@ -1249,6 +1262,8 @@ snapshots:
       '@resvg/resvg-js-win32-arm64-msvc': 2.6.2
       '@resvg/resvg-js-win32-ia32-msvc': 2.6.2
       '@resvg/resvg-js-win32-x64-msvc': 2.6.2
+
+  '@resvg/resvg-wasm@2.6.2': {}
 
   '@rollup/rollup-android-arm-eabi@4.62.2':
     optional: true
