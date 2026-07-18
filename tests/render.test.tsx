@@ -6,6 +6,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { inflateSync } from 'zlib'
 import { describe, expect, it, vi } from 'vitest'
+import { analyzeContrast } from '../src/diagnostics'
 import {
     defineIllustration,
     detectBackgroundColor,
@@ -26,9 +27,12 @@ import {
     BarChart,
     Box,
     DonutChart,
+    GraphDiagram,
     Grid,
     Icon,
+    LayeredNetwork,
     LineChart,
+    Matrix,
     Panel,
     Row,
     renderToPngWithOutput,
@@ -423,6 +427,76 @@ describe('vizmatic render pipeline', () => {
         expect(circleXs.length).toBe(10)
         expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(60)
         expect(Math.max(...circleXs)).toBeLessThanOrEqual(420)
+    })
+
+    it('spaces line chart labels when series are empty', () => {
+        const chart = LineChart({
+            c: getThemeColors('light'),
+            width: 300,
+            height: 180,
+            labels: ['first', 'second', 'third'],
+            series: [],
+        })
+        const labels = collectElements(chart, (element) =>
+            element.type === 'div' && ['first', 'second', 'third'].includes(String(reactProps(element).children)),
+        )
+        const positions = labels.map((label) => Number((reactProps(label).style as React.CSSProperties).left))
+
+        expect(positions).toHaveLength(3)
+        expect(new Set(positions).size).toBe(3)
+        expect(Math.min(...positions)).toBeGreaterThan(0)
+        expect(Math.max(...positions)).toBeLessThan(300)
+    })
+
+    it('keeps graph nodes inside the canvas at normalized boundaries', () => {
+        const graph = GraphDiagram({
+            c: getThemeColors('light'),
+            width: 400,
+            height: 240,
+            padding: 20,
+            nodeWidth: 100,
+            nodeHeight: 50,
+            nodes: [
+                { id: 'start', label: 'Start', x: 0, y: 0 },
+                { id: 'end', label: 'End', x: 1, y: 1 },
+            ],
+            edges: [],
+        })
+        const nodes = collectElements(graph, (element) => {
+            const style = reactProps(element).style as React.CSSProperties | undefined
+            return element.type === 'div'
+                && style?.position === 'absolute'
+                && style.width === 100
+                && style.height === 50
+        })
+        const positions = nodes.map((node) => reactProps(node).style as React.CSSProperties)
+
+        expect(positions).toHaveLength(2)
+        expect(positions.map(({ left, top }) => [left, top])).toEqual([
+            [0, 0],
+            [300, 190],
+        ])
+    })
+
+    it('uses readable text when matrix colorization is disabled', () => {
+        const matrix = Matrix({
+            c: getThemeColors('light'),
+            data: [[0.5]],
+            colorize: false,
+        })
+
+        expect(analyzeContrast(matrix, 'light')).not.toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+        }))
+    })
+
+    it('renders network layers with no nodes', async () => {
+        const network = LayeredNetwork({
+            c: getThemeColors('light'),
+            layers: [{ title: 'Empty layer', nodes: [] }],
+        })
+
+        await expect(renderToSvg(network, 900, 400)).resolves.toMatch(/^<svg\b/)
     })
 
     it('renders donut, timeline, tree, and icon primitives together', async () => {
@@ -950,6 +1024,21 @@ export default (
     <StepCard c={c} title="Multiline import" tone="green" />
   </Scene>
 )
+`)
+
+        expect(decodePng(buffer).width).toBeGreaterThan(0)
+    }, 30_000)
+
+    it('loads bare frames with multiline dependency imports', async () => {
+        const { buffer } = await renderBuiltCliFrame('vizmatic-cli-bare-multiline-', 'bare-multiline.tsx', `import {
+  basename,
+} from 'path'
+
+const title = basename('/tmp/multiline-import')
+
+<Scene>
+  <StepCard title={title} tone="green" />
+</Scene>
 `)
 
         expect(decodePng(buffer).width).toBeGreaterThan(0)

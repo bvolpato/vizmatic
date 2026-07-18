@@ -813,7 +813,7 @@ export function LineChart({
     const plot = createPlotArea(width, height, margin)
     const allValues = series.flatMap((item) => item.points)
     const domain = chartDomain(allValues, min, max)
-    const maxPoints = Math.max(...series.map((item) => item.points.length), 1)
+    const maxPoints = Math.max(labels?.length ?? 0, ...series.map((item) => item.points.length), 1)
     const xInset = maxPoints <= 1 ? 0 : Math.min(26, Math.max(14, plot.innerWidth * 0.06))
     const xStart = maxPoints <= 1 ? plot.x + plot.innerWidth / 2 : plot.x + xInset
     const xSpan = maxPoints <= 1 ? 0 : Math.max(1, plot.innerWidth - xInset * 2)

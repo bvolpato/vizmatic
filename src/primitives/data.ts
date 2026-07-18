@@ -135,7 +135,11 @@ export function Matrix({
                                 borderRadius: 6,
                                 fontSize: 11,
                                 fontWeight: 600,
-                                color: colorScale === 'strength' && value < 0.34 ? c.textSecondary : c.textOnColor,
+                                color: !colorize
+                                    ? c.textPrimary
+                                    : colorScale === 'strength' && value < 0.34
+                                        ? c.textSecondary
+                                        : c.textOnColor,
                                 fontFamily: 'JetBrains Mono',
                             }
                         }, labels?.[ri]?.[ci] ?? formatValue(value))

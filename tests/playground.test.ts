@@ -24,6 +24,36 @@ const stages = [{ title: "Prompt", tone: "blue" }]
         expect(prepared.jsx).toMatch(/^<Scene>/)
     })
 
+    it('keeps helper JSX and nested metadata out of frame metadata', () => {
+        const prepared = preparePlaygroundSource(`/*
+width = 120
+preset = "missing"
+*/
+function Helper() {
+  const width = 200
+  const preset = "missing"
+  return (
+    <Panel title="Helper">
+      <CalloutCard title="Nested" detail="Ordinary setup variables" tone="blue" />
+    </Panel>
+  )
+}
+
+<Scene>
+  {1 < 2 ? <Helper /> : null}
+</Scene>`)
+
+        expect(prepared.metadata).toEqual({
+            width: 960,
+            height: 540,
+            preset: 'default',
+            warnings: [],
+        })
+        expect(prepared.setup).toContain('const width = 200')
+        expect(prepared.setup).toContain('<Panel title="Helper">')
+        expect(prepared.jsx).toMatch(/^<Scene>/)
+    })
+
     it('isolates snippets from imports and unsafe dimensions', () => {
         expect(() => preparePlaygroundSource(`import data from "./private.json"
 <Scene />`)).toThrow('cannot use imports')

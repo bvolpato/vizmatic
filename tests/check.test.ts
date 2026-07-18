@@ -35,7 +35,7 @@ afterEach(async () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })))
 })
 
-async function runCheck(source: string) {
+async function runCheck(source: string, extraArgs: string[] = []) {
     const dir = await mkdtemp(join(tmpdir(), 'vizmatic-check-test-'))
     tempDirs.push(dir)
     const framePath = join(dir, 'frame.tsx')
@@ -50,6 +50,7 @@ async function runCheck(source: string) {
         '--theme',
         'light',
         '--json',
+        ...extraArgs,
     ], {
         cwd: process.cwd(),
         encoding: 'utf8',
@@ -91,6 +92,60 @@ height = 360
         })
         expect(report.files[0]?.themes[0]?.ok).toBe(true)
         expect(await readdir(dir)).toEqual(['frame.tsx'])
+    }, 30_000)
+
+    it('keeps JSON output valid when frame code logs later', async () => {
+        const { result, report } = await runCheck(String.raw`setTimeout(() => console.log("LATE_FRAME_LOG"), 10)
+
+<Scene>
+  <CalloutCard title="Checked" detail="Delayed logs stay out of JSON" tone="green" width={420} />
+</Scene>
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.ok).toBe(true)
+        expect(result.stdout).not.toContain('LATE_FRAME_LOG')
+    }, 30_000)
+
+    it('keeps helper JSX and nested metadata in setup code', async () => {
+        const { result, report } = await runCheck(String.raw`/*
+width = 120
+preset = "missing"
+*/
+function Helper() {
+  const width = 200
+  const preset = "missing"
+  return (
+    <Panel title="Helper">
+      <CalloutCard title="Nested" detail="Ordinary setup variables" tone="blue" />
+    </Panel>
+  )
+}
+
+<Scene>
+  {1 < 2 ? <Helper /> : null}
+</Scene>
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes[0]?.dimensions.input).toEqual({ width: 960, height: 540 })
+        expect(report.files[0]?.themes[0]?.diagnostics).not.toContainEqual(expect.objectContaining({
+            code: 'frame.unknown_preset',
+        }))
+    }, 30_000)
+
+    it('normalizes wrapped default elements and dimensions', async () => {
+        const { result, report } = await runCheck(String.raw`import React from "react"
+
+export default {
+  default: <div style={{ display: "flex", width: "100%", height: "100%" }} />,
+  width: 320,
+  height: 180,
+}
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes[0]?.dimensions.input).toEqual({ width: 320, height: 180 })
     }, 30_000)
 
     it('reports strict overflow with edges and suggested dimensions', async () => {
@@ -149,6 +204,32 @@ function LowContrast() {
         expect(contrast.report.files[0]?.themes[0]?.diagnostics).toEqual(expect.arrayContaining([
             expect.objectContaining({ code: 'accessibility.low_contrast', severity: 'warning' }),
         ]))
+    }, 30_000)
+
+    it('checks contrast against requested background and parses CSS font sizes', async () => {
+        const lowContrast = await runCheck(String.raw`width = 400
+height = 240
+
+<Scene>
+  <div style={{ color: "#f5f5f5" }}>Low contrast</div>
+</Scene>
+`, ['--background', '#ffffff'])
+        expect(lowContrast.result.status, lowContrast.result.stderr).toBe(0)
+        expect(lowContrast.report.files[0]?.themes[0]?.diagnostics).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'accessibility.low_contrast', severity: 'warning' }),
+        ]))
+
+        const largeText = await runCheck(String.raw`width = 400
+height = 240
+
+<Scene>
+  <div style={{ color: "#777777", fontSize: "24px" }}>Large text</div>
+</Scene>
+`, ['--background', '#ffffff'])
+        expect(largeText.result.status, largeText.result.stderr).toBe(0)
+        expect(largeText.report.files[0]?.themes[0]?.diagnostics).not.toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+        }))
     }, 30_000)
 
     it('keeps every playground template free of rendering errors', async () => {

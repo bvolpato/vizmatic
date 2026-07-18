@@ -5,6 +5,7 @@ minimumReleaseAge: 10080
 minimumReleaseAgeIgnoreMissingTime: true
 minimumReleaseAgeStrict: false
 overrides:
+  adm-zip: 0.6.0
   esbuild: 0.28.1
 packageManagerStrict: true
 strictPeerDependencies: true

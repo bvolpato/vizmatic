@@ -92,6 +92,21 @@ function numericFontWeight(value: unknown): number | undefined {
     return undefined
 }
 
+function fontSizePixels(value: unknown, inherited: number | undefined): number | undefined {
+    if (typeof value === 'number') return value
+    if (typeof value !== 'string') return inherited
+    const match = value.trim().match(/^(\d+(?:\.\d+)?|\.\d+)(px|pt|rem|em|%)?$/)
+    if (!match?.[1]) return inherited
+
+    const amount = Number(match[1])
+    const unit = match[2] ?? 'px'
+    if (unit === 'pt') return amount * 4 / 3
+    if (unit === 'rem') return amount * 16
+    if (unit === 'em') return amount * (inherited ?? 16)
+    if (unit === '%') return amount / 100 * (inherited ?? 16)
+    return amount
+}
+
 function requiredContrast(context: ContrastContext): number {
     const large = (context.fontSize ?? 16) >= 24
         || ((context.fontSize ?? 16) >= 18.66 && (context.fontWeight ?? 400) >= 700)
@@ -122,7 +137,12 @@ function resolveFunctionComponent(node: ReactNode, trustedComponents: ReadonlySe
     }
 }
 
-export function analyzeContrast(element: ReactNode, theme: ThemeMode, trustedComponents: ReadonlySet<unknown> = new Set()): CheckDiagnostic[] {
+export function analyzeContrast(
+    element: ReactNode,
+    theme: ThemeMode,
+    trustedComponents: ReadonlySet<unknown> = new Set(),
+    rootBackground?: string,
+): CheckDiagnostic[] {
     const diagnostics: CheckDiagnostic[] = []
     const seen = new Set<string>()
     let visited = 0
@@ -142,7 +162,7 @@ export function analyzeContrast(element: ReactNode, theme: ThemeMode, trustedCom
             ?? colorFromCss(style.background)
             ?? inherited.background
         const color = colorFromCss(style.color) ?? inherited.color
-        const fontSize = typeof style.fontSize === 'number' ? style.fontSize : inherited.fontSize
+        const fontSize = fontSizePixels(style.fontSize, inherited.fontSize)
         const fontWeight = numericFontWeight(style.fontWeight) ?? inherited.fontWeight
         const context = { background, color, fontSize, fontWeight }
 
@@ -168,7 +188,7 @@ export function analyzeContrast(element: ReactNode, theme: ThemeMode, trustedCom
         Children.forEach(props.children as ReactNode, (child, index) => visit(child, context, `${path}.${index}`))
     }
 
-    visit(element, {}, 'root')
+    visit(element, { background: colorFromCss(rootBackground) }, 'root')
     return diagnostics
 }
 

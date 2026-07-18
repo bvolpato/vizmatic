@@ -35,7 +35,8 @@ interface LayeredNetworkProps {
 }
 
 function distributeValues(count: number, start: number, end: number): number[] {
-    if (count <= 1) return [(start + end) / 2]
+    if (count <= 0) return []
+    if (count === 1) return [(start + end) / 2]
     const step = (end - start) / (count - 1)
     return Array.from({ length: count }, (_, index) => start + index * step)
 }
@@ -163,7 +164,7 @@ export function LayeredNetwork({
     )
 
     const annotationY = showFormula || formula ? height - 84 : height - 26
-    const annotationElements = annotations.map((annotation, index) =>
+    const annotationElements = annotations.slice(0, Math.max(0, layerXs.length - 1)).map((annotation, index) =>
         label(
             `annotation-${index}`,
             annotation,
@@ -311,12 +312,18 @@ export function GraphDiagram({
     const layout = new Map(nodes.map((node) => {
         const resolvedWidth = node.width ?? nodeWidth
         const resolvedHeight = node.height ?? nodeHeight
+        const minCx = resolvedWidth / 2
+        const maxCx = width - resolvedWidth / 2
+        const minCy = resolvedHeight / 2
+        const maxCy = height - resolvedHeight / 2
+        const requestedCx = padding + clamp(node.x, 0, 1) * (width - padding * 2)
+        const requestedCy = padding + clamp(node.y, 0, 1) * (height - padding * 2)
         return [node.id, {
             ...node,
             width: resolvedWidth,
             height: resolvedHeight,
-            cx: padding + clamp(node.x, 0, 1) * (width - padding * 2),
-            cy: padding + clamp(node.y, 0, 1) * (height - padding * 2),
+            cx: minCx <= maxCx ? clamp(requestedCx, minCx, maxCx) : width / 2,
+            cy: minCy <= maxCy ? clamp(requestedCy, minCy, maxCy) : height / 2,
         }]
     }))
 

@@ -11,9 +11,10 @@ import type { ReactNode } from 'react'
 import * as publicApi from './index'
 import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
+import { findBareRootJsxStart } from './bare-source'
 import { analyzeContrast, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
 import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
-import type { ThemeMode, ThemePreset } from './theme'
+import { getThemeColors, type ThemeMode, type ThemePreset } from './theme'
 
 interface FrameModule {
     width?: number
@@ -307,10 +308,21 @@ function readFrameDimension(jsx: string, name: 'width' | 'height'): number | und
     return raw ? Number(raw) : undefined
 }
 
-function findRootJsxStart(source: string): number {
-    const match = source.match(/(^|\n)\s*(?:export\s+default\s+)?<(?:[A-Z]|\>)/)
-    if (!match || match.index == null) return -1
-    return match.index + (match[1] ? match[1].length : 0)
+function staticImportSource(statement: string): string | undefined {
+    const match = statement.trim().match(/(?:\bfrom\s+)?(["'])([^"']+)\1\s*;?(?:\s*\/\/.*)?$/s)
+    return match?.[2]
+}
+
+function readStaticImport(lines: string[], start: number): { statement: string; end: number } {
+    const statement = [lines[start]]
+    let end = start
+
+    while (staticImportSource(statement.join('\n')) == null && end + 1 < lines.length) {
+        end += 1
+        statement.push(lines[end])
+    }
+
+    return { statement: statement.join('\n'), end }
 }
 
 function bareFrameAlias(name: string): string {
@@ -349,31 +361,18 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     let height: number | undefined
     let preset: ThemePreset = 'default'
 
-    for (const line of source.split(/\r?\n/)) {
+    const lines = source.split(/\r?\n/)
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index]
         const trimmed = line.trim()
         if (trimmed.startsWith('import ')) {
-            if (!/['"](?:react|vizmatic)['"]/.test(trimmed)) {
-                imports.push(rewriteRelativeImports(line, framePath))
+            const imported = readStaticImport(lines, index)
+            const specifier = staticImportSource(imported.statement)
+            if (specifier !== 'react' && specifier !== 'vizmatic') {
+                imports.push(rewriteRelativeImports(imported.statement, framePath))
             }
-            continue
-        }
-
-        const dimension = readDimensionLine(line)
-        if (dimension) {
-            if (dimension.name === 'width') width = dimension.value
-            if (dimension.name === 'height') height = dimension.value
-            continue
-        }
-
-        const framePreset = readPresetLine(line)
-        if (framePreset) {
-            if (framePreset.preset) {
-                preset = framePreset.preset
-            } else {
-                console.warn(
-                    `warning: Unknown preset ${JSON.stringify(framePreset.requested)}; using "default". Available presets: "default", "engineering".`,
-                )
-            }
+            index = imported.end
             continue
         }
 
@@ -381,10 +380,48 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     }
 
     const body = bodyLines.join('\n')
-    const jsxStart = findRootJsxStart(body)
+    const jsxStart = findBareRootJsxStart(body)
     if (jsxStart < 0) return undefined
 
-    const setup = body.slice(0, jsxStart).replace(/^\s*export\s+/gm, '')
+    const setupLines: string[] = []
+    let metadataPreamble = true
+    let metadataBlockComment = false
+    for (const line of body.slice(0, jsxStart).split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (metadataBlockComment) {
+            if (trimmed.includes('*/')) metadataBlockComment = false
+            setupLines.push(line)
+            continue
+        }
+        if (trimmed.startsWith('/*')) {
+            metadataBlockComment = !trimmed.slice(2).includes('*/')
+            setupLines.push(line)
+            continue
+        }
+
+        const dimension = metadataPreamble ? readDimensionLine(line) : undefined
+        if (dimension) {
+            if (dimension.name === 'width') width = dimension.value
+            if (dimension.name === 'height') height = dimension.value
+            continue
+        }
+
+        const framePreset = metadataPreamble ? readPresetLine(line) : undefined
+        if (framePreset) {
+            if (framePreset.preset) preset = framePreset.preset
+            else {
+                console.warn(
+                    `warning: Unknown preset ${JSON.stringify(framePreset.requested)}; using "default". Available presets: "default", "engineering".`,
+                )
+            }
+            continue
+        }
+
+        if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
+        setupLines.push(line)
+    }
+
+    const setup = setupLines.join('\n').replace(/^\s*export\s+/gm, '')
     const jsx = body.slice(jsxStart).trim()
         .replace(/^export\s+default\s+/, '')
         .replace(/;\s*$/, '')
@@ -435,13 +472,7 @@ function isBareFrameSource(source: string): boolean {
     if (/\bcreateScenes\s*\(/.test(source)) return false
     if (/\bexport\s+(?:const|function)\s+create\b/.test(source)) return false
 
-    const body = source.split(/\r?\n/)
-        .filter((line) => !line.trim().startsWith('import '))
-        .filter((line) => !readDimensionLine(line))
-        .filter((line) => !readPresetLine(line))
-        .join('\n')
-
-    return findRootJsxStart(body) >= 0
+    return findBareRootJsxStart(source) >= 0
 }
 
 async function importBareFrame(filePath: string, source?: string): Promise<FrameModule | undefined> {
@@ -744,7 +775,10 @@ function normalizeAutoSize(value: FrameModule['autoSize'] | FrameModule['__vizma
 }
 
 function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
-    const defaultObject = typeof mod.default === 'object' && mod.default && 'create' in mod.default
+    const defaultObject = typeof mod.default === 'object'
+        && mod.default
+        && !isValidElement(mod.default)
+        && ('create' in mod.default || 'default' in mod.default)
         ? mod.default as Exclude<FrameModule['default'], ReactNode>
         : undefined
     const hasAutoSizeSetting = mod.autoSize != null || mod.__vizmaticAutoSize != null
@@ -959,6 +993,22 @@ async function captureConsole<T>(run: () => Promise<T>): Promise<{
     }
 }
 
+function suppressConsoleOutput(): () => void {
+    const original = {
+        error: console.error,
+        log: console.log,
+        warn: console.warn,
+    }
+    console.error = () => undefined
+    console.log = () => undefined
+    console.warn = () => undefined
+    return () => {
+        console.error = original.error
+        console.log = original.log
+        console.warn = original.warn
+    }
+}
+
 function checkDiagnosticCounts(files: CheckFileReport[]) {
     const diagnostics = files.flatMap((file) => [
         ...file.diagnostics,
@@ -992,6 +1042,16 @@ function printCheckReport(files: CheckFileReport[]) {
 
 async function checkCommand(argv: string[]) {
     const args = parseCheckArgs(argv)
+    const restoreConsole = args.json ? suppressConsoleOutput() : undefined
+    try {
+        await checkCommandWithArgs(args)
+    } catch (error) {
+        restoreConsole?.()
+        throw error
+    }
+}
+
+async function checkCommandWithArgs(args: CheckArgs) {
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
 
@@ -1024,7 +1084,12 @@ async function checkCommand(argv: string[]) {
                 const themeDiagnostics: CheckDiagnostic[] = []
                 const prepared = await captureConsole(async () => {
                     const element = frameElement(mod, theme)
-                    return analyzeContrast(element, theme, CONTRAST_TRUSTED_COMPONENTS)
+                    const rootBackground = args.background === 'theme'
+                        ? getThemeColors(theme).bg
+                        : args.background === 'transparent'
+                            ? undefined
+                            : args.background
+                    return analyzeContrast(element, theme, CONTRAST_TRUSTED_COMPONENTS, rootBackground)
                 })
                 themeDiagnostics.push(...prepared.messages.map((message) =>
                     diagnosticFromMessage(message.message, message.severity, theme),
@@ -1140,7 +1205,7 @@ async function checkCommand(argv: string[]) {
     }
 
     if (args.json) {
-        console.log(JSON.stringify(report, null, 2))
+        process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
     } else {
         printCheckReport(reports)
         console.log(`checked ${report.summary.files} file(s): ${summary.errors} error(s), ${summary.warnings} warning(s), ${summary.info} info`)

@@ -1,3 +1,5 @@
+import { findBareRootJsxStart } from './bare-source'
+
 export type PlaygroundTheme = 'dark' | 'light'
 export type PlaygroundPreset = 'default' | 'engineering'
 
@@ -40,12 +42,6 @@ function readPresetLine(line: string): { preset?: PlaygroundPreset; requested: s
     return { preset, requested }
 }
 
-function findRootJsxStart(source: string): number {
-    const match = source.match(/(^|\n)\s*(?:export\s+default\s+)?<(?:[A-Z]|>)/)
-    if (!match || match.index == null) return -1
-    return match.index + (match[1] ? match[1].length : 0)
-}
-
 function validDimension(value: number, name: 'width' | 'height'): number {
     if (!Number.isInteger(value) || value < 1 || value > 8192) {
         throw new Error(`${name} must be an integer from 1 to 8192.`)
@@ -62,27 +58,7 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
     let height = DEFAULT_PLAYGROUND_HEIGHT
     let preset: PlaygroundPreset = 'default'
     const warnings: string[] = []
-    const bodyLines: string[] = []
-
-    for (const line of source.replace(/^\uFEFF/, '').split(/\r?\n/)) {
-        const dimension = readDimensionLine(line)
-        if (dimension) {
-            if (dimension.name === 'width') width = validDimension(dimension.value, 'width')
-            if (dimension.name === 'height') height = validDimension(dimension.value, 'height')
-            continue
-        }
-
-        const parsedPreset = readPresetLine(line)
-        if (parsedPreset) {
-            if (parsedPreset.preset) preset = parsedPreset.preset
-            else warnings.push(`Unknown preset ${JSON.stringify(parsedPreset.requested)}. Using "default".`)
-            continue
-        }
-
-        bodyLines.push(line)
-    }
-
-    const body = bodyLines.join('\n')
+    const body = source.replace(/^\uFEFF/, '')
     if (/^\s*import\s/m.test(body)) {
         throw new Error('Bare playground snippets cannot use imports. Vizmatic primitives are injected automatically.')
     }
@@ -90,12 +66,46 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
         throw new Error('Bare playground snippets cannot load dynamic imports.')
     }
 
-    const jsxStart = findRootJsxStart(body)
+    const jsxStart = findBareRootJsxStart(body)
     if (jsxStart < 0) {
         throw new Error('Add one root Vizmatic JSX element, such as <Scene>…</Scene>.')
     }
 
-    const setup = body.slice(0, jsxStart).replace(/^\s*export\s+/gm, '')
+    const setupLines: string[] = []
+    let metadataPreamble = true
+    let metadataBlockComment = false
+    for (const line of body.slice(0, jsxStart).split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (metadataBlockComment) {
+            if (trimmed.includes('*/')) metadataBlockComment = false
+            setupLines.push(line)
+            continue
+        }
+        if (trimmed.startsWith('/*')) {
+            metadataBlockComment = !trimmed.slice(2).includes('*/')
+            setupLines.push(line)
+            continue
+        }
+
+        const dimension = metadataPreamble ? readDimensionLine(line) : undefined
+        if (dimension) {
+            if (dimension.name === 'width') width = validDimension(dimension.value, 'width')
+            if (dimension.name === 'height') height = validDimension(dimension.value, 'height')
+            continue
+        }
+
+        const parsedPreset = metadataPreamble ? readPresetLine(line) : undefined
+        if (parsedPreset) {
+            if (parsedPreset.preset) preset = parsedPreset.preset
+            else warnings.push(`Unknown preset ${JSON.stringify(parsedPreset.requested)}. Using "default".`)
+            continue
+        }
+
+        if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
+        setupLines.push(line)
+    }
+
+    const setup = setupLines.join('\n').replace(/^\s*export\s+/gm, '')
     const jsx = body.slice(jsxStart).trim()
         .replace(/^export\s+default\s+/, '')
         .replace(/;\s*$/, '')

@@ -69,7 +69,12 @@ function disableUserCodeCapabilities(): void {
         'fetch',
         'XMLHttpRequest',
         'WebSocket',
+        'WebSocketStream',
+        'WebTransport',
         'EventSource',
+        'BroadcastChannel',
+        'RTCPeerConnection',
+        'webkitRTCPeerConnection',
         'importScripts',
         'Worker',
         'SharedWorker',
@@ -90,6 +95,31 @@ function disableUserCodeCapabilities(): void {
             } catch {
                 // Some browser globals are non-configurable. Shared source still
                 // requires an explicit Run action before this worker starts.
+            }
+        }
+    }
+
+    const navigatorApi = globals.navigator as Record<string, unknown> | undefined
+    const restrictedNavigatorApis: Array<[unknown, string[]]> = [
+        [navigatorApi, ['sendBeacon']],
+        [navigatorApi?.storage, ['getDirectory']],
+        [navigatorApi?.storageBuckets, ['delete', 'keys', 'open']],
+    ]
+    for (const [api, methods] of restrictedNavigatorApis) {
+        if (!api || typeof api !== 'object') continue
+        for (const method of methods) {
+            try {
+                Object.defineProperty(api, method, {
+                    configurable: false,
+                    writable: false,
+                    value: denied,
+                })
+            } catch {
+                try {
+                    (api as Record<string, unknown>)[method] = denied
+                } catch {
+                    // Browser-owned APIs can be non-configurable.
+                }
             }
         }
     }
