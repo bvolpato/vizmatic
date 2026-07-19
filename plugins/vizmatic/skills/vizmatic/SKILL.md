@@ -1,31 +1,31 @@
 ---
 name: vizmatic
-description: Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic. Use when a coding agent needs to design or render visual assets such as architecture diagrams, process flows, RAG graphs, eval dashboards, product figures, docs images, slide frames, launch cards, or animated pipeline GIFs.
+description: Create and render theme-aware diagrams, charts, docs figures, and animated GIFs from TSX. Use when a coding agent needs an architecture diagram, process flow, RAG graph, evaluation dashboard, slide frame, release card, or animated pipeline.
 ---
 
 # Vizmatic
 
-Use Vizmatic when a request needs an image or GIF artifact. Prefer structured React scene primitives over hand-written SVG for common diagrams, dashboards, and frames.
+Use Vizmatic when a request needs a diagram, chart, presentation frame, or animated GIF. Prefer its React scene primitives over hand-written SVG for common layouts.
 
 ## Workflow
 
-1. Pick output scope: static PNGs, animated GIF, or both. Ask only if target size, brand, or destination is truly ambiguous.
+1. Decide whether output needs static images, an animated GIF, or both. Ask about size, branding, or destination only when it changes the result.
 2. Confirm Node.js 20 or newer is available, then install or reuse the CLI:
    ```bash
    command -v vizmatic || npm install -g vizmatic
    ```
-   If the project needs direct renderer APIs, editor types, or committed scripts, add project deps instead:
+   Add project dependencies when code imports Vizmatic or the repository needs a committed render script:
    ```bash
    pnpm add vizmatic react
    ```
-3. Create a bare `.tsx` frame by default: write JSX directly. Set `width` and `height` when exact output size matters; otherwise Vizmatic starts at `960x540` and grows to fit content on overflow. Generated wrappers that export the default `960x540` size get the same auto-fit behavior; add `autoSize = false` only when strict clipping errors are desired. Skip imports, `defineIllustration`, and `c` props unless the frame needs custom dependencies, helper functions, data loading, explicit theme tokens, or animation exports. `Scene` title/subtitle are optional.
-   For minimal technical-blog figures, add `preset = "engineering";` above the dimensions and render with the light theme. This selects the flat article palette, pastel nodes, thin connectors, left-aligned title, compact corners, and mono annotations. Add `background={c.bg}` to `Scene` when the figure needs an opaque light gray canvas.
-4. Choose primitives by intent. Read `references/patterns.md` when deciding component structure.
-5. Validate both themes and fix reported errors. Use JSON so overflow edges, unsupported styles, asset failures, contrast warnings, and suggested dimensions stay machine-readable:
+3. Start with a bare `.tsx` frame. Omit dimensions during exploration; output starts at `960x540` and grows when content overflows. Set `width` and `height` for fixed output. Set `autoSize = false` when overflow should fail instead of resizing.
+4. Add imports, `defineIllustration`, or `c` props only when the frame needs helper code, data, explicit theme tokens, other dependencies, or animation. `Scene` title and subtitle are optional.
+5. Choose primitives by intent. Read `references/patterns.md` for component choices and frame examples.
+6. Check both themes and fix reported errors:
    ```bash
    vizmatic check ./frames/diagram.tsx --theme dark,light --json
    ```
-6. Render dark and light outputs:
+7. Render dark and light outputs:
    ```bash
    vizmatic ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light
    ```
@@ -33,16 +33,16 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
    ```bash
    vizmatic frames --out ./public/vizmatic --theme dark,light
    ```
-   PNG/SVG renders use alpha-transparent backgrounds by default. For full-frame theme fill, render with:
+   PNG and SVG output is transparent by default. Add a theme fill when the destination needs an opaque canvas:
    ```bash
    vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
-   Default autocrop retains 24 source pixels around detected content so figures do not end at the last painted pixel. Use `--no-crop` only when the declared canvas itself is part of the composition.
-7. For GIFs, export `createScenes(theme)` from a full module and render:
+   Autocrop keeps 24 source pixels around detected content. Use `--no-crop` only when the full declared canvas is part of the composition.
+8. For GIFs, export `createScenes(theme)` from a full module and render:
    ```bash
    vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --scale 1
    ```
-8. Verify actual artifacts. Check file existence, dimensions, and visual layout. Use browser screenshots when assets are shown on a page. Fix clipped labels, overlap, low contrast, and unbalanced spacing before finishing.
+9. Inspect the output. Check file dimensions and visual layout. When an asset appears on a page, verify that page too. Fix clipping, overlap, low contrast, and uneven spacing before finishing.
 
 ## Starting points
 
@@ -52,15 +52,11 @@ Use Vizmatic when a request needs an image or GIF artifact. Prefer structured Re
 
 ## Design rules
 
-- Use supported tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
-- Use `preset = "engineering";` for Datadog Engineering-style article figures. Keep each figure single-purpose and avoid dashboard chrome, shadows, gradients, or decorative color.
-- Render both `dark` and `light` unless the user asks for one theme.
-- Omit `Scene` title/subtitle for badges, inline blog figures, or visuals where surrounding copy already provides title context.
-- Prefer alpha-transparent PNG/SVG backgrounds for blog posts and docs cards. Use `--background theme` or `<Scene background={c.bg}>` only when the destination needs opaque theme fill.
-- Omit dimensions for exploratory CLI frames when content density is uncertain; use explicit dimensions for deterministic final assets.
+- Use semantic tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
+- Use `preset = "engineering";` for flat technical article figures. Render the light theme and avoid dashboard chrome, shadows, gradients, or decorative color.
 - Keep labels short. Prefer cards, rows, grids, and tables that wrap safely.
 - Use Vizmatic charts for data summaries instead of screenshotting tables.
-- Keep presentation frames dense and inspectable. Avoid marketing-style filler.
+- Keep presentation frames concise and readable. Remove marketing filler.
 - Return generated file paths and the exact render command that produced them.
 
 ## Common requests

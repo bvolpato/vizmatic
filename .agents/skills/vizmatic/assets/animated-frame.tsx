@@ -23,7 +23,7 @@ const stages = [
 function frame(theme: ThemeMode, active: number) {
     const c = getThemeColors(theme)
     return (
-        <Scene c={c} title="Animated Vizmatic workflow" subtitle="each scene becomes one GIF frame" gap={24}>
+        <Scene c={c} title="Animated frame example" subtitle="each scene becomes one GIF frame" gap={24}>
             <Flow
                 c={c}
                 connectorTone="purple"
@@ -39,8 +39,8 @@ function frame(theme: ThemeMode, active: number) {
                 <MetricCard c={c} label="Step" value={`${active + 1}/4`} tone="purple" detail={stages[active].title} width={260} />
                 <CalloutCard
                     c={c}
-                    title={active === stages.length - 1 ? 'Ready to publish' : 'State advances'}
-                    detail="Export createScenes(theme), then run vizmatic gif."
+                    title={active === stages.length - 1 ? 'Export complete' : `Frame ${active + 1} of 4`}
+                    detail="createScenes(theme) defines each frame and transition."
                     tone={active === stages.length - 1 ? 'green' : 'cyan'}
                     width={700}
                 />

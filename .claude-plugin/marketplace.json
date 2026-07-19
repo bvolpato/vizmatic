@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "description": "Vizmatic plugin marketplace for theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs.",
+  "description": "Vizmatic plugin for diagrams, charts, docs figures, and animated GIFs.",
   "owner": {
     "name": "Bruno Volpato",
     "url": "https://github.com/bvolpato"
@@ -9,7 +9,7 @@
     {
       "name": "vizmatic",
       "source": "./plugins/vizmatic",
-      "description": "Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic.",
+      "description": "Create and render theme-aware diagrams, charts, docs figures, and animated GIFs from TSX.",
       "version": "0.1.32",
       "author": {
         "name": "Bruno Volpato",

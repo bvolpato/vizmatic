@@ -8,7 +8,7 @@ height = 420;
     </Row>
     <CalloutCard
         title="No title bar required"
-        detail="Omit Scene title/subtitle for badges, inline figures, or visuals that should stand on their own."
+        detail="Use a titleless scene when surrounding copy already names the visual."
         tone="purple"
         width={560}
     />

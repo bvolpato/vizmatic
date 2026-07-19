@@ -1,13 +1,13 @@
 width = 1220;
 height = 650;
 
-<Scene title="Building block palette" subtitle="summary, chronology, hierarchy, and symbols share the same theme tokens" gap={18}>
+<Scene title="Charts, timelines, trees, and icons" subtitle="the same theme tokens style each primitive" gap={18}>
     <Row gap={18} align="stretch" width="100%">
         <DonutChart
             width={340}
             height={270}
-            title="Visual mix"
-            subtitle="frame composition"
+            title="Example composition"
+            subtitle="illustrative split"
             format="percent"
             centerValue="100%"
             centerLabel="coverage"
@@ -19,12 +19,12 @@ height = 650;
             ]}
         />
         <Timeline
-            title="Launch path"
+            title="Render workflow"
             width={330}
             events={[
-                { time: 'draft', title: 'Sketch structure', detail: 'pick primitives before styling', tone: 'blue' },
-                { time: 'render', title: 'Export both themes', detail: 'PNG assets stay alpha-ready', tone: 'purple' },
-                { time: 'ship', title: 'Verify in docs', detail: 'gallery and source stay synced', tone: 'green' },
+                { time: 'draft', title: 'Choose primitives', detail: 'match components to content', tone: 'blue' },
+                { time: 'render', title: 'Export both themes', detail: 'create dark and light files', tone: 'purple' },
+                { time: 'review', title: 'Inspect output', detail: 'check layout and contrast', tone: 'green' },
             ]}
         />
         <TreeDiagram

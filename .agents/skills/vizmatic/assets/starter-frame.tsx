@@ -1,12 +1,12 @@
 width = 1200;
 height = 675;
 
-<Scene title="Launch readiness" subtitle="from plan to verified release" gap={24}>
+<Scene title="Project status example" subtitle="replace labels and values with project data" gap={24}>
   <Row width="100%" gap={16} align="stretch">
-    <MetricCard label="Coverage" value="92%" tone="green" detail="core paths verified" width={260} />
-    <MetricCard label="Latency" value="184ms" tone="cyan" detail="p95 API response" width={260} />
-    <MetricCard label="Risk" value="Low" tone="purple" detail="rollback path ready" width={260} />
-    <MetricCard label="Open" value="3" tone="warm" detail="known follow-ups" width={260} />
+    <MetricCard label="Coverage" value="TBD" tone="green" detail="replace with project data" width={260} />
+    <MetricCard label="Latency" value="TBD" tone="cyan" detail="replace with project data" width={260} />
+    <MetricCard label="Risk" value="TBD" tone="purple" detail="replace with project data" width={260} />
+    <MetricCard label="Open" value="TBD" tone="warm" detail="replace with project data" width={260} />
   </Row>
 
   <Flow
@@ -20,7 +20,7 @@ height = 675;
   />
 
   <Row width="100%" gap={16} align="stretch">
-    <CalloutCard title="Use structure, not drawing code" detail="Vizmatic primitives keep diagrams theme-aware and easier for agents to revise." tone="purple" width={548} />
-    <CalloutCard title="Render both themes" detail="Dark and light assets come from the same scene contract." tone="green" width={548} />
+    <CalloutCard title="Compose from primitives" detail="Use Flow, cards, charts, and layout components before custom SVG." tone="purple" width={548} />
+    <CalloutCard title="Render both themes" detail="Dark and light files come from the same scene source." tone="green" width={548} />
   </Row>
 </Scene>

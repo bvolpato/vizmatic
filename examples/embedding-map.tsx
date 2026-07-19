@@ -9,7 +9,7 @@ height = 560;
         yAxisLabel="answer usefulness"
         regions={{
             topLeft: { label: 'needs query rewrite', detail: 'useful but hard to retrieve', color: 'warning' },
-            topRight: { label: 'ship path', detail: 'relevant and useful', color: 'positive' },
+            topRight: { label: 'good fit', detail: 'relevant and useful', color: 'positive' },
             bottomLeft: { label: 'dead zone', detail: 'low signal', color: 'neutral' },
             bottomRight: { label: 'retrieval trap', detail: 'looks relevant, weak answer', color: 'critical' },
         }}

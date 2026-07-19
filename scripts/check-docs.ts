@@ -61,7 +61,7 @@ if (html.includes('{{PROMPT_MD}}')) {
     fail('homepage prompt preview contains unreplaced placeholder')
 }
 
-if (!html.includes('Final answer checklist') || !html.includes('any overflow or layout fixes made')) {
+if (!html.includes('Vizmatic agent prompt') || !html.includes('Final response') || !html.includes('any overflow or layout fixes made')) {
     fail('homepage prompt preview must include full PROMPT.md')
 }
 
@@ -76,12 +76,12 @@ for (const required of [
     }
 }
 
-if (!rootPrompt.includes('title/subtitle are optional') || !html.includes('titles are optional')) {
+if (!rootPrompt.includes('title and subtitle are optional') || !templateHtml.includes('a title when the visual needs them')) {
     fail('docs must mention titleless scenes')
 }
 
 const skill = await readFile(skillPath, 'utf8')
-if (!skill.includes('name: vizmatic') || !skill.includes('Create polished theme-aware diagrams')) {
+if (!skill.includes('name: vizmatic') || !skill.includes('Create and render theme-aware diagrams')) {
     fail('Vizmatic skill frontmatter is missing required metadata')
 }
 

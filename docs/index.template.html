@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Vizmatic - Structured visual assets for coding agents</title>
-  <meta name="description" content="Give coding agents structured primitives to render polished PNG, SVG, and GIF assets with deterministic, theme-aware, headless rendering.">
+  <title>Vizmatic - Diagrams and charts from TSX</title>
+  <meta name="description" content="Create diagrams, charts, dashboards, and GIFs from TSX. Render dark and light PNG or SVG files locally and in CI.">
   <meta name="theme-color" content="#080a0f">
   <meta property="og:title" content="Vizmatic">
-  <meta property="og:description" content="Give coding agents structured primitives to render polished PNG, SVG, and GIF assets.">
+  <meta property="og:description" content="Create diagrams, charts, dashboards, and GIFs from TSX. Render them locally or in CI.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bvolpato.github.io/vizmatic/">
   <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Vizmatic">
-  <meta name="twitter:description" content="Give coding agents structured primitives to render polished PNG, SVG, and GIF assets.">
+  <meta name="twitter:description" content="Create diagrams, charts, dashboards, and GIFs from TSX. Render them locally or in CI.">
   <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -34,8 +34,8 @@
         <div class="nav-links">
           <a href="#gallery" data-nav-link>Examples</a>
           <a href="#playground" data-nav-link>Playground</a>
-          <a href="#quick-start" data-nav-link>Quick Start</a>
-          <a href="#onboarding" data-nav-link>Prompt + Skills</a>
+          <a href="#quick-start" data-nav-link>Quick start</a>
+          <a href="#onboarding" data-nav-link>Prompt + skill</a>
           <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
               <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.45.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
@@ -53,14 +53,14 @@
   </div>
 
   <header class="hero">
-    <img class="hero-art" data-theme-image src="assets/examples/vizmatic-hero_dark.png" alt="Vizmatic workflow from agent brief through scene primitives and theme tokens to publish-ready assets">
+    <img class="hero-art" data-theme-image src="assets/examples/vizmatic-hero_dark.png" alt="Vizmatic workflow from an agent request through scene primitives and theme tokens to rendered files">
     <div class="hero-inner">
       <div class="hero-copy">
-        <div class="eyebrow"><span></span>Visual infrastructure for coding agents</div>
+        <div class="eyebrow"><span></span>Diagrams and charts for coding agents</div>
         <h1>Vizmatic</h1>
-        <p>Give coding agents structured primitives to render polished PNG, SVG, and GIF assets.</p>
+        <p>Write a small TSX scene. Render dark and light PNG, SVG, or GIF files locally or in CI.</p>
         <div class="cta-row">
-          <button class="button primary" type="button" data-copy-prompt>Copy agent prompt</button>
+          <button class="button primary" type="button" data-copy-prompt>Copy prompt</button>
           <a class="button" href="#onboarding">Install skill</a>
           <a class="text-link" href="#playground">Try playground <span aria-hidden="true">↓</span></a>
         </div>
@@ -74,18 +74,18 @@
 
   <main>
     <section class="proof" aria-label="Product capabilities">
-      <div><strong>1 TSX file</strong><span>editable source</span></div>
-      <div><strong>dark + light</strong><span>one command</span></div>
-      <div><strong>machine checked</strong><span>structured diagnostics</span></div>
-      <div><strong>PNG · SVG · GIF</strong><span>ready to publish</span></div>
+      <div><strong>1 TSX file</strong><span>source you can edit</span></div>
+      <div><strong>dark + light</strong><span>from one command</span></div>
+      <div><strong>vizmatic check</strong><span>JSON diagnostics</span></div>
+      <div><strong>PNG · SVG · GIF</strong><span>local or CI output</span></div>
     </section>
 
     <section id="playground" class="playground-band">
       <div class="section playground-section">
         <div class="section-kicker">Live playground <span>01</span></div>
         <div class="section-intro">
-          <h2>Edit the scene. See the asset.</h2>
-          <p>Start from a template, switch output themes, and share or download the result without installing anything.</p>
+          <h2>Edit a scene and render it.</h2>
+          <p>Choose a template, switch themes, then share or download the result. Nothing to install.</p>
         </div>
         <div class="playground-tool">
           <div class="playground-toolbar">
@@ -134,10 +134,10 @@
     </section>
 
     <section id="gallery" class="section gallery-section">
-      <div class="section-kicker">Selected work <span>02</span></div>
+      <div class="section-kicker">Examples <span>02</span></div>
       <div class="section-intro">
-        <h2>Scenes for diagrams, data, and motion.</h2>
-        <p>Use the same component set for dashboards, architecture diagrams, research figures, explainers, and GIFs.</p>
+        <h2>Diagrams, charts, dashboards, and GIFs.</h2>
+        <p>Every example uses the same TSX components and headless renderer.</p>
       </div>
       <div class="gallery">
         <article class="gallery-card gallery-wide" data-source="vizmatic-hero">
@@ -162,7 +162,7 @@
         </article>
         <article class="gallery-card gallery-tall" data-source="research-landscape">
           <div class="media-wrap"><img data-theme-image src="assets/examples/research-landscape_dark.png" alt="Research landscape visualization"><button class="source-button" type="button" data-source="research-landscape" aria-label="View source for research landscape"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div>
-          <h3>Research landscape <span>figure</span></h3>
+          <h3>Approach map <span>scatter plot</span></h3>
         </article>
       </div>
       <div class="gallery-more-label"><strong>More examples</strong><span>12 additional scenes</span></div>
@@ -177,7 +177,7 @@
         </article>
         <article class="gallery-card" data-source="agent-pipeline">
           <div class="media-wrap"><img loading="lazy" decoding="async" data-theme-image src="assets/examples/agent-pipeline_dark.png" alt="Agent pipeline visualization"><button class="source-button" type="button" data-source="agent-pipeline" aria-label="View source for agent pipeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div>
-          <h3>Agent pipeline <span>flow</span></h3>
+          <h3>Render pipeline <span>flow</span></h3>
         </article>
         <article class="gallery-card" data-source="rag-graph">
           <div class="media-wrap"><img loading="lazy" decoding="async" data-theme-image src="assets/examples/rag-graph_dark.png" alt="RAG control graph"><button class="source-button" type="button" data-source="rag-graph" aria-label="View source for RAG graph"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div>
@@ -205,7 +205,7 @@
         </article>
         <article class="gallery-card" data-source="release-card">
           <div class="media-wrap"><img loading="lazy" decoding="async" data-theme-image src="assets/examples/release-card_dark.png" alt="Product release card"><button class="source-button" type="button" data-source="release-card" aria-label="View source for release card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div>
-          <h3>Release card <span>launch</span></h3>
+          <h3>Release card <span>example</span></h3>
         </article>
         <article class="gallery-card" data-source="transparent-badge">
           <div class="media-wrap"><img loading="lazy" decoding="async" data-theme-image src="assets/examples/transparent-badge_dark.png" alt="Transparent badge example"><button class="source-button" type="button" data-source="transparent-badge" aria-label="View source for transparent badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button></div>
@@ -220,12 +220,12 @@
 
     <section id="quick-start" class="quick-start-band">
       <div class="quick-start section">
-        <div class="section-kicker">First render <span>03</span></div>
+        <div class="section-kicker">Quick start <span>03</span></div>
         <div class="quick-copy">
-          <h2>Render your first frame.</h2>
-          <p>Write JSX directly. Imports, wrapper code, fixed dimensions, and titles are optional. Vizmatic expands the transparent canvas when content needs more room.</p>
+          <h2>Render a TSX frame.</h2>
+          <p>A frame can be only JSX. Add imports, fixed dimensions, or a title when the visual needs them. Otherwise, Vizmatic sizes the transparent canvas to its content.</p>
           <div class="output-list" aria-label="Output features">
-            <span>Dark and light</span><span>Fit to content</span><span>CI friendly</span>
+            <span>Dark + light</span><span>Automatic sizing</span><span>JSON diagnostics</span>
           </div>
         </div>
         <div class="quick-code">
@@ -242,27 +242,27 @@
     </section>
 
     <section class="section difference-section">
-      <div class="section-kicker">Why it exists <span>04</span></div>
+      <div class="section-kicker">Where it fits <span>04</span></div>
       <div class="section-intro">
-        <h2>Editable source with more visual range.</h2>
-        <p>Vizmatic keeps output deterministic while supporting charts, layout, diagrams, and animation.</p>
+        <h2>Charts, free layout, and animation.</h2>
+        <p>Vizmatic renders them from editable TSX and checks the result before export.</p>
       </div>
       <dl class="difference-list">
-        <div><dt><span>01</span>More primitives than Mermaid</dt><dd>Charts, cards, matrices, timelines, trees, icons, and diagrams compose in one scene.</dd></div>
-        <div><dt><span>02</span>Editable TSX source</dt><dd>Source-controlled scenes stay inspectable, deterministic, and easy to revise.</dd></div>
-        <div><dt><span>03</span>Headless renderer</dt><dd>Render directly in Node and CI without maintaining a browser screenshot pipeline.</dd></div>
-        <div><dt><span>04</span>Theme variants</dt><dd>Dark and light output comes from the same semantic scene definition.</dd></div>
+        <div><dt><span>01</span>More layout than Mermaid</dt><dd>Combine charts, cards, matrices, timelines, trees, icons, and diagrams in one scene.</dd></div>
+        <div><dt><span>02</span>Editable output</dt><dd>Review and change the TSX source instead of regenerating an opaque image.</dd></div>
+        <div><dt><span>03</span>No screenshot setup</dt><dd>Render in Node or CI without running a browser screenshot pipeline.</dd></div>
+        <div><dt><span>04</span>Dark and light together</dt><dd>One scene renders both themes from semantic color tokens.</dd></div>
       </dl>
     </section>
 
     <section id="onboarding" class="onboarding-band">
       <div class="section onboarding">
-        <div class="section-kicker">Agent ready <span>05</span></div>
+        <div class="section-kicker">Agent setup <span>05</span></div>
         <div class="onboarding-intro">
-          <h2>Add Vizmatic to your agent.</h2>
-          <p>Copy the full prompt for one task, or install the skill to reuse the instructions across sessions.</p>
+          <h2>Give your agent the Vizmatic instructions.</h2>
+          <p>Copy the prompt for one task, or install the skill to keep the instructions available across sessions.</p>
           <div class="cta-row">
-            <button class="button primary" type="button" data-copy-prompt>Copy full agent prompt</button>
+            <button class="button primary" type="button" data-copy-prompt>Copy prompt</button>
             <a class="button" href="PROMPT.md">Open PROMPT.md</a>
           </div>
         </div>
@@ -270,9 +270,9 @@
         <div id="skill" class="skill-panel">
           <div class="skill-content">
             <div>
-              <span class="skill-label">Universal agent skill</span>
-              <h3>Install once. Use it from your coding agent.</h3>
-              <p>One portable skill works across Codex, Claude Code, Cursor, OpenCode, and other compatible agents.</p>
+              <span class="skill-label">Portable agent skill</span>
+              <h3>Install Vizmatic for your coding agent.</h3>
+              <p>The same command supports Codex, Claude Code, Cursor, OpenCode, and other agents that use the skills format.</p>
             </div>
             <pre class="skill-command"><code id="skillCommand">npx skills add bvolpato/vizmatic --skill vizmatic -g -y</code><button class="code-copy-button skill-copy-button" type="button" id="copySkillButton">Copy</button></pre>
             <div class="skill-agent-list" aria-label="Compatible coding agents"><span>Codex</span><span>Claude Code</span><span>Cursor</span><span>OpenCode</span></div>
@@ -280,7 +280,7 @@
         </div>
 
         <details class="prompt-details">
-          <summary><span>Read full prompt</span><small>Complete, unedited PROMPT.md</small></summary>
+          <summary><span>Read full prompt</span><small>Exact contents of PROMPT.md</small></summary>
           <pre class="prompt-preview" data-shiki="md"><code id="promptPreview">{{PROMPT_MD}}</code></pre>
         </details>
       </div>

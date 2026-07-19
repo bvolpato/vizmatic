@@ -1,7 +1,7 @@
 {
   "name": "vizmatic",
   "version": "0.1.32",
-  "description": "Create polished theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs with Vizmatic.",
+  "description": "Create and render theme-aware diagrams, charts, docs figures, and animated GIFs from TSX.",
   "author": {
     "name": "Bruno Volpato",
     "url": "https://github.com/bvolpato"
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Vizmatic",
-    "shortDescription": "Create theme-aware visual assets",
-    "longDescription": "Use Vizmatic scene primitives to create and render diagrams, dashboards, figures, presentation frames, and animated GIFs from Codex.",
+    "shortDescription": "Create diagrams and charts from TSX",
+    "longDescription": "Use Vizmatic scene primitives to render diagrams, dashboards, docs figures, presentation frames, and animated GIFs.",
     "developerName": "Bruno Volpato",
     "category": "Productivity",
     "capabilities": [
@@ -29,8 +29,8 @@
     ],
     "websiteURL": "https://bvolpato.github.io/vizmatic/",
     "defaultPrompt": [
-      "Use @vizmatic to create a polished architecture diagram and render dark/light PNG assets.",
-      "Use $vizmatic to turn this workflow into a theme-aware docs figure."
+      "Use @vizmatic to create an architecture diagram and render dark and light PNG files.",
+      "Use $vizmatic to turn this workflow into a docs figure."
     ],
     "brandColor": "#7C3AED"
   }

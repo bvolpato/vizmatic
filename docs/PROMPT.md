@@ -1,10 +1,10 @@
 # Vizmatic agent prompt
 
-Use Vizmatic to create polished, theme-aware diagrams, figures, dashboards, presentation frames, and animated GIFs from structured React scene primitives.
+Use Vizmatic to create diagrams, figures, dashboards, presentation frames, and animated GIFs from React scene primitives. Render dark and light files locally or in CI.
 
 ## Quick start
 
-Vizmatic requires Node.js 20 or newer. Install the CLI once:
+Vizmatic requires Node.js 20 or newer. Install the CLI:
 
 ```bash
 npm install -g vizmatic
@@ -31,33 +31,33 @@ Render dark and light assets:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
-Validate the scene with structured diagnostics before publishing:
+Check the scene before publishing:
 
 ```bash
 vizmatic check ./frame.tsx --theme dark,light --json
 ```
 
-Fix errors before rendering final assets. Warnings identify concerns such as low text contrast or asset fallbacks; overflow errors include affected edges and suggested dimensions.
+Fix all errors before the final render. Warnings report low contrast and asset fallbacks. Overflow errors name the affected edges and suggest dimensions.
 
-## Project installation
+## Install in a project
 
 Use the package manager already present in the project.
 
-Install in the project when the project needs scripts, editor types, or direct renderer APIs:
+Add Vizmatic to a project for scripts, editor types, or direct renderer APIs:
 
 ```bash
 pnpm add vizmatic react
 ```
 
-Optional edge build from GitHub:
+To use the current GitHub version:
 
 ```bash
 pnpm add github:bvolpato/vizmatic react
 ```
 
-For npm/yarn/bun projects, use the equivalent package-manager command.
+Use the equivalent command for npm, Yarn, or Bun projects.
 
-## Larger example
+## Full frame example
 
 Create `frames/agent-pipeline.tsx`:
 
@@ -67,7 +67,7 @@ height = 560;
 
 <Scene
   title="Agent visual pipeline"
-  subtitle="prompt -> scene spec -> verified artifact"
+  subtitle="prompt -> TSX scene -> render -> files"
   gap={26}
 >
   <Flow
@@ -91,32 +91,32 @@ height = 560;
       },
       {
         eyebrow: "render",
-        title: "Satori frame",
-        subtitle: "React primitives",
+        title: "Node renderer",
+        subtitle: "headless output",
         tone: "cyan",
-        lines: ["layout defaults", "safe text", "semantic tones"],
+        lines: ["layout", "theme", "checks"],
         width: 190,
       },
       {
         eyebrow: "output",
-        title: "PNG / GIF",
-        subtitle: "CI-ready asset",
+        title: "PNG / SVG / GIF",
+        subtitle: "rendered files",
         tone: "green",
-        lines: ["autocrop", "overflow checks", "retina scale"],
+        lines: ["dark + light", "alpha", "manifest"],
         width: 190,
       },
     ]}
   />
   <Row width="100%" gap={14}>
     <CalloutCard
-      title="Model writes structure"
-      detail="No hand-written SVG paths or brittle x/y layout for common cases."
+      title="Use scene primitives"
+      detail="Common diagrams do not need hand-written SVG paths or x/y coordinates."
       tone="purple"
       width={470}
     />
     <CalloutCard
-      title="Design system stays in control"
-      detail="Theme tokens decide color, typography, radius, spacing, and contrast."
+      title="Use theme tokens"
+      detail="Tokens set color, typography, radius, spacing, and contrast."
       tone="green"
       width={470}
     />
@@ -130,9 +130,9 @@ Render it:
 vizmatic frames --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right
 ```
 
-The generated `manifest.json` keeps `outputs` for compatibility and adds `outputDetails` with each file's theme, path, width, and height.
+Generated `manifest.json` includes each output file plus its theme, path, width, and height.
 
-PNG and SVG renders use alpha-transparent canvas backgrounds by default. Use the actual theme background when the host needs a full-frame image:
+PNG and SVG renders have transparent backgrounds by default. Use the theme background when the image needs an opaque canvas:
 
 ```bash
 vizmatic frames --out public/vizmatic --theme dark,light --background theme
@@ -146,11 +146,11 @@ Or set it in the frame:
 </Scene>
 ```
 
-If a direct CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows to fit content when overflow is detected. Generated wrappers that export the default `960x540` size get the same fit-to-content behavior. Add `autoSize = false` when exact dimensions should stay strict and fail on clipping.
+When a CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows that axis if content overflows. Set `autoSize = false` when dimensions must remain fixed and clipping should fail the render.
 
-For direct CLI frames, skip imports, `defineIllustration`, and `c` props by default. The CLI injects Vizmatic primitives and theme colors. Reference `c` only when you need explicit theme tokens such as `background={c.bg}`. `Scene` title/subtitle are optional; omit both for visual-only figures, badges, inline blog diagrams, or frames where surrounding copy already supplies the title. Use the full module form when you need custom dependencies, direct renderer APIs, advanced reusable JSX helpers, or animation exports.
+Bare CLI frames do not need imports, `defineIllustration`, or `c` props. Use `c` for explicit tokens such as `background={c.bg}`. `Scene` title and subtitle are optional. Use a full module for other dependencies, reusable helpers, animation exports, or direct renderer APIs.
 
-Frame modules can also export a watermark element when code-owned branding is clearer than CLI flags:
+Frame modules can export a watermark element instead of using CLI flags:
 
 ```tsx
 import { Watermark } from "vizmatic"
@@ -179,9 +179,9 @@ Render animated frames with `createScenes(theme)`:
 vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right --scale 1
 ```
 
-## Create an animated frame
+## Animated frames
 
-Animated frames keep the same static `create(theme)` export and add `createScenes(theme)` for GIF output.
+An animated module exports `createScenes(theme)` for GIF output and keeps `create(theme)` for a static frame.
 
 ```tsx
 import React from "react"
@@ -236,9 +236,9 @@ export const create = frame.create
 export default frame.default
 ```
 
-## Pick primitives first
+## Choose primitives
 
-Use Vizmatic primitives instead of raw SVG or absolute-positioned divs whenever possible. Drop to raw SVG only for custom geometry that a primitive cannot express.
+Use Vizmatic primitives for common layouts. Use raw SVG only for geometry the component set cannot express.
 
 Shared values:
 
@@ -247,8 +247,8 @@ Shared values:
 - `ColorName`: `"primary" | "secondary" | "positive" | "warning" | "critical" | "info" | "accent" | "neutral"`.
 - `FlexAlign`: `"start" | "center" | "end" | "stretch"`.
 - `FlexJustify`: `"start" | "center" | "end" | "space-between" | "space-around"`.
-- In bare CLI frames, omit `c` props; the CLI injects theme colors into Vizmatic components. The local `c` token object is still available for explicit values like `background={c.bg}`.
-- In full modules, most visual components require `c: ThemeColors`; inside `defineIllustration((c) => ...)`, pass that same `c` down.
+- Bare CLI frames omit `c` props. The local `c` object remains available for explicit values such as `background={c.bg}`.
+- Full modules pass the `c: ThemeColors` value from `defineIllustration((c) => ...)` to visual components.
 - PNG/SVG renders are alpha-transparent by default. Use `--background theme`, `background: "theme"`, or `<Scene background={c.bg}>` for opaque theme fill.
 - Omitted CLI dimensions auto-grow on overflow. Explicit `width` / `height` remain fixed and fail on clipping.
 
@@ -447,20 +447,20 @@ height = 560;
 </Scene>
 ```
 
-## Quality rules
+## Rendering rules
 
 - Use semantic tones instead of hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
 - For Datadog Engineering-style article diagrams, set `preset = "engineering";` and render the light theme. Keep each figure focused on one transition or tradeoff.
-- Keep canvas sizes explicit. Good defaults: `1040x560` for article figures, `1280x720` for slide frames, `900x520` for compact diagrams.
-- For exploratory direct CLI frames, dimensions may be omitted; Vizmatic starts at `960x540` and grows to fit content if overflow is detected.
+- Use explicit sizes for final assets. Common sizes are `1040x560` for article figures, `1280x720` for slide frames, and `900x520` for compact diagrams.
+- During exploration, dimensions can be omitted. Vizmatic starts at `960x540` and grows to fit content.
 - Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.
-- Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` props to stabilize layout.
+- Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` to keep layout stable.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
-- Render both dark and light when shipping reusable assets: `--theme dark,light`.
+- Render reusable assets in both themes with `--theme dark,light`.
 - Run `vizmatic check <frame> --theme dark,light --json` before final render and fix every error.
 - Use GIF only when motion explains state change. Keep scenes short, export `createScenes(theme)`, and keep a static `create(theme)` fallback.
-- If render fails with `Canvas overflow detected`, the frame has strict dimensions. Increase canvas dimensions, reduce content density, or remove strict sizing for CLI auto-fit. Do not ignore the error.
-- Verify generated PNGs/GIFs exist and are non-empty. Open at least one rendered image before finalizing.
+- If render fails with `Canvas overflow detected`, increase the canvas, reduce content, or remove strict sizing. Do not ignore the error.
+- Confirm generated files exist and open at least one image before finishing.
 
 ## Common recipes
 
@@ -470,7 +470,7 @@ height = 560;
 width = 1040;
 height = 560;
 
-<Scene title="RAG control graph" subtitle="retrieval is a graph, not a prompt append" align="center">
+<Scene title="RAG control graph" subtitle="retrieval with a citation check" align="center">
   <GraphDiagram
     width={820}
     height={390}
@@ -527,9 +527,9 @@ height = 620;
 </Scene>
 ```
 
-## Final answer checklist
+## Final response
 
-After creating a Vizmatic visual, report:
+After creating a visual, report:
 
 - files created or changed
 - render command used

@@ -4,7 +4,7 @@ height = 600;
 
 <Scene
     title="Why warm requests cost less"
-    subtitle="Stable prefixes turn repeated context into cache reads"
+    subtitle="Illustrative cache behavior, not benchmark data"
     background={c.bg}
     gap={20}
 >
@@ -30,7 +30,7 @@ height = 600;
         <MetricCard
             label="Warm cache read"
             value="84%"
-            detail="after request-shape fix"
+            detail="sample after change"
             tone="green"
             width={250}
             valueFontSize={25}
@@ -38,14 +38,14 @@ height = 600;
         <MetricCard
             label="Uncached input"
             value="-71%"
-            detail="per completed task"
+            detail="sample per task"
             tone="purple"
             width={250}
             valueFontSize={25}
         />
         <CalloutCard
-            title="Same model, lower cost"
-            detail="Move volatile fields after reusable context and preserve provider cache controls."
+            title="Request layout example"
+            detail="Place volatile fields after reusable context and preserve provider cache controls."
             tone="blue"
             width={420}
             align="left"

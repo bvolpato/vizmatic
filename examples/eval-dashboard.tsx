@@ -1,13 +1,13 @@
 width = 1040;
 height = 620;
 
-<Scene title="Evaluation snapshot" subtitle="charts inherit theme, grid, labels, and contrast" gap={18}>
+<Scene title="Evaluation dashboard example" subtitle="illustrative data for chart composition" gap={18}>
     <Row gap={18} align="stretch">
         <BarChart
             width={440}
             height={260}
             title="Pass rate by task"
-            subtitle="held-out suite"
+            subtitle="sample task scores"
             format="percent"
             data={[
                 { label: 'tools', value: 0.82, color: 'positive' },
@@ -21,14 +21,14 @@ height = 620;
             width={440}
             height={260}
             title="Quality over releases"
-            subtitle="weighted score"
+            subtitle="sample trend"
             format="percent"
             labels={['v1', 'v2', 'v3', 'v4', 'v5']}
             series={[
                 { name: 'quality', points: [0.55, 0.61, 0.69, 0.74, 0.81], color: 'positive', area: true },
-                { name: 'latency', points: [0.72, 0.69, 0.66, 0.62, 0.59], color: 'warning' },
+                { name: 'failure rate', points: [0.72, 0.69, 0.66, 0.62, 0.59], color: 'warning' },
             ]}
         />
     </Row>
-    <CalloutCard tone="cyan" title="One theme, many visual forms" detail="Charts, cards, flows, and tables share typography and semantic color tokens." width={900} />
+    <CalloutCard tone="cyan" title="Shared chart styling" detail="Bar and line charts use the same typography, grid, and semantic colors." width={900} />
 </Scene>
