@@ -11,7 +11,7 @@ import type { ReactNode } from 'react'
 import * as publicApi from './index'
 import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
-import { findBareRootJsxStart } from './bare-source'
+import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { analyzeContrast, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
 import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
 import { getThemeColors, type ThemeMode, type ThemePreset } from './theme'
@@ -245,6 +245,16 @@ function rewriteRelativeImports(line: string, framePath: string): string {
         )
 }
 
+const REACT_IMPORT_BINDING = /^\s*import\s+(?:React(?:\s*,|\s+from)|\*\s+as\s+React\s+from)/m
+
+function hasReactImportBinding(source: string): boolean {
+    return REACT_IMPORT_BINDING.test(source)
+}
+
+function containsJsx(source: string): boolean {
+    return /<[A-Za-z][A-Za-z0-9.:-]*(\s|\/|>)/.test(source)
+}
+
 function rewriteFrameModuleImports(source: string, framePath: string): string {
     const selfImport = JSON.stringify(resolveSelfImportSpecifier())
     const reactImport = JSON.stringify(resolveReactImportSpecifier())
@@ -253,7 +263,7 @@ function rewriteFrameModuleImports(source: string, framePath: string): string {
         .replace(/(^\s*import\s+)["']vizmatic["']/gm, `$1${selfImport}`)
         .replace(/(from\s+)["']react["']/g, `$1${reactImport}`)
         .replace(/(^\s*import\s+)["']react["']/gm, `$1${reactImport}`)
-    const hasReactBinding = /^\s*import\s+(?:React(?:\s*,|\s+from)|\*\s+as\s+React\s+from)/m.test(rewritten)
+    const hasReactBinding = hasReactImportBinding(rewritten)
     return `/** @jsxRuntime classic */\n${hasReactBinding ? '' : `import React from ${reactImport}\n`}${rewritten}`
 }
 
@@ -422,9 +432,7 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     }
 
     const setup = setupLines.join('\n').replace(/^\s*export\s+/gm, '')
-    const jsx = body.slice(jsxStart).trim()
-        .replace(/^export\s+default\s+/, '')
-        .replace(/;\s*$/, '')
+    const jsx = extractRootJsx(body.slice(jsxStart).trim().replace(/^export\s+default\s+/, ''))
 
     const frameWidth = readFrameDimension(jsx, 'width')
     const frameHeight = readFrameDimension(jsx, 'height')
@@ -460,7 +468,9 @@ export function create(theme = 'dark') {
     __theme = __Vizmatic_getThemeColors(theme, ${JSON.stringify(preset)})
     const c = __theme
 ${setup}
-    return (${jsx})
+    return (
+${jsx}
+    )
 }
 
 export default { create, width, height }
@@ -562,8 +572,10 @@ function parseRenderArgs(argv: string[]): RenderArgs {
             themes = raw.split(',').map((theme) => theme.trim()).filter(Boolean) as ThemeMode[]
             if (themes.length === 0 || themes.some((theme) => theme !== 'dark' && theme !== 'light')) usage()
         } else if (arg === '--brand') {
-            const label = argv[++index] ?? 'Vizmatic'
-            mutableWatermark().text = label
+            // The label is optional, so only consume the next token when it is not another flag.
+            const label = readOptionalValue(index)
+            mutableWatermark().text = label ?? 'Vizmatic'
+            if (label) index += 1
         } else if (arg === '--watermark') {
             const label = readOptionalValue(index)
             if (label) {
@@ -723,13 +735,24 @@ function outputStems(files: string[]): Map<string, string> {
 async function importFrame(filePath: string): Promise<FrameModule> {
     installFrameDependencyAliases()
     const url = pathToFileURL(filePath).href
-    try {
-        return await import(url) as FrameModule
-    } catch (nativeError) {
-        if (!RENDER_EXTENSIONS.has(extname(filePath))) throw nativeError
-        const source = await readFile(filePath, 'utf8')
-        const isBareFrame = isBareFrameSource(source)
-        const preferBareFrame = isBareFrame && !/\bexport\s+default\b/.test(source)
+    if (!RENDER_EXTENSIONS.has(extname(filePath))) return await import(url) as FrameModule
+
+    const source = await readFile(filePath, 'utf8')
+    const isBareFrame = isBareFrameSource(source)
+    const preferBareFrame = isBareFrame && !/\bexport\s+default\b/.test(source)
+    // A loader may transpile with the classic JSX runtime, which leaves `React` undefined at render
+    // time for a frame that never imported it: the import resolves fine and `create()` throws later.
+    // Route those frames straight to the rewritten loader, which injects the binding.
+    const needsReactBinding = !hasReactImportBinding(source) && containsJsx(source)
+
+    let loadError: unknown
+    if (!needsReactBinding) {
+        try {
+            return await import(url) as FrameModule
+        } catch (nativeError) {
+            loadError = nativeError
+        }
+
         const { tsImport } = await import('tsx/esm/api')
         try {
             const mod = await tsImport<FrameModule>(url, import.meta.url)
@@ -737,25 +760,25 @@ async function importFrame(filePath: string): Promise<FrameModule> {
         } catch {
             // Fall through to CLI-owned module loading.
         }
-
-        if (preferBareFrame) {
-            const bareFrame = await importBareFrame(filePath, source)
-            if (bareFrame) return bareFrame
-        }
-
-        try {
-            const mod = await importRewrittenFrame(filePath, source)
-            if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
-        } catch (rewrittenError) {
-            if (!isBareFrame) throw rewrittenError
-        }
-
-        if (!preferBareFrame) {
-            const bareFrame = await importBareFrame(filePath, source)
-            if (bareFrame) return bareFrame
-        }
-        throw nativeError
     }
+
+    if (preferBareFrame) {
+        const bareFrame = await importBareFrame(filePath, source)
+        if (bareFrame) return bareFrame
+    }
+
+    try {
+        const mod = await importRewrittenFrame(filePath, source)
+        if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+    } catch (rewrittenError) {
+        if (!isBareFrame) throw rewrittenError
+    }
+
+    if (!preferBareFrame) {
+        const bareFrame = await importBareFrame(filePath, source)
+        if (bareFrame) return bareFrame
+    }
+    throw loadError ?? new Error(`Unable to load frame ${filePath}`)
 }
 
 type NormalizedFrameModule = Required<Pick<FrameModule, 'width' | 'height'>> & FrameModule & {

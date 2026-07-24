@@ -146,7 +146,17 @@ async function loadStaticAsset(path: string): Promise<ArrayBuffer> {
 }
 
 function initializeRuntime(): Promise<PlaygroundRuntime> {
-    runtime ??= Promise.all([
+    // Drop a rejected runtime from the cache: otherwise one failed asset fetch is replayed for
+    // every later render and the playground never recovers without a page reload.
+    runtime ??= loadRuntime().catch((error: unknown) => {
+        runtime = undefined
+        throw error
+    })
+    return runtime
+}
+
+function loadRuntime(): Promise<PlaygroundRuntime> {
+    return Promise.all([
         loadStaticAsset(yogaWasm),
         loadStaticAsset(resvgWasm),
         loadStaticAsset(interRegular),
@@ -169,7 +179,6 @@ function initializeRuntime(): Promise<PlaygroundRuntime> {
             fonts,
         }
     })
-    return runtime
 }
 
 type PlaygroundApi = Record<string, unknown>
@@ -198,7 +207,8 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
     const prepared = preparePlaygroundSource(request.source)
     const c = themeApi.getThemeColors(request.theme, prepared.metadata.preset)
     const api = createApi(c)
-    const wrapped = `const __vizmaticPlaygroundRender = () => {\n${prepared.setup}\nreturn (${prepared.jsx});\n};`
+    // The closing paren needs its own line: the JSX may end with a trailing `//` comment.
+    const wrapped = `const __vizmaticPlaygroundRender = () => {\n${prepared.setup}\nreturn (\n${prepared.jsx}\n);\n};`
     const result = transform(wrapped, {
         transforms: ['typescript', 'jsx'],
         jsxPragma: 'React.createElement',

@@ -1,4 +1,4 @@
-import { findBareRootJsxStart } from './bare-source'
+import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 
 export type PlaygroundTheme = 'dark' | 'light'
 export type PlaygroundPreset = 'default' | 'engineering'
@@ -106,9 +106,7 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
     }
 
     const setup = setupLines.join('\n').replace(/^\s*export\s+/gm, '')
-    const jsx = body.slice(jsxStart).trim()
-        .replace(/^export\s+default\s+/, '')
-        .replace(/;\s*$/, '')
+    const jsx = extractRootJsx(body.slice(jsxStart).trim().replace(/^export\s+default\s+/, ''))
 
     if (!jsx) throw new Error('Add a root Vizmatic JSX element.')
 

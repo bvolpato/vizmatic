@@ -140,6 +140,17 @@ function hasOnlyTrailingSyntax(source: string): boolean {
     return true
 }
 
+/**
+ * Returns the root JSX element on its own, dropping any trailing separators or comments that
+ * follow it. Callers wrap the result in parentheses, so trailing `;` or `//` would break the wrap.
+ */
+export function extractRootJsx(source: string): string {
+    // The wrapper supplies its own parentheses, so leading ones can go.
+    const body = source.replace(/^\s*\(+\s*/, '')
+    const end = findJsxEnd(body, 0)
+    return (end == null ? body : body.slice(0, end)).trim()
+}
+
 export function findBareRootJsxStart(source: string): number {
     const candidates = source.matchAll(/(^|\n)([\t ]*)(?:(?:export\s+default\s+)?(?:\(\s*)*)(<(?:[A-Z]|>))/g)
     for (const candidate of candidates) {

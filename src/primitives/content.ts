@@ -166,7 +166,9 @@ export function MiniBarChart({
     fontSize = 9,
     showValues = false,
 }: MiniBarChartProps): React.ReactElement {
-    const safeMax = max ?? Math.max(1, ...data.map((item) => Math.max(0, item.value)))
+    // A non-positive explicit max would divide bar heights by zero and emit NaN geometry.
+    const requestedMax = max != null && max > 0 ? max : undefined
+    const safeMax = requestedMax ?? Math.max(1, ...data.map((item) => Math.max(0, item.value)))
     const barMaxHeight = Math.max(minBarHeight, height - (showValues ? 34 : 20))
 
     return React.createElement('div', {
