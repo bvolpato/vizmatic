@@ -64,8 +64,10 @@ export function formatChartValue(value: number, format: ChartValueFormat = 'deci
     if (format === 'percent') return `${Math.round(value * 100)}%`
     if (format === 'integer') return `${Math.round(value)}`
     if (format === 'compact') {
-        if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-        if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+        // Compare against the rounding boundary so 999999.5 reads "1.0M", not "1000.0k".
+        const magnitude = Math.abs(value)
+        if (magnitude >= 999_950) return `${(value / 1_000_000).toFixed(1)}M`
+        if (magnitude >= 999.95) return `${(value / 1_000).toFixed(1)}k`
         return `${Math.round(value)}`
     }
     return Number.isInteger(value) ? `${value}` : value.toFixed(2)
@@ -79,7 +81,8 @@ export function chartDomain(values: number[], min?: number, max?: number): { min
 }
 
 export function chartTicks(min: number, max: number, count = 4): number[] {
-    if (count <= 1) return [min]
+    // A degenerate domain would otherwise emit `count` coincident gridlines and duplicate keys.
+    if (count <= 1 || max === min) return [min]
     const step = (max - min) / (count - 1)
     return Array.from({ length: count }, (_, index) => min + step * index)
 }
@@ -498,7 +501,12 @@ export function DonutChart({
                 (centerLabel != null || resolvedCenterValue != null) && React.createElement('div', {
                     style: {
                         position: 'absolute' as const,
-                        inset: resolvedThickness,
+                        // Satori ignores the `inset` shorthand, which collapsed this overlay to a
+                        // 0x0 box at the top-left corner. Offsets have to be spelled out.
+                        top: resolvedThickness,
+                        left: resolvedThickness,
+                        width: Math.max(0, resolvedSize - resolvedThickness * 2),
+                        height: Math.max(0, resolvedSize - resolvedThickness * 2),
                         display: 'flex',
                         flexDirection: 'column' as const,
                         alignItems: 'center',
@@ -706,9 +714,15 @@ export function BarChart({
 
     const barGeometries = data.map((item, index) => {
         const x = plot.x + index * barSlot + (barSlot - barWidth) / 2
-        const valueY = yInPlot(item.value, domain, plot)
-        const y = Math.min(valueY, baselineY)
-        const barHeight = Math.max(4, Math.abs(baselineY - valueY))
+        // Clamp to the plot box so values outside an explicit min/max stop at the axis
+        // instead of painting over the labels below or the title above.
+        const valueY = clamp(yInPlot(item.value, domain, plot), plot.y, plot.bottom)
+        const distance = Math.abs(baselineY - valueY)
+        const barHeight = Math.min(plot.innerHeight, Math.max(4, distance))
+        const growsUp = valueY < baselineY || (valueY === baselineY && item.value >= 0)
+        const y = growsUp
+            ? Math.max(plot.y, baselineY - barHeight)
+            : Math.min(plot.bottom - barHeight, baselineY)
         return { item, index, x, y, barHeight, valueY, color: chartColor(item.color, c, index) }
     })
 
@@ -822,7 +836,9 @@ export function LineChart({
 
     const pointFor = (value: number, index: number) => {
         const x = xStart + index * xStep
-        const y = yInPlot(value, domain, plot)
+        // Values outside an explicit min/max clamp to the plot edge rather than drawing off-canvas.
+        const markerInset = showPoints ? 6.5 : 2
+        const y = clamp(yInPlot(value, domain, plot), plot.y + markerInset, plot.bottom - markerInset)
         return { x, y }
     }
 

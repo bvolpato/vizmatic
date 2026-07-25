@@ -1,7 +1,7 @@
 import React from 'react'
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { inflateSync } from 'zlib'
@@ -33,12 +33,15 @@ import {
     LayeredNetwork,
     LineChart,
     Matrix,
+    MiniBarChart,
     Panel,
     Row,
     renderToPngWithOutput,
     Timeline,
     TreeDiagram,
+    DashedLine,
 } from '../src'
+import { chartTicks, formatChartValue } from '../src/primitives/charts'
 
 let packageBuilt = false
 
@@ -56,6 +59,15 @@ type CliManifestEntry = {
     }>
 }
 
+function cliChildEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
+    delete env.NODE_OPTIONS
+    for (const key of Object.keys(env)) {
+        if (key.startsWith('TSX_') || key.startsWith('VITEST')) delete env[key]
+    }
+    return env
+}
+
 function ensurePackageBuild() {
     if (packageBuilt) return
     if (process.env.VIZMATIC_TEST_USE_EXISTING_BUILD === '1') {
@@ -67,6 +79,7 @@ function ensurePackageBuild() {
     const build = spawnSync('pnpm', ['build'], {
         cwd: process.cwd(),
         encoding: 'utf8',
+        env: cliChildEnv(),
     })
     expect(build.status, build.stderr || build.stdout).toBe(0)
     packageBuilt = true
@@ -246,6 +259,7 @@ async function renderBuiltCliFrame(prefix: string, frameName: string, source: st
         ], {
             cwd: outDir,
             encoding: 'utf8',
+            env: cliChildEnv(),
         })
 
         expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -427,6 +441,78 @@ describe('vizmatic render pipeline', () => {
         expect(circleXs.length).toBe(10)
         expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(60)
         expect(Math.max(...circleXs)).toBeLessThanOrEqual(420)
+    })
+
+    it('keeps clamped bars and line markers inside the plot area', () => {
+        const c = getThemeColors('light')
+        const barChart = BarChart({
+            c,
+            width: 320,
+            height: 220,
+            min: 10,
+            max: 20,
+            data: [{ label: 'below range', value: 0, color: 'positive' }],
+        })
+        const [bar] = collectElements(barChart, (element) => element.type === 'rect')
+        expect(bar).toBeDefined()
+        const barY = Number(reactProps(bar!).y)
+        const barHeight = Number(reactProps(bar!).height)
+        expect(barY).toBeGreaterThanOrEqual(18)
+        expect(barY + barHeight).toBeLessThanOrEqual(180)
+
+        const lineChart = LineChart({
+            c,
+            width: 320,
+            height: 220,
+            min: 0,
+            max: 1,
+            series: [{ name: 'outside', points: [-1, 2], color: 'primary' }],
+        })
+        const markers = collectElements(lineChart, (element) => element.type === 'circle')
+        expect(markers).toHaveLength(2)
+        for (const marker of markers) {
+            const props = reactProps(marker)
+            const extent = Number(props.r) + Number(props.strokeWidth) / 2
+            const center = Number(props.cy)
+            expect(center - extent).toBeGreaterThanOrEqual(18)
+            expect(center + extent).toBeLessThanOrEqual(196)
+        }
+    })
+
+    it('handles chart boundary values without invalid or duplicate geometry', async () => {
+        expect(formatChartValue(999_999.5, 'compact')).toBe('1.0M')
+        expect(chartTicks(4, 4, 4)).toEqual([4])
+
+        const c = getThemeColors('light')
+        const miniBars = MiniBarChart({
+            c,
+            max: 0,
+            data: [{ label: 'zero', value: 0 }],
+        })
+        await expect(renderToSvg(miniBars, 180, 100)).resolves.not.toContain('NaN')
+
+        const shortDash = DashedLine({ x1: 0, y1: 0, x2: 2, y2: 0, color: c.primary, dotSpacing: 8 })
+        expect(shortDash).toHaveLength(1)
+    })
+
+    it('positions donut center content inside the ring', () => {
+        const donut = DonutChart({
+            c: getThemeColors('light'),
+            size: 140,
+            thickness: 20,
+            centerValue: '100%',
+            segments: [{ label: 'complete', value: 1, color: 'positive' }],
+        })
+        const overlays = collectElements(donut, (element) => {
+            const style = reactProps(element).style as React.CSSProperties | undefined
+            return element.type === 'div' && style?.position === 'absolute'
+        })
+
+        expect(overlays).toContainEqual(expect.objectContaining({
+            props: expect.objectContaining({
+                style: expect.objectContaining({ top: 20, left: 20, width: 100, height: 100 }),
+            }),
+        }))
     })
 
     it('spaces line chart labels when series are empty', () => {
@@ -653,6 +739,7 @@ renderToBuffer(frame.create('dark'), 720, 420)
 `], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
             expect(result.status, result.stderr || result.stdout).toBe(0)
         } finally {
@@ -913,6 +1000,7 @@ export default frame.default
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -955,6 +1043,7 @@ height = 300;
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -997,6 +1086,7 @@ height = 240;
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1027,6 +1117,102 @@ export default (
 `)
 
         expect(decodePng(buffer).width).toBeGreaterThan(0)
+    }, 30_000)
+
+    it('loads modules with an aliased default React import', async () => {
+        const { buffer } = await renderBuiltCliFrame('vizmatic-cli-react-alias-', 'react-alias.tsx', `import { default as React } from 'react'
+import { getThemeColors, Scene, StepCard } from 'vizmatic'
+
+const c = getThemeColors('light')
+export default <Scene c={c}><StepCard c={c} title="React alias" tone="green" /></Scene>
+`)
+
+        expect(decodePng(buffer).width).toBeGreaterThan(0)
+    }, 30_000)
+
+    it('keeps the original module URL while supplying a global React binding', async () => {
+        ensurePackageBuild()
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-relative-asset-'))
+        const framePath = join(outDir, 'frame.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(join(outDir, 'label.txt'), 'Asset label\n')
+            await writeFile(framePath, `import { readFileSync } from 'fs'
+import { getThemeColors, Scene, StepCard } from 'vizmatic'
+
+export const width = 320
+export const height = 200
+
+const label = readFileSync(new URL('./label.txt', import.meta.url), 'utf8').trim()
+
+export function create(theme = 'light') {
+  const c = getThemeColors(theme)
+  return <Scene c={c}><StepCard c={c} title={label} tone="green" /></Scene>
+}
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(process.cwd(), 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            await expect(readFile(join(renderDir, 'frame_light.png'))).resolves.toBeDefined()
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('preserves module-relative assets, dynamic imports, and source strings', async () => {
+        ensurePackageBuild()
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-relative-module-'))
+        const framePath = join(outDir, 'relative.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(join(outDir, 'package.json'), '{"type":"module"}\n')
+            await writeFile(join(outDir, 'label.txt'), 'Relative asset')
+            await writeFile(join(outDir, 'detail.ts'), `export const detail = 'Dynamic import'\n`)
+            await writeFile(framePath, `/*
+import React from 'react'
+*/
+import { readFileSync } from 'fs'
+import { defineIllustration, Scene, StepCard } from 'vizmatic'
+
+const literal = "from './untouched'"
+if (literal !== "from './untouched'") throw new Error('source string was rewritten')
+const title = readFileSync(new URL('./label.txt', import.meta.url), 'utf8')
+const { detail } = await import('./detail.ts')
+const frame = defineIllustration((c) => (
+  <Scene c={c}>
+    <StepCard c={c} title={title} subtitle={detail} tone="green" />
+  </Scene>
+))
+
+export const create = frame.create
+export default frame.default
+`)
+
+            const result = spawnSync(process.execPath, [
+                join(process.cwd(), 'dist', 'cli.js'),
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'light',
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            await expect(readFile(join(renderDir, 'relative_light.png'))).resolves.toBeDefined()
+            expect((await readdir(outDir)).some((name) => name.includes('.vizmatic-'))).toBe(false)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
     }, 30_000)
 
     it('loads bare frames with multiline dependency imports', async () => {
@@ -1067,7 +1253,7 @@ const title = basename('/tmp/multiline-import')
                 'light',
                 '--scale',
                 '1',
-            ], { cwd: outDir, encoding: 'utf8' })
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
@@ -1100,7 +1286,7 @@ const title = basename('/tmp/multiline-import')
                 renderDir,
                 '--theme',
                 'dark,light',
-            ], { cwd: outDir, encoding: 'utf8' })
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
@@ -1147,6 +1333,7 @@ const title = basename('/tmp/multiline-import')
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1200,6 +1387,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1255,6 +1443,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1590,6 +1779,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1647,6 +1837,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status).not.toBe(0)
@@ -1687,6 +1878,7 @@ height = 540
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status).not.toBe(0)
@@ -1734,6 +1926,7 @@ const detail = 'package-owned imports'
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1756,6 +1949,7 @@ const detail = 'package-owned imports'
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(opaqueResult.status, opaqueResult.stderr || opaqueResult.stdout).toBe(0)
@@ -1822,6 +2016,7 @@ export default create('dark')
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)

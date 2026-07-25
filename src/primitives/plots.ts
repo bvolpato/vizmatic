@@ -518,7 +518,8 @@ export function DashedLine({ x1, y1, x2, y2, color, dotSpacing = 8, dotSize = 2 
     const dx = x2 - x1
     const dy = y2 - y1
     const length = Math.sqrt(dx * dx + dy * dy)
-    const numDots = Math.floor(length / dotSpacing)
+    // Segments shorter than one dot spacing would otherwise render nothing at all.
+    const numDots = Math.max(1, Math.floor(length / dotSpacing))
     const dots: React.ReactElement[] = []
 
     for (let i = 0; i < numDots; i++) {

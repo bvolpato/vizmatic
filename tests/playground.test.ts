@@ -54,6 +54,19 @@ function Helper() {
         expect(prepared.jsx).toMatch(/^<Scene>/)
     })
 
+    it('unwraps spaced nested parentheses around the root element', () => {
+        const prepared = preparePlaygroundSource(`(
+  (
+    <Scene>
+      <CalloutCard title="Nested" detail="Parentheses are optional." />
+    </Scene>
+  )
+)`)
+
+        expect(prepared.jsx).toMatch(/^<Scene>/)
+        expect(prepared.jsx).toMatch(/<\/Scene>$/)
+    })
+
     it('isolates snippets from imports and unsafe dimensions', () => {
         expect(() => preparePlaygroundSource(`import data from "./private.json"
 <Scene />`)).toThrow('cannot use imports')
