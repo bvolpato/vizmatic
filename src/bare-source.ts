@@ -146,7 +146,7 @@ function hasOnlyTrailingSyntax(source: string): boolean {
  */
 export function extractRootJsx(source: string): string {
     // The wrapper supplies its own parentheses, so leading ones can go.
-    const body = source.replace(/^\s*\(+\s*/, '')
+    const body = source.replace(/^(?:\s*\()+\s*/, '')
     const end = findJsxEnd(body, 0)
     return (end == null ? body : body.slice(0, end)).trim()
 }

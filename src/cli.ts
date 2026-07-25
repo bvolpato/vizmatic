@@ -2,11 +2,12 @@
 
 import { existsSync } from 'fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { createRequire, Module } from 'module'
 import { tmpdir } from 'os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { isValidElement } from 'react'
+import React, { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import * as publicApi from './index'
 import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
@@ -103,6 +104,7 @@ const BARE_FRAME_EXPORTS = Object.keys(publicApi)
     .sort()
 
 type ResolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown) => string
+const FRAME_NEEDS_GLOBAL_REACT = Symbol('vizmatic.frameNeedsGlobalReact')
 
 function usageText() {
     return `Usage:
@@ -245,24 +247,66 @@ function rewriteRelativeImports(line: string, framePath: string): string {
         )
 }
 
-const REACT_IMPORT_BINDING = /^\s*import\s+(?:React(?:\s*,|\s+from)|\*\s+as\s+React\s+from)/m
+const REACT_IMPORT_BINDING = /^\s*import\s+(?:React(?:\s*,|\s+from)|\*\s+as\s+React\s+from|\{[^}]*\bdefault\s+as\s+React\b[^}]*\}\s+from)/m
 
 function hasReactImportBinding(source: string): boolean {
-    return REACT_IMPORT_BINDING.test(source)
+    const withoutBlockComments = source.replace(/\/\*[\s\S]*?\*\//g, '')
+    return REACT_IMPORT_BINDING.test(withoutBlockComments)
 }
 
 function containsJsx(source: string): boolean {
     return /<[A-Za-z][A-Za-z0-9.:-]*(\s|\/|>)/.test(source)
 }
 
-function rewriteFrameModuleImports(source: string, framePath: string): string {
+function installTemporaryGlobalReactBinding(): () => void {
+    const globalScope = globalThis as typeof globalThis & { React?: typeof React }
+    const hadOwnBinding = Object.prototype.hasOwnProperty.call(globalScope, 'React')
+    const previousBinding = globalScope.React
+    globalScope.React = React
+    return () => {
+        if (hadOwnBinding) globalScope.React = previousBinding
+        else Reflect.deleteProperty(globalScope, 'React')
+    }
+}
+
+async function withTemporaryGlobalReact<T>(callback: () => Promise<T>): Promise<T> {
+    const restore = installTemporaryGlobalReactBinding()
+    try {
+        return await callback()
+    } finally {
+        restore()
+    }
+}
+
+function withTemporaryGlobalReactSync<T>(callback: () => T): T {
+    const restore = installTemporaryGlobalReactBinding()
+    try {
+        return callback()
+    } finally {
+        restore()
+    }
+}
+
+function rewritePackageImports(source: string, packageName: string, replacement: string): string {
+    const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const fromPattern = new RegExp(
+        `(^[\\t ]*(?:import|export)\\s+(?:(?:[^\\n;]*\\n)*?[^\\n;]*?)\\bfrom\\s+)(["'])${escapedName}\\2`,
+        'gm',
+    )
+    const sideEffectPattern = new RegExp(`(^[\\t ]*import[\\t ]*)(["'])${escapedName}\\2`, 'gm')
+    return source
+        .replace(fromPattern, `$1${replacement}`)
+        .replace(sideEffectPattern, `$1${replacement}`)
+}
+
+function rewriteFrameModuleImports(source: string): string {
     const selfImport = JSON.stringify(resolveSelfImportSpecifier())
     const reactImport = JSON.stringify(resolveReactImportSpecifier())
-    const rewritten = rewriteRelativeImports(source, framePath)
-        .replace(/(from\s+)["']vizmatic["']/g, `$1${selfImport}`)
-        .replace(/(^\s*import\s+)["']vizmatic["']/gm, `$1${selfImport}`)
-        .replace(/(from\s+)["']react["']/g, `$1${reactImport}`)
-        .replace(/(^\s*import\s+)["']react["']/gm, `$1${reactImport}`)
+    const rewritten = rewritePackageImports(
+        rewritePackageImports(source, 'vizmatic', selfImport),
+        'react',
+        reactImport,
+    )
     const hasReactBinding = hasReactImportBinding(rewritten)
     return `/** @jsxRuntime classic */\n${hasReactBinding ? '' : `import React from ${reactImport}\n`}${rewritten}`
 }
@@ -504,16 +548,16 @@ async function importBareFrame(filePath: string, source?: string): Promise<Frame
 }
 
 async function importRewrittenFrame(filePath: string, source: string): Promise<FrameModule> {
-    const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-module-'))
-    const tempPath = join(tempDir, basename(filePath))
-    await writeFile(join(tempDir, 'package.json'), '{"type":"module"}\n')
-    await writeFile(tempPath, rewriteFrameModuleImports(source, filePath))
+    const extension = extname(filePath)
+    const stem = basename(filePath, extension)
+    const tempPath = join(dirname(filePath), `.${stem}.vizmatic-${randomUUID()}${extension}`)
+    await writeFile(tempPath, rewriteFrameModuleImports(source))
 
     try {
         const { tsImport } = await import('tsx/esm/api')
         return await tsImport<FrameModule>(pathToFileURL(tempPath).href, import.meta.url)
     } finally {
-        await rm(tempDir, { recursive: true, force: true })
+        await rm(tempPath, { force: true })
     }
 }
 
@@ -740,26 +784,29 @@ async function importFrame(filePath: string): Promise<FrameModule> {
     const source = await readFile(filePath, 'utf8')
     const isBareFrame = isBareFrameSource(source)
     const preferBareFrame = isBareFrame && !/\bexport\s+default\b/.test(source)
-    // A loader may transpile with the classic JSX runtime, which leaves `React` undefined at render
-    // time for a frame that never imported it: the import resolves fine and `create()` throws later.
-    // Route those frames straight to the rewritten loader, which injects the binding.
-    const needsReactBinding = !hasReactImportBinding(source) && containsJsx(source)
+    const needsGlobalReactBinding = !hasReactImportBinding(source) && containsJsx(source)
+
+    async function importWithOptionalReactBinding(loader: () => Promise<FrameModule>): Promise<FrameModule> {
+        const mod = needsGlobalReactBinding ? await withTemporaryGlobalReact(loader) : await loader()
+        if (needsGlobalReactBinding) {
+            ;(mod as FrameModule & { [FRAME_NEEDS_GLOBAL_REACT]?: boolean })[FRAME_NEEDS_GLOBAL_REACT] = true
+        }
+        return mod
+    }
 
     let loadError: unknown
-    if (!needsReactBinding) {
-        try {
-            return await import(url) as FrameModule
-        } catch (nativeError) {
-            loadError = nativeError
-        }
+    try {
+        return await importWithOptionalReactBinding(() => import(url) as Promise<FrameModule>)
+    } catch (nativeError) {
+        loadError = nativeError
+    }
 
-        const { tsImport } = await import('tsx/esm/api')
-        try {
-            const mod = await tsImport<FrameModule>(url, import.meta.url)
-            if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
-        } catch {
-            // Fall through to CLI-owned module loading.
-        }
+    const { tsImport } = await import('tsx/esm/api')
+    try {
+        const mod = await importWithOptionalReactBinding(() => tsImport<FrameModule>(url, import.meta.url))
+        if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+    } catch {
+        // Fall through to CLI-owned module loading.
     }
 
     if (preferBareFrame) {
@@ -823,10 +870,17 @@ function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     }
 }
 
+function withFrameReactBinding<T>(mod: FrameModule, callback: () => T): T {
+    const needsGlobalReactBinding = (mod as FrameModule & { [FRAME_NEEDS_GLOBAL_REACT]?: boolean })[FRAME_NEEDS_GLOBAL_REACT]
+    return needsGlobalReactBinding ? withTemporaryGlobalReactSync(callback) : callback()
+}
+
 function frameElement(mod: FrameModule, theme: ThemeMode): ReactNode {
-    if (mod.create) return mod.create(theme)
-    if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
-    throw new Error('frame module must export create(theme) or default React element')
+    return withFrameReactBinding(mod, () => {
+        if (mod.create) return mod.create(theme)
+        if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
+        throw new Error('frame module must export create(theme) or default React element')
+    })
 }
 
 type OverflowEdge = 'top' | 'right' | 'bottom' | 'left'
@@ -1270,7 +1324,8 @@ async function gifCommand(argv: string[]) {
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.gif`
             const outputPath = join(args.outDir, outputName)
-            const rendered = await renderAnimatedGifWithOutput(mod.createScenes(theme), {
+            const scenes = withFrameReactBinding(mod, () => mod.createScenes!(theme))
+            const rendered = await renderAnimatedGifWithOutput(scenes, {
                 width: mod.width,
                 height: mod.height,
                 outputPath,

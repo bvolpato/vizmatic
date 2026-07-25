@@ -717,8 +717,12 @@ export function BarChart({
         // Clamp to the plot box so values outside an explicit min/max stop at the axis
         // instead of painting over the labels below or the title above.
         const valueY = clamp(yInPlot(item.value, domain, plot), plot.y, plot.bottom)
-        const y = Math.min(valueY, baselineY)
-        const barHeight = Math.max(4, Math.abs(baselineY - valueY))
+        const distance = Math.abs(baselineY - valueY)
+        const barHeight = Math.min(plot.innerHeight, Math.max(4, distance))
+        const growsUp = valueY < baselineY || (valueY === baselineY && item.value >= 0)
+        const y = growsUp
+            ? Math.max(plot.y, baselineY - barHeight)
+            : Math.min(plot.bottom - barHeight, baselineY)
         return { item, index, x, y, barHeight, valueY, color: chartColor(item.color, c, index) }
     })
 
@@ -833,7 +837,8 @@ export function LineChart({
     const pointFor = (value: number, index: number) => {
         const x = xStart + index * xStep
         // Values outside an explicit min/max clamp to the plot edge rather than drawing off-canvas.
-        const y = clamp(yInPlot(value, domain, plot), plot.y, plot.bottom)
+        const markerInset = showPoints ? 6.5 : 2
+        const y = clamp(yInPlot(value, domain, plot), plot.y + markerInset, plot.bottom - markerInset)
         return { x, y }
     }
 

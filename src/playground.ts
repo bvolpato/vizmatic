@@ -79,13 +79,16 @@ class PlaygroundRenderer {
 
     private onMessage(response: PlaygroundRenderResponse): void {
         if (!this.pending || response.id !== this.pending.id) return
+        if (!response.ok) {
+            this.restart(new Error(response.error))
+            return
+        }
+
         const pending = this.pending
         this.pending = undefined
         window.clearTimeout(pending.timeout)
-        if (response.ok) {
-            this.hasRendered = true
-            pending.resolve(response)
-        } else pending.reject(new Error(response.error))
+        this.hasRendered = true
+        pending.resolve(response)
     }
 
     private restart(reason: Error): void {
