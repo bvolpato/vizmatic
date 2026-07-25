@@ -2,6 +2,8 @@ allowBuilds:
   esbuild: true
 engineStrict: true
 minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - tar@7.5.21
 minimumReleaseAgeIgnoreMissingTime: true
 minimumReleaseAgeStrict: false
 overrides:
