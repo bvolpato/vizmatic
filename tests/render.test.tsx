@@ -59,6 +59,15 @@ type CliManifestEntry = {
     }>
 }
 
+function cliChildEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
+    delete env.NODE_OPTIONS
+    for (const key of Object.keys(env)) {
+        if (key.startsWith('TSX_') || key.startsWith('VITEST')) delete env[key]
+    }
+    return env
+}
+
 function ensurePackageBuild() {
     if (packageBuilt) return
     if (process.env.VIZMATIC_TEST_USE_EXISTING_BUILD === '1') {
@@ -70,6 +79,7 @@ function ensurePackageBuild() {
     const build = spawnSync('pnpm', ['build'], {
         cwd: process.cwd(),
         encoding: 'utf8',
+        env: cliChildEnv(),
     })
     expect(build.status, build.stderr || build.stdout).toBe(0)
     packageBuilt = true
@@ -249,6 +259,7 @@ async function renderBuiltCliFrame(prefix: string, frameName: string, source: st
         ], {
             cwd: outDir,
             encoding: 'utf8',
+            env: cliChildEnv(),
         })
 
         expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -728,6 +739,7 @@ renderToBuffer(frame.create('dark'), 720, 420)
 `], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
             expect(result.status, result.stderr || result.stdout).toBe(0)
         } finally {
@@ -988,6 +1000,7 @@ export default frame.default
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1030,6 +1043,7 @@ height = 300;
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1072,6 +1086,7 @@ height = 240;
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1144,7 +1159,7 @@ export function create(theme = 'light') {
                 renderDir,
                 '--theme',
                 'light',
-            ], { cwd: outDir, encoding: 'utf8' })
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
             await expect(readFile(join(renderDir, 'frame_light.png'))).resolves.toBeDefined()
@@ -1190,7 +1205,7 @@ export default frame.default
                 renderDir,
                 '--theme',
                 'light',
-            ], { cwd: outDir, encoding: 'utf8' })
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
             await expect(readFile(join(renderDir, 'relative_light.png'))).resolves.toBeDefined()
@@ -1238,7 +1253,7 @@ const title = basename('/tmp/multiline-import')
                 'light',
                 '--scale',
                 '1',
-            ], { cwd: outDir, encoding: 'utf8' })
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
@@ -1271,7 +1286,7 @@ const title = basename('/tmp/multiline-import')
                 renderDir,
                 '--theme',
                 'dark,light',
-            ], { cwd: outDir, encoding: 'utf8' })
+            ], { cwd: outDir, encoding: 'utf8', env: cliChildEnv() })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as CliManifestEntry[]
@@ -1318,6 +1333,7 @@ const title = basename('/tmp/multiline-import')
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1371,6 +1387,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1426,6 +1443,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1761,6 +1779,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1818,6 +1837,7 @@ export default frame.default
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status).not.toBe(0)
@@ -1858,6 +1878,7 @@ height = 540
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status).not.toBe(0)
@@ -1905,6 +1926,7 @@ const detail = 'package-owned imports'
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)
@@ -1927,6 +1949,7 @@ const detail = 'package-owned imports'
             ], {
                 cwd: outDir,
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(opaqueResult.status, opaqueResult.stderr || opaqueResult.stdout).toBe(0)
@@ -1993,6 +2016,7 @@ export default create('dark')
             ], {
                 cwd: process.cwd(),
                 encoding: 'utf8',
+                env: cliChildEnv(),
             })
 
             expect(result.status, result.stderr || result.stdout).toBe(0)

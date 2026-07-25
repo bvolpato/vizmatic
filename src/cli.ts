@@ -104,7 +104,6 @@ const BARE_FRAME_EXPORTS = Object.keys(publicApi)
     .sort()
 
 type ResolveFilename = (request: string, parent: unknown, isMain: boolean, options?: unknown) => string
-const FRAME_NEEDS_GLOBAL_REACT = Symbol('vizmatic.frameNeedsGlobalReact')
 
 function usageText() {
     return `Usage:
@@ -206,13 +205,8 @@ function resolveSelfImportSpecifier(): string {
     return resolveSelfImportEntry() ?? 'vizmatic'
 }
 
-function resolveReactRequireSpecifier(): string {
-    const reactEntry = resolveFrameDependency('react')
-    return reactEntry ?? 'react'
-}
-
 function resolveReactImportSpecifier(): string {
-    return resolveReactRequireSpecifier()
+    return resolveFrameDependency('react') ?? 'react'
 }
 
 function resolveFrameDependency(request: string): string | undefined {
@@ -278,15 +272,6 @@ async function withTemporaryGlobalReact<T>(callback: () => Promise<T>): Promise<
     }
 }
 
-function withTemporaryGlobalReactSync<T>(callback: () => T): T {
-    const restore = installTemporaryGlobalReactBinding()
-    try {
-        return callback()
-    } finally {
-        restore()
-    }
-}
-
 function rewritePackageImports(source: string, packageName: string, replacement: string): string {
     const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const fromPattern = new RegExp(
@@ -301,14 +286,9 @@ function rewritePackageImports(source: string, packageName: string, replacement:
 
 function rewriteFrameModuleImports(source: string): string {
     const selfImport = JSON.stringify(resolveSelfImportSpecifier())
-    const reactImport = JSON.stringify(resolveReactImportSpecifier())
-    const rewritten = rewritePackageImports(
-        rewritePackageImports(source, 'vizmatic', selfImport),
-        'react',
-        reactImport,
-    )
+    const rewritten = rewritePackageImports(source, 'vizmatic', selfImport)
     const hasReactBinding = hasReactImportBinding(rewritten)
-    return `/** @jsxRuntime classic */\n${hasReactBinding ? '' : `import React from ${reactImport}\n`}${rewritten}`
+    return `/** @jsxRuntime classic */\n${hasReactBinding ? '' : 'const React = globalThis.React\n'}${rewritten}`
 }
 
 function resolveRelativeImportSpecifier(frameDir: string, specifier: string): string {
@@ -787,26 +767,24 @@ async function importFrame(filePath: string): Promise<FrameModule> {
     const needsGlobalReactBinding = !hasReactImportBinding(source) && containsJsx(source)
 
     async function importWithOptionalReactBinding(loader: () => Promise<FrameModule>): Promise<FrameModule> {
-        const mod = needsGlobalReactBinding ? await withTemporaryGlobalReact(loader) : await loader()
-        if (needsGlobalReactBinding) {
-            ;(mod as FrameModule & { [FRAME_NEEDS_GLOBAL_REACT]?: boolean })[FRAME_NEEDS_GLOBAL_REACT] = true
-        }
-        return mod
+        return needsGlobalReactBinding ? await withTemporaryGlobalReact(loader) : await loader()
     }
 
     let loadError: unknown
-    try {
-        return await importWithOptionalReactBinding(() => import(url) as Promise<FrameModule>)
-    } catch (nativeError) {
-        loadError = nativeError
-    }
+    if (!needsGlobalReactBinding) {
+        try {
+            return await importWithOptionalReactBinding(() => import(url) as Promise<FrameModule>)
+        } catch (nativeError) {
+            loadError = nativeError
+        }
 
-    const { tsImport } = await import('tsx/esm/api')
-    try {
-        const mod = await importWithOptionalReactBinding(() => tsImport<FrameModule>(url, import.meta.url))
-        if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
-    } catch {
-        // Fall through to CLI-owned module loading.
+        const { tsImport } = await import('tsx/esm/api')
+        try {
+            const mod = await importWithOptionalReactBinding(() => tsImport<FrameModule>(url, import.meta.url))
+            if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+        } catch {
+            // Fall through to CLI-owned module loading.
+        }
     }
 
     if (preferBareFrame) {
@@ -815,7 +793,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
     }
 
     try {
-        const mod = await importRewrittenFrame(filePath, source)
+        const mod = await importWithOptionalReactBinding(() => importRewrittenFrame(filePath, source))
         if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
     } catch (rewrittenError) {
         if (!isBareFrame) throw rewrittenError
@@ -870,17 +848,10 @@ function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     }
 }
 
-function withFrameReactBinding<T>(mod: FrameModule, callback: () => T): T {
-    const needsGlobalReactBinding = (mod as FrameModule & { [FRAME_NEEDS_GLOBAL_REACT]?: boolean })[FRAME_NEEDS_GLOBAL_REACT]
-    return needsGlobalReactBinding ? withTemporaryGlobalReactSync(callback) : callback()
-}
-
 function frameElement(mod: FrameModule, theme: ThemeMode): ReactNode {
-    return withFrameReactBinding(mod, () => {
-        if (mod.create) return mod.create(theme)
-        if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
-        throw new Error('frame module must export create(theme) or default React element')
-    })
+    if (mod.create) return mod.create(theme)
+    if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
+    throw new Error('frame module must export create(theme) or default React element')
 }
 
 type OverflowEdge = 'top' | 'right' | 'bottom' | 'left'
@@ -1324,8 +1295,7 @@ async function gifCommand(argv: string[]) {
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.gif`
             const outputPath = join(args.outDir, outputName)
-            const scenes = withFrameReactBinding(mod, () => mod.createScenes!(theme))
-            const rendered = await renderAnimatedGifWithOutput(scenes, {
+            const rendered = await renderAnimatedGifWithOutput(mod.createScenes(theme), {
                 width: mod.width,
                 height: mod.height,
                 outputPath,
