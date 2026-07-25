@@ -60,10 +60,10 @@ type CliManifestEntry = {
 }
 
 function cliChildEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env, ...extra }
-    delete env.NODE_OPTIONS
-    for (const key of Object.keys(env)) {
-        if (key.startsWith('TSX_') || key.startsWith('VITEST')) delete env[key]
+    const env: NodeJS.ProcessEnv = { ...extra }
+    for (const key of ['HOME', 'PATH', 'PATHEXT', 'SHELL', 'SystemRoot', 'TERM', 'TMP', 'TEMP', 'TMPDIR']) {
+        const value = process.env[key]
+        if (value) env[key] = value
     }
     return env
 }
