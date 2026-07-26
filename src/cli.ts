@@ -233,22 +233,84 @@ function installFrameDependencyAliases() {
     }
 }
 
-function rewriteRelativeImports(line: string, framePath: string): string {
-    const frameDir = dirname(framePath)
-    return line
-        .replace(/(from\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
-            `${before}${resolveRelativeImportSpecifier(frameDir, specifier)}${after}`,
-        )
-        .replace(/(^\s*import\s+['"])(\.{1,2}\/[^'"]+)(['"])/g, (_match, before: string, specifier: string, after: string) =>
-            `${before}${resolveRelativeImportSpecifier(frameDir, specifier)}${after}`,
-        )
+function maskStringsAndComments(source: string): string {
+    const masked = source.split('')
+    let mode: 'code' | 'line-comment' | 'block-comment' | 'string' = 'code'
+    let quote: '"' | "'" | '`' | undefined
+    let escaped = false
+
+    for (let index = 0; index < source.length; index += 1) {
+        const character = source[index]
+        const next = source[index + 1]
+
+        if (mode === 'line-comment') {
+            if (character === '\n') mode = 'code'
+            else masked[index] = ' '
+            continue
+        }
+        if (mode === 'block-comment') {
+            if (character !== '\n') masked[index] = ' '
+            if (character === '*' && next === '/') {
+                masked[index + 1] = ' '
+                index += 1
+                mode = 'code'
+            }
+            continue
+        }
+        if (mode === 'string') {
+            if (character !== '\n') masked[index] = ' '
+            if (escaped) escaped = false
+            else if (character === '\\') escaped = true
+            else if (character === quote) {
+                quote = undefined
+                mode = 'code'
+            }
+            continue
+        }
+        if (character === '/' && next === '/') {
+            masked[index] = ' '
+            masked[index + 1] = ' '
+            index += 1
+            mode = 'line-comment'
+            continue
+        }
+        if (character === '/' && next === '*') {
+            masked[index] = ' '
+            masked[index + 1] = ' '
+            index += 1
+            mode = 'block-comment'
+            continue
+        }
+        if (character === '"' || character === "'" || character === '`') {
+            masked[index] = ' '
+            quote = character
+            mode = 'string'
+        }
+    }
+
+    return masked.join('')
+}
+
+function rewriteStaticModuleSpecifier(statement: string, specifier: string, replacement: string): string {
+    const escaped = escapeRegExp(specifier)
+    const fromPattern = new RegExp(`(\\bfrom\\s+)(["'])${escaped}\\2`)
+    const sideEffectPattern = new RegExp(`(^\\s*import\\s+)(["'])${escaped}\\2`, 'm')
+    return statement
+        .replace(fromPattern, (_match, before: string) => `${before}${replacement}`)
+        .replace(sideEffectPattern, (_match, before: string) => `${before}${replacement}`)
+}
+
+function rewriteRelativeImports(statement: string, framePath: string): string {
+    const specifier = staticImportSource(statement)
+    if (!specifier?.match(/^\.{1,2}\//)) return statement
+    const replacement = JSON.stringify(resolveRelativeImportSpecifier(dirname(framePath), specifier))
+    return rewriteStaticModuleSpecifier(statement, specifier, replacement)
 }
 
 const REACT_IMPORT_BINDING = /^\s*import\s+(?:React(?:\s*,|\s+from)|\*\s+as\s+React\s+from|\{[^}]*\bdefault\s+as\s+React\b[^}]*\}\s+from)/m
 
 function hasReactImportBinding(source: string): boolean {
-    const withoutBlockComments = source.replace(/\/\*[\s\S]*?\*\//g, '')
-    return REACT_IMPORT_BINDING.test(withoutBlockComments)
+    return REACT_IMPORT_BINDING.test(maskStringsAndComments(source))
 }
 
 function containsJsx(source: string): boolean {
@@ -307,15 +369,27 @@ async function importWithTsx<T>(url: string): Promise<T> {
 }
 
 function rewritePackageImports(source: string, packageName: string, replacement: string): string {
-    const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const fromPattern = new RegExp(
-        `(^[\\t ]*(?:import|export)\\s+(?:(?:[^\\n;]*\\n)*?[^\\n;]*?)\\bfrom\\s+)(["'])${escapedName}\\2`,
-        'gm',
-    )
-    const sideEffectPattern = new RegExp(`(^[\\t ]*import[\\t ]*)(["'])${escapedName}\\2`, 'gm')
-    return source
-        .replace(fromPattern, `$1${replacement}`)
-        .replace(sideEffectPattern, `$1${replacement}`)
+    const lines = source.split('\n')
+    const maskedLines = maskStringsAndComments(source).split('\n')
+    const rewritten: string[] = []
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const startsStaticModuleStatement = /^\s*import(?:\s|[{'"*])/.test(maskedLines[index] ?? '')
+            || /^\s*export\s*(?:\{|\*)/.test(maskedLines[index] ?? '')
+        if (!startsStaticModuleStatement) {
+            rewritten.push(lines[index])
+            continue
+        }
+
+        const imported = readStaticImport(lines, index)
+        const specifier = staticImportSource(imported.statement)
+        rewritten.push(specifier === packageName
+            ? rewriteStaticModuleSpecifier(imported.statement, specifier, replacement)
+            : imported.statement)
+        index = imported.end
+    }
+
+    return rewritten.join('\n')
 }
 
 function rewriteFrameModuleImports(source: string): string {
@@ -435,11 +509,12 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     let preset: ThemePreset = 'default'
 
     const lines = source.split(/\r?\n/)
+    const maskedLines = maskStringsAndComments(source).split(/\r?\n/)
 
     for (let index = 0; index < lines.length; index += 1) {
         const line = lines[index]
-        const trimmed = line.trim()
-        if (trimmed.startsWith('import ')) {
+        const trimmed = maskedLines[index]?.trim() ?? ''
+        if (trimmed === 'import' || trimmed.startsWith('import ')) {
             const imported = readStaticImport(lines, index)
             const specifier = staticImportSource(imported.statement)
             if (specifier !== 'react' && specifier !== 'vizmatic') {

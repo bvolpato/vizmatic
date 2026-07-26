@@ -1186,6 +1186,10 @@ import { defineIllustration, Scene, StepCard } from 'vizmatic'
 
 const literal = "from './untouched'"
 if (literal !== "from './untouched'") throw new Error('source string was rewritten')
+const exampleSource = \`
+import React from 'react'
+\`
+if (!exampleSource.includes("from 'react'")) throw new Error('template string was rewritten')
 const title = readFileSync(new URL('./label.txt', import.meta.url), 'utf8')
 const { detail } = await import('./detail.ts')
 const frame = defineIllustration((c) => (
@@ -1894,16 +1898,30 @@ height = 540
         const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-built-bare-cli-'))
         const framePath = join(outDir, 'bare-global.tsx')
         const helperPath = join(outDir, 'copy.ts')
+        const sideEffectPath = join(outDir, 'side-effect.ts')
         const renderDir = join(outDir, 'renders')
         const packageRoot = process.cwd()
 
         try {
             await writeFile(helperPath, `export const title = 'Bare global'\n`)
+            await writeFile(sideEffectPath, `globalThis.__vizmaticSideEffectLoaded = true\n`)
             await writeFile(framePath, `import { title } from './copy'
 
 width = 560
 height = 320
 
+import './side-effect'
+
+const literal = "from './copy'"
+if (literal !== "from './copy'") throw new Error('source string was rewritten')
+if (!globalThis.__vizmaticSideEffectLoaded) throw new Error('side-effect import did not load')
+const sourceText = \`
+import './missing-template-import'
+\`
+if (!sourceText.includes('missing-template-import')) throw new Error('template string was rewritten')
+/*
+import './missing-comment-import'
+*/
 const detail = 'package-owned imports'
 
 <Scene title={title} subtitle={detail}>

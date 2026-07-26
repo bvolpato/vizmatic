@@ -12,6 +12,7 @@ import {
     setPlaygroundRenderBackground,
     type PlaygroundRenderBackground,
 } from './playground-render-context'
+import { createRetryableInitializer } from './retryable-initializer'
 import interRegular from '../assets/fonts/Inter-Regular.ttf'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.ttf'
 import interBold from '../assets/fonts/Inter-Bold.ttf'
@@ -49,6 +50,8 @@ interface PlaygroundRuntime {
 }
 
 let runtime: Promise<PlaygroundRuntime> | undefined
+const initializeSatoriRuntime = createRetryableInitializer(initSatori)
+const initializeResvgRuntime = createRetryableInitializer(initWasm)
 let capabilitiesDisabled = false
 const compileUserFunction = Function
 const dynamicFunctionPrototypes = [
@@ -166,7 +169,7 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
         loadStaticAsset(notoSans),
         loadStaticAsset(notoSansMath),
     ]).then(async ([yoga, resvg, regular, semiBold, bold, mono, sans, math]) => {
-        await Promise.all([initSatori(yoga), initWasm(resvg)])
+        await Promise.all([initializeSatoriRuntime(yoga), initializeResvgRuntime(resvg)])
         const fonts: PlaygroundRuntime['fonts'] = [
             { name: 'Inter', data: regular, weight: 400, style: 'normal' },
             { name: 'Inter', data: semiBold, weight: 600, style: 'normal' },
