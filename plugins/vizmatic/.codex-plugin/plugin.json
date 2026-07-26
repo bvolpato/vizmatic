@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.1.32",
+  "version": "0.1.33",
   "description": "Create and render theme-aware diagrams, charts, docs figures, and animated GIFs from TSX.",
   "author": {
     "name": "Bruno Volpato",
