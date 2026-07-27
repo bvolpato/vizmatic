@@ -3,6 +3,7 @@ import {
     setPlaygroundHashSource,
     type PlaygroundTheme,
 } from './playground-source'
+import { highlightPlaygroundSource } from './playground-highlight'
 import { findPlaygroundTemplate, playgroundTemplates } from './playground-templates'
 import type { PlaygroundRenderRequest } from './playground-worker'
 
@@ -105,6 +106,7 @@ class PlaygroundRenderer {
 }
 
 interface PlaygroundElements {
+    highlight?: HTMLElement
     source: HTMLTextAreaElement
     preview: HTMLElement
     root: HTMLElement
@@ -138,6 +140,7 @@ function requiredElements(root: HTMLElement): PlaygroundElements | undefined {
         root,
         source,
         preview,
+        highlight: findElement(root, '#playgroundHighlight, [data-vizmatic-playground-highlight]'),
         status: findElement(root, '#playgroundStatus, #vizmatic-playground-status, [data-vizmatic-playground-status]'),
         error: findElement(root, '#playgroundError, #vizmatic-playground-error, [data-vizmatic-playground-error]'),
         viewport: findElement(root, '#playgroundViewport, #vizmatic-playground-viewport, [data-vizmatic-playground-viewport]'),
@@ -152,8 +155,22 @@ function requiredElements(root: HTMLElement): PlaygroundElements | undefined {
     }
 }
 
+function syncSourceHighlightScroll(elements: PlaygroundElements): void {
+    if (!elements.highlight) return
+    elements.highlight.scrollLeft = elements.source.scrollLeft
+    elements.highlight.scrollTop = elements.source.scrollTop
+}
+
+function updateSourceHighlight(elements: PlaygroundElements): void {
+    if (!elements.highlight) return
+    elements.highlight.innerHTML = `${highlightPlaygroundSource(elements.source.value)}\n`
+    syncSourceHighlightScroll(elements)
+}
+
 function getTheme(root: HTMLElement): PlaygroundTheme {
-    if (root.dataset.vizmaticPlaygroundTheme === 'light') return 'light'
+    if (root.dataset.vizmaticPlaygroundTheme === 'light' || root.dataset.vizmaticPlaygroundTheme === 'dark') {
+        return root.dataset.vizmaticPlaygroundTheme
+    }
     const active = findElements<HTMLElement>(root, '[data-playground-theme], [data-vizmatic-theme]')
         .find((control) => control.getAttribute('aria-pressed') === 'true')
     return active?.dataset.playgroundTheme === 'light' || active?.dataset.vizmaticTheme === 'light' ? 'light' : 'dark'
@@ -237,16 +254,15 @@ export function mountPlayground(root: HTMLElement): void {
     if (!elements.source.value.trim()) {
         elements.source.value = findPlaygroundTemplate(elements.templateSelect?.value)?.source ?? playgroundTemplates[0]?.source ?? ''
     }
+    updateSourceHighlight(elements)
 
     let renderTimer: number | undefined
     let png: ArrayBuffer | undefined
     let svg: string | undefined
     let theme = getTheme(root)
-    let sharedSourcePending = false
-
     const loadSharedSource = (source: string) => {
-        sharedSourcePending = true
         elements.source.value = source
+        updateSourceHighlight(elements)
         png = undefined
         svg = undefined
         elements.preview.replaceChildren()
@@ -296,12 +312,12 @@ export function mountPlayground(root: HTMLElement): void {
     }
 
     elements.source.addEventListener('input', () => {
-        sharedSourcePending = false
+        updateSourceHighlight(elements)
         scheduleRender()
     })
+    elements.source.addEventListener('scroll', () => syncSourceHighlightScroll(elements))
     elements.run?.addEventListener('click', (event) => {
         event.preventDefault()
-        sharedSourcePending = false
         scheduleRender(true)
     })
     elements.pngDownload?.addEventListener('click', (event) => {
@@ -329,8 +345,8 @@ export function mountPlayground(root: HTMLElement): void {
         control.addEventListener('click', () => {
             const template = findPlaygroundTemplate(control.dataset.vizmaticPlaygroundTemplate)
             if (!template) return
-            sharedSourcePending = false
             elements.source.value = template.source
+            updateSourceHighlight(elements)
             scheduleRender(true)
         })
     }
@@ -338,8 +354,8 @@ export function mountPlayground(root: HTMLElement): void {
         control.addEventListener('change', () => {
             const template = findPlaygroundTemplate(control.value)
             if (!template) return
-            sharedSourcePending = false
             elements.source.value = template.source
+            updateSourceHighlight(elements)
             scheduleRender(true)
         })
     }
@@ -347,16 +363,24 @@ export function mountPlayground(root: HTMLElement): void {
         control.addEventListener('click', () => {
             theme = control.dataset.vizmaticTheme === 'light' || control.dataset.playgroundTheme === 'light' ? 'light' : 'dark'
             syncThemeControls(root, theme)
-            if (!sharedSourcePending) scheduleRender(true)
+            scheduleRender(true)
         })
     }
     for (const control of findElements<HTMLSelectElement>(root, 'select[data-vizmatic-playground-theme]')) {
         control.addEventListener('change', () => {
             theme = control.value === 'light' ? 'light' : 'dark'
             syncThemeControls(root, theme)
-            if (!sharedSourcePending) scheduleRender(true)
+            scheduleRender(true)
         })
     }
+    root.addEventListener('vizmatic-playground-theme', (event) => {
+        if (!(event instanceof CustomEvent)) return
+        const nextTheme = event.detail?.theme
+        if (nextTheme !== 'dark' && nextTheme !== 'light') return
+        theme = nextTheme
+        syncThemeControls(root, theme)
+        scheduleRender(true)
+    })
     window.addEventListener('hashchange', () => {
         const source = getPlaygroundHashSource()
         if (!source || source === elements.source.value) return

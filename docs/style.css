@@ -21,6 +21,13 @@
   --code-control-border: #8c959f;
   --code-control-text: #f0f3f6;
   --code-selection: rgba(169, 139, 255, 0.38);
+  --syntax-attribute: #91cbff;
+  --syntax-comment: #9aa7b8;
+  --syntax-keyword: #ffb757;
+  --syntax-literal: #ff9492;
+  --syntax-operator: #ff9492;
+  --syntax-string: #addcff;
+  --syntax-tag: #72f088;
   --nav-bg: rgba(8, 10, 15, 0.9);
   --media-bg: #0c1017;
   --source-bg: rgba(8, 10, 15, 0.82);
@@ -52,6 +59,13 @@
   --code-control-border: #57606a;
   --code-control-text: #0e1116;
   --code-selection: rgba(9, 105, 218, 0.24);
+  --syntax-attribute: #023b95;
+  --syntax-comment: #57606a;
+  --syntax-keyword: #702c00;
+  --syntax-literal: #a0111f;
+  --syntax-operator: #a0111f;
+  --syntax-string: #032563;
+  --syntax-tag: #024c1a;
   --nav-bg: rgba(244, 245, 242, 0.92);
   --media-bg: #e9ece7;
   --source-bg: rgba(17, 24, 32, 0.84);
@@ -76,6 +90,10 @@ body {
   color: var(--text);
   font-family: Manrope, ui-sans-serif, system-ui, sans-serif;
   letter-spacing: 0;
+}
+
+main > section[id] {
+  scroll-margin-top: 88px;
 }
 
 button,
@@ -581,21 +599,49 @@ h1 {
   white-space: nowrap;
 }
 
+.playground-source-editor {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--code-bg);
+}
+
+#playgroundHighlight,
 #playgroundSource {
   width: 100%;
+  height: 100%;
+  margin: 0;
   min-height: 0;
   padding: 18px;
-  resize: none;
   border: 0;
   border-radius: 0;
-  outline: none;
-  background: var(--code-bg);
-  color: var(--code-text);
-  caret-color: var(--green);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 13px;
   line-height: 1.65;
+  letter-spacing: 0;
   tab-size: 2;
+  white-space: pre;
+}
+
+#playgroundHighlight {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: var(--code-text);
+  pointer-events: none;
+}
+
+#playgroundSource {
+  position: relative;
+  z-index: 1;
+  resize: none;
+  outline: none;
+  overflow: auto;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--green);
+  -webkit-text-fill-color: transparent;
 }
 
 #playgroundSource::selection {
@@ -606,6 +652,37 @@ h1 {
   box-shadow: inset 0 0 0 2px var(--green);
 }
 
+#playgroundHighlight .syntax-tag,
+#playgroundHighlight .syntax-component {
+  color: var(--syntax-tag);
+}
+
+#playgroundHighlight .syntax-attribute,
+#playgroundHighlight .syntax-number {
+  color: var(--syntax-attribute);
+}
+
+#playgroundHighlight .syntax-string {
+  color: var(--syntax-string);
+}
+
+#playgroundHighlight .syntax-keyword {
+  color: var(--syntax-keyword);
+}
+
+#playgroundHighlight .syntax-literal {
+  color: var(--syntax-literal);
+}
+
+#playgroundHighlight .syntax-operator {
+  color: var(--syntax-operator);
+}
+
+#playgroundHighlight .syntax-comment {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+
 .playground-preview-panel {
   position: relative;
 }
@@ -614,14 +691,7 @@ h1 {
   position: relative;
   min-height: 0;
   overflow: hidden;
-  background-color: var(--media-bg);
-  background-image:
-    linear-gradient(45deg, var(--border) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--border) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--border) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--border) 75%);
-  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
-  background-size: 16px 16px;
+  background: var(--media-bg);
 }
 
 #playgroundCanvas {

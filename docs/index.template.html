@@ -80,7 +80,7 @@
       <div><strong>PNG · SVG · GIF</strong><span>local or CI output</span></div>
     </section>
 
-    <section id="playground" class="playground-band">
+    <section id="playground" class="playground-band" data-vizmatic-playground-background="theme">
       <div class="section playground-section">
         <div class="section-kicker">Live playground <span>01</span></div>
         <div class="section-intro">
@@ -119,7 +119,10 @@
           <div class="playground-workspace">
             <div class="playground-editor-panel">
               <div class="playground-panel-header"><strong>frame.tsx</strong><span id="playgroundStatus" role="status">Ready</span></div>
-              <textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+              <div class="playground-source-editor">
+                <pre id="playgroundHighlight" aria-hidden="true"></pre>
+                <textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off"></textarea>
+              </div>
             </div>
             <div class="playground-preview-panel">
               <div class="playground-panel-header"><strong>Preview</strong><span id="playgroundDimensions">960 × 540</span></div>
@@ -333,6 +336,7 @@
     const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
     const skillCommand = document.getElementById('skillCommand')
     const copySkillButton = document.getElementById('copySkillButton')
+    const promptDetails = document.querySelector('.prompt-details')
     let sourceCache
     let activeSource
     let activeImageCard
@@ -368,6 +372,12 @@
       themeColorMeta?.setAttribute('content', resolved === 'light' ? '#f4f5f2' : '#080a0f')
       themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice)))
       themedImages.forEach((image) => image.setAttribute('src', themedSrc(image.getAttribute('src'), resolved)))
+      const playground = document.getElementById('playground')
+      const playgroundThemeChanged = playground?.dataset.vizmaticPlaygroundTheme !== resolved
+      if (playground) playground.dataset.vizmaticPlaygroundTheme = resolved
+      if (playgroundThemeChanged) {
+        playground.dispatchEvent(new CustomEvent('vizmatic-playground-theme', { detail: { theme: resolved } }))
+      }
       if (activeSource && sourceDialog.open) renderActiveSource()
       if (activeImageCard && imageDialog.open) renderActiveImage()
     }
@@ -448,7 +458,17 @@
       })
     }
 
+    function prepareAnchorTarget(hash) {
+      if (hash === '#onboarding' && promptDetails) promptDetails.open = true
+    }
+
     function updateActiveNav() {
+      const atPageEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2
+      if (atPageEnd) {
+        const finalHash = sectionLinks.at(-1)?.link.hash
+        if (finalHash) setActiveNav(finalHash)
+        return
+      }
       const marker = window.scrollY + navOffset() + 90
       let current = sectionLinks[0]?.link.hash
       sectionLinks.slice().sort((a, b) => a.section.offsetTop - b.section.offsetTop).forEach(({ link, section }) => {
@@ -469,6 +489,7 @@
         const target = document.querySelector(hash)
         if (!target) return
         event.preventDefault()
+        prepareAnchorTarget(hash)
         const targetY = Math.max(0, window.scrollY + target.getBoundingClientRect().top - navOffset())
         history.pushState(null, '', hash)
         setActiveNav(hash)
@@ -476,6 +497,7 @@
       })
     })
 
+    prepareAnchorTarget(window.location.hash)
     updateActiveNav()
     window.addEventListener('scroll', updateActiveNav, { passive: true })
     window.addEventListener('resize', updateActiveNav)
