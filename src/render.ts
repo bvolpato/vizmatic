@@ -21,9 +21,10 @@ import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
 import { withRenderContext, type RenderBackground } from './renderContext'
-import { satori, type Font } from './satori'
+import { satori, type Font, type SatoriNode } from './satori'
 
 export type { RenderBackground } from './renderContext'
+export type { SatoriNode } from './satori'
 
 // ─── Font Loading ────────────────────────────────────────────────────────────
 
@@ -316,6 +317,23 @@ function cropSvgViewport(svg: string, region: CropRegion): string {
     })
 }
 
+function cropLayoutNodes(nodes: SatoriNode[], region: CropRegion): SatoriNode[] {
+    return nodes.flatMap((node) => {
+        const left = Math.max(node.left, region.x)
+        const top = Math.max(node.top, region.y)
+        const right = Math.min(node.left + node.width, region.x + region.width)
+        const bottom = Math.min(node.top + node.height, region.y + region.height)
+        if (right <= left || bottom <= top) return []
+        return [{
+            ...node,
+            left: left - region.x,
+            top: top - region.y,
+            width: right - left,
+            height: bottom - top,
+        }]
+    })
+}
+
 function cropSavesEnough(source: number, target: number): boolean {
     if (source <= 0 || target >= source) return false
     return ((source - target) / source) * 100 >= CROP_THRESHOLD_PERCENT
@@ -342,6 +360,8 @@ export interface RenderOptions {
     background?: RenderBackground
     /** Theme used for watermark defaults when calling renderer APIs directly. */
     theme?: 'dark' | 'light'
+    /** Optional rendered-layout observer used by validation tooling. */
+    onNodeDetected?: (node: SatoriNode) => void
 }
 
 export interface RenderOutput {
@@ -353,6 +373,8 @@ export interface RenderOutput {
     pixelWidth: number
     /** PNG height in physical pixels after scale is applied. */
     pixelHeight: number
+    /** Painted content bounds measured on the final logical output. */
+    contentBounds: CropRegion
 }
 
 export class CanvasOverflowError extends Error {
@@ -494,6 +516,7 @@ async function renderToPngInContext(
     // Step 4: Final render with optional watermark at the cropped dimensions.
     const watermark = resolveWatermark(options)
     const renderFinalSvg = async (targetElement: ReactNode, targetWidth: number, targetHeight: number) => {
+        const layoutNodes: SatoriNode[] = []
         const outputElement = watermark
             ? wrapWithWatermark(
                 targetElement,
@@ -509,11 +532,13 @@ async function renderToPngInContext(
             height: targetHeight,
             fonts,
             loadAdditionalAsset,
+            onNodeDetected: options.onNodeDetected ? (node) => layoutNodes.push(node) : undefined,
         })
-        return sanitizeSvg(renderedSvg)
+        return { svg: sanitizeSvg(renderedSvg), layoutNodes }
     }
 
-    let finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+    let finalRender = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+    let finalSvg = finalRender.svg
 
     if (finalHeight < options.height) {
         const cropCheck = new Resvg(finalSvg, {
@@ -527,7 +552,8 @@ async function renderToPngInContext(
         if (cropOverflow.overflows) {
             finalHeight = options.height
             finalElement = element
-            finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+            finalRender = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+            finalSvg = finalRender.svg
         }
     }
 
@@ -554,9 +580,14 @@ async function renderToPngInContext(
             || cropSavesEnough(viewportCheck.height, viewportBounds.height)
         ) {
             finalSvg = cropSvgViewport(finalSvg, viewportBounds)
+            finalRender.layoutNodes = cropLayoutNodes(finalRender.layoutNodes, viewportBounds)
             finalWidth = viewportBounds.width
             finalHeight = viewportBounds.height
         }
+    }
+
+    if (options.onNodeDetected) {
+        finalRender.layoutNodes.forEach(options.onNodeDetected)
     }
 
     // Step 6: SVG → PNG at 2x for retina (with transparent background)
@@ -569,6 +600,22 @@ async function renderToPngInContext(
     })
 
     const pngData = resvg.render()
+    const outputPixels = new Uint8Array(pngData.pixels.buffer)
+    const outputBackground = detectBackgroundColor(outputPixels)
+    const physicalContentBounds = detectContentBounds(
+        outputPixels,
+        pngData.width,
+        pngData.height,
+        outputBackground,
+        0,
+    )
+    const outputScale = pngData.width / finalWidth
+    const contentBounds = {
+        x: physicalContentBounds.x / outputScale,
+        y: physicalContentBounds.y / outputScale,
+        width: physicalContentBounds.width / outputScale,
+        height: physicalContentBounds.height / outputScale,
+    }
     const pngBuffer = pngData.asPng()
 
     // Step 7: Write to disk
@@ -579,6 +626,7 @@ async function renderToPngInContext(
         height: finalHeight,
         pixelWidth: pngData.width,
         pixelHeight: pngData.height,
+        contentBounds,
     }
 }
 
@@ -589,7 +637,7 @@ export async function renderToBuffer(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme' | 'onNodeDetected'> = {},
 ): Promise<Buffer> {
     return withRenderContext({ background: options.background ?? 'transparent' }, () =>
         renderToBufferInContext(element, width, height, options)
@@ -600,7 +648,7 @@ async function renderToBufferInContext(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme'>,
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme' | 'onNodeDetected'>,
 ): Promise<Buffer> {
     const fonts = await getFonts()
     const watermark = resolveWatermark(options)
@@ -620,6 +668,7 @@ async function renderToBufferInContext(
         height,
         fonts,
         loadAdditionalAsset,
+        onNodeDetected: options.onNodeDetected,
     })
 
     svg = sanitizeSvg(svg)
@@ -640,7 +689,7 @@ export async function renderToSvg(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme' | 'onNodeDetected'> = {},
 ): Promise<string> {
     return withRenderContext({ background: options.background ?? 'transparent' }, () =>
         renderToSvgInContext(element, width, height, options)
@@ -651,7 +700,7 @@ async function renderToSvgInContext(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme'>,
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme' | 'onNodeDetected'>,
 ): Promise<string> {
     const fonts = await getFonts()
     const watermark = resolveWatermark(options)
@@ -670,6 +719,7 @@ async function renderToSvgInContext(
         height,
         fonts,
         loadAdditionalAsset,
+        onNodeDetected: options.onNodeDetected,
     })
 
     return sanitizeSvg(svg)

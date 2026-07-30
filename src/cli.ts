@@ -13,8 +13,9 @@ import * as publicApi from './index'
 import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
-import { analyzeContrast, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
+import { analyzeContrast, analyzeRenderedLayout, analyzeWhitespaceBalance, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
 import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
+import type { SatoriNode } from './satori'
 import { getThemeColors, type ThemeMode, type ThemePreset } from './theme'
 
 interface FrameModule {
@@ -1020,26 +1021,33 @@ function nextAutoSize(width: number, height: number, autoSize: AutoSizeAxes, edg
 async function renderFrameToPng(
     mod: NormalizedFrameModule,
     theme: ThemeMode,
-    options: Omit<Parameters<typeof renderToPngWithOutput>[1], 'width' | 'height'> & { width: number; height: number },
-): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number }> {
+    options: Omit<Parameters<typeof renderToPngWithOutput>[1], 'width' | 'height' | 'onNodeDetected'> & { width: number; height: number; inspectLayout?: boolean },
+): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number; logicalOutputWidth: number; logicalOutputHeight: number; contentBounds?: { x: number; y: number; width: number; height: number }; layoutNodes: SatoriNode[] }> {
     let width = options.width
     let height = options.height
+    const { inspectLayout, ...renderOptions } = options
 
     for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
         try {
+            const layoutNodes: SatoriNode[] = []
             const recreate = mod.create
                 ? (nextTheme: ThemeMode) => withFrameReactBinding(mod, () => mod.create!(nextTheme))
                 : undefined
             const output = await renderToPngWithOutput(frameElement(mod, theme), {
-                ...options,
+                ...renderOptions,
                 width,
                 height,
+                onNodeDetected: inspectLayout ? (node) => layoutNodes.push(node) : undefined,
             }, recreate, theme)
             return {
                 width,
                 height,
                 outputWidth: output.pixelWidth,
                 outputHeight: output.pixelHeight,
+                logicalOutputWidth: output.width,
+                logicalOutputHeight: output.height,
+                contentBounds: output.contentBounds,
+                layoutNodes,
             }
         } catch (error) {
             const edges = overflowEdges(error)
@@ -1050,7 +1058,7 @@ async function renderFrameToPng(
         }
     }
 
-    return { width, height, outputWidth: width, outputHeight: height }
+    return { width, height, outputWidth: width, outputHeight: height, logicalOutputWidth: width, logicalOutputHeight: height, layoutNodes: [] }
 }
 
 async function renderCommand(argv: string[]) {
@@ -1294,12 +1302,22 @@ async function checkCommandWithArgs(args: CheckArgs) {
                     crop: true,
                     scale: 1,
                     background: args.background,
+                    inspectLayout: true,
                 }))
                 themeDiagnostics.push(...rendered.messages.map((message) =>
                     diagnosticFromMessage(message.message, message.severity, theme),
                 ))
 
                 if (rendered.value) {
+                    themeDiagnostics.push(...analyzeRenderedLayout(rendered.value.layoutNodes, theme))
+                    if (rendered.value.contentBounds) {
+                        themeDiagnostics.push(...analyzeWhitespaceBalance(
+                            rendered.value.contentBounds,
+                            rendered.value.logicalOutputWidth,
+                            rendered.value.logicalOutputHeight,
+                            theme,
+                        ))
+                    }
                     if (rendered.value.width !== input.width || rendered.value.height !== input.height) {
                         themeDiagnostics.push({
                             code: 'layout.auto_size',

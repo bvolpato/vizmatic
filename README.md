@@ -58,7 +58,7 @@ Render it directly:
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
 ```
 
-Check both themes before publishing. `--json` returns machine-readable errors, warnings, overflow edges, and suggested dimensions:
+Check both themes before publishing. `--json` reports overflow, contrast, small text, overlapping labels, uneven panel whitespace, connector congestion, asset failures, and suggested dimensions:
 
 ```bash
 vizmatic check ./frame.tsx --theme dark,light --json
@@ -179,7 +179,7 @@ Vizmatic provides reusable layout, diagram, and chart primitives:
 | Editable output | Source-controlled TSX stays inspectable and renders consistently |
 | Headless rendering | Node produces assets directly in local workflows and CI |
 | Theme variants | One command renders dark and light output from semantic color tokens |
-| Layout checks | Overflow detection, autocrop, and wrapping-safe labels catch common failures |
+| Layout checks | Overflow, contrast, small text, label overlap, uneven panel whitespace, and connector congestion |
 | Animation | Ordered scene states export as GIFs |
 
 ## Gallery
@@ -314,8 +314,26 @@ Use these primitives before writing raw SVG or absolute-positioned layouts.
 | `Flow` | Horizontal or vertical staged process diagram with optional detail rows. |
 | `Pipeline` | Process pipeline with stage labels and a shared title. |
 | `LayeredNetwork` | Neural-network/DAG diagram with layers, nodes, active path, annotations, and formula. |
-| `GraphDiagram` | Positioned node-edge graph with labels, dashed/muted edges, and tone-aware nodes. |
+| `GraphDiagram` | Auto-laid or manually positioned node-edge graph with routed paths, labels, and tone-aware nodes. |
 | `TreeDiagram` | Auto-laid parent/child hierarchy for ownership, routing, taxonomy, and decision trees. |
+
+`GraphDiagram` uses deterministic layered layout when node coordinates are omitted:
+
+```tsx
+<GraphDiagram
+  nodes={[
+    { id: "prompt", label: "Prompt", tone: "blue" },
+    { id: "render", label: "Render", tone: "purple" },
+    { id: "asset", label: "PNG / SVG / GIF", tone: "green" },
+  ]}
+  edges={[
+    { from: "prompt", to: "render" },
+    { from: "render", to: "asset" },
+  ]}
+/>
+```
+
+Set `x` and `y` on every node for normalized manual positioning. Mixed coordinate modes fail with a clear error. Automatic layout treats node and edge array order as its stable tie-breaker and expands `width` or `height` when needed. Set `sizing="fixed"` to keep exact graph dimensions and let overflow checks report a canvas that is too small. Use `direction`, `nodeGap`, `rankGap`, and `edgeGap` to tune the result.
 
 #### Matrices, tables, and grids
 

@@ -199,7 +199,7 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
                 display: 'flex',
                 color: accent,
                 fontFamily: 'JetBrains Mono',
-                fontSize: 9,
+                fontSize: 11,
                 fontWeight: 900,
                 lineHeight: 1.15,
                 textTransform: 'uppercase' as const,

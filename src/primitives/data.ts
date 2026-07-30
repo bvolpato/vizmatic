@@ -344,7 +344,7 @@ export function TiledMatrix({
                 style: {
                     color: c.textMuted,
                     fontFamily: 'JetBrains Mono',
-                    fontSize: 9,
+                    fontSize: 11,
                     fontWeight: 700,
                     lineHeight: 1.1,
                     textAlign: 'center' as const,
@@ -379,7 +379,7 @@ export function DataTable({
     gap = 5,
     headerRows = 1,
     headerCols = 1,
-    fontSize = 10,
+    fontSize = 11,
     math = false,
 }: DataTableProps): React.ReactElement {
     const renderCell = (cell: React.ReactNode) =>
@@ -468,7 +468,7 @@ export function Grid({
     cellHeight = 30,
     gap = 5,
     radius = 7,
-    fontSize = 10,
+    fontSize = 11,
     math = false,
     headerRows = 0,
     headerCols = 0,

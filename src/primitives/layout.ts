@@ -446,6 +446,7 @@ export function Panel({
 }: PanelProps): React.ReactElement {
     const engineering = c.preset === 'engineering'
     return React.createElement('div', {
+        'data-vizmatic-layout-container': 'panel',
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
@@ -465,6 +466,7 @@ export function Panel({
     },
         ...compactChildren([
         React.createElement('div', {
+            'data-vizmatic-layout-content': 'panel',
             style: {
                 width: '100%',
                 display: 'flex',
@@ -503,6 +505,7 @@ export function Panel({
             ])
         ),
         React.createElement('div', {
+            'data-vizmatic-layout-content': 'panel',
             style: {
                 width: '100%',
                 display: 'flex',
@@ -512,6 +515,7 @@ export function Panel({
             }
         }, children),
         footer && React.createElement('div', {
+            'data-vizmatic-layout-content': 'panel',
             style: {
                 width: '100%',
                 display: 'flex',

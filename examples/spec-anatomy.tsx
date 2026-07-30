@@ -3,7 +3,7 @@ height = 680;
 
 <Scene title="Scene spec anatomy" subtitle="strong defaults with escape hatches" gap={18}>
     <Row gap={18} align="stretch">
-        <Panel title="Spec fields" tone="purple" width={420} align="center">
+        <Panel title="Spec fields" tone="purple" width={420} align="center" justify="center">
             <DataTable
                 firstColWidth={110}
                 cellWidth={210}

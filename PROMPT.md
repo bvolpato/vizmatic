@@ -37,7 +37,7 @@ Check the scene before publishing:
 vizmatic check ./frame.tsx --theme dark,light --json
 ```
 
-Fix all errors before the final render. Warnings report low contrast and asset fallbacks. Overflow errors name the affected edges and suggest dimensions.
+Fix all errors before the final render. Warnings report low contrast, text below 11px, overlapping labels, uneven panel whitespace, connector congestion, and asset fallbacks. Overflow errors name the affected edges and suggest dimensions.
 
 ## Install in a project
 
@@ -277,26 +277,26 @@ Cards, labels, and compact UI:
 - `Icon`: `name`, `c`, `tone?: ToneName = "blue"`, `color?`, `size?: number = 24`, `strokeWidth?: number = 2`, `label?`, `muted?: boolean = false`. `IconName`: `"agent" | "chart" | "check" | "code" | "database" | "file" | "git" | "globe" | "image" | "layers" | "lock" | "play" | "spark" | "terminal" | "tool" | "warning"`.
 - `ToneStrip`: `tone`, `width?: number = 34`, `height?: number = 4`.
 - `StepCard`: `title`, `c`, `subtitle?`, `eyebrow?`, `tone?: ToneName = "blue"`, `width?: number | string = 210`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "12px 14px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`.
-- `MetricCard`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "10px 12px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`, `valueMono?: boolean = true`, `valueFontSize?: number = 10`, `valueColor?`.
+- `MetricCard`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "10px 12px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`, `valueMono?: boolean = true`, `valueFontSize?: number = 22`, `valueColor?`.
 - `CalloutCard`: `c`, `children?`, `title?`, `detail?`, `tone?: ToneName = "blue"`, `width?`, `minHeight?`, `padding?: number | string = 12`, `titleFontSize?: number`, `detailFontSize?: number`, `filled?: boolean = true`, `align?: "left" | "center" = "center"`.
 - `ValuePill`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?: number | string = 112`, `math?: boolean = false`.
-- `BadgePill`: `text`, `c`, `tone?: ToneName = "blue"`, `width?`, `minWidth?: number | string = 34`, `height?: number | string = 20`, `padding?: number | string = "0 8px"`, `radius?: number = 6`, `fontSize?: number = 9`, `mono?: boolean = true`, `filled?: boolean = false`, `math?: boolean = false`.
+- `BadgePill`: `text`, `c`, `tone?: ToneName = "blue"`, `width?`, `minWidth?: number | string = 34`, `height?: number | string = 20`, `padding?: number | string = "0 8px"`, `radius?: number = 6`, `fontSize?: number = 11`, `mono?: boolean = true`, `filled?: boolean = false`, `math?: boolean = false`.
 - `Badge`: `label`, `c`, `color?: ColorName = "primary"`.
 - `GradientChip`: `title`, `c`, `subtitle?`, `tone?: ToneName = "blue"`, `gradient?`, `width?`, `minWidth?`, `height?`, `minHeight?: number | string = 78`, `padding?: number | string = "0 18px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "left"`, `subtitleMono?: boolean = true`, `math?: boolean = false`.
 - `EquationCard`: `title`, `formula`, `c`, `tone?: ToneName = "purple"`, `result?`, `detail?`, `width?: number | string = 190`, `height?`, `math?: boolean = false`, `align?: "left" | "center" = "left"`.
-- `DetailList`: `items`, `c`, `tone?`, `gap?: number = 7`, `padding?: number | string = "7px 8px"`, `fontSize?: number = 10`, `mono?: boolean = false`, `math?: boolean = false`.
+- `DetailList`: `items`, `c`, `tone?`, `gap?: number = 7`, `padding?: number | string = "7px 8px"`, `fontSize?: number = 11`, `mono?: boolean = false`, `math?: boolean = false`.
 
 Lists, tables, status, and comparison:
 
-- `ProgressRow`: `label`, `value: number`, `valueLabel?`, `tone?: ToneName = "blue"`, `muted?: boolean = false`, `c`, `labelWidth?: number = 42`, `valueWidth?: number = 38`, `barHeight?: number = 8`, `fontSize?: number = 10`. Keep `value` in `[0, 1]`.
+- `ProgressRow`: `label`, `value: number`, `valueLabel?`, `tone?: ToneName = "blue"`, `muted?: boolean = false`, `c`, `labelWidth?: number = 42`, `valueWidth?: number = 38`, `barHeight?: number = 8`, `fontSize?: number = 11`. Keep `value` in `[0, 1]`.
 - `ProgressList`: `rows: ProgressRowSpec[]`, `c`, `gap?: number = 8`, `labelWidth?`, `valueWidth?`, `barHeight?`, `fontSize?`. `ProgressRowSpec`: `label`, `value`, `valueLabel?`, `tone?`, `muted?`.
 - `StatusRow`: `label`, `detail?`, `status?: "check" | "cross" | "warn" | "info" | "pending" | "dot" = "check"`, `tone?`, `c`, `boxed?: boolean = true`, `fontSize?: number = 11`, `width?`, `math?: boolean = false`.
 - `StatusList`: `rows: StatusRowSpec[]`, `c`, `gap?: number = 7`, `boxed?: boolean = true`, `fontSize?`, `width?`, `math?: boolean = false`. `StatusRowSpec`: `label`, `detail?`, `status?`, `tone?`.
 - `Timeline`: `events: TimelineEventSpec[]`, `c`, `title?`, `subtitle?`, `direction?: "vertical" | "horizontal" = "vertical"`, `width?`, `eventWidth?`, `gap?: number = 12`, `markerSize?: number = 14`, `math?: boolean = false`. `TimelineEventSpec`: `title`, `detail?`, `time?`, `tone?`, `status?`, `width?`.
 - `KeyValueList`: `rows: KeyValueRow[]`, `c`, `title?`, `width?`, `minWidth?`, `keyWidth?`, `gap?: number = 0`, `fontSize?: number = 11`, `divider?: boolean = true`, `keyMono?: boolean = false`, `math?: boolean = false`. `KeyValueRow`: `key`, `value`, `tone?`, `valueMono?`.
 - `Comparison`: `sides: ComparisonSideSpec[]`, `c`, `divider?: ReactNode | boolean = false`, `gap?: number = 14`, `sideWidth?`, `minHeight?`, `align?: FlexAlign = "stretch"`, `math?: boolean = false`. `ComparisonSideSpec`: `title`, `subtitle?`, `eyebrow?`, `tone?`, `lines?`, `children?`, `footer?`, `width?`.
-- `DataTable`: `rows: ReactNode[][]`, `c`, `cellWidth?: number = 54`, `firstColWidth?: number = cellWidth`, `cellHeight?: number = 28`, `gap?: number = 5`, `headerRows?: number = 1`, `headerCols?: number = 1`, `fontSize?: number = 10`, `math?: boolean = false`.
-- `Grid`: `rows: Array<Array<ReactNode | GridCell>>`, `c`, `cellWidth?: number = 34`, `cellHeight?: number = 30`, `gap?: number = 5`, `radius?: number = 7`, `fontSize?: number = 10`, `math?: boolean = false`, `headerRows?: number = 0`, `headerCols?: number = 0`. `GridCell`: `label?`, `tone?`, `color?`, `backgroundColor?`, `borderColor?`, `opacity?`.
+- `DataTable`: `rows: ReactNode[][]`, `c`, `cellWidth?: number = 54`, `firstColWidth?: number = cellWidth`, `cellHeight?: number = 28`, `gap?: number = 5`, `headerRows?: number = 1`, `headerCols?: number = 1`, `fontSize?: number = 11`, `math?: boolean = false`.
+- `Grid`: `rows: Array<Array<ReactNode | GridCell>>`, `c`, `cellWidth?: number = 34`, `cellHeight?: number = 30`, `gap?: number = 5`, `radius?: number = 7`, `fontSize?: number = 11`, `math?: boolean = false`, `headerRows?: number = 0`, `headerCols?: number = 0`. `GridCell`: `label?`, `tone?`, `color?`, `backgroundColor?`, `borderColor?`, `opacity?`.
 - `CodeBlock`: `lines: Array<ReactNode | CodeLineSpec>`, `c`, `title?`, `tone?`, `width?`, `minWidth?`, `fontSize?: number = 12`, `showLineNumbers?: boolean = false`, `padding?: number | string = 14`, `radius?: number = 10`, `background?`, `shadow?: boolean = false`, `math?: boolean = false`. `CodeLineSpec`: `text`, `tone?`, `dim?`, `prefix?`.
 
 Tiles:
@@ -314,7 +314,7 @@ Flows and process diagrams:
 Graphs and networks:
 
 - `LayeredNetwork`: `c`, `layers: LayeredNetworkLayer[]`, `activePath?: number[] = []`, `annotations?: string[] = []`, `formula?`, `legend?: string = "highlighted path"`, `width?: number = 900`, `height?: number = 400`, `nodeSize?: number = 56`, `showFormula?: boolean = true`. `LayeredNetworkLayer`: `title`, `nodes: string[]`, `tone?`.
-- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 9`, `arrowSize?: number = 5`, `padding?: number = 28`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x`, `y`, `tone?`, `muted?`, `width?`, `height?`. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`.
+- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 11`, `arrowSize?: number = 5`, `padding?: number = 28`, `layout?: "auto" | "manual"`, `direction?: "LR" | "RL" | "TB" | "BT" = "LR"`, `nodeGap?: number = 34`, `rankGap?: number = 64`, `edgeGap?: number = 14`, `sizing?: "content" | "fixed" = "content"`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x?`, `y?`, `tone?`, `muted?`, `width?`, `height?`. Omit coordinates on every node for automatic layout; array order is the stable tie-breaker and dimensions expand to fit unless `sizing="fixed"`. Set both coordinates on every node for manual normalized positioning. Mixed coordinate modes fail. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`.
 - `TreeDiagram`: `root: TreeNodeSpec`, `c`, `title?`, `subtitle?`, `width?`, `height?`, `nodeWidth?: number = 156`, `nodeHeight?: number = 64`, `levelGap?: number = 58`, `siblingGap?: number = 24`, `padding?: number = 28`, `math?: boolean = false`. `TreeNodeSpec`: `label`, `id?`, `detail?`, `tone?`, `muted?`, `children?`.
 
 Matrices and heatmaps:
@@ -333,7 +333,7 @@ Charts and plots:
 - `QuadrantChart`: `points: ScatterPoint[]`, `regions`, `c`, `title?`, `subtitle?`, `width?: number = 700`, `height?: number = 360`, `xAxisLabel?`, `yAxisLabel?`, `footer?`. `regions`: `{ topLeft, topRight, bottomLeft, bottomRight }`, each `QuadrantRegion`: `label`, `detail?`, `color?`.
 - `IntervalPlot`: `data: IntervalDatum[]`, `c`, `title?`, `subtitle?`, `width?: number = 640`, `height?: number = 220`, `min?`, `max?`, `format?: ChartValueFormat = "decimal"`, `axisLabel?`, `footer?`. `IntervalDatum`: `label`, `low`, `mid`, `high`, `color?`, `lowLabel?`, `midLabel?`, `highLabel?`.
 - `StackedBar`: `segments: StackedBarSegment[]`, `c`, `width?: number = 480`, `height?: number = 68`, `title?`, `subtitle?`, `showLegend?: boolean = true`. `StackedBarSegment`: `label`, `value`, `color?`, `valueLabel?`.
-- `MiniBarChart`: `data: MiniBarDatum[]`, `c`, `max?`, `minBarHeight?: number = 8`, `height?: number = 92`, `barWidth?: number = 22`, `gap?: number = 10`, `radius?: number = 7`, `fontSize?: number = 9`, `showValues?: boolean = false`. `MiniBarDatum`: `label`, `value`, `tone?`, `color?`, `valueLabel?`, `opacity?`.
+- `MiniBarChart`: `data: MiniBarDatum[]`, `c`, `max?`, `minBarHeight?: number = 8`, `height?: number = 92`, `barWidth?: number = 22`, `gap?: number = 10`, `radius?: number = 7`, `fontSize?: number = 11`, `showValues?: boolean = false`. `MiniBarDatum`: `label`, `value`, `tone?`, `color?`, `valueLabel?`, `opacity?`.
 - `AxisPlot`: `c`, `width`, `height`, `xMin?: number = -1`, `xMax?: number = 1`, `yMin?: number = -1`, `yMax?: number = 1`, `padding?: number = 18`, `showFrame?: boolean = true`, `showAxes?: boolean = true`, `showGrid?: boolean = false`, `gridCount?: number = 5`, `frameRx?: number = 8`, `frameFill?`, `frameStroke?`, `axisColor?`, `points?: AxisPlotPoint[] = []`, `vectors?: AxisPlotVector[] = []`, `paths?: AxisPlotPath[] = []`, `xAxisLabel?`, `yAxisLabel?`, `children?`.
 - `AxisPlotPoint`: `x`, `y`, `fill?`, `tone?`, `r?`, `stroke?`, `strokeWidth?`, `opacity?`.
 - `AxisPlotVector`: `x1`, `y1`, `x2`, `y2`, `color?`, `tone?`, `strokeWidth?`, `opacity?`, `arrow?`, `arrowSize?`, `showStartDot?`, `showEndDot?`, `dotRadius?`.
@@ -456,6 +456,7 @@ height = 560;
 - Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.
 - Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` to keep layout stable.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
+- Omit `x` and `y` from `GraphDiagram` nodes for automatic layered layout. Add both only when editorial composition needs manual control.
 - Render reusable assets in both themes with `--theme dark,light`.
 - Run `vizmatic check <frame> --theme dark,light --json` before final render and fix every error.
 - Use GIF only when motion explains state change. Keep scenes short, export `createScenes(theme)`, and keep a static `create(theme)` fallback.
@@ -474,19 +475,20 @@ height = 560;
   <GraphDiagram
     width={820}
     height={390}
+    nodeWidth={132}
+    rankGap={44}
     nodes={[
-      { id: "query", label: "Query", detail: "intent", x: 0.08, y: 0.52, tone: "blue" },
-      { id: "retrieve", label: "Retrieve", detail: "top-k docs", x: 0.40, y: 0.25, tone: "cyan" },
-      { id: "rerank", label: "Rerank", detail: "quality gate", x: 0.68, y: 0.25, tone: "warm" },
-      { id: "answer", label: "Answer", detail: "grounded draft", x: 0.92, y: 0.52, tone: "green" },
-      { id: "verify", label: "Verify", detail: "citations", x: 0.52, y: 0.78, tone: "critical" },
+      { id: "query", label: "Query", detail: "intent", tone: "blue" },
+      { id: "retrieve", label: "Retrieve", detail: "top-k docs", tone: "cyan" },
+      { id: "rerank", label: "Rerank", detail: "quality gate", tone: "warm" },
+      { id: "answer", label: "Answer", detail: "grounded draft", tone: "green" },
+      { id: "verify", label: "Verify", detail: "citations", tone: "critical" },
     ]}
     edges={[
       { from: "query", to: "retrieve", label: "search", tone: "blue" },
       { from: "retrieve", to: "rerank", label: "rank", tone: "cyan" },
       { from: "rerank", to: "answer", label: "context", tone: "green" },
       { from: "answer", to: "verify", label: "claims", tone: "critical" },
-      { from: "verify", to: "retrieve", label: "retry", dashed: true, tone: "warm" },
     ]}
   />
 </Scene>

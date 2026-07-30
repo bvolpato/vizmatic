@@ -278,7 +278,7 @@ export const typography = {
     label: { fontSize: 16, fontWeight: 600, fontFamily: 'Inter' },
     body: { fontSize: 14, fontWeight: 400, fontFamily: 'Inter' },
     small: { fontSize: 12, fontWeight: 500, fontFamily: 'Inter' },
-    tiny: { fontSize: 10, fontWeight: 500, fontFamily: 'Inter' },
+    tiny: { fontSize: 11, fontWeight: 500, fontFamily: 'Inter' },
     code: { fontSize: 13, fontWeight: 400, fontFamily: 'JetBrains Mono' },
     annotation: { fontSize: 12, fontWeight: 500, fontFamily: 'Inter', fontStyle: 'italic' as const },
 } as const

@@ -38,7 +38,7 @@ export function ProgressRow({
     labelWidth = 42,
     valueWidth = 38,
     barHeight = 8,
-    fontSize = 10,
+    fontSize = 11,
 }: ProgressRowProps): React.ReactElement {
     const accent = muted ? c.textMuted : getToneColor(tone, c)
     const pct = Math.round(Math.max(0, Math.min(1, value)) * 100)
@@ -163,7 +163,7 @@ export function MiniBarChart({
     barWidth = 22,
     gap = 10,
     radius = 7,
-    fontSize = 9,
+    fontSize = 11,
     showValues = false,
 }: MiniBarChartProps): React.ReactElement {
     // A non-positive explicit max would divide bar heights by zero and emit NaN geometry.
@@ -257,7 +257,7 @@ export function DetailList({
     tone,
     gap = 7,
     padding = '7px 8px',
-    fontSize = 10,
+    fontSize = 11,
     mono = false,
     math = false,
 }: DetailListProps): React.ReactElement {

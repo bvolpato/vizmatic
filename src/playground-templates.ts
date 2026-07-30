@@ -76,6 +76,34 @@ height = 540
   <CalloutCard tone="cyan" title="Evaluation" detail="Measure answer quality, source coverage, and latency before publishing." width="100%" />
 </Scene>`,
     },
+    {
+        id: 'graph',
+        label: 'Graph',
+        source: `width = 1040
+height = 560
+
+<Scene title="Agent execution graph" subtitle="coordinates omitted; layout is automatic" gap={22}>
+  <GraphDiagram
+    width={900}
+    height={340}
+    nodeWidth={150}
+    nodes={[
+      { id: "request", label: "Request", detail: "goal + context", tone: "blue" },
+      { id: "search", label: "Search", detail: "fresh evidence", tone: "purple" },
+      { id: "code", label: "Build", detail: "editable source", tone: "cyan" },
+      { id: "check", label: "Check", detail: "layout + contrast", tone: "warm" },
+      { id: "asset", label: "Publish", detail: "PNG / SVG / GIF", tone: "green" },
+    ]}
+    edges={[
+      { from: "request", to: "search", label: "inspect" },
+      { from: "request", to: "code", label: "compose" },
+      { from: "search", to: "check" },
+      { from: "code", to: "check" },
+      { from: "check", to: "asset", label: "export", tone: "green" },
+    ]}
+  />
+</Scene>`,
+    },
 ]
 
 export function findPlaygroundTemplate(id: string | undefined): PlaygroundTemplate | undefined {

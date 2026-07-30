@@ -58,7 +58,7 @@
     "prepare": "pnpm build",
     "lint": "pnpm typecheck && pnpm workflows:check",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm build && vitest run",
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
     "playground:build": "tsx scripts/build-playground.ts",
     "site:build": "tsx scripts/build-site.ts",
@@ -72,6 +72,7 @@
     "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
+    "@dagrejs/dagre": "3.0.0",
     "@resvg/resvg-js": "^2.6.2",
     "gifenc": "^1.0.3",
     "parse-css-color": "0.2.1",

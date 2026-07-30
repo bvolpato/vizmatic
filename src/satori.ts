@@ -1,6 +1,6 @@
 import * as satoriModule from 'satori'
 
-export type { Font } from 'satori'
+export type { Font, SatoriNode } from 'satori'
 
 type SatoriFn = typeof import('satori').default
 

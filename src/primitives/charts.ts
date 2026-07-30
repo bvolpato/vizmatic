@@ -91,7 +91,7 @@ export function chartTicks(min: number, max: number, count = 4): number[] {
 function axisTextStyle(c: ThemeColors): React.CSSProperties {
     return {
         fontFamily: 'JetBrains Mono',
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: 600,
         color: c.textMuted,
         lineHeight: 1,
@@ -156,7 +156,7 @@ export function chartLabel(
 ): React.ReactElement {
     const align = options.align ?? 'center'
     const width = options.width ?? 72
-    const fontSize = options.fontSize ?? 10
+    const fontSize = options.fontSize ?? 11
     const labelHeight = options.height ?? Math.ceil(fontSize * 1.4)
     let left = x
     let top = y
@@ -216,7 +216,7 @@ export function pointLabelPlacement(
     index: number,
     width = 70,
 ): { x: number; y: number; align: ChartLabelAlign; width: number; bounds: ChartLabelBounds } {
-    const nearTop = y < plot.y + 34
+    const nearTop = y < plot.y + 58
     const nearBottom = y > plot.bottom - 34
     const nearLeft = x < plot.x + 76
     const nearRight = x > plot.right - 76

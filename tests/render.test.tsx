@@ -42,6 +42,7 @@ import {
     DashedLine,
 } from '../src'
 import { chartTicks, formatChartValue } from '../src/primitives/charts'
+import type { SatoriNode } from '../src'
 
 let packageBuilt = false
 
@@ -70,6 +71,13 @@ function cliChildEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 
 function ensurePackageBuild() {
     if (packageBuilt) return
+    if (
+        existsSync(join(process.cwd(), 'dist', 'cli.js'))
+        && existsSync(join(process.cwd(), 'dist', 'index.cjs'))
+    ) {
+        packageBuilt = true
+        return
+    }
     if (process.env.VIZMATIC_TEST_USE_EXISTING_BUILD === '1') {
         expect(existsSync(join(process.cwd(), 'dist', 'cli.js'))).toBe(true)
         packageBuilt = true
@@ -562,6 +570,129 @@ describe('vizmatic render pipeline', () => {
             [0, 0],
             [300, 190],
         ])
+    })
+
+    it('auto-lays graph nodes when coordinates are omitted', () => {
+        const graph = GraphDiagram({
+            c: getThemeColors('light'),
+            width: 720,
+            height: 280,
+            nodeWidth: 120,
+            nodeHeight: 50,
+            nodes: [
+                { id: 'input', label: 'Input' },
+                { id: 'left', label: 'Left branch' },
+                { id: 'right', label: 'Right branch' },
+                { id: 'output', label: 'Output' },
+            ],
+            edges: [
+                { from: 'input', to: 'left' },
+                { from: 'input', to: 'right' },
+                { from: 'left', to: 'output' },
+                { from: 'right', to: 'output' },
+            ],
+        })
+        const nodes = collectElements(graph, (element) => {
+            const style = reactProps(element).style as React.CSSProperties | undefined
+            return element.type === 'div'
+                && style?.position === 'absolute'
+                && style.width === 120
+                && style.height === 50
+        }).map((node) => reactProps(node).style as React.CSSProperties)
+        const paths = collectElements(graph, (element) => element.type === 'path' && Boolean(reactProps(element).markerEnd))
+
+        expect(nodes).toHaveLength(4)
+        expect(paths).toHaveLength(4)
+        expect(new Set(nodes.map(({ left, top }) => `${left}:${top}`)).size).toBe(4)
+        expect(reactProps(graph)['data-vizmatic-connector-crossings']).toBe(0)
+    })
+
+    it('reports crossings from manually positioned graph connectors', () => {
+        const graph = GraphDiagram({
+            c: getThemeColors('light'),
+            width: 500,
+            height: 260,
+            nodeWidth: 80,
+            nodeHeight: 44,
+            nodes: [
+                { id: 'top-left', label: 'A', x: 0, y: 0 },
+                { id: 'bottom-left', label: 'B', x: 0, y: 1 },
+                { id: 'top-right', label: 'C', x: 1, y: 0 },
+                { id: 'bottom-right', label: 'D', x: 1, y: 1 },
+            ],
+            edges: [
+                { from: 'top-left', to: 'bottom-right' },
+                { from: 'bottom-left', to: 'top-right' },
+            ],
+        })
+
+        expect(reactProps(graph)['data-vizmatic-connector-crossings']).toBe(1)
+    })
+
+    it('renders auto and manual self-loops and rejects mixed coordinate modes', () => {
+        const loop = GraphDiagram({
+            c: getThemeColors('light'),
+            nodes: [{ id: 'retry', label: 'Retry' }],
+            edges: [{ from: 'retry', to: 'retry', label: 'again' }],
+        })
+        const paths = collectElements(loop, (element) => element.type === 'path' && Boolean(reactProps(element).markerEnd))
+
+        expect(paths).toHaveLength(1)
+        const manualLoop = GraphDiagram({
+            c: getThemeColors('light'),
+            width: 420,
+            height: 260,
+            nodes: [{ id: 'retry', label: 'Retry', x: 0.4, y: 0.7 }],
+            edges: [{ from: 'retry', to: 'retry', label: 'again' }],
+        })
+        expect(collectElements(manualLoop, (element) => element.type === 'path' && Boolean(reactProps(element).markerEnd))).toHaveLength(1)
+        expect(() => GraphDiagram({
+            c: getThemeColors('light'),
+            nodes: [
+                { id: 'manual', label: 'Manual', x: 0.2, y: 0.5 },
+                { id: 'auto', label: 'Auto' },
+            ],
+            edges: [],
+        })).toThrow(/all define both x and y, or all omit coordinates/)
+    })
+
+    it('keeps fixed auto-layout dimensions and stable ordered geometry', () => {
+        const props = {
+            c: getThemeColors('light'),
+            width: 640,
+            height: 280,
+            sizing: 'fixed' as const,
+            nodes: [
+                { id: 'input', label: 'Input' },
+                { id: 'left', label: 'Left' },
+                { id: 'right', label: 'Right' },
+                { id: 'output', label: 'Output' },
+            ],
+            edges: [
+                { from: 'input', to: 'left' },
+                { from: 'input', to: 'right' },
+                { from: 'left', to: 'output' },
+                { from: 'right', to: 'output' },
+            ],
+        }
+        const geometry = () => {
+            const graph = GraphDiagram(props)
+            const nodes = collectElements(graph, (element) => {
+                const style = reactProps(element).style as React.CSSProperties | undefined
+                return element.type === 'div' && style?.position === 'absolute' && style.width === 150
+            }).map((node) => {
+                const style = reactProps(node).style as React.CSSProperties
+                return [style.left, style.top]
+            })
+            const paths = collectElements(graph, (element) => element.type === 'path' && Boolean(reactProps(element).markerEnd))
+                .map((path) => reactProps(path).d)
+            return { graph, nodes, paths }
+        }
+        const first = geometry()
+        const second = geometry()
+
+        expect(reactProps(first.graph).style).toMatchObject({ width: 640, height: 280 })
+        expect({ nodes: first.nodes, paths: first.paths }).toEqual({ nodes: second.nodes, paths: second.paths })
     })
 
     it('uses readable text when matrix colorization is disabled', () => {
@@ -1650,6 +1781,42 @@ export default frame.default
             )
             const bottomPadding = image.height - (content.y + content.height)
             expect(bottomPadding).toBeGreaterThanOrEqual(20)
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('reports final responsive layout nodes and exposes observers on direct render APIs', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'vizmatic-layout-observer-'))
+        const outputPath = join(dir, 'frame.png')
+        const frame = () => (
+            <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+                <div style={{ display: 'flex', width: 120, height: 40, backgroundColor: '#22c55e' }}>Final layout</div>
+            </div>
+        )
+
+        try {
+            const pngNodes: SatoriNode[] = []
+            const output = await renderToPngWithOutput(frame(), {
+                width: 360,
+                height: 300,
+                outputPath,
+                scale: 1,
+                crop: true,
+                onNodeDetected: (node) => pngNodes.push(node),
+            }, () => frame(), 'light')
+
+            expect(output.height).toBeLessThan(300)
+            expect(pngNodes.length).toBeGreaterThan(0)
+            expect(Math.max(...pngNodes.map((node) => node.top + node.height))).toBeLessThanOrEqual(output.height + 0.5)
+
+            const bufferNodes: SatoriNode[] = []
+            await renderToBuffer(frame(), 360, 120, { scale: 1, onNodeDetected: (node) => bufferNodes.push(node) })
+            expect(bufferNodes.length).toBeGreaterThan(0)
+
+            const svgNodes: SatoriNode[] = []
+            await renderToSvg(frame(), 360, 120, { onNodeDetected: (node) => svgNodes.push(node) })
+            expect(svgNodes.length).toBeGreaterThan(0)
         } finally {
             await rm(dir, { recursive: true, force: true })
         }

@@ -10,7 +10,7 @@ height = 560;
                 <MetricCard tone="warm" label="bundle" value="42kB" detail="sample value" width="100%" />
             </Column>
         </Panel>
-        <Panel title="Sample trend" tone="purple" width={360}>
+        <Panel title="Sample trend" tone="purple" width={360} justify="center">
             <MiniBarChart
                 showValues
                 data={[
@@ -23,7 +23,7 @@ height = 560;
             />
             <TextLabel text="Illustrative issue count" align="center" />
         </Panel>
-        <Panel title="Status" tone="ocean" width={220}>
+        <Panel title="Status" tone="ocean" width={220} justify="center">
             <CalloutCard tone="ocean" title="Example only" detail="replace with project status" minHeight={190} />
         </Panel>
     </Row>

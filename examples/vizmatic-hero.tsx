@@ -13,11 +13,11 @@ height = 640;
         labelFontSize={19}
         arrowSize={7}
         nodes={[
-            { id: 'brief', label: 'Agent request', x: 0.10, y: 0.50, tone: 'blue' },
-            { id: 'primitives', label: 'Scene primitives', x: 0.36, y: 0.25, tone: 'purple' },
-            { id: 'theme', label: 'Theme tokens', x: 0.36, y: 0.75, tone: 'cyan' },
-            { id: 'render', label: 'Node renderer', x: 0.65, y: 0.50, tone: 'warm' },
-            { id: 'asset', label: 'PNG / SVG / GIF', x: 0.90, y: 0.50, tone: 'green' },
+            { id: 'brief', label: 'Agent request', tone: 'blue' },
+            { id: 'primitives', label: 'Scene primitives', tone: 'purple' },
+            { id: 'theme', label: 'Theme tokens', tone: 'cyan' },
+            { id: 'render', label: 'Node renderer', tone: 'warm' },
+            { id: 'asset', label: 'PNG / SVG / GIF', tone: 'green' },
         ]}
         edges={[
             { from: 'brief', to: 'primitives', tone: 'blue' },

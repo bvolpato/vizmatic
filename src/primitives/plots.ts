@@ -284,7 +284,7 @@ export function QuadrantChart({
                     ...(region.detail ? [chartLabel(`quadrant-detail-${key}`, region.detail, x + halfWidth / 2, y + 34, c, {
                         width: halfWidth - 24,
                         color: c.textMuted,
-                        fontSize: 9,
+                        fontSize: 11,
                     })] : []),
                 ]
             }),
@@ -298,7 +298,7 @@ export function QuadrantChart({
                     color,
                     fontFamily: 'Inter',
                     fontWeight: 850,
-                    fontSize: 10,
+                    fontSize: 11,
                 })]
             }),
             xAxisLabel && chartLabel('quadrant-x-axis-label', xAxisLabel, plot.x + plot.innerWidth / 2, height - 8, c, {

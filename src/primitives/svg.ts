@@ -174,7 +174,7 @@ export function Arrow({
         // Optional label
         label && React.createElement('div', {
             style: {
-                fontSize: 10,
+                fontSize: 11,
                 color: c.textMuted,
                 fontFamily: c.fontSans,
                 fontWeight: 500,

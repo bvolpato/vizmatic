@@ -352,7 +352,7 @@ export function BadgePill({
     height = 20,
     padding = '0 8px',
     radius = 6,
-    fontSize = 9,
+    fontSize = 11,
     mono = true,
     filled = false,
     math = false,
@@ -600,7 +600,7 @@ export function MetricCard({
     align = 'center',
     math = false,
     valueMono = true,
-    valueFontSize = 10,
+    valueFontSize = 22,
     valueColor,
 }: MetricCardProps): React.ReactElement {
     const accent = getToneColor(tone, c)

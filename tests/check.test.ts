@@ -3,7 +3,8 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
 import { afterEach, describe, expect, it } from 'vitest'
-import { diagnosticFromMessage } from '../src/diagnostics'
+import { analyzeRenderedLayout, diagnosticFromMessage } from '../src/diagnostics'
+import type { SatoriNode } from '../src'
 import { playgroundTemplates } from '../src/playground-templates'
 
 interface CheckReport {
@@ -65,6 +66,25 @@ async function runCheck(source: string, extraArgs: string[] = []) {
 }
 
 describe('vizmatic check', () => {
+    it('inherits rendered font sizes without treating overlapping line boxes as overlapping glyphs', () => {
+        const inheritedSmallText: SatoriNode[] = [
+            { type: 'div', left: 0, top: 0, width: 200, height: 80, props: { style: { fontSize: 8 } } },
+            { type: 'span', left: 10, top: 10, width: 45, height: 15, props: {}, textContent: 'Inherited size' },
+        ]
+        expect(analyzeRenderedLayout(inheritedSmallText, 'light')).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'readability.small_text' }),
+        ]))
+
+        const separateGlyphs: SatoriNode[] = [
+            { type: 'div', left: 0, top: 0, width: 200, height: 80, props: {} },
+            { type: 'span', left: 10, top: 10, width: 80, height: 20, props: { style: { fontSize: 12 } }, textContent: 'First label' },
+            { type: 'span', left: 10, top: 20, width: 90, height: 20, props: { style: { fontSize: 12 } }, textContent: 'Second label' },
+        ]
+        expect(analyzeRenderedLayout(separateGlyphs, 'light')).not.toContainEqual(expect.objectContaining({
+            code: 'layout.text_overlap',
+        }))
+    })
+
     it('classifies unsupported prop warnings for agents', () => {
         expect(diagnosticFromMessage('Unknown prop "foo" on MetricCard', 'warning', 'light')).toMatchObject({
             code: 'api.unsupported_prop',
@@ -230,6 +250,72 @@ height = 240
         expect(largeText.report.files[0]?.themes[0]?.diagnostics).not.toContainEqual(expect.objectContaining({
             code: 'accessibility.low_contrast',
         }))
+    }, 30_000)
+
+    it('reports tiny and overlapping rendered text', async () => {
+        const { result, report } = await runCheck(String.raw`width = 400
+height = 240
+
+<Scene>
+  <div style={{ position: "relative", display: "flex", width: 280, height: 120 }}>
+    <div style={{ position: "absolute", left: 20, top: 20, fontSize: 8 }}>First label</div>
+    <div style={{ position: "absolute", left: 20, top: 20, fontSize: 12 }}>Second label</div>
+  </div>
+</Scene>
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes[0]?.diagnostics).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'readability.small_text', severity: 'warning' }),
+            expect.objectContaining({ code: 'layout.text_overlap', severity: 'warning' }),
+        ]))
+    }, 30_000)
+
+    it('reports crossing graph connectors', async () => {
+        const { result, report } = await runCheck(String.raw`width = 600
+height = 360
+
+<Scene>
+  <GraphDiagram
+    width={500}
+    height={260}
+    nodeWidth={80}
+    nodeHeight={44}
+    nodes={[
+      { id: "a", label: "A", x: 0, y: 0 },
+      { id: "b", label: "B", x: 0, y: 1 },
+      { id: "c", label: "C", x: 1, y: 0 },
+      { id: "d", label: "D", x: 1, y: 1 },
+    ]}
+    edges={[
+      { from: "a", to: "d" },
+      { from: "b", to: "c" },
+    ]}
+  />
+</Scene>
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes[0]?.diagnostics).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'layout.connector_congestion', severity: 'warning' }),
+        ]))
+    }, 30_000)
+
+    it('reports stretched panels with unused vertical space', async () => {
+        const { result, report } = await runCheck(String.raw`width = 640
+height = 420
+
+<Scene>
+  <Panel title="Sparse panel" width={420} height={280}>
+    <div>Only one short row</div>
+  </Panel>
+</Scene>
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes[0]?.diagnostics).toEqual(expect.arrayContaining([
+            expect.objectContaining({ code: 'layout.whitespace_imbalance', severity: 'warning' }),
+        ]))
     }, 30_000)
 
     it('keeps every playground template free of rendering errors', async () => {

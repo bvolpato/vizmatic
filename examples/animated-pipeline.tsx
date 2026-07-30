@@ -1,8 +1,7 @@
 import {
     CalloutCard,
-    Column,
-    Flow,
-    MetricCard,
+    FlowArrow,
+    Panel,
     Row,
     Scene,
     getThemeColors,
@@ -14,10 +13,10 @@ export const width = 1040
 export const height = 560
 
 const stages = [
-    { eyebrow: 'input', title: 'Prompt', subtitle: 'intent', tone: 'blue' as const, lines: ['goal', 'audience', 'format'], width: 190 },
-    { eyebrow: 'source', title: 'TSX scene', subtitle: 'components', tone: 'purple' as const, lines: ['layout', 'flow', 'cards'], width: 190 },
-    { eyebrow: 'render', title: 'Frame states', subtitle: 'React trees', tone: 'cyan' as const, lines: ['content', 'duration', 'transition'], width: 190 },
-    { eyebrow: 'output', title: 'GIF file', subtitle: 'four frames', tone: 'green' as const, lines: ['rendered', 'looping', 'complete'], width: 190 },
+    { title: 'Prompt', subtitle: 'intent', tone: 'blue' as const, width: 178 },
+    { title: 'TSX scene', subtitle: 'components', tone: 'purple' as const, width: 178 },
+    { title: 'Frame states', subtitle: 'React trees', tone: 'cyan' as const, width: 178 },
+    { title: 'GIF file', subtitle: 'four frames', tone: 'green' as const, width: 178 },
 ]
 
 function buildFrame(theme: ThemeMode, active: number) {
@@ -26,25 +25,45 @@ function buildFrame(theme: ThemeMode, active: number) {
         ...stage,
         title: index <= active ? stage.title : 'Pending',
         subtitle: index <= active ? stage.subtitle : 'queued',
-        lines: index <= active ? stage.lines : ['waiting', 'for', 'input'],
         tone: index <= active ? stage.tone : 'neutral' as const,
     }))
 
     return (
-        <Scene c={c} title="One scene rendered as a GIF" subtitle="four states from createScenes(theme)" gap={24}>
-            <Flow c={c} connectorTone="purple" stages={visibleStages} />
-            <Row width="100%" gap={14} align="stretch">
-                <Column gap={12} width={360}>
-                    <MetricCard c={c} label="Step" value={`${active + 1}/4`} tone="purple" detail={stages[active].title} width="100%" minHeight={96} />
-                    <MetricCard c={c} label="Format" value="GIF" tone="green" detail="four scene states" width="100%" minHeight={96} />
-                </Column>
+        <Scene c={c} title="One scene rendered as a GIF" subtitle="four states from createScenes(theme)" gap={20}>
+            <Row width="100%" gap={5} align="stretch" justify="center">
+                {visibleStages.flatMap((stage, index) => [
+                    <Panel
+                        key={`stage-${index}`}
+                        c={c}
+                        title={stage.title}
+                        subtitle={stage.subtitle}
+                        tone={stage.tone}
+                        width={stage.width}
+                        minHeight={104}
+                        align="center"
+                        justify="center"
+                    />,
+                    ...(index < visibleStages.length - 1
+                        ? [<FlowArrow key={`connector-${index}`} c={c} direction="right" length={20} tone="purple" />]
+                        : []),
+                ])}
+            </Row>
+            <Row width="100%" gap={16} align="stretch">
+                <CalloutCard
+                    c={c}
+                    tone="purple"
+                    title={`Frame ${active + 1} of 4`}
+                    detail={`${stages[active].title} is active`}
+                    width={300}
+                    minHeight={118}
+                />
                 <CalloutCard
                     c={c}
                     tone={active === stages.length - 1 ? 'green' : 'ocean'}
                     title={active === stages.length - 1 ? 'Export complete' : `Rendering frame ${active + 1}`}
                     detail="createScenes(theme) defines content, duration, and transition."
-                    width={580}
-                    minHeight={204}
+                    width={644}
+                    minHeight={118}
                 />
             </Row>
         </Scene>
