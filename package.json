@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.1.33",
+  "version": "0.1.34",
   "description": "Theme-aware visual primitives and a headless renderer for diagrams, figures, and presentation frames.",
   "type": "module",
   "license": "MIT",
