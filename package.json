@@ -60,6 +60,7 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm build && vitest run",
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
+    "check:examples": "tsx scripts/check-examples.ts",
     "playground:build": "tsx scripts/build-playground.ts",
     "site:build": "tsx scripts/build-site.ts",
     "docs:check": "tsx scripts/check-docs.ts",
@@ -68,7 +69,7 @@
     "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
     "security:audit": "pnpm audit --audit-level low",
     "deps:check": "pnpm security:audit && npm pack --dry-run",
-    "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm docs:check && pnpm deps:check",
+    "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm check:examples && pnpm docs:check && pnpm deps:check",
     "prepublishOnly": "pnpm verify"
   },
   "dependencies": {

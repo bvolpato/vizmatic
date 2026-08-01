@@ -162,9 +162,14 @@ export function analyzeContrast(
 
         const props = node.props as Record<string, unknown>
         const style = typeof node.type === 'string' ? styleRecord(props.style) : {}
-        const background = colorFromCss(style.backgroundColor)
-            ?? colorFromCss(style.background)
-            ?? inherited.background
+        const backgroundImage = typeof style.backgroundImage === 'string'
+            ? style.backgroundImage.trim().toLowerCase()
+            : ''
+        const hasUnresolvedBackground = (backgroundImage !== '' && backgroundImage !== 'none')
+            || (typeof style.background === 'string' && style.background.includes('gradient('))
+        const background = hasUnresolvedBackground
+            ? undefined
+            : colorFromCss(style.backgroundColor) ?? colorFromCss(style.background) ?? inherited.background
         const color = colorFromCss(style.color) ?? inherited.color
         const fontSize = fontSizePixels(style.fontSize, inherited.fontSize)
         const fontWeight = numericFontWeight(style.fontWeight) ?? inherited.fontWeight

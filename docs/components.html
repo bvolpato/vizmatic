@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<!-- Generated from docs/components.template.html by pnpm site:build. Edit template. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Components - Vizmatic</title>
+  <meta name="description" content="Browse every Vizmatic component for technical diagrams, charts, dashboards, and documentation figures.">
+  <meta name="theme-color" content="#080a0f">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <div class="nav-shell">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html">
+        <img src="assets/icon.svg" alt="" width="30" height="30">
+        <span>vizmatic</span>
+      </a>
+      <div class="nav-actions">
+        <div class="nav-links">
+          <a href="index.html#gallery">Examples</a>
+          <a href="components.html" aria-current="page">Components</a>
+          <a href="index.html#playground">Playground</a>
+          <a href="index.html#quick-start">Quick start</a>
+          <a href="index.html#onboarding">Prompt + skill</a>
+          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.45.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+        <div class="theme-toggle" role="group" aria-label="Site theme">
+          <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <main>
+    <header class="catalog-hero section">
+      <div class="eyebrow"><span></span>Vizmatic reference</div>
+      <h1>Components</h1>
+      <p>66 reusable pieces for technical diagrams, charts, dashboards, and documentation figures.</p>
+    </header>
+
+    <section id="components" class="section catalog-section">
+      <div class="section-kicker">Catalog <span>66 components</span></div>
+      <div class="section-intro catalog-intro">
+        <h2>Start with a primitive. Compose the rest.</h2>
+        <p>Every category below is a real Vizmatic scene. Open its source, copy what fits, and adjust semantic tones for your theme.</p>
+      </div>
+      <div class="catalog-toolbar">
+        <label class="catalog-search" for="catalogSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+          <input id="catalogSearch" type="search" placeholder="Search components" aria-label="Search components" autocomplete="off">
+          <button id="catalogClearButton" type="button" aria-label="Clear component search" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+          </button>
+        </label>
+        <div class="catalog-filters" role="group" aria-label="Component category">
+          <button type="button" data-catalog-filter="all" aria-pressed="true">All</button>
+<button type="button" data-catalog-filter="foundations" aria-pressed="false">Foundations</button>
+<button type="button" data-catalog-filter="content" aria-pressed="false">Content</button>
+<button type="button" data-catalog-filter="flows" aria-pressed="false">Flows</button>
+<button type="button" data-catalog-filter="diagrams" aria-pressed="false">Diagrams</button>
+<button type="button" data-catalog-filter="data" aria-pressed="false">Data</button>
+<button type="button" data-catalog-filter="charts" aria-pressed="false">Charts</button>
+<button type="button" data-catalog-filter="drawing" aria-pressed="false">Drawing</button>
+        </div>
+        <p class="catalog-count" id="catalogCount" aria-live="polite">66 components</p>
+      </div>
+      <div class="catalog-groups" id="catalogGroups">
+        <section class="catalog-group" data-catalog-group="foundations">
+<div class="catalog-group-heading">
+<div>
+<h3>Foundations</h3>
+<p>Scene structure, responsive layout, and framed surfaces.</p>
+</div>
+<span>9 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-foundations_dark.png" alt="Foundations component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-foundations" aria-label="View source for Foundations catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="canvas root canvas with theme background and padding."><code>Canvas</code><p>Root canvas with theme background and padding.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="scene primary vertical scene layout with optional title and subtitle."><code>Scene</code><p>Primary vertical scene layout with optional title and subtitle.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="titlebar standalone heading and supporting copy."><code>TitleBar</code><p>Standalone heading and supporting copy.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="row horizontal flex layout with stable gaps and alignment."><code>Row</code><p>Horizontal flex layout with stable gaps and alignment.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="column vertical flex layout for stacked composition."><code>Column</code><p>Vertical flex layout for stacked composition.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="stack compact vertical grouping for related content."><code>Stack</code><p>Compact vertical grouping for related content.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="panel titled container for grouped visual content."><code>Panel</code><p>Titled container for grouped visual content.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="card general-purpose surface with tone, padding, and shadow."><code>Card</code><p>General-purpose surface with tone, padding, and shadow.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="windowframe application or terminal window framing."><code>WindowFrame</code><p>Application or terminal window framing.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="content">
+<div class="catalog-group-heading">
+<div>
+<h3>Content</h3>
+<p>Labels, cards, code, comparisons, and reusable information blocks.</p>
+</div>
+<span>20 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-content_dark.png" alt="Content component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-content" aria-label="View source for Content catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="tonestrip short semantic color accent."><code>ToneStrip</code><p>Short semantic color accent.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="icon theme-aware technical icon set."><code>Icon</code><p>Theme-aware technical icon set.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="textlabel wrapping-safe svg or flex label."><code>TextLabel</code><p>Wrapping-safe SVG or flex label.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="mathtext math-aware text formatting for react content."><code>MathText</code><p>Math-aware text formatting for React content.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgmathtext math-aware text inside svg graphics."><code>SvgMathText</code><p>Math-aware text inside SVG graphics.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="badge compact semantic svg label."><code>Badge</code><p>Compact semantic SVG label.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="badgepill inline status, category, or metadata label."><code>BadgePill</code><p>Inline status, category, or metadata label.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="gradientchip emphasized label with tone gradient."><code>GradientChip</code><p>Emphasized label with tone gradient.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="valuepill small label-value pair."><code>ValuePill</code><p>Small label-value pair.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="equationcard formula, result, and supporting detail."><code>EquationCard</code><p>Formula, result, and supporting detail.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="stepcard numbered or staged process card."><code>StepCard</code><p>Numbered or staged process card.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="metriccard kpi value with label and context."><code>MetricCard</code><p>KPI value with label and context.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="calloutcard focused takeaway, warning, or recommendation."><code>CalloutCard</code><p>Focused takeaway, warning, or recommendation.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="detaillist compact list of supporting facts."><code>DetailList</code><p>Compact list of supporting facts.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="codeblock code or command excerpt with optional line numbers."><code>CodeBlock</code><p>Code or command excerpt with optional line numbers.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="comparison side-by-side alternatives or before/after states."><code>Comparison</code><p>Side-by-side alternatives or before/after states.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="keyvaluelist aligned technical metadata rows."><code>KeyValueList</code><p>Aligned technical metadata rows.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="tile single labeled unit for feature or system maps."><code>Tile</code><p>Single labeled unit for feature or system maps.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="tilegrid dense grid of related labeled units."><code>TileGrid</code><p>Dense grid of related labeled units.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="watermark frame metadata for text, image, or custom branding."><code>Watermark</code><p>Frame metadata for text, image, or custom branding.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="flows">
+<div class="catalog-group-heading">
+<div>
+<h3>Flows</h3>
+<p>Processes, timelines, status, and progress.</p>
+</div>
+<span>7 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-flows_dark.png" alt="Flows component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-flows" aria-label="View source for Flows catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="statusrow single operational state with detail."><code>StatusRow</code><p>Single operational state with detail.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="statuslist grouped checks, warnings, and pending work."><code>StatusList</code><p>Grouped checks, warnings, and pending work.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="timeline ordered events in horizontal or vertical form."><code>Timeline</code><p>Ordered events in horizontal or vertical form.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="flow connected horizontal or vertical stages."><code>Flow</code><p>Connected horizontal or vertical stages.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="pipeline compact process pipeline with shared title."><code>Pipeline</code><p>Compact process pipeline with shared title.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="progressrow labeled progress bar and value."><code>ProgressRow</code><p>Labeled progress bar and value.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="progresslist comparable progress across several measures."><code>ProgressList</code><p>Comparable progress across several measures.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="diagrams">
+<div class="catalog-group-heading">
+<div>
+<h3>Diagrams</h3>
+<p>Networks, directed graphs, and hierarchies.</p>
+</div>
+<span>3 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-diagrams_dark.png" alt="Diagrams component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-diagrams" aria-label="View source for Diagrams catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="layerednetwork layered neural network or staged dag."><code>LayeredNetwork</code><p>Layered neural network or staged DAG.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="graphdiagram auto-laid or manually positioned node-edge graph."><code>GraphDiagram</code><p>Auto-laid or manually positioned node-edge graph.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="treediagram auto-laid hierarchy, taxonomy, or decision tree."><code>TreeDiagram</code><p>Auto-laid hierarchy, taxonomy, or decision tree.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="data">
+<div class="catalog-group-heading">
+<div>
+<h3>Data</h3>
+<p>Tables, grids, matrices, and compact distributions.</p>
+</div>
+<span>6 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-data_dark.png" alt="Data component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-data" aria-label="View source for Data catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="matrix numeric or symbolic matrix with headers."><code>Matrix</code><p>Numeric or symbolic matrix with headers.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="heatmap color-scaled matrix for intensity and correlation."><code>Heatmap</code><p>Color-scaled matrix for intensity and correlation.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="tiledmatrix matrix with named regions and boundaries."><code>TiledMatrix</code><p>Matrix with named regions and boundaries.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="datatable structured rows and columns with headers."><code>DataTable</code><p>Structured rows and columns with headers.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="grid general labeled cell grid."><code>Grid</code><p>General labeled cell grid.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="minibarchart compact categorical bars for dense layouts."><code>MiniBarChart</code><p>Compact categorical bars for dense layouts.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="charts">
+<div class="catalog-group-heading">
+<div>
+<h3>Charts</h3>
+<p>Common comparisons, trends, distributions, and analytical plots.</p>
+</div>
+<span>9 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-charts_dark.png" alt="Charts component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-charts" aria-label="View source for Charts catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="chartframe shared chart title, subtitle, legend, and footer."><code>ChartFrame</code><p>Shared chart title, subtitle, legend, and footer.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="donutchart part-to-whole composition with center label."><code>DonutChart</code><p>Part-to-whole composition with center label.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="stackedbar part-to-whole values along one dimension."><code>StackedBar</code><p>Part-to-whole values along one dimension.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="barchart categorical comparison with labels and values."><code>BarChart</code><p>Categorical comparison with labels and values.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="linechart one or more trends across an ordered axis."><code>LineChart</code><p>One or more trends across an ordered axis.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="scatterplot point distribution across two numeric axes."><code>ScatterPlot</code><p>Point distribution across two numeric axes.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="quadrantchart positioning map split into four named regions."><code>QuadrantChart</code><p>Positioning map split into four named regions.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="intervalplot low, midpoint, and high ranges by category."><code>IntervalPlot</code><p>Low, midpoint, and high ranges by category.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="legend reusable color key for charts and diagrams."><code>Legend</code><p>Reusable color key for charts and diagrams.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="drawing">
+<div class="catalog-group-heading">
+<div>
+<h3>Drawing</h3>
+<p>Low-level SVG geometry for custom technical figures.</p>
+</div>
+<span>12 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-drawing_dark.png" alt="Drawing component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-drawing" aria-label="View source for Drawing catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="box rounded svg box with label and tone."><code>Box</code><p>Rounded SVG box with label and tone.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="arrow straight labeled svg arrow."><code>Arrow</code><p>Straight labeled SVG arrow.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="arrowmarkerdef reusable svg arrowhead definition."><code>ArrowMarkerDef</code><p>Reusable SVG arrowhead definition.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="flowarrow straight directional connector with label and tone."><code>FlowArrow</code><p>Straight directional connector with label and tone.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="connector alias for flow connectors in diagram code."><code>Connector</code><p>Alias for flow connectors in diagram code.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="vectorarrow vector with optional endpoints and arrowhead."><code>VectorArrow</code><p>Vector with optional endpoints and arrowhead.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="vectorsegment line segment for geometric constructions."><code>VectorSegment</code><p>Line segment for geometric constructions.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgframe svg plotting frame with border and fill."><code>SvgFrame</code><p>SVG plotting frame with border and fill.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgpoint labeled point for svg figures."><code>SvgPoint</code><p>Labeled point for SVG figures.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="dotpoint point marker with optional text label."><code>DotPoint</code><p>Point marker with optional text label.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="dashedline dotted or dashed svg guide line."><code>DashedLine</code><p>Dotted or dashed SVG guide line.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="axisplot coordinate plane for points, vectors, and paths."><code>AxisPlot</code><p>Coordinate plane for points, vectors, and paths.</p></article></div>
+</div>
+</section>
+      </div>
+      <p class="catalog-empty" id="catalogEmpty" hidden>No components match this search.</p>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
+    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p>
+    <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
+  </footer>
+
+  <dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
+    <div class="source-dialog-panel">
+      <header>
+        <div><span>Source</span><h2 id="sourceTitle">Catalog source</h2></div>
+        <div class="dialog-actions"><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div>
+      </header>
+      <div class="source-code" id="sourceCode"></div>
+    </div>
+  </dialog>
+
+  <script>
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]')
+    const themeButtons = document.querySelectorAll('[data-theme-choice]')
+    const themedImages = document.querySelectorAll('[data-theme-image]')
+    const systemThemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+    const catalogSearch = document.getElementById('catalogSearch')
+    const catalogClearButton = document.getElementById('catalogClearButton')
+    const catalogCount = document.getElementById('catalogCount')
+    const catalogEmpty = document.getElementById('catalogEmpty')
+    const catalogFilters = Array.from(document.querySelectorAll('[data-catalog-filter]'))
+    const catalogGroups = Array.from(document.querySelectorAll('[data-catalog-group]'))
+    const sourceDialog = document.getElementById('sourceDialog')
+    const sourceTitle = document.getElementById('sourceTitle')
+    const sourceCode = document.getElementById('sourceCode')
+    const copySourceButton = document.getElementById('copySourceButton')
+    const closeSourceButton = document.getElementById('closeSourceButton')
+    let activeCatalogFilter = 'all'
+    let activeSource
+    let sourceCache
+
+    function themedSrc(src, theme) {
+      return src.replace(/_(dark|light)(\.(png|gif))$/, `_${theme}$2`)
+    }
+
+    function getSavedTheme() {
+      try { return localStorage.getItem('vizmatic-theme') } catch { return undefined }
+    }
+
+    function saveTheme(theme) {
+      try { localStorage.setItem('vizmatic-theme', theme) } catch {}
+    }
+
+    function normalizeThemeChoice(theme) {
+      return theme === 'light' || theme === 'dark' ? theme : 'system'
+    }
+
+    function resolveTheme(theme) {
+      const choice = normalizeThemeChoice(theme)
+      return choice === 'system' ? (systemThemeQuery.matches ? 'light' : 'dark') : choice
+    }
+
+    function sourceHtml(source) {
+      const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
+      return source.html?.[theme] ?? source.html?.dark ?? ''
+    }
+
+    function renderActiveSource() {
+      if (!activeSource) return
+      sourceTitle.textContent = activeSource.title
+      sourceCode.innerHTML = sourceHtml(activeSource)
+    }
+
+    function setSiteTheme(theme) {
+      const choice = normalizeThemeChoice(theme)
+      const resolved = resolveTheme(choice)
+      document.documentElement.dataset.siteTheme = resolved
+      document.documentElement.dataset.themeMode = choice
+      saveTheme(choice)
+      themeColorMeta?.setAttribute('content', resolved === 'light' ? '#f4f5f2' : '#080a0f')
+      themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice)))
+      themedImages.forEach((image) => image.setAttribute('src', themedSrc(image.getAttribute('src'), resolved)))
+      if (activeSource && sourceDialog.open) renderActiveSource()
+    }
+
+    function updateCatalog() {
+      const query = catalogSearch.value.trim().toLowerCase()
+      let visibleCount = 0
+      catalogGroups.forEach((group) => {
+        const categoryMatches = activeCatalogFilter === 'all' || group.dataset.catalogGroup === activeCatalogFilter
+        let groupCount = 0
+        group.querySelectorAll('[data-catalog-item]').forEach((item) => {
+          const matches = categoryMatches && (!query || item.dataset.catalogSearch.includes(query))
+          item.hidden = !matches
+          if (matches) groupCount += 1
+        })
+        group.hidden = groupCount === 0
+        visibleCount += groupCount
+      })
+      catalogCount.textContent = `${visibleCount} component${visibleCount === 1 ? '' : 's'}`
+      catalogEmpty.hidden = visibleCount !== 0
+      catalogClearButton.hidden = query.length === 0
+    }
+
+    async function loadSources() {
+      if (!sourceCache) {
+        const response = await fetch('assets/examples/sources.json', { cache: 'no-store' })
+        const sources = await response.json()
+        sourceCache = new Map(sources.map((source) => [source.name, source]))
+      }
+      return sourceCache
+    }
+
+    async function openSource(name) {
+      const source = (await loadSources()).get(name)
+      if (!source) return
+      activeSource = source
+      renderActiveSource()
+      sourceDialog.showModal()
+    }
+
+    setSiteTheme(normalizeThemeChoice(getSavedTheme()))
+    themeButtons.forEach((button) => button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice)))
+    systemThemeQuery.addEventListener('change', () => {
+      if (document.documentElement.dataset.themeMode === 'system') setSiteTheme('system')
+    })
+    catalogSearch.addEventListener('input', updateCatalog)
+    catalogClearButton.addEventListener('click', () => {
+      catalogSearch.value = ''
+      catalogSearch.focus()
+      updateCatalog()
+    })
+    catalogFilters.forEach((button) => button.addEventListener('click', () => {
+      activeCatalogFilter = button.dataset.catalogFilter
+      catalogFilters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)))
+      updateCatalog()
+    }))
+    document.querySelectorAll('.source-button').forEach((button) => {
+      button.addEventListener('click', () => openSource(button.dataset.source))
+    })
+    copySourceButton.addEventListener('click', async () => {
+      if (!activeSource) return
+      const previous = copySourceButton.textContent
+      try {
+        await navigator.clipboard.writeText(activeSource.code)
+        copySourceButton.textContent = 'Copied'
+      } finally {
+        setTimeout(() => { copySourceButton.textContent = previous }, 1600)
+      }
+    })
+    closeSourceButton.addEventListener('click', () => sourceDialog.close())
+    sourceDialog.addEventListener('click', (event) => { if (event.target === sourceDialog) sourceDialog.close() })
+    updateCatalog()
+  </script>
+</body>
+</html>

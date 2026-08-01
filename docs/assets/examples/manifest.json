@@ -34,6 +34,62 @@
     ]
   },
   {
+    "name": "catalog-charts",
+    "source": "examples/catalog-charts.tsx",
+    "outputs": [
+      "catalog-charts_dark.png",
+      "catalog-charts_light.png"
+    ]
+  },
+  {
+    "name": "catalog-content",
+    "source": "examples/catalog-content.tsx",
+    "outputs": [
+      "catalog-content_dark.png",
+      "catalog-content_light.png"
+    ]
+  },
+  {
+    "name": "catalog-data",
+    "source": "examples/catalog-data.tsx",
+    "outputs": [
+      "catalog-data_dark.png",
+      "catalog-data_light.png"
+    ]
+  },
+  {
+    "name": "catalog-diagrams",
+    "source": "examples/catalog-diagrams.tsx",
+    "outputs": [
+      "catalog-diagrams_dark.png",
+      "catalog-diagrams_light.png"
+    ]
+  },
+  {
+    "name": "catalog-drawing",
+    "source": "examples/catalog-drawing.tsx",
+    "outputs": [
+      "catalog-drawing_dark.png",
+      "catalog-drawing_light.png"
+    ]
+  },
+  {
+    "name": "catalog-flows",
+    "source": "examples/catalog-flows.tsx",
+    "outputs": [
+      "catalog-flows_dark.png",
+      "catalog-flows_light.png"
+    ]
+  },
+  {
+    "name": "catalog-foundations",
+    "source": "examples/catalog-foundations.tsx",
+    "outputs": [
+      "catalog-foundations_dark.png",
+      "catalog-foundations_light.png"
+    ]
+  },
+  {
     "name": "embedding-map",
     "source": "examples/embedding-map.tsx",
     "outputs": [

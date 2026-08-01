@@ -2,7 +2,7 @@ import React from 'react'
 import {
     type ThemeColors,
     type ColorName,
-    getColor,
+    getReadableColor,
 } from '../theme'
 
 import { clamp } from './layout'
@@ -434,7 +434,7 @@ interface BadgeProps {
 }
 
 export function Badge({ label, c, color = 'primary' }: BadgeProps): React.ReactElement {
-    const solidColor = getColor(color, c)
+    const solidColor = getReadableColor(color, c)
     return React.createElement('div', {
         style: {
             display: 'flex',
@@ -464,7 +464,7 @@ interface DotPointProps {
     labelOffset?: { x?: number; y?: number }
 }
 
-export function DotPoint({ x, y, label, color, size = 12, labelOffset }: DotPointProps): React.ReactElement[] {
+export function DotPoint({ x, y, label, color, c, size = 12, labelOffset }: DotPointProps): React.ReactElement[] {
     const offX = labelOffset?.x ?? 0
     const offY = labelOffset?.y ?? -22
 
@@ -493,7 +493,7 @@ export function DotPoint({ x, y, label, color, size = 12, labelOffset }: DotPoin
                 top: y + offY,
                 fontSize: 13,
                 fontWeight: 600,
-                color,
+                color: c.textPrimary,
                 fontFamily: 'JetBrains Mono',
                 textAlign: 'center' as const,
                 width: 60,

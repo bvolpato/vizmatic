@@ -2,6 +2,7 @@ import React from 'react'
 import {
     type ThemeColors,
     type ToneName,
+    getReadableToneColor,
     getToneColor,
 } from '../theme'
 
@@ -58,7 +59,9 @@ export function StatusRow({
     width,
     math = false,
 }: StatusRowProps): React.ReactElement {
-    const accent = getToneColor(tone ?? statusTones[status], c)
+    const resolvedTone = tone ?? statusTones[status]
+    const accent = getToneColor(resolvedTone, c)
+    const accentText = getReadableToneColor(resolvedTone, c)
     const glyph = statusGlyphs[status]
 
     const marker = React.createElement('div', {
@@ -72,7 +75,7 @@ export function StatusRow({
             borderRadius: 999,
             backgroundColor: status === 'dot' ? accent : `${accent}26`,
             border: `1px solid ${accent}`,
-            color: accent,
+            color: accentText,
             fontFamily: 'Inter',
             fontSize: status === 'warn' || status === 'info' ? 12 : 11,
             fontWeight: 900,
@@ -175,7 +178,9 @@ interface TimelineProps {
 }
 
 function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: boolean, width?: number | string): React.ReactElement {
-    const accent = getToneColor(event.tone ?? statusTones[event.status ?? 'dot'], c)
+    const resolvedTone = event.tone ?? statusTones[event.status ?? 'dot']
+    const accent = getToneColor(resolvedTone, c)
+    const accentText = getReadableToneColor(resolvedTone, c)
     const resolvedWidth = event.width ?? width
 
     return React.createElement('div', {
@@ -197,7 +202,7 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
         event.time != null && React.createElement('div', {
             style: {
                 display: 'flex',
-                color: accent,
+                color: accentText,
                 fontFamily: 'JetBrains Mono',
                 fontSize: 11,
                 fontWeight: 900,

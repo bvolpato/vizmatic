@@ -200,7 +200,7 @@ Vizmatic provides reusable layout, diagram, and chart primitives:
   <img src="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_dark.png" alt="Presentation frame" width="380" />
 </p>
 
-More examples live in [`examples/`](examples) and on the [website](https://bvolpato.github.io/vizmatic/). [`PROMPT.md`](PROMPT.md) contains the full install, syntax, component, and verification reference for coding agents.
+More examples live in [`examples/`](examples). The website has a searchable [component catalog](https://bvolpato.github.io/vizmatic/components.html) with a rendered preview and source for every public component. [`PROMPT.md`](PROMPT.md) contains the full install, syntax, component, and verification reference for coding agents.
 
 ## Repository checks
 
@@ -211,6 +211,7 @@ Generated examples and website files are committed. CI fails when a build change
 | `pnpm lint` | TypeScript coverage plus GitHub Actions validation with actionlint |
 | `pnpm test` | Render pipeline behavior, watermark options, and output validation |
 | `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
+| `pnpm check:examples` | Every example renders in both themes without errors or visual warnings |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
 | `pnpm deps:check` | npm audit plus package tarball contents before release |
 | `./test.sh` drift check | Confirms render and docs commands leave no uncommitted output |

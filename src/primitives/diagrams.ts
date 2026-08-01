@@ -5,6 +5,8 @@ import {
     type ThemeColors,
     type ColorName,
     type ToneName,
+    getReadableToneColor,
+    getReadableTextColor,
     getToneColor,
     getToneFill,
     getToneGradient,
@@ -114,7 +116,7 @@ export function LayeredNetwork({
     }, formatMathText(text))
 
     const titleElements = nodeLayout.map((layer) =>
-        label(`title-${layer.title}`, layer.title, layer.x, 20, 120, getToneColor(layer.tone, c), 16, 900)
+        label(`title-${layer.title}`, layer.title, layer.x, 20, 120, getReadableToneColor(layer.tone, c), 16, 900)
     )
 
     const nodeElements = nodeLayout.flatMap((layer, layerIndex) =>
@@ -150,7 +152,7 @@ export function LayeredNetwork({
                         alignItems: 'center',
                         justifyContent: 'center',
                         backgroundColor: color,
-                        color: c.textOnColor,
+                        color: getReadableTextColor(color, c),
                         border: active ? `3px solid ${c.warningLight}` : `1.5px solid ${color}`,
                         boxSizing: 'border-box' as const,
                         boxShadow: active ? `0 0 16px ${c.warningLight}70` : `0 8px 14px ${c.shadow}`,
@@ -656,7 +658,7 @@ export function GraphDiagram({
                     borderRadius: c.preset === 'engineering' ? 0 : 999,
                     backgroundColor: c.preset === 'engineering' ? c.bg : c.bgCard,
                     border: c.preset === 'engineering' ? 'none' : `1px solid ${c.borderSubtle}`,
-                    color: edge.muted ? c.textMuted : (c.preset === 'engineering' ? c.textSecondary : edge.color),
+                    color: edge.muted ? c.textMuted : (c.preset === 'engineering' ? c.textSecondary : getReadableToneColor(edge.tone ?? 'blue', c)),
                     fontFamily: c.fontMono,
                     fontSize: 11,
                     fontWeight: c.preset === 'engineering' ? 400 : 800,
@@ -671,6 +673,7 @@ export function GraphDiagram({
         ] : []),
         ...Array.from(layout.values()).map((node) => {
             const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
+            const accentText = node.muted ? c.textMuted : getReadableToneColor(node.tone ?? 'blue', c)
             return React.createElement('div', {
                 key: `graph-node-${node.id}`,
                 style: {
@@ -691,7 +694,7 @@ export function GraphDiagram({
                     border: `${c.preset === 'engineering' ? 1.25 : 1.5}px solid ${node.muted ? c.borderLight : `${accent}${c.preset === 'engineering' ? '' : '88'}`}`,
                     ...(!node.muted && c.preset !== 'engineering' ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                     opacity: node.muted ? 0.62 : 1,
-                    color: c.preset === 'engineering' ? c.textPrimary : accent,
+                    color: c.preset === 'engineering' ? c.textPrimary : accentText,
                     textAlign: 'center' as const,
                 }
             },
@@ -913,6 +916,7 @@ export function TreeDiagram({
             })),
             ...positioned.map((node) => {
                 const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
+                const accentText = node.muted ? c.textMuted : getReadableToneColor(node.tone ?? 'blue', c)
                 return React.createElement('div', {
                     key: `tree-node-${node.key}`,
                     style: {
@@ -933,13 +937,13 @@ export function TreeDiagram({
                         border: `1.5px solid ${node.muted ? c.borderLight : `${accent}88`}`,
                         ...(!node.muted ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                         opacity: node.muted ? 0.62 : 1,
-                        color: accent,
+                        color: accentText,
                         textAlign: 'center' as const,
                     }
                 },
                     React.createElement('div', {
                         style: {
-                            color: accent,
+                            color: accentText,
                             fontFamily: 'Inter',
                             fontSize: 13,
                             fontWeight: 900,
@@ -996,6 +1000,7 @@ export function CalloutCard({
     align = 'center',
 }: CalloutCardProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const accentText = getReadableToneColor(tone, c)
     const engineering = c.preset === 'engineering'
     const textAlign = align
 
@@ -1025,7 +1030,7 @@ export function CalloutCard({
             style: {
                 ...typography.small,
                 ...(titleFontSize != null ? { fontSize: titleFontSize } : {}),
-                color: engineering ? c.textPrimary : filled ? c.textOnColor : accent,
+                color: engineering ? c.textPrimary : filled ? c.textOnColor : accentText,
                 fontFamily: c.fontSans,
                 fontWeight: 900,
                 lineHeight: 1.2,

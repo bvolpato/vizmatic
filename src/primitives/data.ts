@@ -4,6 +4,8 @@ import {
     heatColor,
     type ThemeColors,
     type ToneName,
+    getReadableToneColor,
+    getReadableTextColor,
     getToneColor,
 } from '../theme'
 
@@ -122,8 +124,9 @@ export function Matrix({
                         }
                     }, rowLabels[ri]),
 
-                    ...row.map((value, ci) =>
-                        React.createElement('div', {
+                    ...row.map((value, ci) => {
+                        const backgroundColor = colorize ? cellColor(value) : c.bgCard
+                        return React.createElement('div', {
                             key: `cell-${ri}-${ci}`,
                             style: {
                                 width: resolvedCellWidth,
@@ -131,19 +134,15 @@ export function Matrix({
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                backgroundColor: colorize ? cellColor(value) : c.bgCard,
+                                backgroundColor,
                                 borderRadius: 6,
                                 fontSize: 11,
                                 fontWeight: 600,
-                                color: !colorize
-                                    ? c.textPrimary
-                                    : colorScale === 'strength' && value < 0.34
-                                        ? c.textSecondary
-                                        : c.textOnColor,
+                                color: colorize ? getReadableTextColor(backgroundColor, c) : c.textPrimary,
                                 fontFamily: 'JetBrains Mono',
                             }
                         }, labels?.[ri]?.[ci] ?? formatValue(value))
-                    ),
+                    }),
                 )
             ),
         ),
@@ -332,7 +331,7 @@ export function TiledMatrix({
         ...compactChildren([
             title && React.createElement('div', {
                 style: {
-                    color: muted ? c.textMuted : baseAccent,
+                    color: muted ? c.textMuted : getReadableToneColor(tone, c),
                     fontFamily: 'Inter',
                     fontSize: 13,
                     fontWeight: 900,
@@ -481,6 +480,7 @@ export function Grid({
     const cellStyle = (cell: React.ReactNode | GridCell, rowIndex: number, colIndex: number): React.CSSProperties => {
         const config = isGridCell(cell) ? cell : {}
         const toneColor = config.tone ? getToneColor(config.tone, c) : undefined
+        const toneTextColor = config.tone ? getReadableToneColor(config.tone, c) : undefined
         const isHeader = rowIndex < headerRows || colIndex < headerCols
         return {
             width: cellWidth,
@@ -491,7 +491,7 @@ export function Grid({
             borderRadius: radius,
             backgroundColor: config.backgroundColor ?? (toneColor ? `${toneColor}22` : isHeader ? c.bgSubtle : c.bgHover),
             border: `1px solid ${config.borderColor ?? (toneColor ? `${toneColor}55` : c.borderSubtle)}`,
-            color: config.color ?? (toneColor ?? (isHeader ? c.textPrimary : c.textSecondary)),
+            color: config.color ?? (toneTextColor ?? (isHeader ? c.textPrimary : c.textSecondary)),
             ...(config.opacity !== undefined ? { opacity: config.opacity } : {}),
             fontFamily: 'JetBrains Mono',
             fontSize,

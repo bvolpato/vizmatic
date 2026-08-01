@@ -14,8 +14,11 @@ import {
     detectOverflow,
     colors,
     CalloutCard,
+    getReadableColor,
+    getReadableToneColor,
     getToneFill,
     getThemeColors,
+    getReadableTextColor,
     MetricCard,
     renderAnimatedGif,
     renderToBuffer,
@@ -414,7 +417,7 @@ describe('vizmatic render pipeline', () => {
                 data={[
                     { label: 'cache read', value: 0.78, color: 'positive', valueLabel: '78%' },
                     { label: 'uncached', value: 0.14, color: 'warning', valueLabel: '14%' },
-                    { label: 'write', value: 0.08, color: 'secondary', valueLabel: '8%' },
+                    { label: 'write', value: 0.08, color: '#2563eb', valueLabel: '8%' },
                 ]}
             />
         ))
@@ -707,6 +710,117 @@ describe('vizmatic render pipeline', () => {
         }))
     })
 
+    it('keeps semantic text tokens readable in both themes', () => {
+        for (const theme of ['dark', 'light'] as const) {
+            const c = getThemeColors(theme)
+            const names = [
+                'primary',
+                'secondary',
+                'positive',
+                'warning',
+                'critical',
+                'info',
+                'accent',
+                'neutral',
+            ] as const
+            const colors = names.map((name) => getReadableColor(name, c))
+            const labels = React.createElement('div', {
+                style: { display: 'flex', backgroundColor: c.bgCard },
+            }, ...colors.map((color, index) => React.createElement('div', {
+                key: index,
+                style: { display: 'flex', color, fontSize: 14 },
+            }, 'Readable label')))
+
+            expect(analyzeContrast(labels, theme)).not.toContainEqual(expect.objectContaining({
+                code: 'accessibility.low_contrast',
+            }))
+        }
+    })
+
+    it('keeps tone text readable in both themes', () => {
+        for (const theme of ['dark', 'light'] as const) {
+            const c = getThemeColors(theme)
+            const tones = ['blue', 'purple', 'green', 'warm', 'cyan', 'pink', 'red', 'critical', 'neutral', 'sunset', 'ocean', 'dark'] as const
+            const labels = React.createElement('div', {
+                style: { display: 'flex', backgroundColor: c.bgCard },
+            }, ...tones.map((tone) => React.createElement('div', {
+                key: tone,
+                style: { display: 'flex', color: getReadableToneColor(tone, c), fontSize: 14 },
+            }, tone)))
+
+            expect(analyzeContrast(labels, theme)).not.toContainEqual(expect.objectContaining({
+                code: 'accessibility.low_contrast',
+            }))
+        }
+    })
+
+    it('uses readable labels on solid semantic fills', () => {
+        for (const theme of ['dark', 'light'] as const) {
+            const c = getThemeColors(theme)
+            const samples = [
+                Box({ c, label: 'Filled box', color: 'positive' }),
+                Matrix({ c, data: [[0.15, 0.5, 0.85]] }),
+                LayeredNetwork({
+                    c,
+                    layers: [
+                        { title: 'Input', nodes: ['A'], tone: 'blue' },
+                        { title: 'Output', nodes: ['B'], tone: 'green' },
+                    ],
+                }),
+            ]
+
+            for (const sample of samples) {
+                expect(analyzeContrast(sample, theme)).not.toContainEqual(expect.objectContaining({
+                    code: 'accessibility.low_contrast',
+                }))
+            }
+        }
+    })
+
+    it('uses readable labels on common CSS color formats', () => {
+        const c = getThemeColors('light')
+        for (const background of [
+            '#fff',
+            'rgb(255, 255, 255)',
+            'hsl(0, 0%, 100%)',
+            'rgba(255, 255, 255, 0.5)',
+            'transparent',
+            'var(--unknown-fill)',
+        ]) {
+            expect(getReadableTextColor(background, c)).toBe(c.textPrimary)
+        }
+        expect(getReadableTextColor('#000', c)).toBe(c.textOnColor)
+    })
+
+    it('does not guess contrast against unresolved gradient backgrounds', () => {
+        const card = React.createElement('div', {
+            style: {
+                display: 'flex',
+                backgroundImage: 'linear-gradient(90deg, #111827, #312e81)',
+                color: '#ffffff',
+            },
+        }, 'Gradient label')
+
+        expect(analyzeContrast(card, 'light', new Set(), '#ffffff')).not.toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+        }))
+    })
+
+    it('checks solid backgrounds when background images are disabled', () => {
+        const label = React.createElement('div', {
+            style: {
+                display: 'flex',
+                backgroundColor: '#ffffff',
+                backgroundImage: 'none',
+                color: '#ffffff',
+            },
+        }, 'Unreadable label')
+
+        expect(analyzeContrast(label, 'light')).toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+        }))
+    })
+
     it('renders network layers with no nodes', async () => {
         const network = LayeredNetwork({
             c: getThemeColors('light'),
@@ -881,6 +995,15 @@ renderToBuffer(frame.create('dark'), 720, 420)
     it('resolves dark and light theme tokens', () => {
         expect(getThemeColors('dark').bg).not.toBe(getThemeColors('light').bg)
         expect(getThemeColors('dark').primary).toBe(getThemeColors('light').primary)
+        expect(getThemeColors('light')).toMatchObject({
+            primaryLight: '#8b5cf6',
+            secondaryLight: '#3b82f6',
+            positiveLight: '#10b981',
+            warningLight: '#f59e0b',
+            criticalLight: '#ef4444',
+            infoLight: '#06b6d4',
+            accentLight: '#f472b6',
+        })
         expect(colors).toMatchObject({
             preset: 'default',
             fontSans: 'Inter',

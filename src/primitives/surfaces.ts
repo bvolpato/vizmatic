@@ -3,6 +3,7 @@ import {
     typography,
     type ThemeColors,
     type ToneName,
+    getReadableToneColor,
     getToneColor,
     getToneFill,
     getToneGradient,
@@ -205,7 +206,7 @@ export function ValuePill({
     width = 112,
     math = false,
 }: ValuePillProps): React.ReactElement {
-    const accent = getToneColor(tone, c)
+    const accent = getReadableToneColor(tone, c)
 
     return Card({
         c,
@@ -274,7 +275,7 @@ export function EquationCard({
     math = false,
     align = 'left',
 }: EquationCardProps): React.ReactElement {
-    const accent = getToneColor(tone, c)
+    const accent = getReadableToneColor(tone, c)
     const textAlign = align
 
     return Card({
@@ -358,6 +359,7 @@ export function BadgePill({
     math = false,
 }: BadgePillProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const accentText = getReadableToneColor(tone, c)
     const engineering = c.preset === 'engineering'
 
     return React.createElement('div', {
@@ -376,7 +378,7 @@ export function BadgePill({
                     ? { backgroundImage: getToneGradient(tone) }
                     : { backgroundColor: `${accent}18` }),
             border: `1px solid ${engineering ? accent : filled ? `${accent}00` : `${accent}55`}`,
-            color: engineering ? c.textPrimary : filled ? c.textOnColor : accent,
+            color: engineering ? c.textPrimary : filled ? c.textOnColor : accentText,
             fontSize,
             fontWeight: 800,
             lineHeight: 1,
@@ -506,6 +508,7 @@ export function StepCard({
     math = false,
 }: StepCardProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const accentText = getReadableToneColor(tone, c)
     const engineering = c.preset === 'engineering'
     const textAlign = align
 
@@ -545,7 +548,7 @@ export function StepCard({
                 style: {
                     ...typography.label,
                     fontFamily: c.fontSans,
-                    color: engineering ? c.textPrimary : accent,
+                    color: engineering ? c.textPrimary : accentText,
                     fontWeight: 700,
                     lineHeight: 1.15,
                     ...textFitStyle(textAlign),
@@ -604,6 +607,7 @@ export function MetricCard({
     valueColor,
 }: MetricCardProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const accentText = getReadableToneColor(tone, c)
     const textAlign = align
 
     return Card({
@@ -630,7 +634,7 @@ export function MetricCard({
                 style: {
                     fontSize: 11,
                     fontWeight: 800,
-                    color: accent,
+                    color: accentText,
                     fontFamily: c.fontSans,
                     lineHeight: 1.1,
                     ...textFitStyle(textAlign),

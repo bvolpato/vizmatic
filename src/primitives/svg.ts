@@ -5,6 +5,7 @@ import {
     type ToneName,
     getColor,
     getGradient,
+    getReadableTextColor,
     getToneColor,
 } from '../theme'
 
@@ -44,6 +45,7 @@ export function Box({
 }: BoxProps): React.ReactElement {
     const solidColor = getColor(color, c)
     const gradientBg = getGradient(color)
+    const solidTextColor = getReadableTextColor(solidColor, c)
 
     const style: React.CSSProperties = {
         display: 'flex',
@@ -76,7 +78,7 @@ export function Box({
             style: {
                 fontSize,
                 fontWeight: 700,
-                color: outlined ? solidColor : c.textOnColor,
+                color: outlined ? solidColor : gradient ? c.textOnColor : solidTextColor,
                 fontFamily: c.fontSans,
                 textAlign: 'center' as const,
                 lineHeight: 1.3,
@@ -86,7 +88,7 @@ export function Box({
             style: {
                 fontSize: fontSize - 2,
                 fontWeight: 400,
-                color: outlined ? c.textMuted : `${c.textOnColor}b3`,
+                color: outlined ? c.textMuted : gradient ? `${c.textOnColor}b3` : solidTextColor,
                 fontFamily: c.fontMono,
                 textAlign: 'center' as const,
             }

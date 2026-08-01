@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Components - Vizmatic</title>
+  <meta name="description" content="Browse every Vizmatic component for technical diagrams, charts, dashboards, and documentation figures.">
+  <meta name="theme-color" content="#080a0f">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <div class="nav-shell">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html">
+        <img src="assets/icon.svg" alt="" width="30" height="30">
+        <span>vizmatic</span>
+      </a>
+      <div class="nav-actions">
+        <div class="nav-links">
+          <a href="index.html#gallery">Examples</a>
+          <a href="components.html" aria-current="page">Components</a>
+          <a href="index.html#playground">Playground</a>
+          <a href="index.html#quick-start">Quick start</a>
+          <a href="index.html#onboarding">Prompt + skill</a>
+          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.45.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
+            </svg>
+            <span>GitHub</span>
+          </a>
+        </div>
+        <div class="theme-toggle" role="group" aria-label="Site theme">
+          <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <main>
+    <header class="catalog-hero section">
+      <div class="eyebrow"><span></span>Vizmatic reference</div>
+      <h1>Components</h1>
+      <p>{{COMPONENT_COUNT}} reusable pieces for technical diagrams, charts, dashboards, and documentation figures.</p>
+    </header>
+
+    <section id="components" class="section catalog-section">
+      <div class="section-kicker">Catalog <span>{{COMPONENT_COUNT}} components</span></div>
+      <div class="section-intro catalog-intro">
+        <h2>Start with a primitive. Compose the rest.</h2>
+        <p>Every category below is a real Vizmatic scene. Open its source, copy what fits, and adjust semantic tones for your theme.</p>
+      </div>
+      <div class="catalog-toolbar">
+        <label class="catalog-search" for="catalogSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+          <input id="catalogSearch" type="search" placeholder="Search components" aria-label="Search components" autocomplete="off">
+          <button id="catalogClearButton" type="button" aria-label="Clear component search" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+          </button>
+        </label>
+        <div class="catalog-filters" role="group" aria-label="Component category">
+          {{COMPONENT_FILTERS}}
+        </div>
+        <p class="catalog-count" id="catalogCount" aria-live="polite">{{COMPONENT_COUNT}} components</p>
+      </div>
+      <div class="catalog-groups" id="catalogGroups">
+        {{COMPONENT_CATALOG}}
+      </div>
+      <p class="catalog-empty" id="catalogEmpty" hidden>No components match this search.</p>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
+    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p>
+    <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
+  </footer>
+
+  <dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
+    <div class="source-dialog-panel">
+      <header>
+        <div><span>Source</span><h2 id="sourceTitle">Catalog source</h2></div>
+        <div class="dialog-actions"><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div>
+      </header>
+      <div class="source-code" id="sourceCode"></div>
+    </div>
+  </dialog>
+
+  <script>
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]')
+    const themeButtons = document.querySelectorAll('[data-theme-choice]')
+    const themedImages = document.querySelectorAll('[data-theme-image]')
+    const systemThemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+    const catalogSearch = document.getElementById('catalogSearch')
+    const catalogClearButton = document.getElementById('catalogClearButton')
+    const catalogCount = document.getElementById('catalogCount')
+    const catalogEmpty = document.getElementById('catalogEmpty')
+    const catalogFilters = Array.from(document.querySelectorAll('[data-catalog-filter]'))
+    const catalogGroups = Array.from(document.querySelectorAll('[data-catalog-group]'))
+    const sourceDialog = document.getElementById('sourceDialog')
+    const sourceTitle = document.getElementById('sourceTitle')
+    const sourceCode = document.getElementById('sourceCode')
+    const copySourceButton = document.getElementById('copySourceButton')
+    const closeSourceButton = document.getElementById('closeSourceButton')
+    let activeCatalogFilter = 'all'
+    let activeSource
+    let sourceCache
+
+    function themedSrc(src, theme) {
+      return src.replace(/_(dark|light)(\.(png|gif))$/, `_${theme}$2`)
+    }
+
+    function getSavedTheme() {
+      try { return localStorage.getItem('vizmatic-theme') } catch { return undefined }
+    }
+
+    function saveTheme(theme) {
+      try { localStorage.setItem('vizmatic-theme', theme) } catch {}
+    }
+
+    function normalizeThemeChoice(theme) {
+      return theme === 'light' || theme === 'dark' ? theme : 'system'
+    }
+
+    function resolveTheme(theme) {
+      const choice = normalizeThemeChoice(theme)
+      return choice === 'system' ? (systemThemeQuery.matches ? 'light' : 'dark') : choice
+    }
+
+    function sourceHtml(source) {
+      const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
+      return source.html?.[theme] ?? source.html?.dark ?? ''
+    }
+
+    function renderActiveSource() {
+      if (!activeSource) return
+      sourceTitle.textContent = activeSource.title
+      sourceCode.innerHTML = sourceHtml(activeSource)
+    }
+
+    function setSiteTheme(theme) {
+      const choice = normalizeThemeChoice(theme)
+      const resolved = resolveTheme(choice)
+      document.documentElement.dataset.siteTheme = resolved
+      document.documentElement.dataset.themeMode = choice
+      saveTheme(choice)
+      themeColorMeta?.setAttribute('content', resolved === 'light' ? '#f4f5f2' : '#080a0f')
+      themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice)))
+      themedImages.forEach((image) => image.setAttribute('src', themedSrc(image.getAttribute('src'), resolved)))
+      if (activeSource && sourceDialog.open) renderActiveSource()
+    }
+
+    function updateCatalog() {
+      const query = catalogSearch.value.trim().toLowerCase()
+      let visibleCount = 0
+      catalogGroups.forEach((group) => {
+        const categoryMatches = activeCatalogFilter === 'all' || group.dataset.catalogGroup === activeCatalogFilter
+        let groupCount = 0
+        group.querySelectorAll('[data-catalog-item]').forEach((item) => {
+          const matches = categoryMatches && (!query || item.dataset.catalogSearch.includes(query))
+          item.hidden = !matches
+          if (matches) groupCount += 1
+        })
+        group.hidden = groupCount === 0
+        visibleCount += groupCount
+      })
+      catalogCount.textContent = `${visibleCount} component${visibleCount === 1 ? '' : 's'}`
+      catalogEmpty.hidden = visibleCount !== 0
+      catalogClearButton.hidden = query.length === 0
+    }
+
+    async function loadSources() {
+      if (!sourceCache) {
+        const response = await fetch('assets/examples/sources.json', { cache: 'no-store' })
+        const sources = await response.json()
+        sourceCache = new Map(sources.map((source) => [source.name, source]))
+      }
+      return sourceCache
+    }
+
+    async function openSource(name) {
+      const source = (await loadSources()).get(name)
+      if (!source) return
+      activeSource = source
+      renderActiveSource()
+      sourceDialog.showModal()
+    }
+
+    setSiteTheme(normalizeThemeChoice(getSavedTheme()))
+    themeButtons.forEach((button) => button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice)))
+    systemThemeQuery.addEventListener('change', () => {
+      if (document.documentElement.dataset.themeMode === 'system') setSiteTheme('system')
+    })
+    catalogSearch.addEventListener('input', updateCatalog)
+    catalogClearButton.addEventListener('click', () => {
+      catalogSearch.value = ''
+      catalogSearch.focus()
+      updateCatalog()
+    })
+    catalogFilters.forEach((button) => button.addEventListener('click', () => {
+      activeCatalogFilter = button.dataset.catalogFilter
+      catalogFilters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)))
+      updateCatalog()
+    }))
+    document.querySelectorAll('.source-button').forEach((button) => {
+      button.addEventListener('click', () => openSource(button.dataset.source))
+    })
+    copySourceButton.addEventListener('click', async () => {
+      if (!activeSource) return
+      const previous = copySourceButton.textContent
+      try {
+        await navigator.clipboard.writeText(activeSource.code)
+        copySourceButton.textContent = 'Copied'
+      } finally {
+        setTimeout(() => { copySourceButton.textContent = previous }, 1600)
+      }
+    })
+    closeSourceButton.addEventListener('click', () => sourceDialog.close())
+    sourceDialog.addEventListener('click', (event) => { if (event.target === sourceDialog) sourceDialog.close() })
+    updateCatalog()
+  </script>
+</body>
+</html>

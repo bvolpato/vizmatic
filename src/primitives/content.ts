@@ -3,6 +3,7 @@ import {
     typography,
     type ThemeColors,
     type ToneName,
+    getReadableToneColor,
     getToneColor,
     getToneGradient,
 } from '../theme'
@@ -41,6 +42,7 @@ export function ProgressRow({
     fontSize = 11,
 }: ProgressRowProps): React.ReactElement {
     const accent = muted ? c.textMuted : getToneColor(tone, c)
+    const accentText = muted ? c.textMuted : getReadableToneColor(tone, c)
     const pct = Math.round(Math.max(0, Math.min(1, value)) * 100)
 
     return React.createElement('div', {
@@ -84,7 +86,7 @@ export function ProgressRow({
         React.createElement('div', {
             style: {
                 width: valueWidth,
-                color: accent,
+                color: accentText,
                 fontSize,
                 fontWeight: 800,
                 fontFamily: 'JetBrains Mono',
@@ -203,7 +205,7 @@ export function MiniBarChart({
                 ...compactChildren([
                 showValues && React.createElement('div', {
                     style: {
-                        color: getToneColor(tone, c),
+                        color: getReadableToneColor(tone, c),
                         fontFamily: 'JetBrains Mono',
                         fontSize,
                         fontWeight: 800,
@@ -323,6 +325,7 @@ export function Tile({
     math = false,
 }: TileProps): React.ReactElement {
     const accent = getToneColor(tone, c)
+    const accentText = getReadableToneColor(tone, c)
     const textAlign = align
     const crossAlign = align === 'center' ? 'center' : 'flex-start'
 
@@ -388,7 +391,7 @@ export function Tile({
             React.createElement('div', {
                 style: {
                     ...typography.label,
-                    color: accent,
+                    color: accentText,
                     fontWeight: 800,
                     lineHeight: 1.15,
                     textAlign,
@@ -517,7 +520,8 @@ export function CodeBlock({
     const lineElements = lines.map((line, index) => {
         const spec: CodeLineSpec = isCodeLineSpec(line) ? line : { text: line }
         const accent = spec.tone ? getToneColor(spec.tone, c) : undefined
-        const textColor = spec.dim ? c.textMuted : (accent ?? c.textSecondary)
+        const accentText = spec.tone ? getReadableToneColor(spec.tone, c) : undefined
+        const textColor = spec.dim ? c.textMuted : (accentText ?? c.textSecondary)
 
         return React.createElement('div', {
             key: `code-line-${index}`,
@@ -550,7 +554,7 @@ export function CodeBlock({
                 style: {
                     display: 'flex',
                     flexShrink: 0,
-                    color: accent ?? c.textMuted,
+                    color: accentText ?? c.textMuted,
                     fontFamily: 'JetBrains Mono',
                     fontWeight: 800,
                     fontSize,
@@ -772,7 +776,7 @@ export function KeyValueList({
     math = false,
 }: KeyValueListProps): React.ReactElement {
     const rowElements = rows.map((row, index) => {
-        const accent = row.tone ? getToneColor(row.tone, c) : undefined
+        const accent = row.tone ? getReadableToneColor(row.tone, c) : undefined
         const isLast = index === rows.length - 1
         const valueMono = row.valueMono ?? true
 
@@ -881,7 +885,7 @@ export function WindowFrame({
 }: WindowFrameProps): React.ReactElement {
     const isTerminal = variant === 'terminal'
     const surface = background ?? (isTerminal ? c.bgSubtle : c.bgCard)
-    const accent = getToneColor(tone, c)
+    const titleColor = isTerminal ? getReadableToneColor(tone, c, c.bgHover) : c.textSecondary
 
     const trafficDot = (color: string, key: string) => React.createElement('span', {
         key,
@@ -931,7 +935,7 @@ export function WindowFrame({
                     display: 'flex',
                     flex: 1,
                     justifyContent: dots ? 'center' : 'flex-start',
-                    color: isTerminal ? accent : c.textSecondary,
+                    color: titleColor,
                     fontFamily: isTerminal ? 'JetBrains Mono' : 'Inter',
                     fontSize: 12,
                     fontWeight: 700,

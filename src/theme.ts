@@ -5,6 +5,8 @@
  * Supports both dark and light modes.
  */
 
+import parseCssColor from 'parse-css-color'
+
 export type ThemeMode = 'dark' | 'light'
 export type ThemePreset = 'default' | 'engineering'
 
@@ -53,7 +55,7 @@ const darkColors = {
     // Text
     textPrimary: '#f1f5f9',
     textSecondary: '#94a3b8',
-    textMuted: '#64748b',
+    textMuted: '#8493a8',
     textOnColor: '#ffffff',
 
     // Borders
@@ -108,7 +110,7 @@ const lightColors = {
     // Text
     textPrimary: '#0f172a',
     textSecondary: '#475569',
-    textMuted: '#94a3b8',
+    textMuted: '#5b677a',
     textOnColor: '#ffffff',
 
     // Borders
@@ -250,6 +252,28 @@ export function getToneColor(tone: ToneName, c: ThemeColors): string {
     }[tone]
 }
 
+/** Get a tone variant that remains readable as text in either theme. */
+export function getReadableToneColor(tone: ToneName, c: ThemeColors, background = c.bgCard): string {
+    const semanticColor: Record<ToneName, ColorName> = {
+        blue: 'secondary',
+        purple: 'primary',
+        green: 'positive',
+        warm: 'warning',
+        cyan: 'info',
+        pink: 'accent',
+        red: 'critical',
+        critical: 'critical',
+        neutral: 'neutral',
+        sunset: 'warning',
+        ocean: 'info',
+        dark: 'neutral',
+    }
+    const color = getReadableColor(semanticColor[tone], c)
+    return colorContrast(color, background, c.bgCard) >= 4.5
+        ? color
+        : getReadableTextColor(background, c)
+}
+
 /** Low-chroma fills for diagrams. The engineering preset uses opaque pastels. */
 export function getToneFill(tone: ToneName, c: ThemeColors): string {
     if (c.preset !== 'engineering') return `${getToneColor(tone, c)}16`
@@ -373,6 +397,95 @@ export type ColorName = 'primary' | 'secondary' | 'positive' | 'warning' | 'crit
 export function getColor(name: ColorName, c?: ThemeColors): string {
     if (c) return c[name]
     return colors[name]
+}
+
+/** Get a semantic color variant that remains readable as text in either theme. */
+export function getReadableColor(name: ColorName, c: ThemeColors): string {
+    const variants: Record<ColorName, string[]> = {
+        primary: [c.primaryLight, c.primary, c.primaryDark],
+        secondary: [c.secondaryLight, c.secondary, c.secondaryDark],
+        positive: [c.positiveLight, c.positive, c.positiveDark],
+        warning: [c.warningLight, c.warning, c.warningDark],
+        critical: [c.criticalLight, c.critical, c.criticalDark],
+        info: [c.infoLight, c.info, c.infoDark],
+        accent: [c.accentLight, c.accent, '#be185d'],
+        neutral: [c.textSecondary, c.neutralLight, c.neutral, c.neutralDark],
+    }
+    return variants[name].reduce((best, candidate) =>
+        colorContrast(candidate, c.bgCard) > colorContrast(best, c.bgCard) ? candidate : best)
+}
+
+interface ParsedColor {
+    channels: [number, number, number]
+    alpha: number
+}
+
+function parseColor(color: string): ParsedColor | undefined {
+    const parsed = parseCssColor(color)
+    if (!parsed || parsed.values.length < 3) return undefined
+    if (parsed.type !== 'hsl') {
+        return {
+            channels: [parsed.values[0] ?? 0, parsed.values[1] ?? 0, parsed.values[2] ?? 0],
+            alpha: parsed.alpha,
+        }
+    }
+
+    const hue = (((parsed.values[0] ?? 0) % 360) + 360) % 360
+    const saturation = (parsed.values[1] ?? 0) / 100
+    const lightness = (parsed.values[2] ?? 0) / 100
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
+    const segment = hue / 60
+    const intermediate = chroma * (1 - Math.abs((segment % 2) - 1))
+    let channels: [number, number, number]
+    if (segment < 1) channels = [chroma, intermediate, 0]
+    else if (segment < 2) channels = [intermediate, chroma, 0]
+    else if (segment < 3) channels = [0, chroma, intermediate]
+    else if (segment < 4) channels = [0, intermediate, chroma]
+    else if (segment < 5) channels = [intermediate, 0, chroma]
+    else channels = [chroma, 0, intermediate]
+    const offset = lightness - chroma / 2
+    return {
+        channels: channels.map((channel) => Math.round((channel + offset) * 255)) as [number, number, number],
+        alpha: parsed.alpha,
+    }
+}
+
+function colorLuminance(color: string, backdrop?: string): number | undefined {
+    const parsed = parseColor(color)
+    if (!parsed) return undefined
+    let channels = parsed.channels
+    if (parsed.alpha < 1) {
+        const backdropColor = backdrop ? parseColor(backdrop) : undefined
+        if (!backdropColor) return undefined
+        channels = channels.map((channel, index) => Math.round(
+            channel * parsed.alpha + backdropColor.channels[index] * (1 - parsed.alpha),
+        )) as [number, number, number]
+    }
+    const [r, g, b] = channels.map((channel) => {
+        const normalized = channel / 255
+        return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+function colorContrast(left: string, right: string, rightBackdrop?: string): number {
+    const leftLuminance = colorLuminance(left)
+    const rightLuminance = colorLuminance(right, rightBackdrop)
+    if (leftLuminance == null || rightLuminance == null) return 0
+    return (Math.max(leftLuminance, rightLuminance) + 0.05)
+        / (Math.min(leftLuminance, rightLuminance) + 0.05)
+}
+
+/** Choose readable foreground text for a solid theme color. */
+export function getReadableTextColor(background: string, c: ThemeColors): string {
+    if (colorLuminance(background, c.bgCard) == null) return c.textPrimary
+    const candidates = [c.textPrimary, c.textOnColor, c.bg, '#000000']
+    const readable = candidates.find((candidate) => colorContrast(candidate, background, c.bgCard) >= 4.5)
+    if (readable) return readable
+    return candidates.reduce((best, candidate) =>
+        colorContrast(candidate, background, c.bgCard) > colorContrast(best, background, c.bgCard) ? candidate : best)
 }
 
 /**

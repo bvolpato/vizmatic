@@ -1,11 +1,14 @@
 import { access, readFile, readdir, stat } from 'fs/promises'
 import { basename, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
+import { catalogComponentCount, componentCatalog } from './component-catalog'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const htmlPath = join(root, 'docs', 'index.html')
 const html = await readFile(htmlPath, 'utf8')
 const templateHtml = await readFile(join(root, 'docs', 'index.template.html'), 'utf8')
+const componentsHtml = await readFile(join(root, 'docs', 'components.html'), 'utf8')
+const componentsTemplateHtml = await readFile(join(root, 'docs', 'components.template.html'), 'utf8')
 const skillPath = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic', 'SKILL.md')
 const pluginSkillDir = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic')
 const portableSkillDir = join(root, '.agents', 'skills', 'vizmatic')
@@ -30,7 +33,7 @@ function fail(message: string): never {
     throw new Error(message)
 }
 
-const refs = Array.from(html.matchAll(/(?:src|href)="([^"]+)"/g))
+const refs = [html, componentsHtml].flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
     .map((match) => match[1])
     .filter((ref): ref is string => Boolean(ref))
     .filter((ref) => !ref.startsWith('http') && !ref.startsWith('#') && !ref.startsWith('mailto:'))
@@ -208,6 +211,36 @@ if (!html.includes('code-copy-button')) {
 
 if (!html.includes('id="imageDialog"')) {
     fail('homepage gallery must include image preview dialog')
+}
+
+if (componentsHtml.includes('{{COMPONENT_CATALOG}}') || componentsHtml.includes('{{COMPONENT_FILTERS}}') || componentsHtml.includes('{{COMPONENT_COUNT}}')) {
+    fail('component catalog contains unreplaced placeholders')
+}
+
+if (!componentsTemplateHtml.includes('{{COMPONENT_CATALOG}}') || !componentsTemplateHtml.includes('{{COMPONENT_FILTERS}}')) {
+    fail('component catalog page must be generated from registry placeholders')
+}
+
+if (!componentsHtml.includes(`>${catalogComponentCount} reusable pieces for technical diagrams`)) {
+    fail('component catalog count is stale')
+}
+
+if (!templateHtml.includes('href="components.html"')) {
+    fail('homepage navigation must link to component catalog')
+}
+
+for (const category of componentCatalog) {
+    if (!componentsHtml.includes(`data-catalog-group="${category.id}"`)) {
+        fail(`component catalog missing ${category.label}`)
+    }
+    if (!componentsHtml.includes(`data-source="${category.source}"`)) {
+        fail(`component catalog missing ${category.label} source link`)
+    }
+    for (const component of category.components) {
+        if (!componentsHtml.includes(`<code>${component.name}</code>`)) {
+            fail(`component catalog missing ${component.name}`)
+        }
+    }
 }
 
 if (html.includes('Fallback before npm publish')) {

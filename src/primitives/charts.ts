@@ -3,7 +3,8 @@ import {
     typography,
     type ThemeColors,
     type ColorName,
-    getColor,
+    getReadableColor,
+    getReadableTextColor,
 } from '../theme'
 
 import { clamp, textFitStyle } from './layout'
@@ -55,8 +56,9 @@ function isColorName(value: string): value is ColorName {
 }
 
 export function chartColor(color: ColorName | string | undefined, c: ThemeColors, index = 0): string {
-    if (!color) return getColor(chartPalette[index % chartPalette.length], c)
-    return isColorName(color) ? getColor(color, c) : color
+    const resolved = color ?? chartPalette[index % chartPalette.length]
+    if (!isColorName(resolved)) return resolved
+    return getReadableColor(resolved, c)
 }
 
 export function formatChartValue(value: number, format: ChartValueFormat = 'decimal'): string {
@@ -632,7 +634,7 @@ export function StackedBar({
                     segmentWidth >= 64 && React.createElement('span', {
                         style: {
                             ...typography.small,
-                            color: c.textOnColor,
+                            color: getReadableTextColor(color, c),
                             fontWeight: 900,
                             whiteSpace: 'nowrap' as const,
                         }
