@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { preparePlaygroundSource } from '../src/playground-source'
+import {
+    getLegacyPlaygroundRedirectUrl,
+    preparePlaygroundSource,
+} from '../src/playground-source'
 import { playgroundTemplates } from '../src/playground-templates'
 
 describe('playground source preparation', () => {
@@ -88,5 +91,26 @@ function Helper() {
         for (const template of playgroundTemplates) {
             expect(() => preparePlaygroundSource(template.source)).not.toThrow()
         }
+    })
+})
+
+describe('playground shared links', () => {
+    it('moves legacy homepage links to the dedicated playground', () => {
+        const source = '<Scene><Flow stages={[]} /></Scene>'
+        const hash = `vizmatic-playground=${encodeURIComponent(source)}`
+
+        expect(getLegacyPlaygroundRedirectUrl(`https://example.com/vizmatic/index.html#${hash}`))
+            .toBe(`https://example.com/vizmatic/playground.html#${hash}`)
+        expect(getLegacyPlaygroundRedirectUrl(`https://example.com/vizmatic/#${hash}`))
+            .toBe(`https://example.com/vizmatic/playground.html#${hash}`)
+        const legacyHash = `playground=${encodeURIComponent(source)}`
+        expect(getLegacyPlaygroundRedirectUrl(`https://example.com/vizmatic/index.html?ref=docs#${legacyHash}`))
+            .toBe(`https://example.com/vizmatic/playground.html?ref=docs#${legacyHash}`)
+        expect(getLegacyPlaygroundRedirectUrl(`https://example.com/vizmatic/playground.html#${hash}`))
+            .toBeUndefined()
+        expect(getLegacyPlaygroundRedirectUrl('https://example.com/vizmatic/index.html#gallery'))
+            .toBeUndefined()
+        expect(getLegacyPlaygroundRedirectUrl('https://example.com/vizmatic/index.html#vizmatic-playground=%E0%A4%A'))
+            .toBeUndefined()
     })
 })

@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="https://bvolpato.github.io/vizmatic/">Website</a> ·
-  <a href="https://bvolpato.github.io/vizmatic/#playground">Playground</a> ·
+  <a href="https://bvolpato.github.io/vizmatic/playground.html">Playground</a> ·
   <a href="examples">Examples</a> ·
   <a href="PROMPT.md">Agent Prompt</a> ·
   <a href="#api">API</a>

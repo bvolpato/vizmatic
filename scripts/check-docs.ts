@@ -9,6 +9,8 @@ const html = await readFile(htmlPath, 'utf8')
 const templateHtml = await readFile(join(root, 'docs', 'index.template.html'), 'utf8')
 const componentsHtml = await readFile(join(root, 'docs', 'components.html'), 'utf8')
 const componentsTemplateHtml = await readFile(join(root, 'docs', 'components.template.html'), 'utf8')
+const playgroundHtml = await readFile(join(root, 'docs', 'playground.html'), 'utf8')
+const playgroundTemplateHtml = await readFile(join(root, 'docs', 'playground.template.html'), 'utf8')
 const skillPath = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic', 'SKILL.md')
 const pluginSkillDir = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic')
 const portableSkillDir = join(root, '.agents', 'skills', 'vizmatic')
@@ -33,7 +35,7 @@ function fail(message: string): never {
     throw new Error(message)
 }
 
-const refs = [html, componentsHtml].flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
+const refs = [html, componentsHtml, playgroundHtml].flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
     .map((match) => match[1])
     .filter((ref): ref is string => Boolean(ref))
     .filter((ref) => !ref.startsWith('http') && !ref.startsWith('#') && !ref.startsWith('mailto:'))
@@ -114,9 +116,16 @@ for (const required of [
     'id="playgroundRunButton"',
     'src="playground.js"',
 ]) {
-    if (!templateHtml.includes(required) && !html.includes(required)) {
-        fail(`homepage must include ${required}`)
+    if (!playgroundTemplateHtml.includes(required) && !playgroundHtml.includes(required)) {
+        fail(`playground page must include ${required}`)
     }
+}
+
+if (!templateHtml.includes('src="playground-redirect.js"') || !html.includes('href="playground.html"')) {
+    fail('homepage must redirect legacy shared links and link to the dedicated playground')
+}
+if (templateHtml.includes('id="playgroundSource"') || html.includes('id="playgroundCanvas"')) {
+    fail('homepage must not embed the dedicated playground')
 }
 
 const playgroundMain = await stat(join(root, 'docs', 'playground.js'))

@@ -269,7 +269,8 @@ export function mountPlayground(root: HTMLElement): void {
         setControlEnabled(elements.pngDownload, false)
         setControlEnabled(elements.svgDownload, false)
         setError(elements, undefined)
-        setStatus(elements, 'ready', 'Shared source loaded. Run to preview.')
+        setStatus(elements, 'loading', 'Rendering shared source…')
+        scheduleRender(true)
     }
 
     const scheduleRender = (immediate = false) => {

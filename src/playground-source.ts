@@ -133,3 +133,11 @@ export function setPlaygroundHashSource(source: string): void {
     url.hash = `vizmatic-playground=${encodeURIComponent(source)}`
     window.history.replaceState(null, '', url)
 }
+
+export function getLegacyPlaygroundRedirectUrl(href: string): string | undefined {
+    const url = new URL(href)
+    if (!getPlaygroundHashSource(url.hash) || url.pathname.endsWith('/playground.html')) return undefined
+
+    url.pathname = new URL('playground.html', url).pathname
+    return url.href
+}

@@ -21,6 +21,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script type="module" src="playground-redirect.js"></script>
 </head>
 <body>
   <div class="bg-grid" aria-hidden="true"></div>
@@ -35,7 +36,7 @@
         <div class="nav-links">
           <a href="#gallery" data-nav-link>Examples</a>
           <a href="components.html">Components</a>
-          <a href="#playground" data-nav-link>Playground</a>
+          <a href="playground.html">Playground</a>
           <a href="#quick-start" data-nav-link>Quick start</a>
           <a href="#onboarding" data-nav-link>Prompt + skill</a>
           <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
@@ -64,7 +65,7 @@
         <div class="cta-row">
           <button class="button primary" type="button" data-copy-prompt>Copy prompt</button>
           <a class="button" href="#onboarding">Install skill</a>
-          <a class="text-link" href="#playground">Try playground <span aria-hidden="true">↓</span></a>
+          <a class="text-link" href="playground.html">Try playground <span aria-hidden="true">→</span></a>
         </div>
         <div class="hero-install">
           <div class="hero-command"><span>$</span><code>npm install -g vizmatic</code></div>
@@ -82,64 +83,8 @@
       <div><strong>PNG · SVG · GIF</strong><span>local or CI output</span></div>
     </section>
 
-    <section id="playground" class="playground-band" data-vizmatic-playground-background="theme">
-      <div class="section playground-section">
-        <div class="section-kicker">Live playground <span>01</span></div>
-        <div class="section-intro">
-          <h2>Edit a scene and render it.</h2>
-          <p>Choose a template, switch themes, then share or download the result. Nothing to install.</p>
-        </div>
-        <div class="playground-tool">
-          <div class="playground-toolbar">
-            <label class="playground-template-control" for="playgroundTemplate">
-              <span>Template</span>
-              <select id="playgroundTemplate" aria-label="Playground template"></select>
-            </label>
-            <div class="playground-theme-control" role="group" aria-label="Output theme">
-              <button type="button" data-playground-theme="dark" aria-pressed="true">Dark</button>
-              <button type="button" data-playground-theme="light" aria-pressed="false">Light</button>
-            </div>
-            <div class="playground-actions">
-              <button class="button primary" type="button" id="playgroundRunButton" title="Render source">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
-                <span>Run</span>
-              </button>
-              <button class="button" type="button" id="playgroundShareButton" title="Copy share link">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M13 7l5 5-5 5M5 5h6M5 19h6"/></svg>
-                <span>Share</span>
-              </button>
-              <button class="button" type="button" id="playgroundSvgButton" title="Download SVG">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>
-                <span>SVG</span>
-              </button>
-              <button class="button" type="button" id="playgroundPngButton" title="Download PNG">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>
-                <span>PNG</span>
-              </button>
-            </div>
-          </div>
-          <div class="playground-workspace">
-            <div class="playground-editor-panel">
-              <div class="playground-panel-header"><strong>frame.tsx</strong><span id="playgroundStatus" role="status">Ready</span></div>
-              <div class="playground-source-editor">
-                <pre id="playgroundHighlight" aria-hidden="true"></pre>
-                <textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off"></textarea>
-              </div>
-            </div>
-            <div class="playground-preview-panel">
-              <div class="playground-panel-header"><strong>Preview</strong><span id="playgroundDimensions">960 × 540</span></div>
-              <div class="playground-viewport" id="playgroundViewport">
-                <div id="playgroundCanvas" aria-label="Rendered Vizmatic preview"></div>
-              </div>
-              <div class="playground-error" id="playgroundError" role="alert" hidden></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <section id="gallery" class="section gallery-section">
-      <div class="section-kicker">Examples <span>02</span></div>
+      <div class="section-kicker">Examples <span>01</span></div>
       <div class="section-intro">
         <h2>Diagrams, charts, dashboards, and GIFs.</h2>
         <p>Every example uses the same TSX components and headless renderer.</p>
@@ -225,7 +170,7 @@
 
     <section id="quick-start" class="quick-start-band">
       <div class="quick-start section">
-        <div class="section-kicker">Quick start <span>03</span></div>
+        <div class="section-kicker">Quick start <span>02</span></div>
         <div class="quick-copy">
           <h2>Render a TSX frame.</h2>
           <p>A frame can be only JSX. Add imports, fixed dimensions, or a title when the visual needs them. Otherwise, Vizmatic sizes the transparent canvas to its content.</p>
@@ -247,7 +192,7 @@
     </section>
 
     <section class="section difference-section">
-      <div class="section-kicker">Where it fits <span>04</span></div>
+      <div class="section-kicker">Where it fits <span>03</span></div>
       <div class="section-intro">
         <h2>Charts, free layout, and animation.</h2>
         <p>Vizmatic renders them from editable TSX and checks the result before export.</p>
@@ -262,7 +207,7 @@
 
     <section id="onboarding" class="onboarding-band">
       <div class="section onboarding">
-        <div class="section-kicker">Agent setup <span>05</span></div>
+        <div class="section-kicker">Agent setup <span>04</span></div>
         <div class="onboarding-intro">
           <h2>Give your agent the Vizmatic instructions.</h2>
           <p>Copy the prompt for one task, or install the skill to keep the instructions available across sessions.</p>
@@ -856,7 +801,6 @@
     </div>
   </dialog>
 
-  <script type="module" src="playground.js"></script>
   <script>
     const copyPromptButtons = document.querySelectorAll('[data-copy-prompt]')
     const promptPreview = document.getElementById('promptPreview')
@@ -915,12 +859,6 @@
       themeColorMeta?.setAttribute('content', resolved === 'light' ? '#f4f5f2' : '#080a0f')
       themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice)))
       themedImages.forEach((image) => image.setAttribute('src', themedSrc(image.getAttribute('src'), resolved)))
-      const playground = document.getElementById('playground')
-      const playgroundThemeChanged = playground?.dataset.vizmaticPlaygroundTheme !== resolved
-      if (playground) playground.dataset.vizmaticPlaygroundTheme = resolved
-      if (playgroundThemeChanged) {
-        playground.dispatchEvent(new CustomEvent('vizmatic-playground-theme', { detail: { theme: resolved } }))
-      }
       if (activeSource && sourceDialog.open) renderActiveSource()
       if (activeImageCard && imageDialog.open) renderActiveImage()
     }

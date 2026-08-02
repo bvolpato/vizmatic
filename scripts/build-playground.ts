@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { resolve } from 'path'
 
 const outPath = 'docs/playground.js'
+const redirectOutPath = 'docs/playground-redirect.js'
 const workerOutPath = 'docs/playground-worker.js'
 const browserRenderContext = resolve('src/playground-render-context.ts')
 
@@ -50,6 +51,7 @@ export async function buildPlayground(): Promise<void> {
     await build({
         entryPoints: {
             playground: 'src/playground.ts',
+            'playground-redirect': 'src/playground-redirect.ts',
         },
         bundle: true,
         format: 'iife',
@@ -62,6 +64,7 @@ export async function buildPlayground(): Promise<void> {
 
     await Promise.all([
         normalizeGeneratedIndentation(outPath),
+        normalizeGeneratedIndentation(redirectOutPath),
         normalizeGeneratedIndentation(workerOutPath),
     ])
 

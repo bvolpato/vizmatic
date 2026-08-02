@@ -7,6 +7,8 @@ const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
 const componentsTemplatePath = 'docs/components.template.html'
 const componentsOutPath = 'docs/components.html'
+const playgroundTemplatePath = 'docs/playground.template.html'
+const playgroundOutPath = 'docs/playground.html'
 const promptPath = 'PROMPT.md'
 const docsPromptPath = 'docs/PROMPT.md'
 
@@ -128,6 +130,7 @@ const catalogReplacements = (template: string) => template
 const indexTemplate = catalogReplacements((await readFile(templatePath, 'utf8'))
     .replace('{{PROMPT_MD}}', () => encodeHtml(prompt)))
 const componentsTemplate = catalogReplacements(await readFile(componentsTemplatePath, 'utf8'))
+const playgroundTemplate = await readFile(playgroundTemplatePath, 'utf8')
 const [highlightedIndex, highlightedComponents] = await Promise.all([
     replaceAsync(indexTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
     replaceAsync(componentsTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
@@ -137,10 +140,15 @@ const componentsOutput = highlightedComponents.replace(
     '<!DOCTYPE html>\n',
     `<!DOCTYPE html>\n${generatedNotice(componentsTemplatePath)}\n`,
 )
+const playgroundOutput = playgroundTemplate.replace(
+    '<!DOCTYPE html>\n',
+    `<!DOCTYPE html>\n${generatedNotice(playgroundTemplatePath)}\n`,
+)
 
 await Promise.all([
     writeFile(outPath, output),
     writeFile(componentsOutPath, componentsOutput),
+    writeFile(playgroundOutPath, playgroundOutput),
     writeFile(docsPromptPath, prompt),
 ])
-console.log(`built ${outPath}, ${componentsOutPath}, and ${docsPromptPath}`)
+console.log(`built ${outPath}, ${componentsOutPath}, ${playgroundOutPath}, and ${docsPromptPath}`)

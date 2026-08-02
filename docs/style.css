@@ -459,6 +459,33 @@ h1 {
   background: var(--surface-soft);
 }
 
+.playground-page-main {
+  width: min(1560px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 30px 0 40px;
+}
+
+.playground-page-heading {
+  margin-bottom: 22px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+}
+
+.playground-page-heading h1 {
+  margin-top: 8px;
+  font-size: 42px;
+  line-height: 1;
+}
+
+.playground-page-heading > p {
+  max-width: 520px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
 .playground-tool {
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -562,6 +589,12 @@ h1 {
   min-height: 540px;
   display: grid;
   grid-template-columns: minmax(360px, 0.86fr) minmax(0, 1.14fr);
+}
+
+.playground-page .playground-workspace {
+  height: calc(100svh - 252px);
+  min-height: 560px;
+  max-height: 820px;
 }
 
 .playground-editor-panel,
@@ -1556,7 +1589,7 @@ footer > a:last-child:hover {
 }
 
 @media (max-width: 1120px) {
-  .nav-links a:not([href="components.html"]):not(.github-link) {
+  .nav-links a:not([href="components.html"]):not([aria-current="page"]):not(.github-link) {
     display: none;
   }
 
@@ -1622,6 +1655,18 @@ footer > a:last-child:hover {
     min-height: 980px;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(430px, 0.9fr) minmax(500px, 1.1fr);
+  }
+
+  .playground-page .playground-workspace {
+    height: auto;
+    min-height: 980px;
+    max-height: none;
+  }
+
+  .playground-page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
   }
 
   .playground-editor-panel {
@@ -1706,6 +1751,7 @@ footer > a:last-child:hover {
   .hero-inner,
   .proof,
   .section,
+  .playground-page-main,
   footer {
     width: min(100% - 28px, 1240px);
   }
@@ -1837,6 +1883,18 @@ footer > a:last-child:hover {
     grid-template-rows: minmax(390px, 0.9fr) minmax(450px, 1.1fr);
   }
 
+  .playground-page .playground-workspace {
+    min-height: 880px;
+  }
+
+  .playground-page-main {
+    padding-top: 24px;
+  }
+
+  .playground-page-heading h1 {
+    font-size: 36px;
+  }
+
   .section h2,
   .quick-copy h2,
   .onboarding-intro h2 {
@@ -1965,6 +2023,10 @@ footer > a:last-child:hover {
   .nav-links a {
     padding-right: 4px;
     padding-left: 4px;
+  }
+
+  .playground-page .nav-links a[href="components.html"] {
+    display: none;
   }
 }
 
