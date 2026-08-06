@@ -258,7 +258,7 @@ Frame helpers:
 
 - `defineIllustration(build, defaultTheme?)`: `build: (c: ThemeColors) => ReactElement`, `defaultTheme?: ThemeMode = "dark"`. Returns `{ create(theme), default }`.
 - `Canvas`: `children?`, `c`, `padding?: number = 40`, `justify?: "center" | "flex-start" | "space-between" | "space-around" = "center"`, `background?: string`. Default root background is alpha-transparent during PNG/SVG rendering.
-- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: Canvas.justify = "flex-start"`, `align?: FlexAlign = "stretch"`, `contentWidth?: number | string = "100%"`, `background?`, `contentStyle?: React.CSSProperties`. Title/subtitle are optional and the title bar is omitted when no title is provided. Use `background={c.bg}` for an opaque theme frame.
+- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: "center" | "flex-start" | "space-between" | "space-around" = "flex-start"`, `align?: FlexAlign = "stretch"`, `contentWidth?: number | string = "100%"`, `background?`, `contentStyle?: React.CSSProperties`. Title/subtitle are optional and the title bar is omitted when no title is provided. Use `background={c.bg}` for an opaque theme frame.
 - `TitleBar`: `title`, `subtitle?`, `c`.
 
 Layout primitives:
@@ -359,12 +359,20 @@ Theme and render APIs:
 
 - `getThemeColors(mode, preset?)`: `mode: ThemeMode`; `preset?: "default" | "engineering"`. Use `engineering` for flat technical-blog figures with a light gray palette, left-aligned black titles, pastel nodes, thin neutral connectors, compact corners, no shadows, Inter labels, and JetBrains Mono annotations. In a bare frame, set `preset = "engineering";` before the JSX. Add `background={c.bg}` to `Scene` for an opaque light gray canvas; omit it for alpha transparency.
 - `getToneColor(tone, c)`, `getToneFill(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
+- `getReadableColor(name, c)`: returns the semantic color variant with greatest contrast against `c.bgCard`.
+- `getReadableToneColor(tone, c, background?)`: maps a tone to a readable semantic color and falls back to readable foreground text when contrast is below 4.5:1. `background` defaults to `c.bgCard`.
+- `getReadableTextColor(background, c)`: parses solid or alpha CSS colors and chooses a theme foreground meeting 4.5:1 contrast when possible.
+- `createPlotArea(width, height, margin)`: returns `PlotArea` geometry with inner width and height clamped to at least one pixel.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
 - `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height` and physical `pixelWidth` / `pixelHeight`.
 - `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
 - `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" = "top-right"`, `opacity?: number`, `color?: string`.
+- `normalizeWatermark(input)`: converts boolean, string, object, or React-element `WatermarkInput` to `WatermarkOptions | undefined`.
+- `wrapWithBrand(element, width, height, theme?, label?)`: compatibility wrapper around `wrapWithWatermark`; theme defaults to `"dark"` and label defaults to `"Vizmatic"`.
+- `getFonts()`: lazily loads and caches bundled Satori font data for advanced integrations.
+- `loadAdditionalAsset(code, segment)`: Satori missing-glyph callback; resolves emoji segments to Twemoji data URIs and returns an empty font list for other codes.
 - `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `theme?: "dark" | "light" = "dark"` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Default autocrop retains 24 source pixels around detected content. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
 - `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.

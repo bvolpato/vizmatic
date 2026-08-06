@@ -213,7 +213,7 @@ Generated examples and website files are committed. CI fails when a build change
 | `pnpm render:examples` | Dark/light PNGs, animated GIFs, source snippets, and website HTML |
 | `pnpm check:examples` | Every example renders in both themes without errors or visual warnings |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
-| `pnpm deps:check` | npm audit plus package tarball contents before release |
+| `pnpm deps:check` | npm audit plus package tarball contents, size, and file-count budgets before release |
 | `./test.sh` drift check | Confirms render and docs commands leave no uncommitted output |
 
 Run the full local gate:
@@ -227,6 +227,8 @@ Run the full local gate:
 Vizmatic uses `react` for JSX frames, `satori` for layout, `@resvg/resvg-js` for PNG output, `gifenc` for GIFs, and `tsx` to load frame files.
 
 Published packages include Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and Twemoji SVGs under `assets/`, so normal CLI rendering does not fetch them at runtime. Set `VIZMATIC_FONT_DIR` or `VIZMATIC_ASSET_DIR` to use other local assets. Set `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` to disable public fallbacks.
+
+The complete Twemoji set is intentionally bundled so arbitrary emoji render offline. `pnpm deps:check` keeps that tradeoff bounded: the package must stay below 3.25 MB compressed, 12.5 MB unpacked, and 4,000 files.
 
 ## API
 
@@ -373,10 +375,16 @@ Set `x` and `y` on every node for normalized manual positioning. Mixed coordinat
 | `renderToSvg` | Render SVG markup directly. |
 | `Watermark` | JSX marker component for expressive frame-module watermarks. |
 | `wrapWithWatermark` | Add optional watermark text, image/icon, custom element, and position to a frame. |
+| `normalizeWatermark` | Normalize boolean, string, object, or React-element watermark input to `WatermarkOptions`. |
+| `wrapWithBrand` | Compatibility wrapper for adding a text watermark through `wrapWithWatermark`. |
+| `getFonts` | Load and cache bundled Satori font data for advanced renderer integrations. |
+| `loadAdditionalAsset` | Resolve Satori missing-glyph requests, including bundled or cached Twemoji assets. |
 | `detectBackgroundColor` | Find dominant transparent/background color for cropping. |
 | `detectContentBounds` | Compute non-background bounds for autocrop. |
 | `cropPixels` | Crop raw pixel buffers. |
 | `detectOverflow` | Fail frames that clip content at canvas edges. |
+
+Theme and chart helpers are public for custom primitives: `getReadableColor(name, c)` selects the highest-contrast semantic variant, `getReadableToneColor(tone, c, background?)` adapts tone text to a background, and `getReadableTextColor(background, c)` chooses a foreground meeting 4.5:1 contrast when possible. `createPlotArea(width, height, margin)` returns clamped chart geometry for custom axes and marks.
 
 ### Rendering
 
