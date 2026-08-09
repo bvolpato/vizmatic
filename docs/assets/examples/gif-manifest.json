@@ -3,7 +3,7 @@
     "name": "nccl-reduce-scatter",
     "source": "examples/nccl-reduce-scatter.tsx",
     "width": 1040,
-    "height": 600,
+    "height": 500,
     "outputs": [
       "nccl-reduce-scatter_dark.gif",
       "nccl-reduce-scatter_light.gif"
@@ -13,13 +13,13 @@
         "theme": "dark",
         "path": "nccl-reduce-scatter_dark.gif",
         "width": 1040,
-        "height": 600
+        "height": 500
       },
       {
         "theme": "light",
         "path": "nccl-reduce-scatter_light.gif",
         "width": 1040,
-        "height": 600
+        "height": 500
       }
     ]
   }
