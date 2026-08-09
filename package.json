@@ -41,6 +41,7 @@
     "examples",
     "PROMPT.md",
     "README.md",
+    "ROADMAP.md",
     "LICENSE"
   ],
   "exports": {

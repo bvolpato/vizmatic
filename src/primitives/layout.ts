@@ -253,20 +253,37 @@ export function ToneStrip({ tone, width = 34, height = 4 }: ToneStripProps): Rea
 
 export type IconName =
     | 'agent'
+    | 'bucket'
+    | 'browser'
+    | 'cache'
     | 'chart'
     | 'check'
+    | 'cluster'
     | 'code'
+    | 'cloud'
+    | 'container'
     | 'database'
     | 'file'
+    | 'firewall'
+    | 'gateway'
     | 'git'
     | 'globe'
     | 'image'
     | 'layers'
     | 'lock'
+    | 'load-balancer'
+    | 'mobile'
+    | 'monitor'
+    | 'network'
     | 'play'
+    | 'queue'
+    | 'server'
     | 'spark'
+    | 'storage'
+    | 'stream'
     | 'terminal'
     | 'tool'
+    | 'user'
     | 'warning'
 
 type IconShape = {
@@ -283,16 +300,46 @@ const iconShapes: Record<IconName, IconShape[]> = {
         { tag: 'circle', attrs: { cx: 15, cy: 13, r: 1 } },
         { tag: 'path', attrs: { d: 'M9 17h6' } },
     ],
+    bucket: [
+        { tag: 'path', attrs: { d: 'M5 7c0-2 14-2 14 0s-14 2-14 0Z' } },
+        { tag: 'path', attrs: { d: 'M6 7l1 13h10l1-13' } },
+    ],
+    browser: [
+        { tag: 'rect', attrs: { x: 3, y: 4, width: 18, height: 16, rx: 2 } },
+        { tag: 'path', attrs: { d: 'M3 8h18' } },
+        { tag: 'circle', attrs: { cx: 7, cy: 6, r: 0.75 } },
+        { tag: 'circle', attrs: { cx: 10, cy: 6, r: 0.75 } },
+        { tag: 'circle', attrs: { cx: 13, cy: 6, r: 0.75 } },
+    ],
+    cache: [
+        { tag: 'rect', attrs: { x: 5, y: 4, width: 14, height: 16, rx: 3 } },
+        { tag: 'path', attrs: { d: 'M8 9h8' } },
+        { tag: 'path', attrs: { d: 'M8 13h8' } },
+        { tag: 'path', attrs: { d: 'M8 17h5' } },
+    ],
     chart: [
         { tag: 'path', attrs: { d: 'M4 19V5' } },
         { tag: 'path', attrs: { d: 'M4 19h16' } },
         { tag: 'polyline', attrs: { points: '7 15 11 11 14 13 19 7' } },
     ],
     check: [{ tag: 'polyline', attrs: { points: '20 6 9 17 4 12' } }],
+    cluster: [
+        { tag: 'path', attrs: { d: 'M12 8v4M10 13l-4 2M14 13l4 2' } },
+        { tag: 'circle', attrs: { cx: 12, cy: 5, r: 3 } },
+        { tag: 'circle', attrs: { cx: 6, cy: 17, r: 3 } },
+        { tag: 'circle', attrs: { cx: 18, cy: 17, r: 3 } },
+    ],
     code: [
         { tag: 'polyline', attrs: { points: '8 9 4 12 8 15' } },
         { tag: 'polyline', attrs: { points: '16 9 20 12 16 15' } },
         { tag: 'path', attrs: { d: 'M13 5l-2 14' } },
+    ],
+    cloud: [
+        { tag: 'path', attrs: { d: 'M7 18h11a4 4 0 0 0 .5-7.97A6.5 6.5 0 0 0 6.2 8.5 4.8 4.8 0 0 0 7 18Z' } },
+    ],
+    container: [
+        { tag: 'rect', attrs: { x: 4, y: 5, width: 16, height: 14, rx: 1 } },
+        { tag: 'path', attrs: { d: 'M8 5v14M16 5v14' } },
     ],
     database: [
         { tag: 'path', attrs: { d: 'M4 7c0-2 16-2 16 0s-16 2-16 0Z' } },
@@ -304,6 +351,17 @@ const iconShapes: Record<IconName, IconShape[]> = {
         { tag: 'path', attrs: { d: 'M14 3v5h5' } },
         { tag: 'path', attrs: { d: 'M9 13h6' } },
         { tag: 'path', attrs: { d: 'M9 17h4' } },
+    ],
+    firewall: [
+        { tag: 'path', attrs: { d: 'M5 4h14v16H5Z' } },
+        { tag: 'path', attrs: { d: 'M5 9h14M5 14h14' } },
+        { tag: 'path', attrs: { d: 'M9 4v5M15 4v5M12 9v5M8 14v6M17 14v6' } },
+    ],
+    gateway: [
+        { tag: 'path', attrs: { d: 'M4 20V5h16v15' } },
+        { tag: 'path', attrs: { d: 'M8 20v-7h8v7' } },
+        { tag: 'polyline', attrs: { points: '9 9 12 6 15 9' } },
+        { tag: 'path', attrs: { d: 'M12 6v7' } },
     ],
     git: [
         { tag: 'circle', attrs: { cx: 6, cy: 6, r: 2 } },
@@ -332,10 +390,55 @@ const iconShapes: Record<IconName, IconShape[]> = {
         { tag: 'rect', attrs: { x: 5, y: 10, width: 14, height: 10, rx: 2 } },
         { tag: 'path', attrs: { d: 'M8 10V7a4 4 0 0 1 8 0v3' } },
     ],
+    'load-balancer': [
+        { tag: 'rect', attrs: { x: 8, y: 8, width: 8, height: 8, rx: 2 } },
+        { tag: 'path', attrs: { d: 'M4 12h4M16 7h4M16 12h4M16 17h4' } },
+        { tag: 'polyline', attrs: { points: '6 10 4 12 6 14' } },
+    ],
+    mobile: [
+        { tag: 'rect', attrs: { x: 6, y: 2, width: 12, height: 20, rx: 2 } },
+        { tag: 'path', attrs: { d: 'M10 5h4' } },
+        { tag: 'circle', attrs: { cx: 12, cy: 18, r: 1 } },
+    ],
+    monitor: [
+        { tag: 'rect', attrs: { x: 3, y: 4, width: 18, height: 13, rx: 2 } },
+        { tag: 'path', attrs: { d: 'M8 21h8M12 17v4' } },
+    ],
+    network: [
+        { tag: 'path', attrs: { d: 'M7 10l3-3M14 7l3 3M17 14l-3 3M10 17l-3-3M7 12h10M12 7v10' } },
+        { tag: 'circle', attrs: { cx: 5, cy: 12, r: 2 } },
+        { tag: 'circle', attrs: { cx: 12, cy: 5, r: 2 } },
+        { tag: 'circle', attrs: { cx: 19, cy: 12, r: 2 } },
+        { tag: 'circle', attrs: { cx: 12, cy: 19, r: 2 } },
+    ],
     play: [{ tag: 'path', attrs: { d: 'M8 5v14l11-7Z' } }],
+    queue: [
+        { tag: 'rect', attrs: { x: 4, y: 5, width: 16, height: 14, rx: 2 } },
+        { tag: 'circle', attrs: { cx: 8, cy: 12, r: 1 } },
+        { tag: 'circle', attrs: { cx: 12, cy: 12, r: 1 } },
+        { tag: 'circle', attrs: { cx: 16, cy: 12, r: 1 } },
+    ],
+    server: [
+        { tag: 'rect', attrs: { x: 4, y: 4, width: 16, height: 16, rx: 2 } },
+        { tag: 'path', attrs: { d: 'M4 9h16M4 15h16' } },
+        { tag: 'circle', attrs: { cx: 8, cy: 7, r: 1 } },
+        { tag: 'circle', attrs: { cx: 8, cy: 12, r: 1 } },
+        { tag: 'circle', attrs: { cx: 8, cy: 18, r: 1 } },
+    ],
     spark: [
         { tag: 'path', attrs: { d: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z' } },
         { tag: 'path', attrs: { d: 'M5 16l.8 2.2L8 19l-2.2.8L5 22l-.8-2.2L2 19l2.2-.8Z' } },
+    ],
+    storage: [
+        { tag: 'rect', attrs: { x: 4, y: 6, width: 16, height: 12, rx: 2 } },
+        { tag: 'circle', attrs: { cx: 12, cy: 12, r: 3 } },
+        { tag: 'path', attrs: { d: 'M7 18h10' } },
+    ],
+    stream: [
+        { tag: 'path', attrs: { d: 'M4 7h13' } },
+        { tag: 'polyline', attrs: { points: '14 4 17 7 14 10' } },
+        { tag: 'path', attrs: { d: 'M20 17H7' } },
+        { tag: 'polyline', attrs: { points: '10 14 7 17 10 20' } },
     ],
     terminal: [
         { tag: 'polyline', attrs: { points: '5 7 10 12 5 17' } },
@@ -344,6 +447,10 @@ const iconShapes: Record<IconName, IconShape[]> = {
     tool: [
         { tag: 'path', attrs: { d: 'M14 6a5 5 0 0 0 6 6L11 21l-6-6 9-9Z' } },
         { tag: 'path', attrs: { d: 'M8 18l-2-2' } },
+    ],
+    user: [
+        { tag: 'circle', attrs: { cx: 12, cy: 7, r: 3.5 } },
+        { tag: 'path', attrs: { d: 'M5 20a7 7 0 0 1 14 0' } },
     ],
     warning: [
         { tag: 'path', attrs: { d: 'M12 4 22 20H2Z' } },

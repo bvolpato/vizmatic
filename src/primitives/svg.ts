@@ -417,7 +417,7 @@ export function ArrowMarkerDef({ id, color, size = 5 }: ArrowMarkerDefProps): Re
         refY: 5,
         markerWidth: size,
         markerHeight: size,
-        orient: 'auto',
+        orient: 'auto-start-reverse',
     },
         React.createElement('path', {
             d: 'M 0 0 L 10 5 L 0 10 z',

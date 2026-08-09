@@ -10,13 +10,14 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import React, { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import * as publicApi from './index'
-import { renderAnimatedGifWithOutput, type AnimatedScene } from './animate'
+import { renderAnimatedGifWithOutput, renderAnimationGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { analyzeContrast, analyzeRenderedLayout, analyzeWhitespaceBalance, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
 import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
 import type { SatoriNode } from './satori'
 import { getThemeColors, type ThemeMode, type ThemePreset } from './theme'
+import type { DefinedAnimation } from './timeline'
 
 interface FrameModule {
     width?: number
@@ -25,7 +26,14 @@ interface FrameModule {
     __vizmaticAutoSize?: Partial<AutoSizeAxes>
     create?: (theme: ThemeMode) => ReactNode
     createScenes?: (theme: ThemeMode) => AnimatedScene[]
-    default?: ReactNode | { create?: (theme: ThemeMode) => ReactNode; default?: ReactNode; width?: number; height?: number }
+    createAnimation?: (theme: ThemeMode) => DefinedAnimation<any>
+    default?: ReactNode | {
+        create?: (theme: ThemeMode) => ReactNode
+        createAnimation?: (theme: ThemeMode) => DefinedAnimation<any>
+        default?: ReactNode
+        width?: number
+        height?: number
+    }
     watermark?: WatermarkInput
     brand?: boolean | string
 }
@@ -42,6 +50,7 @@ interface RenderArgs {
     watermark?: WatermarkInput
     crop: boolean
     scale?: number
+    fps?: number
     background?: RenderBackground
 }
 
@@ -112,7 +121,7 @@ function usageText() {
   vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
   vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
   vizmatic check <file-or-directory...> [--theme dark,light] [--background transparent|theme|color] [--json]
-  vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1]
+  vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1] [--fps 20]
 
 Examples:
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
@@ -620,6 +629,7 @@ export default { create, width, height }
 function isBareFrameSource(source: string): boolean {
     if (/\bdefineIllustration\s*\(/.test(source)) return false
     if (/\bcreateScenes\s*\(/.test(source)) return false
+    if (/\bcreateAnimation\s*\(/.test(source)) return false
     if (/\bexport\s+(?:const|function)\s+create\b/.test(source)) return false
 
     return findBareRootJsxStart(source) >= 0
@@ -665,6 +675,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     let watermarkOptions: WatermarkOptions | undefined
     let crop = true
     let scale: number | undefined
+    let fps: number | undefined
     let background: RenderBackground | undefined
 
     function mutableWatermark(): WatermarkOptions {
@@ -761,6 +772,10 @@ function parseRenderArgs(argv: string[]): RenderArgs {
             const rawScale = Number(argv[++index])
             if (!Number.isFinite(rawScale) || rawScale <= 0) usage()
             scale = rawScale
+        } else if (arg === '--fps') {
+            const rawFps = Number(argv[++index])
+            if (!Number.isInteger(rawFps) || rawFps < 1 || rawFps > 50) usage()
+            fps = rawFps
         } else if (arg.startsWith('-')) {
             usage()
         } else {
@@ -769,7 +784,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, outDir, themes, watermark, crop, scale, background }
+    return { inputs, outDir, themes, watermark, crop, scale, fps, background }
 }
 
 function parseCheckArgs(argv: string[]): CheckArgs {
@@ -819,7 +834,7 @@ async function findFrameFiles(inputs: string[]): Promise<string[]> {
         for (const entry of entries) {
             const next = join(resolved, entry.name)
             if (entry.isDirectory()) {
-                if (entry.name === 'node_modules' || entry.name === 'dist') continue
+                if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('_')) continue
                 await walk(next)
             } else if (RENDER_EXTENSIONS.has(extname(entry.name)) && !entry.name.endsWith('.d.ts')) {
                 files.add(next)
@@ -895,7 +910,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
     if (!needsRegisteredTsxLoader() || cliRunsFromTypeScript) {
         try {
             const mod = await importWithOptionalReactBinding(() => import(url) as Promise<FrameModule>)
-            if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+            if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
         } catch (nativeError) {
             loadError = nativeError
         }
@@ -903,7 +918,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
 
     try {
         const mod = await importWithOptionalReactBinding(() => importWithTsx<FrameModule>(url))
-        if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+        if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
     } catch (tsxError) {
         loadError = tsxError
         // Fall through to CLI-owned module loading.
@@ -916,7 +931,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
 
     try {
         const mod = await importWithOptionalReactBinding(() => importRewrittenFrame(filePath, source))
-        if (!isBareFrame || mod.create || mod.default || mod.createScenes) return mod
+        if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
     } catch (rewrittenError) {
         if (!isBareFrame) throw rewrittenError
     }
@@ -948,7 +963,7 @@ function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     const defaultObject = typeof mod.default === 'object'
         && mod.default
         && !isValidElement(mod.default)
-        && ('create' in mod.default || 'default' in mod.default)
+        && ('create' in mod.default || 'createAnimation' in mod.default || 'default' in mod.default)
         ? mod.default as Exclude<FrameModule['default'], ReactNode>
         : undefined
     const hasAutoSizeSetting = mod.autoSize != null || mod.__vizmaticAutoSize != null
@@ -1439,15 +1454,14 @@ async function gifCommand(argv: string[]) {
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
         const outputScale = args.scale ?? 1
 
-        if (!mod.createScenes) {
-            throw new Error(`${relative(process.cwd(), file)} must export createScenes(theme) for GIF rendering`)
+        if (!mod.createAnimation && !mod.createScenes) {
+            throw new Error(`${relative(process.cwd(), file)} must export createAnimation(theme) or createScenes(theme) for GIF rendering`)
         }
 
         for (const theme of args.themes) {
             const outputName = `${name}_${theme}.gif`
             const outputPath = join(args.outDir, outputName)
-            const scenes = withFrameReactBinding(mod, () => mod.createScenes!(theme))
-            const rendered = await renderAnimatedGifWithOutput(scenes, {
+            const commonOptions = {
                 width: mod.width,
                 height: mod.height,
                 outputPath,
@@ -1455,7 +1469,17 @@ async function gifCommand(argv: string[]) {
                 scale: outputScale,
                 theme,
                 background: args.background,
-            })
+                fps: args.fps,
+            }
+            const rendered = mod.createAnimation
+                ? await renderAnimationGifWithOutput(
+                    withFrameReactBinding(mod, () => mod.createAnimation!(theme)),
+                    commonOptions,
+                )
+                : await renderAnimatedGifWithOutput(
+                    withFrameReactBinding(mod, () => mod.createScenes!(theme)),
+                    commonOptions,
+                )
             outputs.push(outputName)
             outputDetails.push({
                 theme,

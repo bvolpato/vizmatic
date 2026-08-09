@@ -14,6 +14,8 @@ declare global {
     const CalloutCard: AutoTheme<typeof import('../src').CalloutCard>
     const Column: AutoTheme<typeof import('../src').Column>
     const DataTable: AutoTheme<typeof import('../src').DataTable>
+    const defineDiagramIcon: typeof import('../src').defineDiagramIcon
+    const defineIconRegistry: typeof import('../src').defineIconRegistry
     const DonutChart: AutoTheme<typeof import('../src').DonutChart>
     const Flow: AutoTheme<typeof import('../src').Flow>
     const GraphDiagram: AutoTheme<typeof import('../src').GraphDiagram>

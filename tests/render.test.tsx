@@ -14,6 +14,7 @@ import {
     detectOverflow,
     colors,
     CalloutCard,
+    defineAnimation,
     getReadableColor,
     getReadableToneColor,
     getToneFill,
@@ -21,6 +22,7 @@ import {
     getReadableTextColor,
     MetricCard,
     renderAnimatedGif,
+    renderAnimationGif,
     renderToBuffer,
     renderToSvg,
     Scene,
@@ -43,6 +45,8 @@ import {
     Timeline,
     TreeDiagram,
     DashedLine,
+    hold,
+    tween,
 } from '../src'
 import { chartTicks, formatChartValue } from '../src/primitives/charts'
 import type { SatoriNode } from '../src'
@@ -192,6 +196,16 @@ function gifTransparencyFlags(buffer: Buffer): boolean[] {
         }
     }
     return flags
+}
+
+function gifFrameDelays(buffer: Buffer): number[] {
+    const delays: number[] = []
+    for (let index = 0; index <= buffer.length - 8; index += 1) {
+        if (buffer[index] === 0x21 && buffer[index + 1] === 0xf9 && buffer[index + 2] === 0x04) {
+            delays.push(buffer.readUInt16LE(index + 4) * 10)
+        }
+    }
+    return delays
 }
 
 function pixelBounds(
@@ -698,6 +712,82 @@ describe('vizmatic render pipeline', () => {
         expect({ nodes: first.nodes, paths: first.paths }).toEqual({ nodes: second.nodes, paths: second.paths })
     })
 
+    it('lays out nested graph groups, technical icons, and semantic relationships', () => {
+        const graph = GraphDiagram({
+            c: getThemeColors('light'),
+            width: 760,
+            height: 300,
+            sizing: 'fixed',
+            ariaLabel: 'Production architecture',
+            groups: [
+                { id: 'cloud', label: 'Cloud', tone: 'blue' },
+                { id: 'data', label: 'Data', parent: 'cloud', tone: 'green' },
+            ],
+            nodes: [
+                { id: 'client', label: 'Client', icon: 'browser' },
+                { id: 'api', label: 'API', icon: 'server', iconSize: 999, group: 'cloud' },
+                { id: 'db', label: 'Database', icon: 'database', group: 'data' },
+            ],
+            edges: [
+                { from: 'client', to: 'api', kind: 'sync', arrow: 'both' },
+                { from: 'api', to: 'db', kind: 'event' },
+            ],
+        })
+        const groups = collectElements(graph, (element) => Boolean(reactProps(element)['data-vizmatic-graph-group']))
+            .map((element) => reactProps(element).style as React.CSSProperties)
+        const paths = collectElements(graph, (element) => element.type === 'path' && Boolean(reactProps(element).d))
+            .map(reactProps)
+            .filter((props) => props.markerStart || props.markerEnd)
+
+        expect(reactProps(graph)['aria-label']).toBe('Production architecture')
+        expect(groups).toHaveLength(2)
+        expect(Number(groups[0].width)).toBeGreaterThan(Number(groups[1].width))
+        expect(Number(groups[0].height)).toBeGreaterThan(Number(groups[1].height))
+        expect(paths).toHaveLength(2)
+        expect(paths[0].markerStart).toBeTruthy()
+        expect(paths[0].markerEnd).toBeTruthy()
+        expect(paths[1].strokeDasharray).toBe('2 6')
+        expect(collectElements(graph, (element) => element.type === 'svg' && reactProps(element)['aria-label'] === 'API icon')).toHaveLength(1)
+        const apiIcon = collectElements(graph, (element) => reactProps(element)['data-vizmatic-graph-icon'] === 'api')[0]
+        expect(reactProps(apiIcon).style).toMatchObject({ width: 50, height: 50, overflow: 'hidden' })
+    })
+
+    it('validates graph groups and manual edge endpoints', () => {
+        const c = getThemeColors('light')
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API', group: 'missing' }],
+            edges: [],
+            groups: [],
+        })).toThrow(/missing group "missing"/)
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API' }],
+            edges: [],
+            groups: [{ id: 'empty', label: 'Empty' }],
+        })).toThrow(/contains no nodes/)
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API', group: 'one' }],
+            edges: [],
+            groups: [
+                { id: 'one', label: 'One', parent: 'two' },
+                { id: 'two', label: 'Two', parent: 'one' },
+            ],
+        })).toThrow(/parent cycle/)
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API', x: 0.5, y: 0.5 }],
+            edges: [{ from: 'api', to: 'missing' }],
+        })).toThrow(/references a missing node/)
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API', x: 0.5, y: 0.5, group: 'prod' }],
+            edges: [],
+            groups: [{ id: 'prod', label: 'Production' }],
+        })).toThrow(/groups require automatic layout/)
+    })
+
     it('uses readable text when matrix colorization is disabled', () => {
         const matrix = Matrix({
             c: getThemeColors('light'),
@@ -1120,6 +1210,42 @@ renderToBuffer(frame.create('dark'), 720, 420)
             const buffer = await readFile(outputPath)
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
             expect(buffer.length).toBeGreaterThan(5_000)
+            const delays = gifFrameDelays(buffer)
+            expect(delays).toHaveLength(14)
+            expect(delays.reduce((total, delay) => total + delay, 0)).toBeGreaterThanOrEqual(1_000)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('renders a sampled state timeline as a correctly timed GIF', async () => {
+        const c = getThemeColors('dark')
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-timeline-gif-'))
+        const outputPath = join(outDir, 'timeline.gif')
+        const animation = defineAnimation({
+            initial: { x: 0 },
+            timeline: [hold(100), tween({ x: 100 }, { duration: 200, easing: 'ease-in-out' })],
+            fps: 10,
+            render: (state) => (
+                <Scene c={c}>
+                    <div style={{ display: 'flex', width: 40, marginLeft: state.x }}>
+                        <StepCard c={c} title="chunk" tone="green" width={40} />
+                    </div>
+                </Scene>
+            ),
+        })
+
+        try {
+            await renderAnimationGif(animation, {
+                width: 240,
+                height: 140,
+                outputPath,
+                theme: 'dark',
+            })
+
+            const buffer = await readFile(outputPath)
+            expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
+            expect(gifFrameDelays(buffer).reduce((total, delay) => total + delay, 0)).toBe(300)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
@@ -2015,6 +2141,8 @@ export default frame.default
 
         try {
             await mkdir(framesDir, { recursive: true })
+            await mkdir(join(framesDir, '_shared'), { recursive: true })
+            await writeFile(join(framesDir, '_shared', 'helper.tsx'), 'export const helper = <div>not a frame</div>\n')
             await writeFile(join(framesDir, '01-flow.tsx'), String.raw`<Scene gap={18}>
   <Flow
     stages={[
@@ -2342,6 +2470,75 @@ export default create('dark')
                 path: 'animated_dark.gif',
                 ...dimensions,
             }])
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('renders an imported createAnimation timeline through the GIF CLI', async () => {
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-cli-timeline-'))
+        const framePath = join(outDir, 'timeline.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(framePath, `import React from 'react'
+import {
+    Scene,
+    StepCard,
+    defineAnimation,
+    getThemeColors,
+    hold,
+    tween,
+    type ThemeMode,
+} from 'vizmatic'
+
+export const width = 240
+export const height = 140
+
+function frame(theme: ThemeMode, x: number) {
+    const c = getThemeColors(theme)
+    return <Scene c={c}><div style={{ display: 'flex', marginLeft: x }}><StepCard c={c} title="chunk" width={60} /></div></Scene>
+}
+
+export function create(theme: ThemeMode = 'dark') {
+    return frame(theme, 100)
+}
+
+export function createAnimation(theme: ThemeMode) {
+    return defineAnimation({
+        initial: { x: 0 },
+        timeline: [hold(100), tween({ x: 100 }, { duration: 200 })],
+        fps: 5,
+        render: (state) => frame(theme, state.x),
+    })
+}
+
+export default create('dark')
+`)
+
+            const result = spawnSync(process.execPath, [
+                '--import',
+                'tsx',
+                'src/cli.ts',
+                'gif',
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'dark',
+                '--fps',
+                '10',
+            ], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                env: cliChildEnv(),
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            const buffer = await readFile(join(renderDir, 'timeline_dark.gif'))
+            const delays = gifFrameDelays(buffer)
+            expect(delays).toHaveLength(3)
+            expect(delays.reduce((total, delay) => total + delay, 0)).toBe(300)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }

@@ -134,7 +134,7 @@ Each output directory includes `manifest.json`. `outputs` lists generated files,
 Render an animation:
 
 ```bash
-vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" --watermark-image ./logo.svg
+vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light --fps 20 --watermark "Acme" --watermark-image ./logo.svg
 ```
 
 Or call the renderer directly:
@@ -180,13 +180,19 @@ Vizmatic provides reusable layout, diagram, and chart primitives:
 | Headless rendering | Node produces assets directly in local workflows and CI |
 | Theme variants | One command renders dark and light output from semantic color tokens |
 | Layout checks | Overflow, contrast, small text, label overlap, uneven panel whitespace, and connector congestion |
-| Animation | Ordered scene states export as GIFs |
+| Animation | Typed state timelines, tweens, easing, holds, keyframes, and parallel tracks export as GIFs |
 
 ## Gallery
 
 <p>
   <img src="https://bvolpato.github.io/vizmatic/assets/examples/animated-pipeline_dark.gif" alt="Animated pipeline" width="380" />
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/attention-head_dark.png" alt="Attention head" width="380" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/nccl-broadcast_dark.gif" alt="Animated NCCL Broadcast: root rank sends one buffer to every rank" width="300" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/nccl-all-reduce_dark.gif" alt="Animated NCCL AllReduce: every rank reduces values and receives the sum" width="300" />
+</p>
+<p>
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/nccl-all-gather_dark.gif" alt="Animated NCCL AllGather: every rank receives concatenated tensors" width="300" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/nccl-reduce-scatter_dark.gif" alt="Animated NCCL ReduceScatter: each rank receives one reduced chunk" width="300" />
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/nccl-all-to-all_dark.gif" alt="Animated NCCL AllToAll: every rank exchanges one chunk with every rank" width="300" />
 </p>
 <p>
   <img src="https://bvolpato.github.io/vizmatic/assets/examples/rag-graph_dark.png" alt="RAG graph" width="380" />
@@ -197,10 +203,13 @@ Vizmatic provides reusable layout, diagram, and chart primitives:
   <img src="https://bvolpato.github.io/vizmatic/assets/examples/theme-system_dark.png" alt="Theme system" width="380" />
 </p>
 <p>
+  <img src="https://bvolpato.github.io/vizmatic/assets/examples/system-architecture_dark.png" alt="System architecture" width="380" />
   <img src="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_dark.png" alt="Presentation frame" width="380" />
 </p>
 
-More examples live in [`examples/`](examples). The website has a searchable [component catalog](https://bvolpato.github.io/vizmatic/components.html) with a rendered preview and source for every public component. [`PROMPT.md`](PROMPT.md) contains the full install, syntax, component, and verification reference for coding agents.
+NCCL gallery examples cover five operations: Broadcast, AllReduce, AllGather, ReduceScatter, and AllToAll. Their diagrams follow NVIDIA's documented [collective operation semantics](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html): rooted transfer, reduction, rank-ordered gathering, reduced chunk ownership, and pairwise exchange.
+
+More examples live in [`examples/`](examples). The website has a searchable [component catalog](https://bvolpato.github.io/vizmatic/components.html) with a rendered preview and source for every public component. [`PROMPT.md`](PROMPT.md) contains the full install, syntax, component, and verification reference for coding agents. [`ROADMAP.md`](ROADMAP.md) tracks C4, provider packs, sequence, UML, deployment, network, dataflow, layout, and interoperability work.
 
 ## Repository checks
 
@@ -317,26 +326,33 @@ Use these primitives before writing raw SVG or absolute-positioned layouts.
 | `Flow` | Horizontal or vertical staged process diagram with optional detail rows. |
 | `Pipeline` | Process pipeline with stage labels and a shared title. |
 | `LayeredNetwork` | Neural-network/DAG diagram with layers, nodes, active path, annotations, and formula. |
-| `GraphDiagram` | Auto-laid or manually positioned node-edge graph with routed paths, labels, and tone-aware nodes. |
+| `GraphDiagram` | Auto-laid architecture graph with nested boundaries, technical icons, typed relationships, and custom icon definitions. |
 | `TreeDiagram` | Auto-laid parent/child hierarchy for ownership, routing, taxonomy, and decision trees. |
 
-`GraphDiagram` uses deterministic layered layout when node coordinates are omitted:
+`GraphDiagram` uses deterministic layered layout when node coordinates are omitted. Groups become nested system boundaries, while built-in technical icons keep common architecture nodes concise:
 
 ```tsx
 <GraphDiagram
+  ariaLabel="Checkout architecture"
+  groups={[
+    { id: "prod", label: "Production", tone: "blue" },
+    { id: "data", label: "Data", parent: "prod", tone: "green" },
+  ]}
   nodes={[
-    { id: "prompt", label: "Prompt", tone: "blue" },
-    { id: "render", label: "Render", tone: "purple" },
-    { id: "asset", label: "PNG / SVG / GIF", tone: "green" },
+    { id: "client", label: "Client", icon: "browser", tone: "cyan" },
+    { id: "api", label: "API", icon: "server", group: "prod", tone: "purple" },
+    { id: "db", label: "Postgres", icon: "database", group: "data", tone: "green" },
   ]}
   edges={[
-    { from: "prompt", to: "render" },
-    { from: "render", to: "asset" },
+    { from: "client", to: "api", label: "HTTPS", kind: "sync" },
+    { from: "api", to: "db", label: "SQL", kind: "data", arrow: "both" },
   ]}
 />
 ```
 
-Set `x` and `y` on every node for normalized manual positioning. Mixed coordinate modes fail with a clear error. Automatic layout treats node and edge array order as its stable tie-breaker and expands `width` or `height` when needed. Set `sizing="fixed"` to keep exact graph dimensions and let overflow checks report a canvas that is too small. Use `direction`, `nodeGap`, `rankGap`, and `edgeGap` to tune the result.
+Groups support unlimited nesting in automatic layout, reserve a boundary-header gutter, and clip long headers inside the boundary. Set `icon` to a built-in `IconName`, a React element, or a reusable icon from `defineDiagramIcon`; `defineIconRegistry` groups provider packs without a runtime registry. Icon size stays inside its node. Custom React elements own their theme colors and accessible label. Relationship `kind` selects solid, dashed, or dotted defaults, `style` overrides them, and `arrow` accepts `forward`, `backward`, `both`, or `none`. Associations default to no arrow.
+
+Set `x` and `y` on every node for normalized manual positioning when no groups are present. Mixed coordinate modes fail with a clear error. Automatic layout treats node and edge array order as its stable tie-breaker and expands `width` or `height` when needed. Set `sizing="fixed"` to keep exact graph dimensions and let overflow checks report a canvas that is too small. Use `direction`, `nodeGap`, `rankGap`, and `edgeGap` to tune the result.
 
 #### Matrices, tables, and grids
 
@@ -371,6 +387,10 @@ Set `x` and `y` on every node for normalized manual positioning. Mixed coordinat
 | `renderToPngWithOutput` | Render PNG and return logical plus physical pixel dimensions. |
 | `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
 | `renderAnimatedGifWithOutput` | Render GIF and return its physical pixel dimensions. |
+| `defineAnimation` | Define a typed state timeline rendered at deterministic sample times. |
+| `hold`, `tween`, `keyframe`, `parallel` | Compose sequential pauses, eased property transitions, instant state changes, and staggered concurrent tracks. |
+| `sampleAnimation` | Evaluate timeline state at an exact millisecond without rendering. |
+| `renderAnimationGif` | Stream sampled timeline frames into a GIF without retaining every RGBA frame. |
 | `renderToBuffer` | Render PNG to memory for tests and pipelines. |
 | `renderToSvg` | Render SVG markup directly. |
 | `Watermark` | JSX marker component for expressive frame-module watermarks. |
@@ -389,7 +409,7 @@ Theme and chart helpers are public for custom primitives: `getReadableColor(name
 ### Rendering
 
 ```ts
-import { renderAnimatedGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
+import { renderAnimatedGif, renderAnimationGif, renderToPng, renderToBuffer, renderToSvg } from "vizmatic"
 ```
 
 `renderToPng` renders at 2x scale, checks for clipping, and crops extra whitespace while keeping 24 source pixels around detected content. Output stays transparent unless `background` is set.
@@ -423,18 +443,39 @@ export const watermark = (
 )
 ```
 
-`renderAnimatedGif` turns ordered scene states into a looping GIF. GIF transparency is one-bit; use PNG or SVG when edges need full alpha.
+Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples absolute time deterministically and includes exact terminal state. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
+
+```tsx
+import { defineAnimation, hold, keyframe, tween } from "vizmatic"
+
+export function createAnimation(theme: ThemeMode) {
+  return defineAnimation({
+    initial: { operation: 0, progress: 0 },
+    timeline: [
+      hold(500, "Broadcast input"),
+      tween({ progress: 1 }, { duration: 900, easing: "ease-in-out", label: "Transfer" }),
+      hold(500, "Broadcast output"),
+      keyframe({ operation: 1, progress: 0 }),
+      tween({ progress: 1 }, { duration: 900, easing: "ease-in-out", label: "AllReduce" }),
+    ],
+    fps: 20,
+    render: (state, frame) => buildFrame(theme, state, frame),
+  })
+}
+```
 
 ```ts
-await renderAnimatedGif(createScenes("dark"), {
+await renderAnimationGif(createAnimation("dark"), {
   width: 1040,
   height: 560,
-  outputPath: "dist/agent-pipeline.gif",
+  outputPath: "dist/collective.gif",
   watermark: { text: "Your Product", image: "data:image/png;base64,...", position: "bottom-right" },
   theme: "dark",
   scale: 1,
 })
 ```
+
+`createScenes(theme)` and `renderAnimatedGif(AnimatedScene[])` remain supported for intentional scene cuts and pixel crossfades. GIF output uses centisecond timing, at most 256 colors per frame, and one-bit transparency. Use PNG/SVG for smooth alpha edges.
 
 ## Development
 

@@ -16,6 +16,7 @@ const manifest: Array<{ name: string; source: string; outputs: string[] }> = []
 const sources: Array<{ name: string; title: string; source: string; code: string; html: Record<(typeof themes)[number], string> }> = []
 const titleWords: Record<string, string> = {
     gif: 'GIF',
+    nccl: 'NCCL',
     rag: 'RAG',
 }
 
@@ -34,7 +35,7 @@ function previewFor(outputs: string[], theme: (typeof themes)[number]): string {
 }
 
 function sourceForGallery(code: string): string {
-    if (!code.includes('createScenes')) return code
+    if (!code.includes('createScenes') && !code.includes('createAnimation')) return code
     return code
         .replace(/\nexport function create\(theme: ThemeMode = 'dark'\) \{\n    return buildFrame\(theme, stages\.length - 1\)\n\}\n(?=\nexport function createScenes)/, '\n')
         .replace(/\nexport default create\('dark'\)\n?$/, '\n')
@@ -77,6 +78,7 @@ for (const file of files) {
         '--theme',
         themes.join(','),
     ]
+    if (name.startsWith('nccl-')) renderArgs.push('--no-crop')
     if (name !== 'vizmatic-hero') renderArgs.push('--watermark', 'Vizmatic')
 
     const result = spawnSync(process.execPath, renderArgs, {
@@ -106,7 +108,7 @@ for (const file of files) {
 
     const outputs = themes.map((theme) => `${name}_${theme}.png`)
 
-    if (code.includes('createScenes')) {
+    if (code.includes('createScenes') || code.includes('createAnimation')) {
         const gifResult = spawnSync(process.execPath, [
             'dist/cli.js',
             'gif',

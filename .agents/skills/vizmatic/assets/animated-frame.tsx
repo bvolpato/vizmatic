@@ -5,8 +5,10 @@ import {
     MetricCard,
     Row,
     Scene,
+    defineAnimation,
     getThemeColors,
-    type AnimatedScene,
+    hold,
+    tween,
     type ThemeMode,
 } from 'vizmatic'
 
@@ -20,10 +22,11 @@ const stages = [
     { title: 'Verify', subtitle: 'layout', tone: 'green' as const },
 ]
 
-function frame(theme: ThemeMode, active: number) {
+function frame(theme: ThemeMode, progress: number) {
     const c = getThemeColors(theme)
+    const active = Math.min(stages.length - 1, Math.floor(progress * stages.length))
     return (
-        <Scene c={c} title="Animated frame example" subtitle="each scene becomes one GIF frame" gap={24}>
+        <Scene c={c} title="Animated timeline example" subtitle="state is sampled into smooth GIF frames" gap={24}>
             <Flow
                 c={c}
                 connectorTone="purple"
@@ -40,7 +43,7 @@ function frame(theme: ThemeMode, active: number) {
                 <CalloutCard
                     c={c}
                     title={active === stages.length - 1 ? 'Export complete' : `Frame ${active + 1} of 4`}
-                    detail="createScenes(theme) defines each frame and transition."
+                    detail="defineAnimation describes state, easing, and duration."
                     tone={active === stages.length - 1 ? 'green' : 'cyan'}
                     width={700}
                 />
@@ -50,17 +53,20 @@ function frame(theme: ThemeMode, active: number) {
 }
 
 export function create(theme: ThemeMode = 'dark') {
-    return frame(theme, stages.length - 1)
+    return frame(theme, 1)
 }
 
-export function createScenes(theme: ThemeMode): AnimatedScene[] {
-    return stages.map((_, index) => ({
-        element: frame(theme, index),
-        duration: index === stages.length - 1 ? 1100 : 760,
-        transition: index === 0 ? 'appear' : 'fade',
-        transitionDuration: 360,
-        label: stages[index].title,
-    }))
+export function createAnimation(theme: ThemeMode) {
+    return defineAnimation({
+        initial: { progress: 0 },
+        timeline: [
+            hold(500, 'Ready'),
+            tween({ progress: 1 }, { duration: 2400, easing: 'ease-in-out', label: 'Pipeline' }),
+            hold(800, 'Complete'),
+        ],
+        fps: 20,
+        render: (state) => frame(theme, state.progress),
+    })
 }
 
 export default create('dark')

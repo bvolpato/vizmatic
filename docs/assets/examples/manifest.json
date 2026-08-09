@@ -122,6 +122,56 @@
     ]
   },
   {
+    "name": "nccl-all-gather",
+    "source": "examples/nccl-all-gather.tsx",
+    "outputs": [
+      "nccl-all-gather_dark.png",
+      "nccl-all-gather_light.png",
+      "nccl-all-gather_dark.gif",
+      "nccl-all-gather_light.gif"
+    ]
+  },
+  {
+    "name": "nccl-all-reduce",
+    "source": "examples/nccl-all-reduce.tsx",
+    "outputs": [
+      "nccl-all-reduce_dark.png",
+      "nccl-all-reduce_light.png",
+      "nccl-all-reduce_dark.gif",
+      "nccl-all-reduce_light.gif"
+    ]
+  },
+  {
+    "name": "nccl-all-to-all",
+    "source": "examples/nccl-all-to-all.tsx",
+    "outputs": [
+      "nccl-all-to-all_dark.png",
+      "nccl-all-to-all_light.png",
+      "nccl-all-to-all_dark.gif",
+      "nccl-all-to-all_light.gif"
+    ]
+  },
+  {
+    "name": "nccl-broadcast",
+    "source": "examples/nccl-broadcast.tsx",
+    "outputs": [
+      "nccl-broadcast_dark.png",
+      "nccl-broadcast_light.png",
+      "nccl-broadcast_dark.gif",
+      "nccl-broadcast_light.gif"
+    ]
+  },
+  {
+    "name": "nccl-reduce-scatter",
+    "source": "examples/nccl-reduce-scatter.tsx",
+    "outputs": [
+      "nccl-reduce-scatter_dark.png",
+      "nccl-reduce-scatter_light.png",
+      "nccl-reduce-scatter_dark.gif",
+      "nccl-reduce-scatter_light.gif"
+    ]
+  },
+  {
     "name": "presentation-frame",
     "source": "examples/presentation-frame.tsx",
     "outputs": [
@@ -159,6 +209,14 @@
     "outputs": [
       "spec-anatomy_dark.png",
       "spec-anatomy_light.png"
+    ]
+  },
+  {
+    "name": "system-architecture",
+    "source": "examples/system-architecture.tsx",
+    "outputs": [
+      "system-architecture_dark.png",
+      "system-architecture_light.png"
     ]
   },
   {

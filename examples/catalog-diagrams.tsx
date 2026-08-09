@@ -55,7 +55,7 @@ export function create(theme: ThemeMode = 'dark') {
                 <Panel
                     c={c}
                     title="GraphDiagram"
-                    subtitle="automatic left-to-right layout, routed edges, and semantic nodes"
+                    subtitle="automatic layout, nested boundary, technical icons, and typed edges"
                     tone="cyan"
                     width={514}
                     padding={14}
@@ -69,22 +69,26 @@ export function create(theme: ThemeMode = 'dark') {
                         direction="LR"
                         sizing="fixed"
                         padding={16}
-                        nodeWidth={80}
+                        nodeWidth={72}
                         nodeHeight={46}
                         nodeGap={18}
                         rankGap={22}
                         labelFontSize={11}
                         detailFontSize={11}
+                        iconSize={14}
+                        groups={[
+                            { id: 'runtime', label: 'Runtime', tone: 'cyan' },
+                        ]}
                         nodes={[
-                            { id: 'brief', label: 'Brief', detail: 'intent', tone: 'blue' },
-                            { id: 'plan', label: 'Plan', detail: 'structure', tone: 'purple' },
-                            { id: 'check', label: 'Check', detail: 'both themes', tone: 'cyan' },
-                            { id: 'asset', label: 'Asset', detail: 'PNG + SVG', tone: 'green' },
+                            { id: 'brief', label: 'Brief', icon: 'file', group: 'runtime', tone: 'blue' },
+                            { id: 'plan', label: 'Plan', icon: 'layers', group: 'runtime', tone: 'purple' },
+                            { id: 'check', label: 'Check', icon: 'monitor', group: 'runtime', tone: 'cyan' },
+                            { id: 'asset', label: 'Asset', icon: 'storage', group: 'runtime', tone: 'green' },
                         ]}
                         edges={[
-                            { from: 'brief', to: 'plan', tone: 'blue' },
-                            { from: 'plan', to: 'check', tone: 'purple' },
-                            { from: 'check', to: 'asset', tone: 'green' },
+                            { from: 'brief', to: 'plan', kind: 'sync', tone: 'blue' },
+                            { from: 'plan', to: 'check', kind: 'event', tone: 'purple' },
+                            { from: 'check', to: 'asset', kind: 'data', tone: 'green' },
                         ]}
                     />
                 </Panel>

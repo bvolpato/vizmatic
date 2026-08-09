@@ -1,25 +1,25 @@
 [
   {
-    "name": "animated-pipeline",
-    "source": "examples/animated-pipeline.tsx",
+    "name": "nccl-reduce-scatter",
+    "source": "examples/nccl-reduce-scatter.tsx",
     "width": 1040,
-    "height": 560,
+    "height": 600,
     "outputs": [
-      "animated-pipeline_dark.gif",
-      "animated-pipeline_light.gif"
+      "nccl-reduce-scatter_dark.gif",
+      "nccl-reduce-scatter_light.gif"
     ],
     "outputDetails": [
       {
         "theme": "dark",
-        "path": "animated-pipeline_dark.gif",
+        "path": "nccl-reduce-scatter_dark.gif",
         "width": 1040,
-        "height": 560
+        "height": 600
       },
       {
         "theme": "light",
-        "path": "animated-pipeline_light.gif",
+        "path": "nccl-reduce-scatter_light.gif",
         "width": 1040,
-        "height": 560
+        "height": 600
       }
     ]
   }

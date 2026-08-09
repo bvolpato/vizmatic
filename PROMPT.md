@@ -173,68 +173,68 @@ export const watermark = (
 )
 ```
 
-Render animated frames with `createScenes(theme)`:
+Render a sampled state timeline with `createAnimation(theme)`:
 
 ```bash
-vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right --scale 1
+vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --fps 20 --watermark "Your Product" --watermark-image ./logo.svg --watermark-position top-right --scale 1
 ```
 
 ## Animated frames
 
-An animated module exports `createScenes(theme)` for GIF output and keeps `create(theme)` for a static frame.
+An animated module exports `createAnimation(theme)` for GIF output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every GIF frame.
 
 ```tsx
 import React from "react"
-import {
-  CalloutCard,
-  defineIllustration,
-  Flow,
-  Scene,
-  getThemeColors,
-  type AnimatedScene,
-  type ThemeColors,
-  type ThemeMode,
-} from "vizmatic"
+import { Scene, defineAnimation, getThemeColors, hold, keyframe, tween, type ThemeMode } from "vizmatic"
 
 export const width = 1040
 export const height = 560
 
-const stages = [
-  { title: "Prompt", tone: "blue" as const },
-  { title: "Scene spec", tone: "purple" as const },
-  { title: "PNG / GIF", tone: "green" as const },
-]
+type State = { operation: number; progress: number }
 
-function buildFrame(c: ThemeColors, active: number) {
+function buildFrame(theme: ThemeMode, state: State) {
+  const c = getThemeColors(theme)
   return (
-    <Scene c={c} title="Animated agent pipeline">
-      <Flow
-        c={c}
-        stages={stages.map((stage, index) => ({
-          ...stage,
-          title: index <= active ? stage.title : "Pending",
-          tone: index <= active ? stage.tone : "neutral",
-        }))}
-      />
-      <CalloutCard c={c} title="Scene changes over time" detail="Render with vizmatic gif." tone="green" />
+    <Scene c={c} title={state.operation === 0 ? "Broadcast" : "AllReduce"}>
+      <div style={{ display: "flex", width: "100%", height: 260, position: "relative" }}>
+        <div style={{
+          display: "flex",
+          position: "absolute",
+          left: 40 + state.progress * 720,
+          top: 90,
+          padding: "10px 16px",
+          borderRadius: 8,
+          background: c.accent,
+          color: c.textOnColor,
+        }}>chunk</div>
+      </div>
     </Scene>
   )
 }
 
-const frame = defineIllustration((c) => buildFrame(c, stages.length - 1))
-
-export function createScenes(theme: ThemeMode): AnimatedScene[] {
-  const c = getThemeColors(theme)
-  return stages.map((_, index) => ({
-    element: buildFrame(c, index),
-    duration: index === stages.length - 1 ? 1000 : 700,
-    transition: index === 0 ? "appear" : "fade",
-  }))
+export function createAnimation(theme: ThemeMode) {
+  return defineAnimation<State>({
+    initial: { operation: 0, progress: 0 },
+    timeline: [
+      hold(500, "Broadcast input"),
+      tween({ progress: 1 }, { duration: 900, easing: "ease-in-out", label: "Broadcast" }),
+      hold(500, "Broadcast output"),
+      keyframe({ operation: 1, progress: 0 }),
+      tween({ progress: 1 }, { duration: 900, easing: "ease-in-out", label: "AllReduce" }),
+    ],
+    fps: 20,
+    render: (state) => buildFrame(theme, state),
+  })
 }
 
-export const create = frame.create
-export default frame.default
+export function create(theme: ThemeMode = "dark") {
+  return buildFrame(theme, { operation: 1, progress: 1 })
+}
+
+export default create("dark")
 ```
+
+Top-level timeline steps run sequentially. Properties inside one `tween` move together. Use `parallel({ x: [...], opacity: [...] })` when property tracks need different delays or durations. Default interpolation supports finite numbers; use a custom `interpolate(from, to, progress)` for colors, points, or other values. `createScenes(theme)` remains supported for deliberate scene cuts and pixel `fade`/`appear` transitions.
 
 ## Choose primitives
 
@@ -274,7 +274,7 @@ Cards, labels, and compact UI:
 - `TextLabel`: `text`, `c`, `variant?: keyof typography = "body"`, `color?`, `fontSize?`, `fontWeight?`, `width?`, `align?: "left" | "center" | "right" = "left"`, `math?: boolean = false`, `mono?: boolean = false`.
 - `MathText`: `text`. Returns formatted unicode-ish math text for simple `_` and `^` notation.
 - `formatMathText(text)`: `text: string`.
-- `Icon`: `name`, `c`, `tone?: ToneName = "blue"`, `color?`, `size?: number = 24`, `strokeWidth?: number = 2`, `label?`, `muted?: boolean = false`. `IconName`: `"agent" | "chart" | "check" | "code" | "database" | "file" | "git" | "globe" | "image" | "layers" | "lock" | "play" | "spark" | "terminal" | "tool" | "warning"`.
+- `Icon`: `name`, `c`, `tone?: ToneName = "blue"`, `color?`, `size?: number = 24`, `strokeWidth?: number = 2`, `label?`, `muted?: boolean = false`. `IconName` includes presentation icons plus architecture icons: `browser`, `bucket`, `cache`, `cloud`, `cluster`, `container`, `database`, `firewall`, `gateway`, `load-balancer`, `mobile`, `monitor`, `network`, `queue`, `server`, `storage`, `stream`, and `user`.
 - `ToneStrip`: `tone`, `width?: number = 34`, `height?: number = 4`.
 - `StepCard`: `title`, `c`, `subtitle?`, `eyebrow?`, `tone?: ToneName = "blue"`, `width?: number | string = 210`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "12px 14px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`.
 - `MetricCard`: `label`, `value`, `c`, `tone?: ToneName = "blue"`, `detail?`, `width?`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = "10px 12px"`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: "left" | "center" = "center"`, `math?: boolean = false`, `valueMono?: boolean = true`, `valueFontSize?: number = 22`, `valueColor?`.
@@ -314,7 +314,9 @@ Flows and process diagrams:
 Graphs and networks:
 
 - `LayeredNetwork`: `c`, `layers: LayeredNetworkLayer[]`, `activePath?: number[] = []`, `annotations?: string[] = []`, `formula?`, `legend?: string = "highlighted path"`, `width?: number = 900`, `height?: number = 400`, `nodeSize?: number = 56`, `showFormula?: boolean = true`. `LayeredNetworkLayer`: `title`, `nodes: string[]`, `tone?`.
-- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 11`, `arrowSize?: number = 5`, `padding?: number = 28`, `layout?: "auto" | "manual"`, `direction?: "LR" | "RL" | "TB" | "BT" = "LR"`, `nodeGap?: number = 34`, `rankGap?: number = 64`, `edgeGap?: number = 14`, `sizing?: "content" | "fixed" = "content"`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x?`, `y?`, `tone?`, `muted?`, `width?`, `height?`. Omit coordinates on every node for automatic layout; array order is the stable tie-breaker and dimensions expand to fit unless `sizing="fixed"`. Set both coordinates on every node for manual normalized positioning. Mixed coordinate modes fail. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`.
+- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `groups?: GraphDiagramGroup[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 11`, `arrowSize?: number = 5`, `padding?: number = 28`, `layout?: "auto" | "manual"`, `direction?: "LR" | "RL" | "TB" | "BT" = "LR"`, `nodeGap?: number = 34`, `rankGap?: number = 64`, `edgeGap?: number = 14`, `sizing?: "content" | "fixed" = "content"`, `iconSize?: number = 20`, `ariaLabel?`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x?`, `y?`, `tone?`, `muted?`, `width?`, `height?`, `group?`, `icon?: IconName | DiagramIconDefinition | ReactElement`, `iconSize?`. Icon size is clamped inside its node; custom React elements own their theme colors and accessible label. `GraphDiagramGroup`: `id`, `label`, `detail?`, `parent?`, `tone?`, `muted?`. Groups nest through `parent` and require automatic layout. Omit coordinates on every node for automatic layout; array order is the stable tie-breaker and dimensions expand to fit unless `sizing="fixed"`. Set both coordinates on every node for manual normalized positioning when no groups are present. Mixed coordinate modes fail. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`, `kind?: "sync" | "async" | "event" | "data" | "dependency" | "association"`, `style?: "solid" | "dashed" | "dotted"`, `arrow?: "forward" | "backward" | "both" | "none"`. Association edges default to no arrow.
+- `defineDiagramIcon(id, render)`: defines a reusable custom graph icon. `render` receives `c`, `color`, `size`, and optional `label`.
+- `defineIconRegistry(icons)`: preserves typed names for a set of custom or provider icons without global mutable state.
 - `TreeDiagram`: `root: TreeNodeSpec`, `c`, `title?`, `subtitle?`, `width?`, `height?`, `nodeWidth?: number = 156`, `nodeHeight?: number = 64`, `levelGap?: number = 58`, `siblingGap?: number = 24`, `padding?: number = 28`, `math?: boolean = false`. `TreeNodeSpec`: `label`, `id?`, `detail?`, `tone?`, `muted?`, `children?`.
 
 Matrices and heatmaps:
@@ -376,10 +378,19 @@ Theme and render APIs:
 - `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `theme?: "dark" | "light" = "dark"` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Default autocrop retains 24 source pixels around detected content. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
 - `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.
-- `renderAnimatedGif(scenes, options)`: `scenes: AnimatedScene[]`, `options: AnimationOptions`.
+- `defineAnimation({ initial, timeline, render, fps? })`: creates deterministic typed state animation. `fps` defaults to `20` and accepts integers from `1` to `50`.
+- `hold(duration, label?)`: keep current state for milliseconds.
+- `tween(to, { duration, easing?, interpolate?, label? })`: transition listed properties together. Easing is `"linear" | "ease-in" | "ease-out" | "ease-in-out"` or pure progress function.
+- `keyframe(value, label?)`: apply instant partial state update.
+- `parallel(tracks, label?)`: run property tracks concurrently; each track accepts `hold`, `tween`, and `keyframe` steps.
+- `sampleAnimation(animation, time)`: evaluate state at exact millisecond.
+- `sampleAnimationFrames(animation, { fps? })`: return deterministic state/frame samples with GIF-compatible delays.
+- `renderAnimationGif(animation, options)`: stream timeline samples into GIF.
+- `renderAnimationGifWithOutput(animation, options)`: same arguments and returns physical `width` and `height`.
+- `renderAnimatedGif(scenes, options)`: legacy `AnimatedScene[]` renderer for scene cuts and pixel transitions. It also accepts a defined animation.
 - `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns physical `width` and `height`.
 - `AnimatedScene`: `element`, `duration` in ms, `transition?: "none" | "fade" | "appear"`, `transitionDuration?`, `label?`.
-- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `background?: "theme" | "transparent" | CSS color = "theme"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`. Transparent GIFs use one-bit transparency; use PNG/SVG when smooth alpha edges matter.
+- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `fps?: number`, `background?: "theme" | "transparent" | CSS color = "theme"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`. Transparent GIFs use one-bit transparency; use PNG/SVG when smooth alpha edges matter.
 
 ## Prop-aware examples
 
@@ -464,10 +475,10 @@ height = 560;
 - Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.
 - Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` to keep layout stable.
 - Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
-- Omit `x` and `y` from `GraphDiagram` nodes for automatic layered layout. Add both only when editorial composition needs manual control.
+- Omit `x` and `y` from `GraphDiagram` nodes for automatic layered layout and nested groups. Add both only when an ungrouped graph needs editorial manual control.
 - Render reusable assets in both themes with `--theme dark,light`.
 - Run `vizmatic check <frame> --theme dark,light --json` before final render and fix every error.
-- Use GIF only when motion explains state change. Keep scenes short, export `createScenes(theme)`, and keep a static `create(theme)` fallback.
+- Use GIF only when motion explains state change. Prefer `createAnimation(theme)` with `hold` and `tween`, keep timelines short, and keep static `create(theme)` fallback. Use `createScenes(theme)` only for deliberate cuts or crossfades.
 - If render fails with `Canvas overflow detected`, increase the canvas, reduce content, or remove strict sizing. Do not ignore the error.
 - Confirm generated files exist and open at least one image before finishing.
 

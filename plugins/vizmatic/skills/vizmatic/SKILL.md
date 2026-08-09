@@ -38,9 +38,9 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
    vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
    Autocrop keeps 24 source pixels around detected content. Use `--no-crop` only when the full declared canvas is part of the composition.
-8. For GIFs, export `createScenes(theme)` from a full module and render:
+8. For GIFs, prefer typed state timelines: export `createAnimation(theme)` with `defineAnimation`, `hold`, `tween`, `keyframe`, and optional `parallel` tracks. Keep `create(theme)` as static fallback. Use legacy `createScenes(theme)` only for deliberate cuts or pixel crossfades. Render:
    ```bash
-   vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --scale 1
+   vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --fps 20 --scale 1
    ```
 9. Inspect the output. Check file dimensions and visual layout. When an asset appears on a page, verify that page too. Fix clipping, overlap, low contrast, and uneven spacing before finishing.
 
@@ -61,7 +61,7 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
 
 ## Common requests
 
-- "Create an architecture diagram for this service" -> write a flow, graph, or layered network frame and render PNGs.
+- "Create an architecture diagram for this service" -> use `GraphDiagram` groups, technical icons, and labeled relationship kinds, then render PNGs.
 - "Turn this eval data into a figure" -> use metric cards plus bar or line charts.
-- "Make this pipeline animated" -> create `createScenes(theme)` and render GIFs.
+- "Make this pipeline animated" -> define numeric state transitions with `createAnimation(theme)` and render GIFs.
 - "Add a docs visual" -> put output under the repo's docs/public asset path and verify the page if present.

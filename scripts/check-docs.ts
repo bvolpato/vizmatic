@@ -19,6 +19,28 @@ const claudePluginPath = join(root, 'plugins', 'vizmatic', '.claude-plugin', 'pl
 const codexMarketplacePath = join(root, '.agents', 'plugins', 'marketplace.json')
 const claudeMarketplacePath = join(root, '.claude-plugin', 'marketplace.json')
 const galleryAssetUrl = 'https://bvolpato.github.io/vizmatic/assets/examples'
+const ncclGalleryAssets = [
+    {
+        name: 'nccl-broadcast',
+        alt: 'Animated NCCL Broadcast: root rank sends one buffer to every rank',
+    },
+    {
+        name: 'nccl-all-reduce',
+        alt: 'Animated NCCL AllReduce: every rank reduces values and receives the sum',
+    },
+    {
+        name: 'nccl-all-gather',
+        alt: 'Animated NCCL AllGather: every rank receives concatenated tensors',
+    },
+    {
+        name: 'nccl-reduce-scatter',
+        alt: 'Animated NCCL ReduceScatter: each rank receives one reduced chunk',
+    },
+    {
+        name: 'nccl-all-to-all',
+        alt: 'Animated NCCL AllToAll: every rank exchanges one chunk with every rank',
+    },
+] as const
 
 async function listFiles(dir: string): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true })
@@ -152,6 +174,19 @@ if (packageFiles.includes('docs/assets')) {
 if (!html.includes('assets/examples/animated-pipeline_dark.gif')) {
     fail('website must retain rendered gallery assets')
 }
+if (!templateHtml.includes('data-animated') || !templateHtml.includes('prefers-reduced-motion: reduce') || !templateHtml.includes('resolvedImageSrc')) {
+    fail('animated gallery assets must provide reduced-motion PNG fallbacks')
+}
+for (const asset of ncclGalleryAssets) {
+    const gifRef = `assets/examples/${asset.name}_dark.gif`
+    const cardMarker = `data-theme-image data-animated src="${gifRef}" alt="${asset.alt}"`
+    if (!templateHtml.includes(cardMarker)) {
+        fail(`homepage template missing animated NCCL card: ${asset.name}`)
+    }
+    if (!html.includes(cardMarker)) {
+        fail(`generated homepage missing animated NCCL card: ${asset.name}`)
+    }
+}
 
 const ofl = await readFile(join(root, 'assets', 'licenses', 'OFL-1.1.txt'), 'utf8')
 const twemojiLicense = await readFile(join(root, 'assets', 'licenses', 'twemoji-svg-MIT.txt'), 'utf8')
@@ -258,6 +293,7 @@ if (html.includes('Fallback before npm publish')) {
 
 const titleWords: Record<string, string> = {
     gif: 'GIF',
+    nccl: 'NCCL',
     rag: 'RAG',
 }
 

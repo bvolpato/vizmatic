@@ -12,7 +12,7 @@ import {
     getToneGradient,
 } from '../theme'
 
-import { clamp, compactChildren, formatMathText, textFitStyle, ToneStrip } from './layout'
+import { clamp, compactChildren, formatMathText, Icon, textFitStyle, ToneStrip, type IconName } from './layout'
 import { Arrow, ArrowMarkerDef, Box } from './svg'
 import { renderMaybeMath } from './surfaces'
 
@@ -266,15 +266,54 @@ export function LayeredNetwork({
 
 export interface GraphDiagramNode {
     id: string
-    label: string
-    detail?: string
+    label: React.ReactNode
+    detail?: React.ReactNode
     x?: number
     y?: number
     tone?: ToneName
     muted?: boolean
     width?: number
     height?: number
+    group?: string
+    icon?: IconName | DiagramIconDefinition | React.ReactElement
+    iconSize?: number
 }
+
+export interface DiagramIconRenderProps {
+    c: ThemeColors
+    color: string
+    size: number
+    label?: string
+}
+
+export interface DiagramIconDefinition {
+    readonly id: string
+    readonly render: (props: DiagramIconRenderProps) => React.ReactElement
+}
+
+export function defineDiagramIcon(
+    id: string,
+    render: DiagramIconDefinition['render'],
+): DiagramIconDefinition {
+    return { id, render }
+}
+
+export function defineIconRegistry<const T extends Record<string, DiagramIconDefinition>>(icons: T): T {
+    return icons
+}
+
+export interface GraphDiagramGroup {
+    id: string
+    label: React.ReactNode
+    detail?: React.ReactNode
+    parent?: string
+    tone?: ToneName
+    muted?: boolean
+}
+
+export type GraphDiagramEdgeKind = 'sync' | 'async' | 'event' | 'data' | 'dependency' | 'association'
+export type GraphDiagramEdgeStyle = 'solid' | 'dashed' | 'dotted'
+export type GraphDiagramEdgeArrow = 'forward' | 'backward' | 'both' | 'none'
 
 export interface GraphDiagramEdge {
     from: string
@@ -283,11 +322,15 @@ export interface GraphDiagramEdge {
     muted?: boolean
     dashed?: boolean
     label?: string
+    kind?: GraphDiagramEdgeKind
+    style?: GraphDiagramEdgeStyle
+    arrow?: GraphDiagramEdgeArrow
 }
 
 export interface GraphDiagramProps {
     nodes: GraphDiagramNode[]
     edges: GraphDiagramEdge[]
+    groups?: GraphDiagramGroup[]
     c: ThemeColors
     width?: number
     height?: number
@@ -303,6 +346,8 @@ export interface GraphDiagramProps {
     rankGap?: number
     edgeGap?: number
     sizing?: 'content' | 'fixed'
+    iconSize?: number
+    ariaLabel?: string
 }
 
 type PositionedGraphNode = GraphDiagramNode & {
@@ -319,6 +364,14 @@ type PositionedGraphEdge = GraphDiagramEdge & {
     points: Point[]
     labelX: number
     labelY: number
+}
+
+type PositionedGraphGroup = GraphDiagramGroup & {
+    width: number
+    height: number
+    cx: number
+    cy: number
+    depth: number
 }
 
 function manualGraphLayout(
@@ -403,6 +456,7 @@ function rectanglesOverlap(left: Rectangle, right: Rectangle, padding = 0): bool
 function connectorLabelCollisions(
     edges: PositionedGraphEdge[],
     nodes: Map<string, PositionedGraphNode>,
+    groups: PositionedGraphGroup[] = [],
 ): number {
     const labels = edges.flatMap((edge) => edge.label ? [{
         bounds: {
@@ -426,6 +480,15 @@ function connectorLabelCollisions(
                 bottom: node.cy + node.height / 2,
             }
             if (rectanglesOverlap(labels[index].bounds, bounds)) collisions += 1
+        }
+        for (const group of groups) {
+            const headerBounds = {
+                left: group.cx - group.width / 2,
+                right: group.cx + group.width / 2,
+                top: group.cy - group.height / 2,
+                bottom: group.cy - group.height / 2 + 26,
+            }
+            if (rectanglesOverlap(labels[index].bounds, headerBounds)) collisions += 1
         }
     }
 
@@ -460,9 +523,91 @@ function estimatedEdgeLabelWidth(label: string): number {
     return Math.max(28, Math.ceil(units * 6 + 14))
 }
 
+function validateGraphDiagramSpec(
+    nodes: GraphDiagramNode[],
+    edges: GraphDiagramEdge[],
+    groups: GraphDiagramGroup[],
+    layoutMode: 'auto' | 'manual',
+): void {
+    const nodeIds = new Set<string>()
+    for (const node of nodes) {
+        if (nodeIds.has(node.id)) throw new Error(`GraphDiagram received duplicate node id "${node.id}".`)
+        nodeIds.add(node.id)
+    }
+
+    const groupsById = new Map<string, GraphDiagramGroup>()
+    for (const group of groups) {
+        if (nodeIds.has(group.id) || groupsById.has(group.id)) {
+            throw new Error(`GraphDiagram node and group ids must be unique; received duplicate id "${group.id}".`)
+        }
+        groupsById.set(group.id, group)
+    }
+
+    for (const group of groups) {
+        if (group.parent != null && !groupsById.has(group.parent)) {
+            throw new Error(`GraphDiagram group "${group.id}" references missing parent group "${group.parent}".`)
+        }
+        const visited = new Set<string>([group.id])
+        let parent = group.parent
+        while (parent != null) {
+            if (visited.has(parent)) throw new Error(`GraphDiagram groups contain a parent cycle at "${parent}".`)
+            visited.add(parent)
+            parent = groupsById.get(parent)?.parent
+        }
+    }
+
+    const occupiedGroups = new Set<string>()
+    for (const node of nodes) {
+        if (node.group != null && !groupsById.has(node.group)) {
+            throw new Error(`GraphDiagram node "${node.id}" references missing group "${node.group}".`)
+        }
+        let groupId = node.group
+        while (groupId != null) {
+            occupiedGroups.add(groupId)
+            groupId = groupsById.get(groupId)?.parent
+        }
+    }
+    for (const group of groups) {
+        if (!occupiedGroups.has(group.id)) throw new Error(`GraphDiagram group "${group.id}" contains no nodes.`)
+    }
+
+    for (const edge of edges) {
+        if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+            throw new Error(`GraphDiagram edge "${edge.from}" -> "${edge.to}" references a missing node.`)
+        }
+    }
+
+    if (groups.length > 0 && layoutMode === 'manual') {
+        throw new Error('GraphDiagram groups require automatic layout; omit node coordinates and layout="manual".')
+    }
+}
+
+function graphGroupDepth(group: GraphDiagramGroup, groupsById: Map<string, GraphDiagramGroup>): number {
+    let depth = 0
+    let parent = group.parent
+    while (parent != null) {
+        depth += 1
+        parent = groupsById.get(parent)?.parent
+    }
+    return depth
+}
+
+function resolvedGraphEdgeStyle(edge: GraphDiagramEdge): GraphDiagramEdgeStyle {
+    if (edge.style) return edge.style
+    if (edge.dashed) return 'dashed'
+    if (edge.kind === 'async' || edge.kind === 'dependency') return 'dashed'
+    if (edge.kind === 'event') return 'dotted'
+    return 'solid'
+}
+
+function resolvedGraphEdgeArrow(edge: GraphDiagramEdge): GraphDiagramEdgeArrow {
+    return edge.arrow ?? (edge.kind === 'association' ? 'none' : 'forward')
+}
+
 export function GraphDiagram({
     nodes,
     edges,
+    groups = [],
     c,
     width,
     height,
@@ -478,6 +623,8 @@ export function GraphDiagram({
     rankGap = 64,
     edgeGap = 14,
     sizing = 'content',
+    iconSize = 20,
+    ariaLabel,
 }: GraphDiagramProps): React.ReactElement {
     const fullyPositioned = nodes.filter((node) => node.x != null && node.y != null).length
     const partiallyPositioned = nodes.some((node) => (node.x == null) !== (node.y == null))
@@ -488,27 +635,34 @@ export function GraphDiagram({
     if (layoutMode === 'manual' && fullyPositioned !== nodes.length) {
         throw new Error('GraphDiagram layout="manual" requires x and y on every node.')
     }
+    validateGraphDiagramSpec(nodes, edges, groups, layoutMode)
     let resolvedWidth = width ?? 520
     let resolvedHeight = height ?? 420
     let layout: Map<string, PositionedGraphNode>
+    let groupLayout: PositionedGraphGroup[] = []
     let autoEdgePoints = new Map<number, { points: Point[]; labelX: number; labelY: number }>()
 
     if (layoutMode === 'auto') {
-        const nodeIds = new Set<string>()
-        for (const node of nodes) {
-            if (nodeIds.has(node.id)) throw new Error(`GraphDiagram auto layout received duplicate node id "${node.id}".`)
-            nodeIds.add(node.id)
-        }
-        for (const edge of edges) {
-            if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
-                throw new Error(`GraphDiagram auto layout edge "${edge.from}" -> "${edge.to}" references a missing node.`)
-            }
-        }
-        const graph = new dagre.graphlib.Graph({ multigraph: true })
-            .setGraph({ rankdir: direction, nodesep: nodeGap, ranksep: rankGap, edgesep: edgeGap, marginx: padding, marginy: padding })
+        const compoundGap = groups.length > 0 ? 34 : 0
+        const graph = new dagre.graphlib.Graph({ multigraph: true, compound: groups.length > 0 })
+            .setGraph({
+                rankdir: direction,
+                nodesep: Math.max(nodeGap, compoundGap),
+                ranksep: Math.max(rankGap, compoundGap),
+                edgesep: edgeGap,
+                marginx: padding,
+                marginy: padding,
+            })
             .setDefaultEdgeLabel(() => ({}))
+        for (const group of groups) graph.setNode(group.id, { width: 0, height: 0 })
         for (const node of nodes) {
             graph.setNode(node.id, { width: node.width ?? nodeWidth, height: node.height ?? nodeHeight })
+        }
+        for (const group of groups) {
+            if (group.parent != null) graph.setParent(group.id, group.parent)
+        }
+        for (const node of nodes) {
+            if (node.group != null) graph.setParent(node.id, node.group)
         }
         edges.forEach((edge, index) => {
             const labelWidth = edge.label ? estimatedEdgeLabelWidth(edge.label) : 0
@@ -533,6 +687,18 @@ export function GraphDiagram({
                 cy: (position?.y ?? resolvedHeight / 2) + offsetY,
             }]
         }))
+        const groupsById = new Map(groups.map((group) => [group.id, group]))
+        groupLayout = groups.map((group) => {
+            const position = graph.node(group.id)
+            return {
+                ...group,
+                width: position?.width ?? 0,
+                height: position?.height ?? 0,
+                cx: (position?.x ?? resolvedWidth / 2) + offsetX,
+                cy: (position?.y ?? resolvedHeight / 2) + offsetY,
+                depth: graphGroupDepth(group, groupsById),
+            }
+        }).sort((left, right) => left.depth - right.depth)
         autoEdgePoints = new Map(edges.map((edge, index) => {
             const placed = graph.edge({ v: edge.from, w: edge.to, name: `edge-${index}` })
             const points = (placed?.points ?? []).map((point: Point) => ({ x: point.x + offsetX, y: point.y + offsetY }))
@@ -602,12 +768,64 @@ export function GraphDiagram({
     })
 
     const crossings = connectorCrossings(edgeLayouts)
-    const labelCollisions = connectorLabelCollisions(edgeLayouts, layout)
+    const labelCollisions = connectorLabelCollisions(edgeLayouts, layout, groupLayout)
     const crowdedEndpoints = crowdedConnectorEndpoints(edgeLayouts)
     const parallelGroups = parallelConnectorGroups(edgeLayouts)
 
+    const groupElements = groupLayout.map((group) => {
+        const accent = group.muted ? c.textMuted : getToneColor(group.tone ?? 'blue', c)
+        return React.createElement('div', {
+            key: `graph-group-${group.id}`,
+            'data-vizmatic-graph-group': group.id,
+            style: {
+                position: 'absolute' as const,
+                left: group.cx - group.width / 2,
+                top: group.cy - group.height / 2,
+                width: group.width,
+                height: group.height,
+                display: 'flex',
+                boxSizing: 'border-box' as const,
+                borderRadius: c.preset === 'engineering' ? 6 : 12,
+                border: `${c.preset === 'engineering' ? 1.25 : 1.5}px ${group.muted ? 'dashed' : 'solid'} ${accent}${group.muted ? '55' : '77'}`,
+                backgroundColor: `${accent}${c.preset === 'engineering' ? '08' : '0d'}`,
+                opacity: group.muted ? 0.68 : 1,
+            },
+        }, React.createElement('div', {
+            style: {
+                position: 'absolute' as const,
+                left: 10,
+                top: 5,
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 7,
+                width: Math.max(0, group.width - 20),
+                overflow: 'hidden',
+                color: group.muted ? c.textMuted : getReadableToneColor(group.tone ?? 'blue', c),
+                fontFamily: c.fontSans,
+                lineHeight: 1,
+                whiteSpace: 'nowrap' as const,
+            },
+        },
+            React.createElement('div', {
+                style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: 800 },
+            }, group.label),
+            group.detail && React.createElement('div', {
+                style: {
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    color: c.textMuted,
+                    fontFamily: c.fontMono,
+                    fontSize: 11,
+                    fontWeight: 500,
+                },
+            }, group.detail),
+        ))
+    })
+
     return React.createElement('div', {
         role: 'img',
+        'aria-label': ariaLabel,
         'data-vizmatic-connector-crossings': crossings,
         'data-vizmatic-connector-label-collisions': labelCollisions,
         'data-vizmatic-crowded-connector-endpoints': crowdedEndpoints,
@@ -621,6 +839,7 @@ export function GraphDiagram({
             flexShrink: 0,
         }
     },
+        ...groupElements,
         React.createElement('svg', {
             width: resolvedWidth,
             height: resolvedHeight,
@@ -640,10 +859,19 @@ export function GraphDiagram({
                 fill: 'none',
                 stroke: edge.color,
                 strokeWidth: edge.muted ? 1.4 : (c.preset === 'engineering' ? 1.7 : 2.8),
-                strokeDasharray: edge.dashed ? '7 6' : undefined,
+                strokeDasharray: resolvedGraphEdgeStyle(edge) === 'dashed'
+                    ? '7 6'
+                    : resolvedGraphEdgeStyle(edge) === 'dotted'
+                        ? '2 6'
+                        : undefined,
                 strokeLinecap: 'round',
                 opacity: edge.muted ? 0.48 : 0.9,
-                markerEnd: `url(#${edge.markerId})`,
+                markerStart: resolvedGraphEdgeArrow(edge) === 'backward' || resolvedGraphEdgeArrow(edge) === 'both'
+                    ? `url(#${edge.markerId})`
+                    : undefined,
+                markerEnd: resolvedGraphEdgeArrow(edge) === 'forward' || resolvedGraphEdgeArrow(edge) === 'both'
+                    ? `url(#${edge.markerId})`
+                    : undefined,
             })),
         ),
         ...edgeLayouts.flatMap((edge) => edge.label ? [
@@ -674,6 +902,29 @@ export function GraphDiagram({
         ...Array.from(layout.values()).map((node) => {
             const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
             const accentText = node.muted ? c.textMuted : getReadableToneColor(node.tone ?? 'blue', c)
+            const resolvedIconSize = clamp(
+                node.iconSize ?? iconSize,
+                8,
+                Math.max(8, Math.min(node.width, node.height) - 16),
+            )
+            const iconLabel = typeof node.label === 'string' ? `${node.label} icon` : undefined
+            const iconElement = typeof node.icon === 'string'
+                ? Icon({ c, name: node.icon, color: accent, size: resolvedIconSize, label: iconLabel, muted: node.muted })
+                : React.isValidElement(node.icon)
+                    ? node.icon
+                    : node.icon?.render({ c, color: accent, size: resolvedIconSize, label: iconLabel })
+            const icon = iconElement && React.createElement('div', {
+                'data-vizmatic-graph-icon': node.id,
+                style: {
+                    width: resolvedIconSize,
+                    height: resolvedIconSize,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flex: `0 0 ${resolvedIconSize}px`,
+                    overflow: 'hidden',
+                },
+            }, iconElement)
             return React.createElement('div', {
                 key: `graph-node-${node.id}`,
                 style: {
@@ -683,10 +934,10 @@ export function GraphDiagram({
                     width: node.width,
                     height: node.height,
                     display: 'flex',
-                    flexDirection: 'column' as const,
+                    flexDirection: icon ? 'row' as const : 'column' as const,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: node.detail ? 5 : 0,
+                    gap: icon ? 9 : node.detail ? 5 : 0,
                     padding: '8px 10px',
                     boxSizing: 'border-box' as const,
                     borderRadius: c.preset === 'engineering' ? 5 : 10,
@@ -695,26 +946,37 @@ export function GraphDiagram({
                     ...(!node.muted && c.preset !== 'engineering' ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                     opacity: node.muted ? 0.62 : 1,
                     color: c.preset === 'engineering' ? c.textPrimary : accentText,
-                    textAlign: 'center' as const,
+                    textAlign: icon ? 'left' as const : 'center' as const,
                 }
             },
+                icon,
                 React.createElement('div', {
                     style: {
-                        fontFamily: c.fontSans,
-                        fontSize: labelFontSize,
-                        fontWeight: c.preset === 'engineering' ? 700 : 900,
-                        lineHeight: 1.15,
+                        display: 'flex',
+                        flexDirection: 'column' as const,
+                        alignItems: icon ? 'flex-start' : 'center',
+                        gap: node.detail ? 5 : 0,
+                        minWidth: 0,
                     }
-                }, node.label),
-                node.detail && React.createElement('div', {
-                    style: {
-                        color: c.textMuted,
-                        fontFamily: c.fontMono,
-                        fontSize: detailFontSize,
-                        fontWeight: c.preset === 'engineering' ? 400 : 650,
-                        lineHeight: 1.2,
-                    }
-                }, node.detail),
+                },
+                    React.createElement('div', {
+                        style: {
+                            fontFamily: c.fontSans,
+                            fontSize: labelFontSize,
+                            fontWeight: c.preset === 'engineering' ? 700 : 900,
+                            lineHeight: 1.15,
+                        }
+                    }, node.label),
+                    node.detail && React.createElement('div', {
+                        style: {
+                            color: c.textMuted,
+                            fontFamily: c.fontMono,
+                            fontSize: detailFontSize,
+                            fontWeight: c.preset === 'engineering' ? 400 : 650,
+                            lineHeight: 1.2,
+                        }
+                    }, node.detail),
+                ),
             )
         }),
     )

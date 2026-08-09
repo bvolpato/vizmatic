@@ -9,6 +9,7 @@ import { getFonts, loadAdditionalAsset } from './render'
 import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori } from './satori'
 import { getThemeColors } from './theme'
+import { sampleAnimationFrames, type DefinedAnimation } from './timeline'
 
 interface GifencApi {
     GIFEncoder: typeof gifenc.GIFEncoder
@@ -64,6 +65,7 @@ export interface AnimationOptions {
     brand?: boolean | string
     theme?: 'dark' | 'light'
     background?: RenderBackground
+    fps?: number
 }
 
 export interface AnimationOutput {
@@ -178,16 +180,10 @@ function encodeGif(frames: PixelFrame[], loop: number): Uint8Array {
     const gif = GIFEncoder()
 
     for (const frame of frames) {
-        const palette = quantize(frame.pixels, 256, { format: 'rgba4444', oneBitAlpha: true })
-        const index = applyPalette(frame.pixels, palette, 'rgba4444')
-        const transparentIndex = palette.findIndex((color) => color[3] === 0)
-        gif.writeFrame(index, firstFrame.width, firstFrame.height, {
-            palette,
-            delay: Math.max(2, Math.round(frame.delay / 10)),
-            repeat: loop,
-            transparent: transparentIndex >= 0,
-            transparentIndex,
-        })
+        if (frame.width !== firstFrame.width || frame.height !== firstFrame.height) {
+            throw new Error('All GIF frames must have matching dimensions')
+        }
+        writeGifFrame(gif, frame, loop)
     }
 
     gif.finish()
@@ -221,8 +217,14 @@ async function scenesToFrames(
         const transition = scene.transition ?? 'none'
         const transitionDuration = scene.transitionDuration ?? 400
 
-        if (index > 0 && transition !== 'none') {
-            const previous = renderedScenes[index - 1]
+        if (transition !== 'none') {
+            const previous = index > 0
+                ? renderedScenes[index - 1]
+                : {
+                    pixels: backgroundPixels(scaledWidth, scaledHeight, options.theme, options.background),
+                    width: scaledWidth,
+                    height: scaledHeight,
+                }
             const transitionFrames = Math.max(
                 MIN_TRANSITION_FRAMES,
                 Math.round((transitionDuration / 1000) * TRANSITION_FPS),
@@ -249,11 +251,15 @@ async function scenesToFrames(
     return frames
 }
 
-export async function renderAnimatedGif(
-    scenes: AnimatedScene[],
+export async function renderAnimatedGif<S extends object = object>(
+    scenes: AnimatedScene[] | DefinedAnimation<S>,
     options: AnimationOptions,
 ): Promise<void> {
-    await renderAnimatedGifWithOutput(scenes, options)
+    if (!Array.isArray(scenes)) {
+        await renderAnimationGifWithOutput(scenes, options)
+    } else {
+        await renderAnimatedGifWithOutput(scenes, options)
+    }
 }
 
 export async function renderAnimatedGifWithOutput(
@@ -273,4 +279,92 @@ export async function renderAnimatedGifWithOutput(
     const bytes = encodeGif(frames, normalized.loop)
     await writeFile(options.outputPath, bytes)
     return { width: frames[0].width, height: frames[0].height }
+}
+
+function pixelsEqual(left: Uint8Array, right: Uint8Array): boolean {
+    if (left.length !== right.length) return false
+    for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) return false
+    }
+    return true
+}
+
+function writeGifFrame(
+    gif: ReturnType<typeof GIFEncoder>,
+    frame: PixelFrame,
+    loop: number,
+): void {
+    const palette = quantize(frame.pixels, 256, { format: 'rgba4444', oneBitAlpha: true })
+    const index = applyPalette(frame.pixels, palette, 'rgba4444')
+    const transparentIndex = palette.findIndex((color) => color[3] === 0)
+    let remainingDelay = frame.delay
+
+    do {
+        const delay = Math.min(655_350, remainingDelay)
+        gif.writeFrame(index, frame.width, frame.height, {
+            palette,
+            delay: Math.max(20, delay),
+            repeat: loop,
+            transparent: transparentIndex >= 0,
+            transparentIndex,
+        })
+        remainingDelay -= delay
+    } while (remainingDelay > 0)
+}
+
+export async function renderAnimationGif<S extends object>(
+    animation: DefinedAnimation<S>,
+    options: AnimationOptions,
+): Promise<void> {
+    await renderAnimationGifWithOutput(animation, options)
+}
+
+export async function renderAnimationGifWithOutput<S extends object>(
+    animation: DefinedAnimation<S>,
+    options: AnimationOptions,
+): Promise<AnimationOutput> {
+    const normalized = {
+        ...options,
+        loop: options.loop ?? 0,
+        scale: options.scale ?? 1,
+        theme: options.theme ?? 'dark',
+        background: options.background ?? 'theme',
+    }
+    const frames = sampleAnimationFrames(animation, { fps: options.fps })
+    const gif = GIFEncoder()
+    let pending: PixelFrame | undefined
+    let dimensions: Pick<PixelFrame, 'width' | 'height'> | undefined
+
+    for (const sampled of frames) {
+        const rawElement = animation.render(sampled.state, sampled.frame)
+        const watermark = normalized.watermark ?? normalized.brand
+        const element = watermark
+            ? wrapWithWatermark(rawElement, normalized.width, normalized.height, normalized.theme, watermark)
+            : rawElement
+        const rendered = await renderToPixels(
+            element,
+            normalized.width,
+            normalized.height,
+            normalized.scale,
+            normalized.background,
+        )
+        dimensions ??= { width: rendered.width, height: rendered.height }
+        if (rendered.width !== dimensions.width || rendered.height !== dimensions.height) {
+            throw new Error('All GIF frames must have matching dimensions')
+        }
+
+        if (pending && pixelsEqual(pending.pixels, rendered.pixels)) {
+            pending.delay += sampled.frame.delay
+            continue
+        }
+        if (pending) writeGifFrame(gif, pending, normalized.loop)
+        pending = { ...rendered, delay: sampled.frame.delay }
+    }
+
+    if (!pending || !dimensions) throw new Error('Animated GIF requires at least one frame')
+    writeGifFrame(gif, pending, normalized.loop)
+    gif.finish()
+    await mkdir(dirname(options.outputPath), { recursive: true })
+    await writeFile(options.outputPath, gif.bytes())
+    return dimensions
 }

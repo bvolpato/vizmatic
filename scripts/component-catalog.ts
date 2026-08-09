@@ -75,11 +75,11 @@ export const componentCatalog: ComponentCatalogCategory[] = [
     {
         id: 'diagrams',
         label: 'Diagrams',
-        description: 'Networks, directed graphs, and hierarchies.',
+        description: 'Networks, system architecture, directed graphs, and hierarchies.',
         source: 'catalog-diagrams',
         components: [
             { name: 'LayeredNetwork', description: 'Layered neural network or staged DAG.' },
-            { name: 'GraphDiagram', description: 'Auto-laid or manually positioned node-edge graph.' },
+            { name: 'GraphDiagram', description: 'Auto-laid architecture graph with nested groups, icons, and semantic edges.' },
             { name: 'TreeDiagram', description: 'Auto-laid hierarchy, taxonomy, or decision tree.' },
         ],
     },
@@ -138,6 +138,8 @@ export const componentCatalog: ComponentCatalogCategory[] = [
 
 export const catalogUtilities = [
     'createPlotArea',
+    'defineDiagramIcon',
+    'defineIconRegistry',
     'defineIllustration',
     'formatMathText',
     'getToneColor',
