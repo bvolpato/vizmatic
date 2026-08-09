@@ -208,6 +208,44 @@ function gifFrameDelays(buffer: Buffer): number[] {
     return delays
 }
 
+function gifLocalPaletteFlags(buffer: Buffer): boolean[] {
+    expect(buffer.subarray(0, 6).toString('ascii')).toMatch(/^GIF8[79]a$/)
+    const globalPaletteSize = (buffer[10] & 0x80) === 0
+        ? 0
+        : 3 * (1 << ((buffer[10] & 0x07) + 1))
+    let offset = 13 + globalPaletteSize
+    const flags: boolean[] = []
+
+    const skipSubBlocks = () => {
+        while (offset < buffer.length) {
+            const length = buffer[offset++]
+            if (length === 0) return
+            offset += length
+        }
+    }
+
+    while (offset < buffer.length) {
+        const marker = buffer[offset++]
+        if (marker === 0x3b) break
+        if (marker === 0x21) {
+            offset += 1
+            skipSubBlocks()
+            continue
+        }
+        if (marker !== 0x2c) throw new Error(`unsupported GIF marker 0x${marker.toString(16)}`)
+
+        const packed = buffer[offset + 8]
+        const hasLocalPalette = (packed & 0x80) !== 0
+        flags.push(hasLocalPalette)
+        offset += 9
+        if (hasLocalPalette) offset += 3 * (1 << ((packed & 0x07) + 1))
+        offset += 1
+        skipSubBlocks()
+    }
+
+    return flags
+}
+
 function pixelBounds(
     image: { width: number; height: number; pixels: Uint8Array },
     matches: (r: number, g: number, b: number, a: number) => boolean,
@@ -1211,8 +1249,36 @@ renderToBuffer(frame.create('dark'), 720, 420)
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
             expect(buffer.length).toBeGreaterThan(5_000)
             const delays = gifFrameDelays(buffer)
-            expect(delays).toHaveLength(14)
-            expect(delays.reduce((total, delay) => total + delay, 0)).toBeGreaterThanOrEqual(1_000)
+            expect(delays).toHaveLength(18)
+            expect(delays.reduce((total, delay) => total + delay, 0)).toBe(1_080)
+            expect(gifLocalPaletteFlags(buffer)).toEqual(Array.from({ length: 18 }, () => false))
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('uses the requested frame rate for scene transitions', async () => {
+        const c = getThemeColors('dark')
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-scene-fps-'))
+        const outputPath = join(outDir, 'frame.gif')
+
+        try {
+            await renderAnimatedGif([{
+                element: <Scene c={c}><StepCard c={c} title="Frame" tone="blue" /></Scene>,
+                duration: 200,
+                transition: 'appear',
+                transitionDuration: 1_000,
+            }], {
+                width: 320,
+                height: 200,
+                outputPath,
+                theme: 'dark',
+                fps: 10,
+            })
+
+            const delays = gifFrameDelays(await readFile(outputPath))
+            expect(delays).toHaveLength(11)
+            expect(delays.reduce((total, delay) => total + delay, 0)).toBe(1_200)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
@@ -1246,6 +1312,7 @@ renderToBuffer(frame.create('dark'), 720, 420)
             const buffer = await readFile(outputPath)
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
             expect(gifFrameDelays(buffer).reduce((total, delay) => total + delay, 0)).toBe(300)
+            expect(gifLocalPaletteFlags(buffer).every((flag) => !flag)).toBe(true)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
@@ -1280,6 +1347,33 @@ renderToBuffer(frame.create('dark'), 720, 420)
             const transparencyFlags = gifTransparencyFlags(buffer)
             expect(transparencyFlags.length).toBeGreaterThan(2)
             expect(transparencyFlags.every(Boolean)).toBe(true)
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('rasterizes requested timeline backgrounds as opaque full frames', async () => {
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-opaque-timeline-gif-'))
+        const outputPath = join(outDir, 'timeline.gif')
+        const animation = defineAnimation({
+            initial: { x: 0 },
+            timeline: [tween({ x: 40 }, { duration: 200 })],
+            fps: 10,
+            render: (state) => (
+                <div style={{ display: 'flex', width: 20, height: 20, marginLeft: state.x, background: '#ff0000' }} />
+            ),
+        })
+
+        try {
+            await renderAnimationGif(animation, {
+                width: 120,
+                height: 80,
+                outputPath,
+                theme: 'light',
+                background: 'theme',
+            })
+
+            expect(gifTransparencyFlags(await readFile(outputPath)).every((flag) => !flag)).toBe(true)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }

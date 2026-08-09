@@ -79,7 +79,7 @@ export function createScenes(theme: ThemeMode): AnimatedScene[] {
         element: buildFrame(theme, index),
         duration: index === stages.length - 1 ? 1100 : 760,
         transition: index === 0 ? 'appear' : 'fade',
-        transitionDuration: 420,
+        transitionDuration: 400,
         label: stages[index].title,
     }))
 }

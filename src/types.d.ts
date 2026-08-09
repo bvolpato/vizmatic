@@ -6,7 +6,7 @@ declare module 'gifenc' {
     interface GifencModule {
         GIFEncoder(): {
             writeFrame(index: Uint8Array, width: number, height: number, options: {
-                palette: number[][]
+                palette?: number[][]
                 delay: number
                 repeat: number
                 transparent?: boolean
@@ -22,7 +22,7 @@ declare module 'gifenc' {
     export default gifenc
     export function GIFEncoder(): {
         writeFrame(index: Uint8Array, width: number, height: number, options: {
-            palette: number[][]
+            palette?: number[][]
             delay: number
             repeat: number
             transparent?: boolean

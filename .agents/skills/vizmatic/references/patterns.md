@@ -62,7 +62,7 @@ export default create("dark")
 
 ## Animated timeline
 
-Use a typed timeline when motion should interpolate values instead of crossfading hand-authored frames. Timeline steps run sequentially; properties in one `tween` move together. `parallel` supports staggered property tracks. Keep `create(theme)` as static fallback.
+Use a typed timeline when motion should interpolate values instead of crossfading hand-authored frames. Timeline steps run sequentially; properties in one `tween` move together. `parallel` supports staggered property tracks. Keep nodes and labels fixed, move semantic objects, and let Vizmatic rasterize interpolated positions without coarse snapping. Prefer 10, 20, 25, or 50 FPS and align durations to each frame interval. Keep `create(theme)` as static fallback.
 
 ```tsx
 import React from "react"

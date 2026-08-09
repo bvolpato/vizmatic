@@ -400,11 +400,11 @@ export function sampleAnimationFrames<S extends object>(
 ): readonly SampledAnimationFrame<S>[] {
     const fps = options.fps ?? animation.fps
     assertFps(fps)
-    const count = Math.max(1, Math.floor((animation.duration / 1000) * fps))
+    const count = Math.max(2, Math.floor((animation.duration / 1000) * fps))
     const delays = frameDelays(animation.duration, count)
 
     return delays.map((delay, index) => {
-        const time = animation.duration * ((index + 1) / count)
+        const time = animation.duration * (index / (count - 1))
         const evaluated = evaluateAnimation(animation, time)
         return {
             state: evaluated.state,

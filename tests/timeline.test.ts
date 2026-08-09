@@ -61,6 +61,8 @@ describe('animation timeline', () => {
         expect(first).toHaveLength(8)
         expect(first.reduce((total, item) => total + item.frame.delay, 0)).toBe(430)
         expect(first.every((item) => item.frame.delay >= 20)).toBe(true)
+        expect(first[0]?.state).toEqual({ progress: 0 })
+        expect(first[0]?.frame.progress).toBe(0)
         expect(first.at(-1)?.state).toEqual({ progress: 1 })
         expect(first.at(-1)?.frame.progress).toBe(1)
     })

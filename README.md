@@ -443,7 +443,7 @@ export const watermark = (
 )
 ```
 
-Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples absolute time deterministically and includes exact terminal state. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
+Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples absolute time deterministically and includes exact initial and terminal states. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
 
 ```tsx
 import { defineAnimation, hold, keyframe, tween } from "vizmatic"
@@ -475,7 +475,7 @@ await renderAnimationGif(createAnimation("dark"), {
 })
 ```
 
-`createScenes(theme)` and `renderAnimatedGif(AnimatedScene[])` remain supported for intentional scene cuts and pixel crossfades. GIF output uses centisecond timing, at most 256 colors per frame, and one-bit transparency. Use PNG/SVG for smooth alpha edges.
+`createScenes(theme)` and `renderAnimatedGif(AnimatedScene[])` remain supported for intentional scene cuts and pixel crossfades. `fps` controls their transition sampling as well as typed timelines. GIF output uses one shared 256-color palette, centisecond timing, and one-bit transparency. Prefer 10, 20, 25, or 50 FPS and align tween or transition durations to frame intervals, such as multiples of 50 ms at 20 FPS. Other timings alternate centisecond delays to preserve total duration. Use PNG/SVG for smooth alpha edges.
 
 ## Development
 

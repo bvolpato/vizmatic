@@ -38,7 +38,7 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
    vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
    Autocrop keeps 24 source pixels around detected content. Use `--no-crop` only when the full declared canvas is part of the composition.
-8. For GIFs, prefer typed state timelines: export `createAnimation(theme)` with `defineAnimation`, `hold`, `tween`, `keyframe`, and optional `parallel` tracks. Keep `create(theme)` as static fallback. Use legacy `createScenes(theme)` only for deliberate cuts or pixel crossfades. Render:
+8. For GIFs, prefer typed state timelines: export `createAnimation(theme)` with `defineAnimation`, `hold`, `tween`, `keyframe`, and optional `parallel` tracks. Keep nodes and text fixed; move semantic objects without coarse position snapping. Prefer 10, 20, 25, or 50 FPS and align durations to frame intervals, such as multiples of 50 ms at 20 FPS. Keep `create(theme)` as static fallback. Use legacy `createScenes(theme)` only for deliberate cuts or pixel crossfades. Render:
    ```bash
    vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --fps 20 --scale 1
    ```
