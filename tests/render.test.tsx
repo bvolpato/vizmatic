@@ -562,7 +562,19 @@ describe('vizmatic render pipeline', () => {
             ],
         })
         const logCircles = collectElements(logChart, (element) => element.type === 'circle')
+        const logTickLabels = collectElements(logChart, (element) =>
+            element.type === 'div' && String(element.key).startsWith('pareto-x-tick-'),
+        )
         expect(logCircles).toHaveLength(2)
+        expect(logTickLabels).toHaveLength(5)
+        expect(reactProps(logTickLabels[0]).style).toMatchObject({
+            justifyContent: 'flex-start',
+            transform: 'translate(0, -50%)',
+        })
+        expect(reactProps(logTickLabels.at(-1)!).style).toMatchObject({
+            justifyContent: 'flex-end',
+            transform: 'translate(-100%, -50%)',
+        })
         for (const circle of logCircles) {
             expect(Number.isFinite(Number(reactProps(circle).cx))).toBe(true)
             expect(Number.isFinite(Number(reactProps(circle).cy))).toBe(true)

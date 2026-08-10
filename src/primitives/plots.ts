@@ -21,6 +21,12 @@ import {
     yInPlot,
 } from './charts'
 
+function xTickLabelAlign(index: number, count: number): 'left' | 'center' | 'right' {
+    if (index === 0) return 'left'
+    if (index === count - 1) return 'right'
+    return 'center'
+}
+
 export interface ScatterPoint {
     x: number
     y: number
@@ -126,9 +132,12 @@ export function ScatterPlot({
                     })
                 ),
             ),
-            ...xTicks.map((tick) => {
+            ...xTicks.map((tick, index) => {
                 const x = xInPlot(tick, xDomain, plot)
-                return chartLabel(`x-tick-label-${tick}`, formatChartValue(tick, formatX), x, plot.bottom + 18, c, { width: 44 })
+                return chartLabel(`x-tick-label-${tick}`, formatChartValue(tick, formatX), x, plot.bottom + 18, c, {
+                    align: xTickLabelAlign(index, xTicks.length),
+                    width: 44,
+                })
             }),
             ...yTicks.map((tick) => {
                 const y = yInPlot(tick, yDomain, plot)
@@ -409,9 +418,12 @@ export function ParetoChart({
                         strokeWidth: isFrontier ? 3 : 2,
                     })),
             ),
-            ...xTicks.map((tick) => {
+            ...xTicks.map((tick, index) => {
                 const x = pointFor(tick, yDomain.min).x
-                return chartLabel(`pareto-x-tick-${tick}`, formatChartValue(tick, formatX), x, plot.bottom + 18, c, { width: 52 })
+                return chartLabel(`pareto-x-tick-${tick}`, formatChartValue(tick, formatX), x, plot.bottom + 18, c, {
+                    align: xTickLabelAlign(index, xTicks.length),
+                    width: 52,
+                })
             }),
             ...yTicks.map((tick) => {
                 const y = yInPlot(tick, yDomain, plot)
@@ -669,9 +681,12 @@ export function QuadrantChart({
                     })] : []),
                 ]
             }),
-            ...(showTicks ? xTicks : []).map((tick) => {
+            ...(showTicks ? xTicks : []).map((tick, index) => {
                 const x = xInPlot(tick, xDomain, plot)
-                return chartLabel(`quadrant-x-tick-label-${tick}`, formatChartValue(tick, formatX), x, plot.bottom + 18, c, { width: 54 })
+                return chartLabel(`quadrant-x-tick-label-${tick}`, formatChartValue(tick, formatX), x, plot.bottom + 18, c, {
+                    align: xTickLabelAlign(index, xTicks.length),
+                    width: 54,
+                })
             }),
             ...(showTicks ? yTicks : []).map((tick) => {
                 const y = yInPlot(tick, yDomain, plot)
@@ -784,9 +799,12 @@ export function IntervalPlot({
                     React.createElement('circle', { key: `${item.label}-mid-${index}`, cx: midX, cy: y, r: 10, fill: c.bgCard, stroke: color, strokeWidth: 4 }),
                 ]),
             ),
-            ...ticks.map((tick) => {
+            ...ticks.map((tick, index) => {
                 const x = scaleX(tick)
-                return chartLabel(`interval-tick-label-${tick}`, formatChartValue(tick, format), x, height - margin.bottom + 17, c, { width: 48 })
+                return chartLabel(`interval-tick-label-${tick}`, formatChartValue(tick, format), x, height - margin.bottom + 17, c, {
+                    align: xTickLabelAlign(index, ticks.length),
+                    width: 48,
+                })
             }),
             axisLabel && chartLabel('interval-axis-label', axisLabel, plot.x + plot.innerWidth / 2, height - 8, c, {
                 width: plot.innerWidth,
