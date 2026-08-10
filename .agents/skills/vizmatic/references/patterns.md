@@ -7,6 +7,8 @@
 - Dashboard or report figure: `MetricCard`, `DonutChart`, `BarChart`, `LineChart`, `DataTable`, and `ProgressList`.
 - Architecture layers and deployment boundaries: nested `GraphDiagram` groups. Use `LayeredNetwork` only for dense repeated layers.
 - Model internals: `Matrix`, `Heatmap`, `TiledMatrix`, `AxisPlot`, and `ScatterPlot`.
+- Competing objectives: `ParetoChart` for automatic non-dominated frontiers; use a log x-axis when costs span orders of magnitude.
+- Decision regions: `QuadrantChart` with raw numeric domains, policy thresholds, visible ticks, and `emphasis: true` on the desired region.
 - Timeline or schedule: `Timeline`, `IntervalPlot`, `ProgressRow`, `StatusRow`, and `BadgePill`.
 - Hierarchy or ownership: `TreeDiagram` for parent/child structure; use `GraphDiagram` when edges are non-hierarchical.
 - Small visual anchors: `Icon` inside cards, callouts, compact rows, and presentation frames.

@@ -90,6 +90,14 @@
     ]
   },
   {
+    "name": "desired-quadrant",
+    "source": "examples/desired-quadrant.tsx",
+    "outputs": [
+      "desired-quadrant_dark.png",
+      "desired-quadrant_light.png"
+    ]
+  },
+  {
     "name": "embedding-map",
     "source": "examples/embedding-map.tsx",
     "outputs": [
@@ -169,6 +177,14 @@
       "nccl-reduce-scatter_light.png",
       "nccl-reduce-scatter_dark.gif",
       "nccl-reduce-scatter_light.gif"
+    ]
+  },
+  {
+    "name": "pareto-frontier",
+    "source": "examples/pareto-frontier.tsx",
+    "outputs": [
+      "pareto-frontier_dark.png",
+      "pareto-frontier_light.png"
     ]
   },
   {

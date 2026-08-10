@@ -842,6 +842,10 @@ h1 {
   aspect-ratio: 52 / 25;
 }
 
+.gallery-chart .media-wrap {
+  aspect-ratio: 15 / 8;
+}
+
 .media-wrap img {
   width: 100%;
   height: 100%;
@@ -1926,6 +1930,10 @@ footer > a:last-child:hover {
 
   .gallery-collective .media-wrap {
     aspect-ratio: 52 / 25;
+  }
+
+  .gallery-chart .media-wrap {
+    aspect-ratio: 15 / 8;
   }
 
   .source-button {

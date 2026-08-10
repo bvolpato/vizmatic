@@ -40,6 +40,8 @@ import {
     Matrix,
     MiniBarChart,
     Panel,
+    ParetoChart,
+    QuadrantChart,
     Row,
     renderToPngWithOutput,
     Timeline,
@@ -504,6 +506,134 @@ describe('vizmatic render pipeline', () => {
         expect(circleXs.length).toBe(10)
         expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(60)
         expect(Math.max(...circleXs)).toBeLessThanOrEqual(420)
+    })
+
+    it('detects Pareto frontier geometry and renders safe log-scale points', async () => {
+        const c = getThemeColors('light')
+        const chart = ParetoChart({
+            c,
+            width: 520,
+            height: 280,
+            points: [
+                { x: 1, y: 5, label: 'frontier-a' },
+                { x: 2, y: 4, label: 'dominated' },
+                { x: 3, y: 8, label: 'frontier-b' },
+                { x: 4, y: 3, label: 'dominated-c' },
+            ],
+        })
+        const frontierPaths = collectElements(chart, (element) =>
+            element.type === 'path' && reactProps(element)['data-pareto-frontier'] === true,
+        )
+        const circles = collectElements(chart, (element) => element.type === 'circle')
+
+        expect(frontierPaths).toHaveLength(1)
+        expect(String(reactProps(frontierPaths[0]).d)).toMatch(/^M .+ L .+/)
+        expect(circles).toHaveLength(4)
+        expect(circles.filter((circle) => reactProps(circle)['data-pareto-status'] === 'frontier')).toHaveLength(2)
+        expect(circles.filter((circle) => reactProps(circle)['data-pareto-status'] === 'dominated')).toHaveLength(2)
+        expect(circles.filter((circle) => Number(reactProps(circle).opacity) < 1)).toHaveLength(2)
+
+        const invertedChart = ParetoChart({
+            c,
+            xObjective: 'maximize',
+            yObjective: 'minimize',
+            points: [
+                { x: 1, y: 5 },
+                { x: 3, y: 4 },
+                { x: 2, y: 2 },
+            ],
+        })
+        const invertedCircles = collectElements(invertedChart, (element) => element.type === 'circle')
+        expect(invertedCircles.filter((circle) => reactProps(circle)['data-pareto-status'] === 'frontier')).toHaveLength(2)
+        expect(invertedCircles.filter((circle) => reactProps(circle)['data-pareto-status'] === 'dominated')).toHaveLength(1)
+
+        const logChart = ParetoChart({
+            c,
+            xScale: 'log',
+            xMin: 1,
+            xMax: 100,
+            width: 520,
+            height: 280,
+            points: [
+                { x: 0, y: 2, label: 'zero' },
+                { x: 10, y: 5, label: 'ten' },
+                { x: 100, y: 6, label: 'hundred' },
+                { x: -3, y: 1, label: 'negative' },
+            ],
+        })
+        const logCircles = collectElements(logChart, (element) => element.type === 'circle')
+        expect(logCircles).toHaveLength(2)
+        for (const circle of logCircles) {
+            expect(Number.isFinite(Number(reactProps(circle).cx))).toBe(true)
+            expect(Number.isFinite(Number(reactProps(circle).cy))).toBe(true)
+        }
+        await expect(renderToSvg(logChart, 520, 280)).resolves.not.toContain('NaN')
+    })
+
+    it('emphasizes selected QuadrantChart regions without overpowering others', () => {
+        const chart = QuadrantChart({
+            c: getThemeColors('light'),
+            width: 460,
+            height: 260,
+            regions: {
+                topLeft: { label: 'best', color: 'positive', emphasis: true },
+                topRight: { label: 'maybe', color: 'primary' },
+                bottomLeft: { label: 'defer', color: 'neutral' },
+                bottomRight: { label: 'avoid', color: 'warning' },
+            },
+            points: [],
+        })
+        const regions = collectElements(chart, (element) => {
+            const props = reactProps(element)
+            return element.type === 'rect' && typeof props.opacity === 'number'
+        })
+
+        expect(regions).toHaveLength(4)
+        expect(regions.filter((region) => Number(reactProps(region).opacity) === 0.2)).toHaveLength(1)
+        expect(regions.filter((region) => Number(reactProps(region).opacity) === 0.1)).toHaveLength(3)
+        const emphasized = regions.find((region) => Number(reactProps(region).opacity) === 0.2)
+        expect(reactProps(emphasized!).stroke).toBe(reactProps(emphasized!).fill)
+        expect(Number(reactProps(emphasized!).strokeWidth)).toBeGreaterThan(0)
+    })
+
+    it('maps QuadrantChart values, thresholds, and numeric axes to the configured domains', async () => {
+        const chart = QuadrantChart({
+            c: getThemeColors('light'),
+            width: 460,
+            height: 260,
+            xMin: 0,
+            xMax: 100,
+            yMin: 0,
+            yMax: 200,
+            xThreshold: 25,
+            yThreshold: 150,
+            showTicks: true,
+            formatX: (value) => `$${value}`,
+            formatY: 'integer',
+            regions: {
+                topLeft: { label: 'best', color: 'positive', emphasis: true },
+                topRight: { label: 'premium', color: 'primary' },
+                bottomLeft: { label: 'budget', color: 'neutral' },
+                bottomRight: { label: 'avoid', color: 'warning' },
+            },
+            points: [{ x: 25, y: 150, label: 'threshold' }],
+        })
+        const regions = collectElements(chart, (element) => {
+            const props = reactProps(element)
+            return element.type === 'rect' && typeof props.opacity === 'number'
+        })
+        const [point] = collectElements(chart, (element) => element.type === 'circle')
+        const labels = collectElements(chart, (element) => element.type === 'div')
+            .map((element) => String(reactProps(element).children))
+
+        expect(Number(reactProps(regions[0]).width)).toBeCloseTo(98)
+        expect(Number(reactProps(regions[1]).width)).toBeCloseTo(294)
+        expect(Number(reactProps(regions[0]).height)).toBeCloseTo(51.5)
+        expect(Number(reactProps(regions[2]).height)).toBeCloseTo(154.5)
+        expect(Number(reactProps(point).cx)).toBeCloseTo(146)
+        expect(Number(reactProps(point).cy)).toBeCloseTo(69.5)
+        expect(labels).toEqual(expect.arrayContaining(['$0', '$25', '$50', '$75', '$100', '0', '50', '100', '150', '200']))
+        await expect(renderToSvg(chart, 460, 260)).resolves.not.toContain('NaN')
     })
 
     it('keeps clamped bars and line markers inside the plot area', () => {

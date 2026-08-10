@@ -8,6 +8,7 @@ import {
     IntervalPlot,
     Legend,
     LineChart,
+    ParetoChart,
     QuadrantChart,
     Row,
     ScatterPlot,
@@ -18,7 +19,7 @@ import {
 } from 'vizmatic'
 
 export const width = 1120
-export const height = 1040
+export const height = 1280
 
 export function create(theme: ThemeMode = 'dark') {
     const c = getThemeColors(theme)
@@ -99,6 +100,27 @@ export function create(theme: ThemeMode = 'dark') {
                 </Column>
             </Row>
 
+            <ParetoChart
+                c={c}
+                title="ParetoChart"
+                subtitle="automatic non-dominated frontier for competing objectives"
+                width={1080}
+                height={210}
+                xMin={0}
+                xMax={10}
+                yMin={0}
+                yMax={10}
+                xAxisLabel="cost"
+                points={[
+                    { x: 1.2, y: 4.0, label: 'fast', color: 'info' },
+                    { x: 3.8, y: 6.8, label: 'balanced', color: 'positive' },
+                    { x: 7.0, y: 9.1, label: 'deep', color: 'primary' },
+                    { x: 8.4, y: 7.3, label: 'dominated', color: 'warning' },
+                ]}
+                frontierColor="positive"
+                goalLabel="higher quality · lower cost"
+            />
+
             <Row width="100%" gap={16} align="stretch">
                 <BarChart
                     c={c}
@@ -162,7 +184,7 @@ export function create(theme: ThemeMode = 'dark') {
                     xAxisLabel="implementation effort"
                     yAxisLabel="user value"
                     regions={{
-                        topLeft: { label: 'quick wins', detail: 'prioritize', color: 'positive' },
+                        topLeft: { label: 'quick wins', detail: 'prioritize', color: 'positive', emphasis: true },
                         topRight: { label: 'big bets', detail: 'stage work', color: 'primary' },
                         bottomLeft: { label: 'defer', detail: 'low return', color: 'neutral' },
                         bottomRight: { label: 'avoid', detail: 'high cost', color: 'warning' },

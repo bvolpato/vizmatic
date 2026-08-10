@@ -376,8 +376,11 @@ Set `x` and `y` on every node for normalized manual positioning when no groups a
 | `BarChart` | Full bar chart with ticks, labels, values, grids, and formats. |
 | `LineChart` | Multi-series line chart with optional area fill, points, labels, and grid. |
 | `ScatterPlot` | Labeled scatter plot with axes, ticks, point sizing, and collision-aware labels. |
-| `QuadrantChart` | 2x2 decision matrix with regions, labeled points, and axis labels. |
+| `ParetoChart` | Automatic non-dominated frontier for competing objectives, including log-scaled cost axes. |
+| `QuadrantChart` | 2x2 decision matrix with numeric axes, configurable thresholds, labeled points, and optional region emphasis. |
 | `IntervalPlot` | Timeline/range plot for spans, phases, latencies, and schedules. |
+
+`ParetoChart` defaults to minimizing x and maximizing y, which fits cost-versus-score comparisons. Set `xObjective` or `yObjective` for other tradeoffs. Non-positive x values are omitted on a logarithmic x-axis. `QuadrantChart` accepts raw numeric domains, threshold values, tick formats, and optional grid lines; omit them to keep normalized 0-1 coordinates and centered splits. Regions accept `emphasis: true` to give one decision region a stronger fill and border.
 
 #### Rendering and verification
 

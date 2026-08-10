@@ -63,5 +63,6 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
 
 - "Create an architecture diagram for this service" -> use `GraphDiagram` groups, technical icons, and labeled relationship kinds, then render PNGs.
 - "Turn this eval data into a figure" -> use metric cards plus bar or line charts.
+- "Compare score and cost" -> use `ParetoChart` with automatic frontier detection and a logarithmic cost axis when needed.
 - "Make this pipeline animated" -> define numeric state transitions with `createAnimation(theme)` and render GIFs.
 - "Add a docs visual" -> put output under the repo's docs/public asset path and verify the page if present.
