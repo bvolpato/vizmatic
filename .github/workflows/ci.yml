@@ -35,11 +35,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
+      # pnpm 11 requires Node 22. Install and build once, then exercise the package under each supported runtime.
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
       - run: node node_modules/vitest/vitest.mjs run
         env:
           VIZMATIC_TEST_USE_EXISTING_BUILD: "1"
