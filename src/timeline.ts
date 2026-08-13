@@ -187,10 +187,13 @@ function validateTimeline<S extends object>(timeline: readonly AnimationTimeline
         if (step.type === 'parallel') {
             const tracks = Object.entries(step.tracks)
             if (tracks.length === 0) throw new Error(`Animation parallel step ${index} requires at least one track`)
-            tracks.forEach(([name, track]) => validatePropertySteps(
-                track as readonly AnimationPropertyStep<unknown>[],
-                `Animation parallel track ${JSON.stringify(name)}`,
-            ))
+            tracks.forEach(([name, track]) => {
+                if (!track) return
+                validatePropertySteps(
+                    track as readonly AnimationPropertyStep<unknown>[],
+                    `Animation parallel track ${JSON.stringify(name)}`,
+                )
+            })
             assertDuration(parallelDuration(step), `Animation parallel step ${index}`)
         } else if (step.type !== 'keyframe') {
             assertDuration(step.duration, `Animation step ${index}`)

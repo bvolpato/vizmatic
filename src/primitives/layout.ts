@@ -864,6 +864,26 @@ interface SvgMathTextProps {
     opacity?: number
 }
 
+function svgMathTextBaselineOffset(dominantBaseline: string): string {
+    switch (dominantBaseline.toLowerCase()) {
+        case 'hanging':
+        case 'text-before-edge':
+        case 'before-edge':
+        case 'top':
+            return '0'
+        case 'text-after-edge':
+        case 'after-edge':
+        case 'bottom':
+        case 'alphabetic':
+        case 'baseline':
+        case 'ideographic':
+        case 'auto':
+            return '-100%'
+        default:
+            return '-50%'
+    }
+}
+
 export function SvgMathText({
     text,
     x,
@@ -876,26 +896,31 @@ export function SvgMathText({
     dominantBaseline = 'middle',
     opacity = 1,
 }: SvgMathTextProps): React.ReactElement {
-    return React.createElement('text', {
-        x,
-        y,
-        fill,
-        fontSize,
-        fontFamily,
-        fontWeight,
-        textAnchor,
-        dominantBaseline,
-        opacity,
-    },
-        ...parseMathText(text).map((part, index) => {
-            if (part.kind === 'text') return part.value
-            return React.createElement('tspan', {
-                key: `${part.kind}-${index}-${part.value}`,
-                baselineShift: part.kind === 'sub' ? 'sub' : 'super',
-                fontSize: Math.round(fontSize * 0.72),
-            }, part.value)
-        })
-    )
+    const anchorOffset = textAnchor === 'start' ? '0' : textAnchor === 'end' ? '-100%' : '-50%'
+    const baselineOffset = svgMathTextBaselineOffset(dominantBaseline)
+
+    // Satori does not support SVG <text> nodes nested in a raw <svg>. Keep
+    // plot geometry in SVG and render math labels as an HTML overlay in the
+    // same relative container instead. Unicode scripts share MathText's
+    // fallback-font support and avoid unsupported nested <tspan> nodes.
+    return React.createElement('div', {
+        'data-vizmatic-svg-math-text': true,
+        style: {
+            position: 'absolute' as const,
+            left: x,
+            top: y,
+            display: 'flex',
+            color: fill,
+            fontSize,
+            fontFamily,
+            fontWeight,
+            lineHeight: 1,
+            whiteSpace: 'nowrap' as const,
+            pointerEvents: 'none' as const,
+            opacity,
+            transform: `translate(${anchorOffset}, ${baselineOffset})`,
+        },
+    }, formatMathText(text))
 }
 
 export function clamp(value: number, min: number, max: number): number {

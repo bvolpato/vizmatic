@@ -19,6 +19,16 @@ Benchmarks: [Diagrams](https://diagrams.mingrammer.com/), [D2](https://d2lang.co
 
 ## Next capability batches
 
+### Near-term priorities
+
+1. Sequence diagrams, compiled into shared participants, messages, notes, and fragment semantics.
+2. Dataflow and lineage views with explicit source, transform, store, stream, and batch relationships.
+3. Deployment and network views with regions, zones, boundaries, ports, protocols, and trust direction.
+4. ML architecture views for transformer blocks, tensor shapes, collectives, and distributed topologies.
+5. Animation quality tools for loop-seam checks, frame-cadence diagnostics, animated content bounds, and smaller delta-encoded GIFs.
+
+Each specialized API should remain declarative and reusable. Examples may contain complete scenario code, but scenario-specific NCCL or model helpers should not become core presets.
+
 ### Architecture model and views
 
 - C4 person, software system, container, component, and deployment semantics.

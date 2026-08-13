@@ -234,7 +234,7 @@ export function create(theme: ThemeMode = "dark") {
 export default create("dark")
 ```
 
-Top-level timeline steps run sequentially. Properties inside one `tween` move together. Use `parallel({ x: [...], opacity: [...] })` when property tracks need different delays or durations. Default interpolation supports finite numbers; use a custom `interpolate(from, to, progress)` for colors, points, or other values. `createScenes(theme)` remains supported for deliberate scene cuts and pixel `fade`/`appear` transitions.
+Top-level timeline steps run sequentially. Properties inside one `tween` move together. Use `parallel({ x: [...], opacity: [...] })` when property tracks need different delays or durations. Default interpolation supports finite numbers; use a custom `interpolate(from, to, progress)` for colors, points, or other values. Infinite loops should finish on the same visual state where they start. Fade moving content out and reset it with a zero-duration `keyframe` while hidden instead of reversing a one-way operation. `createScenes(theme)` remains supported for deliberate scene cuts and pixel `fade`/`appear` transitions.
 
 ## Choose primitives
 
@@ -347,7 +347,7 @@ SVG and geometry helpers:
 
 - `SvgFrame`: `key?`, `x?: number = 0`, `y?: number = 0`, `width`, `height`, `c`, `rx?: number = 8`, `fill?`, `stroke?`, `strokeWidth?: number = 1`, `opacity?`.
 - `SvgPoint`: `key?`, `cx`, `cy`, `r?: number = 5`, `fill`, `stroke?`, `strokeWidth?`, `opacity?`.
-- `SvgMathText`: `text`, `x`, `y`, `fill`, `fontSize?: number = 13`, `fontFamily?: string = "JetBrains Mono"`, `fontWeight?: number = 800`, `textAnchor?: "start" | "middle" | "end" = "middle"`, `dominantBaseline?: string = "middle"`, `opacity?: number = 1`.
+- `SvgMathText`: positioned HTML overlay with `text`, `x`, `y`, `fill`, `fontSize?: number = 13`, `fontFamily?: string = "JetBrains Mono"`, `fontWeight?: number = 800`, `textAnchor?: "start" | "middle" | "end" = "middle"`, `dominantBaseline?: string = "middle"`, `opacity?: number = 1`. Place it beside, not inside, raw SVG geometry in a `position: "relative"` container.
 - `SvgFrame` pairs well with `VectorArrow`, `VectorSegment`, `SvgPoint`, `DotPoint`, `DashedLine`, and `Legend` inside custom SVG.
 - `Arrow`: `direction?: "down" | "right" | "up" | "left" = "down"`, `label?`, `length?: number = 40`, `c`, `color?`.
 - `VectorArrow`: `key?`, `x1`, `y1`, `x2`, `y2`, `color`, `strokeWidth?: number = 2`, `arrowSize?: number = 2.2`, `opacity?: number = 1`.
@@ -367,7 +367,8 @@ Theme and render APIs:
 - `getReadableTextColor(background, c)`: parses solid or alpha CSS colors and chooses a theme foreground meeting 4.5:1 contrast when possible.
 - `createPlotArea(width, height, margin)`: returns `PlotArea` geometry with inner width and height clamped to at least one pixel.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
-- `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height` and physical `pixelWidth` / `pixelHeight`.
+- `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height`, physical `pixelWidth` / `pixelHeight`, and painted `contentBounds`.
+- `CanvasOverflowError`: typed clipping failure from strict renders. Exposes `width`, `height`, and `overflow`, including affected edges and suggested growth.
 - `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
@@ -479,7 +480,7 @@ height = 560;
 - Omit `x` and `y` from `GraphDiagram` nodes for automatic layered layout and nested groups. Add both only when an ungrouped graph needs editorial manual control.
 - Render reusable assets in both themes with `--theme dark,light`.
 - Run `vizmatic check <frame> --theme dark,light --json` before final render and fix every error.
-- Use GIF only when motion explains state change. Prefer `createAnimation(theme)` with `hold` and `tween`, keep timelines short, and keep static `create(theme)` fallback. Use `createScenes(theme)` only for deliberate cuts or crossfades.
+- Use GIF only when motion explains state change. Prefer `createAnimation(theme)` with `hold` and `tween`, keep timelines short, match terminal and initial visuals for infinite loops, and keep static `create(theme)` fallback. Use `createScenes(theme)` only for deliberate cuts or crossfades.
 - If render fails with `Canvas overflow detected`, increase the canvas, reduce content, or remove strict sizing. Do not ignore the error.
 - Confirm generated files exist and open at least one image before finishing.
 

@@ -5,6 +5,7 @@ import {
     getThemeColors,
     getToneColor,
     hold,
+    keyframe,
     tween,
     type ThemeMode,
 } from 'vizmatic'
@@ -12,7 +13,7 @@ import {
 export const width = 1040
 export const height = 500
 
-type State = { progress: number }
+type State = { progress: number; opacity: number }
 type Colors = ReturnType<typeof getThemeColors>
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
@@ -75,7 +76,7 @@ function RankLanes({ c }: { c: Colors }) {
     )
 }
 
-function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
+function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: number; opacity?: number }) {
     const c = getThemeColors(theme)
     const color = getToneColor('purple', c)
     const semanticColor = getReadableToneColor('purple', c, c.bgCard)
@@ -106,33 +107,35 @@ function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
 
                 <RankLanes c={c} />
                 <div style={{ display: 'flex', position: 'absolute', left: centerX - 27, top: centerY - 27, width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 54, backgroundColor: c.bgCardAlt, border: `2px solid ${color}`, color, fontFamily: c.fontMono, fontSize: 20, fontWeight: 900 }}>Σ</div>
-                {inputOpacity > 0.01 && [0, 1, 2, 3].map((rank) => (
-                    <Token
-                        key={`input-${rank}`}
-                        x={sourceX + (centerX - sourceX) * reduce}
-                        y={rankY(rank) + (centerY - rankY(rank)) * reduce}
-                        label={String(rank + 1)}
-                        color={color}
-                        textColor={textColor}
-                        opacity={inputOpacity}
-                    />
-                ))}
-                {[0, 1, 2, 3].map((rank) => (
-                    <Token
-                        key={`output-${rank}`}
-                        x={centerX + (targetX - centerX) * broadcast}
-                        y={centerY + (rankY(rank) - centerY) * broadcast}
-                        label="10"
-                        color={color}
-                        textColor={textColor}
-                        opacity={broadcast}
-                    />
-                ))}
-                <div style={{ display: 'flex', position: 'absolute', left: centerX - 42, top: centerY + 34, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>1 + 2 + 3 + 4</div>
+                <div style={{ display: 'flex', position: 'absolute', inset: 0, opacity }}>
+                    {inputOpacity > 0.01 && [0, 1, 2, 3].map((rank) => (
+                        <Token
+                            key={`input-${rank}`}
+                            x={sourceX + (centerX - sourceX) * reduce}
+                            y={rankY(rank) + (centerY - rankY(rank)) * reduce}
+                            label={String(rank + 1)}
+                            color={color}
+                            textColor={textColor}
+                            opacity={inputOpacity}
+                        />
+                    ))}
+                    {[0, 1, 2, 3].map((rank) => (
+                        <Token
+                            key={`output-${rank}`}
+                            x={centerX + (targetX - centerX) * broadcast}
+                            y={centerY + (rankY(rank) - centerY) * broadcast}
+                            label="10"
+                            color={color}
+                            textColor={textColor}
+                            opacity={broadcast}
+                        />
+                    ))}
+                    <div style={{ display: 'flex', position: 'absolute', left: centerX - 42, top: centerY + 34, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>1 + 2 + 3 + 4</div>
 
-                <div style={{ display: 'flex', position: 'absolute', left: 22, top: 326, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>{phase}</div>
-                <div style={{ display: 'flex', position: 'absolute', left: 170, top: 332, width: 780, height: 6, borderRadius: 6, backgroundColor: c.borderSubtle }}>
-                    <div style={{ display: 'flex', width: `${Math.round(p * 100)}%`, height: 6, borderRadius: 6, backgroundColor: color }} />
+                    <div style={{ display: 'flex', position: 'absolute', left: 22, top: 312, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>{phase}</div>
+                    <div style={{ display: 'flex', position: 'absolute', left: 170, top: 338, width: 780, height: 6, borderRadius: 6, backgroundColor: c.borderSubtle }}>
+                        <div style={{ display: 'flex', width: `${Math.round(p * 100)}%`, height: 6, borderRadius: 6, backgroundColor: color }} />
+                    </div>
                 </div>
             </div>
         </div>
@@ -141,14 +144,17 @@ function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
 
 export function createAnimation(theme: ThemeMode) {
     return defineAnimation<State>({
-        initial: { progress: 0 },
+        initial: { progress: 0, opacity: 0 },
         timeline: [
+            tween<Partial<State>>({ opacity: 1 }, { duration: 300, easing: 'ease-in-out', label: 'show input' }),
             hold(800, 'rank-local values'),
             tween<Partial<State>>({ progress: 1 }, { duration: 3000, easing: 'ease-in-out', label: 'reduce and broadcast' }),
             hold(1000, 'replicated sum'),
+            tween<Partial<State>>({ opacity: 0 }, { duration: 300, easing: 'ease-in-out', label: 'hide output' }),
+            keyframe<Partial<State>>({ progress: 0 }, 'reset hidden'),
         ],
         fps: 20,
-        render: (state) => <Frame theme={theme} progress={state.progress} />,
+        render: (state) => <Frame theme={theme} progress={state.progress} opacity={state.opacity} />,
     })
 }
 

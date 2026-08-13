@@ -63,6 +63,7 @@ export function create(theme: ThemeMode = 'dark') {
                 >
                     <GraphDiagram
                         c={c}
+                        ariaLabel="Runtime graph from brief through plan and check to an exported asset"
                         width={456}
                         height={202}
                         layout="auto"

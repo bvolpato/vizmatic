@@ -115,7 +115,11 @@ height = 360
     }, 30_000)
 
     it('keeps JSON output valid when frame code logs later', async () => {
-        const { result, report } = await runCheck(String.raw`setTimeout(() => console.log("LATE_FRAME_LOG"), 10)
+        const { result, report } = await runCheck(String.raw`setTimeout(() => {
+  console.log("LATE_FRAME_LOG")
+  console.info("LATE_FRAME_INFO")
+  console.debug("LATE_FRAME_DEBUG")
+}, 10)
 
 <Scene>
   <CalloutCard title="Checked" detail="Delayed logs stay out of JSON" tone="green" width={420} />
@@ -125,6 +129,8 @@ height = 360
         expect(result.status, result.stderr).toBe(0)
         expect(report.ok).toBe(true)
         expect(result.stdout).not.toContain('LATE_FRAME_LOG')
+        expect(result.stdout).not.toContain('LATE_FRAME_INFO')
+        expect(result.stdout).not.toContain('LATE_FRAME_DEBUG')
     }, 30_000)
 
     it('keeps helper JSX and nested metadata in setup code', async () => {

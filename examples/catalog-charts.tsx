@@ -19,7 +19,7 @@ import {
 } from 'vizmatic'
 
 export const width = 1120
-export const height = 1280
+export const height = 1360
 
 export function create(theme: ThemeMode = 'dark') {
     const c = getThemeColors(theme)

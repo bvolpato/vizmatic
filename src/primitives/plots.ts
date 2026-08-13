@@ -953,7 +953,7 @@ export function DashedLine({ x1, y1, x2, y2, color, dotSpacing = 8, dotSize = 2 
 
 // ─── Legend — Color-coded key ────────────────────────────────────────────────
 
-interface LegendItem {
+export interface LegendItem {
     label: string
     color: string
     style?: 'solid' | 'dashed'

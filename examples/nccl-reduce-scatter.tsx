@@ -5,6 +5,7 @@ import {
     getThemeColors,
     getToneColor,
     hold,
+    keyframe,
     tween,
     type ThemeMode,
 } from 'vizmatic'
@@ -12,7 +13,7 @@ import {
 export const width = 1040
 export const height = 500
 
-type State = { progress: number }
+type State = { progress: number; opacity: number }
 type Colors = ReturnType<typeof getThemeColors>
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
@@ -43,6 +44,7 @@ function Token({ x, y, label, color, textColor, opacity = 1, size = 34 }: { x: n
 }
 
 function RankLanes({ c }: { c: Colors }) {
+    const ownerColors = [c.info, c.primaryLight, c.secondaryLight, c.positiveLight]
     return (
         <div style={{ display: 'flex', position: 'absolute', inset: 0 }}>
             {[0, 1, 2, 3].map((rank) => (
@@ -65,7 +67,7 @@ function RankLanes({ c }: { c: Colors }) {
                         fontSize: 12,
                         fontWeight: 800,
                     }}>
-                        <span style={{ width: 10, height: 10, borderRadius: 10, backgroundColor: c.neutralLight }} />
+                        <span style={{ width: 10, height: 10, borderRadius: 10, backgroundColor: ownerColors[rank] }} />
                         rank {rank}
                     </div>
                     <div style={{ display: 'flex', position: 'absolute', left: 170, top: rankY(rank) - 1, width: 780, height: 2, backgroundColor: c.borderSubtle }} />
@@ -75,20 +77,33 @@ function RankLanes({ c }: { c: Colors }) {
     )
 }
 
-function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
+function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: number; opacity?: number }) {
     const c = getThemeColors(theme)
     const color = getToneColor('green', c)
     const semanticColor = getReadableToneColor('green', c, c.bgCard)
     const p = clamp(progress)
-    const reduce = clamp(p / 0.5)
-    const scatter = clamp((p - 0.5) / 0.5)
-    const inputOpacity = 1 - clamp((p - 0.46) / 0.12)
-    const resultOpacity = clamp((p - 0.42) / 0.12)
+    const gather = clamp(p / 0.46)
+    const collapse = clamp((p - 0.46) / 0.18)
+    const scatter = clamp((p - 0.64) / 0.36)
+    const inputOpacity = 1 - clamp((p - 0.52) / 0.14)
+    const resultOpacity = clamp((p - 0.52) / 0.14)
     const centerX = 548
     const centerY = 181
     const outputX = 850
     const chunkColors = [c.info, c.primaryLight, c.secondaryLight, c.positiveLight]
-    const phase = p < 0.46 ? 'reduce matching chunk indices' : p < 0.92 ? 'scatter one completed chunk per rank' : 'partitioned reduced result'
+    const gridLeft = centerX - 66
+    const gridTop = centerY - 50
+    const gridColumnGap = 44
+    const gridRowGap = 32
+    const phase = p < 0.12
+        ? 'rank-local chunks'
+        : p < 0.44
+            ? 'align matching chunk indices'
+            : p < 0.58
+                ? 'reduce each chunk index'
+                : p < 0.92
+                    ? 'scatter one completed chunk per rank'
+                    : 'partitioned reduced result'
 
     return (
         <div style={{ display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: c.fontSans }}>
@@ -105,45 +120,81 @@ function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
                 <div style={{ display: 'flex', position: 'absolute', right: 22, top: 24, color: semanticColor, fontFamily: c.fontMono, fontSize: 12, fontWeight: 900 }}>ALL → ONE SHARD / RANK</div>
 
                 <RankLanes c={c} />
-                <div style={{ display: 'flex', position: 'absolute', left: centerX - 60, top: centerY - 49, width: 120, height: 98, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: c.bgCardAlt, border: `2px dashed ${color}`, opacity: 0.82 }} />
-                <div style={{ display: 'flex', position: 'absolute', left: centerX - 48, top: centerY - 66, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11, fontWeight: 900 }}>REDUCE BY INDEX</div>
+                <div style={{ display: 'flex', position: 'absolute', left: centerX - 100, top: centerY - 73, width: 200, height: 150, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: c.bgCardAlt, border: `2px dashed ${color}`, opacity: 0.82 }} />
+                <div style={{ display: 'flex', position: 'absolute', left: centerX - 58, top: centerY - 92, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11, fontWeight: 900 }}>REDUCE BY INDEX</div>
+                {[0, 1, 2, 3].map((destination) => (
+                    <div
+                        key={`owner-${destination}`}
+                        style={{
+                            display: 'flex',
+                            position: 'absolute',
+                            left: gridLeft + destination * gridColumnGap - 12,
+                            top: gridTop - 26,
+                            width: 24,
+                            height: 16,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            borderRadius: 4,
+                            backgroundColor: chunkColors[destination],
+                            color: getReadableTextColor(chunkColors[destination], c),
+                            fontFamily: c.fontMono,
+                            fontSize: 10,
+                            fontWeight: 900,
+                        }}
+                    >
+                        R{destination}
+                    </div>
+                ))}
 
-                {inputOpacity > 0.01 && [0, 1, 2, 3].flatMap((source) => [0, 1, 2, 3].map((destination) => {
-                    const startX = 208 + destination * 36
-                    const slotX = centerX - 36 + destination * 24
-                    const chunkColor = chunkColors[destination]
-                    return (
-                        <Token
-                            key={`input-${source}-${destination}`}
-                            x={startX + (slotX - startX) * reduce}
-                            y={rankY(source) + (centerY - rankY(source)) * reduce}
-                            label={`${source}:${destination}`}
-                            color={chunkColor}
-                            textColor={getReadableTextColor(chunkColor, c)}
-                            opacity={inputOpacity}
-                        />
-                    )
-                }))}
-                {[0, 1, 2, 3].map((destination) => {
-                    const slotX = centerX - 36 + destination * 24
-                    const chunkColor = chunkColors[destination]
-                    return (
-                        <Token
-                            key={`output-${destination}`}
-                            x={slotX + (outputX - slotX) * scatter}
-                            y={centerY + (rankY(destination) - centerY) * scatter}
-                            label={`R${destination}`}
-                            color={chunkColor}
-                            textColor={getReadableTextColor(chunkColor, c)}
-                            opacity={resultOpacity}
-                            size={38}
-                        />
-                    )
-                })}
+                <div style={{ display: 'flex', position: 'absolute', inset: 0, opacity }}>
+                    {inputOpacity > 0.01 && [0, 1, 2, 3].flatMap((source) => [0, 1, 2, 3].map((destination) => {
+                        const startX = 208 + destination * 36
+                        const startY = rankY(source)
+                        const chunkColor = chunkColors[destination]
+                        const gridX = gridLeft + destination * gridColumnGap
+                        const gridY = gridTop + source * gridRowGap
+                        const reducedX = gridX
+                        const reducedY = centerY
+                        const x = collapse > 0
+                            ? gridX + (reducedX - gridX) * collapse
+                            : startX + (gridX - startX) * gather
+                        const y = collapse > 0
+                            ? gridY + (reducedY - gridY) * collapse
+                            : startY + (gridY - startY) * gather
+                        return (
+                            <Token
+                                key={`input-${source}-${destination}`}
+                                x={x}
+                                y={y}
+                                label={`${source}:${destination}`}
+                                color={chunkColor}
+                                textColor={getReadableTextColor(chunkColor, c)}
+                                opacity={inputOpacity}
+                                size={28}
+                            />
+                        )
+                    }))}
+                    {[0, 1, 2, 3].map((destination) => {
+                        const slotX = gridLeft + destination * gridColumnGap
+                        const chunkColor = chunkColors[destination]
+                        return (
+                            <Token
+                                key={`output-${destination}`}
+                                x={slotX + (outputX - slotX) * scatter}
+                                y={centerY + (rankY(destination) - centerY) * scatter}
+                                label={`R${destination}`}
+                                color={chunkColor}
+                                textColor={getReadableTextColor(chunkColor, c)}
+                                opacity={resultOpacity}
+                                size={38}
+                            />
+                        )
+                    })}
 
-                <div style={{ display: 'flex', position: 'absolute', left: 22, top: 326, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>{phase}</div>
-                <div style={{ display: 'flex', position: 'absolute', left: 170, top: 332, width: 780, height: 6, borderRadius: 6, backgroundColor: c.borderSubtle }}>
-                    <div style={{ display: 'flex', width: `${Math.round(p * 100)}%`, height: 6, borderRadius: 6, backgroundColor: color }} />
+                    <div style={{ display: 'flex', position: 'absolute', left: 22, top: 312, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>{phase}</div>
+                    <div style={{ display: 'flex', position: 'absolute', left: 170, top: 338, width: 780, height: 6, borderRadius: 6, backgroundColor: c.borderSubtle }}>
+                        <div style={{ display: 'flex', width: `${Math.round(p * 100)}%`, height: 6, borderRadius: 6, backgroundColor: color }} />
+                    </div>
                 </div>
             </div>
         </div>
@@ -152,14 +203,17 @@ function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
 
 export function createAnimation(theme: ThemeMode) {
     return defineAnimation<State>({
-        initial: { progress: 0 },
+        initial: { progress: 0, opacity: 0 },
         timeline: [
+            tween<Partial<State>>({ opacity: 1 }, { duration: 300, easing: 'ease-in-out', label: 'show input' }),
             hold(800, 'rank-local chunks'),
             tween<Partial<State>>({ progress: 1 }, { duration: 3000, easing: 'ease-in-out', label: 'reduce and scatter' }),
             hold(1000, 'one shard per rank'),
+            tween<Partial<State>>({ opacity: 0 }, { duration: 300, easing: 'ease-in-out', label: 'hide output' }),
+            keyframe<Partial<State>>({ progress: 0 }, 'reset hidden'),
         ],
         fps: 20,
-        render: (state) => <Frame theme={theme} progress={state.progress} />,
+        render: (state) => <Frame theme={theme} progress={state.progress} opacity={state.opacity} />,
     })
 }
 

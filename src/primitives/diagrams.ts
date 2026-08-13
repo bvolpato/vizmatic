@@ -27,6 +27,7 @@ export interface LayeredNetworkLayer {
 interface LayeredNetworkProps {
     c: ThemeColors
     layers: LayeredNetworkLayer[]
+    ariaLabel?: string
     activePath?: number[]
     annotations?: string[]
     formula?: string
@@ -47,6 +48,7 @@ function distributeValues(count: number, start: number, end: number): number[] {
 export function LayeredNetwork({
     c,
     layers,
+    ariaLabel = 'Layered network diagram',
     activePath = [],
     annotations = [],
     formula,
@@ -236,6 +238,7 @@ export function LayeredNetwork({
 
     return React.createElement('div', {
         role: 'img',
+        'aria-label': ariaLabel,
         style: {
             width,
             height,
@@ -507,7 +510,7 @@ function crowdedConnectorEndpoints(edges: PositionedGraphEdge[]): number {
 function parallelConnectorGroups(edges: PositionedGraphEdge[]): number {
     const routes = new Map<string, number>()
     for (const edge of edges) {
-        const key = [edge.from, edge.to].sort().join('\u0000')
+        const key = `${edge.from}\u0000${edge.to}`
         routes.set(key, (routes.get(key) ?? 0) + 1)
     }
     return Array.from(routes.values()).filter((count) => count > 1).length
@@ -825,7 +828,7 @@ export function GraphDiagram({
 
     return React.createElement('div', {
         role: 'img',
-        'aria-label': ariaLabel,
+        'aria-label': ariaLabel ?? 'Graph diagram',
         'data-vizmatic-connector-crossings': crossings,
         'data-vizmatic-connector-label-collisions': labelCollisions,
         'data-vizmatic-crowded-connector-endpoints': crowdedEndpoints,
@@ -996,6 +999,7 @@ export interface TreeNodeSpec {
 interface TreeDiagramProps {
     root: TreeNodeSpec
     c: ThemeColors
+    ariaLabel?: string
     title?: React.ReactNode
     subtitle?: React.ReactNode
     width?: number
@@ -1034,6 +1038,7 @@ function maxTreeDepth(node: TreeNodeSpec): number {
 export function TreeDiagram({
     root,
     c,
+    ariaLabel,
     title,
     subtitle,
     width,
@@ -1045,6 +1050,16 @@ export function TreeDiagram({
     padding = 28,
     math = false,
 }: TreeDiagramProps): React.ReactElement {
+    const explicitIds = new Set<string>()
+    const validateIds = (node: TreeNodeSpec): void => {
+        if (node.id) {
+            if (explicitIds.has(node.id)) throw new Error(`TreeDiagram received duplicate node id "${node.id}".`)
+            explicitIds.add(node.id)
+        }
+        node.children?.forEach(validateIds)
+    }
+    validateIds(root)
+
     const leafCount = Math.max(1, countTreeLeaves(root))
     const depthCount = maxTreeDepth(root)
     const resolvedWidth = width ?? Math.max(520, padding * 2 + leafCount * nodeWidth + Math.max(0, leafCount - 1) * siblingGap)
@@ -1146,6 +1161,7 @@ export function TreeDiagram({
         header,
         React.createElement('div', {
             role: 'img',
+            'aria-label': ariaLabel ?? (typeof title === 'string' ? title : 'Tree diagram'),
             style: {
                 position: 'relative' as const,
                 display: 'flex',
@@ -1326,7 +1342,7 @@ export function CalloutCard({
 
 // ─── Pipeline — Horizontal flow with arrows between stages ──────────────────
 
-interface PipelineStage {
+export interface PipelineStage {
     label: string
     sublabel?: string
     icon?: string

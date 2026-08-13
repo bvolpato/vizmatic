@@ -6,6 +6,7 @@ height = 640;
     gap={24}
 >
     <GraphDiagram
+        ariaLabel="Vizmatic rendering pipeline from an agent request through scene primitives and theme tokens to rendered assets"
         width={900}
         height={340}
         nodeWidth={170}

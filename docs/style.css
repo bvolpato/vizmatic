@@ -805,45 +805,44 @@ h1 {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: 18px;
+  align-items: start;
 }
 
 .gallery-card {
   grid-column: span 5;
+  align-self: start;
   min-width: 0;
-  cursor: zoom-in;
-  outline: none;
 }
 
 .gallery-card.gallery-wide {
   grid-column: span 7;
 }
 
-.gallery-card:focus-visible .media-wrap {
-  outline: 2px solid var(--green);
-  outline-offset: 3px;
-}
-
 .media-wrap {
   position: relative;
   width: 100%;
   min-height: 0;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--media-ratio, 16 / 9);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   background: var(--media-bg);
 }
 
-.gallery-tall .media-wrap {
-  aspect-ratio: 4 / 3;
+.image-button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: zoom-in;
 }
 
-.gallery-collective .media-wrap {
-  aspect-ratio: 52 / 25;
-}
-
-.gallery-chart .media-wrap {
-  aspect-ratio: 15 / 8;
+.image-button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -3px;
 }
 
 .media-wrap img {
@@ -866,6 +865,7 @@ h1 {
 }
 
 .gallery-card h3 span {
+  min-width: 0;
   color: var(--faint);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 10px;
@@ -1597,7 +1597,7 @@ footer > a:last-child:hover {
 }
 
 @media (max-width: 1120px) {
-  .nav-links a:not([href="components.html"]):not([aria-current="page"]):not(.github-link) {
+  .nav-links a:not([href="components.html"]):not([href="playground.html"]):not([aria-current="page"]):not(.github-link) {
     display: none;
   }
 
@@ -1921,19 +1921,6 @@ footer > a:last-child:hover {
   .gallery-card,
   .gallery-card.gallery-wide {
     grid-column: 1;
-  }
-
-  .media-wrap,
-  .gallery-tall .media-wrap {
-    aspect-ratio: 16 / 10;
-  }
-
-  .gallery-collective .media-wrap {
-    aspect-ratio: 52 / 25;
-  }
-
-  .gallery-chart .media-wrap {
-    aspect-ratio: 15 / 8;
   }
 
   .source-button {

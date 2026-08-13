@@ -1,5 +1,125 @@
 [
   {
+    "name": "animated-pipeline",
+    "source": "examples/animated-pipeline.tsx",
+    "width": 1040,
+    "height": 400,
+    "outputs": [
+      "animated-pipeline_dark.gif",
+      "animated-pipeline_light.gif"
+    ],
+    "outputDetails": [
+      {
+        "theme": "dark",
+        "path": "animated-pipeline_dark.gif",
+        "width": 1040,
+        "height": 400
+      },
+      {
+        "theme": "light",
+        "path": "animated-pipeline_light.gif",
+        "width": 1040,
+        "height": 400
+      }
+    ]
+  },
+  {
+    "name": "nccl-all-gather",
+    "source": "examples/nccl-all-gather.tsx",
+    "width": 1040,
+    "height": 500,
+    "outputs": [
+      "nccl-all-gather_dark.gif",
+      "nccl-all-gather_light.gif"
+    ],
+    "outputDetails": [
+      {
+        "theme": "dark",
+        "path": "nccl-all-gather_dark.gif",
+        "width": 1040,
+        "height": 500
+      },
+      {
+        "theme": "light",
+        "path": "nccl-all-gather_light.gif",
+        "width": 1040,
+        "height": 500
+      }
+    ]
+  },
+  {
+    "name": "nccl-all-reduce",
+    "source": "examples/nccl-all-reduce.tsx",
+    "width": 1040,
+    "height": 500,
+    "outputs": [
+      "nccl-all-reduce_dark.gif",
+      "nccl-all-reduce_light.gif"
+    ],
+    "outputDetails": [
+      {
+        "theme": "dark",
+        "path": "nccl-all-reduce_dark.gif",
+        "width": 1040,
+        "height": 500
+      },
+      {
+        "theme": "light",
+        "path": "nccl-all-reduce_light.gif",
+        "width": 1040,
+        "height": 500
+      }
+    ]
+  },
+  {
+    "name": "nccl-all-to-all",
+    "source": "examples/nccl-all-to-all.tsx",
+    "width": 1040,
+    "height": 500,
+    "outputs": [
+      "nccl-all-to-all_dark.gif",
+      "nccl-all-to-all_light.gif"
+    ],
+    "outputDetails": [
+      {
+        "theme": "dark",
+        "path": "nccl-all-to-all_dark.gif",
+        "width": 1040,
+        "height": 500
+      },
+      {
+        "theme": "light",
+        "path": "nccl-all-to-all_light.gif",
+        "width": 1040,
+        "height": 500
+      }
+    ]
+  },
+  {
+    "name": "nccl-broadcast",
+    "source": "examples/nccl-broadcast.tsx",
+    "width": 1040,
+    "height": 500,
+    "outputs": [
+      "nccl-broadcast_dark.gif",
+      "nccl-broadcast_light.gif"
+    ],
+    "outputDetails": [
+      {
+        "theme": "dark",
+        "path": "nccl-broadcast_dark.gif",
+        "width": 1040,
+        "height": 500
+      },
+      {
+        "theme": "light",
+        "path": "nccl-broadcast_light.gif",
+        "width": 1040,
+        "height": 500
+      }
+    ]
+  },
+  {
     "name": "nccl-reduce-scatter",
     "source": "examples/nccl-reduce-scatter.tsx",
     "width": 1040,

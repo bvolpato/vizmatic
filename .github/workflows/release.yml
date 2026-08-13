@@ -1,6 +1,9 @@
 name: Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
@@ -17,7 +20,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Require main branch
@@ -62,14 +66,47 @@ jobs:
             echo "Release branch advanced after verification: tested ${TESTED_SHA}, remote ${REMOTE_SHA}" >&2
             exit 1
           fi
-      - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --ignore-scripts --access public --provenance
       - name: Push release commit and tag atomically
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           git push --atomic origin "HEAD:${{ github.ref_name }}" "refs/tags/v${VERSION}"
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: Validate release tag
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+      - run: pnpm verify
+      - name: Ensure generated files are committed
+        run: test -z "$(git status --porcelain)"
+      - name: Validate npm token
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          VERSION="$(node -p "require('./package.json').version")"
+          if npm view "${PACKAGE_NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${PACKAGE_NAME}@${VERSION} is already published."
+          else
+            npm publish --ignore-scripts --access public --provenance
+          fi
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -88,8 +125,8 @@ jobs:
               echo
               echo "### Commits"
               echo
-              if git log --format='%H' "${PREVIOUS_TAG}..HEAD^" | grep -q .; then
-                git log --reverse --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..HEAD^"
+              if git log --format='%H' "${PREVIOUS_TAG}..${CURRENT_TAG}^" | grep -q .; then
+                git log --reverse --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..${CURRENT_TAG}^"
                 echo
               else
                 echo "- No product commits since ${PREVIOUS_TAG}; release metadata only."
@@ -107,6 +144,11 @@ jobs:
           } > release-notes.md
 
           cat release-notes.md
+
+          if gh release view "$CURRENT_TAG" >/dev/null 2>&1; then
+            echo "GitHub release ${CURRENT_TAG} already exists."
+            exit 0
+          fi
 
           if [ -n "$PREVIOUS_TAG" ]; then
             gh release create "$CURRENT_TAG" --generate-notes --notes-start-tag "$PREVIOUS_TAG" --notes-file release-notes.md --verify-tag

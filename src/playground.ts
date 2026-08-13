@@ -208,15 +208,29 @@ function download(filename: string, content: BlobPart, type: string): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+function clearPreview(preview: HTMLElement): void {
+    const url = preview.dataset.vizmaticPreviewUrl
+    if (url) {
+        URL.revokeObjectURL(url)
+        delete preview.dataset.vizmaticPreviewUrl
+    }
+    preview.replaceChildren()
+}
+
 function renderPreview(preview: HTMLElement, svg: string, width: number, height: number): void {
+    clearPreview(preview)
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+    preview.dataset.vizmaticPreviewUrl = url
     const image = document.createElement('img')
     image.src = url
     image.alt = `Vizmatic preview, ${width} by ${height}`
     image.width = width
     image.height = height
-    image.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
-    preview.replaceChildren(image)
+    image.addEventListener('load', () => {
+        URL.revokeObjectURL(url)
+        if (preview.dataset.vizmaticPreviewUrl === url) delete preview.dataset.vizmaticPreviewUrl
+    }, { once: true })
+    preview.append(image)
 }
 
 function syncThemeControls(root: HTMLElement, theme: PlaygroundTheme): void {
@@ -265,7 +279,7 @@ export function mountPlayground(root: HTMLElement): void {
         updateSourceHighlight(elements)
         png = undefined
         svg = undefined
-        elements.preview.replaceChildren()
+        clearPreview(elements.preview)
         setControlEnabled(elements.pngDownload, false)
         setControlEnabled(elements.svgDownload, false)
         setError(elements, undefined)
@@ -387,7 +401,10 @@ export function mountPlayground(root: HTMLElement): void {
         if (!source || source === elements.source.value) return
         loadSharedSource(source)
     })
-    window.addEventListener('pagehide', () => renderer.dispose(), { once: true })
+    window.addEventListener('pagehide', () => {
+        clearPreview(elements.preview)
+        renderer.dispose()
+    }, { once: true })
 
     syncThemeControls(root, theme)
     if (hashSource) loadSharedSource(hashSource)

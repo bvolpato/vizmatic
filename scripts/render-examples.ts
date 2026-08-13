@@ -14,6 +14,7 @@ const files = (await readdir(examplesDir))
 
 const manifest: Array<{ name: string; source: string; outputs: string[] }> = []
 const sources: Array<{ name: string; title: string; source: string; code: string; html: Record<(typeof themes)[number], string> }> = []
+const animatedSources: string[] = []
 const titleWords: Record<string, string> = {
     gif: 'GIF',
     nccl: 'NCCL',
@@ -49,7 +50,7 @@ function generateExamplesReadme(entries: typeof manifest): string {
         const dark = previewFor(entry.outputs, 'dark')
         const light = previewFor(entry.outputs, 'light')
 
-        return `| [${title}](${sourceFile}) | <img src="${galleryAssetUrl}/${dark}" alt="${title} dark render" width="360" /> | <img src="${galleryAssetUrl}/${light}" alt="${title} light render" width="360" /> |`
+        return `| [${title}](${sourceFile}) | <picture><source media="(prefers-color-scheme: dark)" srcset="${galleryAssetUrl}/${dark}" /><source media="(prefers-color-scheme: light)" srcset="${galleryAssetUrl}/${light}" /><img src="${galleryAssetUrl}/${light}" alt="${title} preview" width="720" /></picture> |`
     })
 
     return [
@@ -59,8 +60,8 @@ function generateExamplesReadme(entries: typeof manifest): string {
         '',
         'Rendered assets live on the [Vizmatic gallery](https://bvolpato.github.io/vizmatic/#gallery).',
         '',
-        '| Example | Dark | Light |',
-        '|---|---|---|',
+        '| Example | Preview |',
+        '|---|---|',
         ...rows,
         '',
     ].join('\n')
@@ -109,26 +110,7 @@ for (const file of files) {
     const outputs = themes.map((theme) => `${name}_${theme}.png`)
 
     if (code.includes('createScenes') || code.includes('createAnimation')) {
-        const gifResult = spawnSync(process.execPath, [
-            'dist/cli.js',
-            'gif',
-            source,
-            '--out',
-            outDir,
-            '--theme',
-            themes.join(','),
-            '--watermark',
-            'Vizmatic',
-            '--scale',
-            '1',
-        ], {
-            stdio: 'inherit',
-        })
-
-        if (gifResult.status !== 0) {
-            process.exit(gifResult.status ?? 1)
-        }
-
+        animatedSources.push(source)
         outputs.push(...themes.map((theme) => `${name}_${theme}.gif`))
     }
 
@@ -137,6 +119,28 @@ for (const file of files) {
         source,
         outputs,
     })
+}
+
+if (animatedSources.length > 0) {
+    const gifResult = spawnSync(process.execPath, [
+        'dist/cli.js',
+        'gif',
+        ...animatedSources,
+        '--out',
+        outDir,
+        '--theme',
+        themes.join(','),
+        '--watermark',
+        'Vizmatic',
+        '--scale',
+        '1',
+    ], {
+        stdio: 'inherit',
+    })
+
+    if (gifResult.status !== 0) {
+        process.exit(gifResult.status ?? 1)
+    }
 }
 
 await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)

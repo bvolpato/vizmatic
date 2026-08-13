@@ -1177,12 +1177,16 @@ async function captureConsole<T>(run: () => Promise<T>): Promise<{
 }> {
     const messages: CapturedConsoleMessage[] = []
     const original = {
+        debug: console.debug,
         error: console.error,
+        info: console.info,
         log: console.log,
         warn: console.warn,
     }
 
+    console.debug = () => undefined
     console.log = () => undefined
+    console.info = () => undefined
     console.warn = (...args: unknown[]) => messages.push({ severity: 'warning', message: formatConsoleArgs(args) })
     console.error = (...args: unknown[]) => messages.push({ severity: 'error', message: formatConsoleArgs(args) })
 
@@ -1191,7 +1195,9 @@ async function captureConsole<T>(run: () => Promise<T>): Promise<{
     } catch (error) {
         return { error, messages }
     } finally {
+        console.debug = original.debug
         console.error = original.error
+        console.info = original.info
         console.log = original.log
         console.warn = original.warn
     }
@@ -1199,15 +1205,21 @@ async function captureConsole<T>(run: () => Promise<T>): Promise<{
 
 function suppressConsoleOutput(): () => void {
     const original = {
+        debug: console.debug,
         error: console.error,
+        info: console.info,
         log: console.log,
         warn: console.warn,
     }
+    console.debug = () => undefined
     console.error = () => undefined
+    console.info = () => undefined
     console.log = () => undefined
     console.warn = () => undefined
     return () => {
+        console.debug = original.debug
         console.error = original.error
+        console.info = original.info
         console.log = original.log
         console.warn = original.warn
     }

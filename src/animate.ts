@@ -218,13 +218,23 @@ function encodeGif(frames: PixelFrame[], loop: number): Uint8Array {
     const palette = sharedPalette(frames)
     let first = true
 
+    let pending: PixelFrame | undefined
     for (const frame of frames) {
         if (frame.width !== firstFrame.width || frame.height !== firstFrame.height) {
             throw new Error('All GIF frames must have matching dimensions')
         }
-        writeGifFrame(gif, frame, loop, palette, first)
-        first = false
+        if (pending && pixelsEqual(pending.pixels, frame.pixels)) {
+            pending.delay += frame.delay
+            continue
+        }
+        if (pending) {
+            writeGifFrame(gif, pending, loop, palette, first)
+            first = false
+        }
+        pending = { ...frame }
     }
+
+    if (pending) writeGifFrame(gif, pending, loop, palette, first)
 
     gif.finish()
     return gif.bytes()
@@ -257,6 +267,17 @@ async function scenesToFrames(
     options: Required<Pick<AnimationOptions, 'width' | 'height' | 'loop' | 'scale' | 'theme' | 'background'>> & Pick<AnimationOptions, 'brand' | 'watermark' | 'fps'>,
 ): Promise<PixelFrame[]> {
     if (scenes.length === 0) throw new Error('Animated GIF requires at least one scene')
+    for (const [index, scene] of scenes.entries()) {
+        if (!Number.isFinite(scene.duration) || scene.duration <= 0) {
+            throw new Error(`Animated scene ${index + 1} duration must be a positive finite number`)
+        }
+        if (scene.transition != null && !['none', 'fade', 'appear'].includes(scene.transition)) {
+            throw new Error(`Animated scene ${index + 1} has unknown transition "${scene.transition}"`)
+        }
+        if (scene.transitionDuration != null && (!Number.isFinite(scene.transitionDuration) || scene.transitionDuration <= 0)) {
+            throw new Error(`Animated scene ${index + 1} transitionDuration must be a positive finite number`)
+        }
+    }
     const fps = sceneTransitionFps(options.fps)
 
     const renderedScenes = await Promise.all(scenes.map((scene) => {

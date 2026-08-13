@@ -16,7 +16,7 @@ import {
 } from 'vizmatic'
 
 export const width = 1120
-export const height = 780
+export const height = 840
 
 export function create(theme: ThemeMode = 'dark') {
     const c = getThemeColors(theme)
@@ -49,7 +49,7 @@ export function create(theme: ThemeMode = 'dark') {
                         <Stack direction="horizontal" gap={10} align="center">
                             <Icon c={c} name="code" tone="green" size={26} />
                             <Column gap={3} align="start">
-                                <TextLabel c={c} text="1120 × 780" fontSize={15} fontWeight={900} color={c.textPrimary} mono />
+                                <TextLabel c={c} text="1120 × 840" fontSize={15} fontWeight={900} color={c.textPrimary} mono />
                                 <TextLabel c={c} text="dark + light create(theme)" fontSize={11} mono />
                             </Column>
                         </Stack>

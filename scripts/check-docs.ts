@@ -65,7 +65,7 @@ const refs = [html, componentsHtml, playgroundHtml].flatMap((page) => Array.from
 const missing: string[] = []
 for (const ref of refs) {
     const cleanRef = ref.split('#')[0]?.split('?')[0]
-    if (!cleanRef || cleanRef === 'style.css') continue
+    if (!cleanRef) continue
     const target = join(root, 'docs', cleanRef)
     await access(target).catch(() => missing.push(ref))
 }

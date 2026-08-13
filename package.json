@@ -46,9 +46,14 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
   },
   "bin": {
@@ -69,7 +74,7 @@
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
     "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
     "security:audit": "pnpm audit --audit-level low",
-    "deps:check": "pnpm security:audit && tsx scripts/check-package.ts",
+    "deps:check": "pnpm security:audit && publint && tsx scripts/check-package.ts",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm check:examples && pnpm docs:check && pnpm deps:check",
     "prepublishOnly": "pnpm verify"
   },
@@ -91,6 +96,7 @@
     "@types/react": "^19.1.8",
     "esbuild": "0.28.1",
     "github-actionlint": "1.7.12",
+    "publint": "0.3.23",
     "shiki": "^4.3.0",
     "sucrase": "3.35.1",
     "tsup": "^8.5.0",

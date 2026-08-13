@@ -208,6 +208,7 @@ interface TiledMatrixProps {
     rows: number
     cols: number
     c: ThemeColors
+    ariaLabel?: string
     regions?: TiledMatrixRegion[]
     title?: React.ReactNode
     subtitle?: React.ReactNode
@@ -222,6 +223,7 @@ export function TiledMatrix({
     rows,
     cols,
     c,
+    ariaLabel,
     regions = [],
     title,
     subtitle,
@@ -321,6 +323,7 @@ export function TiledMatrix({
 
     return React.createElement('div', {
         role: 'img',
+        'aria-label': ariaLabel ?? (typeof title === 'string' ? title : 'Tiled matrix'),
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
@@ -427,7 +430,7 @@ export function DataTable({
 
 // ─── Grid — Plain flex grid for reusable cells without table semantics ──────
 
-interface GridCell {
+export interface GridCell {
     label?: React.ReactNode
     tone?: ToneName
     color?: string
@@ -526,7 +529,7 @@ export function Grid({
 
 // ─── AxisPlot — SVG axes, points, and vectors for math illustrations ───────
 
-interface AxisPlotPoint {
+export interface AxisPlotPoint {
     x: number
     y: number
     fill?: string
@@ -537,7 +540,7 @@ interface AxisPlotPoint {
     opacity?: number
 }
 
-interface AxisPlotVector {
+export interface AxisPlotVector {
     x1: number
     y1: number
     x2: number

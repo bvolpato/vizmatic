@@ -3,6 +3,7 @@ height = 560;
 
 <Scene title="RAG control graph" subtitle="retrieval is a graph, not a linear prompt append" align="center">
     <GraphDiagram
+        ariaLabel="Retrieval augmented generation control graph from query rewrite through retrieval, reranking, answer, and verification"
         width={900}
         height={390}
         nodeWidth={120}

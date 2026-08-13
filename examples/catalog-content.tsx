@@ -61,9 +61,9 @@ export function create(theme: ThemeMode = 'dark') {
                     </Row>
                     <Row gap={8} align="center">
                         <TextLabel c={c} text="SvgMathText" fontSize={11} mono />
-                        <svg width="150" height="30" viewBox="0 0 150 30">
+                        <div style={{ position: 'relative', display: 'flex', width: 150, height: 30 }}>
                             <SvgMathText text="E = mc^2" x={4} y={15} fill={c.textPrimary} fontSize={13} textAnchor="start" />
-                        </svg>
+                        </div>
                     </Row>
                 </Panel>
                 <Panel c={c} title="Tokens and values" subtitle="Badge · BadgePill · GradientChip · ValuePill" tone="cyan" width={524} minHeight={148}>

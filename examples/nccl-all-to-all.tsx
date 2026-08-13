@@ -5,6 +5,7 @@ import {
     getThemeColors,
     getToneColor,
     hold,
+    keyframe,
     tween,
     type ThemeMode,
 } from 'vizmatic'
@@ -12,7 +13,7 @@ import {
 export const width = 1040
 export const height = 500
 
-type State = { progress: number }
+type State = { progress: number; opacity: number }
 type Colors = ReturnType<typeof getThemeColors>
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
@@ -74,16 +75,34 @@ function RankLanes({ c }: { c: Colors }) {
     )
 }
 
-function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
+function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: number; opacity?: number }) {
     const c = getThemeColors(theme)
     const color = getToneColor('warm', c)
     const semanticColor = getReadableToneColor('warm', c, c.bgCard)
     const p = clamp(progress)
+    const stageProgress = clamp(p / 0.5)
+    const laneProgress = clamp((p - 0.5) / 0.18)
+    const destinationProgress = clamp((p - 0.68) / 0.22)
+    const packProgress = clamp((p - 0.9) / 0.1)
     const sourceX = 210
     const outputX = 722
-    const gap = 44
+    const sourceGap = 44
+    const exchangeLeft = 444
+    const exchangeTop = 112
+    const exchangeColumnGap = 42
+    const exchangeRowGap = 36
     const destinationColors = [c.info, c.primaryLight, c.secondaryLight, c.warningLight]
-    const phase = p < 0.08 ? 'grouped by source rank' : p < 0.92 ? 'exchange rank-addressed chunks' : 'grouped by destination rank'
+    const phase = p < 0.12
+            ? 'grouped by source rank'
+            : p < 0.48
+                ? 'route chunks into exchange grid'
+                : p < 0.66
+                    ? 'exchange grid preserves source → destination'
+                    : p < 0.88
+                        ? 'route chunks to destination ranks'
+                        : p < 0.96
+                            ? 'pack by source within each destination'
+                            : 'grouped by destination rank'
 
     return (
         <div style={{ display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: c.fontSans }}>
@@ -100,26 +119,62 @@ function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
                 <div style={{ display: 'flex', position: 'absolute', right: 22, top: 24, color: semanticColor, fontFamily: c.fontMono, fontSize: 12, fontWeight: 900 }}>ALL ↔ ALL</div>
 
                 <RankLanes c={c} />
-                <div style={{ display: 'flex', position: 'absolute', left: 488, top: 128, width: 116, height: 106, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: c.bgCardAlt, border: `2px dashed ${color}`, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11, fontWeight: 900 }}>EXCHANGE</div>
-                {[0, 1, 2, 3].flatMap((source) => [0, 1, 2, 3].map((destination) => {
-                    const tokenColor = destinationColors[destination]
-                    const startX = sourceX + destination * gap
-                    const endX = outputX + source * gap
-                    return (
-                        <Token
-                            key={`${source}-${destination}`}
-                            x={startX + (endX - startX) * p}
-                            y={rankY(source) + (rankY(destination) - rankY(source)) * p}
-                            label={`${source}→${destination}`}
-                            color={tokenColor}
-                            textColor={getReadableTextColor(tokenColor, c)}
-                        />
-                    )
-                }))}
+                <div style={{ display: 'flex', position: 'absolute', left: exchangeLeft, top: exchangeTop, width: 190, height: 164, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: c.bgCardAlt, border: `2px dashed ${color}` }}>
+                    <span style={{ position: 'absolute', top: 8, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11, fontWeight: 900 }}>EXCHANGE GRID</span>
+                </div>
+                <div style={{ display: 'flex', position: 'absolute', inset: 0, opacity }}>
+                    {[0, 1, 2, 3].flatMap((source) => [0, 1, 2, 3].map((destination) => {
+                        const tokenColor = destinationColors[destination]
+                        const sourcePosition = {
+                            x: sourceX + destination * sourceGap,
+                            y: rankY(source),
+                        }
+                        const exchangePosition = {
+                            x: exchangeLeft + 28 + destination * exchangeColumnGap,
+                            y: exchangeTop + 34 + source * exchangeRowGap,
+                        }
+                        const routePosition = {
+                            x: outputX + source * sourceGap + (destination - 1.5) * 50,
+                            y: exchangePosition.y,
+                        }
+                        const destinationPosition = {
+                            x: routePosition.x,
+                            y: rankY(destination),
+                        }
+                        const finalPosition = {
+                            x: outputX + source * sourceGap,
+                            y: destinationPosition.y,
+                        }
+                        const x = stageProgress < 1
+                            ? sourcePosition.x + (exchangePosition.x - sourcePosition.x) * stageProgress
+                            : laneProgress < 1
+                                ? exchangePosition.x + (routePosition.x - exchangePosition.x) * laneProgress
+                                : destinationProgress < 1
+                                    ? routePosition.x
+                                    : routePosition.x + (finalPosition.x - routePosition.x) * packProgress
+                        const y = stageProgress < 1
+                            ? sourcePosition.y + (exchangePosition.y - sourcePosition.y) * stageProgress
+                            : laneProgress < 1
+                                ? exchangePosition.y
+                                : destinationProgress < 1
+                                    ? routePosition.y + (destinationPosition.y - routePosition.y) * destinationProgress
+                                    : destinationPosition.y
+                        return (
+                            <Token
+                                key={`${source}-${destination}`}
+                                x={x}
+                                y={y}
+                                label={`${source}→${destination}`}
+                                color={tokenColor}
+                                textColor={getReadableTextColor(tokenColor, c)}
+                            />
+                        )
+                    }))}
 
-                <div style={{ display: 'flex', position: 'absolute', left: 22, top: 326, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>{phase}</div>
-                <div style={{ display: 'flex', position: 'absolute', left: 170, top: 332, width: 780, height: 6, borderRadius: 6, backgroundColor: c.borderSubtle }}>
-                    <div style={{ display: 'flex', width: `${Math.round(p * 100)}%`, height: 6, borderRadius: 6, backgroundColor: color }} />
+                    <div style={{ display: 'flex', position: 'absolute', left: 22, top: 312, color: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }}>{phase}</div>
+                    <div style={{ display: 'flex', position: 'absolute', left: 170, top: 338, width: 780, height: 6, borderRadius: 6, backgroundColor: c.borderSubtle }}>
+                        <div style={{ display: 'flex', width: `${Math.round(p * 100)}%`, height: 6, borderRadius: 6, backgroundColor: color }} />
+                    </div>
                 </div>
             </div>
         </div>
@@ -128,14 +183,17 @@ function Frame({ theme, progress }: { theme: ThemeMode; progress: number }) {
 
 export function createAnimation(theme: ThemeMode) {
     return defineAnimation<State>({
-        initial: { progress: 0 },
+        initial: { progress: 0, opacity: 0 },
         timeline: [
+            tween<Partial<State>>({ opacity: 1 }, { duration: 300, easing: 'ease-in-out', label: 'show input' }),
             hold(800, 'source-grouped chunks'),
             tween<Partial<State>>({ progress: 1 }, { duration: 3000, easing: 'ease-in-out', label: 'all-to-all exchange' }),
             hold(1000, 'destination-grouped chunks'),
+            tween<Partial<State>>({ opacity: 0 }, { duration: 300, easing: 'ease-in-out', label: 'hide output' }),
+            keyframe<Partial<State>>({ progress: 0 }, 'reset hidden'),
         ],
         fps: 20,
-        render: (state) => <Frame theme={theme} progress={state.progress} />,
+        render: (state) => <Frame theme={theme} progress={state.progress} opacity={state.opacity} />,
     })
 }
 

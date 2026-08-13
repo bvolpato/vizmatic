@@ -195,16 +195,16 @@ Vizmatic provides reusable layout, diagram, and chart primitives:
   <img src="https://bvolpato.github.io/vizmatic/assets/examples/nccl-all-to-all_dark.gif" alt="Animated NCCL AllToAll: every rank exchanges one chunk with every rank" width="300" />
 </p>
 <p>
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/rag-graph_dark.png" alt="RAG graph" width="380" />
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/eval-dashboard_dark.png" alt="Evaluation dashboard" width="380" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/rag-graph_dark.png" /><source media="(prefers-color-scheme: light)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/rag-graph_light.png" /><img src="https://bvolpato.github.io/vizmatic/assets/examples/rag-graph_light.png" alt="RAG graph" width="380" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/eval-dashboard_dark.png" /><source media="(prefers-color-scheme: light)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/eval-dashboard_light.png" /><img src="https://bvolpato.github.io/vizmatic/assets/examples/eval-dashboard_light.png" alt="Evaluation dashboard" width="380" /></picture>
 </p>
 <p>
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/token-matrix_dark.png" alt="Token matrix" width="380" />
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/theme-system_dark.png" alt="Theme system" width="380" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/token-matrix_dark.png" /><source media="(prefers-color-scheme: light)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/token-matrix_light.png" /><img src="https://bvolpato.github.io/vizmatic/assets/examples/token-matrix_light.png" alt="Token matrix" width="380" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/theme-system_dark.png" /><source media="(prefers-color-scheme: light)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/theme-system_light.png" /><img src="https://bvolpato.github.io/vizmatic/assets/examples/theme-system_light.png" alt="Theme system" width="380" /></picture>
 </p>
 <p>
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/system-architecture_dark.png" alt="System architecture" width="380" />
-  <img src="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_dark.png" alt="Presentation frame" width="380" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/system-architecture_dark.png" /><source media="(prefers-color-scheme: light)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/system-architecture_light.png" /><img src="https://bvolpato.github.io/vizmatic/assets/examples/system-architecture_light.png" alt="System architecture" width="380" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_dark.png" /><source media="(prefers-color-scheme: light)" srcset="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_light.png" /><img src="https://bvolpato.github.io/vizmatic/assets/examples/presentation-frame_light.png" alt="Presentation frame" width="380" /></picture>
 </p>
 
 NCCL gallery examples cover five operations: Broadcast, AllReduce, AllGather, ReduceScatter, and AllToAll. Their diagrams follow NVIDIA's documented [collective operation semantics](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html): rooted transfer, reduction, rank-ordered gathering, reduced chunk ownership, and pairwise exchange.
@@ -290,7 +290,7 @@ Use these primitives before writing raw SVG or absolute-positioned layouts.
 | `Icon` | Curated SVG icon set for cards, callouts, compact rows, and presentation frames. |
 | `TextLabel` | Wrapping-safe text with variant, color, math formatting, width, and alignment. |
 | `MathText` / `formatMathText` | Converts simple `x_i` / `x^2` style strings into readable unicode math text. |
-| `SvgMathText` | SVG text helper for math labels inside custom plots. |
+| `SvgMathText` | Positioned HTML overlay for math labels aligned to custom plot coordinates. Place it beside, not inside, raw SVG geometry in a relative container. |
 
 #### Arrows, connectors, and SVG helpers
 
@@ -387,7 +387,8 @@ Set `x` and `y` on every node for normalized manual positioning when no groups a
 | API | Use |
 |---|---|
 | `renderToPng` | Render React scene to PNG through Satori and resvg, with optional watermark, crop, scale, and overflow check. |
-| `renderToPngWithOutput` | Render PNG and return logical plus physical pixel dimensions. |
+| `renderToPngWithOutput` | Render PNG and return logical dimensions, physical pixel dimensions, and painted `contentBounds`. |
+| `CanvasOverflowError` | Typed clipping failure with canvas dimensions and per-edge overflow details. |
 | `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
 | `renderAnimatedGifWithOutput` | Render GIF and return its physical pixel dimensions. |
 | `defineAnimation` | Define a typed state timeline rendered at deterministic sample times. |
@@ -446,7 +447,7 @@ export const watermark = (
 )
 ```
 
-Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples absolute time deterministically and includes exact initial and terminal states. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
+Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples absolute time deterministically and includes exact initial and terminal states. Infinite loops should end on the same visual state where they begin. Fade moving content out and reset it with a `keyframe` while hidden instead of reversing a one-way operation. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
 
 ```tsx
 import { defineAnimation, hold, keyframe, tween } from "vizmatic"
@@ -490,7 +491,7 @@ pnpm site:serve
 
 ## Publishing
 
-Use the GitHub `Release` workflow. It runs verification, bumps package and plugin versions, publishes to npm with provenance, pushes the tag, and creates release notes with the compare link and commits since the previous version.
+Use the GitHub `Release` workflow. Its manual run bumps package and plugin versions, verifies the release commit, then atomically pushes the commit and tag. The tag-triggered run verifies that exact commit again, publishes it to npm with provenance, and creates release notes with the compare link and commits since the previous version. Retrying an already-published tag is safe.
 
 ```bash
 gh workflow run release.yml -f version=patch

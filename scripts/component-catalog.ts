@@ -39,7 +39,7 @@ export const componentCatalog: ComponentCatalogCategory[] = [
             { name: 'Icon', description: 'Theme-aware technical icon set.' },
             { name: 'TextLabel', description: 'Wrapping-safe SVG or flex label.' },
             { name: 'MathText', description: 'Math-aware text formatting for React content.' },
-            { name: 'SvgMathText', description: 'Math-aware text inside SVG graphics.' },
+            { name: 'SvgMathText', description: 'Positioned math overlay aligned with custom SVG geometry.' },
             { name: 'Badge', description: 'Compact semantic SVG label.' },
             { name: 'BadgePill', description: 'Inline status, category, or metadata label.' },
             { name: 'GradientChip', description: 'Emphasized label with tone gradient.' },

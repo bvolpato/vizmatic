@@ -120,7 +120,7 @@
 <article class="catalog-item" data-catalog-item data-catalog-search="icon theme-aware technical icon set."><code>Icon</code><p>Theme-aware technical icon set.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="textlabel wrapping-safe svg or flex label."><code>TextLabel</code><p>Wrapping-safe SVG or flex label.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="mathtext math-aware text formatting for react content."><code>MathText</code><p>Math-aware text formatting for React content.</p></article>
-<article class="catalog-item" data-catalog-item data-catalog-search="svgmathtext math-aware text inside svg graphics."><code>SvgMathText</code><p>Math-aware text inside SVG graphics.</p></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgmathtext positioned math overlay aligned with custom svg geometry."><code>SvgMathText</code><p>Positioned math overlay aligned with custom SVG geometry.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="badge compact semantic svg label."><code>Badge</code><p>Compact semantic SVG label.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="badgepill inline status, category, or metadata label."><code>BadgePill</code><p>Inline status, category, or metadata label.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="gradientchip emphasized label with tone gradient."><code>GradientChip</code><p>Emphasized label with tone gradient.</p></article>
@@ -358,6 +358,7 @@
     async function loadSources() {
       if (!sourceCache) {
         const response = await fetch('assets/examples/sources.json', { cache: 'no-store' })
+        if (!response.ok) throw new Error(`Could not load example source (${response.status})`)
         const sources = await response.json()
         sourceCache = new Map(sources.map((source) => [source.name, source]))
       }
@@ -365,11 +366,19 @@
     }
 
     async function openSource(name) {
-      const source = (await loadSources()).get(name)
-      if (!source) return
-      activeSource = source
-      renderActiveSource()
-      sourceDialog.showModal()
+      try {
+        const source = (await loadSources()).get(name)
+        if (!source) throw new Error('Example source is unavailable')
+        activeSource = source
+        renderActiveSource()
+        sourceDialog.showModal()
+      } catch {
+        sourceCache = undefined
+        activeSource = undefined
+        sourceTitle.textContent = 'Source unavailable'
+        sourceCode.textContent = 'Could not load example source. Close this dialog and try again.'
+        sourceDialog.showModal()
+      }
     }
 
     setSiteTheme(normalizeThemeChoice(getSavedTheme()))
@@ -397,6 +406,8 @@
       try {
         await navigator.clipboard.writeText(activeSource.code)
         copySourceButton.textContent = 'Copied'
+      } catch {
+        copySourceButton.textContent = 'Copy failed'
       } finally {
         setTimeout(() => { copySourceButton.textContent = previous }, 1600)
       }

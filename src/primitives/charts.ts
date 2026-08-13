@@ -256,6 +256,7 @@ export function ChartFrame({
         style: {
             width,
             ...(height ? { height } : {}),
+            boxSizing: 'border-box' as const,
             display: 'flex',
             flexDirection: 'column' as const,
             gap: 12,

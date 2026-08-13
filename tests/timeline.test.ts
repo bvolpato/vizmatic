@@ -47,6 +47,19 @@ describe('animation timeline', () => {
         expect(sampleAnimation(animation, 200)).toEqual({ x: 10, y: 30 })
     })
 
+    it('ignores optional parallel tracks that are undefined', () => {
+        const animation = defineAnimation({
+            initial: { x: 0, y: 0 },
+            timeline: [parallel({
+                x: [tween(10, { duration: 100 })],
+                y: undefined,
+            })],
+            render: () => null,
+        })
+
+        expect(sampleAnimation(animation, 50)).toEqual({ x: 5, y: 0 })
+    })
+
     it('produces deterministic GIF-friendly frame timing', () => {
         const animation = defineAnimation({
             initial: { progress: 0 },

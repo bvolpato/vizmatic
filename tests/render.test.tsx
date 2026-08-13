@@ -27,6 +27,7 @@ import {
     renderToSvg,
     Scene,
     StepCard,
+    SvgMathText,
     Watermark,
     wrapWithWatermark,
     BarChart,
@@ -45,6 +46,7 @@ import {
     Row,
     renderToPngWithOutput,
     Timeline,
+    TiledMatrix,
     TreeDiagram,
     DashedLine,
     hold,
@@ -446,6 +448,42 @@ describe('vizmatic render pipeline', () => {
         expect(pixelAt(image, 0, 0)[3]).toBe(0)
     }, 30_000)
 
+    it('renders SvgMathText as a dark-theme HTML overlay without SVG text artifacts', async () => {
+        const c = getThemeColors('dark')
+        const label = (
+            <SvgMathText
+                text="E = mc^2"
+                x={60}
+                y={20}
+                fill={c.textPrimary}
+                fontSize={16}
+            />
+        )
+        const frame = (
+            <div style={{ position: 'relative', width: 120, height: 40, display: 'flex', backgroundColor: c.bg }}>
+                <svg width={120} height={40} viewBox="0 0 120 40">
+                    <rect x={1} y={1} width={118} height={38} fill="none" stroke={c.borderSubtle} />
+                </svg>
+                {label}
+            </div>
+        )
+
+        const directSvg = await renderToSvg(label, 120, 40)
+        const frameSvg = await renderToSvg(frame, 120, 40)
+        expect(directSvg).toContain(`fill="${c.textPrimary}"`)
+        expect(directSvg).not.toContain('<text')
+        expect(frameSvg).not.toContain('SvgMathText')
+        expect(frameSvg).not.toContain('function')
+        expect(frameSvg).not.toContain('%3Ctext')
+
+        const image = decodePng(await renderToBuffer(frame, 120, 40, { scale: 1 }))
+        const textBounds = pixelBounds(image, (r, g, b, a) =>
+            a > 0 && r === 241 && g === 245 && b === 249,
+        )
+        expect(textBounds.maxX).toBeGreaterThanOrEqual(textBounds.minX)
+        expect(textBounds.maxY).toBeGreaterThanOrEqual(textBounds.minY)
+    }, 30_000)
+
     it('renders scenes without a title or subtitle', async () => {
         const frame = defineIllustration((c) => (
             <Scene c={c} align="center" contentWidth={420}>
@@ -826,6 +864,22 @@ describe('vizmatic render pipeline', () => {
         expect(reactProps(graph)['data-vizmatic-connector-crossings']).toBe(1)
     })
 
+    it('does not classify opposite graph directions as parallel connectors', () => {
+        const graph = GraphDiagram({
+            c: getThemeColors('light'),
+            nodes: [
+                { id: 'client', label: 'Client' },
+                { id: 'server', label: 'Server' },
+            ],
+            edges: [
+                { from: 'client', to: 'server' },
+                { from: 'server', to: 'client' },
+            ],
+        })
+
+        expect(reactProps(graph)['data-vizmatic-parallel-connector-groups']).toBe(0)
+    })
+
     it('renders auto and manual self-loops and rejects mixed coordinate modes', () => {
         const loop = GraphDiagram({
             c: getThemeColors('light'),
@@ -1097,7 +1151,20 @@ describe('vizmatic render pipeline', () => {
             layers: [{ title: 'Empty layer', nodes: [] }],
         })
 
+        expect(reactProps(network)['aria-label']).toBe('Layered network diagram')
         await expect(renderToSvg(network, 900, 400)).resolves.toMatch(/^<svg\b/)
+    })
+
+    it('gives diagram image roles accessible names', () => {
+        const c = getThemeColors('light')
+        const graph = GraphDiagram({ c, nodes: [{ id: 'node', label: 'Node' }], edges: [] })
+        const tree = TreeDiagram({ c, title: 'Decision tree', root: { label: 'Root' } })
+        const matrix = TiledMatrix({ c, rows: 2, cols: 2 })
+        const treeImage = collectElements(tree, (element) => reactProps(element).role === 'img')[0]
+
+        expect(reactProps(graph)['aria-label']).toBe('Graph diagram')
+        expect(reactProps(treeImage)['aria-label']).toBe('Decision tree')
+        expect(reactProps(matrix)['aria-label']).toBe('Tiled matrix')
     })
 
     it('renders donut, timeline, tree, and icon primitives together', async () => {
@@ -1185,6 +1252,20 @@ describe('vizmatic render pipeline', () => {
         expect(opaqueBounds.maxY).toBeGreaterThan(opaqueBounds.minY)
         expect(pixelAt(image, 0, 0)[3]).toBe(0)
     }, 30_000)
+
+    it('rejects duplicate explicit tree node ids', () => {
+        expect(() => TreeDiagram({
+            c: getThemeColors('light'),
+            root: {
+                id: 'root',
+                label: 'Root',
+                children: [
+                    { id: 'duplicate', label: 'First' },
+                    { id: 'duplicate', label: 'Second' },
+                ],
+            },
+        })).toThrow('TreeDiagram received duplicate node id "duplicate"')
+    })
 
     it('applies panel gap between direct body children', () => {
         const panel = Panel({
@@ -1391,9 +1472,9 @@ renderToBuffer(frame.create('dark'), 720, 420)
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
             expect(buffer.length).toBeGreaterThan(5_000)
             const delays = gifFrameDelays(buffer)
-            expect(delays).toHaveLength(18)
+            expect(delays).toHaveLength(16)
             expect(delays.reduce((total, delay) => total + delay, 0)).toBe(1_080)
-            expect(gifLocalPaletteFlags(buffer)).toEqual(Array.from({ length: 18 }, () => false))
+            expect(gifLocalPaletteFlags(buffer)).toEqual(Array.from({ length: 16 }, () => false))
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
@@ -1419,12 +1500,24 @@ renderToBuffer(frame.create('dark'), 720, 420)
             })
 
             const delays = gifFrameDelays(await readFile(outputPath))
-            expect(delays).toHaveLength(11)
+            expect(delays).toHaveLength(10)
             expect(delays.reduce((total, delay) => total + delay, 0)).toBe(1_200)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
     }, 30_000)
+
+    it('rejects invalid legacy scene timing before rendering', async () => {
+        await expect(renderAnimatedGif([{
+            element: <div>Invalid</div>,
+            duration: 0,
+            transition: 'fade',
+        }], {
+            width: 320,
+            height: 200,
+            outputPath: join(tmpdir(), 'vizmatic-invalid-scene.gif'),
+        })).rejects.toThrow('duration must be a positive finite number')
+    })
 
     it('renders a sampled state timeline as a correctly timed GIF', async () => {
         const c = getThemeColors('dark')
