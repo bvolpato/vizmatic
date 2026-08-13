@@ -83,6 +83,16 @@ export interface SampledAnimationFrame<S extends object> {
     frame: Readonly<AnimationFrameContext>
 }
 
+export interface AnimationCadenceAnalysis {
+    fps: number
+    duration: number
+    frameCount: number
+    encodedDuration: number
+    targetInterval: number
+    minDelay: number
+    maxDelay: number
+}
+
 interface EvaluatedAnimationState<S extends object> {
     state: S
     step: number
@@ -386,15 +396,50 @@ export function sampleAnimation<S extends object>(animation: DefinedAnimation<S>
     return evaluateAnimation(animation, time).state
 }
 
-function frameDelays(duration: number, count: number): number[] {
-    const totalCentiseconds = Math.max(count * 2, Math.round(duration / 10))
-    let previous = 0
-    return Array.from({ length: count }, (_, index) => {
-        const cumulative = Math.round(((index + 1) / count) * totalCentiseconds)
-        const delay = (cumulative - previous) * 10
-        previous = cumulative
-        return delay
-    })
+interface AnimationCadenceSchedule {
+    times: number[]
+    delays: number[]
+}
+
+function animationCadence(duration: number, fps: number): AnimationCadenceSchedule {
+    const interval = 1000 / fps
+    const times = [0]
+    for (let time = interval; time < duration; time += interval) times.push(time)
+    if (times.at(-1) !== duration) times.push(duration)
+
+    const boundaries = times.map((time) => Math.round(time / 10) * 10)
+    const delays = times.map((_, index) => index === times.length - 1
+        ? 20
+        : Math.max(20, boundaries[index + 1] - boundaries[index]))
+    const targetDuration = Math.max(
+        Math.round(duration / 10) * 10,
+        delays.length * 20,
+    )
+    let excess = delays.reduce((total, delay) => total + delay, 0) - targetDuration
+    for (let index = delays.length - 2; index >= 0 && excess > 0; index -= 1) {
+        const reduction = Math.min(excess, delays[index] - 20)
+        delays[index] -= reduction
+        excess -= reduction
+    }
+    return { times, delays }
+}
+
+export function analyzeAnimationCadence<S extends object>(
+    animation: DefinedAnimation<S>,
+    options: SampleAnimationOptions = {},
+): AnimationCadenceAnalysis {
+    const fps = options.fps ?? animation.fps
+    assertFps(fps)
+    const cadence = animationCadence(animation.duration, fps)
+    return {
+        fps,
+        duration: animation.duration,
+        frameCount: cadence.times.length,
+        encodedDuration: cadence.delays.reduce((total, delay) => total + delay, 0),
+        targetInterval: 1000 / fps,
+        minDelay: Math.min(...cadence.delays),
+        maxDelay: Math.max(...cadence.delays),
+    }
 }
 
 export function sampleAnimationFrames<S extends object>(
@@ -403,11 +448,10 @@ export function sampleAnimationFrames<S extends object>(
 ): readonly SampledAnimationFrame<S>[] {
     const fps = options.fps ?? animation.fps
     assertFps(fps)
-    const count = Math.max(2, Math.floor((animation.duration / 1000) * fps))
-    const delays = frameDelays(animation.duration, count)
+    const cadence = animationCadence(animation.duration, fps)
+    const count = cadence.times.length
 
-    return delays.map((delay, index) => {
-        const time = animation.duration * (index / (count - 1))
+    return cadence.times.map((time, index) => {
         const evaluated = evaluateAnimation(animation, time)
         return {
             state: evaluated.state,
@@ -416,7 +460,7 @@ export function sampleAnimationFrames<S extends object>(
                 count,
                 time,
                 duration: animation.duration,
-                delay,
+                delay: cadence.delays[index],
                 progress: time / animation.duration,
                 step: evaluated.step,
                 stepProgress: evaluated.stepProgress,

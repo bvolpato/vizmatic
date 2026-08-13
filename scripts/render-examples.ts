@@ -17,6 +17,7 @@ const sources: Array<{ name: string; title: string; source: string; code: string
 const animatedSources: string[] = []
 const titleWords: Record<string, string> = {
     gif: 'GIF',
+    ml: 'ML',
     nccl: 'NCCL',
     rag: 'RAG',
 }

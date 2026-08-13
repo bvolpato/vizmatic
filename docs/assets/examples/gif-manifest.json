@@ -13,13 +13,23 @@
         "theme": "dark",
         "path": "animated-pipeline_dark.gif",
         "width": 1040,
-        "height": 400
+        "height": 400,
+        "frameCount": 102,
+        "encodedFrameCount": 37,
+        "deltaFrameCount": 36,
+        "duration": 5050,
+        "bytes": 268781
       },
       {
         "theme": "light",
         "path": "animated-pipeline_light.gif",
         "width": 1040,
-        "height": 400
+        "height": 400,
+        "frameCount": 102,
+        "encodedFrameCount": 37,
+        "deltaFrameCount": 36,
+        "duration": 5050,
+        "bytes": 327949
       }
     ]
   },
@@ -37,13 +47,23 @@
         "theme": "dark",
         "path": "nccl-all-gather_dark.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 68,
+        "deltaFrameCount": 67,
+        "duration": 5400,
+        "bytes": 150439
       },
       {
         "theme": "light",
         "path": "nccl-all-gather_light.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 67,
+        "deltaFrameCount": 66,
+        "duration": 5400,
+        "bytes": 153174
       }
     ]
   },
@@ -61,13 +81,23 @@
         "theme": "dark",
         "path": "nccl-all-reduce_dark.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 68,
+        "deltaFrameCount": 67,
+        "duration": 5400,
+        "bytes": 117856
       },
       {
         "theme": "light",
         "path": "nccl-all-reduce_light.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 67,
+        "deltaFrameCount": 66,
+        "duration": 5400,
+        "bytes": 115587
       }
     ]
   },
@@ -85,13 +115,23 @@
         "theme": "dark",
         "path": "nccl-all-to-all_dark.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 66,
+        "deltaFrameCount": 65,
+        "duration": 5400,
+        "bytes": 305407
       },
       {
         "theme": "light",
         "path": "nccl-all-to-all_light.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 66,
+        "deltaFrameCount": 65,
+        "duration": 5400,
+        "bytes": 306786
       }
     ]
   },
@@ -109,13 +149,23 @@
         "theme": "dark",
         "path": "nccl-broadcast_dark.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 101,
+        "encodedFrameCount": 59,
+        "deltaFrameCount": 58,
+        "duration": 5000,
+        "bytes": 84346
       },
       {
         "theme": "light",
         "path": "nccl-broadcast_light.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 101,
+        "encodedFrameCount": 59,
+        "deltaFrameCount": 58,
+        "duration": 5000,
+        "bytes": 85273
       }
     ]
   },
@@ -133,13 +183,23 @@
         "theme": "dark",
         "path": "nccl-reduce-scatter_dark.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 67,
+        "deltaFrameCount": 66,
+        "duration": 5400,
+        "bytes": 233494
       },
       {
         "theme": "light",
         "path": "nccl-reduce-scatter_light.gif",
         "width": 1040,
-        "height": 500
+        "height": 500,
+        "frameCount": 109,
+        "encodedFrameCount": 67,
+        "deltaFrameCount": 66,
+        "duration": 5400,
+        "bytes": 237255
       }
     ]
   }

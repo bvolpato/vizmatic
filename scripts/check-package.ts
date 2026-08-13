@@ -9,9 +9,9 @@ interface PackResult {
 }
 
 const limits = {
-    size: 3_250_000,
-    unpackedSize: 12_500_000,
-    entryCount: 4_000,
+    size: 2_500_000,
+    unpackedSize: 5_000_000,
+    entryCount: 100,
 }
 
 const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {

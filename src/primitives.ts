@@ -30,6 +30,10 @@ export {
 export * from './primitives/content'
 export * from './primitives/flows'
 export * from './primitives/diagrams'
+export * from './primitives/sequence'
+export * from './primitives/dataflow'
+export * from './primitives/deployment'
+export * from './primitives/transformer'
 export * from './primitives/data'
 export {
     createPlotArea,

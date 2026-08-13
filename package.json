@@ -36,7 +36,10 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "assets",
+    "assets/emoji.json.br",
+    "assets/fonts",
+    "assets/licenses",
+    "assets/THIRD_PARTY_LICENSES.md",
     "dist",
     "examples",
     "PROMPT.md",
@@ -61,6 +64,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts --format esm --dts --target node20 --external react",
+    "assets:emoji": "node scripts/build-emoji-bundle.mjs",
+    "assets:check": "node scripts/build-emoji-bundle.mjs --check",
     "prepare": "pnpm build",
     "lint": "pnpm typecheck && pnpm workflows:check",
     "typecheck": "tsc --noEmit",
@@ -74,7 +79,7 @@
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
     "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
     "security:audit": "pnpm audit --audit-level low",
-    "deps:check": "pnpm security:audit && publint && tsx scripts/check-package.ts",
+    "deps:check": "pnpm security:audit && pnpm assets:check && publint && tsx scripts/check-package.ts",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm check:examples && pnpm docs:check && pnpm deps:check",
     "prepublishOnly": "pnpm verify"
   },

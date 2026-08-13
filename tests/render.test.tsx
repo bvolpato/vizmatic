@@ -1,7 +1,7 @@
 import React from 'react'
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { inflateSync } from 'zlib'
@@ -22,7 +22,9 @@ import {
     getReadableTextColor,
     MetricCard,
     renderAnimatedGif,
+    renderAnimatedGifWithOutput,
     renderAnimationGif,
+    renderAnimationGifWithOutput,
     renderToBuffer,
     renderToSvg,
     Scene,
@@ -250,6 +252,56 @@ function gifLocalPaletteFlags(buffer: Buffer): boolean[] {
     return flags
 }
 
+function gifFrameDescriptors(buffer: Buffer): Array<{
+    x: number
+    y: number
+    width: number
+    height: number
+    disposal: number
+}> {
+    const globalPaletteSize = (buffer[10] & 0x80) === 0
+        ? 0
+        : 3 * (1 << ((buffer[10] & 0x07) + 1))
+    let offset = 13 + globalPaletteSize
+    let disposal = 0
+    const frames: Array<{ x: number; y: number; width: number; height: number; disposal: number }> = []
+    const skipSubBlocks = () => {
+        while (offset < buffer.length) {
+            const length = buffer[offset++]
+            if (length === 0) return
+            offset += length
+        }
+    }
+
+    while (offset < buffer.length) {
+        const marker = buffer[offset++]
+        if (marker === 0x3b) break
+        if (marker === 0x21) {
+            const label = buffer[offset++]
+            if (label === 0xf9) {
+                const length = buffer[offset++]
+                disposal = (buffer[offset] >> 2) & 0x07
+                offset += length + 1
+            } else {
+                skipSubBlocks()
+            }
+            continue
+        }
+        if (marker !== 0x2c) throw new Error(`unsupported GIF marker 0x${marker.toString(16)}`)
+        const x = buffer.readUInt16LE(offset)
+        const y = buffer.readUInt16LE(offset + 2)
+        const width = buffer.readUInt16LE(offset + 4)
+        const height = buffer.readUInt16LE(offset + 6)
+        const packed = buffer[offset + 8]
+        frames.push({ x, y, width, height, disposal })
+        offset += 9
+        if ((packed & 0x80) !== 0) offset += 3 * (1 << ((packed & 0x07) + 1))
+        offset += 1
+        skipSubBlocks()
+    }
+    return frames
+}
+
 function pixelBounds(
     image: { width: number; height: number; pixels: Uint8Array },
     matches: (r: number, g: number, b: number, a: number) => boolean,
@@ -421,6 +473,29 @@ describe('vizmatic render pipeline', () => {
             expect(buffer.length).toBeGreaterThan(5_000)
         } finally {
             vi.unstubAllGlobals()
+        }
+    }, 30_000)
+
+    it('loads emoji from compressed package bundle offline', async () => {
+        ensurePackageBuild()
+        const assetDir = await mkdtemp(join(tmpdir(), 'vizmatic-assets-'))
+        try {
+            await copyFile(join(process.cwd(), 'assets', 'emoji.json.br'), join(assetDir, 'emoji.json.br'))
+            const script = `
+import { loadAdditionalAsset } from ${JSON.stringify(join(process.cwd(), 'dist', 'index.js'))}
+const asset = await loadAdditionalAsset('emoji', '🚀')
+if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')) process.exit(1)
+`
+            const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+                encoding: 'utf8',
+                env: cliChildEnv({
+                    VIZMATIC_ASSET_DIR: assetDir,
+                    VIZMATIC_OFFLINE: '1',
+                }),
+            })
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+        } finally {
+            await rm(assetDir, { recursive: true, force: true })
         }
     }, 30_000)
 
@@ -1537,7 +1612,7 @@ renderToBuffer(frame.create('dark'), 720, 420)
         })
 
         try {
-            await renderAnimationGif(animation, {
+            const output = await renderAnimationGifWithOutput(animation, {
                 width: 240,
                 height: 140,
                 outputPath,
@@ -1548,9 +1623,67 @@ renderToBuffer(frame.create('dark'), 720, 420)
             expect(buffer.subarray(0, 6).toString('ascii')).toBe('GIF89a')
             expect(gifFrameDelays(buffer).reduce((total, delay) => total + delay, 0)).toBe(300)
             expect(gifLocalPaletteFlags(buffer).every((flag) => !flag)).toBe(true)
+            expect(output).toMatchObject({ frameCount: 4, encodedFrameCount: 3, duration: 300 })
+            expect(output.deltaFrameCount).toBeGreaterThan(0)
+            const descriptors = gifFrameDescriptors(buffer)
+            expect(descriptors[0]).toMatchObject({ x: 0, y: 0, width: 240, height: 140 })
+            expect(descriptors.slice(1).some((frame) => frame.width < 240 || frame.height < 140)).toBe(true)
+            expect(descriptors.slice(1).filter((frame) => frame.width < 240 || frame.height < 140)
+                .every((frame) => frame.disposal === 1)).toBe(true)
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }
+    }, 30_000)
+
+    it('rejects overflow in timeline frames with frame metadata', async () => {
+        const c = getThemeColors('dark')
+        const outputPath = join(tmpdir(), `vizmatic-overflow-${process.pid}.gif`)
+        const animation = defineAnimation({
+            initial: { x: 10 },
+            timeline: [tween({ x: 80 }, { duration: 100, label: 'leave canvas' })],
+            fps: 20,
+            render: ({ x }) => (
+                <div style={{ display: 'flex', position: 'relative', width: 100, height: 100, background: c.bg }}>
+                    <div style={{ display: 'flex', position: 'absolute', left: x, top: 30, width: 40, height: 40, background: c.primaryLight }} />
+                </div>
+            ),
+        })
+
+        await expect(renderAnimationGifWithOutput(animation, {
+            width: 100,
+            height: 100,
+            outputPath,
+            theme: 'dark',
+        })).rejects.toMatchObject({
+            name: 'CanvasOverflowError',
+            overflow: { edges: { right: true } },
+            animation: { frameCount: 3, label: 'leave canvas' },
+        })
+        expect(existsSync(outputPath)).toBe(false)
+    }, 30_000)
+
+    it('rejects overflow in legacy scene frames with scene metadata', async () => {
+        const c = getThemeColors('light')
+        const outputPath = join(tmpdir(), `vizmatic-scene-overflow-${process.pid}.gif`)
+        const frame = (width: number) => (
+            <div style={{ display: 'flex', position: 'relative', width: 100, height: 100, background: c.bg }}>
+                <div style={{ display: 'flex', position: 'absolute', left: 20, top: 20, width, height: 60, background: c.accent }} />
+            </div>
+        )
+
+        await expect(renderAnimatedGifWithOutput([
+            { element: frame(60), duration: 100, label: 'fits' },
+            { element: frame(120), duration: 100, label: 'too wide' },
+        ], {
+            width: 100,
+            height: 100,
+            outputPath,
+            theme: 'light',
+        })).rejects.toMatchObject({
+            name: 'CanvasOverflowError',
+            animation: { sceneIndex: 1, label: 'too wide' },
+        })
+        expect(existsSync(outputPath)).toBe(false)
     }, 30_000)
 
     it('preserves one-bit transparency in animated GIF frames and transitions', async () => {
@@ -2794,7 +2927,7 @@ export default create('dark')
             expect(Number.isInteger(dimensions.height)).toBe(true)
 
             const manifest = JSON.parse(await readFile(join(renderDir, 'gif-manifest.json'), 'utf8')) as CliManifestEntry[]
-            expect(manifest[0]?.outputDetails).toEqual([{
+            expect(manifest[0]?.outputDetails).toMatchObject([{
                 theme: 'dark',
                 path: 'animated_dark.gif',
                 ...dimensions,

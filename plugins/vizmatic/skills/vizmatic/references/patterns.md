@@ -4,8 +4,13 @@
 
 - Linear workflow: `Flow` with 3-5 stages. Add `CalloutCard` or `MetricCard` only when the flow needs supporting detail.
 - System architecture or branching system: `GraphDiagram` with automatic layout, nested `groups`, technical `icon` names, and labeled relationship kinds. Keep labels under 24 characters.
+- Time-ordered service interaction: `SequenceDiagram` with typed participants, messages, notes, activations, and control fragments.
+- Dataset production or provenance: `DataflowDiagram` with source, transform, store, sink, schema, and batch/stream semantics.
+- Runtime placement or trust paths: `DeploymentDiagram` with nested region/network boundaries, workload kinds, ports, and protocols.
+- Model structure or parallelism: `TransformerTopology` with block kinds, tensor shapes, repeats, residual/cache/expert routes, and collectives.
 - Dashboard or report figure: `MetricCard`, `DonutChart`, `BarChart`, `LineChart`, `DataTable`, and `ProgressList`.
 - Architecture layers and deployment boundaries: nested `GraphDiagram` groups. Use `LayeredNetwork` only for dense repeated layers.
+- Generic graph: use `GraphDiagram`; prefer specialized typed components when sequence, lineage, deployment, or transformer semantics matter.
 - Model internals: `Matrix`, `Heatmap`, `TiledMatrix`, `AxisPlot`, and `ScatterPlot`.
 - Competing objectives: `ParetoChart` for automatic non-dominated frontiers; use a log x-axis when costs span orders of magnitude.
 - Decision regions: `QuadrantChart` with raw numeric domains, policy thresholds, visible ticks, and `emphasis: true` on the desired region.

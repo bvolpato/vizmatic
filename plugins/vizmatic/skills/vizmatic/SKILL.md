@@ -38,7 +38,7 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
    vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
    ```
    Autocrop keeps 24 source pixels around detected content. Use `--no-crop` only when the full declared canvas is part of the composition.
-8. For GIFs, prefer typed state timelines: export `createAnimation(theme)` with `defineAnimation`, `hold`, `tween`, `keyframe`, and optional `parallel` tracks. Keep nodes and text fixed; move semantic objects without coarse position snapping. Prefer 10, 20, 25, or 50 FPS and align durations to frame intervals, such as multiples of 50 ms at 20 FPS. For infinite loops, make terminal and initial visuals match: fade moving content out, reset it with a zero-duration keyframe while hidden, then let the next loop fade it in. Do not animate a semantic operation backward only to close the loop. Keep `create(theme)` as static fallback. Use legacy `createScenes(theme)` only for deliberate cuts or pixel crossfades. Render:
+8. For GIFs, prefer typed state timelines: export `createAnimation(theme)` with `defineAnimation`, `hold`, `tween`, `keyframe`, and optional `parallel` tracks. Keep nodes and text fixed; move semantic objects without coarse position snapping. Vizmatic samples cadence boundaries, checks every frame for overflow, and delta-encodes opaque GIFs. Use `analyzeAnimationCadence` when exact timing matters. For infinite loops, make terminal and initial visuals match: fade moving content out, reset it with a zero-duration keyframe while hidden, then let the next loop fade it in. Do not animate a semantic operation backward only to close the loop. Keep `create(theme)` as static fallback. Use legacy `createScenes(theme)` only for deliberate cuts or pixel crossfades. Render:
    ```bash
    vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --fps 20 --scale 1
    ```
@@ -62,6 +62,10 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
 ## Common requests
 
 - "Create an architecture diagram for this service" -> use `GraphDiagram` groups, technical icons, and labeled relationship kinds, then render PNGs.
+- "Show request interactions" -> use `SequenceDiagram` with messages, activations, notes, and control fragments.
+- "Show data provenance" -> use `DataflowDiagram` with schemas and explicit batch or stream edges.
+- "Show where services run" -> use `DeploymentDiagram` with nested boundaries, ports, protocols, and trust direction.
+- "Explain transformer parallelism" -> use `TransformerTopology` with tensor shapes and collective routes.
 - "Turn this eval data into a figure" -> use metric cards plus bar or line charts.
 - "Compare score and cost" -> use `ParetoChart` with automatic frontier detection and a logarithmic cost axis when needed.
 - "Make this pipeline animated" -> define numeric state transitions with `createAnimation(theme)` and render GIFs.

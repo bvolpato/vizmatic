@@ -315,6 +315,10 @@ Graphs and networks:
 
 - `LayeredNetwork`: `c`, `layers: LayeredNetworkLayer[]`, `activePath?: number[] = []`, `annotations?: string[] = []`, `formula?`, `legend?: string = "highlighted path"`, `width?: number = 900`, `height?: number = 400`, `nodeSize?: number = 56`, `showFormula?: boolean = true`. `LayeredNetworkLayer`: `title`, `nodes: string[]`, `tone?`.
 - `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `groups?: GraphDiagramGroup[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 11`, `arrowSize?: number = 5`, `padding?: number = 28`, `layout?: "auto" | "manual"`, `direction?: "LR" | "RL" | "TB" | "BT" = "LR"`, `nodeGap?: number = 34`, `rankGap?: number = 64`, `edgeGap?: number = 14`, `sizing?: "content" | "fixed" = "content"`, `iconSize?: number = 20`, `ariaLabel?`. `GraphDiagramNode`: `id`, `label`, `detail?`, `x?`, `y?`, `tone?`, `muted?`, `width?`, `height?`, `group?`, `icon?: IconName | DiagramIconDefinition | ReactElement`, `iconSize?`. Icon size is clamped inside its node; custom React elements own their theme colors and accessible label. `GraphDiagramGroup`: `id`, `label`, `detail?`, `parent?`, `tone?`, `muted?`. Groups nest through `parent` and require automatic layout. Omit coordinates on every node for automatic layout; array order is the stable tie-breaker and dimensions expand to fit unless `sizing="fixed"`. Set both coordinates on every node for manual normalized positioning when no groups are present. Mixed coordinate modes fail. `GraphDiagramEdge`: `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`, `kind?: "sync" | "async" | "event" | "data" | "dependency" | "association"`, `style?: "solid" | "dashed" | "dotted"`, `arrow?: "forward" | "backward" | "both" | "none"`. Association edges default to no arrow.
+- `SequenceDiagram`: `participants`, ordered `items`, `c`, and optional `width`, `height`, spacing, title, subtitle, and `ariaLabel`. Participants have `id`, `label`, optional `detail`, `tone`, `kind`, and `icon`. Items are messages (`from`, `to`, `label`, `kind?: "sync" | "async" | "return"`), notes, activations, or recursive fragments with `kind: "alt" | "loop" | "parallel"` and labeled branches.
+- `DataflowDiagram`: `nodes`, `edges`, optional nested `boundaries`, `c`, GraphDiagram sizing/layout props, and `ariaLabel`. Nodes require `id`, `label`, and `kind: "source" | "transform" | "store" | "sink"`; optional schema metadata renders in node detail. Edges use `mode?: "batch" | "stream"` and optional schema/label metadata.
+- `DeploymentDiagram`: `nodes`, `connections`, optional nested `boundaries`, `c`, GraphDiagram sizing/layout props, and `ariaLabel`. Boundaries distinguish region, zone, VPC, subnet, namespace, host, cluster, and trust scopes. Nodes declare infrastructure kind, boundary, and ports. Connections declare ingress, egress, internal, or cross-boundary direction plus protocol and port references.
+- `TransformerTopology`: `blocks`, optional `routes`, `c`, `expandRepeats?`, GraphDiagram sizing/layout props, and `ariaLabel`. Blocks use embedding, attention, norm, MLP, residual, router, output, or custom kinds with tensor shapes and repeat counts. Routes use activation, residual, KV-cache, expert, or collective semantics. `formatTensorShape(shape)` formats reusable shape metadata.
 - `defineDiagramIcon(id, render)`: defines a reusable custom graph icon. `render` receives `c`, `color`, `size`, and optional `label`.
 - `defineIconRegistry(icons)`: preserves typed names for a set of custom or provider icons without global mutable state.
 - `TreeDiagram`: `root: TreeNodeSpec`, `c`, `title?`, `subtitle?`, `width?`, `height?`, `nodeWidth?: number = 156`, `nodeHeight?: number = 64`, `levelGap?: number = 58`, `siblingGap?: number = 24`, `padding?: number = 28`, `math?: boolean = false`. `TreeNodeSpec`: `label`, `id?`, `detail?`, `tone?`, `muted?`, `children?`.
@@ -368,7 +372,7 @@ Theme and render APIs:
 - `createPlotArea(width, height, margin)`: returns `PlotArea` geometry with inner width and height clamped to at least one pixel.
 - `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: "dark" | "light") => ReactNode`, `theme?: "dark" | "light"`.
 - `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height`, physical `pixelWidth` / `pixelHeight`, and painted `contentBounds`.
-- `CanvasOverflowError`: typed clipping failure from strict renders. Exposes `width`, `height`, and `overflow`, including affected edges and suggested growth.
+- `CanvasOverflowError`: typed clipping failure from strict static or animated renders. Exposes `width`, `height`, `overflow`, and optional animation frame/scene/time/label metadata.
 - `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.
 - `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement<WatermarkElementProps>`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `<Watermark>...</Watermark>` or any custom element.
 - `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
@@ -376,7 +380,7 @@ Theme and render APIs:
 - `normalizeWatermark(input)`: converts boolean, string, object, or React-element `WatermarkInput` to `WatermarkOptions | undefined`.
 - `wrapWithBrand(element, width, height, theme?, label?)`: compatibility wrapper around `wrapWithWatermark`; theme defaults to `"dark"` and label defaults to `"Vizmatic"`.
 - `getFonts()`: lazily loads and caches bundled Satori font data for advanced integrations.
-- `loadAdditionalAsset(code, segment)`: Satori missing-glyph callback; resolves emoji segments to Twemoji data URIs and returns an empty font list for other codes.
+- `loadAdditionalAsset(code, segment)`: Satori missing-glyph callback; resolves emoji segments from the compressed offline Twemoji bundle or public fallback and returns an empty font list for other codes.
 - `RenderOptions`: `width`, `height`, `outputPath`, `background?: "transparent" | "theme" | CSS color = "transparent"`, `theme?: "dark" | "light" = "dark"` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | "height" | "both" = true`, `scale?: number = 2`. Default autocrop retains 24 source pixels around detected content. Use `crop: "height"` when host layouts require stable width but should still trim extra vertical whitespace.
 - `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
 - `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.
@@ -387,12 +391,13 @@ Theme and render APIs:
 - `parallel(tracks, label?)`: run property tracks concurrently; each track accepts `hold`, `tween`, and `keyframe` steps.
 - `sampleAnimation(animation, time)`: evaluate state at exact millisecond.
 - `sampleAnimationFrames(animation, { fps? })`: return deterministic state/frame samples with GIF-compatible delays.
+- `analyzeAnimationCadence(animation, { fps? })`: return frame count, encoded duration, target interval, and delay range without rendering.
 - `renderAnimationGif(animation, options)`: stream timeline samples into GIF.
-- `renderAnimationGifWithOutput(animation, options)`: same arguments and returns physical `width` and `height`.
+- `renderAnimationGifWithOutput(animation, options)`: same arguments and returns dimensions, input/encoded frame counts, delta-frame count, duration, and byte size.
 - `renderAnimatedGif(scenes, options)`: legacy `AnimatedScene[]` renderer for scene cuts and pixel transitions. It also accepts a defined animation.
-- `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns physical `width` and `height`.
+- `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns dimensions and encoding metrics.
 - `AnimatedScene`: `element`, `duration` in ms, `transition?: "none" | "fade" | "appear"`, `transitionDuration?`, `label?`.
-- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `fps?: number`, `background?: "theme" | "transparent" | CSS color = "theme"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`. Transparent GIFs use one-bit transparency; use PNG/SVG when smooth alpha edges matter.
+- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `fps?: number`, `deltaFrames?: boolean = true`, `background?: "theme" | "transparent" | CSS color = "theme"`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: "dark" | "light" = "dark"`. Every actual frame is checked for overflow. Opaque GIFs encode changed rectangles; transparent GIFs stay full-frame for correct one-bit compositing. Use PNG/SVG when smooth alpha edges matter.
 
 ## Prop-aware examples
 
@@ -480,7 +485,7 @@ height = 560;
 - Omit `x` and `y` from `GraphDiagram` nodes for automatic layered layout and nested groups. Add both only when an ungrouped graph needs editorial manual control.
 - Render reusable assets in both themes with `--theme dark,light`.
 - Run `vizmatic check <frame> --theme dark,light --json` before final render and fix every error.
-- Use GIF only when motion explains state change. Prefer `createAnimation(theme)` with `hold` and `tween`, keep timelines short, match terminal and initial visuals for infinite loops, and keep static `create(theme)` fallback. Use `createScenes(theme)` only for deliberate cuts or crossfades.
+- Use GIF only when motion explains state change. Prefer `createAnimation(theme)` with `hold` and `tween`, keep timelines short, match terminal and initial visuals for infinite loops, and keep static `create(theme)` fallback. Sampling follows exact cadence boundaries and includes terminal state. Use `analyzeAnimationCadence` when timing must be audited. Use `createScenes(theme)` only for deliberate cuts or crossfades.
 - If render fails with `Canvas overflow detected`, increase the canvas, reduce content, or remove strict sizing. Do not ignore the error.
 - Confirm generated files exist and open at least one image before finishing.
 

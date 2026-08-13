@@ -49,11 +49,11 @@
     <header class="catalog-hero section">
       <div class="eyebrow"><span></span>Vizmatic reference</div>
       <h1>Components</h1>
-      <p>67 reusable pieces for technical diagrams, charts, dashboards, and documentation figures.</p>
+      <p>71 reusable pieces for technical diagrams, charts, dashboards, and documentation figures.</p>
     </header>
 
     <section id="components" class="section catalog-section">
-      <div class="section-kicker">Catalog <span>67 components</span></div>
+      <div class="section-kicker">Catalog <span>71 components</span></div>
       <div class="section-intro catalog-intro">
         <h2>Start with a primitive. Compose the rest.</h2>
         <p>Every category below is a real Vizmatic scene. Open its source, copy what fits, and adjust semantic tones for your theme.</p>
@@ -72,11 +72,15 @@
 <button type="button" data-catalog-filter="content" aria-pressed="false">Content</button>
 <button type="button" data-catalog-filter="flows" aria-pressed="false">Flows</button>
 <button type="button" data-catalog-filter="diagrams" aria-pressed="false">Diagrams</button>
+<button type="button" data-catalog-filter="sequence" aria-pressed="false">Sequence</button>
+<button type="button" data-catalog-filter="dataflow" aria-pressed="false">Dataflow</button>
+<button type="button" data-catalog-filter="deployment" aria-pressed="false">Deployment</button>
+<button type="button" data-catalog-filter="ml" aria-pressed="false">ML topology</button>
 <button type="button" data-catalog-filter="data" aria-pressed="false">Data</button>
 <button type="button" data-catalog-filter="charts" aria-pressed="false">Charts</button>
 <button type="button" data-catalog-filter="drawing" aria-pressed="false">Drawing</button>
         </div>
-        <p class="catalog-count" id="catalogCount" aria-live="polite">67 components</p>
+        <p class="catalog-count" id="catalogCount" aria-live="polite">71 components</p>
       </div>
       <div class="catalog-groups" id="catalogGroups">
         <section class="catalog-group" data-catalog-group="foundations">
@@ -176,6 +180,70 @@
 <div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="layerednetwork layered neural network or staged dag."><code>LayeredNetwork</code><p>Layered neural network or staged DAG.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="graphdiagram auto-laid architecture graph with nested groups, icons, and semantic edges."><code>GraphDiagram</code><p>Auto-laid architecture graph with nested groups, icons, and semantic edges.</p></article>
 <article class="catalog-item" data-catalog-item data-catalog-search="treediagram auto-laid hierarchy, taxonomy, or decision tree."><code>TreeDiagram</code><p>Auto-laid hierarchy, taxonomy, or decision tree.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="sequence">
+<div class="catalog-group-heading">
+<div>
+<h3>Sequence</h3>
+<p>Time-ordered interactions, lifelines, activations, notes, and control fragments.</p>
+</div>
+<span>1 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-sequence_dark.png" alt="Sequence component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-sequence" aria-label="View source for Sequence catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="sequencediagram typed participants, messages, notes, activations, and alt, loop, or parallel fragments."><code>SequenceDiagram</code><p>Typed participants, messages, notes, activations, and alt, loop, or parallel fragments.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="dataflow">
+<div class="catalog-group-heading">
+<div>
+<h3>Dataflow</h3>
+<p>Typed lineage across sources, transforms, stores, and sinks.</p>
+</div>
+<span>1 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-dataflow_dark.png" alt="Dataflow component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-dataflow" aria-label="View source for Dataflow catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="dataflowdiagram schema-aware batch and streaming lineage compiled into a stable directed graph."><code>DataflowDiagram</code><p>Schema-aware batch and streaming lineage compiled into a stable directed graph.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="deployment">
+<div class="catalog-group-heading">
+<div>
+<h3>Deployment</h3>
+<p>Infrastructure boundaries, workloads, ports, protocols, and trust direction.</p>
+</div>
+<span>1 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-deployment_dark.png" alt="Deployment component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-deployment" aria-label="View source for Deployment catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="deploymentdiagram nested region, network, and runtime boundaries with typed network connections."><code>DeploymentDiagram</code><p>Nested region, network, and runtime boundaries with typed network connections.</p></article></div>
+</div>
+</section>
+<section class="catalog-group" data-catalog-group="ml">
+<div class="catalog-group-heading">
+<div>
+<h3>ML topology</h3>
+<p>Transformer blocks, tensor shapes, repeated layers, and distributed routes.</p>
+</div>
+<span>1 components</span>
+</div>
+<div class="catalog-group-layout">
+<div class="catalog-preview">
+<img loading="lazy" decoding="async" data-theme-image src="assets/examples/catalog-ml_dark.png" alt="ML topology component catalog rendered by Vizmatic">
+<button class="source-button" type="button" data-source="catalog-ml" aria-label="View source for ML topology catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
+</div>
+<div class="catalog-items"><article class="catalog-item" data-catalog-item data-catalog-search="transformertopology transformer computation topology with tensor metadata and collective routes."><code>TransformerTopology</code><p>Transformer computation topology with tensor metadata and collective routes.</p></article></div>
 </div>
 </section>
 <section class="catalog-group" data-catalog-group="data">

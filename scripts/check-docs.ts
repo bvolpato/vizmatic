@@ -293,6 +293,7 @@ if (html.includes('Fallback before npm publish')) {
 
 const titleWords: Record<string, string> = {
     gif: 'GIF',
+    ml: 'ML',
     nccl: 'NCCL',
     rag: 'RAG',
 }

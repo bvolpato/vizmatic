@@ -1454,7 +1454,17 @@ async function gifCommand(argv: string[]) {
         width: number
         height: number
         outputs: string[]
-        outputDetails: Array<{ theme: ThemeMode; path: string; width: number; height: number }>
+        outputDetails: Array<{
+            theme: ThemeMode
+            path: string
+            width: number
+            height: number
+            frameCount: number
+            encodedFrameCount: number
+            deltaFrameCount: number
+            duration: number
+            bytes: number
+        }>
     }> = []
 
     for (const file of files) {
@@ -1462,7 +1472,17 @@ async function gifCommand(argv: string[]) {
         const mod = normalizeFrameModule(rawMod)
         const name = stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
-        const outputDetails: Array<{ theme: ThemeMode; path: string; width: number; height: number }> = []
+        const outputDetails: Array<{
+            theme: ThemeMode
+            path: string
+            width: number
+            height: number
+            frameCount: number
+            encodedFrameCount: number
+            deltaFrameCount: number
+            duration: number
+            bytes: number
+        }> = []
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
         const outputScale = args.scale ?? 1
 
@@ -1498,6 +1518,11 @@ async function gifCommand(argv: string[]) {
                 path: outputName,
                 width: rendered.width,
                 height: rendered.height,
+                frameCount: rendered.frameCount,
+                encodedFrameCount: rendered.encodedFrameCount,
+                deltaFrameCount: rendered.deltaFrameCount,
+                duration: rendered.duration,
+                bytes: rendered.bytes,
             })
             console.log(`rendered ${relative(process.cwd(), outputPath)}`)
         }

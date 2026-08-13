@@ -84,6 +84,42 @@ export const componentCatalog: ComponentCatalogCategory[] = [
         ],
     },
     {
+        id: 'sequence',
+        label: 'Sequence',
+        description: 'Time-ordered interactions, lifelines, activations, notes, and control fragments.',
+        source: 'catalog-sequence',
+        components: [
+            { name: 'SequenceDiagram', description: 'Typed participants, messages, notes, activations, and alt, loop, or parallel fragments.' },
+        ],
+    },
+    {
+        id: 'dataflow',
+        label: 'Dataflow',
+        description: 'Typed lineage across sources, transforms, stores, and sinks.',
+        source: 'catalog-dataflow',
+        components: [
+            { name: 'DataflowDiagram', description: 'Schema-aware batch and streaming lineage compiled into a stable directed graph.' },
+        ],
+    },
+    {
+        id: 'deployment',
+        label: 'Deployment',
+        description: 'Infrastructure boundaries, workloads, ports, protocols, and trust direction.',
+        source: 'catalog-deployment',
+        components: [
+            { name: 'DeploymentDiagram', description: 'Nested region, network, and runtime boundaries with typed network connections.' },
+        ],
+    },
+    {
+        id: 'ml',
+        label: 'ML topology',
+        description: 'Transformer blocks, tensor shapes, repeated layers, and distributed routes.',
+        source: 'catalog-ml',
+        components: [
+            { name: 'TransformerTopology', description: 'Transformer computation topology with tensor metadata and collective routes.' },
+        ],
+    },
+    {
         id: 'data',
         label: 'Data',
         description: 'Tables, grids, matrices, and compact distributions.',
@@ -143,6 +179,7 @@ export const catalogUtilities = [
     'defineIconRegistry',
     'defineIllustration',
     'formatMathText',
+    'formatTensorShape',
     'getToneColor',
     'getToneGradient',
 ] as const

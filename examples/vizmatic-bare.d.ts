@@ -14,6 +14,8 @@ declare global {
     const CalloutCard: AutoTheme<typeof import('../src').CalloutCard>
     const Column: AutoTheme<typeof import('../src').Column>
     const DataTable: AutoTheme<typeof import('../src').DataTable>
+    const DataflowDiagram: AutoTheme<typeof import('../src').DataflowDiagram>
+    const DeploymentDiagram: AutoTheme<typeof import('../src').DeploymentDiagram>
     const defineDiagramIcon: typeof import('../src').defineDiagramIcon
     const defineIconRegistry: typeof import('../src').defineIconRegistry
     const DonutChart: AutoTheme<typeof import('../src').DonutChart>
@@ -30,9 +32,11 @@ declare global {
     const Row: AutoTheme<typeof import('../src').Row>
     const ScatterPlot: AutoTheme<typeof import('../src').ScatterPlot>
     const Scene: AutoTheme<typeof import('../src').Scene>
+    const SequenceDiagram: AutoTheme<typeof import('../src').SequenceDiagram>
     const StepCard: AutoTheme<typeof import('../src').StepCard>
     const TextLabel: AutoTheme<typeof import('../src').TextLabel>
     const Timeline: AutoTheme<typeof import('../src').Timeline>
     const ToneStrip: AutoTheme<typeof import('../src').ToneStrip>
+    const TransformerTopology: AutoTheme<typeof import('../src').TransformerTopology>
     const TreeDiagram: AutoTheme<typeof import('../src').TreeDiagram>
 }

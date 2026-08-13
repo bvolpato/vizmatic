@@ -10,8 +10,18 @@ on:
         description: "Semver bump or exact version, for example patch, minor, major, or 0.2.0"
         required: true
         default: patch
+      publish_only:
+        description: "Publish an existing release tag"
+        required: false
+        type: boolean
+        default: false
+      tag:
+        description: "Existing v-prefixed tag used by publish-only dispatches"
+        required: false
+        default: ""
 
 permissions:
+  actions: write
   contents: write
   id-token: write
 
@@ -21,7 +31,7 @@ concurrency:
 
 jobs:
   prepare:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.publish_only
     runs-on: ubuntu-latest
     steps:
       - name: Require main branch
@@ -70,9 +80,15 @@ jobs:
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           git push --atomic origin "HEAD:${{ github.ref_name }}" "refs/tags/v${VERSION}"
+      - name: Dispatch verified tag publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          gh workflow run release.yml --ref "v${VERSION}" -f publish_only=true -f tag="v${VERSION}" -f version="${VERSION}"
 
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_only)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -86,9 +102,11 @@ jobs:
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+          test "${RELEASE_TAG}" = "v${VERSION}"
       - run: pnpm verify
       - name: Ensure generated files are committed
         run: test -z "$(git status --porcelain)"

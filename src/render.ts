@@ -17,6 +17,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
+import { brotliDecompressSync } from 'zlib'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
@@ -64,6 +65,7 @@ function resolveAssetDir(): string | undefined {
 const ASSET_DIR = resolveAssetDir()
 const VENDORED_FONT_DIR = ASSET_DIR ? join(ASSET_DIR, 'fonts') : undefined
 const VENDORED_EMOJI_DIR = ASSET_DIR ? join(ASSET_DIR, 'emoji') : undefined
+const VENDORED_EMOJI_BUNDLE = ASSET_DIR ? join(ASSET_DIR, 'emoji.json.br') : undefined
 
 /**
  * TTF files for text rendering. Vizmatic ships default font files in assets/fonts.
@@ -202,6 +204,17 @@ async function svgFileToDataUri(path: string): Promise<string> {
     return `data:image/svg+xml;base64,${Buffer.from(svgData).toString('base64')}`
 }
 
+let bundledEmoji: Record<string, string> | undefined
+
+async function loadBundledEmoji(filename: string): Promise<string | undefined> {
+    if (!VENDORED_EMOJI_BUNDLE || !existsSync(VENDORED_EMOJI_BUNDLE)) return undefined
+    bundledEmoji ??= JSON.parse(
+        brotliDecompressSync(await readFile(VENDORED_EMOJI_BUNDLE)).toString('utf8'),
+    ) as Record<string, string>
+    const svg = bundledEmoji[filename]
+    return svg ? `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}` : undefined
+}
+
 async function loadEmoji(segment: string): Promise<string> {
     const filenames = emojiFilenames(segment)
 
@@ -213,6 +226,8 @@ async function loadEmoji(segment: string): Promise<string> {
         for (const localPath of paths) {
             if (existsSync(localPath)) return svgFileToDataUri(localPath)
         }
+        const bundled = await loadBundledEmoji(filename)
+        if (bundled) return bundled
     }
 
     if (NETWORK_FALLBACK_DISABLED) {
@@ -377,17 +392,37 @@ export interface RenderOutput {
     contentBounds: CropRegion
 }
 
+export interface AnimationOverflowContext {
+    frameIndex?: number
+    frameCount?: number
+    sceneIndex?: number
+    time?: number
+    label?: string
+}
+
 export class CanvasOverflowError extends Error {
     readonly width: number
     readonly height: number
     readonly overflow: OverflowResult
+    readonly animation?: AnimationOverflowContext
 
-    constructor(width: number, height: number, overflow: OverflowResult) {
-        super(`Canvas overflow detected (${width}×${height}): ${overflow.message}`)
+    constructor(width: number, height: number, overflow: OverflowResult, animation?: AnimationOverflowContext) {
+        const position = animation
+            ? [
+                animation.sceneIndex != null ? `scene ${animation.sceneIndex + 1}` : undefined,
+                animation.frameIndex != null
+                    ? `frame ${animation.frameIndex + 1}${animation.frameCount ? `/${animation.frameCount}` : ''}`
+                    : undefined,
+                animation.time != null ? `${Math.round(animation.time)}ms` : undefined,
+                animation.label ? JSON.stringify(animation.label) : undefined,
+            ].filter(Boolean).join(', ')
+            : ''
+        super(`Canvas overflow detected (${width}×${height})${position ? ` at ${position}` : ''}: ${overflow.message}`)
         this.name = 'CanvasOverflowError'
         this.width = width
         this.height = height
         this.overflow = overflow
+        this.animation = animation
     }
 }
 

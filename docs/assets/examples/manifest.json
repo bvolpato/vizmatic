@@ -58,6 +58,22 @@
     ]
   },
   {
+    "name": "catalog-dataflow",
+    "source": "examples/catalog-dataflow.tsx",
+    "outputs": [
+      "catalog-dataflow_dark.png",
+      "catalog-dataflow_light.png"
+    ]
+  },
+  {
+    "name": "catalog-deployment",
+    "source": "examples/catalog-deployment.tsx",
+    "outputs": [
+      "catalog-deployment_dark.png",
+      "catalog-deployment_light.png"
+    ]
+  },
+  {
     "name": "catalog-diagrams",
     "source": "examples/catalog-diagrams.tsx",
     "outputs": [
@@ -87,6 +103,22 @@
     "outputs": [
       "catalog-foundations_dark.png",
       "catalog-foundations_light.png"
+    ]
+  },
+  {
+    "name": "catalog-ml",
+    "source": "examples/catalog-ml.tsx",
+    "outputs": [
+      "catalog-ml_dark.png",
+      "catalog-ml_light.png"
+    ]
+  },
+  {
+    "name": "catalog-sequence",
+    "source": "examples/catalog-sequence.tsx",
+    "outputs": [
+      "catalog-sequence_dark.png",
+      "catalog-sequence_light.png"
     ]
   },
   {

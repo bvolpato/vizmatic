@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+    analyzeAnimationCadence,
     defineAnimation,
     hold,
     keyframe,
@@ -71,13 +72,46 @@ describe('animation timeline', () => {
         const first = sampleAnimationFrames(animation)
         const second = sampleAnimationFrames(animation)
         expect(first).toEqual(second)
-        expect(first).toHaveLength(8)
+        expect(first).toHaveLength(10)
+        expect(first.map((item) => item.frame.time)).toEqual([0, 50, 100, 150, 200, 250, 300, 350, 400, 425])
         expect(first.reduce((total, item) => total + item.frame.delay, 0)).toBe(430)
         expect(first.every((item) => item.frame.delay >= 20)).toBe(true)
         expect(first[0]?.state).toEqual({ progress: 0 })
         expect(first[0]?.frame.progress).toBe(0)
         expect(first.at(-1)?.state).toEqual({ progress: 1 })
         expect(first.at(-1)?.frame.progress).toBe(1)
+    })
+
+    it('samples cadence boundaries and exposes encoded timing', () => {
+        const short = defineAnimation({
+            initial: { x: 0 },
+            timeline: [tween({ x: 1 }, { duration: 100 })],
+            fps: 20,
+            render: () => null,
+        })
+        const uneven = defineAnimation({
+            initial: { x: 0 },
+            timeline: [tween({ x: 1 }, { duration: 999 })],
+            fps: 20,
+            render: () => null,
+        })
+
+        expect(sampleAnimationFrames(short).map(({ frame }) => frame.time)).toEqual([0, 50, 100])
+        expect(analyzeAnimationCadence(short)).toEqual({
+            fps: 20,
+            duration: 100,
+            frameCount: 3,
+            encodedDuration: 100,
+            targetInterval: 50,
+            minDelay: 20,
+            maxDelay: 50,
+        })
+        expect(analyzeAnimationCadence(uneven)).toMatchObject({
+            frameCount: 21,
+            encodedDuration: 1000,
+            minDelay: 20,
+            maxDelay: 50,
+        })
     })
 
     it('validates timing and interpolation contracts at definition time', () => {

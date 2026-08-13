@@ -235,9 +235,9 @@ Run the full local gate:
 
 Vizmatic uses `react` for JSX frames, `satori` for layout, `@resvg/resvg-js` for PNG output, `gifenc` for GIFs, and `tsx` to load frame files.
 
-Published packages include Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and Twemoji SVGs under `assets/`, so normal CLI rendering does not fetch them at runtime. Set `VIZMATIC_FONT_DIR` or `VIZMATIC_ASSET_DIR` to use other local assets. Set `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` to disable public fallbacks.
+Published packages include Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and a compressed Twemoji bundle under `assets/`, so normal CLI rendering does not fetch them at runtime. Set `VIZMATIC_FONT_DIR` or `VIZMATIC_ASSET_DIR` to use other local assets. Set `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` to disable public fallbacks.
 
-The complete Twemoji set is intentionally bundled so arbitrary emoji render offline. `pnpm deps:check` keeps that tradeoff bounded: the package must stay below 3.25 MB compressed, 12.5 MB unpacked, and 4,000 files.
+The complete Twemoji set stays available offline but ships as one Brotli bundle instead of 3,720 individual SVG files. `pnpm deps:check` keeps the package below 2.5 MB compressed, 5 MB unpacked, and 100 files.
 
 ## API
 
@@ -328,6 +328,10 @@ Use these primitives before writing raw SVG or absolute-positioned layouts.
 | `LayeredNetwork` | Neural-network/DAG diagram with layers, nodes, active path, annotations, and formula. |
 | `GraphDiagram` | Auto-laid architecture graph with nested boundaries, technical icons, typed relationships, and custom icon definitions. |
 | `TreeDiagram` | Auto-laid parent/child hierarchy for ownership, routing, taxonomy, and decision trees. |
+| `SequenceDiagram` | Participants, lifelines, activations, notes, sync/async/return messages, and control fragments. |
+| `DataflowDiagram` | Schema-aware source, transform, store, and sink lineage with batch or streaming edges. |
+| `DeploymentDiagram` | Nested infrastructure boundaries with workload kinds, ports, protocols, and trust direction. |
+| `TransformerTopology` | Transformer blocks, tensor shapes, repeated layers, residual paths, caches, experts, and collectives. |
 
 `GraphDiagram` uses deterministic layered layout when node coordinates are omitted. Groups become nested system boundaries, while built-in technical icons keep common architecture nodes concise:
 
@@ -390,10 +394,11 @@ Set `x` and `y` on every node for normalized manual positioning when no groups a
 | `renderToPngWithOutput` | Render PNG and return logical dimensions, physical pixel dimensions, and painted `contentBounds`. |
 | `CanvasOverflowError` | Typed clipping failure with canvas dimensions and per-edge overflow details. |
 | `renderAnimatedGif` | Render ordered `AnimatedScene[]` states to GIF with `fade`, `appear`, or no transition. |
-| `renderAnimatedGifWithOutput` | Render GIF and return its physical pixel dimensions. |
+| `renderAnimatedGifWithOutput` | Render GIF and return dimensions, timing, encoded-frame, delta-frame, and byte metrics. |
 | `defineAnimation` | Define a typed state timeline rendered at deterministic sample times. |
 | `hold`, `tween`, `keyframe`, `parallel` | Compose sequential pauses, eased property transitions, instant state changes, and staggered concurrent tracks. |
 | `sampleAnimation` | Evaluate timeline state at an exact millisecond without rendering. |
+| `analyzeAnimationCadence` | Inspect sampled frame count, target interval, encoded duration, and delay range. |
 | `renderAnimationGif` | Stream sampled timeline frames into a GIF without retaining every RGBA frame. |
 | `renderToBuffer` | Render PNG to memory for tests and pipelines. |
 | `renderToSvg` | Render SVG markup directly. |
@@ -447,7 +452,7 @@ export const watermark = (
 )
 ```
 
-Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples absolute time deterministically and includes exact initial and terminal states. Infinite loops should end on the same visual state where they begin. Fade moving content out and reset it with a `keyframe` while hidden instead of reversing a one-way operation. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
+Prefer `defineAnimation` when values should move, resize, or fade continuously. Timeline array runs sequentially; every property in one `tween` moves in parallel. `parallel` adds independent property tracks for staggered or overlapping motion. Renderer samples exact cadence boundaries plus terminal state, checks every rendered frame for overflow, coalesces unchanged frames, and delta-encodes changed rectangles on opaque GIFs. Infinite loops should end on same visual state where they begin. Fade moving content out and reset it with a `keyframe` while hidden instead of reversing a one-way operation. Keep `create(theme)` as static fallback for PNG, docs previews, and reduced-motion users.
 
 ```tsx
 import { defineAnimation, hold, keyframe, tween } from "vizmatic"
@@ -479,7 +484,7 @@ await renderAnimationGif(createAnimation("dark"), {
 })
 ```
 
-`createScenes(theme)` and `renderAnimatedGif(AnimatedScene[])` remain supported for intentional scene cuts and pixel crossfades. `fps` controls their transition sampling as well as typed timelines. GIF output uses one shared 256-color palette, centisecond timing, and one-bit transparency. Prefer 10, 20, 25, or 50 FPS and align tween or transition durations to frame intervals, such as multiples of 50 ms at 20 FPS. Other timings alternate centisecond delays to preserve total duration. Use PNG/SVG for smooth alpha edges.
+`createScenes(theme)` and `renderAnimatedGif(AnimatedScene[])` remain supported for intentional scene cuts and pixel crossfades. `fps` controls their transition sampling as well as typed timelines. GIF output uses one shared 256-color palette and centisecond timing. Opaque animations use changed rectangles by default; set `deltaFrames: false` only for legacy decoder debugging. Transparent animations stay full-frame to preserve one-bit compositing. Use PNG/SVG for smooth alpha edges.
 
 ## Development
 
@@ -491,7 +496,7 @@ pnpm site:serve
 
 ## Publishing
 
-Use the GitHub `Release` workflow. Its manual run bumps package and plugin versions, verifies the release commit, then atomically pushes the commit and tag. The tag-triggered run verifies that exact commit again, publishes it to npm with provenance, and creates release notes with the compare link and commits since the previous version. Retrying an already-published tag is safe.
+Use the GitHub `Release` workflow. Its manual run bumps package and plugin versions, verifies the release commit, then atomically pushes the commit and tag. It explicitly dispatches a publish-only run at that tag, which verifies the exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. External tag pushes use same publish path. Retrying an already-published tag is safe.
 
 ```bash
 gh workflow run release.yml -f version=patch

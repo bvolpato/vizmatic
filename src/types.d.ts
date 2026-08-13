@@ -11,9 +11,11 @@ declare module 'gifenc' {
                 repeat: number
                 transparent?: boolean
                 transparentIndex?: number
+                dispose?: number
             }): void
             finish(): void
             bytes(): Uint8Array
+            bytesView(): Uint8Array
         }
         quantize(pixels: Uint8Array, colors: number, options: { format: string; oneBitAlpha?: boolean | number }): number[][]
         applyPalette(pixels: Uint8Array, palette: number[][], format: string): Uint8Array
@@ -27,9 +29,11 @@ declare module 'gifenc' {
             repeat: number
             transparent?: boolean
             transparentIndex?: number
+            dispose?: number
         }): void
         finish(): void
         bytes(): Uint8Array
+        bytesView(): Uint8Array
     }
     export function quantize(pixels: Uint8Array, colors: number, options: { format: string; oneBitAlpha?: boolean | number }): number[][]
     export function applyPalette(pixels: Uint8Array, palette: number[][], format: string): Uint8Array

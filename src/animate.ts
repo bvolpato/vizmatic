@@ -5,9 +5,10 @@ import type { ReactNode } from 'react'
 import * as gifenc from 'gifenc'
 import parseCssColor from 'parse-css-color'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
-import { getFonts, loadAdditionalAsset } from './render'
+import type { CropRegion, OverflowResult } from './autocrop'
+import { CanvasOverflowError, getFonts, loadAdditionalAsset, type AnimationOverflowContext } from './render'
 import { withRenderContext, type RenderBackground } from './renderContext'
-import { satori } from './satori'
+import { satori, type SatoriNode } from './satori'
 import { getThemeColors } from './theme'
 import { sampleAnimationFrames, type DefinedAnimation } from './timeline'
 
@@ -66,11 +67,18 @@ export interface AnimationOptions {
     theme?: 'dark' | 'light'
     background?: RenderBackground
     fps?: number
+    /** Encode opaque animations as changed rectangles. Disable for byte-level debugging or legacy decoders. */
+    deltaFrames?: boolean
 }
 
 export interface AnimationOutput {
     width: number
     height: number
+    frameCount: number
+    encodedFrameCount: number
+    deltaFrameCount: number
+    duration: number
+    bytes: number
 }
 
 interface PixelFrame {
@@ -78,6 +86,15 @@ interface PixelFrame {
     delay: number
     width: number
     height: number
+    x?: number
+    y?: number
+    delta?: boolean
+}
+
+interface GifEncodingOutput {
+    bytes: Uint8Array
+    encodedFrameCount: number
+    deltaFrameCount: number
 }
 
 type GifPalette = number[][]
@@ -92,13 +109,16 @@ async function renderToPixels(
     scale: number,
     theme: 'dark' | 'light',
     background: RenderBackground,
+    overflowContext?: AnimationOverflowContext,
 ): Promise<{ pixels: Uint8Array; width: number; height: number }> {
     const fonts = await getFonts()
+    const layoutNodes: SatoriNode[] = []
     const svg = await withRenderContext({ background }, () => satori(element as React.ReactElement, {
         width,
         height,
         fonts,
         loadAdditionalAsset,
+        onNodeDetected: overflowContext ? (node) => layoutNodes.push(node) : undefined,
     }))
 
     const resvg = new Resvg(svg, {
@@ -106,10 +126,35 @@ async function renderToPixels(
         background: rasterBackground(background, theme),
     })
     const rendered = resvg.render()
-    return {
+    const output = {
         pixels: rendered.pixels,
         width: rendered.width,
         height: rendered.height,
+    }
+    if (overflowContext) {
+        const overflow = detectLayoutOverflow(layoutNodes, width, height)
+        if (overflow.overflows) throw new CanvasOverflowError(width, height, overflow, overflowContext)
+    }
+    return output
+}
+
+function detectLayoutOverflow(nodes: SatoriNode[], width: number, height: number): OverflowResult {
+    const epsilon = 0.5
+    const edges = {
+        top: nodes.some((node) => node.top < -epsilon),
+        right: nodes.some((node) => node.left + node.width > width + epsilon),
+        bottom: nodes.some((node) => node.top + node.height > height + epsilon),
+        left: nodes.some((node) => node.left < -epsilon),
+    }
+    const names = (Object.entries(edges) as Array<[keyof typeof edges, boolean]>)
+        .filter(([, overflows]) => overflows)
+        .map(([edge]) => edge)
+    return {
+        overflows: names.length > 0,
+        edges,
+        message: names.length
+            ? `Content overflows canvas at: ${names.join(', ')}. Increase the illustration dimensions.`
+            : '',
     }
 }
 
@@ -211,12 +256,67 @@ function sharedPalette(frames: readonly Pick<PixelFrame, 'pixels'>[]): GifPalett
     return quantize(combined, 256, { format: 'rgba4444', oneBitAlpha: true })
 }
 
-function encodeGif(frames: PixelFrame[], loop: number): Uint8Array {
+function changedBounds(previous: Uint8Array, current: Uint8Array, width: number, height: number): CropRegion | undefined {
+    let minX = width
+    let minY = height
+    let maxX = -1
+    let maxY = -1
+    for (let index = 0; index < current.length; index += 4) {
+        if (
+            previous[index] === current[index]
+            && previous[index + 1] === current[index + 1]
+            && previous[index + 2] === current[index + 2]
+            && previous[index + 3] === current[index + 3]
+        ) continue
+        const pixel = index / 4
+        const x = pixel % width
+        const y = Math.floor(pixel / width)
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x)
+        maxY = Math.max(maxY, y)
+    }
+    return maxX < minX ? undefined : {
+        x: minX,
+        y: minY,
+        width: maxX - minX + 1,
+        height: maxY - minY + 1,
+    }
+}
+
+function cropFramePixels(pixels: Uint8Array, canvasWidth: number, region: CropRegion): Uint8Array {
+    const output = new Uint8Array(region.width * region.height * 4)
+    for (let y = 0; y < region.height; y += 1) {
+        const source = ((region.y + y) * canvasWidth + region.x) * 4
+        output.set(pixels.subarray(source, source + region.width * 4), y * region.width * 4)
+    }
+    return output
+}
+
+function deltaPixelFrame(frame: PixelFrame, previous: Uint8Array | undefined, enabled: boolean): PixelFrame {
+    if (!enabled || !previous) return frame
+    const bounds = changedBounds(previous, frame.pixels, frame.width, frame.height)
+    if (!bounds || (bounds.width === frame.width && bounds.height === frame.height)) return frame
+    return {
+        ...frame,
+        x: bounds.x,
+        y: bounds.y,
+        delta: true,
+        width: bounds.width,
+        height: bounds.height,
+        pixels: cropFramePixels(frame.pixels, frame.width, bounds),
+    }
+}
+
+function encodeGif(frames: PixelFrame[], loop: number, deltaFrames: boolean): GifEncodingOutput {
     if (frames.length === 0) throw new Error('No GIF frames to encode')
     const firstFrame = frames[0]
     const gif = GIFEncoder()
     const palette = sharedPalette(frames)
     let first = true
+    let encodedFrameCount = 0
+    let deltaFrameCount = 0
+    let previousPixels: Uint8Array | undefined
 
     let pending: PixelFrame | undefined
     for (const frame of frames) {
@@ -228,16 +328,25 @@ function encodeGif(frames: PixelFrame[], loop: number): Uint8Array {
             continue
         }
         if (pending) {
-            writeGifFrame(gif, pending, loop, palette, first)
+            const encoded = deltaPixelFrame(pending, previousPixels, deltaFrames)
+            writeGifFrame(gif, encoded, loop, palette, first, deltaFrames)
+            previousPixels = pending.pixels
+            encodedFrameCount += 1
+            if (encoded.delta) deltaFrameCount += 1
             first = false
         }
         pending = { ...frame }
     }
 
-    if (pending) writeGifFrame(gif, pending, loop, palette, first)
+    if (pending) {
+        const encoded = deltaPixelFrame(pending, previousPixels, deltaFrames)
+        writeGifFrame(gif, encoded, loop, palette, first, deltaFrames)
+        encodedFrameCount += 1
+        if (encoded.delta) deltaFrameCount += 1
+    }
 
     gif.finish()
-    return gif.bytes()
+    return { bytes: gif.bytes(), encodedFrameCount, deltaFrameCount }
 }
 
 const DEFAULT_TRANSITION_FPS = 20
@@ -280,12 +389,20 @@ async function scenesToFrames(
     }
     const fps = sceneTransitionFps(options.fps)
 
-    const renderedScenes = await Promise.all(scenes.map((scene) => {
+    const renderedScenes = await Promise.all(scenes.map((scene, sceneIndex) => {
         const watermark = options.watermark ?? options.brand
         const element = watermark
             ? wrapWithWatermark(scene.element, options.width, options.height, options.theme, watermark)
             : scene.element
-        return renderToPixels(element, options.width, options.height, options.scale, options.theme, options.background)
+        return renderToPixels(
+            element,
+            options.width,
+            options.height,
+            options.scale,
+            options.theme,
+            options.background,
+            { sceneIndex, label: scene.label },
+        )
     }))
 
     const frames: PixelFrame[] = []
@@ -353,13 +470,26 @@ export async function renderAnimatedGifWithOutput(
         scale: options.scale ?? 1,
         theme: options.theme ?? 'dark',
         background: options.background ?? 'theme',
+        deltaFrames: options.deltaFrames ?? true,
     }
 
     await mkdir(dirname(options.outputPath), { recursive: true })
     const frames = await scenesToFrames(scenes, normalized)
-    const bytes = encodeGif(frames, normalized.loop)
-    await writeFile(options.outputPath, bytes)
-    return { width: frames[0].width, height: frames[0].height }
+    const encoded = encodeGif(
+        frames,
+        normalized.loop,
+        normalized.deltaFrames && colorForBackground(normalized.background, normalized.theme).a === 255,
+    )
+    await writeFile(options.outputPath, encoded.bytes)
+    return {
+        width: frames[0].width,
+        height: frames[0].height,
+        frameCount: frames.length,
+        encodedFrameCount: encoded.encodedFrameCount,
+        deltaFrameCount: encoded.deltaFrameCount,
+        duration: frames.reduce((total, frame) => total + frame.delay, 0),
+        bytes: encoded.bytes.length,
+    }
 }
 
 function pixelsEqual(left: Uint8Array, right: Uint8Array): boolean {
@@ -376,6 +506,7 @@ function writeGifFrame(
     loop: number,
     palette: GifPalette,
     first: boolean,
+    delta: boolean,
 ): void {
     const index = applyPalette(frame.pixels, palette, 'rgba4444')
     const transparentIndex = palette.findIndex((color) => color[3] === 0)
@@ -384,13 +515,26 @@ function writeGifFrame(
 
     do {
         const delay = Math.min(655_350, remainingDelay)
+        const frameStart = gif.bytesView().length
         gif.writeFrame(index, frame.width, frame.height, {
             ...(includePalette ? { palette } : {}),
             delay: Math.max(20, delay),
             repeat: loop,
             transparent: transparentIndex >= 0,
             transparentIndex,
+            dispose: delta && frame.delta ? 1 : undefined,
         })
+        if ((frame.x ?? 0) !== 0 || (frame.y ?? 0) !== 0) {
+            const bytes = gif.bytesView()
+            const descriptor = frameStart + 8
+            if (bytes[descriptor] !== 0x2c) throw new Error('GIF image descriptor was not written')
+            const x = frame.x ?? 0
+            const y = frame.y ?? 0
+            bytes[descriptor + 1] = x & 0xff
+            bytes[descriptor + 2] = (x >> 8) & 0xff
+            bytes[descriptor + 3] = y & 0xff
+            bytes[descriptor + 4] = (y >> 8) & 0xff
+        }
         includePalette = false
         remainingDelay -= delay
     } while (remainingDelay > 0)
@@ -422,6 +566,7 @@ export async function renderAnimationGifWithOutput<S extends object>(
         scale: options.scale ?? 1,
         theme: options.theme ?? 'dark',
         background: options.background ?? 'theme',
+        deltaFrames: options.deltaFrames ?? true,
     }
     const frames = sampleAnimationFrames(animation, { fps: options.fps })
     const paletteFrames: PixelFrame[] = []
@@ -454,6 +599,12 @@ export async function renderAnimationGifWithOutput<S extends object>(
     let dimensions: Pick<PixelFrame, 'width' | 'height'> | undefined
     let first = true
 
+    let encodedFrameCount = 0
+    let deltaFrameCount = 0
+    let previousPixels: Uint8Array | undefined
+    const useDeltaFrames = normalized.deltaFrames
+        && colorForBackground(normalized.background, normalized.theme).a === 255
+
     for (const sampled of frames) {
         const rawElement = animation.render(sampled.state, sampled.frame)
         const watermark = normalized.watermark ?? normalized.brand
@@ -467,6 +618,12 @@ export async function renderAnimationGifWithOutput<S extends object>(
             normalized.scale,
             normalized.theme,
             normalized.background,
+            {
+                frameIndex: sampled.frame.index,
+                frameCount: sampled.frame.count,
+                time: sampled.frame.time,
+                label: sampled.frame.label,
+            },
         )
         dimensions ??= { width: rendered.width, height: rendered.height }
         if (rendered.width !== dimensions.width || rendered.height !== dimensions.height) {
@@ -478,16 +635,31 @@ export async function renderAnimationGifWithOutput<S extends object>(
             continue
         }
         if (pending) {
-            writeGifFrame(gif, pending, normalized.loop, palette, first)
+            const encoded = deltaPixelFrame(pending, previousPixels, useDeltaFrames)
+            writeGifFrame(gif, encoded, normalized.loop, palette, first, useDeltaFrames)
+            previousPixels = pending.pixels
+            encodedFrameCount += 1
+            if (encoded.delta) deltaFrameCount += 1
             first = false
         }
         pending = { ...rendered, delay: sampled.frame.delay }
     }
 
     if (!pending || !dimensions) throw new Error('Animated GIF requires at least one frame')
-    writeGifFrame(gif, pending, normalized.loop, palette, first)
+    const encoded = deltaPixelFrame(pending, previousPixels, useDeltaFrames)
+    writeGifFrame(gif, encoded, normalized.loop, palette, first, useDeltaFrames)
+    encodedFrameCount += 1
+    if (encoded.delta) deltaFrameCount += 1
     gif.finish()
     await mkdir(dirname(options.outputPath), { recursive: true })
-    await writeFile(options.outputPath, gif.bytes())
-    return dimensions
+    const bytes = gif.bytes()
+    await writeFile(options.outputPath, bytes)
+    return {
+        ...dimensions,
+        frameCount: frames.length,
+        encodedFrameCount,
+        deltaFrameCount,
+        duration: frames.reduce((total, frame) => total + frame.frame.delay, 0),
+        bytes: bytes.length,
+    }
 }
