@@ -496,7 +496,7 @@ pnpm site:serve
 
 ## Publishing
 
-Use the GitHub `Release` workflow. Its manual run bumps package and plugin versions, verifies the release commit, then atomically pushes the commit and tag. It explicitly dispatches a publish-only run at that tag, which verifies the exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. External tag pushes use same publish path. Retrying an already-published tag is safe.
+Use the GitHub `Release` workflow. Its manual run bumps package and plugin versions on a temporary release branch, dispatches CI for the exact commit, waits for all required checks, then atomically advances `main` and its tag. It removes the candidate branch and dispatches a publish-only run at that tag, which verifies the exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. External tag pushes use same publish path. Retrying an already-published tag is safe.
 
 ```bash
 gh workflow run release.yml -f version=patch
