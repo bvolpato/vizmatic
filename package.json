@@ -84,7 +84,7 @@
     "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
-    "@dagrejs/dagre": "3.0.0",
+    "@dagrejs/dagre": "3.1.0",
     "@resvg/resvg-js": "^2.6.2",
     "gifenc": "^1.0.3",
     "parse-css-color": "0.2.1",
@@ -105,7 +105,7 @@
     "shiki": "^4.3.0",
     "sucrase": "3.35.1",
     "tsup": "^8.5.0",
-    "typescript": ">=6.0.3 <7",
+    "typescript": ">=6.0.3 <8",
     "vitest": "^4.1.9"
   }
 }
