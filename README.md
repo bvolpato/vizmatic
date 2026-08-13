@@ -496,13 +496,19 @@ pnpm site:serve
 
 ## Publishing
 
-Use the GitHub `Release` workflow. Its manual run bumps package and plugin versions on a temporary release branch, dispatches CI for the exact commit, waits for all required checks, then atomically advances `main` and its tag. It removes the candidate branch and dispatches a publish-only run at that tag, which verifies the exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. External tag pushes use same publish path. Retrying an already-published tag is safe.
+Prepare release commit locally, push it to protected `main`, and wait for required CI before pushing its tag:
 
 ```bash
-gh workflow run release.yml -f version=patch
+npm version patch --no-git-tag-version
+pnpm sync:plugin-versions
+pnpm docs:check
+git add package.json plugins/vizmatic/.codex-plugin/plugin.json plugins/vizmatic/.claude-plugin/plugin.json .claude-plugin/marketplace.json
+git commit -m "Release v$(node -p "require('./package.json').version")"
+git push origin main
+# Push annotated vX.Y.Z tag only after CI passes on release commit.
 ```
 
-The workflow requires an `NPM_TOKEN` repository secret with publish access.
+Tag push starts GitHub `Release` workflow. It verifies exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. Retry existing tag with `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`. Workflow requires `NPM_TOKEN` repository secret with publish access.
 
 The workflow keeps package version, plugin metadata, tag, release notes, and npm provenance in sync.
 

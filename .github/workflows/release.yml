@@ -6,22 +6,12 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      version:
-        description: "Semver bump or exact version, for example patch, minor, major, or 0.2.0"
-        required: true
-        default: patch
-      publish_only:
-        description: "Publish an existing release tag"
-        required: false
-        type: boolean
-        default: false
       tag:
-        description: "Existing v-prefixed tag used by publish-only dispatches"
-        required: false
+        description: "Existing v-prefixed tag to verify and publish"
+        required: true
         default: ""
 
 permissions:
-  actions: write
   contents: write
   id-token: write
 
@@ -30,106 +20,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  prepare:
-    if: github.event_name == 'workflow_dispatch' && !inputs.publish_only
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require main branch
-        run: test "$GITHUB_REF_NAME" = "main"
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7.0.0
-        with:
-          node-version: 22
-          cache: pnpm
-          registry-url: https://registry.npmjs.org
-      - name: Refresh release branch
-        run: git pull --ff-only origin "${{ github.ref_name }}"
-      - run: pnpm install --frozen-lockfile
-      - name: Validate npm token
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm whoami
-      - name: Configure release identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      - name: Version package
-        run: |
-          npm version "${{ inputs.version }}" --no-git-tag-version
-          pnpm sync:plugin-versions
-          pnpm docs:check
-          VERSION="$(node -p "require('./package.json').version")"
-          git add package.json plugins/vizmatic/.codex-plugin/plugin.json plugins/vizmatic/.claude-plugin/plugin.json .claude-plugin/marketplace.json
-          git commit -m "Release v${VERSION}"
-          git tag -a "v${VERSION}" -m "Release v${VERSION}"
-      - name: Ensure generated files are committed
-        run: test -z "$(git status --porcelain)"
-      - name: Ensure tested branch did not advance
-        run: |
-          TESTED_SHA="$(git rev-parse HEAD^)"
-          REMOTE_SHA="$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | cut -f1)"
-          if [ "$TESTED_SHA" != "$REMOTE_SHA" ]; then
-            echo "Release branch advanced after verification: tested ${TESTED_SHA}, remote ${REMOTE_SHA}" >&2
-            exit 1
-          fi
-      - name: Verify release commit with required CI
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          RELEASE_BRANCH="release/v${VERSION}"
-          RELEASE_SHA="$(git rev-parse HEAD)"
-          echo "RELEASE_BRANCH=${RELEASE_BRANCH}" >> "$GITHUB_ENV"
-
-          git push origin "HEAD:refs/heads/${RELEASE_BRANCH}"
-          gh workflow run ci.yml --ref "${RELEASE_BRANCH}"
-
-          RUN_ID=""
-          for attempt in $(seq 1 30); do
-            RUN_ID="$(gh run list --workflow ci.yml --branch "${RELEASE_BRANCH}" --event workflow_dispatch --commit "${RELEASE_SHA}" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
-            if [ -n "$RUN_ID" ]; then
-              break
-            fi
-            echo "Waiting for CI run (${attempt}/30)..."
-            sleep 2
-          done
-          if [ -z "$RUN_ID" ]; then
-            echo "Timed out locating CI run for ${RELEASE_SHA}" >&2
-            exit 1
-          fi
-          gh run watch "$RUN_ID" --exit-status --interval 20
-      - name: Ensure release base is still current
-        run: |
-          TESTED_SHA="$(git rev-parse HEAD^)"
-          REMOTE_SHA="$(git ls-remote origin "refs/heads/${{ github.ref_name }}" | cut -f1)"
-          if [ "$TESTED_SHA" != "$REMOTE_SHA" ]; then
-            echo "Release branch advanced while candidate CI ran: tested ${TESTED_SHA}, remote ${REMOTE_SHA}" >&2
-            exit 1
-          fi
-      - name: Push release commit and tag atomically
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          git push --atomic origin "HEAD:${{ github.ref_name }}" "refs/tags/v${VERSION}"
-      - name: Dispatch verified tag publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          gh workflow run release.yml --ref "v${VERSION}" -f publish_only=true -f tag="v${VERSION}" -f version="${VERSION}"
-      - name: Remove release candidate branch
-        if: always() && env.RELEASE_BRANCH != ''
-        run: git push origin --delete "$RELEASE_BRANCH" || true
-
   publish:
-    if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_only)
+    if: github.event_name == 'push' || inputs.tag != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7.0.0
         with:
