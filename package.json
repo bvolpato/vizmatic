@@ -99,13 +99,13 @@
     "@resvg/resvg-wasm": "2.6.2",
     "@types/node": "^26.0.1",
     "@types/react": "^19.1.8",
-    "esbuild": "0.28.2",
+    "esbuild": "0.28.1",
     "github-actionlint": "1.7.12",
     "publint": "0.3.23",
     "shiki": "^4.3.0",
     "sucrase": "3.35.1",
     "tsup": "^8.5.0",
-    "typescript": ">=6.0.3 <8",
+    "typescript": ">=6.0.3 <7",
     "vitest": "^4.1.9"
   }
 }
