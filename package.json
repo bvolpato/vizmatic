@@ -84,7 +84,7 @@
     "prepublishOnly": "pnpm verify"
   },
   "dependencies": {
-    "@dagrejs/dagre": "3.1.0",
+    "@dagrejs/dagre": "3.1.1",
     "@resvg/resvg-js": "^2.6.2",
     "gifenc": "^1.0.3",
     "parse-css-color": "0.2.1",
