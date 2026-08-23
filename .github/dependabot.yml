@@ -10,6 +10,14 @@ updates:
       node-dependencies:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # TypeScript 7 breaks tsup 8 declaration generation (egoist/tsup#1405).
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /

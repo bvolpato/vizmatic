@@ -16,7 +16,7 @@ Benchmarks: [Diagrams](https://diagrams.mingrammer.com/), [D2](https://d2lang.co
 - Connector diagnostics for crossings, label collisions, crowded endpoints, and parallel routes.
 - Dark, light, and Engineering visual presets with PNG, SVG, and GIF output.
 - Typed state timelines with holds, eased tweens, keyframes, parallel tracks, deterministic sampling, and streamed GIF encoding.
-- Sequence diagrams with participants, lifelines, activations, notes, and `alt`, `loop`, or `parallel` fragments.
+- Sequence diagrams with participants, lifelines, activations, sync/async/return messages, notes, and `alt`, `loop`, or `parallel` fragments.
 - Typed batch/stream dataflow and lineage views with schema metadata.
 - Deployment and network views with nested boundaries, ports, protocols, and trust direction.
 - Transformer topology views with tensor shapes, repeated blocks, residual/cache/expert routes, and collectives.
@@ -44,15 +44,12 @@ Specialized APIs remain declarative and reusable. Examples contain complete scen
 
 ### Interaction and software design
 
-- Sequence diagrams with participants, lifelines, activations, sync/async/return messages, notes, and `alt`/`loop`/`parallel` fragments.
 - UML class and component diagrams with compartments, inheritance, aggregation, composition, multiplicity, and stereotypes.
 - State machines with nested states, guards, entry/exit actions, and parallel regions.
 - ER diagrams with tables, fields, keys, data types, and cardinality-aware relationships.
 
 ### Infrastructure and data systems
 
-- Deployment and network views with regions, zones, VPCs, subnets, namespaces, hosts, ports, protocols, trust boundaries, and ingress/egress.
-- Dataflow and lineage views with sources, sinks, stores, transformations, schemas, and batch/stream semantics.
 - Swimlanes and activity diagrams for ownership, handoffs, conditions, and parallel work.
 
 ### Layout and rendering
