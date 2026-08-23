@@ -488,6 +488,8 @@ await renderAnimationGif(createAnimation("dark"), {
 
 ## Development
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, testing, visual review, dependency updates, and pull request guidance.
+
 ```bash
 pnpm install
 pnpm verify
