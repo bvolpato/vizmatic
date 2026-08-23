@@ -9,7 +9,7 @@ minimumReleaseAgeIgnoreMissingTime: true
 minimumReleaseAgeStrict: false
 overrides:
   adm-zip: 0.6.0
-  esbuild: 0.28.1
+  esbuild: 0.28.2
   nanoid@<3.3.17: 3.3.18
 packageManagerStrict: true
 strictPeerDependencies: true
