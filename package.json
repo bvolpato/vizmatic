@@ -89,7 +89,7 @@
     "gifenc": "^1.0.3",
     "parse-css-color": "0.2.1",
     "react": "^19.2.8",
-    "satori": "^0.29.0",
+    "satori": "^0.31.0",
     "tsx": "^4.23.12"
   },
   "peerDependencies": {
@@ -101,7 +101,7 @@
     "@types/react": "^19.2.18",
     "esbuild": "0.28.2",
     "github-actionlint": "1.7.12",
-    "publint": "0.3.23",
+    "publint": "0.3.24",
     "shiki": "^4.4.3",
     "sucrase": "3.35.1",
     "tsup": "^8.5.1",
