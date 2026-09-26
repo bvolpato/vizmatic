@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'fs/promises'
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { codeToHtml } from 'shiki'
 import { buildPlayground } from './build-playground'
 import { catalogComponentCount, componentCatalog } from './component-catalog'
@@ -11,6 +11,12 @@ const playgroundTemplatePath = 'docs/playground.template.html'
 const playgroundOutPath = 'docs/playground.html'
 const promptPath = 'PROMPT.md'
 const docsPromptPath = 'docs/PROMPT.md'
+
+await mkdir('docs/assets/licenses', { recursive: true })
+await Promise.all([
+    copyFile('assets/THIRD_PARTY_LICENSES.md', 'docs/assets/THIRD_PARTY_LICENSES.md'),
+    ...(await readdir('assets/licenses')).map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
+])
 
 function generatedNotice(source: string): string {
     return `<!-- Generated from ${source} by pnpm site:build. Edit template. -->`
