@@ -70,6 +70,18 @@ PNG and SVG renders have transparent backgrounds by default. Add `--background t
 vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --background theme
 ```
 
+CSS alpha colors stay semi-transparent in PNG and SVG output. Set the canvas background in the frame or pass a quoted CSS color to `--background`:
+
+```tsx
+<Scene background="rgba(15, 23, 42, 0.5)">
+  <CalloutCard title="Alpha background" detail="The host page remains visible through the canvas." />
+</Scene>
+```
+
+```bash
+vizmatic ./frame.tsx --background 'rgba(15, 23, 42, 0.5)'
+```
+
 When a frame omits `width` or `height`, Vizmatic starts at `960x540` and grows that axis if content overflows. Set `autoSize = false` when dimensions must remain fixed and clipping should fail the render.
 
 Bare CLI frames do not need imports. Use a regular module when a frame needs helper code, data loading, other dependencies, animation, or direct renderer APIs.
@@ -209,7 +221,7 @@ Vizmatic provides reusable layout, diagram, and chart primitives:
 
 NCCL gallery examples cover five operations: Broadcast, AllReduce, AllGather, ReduceScatter, and AllToAll. Their diagrams follow NVIDIA's documented [collective operation semantics](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html): rooted transfer, reduction, rank-ordered gathering, reduced chunk ownership, and pairwise exchange.
 
-More examples live in [`examples/`](examples). The website has a searchable [component catalog](https://bvolpato.github.io/vizmatic/components.html) with a rendered preview and source for every public component. [`PROMPT.md`](PROMPT.md) contains the full install, syntax, component, and verification reference for coding agents. [`ROADMAP.md`](ROADMAP.md) tracks C4, provider packs, sequence, UML, deployment, network, dataflow, layout, and interoperability work.
+More examples live in [`examples/`](examples). Browse the searchable [component catalog on the homepage](https://bvolpato.github.io/vizmatic/#component-browser), copy a focused example, or open it in the playground to edit and render both themes. The [full catalog](https://bvolpato.github.io/vizmatic/components.html) also includes category previews and source. [`PROMPT.md`](PROMPT.md) contains the full install, syntax, component, and verification reference for coding agents. [`ROADMAP.md`](ROADMAP.md) tracks the next C4, provider pack, UML, layout, and interoperability capabilities.
 
 ## Repository checks
 

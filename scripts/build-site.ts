@@ -1,7 +1,7 @@
 import { copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { codeToHtml } from 'shiki'
 import { buildPlayground } from './build-playground'
-import { catalogComponentCount, componentCatalog } from './component-catalog'
+import { catalogComponentCount, componentCatalog, type ComponentCatalogCategory } from './component-catalog'
 
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
@@ -55,34 +55,49 @@ function formatAttributes(attrs: string): string {
 
 const sourceIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>'
 
-function renderComponentCatalog(): string {
-    return componentCatalog.map((category) => {
-        const components = category.components.map((component) => {
-            const search = `${component.name} ${component.description}`.toLowerCase()
-            return [
-                `<article class="catalog-item" data-catalog-item data-catalog-search="${encodeHtml(search)}">`,
-                `<code>${encodeHtml(component.name)}</code>`,
-                `<p>${encodeHtml(component.description)}</p>`,
-                '</article>',
-            ].join('')
-        }).join('\n')
-
+function renderComponentItems(category: ComponentCatalogCategory): string {
+    return category.components.map((component) => {
+        const search = (component.name + ' ' + component.description + ' ' + category.label).toLowerCase()
+        const playgroundUrl = 'playground.html#vizmatic-playground=' + encodeURIComponent(component.example)
         return [
-            `<section class="catalog-group" data-catalog-group="${encodeHtml(category.id)}">`,
+            '<article class="catalog-item" data-catalog-item data-catalog-search="' + encodeHtml(search) + '">',
+            '<div class="catalog-item-copy">',
+            '<code>' + encodeHtml(component.name) + '</code>',
+            '<p>' + encodeHtml(component.description) + '</p>',
+            '</div>',
+            '<div class="catalog-component-actions">',
+            '<button class="component-copy-button" type="button" data-copy-component data-component-source="' + encodeHtml(component.example) + '" aria-live="polite" aria-label="Copy ' + encodeHtml(component.name) + ' example source">Copy source</button>',
+            '<a class="component-try-link" href="' + encodeHtml(playgroundUrl) + '">Try / edit <span aria-hidden="true">→</span></a>',
+            '</div>',
+            '</article>',
+        ].join('')
+    }).join('\n')
+}
+
+function renderComponentCatalog(includePreviews = true): string {
+    return componentCatalog.map((category) => {
+        const components = renderComponentItems(category)
+        const count = category.components.length
+        return [
+            '<section class="catalog-group" data-catalog-group="' + encodeHtml(category.id) + '">',
             '<div class="catalog-group-heading">',
             '<div>',
-            `<h3>${encodeHtml(category.label)}</h3>`,
-            `<p>${encodeHtml(category.description)}</p>`,
+            '<h3>' + encodeHtml(category.label) + '</h3>',
+            '<p>' + encodeHtml(category.description) + '</p>',
             '</div>',
-            `<span>${category.components.length} components</span>`,
+            '<span>' + count + ' component' + (count === 1 ? '' : 's') + '</span>',
             '</div>',
-            '<div class="catalog-group-layout">',
-            '<div class="catalog-preview">',
-            `<img loading="lazy" decoding="async" data-theme-image src="assets/examples/${encodeHtml(category.source)}_dark.png" alt="${encodeHtml(category.label)} component catalog rendered by Vizmatic">`,
-            `<button class="source-button" type="button" data-source="${encodeHtml(category.source)}" aria-label="View source for ${encodeHtml(category.label)} catalog" title="View source">${sourceIcon}</button>`,
-            '</div>',
-            `<div class="catalog-items">${components}</div>`,
-            '</div>',
+            includePreviews
+                ? [
+                    '<div class="catalog-group-layout">',
+                    '<div class="catalog-preview">',
+                    '<img loading="lazy" decoding="async" data-theme-image src="assets/examples/' + encodeHtml(category.source) + '_dark.png" alt="' + encodeHtml(category.label) + ' component catalog rendered by Vizmatic">',
+                    '<button class="source-button" type="button" data-source="' + encodeHtml(category.source) + '" aria-label="View source for ' + encodeHtml(category.label) + ' catalog" title="View source">' + sourceIcon + '</button>',
+                    '</div>',
+                    '<div class="catalog-items">' + components + '</div>',
+                    '</div>',
+                ].join('\n')
+                : '<div class="catalog-items catalog-items-home">' + components + '</div>',
             '</section>',
         ].join('\n')
     }).join('\n')
@@ -132,7 +147,8 @@ const prompt = await readFile(promptPath, 'utf8')
 const catalogReplacements = (template: string) => template
     .replaceAll('{{COMPONENT_COUNT}}', String(catalogComponentCount))
     .replace('{{COMPONENT_FILTERS}}', renderCatalogFilters)
-    .replace('{{COMPONENT_CATALOG}}', renderComponentCatalog)
+    .replace('{{COMPONENT_CATALOG}}', () => renderComponentCatalog())
+    .replace('{{HOME_COMPONENT_CATALOG}}', () => renderComponentCatalog(false))
 const indexTemplate = catalogReplacements((await readFile(templatePath, 'utf8'))
     .replace('{{PROMPT_MD}}', () => encodeHtml(prompt)))
 const componentsTemplate = catalogReplacements(await readFile(componentsTemplatePath, 'utf8'))

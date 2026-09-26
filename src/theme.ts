@@ -252,8 +252,13 @@ export function getToneColor(tone: ToneName, c: ThemeColors): string {
     }[tone]
 }
 
-/** Get a tone variant that remains readable as text in either theme. */
-export function getReadableToneColor(tone: ToneName, c: ThemeColors, background = c.bgCard): string {
+/** Get a tone variant that remains readable against the background over its backdrop. */
+export function getReadableToneColor(
+    tone: ToneName,
+    c: ThemeColors,
+    background = c.bgCard,
+    backdrop = c.bgCard,
+): string {
     const semanticColor: Record<ToneName, ColorName> = {
         blue: 'secondary',
         purple: 'primary',
@@ -269,9 +274,9 @@ export function getReadableToneColor(tone: ToneName, c: ThemeColors, background 
         dark: 'neutral',
     }
     const color = getReadableColor(semanticColor[tone], c)
-    return colorContrast(color, background, c.bgCard) >= 4.5
+    return colorContrast(color, background, backdrop) >= 4.5
         ? color
-        : getReadableTextColor(background, c)
+        : getReadableTextColor(background, c, backdrop)
 }
 
 /** Low-chroma fills for diagrams. The engineering preset uses opaque pastels. */
@@ -478,14 +483,14 @@ function colorContrast(left: string, right: string, rightBackdrop?: string): num
         / (Math.min(leftLuminance, rightLuminance) + 0.05)
 }
 
-/** Choose readable foreground text for a solid theme color. */
-export function getReadableTextColor(background: string, c: ThemeColors): string {
-    if (colorLuminance(background, c.bgCard) == null) return c.textPrimary
+/** Choose readable foreground text, compositing translucent backgrounds over their backdrop. */
+export function getReadableTextColor(background: string, c: ThemeColors, backdrop = c.bgCard): string {
+    if (colorLuminance(background, backdrop) == null) return c.textPrimary
     const candidates = [c.textPrimary, c.textOnColor, c.bg, '#000000']
-    const readable = candidates.find((candidate) => colorContrast(candidate, background, c.bgCard) >= 4.5)
+    const readable = candidates.find((candidate) => colorContrast(candidate, background, backdrop) >= 4.5)
     if (readable) return readable
     return candidates.reduce((best, candidate) =>
-        colorContrast(candidate, background, c.bgCard) > colorContrast(best, background, c.bgCard) ? candidate : best)
+        colorContrast(candidate, background, backdrop) > colorContrast(best, background, backdrop) ? candidate : best)
 }
 
 /**

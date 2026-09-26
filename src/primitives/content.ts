@@ -205,6 +205,7 @@ export function MiniBarChart({
                 ...compactChildren([
                 showValues && React.createElement('div', {
                     style: {
+                        display: 'flex',
                         color: getReadableToneColor(tone, c),
                         fontFamily: 'JetBrains Mono',
                         fontSize,
@@ -226,6 +227,7 @@ export function MiniBarChart({
                 }),
                 React.createElement('div', {
                     style: {
+                        display: 'flex',
                         color: c.textMuted,
                         fontFamily: 'JetBrains Mono',
                         fontSize,

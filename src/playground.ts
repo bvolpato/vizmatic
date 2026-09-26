@@ -118,6 +118,7 @@ interface PlaygroundElements {
     height?: HTMLElement
     templateSelect?: HTMLSelectElement
     run?: HTMLElement
+    copy?: HTMLElement
     share?: HTMLElement
     pngDownload?: HTMLElement
     svgDownload?: HTMLElement
@@ -149,6 +150,7 @@ function requiredElements(root: HTMLElement): PlaygroundElements | undefined {
         height: findElement(root, '#vizmatic-playground-height, [data-vizmatic-playground-height]'),
         templateSelect: findElement<HTMLSelectElement>(root, '#playgroundTemplate, select[data-vizmatic-playground-template]'),
         run: findElement(root, '#playgroundRunButton, #vizmatic-playground-run, [data-vizmatic-playground-run]'),
+        copy: findElement(root, '#playgroundCopyButton, [data-vizmatic-playground-copy]'),
         share: findElement(root, '#playgroundShareButton, #vizmatic-playground-share, [data-vizmatic-playground-share]'),
         pngDownload: findElement(root, '#playgroundPngButton, #vizmatic-playground-download-png, [data-vizmatic-playground-download="png"]'),
         svgDownload: findElement(root, '#playgroundSvgButton, #vizmatic-playground-download-svg, [data-vizmatic-playground-download="svg"]'),
@@ -197,6 +199,24 @@ function setControlEnabled(control: HTMLElement | undefined, enabled: boolean): 
     if (!control) return
     if (control instanceof HTMLButtonElement || control instanceof HTMLInputElement) control.disabled = !enabled
     control.setAttribute('aria-disabled', String(!enabled))
+}
+
+async function copyText(text: string): Promise<void> {
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        return
+    }
+
+    const input = document.createElement('textarea')
+    input.value = text
+    input.setAttribute('readonly', '')
+    input.style.position = 'fixed'
+    input.style.opacity = '0'
+    document.body.append(input)
+    input.select()
+    const copied = document.execCommand('copy')
+    input.remove()
+    if (!copied) throw new Error('Clipboard access is unavailable.')
 }
 
 function download(filename: string, content: BlobPart, type: string): void {
@@ -354,6 +374,21 @@ export function mountPlayground(root: HTMLElement): void {
         void navigator.clipboard.writeText(shareUrl)
             .then(() => setStatus(elements, 'ready', 'Share link copied.'))
             .catch(() => setStatus(elements, 'ready', 'Share link ready in address bar.'))
+    })
+    const copyLabel = elements.copy?.textContent ?? 'Copy source'
+    elements.copy?.addEventListener('click', async (event) => {
+        event.preventDefault()
+        try {
+            await copyText(elements.source.value)
+            if (elements.copy) elements.copy.textContent = 'Copied'
+            setStatus(elements, 'ready', 'Source copied.')
+        } catch {
+            if (elements.copy) elements.copy.textContent = 'Copy failed'
+            setStatus(elements, 'error', 'Could not copy source.')
+        }
+        window.setTimeout(() => {
+            if (elements.copy) elements.copy.textContent = copyLabel
+        }, 1_600)
     })
 
     for (const control of findElements<HTMLElement>(root, '[data-vizmatic-playground-template]')) {

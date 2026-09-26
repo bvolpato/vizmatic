@@ -35,7 +35,7 @@
       <div class="nav-actions">
         <div class="nav-links">
           <a href="#gallery" data-nav-link>Examples</a>
-          <a href="components.html">Components</a>
+          <a href="#component-browser" data-nav-link>Components</a>
           <a href="playground.html">Playground</a>
           <a href="#quick-start" data-nav-link>Quick start</a>
           <a href="#onboarding" data-nav-link>Prompt + skill</a>
@@ -214,6 +214,1292 @@
           <h3>Theme background <span>opaque</span></h3>
         </article>
       </div>
+    </section>
+
+    <section id="component-browser" class="section catalog-section home-component-section" data-component-browser>
+      <div class="section-kicker">Components <span>71 reusable pieces</span></div>
+      <div class="section-intro catalog-intro">
+        <div>
+          <h2>Browse, copy, and adapt.</h2>
+          <p>Search all 71 components, copy a focused example, or open it in the playground to edit and render both themes.</p>
+        </div>
+        <a class="text-link" href="components.html">Full component reference <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="catalog-toolbar">
+        <label class="catalog-search" for="homeComponentSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+          <input id="homeComponentSearch" type="search" data-component-search placeholder="Search components" aria-label="Search components" autocomplete="off">
+          <button id="homeComponentClear" type="button" aria-label="Clear component search" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+          </button>
+        </label>
+        <div class="catalog-filters" role="group" aria-label="Component category">
+          <button type="button" data-catalog-filter="all" aria-pressed="true">All</button>
+<button type="button" data-catalog-filter="foundations" aria-pressed="false">Foundations</button>
+<button type="button" data-catalog-filter="content" aria-pressed="false">Content</button>
+<button type="button" data-catalog-filter="flows" aria-pressed="false">Flows</button>
+<button type="button" data-catalog-filter="diagrams" aria-pressed="false">Diagrams</button>
+<button type="button" data-catalog-filter="sequence" aria-pressed="false">Sequence</button>
+<button type="button" data-catalog-filter="dataflow" aria-pressed="false">Dataflow</button>
+<button type="button" data-catalog-filter="deployment" aria-pressed="false">Deployment</button>
+<button type="button" data-catalog-filter="ml" aria-pressed="false">ML topology</button>
+<button type="button" data-catalog-filter="data" aria-pressed="false">Data</button>
+<button type="button" data-catalog-filter="charts" aria-pressed="false">Charts</button>
+<button type="button" data-catalog-filter="drawing" aria-pressed="false">Drawing</button>
+        </div>
+        <p class="catalog-count" id="homeComponentCount" aria-live="polite">71 components</p>
+      </div>
+      <div class="catalog-groups" id="homeComponentGroups">
+        <section class="catalog-group" data-catalog-group="foundations">
+<div class="catalog-group-heading">
+<div>
+<h3>Foundations</h3>
+<p>Scene structure, responsive layout, and framed surfaces.</p>
+</div>
+<span>9 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="canvas root canvas with transparent or custom backgrounds and padding. foundations"><div class="catalog-item-copy"><code>Canvas</code><p>Root canvas with transparent or custom backgrounds and padding.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Canvas
+    padding={24}&gt;
+  &lt;Column
+    gap={14}&gt;
+  &lt;TitleBar
+    title=&#39;Canvas surface&#39;
+    subtitle=&#39;A theme aware root with alpha background support&#39; /&gt;
+  &lt;MetricCard
+    label=&#39;Render time&#39;
+    value=&#39;42 ms&#39;
+    tone=&#39;green&#39;
+    detail=&#39;p95 across 1,200 frames&#39; /&gt;
+  &lt;/Column&gt;
+  &lt;/Canvas&gt;" aria-live="polite" aria-label="Copy Canvas example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CCanvas%0A%20%20%20%20padding%3D%7B24%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D&#39;Canvas%20surface&#39;%0A%20%20%20%20subtitle%3D&#39;A%20theme%20aware%20root%20with%20alpha%20background%20support&#39;%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Render%20time&#39;%0A%20%20%20%20value%3D&#39;42%20ms&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20detail%3D&#39;p95%20across%201%2C200%20frames&#39;%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%20%20%3C%2FCanvas%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="scene primary vertical scene layout with optional title and subtitle. foundations"><div class="catalog-item-copy"><code>Scene</code><p>Primary vertical scene layout with optional title and subtitle.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene
+    title=&#39;Scene layout&#39;
+    subtitle=&#39;A title, content area, and consistent spacing&#39;&gt;
+  &lt;Row
+    gap={14}&gt;
+  &lt;MetricCard
+    label=&#39;Build&#39;
+    value=&#39;ready&#39;
+    tone=&#39;green&#39; /&gt;
+  &lt;MetricCard
+    label=&#39;Review&#39;
+    value=&#39;2 items&#39;
+    tone=&#39;warm&#39; /&gt;
+  &lt;/Row&gt;
+  &lt;/Scene&gt;" aria-live="polite" aria-label="Copy Scene example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%0A%20%20%20%20title%3D&#39;Scene%20layout&#39;%0A%20%20%20%20subtitle%3D&#39;A%20title%2C%20content%20area%2C%20and%20consistent%20spacing&#39;%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Build&#39;%0A%20%20%20%20value%3D&#39;ready&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Review&#39;%0A%20%20%20%20value%3D&#39;2%20items&#39;%0A%20%20%20%20tone%3D&#39;warm&#39;%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%20%20%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="titlebar standalone heading and supporting copy. foundations"><div class="catalog-item-copy"><code>TitleBar</code><p>Standalone heading and supporting copy.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;TitleBar example&quot; subtitle=&quot;Edit this focused TitleBar scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={16}&gt;
+  &lt;TitleBar
+    title=&#39;Release overview&#39;
+    subtitle=&#39;One clear headline with supporting context&#39; /&gt;
+  &lt;ProgressList
+    rows={[{ label: &#39;Build&#39;, value: 1, tone: &#39;green&#39; },
+        { label: &#39;Review&#39;, value: 0.72, tone: &#39;purple&#39; }]} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy TitleBar example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TitleBar%20example%22%20subtitle%3D%22Edit%20this%20focused%20TitleBar%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B16%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D&#39;Release%20overview&#39;%0A%20%20%20%20subtitle%3D&#39;One%20clear%20headline%20with%20supporting%20context&#39;%20%2F%3E%0A%20%20%3CProgressList%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20&#39;Build&#39;%2C%20value%3A%201%2C%20tone%3A%20&#39;green&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Review&#39;%2C%20value%3A%200.72%2C%20tone%3A%20&#39;purple&#39;%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="row horizontal flex layout with stable gaps and alignment. foundations"><div class="catalog-item-copy"><code>Row</code><p>Horizontal flex layout with stable gaps and alignment.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Row example&quot; subtitle=&quot;Edit this focused Row scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={12}
+    align=&#39;stretch&#39;&gt;
+  &lt;StepCard
+    title=&#39;Plan&#39;
+    subtitle=&#39;shape the story&#39;
+    tone=&#39;blue&#39;
+    width={220} /&gt;
+  &lt;StepCard
+    title=&#39;Render&#39;
+    subtitle=&#39;check both themes&#39;
+    tone=&#39;purple&#39;
+    width={220} /&gt;
+  &lt;StepCard
+    title=&#39;Ship&#39;
+    subtitle=&#39;publish the asset&#39;
+    tone=&#39;green&#39;
+    width={220} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Row example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Row%20example%22%20subtitle%3D%22Edit%20this%20focused%20Row%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20align%3D&#39;stretch&#39;%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D&#39;Plan&#39;%0A%20%20%20%20subtitle%3D&#39;shape%20the%20story&#39;%0A%20%20%20%20tone%3D&#39;blue&#39;%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D&#39;Render&#39;%0A%20%20%20%20subtitle%3D&#39;check%20both%20themes&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D&#39;Ship&#39;%0A%20%20%20%20subtitle%3D&#39;publish%20the%20asset&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="column vertical flex layout for stacked composition. foundations"><div class="catalog-item-copy"><code>Column</code><p>Vertical flex layout for stacked composition.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Column example&quot; subtitle=&quot;Edit this focused Column scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={10}
+    align=&#39;stretch&#39;&gt;
+  &lt;StatusRow
+    label=&#39;Layout&#39;
+    detail=&#39;ready&#39;
+    status=&#39;check&#39; /&gt;
+  &lt;StatusRow
+    label=&#39;Contrast&#39;
+    detail=&#39;inspect&#39;
+    status=&#39;pending&#39; /&gt;
+  &lt;StatusRow
+    label=&#39;Export&#39;
+    detail=&#39;PNG + SVG&#39;
+    status=&#39;info&#39; /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Column example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Column%20example%22%20subtitle%3D%22Edit%20this%20focused%20Column%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D&#39;stretch&#39;%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D&#39;Layout&#39;%0A%20%20%20%20detail%3D&#39;ready&#39;%0A%20%20%20%20status%3D&#39;check&#39;%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D&#39;Contrast&#39;%0A%20%20%20%20detail%3D&#39;inspect&#39;%0A%20%20%20%20status%3D&#39;pending&#39;%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D&#39;Export&#39;%0A%20%20%20%20detail%3D&#39;PNG%20%2B%20SVG&#39;%0A%20%20%20%20status%3D&#39;info&#39;%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="stack compact vertical grouping for related content. foundations"><div class="catalog-item-copy"><code>Stack</code><p>Compact vertical grouping for related content.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Stack example&quot; subtitle=&quot;Edit this focused Stack scene&quot; padding={22} gap={18}&gt;
+  &lt;Stack
+    gap={10}
+    align=&#39;stretch&#39;&gt;
+  &lt;BadgePill
+    text=&#39;INPUT&#39;
+    tone=&#39;blue&#39; /&gt;
+  &lt;Arrow
+    direction=&#39;down&#39;
+    length={24} /&gt;
+  &lt;BadgePill
+    text=&#39;OUTPUT&#39;
+    tone=&#39;green&#39; /&gt;
+  &lt;/Stack&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Stack example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Stack%20example%22%20subtitle%3D%22Edit%20this%20focused%20Stack%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStack%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D&#39;stretch&#39;%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D&#39;INPUT&#39;%0A%20%20%20%20tone%3D&#39;blue&#39;%20%2F%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D&#39;down&#39;%0A%20%20%20%20length%3D%7B24%7D%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D&#39;OUTPUT&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%20%2F%3E%0A%20%20%3C%2FStack%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="panel titled container for grouped visual content. foundations"><div class="catalog-item-copy"><code>Panel</code><p>Titled container for grouped visual content.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Panel example&quot; subtitle=&quot;Edit this focused Panel scene&quot; padding={22} gap={18}&gt;
+  &lt;Panel
+    title=&#39;Service health&#39;
+    subtitle=&#39;Live state grouped in a titled surface&#39;
+    tone=&#39;green&#39;
+    width=&#39;100%&#39;
+    padding={18}&gt;
+  &lt;StatusList
+    rows={[{ label: &#39;API&#39;, detail: &#39;healthy&#39;, status: &#39;check&#39; },
+        { label: &#39;Queue&#39;, detail: &#39;12 jobs&#39;, status: &#39;info&#39; }]} /&gt;
+  &lt;/Panel&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Panel example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Panel%20example%22%20subtitle%3D%22Edit%20this%20focused%20Panel%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CPanel%0A%20%20%20%20title%3D&#39;Service%20health&#39;%0A%20%20%20%20subtitle%3D&#39;Live%20state%20grouped%20in%20a%20titled%20surface&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D&#39;100%25&#39;%0A%20%20%20%20padding%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20&#39;API&#39;%2C%20detail%3A%20&#39;healthy&#39;%2C%20status%3A%20&#39;check&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Queue&#39;%2C%20detail%3A%20&#39;12%20jobs&#39;%2C%20status%3A%20&#39;info&#39;%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FPanel%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="card general-purpose surface with tone, padding, and shadow. foundations"><div class="catalog-item-copy"><code>Card</code><p>General-purpose surface with tone, padding, and shadow.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Card example&quot; subtitle=&quot;Edit this focused Card scene&quot; padding={22} gap={18}&gt;
+  &lt;Card
+    title=&#39;Inference API&#39;
+    subtitle=&#39;Regional endpoint&#39;
+    tone=&#39;purple&#39;
+    width={430}
+    padding={20} shadow&gt;
+  &lt;TextLabel
+    text=&#39;p95 latency&#39;
+    fontSize={12} /&gt;
+  &lt;MetricCard
+    label=&#39;Latency&#39;
+    value=&#39;82 ms&#39;
+    tone=&#39;green&#39;
+    width={180} /&gt;
+  &lt;/Card&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Card example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Card%20example%22%20subtitle%3D%22Edit%20this%20focused%20Card%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CCard%0A%20%20%20%20title%3D&#39;Inference%20API&#39;%0A%20%20%20%20subtitle%3D&#39;Regional%20endpoint&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20width%3D%7B430%7D%0A%20%20%20%20padding%3D%7B20%7D%20shadow%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;p95%20latency&#39;%0A%20%20%20%20fontSize%3D%7B12%7D%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Latency&#39;%0A%20%20%20%20value%3D&#39;82%20ms&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B180%7D%20%2F%3E%0A%20%20%3C%2FCard%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="windowframe application or terminal window framing. foundations"><div class="catalog-item-copy"><code>WindowFrame</code><p>Application or terminal window framing.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;WindowFrame example&quot; subtitle=&quot;Edit this focused WindowFrame scene&quot; padding={22} gap={18}&gt;
+  &lt;WindowFrame
+    title=&#39;worker.log&#39;
+    variant=&#39;terminal&#39;
+    tone=&#39;green&#39;
+    width={620}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;stretch&#39;&gt;
+  &lt;TextLabel
+    text=&#39;$ vizmatic render scene.tsx&#39; mono
+    fontSize={13} /&gt;
+  &lt;TextLabel
+    text=&#39;✓ dark and light previews created&#39; mono
+    fontSize={13}
+    color={c.positiveLight} /&gt;
+  &lt;/Column&gt;
+  &lt;/WindowFrame&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy WindowFrame example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22WindowFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20WindowFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CWindowFrame%0A%20%20%20%20title%3D&#39;worker.log&#39;%0A%20%20%20%20variant%3D&#39;terminal&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B620%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;stretch&#39;%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;%24%20vizmatic%20render%20scene.tsx&#39;%20mono%0A%20%20%20%20fontSize%3D%7B13%7D%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;%E2%9C%93%20dark%20and%20light%20previews%20created&#39;%20mono%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20color%3D%7Bc.positiveLight%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%20%20%3C%2FWindowFrame%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="content">
+<div class="catalog-group-heading">
+<div>
+<h3>Content</h3>
+<p>Labels, cards, code, comparisons, and reusable information blocks.</p>
+</div>
+<span>20 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="tonestrip short semantic color accent. content"><div class="catalog-item-copy"><code>ToneStrip</code><p>Short semantic color accent.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;ToneStrip example&quot; subtitle=&quot;Edit this focused ToneStrip scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={14}
+    align=&#39;center&#39;&gt;
+  &lt;ToneStrip
+    tone=&#39;purple&#39;
+    width={64}
+    height={8} /&gt;
+  &lt;TextLabel
+    text=&#39;Accent follows the selected semantic tone.&#39;
+    fontSize={14} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ToneStrip example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ToneStrip%20example%22%20subtitle%3D%22Edit%20this%20focused%20ToneStrip%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3CToneStrip%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20width%3D%7B64%7D%0A%20%20%20%20height%3D%7B8%7D%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;Accent%20follows%20the%20selected%20semantic%20tone.&#39;%0A%20%20%20%20fontSize%3D%7B14%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="icon theme-aware technical icon set. content"><div class="catalog-item-copy"><code>Icon</code><p>Theme-aware technical icon set.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Icon example&quot; subtitle=&quot;Edit this focused Icon scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={18}
+    align=&#39;center&#39;&gt;
+  &lt;Icon
+    name=&#39;layers&#39;
+    tone=&#39;purple&#39;
+    size={34} /&gt;
+  &lt;Icon
+    name=&#39;code&#39;
+    tone=&#39;blue&#39;
+    size={34} /&gt;
+  &lt;Icon
+    name=&#39;spark&#39;
+    tone=&#39;green&#39;
+    size={34} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Icon example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Icon%20example%22%20subtitle%3D%22Edit%20this%20focused%20Icon%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B18%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3CIcon%0A%20%20%20%20name%3D&#39;layers&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20size%3D%7B34%7D%20%2F%3E%0A%20%20%3CIcon%0A%20%20%20%20name%3D&#39;code&#39;%0A%20%20%20%20tone%3D&#39;blue&#39;%0A%20%20%20%20size%3D%7B34%7D%20%2F%3E%0A%20%20%3CIcon%0A%20%20%20%20name%3D&#39;spark&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20size%3D%7B34%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="textlabel wrapping-safe svg or flex label. content"><div class="catalog-item-copy"><code>TextLabel</code><p>Wrapping-safe SVG or flex label.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;TextLabel example&quot; subtitle=&quot;Edit this focused TextLabel scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;start&#39;&gt;
+  &lt;TextLabel
+    text=&#39;A readable technical label&#39;
+    fontSize={20}
+    fontWeight={800}
+    color={c.textPrimary} /&gt;
+  &lt;TextLabel
+    text=&#39;Use mono for identifiers, commands, and compact metadata.&#39; mono
+    fontSize={12} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy TextLabel example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TextLabel%20example%22%20subtitle%3D%22Edit%20this%20focused%20TextLabel%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;start&#39;%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;A%20readable%20technical%20label&#39;%0A%20%20%20%20fontSize%3D%7B20%7D%0A%20%20%20%20fontWeight%3D%7B800%7D%0A%20%20%20%20color%3D%7Bc.textPrimary%7D%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;Use%20mono%20for%20identifiers%2C%20commands%2C%20and%20compact%20metadata.&#39;%20mono%0A%20%20%20%20fontSize%3D%7B12%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="mathtext math-aware text formatting for react content. content"><div class="catalog-item-copy"><code>MathText</code><p>Math-aware text formatting for React content.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;MathText example&quot; subtitle=&quot;Edit this focused MathText scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={10}
+    align=&#39;start&#39;&gt;
+  &lt;TextLabel
+    text={MathText({ text: &#39;x_i^2 + y_i^2&#39; })}
+    fontSize={22} mono /&gt;
+  &lt;TextLabel
+    text=&#39;MathText formats inline notation for labels.&#39;
+    fontSize={12} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy MathText example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MathText%20example%22%20subtitle%3D%22Edit%20this%20focused%20MathText%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D&#39;start&#39;%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D%7BMathText(%7B%20text%3A%20&#39;x_i%5E2%20%2B%20y_i%5E2&#39;%20%7D)%7D%0A%20%20%20%20fontSize%3D%7B22%7D%20mono%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;MathText%20formats%20inline%20notation%20for%20labels.&#39;%0A%20%20%20%20fontSize%3D%7B12%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgmathtext positioned math overlay aligned with custom svg geometry. content"><div class="catalog-item-copy"><code>SvgMathText</code><p>Positioned math overlay aligned with custom SVG geometry.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;SvgMathText example&quot; subtitle=&quot;Edit this focused SvgMathText scene&quot; padding={22} gap={18}&gt;
+  &lt;div
+    style={{ position: &#39;relative&#39;, display: &#39;flex&#39;, width: 420, height: 100 }}&gt;
+  &lt;SvgMathText
+    text=&#39;E = mc^2&#39;
+    x={20}
+    y={62}
+    fill={c.textPrimary}
+    fontSize={34}
+    textAnchor=&#39;start&#39; /&gt;
+  &lt;/div&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy SvgMathText example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SvgMathText%20example%22%20subtitle%3D%22Edit%20this%20focused%20SvgMathText%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3Cdiv%0A%20%20%20%20style%3D%7B%7B%20position%3A%20&#39;relative&#39;%2C%20display%3A%20&#39;flex&#39;%2C%20width%3A%20420%2C%20height%3A%20100%20%7D%7D%3E%0A%20%20%3CSvgMathText%0A%20%20%20%20text%3D&#39;E%20%3D%20mc%5E2&#39;%0A%20%20%20%20x%3D%7B20%7D%0A%20%20%20%20y%3D%7B62%7D%0A%20%20%20%20fill%3D%7Bc.textPrimary%7D%0A%20%20%20%20fontSize%3D%7B34%7D%0A%20%20%20%20textAnchor%3D&#39;start&#39;%20%2F%3E%0A%20%20%3C%2Fdiv%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="badge compact semantic svg label. content"><div class="catalog-item-copy"><code>Badge</code><p>Compact semantic SVG label.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Badge example&quot; subtitle=&quot;Edit this focused Badge scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={12}
+    align=&#39;center&#39;&gt;
+  &lt;Badge
+    label=&#39;stable&#39;
+    color=&#39;positive&#39; /&gt;
+  &lt;Badge
+    label=&#39;preview&#39;
+    color=&#39;warning&#39; /&gt;
+  &lt;Badge
+    label=&#39;blocked&#39;
+    color=&#39;critical&#39; /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Badge example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Badge%20example%22%20subtitle%3D%22Edit%20this%20focused%20Badge%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3CBadge%0A%20%20%20%20label%3D&#39;stable&#39;%0A%20%20%20%20color%3D&#39;positive&#39;%20%2F%3E%0A%20%20%3CBadge%0A%20%20%20%20label%3D&#39;preview&#39;%0A%20%20%20%20color%3D&#39;warning&#39;%20%2F%3E%0A%20%20%3CBadge%0A%20%20%20%20label%3D&#39;blocked&#39;%0A%20%20%20%20color%3D&#39;critical&#39;%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="badgepill inline status, category, or metadata label. content"><div class="catalog-item-copy"><code>BadgePill</code><p>Inline status, category, or metadata label.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;BadgePill example&quot; subtitle=&quot;Edit this focused BadgePill scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={10}
+    align=&#39;center&#39;&gt;
+  &lt;BadgePill
+    text=&#39;API&#39;
+    tone=&#39;blue&#39; /&gt;
+  &lt;BadgePill
+    text=&#39;HEALTHY&#39;
+    tone=&#39;green&#39; /&gt;
+  &lt;BadgePill
+    text=&#39;P95 82 ms&#39;
+    tone=&#39;purple&#39; /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy BadgePill example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22BadgePill%20example%22%20subtitle%3D%22Edit%20this%20focused%20BadgePill%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D&#39;API&#39;%0A%20%20%20%20tone%3D&#39;blue&#39;%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D&#39;HEALTHY&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D&#39;P95%2082%20ms&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="gradientchip emphasized label with tone gradient. content"><div class="catalog-item-copy"><code>GradientChip</code><p>Emphasized label with tone gradient.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;GradientChip example&quot; subtitle=&quot;Edit this focused GradientChip scene&quot; padding={22} gap={18}&gt;
+  &lt;GradientChip
+    title=&#39;Verified output&#39;
+    subtitle=&#39;dark + light themes&#39;
+    tone=&#39;green&#39;
+    width={320}
+    minHeight={92}
+    align=&#39;center&#39; /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy GradientChip example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22GradientChip%20example%22%20subtitle%3D%22Edit%20this%20focused%20GradientChip%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGradientChip%0A%20%20%20%20title%3D&#39;Verified%20output&#39;%0A%20%20%20%20subtitle%3D&#39;dark%20%2B%20light%20themes&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B320%7D%0A%20%20%20%20minHeight%3D%7B92%7D%0A%20%20%20%20align%3D&#39;center&#39;%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="valuepill small label-value pair. content"><div class="catalog-item-copy"><code>ValuePill</code><p>Small label-value pair.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;ValuePill example&quot; subtitle=&quot;Edit this focused ValuePill scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={14}&gt;
+  &lt;ValuePill
+    label=&#39;Batch size&#39;
+    value=&#39;128&#39;
+    detail=&#39;tokens / step&#39;
+    tone=&#39;purple&#39;
+    width={170} /&gt;
+  &lt;ValuePill
+    label=&#39;Throughput&#39;
+    value=&#39;940&#39;
+    detail=&#39;items / second&#39;
+    tone=&#39;green&#39;
+    width={190} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ValuePill example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ValuePill%20example%22%20subtitle%3D%22Edit%20this%20focused%20ValuePill%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D&#39;Batch%20size&#39;%0A%20%20%20%20value%3D&#39;128&#39;%0A%20%20%20%20detail%3D&#39;tokens%20%2F%20step&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20width%3D%7B170%7D%20%2F%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D&#39;Throughput&#39;%0A%20%20%20%20value%3D&#39;940&#39;%0A%20%20%20%20detail%3D&#39;items%20%2F%20second&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B190%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="equationcard formula, result, and supporting detail. content"><div class="catalog-item-copy"><code>EquationCard</code><p>Formula, result, and supporting detail.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;EquationCard example&quot; subtitle=&quot;Edit this focused EquationCard scene&quot; padding={22} gap={18}&gt;
+  &lt;EquationCard
+    title=&#39;Throughput&#39;
+    formula=&#39;items ÷ seconds&#39;
+    result=&#39;940/s&#39;
+    detail=&#39;measured over 5 minutes&#39;
+    tone=&#39;purple&#39;
+    width={300} math /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy EquationCard example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22EquationCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20EquationCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CEquationCard%0A%20%20%20%20title%3D&#39;Throughput&#39;%0A%20%20%20%20formula%3D&#39;items%20%C3%B7%20seconds&#39;%0A%20%20%20%20result%3D&#39;940%2Fs&#39;%0A%20%20%20%20detail%3D&#39;measured%20over%205%20minutes&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20width%3D%7B300%7D%20math%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="stepcard numbered or staged process card. content"><div class="catalog-item-copy"><code>StepCard</code><p>Numbered or staged process card.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;StepCard example&quot; subtitle=&quot;Edit this focused StepCard scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={14}&gt;
+  &lt;StepCard
+    eyebrow=&#39;01&#39;
+    title=&#39;Collect&#39;
+    subtitle=&#39;read source data&#39;
+    tone=&#39;blue&#39;
+    width={220} /&gt;
+  &lt;StepCard
+    eyebrow=&#39;02&#39;
+    title=&#39;Validate&#39;
+    subtitle=&#39;check invariants&#39;
+    tone=&#39;purple&#39;
+    width={220} /&gt;
+  &lt;StepCard
+    eyebrow=&#39;03&#39;
+    title=&#39;Publish&#39;
+    subtitle=&#39;write artifacts&#39;
+    tone=&#39;green&#39;
+    width={220} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy StepCard example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StepCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20StepCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CStepCard%0A%20%20%20%20eyebrow%3D&#39;01&#39;%0A%20%20%20%20title%3D&#39;Collect&#39;%0A%20%20%20%20subtitle%3D&#39;read%20source%20data&#39;%0A%20%20%20%20tone%3D&#39;blue&#39;%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20eyebrow%3D&#39;02&#39;%0A%20%20%20%20title%3D&#39;Validate&#39;%0A%20%20%20%20subtitle%3D&#39;check%20invariants&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20eyebrow%3D&#39;03&#39;%0A%20%20%20%20title%3D&#39;Publish&#39;%0A%20%20%20%20subtitle%3D&#39;write%20artifacts&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="metriccard kpi value with label and context. content"><div class="catalog-item-copy"><code>MetricCard</code><p>KPI value with label and context.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;MetricCard example&quot; subtitle=&quot;Edit this focused MetricCard scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={14}&gt;
+  &lt;MetricCard
+    label=&#39;Build success&#39;
+    value=&#39;98.7%&#39;
+    detail=&#39;last 30 days&#39;
+    tone=&#39;green&#39;
+    width={220}
+    minHeight={120} /&gt;
+  &lt;MetricCard
+    label=&#39;Open issues&#39;
+    value=&#39;4&#39;
+    detail=&#39;2 need review&#39;
+    tone=&#39;warm&#39;
+    width={220}
+    minHeight={120} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy MetricCard example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MetricCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20MetricCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Build%20success&#39;%0A%20%20%20%20value%3D&#39;98.7%25&#39;%0A%20%20%20%20detail%3D&#39;last%2030%20days&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Open%20issues&#39;%0A%20%20%20%20value%3D&#39;4&#39;%0A%20%20%20%20detail%3D&#39;2%20need%20review&#39;%0A%20%20%20%20tone%3D&#39;warm&#39;%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="calloutcard focused takeaway, warning, or recommendation. content"><div class="catalog-item-copy"><code>CalloutCard</code><p>Focused takeaway, warning, or recommendation.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;CalloutCard example&quot; subtitle=&quot;Edit this focused CalloutCard scene&quot; padding={22} gap={18}&gt;
+  &lt;CalloutCard
+    title=&#39;Recommendation&#39;
+    detail=&#39;Keep the source editable and verify both color themes before publishing.&#39;
+    tone=&#39;cyan&#39;
+    width={560}
+    minHeight={132} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy CalloutCard example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22CalloutCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20CalloutCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CCalloutCard%0A%20%20%20%20title%3D&#39;Recommendation&#39;%0A%20%20%20%20detail%3D&#39;Keep%20the%20source%20editable%20and%20verify%20both%20color%20themes%20before%20publishing.&#39;%0A%20%20%20%20tone%3D&#39;cyan&#39;%0A%20%20%20%20width%3D%7B560%7D%0A%20%20%20%20minHeight%3D%7B132%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="detaillist compact list of supporting facts. content"><div class="catalog-item-copy"><code>DetailList</code><p>Compact list of supporting facts.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;DetailList example&quot; subtitle=&quot;Edit this focused DetailList scene&quot; padding={22} gap={18}&gt;
+  &lt;DetailList
+    tone=&#39;blue&#39;
+    items={[&#39;TypeScript source&#39;, &#39;Theme aware colors&#39;, &#39;PNG and SVG export&#39;]}
+    fontSize={13} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DetailList example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DetailList%20example%22%20subtitle%3D%22Edit%20this%20focused%20DetailList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDetailList%0A%20%20%20%20tone%3D&#39;blue&#39;%0A%20%20%20%20items%3D%7B%5B&#39;TypeScript%20source&#39;%2C%20&#39;Theme%20aware%20colors&#39;%2C%20&#39;PNG%20and%20SVG%20export&#39;%5D%7D%0A%20%20%20%20fontSize%3D%7B13%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="codeblock code or command excerpt with optional line numbers. content"><div class="catalog-item-copy"><code>CodeBlock</code><p>Code or command excerpt with optional line numbers.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;CodeBlock example&quot; subtitle=&quot;Edit this focused CodeBlock scene&quot; padding={22} gap={18}&gt;
+  &lt;CodeBlock
+    title=&#39;render.tsx&#39;
+    tone=&#39;purple&#39;
+    fontSize={13} showLineNumbers
+    lines={[{ text: &#39;const frame = &lt;Scene /&gt;&#39;, tone: &#39;purple&#39; },
+        { text: &#39;await render(frame)&#39; },
+        { text: &#39;writeFile(output)&#39;, tone: &#39;green&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy CodeBlock example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22CodeBlock%20example%22%20subtitle%3D%22Edit%20this%20focused%20CodeBlock%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CCodeBlock%0A%20%20%20%20title%3D&#39;render.tsx&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%0A%20%20%20%20fontSize%3D%7B13%7D%20showLineNumbers%0A%20%20%20%20lines%3D%7B%5B%7B%20text%3A%20&#39;const%20frame%20%3D%20%3CScene%20%2F%3E&#39;%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20text%3A%20&#39;await%20render(frame)&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20text%3A%20&#39;writeFile(output)&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="comparison side-by-side alternatives or before/after states. content"><div class="catalog-item-copy"><code>Comparison</code><p>Side-by-side alternatives or before/after states.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Comparison example&quot; subtitle=&quot;Edit this focused Comparison scene&quot; padding={22} gap={18}&gt;
+  &lt;Comparison divider
+    gap={10}
+    minHeight={150}
+    sides={[{ title: &#39;Before&#39;, tone: &#39;warm&#39;, lines: [&#39;manual spacing&#39;, &#39;one theme&#39;] },
+        { title: &#39;After&#39;, tone: &#39;green&#39;, lines: [&#39;shared layout&#39;, &#39;dark + light&#39;] }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Comparison example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Comparison%20example%22%20subtitle%3D%22Edit%20this%20focused%20Comparison%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CComparison%20divider%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20minHeight%3D%7B150%7D%0A%20%20%20%20sides%3D%7B%5B%7B%20title%3A%20&#39;Before&#39;%2C%20tone%3A%20&#39;warm&#39;%2C%20lines%3A%20%5B&#39;manual%20spacing&#39;%2C%20&#39;one%20theme&#39;%5D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;After&#39;%2C%20tone%3A%20&#39;green&#39;%2C%20lines%3A%20%5B&#39;shared%20layout&#39;%2C%20&#39;dark%20%2B%20light&#39;%5D%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="keyvaluelist aligned technical metadata rows. content"><div class="catalog-item-copy"><code>KeyValueList</code><p>Aligned technical metadata rows.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;KeyValueList example&quot; subtitle=&quot;Edit this focused KeyValueList scene&quot; padding={22} gap={18}&gt;
+  &lt;KeyValueList
+    title=&#39;Render settings&#39;
+    rows={[{ key: &#39;format&#39;, value: &#39;PNG + SVG&#39;, tone: &#39;blue&#39; },
+        { key: &#39;themes&#39;, value: &#39;dark, light&#39;, tone: &#39;green&#39; },
+        { key: &#39;latency&#39;, value: &#39;42 ms&#39; }]}
+    width={430} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy KeyValueList example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22KeyValueList%20example%22%20subtitle%3D%22Edit%20this%20focused%20KeyValueList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CKeyValueList%0A%20%20%20%20title%3D&#39;Render%20settings&#39;%0A%20%20%20%20rows%3D%7B%5B%7B%20key%3A%20&#39;format&#39;%2C%20value%3A%20&#39;PNG%20%2B%20SVG&#39;%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20&#39;themes&#39;%2C%20value%3A%20&#39;dark%2C%20light&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20&#39;latency&#39;%2C%20value%3A%20&#39;42%20ms&#39;%20%7D%5D%7D%0A%20%20%20%20width%3D%7B430%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="tile single labeled unit for feature or system maps. content"><div class="catalog-item-copy"><code>Tile</code><p>Single labeled unit for feature or system maps.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Tile example&quot; subtitle=&quot;Edit this focused Tile scene&quot; padding={22} gap={18}&gt;
+  &lt;Tile
+    title=&#39;Search index&#39;
+    subtitle=&#39;retrieval service&#39;
+    eyebrow=&#39;READY&#39;
+    icon=&#39;⌕&#39;
+    tone=&#39;cyan&#39;
+    lines={[&#39;p95 18 ms&#39;, &#39;3 replicas&#39;]}
+    width={260}
+    minHeight={128} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Tile example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Tile%20example%22%20subtitle%3D%22Edit%20this%20focused%20Tile%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTile%0A%20%20%20%20title%3D&#39;Search%20index&#39;%0A%20%20%20%20subtitle%3D&#39;retrieval%20service&#39;%0A%20%20%20%20eyebrow%3D&#39;READY&#39;%0A%20%20%20%20icon%3D&#39;%E2%8C%95&#39;%0A%20%20%20%20tone%3D&#39;cyan&#39;%0A%20%20%20%20lines%3D%7B%5B&#39;p95%2018%20ms&#39;%2C%20&#39;3%20replicas&#39;%5D%7D%0A%20%20%20%20width%3D%7B260%7D%0A%20%20%20%20minHeight%3D%7B128%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="tilegrid dense grid of related labeled units. content"><div class="catalog-item-copy"><code>TileGrid</code><p>Dense grid of related labeled units.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;TileGrid example&quot; subtitle=&quot;Edit this focused TileGrid scene&quot; padding={22} gap={18}&gt;
+  &lt;TileGrid
+    columns={3}
+    gap={12}
+    tileWidth={210}
+    minHeight={112}
+    tiles={[{ title: &#39;Ingest&#39;, subtitle: &#39;events&#39;, tone: &#39;blue&#39; },
+        { title: &#39;Transform&#39;, subtitle: &#39;schemas&#39;, tone: &#39;purple&#39; },
+        { title: &#39;Serve&#39;, subtitle: &#39;features&#39;, tone: &#39;green&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy TileGrid example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TileGrid%20example%22%20subtitle%3D%22Edit%20this%20focused%20TileGrid%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTileGrid%0A%20%20%20%20columns%3D%7B3%7D%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20tileWidth%3D%7B210%7D%0A%20%20%20%20minHeight%3D%7B112%7D%0A%20%20%20%20tiles%3D%7B%5B%7B%20title%3A%20&#39;Ingest&#39;%2C%20subtitle%3A%20&#39;events&#39;%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;Transform&#39;%2C%20subtitle%3A%20&#39;schemas&#39;%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;Serve&#39;%2C%20subtitle%3A%20&#39;features&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="watermark frame metadata for text, image, or custom branding. content"><div class="catalog-item-copy"><code>Watermark</code><p>Frame metadata for text, image, or custom branding.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Watermark example&quot; subtitle=&quot;Edit this focused Watermark scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    width={680}
+    height={300}
+    align=&#39;center&#39;
+    justify=&#39;center&#39;&gt;{wrapWithWatermark(&lt;Scene
+    title=&#39;Published report&#39;
+    subtitle=&#39;Watermark stays anchored to the rendered frame&#39;
+    padding={22}&gt;
+  &lt;MetricCard
+    label=&#39;Verified runs&#39;
+    value=&#39;1,284&#39;
+    detail=&#39;this week&#39;
+    tone=&#39;green&#39;
+    width={250} /&gt;
+  &lt;/Scene&gt;, 640, 260, &#39;dark&#39;, &lt;Watermark
+    text=&#39;Vizmatic&#39;
+    color={c.textSecondary}
+    opacity={0.9}
+    position=&#39;bottom-right&#39; /&gt;)}&lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Watermark example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Watermark%20example%22%20subtitle%3D%22Edit%20this%20focused%20Watermark%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20height%3D%7B300%7D%0A%20%20%20%20align%3D&#39;center&#39;%0A%20%20%20%20justify%3D&#39;center&#39;%3E%7BwrapWithWatermark(%3CScene%0A%20%20%20%20title%3D&#39;Published%20report&#39;%0A%20%20%20%20subtitle%3D&#39;Watermark%20stays%20anchored%20to%20the%20rendered%20frame&#39;%0A%20%20%20%20padding%3D%7B22%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D&#39;Verified%20runs&#39;%0A%20%20%20%20value%3D&#39;1%2C284&#39;%0A%20%20%20%20detail%3D&#39;this%20week&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%0A%20%20%20%20width%3D%7B250%7D%20%2F%3E%0A%20%20%3C%2FScene%3E%2C%20640%2C%20260%2C%20&#39;dark&#39;%2C%20%3CWatermark%0A%20%20%20%20text%3D&#39;Vizmatic&#39;%0A%20%20%20%20color%3D%7Bc.textSecondary%7D%0A%20%20%20%20opacity%3D%7B0.9%7D%0A%20%20%20%20position%3D&#39;bottom-right&#39;%20%2F%3E)%7D%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="flows">
+<div class="catalog-group-heading">
+<div>
+<h3>Flows</h3>
+<p>Processes, timelines, status, and progress.</p>
+</div>
+<span>7 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="statusrow single operational state with detail. flows"><div class="catalog-item-copy"><code>StatusRow</code><p>Single operational state with detail.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;StatusRow example&quot; subtitle=&quot;Edit this focused StatusRow scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={10}
+    width={620}
+    align=&#39;stretch&#39;&gt;
+  &lt;StatusRow
+    label=&#39;Build&#39;
+    detail=&#39;passed&#39;
+    status=&#39;check&#39; /&gt;
+  &lt;StatusRow
+    label=&#39;Review&#39;
+    detail=&#39;2 comments&#39;
+    status=&#39;pending&#39; /&gt;
+  &lt;StatusRow
+    label=&#39;Security&#39;
+    detail=&#39;attention&#39;
+    status=&#39;warn&#39; /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy StatusRow example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusRow%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusRow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20align%3D&#39;stretch&#39;%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D&#39;Build&#39;%0A%20%20%20%20detail%3D&#39;passed&#39;%0A%20%20%20%20status%3D&#39;check&#39;%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D&#39;Review&#39;%0A%20%20%20%20detail%3D&#39;2%20comments&#39;%0A%20%20%20%20status%3D&#39;pending&#39;%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D&#39;Security&#39;%0A%20%20%20%20detail%3D&#39;attention&#39;%0A%20%20%20%20status%3D&#39;warn&#39;%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="statuslist grouped checks, warnings, and pending work. flows"><div class="catalog-item-copy"><code>StatusList</code><p>Grouped checks, warnings, and pending work.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;StatusList example&quot; subtitle=&quot;Edit this focused StatusList scene&quot; padding={22} gap={18}&gt;
+  &lt;StatusList
+    width={620}
+    rows={[{ label: &#39;Build&#39;, detail: &#39;passed&#39;, status: &#39;check&#39; },
+        { label: &#39;Review&#39;, detail: &#39;2 comments&#39;, status: &#39;pending&#39; },
+        { label: &#39;Security&#39;, detail: &#39;attention&#39;, status: &#39;warn&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy StatusList example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusList%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20&#39;Build&#39;%2C%20detail%3A%20&#39;passed&#39;%2C%20status%3A%20&#39;check&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Review&#39;%2C%20detail%3A%20&#39;2%20comments&#39;%2C%20status%3A%20&#39;pending&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Security&#39;%2C%20detail%3A%20&#39;attention&#39;%2C%20status%3A%20&#39;warn&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="timeline ordered events in horizontal or vertical form. flows"><div class="catalog-item-copy"><code>Timeline</code><p>Ordered events in horizontal or vertical form.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Timeline example&quot; subtitle=&quot;Edit this focused Timeline scene&quot; padding={22} gap={18}&gt;
+  &lt;Timeline
+    title=&#39;Release timeline&#39;
+    subtitle=&#39;Key steps from draft to publish&#39;
+    width={820}
+    direction=&#39;horizontal&#39;
+    eventWidth={230}
+    events={[{ time: &#39;09:10&#39;, title: &#39;Draft&#39;, detail: &#39;write the scene&#39;, tone: &#39;blue&#39; },
+        { time: &#39;09:24&#39;, title: &#39;Validate&#39;, detail: &#39;check layout&#39;, tone: &#39;purple&#39; },
+        { time: &#39;09:31&#39;, title: &#39;Publish&#39;, detail: &#39;export assets&#39;, tone: &#39;green&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Timeline example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Timeline%20example%22%20subtitle%3D%22Edit%20this%20focused%20Timeline%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTimeline%0A%20%20%20%20title%3D&#39;Release%20timeline&#39;%0A%20%20%20%20subtitle%3D&#39;Key%20steps%20from%20draft%20to%20publish&#39;%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20direction%3D&#39;horizontal&#39;%0A%20%20%20%20eventWidth%3D%7B230%7D%0A%20%20%20%20events%3D%7B%5B%7B%20time%3A%20&#39;09%3A10&#39;%2C%20title%3A%20&#39;Draft&#39;%2C%20detail%3A%20&#39;write%20the%20scene&#39;%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20time%3A%20&#39;09%3A24&#39;%2C%20title%3A%20&#39;Validate&#39;%2C%20detail%3A%20&#39;check%20layout&#39;%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20time%3A%20&#39;09%3A31&#39;%2C%20title%3A%20&#39;Publish&#39;%2C%20detail%3A%20&#39;export%20assets&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="flow connected horizontal or vertical stages. flows"><div class="catalog-item-copy"><code>Flow</code><p>Connected horizontal or vertical stages.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Flow example&quot; subtitle=&quot;Edit this focused Flow scene&quot; padding={22} gap={18}&gt;
+  &lt;Flow
+    gap={12}
+    connectorLength={30}
+    stages={[{ title: &#39;Request&#39;, subtitle: &#39;source data&#39;, tone: &#39;blue&#39;, width: 190 },
+        { title: &#39;Transform&#39;, subtitle: &#39;build scene&#39;, tone: &#39;purple&#39;, width: 190 },
+        { title: &#39;Deliver&#39;, subtitle: &#39;render files&#39;, tone: &#39;green&#39;, width: 190 }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Flow example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Flow%20example%22%20subtitle%3D%22Edit%20this%20focused%20Flow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFlow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20connectorLength%3D%7B30%7D%0A%20%20%20%20stages%3D%7B%5B%7B%20title%3A%20&#39;Request&#39;%2C%20subtitle%3A%20&#39;source%20data&#39;%2C%20tone%3A%20&#39;blue&#39;%2C%20width%3A%20190%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;Transform&#39;%2C%20subtitle%3A%20&#39;build%20scene&#39;%2C%20tone%3A%20&#39;purple&#39;%2C%20width%3A%20190%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;Deliver&#39;%2C%20subtitle%3A%20&#39;render%20files&#39;%2C%20tone%3A%20&#39;green&#39;%2C%20width%3A%20190%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="pipeline compact process pipeline with shared title. flows"><div class="catalog-item-copy"><code>Pipeline</code><p>Compact process pipeline with shared title.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Pipeline example&quot; subtitle=&quot;Edit this focused Pipeline scene&quot; padding={22} gap={18}&gt;
+  &lt;Pipeline
+    title=&#39;Release pipeline&#39;
+    stages={[{ label: &#39;Build&#39;, sublabel: &#39;TSX&#39;, icon: &#39;◇&#39;, color: &#39;secondary&#39; },
+        { label: &#39;Check&#39;, sublabel: &#39;themes&#39;, icon: &#39;✓&#39;, color: &#39;info&#39; },
+        { label: &#39;Export&#39;, sublabel: &#39;PNG&#39;, icon: &#39;↓&#39;, color: &#39;positive&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Pipeline example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Pipeline%20example%22%20subtitle%3D%22Edit%20this%20focused%20Pipeline%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CPipeline%0A%20%20%20%20title%3D&#39;Release%20pipeline&#39;%0A%20%20%20%20stages%3D%7B%5B%7B%20label%3A%20&#39;Build&#39;%2C%20sublabel%3A%20&#39;TSX&#39;%2C%20icon%3A%20&#39;%E2%97%87&#39;%2C%20color%3A%20&#39;secondary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Check&#39;%2C%20sublabel%3A%20&#39;themes&#39;%2C%20icon%3A%20&#39;%E2%9C%93&#39;%2C%20color%3A%20&#39;info&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Export&#39;%2C%20sublabel%3A%20&#39;PNG&#39;%2C%20icon%3A%20&#39;%E2%86%93&#39;%2C%20color%3A%20&#39;positive&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="progressrow labeled progress bar and value. flows"><div class="catalog-item-copy"><code>ProgressRow</code><p>Labeled progress bar and value.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;ProgressRow example&quot; subtitle=&quot;Edit this focused ProgressRow scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    width={620}
+    gap={14}
+    align=&#39;stretch&#39;&gt;
+  &lt;ProgressRow
+    label=&#39;Layout&#39;
+    value={0.96}
+    valueLabel=&#39;96%&#39;
+    tone=&#39;green&#39; /&gt;
+  &lt;ProgressRow
+    label=&#39;Contrast&#39;
+    value={0.82}
+    valueLabel=&#39;82%&#39;
+    tone=&#39;purple&#39; /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ProgressRow example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ProgressRow%20example%22%20subtitle%3D%22Edit%20this%20focused%20ProgressRow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20align%3D&#39;stretch&#39;%3E%0A%20%20%3CProgressRow%0A%20%20%20%20label%3D&#39;Layout&#39;%0A%20%20%20%20value%3D%7B0.96%7D%0A%20%20%20%20valueLabel%3D&#39;96%25&#39;%0A%20%20%20%20tone%3D&#39;green&#39;%20%2F%3E%0A%20%20%3CProgressRow%0A%20%20%20%20label%3D&#39;Contrast&#39;%0A%20%20%20%20value%3D%7B0.82%7D%0A%20%20%20%20valueLabel%3D&#39;82%25&#39;%0A%20%20%20%20tone%3D&#39;purple&#39;%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="progresslist comparable progress across several measures. flows"><div class="catalog-item-copy"><code>ProgressList</code><p>Comparable progress across several measures.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;ProgressList example&quot; subtitle=&quot;Edit this focused ProgressList scene&quot; padding={22} gap={18}&gt;
+  &lt;ProgressList
+    labelWidth={100}
+    rows={[{ label: &#39;Layout&#39;, value: 0.96, tone: &#39;green&#39; },
+        { label: &#39;Contrast&#39;, value: 0.82, tone: &#39;purple&#39; },
+        { label: &#39;Labels&#39;, value: 1, tone: &#39;blue&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ProgressList example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ProgressList%20example%22%20subtitle%3D%22Edit%20this%20focused%20ProgressList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CProgressList%0A%20%20%20%20labelWidth%3D%7B100%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20&#39;Layout&#39;%2C%20value%3A%200.96%2C%20tone%3A%20&#39;green&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Contrast&#39;%2C%20value%3A%200.82%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Labels&#39;%2C%20value%3A%201%2C%20tone%3A%20&#39;blue&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="diagrams">
+<div class="catalog-group-heading">
+<div>
+<h3>Diagrams</h3>
+<p>Networks, system architecture, directed graphs, and hierarchies.</p>
+</div>
+<span>3 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="layerednetwork layered neural network or staged dag. diagrams"><div class="catalog-item-copy"><code>LayeredNetwork</code><p>Layered neural network or staged DAG.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 560
+
+&lt;Scene title=&quot;LayeredNetwork example&quot; subtitle=&quot;Edit this focused LayeredNetwork scene&quot; padding={22} gap={18}&gt;
+  &lt;LayeredNetwork
+    width={820}
+    height={360}
+    layers={[{ title: &#39;Input&#39;, nodes: [&#39;x₁&#39;, &#39;x₂&#39;, &#39;x₃&#39;], tone: &#39;blue&#39; },
+        { title: &#39;Hidden&#39;, nodes: [&#39;h₁&#39;, &#39;h₂&#39;, &#39;h₃&#39;], tone: &#39;purple&#39; },
+        { title: &#39;Output&#39;, nodes: [&#39;y&#39;], tone: &#39;green&#39; }]}
+    activePath={[1, 0, 0]}
+    formula=&#39;y = f(Wx + b)&#39; /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy LayeredNetwork example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22LayeredNetwork%20example%22%20subtitle%3D%22Edit%20this%20focused%20LayeredNetwork%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLayeredNetwork%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20layers%3D%7B%5B%7B%20title%3A%20&#39;Input&#39;%2C%20nodes%3A%20%5B&#39;x%E2%82%81&#39;%2C%20&#39;x%E2%82%82&#39;%2C%20&#39;x%E2%82%83&#39;%5D%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;Hidden&#39;%2C%20nodes%3A%20%5B&#39;h%E2%82%81&#39;%2C%20&#39;h%E2%82%82&#39;%2C%20&#39;h%E2%82%83&#39;%5D%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20&#39;Output&#39;%2C%20nodes%3A%20%5B&#39;y&#39;%5D%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%0A%20%20%20%20activePath%3D%7B%5B1%2C%200%2C%200%5D%7D%0A%20%20%20%20formula%3D&#39;y%20%3D%20f(Wx%20%2B%20b)&#39;%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="graphdiagram auto-laid architecture graph with nested groups, icons, and semantic edges. diagrams"><div class="catalog-item-copy"><code>GraphDiagram</code><p>Auto-laid architecture graph with nested groups, icons, and semantic edges.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;GraphDiagram example&quot; subtitle=&quot;Edit this focused GraphDiagram scene&quot; padding={22} gap={18}&gt;
+  &lt;GraphDiagram
+    width={820}
+    height={360}
+    nodes={[{ id: &#39;api&#39;, label: &#39;API&#39;, tone: &#39;blue&#39; },
+        { id: &#39;queue&#39;, label: &#39;Queue&#39;, tone: &#39;purple&#39; },
+        { id: &#39;worker&#39;, label: &#39;Worker&#39;, tone: &#39;green&#39; }]}
+    edges={[{ from: &#39;api&#39;, to: &#39;queue&#39;, label: &#39;enqueue&#39; },
+        { from: &#39;queue&#39;, to: &#39;worker&#39;, label: &#39;consume&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy GraphDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22GraphDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20GraphDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGraphDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20nodes%3D%7B%5B%7B%20id%3A%20&#39;api&#39;%2C%20label%3A%20&#39;API&#39;%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;queue&#39;%2C%20label%3A%20&#39;Queue&#39;%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;worker&#39;%2C%20label%3A%20&#39;Worker&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%0A%20%20%20%20edges%3D%7B%5B%7B%20from%3A%20&#39;api&#39;%2C%20to%3A%20&#39;queue&#39;%2C%20label%3A%20&#39;enqueue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20&#39;queue&#39;%2C%20to%3A%20&#39;worker&#39;%2C%20label%3A%20&#39;consume&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="treediagram auto-laid hierarchy, taxonomy, or decision tree. diagrams"><div class="catalog-item-copy"><code>TreeDiagram</code><p>Auto-laid hierarchy, taxonomy, or decision tree.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;TreeDiagram example&quot; subtitle=&quot;Edit this focused TreeDiagram scene&quot; padding={22} gap={18}&gt;
+  &lt;TreeDiagram
+    width={820}
+    height={340}
+    root={{ id: &#39;root&#39;, label: &#39;Product&#39;, tone: &#39;purple&#39;, children: [{ id: &#39;api&#39;, label: &#39;API&#39;, tone: &#39;blue&#39; },
+        { id: &#39;web&#39;, label: &#39;Web app&#39;, tone: &#39;green&#39; }] }} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy TreeDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TreeDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20TreeDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTreeDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20root%3D%7B%7B%20id%3A%20&#39;root&#39;%2C%20label%3A%20&#39;Product&#39;%2C%20tone%3A%20&#39;purple&#39;%2C%20children%3A%20%5B%7B%20id%3A%20&#39;api&#39;%2C%20label%3A%20&#39;API&#39;%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;web&#39;%2C%20label%3A%20&#39;Web%20app&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%20%7D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="sequence">
+<div class="catalog-group-heading">
+<div>
+<h3>Sequence</h3>
+<p>Time-ordered interactions, lifelines, activations, notes, and control fragments.</p>
+</div>
+<span>1 component</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="sequencediagram typed participants, messages, notes, activations, and alt, loop, or parallel fragments. sequence"><div class="catalog-item-copy"><code>SequenceDiagram</code><p>Typed participants, messages, notes, activations, and alt, loop, or parallel fragments.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 560
+
+&lt;Scene title=&quot;SequenceDiagram example&quot; subtitle=&quot;Edit this focused SequenceDiagram scene&quot; padding={22} gap={18}&gt;
+  &lt;SequenceDiagram
+    width={820}
+    height={360}
+    participants={[{ id: &#39;client&#39;, label: &#39;Client&#39;, kind: &#39;actor&#39; },
+        { id: &#39;api&#39;, label: &#39;API&#39;, kind: &#39;boundary&#39; },
+        { id: &#39;db&#39;, label: &#39;Database&#39;, kind: &#39;database&#39; }]}
+    messages={[{ id: &#39;request&#39;, from: &#39;client&#39;, to: &#39;api&#39;, kind: &#39;sync&#39;, label: &#39;GET /items&#39; },
+        { id: &#39;query&#39;, from: &#39;api&#39;, to: &#39;db&#39;, kind: &#39;sync&#39;, label: &#39;SELECT items&#39; },
+        { id: &#39;response&#39;, from: &#39;api&#39;, to: &#39;client&#39;, kind: &#39;return&#39;, label: &#39;200 OK&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy SequenceDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22SequenceDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20SequenceDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CSequenceDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20participants%3D%7B%5B%7B%20id%3A%20&#39;client&#39;%2C%20label%3A%20&#39;Client&#39;%2C%20kind%3A%20&#39;actor&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;api&#39;%2C%20label%3A%20&#39;API&#39;%2C%20kind%3A%20&#39;boundary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;db&#39;%2C%20label%3A%20&#39;Database&#39;%2C%20kind%3A%20&#39;database&#39;%20%7D%5D%7D%0A%20%20%20%20messages%3D%7B%5B%7B%20id%3A%20&#39;request&#39;%2C%20from%3A%20&#39;client&#39;%2C%20to%3A%20&#39;api&#39;%2C%20kind%3A%20&#39;sync&#39;%2C%20label%3A%20&#39;GET%20%2Fitems&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;query&#39;%2C%20from%3A%20&#39;api&#39;%2C%20to%3A%20&#39;db&#39;%2C%20kind%3A%20&#39;sync&#39;%2C%20label%3A%20&#39;SELECT%20items&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;response&#39;%2C%20from%3A%20&#39;api&#39;%2C%20to%3A%20&#39;client&#39;%2C%20kind%3A%20&#39;return&#39;%2C%20label%3A%20&#39;200%20OK&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="dataflow">
+<div class="catalog-group-heading">
+<div>
+<h3>Dataflow</h3>
+<p>Typed lineage across sources, transforms, stores, and sinks.</p>
+</div>
+<span>1 component</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="dataflowdiagram schema-aware batch and streaming lineage compiled into a stable directed graph. dataflow"><div class="catalog-item-copy"><code>DataflowDiagram</code><p>Schema-aware batch and streaming lineage compiled into a stable directed graph.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 1040
+height = 560
+
+&lt;Scene title=&quot;DataflowDiagram example&quot; subtitle=&quot;Edit this focused DataflowDiagram scene&quot; padding={22} gap={18}&gt;
+  &lt;DataflowDiagram
+    width={820}
+    height={390}
+    direction=&#39;LR&#39;
+    nodes={[{ id: &#39;source&#39;, label: &#39;Events&#39;, kind: &#39;source&#39;, tone: &#39;blue&#39;, schema: &#39;Event.v1&#39; },
+        { id: &#39;transform&#39;, label: &#39;Validate&#39;, kind: &#39;transform&#39;, tone: &#39;purple&#39; },
+        { id: &#39;sink&#39;, label: &#39;Warehouse&#39;, kind: &#39;store&#39;, tone: &#39;green&#39; }]}
+    edges={[{ from: &#39;source&#39;, to: &#39;transform&#39;, mode: &#39;stream&#39;, label: &#39;Event.v1&#39; },
+        { from: &#39;transform&#39;, to: &#39;sink&#39;, mode: &#39;batch&#39;, label: &#39;Valid.v1&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DataflowDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22DataflowDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20DataflowDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDataflowDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B390%7D%0A%20%20%20%20direction%3D&#39;LR&#39;%0A%20%20%20%20nodes%3D%7B%5B%7B%20id%3A%20&#39;source&#39;%2C%20label%3A%20&#39;Events&#39;%2C%20kind%3A%20&#39;source&#39;%2C%20tone%3A%20&#39;blue&#39;%2C%20schema%3A%20&#39;Event.v1&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;transform&#39;%2C%20label%3A%20&#39;Validate&#39;%2C%20kind%3A%20&#39;transform&#39;%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;sink&#39;%2C%20label%3A%20&#39;Warehouse&#39;%2C%20kind%3A%20&#39;store&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%0A%20%20%20%20edges%3D%7B%5B%7B%20from%3A%20&#39;source&#39;%2C%20to%3A%20&#39;transform&#39;%2C%20mode%3A%20&#39;stream&#39;%2C%20label%3A%20&#39;Event.v1&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20&#39;transform&#39;%2C%20to%3A%20&#39;sink&#39;%2C%20mode%3A%20&#39;batch&#39;%2C%20label%3A%20&#39;Valid.v1&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="deployment">
+<div class="catalog-group-heading">
+<div>
+<h3>Deployment</h3>
+<p>Infrastructure boundaries, workloads, ports, protocols, and trust direction.</p>
+</div>
+<span>1 component</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="deploymentdiagram nested region, network, and runtime boundaries with typed network connections. deployment"><div class="catalog-item-copy"><code>DeploymentDiagram</code><p>Nested region, network, and runtime boundaries with typed network connections.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 1040
+height = 560
+
+&lt;Scene title=&quot;DeploymentDiagram example&quot; subtitle=&quot;Edit this focused DeploymentDiagram scene&quot; padding={22} gap={18}&gt;
+  &lt;DeploymentDiagram
+    width={820}
+    height={390}
+    direction=&#39;LR&#39;
+    boundaries={[{ id: &#39;region&#39;, label: &#39;us-east-1&#39;, kind: &#39;region&#39;, tone: &#39;blue&#39; },
+        { id: &#39;private&#39;, label: &#39;private subnet&#39;, kind: &#39;subnet&#39;, parent: &#39;region&#39;, tone: &#39;purple&#39; }]}
+    nodes={[{ id: &#39;edge&#39;, label: &#39;Gateway&#39;, kind: &#39;gateway&#39;, tone: &#39;cyan&#39; },
+        { id: &#39;api&#39;, label: &#39;API&#39;, kind: &#39;service&#39;, boundary: &#39;private&#39;, tone: &#39;green&#39; }]}
+    connections={[{ id: &#39;https&#39;, from: &#39;edge&#39;, to: &#39;api&#39;, kind: &#39;cross-boundary&#39;, protocol: &#39;HTTPS&#39;, label: &#39;HTTPS/443&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DeploymentDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22DeploymentDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20DeploymentDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDeploymentDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B390%7D%0A%20%20%20%20direction%3D&#39;LR&#39;%0A%20%20%20%20boundaries%3D%7B%5B%7B%20id%3A%20&#39;region&#39;%2C%20label%3A%20&#39;us-east-1&#39;%2C%20kind%3A%20&#39;region&#39;%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;private&#39;%2C%20label%3A%20&#39;private%20subnet&#39;%2C%20kind%3A%20&#39;subnet&#39;%2C%20parent%3A%20&#39;region&#39;%2C%20tone%3A%20&#39;purple&#39;%20%7D%5D%7D%0A%20%20%20%20nodes%3D%7B%5B%7B%20id%3A%20&#39;edge&#39;%2C%20label%3A%20&#39;Gateway&#39;%2C%20kind%3A%20&#39;gateway&#39;%2C%20tone%3A%20&#39;cyan&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;api&#39;%2C%20label%3A%20&#39;API&#39;%2C%20kind%3A%20&#39;service&#39;%2C%20boundary%3A%20&#39;private&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%0A%20%20%20%20connections%3D%7B%5B%7B%20id%3A%20&#39;https&#39;%2C%20from%3A%20&#39;edge&#39;%2C%20to%3A%20&#39;api&#39;%2C%20kind%3A%20&#39;cross-boundary&#39;%2C%20protocol%3A%20&#39;HTTPS&#39;%2C%20label%3A%20&#39;HTTPS%2F443&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="ml">
+<div class="catalog-group-heading">
+<div>
+<h3>ML topology</h3>
+<p>Transformer blocks, tensor shapes, repeated layers, and distributed routes.</p>
+</div>
+<span>1 component</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="transformertopology transformer computation topology with tensor metadata and collective routes. ml topology"><div class="catalog-item-copy"><code>TransformerTopology</code><p>Transformer computation topology with tensor metadata and collective routes.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 1040
+height = 560
+
+&lt;Scene title=&quot;TransformerTopology example&quot; subtitle=&quot;Edit this focused TransformerTopology scene&quot; padding={22} gap={18}&gt;
+  &lt;TransformerTopology
+    width={820}
+    height={390}
+    direction=&#39;LR&#39;
+    blocks={[{ id: &#39;embed&#39;, label: &#39;Embed&#39;, kind: &#39;embedding&#39;, outputShape: { dims: [&#39;B&#39;, &#39;T&#39;, &#39;d&#39;], dtype: &#39;bf16&#39; } },
+        { id: &#39;attn&#39;, label: &#39;Attention&#39;, kind: &#39;attention&#39;, shape: { dims: [&#39;B&#39;, &#39;T&#39;, &#39;d&#39;], dtype: &#39;bf16&#39; } },
+        { id: &#39;logits&#39;, label: &#39;Logits&#39;, kind: &#39;output&#39;, outputShape: { dims: [&#39;B&#39;, &#39;T&#39;, &#39;V&#39;], dtype: &#39;bf16&#39; } }]}
+    routes={[{ id: &#39;hidden&#39;, from: &#39;embed&#39;, to: &#39;attn&#39;, kind: &#39;activation&#39;, label: &#39;hidden state&#39; },
+        { id: &#39;scores&#39;, from: &#39;attn&#39;, to: &#39;logits&#39;, kind: &#39;activation&#39;, label: &#39;scores&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy TransformerTopology example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22TransformerTopology%20example%22%20subtitle%3D%22Edit%20this%20focused%20TransformerTopology%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTransformerTopology%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B390%7D%0A%20%20%20%20direction%3D&#39;LR&#39;%0A%20%20%20%20blocks%3D%7B%5B%7B%20id%3A%20&#39;embed&#39;%2C%20label%3A%20&#39;Embed&#39;%2C%20kind%3A%20&#39;embedding&#39;%2C%20outputShape%3A%20%7B%20dims%3A%20%5B&#39;B&#39;%2C%20&#39;T&#39;%2C%20&#39;d&#39;%5D%2C%20dtype%3A%20&#39;bf16&#39;%20%7D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;attn&#39;%2C%20label%3A%20&#39;Attention&#39;%2C%20kind%3A%20&#39;attention&#39;%2C%20shape%3A%20%7B%20dims%3A%20%5B&#39;B&#39;%2C%20&#39;T&#39;%2C%20&#39;d&#39;%5D%2C%20dtype%3A%20&#39;bf16&#39;%20%7D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;logits&#39;%2C%20label%3A%20&#39;Logits&#39;%2C%20kind%3A%20&#39;output&#39;%2C%20outputShape%3A%20%7B%20dims%3A%20%5B&#39;B&#39;%2C%20&#39;T&#39;%2C%20&#39;V&#39;%5D%2C%20dtype%3A%20&#39;bf16&#39;%20%7D%20%7D%5D%7D%0A%20%20%20%20routes%3D%7B%5B%7B%20id%3A%20&#39;hidden&#39;%2C%20from%3A%20&#39;embed&#39;%2C%20to%3A%20&#39;attn&#39;%2C%20kind%3A%20&#39;activation&#39;%2C%20label%3A%20&#39;hidden%20state&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20&#39;scores&#39;%2C%20from%3A%20&#39;attn&#39;%2C%20to%3A%20&#39;logits&#39;%2C%20kind%3A%20&#39;activation&#39;%2C%20label%3A%20&#39;scores&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="data">
+<div class="catalog-group-heading">
+<div>
+<h3>Data</h3>
+<p>Tables, grids, matrices, and compact distributions.</p>
+</div>
+<span>6 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="matrix numeric or symbolic matrix with headers. data"><div class="catalog-item-copy"><code>Matrix</code><p>Numeric or symbolic matrix with headers.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Matrix example&quot; subtitle=&quot;Edit this focused Matrix scene&quot; padding={22} gap={18}&gt;
+  &lt;Matrix
+    title=&#39;Attention weights&#39;
+    rowLabels={[&#39;q₁&#39;, &#39;q₂&#39;, &#39;q₃&#39;]}
+    colLabels={[&#39;k₁&#39;, &#39;k₂&#39;, &#39;k₃&#39;]}
+    data={[[0.82, 0.14, 0.04],
+        [0.18, 0.66, 0.16],
+        [0.06, 0.21, 0.73]]}
+    cellWidth={58}
+    cellHeight={42}
+    rowLabelWidth={34} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Matrix example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Matrix%20example%22%20subtitle%3D%22Edit%20this%20focused%20Matrix%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMatrix%0A%20%20%20%20title%3D&#39;Attention%20weights&#39;%0A%20%20%20%20rowLabels%3D%7B%5B&#39;q%E2%82%81&#39;%2C%20&#39;q%E2%82%82&#39;%2C%20&#39;q%E2%82%83&#39;%5D%7D%0A%20%20%20%20colLabels%3D%7B%5B&#39;k%E2%82%81&#39;%2C%20&#39;k%E2%82%82&#39;%2C%20&#39;k%E2%82%83&#39;%5D%7D%0A%20%20%20%20data%3D%7B%5B%5B0.82%2C%200.14%2C%200.04%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.18%2C%200.66%2C%200.16%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.06%2C%200.21%2C%200.73%5D%5D%7D%0A%20%20%20%20cellWidth%3D%7B58%7D%0A%20%20%20%20cellHeight%3D%7B42%7D%0A%20%20%20%20rowLabelWidth%3D%7B34%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="heatmap color-scaled matrix for intensity and correlation. data"><div class="catalog-item-copy"><code>Heatmap</code><p>Color-scaled matrix for intensity and correlation.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Heatmap example&quot; subtitle=&quot;Edit this focused Heatmap scene&quot; padding={22} gap={18}&gt;
+  &lt;Heatmap
+    title=&#39;Similarity&#39;
+    xLabels={[&#39;api&#39;, &#39;docs&#39;, &#39;sdk&#39;]}
+    yLabels={[&#39;setup&#39;, &#39;auth&#39;, &#39;tests&#39;]}
+    data={[[0.92, 0.4, 0.2],
+        [0.3, 0.86, 0.55],
+        [0.18, 0.52, 0.95]]}
+    cellWidth={62}
+    cellHeight={42}
+    rowLabelWidth={48}
+    colorScale=&#39;strength&#39; /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Heatmap example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Heatmap%20example%22%20subtitle%3D%22Edit%20this%20focused%20Heatmap%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CHeatmap%0A%20%20%20%20title%3D&#39;Similarity&#39;%0A%20%20%20%20xLabels%3D%7B%5B&#39;api&#39;%2C%20&#39;docs&#39;%2C%20&#39;sdk&#39;%5D%7D%0A%20%20%20%20yLabels%3D%7B%5B&#39;setup&#39;%2C%20&#39;auth&#39;%2C%20&#39;tests&#39;%5D%7D%0A%20%20%20%20data%3D%7B%5B%5B0.92%2C%200.4%2C%200.2%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.3%2C%200.86%2C%200.55%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.18%2C%200.52%2C%200.95%5D%5D%7D%0A%20%20%20%20cellWidth%3D%7B62%7D%0A%20%20%20%20cellHeight%3D%7B42%7D%0A%20%20%20%20rowLabelWidth%3D%7B48%7D%0A%20%20%20%20colorScale%3D&#39;strength&#39;%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="tiledmatrix matrix with named regions and boundaries. data"><div class="catalog-item-copy"><code>TiledMatrix</code><p>Matrix with named regions and boundaries.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;TiledMatrix example&quot; subtitle=&quot;Edit this focused TiledMatrix scene&quot; padding={22} gap={18}&gt;
+  &lt;TiledMatrix
+    title=&#39;Block sparse attention&#39;
+    subtitle=&#39;Named regions within one matrix&#39;
+    rows={8}
+    cols={10}
+    cellSize={25}
+    gap={3}
+    tone=&#39;cyan&#39;
+    regions={[{ rowStart: 0, rowEnd: 4, colStart: 0, colEnd: 4, tone: &#39;purple&#39; },
+        { rowStart: 4, rowEnd: 8, colStart: 4, colEnd: 10, tone: &#39;green&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy TiledMatrix example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TiledMatrix%20example%22%20subtitle%3D%22Edit%20this%20focused%20TiledMatrix%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTiledMatrix%0A%20%20%20%20title%3D&#39;Block%20sparse%20attention&#39;%0A%20%20%20%20subtitle%3D&#39;Named%20regions%20within%20one%20matrix&#39;%0A%20%20%20%20rows%3D%7B8%7D%0A%20%20%20%20cols%3D%7B10%7D%0A%20%20%20%20cellSize%3D%7B25%7D%0A%20%20%20%20gap%3D%7B3%7D%0A%20%20%20%20tone%3D&#39;cyan&#39;%0A%20%20%20%20regions%3D%7B%5B%7B%20rowStart%3A%200%2C%20rowEnd%3A%204%2C%20colStart%3A%200%2C%20colEnd%3A%204%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20rowStart%3A%204%2C%20rowEnd%3A%208%2C%20colStart%3A%204%2C%20colEnd%3A%2010%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="datatable structured rows and columns with headers. data"><div class="catalog-item-copy"><code>DataTable</code><p>Structured rows and columns with headers.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;DataTable example&quot; subtitle=&quot;Edit this focused DataTable scene&quot; padding={22} gap={18}&gt;
+  &lt;DataTable
+    cellWidth={94}
+    firstColWidth={120}
+    cellHeight={34}
+    rows={[[ &#39;Service&#39;, &#39;p95&#39;, &#39;State&#39; ],
+        [ &#39;API&#39;, &#39;82 ms&#39;, &#39;ready&#39; ],
+        [ &#39;Worker&#39;, &#39;140 ms&#39;, &#39;ready&#39; ]]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DataTable example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DataTable%20example%22%20subtitle%3D%22Edit%20this%20focused%20DataTable%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDataTable%0A%20%20%20%20cellWidth%3D%7B94%7D%0A%20%20%20%20firstColWidth%3D%7B120%7D%0A%20%20%20%20cellHeight%3D%7B34%7D%0A%20%20%20%20rows%3D%7B%5B%5B%20&#39;Service&#39;%2C%20&#39;p95&#39;%2C%20&#39;State&#39;%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20&#39;API&#39;%2C%20&#39;82%20ms&#39;%2C%20&#39;ready&#39;%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20&#39;Worker&#39;%2C%20&#39;140%20ms&#39;%2C%20&#39;ready&#39;%20%5D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="grid general labeled cell grid. data"><div class="catalog-item-copy"><code>Grid</code><p>General labeled cell grid.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Grid example&quot; subtitle=&quot;Edit this focused Grid scene&quot; padding={22} gap={18}&gt;
+  &lt;Grid
+    cellWidth={72}
+    cellHeight={42}
+    headerRows={1}
+    headerCols={1}
+    rows={[[ &#39;Region&#39;, &#39;US&#39;, &#39;EU&#39; ],
+        [ &#39;API&#39;,
+        { label: &#39;ready&#39;, tone: &#39;green&#39; },
+        { label: &#39;watch&#39;, tone: &#39;warm&#39; } ],
+        [ &#39;Queue&#39;,
+        { label: &#39;ready&#39;, tone: &#39;green&#39; },
+        { label: &#39;ready&#39;, tone: &#39;green&#39; }]]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Grid example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Grid%20example%22%20subtitle%3D%22Edit%20this%20focused%20Grid%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGrid%0A%20%20%20%20cellWidth%3D%7B72%7D%0A%20%20%20%20cellHeight%3D%7B42%7D%0A%20%20%20%20headerRows%3D%7B1%7D%0A%20%20%20%20headerCols%3D%7B1%7D%0A%20%20%20%20rows%3D%7B%5B%5B%20&#39;Region&#39;%2C%20&#39;US&#39;%2C%20&#39;EU&#39;%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20&#39;API&#39;%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;ready&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;watch&#39;%2C%20tone%3A%20&#39;warm&#39;%20%7D%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20&#39;Queue&#39;%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;ready&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;ready&#39;%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="minibarchart compact categorical bars for dense layouts. data"><div class="catalog-item-copy"><code>MiniBarChart</code><p>Compact categorical bars for dense layouts.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;MiniBarChart example&quot; subtitle=&quot;Edit this focused MiniBarChart scene&quot; padding={22} gap={18}&gt;
+  &lt;MiniBarChart
+    height={170}
+    barWidth={48}
+    gap={18} showValues
+    data={[{ label: &#39;plan&#39;, value: 74, tone: &#39;blue&#39; },
+        { label: &#39;build&#39;, value: 92, tone: &#39;purple&#39; },
+        { label: &#39;check&#39;, value: 86, tone: &#39;cyan&#39; },
+        { label: &#39;ship&#39;, value: 98, tone: &#39;green&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy MiniBarChart example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MiniBarChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20MiniBarChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMiniBarChart%0A%20%20%20%20height%3D%7B170%7D%0A%20%20%20%20barWidth%3D%7B48%7D%0A%20%20%20%20gap%3D%7B18%7D%20showValues%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20&#39;plan&#39;%2C%20value%3A%2074%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;build&#39;%2C%20value%3A%2092%2C%20tone%3A%20&#39;purple&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;check&#39;%2C%20value%3A%2086%2C%20tone%3A%20&#39;cyan&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;ship&#39;%2C%20value%3A%2098%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="charts">
+<div class="catalog-group-heading">
+<div>
+<h3>Charts</h3>
+<p>Common comparisons, trends, distributions, and analytical plots.</p>
+</div>
+<span>10 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="chartframe shared chart title, subtitle, legend, and footer. charts"><div class="catalog-item-copy"><code>ChartFrame</code><p>Shared chart title, subtitle, legend, and footer.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;ChartFrame example&quot; subtitle=&quot;Edit this focused ChartFrame scene&quot; padding={22} gap={18}&gt;
+  &lt;ChartFrame
+    title=&#39;Weekly quality&#39;
+    subtitle=&#39;A reusable title, legend, and footer&#39;
+    width={680}
+    footer=&#39;Source: evaluation runs&#39;&gt;
+  &lt;BarChart
+    width={620}
+    height={220}
+    data={[{ label: &#39;Mon&#39;, value: 0.72, color: &#39;secondary&#39; },
+        { label: &#39;Wed&#39;, value: 0.84, color: &#39;primary&#39; },
+        { label: &#39;Fri&#39;, value: 0.96, color: &#39;positive&#39; }]}
+    format=&#39;percent&#39; /&gt;
+  &lt;/ChartFrame&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ChartFrame example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ChartFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20ChartFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CChartFrame%0A%20%20%20%20title%3D&#39;Weekly%20quality&#39;%0A%20%20%20%20subtitle%3D&#39;A%20reusable%20title%2C%20legend%2C%20and%20footer&#39;%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20footer%3D&#39;Source%3A%20evaluation%20runs&#39;%3E%0A%20%20%3CBarChart%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B220%7D%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20&#39;Mon&#39;%2C%20value%3A%200.72%2C%20color%3A%20&#39;secondary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Wed&#39;%2C%20value%3A%200.84%2C%20color%3A%20&#39;primary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Fri&#39;%2C%20value%3A%200.96%2C%20color%3A%20&#39;positive&#39;%20%7D%5D%7D%0A%20%20%20%20format%3D&#39;percent&#39;%20%2F%3E%0A%20%20%3C%2FChartFrame%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="donutchart part-to-whole composition with center label. charts"><div class="catalog-item-copy"><code>DonutChart</code><p>Part-to-whole composition with center label.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;DonutChart example&quot; subtitle=&quot;Edit this focused DonutChart scene&quot; padding={22} gap={18}&gt;
+  &lt;DonutChart
+    title=&#39;Evaluation results&#39;
+    subtitle=&#39;Share by outcome&#39;
+    width={420}
+    height={280}
+    size={190}
+    thickness={34}
+    centerValue=&#39;92%&#39;
+    centerLabel=&#39;passed&#39;
+    segments={[{ label: &#39;Passed&#39;, value: 0.72, color: &#39;positive&#39; },
+        { label: &#39;Review&#39;, value: 0.2, color: &#39;secondary&#39; },
+        { label: &#39;Failed&#39;, value: 0.08, color: &#39;critical&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DonutChart example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DonutChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20DonutChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDonutChart%0A%20%20%20%20title%3D&#39;Evaluation%20results&#39;%0A%20%20%20%20subtitle%3D&#39;Share%20by%20outcome&#39;%0A%20%20%20%20width%3D%7B420%7D%0A%20%20%20%20height%3D%7B280%7D%0A%20%20%20%20size%3D%7B190%7D%0A%20%20%20%20thickness%3D%7B34%7D%0A%20%20%20%20centerValue%3D&#39;92%25&#39;%0A%20%20%20%20centerLabel%3D&#39;passed&#39;%0A%20%20%20%20segments%3D%7B%5B%7B%20label%3A%20&#39;Passed&#39;%2C%20value%3A%200.72%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Review&#39;%2C%20value%3A%200.2%2C%20color%3A%20&#39;secondary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Failed&#39;%2C%20value%3A%200.08%2C%20color%3A%20&#39;critical&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="stackedbar part-to-whole values along one dimension. charts"><div class="catalog-item-copy"><code>StackedBar</code><p>Part-to-whole values along one dimension.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;StackedBar example&quot; subtitle=&quot;Edit this focused StackedBar scene&quot; padding={22} gap={18}&gt;
+  &lt;StackedBar
+    title=&#39;Requests by outcome&#39;
+    subtitle=&#39;Share of total traffic&#39;
+    width={720}
+    height={80}
+    segments={[{ label: &#39;Success&#39;, value: 68, color: &#39;positive&#39; },
+        { label: &#39;Retry&#39;, value: 22, color: &#39;warning&#39; },
+        { label: &#39;Error&#39;, value: 10, color: &#39;critical&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy StackedBar example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StackedBar%20example%22%20subtitle%3D%22Edit%20this%20focused%20StackedBar%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStackedBar%0A%20%20%20%20title%3D&#39;Requests%20by%20outcome&#39;%0A%20%20%20%20subtitle%3D&#39;Share%20of%20total%20traffic&#39;%0A%20%20%20%20width%3D%7B720%7D%0A%20%20%20%20height%3D%7B80%7D%0A%20%20%20%20segments%3D%7B%5B%7B%20label%3A%20&#39;Success&#39;%2C%20value%3A%2068%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Retry&#39;%2C%20value%3A%2022%2C%20color%3A%20&#39;warning&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Error&#39;%2C%20value%3A%2010%2C%20color%3A%20&#39;critical&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="barchart categorical comparison with labels and values. charts"><div class="catalog-item-copy"><code>BarChart</code><p>Categorical comparison with labels and values.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 640
+
+&lt;Scene title=&quot;BarChart example&quot; subtitle=&quot;Edit this focused BarChart scene&quot; padding={22} gap={18}&gt;
+  &lt;BarChart
+    title=&#39;Pass rate&#39;
+    subtitle=&#39;By validation stage&#39;
+    width={760}
+    height={340}
+    format=&#39;percent&#39;
+    yAxisLabel=&#39;success&#39;
+    data={[{ label: &#39;Build&#39;, value: 0.82, color: &#39;secondary&#39; },
+        { label: &#39;Layout&#39;, value: 0.91, color: &#39;primary&#39; },
+        { label: &#39;Contrast&#39;, value: 0.98, color: &#39;positive&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy BarChart example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22BarChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20BarChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CBarChart%0A%20%20%20%20title%3D&#39;Pass%20rate&#39;%0A%20%20%20%20subtitle%3D&#39;By%20validation%20stage&#39;%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20format%3D&#39;percent&#39;%0A%20%20%20%20yAxisLabel%3D&#39;success&#39;%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20&#39;Build&#39;%2C%20value%3A%200.82%2C%20color%3A%20&#39;secondary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Layout&#39;%2C%20value%3A%200.91%2C%20color%3A%20&#39;primary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Contrast&#39;%2C%20value%3A%200.98%2C%20color%3A%20&#39;positive&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="linechart one or more trends across an ordered axis. charts"><div class="catalog-item-copy"><code>LineChart</code><p>One or more trends across an ordered axis.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 640
+
+&lt;Scene title=&quot;LineChart example&quot; subtitle=&quot;Edit this focused LineChart scene&quot; padding={22} gap={18}&gt;
+  &lt;LineChart
+    title=&#39;Quality over time&#39;
+    subtitle=&#39;Two runs per release&#39;
+    width={760}
+    height={340}
+    labels={[&#39;r1&#39;, &#39;r2&#39;, &#39;r3&#39;, &#39;r4&#39;]}
+    yAxisLabel=&#39;score&#39;
+    format=&#39;percent&#39;
+    series={[{ name: &#39;Quality&#39;, points: [0.62, 0.7, 0.81, 0.93], color: &#39;positive&#39; },
+        { name: &#39;Coverage&#39;, points: [0.48, 0.61, 0.72, 0.84], color: &#39;primary&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy LineChart example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22LineChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20LineChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLineChart%0A%20%20%20%20title%3D&#39;Quality%20over%20time&#39;%0A%20%20%20%20subtitle%3D&#39;Two%20runs%20per%20release&#39;%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20labels%3D%7B%5B&#39;r1&#39;%2C%20&#39;r2&#39;%2C%20&#39;r3&#39;%2C%20&#39;r4&#39;%5D%7D%0A%20%20%20%20yAxisLabel%3D&#39;score&#39;%0A%20%20%20%20format%3D&#39;percent&#39;%0A%20%20%20%20series%3D%7B%5B%7B%20name%3A%20&#39;Quality&#39;%2C%20points%3A%20%5B0.62%2C%200.7%2C%200.81%2C%200.93%5D%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20name%3A%20&#39;Coverage&#39;%2C%20points%3A%20%5B0.48%2C%200.61%2C%200.72%2C%200.84%5D%2C%20color%3A%20&#39;primary&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="scatterplot point distribution across two numeric axes. charts"><div class="catalog-item-copy"><code>ScatterPlot</code><p>Point distribution across two numeric axes.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 640
+
+&lt;Scene title=&quot;ScatterPlot example&quot; subtitle=&quot;Edit this focused ScatterPlot scene&quot; padding={22} gap={18}&gt;
+  &lt;ScatterPlot
+    title=&#39;Cost vs. quality&#39;
+    subtitle=&#39;Choose the right operating point&#39;
+    width={760}
+    height={340}
+    xMin={0}
+    xMax={10}
+    yMin={0}
+    yMax={10}
+    xAxisLabel=&#39;cost&#39;
+    yAxisLabel=&#39;quality&#39;
+    points={[{ x: 2, y: 6.8, label: &#39;fast&#39;, color: &#39;secondary&#39; },
+        { x: 4.8, y: 8.1, label: &#39;balanced&#39;, color: &#39;positive&#39; },
+        { x: 8, y: 9.2, label: &#39;deep&#39;, color: &#39;primary&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ScatterPlot example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22ScatterPlot%20example%22%20subtitle%3D%22Edit%20this%20focused%20ScatterPlot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CScatterPlot%0A%20%20%20%20title%3D&#39;Cost%20vs.%20quality&#39;%0A%20%20%20%20subtitle%3D&#39;Choose%20the%20right%20operating%20point&#39;%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20xMin%3D%7B0%7D%0A%20%20%20%20xMax%3D%7B10%7D%0A%20%20%20%20yMin%3D%7B0%7D%0A%20%20%20%20yMax%3D%7B10%7D%0A%20%20%20%20xAxisLabel%3D&#39;cost&#39;%0A%20%20%20%20yAxisLabel%3D&#39;quality&#39;%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%202%2C%20y%3A%206.8%2C%20label%3A%20&#39;fast&#39;%2C%20color%3A%20&#39;secondary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%204.8%2C%20y%3A%208.1%2C%20label%3A%20&#39;balanced&#39;%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%208%2C%20y%3A%209.2%2C%20label%3A%20&#39;deep&#39;%2C%20color%3A%20&#39;primary&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="paretochart automatic non-dominated frontier across competing numeric objectives. charts"><div class="catalog-item-copy"><code>ParetoChart</code><p>Automatic non-dominated frontier across competing numeric objectives.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 640
+
+&lt;Scene title=&quot;ParetoChart example&quot; subtitle=&quot;Edit this focused ParetoChart scene&quot; padding={22} gap={18}&gt;
+  &lt;ParetoChart
+    title=&#39;Quality frontier&#39;
+    subtitle=&#39;Higher quality at lower cost&#39;
+    width={760}
+    height={340}
+    xMin={0}
+    xMax={10}
+    yMin={0}
+    yMax={10}
+    xAxisLabel=&#39;cost&#39;
+    points={[{ x: 1.2, y: 4, label: &#39;fast&#39;, color: &#39;info&#39; },
+        { x: 3.8, y: 6.8, label: &#39;balanced&#39;, color: &#39;positive&#39; },
+        { x: 7, y: 9.1, label: &#39;deep&#39;, color: &#39;primary&#39; },
+        { x: 8.4, y: 7.3, label: &#39;dominated&#39;, color: &#39;warning&#39; }]}
+    frontierColor=&#39;positive&#39;
+    goalLabel=&#39;higher quality · lower cost&#39; /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ParetoChart example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22ParetoChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20ParetoChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CParetoChart%0A%20%20%20%20title%3D&#39;Quality%20frontier&#39;%0A%20%20%20%20subtitle%3D&#39;Higher%20quality%20at%20lower%20cost&#39;%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20xMin%3D%7B0%7D%0A%20%20%20%20xMax%3D%7B10%7D%0A%20%20%20%20yMin%3D%7B0%7D%0A%20%20%20%20yMax%3D%7B10%7D%0A%20%20%20%20xAxisLabel%3D&#39;cost&#39;%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%201.2%2C%20y%3A%204%2C%20label%3A%20&#39;fast&#39;%2C%20color%3A%20&#39;info&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%203.8%2C%20y%3A%206.8%2C%20label%3A%20&#39;balanced&#39;%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%207%2C%20y%3A%209.1%2C%20label%3A%20&#39;deep&#39;%2C%20color%3A%20&#39;primary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%208.4%2C%20y%3A%207.3%2C%20label%3A%20&#39;dominated&#39;%2C%20color%3A%20&#39;warning&#39;%20%7D%5D%7D%0A%20%20%20%20frontierColor%3D&#39;positive&#39;%0A%20%20%20%20goalLabel%3D&#39;higher%20quality%20%C2%B7%20lower%20cost&#39;%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="quadrantchart numeric decision map split by configurable policy thresholds. charts"><div class="catalog-item-copy"><code>QuadrantChart</code><p>Numeric decision map split by configurable policy thresholds.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 640
+
+&lt;Scene title=&quot;QuadrantChart example&quot; subtitle=&quot;Edit this focused QuadrantChart scene&quot; padding={22} gap={18}&gt;
+  &lt;QuadrantChart
+    title=&#39;Prioritization map&#39;
+    subtitle=&#39;Effort vs. user value&#39;
+    width={760}
+    height={360}
+    xAxisLabel=&#39;effort&#39;
+    yAxisLabel=&#39;user value&#39;
+    regions={{ topLeft: { label: &#39;Quick wins&#39;, color: &#39;positive&#39;, emphasis: true }, topRight: { label: &#39;Big bets&#39;, color: &#39;primary&#39; }, bottomLeft: { label: &#39;Defer&#39;, color: &#39;neutral&#39; }, bottomRight: { label: &#39;Avoid&#39;, color: &#39;warning&#39; } }}
+    points={[{ x: 0.24, y: 0.8, label: &#39;A&#39;, color: &#39;positive&#39; },
+        { x: 0.75, y: 0.7, label: &#39;B&#39;, color: &#39;primary&#39; },
+        { x: 0.34, y: 0.25, label: &#39;C&#39;, color: &#39;neutral&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy QuadrantChart example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22QuadrantChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20QuadrantChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CQuadrantChart%0A%20%20%20%20title%3D&#39;Prioritization%20map&#39;%0A%20%20%20%20subtitle%3D&#39;Effort%20vs.%20user%20value&#39;%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20xAxisLabel%3D&#39;effort&#39;%0A%20%20%20%20yAxisLabel%3D&#39;user%20value&#39;%0A%20%20%20%20regions%3D%7B%7B%20topLeft%3A%20%7B%20label%3A%20&#39;Quick%20wins&#39;%2C%20color%3A%20&#39;positive&#39;%2C%20emphasis%3A%20true%20%7D%2C%20topRight%3A%20%7B%20label%3A%20&#39;Big%20bets&#39;%2C%20color%3A%20&#39;primary&#39;%20%7D%2C%20bottomLeft%3A%20%7B%20label%3A%20&#39;Defer&#39;%2C%20color%3A%20&#39;neutral&#39;%20%7D%2C%20bottomRight%3A%20%7B%20label%3A%20&#39;Avoid&#39;%2C%20color%3A%20&#39;warning&#39;%20%7D%20%7D%7D%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%200.24%2C%20y%3A%200.8%2C%20label%3A%20&#39;A&#39;%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%200.75%2C%20y%3A%200.7%2C%20label%3A%20&#39;B&#39;%2C%20color%3A%20&#39;primary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%200.34%2C%20y%3A%200.25%2C%20label%3A%20&#39;C&#39;%2C%20color%3A%20&#39;neutral&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="intervalplot low, midpoint, and high ranges by category. charts"><div class="catalog-item-copy"><code>IntervalPlot</code><p>Low, midpoint, and high ranges by category.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 640
+
+&lt;Scene title=&quot;IntervalPlot example&quot; subtitle=&quot;Edit this focused IntervalPlot scene&quot; padding={22} gap={18}&gt;
+  &lt;IntervalPlot
+    title=&#39;Latency ranges&#39;
+    subtitle=&#39;Low, median, and high values&#39;
+    width={760}
+    height={340}
+    min={0}
+    max={100}
+    axisLabel=&#39;milliseconds&#39;
+    format=&#39;integer&#39;
+    data={[{ label: &#39;API&#39;, low: 18, mid: 32, high: 46, color: &#39;secondary&#39; },
+        { label: &#39;Worker&#39;, low: 34, mid: 51, high: 78, color: &#39;primary&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy IntervalPlot example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22IntervalPlot%20example%22%20subtitle%3D%22Edit%20this%20focused%20IntervalPlot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CIntervalPlot%0A%20%20%20%20title%3D&#39;Latency%20ranges&#39;%0A%20%20%20%20subtitle%3D&#39;Low%2C%20median%2C%20and%20high%20values&#39;%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20min%3D%7B0%7D%0A%20%20%20%20max%3D%7B100%7D%0A%20%20%20%20axisLabel%3D&#39;milliseconds&#39;%0A%20%20%20%20format%3D&#39;integer&#39;%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20&#39;API&#39;%2C%20low%3A%2018%2C%20mid%3A%2032%2C%20high%3A%2046%2C%20color%3A%20&#39;secondary&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Worker&#39;%2C%20low%3A%2034%2C%20mid%3A%2051%2C%20high%3A%2078%2C%20color%3A%20&#39;primary&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="legend reusable color key for charts and diagrams. charts"><div class="catalog-item-copy"><code>Legend</code><p>Reusable color key for charts and diagrams.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Legend example&quot; subtitle=&quot;Edit this focused Legend scene&quot; padding={22} gap={18}&gt;
+  &lt;Legend
+    title=&#39;Result types&#39;
+    items={[{ label: &#39;Success&#39;, color: &#39;positive&#39; },
+        { label: &#39;Queued&#39;, color: &#39;warning&#39; },
+        { label: &#39;Blocked&#39;, color: c.critical, style: &#39;dashed&#39; }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Legend example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Legend%20example%22%20subtitle%3D%22Edit%20this%20focused%20Legend%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLegend%0A%20%20%20%20title%3D&#39;Result%20types&#39;%0A%20%20%20%20items%3D%7B%5B%7B%20label%3A%20&#39;Success&#39;%2C%20color%3A%20&#39;positive&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Queued&#39;%2C%20color%3A%20&#39;warning&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20&#39;Blocked&#39;%2C%20color%3A%20c.critical%2C%20style%3A%20&#39;dashed&#39;%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+<section class="catalog-group" data-catalog-group="drawing">
+<div class="catalog-group-heading">
+<div>
+<h3>Drawing</h3>
+<p>Low-level SVG geometry for custom technical figures.</p>
+</div>
+<span>12 components</span>
+</div>
+<div class="catalog-items catalog-items-home"><article class="catalog-item" data-catalog-item data-catalog-search="box rounded svg box with label and tone. drawing"><div class="catalog-item-copy"><code>Box</code><p>Rounded SVG box with label and tone.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Box example&quot; subtitle=&quot;Edit this focused Box scene&quot; padding={22} gap={18}&gt;
+  &lt;Row
+    gap={14}
+    align=&#39;center&#39;&gt;
+  &lt;Box
+    label=&#39;Input&#39;
+    sublabel=&#39;request&#39;
+    color=&#39;primary&#39; gradient
+    width={180}
+    height={100} /&gt;
+  &lt;Arrow
+    direction=&#39;right&#39;
+    length={50} /&gt;
+  &lt;Box
+    label=&#39;Output&#39;
+    sublabel=&#39;result&#39;
+    color=&#39;positive&#39;
+    width={180}
+    height={100} /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Box example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Box%20example%22%20subtitle%3D%22Edit%20this%20focused%20Box%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3CBox%0A%20%20%20%20label%3D&#39;Input&#39;%0A%20%20%20%20sublabel%3D&#39;request&#39;%0A%20%20%20%20color%3D&#39;primary&#39;%20gradient%0A%20%20%20%20width%3D%7B180%7D%0A%20%20%20%20height%3D%7B100%7D%20%2F%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D&#39;right&#39;%0A%20%20%20%20length%3D%7B50%7D%20%2F%3E%0A%20%20%3CBox%0A%20%20%20%20label%3D&#39;Output&#39;%0A%20%20%20%20sublabel%3D&#39;result&#39;%0A%20%20%20%20color%3D&#39;positive&#39;%0A%20%20%20%20width%3D%7B180%7D%0A%20%20%20%20height%3D%7B100%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="arrow straight labeled svg arrow. drawing"><div class="catalog-item-copy"><code>Arrow</code><p>Straight labeled SVG arrow.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Arrow example&quot; subtitle=&quot;Edit this focused Arrow scene&quot; padding={22} gap={18}&gt;
+  &lt;Arrow
+    direction=&#39;right&#39;
+    label=&#39;request&#39;
+    length={220}
+    color={c.infoLight} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Arrow example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Arrow%20example%22%20subtitle%3D%22Edit%20this%20focused%20Arrow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D&#39;right&#39;%0A%20%20%20%20label%3D&#39;request&#39;%0A%20%20%20%20length%3D%7B220%7D%0A%20%20%20%20color%3D%7Bc.infoLight%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="arrowmarkerdef reusable svg arrowhead definition. drawing"><div class="catalog-item-copy"><code>ArrowMarkerDef</code><p>Reusable SVG arrowhead definition.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;ArrowMarkerDef example&quot; subtitle=&quot;Edit this focused ArrowMarkerDef scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;center&#39;&gt;
+  &lt;svg
+    width=&#39;460&#39;
+    height=&#39;170&#39;
+    viewBox=&#39;0 0 460 170&#39;&gt;
+  &lt;defs&gt;
+  &lt;ArrowMarkerDef
+    id=&#39;catalog-arrow&#39;
+    color={c.infoLight}
+    size={8} /&gt;
+  &lt;/defs&gt;
+  &lt;path
+    d=&#39;M 42 85 C 140 8 280 162 410 85&#39;
+    fill=&#39;none&#39;
+    stroke={c.infoLight}
+    strokeWidth={4}
+    markerEnd=&#39;url(#catalog-arrow)&#39; /&gt;
+  &lt;/svg&gt;
+  &lt;TextLabel
+    text=&#39;Reusable SVG arrow marker&#39;
+    fontSize={14} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy ArrowMarkerDef example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ArrowMarkerDef%20example%22%20subtitle%3D%22Edit%20this%20focused%20ArrowMarkerDef%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D&#39;460&#39;%0A%20%20%20%20height%3D&#39;170&#39;%0A%20%20%20%20viewBox%3D&#39;0%200%20460%20170&#39;%3E%0A%20%20%3Cdefs%3E%0A%20%20%3CArrowMarkerDef%0A%20%20%20%20id%3D&#39;catalog-arrow&#39;%0A%20%20%20%20color%3D%7Bc.infoLight%7D%0A%20%20%20%20size%3D%7B8%7D%20%2F%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cpath%0A%20%20%20%20d%3D&#39;M%2042%2085%20C%20140%208%20280%20162%20410%2085&#39;%0A%20%20%20%20fill%3D&#39;none&#39;%0A%20%20%20%20stroke%3D%7Bc.infoLight%7D%0A%20%20%20%20strokeWidth%3D%7B4%7D%0A%20%20%20%20markerEnd%3D&#39;url(%23catalog-arrow)&#39;%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;Reusable%20SVG%20arrow%20marker&#39;%0A%20%20%20%20fontSize%3D%7B14%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="flowarrow straight directional connector with label and tone. drawing"><div class="catalog-item-copy"><code>FlowArrow</code><p>Straight directional connector with label and tone.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;FlowArrow example&quot; subtitle=&quot;Edit this focused FlowArrow scene&quot; padding={22} gap={18}&gt;
+  &lt;FlowArrow
+    direction=&#39;right&#39;
+    label=&#39;verified result&#39;
+    length={240}
+    tone=&#39;green&#39; /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy FlowArrow example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22FlowArrow%20example%22%20subtitle%3D%22Edit%20this%20focused%20FlowArrow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFlowArrow%0A%20%20%20%20direction%3D&#39;right&#39;%0A%20%20%20%20label%3D&#39;verified%20result&#39;%0A%20%20%20%20length%3D%7B240%7D%0A%20%20%20%20tone%3D&#39;green&#39;%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="connector alias for flow connectors in diagram code. drawing"><div class="catalog-item-copy"><code>Connector</code><p>Alias for flow connectors in diagram code.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;Connector example&quot; subtitle=&quot;Edit this focused Connector scene&quot; padding={22} gap={18}&gt;
+  &lt;Connector
+    direction=&#39;right&#39;
+    label=&#39;dependency&#39;
+    length={240}
+    tone=&#39;purple&#39; /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy Connector example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Connector%20example%22%20subtitle%3D%22Edit%20this%20focused%20Connector%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CConnector%0A%20%20%20%20direction%3D&#39;right&#39;%0A%20%20%20%20label%3D&#39;dependency&#39;%0A%20%20%20%20length%3D%7B240%7D%0A%20%20%20%20tone%3D&#39;purple&#39;%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="vectorarrow vector with optional endpoints and arrowhead. drawing"><div class="catalog-item-copy"><code>VectorArrow</code><p>Vector with optional endpoints and arrowhead.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;VectorArrow example&quot; subtitle=&quot;Edit this focused VectorArrow scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;center&#39;&gt;
+  &lt;svg
+    width=&#39;460&#39;
+    height=&#39;180&#39;
+    viewBox=&#39;0 0 460 180&#39;&gt;
+  &lt;VectorArrow
+    x1={64}
+    y1={140}
+    x2={390}
+    y2={38}
+    color={c.positiveLight}
+    strokeWidth={5} /&gt;
+  &lt;SvgPoint
+    cx={64}
+    cy={140}
+    r={8}
+    fill={c.positiveLight} /&gt;
+  &lt;/svg&gt;
+  &lt;TextLabel
+    text=&#39;Vector with arrowhead&#39;
+    fontSize={15} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy VectorArrow example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22VectorArrow%20example%22%20subtitle%3D%22Edit%20this%20focused%20VectorArrow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D&#39;460&#39;%0A%20%20%20%20height%3D&#39;180&#39;%0A%20%20%20%20viewBox%3D&#39;0%200%20460%20180&#39;%3E%0A%20%20%3CVectorArrow%0A%20%20%20%20x1%3D%7B64%7D%0A%20%20%20%20y1%3D%7B140%7D%0A%20%20%20%20x2%3D%7B390%7D%0A%20%20%20%20y2%3D%7B38%7D%0A%20%20%20%20color%3D%7Bc.positiveLight%7D%0A%20%20%20%20strokeWidth%3D%7B5%7D%20%2F%3E%0A%20%20%3CSvgPoint%0A%20%20%20%20cx%3D%7B64%7D%0A%20%20%20%20cy%3D%7B140%7D%0A%20%20%20%20r%3D%7B8%7D%0A%20%20%20%20fill%3D%7Bc.positiveLight%7D%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;Vector%20with%20arrowhead&#39;%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="vectorsegment line segment for geometric constructions. drawing"><div class="catalog-item-copy"><code>VectorSegment</code><p>Line segment for geometric constructions.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;VectorSegment example&quot; subtitle=&quot;Edit this focused VectorSegment scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;center&#39;&gt;
+  &lt;svg
+    width=&#39;460&#39;
+    height=&#39;180&#39;
+    viewBox=&#39;0 0 460 180&#39;&gt;
+  &lt;VectorSegment
+    x1={64}
+    y1={130}
+    x2={396}
+    y2={54}
+    color={c.secondaryLight}
+    strokeWidth={5} showStartDot showEndDot /&gt;
+  &lt;/svg&gt;
+  &lt;TextLabel
+    text=&#39;Segment with endpoint dots&#39;
+    fontSize={15} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy VectorSegment example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22VectorSegment%20example%22%20subtitle%3D%22Edit%20this%20focused%20VectorSegment%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D&#39;460&#39;%0A%20%20%20%20height%3D&#39;180&#39;%0A%20%20%20%20viewBox%3D&#39;0%200%20460%20180&#39;%3E%0A%20%20%3CVectorSegment%0A%20%20%20%20x1%3D%7B64%7D%0A%20%20%20%20y1%3D%7B130%7D%0A%20%20%20%20x2%3D%7B396%7D%0A%20%20%20%20y2%3D%7B54%7D%0A%20%20%20%20color%3D%7Bc.secondaryLight%7D%0A%20%20%20%20strokeWidth%3D%7B5%7D%20showStartDot%20showEndDot%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;Segment%20with%20endpoint%20dots&#39;%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgframe svg plotting frame with border and fill. drawing"><div class="catalog-item-copy"><code>SvgFrame</code><p>SVG plotting frame with border and fill.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;SvgFrame example&quot; subtitle=&quot;Edit this focused SvgFrame scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;center&#39;&gt;
+  &lt;svg
+    width=&#39;460&#39;
+    height=&#39;180&#39;
+    viewBox=&#39;0 0 460 180&#39;&gt;
+  &lt;SvgFrame
+    x={18}
+    y={18}
+    width={424}
+    height={144}
+    rx={18}
+    fill={c.bgCard}
+    stroke={c.borderLight}
+    strokeWidth={2} /&gt;
+  &lt;/svg&gt;
+  &lt;TextLabel
+    text=&#39;Theme aware plot frame&#39;
+    fontSize={15} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy SvgFrame example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SvgFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20SvgFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D&#39;460&#39;%0A%20%20%20%20height%3D&#39;180&#39;%0A%20%20%20%20viewBox%3D&#39;0%200%20460%20180&#39;%3E%0A%20%20%3CSvgFrame%0A%20%20%20%20x%3D%7B18%7D%0A%20%20%20%20y%3D%7B18%7D%0A%20%20%20%20width%3D%7B424%7D%0A%20%20%20%20height%3D%7B144%7D%0A%20%20%20%20rx%3D%7B18%7D%0A%20%20%20%20fill%3D%7Bc.bgCard%7D%0A%20%20%20%20stroke%3D%7Bc.borderLight%7D%0A%20%20%20%20strokeWidth%3D%7B2%7D%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;Theme%20aware%20plot%20frame&#39;%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="svgpoint labeled point for svg figures. drawing"><div class="catalog-item-copy"><code>SvgPoint</code><p>Labeled point for SVG figures.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;SvgPoint example&quot; subtitle=&quot;Edit this focused SvgPoint scene&quot; padding={22} gap={18}&gt;
+  &lt;Column
+    gap={8}
+    align=&#39;center&#39;&gt;
+  &lt;svg
+    width=&#39;460&#39;
+    height=&#39;180&#39;
+    viewBox=&#39;0 0 460 180&#39;&gt;
+  &lt;SvgFrame
+    width={460}
+    height={180}
+    c={c} /&gt;
+  &lt;SvgPoint
+    cx={230}
+    cy={90}
+    r={26}
+    fill={c.positiveLight}
+    stroke={c.bg}
+    strokeWidth={5} /&gt;
+  &lt;/svg&gt;
+  &lt;TextLabel
+    text=&#39;SVG point with outline&#39;
+    fontSize={15} /&gt;
+  &lt;/Column&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy SvgPoint example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SvgPoint%20example%22%20subtitle%3D%22Edit%20this%20focused%20SvgPoint%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D&#39;center&#39;%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D&#39;460&#39;%0A%20%20%20%20height%3D&#39;180&#39;%0A%20%20%20%20viewBox%3D&#39;0%200%20460%20180&#39;%3E%0A%20%20%3CSvgFrame%0A%20%20%20%20width%3D%7B460%7D%0A%20%20%20%20height%3D%7B180%7D%0A%20%20%20%20c%3D%7Bc%7D%20%2F%3E%0A%20%20%3CSvgPoint%0A%20%20%20%20cx%3D%7B230%7D%0A%20%20%20%20cy%3D%7B90%7D%0A%20%20%20%20r%3D%7B26%7D%0A%20%20%20%20fill%3D%7Bc.positiveLight%7D%0A%20%20%20%20stroke%3D%7Bc.bg%7D%0A%20%20%20%20strokeWidth%3D%7B5%7D%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D&#39;SVG%20point%20with%20outline&#39;%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="dotpoint point marker with optional text label. drawing"><div class="catalog-item-copy"><code>DotPoint</code><p>Point marker with optional text label.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;DotPoint example&quot; subtitle=&quot;Edit this focused DotPoint scene&quot; padding={22} gap={18}&gt;
+  &lt;div
+    style={{ position: &#39;relative&#39;, display: &#39;flex&#39;, width: 460, height: 220 }}&gt;{DotPoint({ x: 230, y: 100, label: &#39;deploy&#39;, color: c.infoLight, size: 14 })}&lt;TextLabel
+    text=&#39;Labeled coordinate point&#39;
+    fontSize={15} /&gt;
+  &lt;/div&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DotPoint example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DotPoint%20example%22%20subtitle%3D%22Edit%20this%20focused%20DotPoint%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3Cdiv%0A%20%20%20%20style%3D%7B%7B%20position%3A%20&#39;relative&#39;%2C%20display%3A%20&#39;flex&#39;%2C%20width%3A%20460%2C%20height%3A%20220%20%7D%7D%3E%7BDotPoint(%7B%20x%3A%20230%2C%20y%3A%20100%2C%20label%3A%20&#39;deploy&#39;%2C%20color%3A%20c.infoLight%2C%20size%3A%2014%20%7D)%7D%3CTextLabel%0A%20%20%20%20text%3D&#39;Labeled%20coordinate%20point&#39;%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2Fdiv%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="dashedline dotted or dashed svg guide line. drawing"><div class="catalog-item-copy"><code>DashedLine</code><p>Dotted or dashed SVG guide line.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 480
+
+&lt;Scene title=&quot;DashedLine example&quot; subtitle=&quot;Edit this focused DashedLine scene&quot; padding={22} gap={18}&gt;
+  &lt;div
+    style={{ position: &#39;relative&#39;, display: &#39;flex&#39;, width: 460, height: 220 }}&gt;{DashedLine({ x1: 36, y1: 110, x2: 424, y2: 110, color: c.warningLight, dotSpacing: 12, dotSize: 3 })}&lt;TextLabel
+    text=&#39;Threshold&#39;
+    fontSize={15} /&gt;
+  &lt;/div&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy DashedLine example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DashedLine%20example%22%20subtitle%3D%22Edit%20this%20focused%20DashedLine%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3Cdiv%0A%20%20%20%20style%3D%7B%7B%20position%3A%20&#39;relative&#39;%2C%20display%3A%20&#39;flex&#39;%2C%20width%3A%20460%2C%20height%3A%20220%20%7D%7D%3E%7BDashedLine(%7B%20x1%3A%2036%2C%20y1%3A%20110%2C%20x2%3A%20424%2C%20y2%3A%20110%2C%20color%3A%20c.warningLight%2C%20dotSpacing%3A%2012%2C%20dotSize%3A%203%20%7D)%7D%3CTextLabel%0A%20%20%20%20text%3D&#39;Threshold&#39;%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2Fdiv%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article>
+<article class="catalog-item" data-catalog-item data-catalog-search="axisplot coordinate plane for points, vectors, and paths. drawing"><div class="catalog-item-copy"><code>AxisPlot</code><p>Coordinate plane for points, vectors, and paths.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
+height = 560
+
+&lt;Scene title=&quot;AxisPlot example&quot; subtitle=&quot;Edit this focused AxisPlot scene&quot; padding={22} gap={18}&gt;
+  &lt;AxisPlot
+    width={700}
+    height={380}
+    xMin={-1}
+    xMax={1}
+    yMin={-1}
+    yMax={1} showGrid
+    xAxisLabel=&#39;x&#39;
+    yAxisLabel=&#39;y&#39;
+    points={[{ x: -0.5, y: 0.3, r: 6, tone: &#39;blue&#39; },
+        { x: 0.6, y: 0.7, r: 7, tone: &#39;green&#39; }]}
+    vectors={[{ x1: 0, y1: 0, x2: 0.45, y2: 0.55, tone: &#39;purple&#39;, arrow: true }]} /&gt;
+&lt;/Scene&gt;" aria-live="polite" aria-label="Copy AxisPlot example source">Copy source</button><a class="component-try-link" href="playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22AxisPlot%20example%22%20subtitle%3D%22Edit%20this%20focused%20AxisPlot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CAxisPlot%0A%20%20%20%20width%3D%7B700%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20xMin%3D%7B-1%7D%0A%20%20%20%20xMax%3D%7B1%7D%0A%20%20%20%20yMin%3D%7B-1%7D%0A%20%20%20%20yMax%3D%7B1%7D%20showGrid%0A%20%20%20%20xAxisLabel%3D&#39;x&#39;%0A%20%20%20%20yAxisLabel%3D&#39;y&#39;%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%20-0.5%2C%20y%3A%200.3%2C%20r%3A%206%2C%20tone%3A%20&#39;blue&#39;%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%200.6%2C%20y%3A%200.7%2C%20r%3A%207%2C%20tone%3A%20&#39;green&#39;%20%7D%5D%7D%0A%20%20%20%20vectors%3D%7B%5B%7B%20x1%3A%200%2C%20y1%3A%200%2C%20x2%3A%200.45%2C%20y2%3A%200.55%2C%20tone%3A%20&#39;purple&#39;%2C%20arrow%3A%20true%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
+</section>
+      </div>
+      <p class="catalog-empty" id="homeComponentEmpty" hidden>No components match this search.</p>
     </section>
 
     <section id="quick-start" class="quick-start-band">
@@ -426,6 +1712,8 @@
 <span class="line"><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">  &#x3C;</span><span style="--shiki-light:#024C1A;--shiki-dark:#72F088">Flow</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> stages</span><span style="--shiki-light:#A0111F;--shiki-dark:#FF9492">={</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">[{ title: </span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF">"Theme fill"</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">, tone: </span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF">"purple"</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> }]</span><span style="--shiki-light:#A0111F;--shiki-dark:#FF9492">}</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> /></span></span>
 <span class="line"><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">&#x3C;/</span><span style="--shiki-light:#024C1A;--shiki-dark:#72F088">Scene</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">></span></span>
 <span class="line"><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">```</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">CSS alpha colors are preserved in PNG/SVG backgrounds. Use </span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">`&#x3C;Scene background="rgba(15, 23, 42, 0.5)">`</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> or </span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">`--background 'rgba(15, 23, 42, 0.5)'`</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> for a semi-transparent canvas. Leave the background unset for fully transparent output. Contrast checks composite alpha text and nested backgrounds over known solid surfaces; a transparent canvas has no known host-page backdrop.</span></span>
 <span class="line"></span>
 <span class="line"><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">When a CLI frame omits </span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">`width`</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> or </span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">`height`</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6">, Vizmatic starts at </span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">`960x540`</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> and grows that axis if content overflows. Set </span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">`autoSize = false`</span><span style="--shiki-light:#0E1116;--shiki-dark:#F0F3F6"> when dimensions must remain fixed and clipping should fail the render.</span></span>
 <span class="line"></span>
@@ -854,7 +2142,7 @@
 
   <footer>
     <a class="brand" href="#"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
-    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p>
+    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>. <a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a>.</p>
     <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
   </footer>
 
@@ -976,9 +2264,88 @@
       })
     }
 
+    function installComponentBrowser() {
+      const browser = document.querySelector('[data-component-browser]')
+      if (!browser) return
+      const search = browser.querySelector('[data-component-search]')
+      const count = browser.querySelector('.catalog-count')
+      const empty = browser.querySelector('.catalog-empty')
+      const clear = browser.querySelector('.catalog-search button')
+      const filters = Array.from(browser.querySelectorAll('[data-catalog-filter]'))
+      const groups = Array.from(browser.querySelectorAll('[data-catalog-group]'))
+      let activeFilter = 'all'
+
+      function update() {
+        const query = search.value.trim().toLowerCase()
+        let visibleCount = 0
+        groups.forEach((group) => {
+          const categoryMatches = activeFilter === 'all' || group.dataset.catalogGroup === activeFilter
+          let groupCount = 0
+          group.querySelectorAll('[data-catalog-item]').forEach((item) => {
+            const matches = categoryMatches && (!query || item.dataset.catalogSearch.includes(query))
+            item.hidden = !matches
+            if (matches) groupCount += 1
+          })
+          group.hidden = groupCount === 0
+          visibleCount += groupCount
+        })
+        count.textContent = visibleCount + ' component' + (visibleCount === 1 ? '' : 's')
+        empty.hidden = visibleCount !== 0
+        clear.hidden = query.length === 0
+      }
+
+      search.addEventListener('input', update)
+      clear.addEventListener('click', () => {
+        search.value = ''
+        search.focus()
+        update()
+      })
+      filters.forEach((button) => button.addEventListener('click', () => {
+        activeFilter = button.dataset.catalogFilter
+        filters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)))
+        update()
+      }))
+      update()
+    }
+
+    async function writeComponentSource(source) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(source)
+        return
+      }
+      const input = document.createElement('textarea')
+      input.value = source
+      input.setAttribute('readonly', '')
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.append(input)
+      input.select()
+      const copied = document.execCommand('copy')
+      input.remove()
+      if (!copied) throw new Error('Copy failed')
+    }
+
+    function installComponentCopyButtons() {
+      document.querySelectorAll('[data-copy-component]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const label = button.dataset.copyLabel || button.textContent
+          button.dataset.copyLabel = label
+          try {
+            await writeComponentSource(button.dataset.componentSource)
+            button.textContent = 'Copied'
+          } catch {
+            button.textContent = 'Copy failed'
+          }
+          setTimeout(() => { button.textContent = label }, 1600)
+        })
+      })
+    }
+
     themedImages.forEach((image) => image.addEventListener('load', () => syncMediaRatio(image)))
     setSiteTheme(normalizeThemeChoice(getSavedTheme()))
     installCodeCopyButtons()
+    installComponentBrowser()
+    installComponentCopyButtons()
 
     themeButtons.forEach((button) => button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice)))
     systemThemeQuery.addEventListener('change', () => {

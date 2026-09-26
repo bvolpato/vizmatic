@@ -34,7 +34,7 @@
       <div class="nav-actions">
         <div class="nav-links">
           <a href="#gallery" data-nav-link>Examples</a>
-          <a href="components.html">Components</a>
+          <a href="#component-browser" data-nav-link>Components</a>
           <a href="playground.html">Playground</a>
           <a href="#quick-start" data-nav-link>Quick start</a>
           <a href="#onboarding" data-nav-link>Prompt + skill</a>
@@ -215,6 +215,34 @@
       </div>
     </section>
 
+    <section id="component-browser" class="section catalog-section home-component-section" data-component-browser>
+      <div class="section-kicker">Components <span>{{COMPONENT_COUNT}} reusable pieces</span></div>
+      <div class="section-intro catalog-intro">
+        <div>
+          <h2>Browse, copy, and adapt.</h2>
+          <p>Search all {{COMPONENT_COUNT}} components, copy a focused example, or open it in the playground to edit and render both themes.</p>
+        </div>
+        <a class="text-link" href="components.html">Full component reference <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="catalog-toolbar">
+        <label class="catalog-search" for="homeComponentSearch">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+          <input id="homeComponentSearch" type="search" data-component-search placeholder="Search components" aria-label="Search components" autocomplete="off">
+          <button id="homeComponentClear" type="button" aria-label="Clear component search" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg>
+          </button>
+        </label>
+        <div class="catalog-filters" role="group" aria-label="Component category">
+          {{COMPONENT_FILTERS}}
+        </div>
+        <p class="catalog-count" id="homeComponentCount" aria-live="polite">{{COMPONENT_COUNT}} components</p>
+      </div>
+      <div class="catalog-groups" id="homeComponentGroups">
+        {{HOME_COMPONENT_CATALOG}}
+      </div>
+      <p class="catalog-empty" id="homeComponentEmpty" hidden>No components match this search.</p>
+    </section>
+
     <section id="quick-start" class="quick-start-band">
       <div class="quick-start section">
         <div class="section-kicker">Quick start <span>02</span></div>
@@ -286,7 +314,7 @@
 
   <footer>
     <a class="brand" href="#"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
-    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p>
+    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>. <a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a>.</p>
     <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
   </footer>
 
@@ -408,9 +436,88 @@
       })
     }
 
+    function installComponentBrowser() {
+      const browser = document.querySelector('[data-component-browser]')
+      if (!browser) return
+      const search = browser.querySelector('[data-component-search]')
+      const count = browser.querySelector('.catalog-count')
+      const empty = browser.querySelector('.catalog-empty')
+      const clear = browser.querySelector('.catalog-search button')
+      const filters = Array.from(browser.querySelectorAll('[data-catalog-filter]'))
+      const groups = Array.from(browser.querySelectorAll('[data-catalog-group]'))
+      let activeFilter = 'all'
+
+      function update() {
+        const query = search.value.trim().toLowerCase()
+        let visibleCount = 0
+        groups.forEach((group) => {
+          const categoryMatches = activeFilter === 'all' || group.dataset.catalogGroup === activeFilter
+          let groupCount = 0
+          group.querySelectorAll('[data-catalog-item]').forEach((item) => {
+            const matches = categoryMatches && (!query || item.dataset.catalogSearch.includes(query))
+            item.hidden = !matches
+            if (matches) groupCount += 1
+          })
+          group.hidden = groupCount === 0
+          visibleCount += groupCount
+        })
+        count.textContent = visibleCount + ' component' + (visibleCount === 1 ? '' : 's')
+        empty.hidden = visibleCount !== 0
+        clear.hidden = query.length === 0
+      }
+
+      search.addEventListener('input', update)
+      clear.addEventListener('click', () => {
+        search.value = ''
+        search.focus()
+        update()
+      })
+      filters.forEach((button) => button.addEventListener('click', () => {
+        activeFilter = button.dataset.catalogFilter
+        filters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)))
+        update()
+      }))
+      update()
+    }
+
+    async function writeComponentSource(source) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(source)
+        return
+      }
+      const input = document.createElement('textarea')
+      input.value = source
+      input.setAttribute('readonly', '')
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.append(input)
+      input.select()
+      const copied = document.execCommand('copy')
+      input.remove()
+      if (!copied) throw new Error('Copy failed')
+    }
+
+    function installComponentCopyButtons() {
+      document.querySelectorAll('[data-copy-component]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const label = button.dataset.copyLabel || button.textContent
+          button.dataset.copyLabel = label
+          try {
+            await writeComponentSource(button.dataset.componentSource)
+            button.textContent = 'Copied'
+          } catch {
+            button.textContent = 'Copy failed'
+          }
+          setTimeout(() => { button.textContent = label }, 1600)
+        })
+      })
+    }
+
     themedImages.forEach((image) => image.addEventListener('load', () => syncMediaRatio(image)))
     setSiteTheme(normalizeThemeChoice(getSavedTheme()))
     installCodeCopyButtons()
+    installComponentBrowser()
+    installComponentCopyButtons()
 
     themeButtons.forEach((button) => button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice)))
     systemThemeQuery.addEventListener('change', () => {

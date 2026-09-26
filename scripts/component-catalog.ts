@@ -1,6 +1,9 @@
+import { catalogExample } from './component-examples'
+
 export interface ComponentCatalogItem {
     name: string
     description: string
+    example: string
 }
 
 export interface ComponentCatalogCategory {
@@ -11,14 +14,16 @@ export interface ComponentCatalogCategory {
     components: ComponentCatalogItem[]
 }
 
-export const componentCatalog: ComponentCatalogCategory[] = [
+const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
+    components: Omit<ComponentCatalogItem, 'example'>[]
+})[] = [
     {
         id: 'foundations',
         label: 'Foundations',
         description: 'Scene structure, responsive layout, and framed surfaces.',
         source: 'catalog-foundations',
         components: [
-            { name: 'Canvas', description: 'Root canvas with theme background and padding.' },
+            { name: 'Canvas', description: 'Root canvas with transparent or custom backgrounds and padding.' },
             { name: 'Scene', description: 'Primary vertical scene layout with optional title and subtitle.' },
             { name: 'TitleBar', description: 'Standalone heading and supporting copy.' },
             { name: 'Row', description: 'Horizontal flex layout with stable gaps and alignment.' },
@@ -172,6 +177,14 @@ export const componentCatalog: ComponentCatalogCategory[] = [
         ],
     },
 ]
+
+export const componentCatalog: ComponentCatalogCategory[] = componentCatalogGroups.map((category) => ({
+    ...category,
+    components: category.components.map((component) => ({
+        ...component,
+        example: catalogExample(component.name),
+    })),
+}))
 
 export const catalogUtilities = [
     'createPlotArea',

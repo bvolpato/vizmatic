@@ -58,7 +58,7 @@ function hslToRgb(hue: number, saturation: number, lightness: number): [number, 
 function colorFromCss(value: unknown): RgbaColor | undefined {
     if (typeof value !== 'string') return undefined
     const parsed = parseCssColor(value)
-    if (!parsed || parsed.values.length < 3 || parsed.alpha < 0.95) return undefined
+    if (!parsed || parsed.values.length < 3) return undefined
     const [r, g, b] = parsed.type === 'hsl'
         ? hslToRgb(parsed.values[0] ?? 0, parsed.values[1] ?? 0, parsed.values[2] ?? 0)
         : [parsed.values[0] ?? 0, parsed.values[1] ?? 0, parsed.values[2] ?? 0]
@@ -68,6 +68,25 @@ function colorFromCss(value: unknown): RgbaColor | undefined {
         b,
         alpha: parsed.alpha,
     }
+}
+
+function compositeOver(foreground: RgbaColor, background?: RgbaColor): RgbaColor {
+    if (foreground.alpha >= 1 || !background) return foreground
+
+    const alpha = foreground.alpha + background.alpha * (1 - foreground.alpha)
+    if (alpha <= 0) return { r: 0, g: 0, b: 0, alpha: 0 }
+
+    return {
+        r: (foreground.r * foreground.alpha + background.r * background.alpha * (1 - foreground.alpha)) / alpha,
+        g: (foreground.g * foreground.alpha + background.g * background.alpha * (1 - foreground.alpha)) / alpha,
+        b: (foreground.b * foreground.alpha + background.b * background.alpha * (1 - foreground.alpha)) / alpha,
+        alpha,
+    }
+}
+
+function isUnresolvedColor(value: unknown): boolean {
+    if (typeof value !== 'string' || value.trim() === '' || colorFromCss(value)) return false
+    return !['inherit', 'initial', 'revert', 'unset'].includes(value.trim().toLowerCase())
 }
 
 function channelLuminance(value: number): number {
@@ -165,18 +184,42 @@ export function analyzeContrast(
         const backgroundImage = typeof style.backgroundImage === 'string'
             ? style.backgroundImage.trim().toLowerCase()
             : ''
+        const backgroundShorthand = typeof style.background === 'string' ? style.background.trim() : ''
+        const isBackgroundWrapper = typeof node.type === 'function'
+            && (trustedComponents.has(node.type)
+                || Boolean((node.type as { __vizmaticPrimitive?: boolean }).__vizmaticPrimitive))
+        const wrapperBackground = isBackgroundWrapper ? props.background : undefined
         const hasUnresolvedBackground = (backgroundImage !== '' && backgroundImage !== 'none')
-            || (typeof style.background === 'string' && style.background.includes('gradient('))
+            || isUnresolvedColor(style.backgroundColor)
+            || (backgroundShorthand !== '' && backgroundShorthand.toLowerCase() !== 'none' && !colorFromCss(backgroundShorthand))
+            || isUnresolvedColor(wrapperBackground)
+        const ownBackground = colorFromCss(style.backgroundColor)
+            ?? colorFromCss(style.background)
+            ?? colorFromCss(wrapperBackground)
+        const baseBackground = path === 'root' && isBackgroundWrapper && colorFromCss(wrapperBackground)
+            ? undefined
+            : inherited.background
         const background = hasUnresolvedBackground
             ? undefined
-            : colorFromCss(style.backgroundColor) ?? colorFromCss(style.background) ?? inherited.background
-        const color = colorFromCss(style.color) ?? inherited.color
+            : ownBackground
+                ? compositeOver(ownBackground, baseBackground)
+                : baseBackground
+        const color = typeof style.color === 'string' && style.color.trim().toLowerCase() === 'currentcolor'
+            ? inherited.color
+            : isUnresolvedColor(style.color)
+                ? undefined
+                : colorFromCss(style.color) ?? inherited.color
         const fontSize = fontSizePixels(style.fontSize, inherited.fontSize)
         const fontWeight = numericFontWeight(style.fontWeight) ?? inherited.fontWeight
         const context = { background, color, fontSize, fontWeight }
 
-        if (typeof node.type === 'string' && hasDirectText(props.children as ReactNode) && color && background) {
-            const ratio = contrastRatio(color, background)
+        if (typeof node.type === 'string'
+            && hasDirectText(props.children as ReactNode)
+            && color
+            && background !== undefined
+            && background.alpha >= 1) {
+            const renderedColor = compositeOver(color, background)
+            const ratio = contrastRatio(renderedColor, background)
             const required = requiredContrast(context)
             if (ratio < required) {
                 const rounded = Math.round(ratio * 100) / 100

@@ -61,7 +61,12 @@ export function StatusRow({
 }: StatusRowProps): React.ReactElement {
     const resolvedTone = tone ?? statusTones[status]
     const accent = getToneColor(resolvedTone, c)
-    const accentText = getReadableToneColor(resolvedTone, c)
+    // Account for the marker tint composited over its row tint when boxed.
+    const markerAlpha = 0x26 / 0xff
+    const rowAlpha = boxed ? 0x12 / 0xff : 0
+    const markerBackgroundAlpha = Math.round((rowAlpha + markerAlpha * (1 - rowAlpha)) * 0xff)
+    const markerBackground = `${accent}${markerBackgroundAlpha.toString(16).padStart(2, '0')}`
+    const accentText = getReadableToneColor(resolvedTone, c, markerBackground, c.bgCard)
     const glyph = statusGlyphs[status]
 
     const marker = React.createElement('div', {

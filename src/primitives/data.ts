@@ -483,8 +483,11 @@ export function Grid({
     const cellStyle = (cell: React.ReactNode | GridCell, rowIndex: number, colIndex: number): React.CSSProperties => {
         const config = isGridCell(cell) ? cell : {}
         const toneColor = config.tone ? getToneColor(config.tone, c) : undefined
-        const toneTextColor = config.tone ? getReadableToneColor(config.tone, c) : undefined
         const isHeader = rowIndex < headerRows || colIndex < headerCols
+        const backgroundColor = config.backgroundColor ?? (toneColor ? `${toneColor}22` : isHeader ? c.bgSubtle : c.bgHover)
+        const toneTextColor = config.tone
+            ? getReadableToneColor(config.tone, c, backgroundColor, c.bgHover)
+            : undefined
         return {
             width: cellWidth,
             height: cellHeight,
@@ -492,7 +495,7 @@ export function Grid({
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: radius,
-            backgroundColor: config.backgroundColor ?? (toneColor ? `${toneColor}22` : isHeader ? c.bgSubtle : c.bgHover),
+            backgroundColor,
             border: `1px solid ${config.borderColor ?? (toneColor ? `${toneColor}55` : c.borderSubtle)}`,
             color: config.color ?? (toneTextColor ?? (isHeader ? c.textPrimary : c.textSecondary)),
             ...(config.opacity !== undefined ? { opacity: config.opacity } : {}),

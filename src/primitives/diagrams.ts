@@ -904,7 +904,10 @@ export function GraphDiagram({
         ] : []),
         ...Array.from(layout.values()).map((node) => {
             const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
-            const accentText = node.muted ? c.textMuted : getReadableToneColor(node.tone ?? 'blue', c)
+            const fill = getToneFill(node.tone ?? 'blue', c)
+            const accentText = node.muted
+                ? c.textMuted
+                : getReadableToneColor(node.tone ?? 'blue', c, fill, c.bg)
             const resolvedIconSize = clamp(
                 node.iconSize ?? iconSize,
                 8,
@@ -944,7 +947,7 @@ export function GraphDiagram({
                     padding: '8px 10px',
                     boxSizing: 'border-box' as const,
                     borderRadius: c.preset === 'engineering' ? 5 : 10,
-                    backgroundColor: node.muted ? c.bgSubtle : getToneFill(node.tone ?? 'blue', c),
+                    backgroundColor: node.muted ? c.bgSubtle : fill,
                     border: `${c.preset === 'engineering' ? 1.25 : 1.5}px solid ${node.muted ? c.borderLight : `${accent}${c.preset === 'engineering' ? '' : '88'}`}`,
                     ...(!node.muted && c.preset !== 'engineering' ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                     opacity: node.muted ? 0.62 : 1,

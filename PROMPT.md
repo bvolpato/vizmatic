@@ -146,6 +146,8 @@ Or set it in the frame:
 </Scene>
 ```
 
+CSS alpha colors are preserved in PNG/SVG backgrounds. Use `<Scene background="rgba(15, 23, 42, 0.5)">` or `--background 'rgba(15, 23, 42, 0.5)'` for a semi-transparent canvas. Leave the background unset for fully transparent output. Contrast checks composite alpha text and nested backgrounds over known solid surfaces; a transparent canvas has no known host-page backdrop.
+
 When a CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows that axis if content overflows. Set `autoSize = false` when dimensions must remain fixed and clipping should fail the render.
 
 Bare CLI frames do not need imports, `defineIllustration`, or `c` props. Use `c` for explicit tokens such as `background={c.bg}`. `Scene` title and subtitle are optional. Use a full module for other dependencies, reusable helpers, animation exports, or direct renderer APIs.

@@ -2,8 +2,9 @@ import { mkdtemp, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
+import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { analyzeRenderedLayout, diagnosticFromMessage } from '../src/diagnostics'
+import { analyzeContrast, analyzeRenderedLayout, diagnosticFromMessage } from '../src/diagnostics'
 import type { SatoriNode } from '../src'
 import { playgroundTemplates } from '../src/playground-templates'
 
@@ -66,6 +67,16 @@ async function runCheck(source: string, extraArgs: string[] = []) {
 }
 
 describe('vizmatic check', () => {
+    it('inherits translucent currentColor for contrast checks', () => {
+        const element = createElement('div', {
+            style: { backgroundColor: '#000000', color: 'rgba(255, 255, 255, 0.2)' },
+        }, createElement('div', { style: { color: 'currentColor' } }, 'Inherited alpha text'))
+
+        expect(analyzeContrast(element, 'dark')).toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+        }))
+    })
+
     it('inherits rendered font sizes without treating overlapping line boxes as overlapping glyphs', () => {
         const inheritedSmallText: SatoriNode[] = [
             { type: 'div', left: 0, top: 0, width: 200, height: 80, props: { style: { fontSize: 8 } } },
@@ -254,6 +265,55 @@ height = 240
 `, ['--background', '#ffffff'])
         expect(largeText.result.status, largeText.result.stderr).toBe(0)
         expect(largeText.report.files[0]?.themes[0]?.diagnostics).not.toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+        }))
+    }, 30_000)
+
+    it('composites translucent text and nested backgrounds over known surfaces', async () => {
+        const { result, report } = await runCheck(String.raw`width = 400
+height = 240
+
+<Scene>
+<div style={{ display: "flex", flexDirection: "column", backgroundColor: "#000000", color: "#ffffff" }}>
+  <div style={{ display: "flex", flexDirection: "column", backgroundColor: "rgba(255, 255, 255, 0.5)" }}>
+    <div style={{ backgroundColor: "rgba(255, 255, 255, 0.5)", color: "#757575" }}>Nested background</div>
+    <div style={{ color: "rgba(255, 255, 255, 0.2)" }}>Explicit translucent text</div>
+  </div>
+</div>
+</Scene>
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes[0]?.diagnostics.filter(({ code }) => code === 'accessibility.low_contrast')).toHaveLength(2)
+    }, 30_000)
+
+    it('uses alpha backgrounds on Scene while respecting transparent output', async () => {
+        const backedScene = await runCheck(String.raw`width = 400
+height = 240
+
+<Scene>
+<div style={{ display: "flex", flexDirection: "column", backgroundColor: "#000000" }}>
+  <Scene background="rgba(255, 255, 255, 0.5)">
+    <div style={{ color: "#757575" }}>Scene background over a known surface</div>
+  </Scene>
+</div>
+</Scene>
+`)
+        expect(backedScene.result.status, backedScene.result.stderr).toBe(0)
+        expect(backedScene.report.files[0]?.themes[0]?.diagnostics).toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+            severity: 'warning',
+        }))
+
+        const transparentScene = await runCheck(String.raw`width = 400
+height = 240
+
+<Scene background="rgba(255, 255, 255, 0.5)">
+  <div style={{ color: "#757575" }}>Unknown transparent backdrop</div>
+</Scene>
+`, ['--background', '#000000'])
+        expect(transparentScene.result.status, transparentScene.result.stderr).toBe(0)
+        expect(transparentScene.report.files[0]?.themes[0]?.diagnostics).not.toContainEqual(expect.objectContaining({
             code: 'accessibility.low_contrast',
         }))
     }, 30_000)

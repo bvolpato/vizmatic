@@ -107,6 +107,7 @@ const BARE_FRAME_EXTRA_EXPORTS = new Set([
     'styles',
     'toneGradients',
     'typography',
+    'wrapWithWatermark',
 ])
 const BARE_FRAME_EXPORTS = Object.keys(publicApi)
     .filter((name) => /^[A-Za-z_$][\w$]*$/.test(name))
@@ -494,7 +495,7 @@ function bareFrameExportsForSource(source: string): string[] {
     return BARE_FRAME_EXPORTS.filter((name) => {
         if (name === 'getThemeColors') return true
         const escapedName = escapeRegExp(name)
-        if (/^[A-Z]/.test(name)) return new RegExp(`<\\/?${escapedName}(?:\\s|>|/)`).test(source)
+        if (/^[A-Z]/.test(name)) return new RegExp(`<\\/?${escapedName}(?:\\s|>|/)|\\b${escapedName}\\s*\\(`).test(source)
         return new RegExp(`\\b${escapedName}\\b`).test(source)
     })
 }
@@ -506,6 +507,8 @@ function buildAutoImportStatement(names: string[]): string {
 
 function buildAutoImportDeclarations(names: string[]): string {
     return names.map((name) => {
+        if (name === 'Watermark' || name === 'MathText') return `const ${name} = ${bareFrameAlias(name)};`
+        if (name === 'DotPoint' || name === 'DashedLine') return `const ${name} = __withTheme(${bareFrameAlias(name)}, true);`
         if (/^[A-Z]/.test(name)) return `const ${name} = __withTheme(${bareFrameAlias(name)});`
         return `const ${name} = ${bareFrameAlias(name)};`
     }).join('\n')
@@ -599,9 +602,12 @@ ${buildAutoImportStatement(autoImports)}
 ${imports.join('\n')}
 
 let __theme = __Vizmatic_getThemeColors('dark', ${JSON.stringify(preset)})
-function __withTheme(Component) {
+function __withTheme(Component, returnsArray = false) {
     function VizmaticAutoTheme(props) {
-        return React.createElement(Component, props?.c ? props : { ...props, c: __theme })
+        const themedProps = props?.c ? props : { ...props, c: __theme }
+        return returnsArray
+            ? React.createElement(React.Fragment, null, Component(themedProps))
+            : React.createElement(Component, themedProps)
     }
     VizmaticAutoTheme.__vizmaticPrimitive = true
     return VizmaticAutoTheme

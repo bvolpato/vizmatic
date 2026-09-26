@@ -1,4 +1,5 @@
 import React from 'react'
+import { Resvg } from '@resvg/resvg-js'
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
@@ -511,16 +512,39 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         expect(buffer.length).toBeGreaterThan(10_000)
     }, 30_000)
 
-    it('renders alpha-transparent PNG backgrounds by default', async () => {
+    it('renders numeric values in MiniBarChart', async () => {
+        const nodes: SatoriNode[] = []
+        await renderToBuffer((
+            <MiniBarChart
+                c={getThemeColors('light')}
+                showValues
+                data={[{ label: 'First', value: 74 }, { label: 'Empty', value: 0 }]}
+            />
+        ), 360, 180, { scale: 1, onNodeDetected: (node) => nodes.push(node) })
+        expect(nodes.map((node) => String(node.textContent))).toEqual(expect.arrayContaining(['74', '0']))
+    }, 30_000)
+
+    it.each([
+        { background: undefined, renderBackground: undefined, alpha: 0 },
+        { background: 'rgba(15, 23, 42, 0.5)', renderBackground: undefined, alpha: 128 },
+        { background: undefined, renderBackground: 'rgba(15, 23, 42, 0.5)', alpha: 128 },
+    ])('preserves canvas alpha with background=$background and option=$renderBackground', async ({ background, renderBackground, alpha }) => {
         const frame = defineIllustration((c) => (
-            <Scene c={c} title="Transparent default">
-                <StepCard c={c} title="Alpha" subtitle="no canvas fill" tone="green" />
+            <Scene c={c} title="Alpha canvas" background={background}>
+                <StepCard c={c} title="Alpha" subtitle="preserved opacity" tone="green" />
             </Scene>
         ))
 
-        const buffer = await renderToBuffer(frame.create('dark'), 520, 320, { scale: 1 })
+        const options = { scale: 1, background: renderBackground }
+        const buffer = await renderToBuffer(frame.create('dark'), 520, 320, options)
         const image = decodePng(buffer)
-        expect(pixelAt(image, 0, 0)[3]).toBe(0)
+        if (alpha === 0) expect(pixelAt(image, 0, 0)[3]).toBe(0)
+        else expect(Math.abs(pixelAt(image, 0, 0)[3] - alpha)).toBeLessThanOrEqual(1)
+        if (alpha > 0) {
+            const svg = await renderToSvg(frame.create('dark'), 520, 320, options)
+            const svgImage = decodePng(new Resvg(svg).render().asPng())
+            expect(Math.abs(pixelAt(svgImage, 0, 0)[3] - alpha)).toBeLessThanOrEqual(1)
+        }
     }, 30_000)
 
     it('renders SvgMathText as a dark-theme HTML overlay without SVG text artifacts', async () => {
@@ -2074,6 +2098,41 @@ const title = basename('/tmp/multiline-import')
 `)
 
         expect(decodePng(buffer).width).toBeGreaterThan(0)
+    }, 30_000)
+
+    it('preserves Watermark metadata in bare frame compositions', async () => {
+        const { buffer } = await renderBuiltCliFrame('vizmatic-cli-watermark-', 'watermark.tsx', `width = 400
+height = 240
+
+<Row>
+  {wrapWithWatermark(
+    <Scene><StepCard title="Content" tone="green" width={260} /></Scene>,
+    400, 240, "light",
+    <Watermark position="bottom-right" opacity={1}>
+      <div style={{ display: "flex", width: 20, height: 20, backgroundColor: "#ff0000" }} />
+    </Watermark>,
+  )}
+</Row>
+`)
+        const red = pixelBounds(decodePng(buffer), (r, g, b, a) => r === 255 && g === 0 && b === 0 && a === 255)
+        expect(red.maxX).toBeGreaterThanOrEqual(red.minX)
+        expect(red.maxY).toBeGreaterThanOrEqual(red.minY)
+    }, 30_000)
+
+    it('renders array-returning drawing helpers in bare frames', async () => {
+        const { buffer } = await renderBuiltCliFrame('vizmatic-cli-drawing-', 'drawing.tsx', `width = 400
+height = 240
+
+<Scene padding={24}>
+  <TextLabel text={MathText({ text: "x_i^2" })} />
+  <div style={{ display: "flex", position: "relative", width: 300, height: 150 }}>
+    {DashedLine({ x1: 30, y1: 75, x2: 250, y2: 75, color: "#ff0000" })}
+    {DotPoint({ x: 140, y: 75, label: "Point", color: "#ff0000" })}
+  </div>
+</Scene>
+`)
+        const red = pixelBounds(decodePng(buffer), (r, g, b, a) => r > 240 && g < 30 && b < 30 && a > 40)
+        expect(red.maxX - red.minX).toBeGreaterThan(150)
     }, 30_000)
 
     it('uses collision-safe output stems for duplicate frame basenames', async () => {

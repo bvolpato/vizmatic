@@ -46,7 +46,7 @@
   </div>
 
   <main class="playground-page-main">
-    <section id="playground" data-vizmatic-playground data-vizmatic-playground-background="theme">
+    <section id="playground" data-vizmatic-playground data-vizmatic-playground-background="transparent">
       <header class="playground-page-heading">
         <div>
           <div class="eyebrow"><span></span>Browser renderer</div>
@@ -69,6 +69,9 @@
             <button class="button primary" type="button" id="playgroundRunButton" title="Render source">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
               <span>Run</span>
+            </button>
+            <button class="button" type="button" id="playgroundCopyButton" title="Copy edited source">
+              <span>Copy source</span>
             </button>
             <button class="button" type="button" id="playgroundShareButton" title="Copy share link">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M13 7l5 5-5 5M5 5h6M5 19h6"/></svg>

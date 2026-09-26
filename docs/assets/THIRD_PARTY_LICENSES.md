@@ -27,10 +27,10 @@ Full license: [`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt).
   Source: https://github.com/boywithkeyboard/twemoji_svg
   Full license: [`licenses/twemoji-svg-MIT.txt`](licenses/twemoji-svg-MIT.txt).
 
-## Browser Text Shaping
+## Browser text shaping
 
-- HarfBuzzJS 0.10.0 JavaScript and WASM: MIT, with Apache-2.0 portions
-  from Zephyr libc and Emscripten.
+- HarfBuzzJS 0.10.0 JavaScript and `hb.wasm`: MIT, with Apache-2.0 portions
+  from Zephyr libc (`zephyr-string.c`) and Emscripten (`emmalloc.cpp`).
   Copyright (c) 2019 Ebrahim Byagowi.
   Source: https://github.com/harfbuzz/harfbuzzjs
   Full notices: [`licenses/harfbuzzjs-LICENSE.txt`](licenses/harfbuzzjs-LICENSE.txt)

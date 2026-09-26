@@ -1,6 +1,7 @@
 import React from 'react'
 import { Resvg, initWasm } from '@resvg/resvg-wasm'
 import satori, { init as initSatori } from 'satori/standalone'
+import { Watermark, wrapWithWatermark } from './brand'
 import { transform } from 'sucrase'
 import * as primitives from './primitives'
 import * as themeApi from './theme'
@@ -197,12 +198,26 @@ function withTheme(Component: unknown, c: ReturnType<typeof themeApi.getThemeCol
     }
 }
 
+function withThemeCall(Component: unknown, c: ReturnType<typeof themeApi.getThemeColors>): unknown {
+    if (typeof Component !== 'function') return Component
+
+    return function VizmaticPlaygroundThemeCall(props: Record<string, unknown> | null) {
+        return (Component as (props: Record<string, unknown>) => unknown)(props?.c ? props : { ...props, c })
+    }
+}
+
 function createApi(c: ReturnType<typeof themeApi.getThemeColors>): PlaygroundApi {
-    const api: PlaygroundApi = { ...themeApi, ...primitives }
+    const api: PlaygroundApi = { ...themeApi, ...primitives, Watermark, wrapWithWatermark }
     const scoped: PlaygroundApi = {}
 
     for (const [name, value] of Object.entries(api)) {
-        scoped[name] = /^[A-Z]/.test(name) ? withTheme(value, c) : value
+        if (!/^[A-Z]/.test(name) || name === 'Watermark' || name === 'MathText') {
+            scoped[name] = value
+        } else if (name === 'DotPoint' || name === 'DashedLine') {
+            scoped[name] = withThemeCall(value, c)
+        } else {
+            scoped[name] = withTheme(value, c)
+        }
     }
 
     return scoped

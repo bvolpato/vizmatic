@@ -97,7 +97,7 @@
   },
   "devDependencies": {
     "@resvg/resvg-wasm": "2.6.2",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.6.1",
     "@types/react": "^19.2.18",
     "esbuild": "0.28.2",
     "github-actionlint": "1.7.12",

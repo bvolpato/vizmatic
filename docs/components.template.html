@@ -51,11 +51,11 @@
       <p>{{COMPONENT_COUNT}} reusable pieces for technical diagrams, charts, dashboards, and documentation figures.</p>
     </header>
 
-    <section id="components" class="section catalog-section">
+    <section id="components" class="section catalog-section" data-component-browser>
       <div class="section-kicker">Catalog <span>{{COMPONENT_COUNT}} components</span></div>
       <div class="section-intro catalog-intro">
         <h2>Start with a primitive. Compose the rest.</h2>
-        <p>Every category below is a real Vizmatic scene. Open its source, copy what fits, and adjust semantic tones for your theme.</p>
+        <p>Browse every component with a focused runnable example. Copy the source or open it in the playground to edit and render both themes.</p>
       </div>
       <div class="catalog-toolbar">
         <label class="catalog-search" for="catalogSearch">
@@ -79,7 +79,7 @@
 
   <footer>
     <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
-    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p>
+    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>. <a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a>.</p>
     <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
   </footer>
 
@@ -218,6 +218,35 @@
       catalogFilters.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate === button)))
       updateCatalog()
     }))
+    async function writeComponentSource(source) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(source)
+        return
+      }
+      const input = document.createElement('textarea')
+      input.value = source
+      input.setAttribute('readonly', '')
+      input.style.position = 'fixed'
+      input.style.opacity = '0'
+      document.body.append(input)
+      input.select()
+      const copied = document.execCommand('copy')
+      input.remove()
+      if (!copied) throw new Error('Copy failed')
+    }
+    document.querySelectorAll('[data-copy-component]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const label = button.dataset.copyLabel || button.textContent
+        button.dataset.copyLabel = label
+        try {
+          await writeComponentSource(button.dataset.componentSource)
+          button.textContent = 'Copied'
+        } catch {
+          button.textContent = 'Copy failed'
+        }
+        setTimeout(() => { button.textContent = label }, 1600)
+      })
+    })
     document.querySelectorAll('.source-button').forEach((button) => {
       button.addEventListener('click', () => openSource(button.dataset.source))
     })
