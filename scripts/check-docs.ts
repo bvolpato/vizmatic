@@ -162,8 +162,8 @@ if (playgroundWorker.size > 1_500 * 1024) {
 if (playgroundAssetFiles.filter((file) => file.endsWith('.ttf')).length !== 6) {
     fail('playground must ship six self-hosted font files')
 }
-if (playgroundAssetFiles.filter((file) => file.endsWith('.wasm')).length !== 2) {
-    fail('playground must ship Satori and Resvg WASM files')
+if (playgroundAssetFiles.filter((file) => file.endsWith('.wasm')).length !== 3) {
+    fail('playground must ship Satori, Resvg, and HarfBuzz WASM files')
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as { version?: string; files?: string[] }

@@ -101,6 +101,7 @@
     "@types/react": "^19.2.18",
     "esbuild": "0.28.2",
     "github-actionlint": "1.7.12",
+    "harfbuzzjs": "0.10.0",
     "publint": "0.3.24",
     "shiki": "^4.4.3",
     "sucrase": "3.35.1",

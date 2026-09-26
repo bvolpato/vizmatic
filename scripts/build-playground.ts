@@ -1,5 +1,6 @@
 import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises'
 import { build, type Plugin } from 'esbuild'
+import ts from 'typescript'
 import { fileURLToPath } from 'url'
 import { resolve } from 'path'
 
@@ -7,6 +8,7 @@ const outPath = 'docs/playground.js'
 const redirectOutPath = 'docs/playground-redirect.js'
 const workerOutPath = 'docs/playground-worker.js'
 const browserRenderContext = resolve('src/playground-render-context.ts')
+const browserHarfbuzz = resolve('src/playground-harfbuzz.ts')
 
 async function normalizeGeneratedIndentation(path: string): Promise<void> {
     const source = await readFile(path, 'utf8')
@@ -20,6 +22,35 @@ const browserRenderContextShim: Plugin = {
         buildContext.onResolve({ filter: /^\.\.\/renderContext$/ }, (args) => {
             if (!args.importer.endsWith('/src/primitives/layout.ts')) return undefined
             return { path: browserRenderContext }
+        })
+    },
+}
+
+const browserHarfbuzzLoader: Plugin = {
+    name: 'browser-harfbuzz-loader',
+    setup(buildContext) {
+        buildContext.onResolve({ filter: /^harfbuzzjs$/ }, () => ({ path: browserHarfbuzz }))
+        buildContext.onLoad({ filter: /[/\\]harfbuzzjs[/\\]hb\.js$/ }, async ({ path }) => {
+            const source = ts.createSourceFile(path, await readFile(path, 'utf8'), ts.ScriptTarget.ESNext, true, ts.ScriptKind.JS)
+            let nodeBranches = 0
+            // Emscripten includes a Node fs loader even in its browser-capable build.
+            const browserOnly: ts.TransformerFactory<ts.SourceFile> = (context) => {
+                const visit: ts.Visitor = (node) => {
+                    if (ts.isIfStatement(node) && ts.isIdentifier(node.expression) && node.expression.text === 'ENVIRONMENT_IS_NODE') {
+                        nodeBranches += 1
+                        return context.factory.updateIfStatement(node, context.factory.createFalse(), node.thenStatement, node.elseStatement)
+                    }
+                    return ts.visitEachChild(node, visit, context)
+                }
+                return (file) => ts.visitEachChild(file, visit, context)
+            }
+            const transformed = ts.transform(source, [browserOnly])
+            try {
+                if (nodeBranches !== 1) throw new Error('HarfBuzz browser loader changed; review its environment branches.')
+                return { contents: ts.createPrinter().printFile(transformed.transformed[0]), loader: 'js' }
+            } finally {
+                transformed.dispose()
+            }
         })
     },
 }
@@ -40,7 +71,7 @@ export async function buildPlayground(): Promise<void> {
         outdir: 'docs',
         sourcemap: false,
         metafile: true,
-        plugins: [browserRenderContextShim],
+        plugins: [browserRenderContextShim, browserHarfbuzzLoader],
         loader: {
             '.ttf': 'file',
             '.wasm': 'file',

@@ -13,6 +13,7 @@ import {
     type PlaygroundRenderBackground,
 } from './playground-render-context'
 import { createRetryableInitializer } from './retryable-initializer'
+import { initializeHarfbuzzRuntime } from './playground-harfbuzz'
 import interRegular from '../assets/fonts/Inter-Regular.ttf'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.ttf'
 import interBold from '../assets/fonts/Inter-Bold.ttf'
@@ -21,6 +22,7 @@ import notoSans from '../assets/fonts/NotoSans-Regular.ttf'
 import notoSansMath from '../assets/fonts/NotoSansMath-Regular.ttf'
 import yogaWasm from 'satori/yoga.wasm'
 import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm'
+import harfbuzzWasm from 'harfbuzzjs/hb.wasm'
 
 export interface PlaygroundRenderRequest {
     id: number
@@ -162,14 +164,15 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
     return Promise.all([
         loadStaticAsset(yogaWasm),
         loadStaticAsset(resvgWasm),
+        loadStaticAsset(harfbuzzWasm),
         loadStaticAsset(interRegular),
         loadStaticAsset(interSemiBold),
         loadStaticAsset(interBold),
         loadStaticAsset(jetBrainsMono),
         loadStaticAsset(notoSans),
         loadStaticAsset(notoSansMath),
-    ]).then(async ([yoga, resvg, regular, semiBold, bold, mono, sans, math]) => {
-        await Promise.all([initializeSatoriRuntime(yoga), initializeResvgRuntime(resvg)])
+    ]).then(async ([yoga, resvg, harfbuzz, regular, semiBold, bold, mono, sans, math]) => {
+        await Promise.all([initializeSatoriRuntime(yoga), initializeResvgRuntime(resvg), initializeHarfbuzzRuntime(harfbuzz)])
         const fonts: PlaygroundRuntime['fonts'] = [
             { name: 'Inter', data: regular, weight: 400, style: 'normal' },
             { name: 'Inter', data: semiBold, weight: 600, style: 'normal' },
