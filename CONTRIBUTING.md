@@ -6,7 +6,7 @@ Contributions should keep Vizmatic deterministic, theme-aware, accessible, and u
 
 Requirements:
 
-- Node.js 20 or newer
+- Node.js 22.12 or newer for development (the built package supports Node.js 20)
 - Corepack with the pnpm version declared in `package.json`
 
 ```bash
