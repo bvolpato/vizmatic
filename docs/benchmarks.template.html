@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Benchmarks - Vizmatic</title>
+  <meta name="description" content="Reproducible Vizmatic render time, memory, and automated example-check results.">
+  <meta name="theme-color" content="#080a0f">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .benchmark-section { display: grid; gap: 24px; }
+    .benchmark-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+    .benchmark-meta > div, .benchmark-method, .benchmark-quality { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+    .benchmark-meta dt, .benchmark-method h3 { color: var(--muted); font: 600 0.78rem "IBM Plex Mono", monospace; text-transform: uppercase; }
+    .benchmark-meta dd { margin-top: 7px; overflow-wrap: anywhere; font-size: 0.95rem; }
+    .benchmark-method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .benchmark-method p, .benchmark-quality p { margin-top: 10px; color: var(--muted); line-height: 1.65; }
+    .benchmark-summary { display: flex; flex-wrap: wrap; gap: 10px; }
+    .benchmark-summary span { padding: 9px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); }
+    .benchmark-summary strong { color: var(--text); }
+    .benchmark-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+    .benchmark-table { width: 100%; border-collapse: collapse; text-align: left; }
+    .benchmark-table th, .benchmark-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .benchmark-table thead th { color: var(--muted); font: 600 0.75rem "IBM Plex Mono", monospace; text-transform: uppercase; white-space: nowrap; }
+    .benchmark-table tbody tr:last-child th, .benchmark-table tbody tr:last-child td { border-bottom: 0; }
+    .benchmark-table tbody th { white-space: nowrap; }
+    .benchmark-clean { color: var(--green) !important; }
+    .benchmark-note { color: var(--faint); font-size: 0.9rem; line-height: 1.6; }
+    @media (max-width: 560px) { .benchmark-table th, .benchmark-table td { padding: 10px; } }
+  </style>
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <div class="nav-shell">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html">
+        <img src="assets/icon.svg" alt="" width="30" height="30">
+        <span>vizmatic</span>
+      </a>
+      <div class="nav-actions">
+        <div class="nav-links">
+          <a href="index.html#gallery">Examples</a>
+          <a href="components.html">Components</a>
+          <a href="playground.html">Playground</a>
+          <a href="benchmarks.html" aria-current="page">Benchmarks</a>
+          <a href="index.html#quick-start">Quick start</a>
+          <a href="index.html#onboarding">Prompt + skill</a>
+          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
+            <span>GitHub</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <main>
+    <header class="catalog-hero section">
+      <div class="eyebrow"><span></span>Reproducible measurements</div>
+      <h1>Benchmarks</h1>
+      <p>Render time, process memory, and automated quality checks for representative Vizmatic examples. Measurements are a snapshot from one machine, not a cross-machine ranking.</p>
+    </header>
+
+    <section class="section benchmark-section" aria-labelledby="run-heading">
+      <div class="section-intro">
+        <h2 id="run-heading">Run details</h2>
+        <p>Generated <time datetime="{{GENERATED_AT}}">{{GENERATED_AT}}</time>. Use the source and environment details when comparing later runs.</p>
+      </div>
+      <dl class="benchmark-meta">
+        {{ENVIRONMENT}}
+      </dl>
+
+      <div class="benchmark-method-grid">
+        <article class="benchmark-method">
+          <h3>Render timing</h3>
+          <p>One discarded warmup and three measured renders per example and theme. Each workload runs in a fresh Node process. Timing covers <code>renderToPngWithOutput</code>, including PNG encoding and file writing, after the example and renderer modules load. Median and nearest-rank p95 are shown; with three samples, p95 is the slowest sample. Output scale is 1.</p>
+        </article>
+        <article class="benchmark-method">
+          <h3>Memory and quality</h3>
+          <p>Peak RSS is Node's per-process <code>process.resourceUsage().maxRSS</code>, normalized to bytes and includes startup, imports, warmup, and measured renders. The quality counts come from <code>vizmatic check examples --theme dark,light --json</code> over all example files. They are automated diagnostics, not a human visual review.</p>
+        </article>
+      </div>
+      <p class="benchmark-note">Hardware, operating system, Node version, and source revision affect results. Compare runs on the same machine and runtime configuration. These measurements are informational, are not a CI performance threshold, and do not support claims about relative speed across different machines.</p>
+    </section>
+
+    <section class="section benchmark-section" aria-labelledby="render-heading">
+      <div class="section-intro">
+        <h2 id="render-heading">Representative renders</h2>
+        <p>Chart composition, automatic and hierarchical diagrams, model topology, and typed dataflow. The full example suite is checked separately for quality coverage.</p>
+      </div>
+      <div class="benchmark-table-wrap">
+        <table class="benchmark-table">
+          <thead><tr><th scope="col">Example</th><th scope="col">Theme</th><th scope="col">Median</th><th scope="col">p95</th><th scope="col">Peak RSS</th><th scope="col">PNG pixels</th><th scope="col">PNG size</th></tr></thead>
+          <tbody>
+            {{BENCHMARK_ROWS}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section benchmark-section" aria-labelledby="quality-heading">
+      <div class="section-intro">
+        <h2 id="quality-heading">Automated visual checks</h2>
+        <p>Checker diagnostics and example coverage, reported as counts. This section does not assign a subjective visual-quality score.</p>
+      </div>
+      <div class="benchmark-summary" aria-label="Example check summary">
+        {{QUALITY_SUMMARY}}
+      </div>
+      <div class="benchmark-quality">
+        {{QUALITY_FINDINGS}}
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
+    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>. <a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a>.</p>
+    <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
+  </footer>
+</body>
+</html>

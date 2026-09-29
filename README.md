@@ -368,7 +368,11 @@ Use these primitives before writing raw SVG or absolute-positioned layouts.
 
 Groups support unlimited nesting in automatic layout, reserve a boundary-header gutter, and clip long headers inside the boundary. Set `icon` to a built-in `IconName`, a React element, or a reusable icon from `defineDiagramIcon`; `defineIconRegistry` groups provider packs without a runtime registry. Icon size stays inside its node. Custom React elements own their theme colors and accessible label. Relationship `kind` selects solid, dashed, or dotted defaults, `style` overrides them, and `arrow` accepts `forward`, `backward`, `both`, or `none`. Associations default to no arrow.
 
+Set `id`, `title`, and `description` for accessible SVG exports. Nodes and edges accept safe `href` links and tooltip `title` text. These semantics are included by `renderToSvg` and the playground SVG download; see the [SVG accessibility guide](docs/accessibility.md) for supported links and stable ID behavior.
+
 Set `x` and `y` on every node for normalized manual positioning when no groups are present. Mixed coordinate modes fail with a clear error. Automatic layout treats node and edge array order as its stable tie-breaker and expands `width` or `height` when needed. Set `sizing="fixed"` to keep exact graph dimensions and let overflow checks report a canvas that is too small. Use `direction`, `nodeGap`, `rankGap`, and `edgeGap` to tune the result.
+
+The [import guide](docs/import.md) documents the supported Mermaid and D2 subsets and their structured source diagnostics.
 
 #### Matrices, tables, and grids
 
@@ -402,6 +406,7 @@ Set `x` and `y` on every node for normalized manual positioning when no groups a
 
 | API | Use |
 |---|---|
+| `checkFrame` | Check a React scene or themed frame and return typed diagnostics with configurable severity-based pass/fail. |
 | `renderToPng` | Render React scene to PNG through Satori and resvg, with optional watermark, crop, scale, and overflow check. |
 | `renderToPngWithOutput` | Render PNG and return logical dimensions, physical pixel dimensions, and painted `contentBounds`. |
 | `CanvasOverflowError` | Typed clipping failure with canvas dimensions and per-edge overflow details. |
@@ -426,6 +431,36 @@ Set `x` and `y` on every node for normalized manual positioning when no groups a
 | `detectOverflow` | Fail frames that clip content at canvas edges. |
 
 Theme and chart helpers are public for custom primitives: `getReadableColor(name, c)` selects the highest-contrast semantic variant, `getReadableToneColor(tone, c, background?)` adapts tone text to a background, and `getReadableTextColor(background, c)` chooses a foreground meeting 4.5:1 contrast when possible. `createPlotArea(width, height, margin)` returns clamped chart geometry for custom axes and marks.
+
+### Programmatic checking
+
+Use `checkFrame` when a build, editor, or agent already has a React scene in memory. Pass `scene` for one fixed element or `create(theme)` for theme-specific elements:
+
+```tsx
+import { CalloutCard, Scene, checkFrame, getThemeColors } from "vizmatic"
+
+const report = await checkFrame({
+  source: "agent-pipeline",
+  width: 640,
+  height: 360,
+  create(theme) {
+    const c = getThemeColors(theme)
+    return (
+      <Scene c={c}>
+        <CalloutCard c={c} title="Ready" detail="Checked in-process" tone="green" />
+      </Scene>
+    )
+  },
+}, {
+  themes: ["dark", "light"],
+  background: "theme",
+  failOn: "warning",
+})
+
+if (!report.ok) throw new Error(`Visual check failed: ${report.summary.errors} errors`)
+```
+
+`failOn` accepts `"error"` (the default), `"warning"`, `"info"`, or `"never"`. `report.ok` means the diagnostics pass that policy; `report.rendered` means every requested theme completed rendering. Each theme report includes resolved and output dimensions, stable diagnostic codes, and severity counts. Diagnostics expose `elementId`, related IDs, and a `location` path or rendered bounds when available. Import `CHECK_DIAGNOSTIC_CODES`, `CheckDiagnostic`, `CheckFrameInput`, and `CheckFrameReport` for typed integrations. Use `vizmatic check ... --json` when the checker should discover and load frame files itself.
 
 ### Rendering
 

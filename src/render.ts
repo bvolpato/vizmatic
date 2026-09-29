@@ -23,6 +23,7 @@ import { wrapWithWatermark, type WatermarkInput } from './brand'
 import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
 import { withRenderContext, type RenderBackground } from './renderContext'
 import { satori, type Font, type SatoriNode } from './satori'
+import { addSvgAccessibility, prepareAccessibleSvg } from './svg-accessibility'
 
 export type { RenderBackground } from './renderContext'
 export type { SatoriNode } from './satori'
@@ -749,13 +750,18 @@ async function renderToSvgInContext(
         )
         : element
 
-    const svg = await satori(outputElement as React.ReactElement, {
+    const prepared = prepareAccessibleSvg(outputElement)
+    const layoutNodes: SatoriNode[] = []
+    const svg = await satori(prepared.element as React.ReactElement, {
         width,
         height,
         fonts,
         loadAdditionalAsset,
-        onNodeDetected: options.onNodeDetected,
+        onNodeDetected: (node) => {
+            layoutNodes.push(node)
+            options.onNodeDetected?.(node)
+        },
     })
 
-    return sanitizeSvg(svg)
+    return addSvgAccessibility(sanitizeSvg(svg), prepared.graphs, layoutNodes)
 }

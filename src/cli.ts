@@ -10,13 +10,14 @@ import { fileURLToPath, pathToFileURL } from 'url'
 import React, { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import * as publicApi from './index'
+import { checkFrame } from './check'
 import { renderAnimatedGifWithOutput, renderAnimationGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
-import { analyzeContrast, analyzeRenderedLayout, analyzeWhitespaceBalance, diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
+import { diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
 import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
 import type { SatoriNode } from './satori'
-import { getThemeColors, type ThemeMode, type ThemePreset } from './theme'
+import { type ThemeMode, type ThemePreset } from './theme'
 import type { DefinedAnimation } from './timeline'
 
 interface FrameModule {
@@ -84,7 +85,6 @@ const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 const IMPORT_RESOLUTION_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json']
 const DEFAULT_FRAME_WIDTH = 960
 const DEFAULT_FRAME_HEIGHT = 540
-const CONTRAST_TRUSTED_COMPONENTS = new Set(Object.values(publicApi))
 const AUTO_SIZE_MAX_WIDTH = 1920
 const AUTO_SIZE_MAX_HEIGHT = 1440
 const AUTO_SIZE_GROWTH = 1.25
@@ -1277,151 +1277,46 @@ async function checkCommandWithArgs(args: CheckArgs) {
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
 
-    const tempDir = await mkdtemp(join(tmpdir(), 'vizmatic-check-'))
     const reports: CheckFileReport[] = []
 
-    try {
-        for (const [fileIndex, file] of files.entries()) {
-            const source = relative(process.cwd(), file)
-            const imported = await captureConsole(() => importFrame(file))
-            const diagnostics = imported.messages.map((message) =>
-                diagnosticFromMessage(message.message, message.severity),
-            )
+    for (const file of files) {
+        const source = relative(process.cwd(), file)
+        const imported = await captureConsole(() => importFrame(file))
+        const diagnostics = imported.messages.map((message) =>
+            diagnosticFromMessage(message.message, message.severity),
+        )
 
-            if (!imported.value) {
-                diagnostics.push({
-                    code: 'frame.load_error',
-                    severity: 'error',
-                    message: imported.error instanceof Error ? imported.error.message : String(imported.error),
-                })
-                reports.push({ source, ok: false, diagnostics, themes: [] })
-                continue
-            }
-
-            const mod = normalizeFrameModule(imported.value)
-            const themes: CheckThemeReport[] = []
-
-            for (const [themeIndex, theme] of args.themes.entries()) {
-                const input = { width: mod.width, height: mod.height }
-                const themeDiagnostics: CheckDiagnostic[] = []
-                const prepared = await captureConsole(async () => {
-                    const element = frameElement(mod, theme)
-                    const rootBackground = args.background === 'theme'
-                        ? getThemeColors(theme).bg
-                        : args.background === 'transparent'
-                            ? undefined
-                            : args.background
-                    return analyzeContrast(element, theme, CONTRAST_TRUSTED_COMPONENTS, rootBackground)
-                })
-                themeDiagnostics.push(...prepared.messages.map((message) =>
-                    diagnosticFromMessage(message.message, message.severity, theme),
-                ))
-
-                if (!prepared.value) {
-                    themeDiagnostics.push(diagnosticFromMessage(
-                        prepared.error instanceof Error ? prepared.error.message : String(prepared.error),
-                        'error',
-                        theme,
-                    ))
-                    themes.push({ theme, ok: false, dimensions: { input }, diagnostics: themeDiagnostics })
-                    continue
-                }
-                themeDiagnostics.push(...prepared.value)
-
-                const outputPath = join(tempDir, `${fileIndex}-${themeIndex}.png`)
-                const rendered = await captureConsole(() => renderFrameToPng(mod, theme, {
-                    ...input,
-                    outputPath,
-                    crop: true,
-                    scale: 1,
-                    background: args.background,
-                    inspectLayout: true,
-                }))
-                themeDiagnostics.push(...rendered.messages.map((message) =>
-                    diagnosticFromMessage(message.message, message.severity, theme),
-                ))
-
-                if (rendered.value) {
-                    themeDiagnostics.push(...analyzeRenderedLayout(rendered.value.layoutNodes, theme))
-                    if (rendered.value.contentBounds) {
-                        themeDiagnostics.push(...analyzeWhitespaceBalance(
-                            rendered.value.contentBounds,
-                            rendered.value.logicalOutputWidth,
-                            rendered.value.logicalOutputHeight,
-                            theme,
-                        ))
-                    }
-                    if (rendered.value.width !== input.width || rendered.value.height !== input.height) {
-                        themeDiagnostics.push({
-                            code: 'layout.auto_size',
-                            severity: 'info',
-                            theme,
-                            message: `Canvas auto-sized from ${input.width}×${input.height} to ${rendered.value.width}×${rendered.value.height}.`,
-                            suggestedDimensions: {
-                                width: rendered.value.width,
-                                height: rendered.value.height,
-                            },
-                        })
-                    }
-                    themes.push({
-                        theme,
-                        ok: !themeDiagnostics.some((diagnostic) => diagnostic.severity === 'error'),
-                        dimensions: {
-                            input,
-                            resolved: { width: rendered.value.width, height: rendered.value.height },
-                            output: { width: rendered.value.outputWidth, height: rendered.value.outputHeight },
-                        },
-                        diagnostics: themeDiagnostics,
-                    })
-                    continue
-                }
-
-                const edges = overflowEdges(rendered.error)
-                if (edges) {
-                    const suggestionMod = { ...mod, autoSize: { width: true, height: true } }
-                    const suggestion = await captureConsole(() => renderFrameToPng(suggestionMod, theme, {
-                        ...input,
-                        outputPath: join(tempDir, `${fileIndex}-${themeIndex}-suggestion.png`),
-                        crop: true,
-                        scale: 1,
-                        background: args.background,
-                    }))
-                    const suggestedDimensions = suggestion.value
-                        ? { width: suggestion.value.width, height: suggestion.value.height }
-                        : undefined
-                    themeDiagnostics.push({
-                        code: 'layout.overflow',
-                        severity: 'error',
-                        theme,
-                        edges,
-                        message: rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
-                        suggestion: suggestedDimensions
-                            ? `Increase the canvas to at least ${suggestedDimensions.width}×${suggestedDimensions.height}, or remove fixed dimensions to enable auto-sizing.`
-                            : 'Increase the canvas dimensions or remove fixed dimensions to enable auto-sizing.',
-                        suggestedDimensions,
-                    })
-                } else {
-                    themeDiagnostics.push(diagnosticFromMessage(
-                        rendered.error instanceof Error ? rendered.error.message : String(rendered.error),
-                        'error',
-                        theme,
-                    ))
-                }
-
-                themes.push({
-                    theme,
-                    ok: false,
-                    dimensions: { input },
-                    diagnostics: themeDiagnostics,
-                })
-            }
-
-            const ok = !diagnostics.some((diagnostic) => diagnostic.severity === 'error')
-                && themes.every((theme) => theme.ok)
-            reports.push({ source, ok, autoSize: mod.autoSize, diagnostics, themes })
+        if (!imported.value) {
+            diagnostics.push({
+                code: 'frame.load_error',
+                severity: 'error',
+                message: imported.error instanceof Error ? imported.error.message : String(imported.error),
+            })
+            reports.push({ source, ok: false, diagnostics, themes: [] })
+            continue
         }
-    } finally {
-        await rm(tempDir, { recursive: true, force: true })
+
+        const mod = normalizeFrameModule(imported.value)
+        const checked = await checkFrame({
+            source,
+            width: mod.width,
+            height: mod.height,
+            autoSize: mod.autoSize,
+            create: (theme) => frameElement(mod, theme),
+        }, {
+            themes: args.themes,
+            background: args.background,
+            failOn: 'error',
+        })
+        const ok = !diagnostics.some((diagnostic) => diagnostic.severity === 'error')
+            && checked.themes.every((theme) => theme.ok)
+        reports.push({
+            source,
+            ok,
+            autoSize: mod.autoSize,
+            diagnostics,
+            themes: checked.themes,
+        })
     }
 
     const summary = checkDiagnosticCounts(reports)

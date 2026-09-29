@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-29T03:21:23.086Z",
+  "revision": {
+    "commit": "9033ce9ab574",
+    "workingTree": "modified"
+  },
+  "environment": {
+    "node": "v22.22.2",
+    "platform": "linux",
+    "release": "6.17.0-1025-oem",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 9 9950X3D 16-Core Processor",
+    "cpuCount": 32,
+    "totalMemoryBytes": 130150158336
+  },
+  "methodology": {
+    "measuredRunsPerExampleTheme": 3,
+    "warmupRunsPerExampleTheme": 1,
+    "timing": "performance.now() around create(theme) and renderToPngWithOutput, including PNG encoding and file writing; excludes Node startup and module imports; one worker process per example/theme.",
+    "peakRss": "process.resourceUsage().maxRSS captured after the warmup and measured renders; includes Node startup, imports, warmup, and measured renders; normalized to bytes.",
+    "scale": 1,
+    "renderExamples": [
+      "examples/catalog-charts.tsx",
+      "examples/catalog-diagrams.tsx",
+      "examples/catalog-ml.tsx",
+      "examples/catalog-dataflow.tsx"
+    ]
+  },
+  "qualityCheck": {
+    "command": "vizmatic check examples --theme dark,light --json",
+    "examples": {
+      "checked": 37,
+      "available": 37
+    },
+    "themesChecked": 74,
+    "diagnostics": {
+      "errors": 0,
+      "warnings": 0,
+      "info": 0
+    },
+    "findings": []
+  },
+  "renders": [
+    {
+      "example": "catalog-charts",
+      "source": "examples/catalog-charts.tsx",
+      "theme": "dark",
+      "runs": [
+        {
+          "renderMs": 1019.29,
+          "pngBytes": 161582,
+          "pixelWidth": 1120,
+          "pixelHeight": 1360
+        },
+        {
+          "renderMs": 1000.28,
+          "pngBytes": 161582,
+          "pixelWidth": 1120,
+          "pixelHeight": 1360
+        },
+        {
+          "renderMs": 1009.23,
+          "pngBytes": 161582,
+          "pixelWidth": 1120,
+          "pixelHeight": 1360
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 1009.23,
+        "p95RenderMs": 1019.29,
+        "peakRssBytes": 425046016,
+        "pngBytes": 161582,
+        "pixelWidth": 1120,
+        "pixelHeight": 1360
+      }
+    },
+    {
+      "example": "catalog-charts",
+      "source": "examples/catalog-charts.tsx",
+      "theme": "light",
+      "runs": [
+        {
+          "renderMs": 1010.87,
+          "pngBytes": 173225,
+          "pixelWidth": 1120,
+          "pixelHeight": 1360
+        },
+        {
+          "renderMs": 1021,
+          "pngBytes": 173225,
+          "pixelWidth": 1120,
+          "pixelHeight": 1360
+        },
+        {
+          "renderMs": 995.76,
+          "pngBytes": 173225,
+          "pixelWidth": 1120,
+          "pixelHeight": 1360
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 1010.87,
+        "p95RenderMs": 1021,
+        "peakRssBytes": 429301760,
+        "pngBytes": 173225,
+        "pixelWidth": 1120,
+        "pixelHeight": 1360
+      }
+    },
+    {
+      "example": "catalog-diagrams",
+      "source": "examples/catalog-diagrams.tsx",
+      "theme": "dark",
+      "runs": [
+        {
+          "renderMs": 715.35,
+          "pngBytes": 135859,
+          "pixelWidth": 1120,
+          "pixelHeight": 780
+        },
+        {
+          "renderMs": 703.46,
+          "pngBytes": 135859,
+          "pixelWidth": 1120,
+          "pixelHeight": 780
+        },
+        {
+          "renderMs": 706.04,
+          "pngBytes": 135859,
+          "pixelWidth": 1120,
+          "pixelHeight": 780
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 706.04,
+        "p95RenderMs": 715.35,
+        "peakRssBytes": 295968768,
+        "pngBytes": 135859,
+        "pixelWidth": 1120,
+        "pixelHeight": 780
+      }
+    },
+    {
+      "example": "catalog-diagrams",
+      "source": "examples/catalog-diagrams.tsx",
+      "theme": "light",
+      "runs": [
+        {
+          "renderMs": 697.69,
+          "pngBytes": 142585,
+          "pixelWidth": 1120,
+          "pixelHeight": 780
+        },
+        {
+          "renderMs": 696.82,
+          "pngBytes": 142585,
+          "pixelWidth": 1120,
+          "pixelHeight": 780
+        },
+        {
+          "renderMs": 709.74,
+          "pngBytes": 142585,
+          "pixelWidth": 1120,
+          "pixelHeight": 780
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 697.69,
+        "p95RenderMs": 709.74,
+        "peakRssBytes": 288694272,
+        "pngBytes": 142585,
+        "pixelWidth": 1120,
+        "pixelHeight": 780
+      }
+    },
+    {
+      "example": "catalog-ml",
+      "source": "examples/catalog-ml.tsx",
+      "theme": "dark",
+      "runs": [
+        {
+          "renderMs": 622.18,
+          "pngBytes": 86627,
+          "pixelWidth": 1750,
+          "pixelHeight": 700
+        },
+        {
+          "renderMs": 630.62,
+          "pngBytes": 86627,
+          "pixelWidth": 1750,
+          "pixelHeight": 700
+        },
+        {
+          "renderMs": 633.96,
+          "pngBytes": 86627,
+          "pixelWidth": 1750,
+          "pixelHeight": 700
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 630.62,
+        "p95RenderMs": 633.96,
+        "peakRssBytes": 315105280,
+        "pngBytes": 86627,
+        "pixelWidth": 1750,
+        "pixelHeight": 700
+      }
+    },
+    {
+      "example": "catalog-ml",
+      "source": "examples/catalog-ml.tsx",
+      "theme": "light",
+      "runs": [
+        {
+          "renderMs": 633.66,
+          "pngBytes": 91133,
+          "pixelWidth": 1750,
+          "pixelHeight": 700
+        },
+        {
+          "renderMs": 623.19,
+          "pngBytes": 91133,
+          "pixelWidth": 1750,
+          "pixelHeight": 700
+        },
+        {
+          "renderMs": 628.35,
+          "pngBytes": 91133,
+          "pixelWidth": 1750,
+          "pixelHeight": 700
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 628.35,
+        "p95RenderMs": 633.66,
+        "peakRssBytes": 317644800,
+        "pngBytes": 91133,
+        "pixelWidth": 1750,
+        "pixelHeight": 700
+      }
+    },
+    {
+      "example": "catalog-dataflow",
+      "source": "examples/catalog-dataflow.tsx",
+      "theme": "dark",
+      "runs": [
+        {
+          "renderMs": 631.03,
+          "pngBytes": 85850,
+          "pixelWidth": 1400,
+          "pixelHeight": 830
+        },
+        {
+          "renderMs": 631.71,
+          "pngBytes": 85850,
+          "pixelWidth": 1400,
+          "pixelHeight": 830
+        },
+        {
+          "renderMs": 637.45,
+          "pngBytes": 85850,
+          "pixelWidth": 1400,
+          "pixelHeight": 830
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 631.71,
+        "p95RenderMs": 637.45,
+        "peakRssBytes": 312401920,
+        "pngBytes": 85850,
+        "pixelWidth": 1400,
+        "pixelHeight": 830
+      }
+    },
+    {
+      "example": "catalog-dataflow",
+      "source": "examples/catalog-dataflow.tsx",
+      "theme": "light",
+      "runs": [
+        {
+          "renderMs": 600.77,
+          "pngBytes": 90712,
+          "pixelWidth": 1400,
+          "pixelHeight": 830
+        },
+        {
+          "renderMs": 629.68,
+          "pngBytes": 90712,
+          "pixelWidth": 1400,
+          "pixelHeight": 830
+        },
+        {
+          "renderMs": 633.41,
+          "pngBytes": 90712,
+          "pixelWidth": 1400,
+          "pixelHeight": 830
+        }
+      ],
+      "summary": {
+        "medianRenderMs": 629.68,
+        "p95RenderMs": 633.41,
+        "peakRssBytes": 312086528,
+        "pngBytes": 90712,
+        "pixelWidth": 1400,
+        "pixelHeight": 830
+      }
+    }
+  ]
+}

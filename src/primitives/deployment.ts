@@ -10,6 +10,7 @@ import {
 } from './diagrams'
 import type { ThemeColors, ToneName } from '../theme'
 import type { IconName } from './layout'
+import { SVG_ACCESSIBILITY_COMPONENT } from '../svg-accessibility'
 
 /** Deployment boundary kinds understood by {@link DeploymentDiagram}. */
 export type DeploymentBoundaryKind =
@@ -423,6 +424,8 @@ function compileDeployment(spec: DeploymentSpec): CompiledDeployment {
             id: node.id,
             label: node.label,
             detail: node.detail ?? generatedDetail,
+            href: node.href,
+            title: node.title,
             x: node.x,
             y: node.y,
             tone: node.tone,
@@ -446,6 +449,7 @@ function compileDeployment(spec: DeploymentSpec): CompiledDeployment {
         const fallbackFromPort = fromReference != null && !sourceNode?.ports?.length ? fromReference : undefined
         const fallbackToPort = toReference != null && !targetNode?.ports?.length ? toReference : undefined
         return {
+            id: connection.id,
             from: connection.from,
             to: connection.to,
             tone: connection.tone ?? connectionTones[kind],
@@ -454,6 +458,8 @@ function compileDeployment(spec: DeploymentSpec): CompiledDeployment {
             style: connection.style ?? graphConnectionStyle(kind),
             arrow: connection.arrow ?? 'forward',
             label: connectionLabel(connection, sourcePort ?? fallbackFromPort, targetPort ?? fallbackToPort),
+            href: connection.href,
+            title: connection.title,
         }
     })
 
@@ -489,3 +495,5 @@ export function DeploymentDiagram({
         ariaLabel: compiled.ariaLabel,
     })
 }
+
+Object.defineProperty(DeploymentDiagram, SVG_ACCESSIBILITY_COMPONENT, { value: true })

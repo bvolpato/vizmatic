@@ -9,6 +9,9 @@ const componentsTemplatePath = 'docs/components.template.html'
 const componentsOutPath = 'docs/components.html'
 const playgroundTemplatePath = 'docs/playground.template.html'
 const playgroundOutPath = 'docs/playground.html'
+const benchmarksTemplatePath = 'docs/benchmarks.template.html'
+const benchmarksOutPath = 'docs/benchmarks.html'
+const benchmarkResultsPath = 'docs/assets/benchmarks/results.json'
 const promptPath = 'PROMPT.md'
 const docsPromptPath = 'docs/PROMPT.md'
 
@@ -111,6 +114,113 @@ function renderCatalogFilters(): string {
     ].join('\n')
 }
 
+interface BenchmarkResults {
+    generatedAt: string
+    revision: { commit: string; workingTree: 'clean' | 'modified' }
+    environment: {
+        node: string
+        platform: string
+        release: string
+        arch: string
+        cpuModel: string
+        cpuCount: number
+        totalMemoryBytes: number
+    }
+    methodology: {
+        measuredRunsPerExampleTheme: number
+        warmupRunsPerExampleTheme: number
+        timing: string
+        peakRss: string
+        scale: number
+        renderExamples: string[]
+    }
+    qualityCheck: {
+        examples: { checked: number; available: number }
+        themesChecked: number
+        diagnostics: { errors: number; warnings: number; info: number }
+        findings: Array<{
+            source: string
+            theme?: string
+            severity: 'error' | 'warning' | 'info'
+            code: string
+            message: string
+        }>
+    }
+    renders: Array<{
+        example: string
+        source: string
+        theme: string
+        runs: Array<{
+            renderMs: number
+            peakRssBytes: number
+            pngBytes: number
+            pixelWidth: number
+            pixelHeight: number
+        }>
+        summary: {
+            medianRenderMs: number
+            p95RenderMs: number
+            peakRssBytes: number
+            pngBytes: number
+            pixelWidth: number
+            pixelHeight: number
+        }
+    }>
+}
+
+function renderBenchmarkEnvironment(results: BenchmarkResults): string {
+    const environment = results.environment
+    const memoryGiB = (environment.totalMemoryBytes / (1024 ** 3)).toFixed(1)
+    const rows = [
+        ['Runtime', `Node.js ${environment.node}`],
+        ['Machine', `${environment.cpuModel} · ${environment.cpuCount} logical CPUs · ${memoryGiB} GiB RAM`],
+        ['OS', `${environment.platform} ${environment.release} · ${environment.arch}`],
+        ['Source', `${results.revision.commit} · working tree ${results.revision.workingTree}`],
+    ]
+
+    return rows.map(([label, value]) => `<div><dt>${encodeHtml(label)}</dt><dd>${encodeHtml(value)}</dd></div>`).join('\n')
+}
+
+function renderBenchmarkRows(results: BenchmarkResults): string {
+    return results.renders.map((render) => [
+        '<tr>',
+        `<th scope="row">${encodeHtml(render.example)}</th>`,
+        `<td>${encodeHtml(render.theme)}</td>`,
+        `<td>${render.summary.medianRenderMs.toFixed(1)} ms</td>`,
+        `<td>${render.summary.p95RenderMs.toFixed(1)} ms</td>`,
+        `<td>${(render.summary.peakRssBytes / (1024 ** 2)).toFixed(1)} MiB</td>`,
+        `<td>${render.summary.pixelWidth} × ${render.summary.pixelHeight}</td>`,
+        `<td>${(render.summary.pngBytes / 1024).toFixed(1)} KiB</td>`,
+        '</tr>',
+    ].join('')).join('\n')
+}
+
+function renderBenchmarkFindings(results: BenchmarkResults): string {
+    const findings = results.qualityCheck.findings.filter((finding) => finding.severity !== 'info')
+    if (findings.length === 0) {
+        return `<p class="benchmark-clean">No check errors or warnings across ${results.qualityCheck.examples.checked} examples and ${results.qualityCheck.themesChecked} theme renders.</p>`
+    }
+
+    return [
+        '<div class="benchmark-table-wrap"><table class="benchmark-table">',
+        '<thead><tr><th scope="col">Severity</th><th scope="col">Example</th><th scope="col">Theme</th><th scope="col">Code</th><th scope="col">Finding</th></tr></thead>',
+        '<tbody>',
+        ...findings.map((finding) => `<tr><td>${encodeHtml(finding.severity)}</td><td>${encodeHtml(finding.source)}</td><td>${encodeHtml(finding.theme ?? 'all')}</td><td><code>${encodeHtml(finding.code)}</code></td><td>${encodeHtml(finding.message)}</td></tr>`),
+        '</tbody></table></div>',
+    ].join('\n')
+}
+
+function renderBenchmarkSummary(results: BenchmarkResults): string {
+    const { errors, warnings, info } = results.qualityCheck.diagnostics
+    return [
+        `<span><strong>${results.qualityCheck.examples.checked}/${results.qualityCheck.examples.available}</strong> examples checked</span>`,
+        `<span><strong>${results.qualityCheck.themesChecked}</strong> dark/light render checks</span>`,
+        `<span><strong>${errors}</strong> errors</span>`,
+        `<span><strong>${warnings}</strong> warnings</span>`,
+        `<span><strong>${info}</strong> informational notes</span>`,
+    ].join('\n')
+}
+
 async function highlightCodeBlock(_match: string, beforeDataAttr: string, lang: string, afterDataAttr: string, codeAttrs: string, encodedCode: string): Promise<string> {
     const rawPreAttrs = `${beforeDataAttr}${afterDataAttr}`
     const originalClass = getAttribute(rawPreAttrs, 'class')
@@ -144,6 +254,8 @@ async function replaceAsync(input: string, pattern: RegExp): Promise<string> {
 await buildPlayground()
 
 const prompt = await readFile(promptPath, 'utf8')
+const benchmarkTemplate = await readFile(benchmarksTemplatePath, 'utf8')
+const benchmarkResults = JSON.parse(await readFile(benchmarkResultsPath, 'utf8')) as BenchmarkResults
 const catalogReplacements = (template: string) => template
     .replaceAll('{{COMPONENT_COUNT}}', String(catalogComponentCount))
     .replace('{{COMPONENT_FILTERS}}', renderCatalogFilters)
@@ -166,11 +278,22 @@ const playgroundOutput = playgroundTemplate.replace(
     '<!DOCTYPE html>\n',
     `<!DOCTYPE html>\n${generatedNotice(playgroundTemplatePath)}\n`,
 )
+const benchmarksOutput = benchmarkTemplate
+    .replaceAll('{{GENERATED_AT}}', () => encodeHtml(benchmarkResults.generatedAt))
+    .replace('{{ENVIRONMENT}}', () => renderBenchmarkEnvironment(benchmarkResults))
+    .replace('{{QUALITY_SUMMARY}}', () => renderBenchmarkSummary(benchmarkResults))
+    .replace('{{QUALITY_FINDINGS}}', () => renderBenchmarkFindings(benchmarkResults))
+    .replace('{{BENCHMARK_ROWS}}', () => renderBenchmarkRows(benchmarkResults))
+    .replace(
+        '<!DOCTYPE html>\n',
+        `<!DOCTYPE html>\n${generatedNotice(benchmarksTemplatePath)}\n`,
+    )
 
 await Promise.all([
     writeFile(outPath, output),
     writeFile(componentsOutPath, componentsOutput),
     writeFile(playgroundOutPath, playgroundOutput),
+    writeFile(benchmarksOutPath, benchmarksOutput),
     writeFile(docsPromptPath, prompt),
 ])
-console.log(`built ${outPath}, ${componentsOutPath}, ${playgroundOutPath}, and ${docsPromptPath}`)
+console.log(`built ${outPath}, ${componentsOutPath}, ${playgroundOutPath}, ${benchmarksOutPath}, and ${docsPromptPath}`)

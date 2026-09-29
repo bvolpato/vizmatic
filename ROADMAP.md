@@ -14,7 +14,10 @@ Benchmarks: [Diagrams](https://diagrams.mingrammer.com/), [D2](https://d2lang.co
 - Solid, dashed, and dotted connectors with forward, backward, bidirectional, or no arrows.
 - Manual positioning for ungrouped editorial diagrams.
 - Connector diagnostics for crossings, label collisions, crowded endpoints, and parallel routes.
+- Typed in-process visual checks with stable diagnostic codes, element locations where available, and configurable failure policy.
 - Dark, light, and Engineering visual presets with PNG, SVG, and GIF output.
+- Accessible SVG titles, descriptions, stable element IDs, and optional links for graph diagrams and their typed graph views.
+- Conservative Mermaid flowchart and D2 text import with explicit diagnostics for unsupported or lossy syntax.
 - Typed state timelines with holds, eased tweens, keyframes, parallel tracks, deterministic sampling, and streamed GIF encoding.
 - Sequence diagrams with participants, lifelines, activations, sync/async/return messages, notes, and `alt`, `loop`, or `parallel` fragments.
 - Typed batch/stream dataflow and lineage views with schema metadata.
@@ -58,8 +61,8 @@ Specialized APIs remain declarative and reusable. Examples contain complete scen
 - Orthogonal, curved, and user-routed connectors with parallel-edge separation.
 - Layout adapter interface with Dagre as default and ELK as optional backend.
 - Per-boundary direction, collapsed groups, named scenarios, and reusable animation compositions.
-- Tooltips, links, and accessible structured descriptions in SVG.
-- Import/export adapters for Mermaid, D2, Structurizr, Kubernetes, and Terraform where semantics map safely.
+- Extend structured SVG accessibility beyond graph diagrams to charts and other visual primitives.
+- Expand Mermaid and D2 interoperability, and add Structurizr, Kubernetes, and Terraform adapters where semantics map safely.
 
 ## Design constraints
 

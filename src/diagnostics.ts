@@ -6,11 +6,44 @@ import type { CropRegion } from './autocrop'
 
 export type DiagnosticSeverity = 'error' | 'warning' | 'info'
 
+/** Stable identifiers emitted by the visual checker. Add codes without changing existing meanings. */
+export const CHECK_DIAGNOSTIC_CODES = [
+    'accessibility.low_contrast',
+    'api.unsupported_prop',
+    'asset.warning',
+    'frame.load_error',
+    'frame.unknown_preset',
+    'layout.auto_size',
+    'layout.connector_congestion',
+    'layout.overflow',
+    'layout.text_overlap',
+    'layout.whitespace_imbalance',
+    'readability.small_text',
+    'render.error',
+    'render.warning',
+    'style.unsupported',
+] as const
+
+export type CheckDiagnosticCode = typeof CHECK_DIAGNOSTIC_CODES[number]
+
+export interface CheckDiagnosticLocation {
+    /** React element path for diagnostics collected before layout. */
+    path?: string
+    /** Rendered logical-pixel bounds when layout data is available. */
+    x?: number
+    y?: number
+    width?: number
+    height?: number
+}
+
 export interface CheckDiagnostic {
-    code: 'accessibility.low_contrast' | 'api.unsupported_prop' | 'asset.warning' | 'frame.load_error' | 'frame.unknown_preset' | 'layout.auto_size' | 'layout.connector_congestion' | 'layout.overflow' | 'layout.text_overlap' | 'layout.whitespace_imbalance' | 'readability.small_text' | 'render.error' | 'render.warning' | 'style.unsupported'
+    code: CheckDiagnosticCode
     severity: DiagnosticSeverity
     message: string
     theme?: ThemeMode
+    elementId?: string
+    relatedElementIds?: string[]
+    location?: CheckDiagnosticLocation
     edges?: Array<'top' | 'right' | 'bottom' | 'left'>
     suggestion?: string
     suggestedDimensions?: {
@@ -145,6 +178,11 @@ function hasDirectText(children: ReactNode): boolean {
     return Children.toArray(children).some((child) => typeof child === 'string' || typeof child === 'number')
 }
 
+function elementId(props: Record<string, unknown>): string | undefined {
+    const value = props.id ?? props['data-vizmatic-id']
+    return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+}
+
 function resolveFunctionComponent(node: ReactNode, trustedComponents: ReadonlySet<unknown>): ReactNode | undefined {
     if (!isValidElement(node) || typeof node.type !== 'function' || trustedComponents.has(node.type)) return undefined
     const component = node.type as ((props: unknown) => ReactNode) & {
@@ -232,6 +270,8 @@ export function analyzeContrast(
                         theme,
                         message: `Text contrast is ${rounded}:1 at ${path}; ${required}:1 is recommended.`,
                         suggestion: 'Use a stronger text or background color token.',
+                        elementId: elementId(props),
+                        location: { path },
                     })
                 }
             }
@@ -246,6 +286,7 @@ export function analyzeContrast(
 
 interface TextLayoutNode {
     text: string
+    elementId?: string
     left: number
     top: number
     width: number
@@ -307,6 +348,7 @@ function renderedTextNodes(nodes: SatoriNode[]): TextLayoutNode[] {
 
             textNodes.push({
                 text,
+                elementId: elementId(node.props),
                 left: node.left,
                 top: node.top,
                 width: node.width,
@@ -396,6 +438,8 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             theme,
             message: `Text "${excerpt}" renders at ${node.fontSize}px.`,
             suggestion: `Use at least ${MIN_TEXT_SIZE}px for details that must remain readable when embedded.`,
+            elementId: node.elementId,
+            location: { x: node.left, y: node.top, width: node.width, height: node.height },
         })
         smallTextCount += 1
         if (smallTextCount >= MAX_DIAGNOSTICS_PER_RULE) break
@@ -408,6 +452,9 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             theme,
             message: `Text "${textExcerpt(left.text)}" overlaps "${textExcerpt(right.text)}".`,
             suggestion: 'Increase spacing or canvas size, shorten labels, or move one label.',
+            elementId: left.elementId,
+            relatedElementIds: right.elementId ? [right.elementId] : undefined,
+            location: { x: left.left, y: left.top, width: left.width, height: left.height },
         })
     }
 
@@ -417,42 +464,54 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
     }))
     const connectorCrossings = maxDataNumber('data-vizmatic-connector-crossings')
     if (connectorCrossings > 0) {
+        const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-crossings']) > 0)
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${connectorCrossings} connector crossing${connectorCrossings === 1 ? '' : 's'} detected.`,
             suggestion: 'Use automatic layout, change graph direction, or simplify the edge set.',
+            elementId: source ? elementId(source.props) : undefined,
+            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
         })
     }
     const labelCollisions = maxDataNumber('data-vizmatic-connector-label-collisions')
     if (labelCollisions > 0) {
+        const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-label-collisions']) > 0)
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${labelCollisions} connector label collision${labelCollisions === 1 ? '' : 's'} detected.`,
             suggestion: 'Change graph direction or spacing, shorten edge labels, or remove nonessential labels.',
+            elementId: source ? elementId(source.props) : undefined,
+            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
         })
     }
     const crowdedEndpoints = maxDataNumber('data-vizmatic-crowded-connector-endpoints')
     if (crowdedEndpoints > 0) {
+        const source = nodes.find((node) => Number(node.props['data-vizmatic-crowded-connector-endpoints']) > 0)
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${crowdedEndpoints} node${crowdedEndpoints === 1 ? '' : 's'} connect more than four edges.`,
             suggestion: 'Group related branches, add an intermediate hub, or change graph direction.',
+            elementId: source ? elementId(source.props) : undefined,
+            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
         })
     }
     const parallelGroups = maxDataNumber('data-vizmatic-parallel-connector-groups')
     if (parallelGroups > 0) {
+        const source = nodes.find((node) => Number(node.props['data-vizmatic-parallel-connector-groups']) > 0)
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
             message: `${parallelGroups} connector route${parallelGroups === 1 ? '' : 's'} contain parallel edges.`,
             suggestion: 'Merge duplicate relationships, label one combined edge, or separate the routes.',
+            elementId: source ? elementId(source.props) : undefined,
+            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
         })
     }
 
@@ -482,6 +541,8 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             theme,
             message: `Panel has ${Math.round(difference)}px more whitespace ${largerSide} its content than ${smallerSide} it.`,
             suggestion: 'Reduce the panel height, distribute its contents, or avoid stretching it beside taller content.',
+            elementId: elementId(container.props),
+            location: { x: container.left, y: container.top, width: container.width, height: container.height },
         })
         whitespaceCount += 1
         if (whitespaceCount >= MAX_DIAGNOSTICS_PER_RULE) break
@@ -513,6 +574,7 @@ export function analyzeWhitespaceBalance(
             theme,
             message: `Horizontal gutters differ by ${Math.round(horizontalDifference)}px (${Math.round(gutters.left)}px left, ${Math.round(gutters.right)}px right).`,
             suggestion: 'Recenter the composition, crop the canvas, or use the open space intentionally.',
+            location: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
         })
     }
     if (verticalDifference > 48 && verticalDifference / height > 0.12) {
@@ -522,6 +584,7 @@ export function analyzeWhitespaceBalance(
             theme,
             message: `Vertical gutters differ by ${Math.round(verticalDifference)}px (${Math.round(gutters.top)}px top, ${Math.round(gutters.bottom)}px bottom).`,
             suggestion: 'Recenter the composition, crop the canvas, or use the open space intentionally.',
+            location: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
         })
     }
 

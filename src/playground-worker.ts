@@ -1,6 +1,6 @@
 import React from 'react'
 import { Resvg, initWasm } from '@resvg/resvg-wasm'
-import satori, { init as initSatori } from 'satori/standalone'
+import satori, { init as initSatori, type SatoriNode } from 'satori/standalone'
 import { Watermark, wrapWithWatermark } from './brand'
 import { transform } from 'sucrase'
 import * as primitives from './primitives'
@@ -15,6 +15,7 @@ import {
 } from './playground-render-context'
 import { createRetryableInitializer } from './retryable-initializer'
 import { initializeHarfbuzzRuntime } from './playground-harfbuzz'
+import { addSvgAccessibility, prepareAccessibleSvg, SVG_ACCESSIBILITY_COMPONENT } from './svg-accessibility'
 import interRegular from '../assets/fonts/Inter-Regular.ttf'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.ttf'
 import interBold from '../assets/fonts/Inter-Bold.ttf'
@@ -193,9 +194,13 @@ type PlaygroundApi = Record<string, unknown>
 function withTheme(Component: unknown, c: ReturnType<typeof themeApi.getThemeColors>): unknown {
     if (typeof Component !== 'function') return Component
 
-    return function VizmaticPlaygroundTheme(props: Record<string, unknown> | null) {
+    const themedComponent = function VizmaticPlaygroundTheme(props: Record<string, unknown> | null) {
         return React.createElement(Component as React.ComponentType<Record<string, unknown>>, props?.c ? props : { ...props, c })
     }
+    if ((Component as { [SVG_ACCESSIBILITY_COMPONENT]?: boolean })[SVG_ACCESSIBILITY_COMPONENT]) {
+        Object.defineProperty(themedComponent, SVG_ACCESSIBILITY_COMPONENT, { value: true })
+    }
+    return themedComponent
 }
 
 function withThemeCall(Component: unknown, c: ReturnType<typeof themeApi.getThemeColors>): unknown {
@@ -242,11 +247,15 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
     const element = createElement(React, c, ...Object.values(api))
 
     setPlaygroundRenderBackground(request.background ?? 'transparent')
-    const svg = await satori(element as React.ReactElement, {
+    const preparedSvg = prepareAccessibleSvg(element)
+    const layoutNodes: SatoriNode[] = []
+    const renderedSvg = await satori(preparedSvg.element as React.ReactElement, {
         width: prepared.metadata.width,
         height: prepared.metadata.height,
         fonts,
+        onNodeDetected: (node) => layoutNodes.push(node),
     })
+    const svg = addSvgAccessibility(renderedSvg, preparedSvg.graphs, layoutNodes)
     const resvg = new Resvg(svg, { font: { loadSystemFonts: false } })
     try {
         const png = resvg.render().asPng().slice()

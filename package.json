@@ -71,6 +71,7 @@
     "typecheck": "tsc --noEmit",
     "test": "pnpm build && vitest run",
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
+    "benchmark:quality": "pnpm build && tsx scripts/benchmark-quality.ts && pnpm site:build",
     "check:examples": "tsx scripts/check-examples.ts",
     "playground:build": "tsx scripts/build-playground.ts",
     "site:build": "tsx scripts/build-site.ts",

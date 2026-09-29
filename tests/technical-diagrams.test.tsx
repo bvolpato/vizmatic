@@ -263,6 +263,63 @@ describe('technical diagram primitives', () => {
         expect(text).toContain('updates')
     })
 
+    it('preserves SVG accessibility metadata and links through dataflow and deployment wrappers', async () => {
+        const c = getThemeColors('light')
+        const dataflow = DataflowDiagram({
+            c,
+            id: 'events',
+            title: 'Event delivery',
+            description: 'Events move from a broker to storage.',
+            nodes: [
+                { id: 'broker', label: 'Broker', kind: 'source', href: '/docs/broker', title: 'Broker reference' },
+                { id: 'store', label: 'Store', kind: 'store' },
+            ],
+            edges: [{ id: 'writes', from: 'broker', to: 'store', label: 'writes', href: '/docs/storage' }],
+        })
+        const dataflowSvg = await renderToSvg(dataflow, 640, 420)
+        expect(dataflowSvg).toContain('<title id="vizmatic-svg-title">Event delivery</title>')
+        expect(dataflowSvg).toContain('id="vizmatic-graph-id-events-node-broker"')
+        expect(dataflowSvg).toContain('href="/docs/broker"')
+        expect(dataflowSvg).toContain('id="vizmatic-graph-id-events-edge-custom-writes"')
+        expect(dataflowSvg).toContain('href="/docs/storage"')
+
+        const deployment = DeploymentDiagram({
+            c,
+            id: 'prod',
+            title: 'Production links',
+            description: 'The client calls the public API.',
+            nodes: [
+                { id: 'client', label: 'Client', kind: 'client' },
+                { id: 'api', label: 'API', kind: 'service', href: '/docs/api' },
+            ],
+            connections: [{ id: 'https', from: 'client', to: 'api', kind: 'ingress', href: '/docs/https' }],
+        })
+        const deploymentSvg = await renderToSvg(deployment, 640, 420)
+        expect(deploymentSvg).toContain('<title id="vizmatic-svg-title">Production links</title>')
+        expect(deploymentSvg).toContain('id="vizmatic-graph-id-prod-node-api"')
+        expect(deploymentSvg).toContain('href="/docs/api"')
+        expect(deploymentSvg).toContain('id="vizmatic-graph-id-prod-edge-custom-https"')
+        expect(deploymentSvg).toContain('href="/docs/https"')
+
+        const transformer = TransformerTopology({
+            c,
+            id: 'model',
+            title: 'Transformer execution',
+            description: 'Embedding values flow into attention.',
+            blocks: [
+                { id: 'embedding', kind: 'embedding', label: 'Embedding', href: '/docs/embedding' },
+                { id: 'attention', kind: 'attention', label: 'Attention' },
+            ],
+            routes: [{ id: 'activation', from: 'embedding', to: 'attention', kind: 'activation', href: '/docs/activation' }],
+        })
+        const transformerSvg = await renderToSvg(transformer, 640, 420)
+        expect(transformerSvg).toContain('<title id="vizmatic-svg-title">Transformer execution</title>')
+        expect(transformerSvg).toContain('id="vizmatic-graph-id-model-node-embedding"')
+        expect(transformerSvg).toContain('href="/docs/embedding"')
+        expect(transformerSvg).toContain('id="vizmatic-graph-id-model-edge-custom-activation"')
+        expect(transformerSvg).toContain('href="/docs/activation"')
+    })
+
     it('rejects duplicate dataflow ids and missing node or boundary references', () => {
         const c = getThemeColors('light')
         expect(() => DataflowDiagram({

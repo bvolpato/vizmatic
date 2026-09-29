@@ -5,7 +5,8 @@ import { spawnSync } from 'child_process'
 import { createElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { analyzeContrast, analyzeRenderedLayout, diagnosticFromMessage } from '../src/diagnostics'
-import type { SatoriNode } from '../src'
+import { checkFrame } from '../src'
+import type { CheckFrameReport, SatoriNode } from '../src'
 import { playgroundTemplates } from '../src/playground-templates'
 
 interface CheckReport {
@@ -67,6 +68,96 @@ async function runCheck(source: string, extraArgs: string[] = []) {
 }
 
 describe('vizmatic check', () => {
+    it('checks in-memory scenes through the public API with configurable failure severity', async () => {
+        const scene = createElement('div', {
+            id: 'headline',
+            style: {
+                display: 'flex',
+                width: 280,
+                height: 120,
+                backgroundColor: '#ffffff',
+                color: '#f5f5f5',
+            },
+        }, 'Low contrast headline')
+        const input = { source: 'api-test', scene, width: 400, height: 240 }
+        const report: CheckFrameReport = await checkFrame(input, {
+            themes: ['light'],
+            background: '#ffffff',
+        })
+
+        expect(report).toMatchObject({
+            schemaVersion: 1,
+            source: 'api-test',
+            ok: true,
+            summary: { errors: 0, warnings: 1 },
+        })
+        expect(report.themes[0]?.diagnostics).toContainEqual(expect.objectContaining({
+            code: 'accessibility.low_contrast',
+            elementId: 'headline',
+            location: { path: 'root' },
+        }))
+
+        const strictReport = await checkFrame(input, {
+            themes: ['light'],
+            background: '#ffffff',
+            failOn: 'warning',
+        })
+        expect(strictReport.ok).toBe(false)
+        expect(strictReport.themes[0]?.ok).toBe(false)
+    }, 30_000)
+
+    it('keeps diagnostics separate across concurrent API checks and restores console methods', async () => {
+        const originalWarn = console.warn
+        const scene = createElement('div', {
+            style: { display: 'flex', width: 180, height: 80, padding: 12 },
+        }, 'Concurrent check')
+        const [first, second] = await Promise.all([
+            checkFrame({
+                create: () => {
+                    console.warn('FIRST_CHECK_WARNING')
+                    return scene
+                },
+                width: 240,
+                height: 120,
+            }, { themes: ['light'] }),
+            checkFrame({
+                create: () => {
+                    console.warn('SECOND_CHECK_WARNING')
+                    return scene
+                },
+                width: 240,
+                height: 120,
+            }, { themes: ['light'] }),
+        ])
+        const firstMessages = first.themes[0]?.diagnostics.map(({ message }) => message) ?? []
+        const secondMessages = second.themes[0]?.diagnostics.map(({ message }) => message) ?? []
+
+        expect(firstMessages.join('\n')).toContain('FIRST_CHECK_WARNING')
+        expect(firstMessages.join('\n')).not.toContain('SECOND_CHECK_WARNING')
+        expect(secondMessages.join('\n')).toContain('SECOND_CHECK_WARNING')
+        expect(secondMessages.join('\n')).not.toContain('FIRST_CHECK_WARNING')
+        expect(console.warn).toBe(originalWarn)
+        expect(first.rendered).toBe(true)
+        expect(second.rendered).toBe(true)
+    }, 30_000)
+
+    it('reports render failure separately when the fail policy is never', async () => {
+        const report = await checkFrame({
+            create: () => {
+                throw new Error('frame factory failed')
+            },
+            width: 240,
+            height: 120,
+        }, { themes: ['light'], failOn: 'never' })
+
+        expect(report.ok).toBe(true)
+        expect(report.rendered).toBe(false)
+        expect(report.themes[0]?.diagnostics).toContainEqual(expect.objectContaining({
+            code: 'render.error',
+            message: 'frame factory failed',
+        }))
+    })
+
     it('inherits translucent currentColor for contrast checks', () => {
         const element = createElement('div', {
             style: { backgroundColor: '#000000', color: 'rgba(255, 255, 255, 0.2)' },

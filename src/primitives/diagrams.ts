@@ -15,6 +15,7 @@ import {
 import { clamp, compactChildren, formatMathText, Icon, textFitStyle, ToneStrip, type IconName } from './layout'
 import { Arrow, ArrowMarkerDef, Box } from './svg'
 import { renderMaybeMath } from './surfaces'
+import { SVG_ACCESSIBILITY_COMPONENT } from '../svg-accessibility'
 
 // ─── LayeredNetwork — Dense neural-network diagram without local coordinate code ─
 
@@ -271,6 +272,8 @@ export interface GraphDiagramNode {
     id: string
     label: React.ReactNode
     detail?: React.ReactNode
+    href?: string
+    title?: string
     x?: number
     y?: number
     tone?: ToneName
@@ -319,6 +322,7 @@ export type GraphDiagramEdgeStyle = 'solid' | 'dashed' | 'dotted'
 export type GraphDiagramEdgeArrow = 'forward' | 'backward' | 'both' | 'none'
 
 export interface GraphDiagramEdge {
+    id?: string
     from: string
     to: string
     tone?: ToneName
@@ -328,6 +332,8 @@ export interface GraphDiagramEdge {
     kind?: GraphDiagramEdgeKind
     style?: GraphDiagramEdgeStyle
     arrow?: GraphDiagramEdgeArrow
+    href?: string
+    title?: string
 }
 
 export interface GraphDiagramProps {
@@ -350,7 +356,10 @@ export interface GraphDiagramProps {
     edgeGap?: number
     sizing?: 'content' | 'fixed'
     iconSize?: number
+    id?: string
     ariaLabel?: string
+    title?: string
+    description?: string
 }
 
 type PositionedGraphNode = GraphDiagramNode & {
@@ -362,6 +371,7 @@ type PositionedGraphNode = GraphDiagramNode & {
 
 type PositionedGraphEdge = GraphDiagramEdge & {
     index: number
+    stableId: string
     color: string
     markerId: string
     points: Point[]
@@ -574,15 +584,59 @@ function validateGraphDiagramSpec(
         if (!occupiedGroups.has(group.id)) throw new Error(`GraphDiagram group "${group.id}" contains no nodes.`)
     }
 
+    const edgeIds = new Set<string>()
     for (const edge of edges) {
         if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
             throw new Error(`GraphDiagram edge "${edge.from}" -> "${edge.to}" references a missing node.`)
         }
+        if (edge.id != null) {
+            if (edgeIds.has(edge.id)) throw new Error(`GraphDiagram received duplicate edge id "${edge.id}".`)
+            edgeIds.add(edge.id)
+        }
+        validateDiagramHref(edge.href, `edge "${edge.id ?? `${edge.from}" -> "${edge.to}`}"`)
+    }
+    for (const node of nodes) {
+        validateDiagramHref(node.href, `node "${node.id}"`)
     }
 
     if (groups.length > 0 && layoutMode === 'manual') {
         throw new Error('GraphDiagram groups require automatic layout; omit node coordinates and layout="manual".')
     }
+}
+
+function validateDiagramHref(href: string | undefined, owner: string): void {
+    if (href == null) return
+    const normalized = href.trim().replace(/[\u0000-\u0020\u007f]/g, '')
+    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(normalized)?.[1]?.toLowerCase()
+    if (scheme && !['http', 'https', 'mailto', 'tel'].includes(scheme)) {
+        throw new Error(`GraphDiagram ${owner} has an unsupported link scheme "${scheme}:".`)
+    }
+}
+
+function graphAccessibleText(value: React.ReactNode): string {
+    if (typeof value === 'string' || typeof value === 'number') return String(value).trim()
+    if (Array.isArray(value)) return value.map(graphAccessibleText).filter(Boolean).join(' ')
+    if (React.isValidElement(value)) {
+        const props = value.props as { children?: React.ReactNode }
+        return graphAccessibleText(props.children)
+    }
+    return ''
+}
+
+function graphDescription(
+    nodes: GraphDiagramNode[],
+    edges: GraphDiagramEdge[],
+): string {
+    const labels = new Map(nodes.map((node) => [node.id, graphAccessibleText(node.label) || node.id]))
+    const parts = [`${nodes.length} nodes and ${edges.length} relationships.`]
+    const relationships = edges.slice(0, 8).map((edge) => {
+        const from = labels.get(edge.from) ?? edge.from
+        const to = labels.get(edge.to) ?? edge.to
+        return edge.label ? `${from} ${edge.label} ${to}` : `${from} to ${to}`
+    })
+    if (relationships.length) parts.push(relationships.join('; '))
+    if (edges.length > relationships.length) parts.push(`${edges.length - relationships.length} more relationships`)
+    return parts.join(' ')
 }
 
 function graphGroupDepth(group: GraphDiagramGroup, groupsById: Map<string, GraphDiagramGroup>): number {
@@ -627,8 +681,12 @@ export function GraphDiagram({
     edgeGap = 14,
     sizing = 'content',
     iconSize = 20,
+    id,
     ariaLabel,
+    title,
+    description,
 }: GraphDiagramProps): React.ReactElement {
+    if (id != null && id.trim().length === 0) throw new Error('GraphDiagram id must not be empty.')
     const fullyPositioned = nodes.filter((node) => node.x != null && node.y != null).length
     const partiallyPositioned = nodes.some((node) => (node.x == null) !== (node.y == null))
     if (partiallyPositioned || (fullyPositioned > 0 && fullyPositioned < nodes.length)) {
@@ -639,6 +697,19 @@ export function GraphDiagram({
         throw new Error('GraphDiagram layout="manual" requires x and y on every node.')
     }
     validateGraphDiagramSpec(nodes, edges, groups, layoutMode)
+    const edgeOccurrences = new Map<string, number>()
+    const stableEdgeIds = edges.map((edge) => {
+        if (edge.id != null) return `custom-${edge.id}`
+        const route = `${edge.from}\u0000${edge.to}`
+        const occurrence = edgeOccurrences.get(route) ?? 0
+        edgeOccurrences.set(route, occurrence + 1)
+        return `route-${edge.from}-to-${edge.to}-${occurrence}`
+    })
+    if (new Set(stableEdgeIds).size !== stableEdgeIds.length) {
+        throw new Error('GraphDiagram edge ids must not collide with generated relationship ids.')
+    }
+    const svgTitle = title?.trim() || ariaLabel?.trim() || 'Graph diagram'
+    const svgDescription = description ?? graphDescription(nodes, edges)
     let resolvedWidth = width ?? 520
     let resolvedHeight = height ?? 420
     let layout: Map<string, PositionedGraphNode>
@@ -762,6 +833,7 @@ export function GraphDiagram({
         return [{
             ...edge,
             index,
+            stableId: stableEdgeIds[index],
             color,
             markerId,
             points,
@@ -827,8 +899,12 @@ export function GraphDiagram({
     })
 
     return React.createElement('div', {
+        key: 'vizmatic-graph-root',
         role: 'img',
-        'aria-label': ariaLabel ?? 'Graph diagram',
+        'aria-label': ariaLabel ?? svgTitle,
+        'data-vizmatic-svg-title': svgTitle,
+        'data-vizmatic-svg-description': svgDescription,
+        'data-vizmatic-svg-id': id,
         'data-vizmatic-connector-crossings': crossings,
         'data-vizmatic-connector-label-collisions': labelCollisions,
         'data-vizmatic-crowded-connector-endpoints': crowdedEndpoints,
@@ -858,6 +934,12 @@ export function GraphDiagram({
             ),
             ...edgeLayouts.map((edge) => React.createElement('path', {
                 key: `graph-edge-${edge.index}`,
+                'data-vizmatic-graph-edge-id': encodeURIComponent(edge.stableId),
+                'data-vizmatic-graph-edge-from': encodeURIComponent(edge.from),
+                'data-vizmatic-graph-edge-to': encodeURIComponent(edge.to),
+                'data-vizmatic-graph-edge-label': encodeURIComponent(edge.label ?? ''),
+                'data-vizmatic-graph-edge-title': encodeURIComponent(edge.title ?? ''),
+                'data-vizmatic-graph-edge-href': edge.href == null ? undefined : encodeURIComponent(edge.href),
                 d: edgePath(edge.points),
                 fill: 'none',
                 stroke: edge.color,
@@ -933,6 +1015,11 @@ export function GraphDiagram({
             }, iconElement)
             return React.createElement('div', {
                 key: `graph-node-${node.id}`,
+                'data-vizmatic-graph-node-id': node.id,
+                'data-vizmatic-graph-node-label': graphAccessibleText(node.label) || node.id,
+                'data-vizmatic-graph-node-detail': graphAccessibleText(node.detail),
+                'data-vizmatic-graph-node-title': node.title ?? '',
+                'data-vizmatic-graph-node-href': node.href,
                 style: {
                     position: 'absolute' as const,
                     left: node.cx - node.width / 2,
@@ -987,6 +1074,8 @@ export function GraphDiagram({
         }),
     )
 }
+
+Object.defineProperty(GraphDiagram, SVG_ACCESSIBILITY_COMPONENT, { value: true })
 
 // ─── TreeDiagram — Auto-laid hierarchy for orgs, routes, and decisions ──────
 

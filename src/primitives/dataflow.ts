@@ -12,6 +12,7 @@ import {
     type GraphDiagramProps,
 } from './diagrams'
 import type { IconName } from './layout'
+import { SVG_ACCESSIBILITY_COMPONENT } from '../svg-accessibility'
 
 export type DataflowNodeKind = 'source' | 'transform' | 'store' | 'sink'
 export type DataflowEdgeMode = 'batch' | 'stream'
@@ -35,6 +36,8 @@ export interface DataflowNode {
     id: string
     label: React.ReactNode
     detail?: React.ReactNode
+    href?: string
+    title?: string
     kind: DataflowNodeKind
     schema?: DataflowSchema
     tone?: ToneName
@@ -46,9 +49,12 @@ export interface DataflowNode {
 }
 
 export interface DataflowEdge {
+    id?: string
     from: string
     to: string
     label?: string
+    href?: string
+    title?: string
     schema?: DataflowSchema
     mode?: DataflowEdgeMode
     tone?: ToneName
@@ -69,6 +75,9 @@ interface DataflowSpec {
     edges: DataflowEdge[]
     boundaries?: DataflowBoundary[]
     ariaLabel?: string
+    id?: string
+    title?: string
+    description?: string
 }
 
 export interface DataflowDiagramProps extends DataflowSpec {
@@ -255,6 +264,8 @@ function compileDataflow(spec: DataflowSpec): CompiledDataflow {
             id: node.id,
             label: node.label,
             detail: detailWithSchema(node.detail, node.schema),
+            href: node.href,
+            title: node.title,
             tone: node.tone ?? defaultNodeTones[kind],
             icon: node.icon ?? defaultNodeIcons[kind],
             muted: node.muted,
@@ -267,9 +278,12 @@ function compileDataflow(spec: DataflowSpec): CompiledDataflow {
         const mode = edgeMode(edge)
         const schema = schemaLabel(edge.schema)
         return {
+            id: edge.id,
             from: edge.from,
             to: edge.to,
             label: edge.label ?? schema ?? mode,
+            href: edge.href,
+            title: edge.title,
             tone: edge.tone ?? (mode === 'stream' ? 'cyan' : 'blue'),
             muted: edge.muted,
             kind: mode === 'stream' ? 'async' : 'data',
@@ -292,6 +306,9 @@ export function DataflowDiagram({
     edges,
     boundaries,
     ariaLabel,
+    id,
+    title,
+    description,
     width,
     height,
     nodeWidth = 158,
@@ -314,6 +331,9 @@ export function DataflowDiagram({
         edges: compiled.edges,
         groups: compiled.groups,
         ariaLabel: compiled.ariaLabel,
+        id,
+        title,
+        description,
         width,
         height,
         nodeWidth,
@@ -330,3 +350,5 @@ export function DataflowDiagram({
         iconSize,
     })
 }
+
+Object.defineProperty(DataflowDiagram, SVG_ACCESSIBILITY_COMPONENT, { value: true })

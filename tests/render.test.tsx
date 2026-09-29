@@ -1085,6 +1085,61 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         expect(reactProps(apiIcon).style).toMatchObject({ width: 50, height: 50, overflow: 'hidden' })
     })
 
+    it('exports accessible SVG metadata, stable graph IDs, and linked node and edge hit targets', async () => {
+        const c = getThemeColors('light')
+        const createGraph = () => React.createElement(Scene, {
+            c,
+            title: 'Checkout architecture',
+            children: React.createElement(GraphDiagram, {
+                c,
+                id: 'checkout / π',
+                title: 'Checkout & data flow',
+                description: 'Requests move from the API to storage.',
+                nodes: [
+                    { id: 'api/v1', label: 'API', detail: 'HTTP service', href: '/docs/api?mode=full&version=1', title: 'Open API docs <current>' },
+                    { id: 'db', label: 'Database' },
+                ],
+                edges: [
+                    { id: 'request flow', from: 'api/v1', to: 'db', label: 'queries', href: 'https://example.com/db?a=1&b=2' },
+                ],
+            }),
+        })
+
+        const svg = await renderToSvg(createGraph(), 640, 360)
+        const repeatedSvg = await renderToSvg(createGraph(), 640, 360)
+        const rendered = new Resvg(svg).render()
+
+        expect(svg).toContain('role="group" aria-labelledby="vizmatic-svg-title"')
+        expect(svg).toContain('<title id="vizmatic-svg-title">Checkout &amp; data flow</title>')
+        expect(svg).toContain('<desc id="vizmatic-svg-description">Checkout &amp; data flow. Requests move from the API to storage.</desc>')
+        expect(svg).toContain('id="vizmatic-graph-id-checkout_u20__u2f__u20__u3c0_-node-api_u2f_v1"')
+        expect(svg).toContain('href="/docs/api?mode=full&amp;version=1"')
+        expect(svg).toContain('Open API docs &lt;current&gt;')
+        expect(svg).toContain('id="vizmatic-graph-id-checkout_u20__u2f__u20__u3c0_-edge-custom-request_u20_flow"')
+        expect(svg).toContain('href="https://example.com/db?a=1&amp;b=2"')
+        expect(repeatedSvg).toContain('id="vizmatic-graph-id-checkout_u20__u2f__u20__u3c0_-node-api_u2f_v1"')
+        expect(svg).not.toContain('id="vizmatic-graph-id-checkout%')
+        expect(rendered.width).toBe(640)
+        expect(rendered.height).toBe(360)
+
+        const png = await renderToBuffer(createGraph(), 640, 360, { scale: 1 })
+        expect(png.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    })
+
+    it('rejects scriptable or unsupported graph link schemes', () => {
+        const c = getThemeColors('light')
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API', href: ' java\nscript:alert(1)' }],
+            edges: [],
+        })).toThrow(/unsupported link scheme "javascript:"/)
+        expect(() => GraphDiagram({
+            c,
+            nodes: [{ id: 'api', label: 'API' }],
+            edges: [{ from: 'api', to: 'api', href: 'data:text/html,hello' }],
+        })).toThrow(/unsupported link scheme "data:"/)
+    })
+
     it('validates graph groups and manual edge endpoints', () => {
         const c = getThemeColors('light')
         expect(() => GraphDiagram({

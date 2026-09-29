@@ -9,6 +9,7 @@ import {
 } from './diagrams'
 import type { ThemeColors, ToneName } from '../theme'
 import type { IconName } from './layout'
+import { SVG_ACCESSIBILITY_COMPONENT } from '../svg-accessibility'
 
 /** Supported transformer computation block kinds. */
 export type TransformerBlockKind =
@@ -318,6 +319,8 @@ function compileTransformer(spec: TransformerSpec): CompiledTransformer {
                 id,
                 label,
                 detail: repetitionDetail,
+                href: block.href,
+                title: block.title,
                 x: block.x,
                 y: block.y,
                 tone: block.tone ?? blockTones[kind],
@@ -333,8 +336,12 @@ function compileTransformer(spec: TransformerSpec): CompiledTransformer {
     const edges: GraphDiagramEdge[] = []
     for (const route of routes) {
         const kind = resolveRouteKind(route)
-        for (const endpoint of expandedRouteEndpoints(route, repeatCounts, expandRepeats)) {
+        const endpoints = expandedRouteEndpoints(route, repeatCounts, expandRepeats)
+        for (const [index, endpoint] of endpoints.entries()) {
             edges.push({
+                id: route.id == null
+                    ? undefined
+                    : endpoints.length === 1 ? route.id : `${route.id}-${index + 1}`,
                 from: endpoint.from,
                 to: endpoint.to,
                 tone: route.tone ?? routeTones[kind],
@@ -343,6 +350,8 @@ function compileTransformer(spec: TransformerSpec): CompiledTransformer {
                 style: route.style ?? graphRouteStyle(kind),
                 arrow: route.arrow ?? (kind === 'residual' ? 'both' : 'forward'),
                 label: routeLabel(route, kind),
+                href: route.href,
+                title: route.title,
             })
         }
     }
@@ -382,3 +391,5 @@ export function TransformerTopology({
         ariaLabel: compiled.ariaLabel,
     })
 }
+
+Object.defineProperty(TransformerTopology, SVG_ACCESSIBILITY_COMPONENT, { value: true })

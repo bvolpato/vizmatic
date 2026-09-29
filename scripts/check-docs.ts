@@ -11,6 +11,8 @@ const componentsHtml = await readFile(join(root, 'docs', 'components.html'), 'ut
 const componentsTemplateHtml = await readFile(join(root, 'docs', 'components.template.html'), 'utf8')
 const playgroundHtml = await readFile(join(root, 'docs', 'playground.html'), 'utf8')
 const playgroundTemplateHtml = await readFile(join(root, 'docs', 'playground.template.html'), 'utf8')
+const benchmarksHtml = await readFile(join(root, 'docs', 'benchmarks.html'), 'utf8')
+const benchmarksTemplateHtml = await readFile(join(root, 'docs', 'benchmarks.template.html'), 'utf8')
 const skillPath = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic', 'SKILL.md')
 const pluginSkillDir = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic')
 const portableSkillDir = join(root, '.agents', 'skills', 'vizmatic')
@@ -57,7 +59,7 @@ function fail(message: string): never {
     throw new Error(message)
 }
 
-const refs = [html, componentsHtml, playgroundHtml].flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
+const refs = [html, componentsHtml, playgroundHtml, benchmarksHtml].flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
     .map((match) => match[1])
     .filter((ref): ref is string => Boolean(ref))
     .filter((ref) => !ref.startsWith('http') && !ref.startsWith('#') && !ref.startsWith('mailto:'))
@@ -148,6 +150,15 @@ if (!templateHtml.includes('src="playground-redirect.js"') || !html.includes('hr
 }
 if (templateHtml.includes('id="playgroundSource"') || html.includes('id="playgroundCanvas"')) {
     fail('homepage must not embed the dedicated playground')
+}
+if (!templateHtml.includes('href="benchmarks.html"') || !html.includes('href="benchmarks.html"')) {
+    fail('homepage must link to the benchmark results page')
+}
+if (!benchmarksTemplateHtml.includes('{{BENCHMARK_ROWS}}') || !benchmarksTemplateHtml.includes('{{QUALITY_SUMMARY}}')) {
+    fail('benchmark page template must render measured results and check summaries')
+}
+if (benchmarksHtml.includes('{{')) {
+    fail('generated benchmark page contains an unreplaced placeholder')
 }
 
 const playgroundMain = await stat(join(root, 'docs', 'playground.js'))
