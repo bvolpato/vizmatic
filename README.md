@@ -21,6 +21,8 @@
 <p align="center">
   <a href="https://bvolpato.github.io/vizmatic/">Website</a> ·
   <a href="https://bvolpato.github.io/vizmatic/playground.html">Playground</a> ·
+  <a href="https://bvolpato.github.io/vizmatic/components.html">Components</a> ·
+  <a href="https://bvolpato.github.io/vizmatic/agents.html">For agents</a> ·
   <a href="examples">Examples</a> ·
   <a href="PROMPT.md">Agent Prompt</a> ·
   <a href="#api">API</a>
@@ -120,6 +122,8 @@ Use the Vizmatic skill to turn this release workflow into an animated GIF for do
 ```
 
 Skill source lives in [`.agents/skills/vizmatic`](.agents/skills/vizmatic). Review it before installing with `npx skills add bvolpato/vizmatic --list`.
+
+The [agent guide](https://bvolpato.github.io/vizmatic/agents.html) explains installation and the check/render workflow. Agents can discover instructions through [llms.txt](https://bvolpato.github.io/vizmatic/llms.txt), load the [full context bundle](https://bvolpato.github.io/vizmatic/llms-full.txt), or read [runnable component examples as JSON](https://bvolpato.github.io/vizmatic/components.json).
 
 Codex and Claude Code can also install Vizmatic as a plugin:
 
@@ -542,6 +546,12 @@ pnpm install
 pnpm verify
 pnpm site:serve
 ```
+
+The homepage, Components page, and Playground share a live component explorer. Choose a component to render its focused example, use visual controls for supported literal props, or open the TSX to compose a scene. Visual controls pause after custom text or source edits until the example is reset. Preview framing and zoom preserve the full canvas in downloaded PNG and SVG files.
+
+Double-click a text label in the preview to edit its literal TSX value. Press Enter or click outside to save, Shift+Enter for a new line, or Escape to cancel. Keyboard users can focus a label and press Enter or F2. Labels derived from computed expressions or ambiguous source values stay editable in the TSX editor.
+
+The website is generated from `docs/*.template.html`, the shared shell in `scripts/site-shell.ts`, and the component registry. Run `pnpm site:build` after editing these sources, then `pnpm docs:check`. Use `pnpm site:serve` for browser validation. The generated agent references, property controls, and example adapters update with the same build. If the bundled fonts change, regenerate the website's WOFF2 files with `pnpm site:fonts` using uv.
 
 ## Publishing
 

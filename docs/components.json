@@ -1,0 +1,2693 @@
+{
+  "name": "vizmatic",
+  "version": "0.2.0",
+  "count": 71,
+  "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html",
+  "categories": [
+    {
+      "id": "foundations",
+      "label": "Foundations",
+      "description": "Scene structure, responsive layout, and framed surfaces.",
+      "source": "catalog-foundations",
+      "count": 9,
+      "components": [
+        {
+          "name": "Canvas",
+          "description": "Root canvas with transparent or custom backgrounds and padding.",
+          "example": "width = 960\nheight = 480\n\n<Canvas\n    padding={24}>\n  <Column\n    gap={14}>\n  <TitleBar\n    title='Canvas surface'\n    subtitle='A theme aware root with alpha background support' />\n  <MetricCard\n    label='Render time'\n    value='42 ms'\n    tone='green'\n    detail='p95 across 1,200 frames' />\n  </Column>\n  </Canvas>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CCanvas%0A%20%20%20%20padding%3D%7B24%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D'Canvas%20surface'%0A%20%20%20%20subtitle%3D'A%20theme%20aware%20root%20with%20alpha%20background%20support'%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Render%20time'%0A%20%20%20%20value%3D'42%20ms'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20detail%3D'p95%20across%201%2C200%20frames'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%20%20%3C%2FCanvas%3E"
+        },
+        {
+          "name": "Scene",
+          "description": "Primary vertical scene layout with optional title and subtitle.",
+          "example": "width = 960\nheight = 480\n\n<Scene\n    title='Scene layout'\n    subtitle='A title, content area, and consistent spacing'>\n  <Row\n    gap={14}>\n  <MetricCard\n    label='Build'\n    value='ready'\n    tone='green' />\n  <MetricCard\n    label='Review'\n    value='2 items'\n    tone='warm' />\n  </Row>\n  </Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%0A%20%20%20%20title%3D'Scene%20layout'%0A%20%20%20%20subtitle%3D'A%20title%2C%20content%20area%2C%20and%20consistent%20spacing'%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Build'%0A%20%20%20%20value%3D'ready'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Review'%0A%20%20%20%20value%3D'2%20items'%0A%20%20%20%20tone%3D'warm'%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%20%20%3C%2FScene%3E"
+        },
+        {
+          "name": "TitleBar",
+          "description": "Standalone heading and supporting copy.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"TitleBar example\" subtitle=\"Edit this focused TitleBar scene\" padding={22} gap={18}>\n  <Column\n    gap={16}>\n  <TitleBar\n    title='Release overview'\n    subtitle='One clear headline with supporting context' />\n  <ProgressList\n    rows={[{ label: 'Build', value: 1, tone: 'green' },\n        { label: 'Review', value: 0.72, tone: 'purple' }]} />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Release overview",
+              "start": 165,
+              "end": 189
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "One clear headline with supporting context",
+              "start": 194,
+              "end": 247
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TitleBar%20example%22%20subtitle%3D%22Edit%20this%20focused%20TitleBar%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B16%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D'Release%20overview'%0A%20%20%20%20subtitle%3D'One%20clear%20headline%20with%20supporting%20context'%20%2F%3E%0A%20%20%3CProgressList%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'Build'%2C%20value%3A%201%2C%20tone%3A%20'green'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Review'%2C%20value%3A%200.72%2C%20tone%3A%20'purple'%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Row",
+          "description": "Horizontal flex layout with stable gaps and alignment.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Row example\" subtitle=\"Edit this focused Row scene\" padding={22} gap={18}>\n  <Row\n    gap={12}\n    align='stretch'>\n  <StepCard\n    title='Plan'\n    subtitle='shape the story'\n    tone='blue'\n    width={220} />\n  <StepCard\n    title='Render'\n    subtitle='check both themes'\n    tone='purple'\n    width={220} />\n  <StepCard\n    title='Ship'\n    subtitle='publish the asset'\n    tone='green'\n    width={220} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "gap",
+              "label": "Gap",
+              "type": "number",
+              "value": 12,
+              "start": 126,
+              "end": 134,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Row%20example%22%20subtitle%3D%22Edit%20this%20focused%20Row%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D'Plan'%0A%20%20%20%20subtitle%3D'shape%20the%20story'%0A%20%20%20%20tone%3D'blue'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D'Render'%0A%20%20%20%20subtitle%3D'check%20both%20themes'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D'Ship'%0A%20%20%20%20subtitle%3D'publish%20the%20asset'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Column",
+          "description": "Vertical flex layout for stacked composition.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Column example\" subtitle=\"Edit this focused Column scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    align='stretch'>\n  <StatusRow\n    label='Layout'\n    detail='ready'\n    status='check' />\n  <StatusRow\n    label='Contrast'\n    detail='inspect'\n    status='pending' />\n  <StatusRow\n    label='Export'\n    detail='PNG + SVG'\n    status='info' />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "gap",
+              "label": "Gap",
+              "type": "number",
+              "value": 10,
+              "start": 135,
+              "end": 143,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Column%20example%22%20subtitle%3D%22Edit%20this%20focused%20Column%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Layout'%0A%20%20%20%20detail%3D'ready'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Contrast'%0A%20%20%20%20detail%3D'inspect'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Export'%0A%20%20%20%20detail%3D'PNG%20%2B%20SVG'%0A%20%20%20%20status%3D'info'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Stack",
+          "description": "Compact vertical grouping for related content.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Stack example\" subtitle=\"Edit this focused Stack scene\" padding={22} gap={18}>\n  <Stack\n    gap={10}\n    align='stretch'>\n  <BadgePill\n    text='INPUT'\n    tone='blue' />\n  <Arrow\n    direction='down'\n    length={24} />\n  <BadgePill\n    text='OUTPUT'\n    tone='green' />\n  </Stack>\n</Scene>",
+          "controls": [
+            {
+              "prop": "gap",
+              "label": "Gap",
+              "type": "number",
+              "value": 10,
+              "start": 132,
+              "end": 140,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Stack%20example%22%20subtitle%3D%22Edit%20this%20focused%20Stack%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStack%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'INPUT'%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D'down'%0A%20%20%20%20length%3D%7B24%7D%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'OUTPUT'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3C%2FStack%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Panel",
+          "description": "Titled container for grouped visual content.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Panel example\" subtitle=\"Edit this focused Panel scene\" padding={22} gap={18}>\n  <Panel\n    title='Service health'\n    subtitle='Live state grouped in a titled surface'\n    tone='green'\n    width='100%'\n    padding={18}>\n  <StatusList\n    rows={[{ label: 'API', detail: 'healthy', status: 'check' },\n        { label: 'Queue', detail: '12 jobs', status: 'info' }]} />\n  </Panel>\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Service health",
+              "start": 132,
+              "end": 154
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Live state grouped in a titled surface",
+              "start": 159,
+              "end": 208
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "green",
+              "start": 213,
+              "end": 225,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "padding",
+              "label": "Padding",
+              "type": "number",
+              "value": 18,
+              "start": 247,
+              "end": 259,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Panel%20example%22%20subtitle%3D%22Edit%20this%20focused%20Panel%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CPanel%0A%20%20%20%20title%3D'Service%20health'%0A%20%20%20%20subtitle%3D'Live%20state%20grouped%20in%20a%20titled%20surface'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D'100%25'%0A%20%20%20%20padding%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'API'%2C%20detail%3A%20'healthy'%2C%20status%3A%20'check'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Queue'%2C%20detail%3A%20'12%20jobs'%2C%20status%3A%20'info'%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FPanel%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Card",
+          "description": "General-purpose surface with tone, padding, and shadow.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Card example\" subtitle=\"Edit this focused Card scene\" padding={22} gap={18}>\n  <Card\n    title='Inference API'\n    subtitle='Regional endpoint'\n    tone='purple'\n    width={430}\n    padding={20} shadow>\n  <TextLabel\n    text='p95 latency'\n    fontSize={12} />\n  <MetricCard\n    label='Latency'\n    value='82 ms'\n    tone='green'\n    width={180} />\n  </Card>\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Inference API",
+              "start": 129,
+              "end": 150
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Regional endpoint",
+              "start": 155,
+              "end": 183
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "purple",
+              "start": 188,
+              "end": 201,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 430,
+              "start": 206,
+              "end": 217,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "padding",
+              "label": "Padding",
+              "type": "number",
+              "value": 20,
+              "start": 222,
+              "end": 234,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            },
+            {
+              "prop": "shadow",
+              "label": "Shadow",
+              "type": "boolean",
+              "value": true,
+              "start": 235,
+              "end": 241
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Card%20example%22%20subtitle%3D%22Edit%20this%20focused%20Card%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CCard%0A%20%20%20%20title%3D'Inference%20API'%0A%20%20%20%20subtitle%3D'Regional%20endpoint'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B430%7D%0A%20%20%20%20padding%3D%7B20%7D%20shadow%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'p95%20latency'%0A%20%20%20%20fontSize%3D%7B12%7D%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Latency'%0A%20%20%20%20value%3D'82%20ms'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B180%7D%20%2F%3E%0A%20%20%3C%2FCard%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "WindowFrame",
+          "description": "Application or terminal window framing.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"WindowFrame example\" subtitle=\"Edit this focused WindowFrame scene\" padding={22} gap={18}>\n  <WindowFrame\n    title='worker.log'\n    variant='terminal'\n    tone='green'\n    width={620}>\n  <Column\n    gap={8}\n    align='stretch'>\n  <TextLabel\n    text='$ vizmatic render scene.tsx' mono\n    fontSize={13} />\n  <TextLabel\n    text='✓ dark and light previews created' mono\n    fontSize={13}\n    color={c.positiveLight} />\n  </Column>\n  </WindowFrame>\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "worker.log",
+              "start": 150,
+              "end": 168
+            },
+            {
+              "prop": "variant",
+              "label": "Variant",
+              "type": "select",
+              "value": "terminal",
+              "start": 173,
+              "end": 191,
+              "options": [
+                "window",
+                "browser",
+                "terminal"
+              ]
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "green",
+              "start": 196,
+              "end": 208,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 620,
+              "start": 213,
+              "end": 224,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22WindowFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20WindowFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CWindowFrame%0A%20%20%20%20title%3D'worker.log'%0A%20%20%20%20variant%3D'terminal'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B620%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'%24%20vizmatic%20render%20scene.tsx'%20mono%0A%20%20%20%20fontSize%3D%7B13%7D%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'%E2%9C%93%20dark%20and%20light%20previews%20created'%20mono%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20color%3D%7Bc.positiveLight%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%20%20%3C%2FWindowFrame%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "content",
+      "label": "Content",
+      "description": "Labels, cards, code, comparisons, and reusable information blocks.",
+      "source": "catalog-content",
+      "count": 20,
+      "components": [
+        {
+          "name": "ToneStrip",
+          "description": "Short semantic color accent.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ToneStrip example\" subtitle=\"Edit this focused ToneStrip scene\" padding={22} gap={18}>\n  <Row\n    gap={14}\n    align='center'>\n  <ToneStrip\n    tone='purple'\n    width={64}\n    height={8} />\n  <TextLabel\n    text='Accent follows the selected semantic tone.'\n    fontSize={14} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "purple",
+              "start": 184,
+              "end": 197,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 64,
+              "start": 202,
+              "end": 212,
+              "min": 16,
+              "max": 256,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 8,
+              "start": 217,
+              "end": 227,
+              "min": 2,
+              "max": 64,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ToneStrip%20example%22%20subtitle%3D%22Edit%20this%20focused%20ToneStrip%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3CToneStrip%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B64%7D%0A%20%20%20%20height%3D%7B8%7D%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Accent%20follows%20the%20selected%20semantic%20tone.'%0A%20%20%20%20fontSize%3D%7B14%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Icon",
+          "description": "Theme-aware technical icon set.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Icon example\" subtitle=\"Edit this focused Icon scene\" padding={22} gap={18}>\n  <Row\n    gap={18}\n    align='center'>\n  <Icon\n    name='layers'\n    tone='purple'\n    size={34} />\n  <Icon\n    name='code'\n    tone='blue'\n    size={34} />\n  <Icon\n    name='spark'\n    tone='green'\n    size={34} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "purple",
+              "start": 187,
+              "end": 200,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "size",
+              "label": "Size",
+              "type": "number",
+              "value": 34,
+              "start": 205,
+              "end": 214,
+              "min": 8,
+              "max": 64,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Icon%20example%22%20subtitle%3D%22Edit%20this%20focused%20Icon%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B18%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3CIcon%0A%20%20%20%20name%3D'layers'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20size%3D%7B34%7D%20%2F%3E%0A%20%20%3CIcon%0A%20%20%20%20name%3D'code'%0A%20%20%20%20tone%3D'blue'%0A%20%20%20%20size%3D%7B34%7D%20%2F%3E%0A%20%20%3CIcon%0A%20%20%20%20name%3D'spark'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20size%3D%7B34%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "TextLabel",
+          "description": "Wrapping-safe SVG or flex label.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"TextLabel example\" subtitle=\"Edit this focused TextLabel scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='start'>\n  <TextLabel\n    text='A readable technical label'\n    fontSize={20}\n    fontWeight={800}\n    color={c.textPrimary} />\n  <TextLabel\n    text='Use mono for identifiers, commands, and compact metadata.' mono\n    fontSize={12} />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "text",
+              "label": "Text",
+              "type": "text",
+              "value": "A readable technical label",
+              "start": 185,
+              "end": 218
+            },
+            {
+              "prop": "fontSize",
+              "label": "Font Size",
+              "type": "number",
+              "value": 20,
+              "start": 223,
+              "end": 236,
+              "min": 8,
+              "max": 36,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TextLabel%20example%22%20subtitle%3D%22Edit%20this%20focused%20TextLabel%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'start'%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'A%20readable%20technical%20label'%0A%20%20%20%20fontSize%3D%7B20%7D%0A%20%20%20%20fontWeight%3D%7B800%7D%0A%20%20%20%20color%3D%7Bc.textPrimary%7D%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Use%20mono%20for%20identifiers%2C%20commands%2C%20and%20compact%20metadata.'%20mono%0A%20%20%20%20fontSize%3D%7B12%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "MathText",
+          "description": "Math-aware text formatting for React content.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"MathText example\" subtitle=\"Edit this focused MathText scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    align='start'>\n  <TextLabel\n    text={MathText({ text: 'x_i^2 + y_i^2' })}\n    fontSize={22} mono />\n  <TextLabel\n    text='MathText formats inline notation for labels.'\n    fontSize={12} />\n  </Column>\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MathText%20example%22%20subtitle%3D%22Edit%20this%20focused%20MathText%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'start'%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D%7BMathText(%7B%20text%3A%20'x_i%5E2%20%2B%20y_i%5E2'%20%7D)%7D%0A%20%20%20%20fontSize%3D%7B22%7D%20mono%20%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'MathText%20formats%20inline%20notation%20for%20labels.'%0A%20%20%20%20fontSize%3D%7B12%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "SvgMathText",
+          "description": "Positioned math overlay aligned with custom SVG geometry.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"SvgMathText example\" subtitle=\"Edit this focused SvgMathText scene\" padding={22} gap={18}>\n  <div\n    style={{ position: 'relative', display: 'flex', width: 420, height: 100 }}>\n  <SvgMathText\n    text='E = mc^2'\n    x={20}\n    y={62}\n    fill={c.textPrimary}\n    fontSize={34}\n    textAnchor='start' />\n  </div>\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SvgMathText%20example%22%20subtitle%3D%22Edit%20this%20focused%20SvgMathText%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3Cdiv%0A%20%20%20%20style%3D%7B%7B%20position%3A%20'relative'%2C%20display%3A%20'flex'%2C%20width%3A%20420%2C%20height%3A%20100%20%7D%7D%3E%0A%20%20%3CSvgMathText%0A%20%20%20%20text%3D'E%20%3D%20mc%5E2'%0A%20%20%20%20x%3D%7B20%7D%0A%20%20%20%20y%3D%7B62%7D%0A%20%20%20%20fill%3D%7Bc.textPrimary%7D%0A%20%20%20%20fontSize%3D%7B34%7D%0A%20%20%20%20textAnchor%3D'start'%20%2F%3E%0A%20%20%3C%2Fdiv%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Badge",
+          "description": "Compact semantic SVG label.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Badge example\" subtitle=\"Edit this focused Badge scene\" padding={22} gap={18}>\n  <Row\n    gap={12}\n    align='center'>\n  <Badge\n    label='stable'\n    color='positive' />\n  <Badge\n    label='preview'\n    color='warning' />\n  <Badge\n    label='blocked'\n    color='critical' />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "stable",
+              "start": 172,
+              "end": 186
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Badge%20example%22%20subtitle%3D%22Edit%20this%20focused%20Badge%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3CBadge%0A%20%20%20%20label%3D'stable'%0A%20%20%20%20color%3D'positive'%20%2F%3E%0A%20%20%3CBadge%0A%20%20%20%20label%3D'preview'%0A%20%20%20%20color%3D'warning'%20%2F%3E%0A%20%20%3CBadge%0A%20%20%20%20label%3D'blocked'%0A%20%20%20%20color%3D'critical'%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "BadgePill",
+          "description": "Inline status, category, or metadata label.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"BadgePill example\" subtitle=\"Edit this focused BadgePill scene\" padding={22} gap={18}>\n  <Row\n    gap={10}\n    align='center'>\n  <BadgePill\n    text='API'\n    tone='blue' />\n  <BadgePill\n    text='HEALTHY'\n    tone='green' />\n  <BadgePill\n    text='P95 82 ms'\n    tone='purple' />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "text",
+              "label": "Text",
+              "type": "text",
+              "value": "API",
+              "start": 184,
+              "end": 194
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "blue",
+              "start": 199,
+              "end": 210,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22BadgePill%20example%22%20subtitle%3D%22Edit%20this%20focused%20BadgePill%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'API'%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'HEALTHY'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'P95%2082%20ms'%0A%20%20%20%20tone%3D'purple'%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "GradientChip",
+          "description": "Emphasized label with tone gradient.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"GradientChip example\" subtitle=\"Edit this focused GradientChip scene\" padding={22} gap={18}>\n  <GradientChip\n    title='Verified output'\n    subtitle='dark + light themes'\n    tone='green'\n    width={320}\n    minHeight={92}\n    align='center' />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Verified output",
+              "start": 153,
+              "end": 176
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "dark + light themes",
+              "start": 181,
+              "end": 211
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "green",
+              "start": 216,
+              "end": 228,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 320,
+              "start": 233,
+              "end": 244,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "minHeight",
+              "label": "Min Height",
+              "type": "number",
+              "value": 92,
+              "start": 249,
+              "end": 263,
+              "min": 40,
+              "max": 600,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22GradientChip%20example%22%20subtitle%3D%22Edit%20this%20focused%20GradientChip%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGradientChip%0A%20%20%20%20title%3D'Verified%20output'%0A%20%20%20%20subtitle%3D'dark%20%2B%20light%20themes'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B320%7D%0A%20%20%20%20minHeight%3D%7B92%7D%0A%20%20%20%20align%3D'center'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ValuePill",
+          "description": "Small label-value pair.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ValuePill example\" subtitle=\"Edit this focused ValuePill scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <ValuePill\n    label='Batch size'\n    value='128'\n    detail='tokens / step'\n    tone='purple'\n    width={170} />\n  <ValuePill\n    label='Throughput'\n    value='940'\n    detail='items / second'\n    tone='green'\n    width={190} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "Batch size",
+              "start": 165,
+              "end": 183
+            },
+            {
+              "prop": "value",
+              "label": "Value",
+              "type": "text",
+              "value": "128",
+              "start": 188,
+              "end": 199
+            },
+            {
+              "prop": "detail",
+              "label": "Detail",
+              "type": "text",
+              "value": "tokens / step",
+              "start": 204,
+              "end": 226
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "purple",
+              "start": 231,
+              "end": 244,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 170,
+              "start": 249,
+              "end": 260,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ValuePill%20example%22%20subtitle%3D%22Edit%20this%20focused%20ValuePill%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D'Batch%20size'%0A%20%20%20%20value%3D'128'%0A%20%20%20%20detail%3D'tokens%20%2F%20step'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B170%7D%20%2F%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D'Throughput'%0A%20%20%20%20value%3D'940'%0A%20%20%20%20detail%3D'items%20%2F%20second'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B190%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "EquationCard",
+          "description": "Formula, result, and supporting detail.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"EquationCard example\" subtitle=\"Edit this focused EquationCard scene\" padding={22} gap={18}>\n  <EquationCard\n    title='Throughput'\n    formula='items ÷ seconds'\n    result='940/s'\n    detail='measured over 5 minutes'\n    tone='purple'\n    width={300} math />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22EquationCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20EquationCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CEquationCard%0A%20%20%20%20title%3D'Throughput'%0A%20%20%20%20formula%3D'items%20%C3%B7%20seconds'%0A%20%20%20%20result%3D'940%2Fs'%0A%20%20%20%20detail%3D'measured%20over%205%20minutes'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B300%7D%20math%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "StepCard",
+          "description": "Numbered or staged process card.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StepCard example\" subtitle=\"Edit this focused StepCard scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <StepCard\n    eyebrow='01'\n    title='Collect'\n    subtitle='read source data'\n    tone='blue'\n    width={220} />\n  <StepCard\n    eyebrow='02'\n    title='Validate'\n    subtitle='check invariants'\n    tone='purple'\n    width={220} />\n  <StepCard\n    eyebrow='03'\n    title='Publish'\n    subtitle='write artifacts'\n    tone='green'\n    width={220} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "eyebrow",
+              "label": "Eyebrow",
+              "type": "text",
+              "value": "01",
+              "start": 162,
+              "end": 174
+            },
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Collect",
+              "start": 179,
+              "end": 194
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "read source data",
+              "start": 199,
+              "end": 226
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "blue",
+              "start": 231,
+              "end": 242,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 220,
+              "start": 247,
+              "end": 258,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StepCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20StepCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CStepCard%0A%20%20%20%20eyebrow%3D'01'%0A%20%20%20%20title%3D'Collect'%0A%20%20%20%20subtitle%3D'read%20source%20data'%0A%20%20%20%20tone%3D'blue'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20eyebrow%3D'02'%0A%20%20%20%20title%3D'Validate'%0A%20%20%20%20subtitle%3D'check%20invariants'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20eyebrow%3D'03'%0A%20%20%20%20title%3D'Publish'%0A%20%20%20%20subtitle%3D'write%20artifacts'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "MetricCard",
+          "description": "KPI value with label and context.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"MetricCard example\" subtitle=\"Edit this focused MetricCard scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <MetricCard\n    label='Build success'\n    value='98.7%'\n    detail='last 30 days'\n    tone='green'\n    width={220}\n    minHeight={120} />\n  <MetricCard\n    label='Open issues'\n    value='4'\n    detail='2 need review'\n    tone='warm'\n    width={220}\n    minHeight={120} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "Build success",
+              "start": 168,
+              "end": 189
+            },
+            {
+              "prop": "value",
+              "label": "Value",
+              "type": "text",
+              "value": "98.7%",
+              "start": 194,
+              "end": 207
+            },
+            {
+              "prop": "detail",
+              "label": "Detail",
+              "type": "text",
+              "value": "last 30 days",
+              "start": 212,
+              "end": 233
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "green",
+              "start": 238,
+              "end": 250,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 220,
+              "start": 255,
+              "end": 266,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "minHeight",
+              "label": "Min Height",
+              "type": "number",
+              "value": 120,
+              "start": 271,
+              "end": 286,
+              "min": 40,
+              "max": 600,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MetricCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20MetricCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Build%20success'%0A%20%20%20%20value%3D'98.7%25'%0A%20%20%20%20detail%3D'last%2030%20days'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Open%20issues'%0A%20%20%20%20value%3D'4'%0A%20%20%20%20detail%3D'2%20need%20review'%0A%20%20%20%20tone%3D'warm'%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "CalloutCard",
+          "description": "Focused takeaway, warning, or recommendation.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"CalloutCard example\" subtitle=\"Edit this focused CalloutCard scene\" padding={22} gap={18}>\n  <CalloutCard\n    title='Recommendation'\n    detail='Keep the source editable and verify both color themes before publishing.'\n    tone='cyan'\n    width={560}\n    minHeight={132} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Recommendation",
+              "start": 150,
+              "end": 172
+            },
+            {
+              "prop": "detail",
+              "label": "Detail",
+              "type": "text",
+              "value": "Keep the source editable and verify both color themes before publishing.",
+              "start": 177,
+              "end": 258
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "cyan",
+              "start": 263,
+              "end": 274,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 560,
+              "start": 279,
+              "end": 290,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "minHeight",
+              "label": "Min Height",
+              "type": "number",
+              "value": 132,
+              "start": 295,
+              "end": 310,
+              "min": 40,
+              "max": 600,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22CalloutCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20CalloutCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CCalloutCard%0A%20%20%20%20title%3D'Recommendation'%0A%20%20%20%20detail%3D'Keep%20the%20source%20editable%20and%20verify%20both%20color%20themes%20before%20publishing.'%0A%20%20%20%20tone%3D'cyan'%0A%20%20%20%20width%3D%7B560%7D%0A%20%20%20%20minHeight%3D%7B132%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "DetailList",
+          "description": "Compact list of supporting facts.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"DetailList example\" subtitle=\"Edit this focused DetailList scene\" padding={22} gap={18}>\n  <DetailList\n    tone='blue'\n    items={['TypeScript source', 'Theme aware colors', 'PNG and SVG export']}\n    fontSize={13} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DetailList%20example%22%20subtitle%3D%22Edit%20this%20focused%20DetailList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDetailList%0A%20%20%20%20tone%3D'blue'%0A%20%20%20%20items%3D%7B%5B'TypeScript%20source'%2C%20'Theme%20aware%20colors'%2C%20'PNG%20and%20SVG%20export'%5D%7D%0A%20%20%20%20fontSize%3D%7B13%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "CodeBlock",
+          "description": "Code or command excerpt with optional line numbers.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"CodeBlock example\" subtitle=\"Edit this focused CodeBlock scene\" padding={22} gap={18}>\n  <CodeBlock\n    title='render.tsx'\n    tone='purple'\n    fontSize={13} showLineNumbers\n    lines={[{ text: 'const frame = <Scene />', tone: 'purple' },\n        { text: 'await render(frame)' },\n        { text: 'writeFile(output)', tone: 'green' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "render.tsx",
+              "start": 144,
+              "end": 162
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "purple",
+              "start": 167,
+              "end": 180,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            },
+            {
+              "prop": "fontSize",
+              "label": "Font Size",
+              "type": "number",
+              "value": 13,
+              "start": 185,
+              "end": 198,
+              "min": 8,
+              "max": 36,
+              "step": 1
+            },
+            {
+              "prop": "showLineNumbers",
+              "label": "Show Line Numbers",
+              "type": "boolean",
+              "value": true,
+              "start": 199,
+              "end": 214
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22CodeBlock%20example%22%20subtitle%3D%22Edit%20this%20focused%20CodeBlock%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CCodeBlock%0A%20%20%20%20title%3D'render.tsx'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20fontSize%3D%7B13%7D%20showLineNumbers%0A%20%20%20%20lines%3D%7B%5B%7B%20text%3A%20'const%20frame%20%3D%20%3CScene%20%2F%3E'%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20text%3A%20'await%20render(frame)'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20text%3A%20'writeFile(output)'%2C%20tone%3A%20'green'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Comparison",
+          "description": "Side-by-side alternatives or before/after states.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Comparison example\" subtitle=\"Edit this focused Comparison scene\" padding={22} gap={18}>\n  <Comparison divider\n    gap={10}\n    minHeight={150}\n    sides={[{ title: 'Before', tone: 'warm', lines: ['manual spacing', 'one theme'] },\n        { title: 'After', tone: 'green', lines: ['shared layout', 'dark + light'] }]} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Comparison%20example%22%20subtitle%3D%22Edit%20this%20focused%20Comparison%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CComparison%20divider%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20minHeight%3D%7B150%7D%0A%20%20%20%20sides%3D%7B%5B%7B%20title%3A%20'Before'%2C%20tone%3A%20'warm'%2C%20lines%3A%20%5B'manual%20spacing'%2C%20'one%20theme'%5D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'After'%2C%20tone%3A%20'green'%2C%20lines%3A%20%5B'shared%20layout'%2C%20'dark%20%2B%20light'%5D%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "KeyValueList",
+          "description": "Aligned technical metadata rows.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"KeyValueList example\" subtitle=\"Edit this focused KeyValueList scene\" padding={22} gap={18}>\n  <KeyValueList\n    title='Render settings'\n    rows={[{ key: 'format', value: 'PNG + SVG', tone: 'blue' },\n        { key: 'themes', value: 'dark, light', tone: 'green' },\n        { key: 'latency', value: '42 ms' }]}\n    width={430} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22KeyValueList%20example%22%20subtitle%3D%22Edit%20this%20focused%20KeyValueList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CKeyValueList%0A%20%20%20%20title%3D'Render%20settings'%0A%20%20%20%20rows%3D%7B%5B%7B%20key%3A%20'format'%2C%20value%3A%20'PNG%20%2B%20SVG'%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20'themes'%2C%20value%3A%20'dark%2C%20light'%2C%20tone%3A%20'green'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20'latency'%2C%20value%3A%20'42%20ms'%20%7D%5D%7D%0A%20%20%20%20width%3D%7B430%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Tile",
+          "description": "Single labeled unit for feature or system maps.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Tile example\" subtitle=\"Edit this focused Tile scene\" padding={22} gap={18}>\n  <Tile\n    title='Search index'\n    subtitle='retrieval service'\n    eyebrow='READY'\n    icon='⌕'\n    tone='cyan'\n    lines={['p95 18 ms', '3 replicas']}\n    width={260}\n    minHeight={128} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Tile%20example%22%20subtitle%3D%22Edit%20this%20focused%20Tile%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTile%0A%20%20%20%20title%3D'Search%20index'%0A%20%20%20%20subtitle%3D'retrieval%20service'%0A%20%20%20%20eyebrow%3D'READY'%0A%20%20%20%20icon%3D'%E2%8C%95'%0A%20%20%20%20tone%3D'cyan'%0A%20%20%20%20lines%3D%7B%5B'p95%2018%20ms'%2C%20'3%20replicas'%5D%7D%0A%20%20%20%20width%3D%7B260%7D%0A%20%20%20%20minHeight%3D%7B128%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "TileGrid",
+          "description": "Dense grid of related labeled units.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"TileGrid example\" subtitle=\"Edit this focused TileGrid scene\" padding={22} gap={18}>\n  <TileGrid\n    columns={3}\n    gap={12}\n    tileWidth={210}\n    minHeight={112}\n    tiles={[{ title: 'Ingest', subtitle: 'events', tone: 'blue' },\n        { title: 'Transform', subtitle: 'schemas', tone: 'purple' },\n        { title: 'Serve', subtitle: 'features', tone: 'green' }]} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TileGrid%20example%22%20subtitle%3D%22Edit%20this%20focused%20TileGrid%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTileGrid%0A%20%20%20%20columns%3D%7B3%7D%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20tileWidth%3D%7B210%7D%0A%20%20%20%20minHeight%3D%7B112%7D%0A%20%20%20%20tiles%3D%7B%5B%7B%20title%3A%20'Ingest'%2C%20subtitle%3A%20'events'%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'Transform'%2C%20subtitle%3A%20'schemas'%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'Serve'%2C%20subtitle%3A%20'features'%2C%20tone%3A%20'green'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Watermark",
+          "description": "Frame metadata for text, image, or custom branding.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Watermark example\" subtitle=\"Edit this focused Watermark scene\" padding={22} gap={18}>\n  <Row\n    width={680}\n    height={300}\n    align='center'\n    justify='center'>{wrapWithWatermark(<Scene\n    title='Published report'\n    subtitle='Watermark stays anchored to the rendered frame'\n    padding={22}>\n  <MetricCard\n    label='Verified runs'\n    value='1,284'\n    detail='this week'\n    tone='green'\n    width={250} />\n  </Scene>, 640, 260, 'dark', <Watermark\n    text='Vizmatic'\n    color={c.textSecondary}\n    opacity={0.9}\n    position='bottom-right' />)}</Row>\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Watermark%20example%22%20subtitle%3D%22Edit%20this%20focused%20Watermark%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20height%3D%7B300%7D%0A%20%20%20%20align%3D'center'%0A%20%20%20%20justify%3D'center'%3E%7BwrapWithWatermark(%3CScene%0A%20%20%20%20title%3D'Published%20report'%0A%20%20%20%20subtitle%3D'Watermark%20stays%20anchored%20to%20the%20rendered%20frame'%0A%20%20%20%20padding%3D%7B22%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Verified%20runs'%0A%20%20%20%20value%3D'1%2C284'%0A%20%20%20%20detail%3D'this%20week'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B250%7D%20%2F%3E%0A%20%20%3C%2FScene%3E%2C%20640%2C%20260%2C%20'dark'%2C%20%3CWatermark%0A%20%20%20%20text%3D'Vizmatic'%0A%20%20%20%20color%3D%7Bc.textSecondary%7D%0A%20%20%20%20opacity%3D%7B0.9%7D%0A%20%20%20%20position%3D'bottom-right'%20%2F%3E)%7D%3C%2FRow%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "flows",
+      "label": "Flows",
+      "description": "Processes, timelines, status, and progress.",
+      "source": "catalog-flows",
+      "count": 7,
+      "components": [
+        {
+          "name": "StatusRow",
+          "description": "Single operational state with detail.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusRow example\" subtitle=\"Edit this focused StatusRow scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    width={620}\n    align='stretch'>\n  <StatusRow\n    label='Build'\n    detail='passed'\n    status='check' />\n  <StatusRow\n    label='Review'\n    detail='2 comments'\n    status='pending' />\n  <StatusRow\n    label='Security'\n    detail='attention'\n    status='warn' />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "Build",
+              "start": 204,
+              "end": 217
+            },
+            {
+              "prop": "detail",
+              "label": "Detail",
+              "type": "text",
+              "value": "passed",
+              "start": 222,
+              "end": 237
+            },
+            {
+              "prop": "status",
+              "label": "Status",
+              "type": "select",
+              "value": "check",
+              "start": 242,
+              "end": 256,
+              "options": [
+                "check",
+                "cross",
+                "warn",
+                "info",
+                "pending",
+                "dot"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusRow%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusRow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Build'%0A%20%20%20%20detail%3D'passed'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Review'%0A%20%20%20%20detail%3D'2%20comments'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Security'%0A%20%20%20%20detail%3D'attention'%0A%20%20%20%20status%3D'warn'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "StatusList",
+          "description": "Grouped checks, warnings, and pending work.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusList example\" subtitle=\"Edit this focused StatusList scene\" padding={22} gap={18}>\n  <StatusList\n    width={620}\n    rows={[{ label: 'Build', detail: 'passed', status: 'check' },\n        { label: 'Review', detail: '2 comments', status: 'pending' },\n        { label: 'Security', detail: 'attention', status: 'warn' }]} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusList%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'Build'%2C%20detail%3A%20'passed'%2C%20status%3A%20'check'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Review'%2C%20detail%3A%20'2%20comments'%2C%20status%3A%20'pending'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Security'%2C%20detail%3A%20'attention'%2C%20status%3A%20'warn'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Timeline",
+          "description": "Ordered events in horizontal or vertical form.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Timeline example\" subtitle=\"Edit this focused Timeline scene\" padding={22} gap={18}>\n  <Timeline\n    title='Release timeline'\n    subtitle='Key steps from draft to publish'\n    width={820}\n    direction='horizontal'\n    eventWidth={230}\n    events={[{ time: '09:10', title: 'Draft', detail: 'write the scene', tone: 'blue' },\n        { time: '09:24', title: 'Validate', detail: 'check layout', tone: 'purple' },\n        { time: '09:31', title: 'Publish', detail: 'export assets', tone: 'green' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Release timeline",
+              "start": 141,
+              "end": 165
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Key steps from draft to publish",
+              "start": 170,
+              "end": 212
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 217,
+              "end": 228,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "horizontal",
+              "start": 233,
+              "end": 255,
+              "options": [
+                "horizontal",
+                "vertical"
+              ]
+            },
+            {
+              "prop": "eventWidth",
+              "label": "Event Width",
+              "type": "number",
+              "value": 230,
+              "start": 260,
+              "end": 276,
+              "min": 80,
+              "max": 400,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Timeline%20example%22%20subtitle%3D%22Edit%20this%20focused%20Timeline%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTimeline%0A%20%20%20%20title%3D'Release%20timeline'%0A%20%20%20%20subtitle%3D'Key%20steps%20from%20draft%20to%20publish'%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20direction%3D'horizontal'%0A%20%20%20%20eventWidth%3D%7B230%7D%0A%20%20%20%20events%3D%7B%5B%7B%20time%3A%20'09%3A10'%2C%20title%3A%20'Draft'%2C%20detail%3A%20'write%20the%20scene'%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20time%3A%20'09%3A24'%2C%20title%3A%20'Validate'%2C%20detail%3A%20'check%20layout'%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20time%3A%20'09%3A31'%2C%20title%3A%20'Publish'%2C%20detail%3A%20'export%20assets'%2C%20tone%3A%20'green'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Flow",
+          "description": "Connected horizontal or vertical stages.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Flow example\" subtitle=\"Edit this focused Flow scene\" padding={22} gap={18}>\n  <Flow\n    gap={12}\n    connectorLength={30}\n    stages={[{ title: 'Request', subtitle: 'source data', tone: 'blue', width: 190 },\n        { title: 'Transform', subtitle: 'build scene', tone: 'purple', width: 190 },\n        { title: 'Deliver', subtitle: 'render files', tone: 'green', width: 190 }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "gap",
+              "label": "Gap",
+              "type": "number",
+              "value": 12,
+              "start": 129,
+              "end": 137,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            },
+            {
+              "prop": "connectorLength",
+              "label": "Connector Length",
+              "type": "number",
+              "value": 30,
+              "start": 142,
+              "end": 162,
+              "min": 4,
+              "max": 160,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Flow%20example%22%20subtitle%3D%22Edit%20this%20focused%20Flow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFlow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20connectorLength%3D%7B30%7D%0A%20%20%20%20stages%3D%7B%5B%7B%20title%3A%20'Request'%2C%20subtitle%3A%20'source%20data'%2C%20tone%3A%20'blue'%2C%20width%3A%20190%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'Transform'%2C%20subtitle%3A%20'build%20scene'%2C%20tone%3A%20'purple'%2C%20width%3A%20190%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'Deliver'%2C%20subtitle%3A%20'render%20files'%2C%20tone%3A%20'green'%2C%20width%3A%20190%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Pipeline",
+          "description": "Compact process pipeline with shared title.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Pipeline example\" subtitle=\"Edit this focused Pipeline scene\" padding={22} gap={18}>\n  <Pipeline\n    title='Release pipeline'\n    stages={[{ label: 'Build', sublabel: 'TSX', icon: '◇', color: 'secondary' },\n        { label: 'Check', sublabel: 'themes', icon: '✓', color: 'info' },\n        { label: 'Export', sublabel: 'PNG', icon: '↓', color: 'positive' }]} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Pipeline%20example%22%20subtitle%3D%22Edit%20this%20focused%20Pipeline%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CPipeline%0A%20%20%20%20title%3D'Release%20pipeline'%0A%20%20%20%20stages%3D%7B%5B%7B%20label%3A%20'Build'%2C%20sublabel%3A%20'TSX'%2C%20icon%3A%20'%E2%97%87'%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Check'%2C%20sublabel%3A%20'themes'%2C%20icon%3A%20'%E2%9C%93'%2C%20color%3A%20'info'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Export'%2C%20sublabel%3A%20'PNG'%2C%20icon%3A%20'%E2%86%93'%2C%20color%3A%20'positive'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ProgressRow",
+          "description": "Labeled progress bar and value.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ProgressRow example\" subtitle=\"Edit this focused ProgressRow scene\" padding={22} gap={18}>\n  <Column\n    width={620}\n    gap={14}\n    align='stretch'>\n  <ProgressRow\n    label='Layout'\n    value={0.96}\n    valueLabel='96%'\n    tone='green' />\n  <ProgressRow\n    label='Contrast'\n    value={0.82}\n    valueLabel='82%'\n    tone='purple' />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "Layout",
+              "start": 210,
+              "end": 224
+            },
+            {
+              "prop": "value",
+              "label": "Value",
+              "type": "number",
+              "value": 0.96,
+              "start": 229,
+              "end": 241,
+              "min": 0,
+              "max": 1,
+              "step": 0.01
+            },
+            {
+              "prop": "valueLabel",
+              "label": "Value Label",
+              "type": "text",
+              "value": "96%",
+              "start": 246,
+              "end": 262
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "green",
+              "start": 267,
+              "end": 279,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ProgressRow%20example%22%20subtitle%3D%22Edit%20this%20focused%20ProgressRow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CProgressRow%0A%20%20%20%20label%3D'Layout'%0A%20%20%20%20value%3D%7B0.96%7D%0A%20%20%20%20valueLabel%3D'96%25'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3CProgressRow%0A%20%20%20%20label%3D'Contrast'%0A%20%20%20%20value%3D%7B0.82%7D%0A%20%20%20%20valueLabel%3D'82%25'%0A%20%20%20%20tone%3D'purple'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ProgressList",
+          "description": "Comparable progress across several measures.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ProgressList example\" subtitle=\"Edit this focused ProgressList scene\" padding={22} gap={18}>\n  <ProgressList\n    labelWidth={100}\n    rows={[{ label: 'Layout', value: 0.96, tone: 'green' },\n        { label: 'Contrast', value: 0.82, tone: 'purple' },\n        { label: 'Labels', value: 1, tone: 'blue' }]} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ProgressList%20example%22%20subtitle%3D%22Edit%20this%20focused%20ProgressList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CProgressList%0A%20%20%20%20labelWidth%3D%7B100%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'Layout'%2C%20value%3A%200.96%2C%20tone%3A%20'green'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Contrast'%2C%20value%3A%200.82%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Labels'%2C%20value%3A%201%2C%20tone%3A%20'blue'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "diagrams",
+      "label": "Diagrams",
+      "description": "Networks, system architecture, directed graphs, and hierarchies.",
+      "source": "catalog-diagrams",
+      "count": 3,
+      "components": [
+        {
+          "name": "LayeredNetwork",
+          "description": "Layered neural network or staged DAG.",
+          "example": "width = 960\nheight = 560\n\n<Scene title=\"LayeredNetwork example\" subtitle=\"Edit this focused LayeredNetwork scene\" padding={22} gap={18}>\n  <LayeredNetwork\n    width={820}\n    height={360}\n    layers={[{ title: 'Input', nodes: ['x₁', 'x₂', 'x₃'], tone: 'blue' },\n        { title: 'Hidden', nodes: ['h₁', 'h₂', 'h₃'], tone: 'purple' },\n        { title: 'Output', nodes: ['y'], tone: 'green' }]}\n    activePath={[1, 0, 0]}\n    formula='y = f(Wx + b)' />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 159,
+              "end": 170,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 360,
+              "start": 175,
+              "end": 187,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "formula",
+              "label": "Formula",
+              "type": "text",
+              "value": "y = f(Wx + b)",
+              "start": 424,
+              "end": 447
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22LayeredNetwork%20example%22%20subtitle%3D%22Edit%20this%20focused%20LayeredNetwork%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLayeredNetwork%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20layers%3D%7B%5B%7B%20title%3A%20'Input'%2C%20nodes%3A%20%5B'x%E2%82%81'%2C%20'x%E2%82%82'%2C%20'x%E2%82%83'%5D%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'Hidden'%2C%20nodes%3A%20%5B'h%E2%82%81'%2C%20'h%E2%82%82'%2C%20'h%E2%82%83'%5D%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20title%3A%20'Output'%2C%20nodes%3A%20%5B'y'%5D%2C%20tone%3A%20'green'%20%7D%5D%7D%0A%20%20%20%20activePath%3D%7B%5B1%2C%200%2C%200%5D%7D%0A%20%20%20%20formula%3D'y%20%3D%20f(Wx%20%2B%20b)'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "GraphDiagram",
+          "description": "Auto-laid architecture graph with nested groups, icons, and semantic edges.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"GraphDiagram example\" subtitle=\"Edit this focused GraphDiagram scene\" padding={22} gap={18}>\n  <GraphDiagram\n    width={820}\n    height={360}\n    nodes={[{ id: 'api', label: 'API', tone: 'blue' },\n        { id: 'queue', label: 'Queue', tone: 'purple' },\n        { id: 'worker', label: 'Worker', tone: 'green' }]}\n    edges={[{ from: 'api', to: 'queue', label: 'enqueue' },\n        { from: 'queue', to: 'worker', label: 'consume' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 153,
+              "end": 164,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 360,
+              "start": 169,
+              "end": 181,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22GraphDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20GraphDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGraphDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20nodes%3D%7B%5B%7B%20id%3A%20'api'%2C%20label%3A%20'API'%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'queue'%2C%20label%3A%20'Queue'%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'worker'%2C%20label%3A%20'Worker'%2C%20tone%3A%20'green'%20%7D%5D%7D%0A%20%20%20%20edges%3D%7B%5B%7B%20from%3A%20'api'%2C%20to%3A%20'queue'%2C%20label%3A%20'enqueue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20'queue'%2C%20to%3A%20'worker'%2C%20label%3A%20'consume'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "TreeDiagram",
+          "description": "Auto-laid hierarchy, taxonomy, or decision tree.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"TreeDiagram example\" subtitle=\"Edit this focused TreeDiagram scene\" padding={22} gap={18}>\n  <TreeDiagram\n    width={820}\n    height={340}\n    root={{ id: 'root', label: 'Product', tone: 'purple', children: [{ id: 'api', label: 'API', tone: 'blue' },\n        { id: 'web', label: 'Web app', tone: 'green' }] }} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 150,
+              "end": 161,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 340,
+              "start": 166,
+              "end": 178,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TreeDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20TreeDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTreeDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20root%3D%7B%7B%20id%3A%20'root'%2C%20label%3A%20'Product'%2C%20tone%3A%20'purple'%2C%20children%3A%20%5B%7B%20id%3A%20'api'%2C%20label%3A%20'API'%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'web'%2C%20label%3A%20'Web%20app'%2C%20tone%3A%20'green'%20%7D%5D%20%7D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "sequence",
+      "label": "Sequence",
+      "description": "Time-ordered interactions, lifelines, activations, notes, and control fragments.",
+      "source": "catalog-sequence",
+      "count": 1,
+      "components": [
+        {
+          "name": "SequenceDiagram",
+          "description": "Typed participants, messages, notes, activations, and alt, loop, or parallel fragments.",
+          "example": "width = 960\nheight = 560\n\n<Scene title=\"SequenceDiagram example\" subtitle=\"Edit this focused SequenceDiagram scene\" padding={22} gap={18}>\n  <SequenceDiagram\n    width={820}\n    height={360}\n    participants={[{ id: 'client', label: 'Client', kind: 'actor' },\n        { id: 'api', label: 'API', kind: 'boundary' },\n        { id: 'db', label: 'Database', kind: 'database' }]}\n    messages={[{ id: 'request', from: 'client', to: 'api', kind: 'sync', label: 'GET /items' },\n        { id: 'query', from: 'api', to: 'db', kind: 'sync', label: 'SELECT items' },\n        { id: 'response', from: 'api', to: 'client', kind: 'return', label: '200 OK' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 162,
+              "end": 173,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 360,
+              "start": 178,
+              "end": 190,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22SequenceDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20SequenceDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CSequenceDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20participants%3D%7B%5B%7B%20id%3A%20'client'%2C%20label%3A%20'Client'%2C%20kind%3A%20'actor'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'api'%2C%20label%3A%20'API'%2C%20kind%3A%20'boundary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'db'%2C%20label%3A%20'Database'%2C%20kind%3A%20'database'%20%7D%5D%7D%0A%20%20%20%20messages%3D%7B%5B%7B%20id%3A%20'request'%2C%20from%3A%20'client'%2C%20to%3A%20'api'%2C%20kind%3A%20'sync'%2C%20label%3A%20'GET%20%2Fitems'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'query'%2C%20from%3A%20'api'%2C%20to%3A%20'db'%2C%20kind%3A%20'sync'%2C%20label%3A%20'SELECT%20items'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'response'%2C%20from%3A%20'api'%2C%20to%3A%20'client'%2C%20kind%3A%20'return'%2C%20label%3A%20'200%20OK'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "dataflow",
+      "label": "Dataflow",
+      "description": "Typed lineage across sources, transforms, stores, and sinks.",
+      "source": "catalog-dataflow",
+      "count": 1,
+      "components": [
+        {
+          "name": "DataflowDiagram",
+          "description": "Schema-aware batch and streaming lineage compiled into a stable directed graph.",
+          "example": "width = 1040\nheight = 560\n\n<Scene title=\"DataflowDiagram example\" subtitle=\"Edit this focused DataflowDiagram scene\" padding={22} gap={18}>\n  <DataflowDiagram\n    width={820}\n    height={390}\n    direction='LR'\n    nodes={[{ id: 'source', label: 'Events', kind: 'source', tone: 'blue', schema: 'Event.v1' },\n        { id: 'transform', label: 'Validate', kind: 'transform', tone: 'purple' },\n        { id: 'sink', label: 'Warehouse', kind: 'store', tone: 'green' }]}\n    edges={[{ from: 'source', to: 'transform', mode: 'stream', label: 'Event.v1' },\n        { from: 'transform', to: 'sink', mode: 'batch', label: 'Valid.v1' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 163,
+              "end": 174,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 390,
+              "start": 179,
+              "end": 191,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "LR",
+              "start": 196,
+              "end": 210,
+              "options": [
+                "LR",
+                "RL",
+                "TB",
+                "BT"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22DataflowDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20DataflowDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDataflowDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B390%7D%0A%20%20%20%20direction%3D'LR'%0A%20%20%20%20nodes%3D%7B%5B%7B%20id%3A%20'source'%2C%20label%3A%20'Events'%2C%20kind%3A%20'source'%2C%20tone%3A%20'blue'%2C%20schema%3A%20'Event.v1'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'transform'%2C%20label%3A%20'Validate'%2C%20kind%3A%20'transform'%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'sink'%2C%20label%3A%20'Warehouse'%2C%20kind%3A%20'store'%2C%20tone%3A%20'green'%20%7D%5D%7D%0A%20%20%20%20edges%3D%7B%5B%7B%20from%3A%20'source'%2C%20to%3A%20'transform'%2C%20mode%3A%20'stream'%2C%20label%3A%20'Event.v1'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20'transform'%2C%20to%3A%20'sink'%2C%20mode%3A%20'batch'%2C%20label%3A%20'Valid.v1'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "deployment",
+      "label": "Deployment",
+      "description": "Infrastructure boundaries, workloads, ports, protocols, and trust direction.",
+      "source": "catalog-deployment",
+      "count": 1,
+      "components": [
+        {
+          "name": "DeploymentDiagram",
+          "description": "Nested region, network, and runtime boundaries with typed network connections.",
+          "example": "width = 1040\nheight = 560\n\n<Scene title=\"DeploymentDiagram example\" subtitle=\"Edit this focused DeploymentDiagram scene\" padding={22} gap={18}>\n  <DeploymentDiagram\n    width={820}\n    height={390}\n    direction='LR'\n    boundaries={[{ id: 'region', label: 'us-east-1', kind: 'region', tone: 'blue' },\n        { id: 'private', label: 'private subnet', kind: 'subnet', parent: 'region', tone: 'purple' }]}\n    nodes={[{ id: 'edge', label: 'Gateway', kind: 'gateway', tone: 'cyan' },\n        { id: 'api', label: 'API', kind: 'service', boundary: 'private', tone: 'green' }]}\n    connections={[{ id: 'https', from: 'edge', to: 'api', kind: 'cross-boundary', protocol: 'HTTPS', label: 'HTTPS/443' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 169,
+              "end": 180,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 390,
+              "start": 185,
+              "end": 197,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "LR",
+              "start": 202,
+              "end": 216,
+              "options": [
+                "LR",
+                "RL",
+                "TB",
+                "BT"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22DeploymentDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20DeploymentDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDeploymentDiagram%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B390%7D%0A%20%20%20%20direction%3D'LR'%0A%20%20%20%20boundaries%3D%7B%5B%7B%20id%3A%20'region'%2C%20label%3A%20'us-east-1'%2C%20kind%3A%20'region'%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'private'%2C%20label%3A%20'private%20subnet'%2C%20kind%3A%20'subnet'%2C%20parent%3A%20'region'%2C%20tone%3A%20'purple'%20%7D%5D%7D%0A%20%20%20%20nodes%3D%7B%5B%7B%20id%3A%20'edge'%2C%20label%3A%20'Gateway'%2C%20kind%3A%20'gateway'%2C%20tone%3A%20'cyan'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'api'%2C%20label%3A%20'API'%2C%20kind%3A%20'service'%2C%20boundary%3A%20'private'%2C%20tone%3A%20'green'%20%7D%5D%7D%0A%20%20%20%20connections%3D%7B%5B%7B%20id%3A%20'https'%2C%20from%3A%20'edge'%2C%20to%3A%20'api'%2C%20kind%3A%20'cross-boundary'%2C%20protocol%3A%20'HTTPS'%2C%20label%3A%20'HTTPS%2F443'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "ml",
+      "label": "ML topology",
+      "description": "Transformer blocks, tensor shapes, repeated layers, and distributed routes.",
+      "source": "catalog-ml",
+      "count": 1,
+      "components": [
+        {
+          "name": "TransformerTopology",
+          "description": "Transformer computation topology with tensor metadata and collective routes.",
+          "example": "width = 1040\nheight = 560\n\n<Scene title=\"TransformerTopology example\" subtitle=\"Edit this focused TransformerTopology scene\" padding={22} gap={18}>\n  <TransformerTopology\n    width={820}\n    height={390}\n    direction='LR'\n    blocks={[{ id: 'embed', label: 'Embed', kind: 'embedding', outputShape: { dims: ['B', 'T', 'd'], dtype: 'bf16' } },\n        { id: 'attn', label: 'Attention', kind: 'attention', shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' } },\n        { id: 'logits', label: 'Logits', kind: 'output', outputShape: { dims: ['B', 'T', 'V'], dtype: 'bf16' } }]}\n    routes={[{ id: 'hidden', from: 'embed', to: 'attn', kind: 'activation', label: 'hidden state' },\n        { id: 'scores', from: 'attn', to: 'logits', kind: 'activation', label: 'scores' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 820,
+              "start": 175,
+              "end": 186,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 390,
+              "start": 191,
+              "end": 203,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "LR",
+              "start": 208,
+              "end": 222,
+              "options": [
+                "LR",
+                "RL",
+                "TB",
+                "BT"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22TransformerTopology%20example%22%20subtitle%3D%22Edit%20this%20focused%20TransformerTopology%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTransformerTopology%0A%20%20%20%20width%3D%7B820%7D%0A%20%20%20%20height%3D%7B390%7D%0A%20%20%20%20direction%3D'LR'%0A%20%20%20%20blocks%3D%7B%5B%7B%20id%3A%20'embed'%2C%20label%3A%20'Embed'%2C%20kind%3A%20'embedding'%2C%20outputShape%3A%20%7B%20dims%3A%20%5B'B'%2C%20'T'%2C%20'd'%5D%2C%20dtype%3A%20'bf16'%20%7D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'attn'%2C%20label%3A%20'Attention'%2C%20kind%3A%20'attention'%2C%20shape%3A%20%7B%20dims%3A%20%5B'B'%2C%20'T'%2C%20'd'%5D%2C%20dtype%3A%20'bf16'%20%7D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'logits'%2C%20label%3A%20'Logits'%2C%20kind%3A%20'output'%2C%20outputShape%3A%20%7B%20dims%3A%20%5B'B'%2C%20'T'%2C%20'V'%5D%2C%20dtype%3A%20'bf16'%20%7D%20%7D%5D%7D%0A%20%20%20%20routes%3D%7B%5B%7B%20id%3A%20'hidden'%2C%20from%3A%20'embed'%2C%20to%3A%20'attn'%2C%20kind%3A%20'activation'%2C%20label%3A%20'hidden%20state'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'scores'%2C%20from%3A%20'attn'%2C%20to%3A%20'logits'%2C%20kind%3A%20'activation'%2C%20label%3A%20'scores'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "data",
+      "label": "Data",
+      "description": "Tables, grids, matrices, and compact distributions.",
+      "source": "catalog-data",
+      "count": 6,
+      "components": [
+        {
+          "name": "Matrix",
+          "description": "Numeric or symbolic matrix with headers.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Matrix example\" subtitle=\"Edit this focused Matrix scene\" padding={22} gap={18}>\n  <Matrix\n    title='Attention weights'\n    rowLabels={['q₁', 'q₂', 'q₃']}\n    colLabels={['k₁', 'k₂', 'k₃']}\n    data={[[0.82, 0.14, 0.04],\n        [0.18, 0.66, 0.16],\n        [0.06, 0.21, 0.73]]}\n    cellWidth={58}\n    cellHeight={42}\n    rowLabelWidth={34} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Attention weights",
+              "start": 135,
+              "end": 160
+            },
+            {
+              "prop": "cellWidth",
+              "label": "Cell Width",
+              "type": "number",
+              "value": 58,
+              "start": 323,
+              "end": 337,
+              "min": 16,
+              "max": 300,
+              "step": 1
+            },
+            {
+              "prop": "cellHeight",
+              "label": "Cell Height",
+              "type": "number",
+              "value": 42,
+              "start": 342,
+              "end": 357,
+              "min": 16,
+              "max": 200,
+              "step": 1
+            },
+            {
+              "prop": "rowLabelWidth",
+              "label": "Row Label Width",
+              "type": "number",
+              "value": 34,
+              "start": 362,
+              "end": 380,
+              "min": 32,
+              "max": 300,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Matrix%20example%22%20subtitle%3D%22Edit%20this%20focused%20Matrix%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMatrix%0A%20%20%20%20title%3D'Attention%20weights'%0A%20%20%20%20rowLabels%3D%7B%5B'q%E2%82%81'%2C%20'q%E2%82%82'%2C%20'q%E2%82%83'%5D%7D%0A%20%20%20%20colLabels%3D%7B%5B'k%E2%82%81'%2C%20'k%E2%82%82'%2C%20'k%E2%82%83'%5D%7D%0A%20%20%20%20data%3D%7B%5B%5B0.82%2C%200.14%2C%200.04%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.18%2C%200.66%2C%200.16%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.06%2C%200.21%2C%200.73%5D%5D%7D%0A%20%20%20%20cellWidth%3D%7B58%7D%0A%20%20%20%20cellHeight%3D%7B42%7D%0A%20%20%20%20rowLabelWidth%3D%7B34%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Heatmap",
+          "description": "Color-scaled matrix for intensity and correlation.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Heatmap example\" subtitle=\"Edit this focused Heatmap scene\" padding={22} gap={18}>\n  <Heatmap\n    title='Similarity'\n    xLabels={['api', 'docs', 'sdk']}\n    yLabels={['setup', 'auth', 'tests']}\n    data={[[0.92, 0.4, 0.2],\n        [0.3, 0.86, 0.55],\n        [0.18, 0.52, 0.95]]}\n    cellWidth={62}\n    cellHeight={42}\n    rowLabelWidth={48}\n    colorScale='strength' />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Similarity",
+              "start": 138,
+              "end": 156
+            },
+            {
+              "prop": "cellWidth",
+              "label": "Cell Width",
+              "type": "number",
+              "value": 62,
+              "start": 324,
+              "end": 338,
+              "min": 16,
+              "max": 300,
+              "step": 1
+            },
+            {
+              "prop": "cellHeight",
+              "label": "Cell Height",
+              "type": "number",
+              "value": 42,
+              "start": 343,
+              "end": 358,
+              "min": 16,
+              "max": 200,
+              "step": 1
+            },
+            {
+              "prop": "rowLabelWidth",
+              "label": "Row Label Width",
+              "type": "number",
+              "value": 48,
+              "start": 363,
+              "end": 381,
+              "min": 32,
+              "max": 300,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Heatmap%20example%22%20subtitle%3D%22Edit%20this%20focused%20Heatmap%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CHeatmap%0A%20%20%20%20title%3D'Similarity'%0A%20%20%20%20xLabels%3D%7B%5B'api'%2C%20'docs'%2C%20'sdk'%5D%7D%0A%20%20%20%20yLabels%3D%7B%5B'setup'%2C%20'auth'%2C%20'tests'%5D%7D%0A%20%20%20%20data%3D%7B%5B%5B0.92%2C%200.4%2C%200.2%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.3%2C%200.86%2C%200.55%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.18%2C%200.52%2C%200.95%5D%5D%7D%0A%20%20%20%20cellWidth%3D%7B62%7D%0A%20%20%20%20cellHeight%3D%7B42%7D%0A%20%20%20%20rowLabelWidth%3D%7B48%7D%0A%20%20%20%20colorScale%3D'strength'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "TiledMatrix",
+          "description": "Matrix with named regions and boundaries.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"TiledMatrix example\" subtitle=\"Edit this focused TiledMatrix scene\" padding={22} gap={18}>\n  <TiledMatrix\n    title='Block sparse attention'\n    subtitle='Named regions within one matrix'\n    rows={8}\n    cols={10}\n    cellSize={25}\n    gap={3}\n    tone='cyan'\n    regions={[{ rowStart: 0, rowEnd: 4, colStart: 0, colEnd: 4, tone: 'purple' },\n        { rowStart: 4, rowEnd: 8, colStart: 4, colEnd: 10, tone: 'green' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Block sparse attention",
+              "start": 150,
+              "end": 180
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Named regions within one matrix",
+              "start": 185,
+              "end": 227
+            },
+            {
+              "prop": "rows",
+              "label": "Rows",
+              "type": "number",
+              "value": 8,
+              "start": 232,
+              "end": 240,
+              "min": 1,
+              "max": 32,
+              "step": 1
+            },
+            {
+              "prop": "cols",
+              "label": "Cols",
+              "type": "number",
+              "value": 10,
+              "start": 245,
+              "end": 254,
+              "min": 1,
+              "max": 32,
+              "step": 1
+            },
+            {
+              "prop": "cellSize",
+              "label": "Cell Size",
+              "type": "number",
+              "value": 25,
+              "start": 259,
+              "end": 272,
+              "min": 4,
+              "max": 96,
+              "step": 1
+            },
+            {
+              "prop": "gap",
+              "label": "Gap",
+              "type": "number",
+              "value": 3,
+              "start": 277,
+              "end": 284,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "cyan",
+              "start": 289,
+              "end": 300,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TiledMatrix%20example%22%20subtitle%3D%22Edit%20this%20focused%20TiledMatrix%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTiledMatrix%0A%20%20%20%20title%3D'Block%20sparse%20attention'%0A%20%20%20%20subtitle%3D'Named%20regions%20within%20one%20matrix'%0A%20%20%20%20rows%3D%7B8%7D%0A%20%20%20%20cols%3D%7B10%7D%0A%20%20%20%20cellSize%3D%7B25%7D%0A%20%20%20%20gap%3D%7B3%7D%0A%20%20%20%20tone%3D'cyan'%0A%20%20%20%20regions%3D%7B%5B%7B%20rowStart%3A%200%2C%20rowEnd%3A%204%2C%20colStart%3A%200%2C%20colEnd%3A%204%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20rowStart%3A%204%2C%20rowEnd%3A%208%2C%20colStart%3A%204%2C%20colEnd%3A%2010%2C%20tone%3A%20'green'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "DataTable",
+          "description": "Structured rows and columns with headers.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"DataTable example\" subtitle=\"Edit this focused DataTable scene\" padding={22} gap={18}>\n  <DataTable\n    cellWidth={94}\n    firstColWidth={120}\n    cellHeight={34}\n    rows={[[ 'Service', 'p95', 'State' ],\n        [ 'API', '82 ms', 'ready' ],\n        [ 'Worker', '140 ms', 'ready' ]]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "cellWidth",
+              "label": "Cell Width",
+              "type": "number",
+              "value": 94,
+              "start": 144,
+              "end": 158,
+              "min": 16,
+              "max": 300,
+              "step": 1
+            },
+            {
+              "prop": "firstColWidth",
+              "label": "First Col Width",
+              "type": "number",
+              "value": 120,
+              "start": 163,
+              "end": 182,
+              "min": 32,
+              "max": 300,
+              "step": 1
+            },
+            {
+              "prop": "cellHeight",
+              "label": "Cell Height",
+              "type": "number",
+              "value": 34,
+              "start": 187,
+              "end": 202,
+              "min": 16,
+              "max": 200,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DataTable%20example%22%20subtitle%3D%22Edit%20this%20focused%20DataTable%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDataTable%0A%20%20%20%20cellWidth%3D%7B94%7D%0A%20%20%20%20firstColWidth%3D%7B120%7D%0A%20%20%20%20cellHeight%3D%7B34%7D%0A%20%20%20%20rows%3D%7B%5B%5B%20'Service'%2C%20'p95'%2C%20'State'%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20'API'%2C%20'82%20ms'%2C%20'ready'%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20'Worker'%2C%20'140%20ms'%2C%20'ready'%20%5D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Grid",
+          "description": "General labeled cell grid.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Grid example\" subtitle=\"Edit this focused Grid scene\" padding={22} gap={18}>\n  <Grid\n    cellWidth={72}\n    cellHeight={42}\n    headerRows={1}\n    headerCols={1}\n    rows={[[ 'Region', 'US', 'EU' ],\n        [ 'API',\n        { label: 'ready', tone: 'green' },\n        { label: 'watch', tone: 'warm' } ],\n        [ 'Queue',\n        { label: 'ready', tone: 'green' },\n        { label: 'ready', tone: 'green' }]]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "cellWidth",
+              "label": "Cell Width",
+              "type": "number",
+              "value": 72,
+              "start": 129,
+              "end": 143,
+              "min": 16,
+              "max": 300,
+              "step": 1
+            },
+            {
+              "prop": "cellHeight",
+              "label": "Cell Height",
+              "type": "number",
+              "value": 42,
+              "start": 148,
+              "end": 163,
+              "min": 16,
+              "max": 200,
+              "step": 1
+            },
+            {
+              "prop": "headerRows",
+              "label": "Header Rows",
+              "type": "number",
+              "value": 1,
+              "start": 168,
+              "end": 182,
+              "min": 0,
+              "max": 4,
+              "step": 1
+            },
+            {
+              "prop": "headerCols",
+              "label": "Header Cols",
+              "type": "number",
+              "value": 1,
+              "start": 187,
+              "end": 201,
+              "min": 0,
+              "max": 4,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Grid%20example%22%20subtitle%3D%22Edit%20this%20focused%20Grid%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGrid%0A%20%20%20%20cellWidth%3D%7B72%7D%0A%20%20%20%20cellHeight%3D%7B42%7D%0A%20%20%20%20headerRows%3D%7B1%7D%0A%20%20%20%20headerCols%3D%7B1%7D%0A%20%20%20%20rows%3D%7B%5B%5B%20'Region'%2C%20'US'%2C%20'EU'%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20'API'%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'ready'%2C%20tone%3A%20'green'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'watch'%2C%20tone%3A%20'warm'%20%7D%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20'Queue'%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'ready'%2C%20tone%3A%20'green'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'ready'%2C%20tone%3A%20'green'%20%7D%5D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "MiniBarChart",
+          "description": "Compact categorical bars for dense layouts.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"MiniBarChart example\" subtitle=\"Edit this focused MiniBarChart scene\" padding={22} gap={18}>\n  <MiniBarChart\n    height={170}\n    barWidth={48}\n    gap={18} showValues\n    data={[{ label: 'plan', value: 74, tone: 'blue' },\n        { label: 'build', value: 92, tone: 'purple' },\n        { label: 'check', value: 86, tone: 'cyan' },\n        { label: 'ship', value: 98, tone: 'green' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 170,
+              "start": 153,
+              "end": 165,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "barWidth",
+              "label": "Bar Width",
+              "type": "number",
+              "value": 48,
+              "start": 170,
+              "end": 183,
+              "min": 8,
+              "max": 120,
+              "step": 1
+            },
+            {
+              "prop": "gap",
+              "label": "Gap",
+              "type": "number",
+              "value": 18,
+              "start": 188,
+              "end": 196,
+              "min": 0,
+              "max": 80,
+              "step": 1
+            },
+            {
+              "prop": "showValues",
+              "label": "Show Values",
+              "type": "boolean",
+              "value": true,
+              "start": 197,
+              "end": 207
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MiniBarChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20MiniBarChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMiniBarChart%0A%20%20%20%20height%3D%7B170%7D%0A%20%20%20%20barWidth%3D%7B48%7D%0A%20%20%20%20gap%3D%7B18%7D%20showValues%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'plan'%2C%20value%3A%2074%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'build'%2C%20value%3A%2092%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'check'%2C%20value%3A%2086%2C%20tone%3A%20'cyan'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'ship'%2C%20value%3A%2098%2C%20tone%3A%20'green'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "charts",
+      "label": "Charts",
+      "description": "Common comparisons, trends, distributions, and analytical plots.",
+      "source": "catalog-charts",
+      "count": 10,
+      "components": [
+        {
+          "name": "ChartFrame",
+          "description": "Shared chart title, subtitle, legend, and footer.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ChartFrame example\" subtitle=\"Edit this focused ChartFrame scene\" padding={22} gap={18}>\n  <ChartFrame\n    title='Weekly quality'\n    subtitle='A reusable title, legend, and footer'\n    width={680}\n    footer='Source: evaluation runs'>\n  <BarChart\n    width={620}\n    height={220}\n    data={[{ label: 'Mon', value: 0.72, color: 'secondary' },\n        { label: 'Wed', value: 0.84, color: 'primary' },\n        { label: 'Fri', value: 0.96, color: 'positive' }]}\n    format='percent' />\n  </ChartFrame>\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Weekly quality",
+              "start": 147,
+              "end": 169
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "A reusable title, legend, and footer",
+              "start": 174,
+              "end": 221
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 680,
+              "start": 226,
+              "end": 237,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ChartFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20ChartFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CChartFrame%0A%20%20%20%20title%3D'Weekly%20quality'%0A%20%20%20%20subtitle%3D'A%20reusable%20title%2C%20legend%2C%20and%20footer'%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20footer%3D'Source%3A%20evaluation%20runs'%3E%0A%20%20%3CBarChart%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B220%7D%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'Mon'%2C%20value%3A%200.72%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Wed'%2C%20value%3A%200.84%2C%20color%3A%20'primary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Fri'%2C%20value%3A%200.96%2C%20color%3A%20'positive'%20%7D%5D%7D%0A%20%20%20%20format%3D'percent'%20%2F%3E%0A%20%20%3C%2FChartFrame%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "DonutChart",
+          "description": "Part-to-whole composition with center label.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"DonutChart example\" subtitle=\"Edit this focused DonutChart scene\" padding={22} gap={18}>\n  <DonutChart\n    title='Evaluation results'\n    subtitle='Share by outcome'\n    width={420}\n    height={280}\n    size={190}\n    thickness={34}\n    centerValue='92%'\n    centerLabel='passed'\n    segments={[{ label: 'Passed', value: 0.72, color: 'positive' },\n        { label: 'Review', value: 0.2, color: 'secondary' },\n        { label: 'Failed', value: 0.08, color: 'critical' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Evaluation results",
+              "start": 147,
+              "end": 173
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Share by outcome",
+              "start": 178,
+              "end": 205
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 420,
+              "start": 210,
+              "end": 221,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 280,
+              "start": 226,
+              "end": 238,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "size",
+              "label": "Size",
+              "type": "number",
+              "value": 190,
+              "start": 243,
+              "end": 253,
+              "min": 32,
+              "max": 360,
+              "step": 1
+            },
+            {
+              "prop": "thickness",
+              "label": "Thickness",
+              "type": "number",
+              "value": 34,
+              "start": 258,
+              "end": 272,
+              "min": 2,
+              "max": 64,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DonutChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20DonutChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDonutChart%0A%20%20%20%20title%3D'Evaluation%20results'%0A%20%20%20%20subtitle%3D'Share%20by%20outcome'%0A%20%20%20%20width%3D%7B420%7D%0A%20%20%20%20height%3D%7B280%7D%0A%20%20%20%20size%3D%7B190%7D%0A%20%20%20%20thickness%3D%7B34%7D%0A%20%20%20%20centerValue%3D'92%25'%0A%20%20%20%20centerLabel%3D'passed'%0A%20%20%20%20segments%3D%7B%5B%7B%20label%3A%20'Passed'%2C%20value%3A%200.72%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Review'%2C%20value%3A%200.2%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Failed'%2C%20value%3A%200.08%2C%20color%3A%20'critical'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "StackedBar",
+          "description": "Part-to-whole values along one dimension.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StackedBar example\" subtitle=\"Edit this focused StackedBar scene\" padding={22} gap={18}>\n  <StackedBar\n    title='Requests by outcome'\n    subtitle='Share of total traffic'\n    width={720}\n    height={80}\n    segments={[{ label: 'Success', value: 68, color: 'positive' },\n        { label: 'Retry', value: 22, color: 'warning' },\n        { label: 'Error', value: 10, color: 'critical' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Requests by outcome",
+              "start": 147,
+              "end": 174
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Share of total traffic",
+              "start": 179,
+              "end": 212
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 720,
+              "start": 217,
+              "end": 228,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 80,
+              "start": 233,
+              "end": 244,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StackedBar%20example%22%20subtitle%3D%22Edit%20this%20focused%20StackedBar%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStackedBar%0A%20%20%20%20title%3D'Requests%20by%20outcome'%0A%20%20%20%20subtitle%3D'Share%20of%20total%20traffic'%0A%20%20%20%20width%3D%7B720%7D%0A%20%20%20%20height%3D%7B80%7D%0A%20%20%20%20segments%3D%7B%5B%7B%20label%3A%20'Success'%2C%20value%3A%2068%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Retry'%2C%20value%3A%2022%2C%20color%3A%20'warning'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Error'%2C%20value%3A%2010%2C%20color%3A%20'critical'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "BarChart",
+          "description": "Categorical comparison with labels and values.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"BarChart example\" subtitle=\"Edit this focused BarChart scene\" padding={22} gap={18}>\n  <BarChart\n    title='Pass rate'\n    subtitle='By validation stage'\n    width={760}\n    height={340}\n    format='percent'\n    yAxisLabel='success'\n    data={[{ label: 'Build', value: 0.82, color: 'secondary' },\n        { label: 'Layout', value: 0.91, color: 'primary' },\n        { label: 'Contrast', value: 0.98, color: 'positive' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Pass rate",
+              "start": 141,
+              "end": 158
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "By validation stage",
+              "start": 163,
+              "end": 193
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 760,
+              "start": 198,
+              "end": 209,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 340,
+              "start": 214,
+              "end": 226,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22BarChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20BarChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CBarChart%0A%20%20%20%20title%3D'Pass%20rate'%0A%20%20%20%20subtitle%3D'By%20validation%20stage'%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20format%3D'percent'%0A%20%20%20%20yAxisLabel%3D'success'%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'Build'%2C%20value%3A%200.82%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Layout'%2C%20value%3A%200.91%2C%20color%3A%20'primary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Contrast'%2C%20value%3A%200.98%2C%20color%3A%20'positive'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "LineChart",
+          "description": "One or more trends across an ordered axis.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"LineChart example\" subtitle=\"Edit this focused LineChart scene\" padding={22} gap={18}>\n  <LineChart\n    title='Quality over time'\n    subtitle='Two runs per release'\n    width={760}\n    height={340}\n    labels={['r1', 'r2', 'r3', 'r4']}\n    yAxisLabel='score'\n    format='percent'\n    series={[{ name: 'Quality', points: [0.62, 0.7, 0.81, 0.93], color: 'positive' },\n        { name: 'Coverage', points: [0.48, 0.61, 0.72, 0.84], color: 'primary' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Quality over time",
+              "start": 144,
+              "end": 169
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Two runs per release",
+              "start": 174,
+              "end": 205
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 760,
+              "start": 210,
+              "end": 221,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 340,
+              "start": 226,
+              "end": 238,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22LineChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20LineChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLineChart%0A%20%20%20%20title%3D'Quality%20over%20time'%0A%20%20%20%20subtitle%3D'Two%20runs%20per%20release'%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20labels%3D%7B%5B'r1'%2C%20'r2'%2C%20'r3'%2C%20'r4'%5D%7D%0A%20%20%20%20yAxisLabel%3D'score'%0A%20%20%20%20format%3D'percent'%0A%20%20%20%20series%3D%7B%5B%7B%20name%3A%20'Quality'%2C%20points%3A%20%5B0.62%2C%200.7%2C%200.81%2C%200.93%5D%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20name%3A%20'Coverage'%2C%20points%3A%20%5B0.48%2C%200.61%2C%200.72%2C%200.84%5D%2C%20color%3A%20'primary'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ScatterPlot",
+          "description": "Point distribution across two numeric axes.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"ScatterPlot example\" subtitle=\"Edit this focused ScatterPlot scene\" padding={22} gap={18}>\n  <ScatterPlot\n    title='Cost vs. quality'\n    subtitle='Choose the right operating point'\n    width={760}\n    height={340}\n    xMin={0}\n    xMax={10}\n    yMin={0}\n    yMax={10}\n    xAxisLabel='cost'\n    yAxisLabel='quality'\n    points={[{ x: 2, y: 6.8, label: 'fast', color: 'secondary' },\n        { x: 4.8, y: 8.1, label: 'balanced', color: 'positive' },\n        { x: 8, y: 9.2, label: 'deep', color: 'primary' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Cost vs. quality",
+              "start": 150,
+              "end": 174
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Choose the right operating point",
+              "start": 179,
+              "end": 222
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 760,
+              "start": 227,
+              "end": 238,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 340,
+              "start": 243,
+              "end": 255,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22ScatterPlot%20example%22%20subtitle%3D%22Edit%20this%20focused%20ScatterPlot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CScatterPlot%0A%20%20%20%20title%3D'Cost%20vs.%20quality'%0A%20%20%20%20subtitle%3D'Choose%20the%20right%20operating%20point'%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20xMin%3D%7B0%7D%0A%20%20%20%20xMax%3D%7B10%7D%0A%20%20%20%20yMin%3D%7B0%7D%0A%20%20%20%20yMax%3D%7B10%7D%0A%20%20%20%20xAxisLabel%3D'cost'%0A%20%20%20%20yAxisLabel%3D'quality'%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%202%2C%20y%3A%206.8%2C%20label%3A%20'fast'%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%204.8%2C%20y%3A%208.1%2C%20label%3A%20'balanced'%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%208%2C%20y%3A%209.2%2C%20label%3A%20'deep'%2C%20color%3A%20'primary'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ParetoChart",
+          "description": "Automatic non-dominated frontier across competing numeric objectives.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"ParetoChart example\" subtitle=\"Edit this focused ParetoChart scene\" padding={22} gap={18}>\n  <ParetoChart\n    title='Quality frontier'\n    subtitle='Higher quality at lower cost'\n    width={760}\n    height={340}\n    xMin={0}\n    xMax={10}\n    yMin={0}\n    yMax={10}\n    xAxisLabel='cost'\n    points={[{ x: 1.2, y: 4, label: 'fast', color: 'info' },\n        { x: 3.8, y: 6.8, label: 'balanced', color: 'positive' },\n        { x: 7, y: 9.1, label: 'deep', color: 'primary' },\n        { x: 8.4, y: 7.3, label: 'dominated', color: 'warning' }]}\n    frontierColor='positive'\n    goalLabel='higher quality · lower cost' />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Quality frontier",
+              "start": 150,
+              "end": 174
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Higher quality at lower cost",
+              "start": 179,
+              "end": 218
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 760,
+              "start": 223,
+              "end": 234,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 340,
+              "start": 239,
+              "end": 251,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22ParetoChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20ParetoChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CParetoChart%0A%20%20%20%20title%3D'Quality%20frontier'%0A%20%20%20%20subtitle%3D'Higher%20quality%20at%20lower%20cost'%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20xMin%3D%7B0%7D%0A%20%20%20%20xMax%3D%7B10%7D%0A%20%20%20%20yMin%3D%7B0%7D%0A%20%20%20%20yMax%3D%7B10%7D%0A%20%20%20%20xAxisLabel%3D'cost'%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%201.2%2C%20y%3A%204%2C%20label%3A%20'fast'%2C%20color%3A%20'info'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%203.8%2C%20y%3A%206.8%2C%20label%3A%20'balanced'%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%207%2C%20y%3A%209.1%2C%20label%3A%20'deep'%2C%20color%3A%20'primary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%208.4%2C%20y%3A%207.3%2C%20label%3A%20'dominated'%2C%20color%3A%20'warning'%20%7D%5D%7D%0A%20%20%20%20frontierColor%3D'positive'%0A%20%20%20%20goalLabel%3D'higher%20quality%20%C2%B7%20lower%20cost'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "QuadrantChart",
+          "description": "Numeric decision map split by configurable policy thresholds.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"QuadrantChart example\" subtitle=\"Edit this focused QuadrantChart scene\" padding={22} gap={18}>\n  <QuadrantChart\n    title='Prioritization map'\n    subtitle='Effort vs. user value'\n    width={760}\n    height={360}\n    xAxisLabel='effort'\n    yAxisLabel='user value'\n    regions={{ topLeft: { label: 'Quick wins', color: 'positive', emphasis: true }, topRight: { label: 'Big bets', color: 'primary' }, bottomLeft: { label: 'Defer', color: 'neutral' }, bottomRight: { label: 'Avoid', color: 'warning' } }}\n    points={[{ x: 0.24, y: 0.8, label: 'A', color: 'positive' },\n        { x: 0.75, y: 0.7, label: 'B', color: 'primary' },\n        { x: 0.34, y: 0.25, label: 'C', color: 'neutral' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Prioritization map",
+              "start": 156,
+              "end": 182
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Effort vs. user value",
+              "start": 187,
+              "end": 219
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 760,
+              "start": 224,
+              "end": 235,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 360,
+              "start": 240,
+              "end": 252,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22QuadrantChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20QuadrantChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CQuadrantChart%0A%20%20%20%20title%3D'Prioritization%20map'%0A%20%20%20%20subtitle%3D'Effort%20vs.%20user%20value'%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B360%7D%0A%20%20%20%20xAxisLabel%3D'effort'%0A%20%20%20%20yAxisLabel%3D'user%20value'%0A%20%20%20%20regions%3D%7B%7B%20topLeft%3A%20%7B%20label%3A%20'Quick%20wins'%2C%20color%3A%20'positive'%2C%20emphasis%3A%20true%20%7D%2C%20topRight%3A%20%7B%20label%3A%20'Big%20bets'%2C%20color%3A%20'primary'%20%7D%2C%20bottomLeft%3A%20%7B%20label%3A%20'Defer'%2C%20color%3A%20'neutral'%20%7D%2C%20bottomRight%3A%20%7B%20label%3A%20'Avoid'%2C%20color%3A%20'warning'%20%7D%20%7D%7D%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%200.24%2C%20y%3A%200.8%2C%20label%3A%20'A'%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%200.75%2C%20y%3A%200.7%2C%20label%3A%20'B'%2C%20color%3A%20'primary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%200.34%2C%20y%3A%200.25%2C%20label%3A%20'C'%2C%20color%3A%20'neutral'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "IntervalPlot",
+          "description": "Low, midpoint, and high ranges by category.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"IntervalPlot example\" subtitle=\"Edit this focused IntervalPlot scene\" padding={22} gap={18}>\n  <IntervalPlot\n    title='Latency ranges'\n    subtitle='Low, median, and high values'\n    width={760}\n    height={340}\n    min={0}\n    max={100}\n    axisLabel='milliseconds'\n    format='integer'\n    data={[{ label: 'API', low: 18, mid: 32, high: 46, color: 'secondary' },\n        { label: 'Worker', low: 34, mid: 51, high: 78, color: 'primary' }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "title",
+              "label": "Title",
+              "type": "text",
+              "value": "Latency ranges",
+              "start": 153,
+              "end": 175
+            },
+            {
+              "prop": "subtitle",
+              "label": "Subtitle",
+              "type": "text",
+              "value": "Low, median, and high values",
+              "start": 180,
+              "end": 219
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 760,
+              "start": 224,
+              "end": 235,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 340,
+              "start": 240,
+              "end": 252,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22IntervalPlot%20example%22%20subtitle%3D%22Edit%20this%20focused%20IntervalPlot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CIntervalPlot%0A%20%20%20%20title%3D'Latency%20ranges'%0A%20%20%20%20subtitle%3D'Low%2C%20median%2C%20and%20high%20values'%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20min%3D%7B0%7D%0A%20%20%20%20max%3D%7B100%7D%0A%20%20%20%20axisLabel%3D'milliseconds'%0A%20%20%20%20format%3D'integer'%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'API'%2C%20low%3A%2018%2C%20mid%3A%2032%2C%20high%3A%2046%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Worker'%2C%20low%3A%2034%2C%20mid%3A%2051%2C%20high%3A%2078%2C%20color%3A%20'primary'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Legend",
+          "description": "Reusable color key for charts and diagrams.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Legend example\" subtitle=\"Edit this focused Legend scene\" padding={22} gap={18}>\n  <Legend\n    title='Result types'\n    items={[{ label: 'Success', color: 'positive' },\n        { label: 'Queued', color: 'warning' },\n        { label: 'Blocked', color: c.critical, style: 'dashed' }]} />\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Legend%20example%22%20subtitle%3D%22Edit%20this%20focused%20Legend%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLegend%0A%20%20%20%20title%3D'Result%20types'%0A%20%20%20%20items%3D%7B%5B%7B%20label%3A%20'Success'%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Queued'%2C%20color%3A%20'warning'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Blocked'%2C%20color%3A%20c.critical%2C%20style%3A%20'dashed'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "drawing",
+      "label": "Drawing",
+      "description": "Low-level SVG geometry for custom technical figures.",
+      "source": "catalog-drawing",
+      "count": 12,
+      "components": [
+        {
+          "name": "Box",
+          "description": "Rounded SVG box with label and tone.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Box example\" subtitle=\"Edit this focused Box scene\" padding={22} gap={18}>\n  <Row\n    gap={14}\n    align='center'>\n  <Box\n    label='Input'\n    sublabel='request'\n    color='primary' gradient\n    width={180}\n    height={100} />\n  <Arrow\n    direction='right'\n    length={50} />\n  <Box\n    label='Output'\n    sublabel='result'\n    color='positive'\n    width={180}\n    height={100} />\n  </Row>\n</Scene>",
+          "controls": [
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "Input",
+              "start": 166,
+              "end": 179
+            },
+            {
+              "prop": "sublabel",
+              "label": "Sublabel",
+              "type": "text",
+              "value": "request",
+              "start": 184,
+              "end": 202
+            },
+            {
+              "prop": "gradient",
+              "label": "Gradient",
+              "type": "boolean",
+              "value": true,
+              "start": 223,
+              "end": 231
+            },
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 180,
+              "start": 236,
+              "end": 247,
+              "min": 24,
+              "max": 600,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 100,
+              "start": 252,
+              "end": 264,
+              "min": 20,
+              "max": 500,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Box%20example%22%20subtitle%3D%22Edit%20this%20focused%20Box%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3CBox%0A%20%20%20%20label%3D'Input'%0A%20%20%20%20sublabel%3D'request'%0A%20%20%20%20color%3D'primary'%20gradient%0A%20%20%20%20width%3D%7B180%7D%0A%20%20%20%20height%3D%7B100%7D%20%2F%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D'right'%0A%20%20%20%20length%3D%7B50%7D%20%2F%3E%0A%20%20%3CBox%0A%20%20%20%20label%3D'Output'%0A%20%20%20%20sublabel%3D'result'%0A%20%20%20%20color%3D'positive'%0A%20%20%20%20width%3D%7B180%7D%0A%20%20%20%20height%3D%7B100%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Arrow",
+          "description": "Straight labeled SVG arrow.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Arrow example\" subtitle=\"Edit this focused Arrow scene\" padding={22} gap={18}>\n  <Arrow\n    direction='right'\n    label='request'\n    length={220}\n    color={c.infoLight} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "right",
+              "start": 132,
+              "end": 149,
+              "options": [
+                "down",
+                "right",
+                "up",
+                "left"
+              ]
+            },
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "request",
+              "start": 154,
+              "end": 169
+            },
+            {
+              "prop": "length",
+              "label": "Length",
+              "type": "number",
+              "value": 220,
+              "start": 174,
+              "end": 186,
+              "min": 8,
+              "max": 400,
+              "step": 1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Arrow%20example%22%20subtitle%3D%22Edit%20this%20focused%20Arrow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D'right'%0A%20%20%20%20label%3D'request'%0A%20%20%20%20length%3D%7B220%7D%0A%20%20%20%20color%3D%7Bc.infoLight%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ArrowMarkerDef",
+          "description": "Reusable SVG arrowhead definition.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ArrowMarkerDef example\" subtitle=\"Edit this focused ArrowMarkerDef scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='center'>\n  <svg\n    width='460'\n    height='170'\n    viewBox='0 0 460 170'>\n  <defs>\n  <ArrowMarkerDef\n    id='catalog-arrow'\n    color={c.infoLight}\n    size={8} />\n  </defs>\n  <path\n    d='M 42 85 C 140 8 280 162 410 85'\n    fill='none'\n    stroke={c.infoLight}\n    strokeWidth={4}\n    markerEnd='url(#catalog-arrow)' />\n  </svg>\n  <TextLabel\n    text='Reusable SVG arrow marker'\n    fontSize={14} />\n  </Column>\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ArrowMarkerDef%20example%22%20subtitle%3D%22Edit%20this%20focused%20ArrowMarkerDef%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D'460'%0A%20%20%20%20height%3D'170'%0A%20%20%20%20viewBox%3D'0%200%20460%20170'%3E%0A%20%20%3Cdefs%3E%0A%20%20%3CArrowMarkerDef%0A%20%20%20%20id%3D'catalog-arrow'%0A%20%20%20%20color%3D%7Bc.infoLight%7D%0A%20%20%20%20size%3D%7B8%7D%20%2F%3E%0A%20%20%3C%2Fdefs%3E%0A%20%20%3Cpath%0A%20%20%20%20d%3D'M%2042%2085%20C%20140%208%20280%20162%20410%2085'%0A%20%20%20%20fill%3D'none'%0A%20%20%20%20stroke%3D%7Bc.infoLight%7D%0A%20%20%20%20strokeWidth%3D%7B4%7D%0A%20%20%20%20markerEnd%3D'url(%23catalog-arrow)'%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Reusable%20SVG%20arrow%20marker'%0A%20%20%20%20fontSize%3D%7B14%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "FlowArrow",
+          "description": "Straight directional connector with label and tone.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"FlowArrow example\" subtitle=\"Edit this focused FlowArrow scene\" padding={22} gap={18}>\n  <FlowArrow\n    direction='right'\n    label='verified result'\n    length={240}\n    tone='green' />\n</Scene>",
+          "controls": [
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "right",
+              "start": 144,
+              "end": 161,
+              "options": [
+                "down",
+                "right",
+                "up",
+                "left"
+              ]
+            },
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "verified result",
+              "start": 166,
+              "end": 189
+            },
+            {
+              "prop": "length",
+              "label": "Length",
+              "type": "number",
+              "value": 240,
+              "start": 194,
+              "end": 206,
+              "min": 8,
+              "max": 400,
+              "step": 1
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "green",
+              "start": 211,
+              "end": 223,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22FlowArrow%20example%22%20subtitle%3D%22Edit%20this%20focused%20FlowArrow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFlowArrow%0A%20%20%20%20direction%3D'right'%0A%20%20%20%20label%3D'verified%20result'%0A%20%20%20%20length%3D%7B240%7D%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "Connector",
+          "description": "Alias for flow connectors in diagram code.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Connector example\" subtitle=\"Edit this focused Connector scene\" padding={22} gap={18}>\n  <Connector\n    direction='right'\n    label='dependency'\n    length={240}\n    tone='purple' />\n</Scene>",
+          "controls": [
+            {
+              "prop": "direction",
+              "label": "Direction",
+              "type": "select",
+              "value": "right",
+              "start": 144,
+              "end": 161,
+              "options": [
+                "down",
+                "right",
+                "up",
+                "left"
+              ]
+            },
+            {
+              "prop": "label",
+              "label": "Label",
+              "type": "text",
+              "value": "dependency",
+              "start": 166,
+              "end": 184
+            },
+            {
+              "prop": "length",
+              "label": "Length",
+              "type": "number",
+              "value": 240,
+              "start": 189,
+              "end": 201,
+              "min": 8,
+              "max": 400,
+              "step": 1
+            },
+            {
+              "prop": "tone",
+              "label": "Tone",
+              "type": "select",
+              "value": "purple",
+              "start": 206,
+              "end": 219,
+              "options": [
+                "blue",
+                "purple",
+                "green",
+                "warm",
+                "cyan",
+                "pink",
+                "red",
+                "critical",
+                "neutral",
+                "sunset",
+                "ocean",
+                "dark"
+              ]
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Connector%20example%22%20subtitle%3D%22Edit%20this%20focused%20Connector%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CConnector%0A%20%20%20%20direction%3D'right'%0A%20%20%20%20label%3D'dependency'%0A%20%20%20%20length%3D%7B240%7D%0A%20%20%20%20tone%3D'purple'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "VectorArrow",
+          "description": "Vector with optional endpoints and arrowhead.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"VectorArrow example\" subtitle=\"Edit this focused VectorArrow scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='center'>\n  <svg\n    width='460'\n    height='180'\n    viewBox='0 0 460 180'>\n  <VectorArrow\n    x1={64}\n    y1={140}\n    x2={390}\n    y2={38}\n    color={c.positiveLight}\n    strokeWidth={5} />\n  <SvgPoint\n    cx={64}\n    cy={140}\n    r={8}\n    fill={c.positiveLight} />\n  </svg>\n  <TextLabel\n    text='Vector with arrowhead'\n    fontSize={15} />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "strokeWidth",
+              "label": "Stroke Width",
+              "type": "number",
+              "value": 5,
+              "start": 337,
+              "end": 352,
+              "min": 0.5,
+              "max": 12,
+              "step": 0.1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22VectorArrow%20example%22%20subtitle%3D%22Edit%20this%20focused%20VectorArrow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D'460'%0A%20%20%20%20height%3D'180'%0A%20%20%20%20viewBox%3D'0%200%20460%20180'%3E%0A%20%20%3CVectorArrow%0A%20%20%20%20x1%3D%7B64%7D%0A%20%20%20%20y1%3D%7B140%7D%0A%20%20%20%20x2%3D%7B390%7D%0A%20%20%20%20y2%3D%7B38%7D%0A%20%20%20%20color%3D%7Bc.positiveLight%7D%0A%20%20%20%20strokeWidth%3D%7B5%7D%20%2F%3E%0A%20%20%3CSvgPoint%0A%20%20%20%20cx%3D%7B64%7D%0A%20%20%20%20cy%3D%7B140%7D%0A%20%20%20%20r%3D%7B8%7D%0A%20%20%20%20fill%3D%7Bc.positiveLight%7D%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Vector%20with%20arrowhead'%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "VectorSegment",
+          "description": "Line segment for geometric constructions.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"VectorSegment example\" subtitle=\"Edit this focused VectorSegment scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='center'>\n  <svg\n    width='460'\n    height='180'\n    viewBox='0 0 460 180'>\n  <VectorSegment\n    x1={64}\n    y1={130}\n    x2={396}\n    y2={54}\n    color={c.secondaryLight}\n    strokeWidth={5} showStartDot showEndDot />\n  </svg>\n  <TextLabel\n    text='Segment with endpoint dots'\n    fontSize={15} />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "strokeWidth",
+              "label": "Stroke Width",
+              "type": "number",
+              "value": 5,
+              "start": 344,
+              "end": 359,
+              "min": 0.5,
+              "max": 12,
+              "step": 0.1
+            },
+            {
+              "prop": "showStartDot",
+              "label": "Show Start Dot",
+              "type": "boolean",
+              "value": true,
+              "start": 360,
+              "end": 372
+            },
+            {
+              "prop": "showEndDot",
+              "label": "Show End Dot",
+              "type": "boolean",
+              "value": true,
+              "start": 373,
+              "end": 383
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22VectorSegment%20example%22%20subtitle%3D%22Edit%20this%20focused%20VectorSegment%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D'460'%0A%20%20%20%20height%3D'180'%0A%20%20%20%20viewBox%3D'0%200%20460%20180'%3E%0A%20%20%3CVectorSegment%0A%20%20%20%20x1%3D%7B64%7D%0A%20%20%20%20y1%3D%7B130%7D%0A%20%20%20%20x2%3D%7B396%7D%0A%20%20%20%20y2%3D%7B54%7D%0A%20%20%20%20color%3D%7Bc.secondaryLight%7D%0A%20%20%20%20strokeWidth%3D%7B5%7D%20showStartDot%20showEndDot%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Segment%20with%20endpoint%20dots'%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "SvgFrame",
+          "description": "SVG plotting frame with border and fill.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"SvgFrame example\" subtitle=\"Edit this focused SvgFrame scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='center'>\n  <svg\n    width='460'\n    height='180'\n    viewBox='0 0 460 180'>\n  <SvgFrame\n    x={18}\n    y={18}\n    width={424}\n    height={144}\n    rx={18}\n    fill={c.bgCard}\n    stroke={c.borderLight}\n    strokeWidth={2} />\n  </svg>\n  <TextLabel\n    text='Theme aware plot frame'\n    fontSize={15} />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 424,
+              "start": 272,
+              "end": 283,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 144,
+              "start": 288,
+              "end": 300,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "rx",
+              "label": "Rx",
+              "type": "number",
+              "value": 18,
+              "start": 305,
+              "end": 312,
+              "min": 0,
+              "max": 32,
+              "step": 1
+            },
+            {
+              "prop": "strokeWidth",
+              "label": "Stroke Width",
+              "type": "number",
+              "value": 2,
+              "start": 364,
+              "end": 379,
+              "min": 0.5,
+              "max": 12,
+              "step": 0.1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SvgFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20SvgFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D'460'%0A%20%20%20%20height%3D'180'%0A%20%20%20%20viewBox%3D'0%200%20460%20180'%3E%0A%20%20%3CSvgFrame%0A%20%20%20%20x%3D%7B18%7D%0A%20%20%20%20y%3D%7B18%7D%0A%20%20%20%20width%3D%7B424%7D%0A%20%20%20%20height%3D%7B144%7D%0A%20%20%20%20rx%3D%7B18%7D%0A%20%20%20%20fill%3D%7Bc.bgCard%7D%0A%20%20%20%20stroke%3D%7Bc.borderLight%7D%0A%20%20%20%20strokeWidth%3D%7B2%7D%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Theme%20aware%20plot%20frame'%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "SvgPoint",
+          "description": "Labeled point for SVG figures.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"SvgPoint example\" subtitle=\"Edit this focused SvgPoint scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='center'>\n  <svg\n    width='460'\n    height='180'\n    viewBox='0 0 460 180'>\n  <SvgFrame\n    width={460}\n    height={180}\n    c={c} />\n  <SvgPoint\n    cx={230}\n    cy={90}\n    r={26}\n    fill={c.positiveLight}\n    stroke={c.bg}\n    strokeWidth={5} />\n  </svg>\n  <TextLabel\n    text='SVG point with outline'\n    fontSize={15} />\n  </Column>\n</Scene>",
+          "controls": [
+            {
+              "prop": "r",
+              "label": "R",
+              "type": "number",
+              "value": 26,
+              "start": 333,
+              "end": 339,
+              "min": 2,
+              "max": 48,
+              "step": 1
+            },
+            {
+              "prop": "strokeWidth",
+              "label": "Stroke Width",
+              "type": "number",
+              "value": 5,
+              "start": 389,
+              "end": 404,
+              "min": 0.5,
+              "max": 12,
+              "step": 0.1
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SvgPoint%20example%22%20subtitle%3D%22Edit%20this%20focused%20SvgPoint%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3Csvg%0A%20%20%20%20width%3D'460'%0A%20%20%20%20height%3D'180'%0A%20%20%20%20viewBox%3D'0%200%20460%20180'%3E%0A%20%20%3CSvgFrame%0A%20%20%20%20width%3D%7B460%7D%0A%20%20%20%20height%3D%7B180%7D%0A%20%20%20%20c%3D%7Bc%7D%20%2F%3E%0A%20%20%3CSvgPoint%0A%20%20%20%20cx%3D%7B230%7D%0A%20%20%20%20cy%3D%7B90%7D%0A%20%20%20%20r%3D%7B26%7D%0A%20%20%20%20fill%3D%7Bc.positiveLight%7D%0A%20%20%20%20stroke%3D%7Bc.bg%7D%0A%20%20%20%20strokeWidth%3D%7B5%7D%20%2F%3E%0A%20%20%3C%2Fsvg%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'SVG%20point%20with%20outline'%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "DotPoint",
+          "description": "Point marker with optional text label.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"DotPoint example\" subtitle=\"Edit this focused DotPoint scene\" padding={22} gap={18}>\n  <div\n    style={{ position: 'relative', display: 'flex', width: 460, height: 220 }}>{DotPoint({ x: 230, y: 100, label: 'deploy', color: c.infoLight, size: 14 })}<TextLabel\n    text='Labeled coordinate point'\n    fontSize={15} />\n  </div>\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DotPoint%20example%22%20subtitle%3D%22Edit%20this%20focused%20DotPoint%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3Cdiv%0A%20%20%20%20style%3D%7B%7B%20position%3A%20'relative'%2C%20display%3A%20'flex'%2C%20width%3A%20460%2C%20height%3A%20220%20%7D%7D%3E%7BDotPoint(%7B%20x%3A%20230%2C%20y%3A%20100%2C%20label%3A%20'deploy'%2C%20color%3A%20c.infoLight%2C%20size%3A%2014%20%7D)%7D%3CTextLabel%0A%20%20%20%20text%3D'Labeled%20coordinate%20point'%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2Fdiv%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "DashedLine",
+          "description": "Dotted or dashed SVG guide line.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"DashedLine example\" subtitle=\"Edit this focused DashedLine scene\" padding={22} gap={18}>\n  <div\n    style={{ position: 'relative', display: 'flex', width: 460, height: 220 }}>{DashedLine({ x1: 36, y1: 110, x2: 424, y2: 110, color: c.warningLight, dotSpacing: 12, dotSize: 3 })}<TextLabel\n    text='Threshold'\n    fontSize={15} />\n  </div>\n</Scene>",
+          "controls": [],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DashedLine%20example%22%20subtitle%3D%22Edit%20this%20focused%20DashedLine%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3Cdiv%0A%20%20%20%20style%3D%7B%7B%20position%3A%20'relative'%2C%20display%3A%20'flex'%2C%20width%3A%20460%2C%20height%3A%20220%20%7D%7D%3E%7BDashedLine(%7B%20x1%3A%2036%2C%20y1%3A%20110%2C%20x2%3A%20424%2C%20y2%3A%20110%2C%20color%3A%20c.warningLight%2C%20dotSpacing%3A%2012%2C%20dotSize%3A%203%20%7D)%7D%3CTextLabel%0A%20%20%20%20text%3D'Threshold'%0A%20%20%20%20fontSize%3D%7B15%7D%20%2F%3E%0A%20%20%3C%2Fdiv%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "AxisPlot",
+          "description": "Coordinate plane for points, vectors, and paths.",
+          "example": "width = 960\nheight = 560\n\n<Scene title=\"AxisPlot example\" subtitle=\"Edit this focused AxisPlot scene\" padding={22} gap={18}>\n  <AxisPlot\n    width={700}\n    height={380}\n    xMin={-1}\n    xMax={1}\n    yMin={-1}\n    yMax={1} showGrid\n    xAxisLabel='x'\n    yAxisLabel='y'\n    points={[{ x: -0.5, y: 0.3, r: 6, tone: 'blue' },\n        { x: 0.6, y: 0.7, r: 7, tone: 'green' }]}\n    vectors={[{ x1: 0, y1: 0, x2: 0.45, y2: 0.55, tone: 'purple', arrow: true }]} />\n</Scene>",
+          "controls": [
+            {
+              "prop": "width",
+              "label": "Width",
+              "type": "number",
+              "value": 700,
+              "start": 141,
+              "end": 152,
+              "min": 100,
+              "max": 1400,
+              "step": 1
+            },
+            {
+              "prop": "height",
+              "label": "Height",
+              "type": "number",
+              "value": 380,
+              "start": 157,
+              "end": 169,
+              "min": 80,
+              "max": 900,
+              "step": 1
+            },
+            {
+              "prop": "showGrid",
+              "label": "Show Grid",
+              "type": "boolean",
+              "value": true,
+              "start": 224,
+              "end": 232
+            },
+            {
+              "prop": "xAxisLabel",
+              "label": "X Axis Label",
+              "type": "text",
+              "value": "x",
+              "start": 237,
+              "end": 251
+            },
+            {
+              "prop": "yAxisLabel",
+              "label": "Y Axis Label",
+              "type": "text",
+              "value": "y",
+              "start": 256,
+              "end": 270
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20560%0A%0A%3CScene%20title%3D%22AxisPlot%20example%22%20subtitle%3D%22Edit%20this%20focused%20AxisPlot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CAxisPlot%0A%20%20%20%20width%3D%7B700%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20xMin%3D%7B-1%7D%0A%20%20%20%20xMax%3D%7B1%7D%0A%20%20%20%20yMin%3D%7B-1%7D%0A%20%20%20%20yMax%3D%7B1%7D%20showGrid%0A%20%20%20%20xAxisLabel%3D'x'%0A%20%20%20%20yAxisLabel%3D'y'%0A%20%20%20%20points%3D%7B%5B%7B%20x%3A%20-0.5%2C%20y%3A%200.3%2C%20r%3A%206%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20x%3A%200.6%2C%20y%3A%200.7%2C%20r%3A%207%2C%20tone%3A%20'green'%20%7D%5D%7D%0A%20%20%20%20vectors%3D%7B%5B%7B%20x1%3A%200%2C%20y1%3A%200%2C%20x2%3A%200.45%2C%20y2%3A%200.55%2C%20tone%3A%20'purple'%2C%20arrow%3A%20true%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Vizmatic
+
+> Theme-aware visual primitives and a headless renderer for diagrams, figures, and presentation frames.
+
+Vizmatic turns editable TSX scenes into diagrams, charts, documentation figures, and animations. The Node.js CLI renders locally or in CI; the browser playground supports interactive editing and preview.
+
+The CLI requires Node.js 20 or newer. The portable agent skill is separate from the renderer installation.
+
+## Resources
+
+- [Website](https://bvolpato.github.io/vizmatic/): Product overview, examples, and quick start.
+- [Agent guide](https://bvolpato.github.io/vizmatic/agents.html): Installation choices and a verified agent workflow.
+- [Full prompt and API guidance](https://bvolpato.github.io/vizmatic/PROMPT.md): Complete prompt, usage guidance, and API reference.
+- [Portable skill](https://bvolpato.github.io/vizmatic/skill.md): Installable agent workflow instructions.
+- [Patterns](https://bvolpato.github.io/vizmatic/patterns.md): Guidance for choosing components and structuring visuals.
+- [Component catalog JSON](https://bvolpato.github.io/vizmatic/components.json): Structured component metadata with runnable examples and playground links.
+- [Component catalog Markdown](https://bvolpato.github.io/vizmatic/components.md): Category descriptions and full runnable TSX examples.
+- [Full context bundle](https://bvolpato.github.io/vizmatic/llms-full.txt): PROMPT.md followed by the complete component catalog.
+- [Playground](https://bvolpato.github.io/vizmatic/playground.html): Edit source and preview a scene in the browser.

@@ -2,6 +2,8 @@ import { access, readFile, readdir, stat } from 'fs/promises'
 import { basename, dirname, join, relative } from 'path'
 import { fileURLToPath } from 'url'
 import { catalogComponentCount, componentCatalog } from './component-catalog'
+import { preparePlaygroundSource } from '../src/playground-source'
+import { applyComponentControls, type ComponentControl } from '../src/component-controls'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const htmlPath = join(root, 'docs', 'index.html')
@@ -13,6 +15,8 @@ const playgroundHtml = await readFile(join(root, 'docs', 'playground.html'), 'ut
 const playgroundTemplateHtml = await readFile(join(root, 'docs', 'playground.template.html'), 'utf8')
 const benchmarksHtml = await readFile(join(root, 'docs', 'benchmarks.html'), 'utf8')
 const benchmarksTemplateHtml = await readFile(join(root, 'docs', 'benchmarks.template.html'), 'utf8')
+const agentsHtml = await readFile(join(root, 'docs', 'agents.html'), 'utf8')
+const siteScript = await readFile(join(root, 'docs', 'site.js'), 'utf8')
 const skillPath = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic', 'SKILL.md')
 const pluginSkillDir = join(root, 'plugins', 'vizmatic', 'skills', 'vizmatic')
 const portableSkillDir = join(root, '.agents', 'skills', 'vizmatic')
@@ -59,7 +63,8 @@ function fail(message: string): never {
     throw new Error(message)
 }
 
-const refs = [html, componentsHtml, playgroundHtml, benchmarksHtml].flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
+const pages = [html, componentsHtml, playgroundHtml, benchmarksHtml, agentsHtml]
+const refs = pages.flatMap((page) => Array.from(page.matchAll(/(?:src|href)="([^"]+)"/g)))
     .map((match) => match[1])
     .filter((ref): ref is string => Boolean(ref))
     .filter((ref) => !ref.startsWith('http') && !ref.startsWith('#') && !ref.startsWith('mailto:'))
@@ -74,6 +79,21 @@ for (const ref of refs) {
 
 if (missing.length > 0) {
     fail(`missing docs assets:\n${missing.map((ref) => `- ${ref}`).join('\n')}`)
+}
+
+for (const page of pages) {
+    if (/\{\{(?:SITE_|EXAMPLE_URL:|VERSION|PROMPT_MD|COMPONENT_)/.test(page)) fail('generated site contains unreplaced placeholders')
+    if (!/<main\b[^>]*id="main-content"[^>]*tabindex="-1"/.test(page) || !page.includes('href="#main-content"')) fail('every page must provide a focusable skip-link target')
+    if (!page.includes('src="site.js"')) fail('every page must load the shared site interactions')
+}
+
+const searchIndex = JSON.parse(await readFile(join(root, 'docs', 'search-index.json'), 'utf8')) as Array<{ url: string }>
+for (const entry of searchIndex) {
+    const [pageName, fragment] = entry.url.split('#')
+    const target = await readFile(join(root, 'docs', pageName), 'utf8')
+    if (fragment && !Array.from(target.matchAll(/\bid="([^"]+)"/g)).some((match) => match[1] === decodeURIComponent(fragment))) {
+        fail(`search result has a missing anchor: ${entry.url}`)
+    }
 }
 
 const rootPrompt = await readFile(join(root, 'PROMPT.md'), 'utf8')
@@ -148,8 +168,15 @@ for (const required of [
 if (!templateHtml.includes('src="playground-redirect.js"') || !html.includes('href="playground.html"')) {
     fail('homepage must redirect legacy shared links and link to the dedicated playground')
 }
-if (templateHtml.includes('id="playgroundSource"') || html.includes('id="playgroundCanvas"')) {
-    fail('homepage must not embed the dedicated playground')
+for (const page of [html, componentsHtml, playgroundHtml]) {
+    if (!page.includes('data-component-explorer') || !page.includes('src="playground.js"')) fail('each component explorer must include the live renderer')
+    for (const category of componentCatalog) {
+        for (const component of category.components) {
+            if (!page.includes(`data-explore-component="${component.name}"`)) fail(`component explorer missing ${component.name}`)
+        }
+    }
+    const ids = Array.from(page.matchAll(/\bid="([^"]+)"/g), (match) => match[1])
+    if (new Set(ids).size !== ids.length) fail('component explorer pages must have unique element IDs')
 }
 if (!templateHtml.includes('href="benchmarks.html"') || !html.includes('href="benchmarks.html"')) {
     fail('homepage must link to the benchmark results page')
@@ -185,7 +212,7 @@ if (packageFiles.includes('docs/assets')) {
 if (!html.includes('assets/examples/animated-pipeline_dark.gif')) {
     fail('website must retain rendered gallery assets')
 }
-if (!templateHtml.includes('data-animated') || !templateHtml.includes('prefers-reduced-motion: reduce') || !templateHtml.includes('resolvedImageSrc')) {
+if (!templateHtml.includes('data-animated') || !siteScript.includes('prefers-reduced-motion: reduce') || !siteScript.includes('imageSource')) {
     fail('animated gallery assets must provide reduced-motion PNG fallbacks')
 }
 for (const asset of ncclGalleryAssets) {
@@ -280,9 +307,32 @@ if (!componentsHtml.includes(`>${catalogComponentCount} reusable pieces for tech
     fail('component catalog count is stale')
 }
 
-if (!templateHtml.includes('href="components.html"')) {
+if (!html.includes('href="components.html"')) {
     fail('homepage navigation must link to component catalog')
 }
+
+const componentData = JSON.parse(await readFile(join(root, 'docs', 'components.json'), 'utf8')) as {
+    version: string
+    count: number
+    categories: Array<{ id: string; components: Array<{ name: string; example: string; playgroundUrl: string; controls: ComponentControl[] }> }>
+}
+if (componentData.version !== packageJson.version || componentData.count !== catalogComponentCount) {
+    fail('machine-readable component catalog metadata must match the package and registry')
+}
+for (const category of componentCatalog) {
+    const generatedCategory = componentData.categories.find((entry) => entry.id === category.id)
+    if (generatedCategory?.components.length !== category.components.length) fail(`machine-readable catalog is stale for ${category.label}`)
+    for (const component of category.components) {
+        const generatedComponent = generatedCategory?.components.find((entry) => entry.name === component.name)
+        if (generatedComponent?.example !== component.example) fail(`machine-readable example is stale for ${component.name}`)
+        if (JSON.stringify(generatedComponent.controls) !== JSON.stringify(component.controls)) fail(`visual controls are stale for ${component.name}`)
+        preparePlaygroundSource(applyComponentControls(component.example, component.controls, Object.fromEntries(component.controls.map((control) => [control.prop, control.value]))))
+        const url = new URL(generatedComponent.playgroundUrl)
+        if (decodeURIComponent(url.hash.slice('#vizmatic-playground='.length)) !== component.example) fail(`invalid playground source for ${component.name}`)
+    }
+}
+const fullContext = await readFile(join(root, 'docs', 'llms-full.txt'), 'utf8')
+if (!fullContext.includes(rootPrompt)) fail('full agent context must include the current prompt verbatim')
 
 for (const category of componentCatalog) {
     if (!componentsHtml.includes(`data-catalog-group="${category.id}"`)) {
@@ -370,6 +420,13 @@ for (const source of sources) {
     if (!source.html.light?.includes('github-light-high-contrast')) {
         fail(`${source.name} source html missing github-light-high-contrast`)
     }
+    const individualSource = JSON.parse(await readFile(join(root, 'docs', 'assets', 'sources', source.name + '.json'), 'utf8')) as {
+        playgroundCode: string
+        [key: string]: unknown
+    }
+    const { playgroundCode, ...originalSource } = individualSource
+    if (JSON.stringify(originalSource) !== JSON.stringify(source)) fail(`${source.name} individual website source is stale`)
+    preparePlaygroundSource(playgroundCode)
 }
 
 console.log(`docs ok: ${refs.length} local references checked`)

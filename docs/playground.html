@@ -4,146 +4,108 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Playground - Vizmatic</title>
-  <meta name="description" content="Edit and render Vizmatic diagrams, charts, and documentation figures in your browser.">
-  <meta name="theme-color" content="#080a0f">
+  <title>Playground | Vizmatic</title>
+  <meta name="description" content="Explore Vizmatic components with a live preview and visual controls. Edit TSX, switch themes, share source, and download PNG or SVG.">
+  <meta name="theme-color" content="#0b0d16">
+  <link rel="canonical" href="https://bvolpato.github.io/vizmatic/playground.html">
+  <meta property="og:title" content="Playground | Vizmatic">
+  <meta property="og:description" content="Explore Vizmatic components with a live preview and visual controls. Edit TSX, switch themes, share source, and download PNG or SVG.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://bvolpato.github.io/vizmatic/playground.html">
+  <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Playground | Vizmatic">
+  <meta name="twitter:description" content="Explore Vizmatic components with a live preview and visual controls. Edit TSX, switch themes, share source, and download PNG or SVG.">
+  <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="alternate" type="text/markdown" href="llms.txt" title="Agent documentation index">
+  <script>
+    (() => {
+      let mode = 'system'
+      try { mode = localStorage.getItem('vizmatic-theme') || 'system' } catch {}
+      if (mode !== 'light' && mode !== 'dark') mode = 'system'
+      document.documentElement.dataset.themeMode = mode
+      document.documentElement.dataset.siteTheme = mode === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : mode
+    })()
+  </script>
+  <link rel="preload" href="assets/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <script type="module" src="site.js"></script>
 </head>
-<body class="playground-page">
-  <div class="bg-grid" aria-hidden="true"></div>
-
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <div class="nav-shell">
     <nav class="nav" aria-label="Primary navigation">
-      <a class="brand" href="index.html">
-        <img src="assets/icon.svg" alt="" width="30" height="30">
-        <span>vizmatic</span>
-      </a>
-      <div class="nav-actions">
-        <div class="nav-links">
-          <a href="index.html#gallery">Examples</a>
-          <a href="components.html">Components</a>
-          <a href="playground.html" aria-current="page">Playground</a>
-          <a href="index.html#quick-start">Quick start</a>
-          <a href="index.html#onboarding">Prompt + skill</a>
-          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.6 7.6 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.45.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>
-            </svg>
-            <span>GitHub</span>
-          </a>
-        </div>
-        <div class="theme-toggle" role="group" aria-label="Site theme">
-          <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
-          <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
-          <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      <a class="brand" href="index.html" aria-label="Vizmatic home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic<span class="brand-dot">.</span></span></a>
+      <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="siteNavigation">Menu <span aria-hidden="true">☰</span></button>
+      <div class="nav-actions" id="siteNavigation" data-site-navigation>
+        <div class="nav-links"><a href="index.html#gallery">Examples</a><a href="components.html">Components</a><a href="playground.html" aria-current="page">Playground</a><a href="agents.html">For agents</a></div>
+        <div class="nav-tools">
+          <button class="search-trigger" type="button" data-open-search aria-label="Search Vizmatic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span>Search</span><kbd>⌘ K</kbd></button>
+          <div class="theme-toggle" role="group" aria-label="Site theme">
+            <button type="button" data-theme-choice="system" aria-pressed="true" aria-label="Use system theme" title="System theme">◐</button>
+            <button type="button" data-theme-choice="light" aria-pressed="false" aria-label="Use light theme" title="Light theme">☼</button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Use dark theme" title="Dark theme">☾</button>
+          </div>
+          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.57 9.57 0 0 1 5 0c1.9-1.29 2.74-1.02 2.74-1.02.55 1.37.21 2.39.11 2.64.64.7 1.03 1.6 1.03 2.69 0 3.85-2.34 4.69-4.58 4.94.36.31.68.92.68 1.85v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg></a>
         </div>
       </div>
     </nav>
   </div>
+  <main id="main-content" tabindex="-1" class="playground-page-main">
+    <section id="component-workshop" class="playground-page explorer-page">
+      <header class="playground-page-heading"><div><div class="eyebrow">Pick a piece. Play with it.</div><h1>Your visual workshop.</h1></div><p>Choose a component, change its settings, and see the result. Open the source when you want to go further.</p></header>
+      <p class="playground-hint">PNG and SVG, rendered on your device. <a href="agents.html#workflow">Use the CLI for animations.</a></p>
+      <div class="component-explorer playground-tool" data-vizmatic-playground data-component-explorer data-vizmatic-playground-background="transparent" data-preview-zoom="content">
+  <aside class="explorer-library" aria-label="Component chooser">
+    <div class="explorer-library-heading"><strong>Choose a component</strong><span>71</span></div>
+    <label class="explorer-search" for="componentExplorerSearch"><span class="sr-only">Find a component</span><input id="componentExplorerSearch" type="search" placeholder="Find a component…" autocomplete="off"></label>
+    <label class="explorer-mobile-select" for="componentExplorerSelect">Component<select id="componentExplorerSelect"><option value="custom" disabled>Custom scene</option><optgroup label="Foundations"><option value="Canvas">Canvas</option><option value="Scene">Scene</option><option value="TitleBar">TitleBar</option><option value="Row">Row</option><option value="Column">Column</option><option value="Stack">Stack</option><option value="Panel">Panel</option><option value="Card">Card</option><option value="WindowFrame">WindowFrame</option></optgroup><optgroup label="Content"><option value="ToneStrip">ToneStrip</option><option value="Icon">Icon</option><option value="TextLabel">TextLabel</option><option value="MathText">MathText</option><option value="SvgMathText">SvgMathText</option><option value="Badge">Badge</option><option value="BadgePill">BadgePill</option><option value="GradientChip">GradientChip</option><option value="ValuePill">ValuePill</option><option value="EquationCard">EquationCard</option><option value="StepCard">StepCard</option><option value="MetricCard">MetricCard</option><option value="CalloutCard">CalloutCard</option><option value="DetailList">DetailList</option><option value="CodeBlock">CodeBlock</option><option value="Comparison">Comparison</option><option value="KeyValueList">KeyValueList</option><option value="Tile">Tile</option><option value="TileGrid">TileGrid</option><option value="Watermark">Watermark</option></optgroup><optgroup label="Flows"><option value="StatusRow">StatusRow</option><option value="StatusList">StatusList</option><option value="Timeline">Timeline</option><option value="Flow">Flow</option><option value="Pipeline">Pipeline</option><option value="ProgressRow">ProgressRow</option><option value="ProgressList">ProgressList</option></optgroup><optgroup label="Diagrams"><option value="LayeredNetwork">LayeredNetwork</option><option value="GraphDiagram">GraphDiagram</option><option value="TreeDiagram">TreeDiagram</option></optgroup><optgroup label="Sequence"><option value="SequenceDiagram">SequenceDiagram</option></optgroup><optgroup label="Dataflow"><option value="DataflowDiagram">DataflowDiagram</option></optgroup><optgroup label="Deployment"><option value="DeploymentDiagram">DeploymentDiagram</option></optgroup><optgroup label="ML topology"><option value="TransformerTopology">TransformerTopology</option></optgroup><optgroup label="Data"><option value="Matrix">Matrix</option><option value="Heatmap">Heatmap</option><option value="TiledMatrix">TiledMatrix</option><option value="DataTable">DataTable</option><option value="Grid">Grid</option><option value="MiniBarChart">MiniBarChart</option></optgroup><optgroup label="Charts"><option value="ChartFrame">ChartFrame</option><option value="DonutChart">DonutChart</option><option value="StackedBar">StackedBar</option><option value="BarChart">BarChart</option><option value="LineChart">LineChart</option><option value="ScatterPlot">ScatterPlot</option><option value="ParetoChart">ParetoChart</option><option value="QuadrantChart">QuadrantChart</option><option value="IntervalPlot">IntervalPlot</option><option value="Legend">Legend</option></optgroup><optgroup label="Drawing"><option value="Box">Box</option><option value="Arrow">Arrow</option><option value="ArrowMarkerDef">ArrowMarkerDef</option><option value="FlowArrow">FlowArrow</option><option value="Connector">Connector</option><option value="VectorArrow">VectorArrow</option><option value="VectorSegment">VectorSegment</option><option value="SvgFrame">SvgFrame</option><option value="SvgPoint">SvgPoint</option><option value="DotPoint">DotPoint</option><option value="DashedLine">DashedLine</option><option value="AxisPlot">AxisPlot</option></optgroup></select></label>
+    <div class="explorer-choices" aria-label="Components"><section class="explorer-choice-group" data-explorer-category="foundations"><h4>Foundations</h4><button type="button" id="component-Canvas" data-explore-component="Canvas" data-explorer-search="canvas root canvas with transparent or custom backgrounds and padding. foundations" aria-pressed="false" title="Root canvas with transparent or custom backgrounds and padding."><span>Canvas</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Scene" data-explore-component="Scene" data-explorer-search="scene primary vertical scene layout with optional title and subtitle. foundations" aria-pressed="false" title="Primary vertical scene layout with optional title and subtitle."><span>Scene</span><span aria-hidden="true">↗</span></button><button type="button" id="component-TitleBar" data-explore-component="TitleBar" data-explorer-search="titlebar standalone heading and supporting copy. foundations" aria-pressed="false" title="Standalone heading and supporting copy."><span>TitleBar</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Row" data-explore-component="Row" data-explorer-search="row horizontal flex layout with stable gaps and alignment. foundations" aria-pressed="false" title="Horizontal flex layout with stable gaps and alignment."><span>Row</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Column" data-explore-component="Column" data-explorer-search="column vertical flex layout for stacked composition. foundations" aria-pressed="false" title="Vertical flex layout for stacked composition."><span>Column</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Stack" data-explore-component="Stack" data-explorer-search="stack compact vertical grouping for related content. foundations" aria-pressed="false" title="Compact vertical grouping for related content."><span>Stack</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Panel" data-explore-component="Panel" data-explorer-search="panel titled container for grouped visual content. foundations" aria-pressed="false" title="Titled container for grouped visual content."><span>Panel</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Card" data-explore-component="Card" data-explorer-search="card general-purpose surface with tone, padding, and shadow. foundations" aria-pressed="false" title="General-purpose surface with tone, padding, and shadow."><span>Card</span><span aria-hidden="true">↗</span></button><button type="button" id="component-WindowFrame" data-explore-component="WindowFrame" data-explorer-search="windowframe application or terminal window framing. foundations" aria-pressed="false" title="Application or terminal window framing."><span>WindowFrame</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="content"><h4>Content</h4><button type="button" id="component-ToneStrip" data-explore-component="ToneStrip" data-explorer-search="tonestrip short semantic color accent. content" aria-pressed="false" title="Short semantic color accent."><span>ToneStrip</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Icon" data-explore-component="Icon" data-explorer-search="icon theme-aware technical icon set. content" aria-pressed="false" title="Theme-aware technical icon set."><span>Icon</span><span aria-hidden="true">↗</span></button><button type="button" id="component-TextLabel" data-explore-component="TextLabel" data-explorer-search="textlabel wrapping-safe svg or flex label. content" aria-pressed="false" title="Wrapping-safe SVG or flex label."><span>TextLabel</span><span aria-hidden="true">↗</span></button><button type="button" id="component-MathText" data-explore-component="MathText" data-explorer-search="mathtext math-aware text formatting for react content. content" aria-pressed="false" title="Math-aware text formatting for React content."><span>MathText</span><span aria-hidden="true">↗</span></button><button type="button" id="component-SvgMathText" data-explore-component="SvgMathText" data-explorer-search="svgmathtext positioned math overlay aligned with custom svg geometry. content" aria-pressed="false" title="Positioned math overlay aligned with custom SVG geometry."><span>SvgMathText</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Badge" data-explore-component="Badge" data-explorer-search="badge compact semantic svg label. content" aria-pressed="false" title="Compact semantic SVG label."><span>Badge</span><span aria-hidden="true">↗</span></button><button type="button" id="component-BadgePill" data-explore-component="BadgePill" data-explorer-search="badgepill inline status, category, or metadata label. content" aria-pressed="false" title="Inline status, category, or metadata label."><span>BadgePill</span><span aria-hidden="true">↗</span></button><button type="button" id="component-GradientChip" data-explore-component="GradientChip" data-explorer-search="gradientchip emphasized label with tone gradient. content" aria-pressed="false" title="Emphasized label with tone gradient."><span>GradientChip</span><span aria-hidden="true">↗</span></button><button type="button" id="component-ValuePill" data-explore-component="ValuePill" data-explorer-search="valuepill small label-value pair. content" aria-pressed="false" title="Small label-value pair."><span>ValuePill</span><span aria-hidden="true">↗</span></button><button type="button" id="component-EquationCard" data-explore-component="EquationCard" data-explorer-search="equationcard formula, result, and supporting detail. content" aria-pressed="false" title="Formula, result, and supporting detail."><span>EquationCard</span><span aria-hidden="true">↗</span></button><button type="button" id="component-StepCard" data-explore-component="StepCard" data-explorer-search="stepcard numbered or staged process card. content" aria-pressed="false" title="Numbered or staged process card."><span>StepCard</span><span aria-hidden="true">↗</span></button><button type="button" id="component-MetricCard" data-explore-component="MetricCard" data-explorer-search="metriccard kpi value with label and context. content" aria-pressed="false" title="KPI value with label and context."><span>MetricCard</span><span aria-hidden="true">↗</span></button><button type="button" id="component-CalloutCard" data-explore-component="CalloutCard" data-explorer-search="calloutcard focused takeaway, warning, or recommendation. content" aria-pressed="false" title="Focused takeaway, warning, or recommendation."><span>CalloutCard</span><span aria-hidden="true">↗</span></button><button type="button" id="component-DetailList" data-explore-component="DetailList" data-explorer-search="detaillist compact list of supporting facts. content" aria-pressed="false" title="Compact list of supporting facts."><span>DetailList</span><span aria-hidden="true">↗</span></button><button type="button" id="component-CodeBlock" data-explore-component="CodeBlock" data-explorer-search="codeblock code or command excerpt with optional line numbers. content" aria-pressed="false" title="Code or command excerpt with optional line numbers."><span>CodeBlock</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Comparison" data-explore-component="Comparison" data-explorer-search="comparison side-by-side alternatives or before/after states. content" aria-pressed="false" title="Side-by-side alternatives or before/after states."><span>Comparison</span><span aria-hidden="true">↗</span></button><button type="button" id="component-KeyValueList" data-explore-component="KeyValueList" data-explorer-search="keyvaluelist aligned technical metadata rows. content" aria-pressed="false" title="Aligned technical metadata rows."><span>KeyValueList</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Tile" data-explore-component="Tile" data-explorer-search="tile single labeled unit for feature or system maps. content" aria-pressed="false" title="Single labeled unit for feature or system maps."><span>Tile</span><span aria-hidden="true">↗</span></button><button type="button" id="component-TileGrid" data-explore-component="TileGrid" data-explorer-search="tilegrid dense grid of related labeled units. content" aria-pressed="false" title="Dense grid of related labeled units."><span>TileGrid</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Watermark" data-explore-component="Watermark" data-explorer-search="watermark frame metadata for text, image, or custom branding. content" aria-pressed="false" title="Frame metadata for text, image, or custom branding."><span>Watermark</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="flows"><h4>Flows</h4><button type="button" id="component-StatusRow" data-explore-component="StatusRow" data-explorer-search="statusrow single operational state with detail. flows" aria-pressed="false" title="Single operational state with detail."><span>StatusRow</span><span aria-hidden="true">↗</span></button><button type="button" id="component-StatusList" data-explore-component="StatusList" data-explorer-search="statuslist grouped checks, warnings, and pending work. flows" aria-pressed="false" title="Grouped checks, warnings, and pending work."><span>StatusList</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Timeline" data-explore-component="Timeline" data-explorer-search="timeline ordered events in horizontal or vertical form. flows" aria-pressed="false" title="Ordered events in horizontal or vertical form."><span>Timeline</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Flow" data-explore-component="Flow" data-explorer-search="flow connected horizontal or vertical stages. flows" aria-pressed="false" title="Connected horizontal or vertical stages."><span>Flow</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Pipeline" data-explore-component="Pipeline" data-explorer-search="pipeline compact process pipeline with shared title. flows" aria-pressed="false" title="Compact process pipeline with shared title."><span>Pipeline</span><span aria-hidden="true">↗</span></button><button type="button" id="component-ProgressRow" data-explore-component="ProgressRow" data-explorer-search="progressrow labeled progress bar and value. flows" aria-pressed="false" title="Labeled progress bar and value."><span>ProgressRow</span><span aria-hidden="true">↗</span></button><button type="button" id="component-ProgressList" data-explore-component="ProgressList" data-explorer-search="progresslist comparable progress across several measures. flows" aria-pressed="false" title="Comparable progress across several measures."><span>ProgressList</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="diagrams"><h4>Diagrams</h4><button type="button" id="component-LayeredNetwork" data-explore-component="LayeredNetwork" data-explorer-search="layerednetwork layered neural network or staged dag. diagrams" aria-pressed="false" title="Layered neural network or staged DAG."><span>LayeredNetwork</span><span aria-hidden="true">↗</span></button><button type="button" id="component-GraphDiagram" data-explore-component="GraphDiagram" data-explorer-search="graphdiagram auto-laid architecture graph with nested groups, icons, and semantic edges. diagrams" aria-pressed="false" title="Auto-laid architecture graph with nested groups, icons, and semantic edges."><span>GraphDiagram</span><span aria-hidden="true">↗</span></button><button type="button" id="component-TreeDiagram" data-explore-component="TreeDiagram" data-explorer-search="treediagram auto-laid hierarchy, taxonomy, or decision tree. diagrams" aria-pressed="false" title="Auto-laid hierarchy, taxonomy, or decision tree."><span>TreeDiagram</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="sequence"><h4>Sequence</h4><button type="button" id="component-SequenceDiagram" data-explore-component="SequenceDiagram" data-explorer-search="sequencediagram typed participants, messages, notes, activations, and alt, loop, or parallel fragments. sequence" aria-pressed="false" title="Typed participants, messages, notes, activations, and alt, loop, or parallel fragments."><span>SequenceDiagram</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="dataflow"><h4>Dataflow</h4><button type="button" id="component-DataflowDiagram" data-explore-component="DataflowDiagram" data-explorer-search="dataflowdiagram schema-aware batch and streaming lineage compiled into a stable directed graph. dataflow" aria-pressed="false" title="Schema-aware batch and streaming lineage compiled into a stable directed graph."><span>DataflowDiagram</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="deployment"><h4>Deployment</h4><button type="button" id="component-DeploymentDiagram" data-explore-component="DeploymentDiagram" data-explorer-search="deploymentdiagram nested region, network, and runtime boundaries with typed network connections. deployment" aria-pressed="false" title="Nested region, network, and runtime boundaries with typed network connections."><span>DeploymentDiagram</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="ml"><h4>ML topology</h4><button type="button" id="component-TransformerTopology" data-explore-component="TransformerTopology" data-explorer-search="transformertopology transformer computation topology with tensor metadata and collective routes. ml topology" aria-pressed="false" title="Transformer computation topology with tensor metadata and collective routes."><span>TransformerTopology</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="data"><h4>Data</h4><button type="button" id="component-Matrix" data-explore-component="Matrix" data-explorer-search="matrix numeric or symbolic matrix with headers. data" aria-pressed="false" title="Numeric or symbolic matrix with headers."><span>Matrix</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Heatmap" data-explore-component="Heatmap" data-explorer-search="heatmap color-scaled matrix for intensity and correlation. data" aria-pressed="false" title="Color-scaled matrix for intensity and correlation."><span>Heatmap</span><span aria-hidden="true">↗</span></button><button type="button" id="component-TiledMatrix" data-explore-component="TiledMatrix" data-explorer-search="tiledmatrix matrix with named regions and boundaries. data" aria-pressed="false" title="Matrix with named regions and boundaries."><span>TiledMatrix</span><span aria-hidden="true">↗</span></button><button type="button" id="component-DataTable" data-explore-component="DataTable" data-explorer-search="datatable structured rows and columns with headers. data" aria-pressed="false" title="Structured rows and columns with headers."><span>DataTable</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Grid" data-explore-component="Grid" data-explorer-search="grid general labeled cell grid. data" aria-pressed="false" title="General labeled cell grid."><span>Grid</span><span aria-hidden="true">↗</span></button><button type="button" id="component-MiniBarChart" data-explore-component="MiniBarChart" data-explorer-search="minibarchart compact categorical bars for dense layouts. data" aria-pressed="false" title="Compact categorical bars for dense layouts."><span>MiniBarChart</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="charts"><h4>Charts</h4><button type="button" id="component-ChartFrame" data-explore-component="ChartFrame" data-explorer-search="chartframe shared chart title, subtitle, legend, and footer. charts" aria-pressed="false" title="Shared chart title, subtitle, legend, and footer."><span>ChartFrame</span><span aria-hidden="true">↗</span></button><button type="button" id="component-DonutChart" data-explore-component="DonutChart" data-explorer-search="donutchart part-to-whole composition with center label. charts" aria-pressed="false" title="Part-to-whole composition with center label."><span>DonutChart</span><span aria-hidden="true">↗</span></button><button type="button" id="component-StackedBar" data-explore-component="StackedBar" data-explorer-search="stackedbar part-to-whole values along one dimension. charts" aria-pressed="false" title="Part-to-whole values along one dimension."><span>StackedBar</span><span aria-hidden="true">↗</span></button><button type="button" id="component-BarChart" data-explore-component="BarChart" data-explorer-search="barchart categorical comparison with labels and values. charts" aria-pressed="false" title="Categorical comparison with labels and values."><span>BarChart</span><span aria-hidden="true">↗</span></button><button type="button" id="component-LineChart" data-explore-component="LineChart" data-explorer-search="linechart one or more trends across an ordered axis. charts" aria-pressed="false" title="One or more trends across an ordered axis."><span>LineChart</span><span aria-hidden="true">↗</span></button><button type="button" id="component-ScatterPlot" data-explore-component="ScatterPlot" data-explorer-search="scatterplot point distribution across two numeric axes. charts" aria-pressed="false" title="Point distribution across two numeric axes."><span>ScatterPlot</span><span aria-hidden="true">↗</span></button><button type="button" id="component-ParetoChart" data-explore-component="ParetoChart" data-explorer-search="paretochart automatic non-dominated frontier across competing numeric objectives. charts" aria-pressed="false" title="Automatic non-dominated frontier across competing numeric objectives."><span>ParetoChart</span><span aria-hidden="true">↗</span></button><button type="button" id="component-QuadrantChart" data-explore-component="QuadrantChart" data-explorer-search="quadrantchart numeric decision map split by configurable policy thresholds. charts" aria-pressed="false" title="Numeric decision map split by configurable policy thresholds."><span>QuadrantChart</span><span aria-hidden="true">↗</span></button><button type="button" id="component-IntervalPlot" data-explore-component="IntervalPlot" data-explorer-search="intervalplot low, midpoint, and high ranges by category. charts" aria-pressed="false" title="Low, midpoint, and high ranges by category."><span>IntervalPlot</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Legend" data-explore-component="Legend" data-explorer-search="legend reusable color key for charts and diagrams. charts" aria-pressed="false" title="Reusable color key for charts and diagrams."><span>Legend</span><span aria-hidden="true">↗</span></button></section><section class="explorer-choice-group" data-explorer-category="drawing"><h4>Drawing</h4><button type="button" id="component-Box" data-explore-component="Box" data-explorer-search="box rounded svg box with label and tone. drawing" aria-pressed="false" title="Rounded SVG box with label and tone."><span>Box</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Arrow" data-explore-component="Arrow" data-explorer-search="arrow straight labeled svg arrow. drawing" aria-pressed="false" title="Straight labeled SVG arrow."><span>Arrow</span><span aria-hidden="true">↗</span></button><button type="button" id="component-ArrowMarkerDef" data-explore-component="ArrowMarkerDef" data-explorer-search="arrowmarkerdef reusable svg arrowhead definition. drawing" aria-pressed="false" title="Reusable SVG arrowhead definition."><span>ArrowMarkerDef</span><span aria-hidden="true">↗</span></button><button type="button" id="component-FlowArrow" data-explore-component="FlowArrow" data-explorer-search="flowarrow straight directional connector with label and tone. drawing" aria-pressed="false" title="Straight directional connector with label and tone."><span>FlowArrow</span><span aria-hidden="true">↗</span></button><button type="button" id="component-Connector" data-explore-component="Connector" data-explorer-search="connector alias for flow connectors in diagram code. drawing" aria-pressed="false" title="Alias for flow connectors in diagram code."><span>Connector</span><span aria-hidden="true">↗</span></button><button type="button" id="component-VectorArrow" data-explore-component="VectorArrow" data-explorer-search="vectorarrow vector with optional endpoints and arrowhead. drawing" aria-pressed="false" title="Vector with optional endpoints and arrowhead."><span>VectorArrow</span><span aria-hidden="true">↗</span></button><button type="button" id="component-VectorSegment" data-explore-component="VectorSegment" data-explorer-search="vectorsegment line segment for geometric constructions. drawing" aria-pressed="false" title="Line segment for geometric constructions."><span>VectorSegment</span><span aria-hidden="true">↗</span></button><button type="button" id="component-SvgFrame" data-explore-component="SvgFrame" data-explorer-search="svgframe svg plotting frame with border and fill. drawing" aria-pressed="false" title="SVG plotting frame with border and fill."><span>SvgFrame</span><span aria-hidden="true">↗</span></button><button type="button" id="component-SvgPoint" data-explore-component="SvgPoint" data-explorer-search="svgpoint labeled point for svg figures. drawing" aria-pressed="false" title="Labeled point for SVG figures."><span>SvgPoint</span><span aria-hidden="true">↗</span></button><button type="button" id="component-DotPoint" data-explore-component="DotPoint" data-explorer-search="dotpoint point marker with optional text label. drawing" aria-pressed="false" title="Point marker with optional text label."><span>DotPoint</span><span aria-hidden="true">↗</span></button><button type="button" id="component-DashedLine" data-explore-component="DashedLine" data-explorer-search="dashedline dotted or dashed svg guide line. drawing" aria-pressed="false" title="Dotted or dashed SVG guide line."><span>DashedLine</span><span aria-hidden="true">↗</span></button><button type="button" id="component-AxisPlot" data-explore-component="AxisPlot" data-explorer-search="axisplot coordinate plane for points, vectors, and paths. drawing" aria-pressed="false" title="Coordinate plane for points, vectors, and paths."><span>AxisPlot</span><span aria-hidden="true">↗</span></button></section></div>
+    <p class="explorer-empty" hidden>No components match. Try another search.</p>
+    <p class="explorer-library-note">Pick a piece. Change its settings.<br>Keep the source you create.</p>
+  </aside>
+  <div class="explorer-stage">
+    <header class="explorer-component-heading"><div><span id="explorerCategory" class="eyebrow">Component playground</span><h3 id="explorerTitle">Choose. Change. See.</h3><p id="explorerDescription">Explore a live example, then make it your own.</p></div><button class="button small" type="button" id="explorerReset">Reset example</button></header>
+    <div class="playground-toolbar explorer-toolbar">
+      <div class="playground-theme-control" role="group" aria-label="Output theme"><button type="button" data-playground-theme="dark" aria-pressed="true">Dark</button><button type="button" data-playground-theme="light" aria-pressed="false">Light</button></div>
+      <label class="explorer-background" for="explorerBackground">Canvas<select id="explorerBackground"><option value="transparent">Transparent</option><option value="theme">Theme fill</option></select></label>
+      <div class="playground-actions"><button class="button" type="button" id="playgroundCopyButton">Copy source</button><button class="button" type="button" id="playgroundShareButton">Share</button><button class="button" type="button" id="playgroundSvgButton">SVG</button><button class="button" type="button" id="playgroundPngButton">PNG</button></div>
+    </div>
+    <div class="playground-preview-panel explorer-preview">
+      <div class="playground-panel-header"><strong>Live preview</strong><span id="playgroundStatus" role="status">Loading components…</span><span id="playgroundDimensions">960 × 540</span><select id="explorerZoom" aria-label="Preview zoom" title="Use 100% and scroll to inspect the detail"><option value="content">Fit content</option><option value="fit">Full canvas</option><option value="actual">100%</option></select></div>
+      <div class="playground-viewport" id="playgroundViewport" tabindex="0" aria-label="Visual preview, scroll to inspect at 100 percent"><div id="playgroundCanvas" role="region" aria-label="Rendered Vizmatic preview"></div></div>
+      <p class="explorer-edit-hint" id="playgroundTextHint">Double-click text to edit. Enter saves. Escape cancels.</p>
+      <div class="playground-error" id="playgroundError" role="alert" hidden></div>
+    </div>
+    <section class="explorer-controls" aria-labelledby="explorerControlsTitle"><div class="explorer-controls-heading"><h4 id="explorerControlsTitle">Play with the settings</h4><span>Updates as you change them</span></div><div id="explorerControls" class="explorer-control-grid"></div><p id="explorerControlsNote" class="explorer-controls-note" aria-live="polite"></p></section>
+    <details class="explorer-code" id="explorerCode"><summary>Edit the TSX <span>Change data, add components, or compose a scene</span></summary><div class="explorer-code-toolbar"><label class="playground-template-control" for="playgroundTemplate"><span>Scene template</span><select id="playgroundTemplate" aria-label="Playground template"></select></label><button class="button primary small" id="playgroundRunButton" type="button" title="Render source (Ctrl or Command + Enter)">Run</button><span>Ctrl / ⌘ + Enter</span></div><div class="playground-editor-panel"><div class="playground-source-editor"><pre id="playgroundHighlight" aria-hidden="true"></pre><textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off"></textarea></div></div></details>
+    <noscript><p class="explorer-controls-note">Enable JavaScript to use the live playground, or <a href="components.md">read and copy the component examples</a>.</p></noscript>
+  </div>
+</div>
 
-  <main class="playground-page-main">
-    <section id="playground" data-vizmatic-playground data-vizmatic-playground-background="transparent">
-      <header class="playground-page-heading">
-        <div>
-          <div class="eyebrow"><span></span>Browser renderer</div>
-          <h1>Playground</h1>
-        </div>
-        <p>Edit TSX, switch themes, then share or download the result. Rendering stays in your browser.</p>
-      </header>
-
-      <div class="playground-tool">
-        <div class="playground-toolbar">
-          <label class="playground-template-control" for="playgroundTemplate">
-            <span>Template</span>
-            <select id="playgroundTemplate" aria-label="Playground template"></select>
-          </label>
-          <div class="playground-theme-control" role="group" aria-label="Output theme">
-            <button type="button" data-playground-theme="dark" aria-pressed="true">Dark</button>
-            <button type="button" data-playground-theme="light" aria-pressed="false">Light</button>
-          </div>
-          <div class="playground-actions">
-            <button class="button primary" type="button" id="playgroundRunButton" title="Render source">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z"/></svg>
-              <span>Run</span>
-            </button>
-            <button class="button" type="button" id="playgroundCopyButton" title="Copy edited source">
-              <span>Copy source</span>
-            </button>
-            <button class="button" type="button" id="playgroundShareButton" title="Copy share link">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12h8M13 7l5 5-5 5M5 5h6M5 19h6"/></svg>
-              <span>Share</span>
-            </button>
-            <button class="button" type="button" id="playgroundSvgButton" title="Download SVG">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>
-              <span>SVG</span>
-            </button>
-            <button class="button" type="button" id="playgroundPngButton" title="Download PNG">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>
-              <span>PNG</span>
-            </button>
-          </div>
-        </div>
-        <div class="playground-workspace">
-          <div class="playground-editor-panel">
-            <div class="playground-panel-header"><strong>frame.tsx</strong><span id="playgroundStatus" role="status">Ready</span></div>
-            <div class="playground-source-editor">
-              <pre id="playgroundHighlight" aria-hidden="true"></pre>
-              <textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off"></textarea>
-            </div>
-          </div>
-          <div class="playground-preview-panel">
-            <div class="playground-panel-header"><strong>Preview</strong><span id="playgroundDimensions">960 × 540</span></div>
-            <div class="playground-viewport" id="playgroundViewport">
-              <div id="playgroundCanvas" aria-label="Rendered Vizmatic preview"></div>
-            </div>
-            <div class="playground-error" id="playgroundError" role="alert" hidden></div>
-          </div>
-        </div>
-      </div>
     </section>
   </main>
-
-  <script>
-    const themeColorMeta = document.querySelector('meta[name="theme-color"]')
-    const themeButtons = document.querySelectorAll('[data-theme-choice]')
-    const systemThemeQuery = window.matchMedia('(prefers-color-scheme: light)')
-    const playground = document.getElementById('playground')
-
-    function getSavedTheme() {
-      try { return localStorage.getItem('vizmatic-theme') } catch { return undefined }
-    }
-
-    function normalizeThemeChoice(theme) {
-      return theme === 'light' || theme === 'dark' ? theme : 'system'
-    }
-
-    function resolveTheme(theme) {
-      return theme === 'system' ? (systemThemeQuery.matches ? 'light' : 'dark') : theme
-    }
-
-    function setSiteTheme(theme) {
-      const choice = normalizeThemeChoice(theme)
-      const resolved = resolveTheme(choice)
-      document.documentElement.dataset.siteTheme = resolved
-      document.documentElement.dataset.themeMode = choice
-      try { localStorage.setItem('vizmatic-theme', choice) } catch {}
-      themeColorMeta?.setAttribute('content', resolved === 'light' ? '#f4f5f2' : '#080a0f')
-      themeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === choice)))
-      const changed = playground?.dataset.vizmaticPlaygroundTheme !== resolved
-      if (playground) playground.dataset.vizmaticPlaygroundTheme = resolved
-      if (changed) playground?.dispatchEvent(new CustomEvent('vizmatic-playground-theme', { detail: { theme: resolved } }))
-    }
-
-    setSiteTheme(normalizeThemeChoice(getSavedTheme()))
-    themeButtons.forEach((button) => button.addEventListener('click', () => setSiteTheme(button.dataset.themeChoice)))
-    systemThemeQuery.addEventListener('change', () => {
-      if (document.documentElement.dataset.themeMode === 'system') setSiteTheme('system')
-    })
-  </script>
+  <footer class="site-footer">
+    <div class="footer-main">
+      <div><a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic<span class="brand-dot">.</span></span></a><p>Visuals you can build on.</p></div>
+      <div class="footer-links"><div><h2>Create</h2><a href="playground.html">Playground</a><a href="index.html#gallery">Examples</a><a href="components.html">Components</a></div><div><h2>Learn</h2><a href="index.html#quick-start">Quick start</a><a href="agents.html">For agents</a><a href="benchmarks.html">Benchmarks</a></div><div><h2>Source</h2><a href="https://github.com/bvolpato/vizmatic">GitHub ↗</a><a href="https://www.npmjs.com/package/vizmatic">npm ↗</a><a href="llms.txt">llms.txt</a></div></div>
+    </div>
+    <div class="footer-bottom"><p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p><a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a></div>
+  </footer>
+  <dialog class="search-dialog" id="searchDialog" aria-labelledby="searchTitle">
+    <div class="search-dialog-heading"><h2 id="searchTitle">Find your next building block</h2><button class="button small" type="button" data-close-search>Close <kbd>Esc</kbd></button></div>
+    <label class="site-search-label" for="siteSearch">Search pages, components, and examples</label>
+    <input id="siteSearch" type="search" placeholder="Try architecture, chart, or agent…" autocomplete="off" aria-controls="siteSearchResults">
+    <p id="siteSearchStatus" class="search-status" role="status"></p><div id="siteSearchResults" class="search-results"></div>
+    <div class="search-help"><span>↑ ↓ to navigate</span><span>Enter to open</span><span>Esc to close</span></div>
+  </dialog>
+  <dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
+    <div class="source-dialog-panel"><header><div><span>Editable TSX</span><h2 id="sourceTitle">Example source</h2></div><div class="dialog-actions"><a class="button primary" id="trySourceLink" href="playground.html">Try / edit ↗</a><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div></header><p class="source-note">The playground edits a static frame. Use the CLI to render GIF animations.</p><div class="source-code" id="sourceCode"></div></div>
+  </dialog>
+  <dialog class="image-dialog" id="imageDialog" aria-labelledby="imageDialogTitle">
+    <div class="image-dialog-panel"><div class="image-dialog-header"><h2 id="imageDialogTitle">Example preview</h2><button class="button" type="button" id="closeImageButton">Close</button></div><div class="image-dialog-viewport"><img id="imageDialogImage" alt=""></div></div>
+  </dialog>
   <script type="module" src="playground.js"></script>
 </body>
 </html>

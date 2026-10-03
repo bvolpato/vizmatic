@@ -75,6 +75,7 @@
     "check:examples": "tsx scripts/check-examples.ts",
     "playground:build": "tsx scripts/build-playground.ts",
     "site:build": "tsx scripts/build-site.ts",
+    "site:fonts": "uv run scripts/build-site-fonts.py",
     "docs:check": "tsx scripts/check-docs.ts",
     "workflows:check": "github-actionlint .github/workflows/*.yml",
     "site:serve": "node scripts/serve-docs.mjs docs 4173",

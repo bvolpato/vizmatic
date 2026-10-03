@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{SITE_HEAD}}
+</head>
+<body>
+  {{SITE_NAV}}
+
+  <main id="main-content" tabindex="-1" class="agent-page">
+    <header class="page-heading section">
+      <div class="eyebrow">For people and coding agents</div>
+      <h1>From a clear brief to a checked visual.</h1>
+      <p>Write an editable TSX scene, check it in dark and light themes, then render files on your machine or in CI. The same source stays reviewable and easy to refine.</p>
+      <div class="cta-row">
+        <button class="button primary" type="button" data-copy-prompt aria-controls="promptPreview">Copy the agent prompt</button>
+        <a class="button" href="playground.html">Try the playground</a>
+        <a class="text-link" href="components.html">Browse runnable components <span aria-hidden="true">→</span></a>
+      </div>
+    </header>
+
+    <section id="workflow" class="section agent-workflow" aria-labelledby="workflowTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">A reliable workflow</div>
+          <h2 id="workflowTitle">Describe, check, render, inspect.</h2>
+        </div>
+        <p>Start small. Keep the TSX as the source of truth, and use the CLI report before treating an export as finished.</p>
+      </div>
+      <div class="steps-grid">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <h3>Install the CLI</h3>
+          <p>Vizmatic runs with Node.js 20 or newer. Install the renderer separately from any agent skill.</p>
+          <pre data-shiki="bash"><code>npm install -g vizmatic</code></pre>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <h3>Write one TSX frame</h3>
+          <p>Use a bare frame for simple scenes. Start with <code>Scene</code> and a focused primitive, then add imports or a full module when the design needs them.</p>
+          <a class="text-link" href="components.html">Choose a component <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <h3>Check both themes</h3>
+          <p>Read the JSON diagnostics and fix errors before exporting. The check covers layout and readability.</p>
+          <pre data-shiki="bash"><code>vizmatic check ./frame.tsx --theme dark,light --json</code></pre>
+        </article>
+        <article class="step-card">
+          <span class="step-number">04</span>
+          <h3>Render and inspect</h3>
+          <p>Render both variants, then inspect the actual files for clipping, spacing, and contrast.</p>
+          <pre data-shiki="bash"><code>vizmatic ./frame.tsx --out ./dist/frames --theme dark,light</code></pre>
+        </article>
+      </div>
+      <aside class="callout">
+        <h3>For animation, use a module and the CLI.</h3>
+        <p>Export <code>createAnimation(theme)</code> from a TypeScript module, keep <code>create(theme)</code> as its static fallback, then render with <code>vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light</code>. A bare frame is for static output.</p>
+      </aside>
+    </section>
+
+    <section class="section agent-install" aria-labelledby="installTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">Choose your setup</div>
+          <h2 id="installTitle">Use the portable skill or a native plugin.</h2>
+        </div>
+        <p>The portable skill contains workflow guidance and examples. Install the Node.js CLI separately so the agent can run checks and renders.</p>
+      </div>
+      <div class="resource-grid">
+        <article class="resource-card">
+          <span class="card-kicker">Portable skill</span>
+          <h3>Works with compatible agents</h3>
+          <p>Install the skill for Codex, Claude Code, Cursor, OpenCode, or another supported agent.</p>
+          <pre data-shiki="bash"><code>npx skills add bvolpato/vizmatic --skill vizmatic -g -y</code></pre>
+          <p class="requirement-note">The skill installer uses npm and requires Node.js. The Vizmatic renderer itself requires Node.js 20 or newer.</p>
+          <a class="text-link" href="skill.md">Read the portable skill <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="resource-card">
+          <span class="card-kicker">Codex plugin</span>
+          <h3>Install inside Codex</h3>
+          <p>Add the Vizmatic marketplace, then install its plugin.</p>
+          <pre data-shiki="bash"><code>codex plugin marketplace add bvolpato/vizmatic --ref main
+codex plugin add vizmatic@vizmatic</code></pre>
+        </article>
+        <article class="resource-card">
+          <span class="card-kicker">Claude Code plugin</span>
+          <h3>Install inside Claude Code</h3>
+          <p>Add the marketplace and choose a user-level plugin install.</p>
+          <pre data-shiki="bash"><code>claude plugin marketplace add bvolpato/vizmatic
+claude plugin install vizmatic@vizmatic --scope user</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="resources" class="section agent-resources" aria-labelledby="resourcesTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">Direct resources</div>
+          <h2 id="resourcesTitle">Give agents the right amount of context.</h2>
+        </div>
+        <p>Use the compact index for discovery, the full bundle for a complete context load, or the component data when an agent needs runnable examples.</p>
+      </div>
+      <div class="resource-grid">
+        <article class="resource-card">
+          <h3>Instruction and skill files</h3>
+          <ul>
+            <li><a href="PROMPT.md">PROMPT.md</a><span> Full task prompt and API guidance.</span></li>
+            <li><a href="skill.md">skill.md</a><span> Portable agent workflow.</span></li>
+            <li><a href="patterns.md">patterns.md</a><span> Component selection and visual patterns.</span></li>
+          </ul>
+        </article>
+        <article class="resource-card">
+          <h3>Machine-readable catalog</h3>
+          <ul>
+            <li><a href="llms.txt">llms.txt</a><span> Concise index with canonical links.</span></li>
+            <li><a href="llms-full.txt">llms-full.txt</a><span> Prompt plus the complete component catalog.</span></li>
+            <li><a href="components.json">components.json</a><span> Component metadata, source, and playground links.</span></li>
+            <li><a href="components.md">components.md</a><span> Category descriptions and runnable TSX examples.</span></li>
+          </ul>
+        </article>
+        <article class="resource-card">
+          <h3>Explore and edit</h3>
+          <p>Open an example in the playground to edit it, switch the preview theme, and download PNG or SVG output.</p>
+          <a class="text-link" href="playground.html">Open the playground <span aria-hidden="true">→</span></a>
+          <a class="text-link" href="components.html">Browse all components <span aria-hidden="true">→</span></a>
+          <a class="text-link" href="assets/starter-frame.tsx">Download the static starter frame <span aria-hidden="true">→</span></a>
+          <a class="text-link" href="assets/animated-frame.tsx">Download the animated starter module <span aria-hidden="true">→</span></a>
+        </article>
+      </div>
+      <p class="section-note">Catalog examples are focused, runnable starting points. They do not document every typed prop. Use <a href="PROMPT.md">PROMPT.md</a> and the package TypeScript definitions for the full API contract.</p>
+    </section>
+
+    <section class="section prompt-section" aria-labelledby="promptTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">A reusable starting brief</div>
+          <h2 id="promptTitle">Give your agent the whole Vizmatic prompt.</h2>
+        </div>
+        <p>Copy the exact prompt file or expand it to review the full text before using it.</p>
+      </div>
+      <button class="button primary" type="button" data-copy-prompt aria-controls="promptPreview">Copy full prompt</button>
+      <details class="prompt-details">
+        <summary>Preview PROMPT.md</summary>
+        <pre class="prompt-preview" tabindex="0"><code id="promptPreview">{{PROMPT_MD}}</code></pre>
+      </details>
+    </section>
+
+    <section class="section agent-faq" aria-labelledby="faqTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">Questions</div>
+          <h2 id="faqTitle">A few useful details.</h2>
+        </div>
+      </div>
+      <div class="faq-list">
+        <details>
+          <summary>Does installing the skill install Vizmatic?</summary>
+          <p>No. The skill provides instructions and examples. Install the CLI with npm when the agent needs to check or render a frame.</p>
+        </details>
+        <details>
+          <summary>Where does rendering happen?</summary>
+          <p>The CLI renders on your machine or in your CI environment. Use the browser playground for interactive edits and previews.</p>
+        </details>
+        <details>
+          <summary>How should I verify a finished visual?</summary>
+          <p>Run the JSON check for dark and light themes, render both variants, and inspect the files at their final display size.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  {{SITE_FOOTER}}
+  {{SITE_DIALOGS}}
+</body>
+</html>

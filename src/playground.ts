@@ -5,6 +5,10 @@ import {
 } from './playground-source'
 import { highlightPlaygroundSource } from './playground-highlight'
 import { findPlaygroundTemplate, playgroundTemplates } from './playground-templates'
+import { mountComponentExplorer, type ComponentExplorerController } from './component-explorer'
+import { mountPreviewTextEditor } from './playground-text-editor'
+import type { PlaygroundTextTarget } from './playground-text-types'
+import type { CropRegion } from './autocrop'
 import type { PlaygroundRenderRequest } from './playground-worker'
 
 interface PlaygroundRenderSuccess {
@@ -15,6 +19,8 @@ interface PlaygroundRenderSuccess {
     width: number
     height: number
     warnings: string[]
+    contentBounds: CropRegion
+    textTargets: PlaygroundTextTarget[]
 }
 
 interface PlaygroundRenderFailure {
@@ -228,7 +234,15 @@ function download(filename: string, content: BlobPart, type: string): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 
+const previewEditors = new WeakMap<HTMLElement, () => void>()
+
+function clearTextEditor(preview: HTMLElement): void {
+    previewEditors.get(preview)?.()
+    previewEditors.delete(preview)
+}
+
 function clearPreview(preview: HTMLElement): void {
+    clearTextEditor(preview)
     const url = preview.dataset.vizmaticPreviewUrl
     if (url) {
         URL.revokeObjectURL(url)
@@ -237,8 +251,18 @@ function clearPreview(preview: HTMLElement): void {
     preview.replaceChildren()
 }
 
-function renderPreview(preview: HTMLElement, svg: string, width: number, height: number): void {
+function renderPreview(preview: HTMLElement, svg: string, width: number, height: number, bounds?: CropRegion, textTargets: PlaygroundTextTarget[] = [], textApi?: Parameters<typeof mountPreviewTextEditor>[4]): void {
     clearPreview(preview)
+    const displayBounds = bounds ?? { x: 0, y: 0, width, height }
+    const textSource = textApi?.getSource()
+    if (bounds) {
+        svg = svg.replace(/^<svg\b[^>]*>/, (tag) => tag
+            .replace(/\bviewBox="[^"]*"/, `viewBox="${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}"`)
+            .replace(/\bwidth="[^"]*"/, `width="${bounds.width}"`)
+            .replace(/\bheight="[^"]*"/, `height="${bounds.height}"`))
+        width = bounds.width
+        height = bounds.height
+    }
     const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
     preview.dataset.vizmaticPreviewUrl = url
     const image = document.createElement('img')
@@ -249,6 +273,14 @@ function renderPreview(preview: HTMLElement, svg: string, width: number, height:
     image.addEventListener('load', () => {
         URL.revokeObjectURL(url)
         if (preview.dataset.vizmaticPreviewUrl === url) delete preview.dataset.vizmaticPreviewUrl
+        const viewport = preview.parentElement
+        if (viewport && preview.closest<HTMLElement>('[data-vizmatic-playground]')?.dataset.previewZoom === 'actual') {
+            viewport.scrollLeft = (viewport.scrollWidth - viewport.clientWidth) / 2
+            viewport.scrollTop = (viewport.scrollHeight - viewport.clientHeight) / 2
+        }
+        if (textApi && textApi.getSource() === textSource && preview.contains(image)) {
+            previewEditors.set(preview, mountPreviewTextEditor(preview, image, textTargets, displayBounds, textApi))
+        }
     }, { once: true })
     preview.append(image)
 }
@@ -272,7 +304,17 @@ function populateTemplateSelect(select: HTMLSelectElement): void {
         option.textContent = template.label
         return option
     }))
+    const custom = document.createElement('option')
+    custom.value = 'custom'
+    custom.textContent = 'Custom source'
+    custom.disabled = true
+    select.append(custom)
     select.value = findPlaygroundTemplate(selected)?.id ?? playgroundTemplates[0]?.id ?? ''
+}
+
+function syncTemplateSelection(elements: PlaygroundElements): void {
+    if (!elements.templateSelect) return
+    elements.templateSelect.value = playgroundTemplates.find((template) => template.source === elements.source.value)?.id ?? 'custom'
 }
 
 export function mountPlayground(root: HTMLElement): void {
@@ -288,26 +330,38 @@ export function mountPlayground(root: HTMLElement): void {
     if (!elements.source.value.trim()) {
         elements.source.value = findPlaygroundTemplate(elements.templateSelect?.value)?.source ?? playgroundTemplates[0]?.source ?? ''
     }
+    syncTemplateSelection(elements)
     updateSourceHighlight(elements)
 
     let renderTimer: number | undefined
     let png: ArrayBuffer | undefined
     let svg: string | undefined
+    let previewOutput: PlaygroundRenderSuccess | undefined
+    let previewSource = ''
+    let renderVersion = 0
     let theme = getTheme(root)
-    const loadSharedSource = (source: string) => {
+    let explorer: ComponentExplorerController | undefined
+    const loadSharedSource = (source: string, immediate = true) => {
         elements.source.value = source
+        syncTemplateSelection(elements)
         updateSourceHighlight(elements)
         png = undefined
         svg = undefined
-        clearPreview(elements.preview)
+        if (immediate) {
+            clearPreview(elements.preview)
+            previewOutput = undefined
+        }
         setControlEnabled(elements.pngDownload, false)
         setControlEnabled(elements.svgDownload, false)
         setError(elements, undefined)
         setStatus(elements, 'loading', 'Rendering shared source…')
-        scheduleRender(true)
+        scheduleRender(immediate)
+        explorer?.sourceChanged()
     }
 
     const scheduleRender = (immediate = false) => {
+        clearTextEditor(elements.preview)
+        renderVersion += 1
         if (renderTimer) window.clearTimeout(renderTimer)
         renderTimer = window.setTimeout(() => {
             renderTimer = undefined
@@ -315,7 +369,20 @@ export function mountPlayground(root: HTMLElement): void {
         }, immediate ? 0 : LIVE_PREVIEW_DELAY_MS)
     }
 
+    const displayPreview = () => {
+        if (!previewOutput || elements.source.value !== previewSource) return
+        renderPreview(elements.preview, previewOutput.svg, previewOutput.width, previewOutput.height, root.dataset.previewZoom === 'content' ? previewOutput.contentBounds : undefined, previewOutput.textTargets, {
+            getSource: () => elements.source.value,
+            saveSource: (source) => {
+                loadSharedSource(source)
+                elements.viewport?.focus({ preventScroll: true })
+            },
+            onError: (message) => { setError(elements, message) },
+        })
+    }
+
     const render = async () => {
+        const version = renderVersion
         const source = elements.source.value
         setControlEnabled(elements.pngDownload, false)
         setControlEnabled(elements.svgDownload, false)
@@ -327,9 +394,16 @@ export function mountPlayground(root: HTMLElement): void {
                 theme,
                 background: getBackground(root),
             })
+            if (version !== renderVersion) return
             png = output.png
             svg = output.svg
-            renderPreview(elements.preview, output.svg, output.width, output.height)
+            previewOutput = output
+            previewSource = source
+            displayPreview()
+            const textHint = root.querySelector<HTMLElement>('#playgroundTextHint')
+            if (textHint) textHint.textContent = output.textTargets.length
+                ? 'Double-click text to edit. Enter saves. Escape cancels. You can also focus a label and press Enter.'
+                : 'Open the TSX below to edit the text in this scene.'
             if (elements.dimensions) elements.dimensions.textContent = `${output.width} × ${output.height}`
             if (elements.width) elements.width.textContent = String(output.width)
             if (elements.height) elements.height.textContent = String(output.height)
@@ -337,9 +411,11 @@ export function mountPlayground(root: HTMLElement): void {
             setControlEnabled(elements.svgDownload, true)
             setStatus(elements, 'ready', output.warnings[0] ?? `Ready · ${output.width}×${output.height}`)
         } catch (error) {
-            if (error instanceof SupersededRenderError) return
+            if (error instanceof SupersededRenderError || version !== renderVersion) return
             png = undefined
             svg = undefined
+            previewOutput = undefined
+            clearPreview(elements.preview)
             const message = error instanceof Error ? error.message : String(error)
             setStatus(elements, 'error', 'Error')
             setError(elements, message)
@@ -347,7 +423,9 @@ export function mountPlayground(root: HTMLElement): void {
     }
 
     elements.source.addEventListener('input', () => {
+        syncTemplateSelection(elements)
         updateSourceHighlight(elements)
+        explorer?.sourceChanged()
         scheduleRender()
     })
     elements.source.addEventListener('scroll', () => syncSourceHighlightScroll(elements))
@@ -396,7 +474,9 @@ export function mountPlayground(root: HTMLElement): void {
             const template = findPlaygroundTemplate(control.dataset.vizmaticPlaygroundTemplate)
             if (!template) return
             elements.source.value = template.source
+            syncTemplateSelection(elements)
             updateSourceHighlight(elements)
+            explorer?.sourceChanged()
             scheduleRender(true)
         })
     }
@@ -406,6 +486,7 @@ export function mountPlayground(root: HTMLElement): void {
             if (!template) return
             elements.source.value = template.source
             updateSourceHighlight(elements)
+            explorer?.sourceChanged()
             scheduleRender(true)
         })
     }
@@ -431,6 +512,18 @@ export function mountPlayground(root: HTMLElement): void {
         syncThemeControls(root, theme)
         scheduleRender(true)
     })
+    root.querySelector<HTMLSelectElement>('#explorerBackground')?.addEventListener('change', (event) => {
+        root.dataset.vizmaticPlaygroundBackground = (event.target as HTMLSelectElement).value
+        scheduleRender(true)
+    })
+    root.querySelector<HTMLSelectElement>('#explorerZoom')?.addEventListener('change', (event) => {
+        root.dataset.previewZoom = (event.target as HTMLSelectElement).value
+        displayPreview()
+        if (elements.viewport) {
+            elements.viewport.scrollLeft = root.dataset.previewZoom === 'actual' ? (elements.viewport.scrollWidth - elements.viewport.clientWidth) / 2 : 0
+            elements.viewport.scrollTop = root.dataset.previewZoom === 'actual' ? (elements.viewport.scrollHeight - elements.viewport.clientHeight) / 2 : 0
+        }
+    })
     window.addEventListener('hashchange', () => {
         const source = getPlaygroundHashSource()
         if (!source || source === elements.source.value) return
@@ -442,8 +535,9 @@ export function mountPlayground(root: HTMLElement): void {
     }, { once: true })
 
     syncThemeControls(root, theme)
+    explorer = mountComponentExplorer(root, { getSource: () => elements.source.value, loadSource: loadSharedSource })
     if (hashSource) loadSharedSource(hashSource)
-    else scheduleRender(true)
+    else if (!explorer) scheduleRender(true)
 }
 
 export function mountPlaygrounds(): void {

@@ -1,0 +1,27 @@
+<div class="component-explorer playground-tool" data-vizmatic-playground data-component-explorer data-vizmatic-playground-background="transparent" data-preview-zoom="content">
+  <aside class="explorer-library" aria-label="Component chooser">
+    <div class="explorer-library-heading"><strong>Choose a component</strong><span>{{COMPONENT_COUNT}}</span></div>
+    <label class="explorer-search" for="componentExplorerSearch"><span class="sr-only">Find a component</span><input id="componentExplorerSearch" type="search" placeholder="Find a component…" autocomplete="off"></label>
+    <label class="explorer-mobile-select" for="componentExplorerSelect">Component<select id="componentExplorerSelect">{{COMPONENT_OPTIONS}}</select></label>
+    <div class="explorer-choices" aria-label="Components">{{COMPONENT_CHOICES}}</div>
+    <p class="explorer-empty" hidden>No components match. Try another search.</p>
+    <p class="explorer-library-note">Pick a piece. Change its settings.<br>Keep the source you create.</p>
+  </aside>
+  <div class="explorer-stage">
+    <header class="explorer-component-heading"><div><span id="explorerCategory" class="eyebrow">Component playground</span><h3 id="explorerTitle">Choose. Change. See.</h3><p id="explorerDescription">Explore a live example, then make it your own.</p></div><button class="button small" type="button" id="explorerReset">Reset example</button></header>
+    <div class="playground-toolbar explorer-toolbar">
+      <div class="playground-theme-control" role="group" aria-label="Output theme"><button type="button" data-playground-theme="dark" aria-pressed="true">Dark</button><button type="button" data-playground-theme="light" aria-pressed="false">Light</button></div>
+      <label class="explorer-background" for="explorerBackground">Canvas<select id="explorerBackground"><option value="transparent">Transparent</option><option value="theme">Theme fill</option></select></label>
+      <div class="playground-actions"><button class="button" type="button" id="playgroundCopyButton">Copy source</button><button class="button" type="button" id="playgroundShareButton">Share</button><button class="button" type="button" id="playgroundSvgButton">SVG</button><button class="button" type="button" id="playgroundPngButton">PNG</button></div>
+    </div>
+    <div class="playground-preview-panel explorer-preview">
+      <div class="playground-panel-header"><strong>Live preview</strong><span id="playgroundStatus" role="status">Loading components…</span><span id="playgroundDimensions">960 × 540</span><select id="explorerZoom" aria-label="Preview zoom" title="Use 100% and scroll to inspect the detail"><option value="content">Fit content</option><option value="fit">Full canvas</option><option value="actual">100%</option></select></div>
+      <div class="playground-viewport" id="playgroundViewport" tabindex="0" aria-label="Visual preview, scroll to inspect at 100 percent"><div id="playgroundCanvas" role="region" aria-label="Rendered Vizmatic preview"></div></div>
+      <p class="explorer-edit-hint" id="playgroundTextHint">Double-click text to edit. Enter saves. Escape cancels.</p>
+      <div class="playground-error" id="playgroundError" role="alert" hidden></div>
+    </div>
+    <section class="explorer-controls" aria-labelledby="explorerControlsTitle"><div class="explorer-controls-heading"><h4 id="explorerControlsTitle">Play with the settings</h4><span>Updates as you change them</span></div><div id="explorerControls" class="explorer-control-grid"></div><p id="explorerControlsNote" class="explorer-controls-note" aria-live="polite"></p></section>
+    <details class="explorer-code" id="explorerCode"><summary>Edit the TSX <span>Change data, add components, or compose a scene</span></summary><div class="explorer-code-toolbar"><label class="playground-template-control" for="playgroundTemplate"><span>Scene template</span><select id="playgroundTemplate" aria-label="Playground template"></select></label><button class="button primary small" id="playgroundRunButton" type="button" title="Render source (Ctrl or Command + Enter)">Run</button><span>Ctrl / ⌘ + Enter</span></div><div class="playground-editor-panel"><div class="playground-source-editor"><pre id="playgroundHighlight" aria-hidden="true"></pre><textarea id="playgroundSource" aria-label="Vizmatic frame source" autocomplete="off" autocapitalize="off" spellcheck="false" wrap="off"></textarea></div></div></details>
+    <noscript><p class="explorer-controls-note">Enable JavaScript to use the live playground, or <a href="components.md">read and copy the component examples</a>.</p></noscript>
+  </div>
+</div>

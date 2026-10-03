@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<!-- Generated from docs/agents.template.html by pnpm site:build. Edit template. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>For agents | Vizmatic</title>
+  <meta name="description" content="Install the Vizmatic skill, use a verified render workflow, and discover machine-readable instructions and runnable component examples.">
+  <meta name="theme-color" content="#0b0d16">
+  <link rel="canonical" href="https://bvolpato.github.io/vizmatic/agents.html">
+  <meta property="og:title" content="For agents | Vizmatic">
+  <meta property="og:description" content="Install the Vizmatic skill, use a verified render workflow, and discover machine-readable instructions and runnable component examples.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://bvolpato.github.io/vizmatic/agents.html">
+  <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="For agents | Vizmatic">
+  <meta name="twitter:description" content="Install the Vizmatic skill, use a verified render workflow, and discover machine-readable instructions and runnable component examples.">
+  <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="alternate" type="text/markdown" href="llms.txt" title="Agent documentation index">
+  <script>
+    (() => {
+      let mode = 'system'
+      try { mode = localStorage.getItem('vizmatic-theme') || 'system' } catch {}
+      if (mode !== 'light' && mode !== 'dark') mode = 'system'
+      document.documentElement.dataset.themeMode = mode
+      document.documentElement.dataset.siteTheme = mode === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : mode
+    })()
+  </script>
+  <link rel="preload" href="assets/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <div class="nav-shell">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="index.html" aria-label="Vizmatic home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic<span class="brand-dot">.</span></span></a>
+      <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="siteNavigation">Menu <span aria-hidden="true">☰</span></button>
+      <div class="nav-actions" id="siteNavigation" data-site-navigation>
+        <div class="nav-links"><a href="index.html#gallery">Examples</a><a href="components.html">Components</a><a href="playground.html">Playground</a><a href="agents.html" aria-current="page">For agents</a></div>
+        <div class="nav-tools">
+          <button class="search-trigger" type="button" data-open-search aria-label="Search Vizmatic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span>Search</span><kbd>⌘ K</kbd></button>
+          <div class="theme-toggle" role="group" aria-label="Site theme">
+            <button type="button" data-theme-choice="system" aria-pressed="true" aria-label="Use system theme" title="System theme">◐</button>
+            <button type="button" data-theme-choice="light" aria-pressed="false" aria-label="Use light theme" title="Light theme">☼</button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Use dark theme" title="Dark theme">☾</button>
+          </div>
+          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.57 9.57 0 0 1 5 0c1.9-1.29 2.74-1.02 2.74-1.02.55 1.37.21 2.39.11 2.64.64.7 1.03 1.6 1.03 2.69 0 3.85-2.34 4.69-4.58 4.94.36.31.68.92.68 1.85v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg></a>
+        </div>
+      </div>
+    </nav>
+  </div>
+
+  <main id="main-content" tabindex="-1" class="agent-page">
+    <header class="page-heading section">
+      <div class="eyebrow">For people and coding agents</div>
+      <h1>From a clear brief to a checked visual.</h1>
+      <p>Write an editable TSX scene, check it in dark and light themes, then render files on your machine or in CI. The same source stays reviewable and easy to refine.</p>
+      <div class="cta-row">
+        <button class="button primary" type="button" data-copy-prompt aria-controls="promptPreview">Copy the agent prompt</button>
+        <a class="button" href="playground.html">Try the playground</a>
+        <a class="text-link" href="components.html">Browse runnable components <span aria-hidden="true">→</span></a>
+      </div>
+    </header>
+
+    <section id="workflow" class="section agent-workflow" aria-labelledby="workflowTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">A reliable workflow</div>
+          <h2 id="workflowTitle">Describe, check, render, inspect.</h2>
+        </div>
+        <p>Start small. Keep the TSX as the source of truth, and use the CLI report before treating an export as finished.</p>
+      </div>
+      <div class="steps-grid">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <h3>Install the CLI</h3>
+          <p>Vizmatic runs with Node.js 20 or newer. Install the renderer separately from any agent skill.</p>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">npm</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> install</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> -g</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> vizmatic</span></span></code></pre>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <h3>Write one TSX frame</h3>
+          <p>Use a bare frame for simple scenes. Start with <code>Scene</code> and a focused primitive, then add imports or a full module when the design needs them.</p>
+          <a class="text-link" href="components.html">Choose a component <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <h3>Check both themes</h3>
+          <p>Read the JSON diagnostics and fix errors before exporting. The check covers layout and readability.</p>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">vizmatic</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> check</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> ./frame.tsx</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --theme</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> dark,light</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --json</span></span></code></pre>
+        </article>
+        <article class="step-card">
+          <span class="step-number">04</span>
+          <h3>Render and inspect</h3>
+          <p>Render both variants, then inspect the actual files for clipping, spacing, and contrast.</p>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">vizmatic</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> ./frame.tsx</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --out</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> ./dist/frames</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --theme</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> dark,light</span></span></code></pre>
+        </article>
+      </div>
+      <aside class="callout">
+        <h3>For animation, use a module and the CLI.</h3>
+        <p>Export <code>createAnimation(theme)</code> from a TypeScript module, keep <code>create(theme)</code> as its static fallback, then render with <code>vizmatic gif ./animated-frame.tsx --out ./dist/frames --theme dark,light</code>. A bare frame is for static output.</p>
+      </aside>
+    </section>
+
+    <section class="section agent-install" aria-labelledby="installTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">Choose your setup</div>
+          <h2 id="installTitle">Use the portable skill or a native plugin.</h2>
+        </div>
+        <p>The portable skill contains workflow guidance and examples. Install the Node.js CLI separately so the agent can run checks and renders.</p>
+      </div>
+      <div class="resource-grid">
+        <article class="resource-card">
+          <span class="card-kicker">Portable skill</span>
+          <h3>Works with compatible agents</h3>
+          <p>Install the skill for Codex, Claude Code, Cursor, OpenCode, or another supported agent.</p>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">npx</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> skills</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> add</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> bvolpato/vizmatic</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --skill</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> vizmatic</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> -g</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> -y</span></span></code></pre>
+          <p class="requirement-note">The skill installer uses npm and requires Node.js. The Vizmatic renderer itself requires Node.js 20 or newer.</p>
+          <a class="text-link" href="skill.md">Read the portable skill <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="resource-card">
+          <span class="card-kicker">Codex plugin</span>
+          <h3>Install inside Codex</h3>
+          <p>Add the Vizmatic marketplace, then install its plugin.</p>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">codex</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> plugin</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> marketplace</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> add</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> bvolpato/vizmatic</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --ref</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> main</span></span>
+<span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">codex</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> plugin</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> add</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> vizmatic@vizmatic</span></span></code></pre>
+        </article>
+        <article class="resource-card">
+          <span class="card-kicker">Claude Code plugin</span>
+          <h3>Install inside Claude Code</h3>
+          <p>Add the marketplace and choose a user-level plugin install.</p>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">claude</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> plugin</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> marketplace</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> add</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> bvolpato/vizmatic</span></span>
+<span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">claude</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> plugin</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> install</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> vizmatic@vizmatic</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --scope</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> user</span></span></code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="resources" class="section agent-resources" aria-labelledby="resourcesTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">Direct resources</div>
+          <h2 id="resourcesTitle">Give agents the right amount of context.</h2>
+        </div>
+        <p>Use the compact index for discovery, the full bundle for a complete context load, or the component data when an agent needs runnable examples.</p>
+      </div>
+      <div class="resource-grid">
+        <article class="resource-card">
+          <h3>Instruction and skill files</h3>
+          <ul>
+            <li><a href="PROMPT.md">PROMPT.md</a><span> Full task prompt and API guidance.</span></li>
+            <li><a href="skill.md">skill.md</a><span> Portable agent workflow.</span></li>
+            <li><a href="patterns.md">patterns.md</a><span> Component selection and visual patterns.</span></li>
+          </ul>
+        </article>
+        <article class="resource-card">
+          <h3>Machine-readable catalog</h3>
+          <ul>
+            <li><a href="llms.txt">llms.txt</a><span> Concise index with canonical links.</span></li>
+            <li><a href="llms-full.txt">llms-full.txt</a><span> Prompt plus the complete component catalog.</span></li>
+            <li><a href="components.json">components.json</a><span> Component metadata, source, and playground links.</span></li>
+            <li><a href="components.md">components.md</a><span> Category descriptions and runnable TSX examples.</span></li>
+          </ul>
+        </article>
+        <article class="resource-card">
+          <h3>Explore and edit</h3>
+          <p>Open an example in the playground to edit it, switch the preview theme, and download PNG or SVG output.</p>
+          <a class="text-link" href="playground.html">Open the playground <span aria-hidden="true">→</span></a>
+          <a class="text-link" href="components.html">Browse all components <span aria-hidden="true">→</span></a>
+          <a class="text-link" href="assets/starter-frame.tsx">Download the static starter frame <span aria-hidden="true">→</span></a>
+          <a class="text-link" href="assets/animated-frame.tsx">Download the animated starter module <span aria-hidden="true">→</span></a>
+        </article>
+      </div>
+      <p class="section-note">Catalog examples are focused, runnable starting points. They do not document every typed prop. Use <a href="PROMPT.md">PROMPT.md</a> and the package TypeScript definitions for the full API contract.</p>
+    </section>
+
+    <section class="section prompt-section" aria-labelledby="promptTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">A reusable starting brief</div>
+          <h2 id="promptTitle">Give your agent the whole Vizmatic prompt.</h2>
+        </div>
+        <p>Copy the exact prompt file or expand it to review the full text before using it.</p>
+      </div>
+      <button class="button primary" type="button" data-copy-prompt aria-controls="promptPreview">Copy full prompt</button>
+      <details class="prompt-details">
+        <summary>Preview PROMPT.md</summary>
+        <pre class="prompt-preview" tabindex="0"><code id="promptPreview"># Vizmatic agent prompt
+
+Use Vizmatic to create diagrams, figures, dashboards, presentation frames, and animated GIFs from React scene primitives. Render dark and light files locally or in CI.
+
+## Quick start
+
+Vizmatic requires Node.js 20 or newer. Install the CLI:
+
+```bash
+npm install -g vizmatic
+```
+
+Create `frame.tsx`:
+
+```tsx
+&lt;Scene title=&quot;Agent visual pipeline&quot;&gt;
+  &lt;Flow
+    connectorTone=&quot;purple&quot;
+    stages={[
+      { title: &quot;Prompt&quot;, tone: &quot;blue&quot; },
+      { title: &quot;Scene spec&quot;, tone: &quot;purple&quot; },
+      { title: &quot;PNG / SVG / GIF&quot;, tone: &quot;green&quot; },
+    ]}
+  /&gt;
+&lt;/Scene&gt;
+```
+
+Render dark and light assets:
+
+```bash
+vizmatic ./frame.tsx --out ./dist/frames --theme dark,light
+```
+
+Check the scene before publishing:
+
+```bash
+vizmatic check ./frame.tsx --theme dark,light --json
+```
+
+Fix all errors before the final render. Warnings report low contrast, text below 11px, overlapping labels, uneven panel whitespace, connector congestion, and asset fallbacks. Overflow errors name the affected edges and suggest dimensions.
+
+For scenes already created inside a build or editor, use the typed `checkFrame` API instead of writing a frame file and launching the CLI. Pass a React element as `scene` or use `create(theme)` for theme-specific scenes. Set `failOn` to `&quot;warning&quot;` when warnings should fail CI. Reports include per-theme dimensions and diagnostics with stable codes plus element IDs or rendered locations where available. Use `vizmatic check &lt;files&gt; --json` when the CLI should discover and load frame modules.
+
+## Install in a project
+
+Use the package manager already present in the project.
+
+Add Vizmatic to a project for scripts, editor types, or direct renderer APIs:
+
+```bash
+pnpm add vizmatic react
+```
+
+To use the current GitHub version:
+
+```bash
+pnpm add github:bvolpato/vizmatic react
+```
+
+Use the equivalent command for npm, Yarn, or Bun projects.
+
+## Full frame example
+
+Create `frames/agent-pipeline.tsx`:
+
+```tsx
+width = 1040;
+height = 560;
+
+&lt;Scene
+  title=&quot;Agent visual pipeline&quot;
+  subtitle=&quot;prompt -&gt; TSX scene -&gt; render -&gt; files&quot;
+  gap={26}
+&gt;
+  &lt;Flow
+    connectorTone=&quot;purple&quot;
+    stages={[
+      {
+        eyebrow: &quot;input&quot;,
+        title: &quot;Prompt&quot;,
+        subtitle: &quot;intent and constraints&quot;,
+        tone: &quot;blue&quot;,
+        lines: [&quot;domain language&quot;, &quot;audience&quot;, &quot;theme tokens&quot;],
+        width: 190,
+      },
+      {
+        eyebrow: &quot;contract&quot;,
+        title: &quot;Scene spec&quot;,
+        subtitle: &quot;typed structure&quot;,
+        tone: &quot;purple&quot;,
+        lines: [&quot;cards&quot;, &quot;flows&quot;, &quot;charts&quot;, &quot;tables&quot;],
+        width: 190,
+      },
+      {
+        eyebrow: &quot;render&quot;,
+        title: &quot;Node renderer&quot;,
+        subtitle: &quot;headless output&quot;,
+        tone: &quot;cyan&quot;,
+        lines: [&quot;layout&quot;, &quot;theme&quot;, &quot;checks&quot;],
+        width: 190,
+      },
+      {
+        eyebrow: &quot;output&quot;,
+        title: &quot;PNG / SVG / GIF&quot;,
+        subtitle: &quot;rendered files&quot;,
+        tone: &quot;green&quot;,
+        lines: [&quot;dark + light&quot;, &quot;alpha&quot;, &quot;manifest&quot;],
+        width: 190,
+      },
+    ]}
+  /&gt;
+  &lt;Row width=&quot;100%&quot; gap={14}&gt;
+    &lt;CalloutCard
+      title=&quot;Use scene primitives&quot;
+      detail=&quot;Common diagrams do not need hand-written SVG paths or x/y coordinates.&quot;
+      tone=&quot;purple&quot;
+      width={470}
+    /&gt;
+    &lt;CalloutCard
+      title=&quot;Use theme tokens&quot;
+      detail=&quot;Tokens set color, typography, radius, spacing, and contrast.&quot;
+      tone=&quot;green&quot;
+      width={470}
+    /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;
+```
+
+Render it:
+
+```bash
+vizmatic frames --out public/vizmatic --theme dark,light --watermark &quot;Your Product&quot; --watermark-image ./logo.svg --watermark-position top-right
+```
+
+Generated `manifest.json` includes each output file plus its theme, path, width, and height.
+
+PNG and SVG renders have transparent backgrounds by default. Use the theme background when the image needs an opaque canvas:
+
+```bash
+vizmatic frames --out public/vizmatic --theme dark,light --background theme
+```
+
+Or set it in the frame:
+
+```tsx
+&lt;Scene background={c.bg} title=&quot;Opaque article figure&quot;&gt;
+  &lt;Flow stages={[{ title: &quot;Theme fill&quot;, tone: &quot;purple&quot; }]} /&gt;
+&lt;/Scene&gt;
+```
+
+CSS alpha colors are preserved in PNG/SVG backgrounds. Use `&lt;Scene background=&quot;rgba(15, 23, 42, 0.5)&quot;&gt;` or `--background &#39;rgba(15, 23, 42, 0.5)&#39;` for a semi-transparent canvas. Leave the background unset for fully transparent output. Contrast checks composite alpha text and nested backgrounds over known solid surfaces; a transparent canvas has no known host-page backdrop.
+
+When a CLI frame omits `width` or `height`, Vizmatic starts at `960x540` and grows that axis if content overflows. Set `autoSize = false` when dimensions must remain fixed and clipping should fail the render.
+
+Bare CLI frames do not need imports, `defineIllustration`, or `c` props. Use `c` for explicit tokens such as `background={c.bg}`. `Scene` title and subtitle are optional. Use a full module for other dependencies, reusable helpers, animation exports, or direct renderer APIs.
+
+Frame modules can export a watermark element instead of using CLI flags:
+
+```tsx
+import { Watermark } from &quot;vizmatic&quot;
+
+export const watermark = (
+  &lt;Watermark position=&quot;bottom-right&quot; opacity={0.82}&gt;
+    &lt;div style={{
+      display: &quot;flex&quot;,
+      alignItems: &quot;center&quot;,
+      gap: 6,
+      color: &quot;#7c3aed&quot;,
+      fontFamily: &quot;Inter&quot;,
+      fontWeight: 800,
+      fontSize: 12,
+    }}&gt;
+      &lt;img src=&quot;data:image/svg+xml;base64,...&quot; width={14} height={14} /&gt;
+      LeetLLM
+    &lt;/div&gt;
+  &lt;/Watermark&gt;
+)
+```
+
+Render a sampled state timeline with `createAnimation(theme)`:
+
+```bash
+vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,light --fps 20 --watermark &quot;Your Product&quot; --watermark-image ./logo.svg --watermark-position top-right --scale 1
+```
+
+## Animated frames
+
+An animated module exports `createAnimation(theme)` for GIF output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every GIF frame.
+
+```tsx
+import React from &quot;react&quot;
+import { Scene, defineAnimation, getThemeColors, hold, keyframe, tween, type ThemeMode } from &quot;vizmatic&quot;
+
+export const width = 1040
+export const height = 560
+
+type State = { operation: number; progress: number }
+
+function buildFrame(theme: ThemeMode, state: State) {
+  const c = getThemeColors(theme)
+  return (
+    &lt;Scene c={c} title={state.operation === 0 ? &quot;Broadcast&quot; : &quot;AllReduce&quot;}&gt;
+      &lt;div style={{ display: &quot;flex&quot;, width: &quot;100%&quot;, height: 260, position: &quot;relative&quot; }}&gt;
+        &lt;div style={{
+          display: &quot;flex&quot;,
+          position: &quot;absolute&quot;,
+          left: 40 + state.progress * 720,
+          top: 90,
+          padding: &quot;10px 16px&quot;,
+          borderRadius: 8,
+          background: c.accent,
+          color: c.textOnColor,
+        }}&gt;chunk&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/Scene&gt;
+  )
+}
+
+export function createAnimation(theme: ThemeMode) {
+  return defineAnimation&lt;State&gt;({
+    initial: { operation: 0, progress: 0 },
+    timeline: [
+      hold(500, &quot;Broadcast input&quot;),
+      tween({ progress: 1 }, { duration: 900, easing: &quot;ease-in-out&quot;, label: &quot;Broadcast&quot; }),
+      hold(500, &quot;Broadcast output&quot;),
+      keyframe({ operation: 1, progress: 0 }),
+      tween({ progress: 1 }, { duration: 900, easing: &quot;ease-in-out&quot;, label: &quot;AllReduce&quot; }),
+    ],
+    fps: 20,
+    render: (state) =&gt; buildFrame(theme, state),
+  })
+}
+
+export function create(theme: ThemeMode = &quot;dark&quot;) {
+  return buildFrame(theme, { operation: 1, progress: 1 })
+}
+
+export default create(&quot;dark&quot;)
+```
+
+Top-level timeline steps run sequentially. Properties inside one `tween` move together. Use `parallel({ x: [...], opacity: [...] })` when property tracks need different delays or durations. Default interpolation supports finite numbers; use a custom `interpolate(from, to, progress)` for colors, points, or other values. Infinite loops should finish on the same visual state where they start. Fade moving content out and reset it with a zero-duration `keyframe` while hidden instead of reversing a one-way operation. `createScenes(theme)` remains supported for deliberate scene cuts and pixel `fade`/`appear` transitions.
+
+## Choose primitives
+
+Use Vizmatic primitives for common layouts. Use raw SVG only for geometry the component set cannot express.
+
+Shared values:
+
+- `ThemeMode`: `&quot;dark&quot; | &quot;light&quot;`.
+- `ToneName`: `&quot;blue&quot; | &quot;purple&quot; | &quot;green&quot; | &quot;warm&quot; | &quot;cyan&quot; | &quot;pink&quot; | &quot;red&quot; | &quot;critical&quot; | &quot;neutral&quot; | &quot;sunset&quot; | &quot;ocean&quot; | &quot;dark&quot;`.
+- `ColorName`: `&quot;primary&quot; | &quot;secondary&quot; | &quot;positive&quot; | &quot;warning&quot; | &quot;critical&quot; | &quot;info&quot; | &quot;accent&quot; | &quot;neutral&quot;`.
+- `FlexAlign`: `&quot;start&quot; | &quot;center&quot; | &quot;end&quot; | &quot;stretch&quot;`.
+- `FlexJustify`: `&quot;start&quot; | &quot;center&quot; | &quot;end&quot; | &quot;space-between&quot; | &quot;space-around&quot;`.
+- Bare CLI frames omit `c` props. The local `c` object remains available for explicit values such as `background={c.bg}`.
+- Full modules pass the `c: ThemeColors` value from `defineIllustration((c) =&gt; ...)` to visual components.
+- PNG/SVG renders are alpha-transparent by default. Use `--background theme`, `background: &quot;theme&quot;`, or `&lt;Scene background={c.bg}&gt;` for opaque theme fill.
+- Omitted CLI dimensions auto-grow on overflow. Explicit `width` / `height` remain fixed and fail on clipping.
+
+## Component API
+
+Frame helpers:
+
+- `defineIllustration(build, defaultTheme?)`: `build: (c: ThemeColors) =&gt; ReactElement`, `defaultTheme?: ThemeMode = &quot;dark&quot;`. Returns `{ create(theme), default }`.
+- `Canvas`: `children?`, `c`, `padding?: number = 40`, `justify?: &quot;center&quot; | &quot;flex-start&quot; | &quot;space-between&quot; | &quot;space-around&quot; = &quot;center&quot;`, `background?: string`. Default root background is alpha-transparent during PNG/SVG rendering.
+- `Scene`: `c`, `children`, `title?`, `subtitle?`, `padding?: number = 40`, `gap?: number = 24`, `justify?: &quot;center&quot; | &quot;flex-start&quot; | &quot;space-between&quot; | &quot;space-around&quot; = &quot;flex-start&quot;`, `align?: FlexAlign = &quot;stretch&quot;`, `contentWidth?: number | string = &quot;100%&quot;`, `background?`, `contentStyle?: React.CSSProperties`. Title/subtitle are optional and the title bar is omitted when no title is provided. Use `background={c.bg}` for an opaque theme frame.
+- `TitleBar`: `title`, `subtitle?`, `c`.
+
+Layout primitives:
+
+- `Row` / `Column`: `children`, `gap?: number = 12`, `align?: FlexAlign = &quot;center&quot;`, `justify?: FlexJustify = &quot;center&quot;`, `wrap?: boolean = false`, `width?: number | string`, `height?: number | string`, `style?: React.CSSProperties`.
+- `Stack`: `children`, `direction?: &quot;vertical&quot; | &quot;horizontal&quot; = &quot;vertical&quot;`, `gap?: number = 12`, `align?: &quot;start&quot; | &quot;center&quot; | &quot;end&quot; | &quot;stretch&quot; = &quot;center&quot;`, `wrap?: boolean = false`.
+- `Panel`: `title`, `c`, `children?`, `subtitle?`, `tone?: ToneName = &quot;blue&quot;`, `footer?`, `width?`, `minWidth?`, `height?`, `minHeight?`, `padding?: number | string = 14`, `radius?: number = 8`, `gap?: number = 10`, `align?: FlexAlign = &quot;stretch&quot;`, `justify?: FlexJustify = &quot;start&quot;`, `shadow?: boolean = true`, `background?`, `borderColor?`, `titleFontSize?`, `accentWidth?: number = 34`, `accentHeight?: number = 4`, `bodyStyle?: React.CSSProperties`.
+- `Card`: `children?`, `c`, `title?`, `subtitle?`, `tone?`, `footer?`, `width?`, `minWidth?`, `height?`, `minHeight?`, `padding?: number | string = 20`, `radius?: number = 8`, `gap?`, `align?: FlexAlign = &quot;stretch&quot;`, `justify?: FlexJustify = &quot;start&quot;`, `shadow?: boolean = false`, `background?`, `borderColor?`, `bodyStyle?: React.CSSProperties`.
+- `WindowFrame`: `c`, `children?`, `title?`, `variant?: &quot;window&quot; | &quot;browser&quot; | &quot;terminal&quot; = &quot;window&quot;`, `tone?: ToneName = &quot;blue&quot;`, `dots?: boolean = true`, `width?`, `minWidth?`, `height?`, `minHeight?`, `padding?: number | string = 16`, `radius?: number = 10`, `shadow?: boolean = true`, `background?`, `bodyStyle?: React.CSSProperties`.
+
+Cards, labels, and compact UI:
+
+- `TextLabel`: `text`, `c`, `variant?: keyof typography = &quot;body&quot;`, `color?`, `fontSize?`, `fontWeight?`, `width?`, `align?: &quot;left&quot; | &quot;center&quot; | &quot;right&quot; = &quot;left&quot;`, `math?: boolean = false`, `mono?: boolean = false`.
+- `MathText`: `text`. Returns formatted unicode-ish math text for simple `_` and `^` notation.
+- `formatMathText(text)`: `text: string`.
+- `Icon`: `name`, `c`, `tone?: ToneName = &quot;blue&quot;`, `color?`, `size?: number = 24`, `strokeWidth?: number = 2`, `label?`, `muted?: boolean = false`. `IconName` includes presentation icons plus architecture icons: `browser`, `bucket`, `cache`, `cloud`, `cluster`, `container`, `database`, `firewall`, `gateway`, `load-balancer`, `mobile`, `monitor`, `network`, `queue`, `server`, `storage`, `stream`, and `user`.
+- `ToneStrip`: `tone`, `width?: number = 34`, `height?: number = 4`.
+- `StepCard`: `title`, `c`, `subtitle?`, `eyebrow?`, `tone?: ToneName = &quot;blue&quot;`, `width?: number | string = 210`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = &quot;12px 14px&quot;`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;center&quot;`, `math?: boolean = false`.
+- `MetricCard`: `label`, `value`, `c`, `tone?: ToneName = &quot;blue&quot;`, `detail?`, `width?`, `minWidth?`, `minHeight?: number | string = 74`, `padding?: number | string = &quot;10px 12px&quot;`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;center&quot;`, `math?: boolean = false`, `valueMono?: boolean = true`, `valueFontSize?: number = 22`, `valueColor?`.
+- `CalloutCard`: `c`, `children?`, `title?`, `detail?`, `tone?: ToneName = &quot;blue&quot;`, `width?`, `minHeight?`, `padding?: number | string = 12`, `titleFontSize?: number`, `detailFontSize?: number`, `filled?: boolean = true`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;center&quot;`.
+- `ValuePill`: `label`, `value`, `c`, `tone?: ToneName = &quot;blue&quot;`, `detail?`, `width?: number | string = 112`, `math?: boolean = false`.
+- `BadgePill`: `text`, `c`, `tone?: ToneName = &quot;blue&quot;`, `width?`, `minWidth?: number | string = 34`, `height?: number | string = 20`, `padding?: number | string = &quot;0 8px&quot;`, `radius?: number = 6`, `fontSize?: number = 11`, `mono?: boolean = true`, `filled?: boolean = false`, `math?: boolean = false`.
+- `Badge`: `label`, `c`, `color?: ColorName = &quot;primary&quot;`.
+- `GradientChip`: `title`, `c`, `subtitle?`, `tone?: ToneName = &quot;blue&quot;`, `gradient?`, `width?`, `minWidth?`, `height?`, `minHeight?: number | string = 78`, `padding?: number | string = &quot;0 18px&quot;`, `radius?: number = 8`, `shadow?: boolean = true`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;left&quot;`, `subtitleMono?: boolean = true`, `math?: boolean = false`.
+- `EquationCard`: `title`, `formula`, `c`, `tone?: ToneName = &quot;purple&quot;`, `result?`, `detail?`, `width?: number | string = 190`, `height?`, `math?: boolean = false`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;left&quot;`.
+- `DetailList`: `items`, `c`, `tone?`, `gap?: number = 7`, `padding?: number | string = &quot;7px 8px&quot;`, `fontSize?: number = 11`, `mono?: boolean = false`, `math?: boolean = false`.
+
+Lists, tables, status, and comparison:
+
+- `ProgressRow`: `label`, `value: number`, `valueLabel?`, `tone?: ToneName = &quot;blue&quot;`, `muted?: boolean = false`, `c`, `labelWidth?: number = 42`, `valueWidth?: number = 38`, `barHeight?: number = 8`, `fontSize?: number = 11`. Keep `value` in `[0, 1]`.
+- `ProgressList`: `rows: ProgressRowSpec[]`, `c`, `gap?: number = 8`, `labelWidth?`, `valueWidth?`, `barHeight?`, `fontSize?`. `ProgressRowSpec`: `label`, `value`, `valueLabel?`, `tone?`, `muted?`.
+- `StatusRow`: `label`, `detail?`, `status?: &quot;check&quot; | &quot;cross&quot; | &quot;warn&quot; | &quot;info&quot; | &quot;pending&quot; | &quot;dot&quot; = &quot;check&quot;`, `tone?`, `c`, `boxed?: boolean = true`, `fontSize?: number = 11`, `width?`, `math?: boolean = false`.
+- `StatusList`: `rows: StatusRowSpec[]`, `c`, `gap?: number = 7`, `boxed?: boolean = true`, `fontSize?`, `width?`, `math?: boolean = false`. `StatusRowSpec`: `label`, `detail?`, `status?`, `tone?`.
+- `Timeline`: `events: TimelineEventSpec[]`, `c`, `title?`, `subtitle?`, `direction?: &quot;vertical&quot; | &quot;horizontal&quot; = &quot;vertical&quot;`, `width?`, `eventWidth?`, `gap?: number = 12`, `markerSize?: number = 14`, `math?: boolean = false`. `TimelineEventSpec`: `title`, `detail?`, `time?`, `tone?`, `status?`, `width?`.
+- `KeyValueList`: `rows: KeyValueRow[]`, `c`, `title?`, `width?`, `minWidth?`, `keyWidth?`, `gap?: number = 0`, `fontSize?: number = 11`, `divider?: boolean = true`, `keyMono?: boolean = false`, `math?: boolean = false`. `KeyValueRow`: `key`, `value`, `tone?`, `valueMono?`.
+- `Comparison`: `sides: ComparisonSideSpec[]`, `c`, `divider?: ReactNode | boolean = false`, `gap?: number = 14`, `sideWidth?`, `minHeight?`, `align?: FlexAlign = &quot;stretch&quot;`, `math?: boolean = false`. `ComparisonSideSpec`: `title`, `subtitle?`, `eyebrow?`, `tone?`, `lines?`, `children?`, `footer?`, `width?`.
+- `DataTable`: `rows: ReactNode[][]`, `c`, `cellWidth?: number = 54`, `firstColWidth?: number = cellWidth`, `cellHeight?: number = 28`, `gap?: number = 5`, `headerRows?: number = 1`, `headerCols?: number = 1`, `fontSize?: number = 11`, `math?: boolean = false`.
+- `Grid`: `rows: Array&lt;Array&lt;ReactNode | GridCell&gt;&gt;`, `c`, `cellWidth?: number = 34`, `cellHeight?: number = 30`, `gap?: number = 5`, `radius?: number = 7`, `fontSize?: number = 11`, `math?: boolean = false`, `headerRows?: number = 0`, `headerCols?: number = 0`. `GridCell`: `label?`, `tone?`, `color?`, `backgroundColor?`, `borderColor?`, `opacity?`.
+- `CodeBlock`: `lines: Array&lt;ReactNode | CodeLineSpec&gt;`, `c`, `title?`, `tone?`, `width?`, `minWidth?`, `fontSize?: number = 12`, `showLineNumbers?: boolean = false`, `padding?: number | string = 14`, `radius?: number = 10`, `background?`, `shadow?: boolean = false`, `math?: boolean = false`. `CodeLineSpec`: `text`, `tone?`, `dim?`, `prefix?`.
+
+Tiles:
+
+- `Tile`: combines `TileSpec` with display props. `TileSpec`: `title`, `subtitle?`, `eyebrow?`, `icon?`, `tone?`, `lines?`, `children?`, `width?`, `minHeight?`. Display props: `c`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;center&quot;`, `padding?: number | string = &quot;14px 16px&quot;`, `radius?: number = 10`, `shadow?: boolean = true`, `math?: boolean = false`.
+- `TileGrid`: `tiles: TileSpec[]`, `c`, `columns?`, `gap?: number = 12`, `tileWidth?`, `minHeight?`, `align?: &quot;left&quot; | &quot;center&quot; = &quot;center&quot;`, `math?: boolean = false`.
+
+Flows and process diagrams:
+
+- `Flow`: `stages: FlowStageSpec[]`, `c`, `direction?: &quot;horizontal&quot; | &quot;vertical&quot; = &quot;horizontal&quot;`, `gap?: number = 10`, `connectorLength?: number = 28`, `connectorTone?: ToneName = &quot;neutral&quot;`, `align?: FlexAlign = &quot;center&quot;`, `math?: boolean = false`. `FlowStageSpec`: `title`, `subtitle?`, `eyebrow?`, `tone?`, `lines?`, `children?`, `width?`, `minWidth?`, `minHeight?`, `padding?`.
+- `FlowArrow`: `direction?: &quot;down&quot; | &quot;right&quot; | &quot;up&quot; | &quot;left&quot; = &quot;right&quot;`, `label?`, `length?: number = 40`, `c`, `tone?: ToneName = &quot;blue&quot;`, `color?`.
+- `Connector`: same props as `FlowArrow`.
+- `Pipeline`: `stages: PipelineStage[]`, `c`, `title?`. `PipelineStage`: `label`, `sublabel?`, `icon?`, `color?: ColorName`.
+
+Graphs and networks:
+
+- `LayeredNetwork`: `c`, `layers: LayeredNetworkLayer[]`, `activePath?: number[] = []`, `annotations?: string[] = []`, `formula?`, `legend?: string = &quot;highlighted path&quot;`, `width?: number = 900`, `height?: number = 400`, `nodeSize?: number = 56`, `showFormula?: boolean = true`. `LayeredNetworkLayer`: `title`, `nodes: string[]`, `tone?`.
+- `GraphDiagram`: `nodes: GraphDiagramNode[]`, `edges: GraphDiagramEdge[]`, `groups?: GraphDiagramGroup[]`, `c`, `width?: number = 520`, `height?: number = 420`, `nodeWidth?: number = 150`, `nodeHeight?: number = 66`, `labelFontSize?: number = 14`, `detailFontSize?: number = 11`, `arrowSize?: number = 5`, `padding?: number = 28`, `layout?: &quot;auto&quot; | &quot;manual&quot;`, `direction?: &quot;LR&quot; | &quot;RL&quot; | &quot;TB&quot; | &quot;BT&quot; = &quot;LR&quot;`, `nodeGap?: number = 34`, `rankGap?: number = 64`, `edgeGap?: number = 14`, `sizing?: &quot;content&quot; | &quot;fixed&quot; = &quot;content&quot;`, `iconSize?: number = 20`, `id?`, `ariaLabel?`, `title?`, `description?`. `GraphDiagramNode`: `id`, `label`, `detail?`, `href?`, `title?`, `x?`, `y?`, `tone?`, `muted?`, `width?`, `height?`, `group?`, `icon?: IconName | DiagramIconDefinition | ReactElement`, `iconSize?`. Icon size is clamped inside its node; custom React elements own their theme colors and accessible label. `GraphDiagramGroup`: `id`, `label`, `detail?`, `parent?`, `tone?`, `muted?`. Groups nest through `parent` and require automatic layout. Omit coordinates on every node for automatic layout; array order is the stable tie-breaker and dimensions expand to fit unless `sizing=&quot;fixed&quot;`. Set both coordinates on every node for manual normalized positioning when no groups are present. Mixed coordinate modes fail. `GraphDiagramEdge`: `id?`, `from`, `to`, `tone?`, `muted?`, `dashed?`, `label?`, `href?`, `title?`, `kind?: &quot;sync&quot; | &quot;async&quot; | &quot;event&quot; | &quot;data&quot; | &quot;dependency&quot; | &quot;association&quot;`, `style?: &quot;solid&quot; | &quot;dashed&quot; | &quot;dotted&quot;`, `arrow?: &quot;forward&quot; | &quot;backward&quot; | &quot;both&quot; | &quot;none&quot;`. Association edges default to no arrow. `title`, `description`, and `id` add structured SVG metadata and deterministic graph, node, and edge IDs. Nodes and edges can link to HTTP(S), `mailto:`, `tel:`, fragment, or relative URLs; unsupported schemes fail. Use these properties for `renderToSvg` and playground SVG downloads.
+- `SequenceDiagram`: `participants`, ordered `items`, `c`, and optional `width`, `height`, spacing, title, subtitle, and `ariaLabel`. Participants have `id`, `label`, optional `detail`, `tone`, `kind`, and `icon`. Items are messages (`from`, `to`, `label`, `kind?: &quot;sync&quot; | &quot;async&quot; | &quot;return&quot;`), notes, activations, or recursive fragments with `kind: &quot;alt&quot; | &quot;loop&quot; | &quot;parallel&quot;` and labeled branches.
+- `DataflowDiagram`: `nodes`, `edges`, optional nested `boundaries`, `c`, GraphDiagram sizing/layout props including `id`, `title`, and `description`, and `ariaLabel`. Nodes require `id`, `label`, and `kind: &quot;source&quot; | &quot;transform&quot; | &quot;store&quot; | &quot;sink&quot;`; optional schema metadata renders in node detail, with optional `href` and `title` for SVG links and tooltips. Edges use `mode?: &quot;batch&quot; | &quot;stream&quot;`, optional schema/label metadata, and optional `id`, `href`, and `title`.
+- `DeploymentDiagram`: `nodes`, `connections`, optional nested `boundaries`, `c`, GraphDiagram sizing/layout props including `id`, `title`, and `description`, and `ariaLabel`. Boundaries distinguish region, zone, VPC, subnet, namespace, host, cluster, and trust scopes. Nodes declare infrastructure kind, boundary, and ports, with optional `href` and `title`. Connections declare ingress, egress, internal, or cross-boundary direction plus protocol and port references; `id`, `href`, and `title` add stable SVG identity and links.
+- `TransformerTopology`: `blocks`, optional `routes`, `c`, `expandRepeats?`, GraphDiagram sizing/layout props including `id`, `title`, and `description`, and `ariaLabel`. Blocks use embedding, attention, norm, MLP, residual, router, output, or custom kinds with tensor shapes and repeat counts, plus optional `href` and `title`. Routes use activation, residual, KV-cache, expert, or collective semantics, plus optional `id`, `href`, and `title`. `formatTensorShape(shape)` formats reusable shape metadata.
+- `defineDiagramIcon(id, render)`: defines a reusable custom graph icon. `render` receives `c`, `color`, `size`, and optional `label`.
+- `defineIconRegistry(icons)`: preserves typed names for a set of custom or provider icons without global mutable state.
+- `TreeDiagram`: `root: TreeNodeSpec`, `c`, `title?`, `subtitle?`, `width?`, `height?`, `nodeWidth?: number = 156`, `nodeHeight?: number = 64`, `levelGap?: number = 58`, `siblingGap?: number = 24`, `padding?: number = 28`, `math?: boolean = false`. `TreeNodeSpec`: `label`, `id?`, `detail?`, `tone?`, `muted?`, `children?`.
+
+Matrices and heatmaps:
+
+- `Matrix`: `data: number[][]`, `c`, `rowLabels?`, `colLabels?`, `labels?`, `title?`, `cellSize?: number = 48`, `cellWidth?`, `cellHeight?`, `rowLabelWidth?`, `format?: &quot;decimal&quot; | &quot;percent&quot; | &quot;integer&quot; = &quot;decimal&quot;`, `colorize?: boolean = true`, `colorScale?: &quot;heat&quot; | &quot;strength&quot; = &quot;heat&quot;`.
+- `Heatmap`: `data: number[][]`, `xLabels`, `yLabels`, `c`, `labels?`, `title?`, `cellSize?: number = 52`, `cellWidth?`, `cellHeight?`, `rowLabelWidth?`, `colorScale?: &quot;heat&quot; | &quot;strength&quot;`.
+- `TiledMatrix`: `rows`, `cols`, `c`, `regions?: TiledMatrixRegion[] = []`, `title?`, `subtitle?`, `cellSize?: number = 24`, `gap?: number = 3`, `tone?: ToneName = &quot;blue&quot;`, `muted?: boolean = false`, `crossedOut?: boolean = false`. `TiledMatrixRegion`: `rowStart`, `rowEnd`, `colStart`, `colEnd`, `tone?`.
+
+Charts and plots:
+
+- `ChartFrame`: `children`, `c`, `title?`, `subtitle?`, `legend?: ChartLegendItem[]`, `footer?`, `width?: number | string = &quot;100%&quot;`, `height?`, `padding?: number = 16`. `ChartLegendItem`: `label`, `color: ColorName | string`.
+- `DonutChart`: `segments: DonutChartSegment[]`, `c`, `title?`, `subtitle?`, `width?: number = 360`, `height?: number = 230`, `size?`, `thickness?`, `format?: ChartValueFormat = &quot;decimal&quot;`, `centerLabel?`, `centerValue?`, `showLegend?: boolean = true`, `footer?`. `DonutChartSegment`: `label`, `value`, `color?`, `valueLabel?`.
+- `BarChart`: `data: BarChartDatum[]`, `c`, `title?`, `subtitle?`, `width?: number = 320`, `height?: number = 220`, `min?`, `max?`, `format?: ChartValueFormat = &quot;decimal&quot;`, `showGrid?: boolean = true`, `showValues?: boolean = true`, `yAxisLabel?`, `footer?`. `BarChartDatum`: `label`, `value`, `color?`, `valueLabel?`.
+- `LineChart`: `series: LineChartSeries[]`, `c`, `title?`, `subtitle?`, `width?: number = 420`, `height?: number = 240`, `labels?`, `min?`, `max?`, `format?: ChartValueFormat = &quot;decimal&quot;`, `showGrid?: boolean = true`, `showPoints?: boolean = true`, `yAxisLabel?`, `footer?`. `LineChartSeries`: `name`, `points`, `color?`, `area?`.
+- `ScatterPlot`: `points: ScatterPoint[]`, `c`, `title?`, `subtitle?`, `width?: number = 380`, `height?: number = 260`, `xMin?`, `xMax?`, `yMin?`, `yMax?`, `xAxisLabel?`, `yAxisLabel?`, `formatX?: ChartValueFormat = &quot;decimal&quot;`, `formatY?: ChartValueFormat = &quot;decimal&quot;`, `showGrid?: boolean = true`, `footer?`. `ScatterPoint`: `x`, `y`, `label?`, `color?`, `size?`.
+- `ParetoChart`: `points: ScatterPoint[]`, `c`, `title?`, `subtitle?`, `width?: number = 640`, `height?: number = 360`, `xMin?`, `xMax?`, `yMin?`, `yMax?`, `xAxisLabel?`, `yAxisLabel?`, `formatX?: ChartValueFormat = &quot;decimal&quot;`, `formatY?: ChartValueFormat = &quot;decimal&quot;`, `showGrid?: boolean = true`, `xScale?: &quot;linear&quot; | &quot;log&quot; = &quot;linear&quot;`, `xObjective?: &quot;minimize&quot; | &quot;maximize&quot; = &quot;minimize&quot;`, `yObjective?: &quot;minimize&quot; | &quot;maximize&quot; = &quot;maximize&quot;`, `frontierColor?`, `showGoal?: boolean = true`, `goalLabel?`, `footer?`. It detects non-dominated points automatically; logarithmic x scales omit non-positive points.
+- `QuadrantChart`: `points: ScatterPoint[]`, `regions`, `c`, `title?`, `subtitle?`, `width?: number = 700`, `height?: number = 360`, `xMin?`, `xMax?`, `yMin?`, `yMax?`, `xThreshold?`, `yThreshold?`, `xAxisLabel?`, `yAxisLabel?`, `formatX?: ChartValueFormat = &quot;decimal&quot;`, `formatY?: ChartValueFormat = &quot;decimal&quot;`, `showTicks?: boolean = false`, `showGrid?: boolean = false`, `footer?`. Without explicit domains, points use normalized 0-1 coordinates and thresholds default to centered splits. `regions`: `{ topLeft, topRight, bottomLeft, bottomRight }`, each `QuadrantRegion`: `label`, `detail?`, `color?`, `emphasis?`.
+- `IntervalPlot`: `data: IntervalDatum[]`, `c`, `title?`, `subtitle?`, `width?: number = 640`, `height?: number = 220`, `min?`, `max?`, `format?: ChartValueFormat = &quot;decimal&quot;`, `axisLabel?`, `footer?`. `IntervalDatum`: `label`, `low`, `mid`, `high`, `color?`, `lowLabel?`, `midLabel?`, `highLabel?`.
+- `StackedBar`: `segments: StackedBarSegment[]`, `c`, `width?: number = 480`, `height?: number = 68`, `title?`, `subtitle?`, `showLegend?: boolean = true`. `StackedBarSegment`: `label`, `value`, `color?`, `valueLabel?`.
+- `MiniBarChart`: `data: MiniBarDatum[]`, `c`, `max?`, `minBarHeight?: number = 8`, `height?: number = 92`, `barWidth?: number = 22`, `gap?: number = 10`, `radius?: number = 7`, `fontSize?: number = 11`, `showValues?: boolean = false`. `MiniBarDatum`: `label`, `value`, `tone?`, `color?`, `valueLabel?`, `opacity?`.
+- `AxisPlot`: `c`, `width`, `height`, `xMin?: number = -1`, `xMax?: number = 1`, `yMin?: number = -1`, `yMax?: number = 1`, `padding?: number = 18`, `showFrame?: boolean = true`, `showAxes?: boolean = true`, `showGrid?: boolean = false`, `gridCount?: number = 5`, `frameRx?: number = 8`, `frameFill?`, `frameStroke?`, `axisColor?`, `points?: AxisPlotPoint[] = []`, `vectors?: AxisPlotVector[] = []`, `paths?: AxisPlotPath[] = []`, `xAxisLabel?`, `yAxisLabel?`, `children?`.
+- `AxisPlotPoint`: `x`, `y`, `fill?`, `tone?`, `r?`, `stroke?`, `strokeWidth?`, `opacity?`.
+- `AxisPlotVector`: `x1`, `y1`, `x2`, `y2`, `color?`, `tone?`, `strokeWidth?`, `opacity?`, `arrow?`, `arrowSize?`, `showStartDot?`, `showEndDot?`, `dotRadius?`.
+- `AxisPlotPath`: `points: Array&lt;{ x, y }&gt;`, `color?`, `tone?`, `strokeWidth?`, `opacity?`, `interpolation?: &quot;linear&quot; | &quot;step-after&quot;`, `dashed?`.
+- `ChartValueFormat`: `&quot;decimal&quot; | &quot;percent&quot; | &quot;integer&quot; | &quot;compact&quot; | ((value: number) =&gt; string)`.
+
+SVG and geometry helpers:
+
+- `SvgFrame`: `key?`, `x?: number = 0`, `y?: number = 0`, `width`, `height`, `c`, `rx?: number = 8`, `fill?`, `stroke?`, `strokeWidth?: number = 1`, `opacity?`.
+- `SvgPoint`: `key?`, `cx`, `cy`, `r?: number = 5`, `fill`, `stroke?`, `strokeWidth?`, `opacity?`.
+- `SvgMathText`: positioned HTML overlay with `text`, `x`, `y`, `fill`, `fontSize?: number = 13`, `fontFamily?: string = &quot;JetBrains Mono&quot;`, `fontWeight?: number = 800`, `textAnchor?: &quot;start&quot; | &quot;middle&quot; | &quot;end&quot; = &quot;middle&quot;`, `dominantBaseline?: string = &quot;middle&quot;`, `opacity?: number = 1`. Place it beside, not inside, raw SVG geometry in a `position: &quot;relative&quot;` container.
+- `SvgFrame` pairs well with `VectorArrow`, `VectorSegment`, `SvgPoint`, `DotPoint`, `DashedLine`, and `Legend` inside custom SVG.
+- `Arrow`: `direction?: &quot;down&quot; | &quot;right&quot; | &quot;up&quot; | &quot;left&quot; = &quot;down&quot;`, `label?`, `length?: number = 40`, `c`, `color?`.
+- `VectorArrow`: `key?`, `x1`, `y1`, `x2`, `y2`, `color`, `strokeWidth?: number = 2`, `arrowSize?: number = 2.2`, `opacity?: number = 1`.
+- `VectorSegment`: `key?`, `x1`, `y1`, `x2`, `y2`, `color`, `strokeWidth?: number = 4`, `opacity?: number = 1`, `showStartDot?: boolean = false`, `showEndDot?: boolean = true`, `dotRadius?: number = 4.5`.
+- `Box`: `label`, `c`, `color?: ColorName = &quot;primary&quot;`, `width?`, `height?`, `fontSize?: number = 14`, `gradient?: boolean = false`, `sublabel?`, `icon?`, `radius?: number = 8`, `outlined?: boolean = false`.
+- `ArrowMarkerDef`: `id`, `color`, `size?: number = 5`.
+- `DotPoint`: `x`, `y`, `label`, `color`, `c`, `size?: number = 12`, `labelOffset?: { x?: number; y?: number }`.
+- `DashedLine`: `x1`, `y1`, `x2`, `y2`, `color`, `dotSpacing?: number = 8`, `dotSize?: number = 2`.
+- `Legend`: `items: LegendItem[]`, `c`, `title?`. `LegendItem`: `label`, `color`, `style?: &quot;solid&quot; | &quot;dashed&quot;`.
+
+Theme and render APIs:
+
+- `checkFrame(frame, options?)`: Check `{ scene: ReactNode }` or `{ create(theme): ReactNode }` inputs. Frame metadata accepts `source?`, `width?`, `height?`, and `autoSize?`. Options accept `themes?: ThemeMode[]`, `background?: &quot;transparent&quot; | &quot;theme&quot; | CSS color`, and `failOn?: &quot;error&quot; | &quot;warning&quot; | &quot;info&quot; | &quot;never&quot;`; defaults are both themes, transparent background, and errors only. `ok` means diagnostics pass `failOn`; `rendered` means every requested theme completed rendering. Reports include per-theme `dimensions` and `diagnostics`, plus `summary` severity counts.
+- `CHECK_DIAGNOSTIC_CODES`, `CheckDiagnostic`, `CheckDiagnosticCode`, `CheckDiagnosticLocation`, `CheckAutoSize`, `CheckAutoSizeAxes`, `CheckFrameInput`, `CheckFrameReport`, `CheckOptions`: Stable code list and TypeScript contracts for programmatic checks. Locations contain a React `path` or rendered `x`, `y`, `width`, and `height`; available element identifiers appear as `elementId` and `relatedElementIds` on diagnostics.
+- `getThemeColors(mode, preset?)`: `mode: ThemeMode`; `preset?: &quot;default&quot; | &quot;engineering&quot;`. Use `engineering` for flat technical-blog figures with a light gray palette, left-aligned black titles, pastel nodes, thin neutral connectors, compact corners, no shadows, Inter labels, and JetBrains Mono annotations. In a bare frame, set `preset = &quot;engineering&quot;;` before the JSX. Add `background={c.bg}` to `Scene` for an opaque light gray canvas; omit it for alpha transparency.
+- `getToneColor(tone, c)`, `getToneFill(tone, c)`, `getToneGradient(tone)`, `getColor(name, c?)`, `getGradient(name)`, `heatColor(value)`.
+- `getReadableColor(name, c)`: returns the semantic color variant with greatest contrast against `c.bgCard`.
+- `getReadableToneColor(tone, c, background?)`: maps a tone to a readable semantic color and falls back to readable foreground text when contrast is below 4.5:1. `background` defaults to `c.bgCard`.
+- `getReadableTextColor(background, c)`: parses solid or alpha CSS colors and chooses a theme foreground meeting 4.5:1 contrast when possible.
+- `createPlotArea(width, height, margin)`: returns `PlotArea` geometry with inner width and height clamped to at least one pixel.
+- `renderToPng(element, options, createFn?, theme?)`: `element`, `options: RenderOptions`, `createFn?: (theme: &quot;dark&quot; | &quot;light&quot;) =&gt; ReactNode`, `theme?: &quot;dark&quot; | &quot;light&quot;`.
+- `renderToPngWithOutput(...)`: same arguments as `renderToPng`; returns logical `width` / `height`, physical `pixelWidth` / `pixelHeight`, and painted `contentBounds`.
+- `CanvasOverflowError`: typed clipping failure from strict static or animated renders. Exposes `width`, `height`, `overflow`, and optional animation frame/scene/time/label metadata.
+- `Watermark`: JSX marker component for frame-module exports. Props are `WatermarkOptions` plus `children?: ReactNode`; children become the complete watermark body.
+- `WatermarkInput`: `boolean | string | WatermarkOptions | ReactElement&lt;WatermarkElementProps&gt;`. `true` uses Vizmatic defaults. A string sets the watermark text. A React element can be `&lt;Watermark&gt;...&lt;/Watermark&gt;` or any custom element.
+- `WatermarkImageOptions`: `src`, `width?: number`, `height?: number`, `alt?: string`. Programmatic `src` should be a URL or data URI. CLI `--watermark-image` accepts URL, data URI, or local path.
+- `WatermarkOptions`: `text?: string | false`, `image?: string | WatermarkImageOptions`, `icon?: ReactNode | string | false`, `element?: ReactNode`, `position?: &quot;top-left&quot; | &quot;top-right&quot; | &quot;bottom-left&quot; | &quot;bottom-right&quot; = &quot;top-right&quot;`, `opacity?: number`, `color?: string`.
+- `normalizeWatermark(input)`: converts boolean, string, object, or React-element `WatermarkInput` to `WatermarkOptions | undefined`.
+- `wrapWithBrand(element, width, height, theme?, label?)`: compatibility wrapper around `wrapWithWatermark`; theme defaults to `&quot;dark&quot;` and label defaults to `&quot;Vizmatic&quot;`.
+- `getFonts()`: lazily loads and caches bundled Satori font data for advanced integrations.
+- `loadAdditionalAsset(code, segment)`: Satori missing-glyph callback; resolves emoji segments from the compressed offline Twemoji bundle or public fallback and returns an empty font list for other codes.
+- `RenderOptions`: `width`, `height`, `outputPath`, `background?: &quot;transparent&quot; | &quot;theme&quot; | CSS color = &quot;transparent&quot;`, `theme?: &quot;dark&quot; | &quot;light&quot; = &quot;dark&quot;` for direct-render watermark defaults, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `crop?: boolean | &quot;height&quot; | &quot;both&quot; = true`, `scale?: number = 2`. Default autocrop retains 24 source pixels around detected content. Use `crop: &quot;height&quot;` when host layouts require stable width but should still trim extra vertical whitespace.
+- `renderToBuffer(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`, `scale?`.
+- `renderToSvg(element, width, height, options?)`: `options` supports `background?`, `theme?`, `watermark?`, `brand?`.
+- `defineAnimation({ initial, timeline, render, fps? })`: creates deterministic typed state animation. `fps` defaults to `20` and accepts integers from `1` to `50`.
+- `hold(duration, label?)`: keep current state for milliseconds.
+- `tween(to, { duration, easing?, interpolate?, label? })`: transition listed properties together. Easing is `&quot;linear&quot; | &quot;ease-in&quot; | &quot;ease-out&quot; | &quot;ease-in-out&quot;` or pure progress function.
+- `keyframe(value, label?)`: apply instant partial state update.
+- `parallel(tracks, label?)`: run property tracks concurrently; each track accepts `hold`, `tween`, and `keyframe` steps.
+- `sampleAnimation(animation, time)`: evaluate state at exact millisecond.
+- `sampleAnimationFrames(animation, { fps? })`: return deterministic state/frame samples with GIF-compatible delays.
+- `analyzeAnimationCadence(animation, { fps? })`: return frame count, encoded duration, target interval, and delay range without rendering.
+- `renderAnimationGif(animation, options)`: stream timeline samples into GIF.
+- `renderAnimationGifWithOutput(animation, options)`: same arguments and returns dimensions, input/encoded frame counts, delta-frame count, duration, and byte size.
+- `renderAnimatedGif(scenes, options)`: legacy `AnimatedScene[]` renderer for scene cuts and pixel transitions. It also accepts a defined animation.
+- `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns dimensions and encoding metrics.
+- `AnimatedScene`: `element`, `duration` in ms, `transition?: &quot;none&quot; | &quot;fade&quot; | &quot;appear&quot;`, `transitionDuration?`, `label?`.
+- `AnimationOptions`: `width`, `height`, `outputPath`, `loop?: number = 0`, `scale?: number = 1`, `fps?: number`, `deltaFrames?: boolean = true`, `background?: &quot;theme&quot; | &quot;transparent&quot; | CSS color = &quot;theme&quot;`, `watermark?: WatermarkInput`, `brand?: boolean | string` as a compatibility alias, `theme?: &quot;dark&quot; | &quot;light&quot; = &quot;dark&quot;`. Every actual frame is checked for overflow. Opaque GIFs encode changed rectangles; transparent GIFs stay full-frame for correct one-bit compositing. Use PNG/SVG when smooth alpha edges matter.
+
+## Prop-aware examples
+
+### Window + code + status
+
+```tsx
+width = 1040;
+height = 560;
+
+&lt;Scene title=&quot;Release gate&quot; subtitle=&quot;tool output and checklist&quot;&gt;
+  &lt;Row gap={18} align=&quot;stretch&quot;&gt;
+    &lt;WindowFrame title=&quot;ci.log&quot; variant=&quot;terminal&quot; tone=&quot;green&quot; width={520}&gt;
+      &lt;CodeBlock
+        fontSize={12}
+        showLineNumbers
+        lines={[
+          { text: &quot;pnpm typecheck&quot;, tone: &quot;green&quot;, prefix: &quot;$&quot; },
+          { text: &quot;pnpm test&quot;, tone: &quot;green&quot;, prefix: &quot;$&quot; },
+          { text: &quot;pnpm render:examples&quot;, tone: &quot;cyan&quot;, prefix: &quot;$&quot; },
+        ]}
+      /&gt;
+    &lt;/WindowFrame&gt;
+    &lt;StatusList
+      width={360}
+      rows={[
+        { label: &quot;Types&quot;, detail: &quot;clean&quot;, status: &quot;check&quot;, tone: &quot;green&quot; },
+        { label: &quot;Visuals&quot;, detail: &quot;dark/light generated&quot;, status: &quot;check&quot;, tone: &quot;cyan&quot; },
+        { label: &quot;NPM&quot;, detail: &quot;auth required&quot;, status: &quot;warn&quot;, tone: &quot;warm&quot; },
+      ]}
+    /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;
+```
+
+### Matrix + chart
+
+```tsx
+width = 1040;
+height = 560;
+
+&lt;Scene title=&quot;Attention audit&quot; subtitle=&quot;weights, scores, and distribution&quot;&gt;
+  &lt;Row gap={18} align=&quot;stretch&quot;&gt;
+    &lt;Heatmap
+      title=&quot;Attention&quot;
+      xLabels={[&quot;q1&quot;, &quot;q2&quot;, &quot;q3&quot;]}
+      yLabels={[&quot;k1&quot;, &quot;k2&quot;, &quot;k3&quot;]}
+      data={[
+        [0.9, 0.2, 0.1],
+        [0.4, 0.8, 0.2],
+        [0.1, 0.3, 0.7],
+      ]}
+    /&gt;
+    &lt;Matrix
+      title=&quot;Scores&quot;
+      format=&quot;decimal&quot;
+      rowLabels={[&quot;A&quot;, &quot;B&quot;, &quot;C&quot;]}
+      colLabels={[&quot;x&quot;, &quot;y&quot;, &quot;z&quot;]}
+      data={[
+        [0.4, 0.7, 0.2],
+        [0.5, 0.2, 0.8],
+      ]}
+    /&gt;
+    &lt;StackedBar
+      width={300}
+      title=&quot;Token budget&quot;
+      segments={[
+        { label: &quot;prompt&quot;, value: 42, color: &quot;primary&quot; },
+        { label: &quot;context&quot;, value: 38, color: &quot;info&quot; },
+        { label: &quot;answer&quot;, value: 20, color: &quot;positive&quot; },
+      ]}
+    /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;
+```
+
+## Rendering rules
+
+- Use semantic tones instead of hard-coded colors: `blue`, `purple`, `green`, `warm`, `cyan`, `pink`, `critical`, `ocean`, `neutral`.
+- For Datadog Engineering-style article diagrams, set `preset = &quot;engineering&quot;;` and render the light theme. Keep each figure focused on one transition or tradeoff.
+- Use explicit sizes for final assets. Common sizes are `1040x560` for article figures, `1280x720` for slide frames, and `900x520` for compact diagrams.
+- During exploration, dimensions can be omitted. Vizmatic starts at `960x540` and grows to fit content.
+- Prefer alpha-transparent PNG/SVG backgrounds for blog embeds and docs cards. Use theme backgrounds only when the host surface is unknown or needs full-frame fill.
+- Use `width`, `minWidth`, `height`, `minHeight`, `gap`, and `padding` to keep layout stable.
+- Keep text short. Use `TextLabel`, `Panel`, `StepCard`, `MetricCard`, `DataTable`, and `Grid` for wrapping-safe labels.
+- Omit `x` and `y` from `GraphDiagram` nodes for automatic layered layout and nested groups. Add both only when an ungrouped graph needs editorial manual control.
+- Render reusable assets in both themes with `--theme dark,light`.
+- Run `vizmatic check &lt;frame&gt; --theme dark,light --json` before final render and fix every error.
+- Use GIF only when motion explains state change. Prefer `createAnimation(theme)` with `hold` and `tween`, keep timelines short, match terminal and initial visuals for infinite loops, and keep static `create(theme)` fallback. Sampling follows exact cadence boundaries and includes terminal state. Use `analyzeAnimationCadence` when timing must be audited. Use `createScenes(theme)` only for deliberate cuts or crossfades.
+- If render fails with `Canvas overflow detected`, increase the canvas, reduce content, or remove strict sizing. Do not ignore the error.
+- Confirm generated files exist and open at least one image before finishing.
+
+## Common recipes
+
+### RAG graph
+
+```tsx
+width = 1040;
+height = 560;
+
+&lt;Scene title=&quot;RAG control graph&quot; subtitle=&quot;retrieval with a citation check&quot; align=&quot;center&quot;&gt;
+  &lt;GraphDiagram
+    width={820}
+    height={390}
+    nodeWidth={132}
+    rankGap={44}
+    nodes={[
+      { id: &quot;query&quot;, label: &quot;Query&quot;, detail: &quot;intent&quot;, tone: &quot;blue&quot; },
+      { id: &quot;retrieve&quot;, label: &quot;Retrieve&quot;, detail: &quot;top-k docs&quot;, tone: &quot;cyan&quot; },
+      { id: &quot;rerank&quot;, label: &quot;Rerank&quot;, detail: &quot;quality gate&quot;, tone: &quot;warm&quot; },
+      { id: &quot;answer&quot;, label: &quot;Answer&quot;, detail: &quot;grounded draft&quot;, tone: &quot;green&quot; },
+      { id: &quot;verify&quot;, label: &quot;Verify&quot;, detail: &quot;citations&quot;, tone: &quot;critical&quot; },
+    ]}
+    edges={[
+      { from: &quot;query&quot;, to: &quot;retrieve&quot;, label: &quot;search&quot;, tone: &quot;blue&quot; },
+      { from: &quot;retrieve&quot;, to: &quot;rerank&quot;, label: &quot;rank&quot;, tone: &quot;cyan&quot; },
+      { from: &quot;rerank&quot;, to: &quot;answer&quot;, label: &quot;context&quot;, tone: &quot;green&quot; },
+      { from: &quot;answer&quot;, to: &quot;verify&quot;, label: &quot;claims&quot;, tone: &quot;critical&quot; },
+    ]}
+  /&gt;
+&lt;/Scene&gt;
+```
+
+### Evaluation dashboard
+
+```tsx
+width = 1040;
+height = 620;
+
+&lt;Scene title=&quot;Evaluation snapshot&quot; subtitle=&quot;charts inherit theme, labels, and contrast&quot;&gt;
+  &lt;Row gap={18} align=&quot;stretch&quot;&gt;
+    &lt;BarChart
+      width={440}
+      height={260}
+      title=&quot;Pass rate by task&quot;
+      format=&quot;percent&quot;
+      data={[
+        { label: &quot;tools&quot;, value: 0.82, color: &quot;positive&quot; },
+        { label: &quot;math&quot;, value: 0.71, color: &quot;secondary&quot; },
+        { label: &quot;code&quot;, value: 0.77, color: &quot;primary&quot; },
+        { label: &quot;long&quot;, value: 0.58, color: &quot;warning&quot; },
+      ]}
+    /&gt;
+    &lt;LineChart
+      width={440}
+      height={260}
+      title=&quot;Quality over releases&quot;
+      format=&quot;percent&quot;
+      labels={[&quot;v1&quot;, &quot;v2&quot;, &quot;v3&quot;, &quot;v4&quot;, &quot;v5&quot;]}
+      series={[
+        { name: &quot;quality&quot;, points: [0.55, 0.61, 0.69, 0.74, 0.81], color: &quot;positive&quot;, area: true },
+        { name: &quot;latency&quot;, points: [0.72, 0.69, 0.66, 0.62, 0.59], color: &quot;warning&quot; },
+      ]}
+    /&gt;
+  &lt;/Row&gt;
+&lt;/Scene&gt;
+```
+
+## Final response
+
+After creating a visual, report:
+
+- files created or changed
+- render command used
+- output image paths, including GIF paths when generated
+- whether dark/light variants rendered
+- whether structured validation passed
+- any overflow or layout fixes made
+</code></pre>
+      </details>
+    </section>
+
+    <section class="section agent-faq" aria-labelledby="faqTitle">
+      <div class="section-intro">
+        <div>
+          <div class="eyebrow">Questions</div>
+          <h2 id="faqTitle">A few useful details.</h2>
+        </div>
+      </div>
+      <div class="faq-list">
+        <details>
+          <summary>Does installing the skill install Vizmatic?</summary>
+          <p>No. The skill provides instructions and examples. Install the CLI with npm when the agent needs to check or render a frame.</p>
+        </details>
+        <details>
+          <summary>Where does rendering happen?</summary>
+          <p>The CLI renders on your machine or in your CI environment. Use the browser playground for interactive edits and previews.</p>
+        </details>
+        <details>
+          <summary>How should I verify a finished visual?</summary>
+          <p>Run the JSON check for dark and light themes, render both variants, and inspect the files at their final display size.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-main">
+      <div><a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic<span class="brand-dot">.</span></span></a><p>Visuals you can build on.</p></div>
+      <div class="footer-links"><div><h2>Create</h2><a href="playground.html">Playground</a><a href="index.html#gallery">Examples</a><a href="components.html">Components</a></div><div><h2>Learn</h2><a href="index.html#quick-start">Quick start</a><a href="agents.html">For agents</a><a href="benchmarks.html">Benchmarks</a></div><div><h2>Source</h2><a href="https://github.com/bvolpato/vizmatic">GitHub ↗</a><a href="https://www.npmjs.com/package/vizmatic">npm ↗</a><a href="llms.txt">llms.txt</a></div></div>
+    </div>
+    <div class="footer-bottom"><p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p><a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a></div>
+  </footer>
+  <dialog class="search-dialog" id="searchDialog" aria-labelledby="searchTitle">
+    <div class="search-dialog-heading"><h2 id="searchTitle">Find your next building block</h2><button class="button small" type="button" data-close-search>Close <kbd>Esc</kbd></button></div>
+    <label class="site-search-label" for="siteSearch">Search pages, components, and examples</label>
+    <input id="siteSearch" type="search" placeholder="Try architecture, chart, or agent…" autocomplete="off" aria-controls="siteSearchResults">
+    <p id="siteSearchStatus" class="search-status" role="status"></p><div id="siteSearchResults" class="search-results"></div>
+    <div class="search-help"><span>↑ ↓ to navigate</span><span>Enter to open</span><span>Esc to close</span></div>
+  </dialog>
+  <dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
+    <div class="source-dialog-panel"><header><div><span>Editable TSX</span><h2 id="sourceTitle">Example source</h2></div><div class="dialog-actions"><a class="button primary" id="trySourceLink" href="playground.html">Try / edit ↗</a><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div></header><p class="source-note">The playground edits a static frame. Use the CLI to render GIF animations.</p><div class="source-code" id="sourceCode"></div></div>
+  </dialog>
+  <dialog class="image-dialog" id="imageDialog" aria-labelledby="imageDialogTitle">
+    <div class="image-dialog-panel"><div class="image-dialog-header"><h2 id="imageDialogTitle">Example preview</h2><button class="button" type="button" id="closeImageButton">Close</button></div><div class="image-dialog-viewport"><img id="imageDialogImage" alt=""></div></div>
+  </dialog>
+</body>
+</html>

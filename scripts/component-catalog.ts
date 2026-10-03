@@ -1,9 +1,12 @@
 import { catalogExample } from './component-examples'
+import { getComponentControls } from './component-controls'
+import type { ComponentControl } from '../src/component-controls'
 
 export interface ComponentCatalogItem {
     name: string
     description: string
     example: string
+    controls: ComponentControl[]
 }
 
 export interface ComponentCatalogCategory {
@@ -15,7 +18,7 @@ export interface ComponentCatalogCategory {
 }
 
 const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
-    components: Omit<ComponentCatalogItem, 'example'>[]
+    components: Omit<ComponentCatalogItem, 'example' | 'controls'>[]
 })[] = [
     {
         id: 'foundations',
@@ -180,10 +183,10 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
 
 export const componentCatalog: ComponentCatalogCategory[] = componentCatalogGroups.map((category) => ({
     ...category,
-    components: category.components.map((component) => ({
-        ...component,
-        example: catalogExample(component.name),
-    })),
+    components: category.components.map((component) => {
+        const example = catalogExample(component.name)
+        return { ...component, example, controls: getComponentControls(example, component.name) }
+    }),
 }))
 
 export const catalogUtilities = [

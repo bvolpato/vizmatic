@@ -1,16 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Benchmarks - Vizmatic</title>
-  <meta name="description" content="Reproducible Vizmatic render time, memory, and automated example-check results.">
-  <meta name="theme-color" content="#080a0f">
-  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  {{SITE_HEAD}}
   <style>
     .benchmark-section { display: grid; gap: 24px; }
     .benchmark-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
@@ -34,34 +25,12 @@
   </style>
 </head>
 <body>
-  <div class="bg-grid" aria-hidden="true"></div>
+  {{SITE_NAV}}
 
-  <div class="nav-shell">
-    <nav class="nav" aria-label="Primary navigation">
-      <a class="brand" href="index.html">
-        <img src="assets/icon.svg" alt="" width="30" height="30">
-        <span>vizmatic</span>
-      </a>
-      <div class="nav-actions">
-        <div class="nav-links">
-          <a href="index.html#gallery">Examples</a>
-          <a href="components.html">Components</a>
-          <a href="playground.html">Playground</a>
-          <a href="benchmarks.html" aria-current="page">Benchmarks</a>
-          <a href="index.html#quick-start">Quick start</a>
-          <a href="index.html#onboarding">Prompt + skill</a>
-          <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub">
-            <span>GitHub</span>
-          </a>
-        </div>
-      </div>
-    </nav>
-  </div>
-
-  <main>
-    <header class="catalog-hero section">
+  <main id="main-content" tabindex="-1">
+    <header class="page-heading section">
       <div class="eyebrow"><span></span>Reproducible measurements</div>
-      <h1>Benchmarks</h1>
+      <h1>The numbers, in context.</h1>
       <p>Render time, process memory, and automated quality checks for representative Vizmatic examples. Measurements are a snapshot from one machine, not a cross-machine ranking.</p>
     </header>
 
@@ -116,10 +85,7 @@
     </section>
   </main>
 
-  <footer>
-    <a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic</span></a>
-    <p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>. <a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a>.</p>
-    <a href="https://github.com/bvolpato/vizmatic">Source on GitHub ↗</a>
-  </footer>
+  {{SITE_FOOTER}}
+  {{SITE_DIALOGS}}
 </body>
 </html>

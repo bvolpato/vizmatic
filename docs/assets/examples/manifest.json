@@ -306,5 +306,13 @@
       "vizmatic-hero_dark.png",
       "vizmatic-hero_light.png"
     ]
+  },
+  {
+    "name": "website-workflow",
+    "source": "examples/website-workflow.tsx",
+    "outputs": [
+      "website-workflow_dark.png",
+      "website-workflow_light.png"
+    ]
   }
 ]

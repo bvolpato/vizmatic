@@ -1,10 +1,12 @@
 import React from 'react'
 import { Resvg, initWasm } from '@resvg/resvg-wasm'
 import satori, { init as initSatori, type SatoriNode } from 'satori/standalone'
-import { Watermark, wrapWithWatermark } from './brand'
 import { transform } from 'sucrase'
-import * as primitives from './primitives'
-import * as themeApi from './theme'
+import { getThemeColors } from './theme'
+import { createPlaygroundApi } from './playground-api'
+import { mapPlaygroundText, prepareEditableText, editableTextTargets } from './playground-text-mapping'
+import type { PlaygroundTextTarget } from './playground-text-types'
+import { detectBackgroundColor, detectContentBounds, type CropRegion } from './autocrop'
 import {
     preparePlaygroundSource,
     type PlaygroundTheme,
@@ -15,7 +17,7 @@ import {
 } from './playground-render-context'
 import { createRetryableInitializer } from './retryable-initializer'
 import { initializeHarfbuzzRuntime } from './playground-harfbuzz'
-import { addSvgAccessibility, prepareAccessibleSvg, SVG_ACCESSIBILITY_COMPONENT } from './svg-accessibility'
+import { addSvgAccessibility, prepareAccessibleSvg } from './svg-accessibility'
 import interRegular from '../assets/fonts/Inter-Regular.ttf'
 import interSemiBold from '../assets/fonts/Inter-SemiBold.ttf'
 import interBold from '../assets/fonts/Inter-Bold.ttf'
@@ -41,6 +43,8 @@ interface PlaygroundRenderResponse {
     width: number
     height: number
     warnings: string[]
+    contentBounds: CropRegion
+    textTargets: PlaygroundTextTarget[]
 }
 
 interface PlaygroundErrorResponse {
@@ -189,50 +193,13 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
     })
 }
 
-type PlaygroundApi = Record<string, unknown>
-
-function withTheme(Component: unknown, c: ReturnType<typeof themeApi.getThemeColors>): unknown {
-    if (typeof Component !== 'function') return Component
-
-    const themedComponent = function VizmaticPlaygroundTheme(props: Record<string, unknown> | null) {
-        return React.createElement(Component as React.ComponentType<Record<string, unknown>>, props?.c ? props : { ...props, c })
-    }
-    if ((Component as { [SVG_ACCESSIBILITY_COMPONENT]?: boolean })[SVG_ACCESSIBILITY_COMPONENT]) {
-        Object.defineProperty(themedComponent, SVG_ACCESSIBILITY_COMPONENT, { value: true })
-    }
-    return themedComponent
-}
-
-function withThemeCall(Component: unknown, c: ReturnType<typeof themeApi.getThemeColors>): unknown {
-    if (typeof Component !== 'function') return Component
-
-    return function VizmaticPlaygroundThemeCall(props: Record<string, unknown> | null) {
-        return (Component as (props: Record<string, unknown>) => unknown)(props?.c ? props : { ...props, c })
-    }
-}
-
-function createApi(c: ReturnType<typeof themeApi.getThemeColors>): PlaygroundApi {
-    const api: PlaygroundApi = { ...themeApi, ...primitives, Watermark, wrapWithWatermark }
-    const scoped: PlaygroundApi = {}
-
-    for (const [name, value] of Object.entries(api)) {
-        if (!/^[A-Z]/.test(name) || name === 'Watermark' || name === 'MathText') {
-            scoped[name] = value
-        } else if (name === 'DotPoint' || name === 'DashedLine') {
-            scoped[name] = withThemeCall(value, c)
-        } else {
-            scoped[name] = withTheme(value, c)
-        }
-    }
-
-    return scoped
-}
-
 async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRenderResponse> {
     const { fonts } = await initializeRuntime()
-    const prepared = preparePlaygroundSource(request.source)
-    const c = themeApi.getThemeColors(request.theme, prepared.metadata.preset)
-    const api = createApi(c)
+    preparePlaygroundSource(request.source)
+    const textMapping = mapPlaygroundText(request.source)
+    const prepared = preparePlaygroundSource(textMapping.source)
+    const c = getThemeColors(request.theme, prepared.metadata.preset)
+    const api = createPlaygroundApi(c)
     // The closing paren needs its own line: the JSX may end with a trailing `//` comment.
     const wrapped = `const __vizmaticPlaygroundRender = () => {\n${prepared.setup}\nreturn (\n${prepared.jsx}\n);\n};`
     const result = transform(wrapped, {
@@ -247,7 +214,8 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
     const element = createElement(React, c, ...Object.values(api))
 
     setPlaygroundRenderBackground(request.background ?? 'transparent')
-    const preparedSvg = prepareAccessibleSvg(element)
+    const editable = prepareEditableText(element, textMapping)
+    const preparedSvg = prepareAccessibleSvg(editable.element)
     const layoutNodes: SatoriNode[] = []
     const renderedSvg = await satori(preparedSvg.element as React.ReactElement, {
         width: prepared.metadata.width,
@@ -258,15 +226,24 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
     const svg = addSvgAccessibility(renderedSvg, preparedSvg.graphs, layoutNodes)
     const resvg = new Resvg(svg, { font: { loadSystemFonts: false } })
     try {
-        const png = resvg.render().asPng().slice()
-        return {
-            id: request.id,
-            ok: true,
-            svg,
-            png: png.buffer,
-            width: prepared.metadata.width,
-            height: prepared.metadata.height,
-            warnings: prepared.metadata.warnings,
+        const image = resvg.render()
+        try {
+            const pixels = image.pixels
+            const contentBounds = detectContentBounds(pixels, image.width, image.height, detectBackgroundColor(pixels), 24)
+            const png = image.asPng().slice()
+            return {
+                id: request.id,
+                ok: true,
+                svg,
+                png: png.buffer,
+                width: prepared.metadata.width,
+                height: prepared.metadata.height,
+                warnings: prepared.metadata.warnings,
+                contentBounds,
+                textTargets: editableTextTargets(layoutNodes, editable.references),
+            }
+        } finally {
+            image.free()
         }
     } finally {
         resvg.free()

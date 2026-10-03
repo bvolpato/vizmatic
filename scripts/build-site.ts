@@ -2,6 +2,9 @@ import { copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { codeToHtml } from 'shiki'
 import { buildPlayground } from './build-playground'
 import { catalogComponentCount, componentCatalog, type ComponentCatalogCategory } from './component-catalog'
+import { buildAgentDocs } from './build-agent-docs'
+import { applySiteShell, sitePages } from './site-shell'
+import { toPlaygroundExample } from './playground-example'
 
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
@@ -14,12 +17,17 @@ const benchmarksOutPath = 'docs/benchmarks.html'
 const benchmarkResultsPath = 'docs/assets/benchmarks/results.json'
 const promptPath = 'PROMPT.md'
 const docsPromptPath = 'docs/PROMPT.md'
+const agentsTemplatePath = 'docs/agents.template.html'
+const agentsOutPath = 'docs/agents.html'
 
 await mkdir('docs/assets/licenses', { recursive: true })
 await Promise.all([
     copyFile('assets/THIRD_PARTY_LICENSES.md', 'docs/assets/THIRD_PARTY_LICENSES.md'),
     ...(await readdir('assets/licenses')).map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
 ])
+await mkdir('docs/assets/fonts', { recursive: true })
+await Promise.all(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2']
+    .map((name) => copyFile('assets/site-fonts/' + name, 'docs/assets/fonts/' + name)))
 
 function generatedNotice(source: string): string {
     return `<!-- Generated from ${source} by pnpm site:build. Edit template. -->`
@@ -61,9 +69,9 @@ const sourceIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 
 function renderComponentItems(category: ComponentCatalogCategory): string {
     return category.components.map((component) => {
         const search = (component.name + ' ' + component.description + ' ' + category.label).toLowerCase()
-        const playgroundUrl = 'playground.html#vizmatic-playground=' + encodeURIComponent(component.example)
+        const playgroundUrl = 'playground.html#component-' + component.name
         return [
-            '<article class="catalog-item" data-catalog-item data-catalog-search="' + encodeHtml(search) + '">',
+            '<article class="catalog-item" id="reference-component-' + encodeHtml(component.name) + '" data-catalog-item data-catalog-search="' + encodeHtml(search) + '">',
             '<div class="catalog-item-copy">',
             '<code>' + encodeHtml(component.name) + '</code>',
             '<p>' + encodeHtml(component.description) + '</p>',
@@ -77,12 +85,17 @@ function renderComponentItems(category: ComponentCatalogCategory): string {
     }).join('\n')
 }
 
+const explorerTemplate = await readFile('docs/component-explorer.template.html', 'utf8')
+const explorerChoices = componentCatalog.map((category) => `<section class="explorer-choice-group" data-explorer-category="${category.id}"><h4>${encodeHtml(category.label)}</h4>${category.components.map((component) => `<button type="button" id="component-${component.name}" data-explore-component="${component.name}" data-explorer-search="${encodeHtml((component.name + ' ' + component.description + ' ' + category.label).toLowerCase())}" aria-pressed="false" title="${encodeHtml(component.description)}"><span>${component.name}</span><span aria-hidden="true">↗</span></button>`).join('')}</section>`).join('')
+const explorerOptions = '<option value="custom" disabled>Custom scene</option>' + componentCatalog.map((category) => `<optgroup label="${encodeHtml(category.label)}">${category.components.map((component) => `<option value="${component.name}">${component.name}</option>`).join('')}</optgroup>`).join('')
+const explorer = explorerTemplate.replace('{{COMPONENT_CHOICES}}', () => explorerChoices).replace('{{COMPONENT_OPTIONS}}', () => explorerOptions)
+
 function renderComponentCatalog(includePreviews = true): string {
     return componentCatalog.map((category) => {
         const components = renderComponentItems(category)
         const count = category.components.length
         return [
-            '<section class="catalog-group" data-catalog-group="' + encodeHtml(category.id) + '">',
+            '<section class="catalog-group" id="category-' + encodeHtml(category.id) + '" data-catalog-group="' + encodeHtml(category.id) + '">',
             '<div class="catalog-group-heading">',
             '<div>',
             '<h3>' + encodeHtml(category.label) + '</h3>',
@@ -254,20 +267,72 @@ async function replaceAsync(input: string, pattern: RegExp): Promise<string> {
 await buildPlayground()
 
 const prompt = await readFile(promptPath, 'utf8')
+const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as { version: string }
+interface ExampleSource {
+    name: string
+    title: string
+    source: string
+    code: string
+    html: { dark: string; light: string }
+}
+const sources = JSON.parse(await readFile('docs/assets/examples/sources.json', 'utf8')) as ExampleSource[]
+const sourceByName = new Map(sources.map((source) => [source.name, source]))
+await mkdir('docs/assets/sources', { recursive: true })
+await Promise.all(sources.map(async (source) => {
+    const playgroundCode = toPlaygroundExample(await readFile(source.source, 'utf8'))
+    await writeFile(`docs/assets/sources/${source.name}.json`, JSON.stringify({ ...source, playgroundCode }))
+}))
+
+function preparePage(template: string, file: string): string {
+    return applySiteShell(template, file)
+        .replaceAll('{{VERSION}}', packageJson.version)
+        .replace(/\{\{EXAMPLE_URL:([\w-]+)\}\}/g, (_match, name: string) => {
+            const source = sourceByName.get(name)
+            if (!source) throw new Error(`Unknown website example: ${name}`)
+            return encodeHtml('playground.html?example=' + encodeURIComponent(source.name))
+        })
+}
+
+const searchIndex = [
+    ...sitePages.map((page) => ({ title: page.title.split(' | ')[0], description: page.description, url: page.file, category: 'Page' })),
+    ...componentCatalog.flatMap((category) => category.components.map((component) => ({
+        title: component.name,
+        description: component.description,
+        url: 'components.html#component-' + component.name,
+        category: category.label,
+    }))),
+    ...sources.filter((source) => !source.name.startsWith('catalog-')).map((source) => ({
+        title: source.title,
+        description: 'View and edit the ' + source.title.toLowerCase() + ' example.',
+        url: 'index.html#example-' + source.name,
+        category: 'Example',
+    })),
+    { title: 'Quick start', description: 'Install the CLI, write a TSX frame, check it, and render both themes.', url: 'index.html#quick-start', category: 'Guide' },
+    { title: 'Agent resources', description: 'Markdown instructions, skills, and a machine-readable component catalog.', url: 'agents.html#resources', category: 'Guide' },
+]
+await writeFile('docs/search-index.json', JSON.stringify(searchIndex))
+await writeFile('docs/sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    + sitePages.map((page) => `<url><loc>https://bvolpato.github.io/vizmatic/${page.file === 'index.html' ? '' : page.file}</loc></url>`).join('\n') + '\n</urlset>\n')
+await writeFile('docs/robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: https://bvolpato.github.io/vizmatic/sitemap.xml\n')
+await buildAgentDocs()
 const benchmarkTemplate = await readFile(benchmarksTemplatePath, 'utf8')
 const benchmarkResults = JSON.parse(await readFile(benchmarkResultsPath, 'utf8')) as BenchmarkResults
 const catalogReplacements = (template: string) => template
+    .replace('{{COMPONENT_EXPLORER}}', () => explorer)
     .replaceAll('{{COMPONENT_COUNT}}', String(catalogComponentCount))
     .replace('{{COMPONENT_FILTERS}}', renderCatalogFilters)
     .replace('{{COMPONENT_CATALOG}}', () => renderComponentCatalog())
     .replace('{{HOME_COMPONENT_CATALOG}}', () => renderComponentCatalog(false))
-const indexTemplate = catalogReplacements((await readFile(templatePath, 'utf8'))
-    .replace('{{PROMPT_MD}}', () => encodeHtml(prompt)))
-const componentsTemplate = catalogReplacements(await readFile(componentsTemplatePath, 'utf8'))
-const playgroundTemplate = await readFile(playgroundTemplatePath, 'utf8')
-const [highlightedIndex, highlightedComponents] = await Promise.all([
+const indexTemplate = preparePage(catalogReplacements((await readFile(templatePath, 'utf8'))
+    .replace('{{PROMPT_MD}}', () => encodeHtml(prompt))), 'index.html')
+const componentsTemplate = preparePage(catalogReplacements(await readFile(componentsTemplatePath, 'utf8')), 'components.html')
+const playgroundTemplate = preparePage(catalogReplacements(await readFile(playgroundTemplatePath, 'utf8')), 'playground.html')
+const agentsTemplate = preparePage((await readFile(agentsTemplatePath, 'utf8'))
+    .replace('{{PROMPT_MD}}', () => encodeHtml(prompt)), 'agents.html')
+const [highlightedIndex, highlightedComponents, highlightedAgents] = await Promise.all([
     replaceAsync(indexTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
     replaceAsync(componentsTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
+    replaceAsync(agentsTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
 ])
 const output = highlightedIndex.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice(templatePath)}\n`)
 const componentsOutput = highlightedComponents.replace(
@@ -278,7 +343,8 @@ const playgroundOutput = playgroundTemplate.replace(
     '<!DOCTYPE html>\n',
     `<!DOCTYPE html>\n${generatedNotice(playgroundTemplatePath)}\n`,
 )
-const benchmarksOutput = benchmarkTemplate
+const agentsOutput = highlightedAgents.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice(agentsTemplatePath)}\n`)
+const benchmarksOutput = preparePage(benchmarkTemplate, 'benchmarks.html')
     .replaceAll('{{GENERATED_AT}}', () => encodeHtml(benchmarkResults.generatedAt))
     .replace('{{ENVIRONMENT}}', () => renderBenchmarkEnvironment(benchmarkResults))
     .replace('{{QUALITY_SUMMARY}}', () => renderBenchmarkSummary(benchmarkResults))
@@ -294,6 +360,7 @@ await Promise.all([
     writeFile(componentsOutPath, componentsOutput),
     writeFile(playgroundOutPath, playgroundOutput),
     writeFile(benchmarksOutPath, benchmarksOutput),
+    writeFile(agentsOutPath, agentsOutput),
     writeFile(docsPromptPath, prompt),
 ])
-console.log(`built ${outPath}, ${componentsOutPath}, ${playgroundOutPath}, ${benchmarksOutPath}, and ${docsPromptPath}`)
+console.log(`built ${outPath}, ${componentsOutPath}, ${playgroundOutPath}, ${agentsOutPath}, ${benchmarksOutPath}, and agent references`)
