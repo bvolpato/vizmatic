@@ -12,6 +12,7 @@ Benchmarks: [Diagrams](https://diagrams.mingrammer.com/), [D2](https://d2lang.co
 - Reusable custom icon definitions and typed icon registries.
 - Labeled synchronous, asynchronous, event, data, dependency, and association relationships.
 - Solid, dashed, and dotted connectors with forward, backward, bidirectional, or no arrows.
+- Named ports and endpoint sides, with straight or obstacle-aware orthogonal routing and separated parallel connectors.
 - Manual positioning for ungrouped editorial diagrams.
 - Connector diagnostics for crossings, label collisions, crowded endpoints, and parallel routes.
 - Typed in-process visual checks with stable diagnostic codes, element locations where available, and configurable failure policy.
@@ -25,6 +26,8 @@ Benchmarks: [Diagrams](https://diagrams.mingrammer.com/), [D2](https://d2lang.co
 - Transformer topology views with tensor shapes, repeated blocks, residual/cache/expert routes, and collectives.
 - Cadence-boundary animation sampling, per-frame overflow detection, and opaque delta-frame GIF encoding.
 - Compressed offline Twemoji bundle instead of thousands of package entries.
+- Positioned browser builder with editable text and chart data, drag/resize, undo/redo, local drafts, and portable project files.
+- Pie, donut, bar, line, scatter, classic Pareto bar, Pareto frontier, quadrant, and interval charts.
 
 ## Next capability batches
 
@@ -57,8 +60,7 @@ Specialized APIs remain declarative and reusable. Examples contain complete scen
 
 ### Layout and rendering
 
-- Named ports and endpoint anchors.
-- Orthogonal, curved, and user-routed connectors with parallel-edge separation.
+- Curved and user-routed connectors with editable waypoints.
 - Layout adapter interface with Dagre as default and ELK as optional backend.
 - Per-boundary direction, collapsed groups, named scenarios, and reusable animation compositions.
 - Extend structured SVG accessibility beyond graph diagrams to charts and other visual primitives.

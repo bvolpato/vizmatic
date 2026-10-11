@@ -39,8 +39,10 @@ export {
     createPlotArea,
     ChartFrame,
     DonutChart,
+    PieChart,
     StackedBar,
     BarChart,
+    ParetoBarChart,
     LineChart,
 } from './primitives/charts'
 export type {
@@ -49,8 +51,11 @@ export type {
     ChartMargins,
     PlotArea,
     DonutChartSegment,
+    PieChartProps,
     BarChartDatum,
     StackedBarSegment,
+    ParetoBarChartProps,
     LineChartSeries,
 } from './primitives/charts'
 export * from './primitives/plots'
+export * from './primitives/board'

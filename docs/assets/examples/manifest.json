@@ -212,11 +212,35 @@
     ]
   },
   {
+    "name": "orthogonal-routing",
+    "source": "examples/orthogonal-routing.tsx",
+    "outputs": [
+      "orthogonal-routing_dark.png",
+      "orthogonal-routing_light.png"
+    ]
+  },
+  {
+    "name": "pareto-bar-chart",
+    "source": "examples/pareto-bar-chart.tsx",
+    "outputs": [
+      "pareto-bar-chart_dark.png",
+      "pareto-bar-chart_light.png"
+    ]
+  },
+  {
     "name": "pareto-frontier",
     "source": "examples/pareto-frontier.tsx",
     "outputs": [
       "pareto-frontier_dark.png",
       "pareto-frontier_light.png"
+    ]
+  },
+  {
+    "name": "pie-chart",
+    "source": "examples/pie-chart.tsx",
+    "outputs": [
+      "pie-chart_dark.png",
+      "pie-chart_light.png"
     ]
   },
   {

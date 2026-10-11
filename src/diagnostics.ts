@@ -15,6 +15,7 @@ export const CHECK_DIAGNOSTIC_CODES = [
     'frame.unknown_preset',
     'layout.auto_size',
     'layout.connector_congestion',
+    'layout.connector_unroutable',
     'layout.overflow',
     'layout.text_overlap',
     'layout.whitespace_imbalance',
@@ -462,6 +463,18 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
         const value = node.props[attribute]
         return typeof value === 'number' ? value : Number(value) || 0
     }))
+    for (const source of nodes.filter((node) => Number(node.props['data-vizmatic-unrouted-connectors']) > 0)) {
+        const messages = JSON.parse(String(source.props['data-vizmatic-routing-failures'])) as string[]
+        for (const message of messages.slice(0, MAX_DIAGNOSTICS_PER_RULE)) diagnostics.push({
+            code: 'layout.connector_unroutable',
+            severity: 'error',
+            theme,
+            message,
+            suggestion: 'Increase canvas size or spacing, reduce routingClearance, or choose a different endpoint side or port.',
+            elementId: elementId(source.props),
+            location: { x: source.left, y: source.top, width: source.width, height: source.height },
+        })
+    }
     const connectorCrossings = maxDataNumber('data-vizmatic-connector-crossings')
     if (connectorCrossings > 0) {
         const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-crossings']) > 0)

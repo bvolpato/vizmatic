@@ -4,13 +4,23 @@ import satori, { init as initSatori, type SatoriNode } from 'satori/standalone'
 import { transform } from 'sucrase'
 import { getThemeColors } from './theme'
 import { createPlaygroundApi } from './playground-api'
-import { mapPlaygroundText, prepareEditableText, editableTextTargets } from './playground-text-mapping'
+import { mapPlaygroundText, prepareEditableText, editableTextTargets, editableCanvasItems } from './playground-text-mapping'
 import type { PlaygroundTextTarget } from './playground-text-types'
+import type { PlaygroundCanvasItemTarget } from './playground-builder-types'
 import { detectBackgroundColor, detectContentBounds, type CropRegion } from './autocrop'
 import {
     preparePlaygroundSource,
+    type PreparedPlaygroundSource,
     type PlaygroundTheme,
 } from './playground-source'
+import {
+    playgroundAnimationFrames,
+    validatePlaygroundTime,
+    PLAYGROUND_GIF_TIMEOUT_MS,
+    type PlaygroundAnimationMetadata,
+} from './playground-animation'
+import { createPlaygroundGif } from './playground-animation-gif'
+import { renderWithCanvasChartFit } from './canvas-chart-fit'
 import {
     setPlaygroundRenderBackground,
     type PlaygroundRenderBackground,
@@ -33,9 +43,11 @@ export interface PlaygroundRenderRequest {
     source: string
     theme: PlaygroundTheme
     background?: PlaygroundRenderBackground
+    time?: number
+    exportGif?: PlaygroundAnimationMetadata
 }
 
-interface PlaygroundRenderResponse {
+export interface PlaygroundRenderResponse {
     id: number
     ok: true
     svg: string
@@ -45,6 +57,17 @@ interface PlaygroundRenderResponse {
     warnings: string[]
     contentBounds: CropRegion
     textTargets: PlaygroundTextTarget[]
+    canvasItems: PlaygroundCanvasItemTarget[]
+    animation?: PlaygroundAnimationMetadata
+}
+
+export interface PlaygroundGifResponse {
+    id: number
+    ok: true
+    gif: ArrayBuffer
+    width: number
+    height: number
+    frameCount: number
 }
 
 interface PlaygroundErrorResponse {
@@ -193,12 +216,7 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
     })
 }
 
-async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRenderResponse> {
-    const { fonts } = await initializeRuntime()
-    preparePlaygroundSource(request.source)
-    const textMapping = mapPlaygroundText(request.source)
-    const prepared = preparePlaygroundSource(textMapping.source)
-    const c = getThemeColors(request.theme, prepared.metadata.preset)
+function compileScene(prepared: PreparedPlaygroundSource, c: ReturnType<typeof getThemeColors>): (time: number) => React.ReactNode {
     const api = createPlaygroundApi(c)
     // The closing paren needs its own line: the JSX may end with a trailing `//` comment.
     const wrapped = `const __vizmaticPlaygroundRender = () => {\n${prepared.setup}\nreturn (\n${prepared.jsx}\n);\n};`
@@ -208,16 +226,26 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
         production: true,
     })
 
-    const argumentNames = ['React', 'c', ...Object.keys(api)]
+    const argumentNames = ['React', 'c', 't', ...Object.keys(api)]
     const createElement = compileUserFunction(...argumentNames, `'use strict';\n${result.code}\nreturn __vizmaticPlaygroundRender();`) as (...values: unknown[]) => React.ReactNode
     disableUserCodeCapabilities()
-    const element = createElement(React, c, ...Object.values(api))
+    return (time) => createElement(React, c, time, ...Object.values(api))
+}
+
+async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRenderResponse> {
+    preparePlaygroundSource(request.source)
+    const textMapping = mapPlaygroundText(request.source)
+    const prepared = preparePlaygroundSource(textMapping.source)
+    const time = validatePlaygroundTime(request.time ?? 0, prepared.metadata.animation)
+    const { fonts } = await initializeRuntime()
+    const c = getThemeColors(request.theme, prepared.metadata.preset)
+    const element = compileScene(prepared, c)(time)
 
     setPlaygroundRenderBackground(request.background ?? 'transparent')
     const editable = prepareEditableText(element, textMapping)
     const preparedSvg = prepareAccessibleSvg(editable.element)
     const layoutNodes: SatoriNode[] = []
-    const renderedSvg = await satori(preparedSvg.element as React.ReactElement, {
+    const renderedSvg = await renderWithCanvasChartFit(satori, preparedSvg.element as React.ReactElement, {
         width: prepared.metadata.width,
         height: prepared.metadata.height,
         fonts,
@@ -241,12 +269,62 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
                 warnings: prepared.metadata.warnings,
                 contentBounds,
                 textTargets: editableTextTargets(layoutNodes, editable.references),
+                canvasItems: editableCanvasItems(layoutNodes, editable.canvasItems),
+                ...(prepared.metadata.animation ? { animation: prepared.metadata.animation } : {}),
             }
         } finally {
             image.free()
         }
     } finally {
         resvg.free()
+    }
+}
+
+async function exportGif(request: PlaygroundRenderRequest): Promise<PlaygroundGifResponse> {
+    const prepared = preparePlaygroundSource(request.source)
+    if (!prepared.metadata.animation) throw new Error('GIF export requires animationDuration in the source.')
+    const frames = playgroundAnimationFrames(prepared.metadata.animation, prepared.metadata.width, prepared.metadata.height)
+    const { fonts } = await initializeRuntime()
+    const c = getThemeColors(request.theme, prepared.metadata.preset)
+    const sceneAt = compileScene(prepared, c)
+    const gif = createPlaygroundGif(prepared.metadata.width, prepared.metadata.height, c.bg)
+    const started = Date.now()
+    for (const frame of frames) {
+        if (Date.now() - started > PLAYGROUND_GIF_TIMEOUT_MS) {
+            throw new Error('GIF export exceeded 45 seconds. Reduce the canvas size or frame count.')
+        }
+        setPlaygroundRenderBackground(request.background ?? 'transparent')
+        const accessible = prepareAccessibleSvg(sceneAt(validatePlaygroundTime(frame.time, prepared.metadata.animation)))
+        const layoutNodes: SatoriNode[] = []
+        const renderedSvg = await renderWithCanvasChartFit(satori, accessible.element as React.ReactElement, {
+            width: prepared.metadata.width,
+            height: prepared.metadata.height,
+            fonts,
+            onNodeDetected: (node) => layoutNodes.push(node),
+        })
+        const svg = addSvgAccessibility(renderedSvg, accessible.graphs, layoutNodes)
+        const resvg = new Resvg(svg, { font: { loadSystemFonts: false } })
+        try {
+            const image = resvg.render()
+            try {
+                gif.writeFrame(image.pixels, frame.delay)
+            } finally {
+                image.free()
+            }
+        } finally {
+            resvg.free()
+        }
+        if (Date.now() - started > PLAYGROUND_GIF_TIMEOUT_MS) {
+            throw new Error('GIF export exceeded 45 seconds. Reduce the canvas size or frame count.')
+        }
+    }
+    return {
+        id: request.id,
+        ok: true,
+        gif: gif.finish(),
+        width: prepared.metadata.width,
+        height: prepared.metadata.height,
+        frameCount: frames.length,
     }
 }
 
@@ -262,8 +340,8 @@ const workerScope = self as unknown as PlaygroundWorkerScope
 workerScope.onmessage = async (event: MessageEvent<PlaygroundRenderRequest>) => {
     const request = event.data
     try {
-        const response = await render(request)
-        workerScope.postMessage(response, [response.png])
+        const response = request.exportGif ? await exportGif(request) : await render(request)
+        workerScope.postMessage(response, ['gif' in response ? response.gif : response.png])
     } catch (error) {
         const response: PlaygroundErrorResponse = {
             id: request.id,

@@ -10,6 +10,12 @@ import { mountPreviewTextEditor } from './playground-text-editor'
 import type { PlaygroundTextTarget } from './playground-text-types'
 import type { CropRegion } from './autocrop'
 import type { PlaygroundRenderRequest } from './playground-worker'
+import { PlaygroundHistory, readPlaygroundDraft, savePlaygroundDraft } from './playground-history'
+import type { PlaygroundAnimationMetadata } from './playground-animation'
+import { mountCanvasEditor } from './playground-canvas-editor'
+import type { PlaygroundCanvasItemTarget } from './playground-builder-types'
+import { playgroundBuilderTemplate } from './playground-builder-template'
+import { readPlaygroundProject, writePlaygroundProject, projectFilename } from './playground-project'
 
 interface PlaygroundRenderSuccess {
     id: number
@@ -21,7 +27,20 @@ interface PlaygroundRenderSuccess {
     warnings: string[]
     contentBounds: CropRegion
     textTargets: PlaygroundTextTarget[]
+    canvasItems: PlaygroundCanvasItemTarget[]
+    animation?: PlaygroundAnimationMetadata
 }
+
+interface PlaygroundGifSuccess {
+    id: number
+    ok: true
+    gif: ArrayBuffer
+    width: number
+    height: number
+    frameCount: number
+}
+
+type PlaygroundWorkerSuccess = PlaygroundRenderSuccess | PlaygroundGifSuccess
 
 interface PlaygroundRenderFailure {
     id: number
@@ -29,7 +48,7 @@ interface PlaygroundRenderFailure {
     error: string
 }
 
-type PlaygroundRenderResponse = PlaygroundRenderSuccess | PlaygroundRenderFailure
+type PlaygroundRenderResponse = PlaygroundWorkerSuccess | PlaygroundRenderFailure
 
 interface PlaygroundRenderInput extends Omit<PlaygroundRenderRequest, 'id'> {}
 
@@ -48,19 +67,33 @@ class PlaygroundRenderer {
     private pending: {
         id: number
         reject: (reason: unknown) => void
-        resolve: (value: PlaygroundRenderSuccess) => void
+        resolve: (value: PlaygroundWorkerSuccess) => void
         timeout: number
     } | undefined
     private nextId = 1
     private hasRendered = false
 
     render(input: PlaygroundRenderInput): Promise<PlaygroundRenderSuccess> {
+        return this.request(input).then((output) => {
+            if ('gif' in output) throw new Error('Expected a preview image.')
+            return output
+        })
+    }
+
+    exportGif(input: PlaygroundRenderInput): Promise<PlaygroundGifSuccess> {
+        return this.request(input).then((output) => {
+            if (!('gif' in output)) throw new Error('Expected an animated GIF.')
+            return output
+        })
+    }
+
+    private request(input: PlaygroundRenderInput): Promise<PlaygroundWorkerSuccess> {
         if (this.pending) this.restart(new SupersededRenderError())
 
         const worker = this.worker ?? this.createWorker()
         const id = this.nextId++
         return new Promise((resolve, reject) => {
-            const timeoutMs = this.hasRendered ? RENDER_TIMEOUT_MS : INITIAL_RENDER_TIMEOUT_MS
+            const timeoutMs = input.exportGif ? 60_000 : this.hasRendered ? RENDER_TIMEOUT_MS : INITIAL_RENDER_TIMEOUT_MS
             const timeout = window.setTimeout(() => {
                 this.restart(new Error(`Preview timed out after ${timeoutMs / 1_000} seconds. Worker restarted.`))
             }, timeoutMs)
@@ -251,8 +284,9 @@ function clearPreview(preview: HTMLElement): void {
     preview.replaceChildren()
 }
 
-function renderPreview(preview: HTMLElement, svg: string, width: number, height: number, bounds?: CropRegion, textTargets: PlaygroundTextTarget[] = [], textApi?: Parameters<typeof mountPreviewTextEditor>[4]): void {
+function renderPreview(preview: HTMLElement, svg: string, width: number, height: number, bounds?: CropRegion, textTargets: PlaygroundTextTarget[] = [], textApi?: Parameters<typeof mountPreviewTextEditor>[4], canvasItems: PlaygroundCanvasItemTarget[] = [], canvasApi?: Parameters<typeof mountCanvasEditor>[5]): void {
     clearPreview(preview)
+    const canvasSize = { width, height }
     const displayBounds = bounds ?? { x: 0, y: 0, width, height }
     const textSource = textApi?.getSource()
     if (bounds) {
@@ -279,7 +313,9 @@ function renderPreview(preview: HTMLElement, svg: string, width: number, height:
             viewport.scrollTop = (viewport.scrollHeight - viewport.clientHeight) / 2
         }
         if (textApi && textApi.getSource() === textSource && preview.contains(image)) {
-            previewEditors.set(preview, mountPreviewTextEditor(preview, image, textTargets, displayBounds, textApi))
+            const disposeText = mountPreviewTextEditor(preview, image, textTargets, displayBounds, textApi)
+            const disposeCanvas = canvasApi && canvasItems.length ? mountCanvasEditor(preview, image, canvasItems, displayBounds, canvasSize, canvasApi) : undefined
+            previewEditors.set(preview, () => { disposeText(); disposeCanvas?.() })
         }
     }, { once: true })
     preview.append(image)
@@ -322,62 +358,151 @@ export function mountPlayground(root: HTMLElement): void {
     const elements = requiredElements(root)
     if (!elements) return
     root.dataset.vizmaticPlaygroundMounted = 'true'
-
     const renderer = new PlaygroundRenderer()
     const hashSource = getPlaygroundHashSource()
+    const explicitExample = new URLSearchParams(location.search).has('example')
+    const draftKey = `vizmatic-playground-draft:${location.pathname}`
+    let storage: Storage | undefined
+    try { storage = window.localStorage } catch { /* Editing works without storage. */ }
+    const savedDraft = storage ? readPlaygroundDraft(storage, draftKey) : undefined
+    const componentHash = location.hash.startsWith('#component-') ? location.hash.slice(11) : undefined
+    const draft = !hashSource && !explicitExample && !componentHash ? savedDraft : undefined
+    const startWithBuilder = !hashSource && !draft && !explicitExample && !componentHash && Boolean(root.closest('.playground-page'))
     if (elements.templateSelect) populateTemplateSelect(elements.templateSelect)
-    if (hashSource) elements.source.value = hashSource
-    if (!elements.source.value.trim()) {
-        elements.source.value = findPlaygroundTemplate(elements.templateSelect?.value)?.source ?? playgroundTemplates[0]?.source ?? ''
-    }
-    syncTemplateSelection(elements)
-    updateSourceHighlight(elements)
-
+    if (hashSource || draft) elements.source.value = hashSource ?? draft!.source
+    else if (startWithBuilder) elements.source.value = playgroundBuilderTemplate.source
+    if (!elements.source.value.trim()) elements.source.value = findPlaygroundTemplate(elements.templateSelect?.value)?.source ?? playgroundTemplates[0]?.source ?? ''
+    if (draft) root.dataset.vizmaticPlaygroundBackground = draft.background
+    const history = new PlaygroundHistory(elements.source.value)
+    const undo = root.querySelector<HTMLButtonElement>('#playgroundUndoButton')
+    const redo = root.querySelector<HTMLButtonElement>('#playgroundRedoButton')
+    const draftStatus = root.querySelector<HTMLElement>('#playgroundDraftStatus')
+    const animationPanel = root.querySelector<HTMLElement>('#playgroundAnimation')
+    const playButton = root.querySelector<HTMLButtonElement>('#playgroundPlayButton')
+    const gifButton = root.querySelector<HTMLButtonElement>('#playgroundGifButton')
+    const timeSlider = root.querySelector<HTMLInputElement>('#playgroundTime')
+    const timeLabel = root.querySelector<HTMLOutputElement>('#playgroundTimeLabel')
+    const projectName = root.querySelector<HTMLInputElement>('#playgroundProjectName')
+    const projectFile = root.querySelector<HTMLInputElement>('#playgroundProjectFile')
+    const snap = root.querySelector<HTMLInputElement>('#playgroundSnap')
+    let dirty = Boolean(draft)
+    let draftTimer: number | undefined
     let renderTimer: number | undefined
+    let playbackTimer: number | undefined
+    let playing = false
+    let playbackVersion = 0
+    let playbackStartedAt = 0
+    let playbackOffset = 0
+    let exportingGif = false
+    let animation: PlaygroundAnimationMetadata | undefined
+    let animationTime = 0
     let png: ArrayBuffer | undefined
     let svg: string | undefined
     let previewOutput: PlaygroundRenderSuccess | undefined
     let previewSource = ''
     let renderVersion = 0
-    let theme = getTheme(root)
+    let theme = draft?.theme ?? getTheme(root)
     let explorer: ComponentExplorerController | undefined
-    const loadSharedSource = (source: string, immediate = true) => {
-        elements.source.value = source
-        syncTemplateSelection(elements)
-        updateSourceHighlight(elements)
-        png = undefined
-        svg = undefined
-        if (immediate) {
-            clearPreview(elements.preview)
-            previewOutput = undefined
-        }
-        setControlEnabled(elements.pngDownload, false)
-        setControlEnabled(elements.svgDownload, false)
-        setError(elements, undefined)
-        setStatus(elements, 'loading', 'Rendering shared source…')
-        scheduleRender(immediate)
-        explorer?.sourceChanged()
+
+    function syncHistory() {
+        if (undo) undo.disabled = !history.canUndo
+        if (redo) redo.disabled = !history.canRedo
+    }
+
+    function saveDraft() {
+        if (draftTimer) window.clearTimeout(draftTimer)
+        draftTimer = undefined
+        if (!dirty) return
+        const saved = storage && savePlaygroundDraft(storage, draftKey, {
+            version: 1, source: elements!.source.value, theme,
+            background: root.dataset.vizmaticPlaygroundBackground === 'theme' ? 'theme' : 'transparent',
+            component: location.hash.startsWith('#component-') ? location.hash.slice(11) : undefined,
+            updatedAt: Date.now(),
+        })
+        if (draftStatus) draftStatus.textContent = saved ? 'Draft saved in this browser.' : 'Draft saving is unavailable. Copy the source or save a share link to keep your work.'
+    }
+
+    function scheduleDraft() {
+        if (draftTimer) window.clearTimeout(draftTimer)
+        draftTimer = window.setTimeout(saveDraft, 300)
+    }
+
+    function stopPlayback() {
+        playing = false
+        playbackVersion += 1
+        if (playbackTimer) window.clearTimeout(playbackTimer)
+        playbackTimer = undefined
+        if (playButton) playButton.textContent = 'Play'
+        syncAnimation()
+    }
+
+    function syncAnimation() {
+        if (animationPanel) animationPanel.hidden = !animation
+        if (gifButton) gifButton.disabled = !animation || exportingGif
+        if (timeSlider && animation) { timeSlider.max = String(animation.duration); timeSlider.step = String(1 / animation.fps); timeSlider.value = String(animationTime) }
+        if (timeLabel) timeLabel.value = `${animationTime.toFixed(2)} s`
     }
 
     const scheduleRender = (immediate = false) => {
         clearTextEditor(elements.preview)
+        setStatus(elements, 'loading', 'Rendering locally…')
+        png = undefined
+        svg = undefined
+        setControlEnabled(elements.pngDownload, false)
+        setControlEnabled(elements.svgDownload, false)
         renderVersion += 1
         if (renderTimer) window.clearTimeout(renderTimer)
-        renderTimer = window.setTimeout(() => {
-            renderTimer = undefined
-            void render()
-        }, immediate ? 0 : LIVE_PREVIEW_DELAY_MS)
+        renderTimer = window.setTimeout(() => { renderTimer = undefined; void render() }, immediate ? 0 : LIVE_PREVIEW_DELAY_MS)
+    }
+
+    function clearProjectLink() {
+        if (getPlaygroundHashSource() === undefined && !location.hash.startsWith('#component-')) return
+        const url = new URL(location.href)
+        url.hash = ''
+        window.history.replaceState(null, '', url)
+    }
+
+    function syncSourceLink(source: string) {
+        const linkedSource = getPlaygroundHashSource()
+        if (linkedSource !== undefined && linkedSource !== source) clearProjectLink()
+    }
+
+    const loadSharedSource = (source: string, immediate = true, options: { history?: boolean; group?: string } = {}) => {
+        stopPlayback()
+        animation = undefined
+        animationTime = 0
+        syncAnimation()
+        elements.source.value = source
+        syncSourceLink(source)
+        if (options.history === false) history.reset(source)
+        else { history.record(source, options.group); dirty = true; scheduleDraft() }
+        syncHistory()
+        syncTemplateSelection(elements)
+        updateSourceHighlight(elements)
+        png = undefined
+        svg = undefined
+        if (immediate) { clearPreview(elements.preview); previewOutput = undefined }
+        setControlEnabled(elements.pngDownload, false)
+        setControlEnabled(elements.svgDownload, false)
+        setError(elements, undefined)
+        setStatus(elements, 'loading', 'Rendering locally…')
+        scheduleRender(immediate)
+        explorer?.sourceChanged()
     }
 
     const displayPreview = () => {
         if (!previewOutput || elements.source.value !== previewSource) return
         renderPreview(elements.preview, previewOutput.svg, previewOutput.width, previewOutput.height, root.dataset.previewZoom === 'content' ? previewOutput.contentBounds : undefined, previewOutput.textTargets, {
             getSource: () => elements.source.value,
-            saveSource: (source) => {
-                loadSharedSource(source)
-                elements.viewport?.focus({ preventScroll: true })
-            },
+            saveSource: (source) => { loadSharedSource(source); elements.viewport?.focus({ preventScroll: true }) },
             onError: (message) => { setError(elements, message) },
+            selectText: (start, end) => explorer?.selectText(start, end),
+        }, previewOutput.canvasItems, {
+            getSource: () => elements.source.value,
+            select: (start) => explorer?.selectInstanceByStart(start),
+            setProps: (start, values, group) => explorer?.setInstanceProps(start, values, group) ?? false,
+            snap: () => snap?.checked ?? true,
+            selectedStart: () => explorer?.getSelectedInstance()?.start,
         })
     }
 
@@ -389,19 +514,21 @@ export function mountPlayground(root: HTMLElement): void {
         setStatus(elements, 'loading', 'Rendering locally…')
         setError(elements, undefined)
         try {
-            const output = await renderer.render({
-                source,
-                theme,
-                background: getBackground(root),
-            })
+            const output = await renderer.render({ source, theme, background: getBackground(root), time: animationTime })
             if (version !== renderVersion) return
             png = output.png
             svg = output.svg
             previewOutput = output
             previewSource = source
+            animation = output.animation
+            if (animation) animationTime = Math.min(animationTime, animation.duration)
+            else stopPlayback()
+            syncAnimation()
             displayPreview()
             const textHint = root.querySelector<HTMLElement>('#playgroundTextHint')
-            if (textHint) textHint.textContent = output.textTargets.length
+            if (textHint) textHint.textContent = output.canvasItems.length
+                ? 'Drag items to move. Use the corner handle to resize. Double-click text to edit. Arrow keys nudge focused items.'
+                : output.textTargets.length
                 ? 'Double-click text to edit. Enter saves. Escape cancels. You can also focus a label and press Enter.'
                 : 'Open the TSX below to edit the text in this scene.'
             if (elements.dimensions) elements.dimensions.textContent = `${output.width} × ${output.height}`
@@ -412,110 +539,127 @@ export function mountPlayground(root: HTMLElement): void {
             setStatus(elements, 'ready', output.warnings[0] ?? `Ready · ${output.width}×${output.height}`)
         } catch (error) {
             if (error instanceof SupersededRenderError || version !== renderVersion) return
-            png = undefined
-            svg = undefined
-            previewOutput = undefined
+            stopPlayback()
+            png = undefined; svg = undefined; previewOutput = undefined; animation = undefined
+            syncAnimation()
             clearPreview(elements.preview)
-            const message = error instanceof Error ? error.message : String(error)
             setStatus(elements, 'error', 'Error')
-            setError(elements, message)
+            setError(elements, error instanceof Error ? error.message : String(error))
         }
     }
 
+    async function advanceAnimation(version: number) {
+        if (!playing || version !== playbackVersion || !animation) return
+        const frameStartedAt = performance.now()
+        animationTime = (playbackOffset + (frameStartedAt - playbackStartedAt) / 1000) % animation.duration
+        await render()
+        if (playing && version === playbackVersion && animation) playbackTimer = window.setTimeout(() => { void advanceAnimation(version) }, Math.max(0, 1000 / animation.fps - (performance.now() - frameStartedAt)))
+    }
+
+    const applyHistory = (direction: 'undo' | 'redo') => {
+        const source = direction === 'undo' ? history.undo() : history.redo()
+        if (source === undefined) return
+        stopPlayback(); animation = undefined; animationTime = 0; syncAnimation()
+        elements.source.value = source
+        syncSourceLink(source)
+        dirty = true; scheduleDraft(); syncHistory(); syncTemplateSelection(elements); updateSourceHighlight(elements)
+        explorer?.sourceChanged(); scheduleRender(true)
+    }
+    undo?.addEventListener('click', () => applyHistory('undo'))
+    redo?.addEventListener('click', () => applyHistory('redo'))
+    root.addEventListener('keydown', (event) => {
+        if (event.defaultPrevented || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return
+        if (event.target instanceof Element && event.target.closest('.playground-text-input')) return
+        const key = event.key.toLowerCase()
+        if (key !== 'z' && key !== 'y') return
+        event.preventDefault()
+        applyHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo')
+    })
     elements.source.addEventListener('input', () => {
-        syncTemplateSelection(elements)
-        updateSourceHighlight(elements)
-        explorer?.sourceChanged()
-        scheduleRender()
+        stopPlayback(); animation = undefined; animationTime = 0; syncAnimation()
+        syncSourceLink(elements.source.value)
+        history.record(elements.source.value, 'typing')
+        dirty = true; scheduleDraft(); syncHistory(); syncTemplateSelection(elements); updateSourceHighlight(elements)
+        explorer?.sourceChanged(); scheduleRender()
     })
     elements.source.addEventListener('scroll', () => syncSourceHighlightScroll(elements))
-    elements.run?.addEventListener('click', (event) => {
-        event.preventDefault()
-        scheduleRender(true)
-    })
-    elements.pngDownload?.addEventListener('click', (event) => {
-        event.preventDefault()
-        if (png) download('vizmatic.png', png, 'image/png')
-    })
-    elements.svgDownload?.addEventListener('click', (event) => {
-        event.preventDefault()
-        if (svg) download('vizmatic.svg', svg, 'image/svg+xml')
-    })
+    elements.run?.addEventListener('click', (event) => { event.preventDefault(); stopPlayback(); scheduleRender(true) })
+    elements.pngDownload?.addEventListener('click', (event) => { event.preventDefault(); if (png) download('vizmatic.png', png, 'image/png') })
+    elements.svgDownload?.addEventListener('click', (event) => { event.preventDefault(); if (svg) download('vizmatic.svg', svg, 'image/svg+xml') })
     elements.share?.addEventListener('click', (event) => {
-        event.preventDefault()
-        setPlaygroundHashSource(elements.source.value)
+        event.preventDefault(); setPlaygroundHashSource(elements.source.value)
         const shareUrl = window.location.href
-        if (!navigator.clipboard) {
-            setStatus(elements, 'ready', 'Share link ready in address bar.')
-            return
-        }
-        void navigator.clipboard.writeText(shareUrl)
-            .then(() => setStatus(elements, 'ready', 'Share link copied.'))
-            .catch(() => setStatus(elements, 'ready', 'Share link ready in address bar.'))
+        if (!navigator.clipboard) { setStatus(elements, 'ready', 'Share link ready in address bar.'); return }
+        void navigator.clipboard.writeText(shareUrl).then(() => setStatus(elements, 'ready', 'Share link copied.')).catch(() => setStatus(elements, 'ready', 'Share link ready in address bar.'))
     })
     const copyLabel = elements.copy?.textContent ?? 'Copy source'
     elements.copy?.addEventListener('click', async (event) => {
         event.preventDefault()
-        try {
-            await copyText(elements.source.value)
-            if (elements.copy) elements.copy.textContent = 'Copied'
-            setStatus(elements, 'ready', 'Source copied.')
-        } catch {
-            if (elements.copy) elements.copy.textContent = 'Copy failed'
-            setStatus(elements, 'error', 'Could not copy source.')
-        }
-        window.setTimeout(() => {
-            if (elements.copy) elements.copy.textContent = copyLabel
-        }, 1_600)
+        try { await copyText(elements.source.value); if (elements.copy) elements.copy.textContent = 'Copied'; setStatus(elements, 'ready', 'Source copied.') }
+        catch { if (elements.copy) elements.copy.textContent = 'Copy failed'; setStatus(elements, 'error', 'Could not copy source.') }
+        window.setTimeout(() => { if (elements.copy) elements.copy.textContent = copyLabel }, 1600)
     })
-
     for (const control of findElements<HTMLElement>(root, '[data-vizmatic-playground-template]')) {
-        control.addEventListener('click', () => {
-            const template = findPlaygroundTemplate(control.dataset.vizmaticPlaygroundTemplate)
-            if (!template) return
-            elements.source.value = template.source
-            syncTemplateSelection(elements)
-            updateSourceHighlight(elements)
-            explorer?.sourceChanged()
-            scheduleRender(true)
-        })
+        control.addEventListener('click', () => { const template = findPlaygroundTemplate(control.dataset.vizmaticPlaygroundTemplate); if (template) loadSharedSource(template.source) })
     }
     for (const control of findElements<HTMLSelectElement>(root, '#playgroundTemplate, select[data-vizmatic-playground-template]')) {
-        control.addEventListener('change', () => {
-            const template = findPlaygroundTemplate(control.value)
-            if (!template) return
-            elements.source.value = template.source
-            updateSourceHighlight(elements)
-            explorer?.sourceChanged()
-            scheduleRender(true)
-        })
+        control.addEventListener('change', () => { const template = findPlaygroundTemplate(control.value); if (template) loadSharedSource(template.source) })
     }
+    function changeTheme(next: PlaygroundTheme) { stopPlayback(); theme = next; syncThemeControls(root, theme); clearProjectLink(); dirty = true; scheduleDraft(); scheduleRender(true) }
     for (const control of findElements<HTMLElement>(root, '[data-vizmatic-theme], [data-playground-theme]')) {
-        control.addEventListener('click', () => {
-            theme = control.dataset.vizmaticTheme === 'light' || control.dataset.playgroundTheme === 'light' ? 'light' : 'dark'
-            syncThemeControls(root, theme)
-            scheduleRender(true)
-        })
+        control.addEventListener('click', () => changeTheme(control.dataset.vizmaticTheme === 'light' || control.dataset.playgroundTheme === 'light' ? 'light' : 'dark'))
     }
-    for (const control of findElements<HTMLSelectElement>(root, 'select[data-vizmatic-playground-theme]')) {
-        control.addEventListener('change', () => {
-            theme = control.value === 'light' ? 'light' : 'dark'
-            syncThemeControls(root, theme)
-            scheduleRender(true)
-        })
-    }
+    for (const control of findElements<HTMLSelectElement>(root, 'select[data-vizmatic-playground-theme]')) control.addEventListener('change', () => changeTheme(control.value === 'light' ? 'light' : 'dark'))
     root.addEventListener('vizmatic-playground-theme', (event) => {
         if (!(event instanceof CustomEvent)) return
-        const nextTheme = event.detail?.theme
-        if (nextTheme !== 'dark' && nextTheme !== 'light') return
-        theme = nextTheme
-        syncThemeControls(root, theme)
-        scheduleRender(true)
+        if (event.detail?.theme === 'dark' || event.detail?.theme === 'light') changeTheme(event.detail.theme)
     })
-    root.querySelector<HTMLSelectElement>('#explorerBackground')?.addEventListener('change', (event) => {
-        root.dataset.vizmaticPlaygroundBackground = (event.target as HTMLSelectElement).value
-        scheduleRender(true)
+    const backgroundSelect = root.querySelector<HTMLSelectElement>('#explorerBackground')
+    root.querySelector('#playgroundNewCanvas')?.addEventListener('click', () => {
+        clearProjectLink()
+        if (projectName) projectName.value = 'Untitled visual'
+        root.dataset.previewZoom = 'fit'
+        const zoom = root.querySelector<HTMLSelectElement>('#explorerZoom')
+        if (zoom) zoom.value = 'fit'
+        loadSharedSource(playgroundBuilderTemplate.source)
     })
+    root.querySelector('#playgroundSaveProject')?.addEventListener('click', () => {
+        try {
+            const name = projectName?.value.trim() || 'Untitled visual'
+            download(projectFilename(name), writePlaygroundProject({ format: 'vizmatic', version: 1, name,
+                source: elements.source.value, theme, background: root.dataset.vizmaticPlaygroundBackground === 'theme' ? 'theme' : 'transparent' }), 'application/json')
+            setStatus(elements, 'ready', 'Project saved.')
+        } catch (error) { setError(elements, error instanceof Error ? error.message : String(error)) }
+    })
+    root.querySelector('#playgroundOpenProject')?.addEventListener('click', () => projectFile?.click())
+    projectFile?.addEventListener('change', async () => {
+        const file = projectFile.files?.[0]
+        if (!file) return
+        try {
+            if (file.size > 600_000) throw new Error('Project files must be smaller than 600 KB.')
+            const project = readPlaygroundProject(await file.text())
+            theme = project.theme
+            syncThemeControls(root, theme)
+            root.dataset.vizmaticPlaygroundBackground = project.background
+            if (backgroundSelect) backgroundSelect.value = project.background
+            if (projectName) projectName.value = project.name
+            clearProjectLink()
+            loadSharedSource(project.source)
+        } catch (error) { setError(elements, error instanceof Error ? error.message : String(error)) }
+        finally { projectFile.value = '' }
+    })
+    const fullscreen = root.querySelector<HTMLButtonElement>('#playgroundFullscreen')
+    fullscreen?.addEventListener('click', async () => {
+        try {
+            if (document.fullscreenElement === root) await document.exitFullscreen()
+            else await root.requestFullscreen()
+        } catch { setError(elements, 'Fullscreen is unavailable in this browser.') }
+    })
+    document.addEventListener('fullscreenchange', () => {
+        if (fullscreen) { fullscreen.textContent = document.fullscreenElement === root ? 'Exit fullscreen' : 'Fullscreen'; fullscreen.setAttribute('aria-pressed', String(document.fullscreenElement === root)) }
+    })
+    if (backgroundSelect && draft) backgroundSelect.value = draft.background
+    backgroundSelect?.addEventListener('change', () => { stopPlayback(); root.dataset.vizmaticPlaygroundBackground = backgroundSelect.value; clearProjectLink(); dirty = true; scheduleDraft(); scheduleRender(true) })
     root.querySelector<HTMLSelectElement>('#explorerZoom')?.addEventListener('change', (event) => {
         root.dataset.previewZoom = (event.target as HTMLSelectElement).value
         displayPreview()
@@ -524,20 +668,38 @@ export function mountPlayground(root: HTMLElement): void {
             elements.viewport.scrollTop = root.dataset.previewZoom === 'actual' ? (elements.viewport.scrollHeight - elements.viewport.clientHeight) / 2 : 0
         }
     })
-    window.addEventListener('hashchange', () => {
-        const source = getPlaygroundHashSource()
-        if (!source || source === elements.source.value) return
-        loadSharedSource(source)
+    playButton?.addEventListener('click', () => {
+        if (playing) { stopPlayback(); return }
+        if (!animation || exportingGif) return
+        playing = true; playbackStartedAt = performance.now(); playbackOffset = animationTime; playButton.textContent = 'Pause'; void advanceAnimation(playbackVersion)
     })
-    window.addEventListener('pagehide', () => {
-        clearPreview(elements.preview)
-        renderer.dispose()
-    }, { once: true })
-
-    syncThemeControls(root, theme)
-    explorer = mountComponentExplorer(root, { getSource: () => elements.source.value, loadSource: loadSharedSource })
-    if (hashSource) loadSharedSource(hashSource)
-    else if (!explorer) scheduleRender(true)
+    timeSlider?.addEventListener('input', () => { const time = timeSlider.valueAsNumber; stopPlayback(); animationTime = time; syncAnimation(); scheduleRender(true) })
+    gifButton?.addEventListener('click', async () => {
+        if (!animation || exportingGif) return
+        stopPlayback()
+        const version = renderVersion
+        exportingGif = true; syncAnimation()
+        setStatus(elements, 'loading', 'Encoding GIF locally…')
+        setError(elements, undefined)
+        try {
+            const output = await renderer.exportGif({ source: elements.source.value, theme, background: getBackground(root), exportGif: animation })
+            if (version === renderVersion) {
+                download('vizmatic.gif', output.gif, 'image/gif')
+                await render()
+                if (version === renderVersion && png) setStatus(elements, 'ready', `GIF exported · ${output.frameCount} frames`)
+            }
+        } catch (error) {
+            if (!(error instanceof SupersededRenderError) && version === renderVersion) { setStatus(elements, 'error', 'GIF export failed'); setError(elements, error instanceof Error ? error.message : String(error)) }
+        } finally { exportingGif = false; syncAnimation() }
+    })
+    window.addEventListener('hashchange', () => { const source = getPlaygroundHashSource(); if (source && source !== elements.source.value) loadSharedSource(source) })
+    window.addEventListener('pagehide', () => { saveDraft(); stopPlayback(); clearPreview(elements.preview); renderer.dispose() })
+    window.addEventListener('pageshow', (event) => { if (event.persisted) scheduleRender(true) })
+    syncThemeControls(root, theme); syncHistory(); syncTemplateSelection(elements); updateSourceHighlight(elements)
+    if (draftStatus) draftStatus.textContent = draft ? 'Your draft was restored from this browser.' : 'Edits are saved in this browser. Shared links open their own source.'
+    explorer = mountComponentExplorer(root, { getSource: () => elements.source.value, loadSource: loadSharedSource, preserveSource: Boolean(hashSource || draft || explicitExample || startWithBuilder) })
+    if (hashSource || draft || startWithBuilder) scheduleRender(true)
+    else if (!explorer && !explicitExample) scheduleRender(true)
 }
 
 export function mountPlaygrounds(): void {

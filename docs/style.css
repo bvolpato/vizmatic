@@ -777,6 +777,21 @@ pre.shiki code {
 .explorer-control input:disabled, .explorer-control select:disabled { opacity: .5; }
 .explorer-controls-note { margin-top: 12px; font-size: 11px; color: var(--muted); }
 .explorer-controls-note:empty { display: none; }
+.explorer-draft-status { margin: 0; padding: 8px 24px; color: var(--muted); font-size: 11px; border-top: 1px solid var(--border); }
+.explorer-scene-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 16px 0; }
+.explorer-scene-tools label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 11px; color: var(--muted); }
+.explorer-scene-tools select { max-width: 100%; height: 36px; min-width: 0; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); }
+.explorer-instance-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.explorer-animation { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+.explorer-animation[hidden] { display: none; }
+.explorer-animation input { flex: 1; min-width: 100px; accent-color: var(--accent-solid); }
+.explorer-animation output { font: 10px "JetBrains Mono", monospace; }
+@media (max-width: 600px) {
+  .explorer-scene-tools > label { width: 100%; }
+  .explorer-scene-tools select { width: 100%; }
+  .explorer-animation { padding: 12px 16px; }
+  .explorer-draft-status { padding: 8px 16px; }
+}
 .explorer-code { border-top: 1px solid var(--border); }
 .explorer-code > summary { padding: 16px 24px; cursor: pointer; font-size: 12px; font-weight: 600; }
 .explorer-code > summary > span { color: var(--faint); font-size: 10px; font-weight: 400; margin-left: 18px; }
@@ -867,3 +882,43 @@ pre.shiki code {
   .search-dialog-heading { padding: 16px; } .search-dialog-heading h2 { font-size: 15px; } .search-help { gap: 16px; font-size: 9px; }
 }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+.explorer-project-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--border); }
+.explorer-project-toolbar > label { flex: 1; min-width: 120px; }
+.explorer-project-toolbar input[type="text"] { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
+.explorer-project-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.explorer-snap { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.explorer-snap input { accent-color: var(--accent-solid); }
+.component-explorer:fullscreen { overflow: auto; border-radius: 0; background: var(--bg); }
+.component-explorer:fullscreen .explorer-preview { grid-template-rows: 38px minmax(380px, 65vh) auto; }
+.playground-text-overlay { z-index: 2; }
+.playground-canvas-overlay { position: absolute; inset: 0; pointer-events: none; }
+.playground-canvas-item { position: absolute; border: 1px solid transparent; pointer-events: none; }
+.playground-canvas-item:hover, .playground-canvas-item.selected, .playground-canvas-item:focus-within { border-color: var(--accent); }
+.playground-canvas-move { position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; border: 0; padding: 0; background: transparent; pointer-events: auto; cursor: grab; touch-action: none; }
+.playground-canvas-move:active { cursor: grabbing; }
+.playground-canvas-move:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.playground-canvas-resize { position: absolute; right: -7px; bottom: -7px; z-index: 3; width: 16px; height: 16px; min-height: 0; padding: 0; border: 2px solid var(--bg); border-radius: 3px; background: var(--accent); pointer-events: auto; cursor: nwse-resize; touch-action: none; opacity: 0; }
+.playground-canvas-item:hover .playground-canvas-resize, .playground-canvas-item.selected .playground-canvas-resize, .playground-canvas-item:focus-within .playground-canvas-resize { opacity: 1; }
+.explorer-data { margin-top: 20px; min-width: 0; }
+.explorer-data h5 { margin: 0 0 12px; font-size: 12px; }
+.explorer-data-row { min-width: 0; margin: 0 0 10px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.explorer-data-row legend { padding: 0 6px; font-size: 11px; color: var(--muted); }
+.explorer-data-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.explorer-data-fields label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 11px; color: var(--muted); }
+.explorer-data input, .explorer-data textarea { min-width: 0; width: 100%; padding: 8px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 12px; }
+.explorer-data-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.explorer-data-json { margin: 12px 0; font-size: 12px; }
+.explorer-data-json summary { cursor: pointer; color: var(--muted); }
+.explorer-data-json textarea { display: block; min-height: 180px; margin-top: 10px; font: 11px "JetBrains Mono", monospace; resize: vertical; }
+.explorer-data-error { margin-top: 8px; color: var(--accent); font-size: 12px; }
+@media (max-width: 600px) {
+  .explorer-project-toolbar { padding: 12px 16px; }
+  .explorer-project-toolbar > label { flex-basis: 100%; }
+  .playground-canvas-resize { width: 24px; height: 24px; right: -12px; bottom: -12px; opacity: 1; }
+}
+.explorer-data h4 { margin: 0 0 12px; font-size: 12px; }
+.explorer-data button { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 11px; cursor: pointer; }
+.explorer-data button:hover { border-color: var(--accent); }
+.explorer-data button:disabled { opacity: .5; cursor: default; }
+.explorer-data-json > button, .explorer-data-row > button { margin-top: 10px; }

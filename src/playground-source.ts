@@ -1,4 +1,5 @@
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
+import { validatePlaygroundAnimation, type PlaygroundAnimationMetadata } from './playground-animation'
 
 export type PlaygroundTheme = 'dark' | 'light'
 export type PlaygroundPreset = 'default' | 'engineering'
@@ -8,6 +9,7 @@ export interface PlaygroundMetadata {
     height: number
     preset: PlaygroundPreset
     warnings: string[]
+    animation?: PlaygroundAnimationMetadata
 }
 
 export interface PreparedPlaygroundSource {
@@ -49,6 +51,16 @@ function validDimension(value: number, name: 'width' | 'height'): number {
     return value
 }
 
+export function readAnimationLine(line: string): { name: 'animationDuration' | 'animationFps'; value: number } | undefined {
+    const match = line.match(/^\s*(?:\/\/\s*)?(?:export\s+)?(?:(?:const|let|var)\s+)?(animationDuration|animationFps)\s*[:=]\s*(.*?)\s*;?\s*(?:\/\/.*)?$/)
+    if (!match) return undefined
+    const expression = match[2].replace(/;\s*$/, '').trim()
+    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(expression)) {
+        throw new Error(`${match[1]} must be a numeric literal.`)
+    }
+    return { name: match[1] as 'animationDuration' | 'animationFps', value: Number(expression) }
+}
+
 /**
  * Mirrors CLI bare-frame metadata without allowing browser imports. User code
  * stays in a worker, where it is transpiled and evaluated for one render.
@@ -57,6 +69,8 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
     let width = DEFAULT_PLAYGROUND_WIDTH
     let height = DEFAULT_PLAYGROUND_HEIGHT
     let preset: PlaygroundPreset = 'default'
+    let animationDuration: number | undefined
+    let animationFps: number | undefined
     const warnings: string[] = []
     const body = source.replace(/^\uFEFF/, '')
     if (/^\s*import\s/m.test(body)) {
@@ -101,6 +115,13 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
             continue
         }
 
+        const animation = metadataPreamble ? readAnimationLine(line) : undefined
+        if (animation) {
+            if (animation.name === 'animationDuration') animationDuration = animation.value
+            else animationFps = animation.value
+            continue
+        }
+
         if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
         setupLines.push(line)
     }
@@ -110,8 +131,14 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
 
     if (!jsx) throw new Error('Add a root Vizmatic JSX element.')
 
+    if (animationFps !== undefined && animationDuration === undefined) {
+        throw new Error('animationFps requires animationDuration in the metadata preamble.')
+    }
+    const animation = animationDuration === undefined ? undefined
+        : validatePlaygroundAnimation({ duration: animationDuration, fps: animationFps ?? 10 })
+
     return {
-        metadata: { width, height, preset, warnings },
+        metadata: { width, height, preset, warnings, ...(animation ? { animation } : {}) },
         setup,
         jsx,
     }

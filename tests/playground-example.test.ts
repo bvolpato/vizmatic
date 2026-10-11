@@ -2,6 +2,7 @@ import React from 'react'
 import { transform } from 'sucrase'
 import { describe, expect, it } from 'vitest'
 import { getThemeColors, Scene } from 'vizmatic'
+import { createPlaygroundApi } from '../src/playground-api'
 import { toPlaygroundExample } from '../scripts/playground-example'
 import { preparePlaygroundSource } from '../src/playground-source'
 
@@ -103,5 +104,33 @@ export default create('dark')
         expect(toPlaygroundExample(snippet)).toBe(snippet)
         expect(() => toPlaygroundExample(`import x from 'https://example.com/x.js'\n${snippet}`))
             .toThrow('can only import from "vizmatic" or "react"')
+    })
+
+    it('adapts a literal timeline into time-driven browser source', () => {
+        const source = `import { defineAnimation, hold, tween, Scene } from 'vizmatic'
+export const width = 420
+export const height = 240
+export function create(theme) { return <Scene title="Static" /> }
+export function createAnimation(theme) {
+  return defineAnimation({
+    initial: { progress: 0 },
+    timeline: [hold(200), tween({ progress: 1 }, { duration: 800 })],
+    fps: 20,
+    render: (state, frame) => <Scene title={String(state.progress)} subtitle={String(frame.time)} />,
+  })
+}
+export default create('dark')`
+        const prepared = preparePlaygroundSource(toPlaygroundExample(source))
+        expect(prepared.metadata.animation).toEqual({ duration: 1, fps: 10 })
+        const compiled = transform(`const render = () => { ${prepared.setup}\nreturn (${prepared.jsx}); }; return render();`, {
+            transforms: ['typescript', 'jsx'], jsxPragma: 'React.createElement',
+        }).code
+        const c = getThemeColors('dark')
+        const api = createPlaygroundApi(c)
+        const render = Function('React', 'c', 't', ...Object.keys(api), compiled)
+        const at = (time: number) => fragmentChild(render(React, c, time, ...Object.values(api)))
+        expect((at(0).props as { title: string }).title).toBe('0')
+        expect((at(0.6).props as { title: string }).title).toBe('0.5')
+        expect((at(0.6).props as { subtitle: string }).subtitle).toBe('600')
     })
 })

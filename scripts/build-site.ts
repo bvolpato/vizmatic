@@ -88,7 +88,7 @@ function renderComponentItems(category: ComponentCatalogCategory): string {
 const explorerTemplate = await readFile('docs/component-explorer.template.html', 'utf8')
 const explorerChoices = componentCatalog.map((category) => `<section class="explorer-choice-group" data-explorer-category="${category.id}"><h4>${encodeHtml(category.label)}</h4>${category.components.map((component) => `<button type="button" id="component-${component.name}" data-explore-component="${component.name}" data-explorer-search="${encodeHtml((component.name + ' ' + component.description + ' ' + category.label).toLowerCase())}" aria-pressed="false" title="${encodeHtml(component.description)}"><span>${component.name}</span><span aria-hidden="true">↗</span></button>`).join('')}</section>`).join('')
 const explorerOptions = '<option value="custom" disabled>Custom scene</option>' + componentCatalog.map((category) => `<optgroup label="${encodeHtml(category.label)}">${category.components.map((component) => `<option value="${component.name}">${component.name}</option>`).join('')}</optgroup>`).join('')
-const explorer = explorerTemplate.replace('{{COMPONENT_CHOICES}}', () => explorerChoices).replace('{{COMPONENT_OPTIONS}}', () => explorerOptions)
+const explorer = explorerTemplate.replace('{{COMPONENT_CHOICES}}', () => explorerChoices).replaceAll('{{COMPONENT_OPTIONS}}', () => explorerOptions)
 
 function renderComponentCatalog(includePreviews = true): string {
     return componentCatalog.map((category) => {

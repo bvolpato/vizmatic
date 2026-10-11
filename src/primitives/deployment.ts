@@ -7,6 +7,7 @@ import {
     type GraphDiagramNode,
     type GraphDiagramProps,
     type DiagramIconDefinition,
+    type GraphPortSide,
 } from './diagrams'
 import type { ThemeColors, ToneName } from '../theme'
 import type { IconName } from './layout'
@@ -63,6 +64,8 @@ export interface DeploymentPort {
     protocol?: string
     label?: string
     direction?: DeploymentPortDirection
+    side?: GraphPortSide
+    offset?: number
 }
 
 export type DeploymentPortInput = DeploymentPort | string | number
@@ -79,7 +82,7 @@ export interface DeploymentBoundary {
 }
 
 /** A typed service, workload, host, or external endpoint. */
-export interface DeploymentNode extends Omit<GraphDiagramNode, 'label' | 'detail' | 'group' | 'icon'> {
+export interface DeploymentNode extends Omit<GraphDiagramNode, 'label' | 'detail' | 'group' | 'icon' | 'ports'> {
     id: string
     label: React.ReactNode
     detail?: React.ReactNode
@@ -92,7 +95,7 @@ export interface DeploymentNode extends Omit<GraphDiagramNode, 'label' | 'detail
 export type DeploymentConnectionKind = 'ingress' | 'egress' | 'internal' | 'cross-boundary'
 
 /** A typed network relationship between two deployment nodes. */
-export interface DeploymentConnection extends Omit<GraphDiagramEdge, 'from' | 'to' | 'label' | 'kind' | 'style' | 'arrow'> {
+export interface DeploymentConnection extends Omit<GraphDiagramEdge, 'from' | 'to' | 'label' | 'kind' | 'style' | 'arrow' | 'fromPort' | 'toPort'> {
     id?: string
     from: string
     to: string
@@ -120,6 +123,8 @@ interface DeploymentSpec {
     boundaries?: DeploymentBoundary[]
     connections?: DeploymentConnection[]
     ariaLabel?: string
+    direction?: GraphDiagramProps['direction']
+    routing?: GraphDiagramProps['routing']
 }
 
 interface CompiledDeployment {
@@ -404,6 +409,9 @@ function compileDeployment(spec: DeploymentSpec): CompiledDeployment {
     const boundaries = spec.boundaries ?? []
     const connections = spec.connections ?? []
     validateDeploymentSpec(boundaries, spec.nodes, connections)
+    const anchorPorts = spec.routing != null && spec.routing !== 'dagre'
+    const incomingSide: GraphPortSide = spec.direction === 'TB' ? 'top' : spec.direction === 'BT' ? 'bottom' : spec.direction === 'RL' ? 'right' : 'left'
+    const outgoingSide: GraphPortSide = spec.direction === 'TB' ? 'bottom' : spec.direction === 'BT' ? 'top' : spec.direction === 'RL' ? 'left' : 'right'
 
     const groups: GraphDiagramGroup[] = boundaries.map((boundary) => ({
         id: boundary.id,
@@ -435,6 +443,16 @@ function compileDeployment(spec: DeploymentSpec): CompiledDeployment {
             group: node.boundary,
             icon: node.icon ?? nodeKindIcons[kind],
             iconSize: node.iconSize,
+            ports: anchorPorts ? nodePorts.map((port, index) => {
+                const incoming = typeof port === 'object' ? port.direction === 'ingress' : false
+                const targetOnly = connections.some((connection) => connection.to === node.id && String(connection.toPort) === portIdentity(port))
+                    && !connections.some((connection) => connection.from === node.id && String(connection.fromPort) === portIdentity(port))
+                return {
+                    id: portIdentity(port),
+                    side: typeof port === 'object' && port.side != null ? port.side : incoming || targetOnly ? incomingSide : outgoingSide,
+                    offset: typeof port === 'object' && port.offset != null ? port.offset : (index + 1) / (nodePorts.length + 1),
+                }
+            }) : undefined,
         }
     })
 
@@ -460,6 +478,10 @@ function compileDeployment(spec: DeploymentSpec): CompiledDeployment {
             label: connectionLabel(connection, sourcePort ?? fallbackFromPort, targetPort ?? fallbackToPort),
             href: connection.href,
             title: connection.title,
+            fromPort: anchorPorts && fromReference != null ? String(fromReference) : undefined,
+            toPort: anchorPorts && toReference != null ? String(toReference) : undefined,
+            fromSide: connection.fromSide,
+            toSide: connection.toSide,
         }
     })
 
@@ -485,7 +507,7 @@ export function DeploymentDiagram({
     ariaLabel = 'Deployment diagram',
     ...graphProps
 }: DeploymentDiagramProps): React.ReactElement {
-    const compiled = compileDeployment({ nodes, boundaries, connections, ariaLabel })
+    const compiled = compileDeployment({ nodes, boundaries, connections, ariaLabel, direction: graphProps.direction, routing: graphProps.routing })
     return GraphDiagram({
         ...graphProps,
         c,

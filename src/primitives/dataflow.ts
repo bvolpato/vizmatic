@@ -94,6 +94,8 @@ export interface DataflowDiagramProps extends DataflowSpec {
     nodeGap?: number
     rankGap?: number
     edgeGap?: number
+    routing?: GraphDiagramProps['routing']
+    routingClearance?: GraphDiagramProps['routingClearance']
     sizing?: GraphDiagramProps['sizing']
     iconSize?: number
 }
@@ -321,6 +323,8 @@ export function DataflowDiagram({
     nodeGap,
     rankGap,
     edgeGap,
+    routing,
+    routingClearance,
     sizing,
     iconSize,
 }: DataflowDiagramProps): React.ReactElement {
@@ -346,6 +350,8 @@ export function DataflowDiagram({
         nodeGap,
         rankGap,
         edgeGap,
+        routing,
+        routingClearance,
         sizing,
         iconSize,
     })

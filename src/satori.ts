@@ -1,4 +1,5 @@
 import * as satoriModule from 'satori'
+import { renderWithCanvasChartFit } from './canvas-chart-fit'
 
 export type { Font, SatoriNode } from 'satori'
 
@@ -20,4 +21,5 @@ function resolveSatori(api: unknown): SatoriFn {
     throw new Error('satori export could not be resolved')
 }
 
-export const satori = resolveSatori(satoriModule)
+const renderSatori = resolveSatori(satoriModule)
+export const satori: SatoriFn = (element, options) => renderWithCanvasChartFit(renderSatori, element, options)

@@ -3,7 +3,7 @@ const baseUrl = 'https://bvolpato.github.io/vizmatic/'
 export const sitePages = [
     { file: 'index.html', title: 'Vizmatic | Your ideas, rendered', description: 'Compose diagrams, charts, and animated visuals in TSX. Explore runnable examples, render locally, or give your coding agent the Vizmatic skill.' },
     { file: 'components.html', title: 'Components | Vizmatic', description: 'Choose a Vizmatic component and see it render. Explore live examples, change visual settings, edit the TSX, and download the result.' },
-    { file: 'playground.html', title: 'Playground | Vizmatic', description: 'Explore Vizmatic components with a live preview and visual controls. Edit TSX, switch themes, share source, and download PNG or SVG.' },
+    { file: 'playground.html', title: 'Builder | Vizmatic', description: 'Build diagrams and charts on an editable canvas. Arrange components, edit data, route connectors, save projects, and export PNG, SVG, or GIF.' },
     { file: 'agents.html', title: 'For agents | Vizmatic', description: 'Install the Vizmatic skill, use a verified render workflow, and discover machine-readable instructions and runnable component examples.' },
     { file: 'benchmarks.html', title: 'Benchmarks | Vizmatic', description: 'Inspect reproducible Vizmatic render time, process memory, environment details, and automated example-check results.' },
 ]
@@ -46,7 +46,7 @@ export function siteNav(file: string): string {
     const items = [
         ['index.html#gallery', 'Examples'],
         ['components.html', 'Components'],
-        ['playground.html', 'Playground'],
+        ['playground.html', 'Builder'],
         ['agents.html', 'For agents'],
     ]
     return `<a class="skip-link" href="#main-content">Skip to content</a>
@@ -86,7 +86,7 @@ export const siteDialogs = `<dialog class="search-dialog" id="searchDialog" aria
     <div class="search-help"><span>↑ ↓ to navigate</span><span>Enter to open</span><span>Esc to close</span></div>
   </dialog>
   <dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
-    <div class="source-dialog-panel"><header><div><span>Editable TSX</span><h2 id="sourceTitle">Example source</h2></div><div class="dialog-actions"><a class="button primary" id="trySourceLink" href="playground.html">Try / edit ↗</a><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div></header><p class="source-note">The playground edits a static frame. Use the CLI to render GIF animations.</p><div class="source-code" id="sourceCode"></div></div>
+    <div class="source-dialog-panel"><header><div><span>Editable TSX</span><h2 id="sourceTitle">Example source</h2></div><div class="dialog-actions"><a class="button primary" id="trySourceLink" href="playground.html">Try / edit ↗</a><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div></header><p class="source-note">Open the builder to edit this scene, preview animations, and export your visual.</p><div class="source-code" id="sourceCode"></div></div>
   </dialog>
   <dialog class="image-dialog" id="imageDialog" aria-labelledby="imageDialogTitle">
     <div class="image-dialog-panel"><div class="image-dialog-header"><h2 id="imageDialogTitle">Example preview</h2><button class="button" type="button" id="closeImageButton">Close</button></div><div class="image-dialog-viewport"><img id="imageDialogImage" alt=""></div></div>

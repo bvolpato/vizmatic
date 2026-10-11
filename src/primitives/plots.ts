@@ -6,6 +6,11 @@ import {
 } from '../theme'
 
 import { clamp } from './layout'
+import { CANVAS_CHART_COMPONENT } from '../canvas-chart-fit'
+
+for (const chart of [ScatterPlot, ParetoChart, QuadrantChart, IntervalPlot]) {
+    Object.defineProperty(chart, CANVAS_CHART_COMPONENT, { value: true })
+}
 import {
     chartColor,
     chartDomain,

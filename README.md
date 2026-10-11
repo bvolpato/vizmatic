@@ -147,6 +147,12 @@ vizmatic ./frame.tsx --out ./dist/frames --theme dark,light --watermark "Acme" -
 
 Each output directory includes `manifest.json`. `outputs` lists generated files, and `outputDetails` records theme, path, and pixel dimensions.
 
+Static CLI renders default to PNG. Use `--format svg` for vector output or `--format both` to export PNG and SVG together. Each manifest output detail includes its `format`; both formats support themes, backgrounds, watermarks, cropping, and automatic canvas growth.
+
+```bash
+vizmatic ./frame.tsx --out ./visuals --theme dark,light --format both
+```
+
 Render an animation:
 
 ```bash
@@ -282,10 +288,31 @@ Use these primitives before writing raw SVG or absolute-positioned layouts.
 |---|---|
 | `defineIllustration` | Wraps a theme-aware frame builder and exports `create(theme)` plus a default element. |
 | `Canvas` | Low-level full-frame root with alpha-transparent default background, optional background fill, padding, and vertical alignment. |
+| `Board` | Fixed canvas for freely positioned components, with explicit dimensions and an optional background. |
+| `CanvasItem` | Positions and sizes a component at logical-pixel `x` / `y` coordinates. Charts fit their complete plotting layers, labels, and frame inside the item. |
 | `Scene` | Standard frame wrapper with optional title/subtitle, content column, and theme-aware typography. |
 | `TitleBar` | Shared title/subtitle block used by `Scene`. |
 | `Row` / `Column` | Flex layout primitives with gap, alignment, wrapping, width, and height props. |
 | `Stack` | Layered vertical stack for repeated cards, tokens, or processing layers. |
+
+Use `Board` with `CanvasItem` for layouts that people can move and resize in the browser builder. Coordinates and sizes remain in the TSX source. Set the frame dimensions to match the board; the board clips content outside its bounds. With both item dimensions set, chart primitives scale proportionally to fit the complete chart, including wrapped headings, legends, and footers.
+
+```tsx
+width = 960;
+height = 540;
+
+<Board width={960} height={540}>
+  <CanvasItem x={40} y={40} width={280} height={160}>
+    <MetricCard label="Requests" value="1,240" tone="green" />
+  </CanvasItem>
+  <CanvasItem x={360} y={40} width={540} height={340}>
+    <PieChart title="Requests by outcome" format="integer" segments={[
+      { label: "Successful", value: 82, color: "positive" },
+      { label: "Retried", value: 18, color: "warning" },
+    ]} />
+  </CanvasItem>
+</Board>
+```
 
 #### Surfaces, labels, and cards
 
@@ -376,6 +403,12 @@ Set `id`, `title`, and `description` for accessible SVG exports. Nodes and edges
 
 Set `x` and `y` on every node for normalized manual positioning when no groups are present. Mixed coordinate modes fail with a clear error. Automatic layout treats node and edge array order as its stable tie-breaker and expands `width` or `height` when needed. Set `sizing="fixed"` to keep exact graph dimensions and let overflow checks report a canvas that is too small. Use `direction`, `nodeGap`, `rankGap`, and `edgeGap` to tune the result.
 
+Connector routing is separate from node layout. The default `routing="dagre"` preserves existing geometry. Choose `routing="straight"` for direct connectors or `routing="orthogonal"` for right-angle routes that avoid node boxes and group headers. `routingClearance` defaults to 12 logical pixels; `edgeGap` separates parallel traffic. Orthogonal routing supports automatic and manual node positions, self-loops with distinct anchors, and separated parallel routes.
+
+Declare node `ports` as `{ id, side, offset? }`, then reference them with edge `fromPort` / `toPort`. Sides are `top`, `right`, `bottom`, or `left`; offsets run from 0 to 1 along the side and default to 0.5. An edge can instead specify `fromSide` / `toSide`. Use either a port reference or a side for each endpoint. Explicit anchors also opt an edge into orthogonal geometry when the routing mode is Dagre. With explicit straight or orthogonal routing, `DeploymentDiagram` anchors declared port references and accepts port `side` / `offset` overrides.
+
+Routing runs synchronously offline with limits of 64 node/header obstacles and 256 edges, plus bounded grid and search work. A blocked route, repeated route with no separate lane, or exhausted limit omits the affected connector and makes the checker report `layout.connector_unroutable` as an error. Increase spacing or canvas size, change anchors, or reduce clearance before publishing. Missing port references fail validation. See the [routed graph example](examples/orthogonal-routing.tsx).
+
 The [import guide](docs/import.md) documents the supported Mermaid and D2 subsets and their structured source diagnostics.
 
 #### Matrices, tables, and grids
@@ -394,17 +427,21 @@ The [import guide](docs/import.md) documents the supported Mermaid and D2 subset
 |---|---|
 | `ChartFrame` | Shared chart wrapper with title, subtitle, footer, and theme-aware shell. |
 | `AxisPlot` | Low-level axis plot for custom lines, paths, and plotted values. |
+| `PieChart` | Full-circle part-to-whole chart with segment values, percentages, and a legend. |
 | `DonutChart` | Part-to-whole chart with center label/value, segment labels, and shared chart styling. |
 | `MiniBarChart` | Small bar chart for cards and dashboards. |
 | `StackedBar` | Segmented horizontal bar with labels and percentages. |
 | `BarChart` | Full bar chart with ticks, labels, values, grids, and formats. |
 | `LineChart` | Multi-series line chart with optional area fill, points, labels, and grid. |
 | `ScatterPlot` | Labeled scatter plot with axes, ticks, point sizing, and collision-aware labels. |
+| `ParetoBarChart` | Categories sorted by descending count with a cumulative percentage line and separate count/share axes. |
 | `ParetoChart` | Automatic non-dominated frontier for competing objectives, including log-scaled cost axes. |
 | `QuadrantChart` | 2x2 decision matrix with numeric axes, configurable thresholds, labeled points, and optional region emphasis. |
 | `IntervalPlot` | Timeline/range plot for spans, phases, latencies, and schedules. |
 
-`ParetoChart` defaults to minimizing x and maximizing y, which fits cost-versus-score comparisons. Set `xObjective` or `yObjective` for other tradeoffs. Non-positive x values are omitted on a logarithmic x-axis. `QuadrantChart` accepts raw numeric domains, threshold values, tick formats, and optional grid lines; omit them to keep normalized 0-1 coordinates and centered splits. Regions accept `emphasis: true` to give one decision region a stronger fill and border.
+Use `PieChart` for category shares, `BarChart` for category values, `ScatterPlot` for paired numeric observations, and `ParetoBarChart` to identify the categories behind most of a total. Pie and Pareto bar values must be finite and non-negative; zero-valued pie slices are omitted. Pareto bars sort descending without changing the input array and preserve input order for equal values. The cumulative line reaches 100% when the total is positive. See the [pie](examples/pie-chart.tsx) and [Pareto bar](examples/pareto-bar-chart.tsx) examples.
+
+`ParetoChart` shows a non-dominated scatter frontier for competing objectives. It defaults to minimizing x and maximizing y, which fits cost-versus-score comparisons. Set `xObjective` or `yObjective` for other tradeoffs. Non-positive x values are omitted on a logarithmic x-axis. `QuadrantChart` accepts raw numeric domains, threshold values, tick formats, and optional grid lines; omit them to keep normalized 0-1 coordinates and centered splits. Regions accept `emphasis: true` to give one decision region a stronger fill and border.
 
 #### Rendering and verification
 
@@ -547,9 +584,19 @@ pnpm verify
 pnpm site:serve
 ```
 
-The homepage, Components page, and Playground share a live component explorer. Choose a component to render its focused example, use visual controls for supported literal props, or open the TSX to compose a scene. Visual controls pause after custom text or source edits until the example is reset. Preview framing and zoom preserve the full canvas in downloaded PNG and SVG files.
+The homepage, Components page, and Playground share a live component explorer. Choose a component to open its focused example, or use Add to scene to compose several components. Select an element to edit that instance's literal props, duplicate or remove it, and move it within its group. Controls follow inline text and TSX edits. Computed props and expression-generated structure stay editable in the TSX. Preview framing and zoom preserve the full canvas in downloaded PNG and SVG files.
+
+Choose the Freeform canvas template for a positioned builder. Move and resize `CanvasItem` components through the preview handles, use grid snapping, or adjust their literal coordinates in the inspector. Arrow keys nudge a focused handle; Shift makes a larger move and Alt bypasses snapping. The layout remains ordinary `Board` / `CanvasItem` TSX.
+
+Structured data editors let you add, remove, and change pie segments, bar categories, scatter points, and table cells. Line series, interval data, and graph nodes, edges, and groups have JSON editors. Invalid shapes and missing graph node references report an error before changing the source. Computed data remains editable in TSX.
+
+Edits are saved locally in this browser and restore after reload. Component, shared-source, and gallery links open their own examples. Editing clears the original example or source bookmark so reload can recover your draft. Undo and redo cover source typing, controls, inline text, and scene operations, with up to 100 source snapshots for the current session. Use the buttons or Ctrl/Command+Z and Ctrl/Command+Shift+Z. Drafts do not sync between devices; use Save project to download a named `.vizmatic.json` file containing source, output theme, and canvas background, then Open project to restore it. Share and Copy source also let you move your TSX between tools.
 
 Double-click a text label in the preview to edit its literal TSX value. Press Enter or click outside to save, Shift+Enter for a new line, or Escape to cancel. Keyboard users can focus a label and press Enter or F2. Labels derived from computed expressions or ambiguous source values stay editable in the TSX editor.
+
+Choose the Animation scene template to play, pause, scrub time, and export a GIF in the browser. Bare animated source declares `animationDuration = 3` and optionally `animationFps = 10` before setup code. The injected `t` variable is time in seconds; Vizmatic timeline helpers continue to use milliseconds. Gallery timeline animations are adapted to the same browser workflow. Browser GIFs use the selected theme background, with limits of 120 frames, 2 million pixels per frame, and 60 million pixels total. Static CLI render and check evaluate these snippets at `t=0`. Use a CLI animation module for larger animations or transparent GIF output.
+
+The generated `components.json` includes compiler-derived prop types, requiredness, and finite allowed-value references. Shared value lists live in `propEnums`; defaults are not inferred. Full TypeScript definitions remain the contract for structured data and React values.
 
 The website is generated from `docs/*.template.html`, the shared shell in `scripts/site-shell.ts`, and the component registry. Run `pnpm site:build` after editing these sources, then `pnpm docs:check`. Use `pnpm site:serve` for browser validation. The generated agent references, property controls, and example adapters update with the same build. If the bundled fonts change, regenerate the website's WOFF2 files with `pnpm site:fonts` using uv.
 

@@ -1,3 +1,6 @@
+import { playgroundAnimationTemplate } from './playground-animation-template'
+import { playgroundBuilderTemplate } from './playground-builder-template'
+
 export interface PlaygroundTemplate {
     id: string
     label: string
@@ -104,6 +107,8 @@ height = 560
   />
 </Scene>`,
     },
+    playgroundAnimationTemplate,
+    playgroundBuilderTemplate,
 ]
 
 export function findPlaygroundTemplate(id: string | undefined): PlaygroundTemplate | undefined {

@@ -27,6 +27,8 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
         source: 'catalog-foundations',
         components: [
             { name: 'Canvas', description: 'Root canvas with transparent or custom backgrounds and padding.' },
+            { name: 'Board', description: 'Fixed-size canvas for freely positioned visuals in one coordinate space.' },
+            { name: 'CanvasItem', description: 'Positions and sizes a visual relative to its parent Board.' },
             { name: 'Scene', description: 'Primary vertical scene layout with optional title and subtitle.' },
             { name: 'TitleBar', description: 'Standalone heading and supporting copy.' },
             { name: 'Row', description: 'Horizontal flex layout with stable gaps and alignment.' },
@@ -149,10 +151,12 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
         components: [
             { name: 'ChartFrame', description: 'Shared chart title, subtitle, legend, and footer.' },
             { name: 'DonutChart', description: 'Part-to-whole composition with center label.' },
+            { name: 'PieChart', description: 'Part-to-whole composition with a full circular radius.' },
             { name: 'StackedBar', description: 'Part-to-whole values along one dimension.' },
             { name: 'BarChart', description: 'Categorical comparison with labels and values.' },
             { name: 'LineChart', description: 'One or more trends across an ordered axis.' },
             { name: 'ScatterPlot', description: 'Point distribution across two numeric axes.' },
+            { name: 'ParetoBarChart', description: 'Descending category counts with a cumulative percentage line.' },
             { name: 'ParetoChart', description: 'Automatic non-dominated frontier across competing numeric objectives.' },
             { name: 'QuadrantChart', description: 'Numeric decision map split by configurable policy thresholds.' },
             { name: 'IntervalPlot', description: 'Low, midpoint, and high ranges by category.' },

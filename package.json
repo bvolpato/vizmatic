@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Theme-aware visual primitives and a headless renderer for diagrams, figures, and presentation frames.",
   "type": "module",
   "license": "MIT",
@@ -63,7 +63,7 @@
     "vizmatic": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts --format esm --dts --target node20 --external react",
+    "build": "tsup src/index.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts --format esm --dts --target node20 --external react --minify-whitespace",
     "assets:emoji": "node scripts/build-emoji-bundle.mjs",
     "assets:check": "node scripts/build-emoji-bundle.mjs --check",
     "prepare": "pnpm build",
@@ -74,6 +74,7 @@
     "benchmark:quality": "pnpm build && tsx scripts/benchmark-quality.ts && pnpm site:build",
     "check:examples": "tsx scripts/check-examples.ts",
     "playground:build": "tsx scripts/build-playground.ts",
+    "check:playground": "node scripts/check-playground.mjs",
     "site:build": "tsx scripts/build-site.ts",
     "site:fonts": "uv run scripts/build-site-fonts.py",
     "docs:check": "tsx scripts/check-docs.ts",
@@ -91,7 +92,7 @@
     "gifenc": "^1.0.3",
     "parse-css-color": "0.2.1",
     "react": "^19.2.8",
-    "satori": "^0.33.4",
+    "satori": "^0.35.0",
     "tsx": "^4.23.12"
   },
   "peerDependencies": {
@@ -99,16 +100,17 @@
   },
   "devDependencies": {
     "@resvg/resvg-wasm": "2.6.2",
-    "@types/node": "^26.6.1",
+    "@types/node": "^26.6.4",
     "@types/react": "^19.2.18",
     "esbuild": "0.28.2",
     "github-actionlint": "1.7.12",
     "harfbuzzjs": "0.10.0",
-    "publint": "0.3.24",
-    "shiki": "^4.4.3",
+    "playwright": "1.63.0",
+    "publint": "0.3.25",
+    "shiki": "^4.5.0",
     "sucrase": "3.35.1",
     "tsup": "^8.5.1",
     "typescript": ">=6.0.3 <7",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.3"
   }
 }

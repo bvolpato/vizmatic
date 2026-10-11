@@ -16,6 +16,15 @@ import { clamp, compactChildren, formatMathText, Icon, textFitStyle, ToneStrip, 
 import { Arrow, ArrowMarkerDef, Box } from './svg'
 import { renderMaybeMath } from './surfaces'
 import { SVG_ACCESSIBILITY_COMPONENT } from '../svg-accessibility'
+import {
+    routeOrthogonalGraph,
+    routingLabelPosition,
+    straightGraphRoute,
+    type GraphPortSide,
+    type GraphRouting,
+} from '../graph-routing'
+
+export type { GraphPortSide, GraphRouting } from '../graph-routing'
 
 // ─── LayeredNetwork — Dense neural-network diagram without local coordinate code ─
 
@@ -283,6 +292,14 @@ export interface GraphDiagramNode {
     group?: string
     icon?: IconName | DiagramIconDefinition | React.ReactElement
     iconSize?: number
+    ports?: GraphDiagramPort[]
+}
+
+/** A fixed geometric connector anchor on a node boundary. Offset runs left to right or top to bottom. */
+export interface GraphDiagramPort {
+    id: string
+    side: GraphPortSide
+    offset?: number
 }
 
 export interface DiagramIconRenderProps {
@@ -334,6 +351,10 @@ export interface GraphDiagramEdge {
     arrow?: GraphDiagramEdgeArrow
     href?: string
     title?: string
+    fromPort?: string
+    toPort?: string
+    fromSide?: GraphPortSide
+    toSide?: GraphPortSide
 }
 
 export interface GraphDiagramProps {
@@ -354,6 +375,10 @@ export interface GraphDiagramProps {
     nodeGap?: number
     rankGap?: number
     edgeGap?: number
+    /** Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers. */
+    routing?: GraphRouting
+    /** Minimum node clearance in logical pixels for orthogonal routing. */
+    routingClearance?: number
     sizing?: 'content' | 'fixed'
     iconSize?: number
     id?: string
@@ -546,6 +571,20 @@ function validateGraphDiagramSpec(
     for (const node of nodes) {
         if (nodeIds.has(node.id)) throw new Error(`GraphDiagram received duplicate node id "${node.id}".`)
         nodeIds.add(node.id)
+        const portIds = new Set<string>()
+        for (const port of node.ports ?? []) {
+            if (typeof port.id !== 'string' || port.id.trim().length === 0) {
+                throw new Error(`GraphDiagram node "${node.id}" port id must be a non-empty string.`)
+            }
+            if (portIds.has(port.id)) throw new Error(`GraphDiagram node "${node.id}" received duplicate port "${port.id}".`)
+            portIds.add(port.id)
+            if (!['top', 'right', 'bottom', 'left'].includes(port.side)) {
+                throw new Error(`GraphDiagram node "${node.id}" port "${port.id}" must use side "top", "right", "bottom", or "left".`)
+            }
+            if (port.offset != null && (!Number.isFinite(port.offset) || port.offset < 0 || port.offset > 1)) {
+                throw new Error(`GraphDiagram node "${node.id}" port "${port.id}" offset must be between 0 and 1.`)
+            }
+        }
     }
 
     const groupsById = new Map<string, GraphDiagramGroup>()
@@ -592,6 +631,20 @@ function validateGraphDiagramSpec(
         if (edge.id != null) {
             if (edgeIds.has(edge.id)) throw new Error(`GraphDiagram received duplicate edge id "${edge.id}".`)
             edgeIds.add(edge.id)
+        }
+        for (const side of ['from', 'to'] as const) {
+            const reference = side === 'from' ? edge.fromPort : edge.toPort
+            const endpointSide = side === 'from' ? edge.fromSide : edge.toSide
+            const node = nodes.find((candidate) => candidate.id === edge[side])!
+            if (reference != null && !node.ports?.some((port) => port.id === reference)) {
+                throw new Error(`GraphDiagram edge "${edge.from}" -> "${edge.to}" references missing ${side} port "${reference}" on node "${node.id}".`)
+            }
+            if (endpointSide != null && !['top', 'right', 'bottom', 'left'].includes(endpointSide)) {
+                throw new Error(`GraphDiagram edge "${edge.from}" -> "${edge.to}" ${side}Side must be "top", "right", "bottom", or "left".`)
+            }
+            if (reference != null && endpointSide != null) {
+                throw new Error(`GraphDiagram edge "${edge.from}" -> "${edge.to}" cannot combine ${side}Port and ${side}Side.`)
+            }
         }
         validateDiagramHref(edge.href, `edge "${edge.id ?? `${edge.from}" -> "${edge.to}`}"`)
     }
@@ -679,6 +732,8 @@ export function GraphDiagram({
     nodeGap = 34,
     rankGap = 64,
     edgeGap = 14,
+    routing = 'dagre',
+    routingClearance = 12,
     sizing = 'content',
     iconSize = 20,
     id,
@@ -687,6 +742,8 @@ export function GraphDiagram({
     description,
 }: GraphDiagramProps): React.ReactElement {
     if (id != null && id.trim().length === 0) throw new Error('GraphDiagram id must not be empty.')
+    if (!['dagre', 'straight', 'orthogonal'].includes(routing)) throw new Error('GraphDiagram routing must be "dagre", "straight", or "orthogonal".')
+    if (!Number.isFinite(routingClearance) || routingClearance <= 0) throw new Error('GraphDiagram routingClearance must be a finite positive number.')
     const fullyPositioned = nodes.filter((node) => node.x != null && node.y != null).length
     const partiallyPositioned = nodes.some((node) => (node.x == null) !== (node.y == null))
     if (partiallyPositioned || (fullyPositioned > 0 && fullyPositioned < nodes.length)) {
@@ -786,7 +843,26 @@ export function GraphDiagram({
         layout = manualGraphLayout(nodes, resolvedWidth, resolvedHeight, nodeWidth, nodeHeight, padding)
     }
 
+    const anchored = (edge: GraphDiagramEdge) => edge.fromPort != null || edge.toPort != null || edge.fromSide != null || edge.toSide != null
+    // Explicit anchors opt into obstacle-aware geometry even while Dagre remains the layout engine.
+    const orthogonalEdges = edges.flatMap((edge, index) => routing === 'orthogonal' || (routing === 'dagre' && anchored(edge))
+        || (routing === 'straight' && edge.from === edge.to) ? [{ edge, index }] : [])
+    const routed = routeOrthogonalGraph(
+        Array.from(layout.values()), orthogonalEdges.map(({ edge }) => edge), resolvedWidth, resolvedHeight,
+        routingClearance, edgeGap,
+        groupLayout.map((group) => ({
+            left: group.cx - group.width / 2, right: group.cx + group.width / 2,
+            top: group.cy - group.height / 2, bottom: group.cy - group.height / 2 + 26,
+        })),
+    )
+    const orthogonalPoints = new Map(Array.from(routed.routes, ([index, points]) => [orthogonalEdges[index].index, points]))
+    const failedIndexes = new Set(routed.failures.map((failure) => orthogonalEdges[failure.index].index))
+    const routingFailures = routed.failures.map((failure) => {
+        const { edge } = orthogonalEdges[failure.index]
+        return `Connector "${edge.from}" -> "${edge.to}" was not drawn: ${failure.reason}.`
+    })
     const edgeLayouts: PositionedGraphEdge[] = edges.flatMap((edge, index) => {
+        if (failedIndexes.has(index)) return []
         const from = layout.get(edge.from)
         const to = layout.get(edge.to)
         if (!from || !to) return []
@@ -821,15 +897,17 @@ export function GraphDiagram({
             { x: from.cx + 10, y: from.cy - from.height / 2 - loopClearance },
             { x: from.cx + 10, y: from.cy - from.height / 2 },
         ] : undefined
-        const points = automatic?.points.length ? automatic.points : manualLoopPoints ?? [
+        const routedPoints = orthogonalPoints.get(index)
+        const points = routedPoints ?? (routing === 'straight' ? straightGraphRoute(from, to, edge) : automatic?.points.length ? automatic.points : manualLoopPoints ?? [
             { x: from.cx + dx * fromScale, y: from.cy + dy * fromScale },
             { x: to.cx - dx * toScale, y: to.cy - dy * toScale },
-        ]
+        ])
         const manualLoopLabel = manualLoopPoints ? {
             x: from.cx + from.width / 2 + loopClearance,
             y: from.cy - from.height / 2 - loopClearance / 2,
         } : undefined
 
+        const routedLabel = routedPoints || routing === 'straight' ? routingLabelPosition(points) : undefined
         return [{
             ...edge,
             index,
@@ -837,15 +915,15 @@ export function GraphDiagram({
             color,
             markerId,
             points,
-            labelX: automatic?.labelX ?? manualLoopLabel?.x ?? (points[0].x + points[points.length - 1].x) / 2,
-            labelY: automatic?.labelY ?? manualLoopLabel?.y ?? (points[0].y + points[points.length - 1].y) / 2,
+            labelX: routedLabel?.x ?? automatic?.labelX ?? manualLoopLabel?.x ?? (points[0].x + points[points.length - 1].x) / 2,
+            labelY: routedLabel?.y ?? automatic?.labelY ?? manualLoopLabel?.y ?? (points[0].y + points[points.length - 1].y) / 2,
         }]
     })
 
     const crossings = connectorCrossings(edgeLayouts)
     const labelCollisions = connectorLabelCollisions(edgeLayouts, layout, groupLayout)
     const crowdedEndpoints = crowdedConnectorEndpoints(edgeLayouts)
-    const parallelGroups = parallelConnectorGroups(edgeLayouts)
+    const parallelGroups = parallelConnectorGroups(edgeLayouts.filter((edge) => !orthogonalPoints.has(edge.index)))
 
     const groupElements = groupLayout.map((group) => {
         const accent = group.muted ? c.textMuted : getToneColor(group.tone ?? 'blue', c)
@@ -909,6 +987,8 @@ export function GraphDiagram({
         'data-vizmatic-connector-label-collisions': labelCollisions,
         'data-vizmatic-crowded-connector-endpoints': crowdedEndpoints,
         'data-vizmatic-parallel-connector-groups': parallelGroups,
+        'data-vizmatic-unrouted-connectors': routingFailures.length,
+        'data-vizmatic-routing-failures': routingFailures.length ? JSON.stringify(routingFailures) : undefined,
         style: {
             position: 'relative' as const,
             display: 'flex',

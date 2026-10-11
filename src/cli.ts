@@ -9,13 +9,17 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { fileURLToPath, pathToFileURL } from 'url'
 import React, { isValidElement } from 'react'
 import type { ReactNode } from 'react'
+import { Resvg } from '@resvg/resvg-js'
 import * as publicApi from './index'
+import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion } from './autocrop'
 import { checkFrame } from './check'
 import { renderAnimatedGifWithOutput, renderAnimationGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
-import { CanvasOverflowError, renderToPngWithOutput, type RenderBackground } from './render'
+import { readAnimationLine } from './playground-source'
+import { validatePlaygroundAnimation } from './playground-animation'
+import { CanvasOverflowError, renderToPngWithOutput, renderToSvg, type RenderBackground } from './render'
 import type { SatoriNode } from './satori'
 import { type ThemeMode, type ThemePreset } from './theme'
 import type { DefinedAnimation } from './timeline'
@@ -53,7 +57,11 @@ interface RenderArgs {
     scale?: number
     fps?: number
     background?: RenderBackground
+    format: OutputFormat
 }
+
+type OutputFormat = 'png' | 'svg' | 'both'
+type StaticOutputFormat = Exclude<OutputFormat, 'both'>
 
 interface CheckArgs {
     inputs: string[]
@@ -89,14 +97,19 @@ const AUTO_SIZE_MAX_WIDTH = 1920
 const AUTO_SIZE_MAX_HEIGHT = 1440
 const AUTO_SIZE_GROWTH = 1.25
 const AUTO_SIZE_ATTEMPTS = 6
+const SVG_AUTOCROP_PADDING = 24
+const SVG_CROP_THRESHOLD_PERCENT = 10
 const cliRequire = createRequire(import.meta.url)
 let frameDependencyAliasesInstalled = false
 const BARE_FRAME_EXTRA_EXPORTS = new Set([
     'canvas',
     'colors',
     'defineIllustration',
+    'defineAnimation',
     'getColor',
     'getGradient',
+    'getReadableTextColor',
+    'getReadableToneColor',
     'getStyles',
     'getThemeColors',
     'getToneFill',
@@ -104,8 +117,12 @@ const BARE_FRAME_EXTRA_EXPORTS = new Set([
     'getToneGradient',
     'gradients',
     'heatColor',
+    'hold',
+    'keyframe',
+    'sampleAnimationFrames',
     'styles',
     'toneGradients',
+    'tween',
     'typography',
     'wrapWithWatermark',
 ])
@@ -120,9 +137,11 @@ const framesNeedingGlobalReact = new WeakSet<object>()
 function usageText() {
     return `Usage:
   vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
-  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
+  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--format png|svg|both]
   vizmatic check <file-or-directory...> [--theme dark,light] [--background transparent|theme|color] [--json]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1] [--fps 20]
+
+  Browser animation metadata renders at t=0 in static output; GIF output still requires createAnimation(theme) or createScenes(theme).
 
 Examples:
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
@@ -520,6 +539,8 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     let width: number | undefined
     let height: number | undefined
     let preset: ThemePreset = 'default'
+    let animationDuration: number | undefined
+    let animationFps: number | undefined
 
     const lines = source.split(/\r?\n/)
     const maskedLines = maskStringsAndComments(source).split(/\r?\n/)
@@ -578,11 +599,26 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
             continue
         }
 
+        const animationLine = metadataPreamble ? readAnimationLine(line) : undefined
+        if (animationLine) {
+            if (animationLine.name === 'animationDuration') animationDuration = animationLine.value
+            else animationFps = animationLine.value
+            continue
+        }
+
         if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
         setupLines.push(line)
     }
 
     const setup = setupLines.join('\n').replace(/^\s*export\s+/gm, '')
+    if (animationFps !== undefined && animationDuration === undefined) {
+        throw new Error('animationFps requires animationDuration in the metadata preamble.')
+    }
+    const hasAnimationMetadata = animationDuration !== undefined
+    if (animationDuration !== undefined) {
+        validatePlaygroundAnimation({ duration: animationDuration, fps: animationFps ?? 10 })
+    }
+
     const jsx = extractRootJsx(body.slice(jsxStart).trim().replace(/^export\s+default\s+/, ''))
     const declaresThemeColors = /\b(?:const|let|var)\s+c\b/.test(setup)
 
@@ -595,6 +631,20 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     width ??= frameWidth ?? DEFAULT_FRAME_WIDTH
     height ??= frameHeight ?? DEFAULT_FRAME_HEIGHT
     const autoImports = bareFrameExportsForSource(body)
+    // Keep injected values outside the source scope, as in the browser renderer. Source bindings then shadow them naturally.
+    const createBody = hasAnimationMetadata
+        ? `    const c = __theme
+    const t = 0
+    return (() => {
+${setup}
+        return (
+${jsx}
+        )
+    })()`
+        : `${declaresThemeColors ? '' : '    const c = __theme\n'}${setup}
+    return (
+${jsx}
+    )`
 
     return `/** @jsxRuntime classic */
 const React = globalThis.React
@@ -621,24 +671,63 @@ export const __vizmaticAutoSize = ${JSON.stringify(autoSize)}
 
 export function create(theme = 'dark') {
     __theme = __Vizmatic_getThemeColors(theme, ${JSON.stringify(preset)})
-${declaresThemeColors ? '' : '    const c = __theme\n'}
-${setup}
-    return (
-${jsx}
-    )
+${createBody}
 }
 
 export default { create, width, height }
 `
 }
 
+function hasAnimationMetadataPreamble(source: string): boolean {
+    let metadataPreamble = true
+    let metadataBlockComment = false
+    const lines = source.split(/\r?\n/)
+    const maskedLines = maskStringsAndComments(source).split(/\r?\n/)
+
+    for (let index = 0; index < lines.length && metadataPreamble; index += 1) {
+        const line = lines[index] ?? ''
+        const trimmed = maskedLines[index]?.trim() ?? ''
+        if (metadataBlockComment) {
+            if (trimmed.includes('*/')) metadataBlockComment = false
+            continue
+        }
+        if (trimmed.startsWith('/*')) {
+            metadataBlockComment = !trimmed.slice(2).includes('*/')
+            continue
+        }
+
+        if (readDimensionLine(line) || readPresetLine(line)) continue
+        try {
+            if (readAnimationLine(line)) return true
+        } catch {
+            // Keep malformed animation metadata on the bare-source path so its shared parser reports the useful validation error.
+            if (/^\s*(?:\/\/\s*)?(?:export\s+)?(?:(?:const|let|var)\s+)?animation(?:Duration|Fps)\s*[:=]/.test(line)) return true
+        }
+
+        if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
+    }
+
+    return false
+}
+
 function isBareFrameSource(source: string): boolean {
+    const rootJsxStart = findBareRootJsxStart(source)
+    if (rootJsxStart < 0) return false
+
+    if (hasAnimationMetadataPreamble(source.slice(0, rootJsxStart))) {
+        const maskedSource = maskStringsAndComments(source)
+        const exportsFrameFactory = /\bexport\s+(?:(?:async\s+)?function\s+(?:create|createScenes|createAnimation)\b|(?:const|let|var)\s+(?:create|createScenes|createAnimation)\b)/.test(maskedSource)
+            || /\bexport\s*\{[^}]*\b(?:create|createScenes|createAnimation)\b[^}]*\}/s.test(maskedSource)
+            || /\bexport\s+default\s+(?:(?:async\s+)?function\s+(?:create|createScenes|createAnimation)\b|(?:create|createScenes|createAnimation)\b|\{[^}]*\b(?:create|createScenes|createAnimation)\b[^}]*\})/s.test(maskedSource)
+        if (!exportsFrameFactory && !/\bdefineIllustration\s*\(|\bcreateScenes\s*\(/.test(maskedSource)) return true
+    }
+
     if (/\bdefineIllustration\s*\(/.test(source)) return false
     if (/\bcreateScenes\s*\(/.test(source)) return false
     if (/\bcreateAnimation\s*\(/.test(source)) return false
     if (/\bexport\s+(?:const|function)\s+create\b/.test(source)) return false
 
-    return findBareRootJsxStart(source) >= 0
+    return true
 }
 
 async function importBareFrame(filePath: string, source?: string): Promise<FrameModule | undefined> {
@@ -683,6 +772,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     let scale: number | undefined
     let fps: number | undefined
     let background: RenderBackground | undefined
+    let format: OutputFormat = 'png'
 
     function mutableWatermark(): WatermarkOptions {
         if (!watermarkOptions) {
@@ -782,6 +872,10 @@ function parseRenderArgs(argv: string[]): RenderArgs {
             const rawFps = Number(argv[++index])
             if (!Number.isInteger(rawFps) || rawFps < 1 || rawFps > 50) usage()
             fps = rawFps
+        } else if (arg === '--format') {
+            const rawFormat = argv[++index]
+            if (rawFormat !== 'png' && rawFormat !== 'svg' && rawFormat !== 'both') usage()
+            format = rawFormat
         } else if (arg.startsWith('-')) {
             usage()
         } else {
@@ -790,7 +884,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, outDir, themes, watermark, crop, scale, fps, background }
+    return { inputs, outDir, themes, watermark, crop, scale, fps, background, format }
 }
 
 function parseCheckArgs(argv: string[]): CheckArgs {
@@ -1082,6 +1176,168 @@ async function renderFrameToPng(
     return { width, height, outputWidth: width, outputHeight: height, logicalOutputWidth: width, logicalOutputHeight: height, layoutNodes: [] }
 }
 
+function rasterizeSvgForBounds(svg: string, width: number) {
+    return new Resvg(svg, {
+        fitTo: { mode: 'width', value: width },
+        background: 'rgba(0, 0, 0, 0)',
+    }).render()
+}
+
+function replaceSvgRootAttribute(attributes: string, name: string, value: string): string {
+    const pattern = new RegExp(`\\s${name}="[^"]*"`)
+    return pattern.test(attributes)
+        ? attributes.replace(pattern, ` ${name}="${value}"`)
+        : `${attributes} ${name}="${value}"`
+}
+
+function cropSvgToRegion(svg: string, region: CropRegion): { svg: string; width: number; height: number } {
+    const x = Math.max(0, Math.floor(region.x))
+    const y = Math.max(0, Math.floor(region.y))
+    const width = Math.max(1, Math.ceil(region.width))
+    const height = Math.max(1, Math.ceil(region.height))
+    const cropped = svg.replace(/^<svg\b([^>]*)>/, (_match, attributes: string) => {
+        let next = replaceSvgRootAttribute(attributes, 'width', String(width))
+        next = replaceSvgRootAttribute(next, 'height', String(height))
+        next = replaceSvgRootAttribute(next, 'viewBox', `${x} ${y} ${width} ${height}`)
+        return `<svg${next}>`
+    })
+    return { svg: cropped, width, height }
+}
+
+function cropSavesEnough(source: number, target: number): boolean {
+    return source > target && ((source - target) / source) * 100 >= SVG_CROP_THRESHOLD_PERCENT
+}
+
+async function renderFrameToSvg(
+    mod: NormalizedFrameModule,
+    theme: ThemeMode,
+    options: {
+        width: number
+        height: number
+        watermark?: WatermarkInput
+        crop: boolean
+        background?: RenderBackground
+    },
+): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number; svg: string }> {
+    let width = options.width
+    let height = options.height
+    let originalElement: ReactNode = frameElement(mod, theme)
+    let originalSvg = ''
+    let initialBounds: CropRegion | undefined
+
+    for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
+        originalElement = frameElement(mod, theme)
+        try {
+            originalSvg = await renderToSvg(originalElement, width, height, {
+                background: options.background,
+                theme,
+            })
+        } catch (error) {
+            const edges = overflowEdges(error)
+            const next = edges ? nextAutoSize(width, height, mod.autoSize, edges) : undefined
+            if (!next || attempt === AUTO_SIZE_ATTEMPTS - 1) throw error
+            width = next.width
+            height = next.height
+            continue
+        }
+
+        const initialRaster = rasterizeSvgForBounds(originalSvg, width)
+        const pixels = new Uint8Array(initialRaster.pixels.buffer)
+        const background = detectBackgroundColor(pixels)
+        const overflow = detectOverflow(pixels, initialRaster.width, initialRaster.height, background)
+        if (overflow.overflows) {
+            const edges = (Object.entries(overflow.edges) as Array<[OverflowEdge, boolean]>)
+                .filter(([, overflows]) => overflows)
+                .map(([edge]) => edge)
+            const next = nextAutoSize(width, height, mod.autoSize, edges)
+            if (!next || attempt === AUTO_SIZE_ATTEMPTS - 1) {
+                throw new CanvasOverflowError(width, height, overflow)
+            }
+            width = next.width
+            height = next.height
+            continue
+        }
+
+        initialBounds = detectContentBounds(
+            pixels,
+            initialRaster.width,
+            initialRaster.height,
+            background,
+            SVG_AUTOCROP_PADDING,
+        )
+        break
+    }
+
+    if (!initialBounds) throw new Error('unable to measure SVG content bounds')
+
+    let finalWidth = width
+    let finalHeight = height
+    let finalElement = originalElement
+    let finalSvg = originalSvg
+
+    const croppedHeight = initialBounds.y + initialBounds.height
+    const heightSavedPercent = ((height - croppedHeight) / height) * 100
+    if (options.crop && heightSavedPercent >= SVG_CROP_THRESHOLD_PERCENT) {
+        finalHeight = croppedHeight
+        finalElement = mod.create ? frameElement(mod, theme) : originalElement
+    }
+
+    const renderFinalSvg = (element: ReactNode, targetWidth: number, targetHeight: number) => renderToSvg(
+        element,
+        targetWidth,
+        targetHeight,
+        {
+            watermark: options.watermark,
+            background: options.background,
+            theme,
+        },
+    )
+    finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+
+    if (finalHeight < height) {
+        const cropRaster = rasterizeSvgForBounds(finalSvg, finalWidth)
+        const cropPixels = new Uint8Array(cropRaster.pixels.buffer)
+        const cropBackground = detectBackgroundColor(cropPixels)
+        const cropOverflow = detectOverflow(cropPixels, cropRaster.width, cropRaster.height, cropBackground)
+        if (cropOverflow.overflows) {
+            finalHeight = height
+            finalElement = originalElement
+            finalSvg = await renderFinalSvg(finalElement, finalWidth, finalHeight)
+        }
+    }
+
+    if (options.crop) {
+        const viewportRaster = rasterizeSvgForBounds(finalSvg, finalWidth)
+        const viewportPixels = new Uint8Array(viewportRaster.pixels.buffer)
+        const viewportBackground = detectBackgroundColor(viewportPixels)
+        const viewportBounds = detectContentBounds(
+            viewportPixels,
+            viewportRaster.width,
+            viewportRaster.height,
+            viewportBackground,
+            SVG_AUTOCROP_PADDING,
+        )
+
+        if (
+            cropSavesEnough(finalWidth, viewportBounds.width)
+            || cropSavesEnough(viewportRaster.height, viewportBounds.height)
+        ) {
+            const cropped = cropSvgToRegion(finalSvg, viewportBounds)
+            finalSvg = cropped.svg
+            finalWidth = cropped.width
+            finalHeight = cropped.height
+        }
+    }
+
+    return {
+        width,
+        height,
+        outputWidth: finalWidth,
+        outputHeight: finalHeight,
+        svg: finalSvg,
+    }
+}
+
 async function renderCommand(argv: string[]) {
     const args = parseRenderArgs(argv)
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
@@ -1100,6 +1356,7 @@ async function renderCommand(argv: string[]) {
         outputs: string[]
         outputDetails: Array<{
             theme: ThemeMode
+            format: StaticOutputFormat
             path: string
             width: number
             height: number
@@ -1111,7 +1368,7 @@ async function renderCommand(argv: string[]) {
         const mod = normalizeFrameModule(rawMod)
         const name = stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
-        const outputDetails: Array<{ theme: ThemeMode; path: string; width: number; height: number }> = []
+        const outputDetails: Array<{ theme: ThemeMode; format: StaticOutputFormat; path: string; width: number; height: number }> = []
         const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
         let renderWidth = mod.width
         let renderHeight = mod.height
@@ -1119,29 +1376,66 @@ async function renderCommand(argv: string[]) {
         let outputHeight = 0
 
         for (const theme of args.themes) {
-            const outputName = `${name}_${theme}.png`
-            const outputPath = join(args.outDir, outputName)
-            const rendered = await renderFrameToPng(mod, theme, {
-                width: renderWidth,
-                height: renderHeight,
-                outputPath,
-                watermark: cliWatermark ?? moduleWatermark,
-                crop: args.crop,
-                scale: args.scale,
-                background: args.background,
-            })
-            renderWidth = rendered.width
-            renderHeight = rendered.height
-            outputWidth = Math.max(outputWidth, rendered.outputWidth)
-            outputHeight = Math.max(outputHeight, rendered.outputHeight)
-            outputs.push(outputName)
-            outputDetails.push({
-                theme,
-                path: outputName,
-                width: rendered.outputWidth,
-                height: rendered.outputHeight,
-            })
-            console.log(`rendered ${relative(process.cwd(), outputPath)}`)
+            const inputWidth = renderWidth
+            const inputHeight = renderHeight
+            let themeWidth = inputWidth
+            let themeHeight = inputHeight
+
+            if (args.format === 'png' || args.format === 'both') {
+                const outputName = `${name}_${theme}.png`
+                const outputPath = join(args.outDir, outputName)
+                const rendered = await renderFrameToPng(mod, theme, {
+                    width: inputWidth,
+                    height: inputHeight,
+                    outputPath,
+                    watermark: cliWatermark ?? moduleWatermark,
+                    crop: args.crop,
+                    scale: args.scale,
+                    background: args.background,
+                })
+                themeWidth = rendered.width
+                themeHeight = rendered.height
+                outputWidth = Math.max(outputWidth, rendered.outputWidth)
+                outputHeight = Math.max(outputHeight, rendered.outputHeight)
+                outputs.push(outputName)
+                outputDetails.push({
+                    theme,
+                    format: 'png',
+                    path: outputName,
+                    width: rendered.outputWidth,
+                    height: rendered.outputHeight,
+                })
+                console.log(`rendered ${relative(process.cwd(), outputPath)}`)
+            }
+
+            if (args.format === 'svg' || args.format === 'both') {
+                const outputName = `${name}_${theme}.svg`
+                const outputPath = join(args.outDir, outputName)
+                const rendered = await renderFrameToSvg(mod, theme, {
+                    width: inputWidth,
+                    height: inputHeight,
+                    watermark: cliWatermark ?? moduleWatermark,
+                    crop: args.crop,
+                    background: args.background,
+                })
+                await writeFile(outputPath, rendered.svg)
+                themeWidth = rendered.width
+                themeHeight = rendered.height
+                outputWidth = Math.max(outputWidth, rendered.outputWidth)
+                outputHeight = Math.max(outputHeight, rendered.outputHeight)
+                outputs.push(outputName)
+                outputDetails.push({
+                    theme,
+                    format: 'svg',
+                    path: outputName,
+                    width: rendered.outputWidth,
+                    height: rendered.outputHeight,
+                })
+                console.log(`rendered ${relative(process.cwd(), outputPath)}`)
+            }
+
+            renderWidth = themeWidth
+            renderHeight = themeHeight
         }
 
         manifest.push({
@@ -1343,6 +1637,9 @@ async function checkCommandWithArgs(args: CheckArgs) {
 
 async function gifCommand(argv: string[]) {
     const args = parseRenderArgs(argv)
+    if (args.format !== 'png') {
+        throw new Error('--format applies to static rendering only; gif always writes GIF output')
+    }
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')

@@ -11,6 +11,7 @@ interface TextEditorApi {
     getSource(): string
     saveSource(source: string): void
     onError(message: string): void
+    selectText?(start: number, end: number): void
 }
 
 interface Rect {
@@ -51,7 +52,7 @@ function cssNumber(value: string): number {
     return Number.isFinite(parsed) ? parsed : 0
 }
 
-function imageContentRect(image: HTMLImageElement, bounds: TextBounds): Rect {
+export function imageContentRect(image: HTMLImageElement, bounds: TextBounds): Rect {
     const box = image.getBoundingClientRect()
     const style = getComputedStyle(image)
     const borderLeft = cssNumber(style.borderLeftWidth)
@@ -224,6 +225,7 @@ export function mountPreviewTextEditor(
     }
 
     for (const entry of mountedTargets) {
+        entry.button.addEventListener('click', () => api.selectText?.(entry.target.start, entry.target.end))
         entry.button.addEventListener('dblclick', (event) => {
             event.preventDefault()
             openEditor(entry)

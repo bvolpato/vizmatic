@@ -8,6 +8,50 @@ interface ModuleDimensions {
     height: number
 }
 
+interface ModuleAnimation {
+    duration: number
+    fps: number
+}
+
+function numericProperty(object: ts.ObjectLiteralExpression, name: string): number | undefined {
+    const property = object.properties.find((item) => ts.isPropertyAssignment(item)
+        && ts.isIdentifier(item.name) && item.name.text === name)
+    return property && ts.isPropertyAssignment(property) && ts.isNumericLiteral(property.initializer)
+        ? Number(property.initializer.text) : undefined
+}
+
+/** Keep conversion static: only literal timeline cadences can become browser metadata. */
+function getAnimation(sourceFile: ts.SourceFile, exportedNames: Map<string, Set<string>>): ModuleAnimation | undefined {
+    if (!hasExportedCallable(sourceFile, 'createAnimation', exportedNames)) return undefined
+    const declaration = sourceFile.statements.find((statement) => ts.isFunctionDeclaration(statement)
+        && statement.name?.text === 'createAnimation')
+    if (!declaration || !ts.isFunctionDeclaration(declaration) || !declaration.body) return undefined
+    const returned = declaration.body.statements.find(ts.isReturnStatement)?.expression
+    if (!returned || !ts.isCallExpression(returned) || !ts.isIdentifier(returned.expression)
+        || returned.expression.text !== 'defineAnimation' || !returned.arguments[0]
+        || !ts.isObjectLiteralExpression(returned.arguments[0])) return undefined
+    const definition = returned.arguments[0]
+    const timeline = definition.properties.find((item) => ts.isPropertyAssignment(item)
+        && ts.isIdentifier(item.name) && item.name.text === 'timeline')
+    if (!timeline || !ts.isPropertyAssignment(timeline) || !ts.isArrayLiteralExpression(timeline.initializer)) return undefined
+    let duration = 0
+    for (const step of timeline.initializer.elements) {
+        if (!ts.isCallExpression(step) || !ts.isIdentifier(step.expression)) return undefined
+        const name = step.expression.text
+        if (name === 'keyframe') continue
+        let value: number | undefined
+        if (name === 'hold' && step.arguments[0] && ts.isNumericLiteral(step.arguments[0])) value = Number(step.arguments[0].text)
+        if (name === 'tween' && step.arguments[1] && ts.isObjectLiteralExpression(step.arguments[1])) {
+            value = numericProperty(step.arguments[1], 'duration')
+        }
+        if (value === undefined || !Number.isFinite(value) || value <= 0) return undefined
+        duration += value
+    }
+    const fps = numericProperty(definition, 'fps') ?? 20
+    if (duration <= 0 || duration > 10_000 || !Number.isInteger(fps) || fps < 1 || fps > 50) return undefined
+    return { duration: duration / 1000, fps: Math.min(fps, 10) }
+}
+
 function modifiersOf(node: ts.Node): readonly ts.Modifier[] {
     return ts.canHaveModifiers(node) ? ts.getModifiers(node) ?? [] : []
 }
@@ -151,10 +195,12 @@ export function toPlaygroundExample(source: string): string {
         moduleError('Playground example modules must export a create(theme) function.')
     }
     const dimensions = getDimensions(sourceFile, exportedNames)
+    const animation = getAnimation(sourceFile, exportedNames)
     const statements = sourceFile.statements.filter((statement) => {
         if (ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement)
             || ts.isExportDeclaration(statement) || ts.isExportAssignment(statement)) return false
-        return !Array.from(ANIMATION_EXPORTS).some((name) => isCallableDeclaration(statement, name)
+        return !Array.from(ANIMATION_EXPORTS).some((name) => !(animation && name === 'createAnimation')
+            && isCallableDeclaration(statement, name)
             && (hasModifier(statement, ts.SyntaxKind.ExportKeyword) || exportedNames.get(name)?.has(name) === true))
     }).map(stripExportModifiers)
 
@@ -163,8 +209,18 @@ export function toPlaygroundExample(source: string): string {
     const prelude = [
         `width = ${dimensions.width}`,
         `height = ${dimensions.height}`,
+        ...(animation ? [`animationDuration = ${animation.duration}`, `animationFps = ${animation.fps}`] : []),
         `const __vizmaticExampleTheme = c.bg === getThemeColors('dark').bg ? 'dark' : 'light';`,
     ].join('\n')
 
+    if (animation) {
+        const playback = [
+            'const __vizmaticAnimation = createAnimation(__vizmaticExampleTheme);',
+            `const __vizmaticFrames = sampleAnimationFrames(__vizmaticAnimation, { fps: ${animation.fps} });`,
+            'const __vizmaticFrame = __vizmaticFrames.findLast(({ frame }) => frame.time <= t * 1000) ?? __vizmaticFrames[0];',
+            '<React.Fragment>{__vizmaticAnimation.render(__vizmaticFrame.state, __vizmaticFrame.frame)}</React.Fragment>',
+        ].join('\n')
+        return `${prelude}\n${body}\n${playback}`
+    }
     return `${prelude}\n${body}\n<React.Fragment>{create(__vizmaticExampleTheme)}</React.Fragment>`
 }

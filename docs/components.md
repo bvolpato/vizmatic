@@ -1,8 +1,8 @@
 # Vizmatic components
 
-Package: vizmatic@0.2.0. Catalog: 71 runnable examples across 11 categories.
+Package: vizmatic@0.3.0. Catalog: 75 runnable examples across 11 categories.
 
-Each example is a focused, runnable starting point. Examples show common usage and are not exhaustive typed prop documentation. Use the package TypeScript definitions and `PROMPT.md` for the complete API contract.
+Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Finite literal options are shared in the `propEnums` object in `components.json`. Default values are not inferred.
 
 ## Foundations
 
@@ -15,6 +15,13 @@ Scene structure, responsive layout, and framed surfaces.
 ### Canvas
 
 Root canvas with transparent or custom backgrounds and padding.
+
+Props:
+- `background`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `justify`: `"center" | "flex-start" | "space-between" | "space-around"` (optional; allowed values: `propEnums.values1`)
+- `padding`: `number` (optional)
 
 ```tsx
 width = 960
@@ -36,9 +43,129 @@ height = 480
   </Canvas>
 ```
 
+### Board
+
+Fixed-size canvas for freely positioned visuals in one coordinate space.
+
+Props:
+- `background`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `height`: `number` (optional)
+- `width`: `number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Board
+    width={960}
+    height={480}
+    background={c.bgSubtle}>
+  <CanvasItem
+    x={48}
+    y={44}
+    width={288}
+    height={132}>
+  <MetricCard
+    label='API latency'
+    value='82 ms'
+    detail='budget: 120 ms'
+    tone='green' />
+  </CanvasItem>
+  <CanvasItem
+    x={368}
+    y={184}
+    width={264}
+    height={132}>
+  <MetricCard
+    label='Queue depth'
+    value='14'
+    detail='steady over 5 min'
+    tone='purple' />
+  </CanvasItem>
+  <CanvasItem
+    x={672}
+    y={52}
+    width={240}
+    height={116}>
+  <MetricCard
+    label='Deploy'
+    value='healthy'
+    detail='all regions'
+    tone='blue' />
+  </CanvasItem>
+  </Board>
+```
+
+### CanvasItem
+
+Positions and sizes a visual relative to its parent Board.
+
+Props:
+- `children`: `React.ReactNode` (optional)
+- `height`: `number` (optional)
+- `width`: `number` (optional)
+- `x`: `number` (required)
+- `y`: `number` (required)
+
+```tsx
+width = 1040
+height = 640
+
+<Scene title="CanvasItem example" subtitle="Edit this focused CanvasItem scene" padding={22} gap={18}>
+  <Board
+    width={960}
+    height={480}
+    background={c.bgSubtle}>
+  <CanvasItem
+    x={52}
+    y={48}
+    width={300}
+    height={138}>
+  <MetricCard
+    label='API latency'
+    value='82 ms'
+    detail='budget: 120 ms'
+    tone='green' />
+  </CanvasItem>
+  <CanvasItem
+    x={404}
+    y={196}
+    width={360}
+    height={148}>
+  <Panel
+    title='Worker pool'
+    subtitle='positioned as one canvas item'
+    tone='purple'
+    width='100%'
+    padding={16}>
+  <StatusRow
+    label='Workers'
+    detail='8 / 8 ready'
+    status='check' />
+  </Panel>
+  </CanvasItem>
+  </Board>
+</Scene>
+```
+
 ### Scene
 
 Primary vertical scene layout with optional title and subtitle.
+
+Props:
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `background`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (required)
+- `contentStyle`: `React.CSSProperties` (optional)
+- `contentWidth`: `string | number` (optional)
+- `gap`: `number` (optional)
+- `justify`: `"center" | "flex-start" | "space-between" | "space-around" | undefined` (optional; allowed values: `propEnums.values1`)
+- `padding`: `number` (optional)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
 
 ```tsx
 width = 960
@@ -65,6 +192,11 @@ height = 480
 
 Standalone heading and supporting copy.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `subtitle`: `string` (optional)
+- `title`: `string` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -85,6 +217,16 @@ height = 480
 ### Row
 
 Horizontal flex layout with stable gaps and alignment.
+
+Props:
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `children`: `React.ReactNode` (required)
+- `gap`: `number` (optional)
+- `height`: `string | number` (optional)
+- `justify`: `FlexJustify` (optional; allowed values: `propEnums.FlexJustify`)
+- `style`: `React.CSSProperties` (optional)
+- `width`: `string | number` (optional)
+- `wrap`: `boolean` (optional; allowed values: `propEnums.values2`)
 
 ```tsx
 width = 960
@@ -117,6 +259,16 @@ height = 480
 
 Vertical flex layout for stacked composition.
 
+Props:
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `children`: `React.ReactNode` (required)
+- `gap`: `number` (optional)
+- `height`: `string | number` (optional)
+- `justify`: `FlexJustify` (optional; allowed values: `propEnums.FlexJustify`)
+- `style`: `React.CSSProperties` (optional)
+- `width`: `string | number` (optional)
+- `wrap`: `boolean` (optional; allowed values: `propEnums.values2`)
+
 ```tsx
 width = 960
 height = 480
@@ -145,6 +297,13 @@ height = 480
 
 Compact vertical grouping for related content.
 
+Props:
+- `align`: `"center" | "start" | "end" | "stretch"` (optional; allowed values: `propEnums.FlexAlign`)
+- `children`: `React.ReactNode` (required)
+- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values3`)
+- `gap`: `number` (optional)
+- `wrap`: `boolean` (optional; allowed values: `propEnums.values2`)
+
 ```tsx
 width = 960
 height = 480
@@ -170,6 +329,30 @@ height = 480
 
 Titled container for grouped visual content.
 
+Props:
+- `accentHeight`: `number` (optional)
+- `accentWidth`: `number` (optional)
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `background`: `string` (optional)
+- `bodyStyle`: `React.CSSProperties` (optional)
+- `borderColor`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `footer`: `React.ReactNode` (optional)
+- `gap`: `number` (optional)
+- `height`: `string | number` (optional)
+- `justify`: `FlexJustify` (optional; allowed values: `propEnums.FlexJustify`)
+- `minHeight`: `string | number` (optional)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (required)
+- `titleFontSize`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -191,6 +374,27 @@ height = 480
 ### Card
 
 General-purpose surface with tone, padding, and shadow.
+
+Props:
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `background`: `string` (optional)
+- `bodyStyle`: `React.CSSProperties` (optional)
+- `borderColor`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `footer`: `React.ReactNode` (optional)
+- `gap`: `number` (optional)
+- `height`: `string | number` (optional)
+- `justify`: `FlexJustify` (optional; allowed values: `propEnums.FlexJustify`)
+- `minHeight`: `string | number` (optional)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -218,6 +422,23 @@ height = 480
 ### WindowFrame
 
 Application or terminal window framing.
+
+Props:
+- `background`: `string` (optional)
+- `bodyStyle`: `React.CSSProperties` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `dots`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `height`: `string | number` (optional)
+- `minHeight`: `string | number` (optional)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `title`: `React.ReactNode` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `variant`: `"window" | "browser" | "terminal"` (optional; allowed values: `propEnums.values4`)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -255,6 +476,11 @@ Labels, cards, code, comparisons, and reusable information blocks.
 
 Short semantic color accent.
 
+Props:
+- `height`: `number` (optional)
+- `tone`: `ToneName` (required; allowed values: `propEnums.ToneName`)
+- `width`: `number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -277,6 +503,16 @@ height = 480
 ### Icon
 
 Theme-aware technical icon set.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `label`: `string` (optional)
+- `muted`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `name`: `IconName` (required; allowed values: `propEnums.IconName`)
+- `size`: `number` (optional)
+- `strokeWidth`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 
 ```tsx
 width = 960
@@ -306,6 +542,18 @@ height = 480
 
 Wrapping-safe SVG or flex label.
 
+Props:
+- `align`: `"center" | "left" | "right"` (optional; allowed values: `propEnums.values5`)
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `fontSize`: `number` (optional)
+- `fontWeight`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `text`: `string` (required)
+- `variant`: `"code" | "title" | "subtitle" | "label" | "body" | "small" | "tiny" | "annotation"` (optional; allowed values: `propEnums.values6`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -330,6 +578,9 @@ height = 480
 
 Math-aware text formatting for React content.
 
+Props:
+- `text`: `string` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -352,6 +603,18 @@ height = 480
 
 Positioned math overlay aligned with custom SVG geometry.
 
+Props:
+- `dominantBaseline`: `string` (optional)
+- `fill`: `string` (required)
+- `fontFamily`: `string` (optional)
+- `fontSize`: `number` (optional)
+- `fontWeight`: `number` (optional)
+- `opacity`: `number` (optional)
+- `text`: `string` (required)
+- `textAnchor`: `"start" | "end" | "middle"` (optional; allowed values: `propEnums.values7`)
+- `x`: `number` (required)
+- `y`: `number` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -373,6 +636,11 @@ height = 480
 ### Badge
 
 Compact semantic SVG label.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `ColorName` (optional; allowed values: `propEnums.ColorName`)
+- `label`: `string` (required)
 
 ```tsx
 width = 960
@@ -399,6 +667,20 @@ height = 480
 
 Inline status, category, or metadata label.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `filled`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `fontSize`: `number` (optional)
+- `height`: `string | number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minWidth`: `string | number` (optional)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `text`: `React.ReactNode` (required)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -424,6 +706,23 @@ height = 480
 
 Emphasized label with tone gradient.
 
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `gradient`: `string` (optional)
+- `height`: `string | number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `React.ReactNode` (optional)
+- `subtitleMono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `title`: `React.ReactNode` (required)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -442,6 +741,15 @@ height = 480
 ### ValuePill
 
 Small label-value pair.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `detail`: `React.ReactNode` (optional)
+- `label`: `React.ReactNode` (required)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `value`: `React.ReactNode` (required)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -470,6 +778,18 @@ height = 480
 
 Formula, result, and supporting detail.
 
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `detail`: `React.ReactNode` (optional)
+- `formula`: `React.ReactNode` (required)
+- `height`: `string | number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `result`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (required)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -488,6 +808,21 @@ height = 480
 ### StepCard
 
 Numbered or staged process card.
+
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `eyebrow`: `React.ReactNode` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (required)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -522,6 +857,24 @@ height = 480
 
 KPI value with label and context.
 
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `detail`: `React.ReactNode` (optional)
+- `label`: `React.ReactNode` (required)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `value`: `React.ReactNode` (required)
+- `valueColor`: `string` (optional)
+- `valueFontSize`: `number` (optional)
+- `valueMono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -551,6 +904,20 @@ height = 480
 
 Focused takeaway, warning, or recommendation.
 
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `detail`: `React.ReactNode` (optional)
+- `detailFontSize`: `number` (optional)
+- `filled`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `title`: `React.ReactNode` (optional)
+- `titleFontSize`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -569,6 +936,16 @@ height = 480
 
 Compact list of supporting facts.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `items`: `React.ReactNode[]` (required)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `padding`: `string | number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+
 ```tsx
 width = 960
 height = 480
@@ -584,6 +961,21 @@ height = 480
 ### CodeBlock
 
 Code or command excerpt with optional line numbers.
+
+Props:
+- `background`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `fontSize`: `number` (optional)
+- `lines`: `(React.ReactNode | CodeLineSpec)[]` (required)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minWidth`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showLineNumbers`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `title`: `React.ReactNode` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -604,6 +996,16 @@ height = 480
 
 Side-by-side alternatives or before/after states.
 
+Props:
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `c`: `ThemeColors` (required)
+- `divider`: `React.ReactNode` (optional)
+- `gap`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `sides`: `ComparisonSideSpec[]` (required)
+- `sideWidth`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -620,6 +1022,19 @@ height = 480
 ### KeyValueList
 
 Aligned technical metadata rows.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `divider`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `keyMono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `keyWidth`: `string | number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minWidth`: `string | number` (optional)
+- `rows`: `KeyValueRow[]` (required)
+- `title`: `React.ReactNode` (optional)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -638,6 +1053,23 @@ height = 480
 ### Tile
 
 Single labeled unit for feature or system maps.
+
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `eyebrow`: `React.ReactNode` (optional)
+- `icon`: `React.ReactNode` (optional)
+- `lines`: `React.ReactNode[]` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `padding`: `string | number` (optional)
+- `radius`: `number` (optional)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (required)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -660,6 +1092,16 @@ height = 480
 
 Dense grid of related labeled units.
 
+Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `c`: `ThemeColors` (required)
+- `columns`: `number` (optional)
+- `gap`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `minHeight`: `string | number` (optional)
+- `tiles`: `TileSpec[]` (required)
+- `tileWidth`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -679,6 +1121,16 @@ height = 480
 ### Watermark
 
 Frame metadata for text, image, or custom branding.
+
+Props:
+- `children`: `React.ReactNode` (optional)
+- `color`: `string` (optional)
+- `element`: `React.ReactNode` (optional)
+- `icon`: `React.ReactNode` (optional)
+- `image`: `string | WatermarkImageOptions` (optional)
+- `opacity`: `number` (optional)
+- `position`: `WatermarkPosition` (optional; allowed values: `propEnums.WatermarkPosition`)
+- `text`: `string | false` (optional)
 
 ```tsx
 width = 960
@@ -718,6 +1170,17 @@ Processes, timelines, status, and progress.
 
 Single operational state with detail.
 
+Props:
+- `boxed`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `c`: `ThemeColors` (required)
+- `detail`: `React.ReactNode` (optional)
+- `fontSize`: `number` (optional)
+- `label`: `React.ReactNode` (required)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `status`: `StatusKind` (optional; allowed values: `propEnums.StatusKind`)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -747,6 +1210,15 @@ height = 480
 
 Grouped checks, warnings, and pending work.
 
+Props:
+- `boxed`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `c`: `ThemeColors` (required)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `rows`: `StatusRowSpec[]` (required)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -763,6 +1235,18 @@ height = 480
 ### Timeline
 
 Ordered events in horizontal or vertical form.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values3`)
+- `events`: `TimelineEventSpec[]` (required)
+- `eventWidth`: `string | number` (optional)
+- `gap`: `number` (optional)
+- `markerSize`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (optional)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -785,6 +1269,16 @@ height = 480
 
 Connected horizontal or vertical stages.
 
+Props:
+- `align`: `FlexAlign` (optional; allowed values: `propEnums.FlexAlign`)
+- `c`: `ThemeColors` (required)
+- `connectorLength`: `number` (optional)
+- `connectorTone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values3`)
+- `gap`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `stages`: `FlowStageSpec[]` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -803,6 +1297,11 @@ height = 480
 
 Compact process pipeline with shared title.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `stages`: `PipelineStage[]` (required)
+- `title`: `string` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -819,6 +1318,18 @@ height = 480
 ### ProgressRow
 
 Labeled progress bar and value.
+
+Props:
+- `barHeight`: `number` (optional)
+- `c`: `ThemeColors` (required)
+- `fontSize`: `number` (optional)
+- `label`: `React.ReactNode` (required)
+- `labelWidth`: `number` (optional)
+- `muted`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `value`: `number` (required)
+- `valueLabel`: `React.ReactNode` (optional)
+- `valueWidth`: `number` (optional)
 
 ```tsx
 width = 960
@@ -847,6 +1358,15 @@ height = 480
 
 Comparable progress across several measures.
 
+Props:
+- `barHeight`: `number` (optional)
+- `c`: `ThemeColors` (required)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `labelWidth`: `number` (optional)
+- `rows`: `ProgressRowSpec[]` (required)
+- `valueWidth`: `number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -871,6 +1391,19 @@ Networks, system architecture, directed graphs, and hierarchies.
 
 Layered neural network or staged DAG.
 
+Props:
+- `activePath`: `number[]` (optional)
+- `annotations`: `string[]` (optional)
+- `ariaLabel`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `formula`: `string` (optional)
+- `height`: `number` (optional)
+- `layers`: `LayeredNetworkLayer[]` (required)
+- `legend`: `string` (optional)
+- `nodeSize`: `number` (optional)
+- `showFormula`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `width`: `number` (optional)
+
 ```tsx
 width = 960
 height = 560
@@ -891,6 +1424,33 @@ height = 560
 
 Auto-laid architecture graph with nested groups, icons, and semantic edges.
 
+Props:
+- `ariaLabel`: `string` (optional)
+- `arrowSize`: `number` (optional)
+- `c`: `ThemeColors` (required)
+- `description`: `string` (optional)
+- `detailFontSize`: `number` (optional)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values9`)
+- `edgeGap`: `number` (optional)
+- `edges`: `GraphDiagramEdge[]` (required)
+- `groups`: `GraphDiagramGroup[]` (optional)
+- `height`: `number` (optional)
+- `iconSize`: `number` (optional)
+- `id`: `string` (optional)
+- `labelFontSize`: `number` (optional)
+- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values10`)
+- `nodeGap`: `number` (optional)
+- `nodeHeight`: `number` (optional)
+- `nodes`: `GraphDiagramNode[]` (required)
+- `nodeWidth`: `number` (optional)
+- `padding`: `number` (optional)
+- `rankGap`: `number` (optional)
+- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.
+- `routingClearance`: `number` (optional): Minimum node clearance in logical pixels for orthogonal routing.
+- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values11`)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -899,6 +1459,8 @@ height = 480
   <GraphDiagram
     width={820}
     height={360}
+    routing='dagre'
+    routingClearance={12}
     nodes={[{ id: 'api', label: 'API', tone: 'blue' },
         { id: 'queue', label: 'Queue', tone: 'purple' },
         { id: 'worker', label: 'Worker', tone: 'green' }]}
@@ -910,6 +1472,21 @@ height = 480
 ### TreeDiagram
 
 Auto-laid hierarchy, taxonomy, or decision tree.
+
+Props:
+- `ariaLabel`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `height`: `number` (optional)
+- `levelGap`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `nodeHeight`: `number` (optional)
+- `nodeWidth`: `number` (optional)
+- `padding`: `number` (optional)
+- `root`: `TreeNodeSpec` (required)
+- `siblingGap`: `number` (optional)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (optional)
+- `width`: `number` (optional)
 
 ```tsx
 width = 960
@@ -934,6 +1511,27 @@ Time-ordered interactions, lifelines, activations, notes, and control fragments.
 ### SequenceDiagram
 
 Typed participants, messages, notes, activations, and alt, loop, or parallel fragments.
+
+Props:
+- `activations`: `SequenceActivation[]` (optional)
+- `ariaLabel`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `fragmentIndent`: `number` (optional)
+- `fragments`: `SequenceFragment[]` (optional)
+- `height`: `number` (optional)
+- `items`: `SequenceItem[]` (optional): Ordered event input. When present, it is the source of row order.
+- `lifelineDash`: `string` (optional)
+- `messages`: `SequenceMessage[]` (optional)
+- `notes`: `SequenceNote[]` (optional)
+- `noteWidth`: `number` (optional)
+- `padding`: `number` (optional)
+- `participantGap`: `number` (optional)
+- `participants`: `SequenceParticipant[]` (required)
+- `participantWidth`: `number` (optional)
+- `rowHeight`: `number` (optional)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (optional)
+- `width`: `number` (optional)
 
 ```tsx
 width = 960
@@ -963,6 +1561,32 @@ Typed lineage across sources, transforms, stores, and sinks.
 
 Schema-aware batch and streaming lineage compiled into a stable directed graph.
 
+Props:
+- `ariaLabel`: `string` (optional)
+- `arrowSize`: `number` (optional)
+- `boundaries`: `DataflowBoundary[]` (optional)
+- `c`: `ThemeColors` (required)
+- `description`: `string` (optional)
+- `detailFontSize`: `number` (optional)
+- `direction`: `"LR" | "RL" | "TB" | "BT" | undefined` (optional; allowed values: `propEnums.values9`)
+- `edgeGap`: `number` (optional)
+- `edges`: `DataflowEdge[]` (required)
+- `height`: `number` (optional)
+- `iconSize`: `number` (optional)
+- `id`: `string` (optional)
+- `labelFontSize`: `number` (optional)
+- `nodeGap`: `number` (optional)
+- `nodeHeight`: `number` (optional)
+- `nodes`: `DataflowNode[]` (required)
+- `nodeWidth`: `number` (optional)
+- `padding`: `number` (optional)
+- `rankGap`: `number` (optional)
+- `routing`: `GraphRouting | undefined` (optional; allowed values: `propEnums.GraphRouting`)
+- `routingClearance`: `number | undefined` (optional)
+- `sizing`: `"content" | "fixed" | undefined` (optional; allowed values: `propEnums.values11`)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
 ```tsx
 width = 1040
 height = 560
@@ -971,6 +1595,8 @@ height = 560
   <DataflowDiagram
     width={820}
     height={390}
+    routing='dagre'
+    routingClearance={12}
     direction='LR'
     nodes={[{ id: 'source', label: 'Events', kind: 'source', tone: 'blue', schema: 'Event.v1' },
         { id: 'transform', label: 'Validate', kind: 'transform', tone: 'purple' },
@@ -991,6 +1617,33 @@ Infrastructure boundaries, workloads, ports, protocols, and trust direction.
 
 Nested region, network, and runtime boundaries with typed network connections.
 
+Props:
+- `ariaLabel`: `string` (optional)
+- `arrowSize`: `number` (optional)
+- `boundaries`: `DeploymentBoundary[]` (optional)
+- `c`: `ThemeColors` (required)
+- `connections`: `DeploymentConnection[]` (optional)
+- `description`: `string` (optional)
+- `detailFontSize`: `number` (optional)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values9`)
+- `edgeGap`: `number` (optional)
+- `height`: `number` (optional)
+- `iconSize`: `number` (optional)
+- `id`: `string` (optional)
+- `labelFontSize`: `number` (optional)
+- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values10`)
+- `nodeGap`: `number` (optional)
+- `nodeHeight`: `number` (optional)
+- `nodes`: `DeploymentNode[]` (required)
+- `nodeWidth`: `number` (optional)
+- `padding`: `number` (optional)
+- `rankGap`: `number` (optional)
+- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.
+- `routingClearance`: `number` (optional): Minimum node clearance in logical pixels for orthogonal routing.
+- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values11`)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
 ```tsx
 width = 1040
 height = 560
@@ -999,6 +1652,8 @@ height = 560
   <DeploymentDiagram
     width={820}
     height={390}
+    routing='dagre'
+    routingClearance={12}
     direction='LR'
     boundaries={[{ id: 'region', label: 'us-east-1', kind: 'region', tone: 'blue' },
         { id: 'private', label: 'private subnet', kind: 'subnet', parent: 'region', tone: 'purple' }]}
@@ -1019,6 +1674,33 @@ Transformer blocks, tensor shapes, repeated layers, and distributed routes.
 
 Transformer computation topology with tensor metadata and collective routes.
 
+Props:
+- `ariaLabel`: `string` (optional)
+- `arrowSize`: `number` (optional)
+- `blocks`: `TransformerBlock[]` (required)
+- `c`: `ThemeColors` (required)
+- `description`: `string` (optional)
+- `detailFontSize`: `number` (optional)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values9`)
+- `edgeGap`: `number` (optional)
+- `expandRepeats`: `boolean` (optional; allowed values: `propEnums.values2`): Expand repeat counts into individually addressable graph nodes.
+- `height`: `number` (optional)
+- `iconSize`: `number` (optional)
+- `id`: `string` (optional)
+- `labelFontSize`: `number` (optional)
+- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values10`)
+- `nodeGap`: `number` (optional)
+- `nodeHeight`: `number` (optional)
+- `nodeWidth`: `number` (optional)
+- `padding`: `number` (optional)
+- `rankGap`: `number` (optional)
+- `routes`: `TransformerRoute[]` (optional)
+- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.
+- `routingClearance`: `number` (optional): Minimum node clearance in logical pixels for orthogonal routing.
+- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values11`)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
 ```tsx
 width = 1040
 height = 560
@@ -1027,6 +1709,8 @@ height = 560
   <TransformerTopology
     width={820}
     height={390}
+    routing='dagre'
+    routingClearance={12}
     direction='LR'
     blocks={[{ id: 'embed', label: 'Embed', kind: 'embedding', outputShape: { dims: ['B', 'T', 'd'], dtype: 'bf16' } },
         { id: 'attn', label: 'Attention', kind: 'attention', shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' } },
@@ -1046,6 +1730,21 @@ Tables, grids, matrices, and compact distributions.
 ### Matrix
 
 Numeric or symbolic matrix with headers.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `cellHeight`: `number` (optional)
+- `cellSize`: `number` (optional)
+- `cellWidth`: `number` (optional)
+- `colLabels`: `string[]` (optional)
+- `colorize`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values12`)
+- `data`: `number[][]` (required)
+- `format`: `"decimal" | "percent" | "integer"` (optional; allowed values: `propEnums.values13`)
+- `labels`: `React.ReactNode[][]` (optional)
+- `rowLabels`: `string[]` (optional)
+- `rowLabelWidth`: `number` (optional)
+- `title`: `string` (optional)
 
 ```tsx
 width = 960
@@ -1068,6 +1767,19 @@ height = 480
 ### Heatmap
 
 Color-scaled matrix for intensity and correlation.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `cellHeight`: `number` (optional)
+- `cellSize`: `number` (optional)
+- `cellWidth`: `number` (optional)
+- `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values12`)
+- `data`: `number[][]` (required)
+- `labels`: `React.ReactNode[][]` (optional)
+- `rowLabelWidth`: `number` (optional)
+- `title`: `string` (optional)
+- `xLabels`: `string[]` (required)
+- `yLabels`: `string[]` (required)
 
 ```tsx
 width = 960
@@ -1092,6 +1804,20 @@ height = 480
 
 Matrix with named regions and boundaries.
 
+Props:
+- `ariaLabel`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `cellSize`: `number` (optional)
+- `cols`: `number` (required)
+- `crossedOut`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `gap`: `number` (optional)
+- `muted`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `regions`: `TiledMatrixRegion[]` (optional)
+- `rows`: `number` (required)
+- `subtitle`: `React.ReactNode` (optional)
+- `title`: `React.ReactNode` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+
 ```tsx
 width = 960
 height = 480
@@ -1114,6 +1840,18 @@ height = 480
 
 Structured rows and columns with headers.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `cellHeight`: `number` (optional)
+- `cellWidth`: `number` (optional)
+- `firstColWidth`: `number` (optional)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `headerCols`: `number` (optional)
+- `headerRows`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `rows`: `React.ReactNode[][]` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -1132,6 +1870,18 @@ height = 480
 ### Grid
 
 General labeled cell grid.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `cellHeight`: `number` (optional)
+- `cellWidth`: `number` (optional)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `headerCols`: `number` (optional)
+- `headerRows`: `number` (optional)
+- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `radius`: `number` (optional)
+- `rows`: `(React.ReactNode | GridCell)[][]` (required)
 
 ```tsx
 width = 960
@@ -1156,6 +1906,18 @@ height = 480
 ### MiniBarChart
 
 Compact categorical bars for dense layouts.
+
+Props:
+- `barWidth`: `number` (optional)
+- `c`: `ThemeColors` (required)
+- `data`: `MiniBarDatum[]` (required)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `height`: `number` (optional)
+- `max`: `number` (optional)
+- `minBarHeight`: `number` (optional)
+- `radius`: `number` (optional)
+- `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
 
 ```tsx
 width = 960
@@ -1184,6 +1946,17 @@ Common comparisons, trends, distributions, and analytical plots.
 
 Shared chart title, subtitle, legend, and footer.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (required)
+- `footer`: `string` (optional)
+- `height`: `string | number` (optional)
+- `legend`: `ChartLegendItem[]` (optional)
+- `padding`: `number` (optional)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `string | number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -1209,6 +1982,21 @@ height = 480
 
 Part-to-whole composition with center label.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `centerLabel`: `React.ReactNode` (optional)
+- `centerValue`: `React.ReactNode` (optional)
+- `footer`: `string` (optional)
+- `format`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `segments`: `DonutChartSegment[]` (required)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `size`: `number` (optional)
+- `subtitle`: `string` (optional)
+- `thickness`: `number` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -1229,9 +2017,50 @@ height = 480
 </Scene>
 ```
 
+### PieChart
+
+Part-to-whole composition with a full circular radius.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `footer`: `string` (optional)
+- `format`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `segments`: `DonutChartSegment[]` (required)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `size`: `number` (optional)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
+```tsx
+width = 960
+height = 640
+
+<Scene title="PieChart example" subtitle="Edit this focused PieChart scene" padding={22} gap={18}>
+  <PieChart
+    title='Requests by outcome'
+    subtitle='Relative share of completed requests'
+    width={500}
+    height={300}
+    segments={[{ label: 'Successful', value: 68, color: 'positive' },
+        { label: 'Retried', value: 22, color: 'warning' },
+        { label: 'Failed', value: 10, color: 'critical' }]} />
+</Scene>
+```
+
 ### StackedBar
 
 Part-to-whole values along one dimension.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `height`: `number` (optional)
+- `segments`: `StackedBarSegment[]` (required)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1252,6 +2081,21 @@ height = 480
 ### BarChart
 
 Categorical comparison with labels and values.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `data`: `BarChartDatum[]` (required)
+- `footer`: `string` (optional)
+- `format`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `max`: `number` (optional)
+- `min`: `number` (optional)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+- `yAxisLabel`: `string` (optional)
 
 ```tsx
 width = 960
@@ -1275,6 +2119,22 @@ height = 640
 
 One or more trends across an ordered axis.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `footer`: `string` (optional)
+- `format`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `labels`: `string[]` (optional)
+- `max`: `number` (optional)
+- `min`: `number` (optional)
+- `series`: `LineChartSeries[]` (required)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showPoints`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+- `yAxisLabel`: `string` (optional)
+
 ```tsx
 width = 960
 height = 640
@@ -1296,6 +2156,24 @@ height = 640
 ### ScatterPlot
 
 Point distribution across two numeric axes.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `footer`: `string` (optional)
+- `formatX`: `ChartValueFormat` (optional)
+- `formatY`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `points`: `ScatterPoint[]` (required)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+- `xAxisLabel`: `string` (optional)
+- `xMax`: `number` (optional)
+- `xMin`: `number` (optional)
+- `yAxisLabel`: `string` (optional)
+- `yMax`: `number` (optional)
+- `yMin`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1319,9 +2197,66 @@ height = 640
 </Scene>
 ```
 
+### ParetoBarChart
+
+Descending category counts with a cumulative percentage line.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `data`: `BarChartDatum[]` (required)
+- `footer`: `string` (optional)
+- `format`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+
+```tsx
+width = 960
+height = 640
+
+<Scene title="ParetoBarChart example" subtitle="Edit this focused ParetoBarChart scene" padding={22} gap={18}>
+  <ParetoBarChart
+    title='Support issues'
+    subtitle='Sorted counts with cumulative share'
+    width={760}
+    height={340}
+    data={[{ label: 'Setup', value: 42, color: 'primary' },
+        { label: 'Auth', value: 28, color: 'secondary' },
+        { label: 'Latency', value: 18, color: 'warning' },
+        { label: 'Other', value: 12, color: 'neutral' }]} />
+</Scene>
+```
+
 ### ParetoChart
 
 Automatic non-dominated frontier across competing numeric objectives.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `footer`: `string` (optional)
+- `formatX`: `ChartValueFormat` (optional)
+- `formatY`: `ChartValueFormat` (optional)
+- `frontierColor`: `string` (optional)
+- `goalLabel`: `string` (optional)
+- `height`: `number` (optional)
+- `points`: `ScatterPoint[]` (required)
+- `showGoal`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+- `xAxisLabel`: `string` (optional)
+- `xMax`: `number` (optional)
+- `xMin`: `number` (optional)
+- `xObjective`: `ParetoObjective` (optional; allowed values: `propEnums.ParetoObjective`)
+- `xScale`: `ParetoXScale` (optional; allowed values: `propEnums.ParetoXScale`)
+- `yAxisLabel`: `string` (optional)
+- `yMax`: `number` (optional)
+- `yMin`: `number` (optional)
+- `yObjective`: `ParetoObjective` (optional; allowed values: `propEnums.ParetoObjective`)
 
 ```tsx
 width = 960
@@ -1351,6 +2286,28 @@ height = 640
 
 Numeric decision map split by configurable policy thresholds.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `footer`: `string` (optional)
+- `formatX`: `ChartValueFormat` (optional)
+- `formatY`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `points`: `ScatterPoint[]` (required)
+- `regions`: `{ topLeft: QuadrantRegion; topRight: QuadrantRegion; bottomLeft: QuadrantRegion; bottomRight: QuadrantRegion; }` (required)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showTicks`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
+- `xAxisLabel`: `string` (optional)
+- `xMax`: `number` (optional)
+- `xMin`: `number` (optional)
+- `xThreshold`: `number` (optional)
+- `yAxisLabel`: `string` (optional)
+- `yMax`: `number` (optional)
+- `yMin`: `number` (optional)
+- `yThreshold`: `number` (optional)
+
 ```tsx
 width = 960
 height = 640
@@ -1373,6 +2330,19 @@ height = 640
 ### IntervalPlot
 
 Low, midpoint, and high ranges by category.
+
+Props:
+- `axisLabel`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `data`: `IntervalDatum[]` (required)
+- `footer`: `string` (optional)
+- `format`: `ChartValueFormat` (optional)
+- `height`: `number` (optional)
+- `max`: `number` (optional)
+- `min`: `number` (optional)
+- `subtitle`: `string` (optional)
+- `title`: `string` (optional)
+- `width`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1397,6 +2367,11 @@ height = 640
 
 Reusable color key for charts and diagrams.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `items`: `LegendItem[]` (required)
+- `title`: `string` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -1420,6 +2395,19 @@ Low-level SVG geometry for custom technical figures.
 ### Box
 
 Rounded SVG box with label and tone.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `ColorName` (optional; allowed values: `propEnums.ColorName`)
+- `fontSize`: `number` (optional)
+- `gradient`: `boolean` (optional; allowed values: `propEnums.values2`): Use gradient background instead of solid
+- `height`: `number` (optional)
+- `icon`: `string` (optional): Optional icon/emoji before label
+- `label`: `string` (required)
+- `outlined`: `boolean` (optional; allowed values: `propEnums.values2`): Outlined style instead of filled
+- `radius`: `number` (optional): Border radius
+- `sublabel`: `string` (optional): Optional sub-label below main label
+- `width`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1452,6 +2440,13 @@ height = 480
 
 Straight labeled SVG arrow.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values14`)
+- `label`: `string` (optional)
+- `length`: `number` (optional)
+
 ```tsx
 width = 960
 height = 480
@@ -1468,6 +2463,11 @@ height = 480
 ### ArrowMarkerDef
 
 Reusable SVG arrowhead definition.
+
+Props:
+- `color`: `string` (required)
+- `id`: `string` (required)
+- `size`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1505,6 +2505,14 @@ height = 480
 
 Straight directional connector with label and tone.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values14`)
+- `label`: `string` (optional)
+- `length`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+
 ```tsx
 width = 960
 height = 480
@@ -1522,6 +2530,14 @@ height = 480
 
 Alias for flow connectors in diagram code.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values14`)
+- `label`: `string` (optional)
+- `length`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+
 ```tsx
 width = 960
 height = 480
@@ -1538,6 +2554,17 @@ height = 480
 ### VectorArrow
 
 Vector with optional endpoints and arrowhead.
+
+Props:
+- `arrowSize`: `number` (optional)
+- `color`: `string` (required)
+- `key`: `React.Key` (optional)
+- `opacity`: `number` (optional)
+- `strokeWidth`: `number` (optional)
+- `x1`: `number` (required)
+- `x2`: `number` (required)
+- `y1`: `number` (required)
+- `y2`: `number` (required)
 
 ```tsx
 width = 960
@@ -1575,6 +2602,19 @@ height = 480
 
 Line segment for geometric constructions.
 
+Props:
+- `color`: `string` (required)
+- `dotRadius`: `number` (optional)
+- `key`: `React.Key` (optional)
+- `opacity`: `number` (optional)
+- `showEndDot`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showStartDot`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `strokeWidth`: `number` (optional)
+- `x1`: `number` (required)
+- `x2`: `number` (required)
+- `y1`: `number` (required)
+- `y2`: `number` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -1605,6 +2645,19 @@ height = 480
 ### SvgFrame
 
 SVG plotting frame with border and fill.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `fill`: `string` (optional)
+- `height`: `number` (required)
+- `key`: `React.Key` (optional)
+- `opacity`: `number` (optional)
+- `rx`: `number` (optional)
+- `stroke`: `string` (optional)
+- `strokeWidth`: `number` (optional)
+- `width`: `number` (required)
+- `x`: `number` (optional)
+- `y`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1638,6 +2691,16 @@ height = 480
 ### SvgPoint
 
 Labeled point for SVG figures.
+
+Props:
+- `cx`: `number` (required)
+- `cy`: `number` (required)
+- `fill`: `string` (required)
+- `key`: `React.Key` (optional)
+- `opacity`: `number` (optional)
+- `r`: `number` (optional)
+- `stroke`: `string` (optional)
+- `strokeWidth`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1674,6 +2737,15 @@ height = 480
 
 Point marker with optional text label.
 
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `string` (required)
+- `label`: `string` (required)
+- `labelOffset`: `{ x?: number; y?: number; }` (optional)
+- `size`: `number` (optional)
+- `x`: `number` (required)
+- `y`: `number` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -1691,6 +2763,15 @@ height = 480
 
 Dotted or dashed SVG guide line.
 
+Props:
+- `color`: `string` (required)
+- `dotSize`: `number` (optional)
+- `dotSpacing`: `number` (optional)
+- `x1`: `number` (required)
+- `x2`: `number` (required)
+- `y1`: `number` (required)
+- `y2`: `number` (required)
+
 ```tsx
 width = 960
 height = 480
@@ -1707,6 +2788,30 @@ height = 480
 ### AxisPlot
 
 Coordinate plane for points, vectors, and paths.
+
+Props:
+- `axisColor`: `string` (optional)
+- `c`: `ThemeColors` (required)
+- `children`: `React.ReactNode` (optional)
+- `frameFill`: `string` (optional)
+- `frameRx`: `number` (optional)
+- `frameStroke`: `string` (optional)
+- `gridCount`: `number` (optional)
+- `height`: `number` (required)
+- `padding`: `number` (optional)
+- `paths`: `AxisPlotPath[]` (optional)
+- `points`: `AxisPlotPoint[]` (optional)
+- `showAxes`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showFrame`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `vectors`: `AxisPlotVector[]` (optional)
+- `width`: `number` (required)
+- `xAxisLabel`: `string` (optional)
+- `xMax`: `number` (optional)
+- `xMin`: `number` (optional)
+- `yAxisLabel`: `string` (optional)
+- `yMax`: `number` (optional)
+- `yMin`: `number` (optional)
 
 ```tsx
 width = 960
@@ -1727,3 +2832,31 @@ height = 560
     vectors={[{ x1: 0, y1: 0, x2: 0.45, y2: 0.55, tone: 'purple', arrow: true }]} />
 </Scene>
 ```
+## Shared prop value sets
+
+Finite allowed values referenced by component props:
+
+- `propEnums.values1`: ["center","flex-start","space-between","space-around"]
+- `propEnums.FlexAlign`: ["center","start","end","stretch"]
+- `propEnums.FlexJustify`: ["center","space-between","space-around","start","end"]
+- `propEnums.values2`: [false,true]
+- `propEnums.values3`: ["vertical","horizontal"]
+- `propEnums.ToneName`: ["critical","neutral","blue","purple","green","warm","cyan","pink","red","sunset","ocean","dark"]
+- `propEnums.values4`: ["window","browser","terminal"]
+- `propEnums.IconName`: ["warning","browser","terminal","agent","bucket","cache","chart","check","cluster","code","cloud","container","database","file","firewall","gateway","git","globe","image","layers","lock","load-balancer","mobile","monitor","network","play","queue","server","spark","storage","stream","tool","user"]
+- `propEnums.values5`: ["center","left","right"]
+- `propEnums.values6`: ["code","title","subtitle","label","body","small","tiny","annotation"]
+- `propEnums.values7`: ["start","end","middle"]
+- `propEnums.ColorName`: ["primary","secondary","positive","warning","critical","info","accent","neutral"]
+- `propEnums.values8`: ["center","left"]
+- `propEnums.WatermarkPosition`: ["top-left","top-right","bottom-left","bottom-right"]
+- `propEnums.StatusKind`: ["info","check","cross","warn","pending","dot"]
+- `propEnums.values9`: ["LR","RL","TB","BT"]
+- `propEnums.values10`: ["auto","manual"]
+- `propEnums.GraphRouting`: ["dagre","straight","orthogonal"]
+- `propEnums.values11`: ["content","fixed"]
+- `propEnums.values12`: ["heat","strength"]
+- `propEnums.values13`: ["decimal","percent","integer"]
+- `propEnums.ParetoObjective`: ["minimize","maximize"]
+- `propEnums.ParetoXScale`: ["linear","log"]
+- `propEnums.values14`: ["left","right","down","up"]

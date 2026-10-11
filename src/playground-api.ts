@@ -2,7 +2,10 @@ import React from 'react'
 import { Watermark, wrapWithWatermark } from './brand'
 import * as primitives from './primitives'
 import * as themeApi from './theme'
+import * as timelineApi from './timeline'
 import { SVG_ACCESSIBILITY_COMPONENT } from './svg-accessibility'
+import { CANVAS_ITEM_COMPONENT } from './primitives/board'
+import { CANVAS_CHART_COMPONENT } from './canvas-chart-fit'
 
 type PlaygroundApi = Record<string, unknown>
 type ThemeColors = ReturnType<typeof themeApi.getThemeColors>
@@ -24,6 +27,12 @@ function withTheme(Component: unknown, c: ThemeColors): unknown {
     if ((Component as { [SVG_ACCESSIBILITY_COMPONENT]?: boolean })[SVG_ACCESSIBILITY_COMPONENT]) {
         Object.defineProperty(themedComponent, SVG_ACCESSIBILITY_COMPONENT, { value: true })
     }
+    if ((Component as { [CANVAS_ITEM_COMPONENT]?: boolean })[CANVAS_ITEM_COMPONENT]) {
+        Object.defineProperty(themedComponent, CANVAS_ITEM_COMPONENT, { value: true })
+    }
+    if ((Component as { [CANVAS_CHART_COMPONENT]?: boolean })[CANVAS_CHART_COMPONENT]) {
+        Object.defineProperty(themedComponent, CANVAS_CHART_COMPONENT, { value: true })
+    }
     return themedComponent
 }
 
@@ -36,7 +45,7 @@ function withThemeCall(Component: unknown, c: ThemeColors): unknown {
 }
 
 export function createPlaygroundApi(c: ThemeColors): PlaygroundApi {
-    const api: PlaygroundApi = { ...themeApi, ...primitives, Watermark, wrapWithWatermark }
+    const api: PlaygroundApi = { ...themeApi, ...primitives, ...timelineApi, Watermark, wrapWithWatermark }
     const scoped: PlaygroundApi = {}
 
     for (const [name, value] of Object.entries(api)) {

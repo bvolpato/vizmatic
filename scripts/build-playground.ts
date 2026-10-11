@@ -7,6 +7,7 @@ import { resolve } from 'path'
 const outPath = 'docs/playground.js'
 const redirectOutPath = 'docs/playground-redirect.js'
 const workerOutPath = 'docs/playground-worker.js'
+const sceneOutPath = 'docs/playground-scene.js'
 const browserRenderContext = resolve('src/playground-render-context.ts')
 const browserHarfbuzz = resolve('src/playground-harfbuzz.ts')
 
@@ -80,6 +81,16 @@ export async function buildPlayground(): Promise<void> {
     })
 
     await build({
+        entryPoints: ['src/playground-scene.ts'],
+        bundle: true,
+        format: 'esm',
+        target: 'es2022',
+        platform: 'browser',
+        minify: true,
+        outfile: sceneOutPath,
+    })
+
+    await build({
         entryPoints: {
             playground: 'src/playground.ts',
             'playground-redirect': 'src/playground-redirect.ts',
@@ -97,18 +108,20 @@ export async function buildPlayground(): Promise<void> {
         normalizeGeneratedIndentation(outPath),
         normalizeGeneratedIndentation(redirectOutPath),
         normalizeGeneratedIndentation(workerOutPath),
+        normalizeGeneratedIndentation(sceneOutPath),
     ])
 
     const outputSizes = await Promise.all([
         stat(outPath),
         stat(workerOutPath),
+        stat(sceneOutPath),
         ...Object.keys(worker.metafile?.outputs ?? {})
             .filter((path) => path.startsWith('docs/assets/playground/'))
             .map((path) => stat(path)),
     ])
-    const [main, workerFile, ...assets] = outputSizes
+    const [main, workerFile, sceneFile, ...assets] = outputSizes
     const assetSize = assets.reduce((total, file) => total + file.size, 0)
-    console.log(`built ${outPath} (${Math.ceil(main.size / 1024)} KiB), ${workerOutPath} (${Math.ceil(workerFile.size / 1024)} KiB), assets (${Math.ceil(assetSize / 1024)} KiB)`)
+    console.log(`built ${outPath} (${Math.ceil(main.size / 1024)} KiB), ${sceneOutPath} (${Math.ceil(sceneFile.size / 1024)} KiB), ${workerOutPath} (${Math.ceil(workerFile.size / 1024)} KiB), assets (${Math.ceil(assetSize / 1024)} KiB)`)
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

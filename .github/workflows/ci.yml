@@ -26,6 +26,21 @@ jobs:
           cache: pnpm
       - run: ./test.sh
 
+  playground:
+    name: playground browser (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm site:build
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm check:playground
+
   runtime:
     name: runtime (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest

@@ -8,6 +8,7 @@ import {
 } from '../theme'
 
 import { clamp, textFitStyle } from './layout'
+import { CANVAS_CHART_COMPONENT, CHART_FRAME_COMPONENT } from '../canvas-chart-fit'
 
 // ─── Chart helpers — Reusable axes, bars, curves, ranges, and points ────────
 
@@ -241,7 +242,11 @@ export function pointLabelPlacement(
     }
 }
 
-export function ChartFrame({
+export function ChartFrame(props: ChartFrameProps): React.ReactElement {
+    return React.createElement(ChartFrameContent, props)
+}
+
+function ChartFrameContent({
     children,
     c,
     title,
@@ -315,6 +320,8 @@ export function ChartFrame({
     )
 }
 
+Object.defineProperty(ChartFrameContent, CHART_FRAME_COMPONENT, { value: true })
+
 function polarPoint(cx: number, cy: number, radius: number, angleDegrees: number): { x: number; y: number } {
     const radians = (angleDegrees * Math.PI) / 180
     return {
@@ -369,6 +376,169 @@ interface DonutChartProps {
     centerValue?: React.ReactNode
     showLegend?: boolean
     footer?: string
+}
+
+/** Pie chart values must be finite, non-negative counts. Zero-valued slices are omitted. */
+export interface PieChartProps {
+    segments: DonutChartSegment[]
+    c: ThemeColors
+    title?: string
+    subtitle?: string
+    width?: number
+    height?: number
+    size?: number
+    format?: ChartValueFormat
+    showLegend?: boolean
+    footer?: string
+}
+
+function validateNonNegativeSegments(segments: DonutChartSegment[], chartName: string): number {
+    let total = 0
+    for (const segment of segments) {
+        if (!Number.isFinite(segment.value) || segment.value < 0) {
+            throw new RangeError(`${chartName} values must be finite, non-negative numbers.`)
+        }
+        total += segment.value
+        if (!Number.isFinite(total)) {
+            throw new RangeError(`${chartName} total must be finite.`)
+        }
+    }
+    return total
+}
+
+function pieSectorPath(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
+    const span = endAngle - startAngle
+    const start = polarPoint(cx, cy, radius, startAngle)
+    if (span >= 359.999) {
+        const opposite = polarPoint(cx, cy, radius, startAngle + 180)
+        return [
+            `M ${cx} ${cy}`,
+            `L ${start.x} ${start.y}`,
+            `A ${radius} ${radius} 0 1 1 ${opposite.x} ${opposite.y}`,
+            `A ${radius} ${radius} 0 1 1 ${start.x} ${start.y}`,
+            'Z',
+        ].join(' ')
+    }
+    const end = polarPoint(cx, cy, radius, endAngle)
+    const largeArc = span > 180 ? 1 : 0
+    return `M ${cx} ${cy} L ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y} Z`
+}
+
+/** A categorical part-to-whole chart with a full circular radius. */
+export function PieChart({
+    segments,
+    c,
+    title,
+    subtitle,
+    width = 360,
+    height = 240,
+    size,
+    format = 'decimal',
+    showLegend = true,
+    footer,
+}: PieChartProps): React.ReactElement {
+    const total = validateNonNegativeSegments(segments, 'PieChart')
+    const positiveSegments = segments.filter((segment) => segment.value > 0)
+    const resolvedSize = size ?? Math.min(184, Math.max(132, height - 44), Math.max(132, width * 0.5))
+    const radius = resolvedSize / 2 - 2
+    const cx = resolvedSize / 2
+    const cy = resolvedSize / 2
+    let cursor = -90
+    const paths = positiveSegments.map((segment, index) => {
+        const span = total > 0 ? (segment.value / total) * 360 : 0
+        const start = cursor
+        const end = index === positiveSegments.length - 1 ? 270 : cursor + span
+        cursor += span
+        return React.createElement('path', {
+            key: `pie-segment-${segment.label}-${index}`,
+            d: pieSectorPath(cx, cy, radius, start, end),
+            fill: chartColor(segment.color, c, index),
+            stroke: c.bgCard,
+            strokeWidth: positiveSegments.length > 1 ? 2 : 0,
+            'data-pie-label': segment.label,
+            'data-pie-value': segment.value,
+            'data-pie-share': total > 0 ? segment.value / total : 0,
+        })
+    })
+
+    const legend = showLegend && positiveSegments.length > 0 && React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: 8,
+            flex: 1,
+            minWidth: 112,
+        },
+    }, ...positiveSegments.map((segment, index) => {
+        const formattedValue = formatChartValue(segment.value, format)
+        const share = formatChartValue(segment.value / total, 'percent')
+        const label = segment.valueLabel ?? (format === 'percent' ? formattedValue : `${formattedValue} · ${share}`)
+        return React.createElement('div', {
+            key: `pie-legend-${segment.label}-${index}`,
+            style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 },
+        },
+            React.createElement('span', {
+                style: {
+                    display: 'flex',
+                    width: 10,
+                    height: 10,
+                    borderRadius: 3,
+                    backgroundColor: chartColor(segment.color, c, index),
+                    flexShrink: 0,
+                },
+            }),
+            React.createElement('span', {
+                style: { ...typography.tiny, ...textFitStyle(), color: c.textSecondary, flex: 1 },
+            }, segment.label),
+            React.createElement('span', {
+                style: {
+                    ...typography.tiny,
+                    color: c.textPrimary,
+                    fontFamily: 'JetBrains Mono',
+                    fontWeight: 850,
+                    flexShrink: 0,
+                },
+            }, label),
+        )
+    }))
+
+    return ChartFrame({
+        c,
+        title,
+        subtitle,
+        footer,
+        width,
+        children: React.createElement('div', {
+            style: {
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: showLegend ? 'space-between' : 'center',
+                gap: 18,
+                minHeight: resolvedSize,
+                width: '100%',
+            },
+        },
+            React.createElement('svg', {
+                width: resolvedSize,
+                height: resolvedSize,
+                viewBox: `0 0 ${resolvedSize} ${resolvedSize}`,
+                role: 'img',
+                'aria-label': title ?? 'Pie chart',
+            },
+                positiveSegments.length === 0
+                    ? React.createElement('circle', {
+                        cx,
+                        cy,
+                        r: radius,
+                        fill: 'none',
+                        stroke: c.borderLight,
+                        strokeWidth: 2,
+                    })
+                    : paths,
+            ),
+            legend,
+        ),
+    })
 }
 
 export function DonutChart({
@@ -786,6 +956,193 @@ export function BarChart({
     })
 }
 
+export interface ParetoBarChartProps {
+    data: BarChartDatum[]
+    c: ThemeColors
+    title?: string
+    subtitle?: string
+    width?: number
+    height?: number
+    format?: ChartValueFormat
+    showGrid?: boolean
+    showValues?: boolean
+    footer?: string
+}
+
+/** A classic Pareto chart: stable descending bars with a cumulative percentage line. */
+export function ParetoBarChart({
+    data,
+    c,
+    title,
+    subtitle,
+    width = 520,
+    height = 300,
+    format = 'integer',
+    showGrid = true,
+    showValues = true,
+    footer,
+}: ParetoBarChartProps): React.ReactElement {
+    let total = 0
+    for (const item of data) {
+        if (!Number.isFinite(item.value) || item.value < 0) {
+            throw new RangeError('ParetoBarChart values must be finite, non-negative numbers.')
+        }
+        total += item.value
+        if (!Number.isFinite(total)) {
+            throw new RangeError('ParetoBarChart total must be finite.')
+        }
+    }
+
+    const sorted = data
+        .map((item, index) => ({ item, index }))
+        .sort((left, right) => right.item.value - left.item.value || left.index - right.index)
+    const maximum = Math.max(1, ...sorted.map(({ item }) => item.value))
+    const margin: ChartMargins = { top: 24, right: 48, bottom: 48, left: 48 }
+    const plot = createPlotArea(width, height, margin)
+    const valueDomain = {
+        min: 0,
+        range: maximum > Number.MAX_VALUE / 1.16 ? maximum : maximum * 1.16,
+    }
+    const countTicks = chartTicks(0, maximum, 4)
+    const slot = plot.innerWidth / Math.max(sorted.length, 1)
+    const barWidth = Math.max(6, Math.min(68, slot * 0.68))
+    let accumulated = 0
+    const bars = sorted.map(({ item, index }, order) => {
+        accumulated += item.value
+        const cumulative = total === 0 ? 0 : order === sorted.length - 1 ? 1 : accumulated / total
+        const x = plot.x + order * slot + (slot - barWidth) / 2
+        const top = yInPlot(item.value, valueDomain, plot)
+        return {
+            item,
+            sourceIndex: index,
+            order,
+            x,
+            y: top,
+            height: Math.max(0, plot.bottom - top),
+            color: chartColor(item.color, c, order),
+            centerX: x + barWidth / 2,
+            cumulative,
+            cumulativeY: plot.bottom - cumulative * plot.innerHeight,
+        }
+    })
+    const cumulativePath = bars
+        .map(({ centerX, cumulativeY }, index) => `${index === 0 ? 'M' : 'L'} ${centerX.toFixed(1)} ${cumulativeY.toFixed(1)}`)
+        .join(' ')
+
+    return ChartFrame({
+        c,
+        title,
+        subtitle,
+        width,
+        footer,
+        children: React.createElement('div', {
+            style: { position: 'relative' as const, width, height, display: 'flex' },
+        },
+            React.createElement('svg', {
+                width,
+                height,
+                viewBox: `0 0 ${width} ${height}`,
+                role: 'img',
+                'aria-label': title ?? 'Pareto bar chart',
+            },
+                showGrid && React.createElement('g', {},
+                    ...countTicks.map((tick) => {
+                        const y = yInPlot(tick, valueDomain, plot)
+                        return React.createElement('line', {
+                            key: `pareto-count-grid-${tick}`,
+                            x1: plot.x,
+                            y1: y,
+                            x2: plot.right,
+                            y2: y,
+                            stroke: c.borderSubtle,
+                            strokeWidth: 1,
+                        })
+                    }),
+                ),
+                React.createElement('line', {
+                    x1: plot.x, y1: plot.bottom, x2: plot.right, y2: plot.bottom,
+                    stroke: c.borderLight, strokeWidth: 1.2,
+                }),
+                React.createElement('line', {
+                    x1: plot.right, y1: plot.y, x2: plot.right, y2: plot.bottom,
+                    stroke: c.borderLight, strokeWidth: 1.2,
+                }),
+                ...bars.map(({ item, order, x, y, height: barHeight, color }) => React.createElement('rect', {
+                    key: `pareto-bar-${item.label}-${order}`,
+                    x,
+                    y,
+                    width: barWidth,
+                    height: barHeight,
+                    rx: 4,
+                    fill: color,
+                    opacity: 0.86,
+                    'data-pareto-bar': item.label,
+                    'data-pareto-value': item.value,
+                    'data-pareto-order': order,
+                })),
+                cumulativePath && React.createElement('path', {
+                    d: cumulativePath,
+                    fill: 'none',
+                    stroke: chartColor('critical', c),
+                    strokeWidth: 3,
+                    strokeLinecap: 'round',
+                    strokeLinejoin: 'round',
+                    'data-pareto-cumulative-line': true,
+                }),
+                ...bars.map(({ item, sourceIndex, centerX, cumulativeY, cumulative, order }) => React.createElement('circle', {
+                    key: `pareto-cumulative-point-${order}`,
+                    cx: centerX,
+                    cy: cumulativeY,
+                    r: 4,
+                    fill: chartColor('critical', c),
+                    stroke: c.bgCard,
+                    strokeWidth: 2,
+                    'data-pareto-category': item.label,
+                    'data-pareto-source-index': sourceIndex,
+                    'data-pareto-cumulative-percent': cumulative * 100,
+                })),
+            ),
+            ...countTicks.map((tick) => chartLabel(
+                `pareto-count-label-${tick}`,
+                formatChartValue(tick, format),
+                plot.x - 7,
+                yInPlot(tick, valueDomain, plot),
+                c,
+                { align: 'right', width: 36 },
+            )),
+            ...[0, 0.5, 1].map((share) => chartLabel(
+                `pareto-percent-label-${share}`,
+                `${Math.round(share * 100)}%`,
+                plot.right + 7,
+                plot.bottom - share * plot.innerHeight,
+                c,
+                { align: 'left', width: 38 },
+            )),
+            ...bars.flatMap(({ item, order, centerX, y }) => [
+                ...(showValues ? [chartLabel(
+                    `pareto-value-${order}`,
+                    item.valueLabel ?? formatChartValue(item.value, format),
+                    centerX,
+                    clamp(y - 8, plot.y + 8, plot.bottom - 12),
+                    c,
+                    { color: c.textPrimary, fontWeight: 800, width: Math.min(slot, 64), bounds: { x: plot.x, y: plot.y, width: plot.innerWidth, height: plot.innerHeight } },
+                )] : []),
+                chartLabel(
+                    `pareto-category-${order}`,
+                    item.label,
+                    centerX,
+                    height - 17,
+                    c,
+                    {
+                        width: Math.max(1, Math.min(96, slot - 2)),
+                        bounds: { x: plot.x, y: plot.bottom + 1, width: plot.innerWidth, height: Math.max(1, height - plot.bottom - 2), padding: 0 },
+                    },
+                ),
+            ]),
+        ),
+    })
+}
+
 export interface LineChartSeries {
     name: string
     points: number[]
@@ -933,4 +1290,8 @@ export function LineChart({
             }),
         )
     })
+}
+
+for (const chart of [PieChart, DonutChart, StackedBar, BarChart, ParetoBarChart, LineChart]) {
+    Object.defineProperty(chart, CANVAS_CHART_COMPONENT, { value: true })
 }

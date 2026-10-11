@@ -15,6 +15,7 @@ interface CheckReport {
     ok: boolean
     files: Array<{
         ok: boolean
+        diagnostics: Array<{ code: string; severity: string; message: string }>
         themes: Array<{
             ok: boolean
             dimensions: {
@@ -65,6 +66,34 @@ async function runCheck(source: string, extraArgs: string[] = []) {
         result,
         report: JSON.parse(result.stdout) as CheckReport,
     }
+}
+
+async function runStaticRender(source: string) {
+    const dir = await mkdtemp(join(tmpdir(), 'vizmatic-static-animation-'))
+    tempDirs.push(dir)
+    const framePath = join(dir, 'frame.tsx')
+    const renderDir = join(dir, 'renders')
+    await writeFile(framePath, source)
+
+    const result = spawnSync(process.execPath, [
+        '--import',
+        'tsx',
+        resolve('src/cli.ts'),
+        'render',
+        framePath,
+        '--out',
+        renderDir,
+        '--theme',
+        'light',
+        '--scale',
+        '1',
+    ], {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, VIZMATIC_DISABLE_NETWORK: '1' },
+    })
+
+    return { dir, renderDir, result }
 }
 
 describe('vizmatic check', () => {
@@ -482,4 +511,58 @@ height = 420
             expect(report.ok, template.id).toBe(true)
         }
     }, 60_000)
+
+    it('checks and statically renders browser animation snippets at t=0', async () => {
+        const animationSource = playgroundTemplates.find(({ id }) => id === 'animation')?.source
+        if (!animationSource) throw new Error('Animation playground template is missing')
+
+        const checked = await runCheck(animationSource)
+        expect(checked.result.status, checked.result.stderr).toBe(0)
+        expect(checked.report.ok).toBe(true)
+
+        const rendered = await runStaticRender(animationSource)
+        expect(rendered.result.status, rendered.result.stderr || rendered.result.stdout).toBe(0)
+        expect(await readdir(rendered.renderDir)).toContain('frame_light.png')
+
+        const shadowedTimeSources = [
+            `animationDuration = 1
+function helper() {
+  const t = 0.5
+  return 'helper ' + t.toFixed(1)
+}
+
+<Scene title={helper() + ' · ' + t.toFixed(1)} />
+`,
+            `animationDuration = 1
+const { t } = { t: 0.5 }
+
+<Scene title={t.toFixed(1)} />
+`,
+        ]
+        for (const source of shadowedTimeSources) {
+            const checkedLocalTime = await runCheck(source)
+            expect(checkedLocalTime.result.status, checkedLocalTime.result.stderr).toBe(0)
+            expect(checkedLocalTime.report.ok).toBe(true)
+        }
+
+        const invalidAnimation = await runCheck('animationDuration = 1\nanimationFps = 31\n<Scene />')
+        expect(invalidAnimation.result.status).toBe(1)
+        expect(invalidAnimation.report.files[0]?.diagnostics).toContainEqual(expect.objectContaining({
+            message: 'animationFps must be an integer from 1 to 30.',
+        }))
+    }, 60_000)
+
+    it('keeps a local createAnimation helper in a browser animation snippet on the bare-frame path', async () => {
+        const { result, report } = await runCheck(`animationDuration = 1
+animationFps = 10
+function createAnimation() {
+  return { title: 'Local animation helper' }
+}
+const animation = createAnimation()
+<Scene title={animation.title} />
+`)
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.ok).toBe(true)
+    })
 })

@@ -190,12 +190,16 @@ if (benchmarksHtml.includes('{{')) {
 
 const playgroundMain = await stat(join(root, 'docs', 'playground.js'))
 const playgroundWorker = await stat(join(root, 'docs', 'playground-worker.js'))
+const playgroundScene = await stat(join(root, 'docs', 'playground-scene.js'))
 const playgroundAssetFiles = await readdir(join(root, 'docs', 'assets', 'playground'))
 if (playgroundMain.size > 100 * 1024) {
     fail('playground main bundle must stay below 100 KiB')
 }
 if (playgroundWorker.size > 1_500 * 1024) {
     fail('playground worker bundle must stay below 1.5 MiB')
+}
+if (playgroundScene.size > 150 * 1024) {
+    fail('playground scene inspector bundle must stay below 150 KiB')
 }
 if (playgroundAssetFiles.filter((file) => file.endsWith('.ttf')).length !== 6) {
     fail('playground must ship six self-hosted font files')
