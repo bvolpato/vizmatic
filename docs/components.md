@@ -1,8 +1,8 @@
 # Vizmatic components
 
-Package: vizmatic@0.3.0. Catalog: 75 runnable examples across 11 categories.
+Package: vizmatic@0.3.1. Catalog: 75 runnable examples across 11 categories.
 
-Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Finite literal options are shared in the `propEnums` object in `components.json`. Default values are not inferred.
+Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 
 ## Foundations
 
@@ -1987,7 +1987,7 @@ Props:
 - `centerLabel`: `React.ReactNode` (optional)
 - `centerValue`: `React.ReactNode` (optional)
 - `footer`: `string` (optional)
-- `format`: `ChartValueFormat` (optional)
+- `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `segments`: `DonutChartSegment[]` (required)
 - `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
@@ -2024,7 +2024,7 @@ Part-to-whole composition with a full circular radius.
 Props:
 - `c`: `ThemeColors` (required)
 - `footer`: `string` (optional)
-- `format`: `ChartValueFormat` (optional)
+- `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `segments`: `DonutChartSegment[]` (required)
 - `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
@@ -2086,7 +2086,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `data`: `BarChartDatum[]` (required)
 - `footer`: `string` (optional)
-- `format`: `ChartValueFormat` (optional)
+- `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `max`: `number` (optional)
 - `min`: `number` (optional)
@@ -2122,7 +2122,7 @@ One or more trends across an ordered axis.
 Props:
 - `c`: `ThemeColors` (required)
 - `footer`: `string` (optional)
-- `format`: `ChartValueFormat` (optional)
+- `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `labels`: `string[]` (optional)
 - `max`: `number` (optional)
@@ -2160,8 +2160,8 @@ Point distribution across two numeric axes.
 Props:
 - `c`: `ThemeColors` (required)
 - `footer`: `string` (optional)
-- `formatX`: `ChartValueFormat` (optional)
-- `formatY`: `ChartValueFormat` (optional)
+- `formatX`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
+- `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `points`: `ScatterPoint[]` (required)
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
@@ -2205,7 +2205,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `data`: `BarChartDatum[]` (required)
 - `footer`: `string` (optional)
-- `format`: `ChartValueFormat` (optional)
+- `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
 - `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
@@ -2237,8 +2237,8 @@ Automatic non-dominated frontier across competing numeric objectives.
 Props:
 - `c`: `ThemeColors` (required)
 - `footer`: `string` (optional)
-- `formatX`: `ChartValueFormat` (optional)
-- `formatY`: `ChartValueFormat` (optional)
+- `formatX`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
+- `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `frontierColor`: `string` (optional)
 - `goalLabel`: `string` (optional)
 - `height`: `number` (optional)
@@ -2289,8 +2289,8 @@ Numeric decision map split by configurable policy thresholds.
 Props:
 - `c`: `ThemeColors` (required)
 - `footer`: `string` (optional)
-- `formatX`: `ChartValueFormat` (optional)
-- `formatY`: `ChartValueFormat` (optional)
+- `formatX`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
+- `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `points`: `ScatterPoint[]` (required)
 - `regions`: `{ topLeft: QuadrantRegion; topRight: QuadrantRegion; bottomLeft: QuadrantRegion; bottomRight: QuadrantRegion; }` (required)
@@ -2336,7 +2336,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `data`: `IntervalDatum[]` (required)
 - `footer`: `string` (optional)
-- `format`: `ChartValueFormat` (optional)
+- `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `max`: `number` (optional)
 - `min`: `number` (optional)
@@ -2857,6 +2857,7 @@ Finite allowed values referenced by component props:
 - `propEnums.values11`: ["content","fixed"]
 - `propEnums.values12`: ["heat","strength"]
 - `propEnums.values13`: ["decimal","percent","integer"]
+- `propEnums.ChartValueFormat`: ["decimal","percent","integer","compact"]
 - `propEnums.ParetoObjective`: ["minimize","maximize"]
 - `propEnums.ParetoXScale`: ["linear","log"]
 - `propEnums.values14`: ["left","right","down","up"]

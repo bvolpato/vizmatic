@@ -17,7 +17,16 @@ import { renderAnimatedGifWithOutput, renderAnimationGifWithOutput, type Animate
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { diagnosticFromMessage, type CheckDiagnostic } from './diagnostics'
-import { readAnimationLine } from './playground-source'
+import { readAnimationLine, readPresetLine as readSharedPresetLine } from './playground-settings'
+import {
+    isBackgroundMetadataLine,
+    isThemeColorsMetadataLine,
+    mergePlaygroundThemeColors,
+    parseBackgroundMetadataLine,
+    parseThemeColorsMetadataLine,
+    type PlaygroundBackground,
+    type PlaygroundThemeColors,
+} from './frame-theme'
 import { validatePlaygroundAnimation } from './playground-animation'
 import { CanvasOverflowError, renderToPngWithOutput, renderToSvg, type RenderBackground } from './render'
 import type { SatoriNode } from './satori'
@@ -29,6 +38,10 @@ interface FrameModule {
     height?: number
     autoSize?: boolean | Partial<AutoSizeAxes>
     __vizmaticAutoSize?: Partial<AutoSizeAxes>
+    __vizmaticThemeColors?: PlaygroundThemeColors
+    __vizmaticBackground?: PlaygroundBackground
+    __vizmaticPreset?: ThemePreset
+    __vizmaticRootComponent?: string
     create?: (theme: ThemeMode) => ReactNode
     createScenes?: (theme: ThemeMode) => AnimatedScene[]
     createAnimation?: (theme: ThemeMode) => DefinedAnimation<any>
@@ -452,7 +465,8 @@ function resolveRelativeImportSpecifier(frameDir: string, specifier: string): st
 }
 
 function readDimensionLine(line: string): { name: 'width' | 'height'; value: number } | undefined {
-    const match = line.match(/^\s*(?:(?:\/\/\s*)?)(?:export\s+)?(?:(?:const|let|var)\s+)?(width|height)\s*[:=]\s*(\d+)\s*;?\s*$/i)
+    const candidate = line.replace(/^\s*\/\/\s*/, '').replace(/\s*\/\/.*$/, '')
+    const match = candidate.match(/^\s*(?:export\s+)?(?:(?:const|let|var)\s+)?(width|height)\s*[:=]\s*(\d+)\s*;?\s*$/i)
     if (!match?.[1] || !match[2]) return undefined
     return { name: match[1].toLowerCase() as 'width' | 'height', value: Number(match[2]) }
 }
@@ -463,19 +477,7 @@ type PresetLine = {
 }
 
 function readPresetLine(line: string): PresetLine | undefined {
-    const withoutComment = line.replace(/\s*\/\/.*$/, '').trim()
-    const match = withoutComment.match(/^(?:export\s+)?(?:(?:const|let|var)\s+)?preset(?:\s*:\s*ThemePreset)?\s*[:=]\s*(.+)$/i)
-    if (!match?.[1]) return undefined
-
-    const expression = match[1].trim().replace(/;\s*$/, '').trim()
-    const quoted = expression.match(/^(["'])(.*)\1$/)
-    const requested = (quoted?.[2] ?? expression).trim()
-    const normalized = requested.toLowerCase()
-    const preset = quoted && (normalized === 'default' || normalized === 'engineering')
-        ? normalized
-        : undefined
-
-    return { preset, requested }
+    return readSharedPresetLine(line)
 }
 
 function readFrameDimension(jsx: string, name: 'width' | 'height'): number | undefined {
@@ -524,8 +526,11 @@ function buildAutoImportStatement(names: string[]): string {
     return `import {\n${specifiers}\n} from ${JSON.stringify(resolveSelfImportSpecifier())}`
 }
 
-function buildAutoImportDeclarations(names: string[]): string {
+function buildAutoImportDeclarations(names: string[], preset: ThemePreset): string {
     return names.map((name) => {
+        if (name === 'getThemeColors') {
+            return `const getThemeColors = (theme, requestedPreset = ${JSON.stringify(preset)}) => __getTheme(theme, requestedPreset);`
+        }
         if (name === 'Watermark' || name === 'MathText') return `const ${name} = ${bareFrameAlias(name)};`
         if (name === 'DotPoint' || name === 'DashedLine') return `const ${name} = __withTheme(${bareFrameAlias(name)}, true);`
         if (/^[A-Z]/.test(name)) return `const ${name} = __withTheme(${bareFrameAlias(name)});`
@@ -541,6 +546,8 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     let preset: ThemePreset = 'default'
     let animationDuration: number | undefined
     let animationFps: number | undefined
+    let themeColors: PlaygroundThemeColors = {}
+    let sourceBackground: PlaygroundBackground | undefined
 
     const lines = source.split(/\r?\n/)
     const maskedLines = maskStringsAndComments(source).split(/\r?\n/)
@@ -606,6 +613,16 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
             continue
         }
 
+        if (metadataPreamble && isThemeColorsMetadataLine(line)) {
+            themeColors = parseThemeColorsMetadataLine(line) ?? {}
+            continue
+        }
+
+        if (metadataPreamble && isBackgroundMetadataLine(line)) {
+            sourceBackground = parseBackgroundMetadataLine(line)
+            continue
+        }
+
         if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
         setupLines.push(line)
     }
@@ -620,6 +637,7 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     }
 
     const jsx = extractRootJsx(body.slice(jsxStart).trim().replace(/^export\s+default\s+/, ''))
+    const rootComponent = jsx.match(/^\s*<([A-Za-z][\w.]*)\b/)?.[1]
     const declaresThemeColors = /\b(?:const|let|var)\s+c\b/.test(setup)
 
     const frameWidth = readFrameDimension(jsx, 'width')
@@ -651,7 +669,10 @@ const React = globalThis.React
 ${buildAutoImportStatement(autoImports)}
 ${imports.join('\n')}
 
-let __theme = __Vizmatic_getThemeColors('dark', ${JSON.stringify(preset)})
+function __getTheme(theme, requestedPreset = ${JSON.stringify(preset)}) {
+    return { ...__Vizmatic_getThemeColors(theme, requestedPreset), ...${JSON.stringify(themeColors)} }
+}
+let __theme = __getTheme('dark')
 function __withTheme(Component, returnsArray = false) {
     function VizmaticAutoTheme(props) {
         const themedProps = props?.c ? props : { ...props, c: __theme }
@@ -663,14 +684,18 @@ function __withTheme(Component, returnsArray = false) {
     return VizmaticAutoTheme
 }
 const Frame = ({ children }) => React.createElement(React.Fragment, null, children)
-${buildAutoImportDeclarations(autoImports)}
+${buildAutoImportDeclarations(autoImports, preset)}
 
 export const width = ${width}
 export const height = ${height}
 export const __vizmaticAutoSize = ${JSON.stringify(autoSize)}
+export const __vizmaticThemeColors = ${JSON.stringify(themeColors)}
+export const __vizmaticBackground = ${JSON.stringify(sourceBackground)}
+export const __vizmaticPreset = ${JSON.stringify(preset)}
+export const __vizmaticRootComponent = ${JSON.stringify(rootComponent)}
 
 export function create(theme = 'dark') {
-    __theme = __Vizmatic_getThemeColors(theme, ${JSON.stringify(preset)})
+    __theme = __getTheme(theme)
 ${createBody}
 }
 
@@ -1092,12 +1117,25 @@ function withFrameReactBinding<T>(mod: FrameModule, callback: () => T): T {
     return needsGlobalReactBinding ? withTemporaryGlobalReactSync(callback) : callback()
 }
 
-function frameElement(mod: FrameModule, theme: ThemeMode): ReactNode {
-    return withFrameReactBinding(mod, () => {
+function frameElement(mod: FrameModule, theme: ThemeMode, background?: RenderBackground): ReactNode {
+    const element = withFrameReactBinding(mod, () => {
         if (mod.create) return mod.create(theme)
         if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
         throw new Error('frame module must export create(theme) or default React element')
     })
+    if (!background || (mod.__vizmaticRootComponent !== 'Board' && mod.__vizmaticRootComponent !== 'Scene')
+        || !isValidElement(element) || Object.hasOwn(element.props as Record<string, unknown>, 'background')) return element
+    return React.cloneElement(element as React.ReactElement<Record<string, unknown>>, { background })
+}
+
+function sourceFrameBackground(mod: FrameModule, theme: ThemeMode, requested?: RenderBackground): RenderBackground | undefined {
+    const background = requested ?? mod.__vizmaticBackground
+    if (background == null) return undefined
+    if (background === 'theme') {
+        if (mod.__vizmaticRootComponent == null && mod.__vizmaticBackground == null) return 'theme'
+        return mergePlaygroundThemeColors(theme, mod.__vizmaticPreset ?? 'default', mod.__vizmaticThemeColors).bg
+    }
+    return background
 }
 
 type OverflowEdge = 'top' | 'right' | 'bottom' | 'left'
@@ -1141,15 +1179,17 @@ async function renderFrameToPng(
     let width = options.width
     let height = options.height
     const { inspectLayout, ...renderOptions } = options
+    const background = sourceFrameBackground(mod, theme, options.background)
 
     for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
         try {
             const layoutNodes: SatoriNode[] = []
             const recreate = mod.create
-                ? (nextTheme: ThemeMode) => withFrameReactBinding(mod, () => mod.create!(nextTheme))
+                ? (nextTheme: ThemeMode) => frameElement(mod, nextTheme, background)
                 : undefined
-            const output = await renderToPngWithOutput(frameElement(mod, theme), {
+            const output = await renderToPngWithOutput(frameElement(mod, theme, background), {
                 ...renderOptions,
+                background,
                 width,
                 height,
                 onNodeDetected: inspectLayout ? (node) => layoutNodes.push(node) : undefined,
@@ -1221,15 +1261,16 @@ async function renderFrameToSvg(
 ): Promise<{ width: number; height: number; outputWidth: number; outputHeight: number; svg: string }> {
     let width = options.width
     let height = options.height
-    let originalElement: ReactNode = frameElement(mod, theme)
+    const frameBackground = sourceFrameBackground(mod, theme, options.background)
+    let originalElement: ReactNode = frameElement(mod, theme, frameBackground)
     let originalSvg = ''
     let initialBounds: CropRegion | undefined
 
     for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
-        originalElement = frameElement(mod, theme)
+        originalElement = frameElement(mod, theme, frameBackground)
         try {
             originalSvg = await renderToSvg(originalElement, width, height, {
-                background: options.background,
+                background: frameBackground,
                 theme,
             })
         } catch (error) {
@@ -1279,7 +1320,7 @@ async function renderFrameToSvg(
     const heightSavedPercent = ((height - croppedHeight) / height) * 100
     if (options.crop && heightSavedPercent >= SVG_CROP_THRESHOLD_PERCENT) {
         finalHeight = croppedHeight
-        finalElement = mod.create ? frameElement(mod, theme) : originalElement
+        finalElement = mod.create ? frameElement(mod, theme, frameBackground) : originalElement
     }
 
     const renderFinalSvg = (element: ReactNode, targetWidth: number, targetHeight: number) => renderToSvg(
@@ -1288,7 +1329,7 @@ async function renderFrameToSvg(
         targetHeight,
         {
             watermark: options.watermark,
-            background: options.background,
+            background: frameBackground,
             theme,
         },
     )

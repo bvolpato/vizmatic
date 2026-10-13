@@ -1,3 +1,6 @@
+import parseCssColor from 'parse-css-color'
+import { withColorAlpha } from './theme'
+
 export interface PlaygroundAnimationMetadata {
     /** Browser playback and source variable `t` use seconds. */
     duration: number
@@ -66,10 +69,14 @@ export function playgroundAnimationFrames(
     return frames
 }
 
-/** GIF has one-bit transparency, so browser exports use the current theme matte. */
+/** GIF transparency is flattened onto an opaque RGB matte; the matte's input alpha is ignored. */
 export function mattePlaygroundPixels(pixels: Uint8Array, matte: string): Uint8Array {
-    if (!/^#[\da-f]{6}$/i.test(matte)) throw new Error('GIF matte must be a six-digit hex color.')
-    const rgb = [1, 3, 5].map((offset) => Number.parseInt(matte.slice(offset, offset + 2), 16))
+    if (!parseCssColor(matte)) throw new Error('GIF matte must be a valid CSS color.')
+    const normalized = parseCssColor(withColorAlpha(matte, 1))
+    if (!normalized || normalized.type === 'hsl' || normalized.values.length < 3) {
+        throw new Error('GIF matte must be a valid CSS color.')
+    }
+    const rgb = normalized.values.slice(0, 3).map((channel) => Math.round(channel))
     const output = pixels.slice()
     for (let index = 0; index < output.length; index += 4) {
         const alpha = output[index + 3] / 255

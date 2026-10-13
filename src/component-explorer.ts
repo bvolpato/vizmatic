@@ -1,6 +1,8 @@
-import type { ComponentControl } from './component-controls'
-import type { SceneSnapshot, SceneInstance } from './playground-scene'
+import type { SceneSnapshot, SceneInstance, ScenePropSchema, SceneComponentPropSchema } from './playground-scene'
 import { mountStructuredDataEditor } from './playground-data-editor'
+import type { SceneJsonValue, StructuredControlKind } from './playground-data'
+import { copySceneBlock } from './playground-copy'
+import { readPlaygroundSettings, updatePlaygroundSettings } from './playground-settings'
 type SceneModel = typeof import('./playground-scene')
 
 interface ExplorerComponent {
@@ -8,6 +10,7 @@ interface ExplorerComponent {
     description: string
     example: string
     category: string
+    props: ScenePropSchema[]
 }
 
 interface ExplorerApi {
@@ -20,6 +23,7 @@ export interface ComponentExplorerController {
     sourceChanged(): void
     selectText(start: number, end: number): void
     getSelectedInstance(): SceneInstance | undefined
+    getSelectedBlockSource(): string | undefined
     selectInstanceByStart(start: number): void
     setInstanceProps(start: number, values: Record<string, string | number | boolean>, group?: string): boolean
 }
@@ -36,8 +40,21 @@ function loadCatalog(): Promise<ExplorerComponent[]> {
     catalogRequest ??= fetch(new URL('components.json', document.baseURI))
         .then(async (response) => {
             if (!response.ok) throw new Error(`Could not load components (${response.status}).`)
-            const catalog = await response.json() as { categories: Array<{ label: string; components: Omit<ExplorerComponent, 'category'>[] }> }
-            return catalog.categories.flatMap((category) => category.components.map((component) => ({ ...component, category: category.label })))
+            const catalog = await response.json() as {
+                propEnums?: Record<string, SceneJsonValue[]>
+                categories: Array<{ label: string; components: Array<Omit<ExplorerComponent, 'category' | 'props'> & { props?: Array<Omit<ScenePropSchema, 'allowedValues' | 'literalValues'> & { allowedValuesRef?: string; literalValuesRef?: string }> }> }>
+            }
+            const enums = catalog.propEnums ?? {}
+            return catalog.categories.flatMap((category) => category.components.map((component) => ({
+                ...component,
+                category: category.label,
+                props: (component.props ?? []).filter((prop) => typeof prop.name === 'string' && typeof prop.type === 'string')
+                    .map((prop) => ({
+                        ...prop,
+                        allowedValues: prop.allowedValuesRef ? enums[prop.allowedValuesRef] : undefined,
+                        literalValues: prop.literalValuesRef ? enums[prop.literalValuesRef] : undefined,
+                    })),
+            })))
         }).catch((error) => { catalogRequest = undefined; throw error })
     return catalogRequest
 }
@@ -75,7 +92,12 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
     let selectedIndex = 0
     let selectionId = 0
     let changingControl = false
-    let activeControls: ComponentControl[] = []
+    let activeControls: SceneInstance['properties'] = []
+    let activeDataSignature = ''
+
+    function componentProps(): SceneComponentPropSchema {
+        return Object.fromEntries(catalog.map((component) => [component.name, component.props]))
+    }
 
     function componentFromHash(): string | undefined {
         if (!location.hash.startsWith('#component-')) return
@@ -88,69 +110,167 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
         return selected && snapshot && model ? model.sceneStructuralTarget(snapshot.source, snapshot, selected.id) : selected
     }
 
+    function setProperties(source: string, scene: SceneSnapshot, instance: SceneInstance, values: Record<string, SceneJsonValue>): string {
+        const updated = model!.setSceneLiteralProps(source, scene, instance.id, values)
+        if (instance.id !== scene.rootID || instance.name !== 'Board') return updated
+        const dimensions: { width?: number; height?: number } = {}
+        for (const prop of ['width', 'height'] as const) {
+            if (!Object.hasOwn(values, prop)) continue
+            const value = values[prop]
+            if (typeof value !== 'number') throw new Error(`Root Board ${prop} must be a numeric literal.`)
+            dimensions[prop] = value
+        }
+        return Object.keys(dimensions).length ? updatePlaygroundSettings(updated, dimensions) : updated
+    }
+
+    function setProperty(source: string, scene: SceneSnapshot, instance: SceneInstance, prop: string, value: SceneJsonValue): string {
+        return setProperties(source, scene, instance, { [prop]: value })
+    }
+
     function renderControls(instance: SceneInstance | undefined) {
-        const next = instance?.controls ?? []
+        let next = instance?.properties ?? []
+        if (instance && snapshot && instance.id === snapshot.rootID && instance.name === 'Board') {
+            try {
+                const settings = readPlaygroundSettings(api.getSource())
+                next = next.map((control) => control.start < 0 && (control.prop === 'width' || control.prop === 'height')
+                    ? { ...control, initialValue: settings[control.prop] } : control)
+            } catch { /* Keep the valid defaults from the property schema while source is being repaired. */ }
+        }
         if (changingControl && next.length === activeControls.length
-            && next.every((control, index) => control.prop === activeControls[index].prop)) {
+            && next.every((control, index) => {
+                const active = activeControls[index]
+                return control.prop === active.prop && control.kind === active.kind
+                    && control.required === active.required && (control.start < 0) === (active.start < 0)
+            })) {
             activeControls = next
             return
         }
         activeControls = next
         controls.replaceChildren()
-        for (const control of next) {
+        for (const control of next.filter((property) => !['json', 'values', 'points', 'rows'].includes(property.kind))) {
             const label = document.createElement('label')
-            label.className = `explorer-control explorer-control-${control.type}`
+            label.className = `explorer-control explorer-control-${control.kind}`
             const caption = document.createElement('span')
             caption.textContent = control.label
             let input: HTMLInputElement | HTMLSelectElement
-            if (control.type === 'select') {
+            if (control.kind === 'select') {
                 input = document.createElement('select')
-                for (const value of control.options ?? []) {
+                const options = [...(control.options ?? [])]
+                if (control.value !== undefined && !options.some((option) => Object.is(option, control.value))) options.unshift(control.value)
+                for (const value of options) {
                     const option = document.createElement('option')
-                    option.value = value
-                    option.textContent = value
+                    option.value = JSON.stringify(value)
+                    option.textContent = Object.is(value, control.value) && !(control.options ?? []).some((item) => Object.is(item, value))
+                        ? `Current: ${String(value)}` : String(value)
                     input.append(option)
                 }
-                input.value = String(control.value)
+                input.value = JSON.stringify(control.value === undefined ? control.initialValue : control.value)
             } else {
                 input = document.createElement('input')
-                input.type = control.type === 'boolean' ? 'checkbox' : control.type === 'number' ? 'range' : 'text'
-                if (control.type === 'boolean') input.checked = Boolean(control.value)
-                if (control.type === 'number') {
-                    if (control.min !== undefined) input.min = String(control.min)
-                    if (control.max !== undefined) input.max = String(control.max)
-                    if (control.step !== undefined) input.step = String(control.step)
+                input.type = control.kind === 'boolean' ? 'checkbox' : control.kind === 'number' ? 'number' : 'text'
+                if (control.kind === 'boolean') input.checked = Boolean(control.value ?? control.initialValue)
+                if (control.kind === 'number') input.step = 'any'
+                if (control.kind === 'number' && currentRootBoardDimension(control.prop)) {
+                    input.min = '1'
+                    input.max = '8192'
+                    input.step = '1'
                 }
-                if (control.type !== 'boolean') input.value = String(control.value)
+                if (control.kind !== 'boolean') input.value = String(control.value ?? control.initialValue ?? '')
             }
             input.dataset.controlProp = control.prop
             input.setAttribute('aria-label', control.label)
-            const output = document.createElement('output')
-            output.textContent = String(control.value)
-            if (control.type === 'number') caption.append(' ', output)
+            if (control.description) input.title = control.description
             label.append(caption, input)
-            input.addEventListener('input', () => {
+            const readValue = (): SceneJsonValue | undefined => {
+                if (control.kind === 'boolean') return (input as HTMLInputElement).checked
+                if (control.kind === 'number') {
+                    const value = (input as HTMLInputElement).valueAsNumber
+                    return Number.isFinite(value) ? value : undefined
+                }
+                if (control.kind === 'select') {
+                    try { return JSON.parse(input.value) as SceneJsonValue } catch { return }
+                }
+                return input.value
+            }
+            const commit = (value: SceneJsonValue, group: string) => {
                 const current = selectedInstance()
                 if (!snapshot || !current) return
-                const value = control.type === 'boolean' ? (input as HTMLInputElement).checked
-                    : control.type === 'number' ? (input as HTMLInputElement).valueAsNumber : input.value
                 try {
-                    const source = model!.updateSceneControls(api.getSource(), snapshot, current.id, { [control.prop]: value })
+                    const source = setProperty(api.getSource(), snapshot, current, control.prop, value)
                     changingControl = true
-                    output.textContent = String(value)
-                    api.loadSource(source, false, { group: `control:${selectedIndex}:${control.prop}` })
+                    api.loadSource(source, false, { group })
                 } catch (error) { note.textContent = error instanceof Error ? error.message : 'Check this setting.' }
                 finally { changingControl = false }
-            })
+            }
+            const group = `control:${selectedIndex}:${control.prop}`
+            if (control.start < 0) {
+                const addPropertyButton = document.createElement('button')
+                addPropertyButton.type = 'button'
+                addPropertyButton.textContent = 'Add'
+                addPropertyButton.dataset.addProp = control.prop
+                addPropertyButton.setAttribute('aria-label', `Add ${control.label}`)
+                addPropertyButton.addEventListener('click', () => {
+                    const value = readValue()
+                    if (value === undefined) { note.textContent = `${control.label} needs a valid value.`; return }
+                    commit(value, group)
+                })
+                label.append(addPropertyButton)
+            } else {
+                input.addEventListener(control.kind === 'select' || control.kind === 'boolean' ? 'change' : 'input', () => {
+                    const value = readValue()
+                    if (value === undefined) { note.textContent = `${control.label} must be a finite number.`; return }
+                    commit(value, group)
+                })
+                const rootBoardDimension = currentRootBoardDimension(control.prop)
+                if (!control.required && !rootBoardDimension) {
+                    const removePropertyButton = document.createElement('button')
+                    removePropertyButton.type = 'button'
+                    removePropertyButton.textContent = 'Remove'
+                    removePropertyButton.dataset.removeProp = control.prop
+                    removePropertyButton.setAttribute('aria-label', `Remove ${control.label}`)
+                    removePropertyButton.addEventListener('click', () => {
+                        const current = selectedInstance()
+                        if (!snapshot || !current) return
+                        try {
+                            const source = model!.removeSceneLiteralProp(api.getSource(), snapshot, current.id, control.prop)
+                            api.loadSource(source)
+                        } catch (error) { note.textContent = error instanceof Error ? error.message : 'Could not remove this property.' }
+                    })
+                    label.append(removePropertyButton)
+                }
+            }
             controls.append(label)
         }
+        const sourceOnly = [...(instance?.readOnlyProps ?? [])]
+        if (instance?.unsafeReason) sourceOnly.unshift({ prop: 'Component', reason: instance.unsafeReason })
+        if (sourceOnly.length) {
+            const details = document.createElement('details')
+            details.className = 'explorer-source-only'
+            const summary = document.createElement('summary')
+            summary.textContent = `Edit in TSX source (${sourceOnly.length})`
+            const list = document.createElement('ul')
+            for (const item of sourceOnly) {
+                const row = document.createElement('li')
+                const name = document.createElement('strong')
+                name.textContent = `${item.prop}: `
+                row.append(name, document.createTextNode(item.reason))
+                list.append(row)
+            }
+            details.append(summary, list)
+            controls.append(details)
+        }
+    }
+
+    function currentRootBoardDimension(prop: string): boolean {
+        const current = selectedInstance()
+        return Boolean(current && snapshot && current.id === snapshot.rootID && current.name === 'Board' && (prop === 'width' || prop === 'height'))
     }
 
     function sourceChanged() {
         if (!model) return
         const source = api.getSource()
         try {
-            snapshot = model!.analyzeScene(source)
+            snapshot = model!.analyzeScene(source, componentProps())
             selectedIndex = Math.min(selectedIndex, snapshot.instances.length - 1)
         } catch {
             snapshot = undefined
@@ -177,18 +297,32 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
         if (moveDown) moveDown.disabled = !structural?.canMoveDown
         if (add) add.disabled = !snapshot || !catalog.length
         renderControls(instance)
-        mountStructuredDataEditor(dataControls, instance?.structuredControls ?? [], (prop, value, group) => {
-            const current = selectedInstance()
-            if (!snapshot || !current || !model) return 'Refresh the scene before editing its data.'
-            try {
-                const source = model.updateStructuredSceneProp(api.getSource(), snapshot, current.id, prop, value)
-                api.loadSource(source, false, { group })
-                sourceChanged()
-            } catch (error) { return error instanceof Error ? error.message : 'Check this data.' }
-        })
-        if (snapshot) note.textContent = instance && (instance.controls.length || instance.structuredControls.length)
-            ? `Settings edit the selected ${instance.name}. Computed values stay in the TSX.`
-            : 'Select a component with literal settings or data to edit it here. Computed values stay in the TSX.'
+        const dataProperties = (instance?.properties ?? []).filter((property) => ['json', 'values', 'points', 'rows'].includes(property.kind))
+        const nextDataSignature = JSON.stringify(dataProperties.map(({ prop, kind, value, initialValue, required }) => ({ prop, kind, value, initialValue, required })))
+        if (nextDataSignature !== activeDataSignature) {
+            activeDataSignature = nextDataSignature
+            mountStructuredDataEditor(dataControls, dataProperties.map((property) => ({
+                prop: property.prop, label: property.label, kind: property.kind as StructuredControlKind,
+                value: property.value, initialValue: property.initialValue, required: property.required,
+                start: property.start, end: property.end,
+            })), (prop, value, group) => {
+                const current = selectedInstance()
+                if (!snapshot || !current || !model) return 'Refresh the scene before editing its data.'
+                try {
+                    const source = value === undefined
+                        ? model.removeSceneLiteralProp(api.getSource(), snapshot, current.id, prop)
+                        : model.setSceneLiteralProps(api.getSource(), snapshot, current.id, { [prop]: value })
+                    api.loadSource(source, false, { group: group ?? `data:${selectedIndex}:${prop}` })
+                } catch (error) { return error instanceof Error ? error.message : 'Check this data.' }
+            })
+        }
+        if (snapshot) {
+            const editable = instance?.properties.length ?? 0
+            const sourceOnly = instance?.readOnlyProps.length ?? 0
+            note.textContent = instance
+                ? `${editable} editable properties${sourceOnly ? ` · ${sourceOnly} source-only` : ''}. Computed values and spreads stay in the TSX.`
+                : 'Select an element to customize its properties.'
+        }
         const example = selectedExample
         const edited = !example || source !== example.example
         if (edited && example && location.hash === `#component-${example.name}`) {
@@ -212,7 +346,7 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
             const component = catalog.find((entry) => entry.name === name)
             if (!component || id !== selectionId) return
             selectedExample = component
-            const scene = model!.analyzeScene(component.example)
+            const scene = model!.analyzeScene(component.example, componentProps())
             selectedIndex = Math.max(0, scene.instances.findIndex((entry) => entry.name === name))
             if (insertSelect) insertSelect.value = name
             if (updateUrl) {
@@ -270,7 +404,7 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
             const selected = selectedInstance()
             const targetID = selected && ['Scene', 'Canvas', 'Board', 'Row', 'Column', 'Stack', 'Fragment', ''].includes(selected.name) ? selected.id : undefined
             const source = model!.appendSceneComponent(api.getSource(), snapshot, component.example, component.name, targetID)
-            const scene = model!.analyzeScene(source)
+            const scene = model!.analyzeScene(source, componentProps())
             scene.instances.forEach((entry, index) => { if (entry.name === component.name) selectedIndex = index })
             api.loadSource(source)
             sourceChanged()
@@ -304,14 +438,18 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
         const name = componentFromHash() ?? 'GraphDiagram'
         void choose(choices.some((button) => button.dataset.exploreComponent === name) ? name : 'GraphDiagram', false, true)
     }
-    return { sourceChanged, getSelectedInstance: selectedInstance, selectInstanceByStart(start) {
+    return { sourceChanged, getSelectedInstance: selectedInstance, getSelectedBlockSource() {
+        const instance = selectedInstance()
+        if (!snapshot || !model || !instance || instance.unsafeReason || snapshot.source !== api.getSource()) return
+        return copySceneBlock(snapshot, instance.id)
+    }, selectInstanceByStart(start) {
         const index = snapshot?.instances.findIndex((entry) => entry.start === start) ?? -1
         if (index >= 0 && selectedIndex !== index) { selectedIndex = index; sourceChanged() }
     }, setInstanceProps(start, values, group) {
         const instance = snapshot?.instances.find((entry) => entry.start === start)
         if (!snapshot || !instance || !model) return false
         try {
-            const source = model.setSceneLiteralProps(api.getSource(), snapshot, instance.id, values)
+            const source = setProperties(api.getSource(), snapshot, instance, values)
             api.loadSource(source, false, { group })
             sourceChanged()
             return true

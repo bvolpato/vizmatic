@@ -7,6 +7,7 @@ import {
     getGradient,
     getReadableTextColor,
     getToneColor,
+    withColorAlpha,
 } from '../theme'
 
 // ─── Box — Gradient or solid colored rectangle with label ────────────────────
@@ -64,10 +65,10 @@ export function Box({
         style.backgroundColor = 'transparent'
     } else if (gradient) {
         style.backgroundImage = gradientBg
-        style.boxShadow = `0 4px 20px ${solidColor}30`
+        style.boxShadow = `0 4px 20px ${withColorAlpha(solidColor, 0x30 / 0xff)}`
     } else {
         style.backgroundColor = solidColor
-        style.boxShadow = `0 4px 20px ${solidColor}30`
+        style.boxShadow = `0 4px 20px ${withColorAlpha(solidColor, 0x30 / 0xff)}`
     }
 
     return React.createElement('div', { style },
@@ -88,7 +89,7 @@ export function Box({
             style: {
                 fontSize: fontSize - 2,
                 fontWeight: 400,
-                color: outlined ? c.textMuted : gradient ? `${c.textOnColor}b3` : solidTextColor,
+                color: outlined ? c.textMuted : gradient ? withColorAlpha(c.textOnColor, 0xb3 / 0xff) : solidTextColor,
                 fontFamily: c.fontMono,
                 textAlign: 'center' as const,
             }

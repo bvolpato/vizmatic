@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "count": 75,
   "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html",
   "propEnums": {
@@ -160,6 +160,12 @@
       "decimal",
       "percent",
       "integer"
+    ],
+    "ChartValueFormat": [
+      "decimal",
+      "percent",
+      "integer",
+      "compact"
     ],
     "ParetoObjective": [
       "minimize",
@@ -5340,7 +5346,8 @@
             {
               "name": "format",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -5444,7 +5451,8 @@
             {
               "name": "format",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -5632,7 +5640,8 @@
             {
               "name": "format",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -5742,7 +5751,8 @@
             {
               "name": "format",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -5862,12 +5872,14 @@
             {
               "name": "formatX",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "formatY",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -5996,7 +6008,8 @@
             {
               "name": "format",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -6091,12 +6104,14 @@
             {
               "name": "formatX",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "formatY",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "frontierColor",
@@ -6254,12 +6269,14 @@
             {
               "name": "formatX",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "formatY",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",
@@ -6414,7 +6431,8 @@
             {
               "name": "format",
               "type": "ChartValueFormat",
-              "required": false
+              "required": false,
+              "literalValuesRef": "ChartValueFormat"
             },
             {
               "name": "height",

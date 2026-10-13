@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Theme-aware visual primitives and a headless renderer for diagrams, figures, and presentation frames.",
   "type": "module",
   "license": "MIT",
@@ -82,7 +82,7 @@
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
     "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
     "security:audit": "pnpm audit --audit-level low",
-    "deps:check": "pnpm security:audit && pnpm assets:check && publint && tsx scripts/check-package.ts",
+    "deps:check": "pnpm security:audit && pnpm assets:check && publint && tsx scripts/check-package.ts && node scripts/check-consumer.mjs",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm check:examples && pnpm docs:check && pnpm deps:check",
     "prepublishOnly": "pnpm verify"
   },
@@ -92,7 +92,7 @@
     "gifenc": "^1.0.3",
     "parse-css-color": "0.2.1",
     "react": "^19.2.8",
-    "satori": "^0.35.0",
+    "satori": "0.35.0",
     "tsx": "^4.23.12"
   },
   "peerDependencies": {

@@ -3,6 +3,7 @@ import { Resvg, initWasm } from '@resvg/resvg-wasm'
 import satori, { init as initSatori, type SatoriNode } from 'satori/standalone'
 import { transform } from 'sucrase'
 import { getThemeColors } from './theme'
+import { mergePlaygroundThemeColors } from './frame-theme'
 import { createPlaygroundApi } from './playground-api'
 import { mapPlaygroundText, prepareEditableText, editableTextTargets, editableCanvasItems } from './playground-text-mapping'
 import type { PlaygroundTextTarget } from './playground-text-types'
@@ -216,8 +217,15 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
     })
 }
 
-function compileScene(prepared: PreparedPlaygroundSource, c: ReturnType<typeof getThemeColors>): (time: number) => React.ReactNode {
+function compileScene(
+    prepared: PreparedPlaygroundSource,
+    c: ReturnType<typeof getThemeColors>,
+    theme: PlaygroundTheme,
+    background?: PlaygroundRenderBackground,
+): (time: number) => React.ReactNode {
     const api = createPlaygroundApi(c)
+    api.getThemeColors = (mode: PlaygroundTheme = theme, preset = prepared.metadata.preset) =>
+        mergePlaygroundThemeColors(mode, preset, prepared.metadata.themeColors)
     // The closing paren needs its own line: the JSX may end with a trailing `//` comment.
     const wrapped = `const __vizmaticPlaygroundRender = () => {\n${prepared.setup}\nreturn (\n${prepared.jsx}\n);\n};`
     const result = transform(wrapped, {
@@ -229,7 +237,14 @@ function compileScene(prepared: PreparedPlaygroundSource, c: ReturnType<typeof g
     const argumentNames = ['React', 'c', 't', ...Object.keys(api)]
     const createElement = compileUserFunction(...argumentNames, `'use strict';\n${result.code}\nreturn __vizmaticPlaygroundRender();`) as (...values: unknown[]) => React.ReactNode
     disableUserCodeCapabilities()
-    return (time) => createElement(React, c, time, ...Object.values(api))
+    const rootComponent = prepared.jsx.match(/^\s*<([A-Za-z][\w.]*)\b/)?.[1]
+    return (time) => {
+        const element = createElement(React, c, time, ...Object.values(api))
+        if ((rootComponent !== 'Board' && rootComponent !== 'Scene') || background == null
+            || !React.isValidElement(element) || Object.hasOwn(element.props as Record<string, unknown>, 'background')) return element
+        const value = background === 'theme' ? c.bg : background
+        return React.cloneElement(element as React.ReactElement<Record<string, unknown>>, { background: value })
+    }
 }
 
 async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRenderResponse> {
@@ -238,10 +253,11 @@ async function render(request: PlaygroundRenderRequest): Promise<PlaygroundRende
     const prepared = preparePlaygroundSource(textMapping.source)
     const time = validatePlaygroundTime(request.time ?? 0, prepared.metadata.animation)
     const { fonts } = await initializeRuntime()
-    const c = getThemeColors(request.theme, prepared.metadata.preset)
-    const element = compileScene(prepared, c)(time)
+    const c = mergePlaygroundThemeColors(request.theme, prepared.metadata.preset, prepared.metadata.themeColors)
+    const background = prepared.metadata.background ?? request.background ?? 'transparent'
+    const element = compileScene(prepared, c, request.theme, background)(time)
 
-    setPlaygroundRenderBackground(request.background ?? 'transparent')
+    setPlaygroundRenderBackground(background)
     const editable = prepareEditableText(element, textMapping)
     const preparedSvg = prepareAccessibleSvg(editable.element)
     const layoutNodes: SatoriNode[] = []
@@ -285,15 +301,17 @@ async function exportGif(request: PlaygroundRenderRequest): Promise<PlaygroundGi
     if (!prepared.metadata.animation) throw new Error('GIF export requires animationDuration in the source.')
     const frames = playgroundAnimationFrames(prepared.metadata.animation, prepared.metadata.width, prepared.metadata.height)
     const { fonts } = await initializeRuntime()
-    const c = getThemeColors(request.theme, prepared.metadata.preset)
-    const sceneAt = compileScene(prepared, c)
-    const gif = createPlaygroundGif(prepared.metadata.width, prepared.metadata.height, c.bg)
+    const c = mergePlaygroundThemeColors(request.theme, prepared.metadata.preset, prepared.metadata.themeColors)
+    const background = prepared.metadata.background ?? request.background ?? 'transparent'
+    const sceneAt = compileScene(prepared, c, request.theme, background)
+    const matte = background === 'theme' || background === 'transparent' ? c.bg : background
+    const gif = createPlaygroundGif(prepared.metadata.width, prepared.metadata.height, matte)
     const started = Date.now()
     for (const frame of frames) {
         if (Date.now() - started > PLAYGROUND_GIF_TIMEOUT_MS) {
             throw new Error('GIF export exceeded 45 seconds. Reduce the canvas size or frame count.')
         }
-        setPlaygroundRenderBackground(request.background ?? 'transparent')
+        setPlaygroundRenderBackground(background)
         const accessible = prepareAccessibleSvg(sceneAt(validatePlaygroundTime(frame.time, prepared.metadata.animation)))
         const layoutNodes: SatoriNode[] = []
         const renderedSvg = await renderWithCanvasChartFit(satori, accessible.element as React.ReactElement, {

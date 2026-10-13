@@ -7,6 +7,7 @@ import {
     getReadableToneColor,
     getReadableTextColor,
     getToneColor,
+    withColorAlpha,
 } from '../theme'
 
 import { compactChildren, formatMathText, textFitStyle } from './layout'
@@ -262,8 +263,8 @@ export function TiledMatrix({
                         height: cellSize,
                         boxSizing: 'border-box' as const,
                         borderRadius: Math.max(2, Math.min(6, Math.round(cellSize * 0.18))),
-                        backgroundColor: region ? `${accent}42` : (muted ? c.bgSubtle : `${baseAccent}0f`),
-                        border: `1px solid ${region ? `${accent}aa` : c.borderSubtle}`,
+                        backgroundColor: region ? withColorAlpha(accent, 0x42 / 0xff) : (muted ? c.bgSubtle : withColorAlpha(baseAccent, 0x0f / 0xff)),
+                        border: `1px solid ${region ? withColorAlpha(accent, 0xaa / 0xff) : c.borderSubtle}`,
                         opacity: muted ? 0.55 : 1,
                     }
                 })
@@ -484,7 +485,7 @@ export function Grid({
         const config = isGridCell(cell) ? cell : {}
         const toneColor = config.tone ? getToneColor(config.tone, c) : undefined
         const isHeader = rowIndex < headerRows || colIndex < headerCols
-        const backgroundColor = config.backgroundColor ?? (toneColor ? `${toneColor}22` : isHeader ? c.bgSubtle : c.bgHover)
+        const backgroundColor = config.backgroundColor ?? (toneColor ? withColorAlpha(toneColor, 0x22 / 0xff) : isHeader ? c.bgSubtle : c.bgHover)
         const toneTextColor = config.tone
             ? getReadableToneColor(config.tone, c, backgroundColor, c.bgHover)
             : undefined
@@ -496,7 +497,7 @@ export function Grid({
             justifyContent: 'center',
             borderRadius: radius,
             backgroundColor,
-            border: `1px solid ${config.borderColor ?? (toneColor ? `${toneColor}55` : c.borderSubtle)}`,
+            border: `1px solid ${config.borderColor ?? (toneColor ? withColorAlpha(toneColor, 0x55 / 0xff) : c.borderSubtle)}`,
             color: config.color ?? (toneTextColor ?? (isHeader ? c.textPrimary : c.textSecondary)),
             ...(config.opacity !== undefined ? { opacity: config.opacity } : {}),
             fontFamily: 'JetBrains Mono',

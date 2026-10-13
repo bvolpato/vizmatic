@@ -4,6 +4,7 @@ import {
     type ToneName,
     getReadableToneColor,
     getToneColor,
+    withColorAlpha,
 } from '../theme'
 
 import { Column, compactChildren, type FlexAlign, Panel, Row, textFitStyle, ToneStrip } from './layout'
@@ -65,7 +66,7 @@ export function StatusRow({
     const markerAlpha = 0x26 / 0xff
     const rowAlpha = boxed ? 0x12 / 0xff : 0
     const markerBackgroundAlpha = Math.round((rowAlpha + markerAlpha * (1 - rowAlpha)) * 0xff)
-    const markerBackground = `${accent}${markerBackgroundAlpha.toString(16).padStart(2, '0')}`
+    const markerBackground = withColorAlpha(accent, markerBackgroundAlpha / 0xff)
     const accentText = getReadableToneColor(resolvedTone, c, markerBackground, c.bgCard)
     const glyph = statusGlyphs[status]
 
@@ -78,7 +79,7 @@ export function StatusRow({
             height: 18,
             flexShrink: 0,
             borderRadius: 999,
-            backgroundColor: status === 'dot' ? accent : `${accent}26`,
+            backgroundColor: status === 'dot' ? accent : withColorAlpha(accent, 0x26 / 0xff),
             border: `1px solid ${accent}`,
             color: accentText,
             fontFamily: 'Inter',
@@ -98,8 +99,8 @@ export function StatusRow({
             ...(boxed ? {
                 padding: '7px 10px',
                 borderRadius: 8,
-                backgroundColor: `${accent}12`,
-                border: `1px solid ${accent}3a`,
+                backgroundColor: withColorAlpha(accent, 0x12 / 0xff),
+                border: `1px solid ${withColorAlpha(accent, 0x3a / 0xff)}`,
             } : { padding: '3px 0' }),
         }
     },
@@ -197,7 +198,7 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
             ...(typeof resolvedWidth === 'string' ? { minWidth: 0 } : {}),
             padding: '10px 12px',
             borderRadius: 8,
-            border: `1px solid ${accent}44`,
+            border: `1px solid ${withColorAlpha(accent, 0x44 / 0xff)}`,
             backgroundColor: c.bgCard,
             boxShadow: `0 7px 18px ${c.shadow}`,
             boxSizing: 'border-box' as const,

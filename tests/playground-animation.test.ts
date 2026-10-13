@@ -93,4 +93,19 @@ const t = 1
         expect(gifFrames(buffer)).toEqual([{ delay: 100, transparent: false }, { delay: 200, transparent: false }])
         expect(() => createPlaygroundGif(2, 1, '#ffffff').writeFrame(new Uint8Array(4), 100)).toThrow('do not match')
     })
+
+    it.each([
+        ['rgba(0, 255, 0, 0.2)', [0, 255, 0, 255, 0, 127, 128, 255]],
+        ['hsl(120 100% 50%)', [0, 255, 0, 255, 0, 127, 128, 255]],
+        ['rebeccapurple', [102, 51, 153, 255, 51, 25, 204, 255]],
+        ['#0f08', [0, 255, 0, 255, 0, 127, 128, 255]],
+    ])('composites GIF pixels over CSS matte %s as an opaque color', (matte, expected) => {
+        const pixels = new Uint8Array([255, 0, 0, 0, 0, 0, 255, 128])
+        expect(Array.from(mattePlaygroundPixels(pixels, matte))).toEqual(expected)
+    })
+
+    it('rejects invalid CSS matte colors', () => {
+        expect(() => mattePlaygroundPixels(new Uint8Array(4), 'not-a-css-color'))
+            .toThrow('GIF matte must be a valid CSS color.')
+    })
 })

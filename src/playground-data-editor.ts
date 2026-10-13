@@ -1,6 +1,6 @@
 import type { SceneJsonValue, StructuredSceneControl } from './playground-data'
 
-type CommitData = (prop: string, value: SceneJsonValue, group?: string) => string | undefined
+type CommitData = (prop: string, value: SceneJsonValue | undefined, group?: string) => string | undefined
 
 function button(text: string, action: () => void): HTMLButtonElement {
     const element = document.createElement('button')
@@ -23,7 +23,7 @@ export function mountStructuredDataEditor(container: HTMLElement, controls: Stru
         error.className = 'explorer-data-error'
         error.setAttribute('role', 'status')
         error.setAttribute('aria-live', 'polite')
-        const apply = (value: SceneJsonValue, group?: string) => {
+        const apply = (value: SceneJsonValue | undefined, group?: string) => {
             const message = commit(control.prop, value, group)
             error.textContent = message ?? ''
         }
@@ -104,14 +104,29 @@ export function mountStructuredDataEditor(container: HTMLElement, controls: Stru
         const textarea = document.createElement('textarea')
         textarea.rows = control.kind === 'json' ? 8 : 5
         textarea.spellcheck = false
-        textarea.value = JSON.stringify(data, null, 2)
+        textarea.value = JSON.stringify(data !== undefined ? data : control.initialValue ?? [], null, 2)
         textarea.setAttribute('aria-label', `${control.label} JSON data`)
         textarea.dataset.dataJson = control.prop
         const applyJson = button('Apply JSON', () => {
             try { apply(JSON.parse(textarea.value) as SceneJsonValue) }
             catch (cause) { error.textContent = `Enter valid JSON. ${cause instanceof Error ? cause.message : ''}` }
         })
-        details.append(summary, textarea, applyJson)
+        applyJson.dataset.applyDataJson = control.prop
+        if (data === undefined) {
+            const add = button('Add property', () => {
+                try { apply(JSON.parse(textarea.value) as SceneJsonValue, `data:${control.prop}`) }
+                catch (cause) { error.textContent = `Enter valid JSON. ${cause instanceof Error ? cause.message : ''}` }
+            })
+            add.dataset.dataAdd = control.prop
+            details.append(summary, textarea, add)
+        } else {
+            if (!control.required) {
+                const remove = button('Remove property', () => apply(undefined, `data:${control.prop}`))
+                remove.dataset.dataRemove = control.prop
+                section.append(remove)
+            }
+            details.append(summary, textarea, applyJson)
+        }
         section.append(details, error)
         container.append(section)
     }

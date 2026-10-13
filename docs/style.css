@@ -770,7 +770,7 @@ pre.shiki code {
 .explorer-control { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; gap: 8px; font-size: 11px; color: var(--muted); }
 .explorer-control > span { display: flex; justify-content: space-between; gap: 8px; }
 .explorer-control output { font: 10px "JetBrains Mono", monospace; color: var(--accent); }
-.explorer-control input[type="text"], .explorer-control select, .explorer-mobile-select select { width: 100%; min-width: 0; height: 38px; padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
+.explorer-control input[type="text"], .explorer-control input[type="number"], .explorer-control select, .explorer-mobile-select select { width: 100%; min-width: 0; height: 38px; padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
 .explorer-control input[type="range"] { width: 100%; margin: 5px 0; accent-color: var(--accent-solid); }
 .explorer-control-boolean { flex-direction: row; justify-content: start; align-items: center; }
 .explorer-control input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent-solid); }
@@ -922,3 +922,22 @@ pre.shiki code {
 .explorer-data button:hover { border-color: var(--accent); }
 .explorer-data button:disabled { opacity: .5; cursor: default; }
 .explorer-data-json > button, .explorer-data-row > button { margin-top: 10px; }
+.explorer-canvas-settings { border-top: 1px solid var(--border); }
+.explorer-canvas-settings > summary { padding: 14px 24px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.explorer-canvas-settings > summary span { margin-left: 16px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.explorer-canvas-settings-body { padding: 4px 24px 20px; }
+.explorer-palette-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 16px; }
+.explorer-palette-controls > label { flex: 1; min-width: 140px; }
+.explorer-palette-controls input[type="color"] { width: 38px; height: 38px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); }
+.explorer-background-color { width: 170px; min-width: 0; padding: 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 12px; }
+.explorer-property-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.explorer-control button { padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 11px; cursor: pointer; }
+.explorer-source-only { grid-column: 1 / -1; min-width: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.explorer-source-only summary { cursor: pointer; font-weight: 600; }
+.explorer-source-only ul { margin: 10px 0 0; padding-left: 18px; }
+.explorer-source-only li + li { margin-top: 6px; }
+@media (max-width: 600px) {
+  .explorer-canvas-settings > summary { padding: 14px 16px; }
+  .explorer-canvas-settings > summary span { display: none; }
+  .explorer-canvas-settings-body { padding: 4px 16px 16px; }
+}

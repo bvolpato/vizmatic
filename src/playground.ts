@@ -16,6 +16,7 @@ import { mountCanvasEditor } from './playground-canvas-editor'
 import type { PlaygroundCanvasItemTarget } from './playground-builder-types'
 import { playgroundBuilderTemplate } from './playground-builder-template'
 import { readPlaygroundProject, writePlaygroundProject, projectFilename } from './playground-project'
+import { mountPlaygroundSettingsEditor } from './playground-settings-editor'
 
 interface PlaygroundRenderSuccess {
     id: number
@@ -242,10 +243,10 @@ function setControlEnabled(control: HTMLElement | undefined, enabled: boolean): 
 
 async function copyText(text: string): Promise<void> {
     if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text)
-        return
+        try { await navigator.clipboard.writeText(text); return } catch { /* Try the browser's selection clipboard. */ }
     }
 
+    const focused = document.activeElement
     const input = document.createElement('textarea')
     input.value = text
     input.setAttribute('readonly', '')
@@ -253,8 +254,9 @@ async function copyText(text: string): Promise<void> {
     input.style.opacity = '0'
     document.body.append(input)
     input.select()
-    const copied = document.execCommand('copy')
-    input.remove()
+    let copied = false
+    try { copied = document.execCommand('copy') }
+    finally { input.remove(); if (focused instanceof HTMLElement) focused.focus({ preventScroll: true }) }
     if (!copied) throw new Error('Clipboard access is unavailable.')
 }
 
@@ -355,8 +357,9 @@ function syncTemplateSelection(elements: PlaygroundElements): void {
 
 export function mountPlayground(root: HTMLElement): void {
     if (root.dataset.vizmaticPlaygroundMounted === 'true') return
-    const elements = requiredElements(root)
-    if (!elements) return
+    const found = requiredElements(root)
+    if (!found) return
+    const elements = found
     root.dataset.vizmaticPlaygroundMounted = 'true'
     const renderer = new PlaygroundRenderer()
     const hashSource = getPlaygroundHashSource()
@@ -373,6 +376,8 @@ export function mountPlayground(root: HTMLElement): void {
     else if (startWithBuilder) elements.source.value = playgroundBuilderTemplate.source
     if (!elements.source.value.trim()) elements.source.value = findPlaygroundTemplate(elements.templateSelect?.value)?.source ?? playgroundTemplates[0]?.source ?? ''
     if (draft) root.dataset.vizmaticPlaygroundBackground = draft.background
+    const sharedBackground = new URLSearchParams(location.search).get('background')
+    if (hashSource && (sharedBackground === 'theme' || sharedBackground === 'transparent')) root.dataset.vizmaticPlaygroundBackground = sharedBackground
     const history = new PlaygroundHistory(elements.source.value)
     const undo = root.querySelector<HTMLButtonElement>('#playgroundUndoButton')
     const redo = root.querySelector<HTMLButtonElement>('#playgroundRedoButton')
@@ -402,7 +407,15 @@ export function mountPlayground(root: HTMLElement): void {
     let previewSource = ''
     let renderVersion = 0
     let theme = draft?.theme ?? getTheme(root)
+    const sharedTheme = new URLSearchParams(location.search).get('theme')
+    if (hashSource && (sharedTheme === 'dark' || sharedTheme === 'light')) theme = sharedTheme
     let explorer: ComponentExplorerController | undefined
+    let settingsEditor: ReturnType<typeof mountPlaygroundSettingsEditor> | undefined
+    const copyBlock = root.querySelector<HTMLButtonElement>('#explorerCopyBlock')
+
+    function syncCopyBlock() {
+        if (copyBlock) copyBlock.disabled = !explorer?.getSelectedBlockSource()
+    }
 
     function syncHistory() {
         if (undo) undo.disabled = !history.canUndo
@@ -456,9 +469,12 @@ export function mountPlayground(root: HTMLElement): void {
     }
 
     function clearProjectLink() {
-        if (getPlaygroundHashSource() === undefined && !location.hash.startsWith('#component-')) return
         const url = new URL(location.href)
+        if (getPlaygroundHashSource() === undefined && !location.hash.startsWith('#component-') && !url.searchParams.has('example')) return
         url.hash = ''
+        url.searchParams.delete('example')
+        url.searchParams.delete('theme')
+        url.searchParams.delete('background')
         window.history.replaceState(null, '', url)
     }
 
@@ -488,6 +504,8 @@ export function mountPlayground(root: HTMLElement): void {
         setStatus(elements, 'loading', 'Rendering locally…')
         scheduleRender(immediate)
         explorer?.sourceChanged()
+        settingsEditor?.sourceChanged()
+        syncCopyBlock()
     }
 
     const displayPreview = () => {
@@ -563,7 +581,7 @@ export function mountPlayground(root: HTMLElement): void {
         elements.source.value = source
         syncSourceLink(source)
         dirty = true; scheduleDraft(); syncHistory(); syncTemplateSelection(elements); updateSourceHighlight(elements)
-        explorer?.sourceChanged(); scheduleRender(true)
+        explorer?.sourceChanged(); settingsEditor?.sourceChanged(); syncCopyBlock(); scheduleRender(true)
     }
     undo?.addEventListener('click', () => applyHistory('undo'))
     redo?.addEventListener('click', () => applyHistory('redo'))
@@ -571,6 +589,11 @@ export function mountPlayground(root: HTMLElement): void {
         if (event.defaultPrevented || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey) return
         if (event.target instanceof Element && event.target.closest('.playground-text-input')) return
         const key = event.key.toLowerCase()
+        if (key === 'c' && event.target instanceof Element && event.target.closest('.playground-canvas-move, .playground-canvas-resize')) {
+            event.preventDefault()
+            void copySelectedBlock()
+            return
+        }
         if (key !== 'z' && key !== 'y') return
         event.preventDefault()
         applyHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo')
@@ -580,7 +603,7 @@ export function mountPlayground(root: HTMLElement): void {
         syncSourceLink(elements.source.value)
         history.record(elements.source.value, 'typing')
         dirty = true; scheduleDraft(); syncHistory(); syncTemplateSelection(elements); updateSourceHighlight(elements)
-        explorer?.sourceChanged(); scheduleRender()
+        explorer?.sourceChanged(); settingsEditor?.sourceChanged(); syncCopyBlock(); scheduleRender()
     })
     elements.source.addEventListener('scroll', () => syncSourceHighlightScroll(elements))
     elements.run?.addEventListener('click', (event) => { event.preventDefault(); stopPlayback(); scheduleRender(true) })
@@ -588,9 +611,12 @@ export function mountPlayground(root: HTMLElement): void {
     elements.svgDownload?.addEventListener('click', (event) => { event.preventDefault(); if (svg) download('vizmatic.svg', svg, 'image/svg+xml') })
     elements.share?.addEventListener('click', (event) => {
         event.preventDefault(); setPlaygroundHashSource(elements.source.value)
+        const url = new URL(location.href)
+        url.searchParams.set('theme', theme)
+        url.searchParams.set('background', root.dataset.vizmaticPlaygroundBackground === 'theme' ? 'theme' : 'transparent')
+        window.history.replaceState(null, '', url)
         const shareUrl = window.location.href
-        if (!navigator.clipboard) { setStatus(elements, 'ready', 'Share link ready in address bar.'); return }
-        void navigator.clipboard.writeText(shareUrl).then(() => setStatus(elements, 'ready', 'Share link copied.')).catch(() => setStatus(elements, 'ready', 'Share link ready in address bar.'))
+        void copyText(shareUrl).then(() => setStatus(elements, 'ready', 'Share link copied.')).catch(() => setStatus(elements, 'ready', 'Share link ready in address bar.'))
     })
     const copyLabel = elements.copy?.textContent ?? 'Copy source'
     elements.copy?.addEventListener('click', async (event) => {
@@ -599,13 +625,25 @@ export function mountPlayground(root: HTMLElement): void {
         catch { if (elements.copy) elements.copy.textContent = 'Copy failed'; setStatus(elements, 'error', 'Could not copy source.') }
         window.setTimeout(() => { if (elements.copy) elements.copy.textContent = copyLabel }, 1600)
     })
+    async function copySelectedBlock() {
+        const source = explorer?.getSelectedBlockSource()
+        if (!source) return
+        try {
+            await copyText(source)
+            if (copyBlock) copyBlock.textContent = 'Copied'
+            setStatus(elements, 'ready', 'Block copied as reusable TSX, including its setup and canvas settings.')
+        } catch { setStatus(elements, 'error', 'Could not copy block. Copy its TSX from the source editor.') }
+        window.setTimeout(() => { if (copyBlock) copyBlock.textContent = 'Copy block' }, 1600)
+    }
+    copyBlock?.addEventListener('click', () => { void copySelectedBlock() })
+    root.addEventListener('vizmatic-builder-selection', syncCopyBlock)
     for (const control of findElements<HTMLElement>(root, '[data-vizmatic-playground-template]')) {
         control.addEventListener('click', () => { const template = findPlaygroundTemplate(control.dataset.vizmaticPlaygroundTemplate); if (template) loadSharedSource(template.source) })
     }
     for (const control of findElements<HTMLSelectElement>(root, '#playgroundTemplate, select[data-vizmatic-playground-template]')) {
         control.addEventListener('change', () => { const template = findPlaygroundTemplate(control.value); if (template) loadSharedSource(template.source) })
     }
-    function changeTheme(next: PlaygroundTheme) { stopPlayback(); theme = next; syncThemeControls(root, theme); clearProjectLink(); dirty = true; scheduleDraft(); scheduleRender(true) }
+    function changeTheme(next: PlaygroundTheme) { stopPlayback(); theme = next; syncThemeControls(root, theme); settingsEditor?.sourceChanged(); clearProjectLink(); dirty = true; scheduleDraft(); scheduleRender(true) }
     for (const control of findElements<HTMLElement>(root, '[data-vizmatic-theme], [data-playground-theme]')) {
         control.addEventListener('click', () => changeTheme(control.dataset.vizmaticTheme === 'light' || control.dataset.playgroundTheme === 'light' ? 'light' : 'dark'))
     }
@@ -659,7 +697,6 @@ export function mountPlayground(root: HTMLElement): void {
         if (fullscreen) { fullscreen.textContent = document.fullscreenElement === root ? 'Exit fullscreen' : 'Fullscreen'; fullscreen.setAttribute('aria-pressed', String(document.fullscreenElement === root)) }
     })
     if (backgroundSelect && draft) backgroundSelect.value = draft.background
-    backgroundSelect?.addEventListener('change', () => { stopPlayback(); root.dataset.vizmaticPlaygroundBackground = backgroundSelect.value; clearProjectLink(); dirty = true; scheduleDraft(); scheduleRender(true) })
     root.querySelector<HTMLSelectElement>('#explorerZoom')?.addEventListener('change', (event) => {
         root.dataset.previewZoom = (event.target as HTMLSelectElement).value
         displayPreview()
@@ -698,6 +735,14 @@ export function mountPlayground(root: HTMLElement): void {
     syncThemeControls(root, theme); syncHistory(); syncTemplateSelection(elements); updateSourceHighlight(elements)
     if (draftStatus) draftStatus.textContent = draft ? 'Your draft was restored from this browser.' : 'Edits are saved in this browser. Shared links open their own source.'
     explorer = mountComponentExplorer(root, { getSource: () => elements.source.value, loadSource: loadSharedSource, preserveSource: Boolean(hashSource || draft || explicitExample || startWithBuilder) })
+    settingsEditor = mountPlaygroundSettingsEditor(root, {
+        getSource: () => elements.source.value,
+        getTheme: () => theme,
+        getBackground: () => root.dataset.vizmaticPlaygroundBackground ?? 'transparent',
+        saveSource: (source, group) => loadSharedSource(source, false, { group }),
+        onError: (message) => setError(elements, message),
+    })
+    syncCopyBlock()
     if (hashSource || draft || startWithBuilder) scheduleRender(true)
     else if (!explorer && !explicitExample) scheduleRender(true)
 }

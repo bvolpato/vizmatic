@@ -65,6 +65,43 @@ describe('playground direct text mapping', () => {
         expect([...references.values()].map((reference) => reference.value)).not.toContain('Ready')
     })
 
+    it('keeps JSX text inside map-generated components source-only while preserving safe siblings and chart labels', () => {
+        const source = `const items = ['a', 'b'];
+<Scene>
+  {items.map((item) => <TextLabel text="Mapped prop" />)}
+  {items.map((item) => <TextLabel>Mapped child</TextLabel>)}
+  <TextLabel text="Safe sibling" />
+  <GraphDiagram width={420} height={260} nodes={[{ id: 'a', label: 'Chart label' }]} edges={[]} />
+</Scene>`
+        const { mapping, references } = prepare(source)
+        const mappedStarts = new Set([source.indexOf('"Mapped prop"'), source.indexOf('Mapped child')])
+        const referenceList = [...references.values()]
+
+        expect(referenceList.some((reference) => mappedStarts.has(reference.start))).toBe(false)
+        expect(referenceList.find((reference) => reference.value === 'Safe sibling')?.start)
+            .toBe(source.indexOf('"Safe sibling"'))
+        expect(referenceList.some((reference) => reference.value === 'Chart label')).toBe(true)
+        expect([...mapping.scopes.values()].flat().some((reference) => mappedStarts.has(reference.start))).toBe(false)
+    })
+
+    it('keeps spread values and duplicate text props source-only without blocking a literal chart prop after a spread', () => {
+        const source = `const props = { text: 'spread source' };
+const chartProps = { width: 420, height: 260 };
+<Scene>
+  <TextLabel text="before spread" {...props} />
+  <TextLabel text="duplicate one" text="duplicate two" />
+  <TextLabel {...{ text: 'inside spread' }} />
+  <GraphDiagram {...chartProps} nodes={[{ id: 'a', label: 'Safe chart label' }]} edges={[]} />
+  <GraphDiagram nodes={[{ id: 'b', label: 'spread-overridden chart label' }]} {...chartProps} edges={[]} />
+</Scene>`
+        const { references } = prepare(source)
+        const referenceList = [...references.values()]
+        const excluded = ['before spread', 'duplicate one', 'duplicate two', 'spread source', 'inside spread', 'spread-overridden chart label']
+
+        expect(referenceList.map((reference) => reference.value)).not.toEqual(expect.arrayContaining(excluded))
+        expect(referenceList.some((reference) => reference.value === 'Safe chart label')).toBe(true)
+    })
+
     it('removes editing annotations from native SVG and host props', () => {
         const { element } = prepare('<Scene title="Example"><GraphDiagram nodes={[{id:"a",label:"API"}]} edges={[]}/></Scene>')
         let svgCount = 0

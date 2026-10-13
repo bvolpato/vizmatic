@@ -6,6 +6,7 @@ import {
     getReadableToneColor,
     getToneColor,
     getToneGradient,
+    withColorAlpha,
 } from '../theme'
 
 import { Column, compactChildren, type FlexAlign, formatMathText, Panel, Row } from './layout'
@@ -276,7 +277,7 @@ export function DetailList({
                 padding,
                 borderRadius: 8,
                 backgroundColor: c.bgSubtle,
-                border: `1px solid ${tone ? `${accent}44` : c.borderSubtle}`,
+                border: `1px solid ${tone ? withColorAlpha(accent, 0x44 / 0xff) : c.borderSubtle}`,
                 color: c.textSecondary,
                 fontSize,
                 lineHeight: 1.3,
@@ -364,7 +365,7 @@ export function Tile({
         padding,
         radius,
         shadow,
-        borderColor: `${accent}88`,
+        borderColor: withColorAlpha(accent, 0x88 / 0xff),
         children: React.createElement('div', {
             style: {
                 width: '100%',
@@ -534,7 +535,7 @@ export function CodeBlock({
                 width: '100%',
                 padding: accent ? '3px 7px' : '1px 0',
                 borderRadius: accent ? 5 : 0,
-                ...(accent ? { backgroundColor: `${accent}1f` } : {}),
+                ...(accent ? { backgroundColor: withColorAlpha(accent, 0x1f / 0xff) } : {}),
                 boxSizing: 'border-box' as const,
             }
         },
@@ -589,7 +590,7 @@ export function CodeBlock({
             padding,
             borderRadius: radius,
             backgroundColor: background ?? c.bgSubtle,
-            border: `1px solid ${tone ? `${headerAccent}44` : c.borderSubtle}`,
+            border: `1px solid ${tone ? withColorAlpha(headerAccent, 0x44 / 0xff) : c.borderSubtle}`,
             boxSizing: 'border-box' as const,
             ...(shadow ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }

@@ -16,6 +16,9 @@ export interface SceneInstance {
     depth: number
     parentID: string | null
     controls: ComponentControl[]
+    properties: ScenePropertyControl[]
+    readOnlyProps: SceneReadOnlyProp[]
+    schemaProps: ScenePropSchema[]
     structuredControls: StructuredSceneControl[]
     attributes: SceneAttribute[]
     canDuplicate: boolean
@@ -38,6 +41,36 @@ export interface SceneAttribute {
     end: number
     value?: SceneJsonValue
     editable: boolean
+    readOnlyReason?: string
+}
+
+export interface ScenePropSchema {
+    name: string
+    type: string
+    required: boolean
+    allowedValues?: SceneJsonValue[]
+    literalValues?: SceneJsonValue[]
+    description?: string
+}
+
+export type SceneComponentPropSchema = Record<string, readonly ScenePropSchema[]>
+
+export interface ScenePropertyControl {
+    prop: string
+    label: string
+    kind: 'text' | 'number' | 'boolean' | 'select' | 'json' | 'values' | 'points' | 'rows'
+    value?: SceneJsonValue
+    required: boolean
+    initialValue?: SceneJsonValue
+    options?: SceneJsonValue[]
+    description?: string
+    start: number
+    end: number
+}
+
+export interface SceneReadOnlyProp {
+    prop: string
+    reason: string
 }
 
 const containers = new Set(['Scene', 'Canvas', 'Board', 'Row', 'Column', 'Stack', 'Fragment', 'React.Fragment'])
@@ -93,13 +126,111 @@ function controlsFor(name: string, attributes: SceneAttribute[]): ComponentContr
             const range = numberRange(prop, name)
             if (Number.isFinite(value) && value >= range.min && value <= range.max) controls.push({ ...base, type: 'number', ...range })
         } else if (spec.booleans?.includes(prop) && typeof value === 'boolean') controls.push({ ...base, type: 'boolean' })
-        if (controls.length >= 8) break
     }
     return controls
 }
 
+const reservedProps = new Set(['children', 'key', 'ref', 'dangerouslySetInnerHTML'])
+const editablePropName = /^[A-Za-z_$][\w$]*(?:[-:][A-Za-z_$][\w$]*)*$/
+
+function initialLiteral(schema: ScenePropSchema): SceneJsonValue | undefined {
+    const choices = schema.allowedValues ?? schema.literalValues
+    if (choices?.length) return choices[0]
+    const types = schema.type.replace(/\bundefined\b/g, '').split('|').map((value) => value.trim()).filter(Boolean)
+    for (const type of types) {
+        const literal = parseScalarTypeLiteral(type)
+        if (literal !== undefined) return literal
+        if (type === 'string') return ''
+        if (type === 'number') return 0
+        if (type === 'boolean') return false
+        if (type.endsWith('[]') || /^Array\s*</.test(type)) return []
+        if (type === 'React.CSSProperties' || type === 'ThemeColors' || type === 'object' || type.startsWith('{')) return {}
+        if (type === 'React.ReactNode') return null
+    }
+    return undefined
+}
+
+function propertyKind(value: SceneJsonValue | undefined, schema?: ScenePropSchema): ScenePropertyControl['kind'] | undefined {
+    if (value !== undefined && (schema?.allowedValues?.length || schema?.literalValues?.length)) return 'select'
+    if (value !== undefined && (value === null || typeof value === 'object')) return 'json'
+    if (schema && isFlexibleScalarUnion(schema.type)) return 'json'
+    if (value !== undefined) {
+        if (typeof value === 'boolean') return 'boolean'
+        if (typeof value === 'number') return 'number'
+        if (typeof value === 'string') return 'text'
+        return 'json'
+    }
+    if (!schema) return undefined
+    if (schema.allowedValues?.length || schema.literalValues?.length) return 'select'
+    const types = schema.type.replace(/\bundefined\b/g, '').split('|').map((type) => type.trim()).filter(Boolean)
+    if (types.includes('boolean')) return 'boolean'
+    if (types.includes('number')) return 'number'
+    if (types.includes('string')) return 'text'
+    if (types.some((type) => type.endsWith('[]') || /^Array\s*</.test(type)
+        || type === 'React.CSSProperties' || type === 'ThemeColors' || type === 'object' || type.startsWith('{'))) return 'json'
+    if (types.includes('React.ReactNode')) return 'json'
+    return undefined
+}
+
+function propertiesFor(name: string, attributes: SceneAttribute[], schemas: readonly ScenePropSchema[], hasSpread: boolean): { properties: ScenePropertyControl[]; readOnlyProps: SceneReadOnlyProp[] } {
+    const schemaByName = new Map(schemas.map((entry) => [entry.name, entry]))
+    const attributesByName = new Map<string, SceneAttribute[]>()
+    for (const attribute of attributes) {
+        const entries = attributesByName.get(attribute.prop) ?? []
+        entries.push(attribute)
+        attributesByName.set(attribute.prop, entries)
+    }
+    const properties: ScenePropertyControl[] = []
+    const readOnlyProps: SceneReadOnlyProp[] = []
+    for (const [prop, entries] of attributesByName) {
+        if (reservedProps.has(prop)) continue
+        const schema = schemaByName.get(prop)
+        if (!editablePropName.test(prop)) {
+            readOnlyProps.push({ prop, reason: 'This JSX property name is not supported by the visual editor. Edit it in TSX source.' })
+            continue
+        }
+        if (entries.length !== 1) {
+            readOnlyProps.push({ prop, reason: 'This property appears more than once. Resolve it in the TSX source.' })
+            continue
+        }
+        const attribute = entries[0]
+        if (!attribute.editable || attribute.value === undefined) {
+            readOnlyProps.push({ prop, reason: attribute.readOnlyReason ?? 'This property is computed in TSX. Edit it in the source.' })
+            continue
+        }
+        const kind = structuredControlKind(name, prop) ?? propertyKind(attribute.value, schema)
+        if (!kind) continue
+        const jsonKind = kind === 'json' ? 'json' : kind
+        properties.push({
+            prop, label: controlLabel(prop), kind: jsonKind, value: attribute.value,
+            required: schema?.required ?? false, options: schema?.allowedValues ?? schema?.literalValues,
+            description: schema?.description, start: attribute.start, end: attribute.end,
+        })
+    }
+    if (hasSpread) readOnlyProps.push({ prop: 'Spread props', reason: 'A spread can provide additional properties. Edit spread values in the TSX source.' })
+    for (const schema of schemas) {
+        if (reservedProps.has(schema.name) || attributesByName.has(schema.name)) continue
+        if (schema.required) {
+            if (schema.name !== 'c') readOnlyProps.push({ prop: schema.name, reason: 'This required property is missing. Add a valid value in the TSX source.' })
+            continue
+        }
+        const initialValue = name === 'Board' && schema.name === 'width' ? 960
+            : name === 'Board' && schema.name === 'height' ? 540 : initialLiteral(schema)
+        const kind = propertyKind(initialValue, schema)
+        if (!kind || initialValue === undefined) {
+            readOnlyProps.push({ prop: schema.name, reason: `${schema.type} cannot be added as a JSON literal. Edit it in the TSX source.` })
+            continue
+        }
+        properties.push({
+            prop: schema.name, label: controlLabel(schema.name), kind, required: false,
+            initialValue, options: schema.allowedValues ?? schema.literalValues, description: schema.description, start: -1, end: -1,
+        })
+    }
+    return { properties, readOnlyProps }
+}
+
 /** Reads JSX and literal props without compiling or evaluating the scene. */
-export function analyzeScene(source: string): SceneSnapshot {
+export function analyzeScene(source: string, componentProps: SceneComponentPropSchema = {}): SceneSnapshot {
     const root = findBareRootJsxStart(source)
     if (root < 0) throw new Error('Use a single root JSX element to edit this scene visually.')
     const jsx = extractRootJsx(source.slice(root).trim().replace(/^export\s+default\s+/, ''))
@@ -182,7 +313,8 @@ export function analyzeScene(source: string): SceneSnapshot {
         const instance: SceneInstance = {
             id: `${snapshotID}:${start}`, name: '', start, end: start, openingEnd: start,
             closingStart: null, selfClosing: false, depth: parent ? parent.depth + 1 : 0, parentID: parent?.id ?? null,
-            controls: [], structuredControls: [], attributes: [], canDuplicate: false, canRemove: false, canMoveUp: false, canMoveDown: false,
+            controls: [], properties: [], readOnlyProps: [], schemaProps: [], structuredControls: [], attributes: [],
+            canDuplicate: false, canRemove: false, canMoveUp: false, canMoveDown: false,
         }
         if (unsafe) instance.unsafeReason = 'Edit expression-generated components in the TSX source.'
         instances.push(instance)
@@ -195,10 +327,15 @@ export function analyzeScene(source: string): SceneSnapshot {
             }
         }
         const attributes: SceneAttribute[] = []
+        let hasSpread = false
         while (i < tokens.length && tokens[i].type !== tt.jsxTagEnd) {
             if (tokens[i].type === tt.braceL) {
                 // A spread can override preceding attributes, so only later literals are controls.
-                attributes.forEach((attribute) => { attribute.editable = false })
+                hasSpread = true
+                attributes.forEach((attribute) => {
+                    attribute.editable = false
+                    attribute.readOnlyReason = 'A later spread can override this property. Edit it in the TSX source.'
+                })
                 i = expression(i, instance, true) + 1
                 continue
             }
@@ -215,6 +352,10 @@ export function analyzeScene(source: string): SceneSnapshot {
                     const end = expression(i, instance, true)
                     attribute.value = literal(i + 1, end)
                     attribute.end = position(tokens[end].end)
+                    if (attribute.value === undefined) {
+                        attribute.editable = false
+                        attribute.readOnlyReason = 'This value is computed in TSX. Edit it in the source.'
+                    }
                     i = end + 1
                 }
             }
@@ -222,6 +363,14 @@ export function analyzeScene(source: string): SceneSnapshot {
         }
         instance.controls = controlsFor(instance.name, attributes)
         instance.attributes = attributes
+        instance.schemaProps = [...(componentProps[instance.name] ?? [])]
+        const propertyInventory = propertiesFor(instance.name, attributes, instance.schemaProps, hasSpread)
+        instance.properties = unsafe ? [] : propertyInventory.properties
+        instance.readOnlyProps = unsafe
+            ? [...propertyInventory.readOnlyProps, ...attributes
+                .filter((attribute) => !propertyInventory.readOnlyProps.some((entry) => entry.prop === attribute.prop))
+                .map((attribute) => ({ prop: attribute.prop, reason: 'This component is generated inside a JSX expression. Edit it in the TSX source.' }))]
+            : propertyInventory.readOnlyProps
         instance.structuredControls = attributes.flatMap((attribute) => {
             const kind = structuredControlKind(instance.name, attribute.prop)
             if (!kind || !attribute.editable || attribute.value === undefined
@@ -280,9 +429,52 @@ export function updateSceneControls(source: string, snapshot: SceneSnapshot, id:
     return applyComponentControls(source, currentInstance(source, snapshot, id).controls, values)
 }
 
+function validateSchemaLiteral(schema: ScenePropSchema | undefined, value: SceneJsonValue): void {
+    if (!schema) return
+    validateSceneJson(value)
+    const choices = schema.allowedValues ?? schema.literalValues
+    if (choices?.length && !choices.some((option) => Object.is(option, value))) {
+        throw new Error(`${schema.name} must be one of its listed values.`)
+    }
+    const types = schema.type.replace(/\bundefined\b/g, '').split('|').map((type) => type.trim()).filter(Boolean)
+    const matches = types.map((type) => scalarTypeMatches(type, value))
+    if (types.length && matches.every((match) => match !== undefined) && !matches.some(Boolean)) {
+        throw new Error(`${schema.name} must match one of its TypeScript types: ${types.join(' or ')}.`)
+    }
+}
+
+function parseScalarTypeLiteral(type: string): SceneJsonValue | undefined {
+    if (type === 'true') return true
+    if (type === 'false') return false
+    if (type === 'null') return null
+    if (/^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(type)) return Number(type)
+    if ((type.startsWith('"') && type.endsWith('"')) || (type.startsWith("'") && type.endsWith("'"))) {
+        const quote = type[0]
+        if (quote === '"') {
+            try { return JSON.parse(type) as string } catch { return }
+        }
+        return type.slice(1, -1).replace(/\\'/g, "'").replace(/\\\\/g, '\\')
+    }
+    return undefined
+}
+
+function scalarTypeMatches(type: string, value: SceneJsonValue): boolean | undefined {
+    if (type === 'string') return typeof value === 'string'
+    if (type === 'number') return typeof value === 'number'
+    if (type === 'boolean') return typeof value === 'boolean'
+    const literal = parseScalarTypeLiteral(type)
+    return literal === undefined ? undefined : Object.is(literal, value)
+}
+
+function isFlexibleScalarUnion(type: string): boolean {
+    const types = type.replace(/\bundefined\b/g, '').split('|').map((value) => value.trim()).filter(Boolean)
+    return types.length > 1 && types.every((entry) => scalarTypeMatches(entry, null) !== undefined)
+}
+
 /** Patches literal props and adds missing props without replacing computed or overridden values. */
 export function setSceneLiteralProps(source: string, snapshot: SceneSnapshot, id: string, values: Record<string, SceneJsonValue>): string {
     const instance = currentInstance(source, snapshot, id)
+    if (instance.unsafeReason) throw new Error(instance.unsafeReason)
     if (instance.name === 'Fragment') throw new Error('Select a named component to edit its properties.')
     const related = Object.fromEntries(instance.attributes.filter((attribute) => attribute.editable && attribute.value !== undefined)
         .map((attribute) => [attribute.prop, attribute.value!]))
@@ -290,10 +482,10 @@ export function setSceneLiteralProps(source: string, snapshot: SceneSnapshot, id
     const replacements: Array<{ start: number; end: number; text: string }> = []
     const added: string[] = []
     for (const [prop, value] of Object.entries(values)) {
-        if (!/^[A-Za-z_$][\w$]*$/.test(prop) || ['__proto__', 'constructor', 'prototype', 'children', 'dangerouslySetInnerHTML', 'ref', 'key'].includes(prop)) throw new Error(`Cannot edit the property "${prop}" in the builder.`)
+        if (!editablePropName.test(prop) || ['__proto__', 'constructor', 'prototype', 'children', 'dangerouslySetInnerHTML', 'ref', 'key'].includes(prop)) throw new Error(`Cannot edit the property "${prop}" in the builder.`)
         validateSceneJson(value)
+        validateSchemaLiteral(instance.schemaProps.find((entry) => entry.name === prop), value)
         if (structuredControlKind(instance.name, prop)) validateStructuredSceneValue(instance.name, prop, value, related)
-        else if (value !== null && typeof value === 'object') throw new Error(`Use the TSX source to edit ${instance.name}.${prop}.`)
         const attributes = instance.attributes.filter((attribute) => attribute.prop === prop)
         if (attributes.length > 1) throw new Error(`The property "${prop}" appears more than once. Resolve it in the TSX source.`)
         const attribute = attributes[0]
@@ -307,12 +499,30 @@ export function setSceneLiteralProps(source: string, snapshot: SceneSnapshot, id
         const closing = instance.selfClosing ? opening.match(/\/\s*>$/)?.[0].length : 1
         if (!closing) throw new Error('The opening tag changed. Refresh the scene before editing.')
         const at = instance.openingEnd - closing
-        replacements.push({ start: at, end: at, text: ' ' + added.join(' ') + ' ' })
+        const leadingSpace = /\s$/.test(source.slice(instance.start, at)) ? '' : ' '
+        const trailingSpace = instance.selfClosing && !/^\s/.test(source.slice(at, instance.openingEnd)) ? ' ' : ''
+        replacements.push({ start: at, end: at, text: leadingSpace + added.join(' ') + trailingSpace })
     }
     replacements.sort((left, right) => right.start - left.start)
     let result = source
     for (const replacement of replacements) result = result.slice(0, replacement.start) + replacement.text + result.slice(replacement.end)
     return result
+}
+
+/** Removes one optional, literal prop while keeping source spans and JSX syntax intact. */
+export function removeSceneLiteralProp(source: string, snapshot: SceneSnapshot, id: string, prop: string): string {
+    const instance = currentInstance(source, snapshot, id)
+    if (instance.unsafeReason) throw new Error(instance.unsafeReason)
+    if (instance.id === snapshot.rootID && instance.name === 'Board' && (prop === 'width' || prop === 'height')) {
+        throw new Error(`Root Board ${prop} is a frame setting and cannot be removed from the component inspector.`)
+    }
+    if (instance.schemaProps.find((entry) => entry.name === prop)?.required) throw new Error(`${prop} is required and cannot be removed.`)
+    if (instance.readOnlyProps.some((entry) => entry.prop === 'Spread props')) throw new Error('A spread makes property removal ambiguous. Edit the TSX source.')
+    const attributes = instance.attributes.filter((attribute) => attribute.prop === prop)
+    if (attributes.length !== 1) throw new Error(attributes.length ? `The property "${prop}" appears more than once. Resolve it in the TSX source.` : `The property "${prop}" is not set.`)
+    const attribute = attributes[0]
+    if (!attribute.editable || attribute.value === undefined) throw new Error(attribute.readOnlyReason ?? `The property "${prop}" is computed. Edit it in the TSX source.`)
+    return source.slice(0, attribute.start) + source.slice(attribute.end)
 }
 
 export function updateStructuredSceneProp(source: string, snapshot: SceneSnapshot, id: string, prop: string, value: SceneJsonValue): string {

@@ -5,9 +5,11 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import React from 'react'
-import * as esm from '../dist/index.js'
 
-const cjs = createRequire(import.meta.url)('../dist/index.cjs')
+const installed = process.argv.includes('--installed')
+const packageRoot = installed ? 'node_modules/vizmatic' : '.'
+const esm = await import(installed ? 'vizmatic' : '../dist/index.js')
+const cjs = createRequire(import.meta.url)(installed ? 'vizmatic' : '../dist/index.cjs')
 const element = React.createElement('div', {
     style: { display: 'flex', backgroundColor: '#ffffff', color: '#000000' },
 }, 'Runtime check')
@@ -26,7 +28,7 @@ for (const [format, api] of [['ESM', esm], ['CJS', cjs]]) {
 const output = await mkdtemp(join(tmpdir(), 'vizmatic-runtime-'))
 try {
     const result = spawnSync(process.execPath, [
-        'dist/cli.js', 'examples/transparent-badge.tsx',
+        join(packageRoot, 'dist/cli.js'), join(packageRoot, 'examples/transparent-badge.tsx'),
         '--out', output, '--theme', 'dark,light', '--no-crop',
     ], { encoding: 'utf8', timeout: 30_000 })
     assert.equal(result.status, 0, result.error?.message || result.stderr || result.stdout)

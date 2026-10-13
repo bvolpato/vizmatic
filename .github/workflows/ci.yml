@@ -61,6 +61,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
       - run: node scripts/check-runtime.mjs
+      - run: node scripts/check-consumer.mjs
       # Vitest 5 requires Node 22.12+; Node 20 exercises the built package directly.
       - if: matrix.node-version != 20
         run: node node_modules/vitest/vitest.mjs run

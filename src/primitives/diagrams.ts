@@ -10,6 +10,7 @@ import {
     getToneColor,
     getToneFill,
     getToneGradient,
+    withColorAlpha,
 } from '../theme'
 
 import { clamp, compactChildren, formatMathText, Icon, textFitStyle, ToneStrip, type IconName } from './layout'
@@ -145,10 +146,10 @@ export function LayeredNetwork({
                         width: nodeSize + 28,
                         height: nodeSize + 28,
                         borderRadius: 999,
-                        backgroundColor: `${c.warningLight}2e`,
+                        backgroundColor: withColorAlpha(c.warningLight, 0x2e / 0xff),
                         border: `4px solid ${c.warningLight}`,
                         boxSizing: 'border-box' as const,
-                        boxShadow: `0 0 18px ${c.warningLight}66`,
+                        boxShadow: `0 0 18px ${withColorAlpha(c.warningLight, 0x66 / 0xff)}`,
                     },
                 }),
                 React.createElement('div', {
@@ -167,7 +168,7 @@ export function LayeredNetwork({
                         color: getReadableTextColor(color, c),
                         border: active ? `3px solid ${c.warningLight}` : `1.5px solid ${color}`,
                         boxSizing: 'border-box' as const,
-                        boxShadow: active ? `0 0 16px ${c.warningLight}70` : `0 8px 14px ${c.shadow}`,
+                        boxShadow: active ? `0 0 16px ${withColorAlpha(c.warningLight, 0x70 / 0xff)}` : `0 8px 14px ${c.shadow}`,
                         fontFamily: 'JetBrains Mono',
                         fontSize: 16,
                         fontWeight: 900,
@@ -939,8 +940,8 @@ export function GraphDiagram({
                 display: 'flex',
                 boxSizing: 'border-box' as const,
                 borderRadius: c.preset === 'engineering' ? 6 : 12,
-                border: `${c.preset === 'engineering' ? 1.25 : 1.5}px ${group.muted ? 'dashed' : 'solid'} ${accent}${group.muted ? '55' : '77'}`,
-                backgroundColor: `${accent}${c.preset === 'engineering' ? '08' : '0d'}`,
+                border: `${c.preset === 'engineering' ? 1.25 : 1.5}px ${group.muted ? 'dashed' : 'solid'} ${withColorAlpha(accent, (group.muted ? 0x55 : 0x77) / 0xff)}`,
+                backgroundColor: withColorAlpha(accent, (c.preset === 'engineering' ? 0x08 : 0x0d) / 0xff),
                 opacity: group.muted ? 0.68 : 1,
             },
         }, React.createElement('div', {
@@ -1115,7 +1116,7 @@ export function GraphDiagram({
                     boxSizing: 'border-box' as const,
                     borderRadius: c.preset === 'engineering' ? 5 : 10,
                     backgroundColor: node.muted ? c.bgSubtle : fill,
-                    border: `${c.preset === 'engineering' ? 1.25 : 1.5}px solid ${node.muted ? c.borderLight : `${accent}${c.preset === 'engineering' ? '' : '88'}`}`,
+                    border: `${c.preset === 'engineering' ? 1.25 : 1.5}px solid ${node.muted ? c.borderLight : c.preset === 'engineering' ? accent : withColorAlpha(accent, 0x88 / 0xff)}`,
                     ...(!node.muted && c.preset !== 'engineering' ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                     opacity: node.muted ? 0.62 : 1,
                     color: c.preset === 'engineering' ? c.textPrimary : accentText,
@@ -1384,7 +1385,7 @@ export function TreeDiagram({
                         boxSizing: 'border-box' as const,
                         borderRadius: 8,
                         backgroundColor: node.muted ? c.bgSubtle : c.bgCard,
-                        border: `1.5px solid ${node.muted ? c.borderLight : `${accent}88`}`,
+                        border: `1.5px solid ${node.muted ? c.borderLight : withColorAlpha(accent, 0x88 / 0xff)}`,
                         ...(!node.muted ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                         opacity: node.muted ? 0.62 : 1,
                         color: accentText,
@@ -1464,8 +1465,8 @@ export function CalloutCard({
             ...(engineering
                 ? { backgroundColor: getToneFill(tone, c), color: c.textPrimary, border: `1px solid ${accent}` }
                 : filled
-                ? { backgroundImage: getToneGradient(tone), color: c.textOnColor, border: `1px solid ${accent}00` }
-                : { backgroundColor: c.bgCard, color: c.textPrimary, border: `1px solid ${accent}66` }),
+                ? { backgroundImage: getToneGradient(tone), color: c.textOnColor, border: `1px solid ${withColorAlpha(accent, 0)}` }
+                : { backgroundColor: c.bgCard, color: c.textPrimary, border: `1px solid ${withColorAlpha(accent, 0x66 / 0xff)}` }),
             display: 'flex',
             flexDirection: 'column' as const,
             alignItems: align === 'center' ? 'center' : 'flex-start',

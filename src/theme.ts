@@ -281,7 +281,7 @@ export function getReadableToneColor(
 
 /** Low-chroma fills for diagrams. The engineering preset uses opaque pastels. */
 export function getToneFill(tone: ToneName, c: ThemeColors): string {
-    if (c.preset !== 'engineering') return `${getToneColor(tone, c)}16`
+    if (c.preset !== 'engineering') return withColorAlpha(getToneColor(tone, c), 0x16 / 0xff)
 
     return {
         blue: '#cddcfa',
@@ -453,6 +453,22 @@ function parseColor(color: string): ParsedColor | undefined {
         channels: channels.map((channel) => Math.round((channel + offset) * 255)) as [number, number, number],
         alpha: parsed.alpha,
     }
+}
+
+/** Apply an opacity multiplier to any CSS color accepted by parse-css-color. */
+export function withColorAlpha(color: string, opacity: number): string {
+    if (typeof color !== 'string' || !Number.isFinite(opacity)) return 'transparent'
+
+    const parsed = parseColor(color)
+    if (!parsed) return 'transparent'
+
+    const alpha = Math.min(1, Math.max(0, parsed.alpha * Math.min(1, Math.max(0, opacity))))
+    const hex = color.trim()
+    if (/^#[\da-f]{6}$/i.test(hex)) {
+        return `${hex}${Math.round(alpha * 0xff).toString(16).padStart(2, '0')}`
+    }
+
+    return `rgba(${parsed.channels.join(', ')}, ${Number(alpha.toFixed(6))})`
 }
 
 function colorLuminance(color: string, backdrop?: string): number | undefined {

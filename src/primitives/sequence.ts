@@ -6,6 +6,7 @@ import {
     getReadableToneColor,
     getToneColor,
     getToneFill,
+    withColorAlpha,
 } from '../theme'
 
 import { ArrowMarkerDef } from './svg'
@@ -426,8 +427,8 @@ export function SequenceDiagram({
                 height: spanHeight,
                 display: 'flex',
                 boxSizing: 'border-box' as const,
-                border: `1.25px ${span.fragment.muted ? 'dotted' : 'dashed'} ${accent}${span.fragment.muted ? '55' : '99'}`,
-                backgroundColor: `${accent}0b`,
+                border: `1.25px ${span.fragment.muted ? 'dotted' : 'dashed'} ${withColorAlpha(accent, (span.fragment.muted ? 0x55 : 0x99) / 0xff)}`,
+                backgroundColor: withColorAlpha(accent, 0x0b / 0xff),
                 borderRadius: c.preset === 'engineering' ? 4 : 8,
                 pointerEvents: 'none' as const,
             },
@@ -578,7 +579,7 @@ export function SequenceDiagram({
                 padding: '6px 9px',
                 borderRadius: c.preset === 'engineering' ? 3 : 7,
                 backgroundColor: note.muted ? c.bgSubtle : getToneFill(tone, c),
-                border: `1px solid ${accent}${note.muted ? '66' : '99'}`,
+                border: `1px solid ${withColorAlpha(accent, (note.muted ? 0x66 : 0x99) / 0xff)}`,
                 color: note.muted ? c.textMuted : getReadableTextColor(getToneFill(tone, c), c),
                 fontFamily: c.fontSans,
                 fontSize: 11,

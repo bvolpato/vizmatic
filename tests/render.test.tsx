@@ -1940,11 +1940,12 @@ export default frame.default
         const renderDir = join(outDir, 'renders')
 
         try {
-            await writeFile(framePath, `preset = "engineering";
+            await writeFile(framePath, `// preset: ThemePreset = "engineering";
 width = 520;
 height = 300;
 
 <Scene title="Bare frame" subtitle="CLI adds imports and theme">
+    <div style={{ display: "flex", width: 30, height: 30, backgroundColor: getThemeColors("dark").primary }} />
     <Row gap={12} width="100%">
         <StepCard title="No imports" subtitle="binary render" tone="green" />
         <CalloutCard title="No c prop" detail="Theme is injected automatically." tone="purple" width={220} />
@@ -1972,9 +1973,85 @@ height = 300;
 
             const buffer = await readFile(join(renderDir, 'bare-frame_dark.png'))
             expect(buffer.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+            const image = decodePng(buffer)
+            const colors = new Set<string>()
+            for (let offset = 0; offset < image.pixels.length; offset += 4) {
+                colors.add(Array.from(image.pixels.subarray(offset, offset + 4)).join(','))
+            }
+            expect(colors.has('99,44,166,255')).toBe(true)
 
             const manifest = JSON.parse(await readFile(join(renderDir, 'manifest.json'), 'utf8')) as Array<{ width: number; height: number }>
             expect(manifest[0]).toMatchObject({ width: 520, height: 300 })
+        } finally {
+            await rm(outDir, { recursive: true, force: true })
+        }
+    }, 30_000)
+
+    it('applies custom theme colors when rendering a bare TSX frame through the CLI', async () => {
+        const outDir = await mkdtemp(join(tmpdir(), 'vizmatic-bare-cli-theme-colors-'))
+        const framePath = join(outDir, 'custom-theme.tsx')
+        const renderDir = join(outDir, 'renders')
+
+        try {
+            await writeFile(framePath, [
+                'width = 520',
+                'height = 300',
+                'themeColors = {"bg":"#112233","primary":"#00ff00","secondary":"#00ffff"}',
+                'background = "#ff00ff"',
+                '<Scene title="Custom background">',
+                '  <div style={{ display: "flex", width: 40, height: 40, backgroundColor: c.secondary }} />',
+                '  <div style={{ display: "flex", width: 40, height: 40, backgroundColor: getThemeColors("dark").primary }} />',
+                '</Scene>',
+            ].join('\n'))
+
+            const result = spawnSync(process.execPath, [
+                '--import',
+                'tsx',
+                'src/cli.ts',
+                framePath,
+                '--out',
+                renderDir,
+                '--theme',
+                'dark',
+                '--no-crop',
+            ], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                env: cliChildEnv(),
+            })
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            const image = decodePng(await readFile(join(renderDir, 'custom-theme_dark.png')))
+            const colors = new Set<string>()
+            for (let offset = 0; offset < image.pixels.length; offset += 4) {
+                colors.add(Array.from(image.pixels.subarray(offset, offset + 4)).join(','))
+            }
+            expect(colors.has('255,0,255,255')).toBe(true)
+            expect(colors.has('0,255,0,255')).toBe(true)
+            expect(colors.has('0,255,255,255')).toBe(true)
+
+            const themedRenderDir = join(outDir, 'theme-renders')
+            const themedResult = spawnSync(process.execPath, [
+                '--import',
+                'tsx',
+                'src/cli.ts',
+                framePath,
+                '--out',
+                themedRenderDir,
+                '--theme',
+                'dark',
+                '--background',
+                'theme',
+                '--no-crop',
+            ], {
+                cwd: process.cwd(),
+                encoding: 'utf8',
+                env: cliChildEnv(),
+            })
+
+            expect(themedResult.status, themedResult.stderr || themedResult.stdout).toBe(0)
+            const themedImage = decodePng(await readFile(join(themedRenderDir, 'custom-theme_dark.png')))
+            expect(pixelAt(themedImage, 0, 0)).toEqual([17, 34, 51, 255])
         } finally {
             await rm(outDir, { recursive: true, force: true })
         }

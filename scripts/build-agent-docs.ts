@@ -35,8 +35,11 @@ function buildComponentsMarkdown(
                 const allowedValues = prop.allowedValuesRef
                     ? `; allowed values: \`propEnums.${prop.allowedValuesRef}\``
                     : ''
+                const literalValues = prop.literalValuesRef
+                    ? `; literal presets: \`propEnums.${prop.literalValuesRef}\` (other non-literal variants remain TSX-only)`
+                    : ''
                 const description = prop.description ? `: ${prop.description}` : ''
-                return `- \`${prop.name}\`: \`${prop.type}\` (${requirement}${allowedValues})${description}`
+                return `- \`${prop.name}\`: \`${prop.type}\` (${requirement}${allowedValues}${literalValues})${description}`
             })
             return [
                 `### ${component.name}`,
@@ -60,7 +63,7 @@ function buildComponentsMarkdown(
         '',
         `Package: ${packageMetadata.name}@${packageMetadata.version}. Catalog: ${catalogComponentCount} runnable examples across ${componentCatalog.length} categories.`,
         '',
-        'Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Finite literal options are shared in the `propEnums` object in `components.json`. Default values are not inferred.',
+        'Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.',
         '',
         ...sections,
         '## Shared prop value sets',

@@ -584,17 +584,35 @@ pnpm verify
 pnpm site:serve
 ```
 
-The homepage, Components page, and Playground share a live component explorer. Choose a component to open its focused example, or use Add to scene to compose several components. Select an element to edit that instance's literal props, duplicate or remove it, and move it within its group. Controls follow inline text and TSX edits. Computed props and expression-generated structure stay editable in the TSX. Preview framing and zoom preserve the full canvas in downloaded PNG and SVG files.
+The homepage, Components page, and Playground share a live component explorer. Choose a component to open its focused example, or use Add to scene to compose several components. Select an element to edit its literal props, add optional properties, duplicate or remove it, and move it within its group. Controls follow inline text and TSX edits. Computed props and expression-generated structure stay editable in the TSX. Preview framing and zoom preserve the full canvas in downloaded PNG and SVG files.
 
 Choose the Freeform canvas template for a positioned builder. Move and resize `CanvasItem` components through the preview handles, use grid snapping, or adjust their literal coordinates in the inspector. Arrow keys nudge a focused handle; Shift makes a larger move and Alt bypasses snapping. The layout remains ordinary `Board` / `CanvasItem` TSX.
 
-Structured data editors let you add, remove, and change pie segments, bar categories, scatter points, and table cells. Line series, interval data, and graph nodes, edges, and groups have JSON editors. Invalid shapes and missing graph node references report an error before changing the source. Computed data remains editable in TSX.
+Structured data editors let you add, remove, and change pie segments, bar categories, scatter points, and table cells. Nested styles, arrays, and objects also have JSON editors. Invalid shapes and missing graph node references report an error before changing the source. Computed data remains editable in TSX.
+
+Open Canvas and palette to change the frame dimensions, style preset, and any theme color. Choose a transparent, theme, or custom CSS background. These settings are saved in the TSX and participate in undo, project files, share links, and exports. Bare CLI frames support the same metadata:
+
+```tsx
+width = 960;
+height = 540;
+preset = "default";
+background = "#101827";
+themeColors = {"primary":"#22c55e","primaryLight":"hsl(140, 70%, 65%)"};
+
+<Board width={960} height={540}>
+  <CanvasItem x={40} y={40} width={300} height={120}>
+    <CalloutCard title="Your palette" detail="Colors travel with the frame." />
+  </CanvasItem>
+</Board>
+```
+
+Copy block copies the selected element as reusable bare TSX, including its setup and canvas settings. Inside a Board it keeps the enclosing CanvasItem and its geometry, so the copied block renders on its own. Ctrl/Command+C copies a block when its canvas handle is focused. Copy source copies the complete composition.
 
 Edits are saved locally in this browser and restore after reload. Component, shared-source, and gallery links open their own examples. Editing clears the original example or source bookmark so reload can recover your draft. Undo and redo cover source typing, controls, inline text, and scene operations, with up to 100 source snapshots for the current session. Use the buttons or Ctrl/Command+Z and Ctrl/Command+Shift+Z. Drafts do not sync between devices; use Save project to download a named `.vizmatic.json` file containing source, output theme, and canvas background, then Open project to restore it. Share and Copy source also let you move your TSX between tools.
 
 Double-click a text label in the preview to edit its literal TSX value. Press Enter or click outside to save, Shift+Enter for a new line, or Escape to cancel. Keyboard users can focus a label and press Enter or F2. Labels derived from computed expressions or ambiguous source values stay editable in the TSX editor.
 
-Choose the Animation scene template to play, pause, scrub time, and export a GIF in the browser. Bare animated source declares `animationDuration = 3` and optionally `animationFps = 10` before setup code. The injected `t` variable is time in seconds; Vizmatic timeline helpers continue to use milliseconds. Gallery timeline animations are adapted to the same browser workflow. Browser GIFs use the selected theme background, with limits of 120 frames, 2 million pixels per frame, and 60 million pixels total. Static CLI render and check evaluate these snippets at `t=0`. Use a CLI animation module for larger animations or transparent GIF output.
+Choose the Animation scene template to play, pause, scrub time, and export a GIF in the browser. Bare animated source declares `animationDuration = 3` and optionally `animationFps = 10` before setup code. The injected `t` variable is time in seconds; Vizmatic timeline helpers continue to use milliseconds. Gallery timeline animations are adapted to the same browser workflow. Browser GIFs use an opaque canvas fill, with limits of 120 frames, 2 million pixels per frame, and 60 million pixels total. Static CLI render and check evaluate these snippets at `t=0`. Use a CLI animation module for larger animations or transparent GIF output.
 
 The generated `components.json` includes compiler-derived prop types, requiredness, and finite allowed-value references. Shared value lists live in `propEnums`; defaults are not inferred. Full TypeScript definitions remain the contract for structured data and React values.
 

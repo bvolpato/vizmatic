@@ -5,9 +5,11 @@ export interface StructuredSceneControl {
     prop: string
     label: string
     kind: StructuredControlKind
-    value: SceneJsonValue
+    value?: SceneJsonValue
     start: number
     end: number
+    required?: boolean
+    initialValue?: SceneJsonValue
 }
 
 const structuredSpecs: Record<string, Record<string, StructuredControlKind>> = {
@@ -49,7 +51,11 @@ export function validateSceneJson(value: SceneJsonValue, depth = 0): void {
         if (value.length > 1000) throw new Error('Data arrays may contain at most 1,000 items.')
         value.forEach((item) => validateSceneJson(item, depth + 1))
     } else {
-        for (const [key, item] of Object.entries(value)) {
+        const prototype = Object.getPrototypeOf(value)
+        if (prototype !== Object.prototype && prototype !== null) throw new Error('Use plain JSON objects for data.')
+        const entries = Object.entries(value)
+        if (entries.length > 1000) throw new Error('Data objects may contain at most 1,000 properties.')
+        for (const [key, item] of entries) {
             if (['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error(`The data key "${key}" is not supported.`)
             validateSceneJson(item, depth + 1)
         }

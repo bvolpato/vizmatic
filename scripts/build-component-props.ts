@@ -8,6 +8,7 @@ export interface ComponentPropMetadata {
     type: string
     required: boolean
     allowedValuesRef?: string
+    literalValuesRef?: string
     description?: string
 }
 
@@ -17,7 +18,8 @@ export interface ComponentPropMetadataBundle {
 }
 
 interface ExtractedProp extends ComponentPropMetadata {
-    literalValues?: ComponentPropLiteral[]
+    finiteValues?: ComponentPropLiteral[]
+    literalSuggestions?: ComponentPropLiteral[]
     enumName?: string
 }
 
@@ -47,6 +49,25 @@ function readLiteralValues(checker: ts.TypeChecker, type: ts.Type): ComponentPro
     }
 
     return values.length > 0 ? values : undefined
+}
+
+/** Literal branches are useful presets when the remaining branch is source-only, such as a callback. */
+function readLiteralSuggestions(checker: ts.TypeChecker, type: ts.Type): ComponentPropLiteral[] | undefined {
+    const members = type.isUnion() ? type.types : [type]
+    const values: ComponentPropLiteral[] = []
+    let hasCallableBranch = false
+
+    for (const member of members) {
+        if (member.flags & ts.TypeFlags.Undefined) continue
+        if (member.flags & ts.TypeFlags.StringLiteral) values.push((member as ts.StringLiteralType).value)
+        else if (member.flags & ts.TypeFlags.NumberLiteral) values.push((member as ts.NumberLiteralType).value)
+        else if (member.flags & ts.TypeFlags.BooleanLiteral) values.push(checker.typeToString(member) === 'true')
+        else if (member.flags & ts.TypeFlags.Null) values.push(null)
+        else if (member.getCallSignatures().length > 0) hasCallableBranch = true
+        else return undefined
+    }
+
+    return hasCallableBranch && values.length > 0 ? values : undefined
 }
 
 function aliasName(type: ts.Type): string | undefined {
@@ -119,8 +140,14 @@ function extractComponentProps(
         }
         const values = readLiteralValues(checker, propType)
         if (values) {
-            extracted.literalValues = values
+            extracted.finiteValues = values
             extracted.enumName = aliasName(propType)
+        } else {
+            const suggestions = readLiteralSuggestions(checker, propType)
+            if (suggestions) {
+                extracted.literalSuggestions = suggestions
+                extracted.enumName = aliasName(propType)
+            }
         }
         if (docs) extracted.description = docs
         return extracted
@@ -140,8 +167,9 @@ export function buildComponentPropMetadata(componentNames: readonly string[]): C
 
     for (const props of extracted.values()) {
         for (const prop of props) {
-            if (!prop.literalValues) continue
-            const valuesKey = literalValuesKey(prop.literalValues)
+            const values = prop.finiteValues ?? prop.literalSuggestions
+            if (!values) continue
+            const valuesKey = literalValuesKey(values)
             if (enumIdsByValues.has(valuesKey)) continue
 
             const preferred = prop.enumName
@@ -151,15 +179,16 @@ export function buildComponentPropMetadata(componentNames: readonly string[]): C
                 id = `values${generatedEnumId++}`
             }
             usedEnumIds.add(id)
-            enumValues.set(id, prop.literalValues)
+            enumValues.set(id, values)
             enumIdsByValues.set(valuesKey, id)
         }
     }
 
     const propsByComponent: Record<string, ComponentPropMetadata[]> = {}
     for (const [name, props] of extracted) {
-        propsByComponent[name] = props.map(({ literalValues, enumName: _enumName, ...prop }) => {
-            if (literalValues) prop.allowedValuesRef = enumIdsByValues.get(literalValuesKey(literalValues))
+        propsByComponent[name] = props.map(({ finiteValues, literalSuggestions, enumName: _enumName, ...prop }) => {
+            if (finiteValues) prop.allowedValuesRef = enumIdsByValues.get(literalValuesKey(finiteValues))
+            if (literalSuggestions) prop.literalValuesRef = enumIdsByValues.get(literalValuesKey(literalSuggestions))
             return prop
         })
     }

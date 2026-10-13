@@ -7,6 +7,7 @@ import type { PlaygroundTextSource, PlaygroundTextTarget } from './playground-te
 import { CANVAS_ITEM_COMPONENT } from './primitives/board'
 import type { PlaygroundCanvasItemTarget } from './playground-builder-types'
 import { analyzeScene } from './playground-scene'
+import { structuredControlKind } from './playground-data'
 
 const SCOPE_PROP = '__vizmaticTextScope'
 const TEXT_FIELDS = new Set(['title', 'subtitle', 'label', 'text', 'value', 'detail', 'description', 'caption', 'name', 'note', 'formula', 'legend', 'header', 'footer', 'valueLabel', 'eyebrow', 'code'])
@@ -63,7 +64,27 @@ function decodeJsxText(raw: string): string {
 
 // Sucrase is pinned in package.json. Keep its token API confined to this worker-only module.
 export function mapPlaygroundText(source: string): PlaygroundTextMapping {
-    const editableCanvasStarts = new Set(analyzeScene(source).instances.filter((instance) => {
+    const scene = analyzeScene(source)
+    const blockedTextRanges: Array<{ start: number; end: number }> = []
+    for (const instance of scene.instances) {
+        if (instance.unsafeReason) blockedTextRanges.push({ start: instance.start, end: instance.end })
+        const attributesByProp = new Map<string, typeof instance.attributes>()
+        for (const attribute of instance.attributes) {
+            const related = attributesByProp.get(attribute.prop) ?? []
+            related.push(attribute)
+            attributesByProp.set(attribute.prop, related)
+        }
+        for (const attributes of attributesByProp.values()) {
+            for (const attribute of attributes) {
+                const spreadCanOverride = !attribute.editable && attribute.readOnlyReason?.includes('spread')
+                const computedNonDataProp = !attribute.editable && !structuredControlKind(instance.name, attribute.prop)
+                if (attributes.length > 1 || spreadCanOverride || computedNonDataProp) {
+                    blockedTextRanges.push({ start: attribute.start, end: attribute.end })
+                }
+            }
+        }
+    }
+    const editableCanvasStarts = new Set(scene.instances.filter((instance) => {
         if (instance.name !== 'CanvasItem' || instance.unsafeReason) return false
         return ['x', 'y', 'width', 'height'].every((prop) => {
             const attributes = instance.attributes.filter((attribute) => attribute.prop === prop)
@@ -79,6 +100,20 @@ export function mapPlaygroundText(source: string): PlaygroundTextMapping {
     const offset = prefix.length + 3 - jsxStart
     const originalOffset = (position: number) => position < prefix.length ? position : position - offset
     const { tokens } = parse(parsedSource, true, true, false)
+    for (let i = 1; i < tokens.length; i += 1) {
+        // Strings inside a JSX spread are values from an ambiguous props source.
+        // Literal attributes that a later spread can override are covered by
+        // SceneAttribute.editable above; this covers literals inside the spread.
+        if (tokens[i].type !== tt.ellipsis || tokens[i - 1]?.type !== tt.braceL) continue
+        let depth = 1
+        for (let end = i + 1; end < tokens.length; end += 1) {
+            if (tokens[end].type === tt.braceL) depth += 1
+            else if (tokens[end].type === tt.braceR && --depth === 0) {
+                blockedTextRanges.push({ start: originalOffset(tokens[i - 1].start), end: originalOffset(tokens[end].end) })
+                break
+            }
+        }
+    }
     const scopes = new Map<number, PlaygroundTextSource[]>()
     const elementSources: PlaygroundTextMapping['elements'] = new Map()
     const canvasScopes = new Set<number>()
@@ -145,6 +180,7 @@ export function mapPlaygroundText(source: string): PlaygroundTextMapping {
         if (value === undefined || !value.trim()) continue
         const start = originalOffset(token.start)
         const end = originalOffset(token.end)
+        if (blockedTextRanges.some((range) => start >= range.start && end <= range.end)) continue
         const reference = { start, end, original: source.slice(start, end), value, kind }
         scopes.get(scope)?.push(reference)
     }

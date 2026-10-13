@@ -1,14 +1,31 @@
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { validatePlaygroundAnimation, type PlaygroundAnimationMetadata } from './playground-animation'
+import {
+    isBackgroundMetadataLine,
+    isThemeColorsMetadataLine,
+    parseBackgroundMetadataLine,
+    parseThemeColorsMetadataLine,
+    type PlaygroundBackground,
+    type PlaygroundThemeColors,
+} from './frame-theme'
+import {
+    DEFAULT_PLAYGROUND_HEIGHT,
+    DEFAULT_PLAYGROUND_WIDTH,
+    readAnimationLine,
+    readPresetLine,
+    type PlaygroundPreset,
+} from './playground-settings'
 
 export type PlaygroundTheme = 'dark' | 'light'
-export type PlaygroundPreset = 'default' | 'engineering'
+export type { PlaygroundPreset } from './playground-settings'
 
 export interface PlaygroundMetadata {
     width: number
     height: number
     preset: PlaygroundPreset
     warnings: string[]
+    themeColors?: PlaygroundThemeColors
+    background?: PlaygroundBackground
     animation?: PlaygroundAnimationMetadata
 }
 
@@ -18,30 +35,14 @@ export interface PreparedPlaygroundSource {
     jsx: string
 }
 
-export const DEFAULT_PLAYGROUND_WIDTH = 960
-export const DEFAULT_PLAYGROUND_HEIGHT = 540
+export { DEFAULT_PLAYGROUND_WIDTH, DEFAULT_PLAYGROUND_HEIGHT, readAnimationLine } from './playground-settings'
 const DYNAMIC_IMPORT_PATTERN = /\bimport(?:\s|\/\*[\s\S]*?\*\/|\/\/[^\r\n]*(?:\r?\n|$))*\(/m
 
 function readDimensionLine(line: string): { name: 'width' | 'height'; value: number } | undefined {
-    const match = line.match(/^\s*(?:(?:\/\/\s*)?)(?:export\s+)?(?:(?:const|let|var)\s+)?(width|height)\s*[:=]\s*(\d+)\s*;?\s*$/i)
+    const candidate = line.replace(/^\s*\/\/\s*/, '').replace(/\s*\/\/.*$/, '')
+    const match = candidate.match(/^\s*(?:export\s+)?(?:(?:const|let|var)\s+)?(width|height)\s*[:=]\s*(\d+)\s*;?\s*$/i)
     if (!match?.[1] || !match[2]) return undefined
     return { name: match[1].toLowerCase() as 'width' | 'height', value: Number(match[2]) }
-}
-
-function readPresetLine(line: string): { preset?: PlaygroundPreset; requested: string } | undefined {
-    const withoutComment = line.replace(/\s*\/\/.*$/, '').trim()
-    const match = withoutComment.match(/^(?:export\s+)?(?:(?:const|let|var)\s+)?preset\s*[:=]\s*(.+)$/i)
-    if (!match?.[1]) return undefined
-
-    const expression = match[1].trim().replace(/;\s*$/, '').trim()
-    const quoted = expression.match(/^(["'])(.*)\1$/)
-    const requested = (quoted?.[2] ?? expression).trim()
-    const normalized = requested.toLowerCase()
-    const preset = quoted && (normalized === 'default' || normalized === 'engineering')
-        ? normalized as PlaygroundPreset
-        : undefined
-
-    return { preset, requested }
 }
 
 function validDimension(value: number, name: 'width' | 'height'): number {
@@ -49,16 +50,6 @@ function validDimension(value: number, name: 'width' | 'height'): number {
         throw new Error(`${name} must be an integer from 1 to 8192.`)
     }
     return value
-}
-
-export function readAnimationLine(line: string): { name: 'animationDuration' | 'animationFps'; value: number } | undefined {
-    const match = line.match(/^\s*(?:\/\/\s*)?(?:export\s+)?(?:(?:const|let|var)\s+)?(animationDuration|animationFps)\s*[:=]\s*(.*?)\s*;?\s*(?:\/\/.*)?$/)
-    if (!match) return undefined
-    const expression = match[2].replace(/;\s*$/, '').trim()
-    if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(expression)) {
-        throw new Error(`${match[1]} must be a numeric literal.`)
-    }
-    return { name: match[1] as 'animationDuration' | 'animationFps', value: Number(expression) }
 }
 
 /**
@@ -71,6 +62,8 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
     let preset: PlaygroundPreset = 'default'
     let animationDuration: number | undefined
     let animationFps: number | undefined
+    let themeColors: PlaygroundThemeColors | undefined
+    let background: PlaygroundBackground | undefined
     const warnings: string[] = []
     const body = source.replace(/^\uFEFF/, '')
     if (/^\s*import\s/m.test(body)) {
@@ -122,6 +115,16 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
             continue
         }
 
+        if (metadataPreamble && isThemeColorsMetadataLine(line)) {
+            themeColors = parseThemeColorsMetadataLine(line)
+            continue
+        }
+
+        if (metadataPreamble && isBackgroundMetadataLine(line)) {
+            background = parseBackgroundMetadataLine(line)
+            continue
+        }
+
         if (trimmed && !trimmed.startsWith('//')) metadataPreamble = false
         setupLines.push(line)
     }
@@ -138,7 +141,15 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
         : validatePlaygroundAnimation({ duration: animationDuration, fps: animationFps ?? 10 })
 
     return {
-        metadata: { width, height, preset, warnings, ...(animation ? { animation } : {}) },
+        metadata: {
+            width,
+            height,
+            preset,
+            warnings,
+            ...(themeColors ? { themeColors } : {}),
+            ...(background ? { background } : {}),
+            ...(animation ? { animation } : {}),
+        },
         setup,
         jsx,
     }

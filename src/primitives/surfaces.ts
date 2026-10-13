@@ -7,6 +7,7 @@ import {
     getToneColor,
     getToneFill,
     getToneGradient,
+    withColorAlpha,
 } from '../theme'
 
 import {
@@ -376,8 +377,8 @@ export function BadgePill({
                 ? { backgroundColor: getToneFill(tone, c) }
                 : filled
                     ? { backgroundImage: getToneGradient(tone) }
-                    : { backgroundColor: `${accent}18` }),
-            border: `1px solid ${engineering ? accent : filled ? `${accent}00` : `${accent}55`}`,
+                    : { backgroundColor: withColorAlpha(accent, 0x18 / 0xff) }),
+            border: `1px solid ${engineering ? accent : filled ? withColorAlpha(accent, 0) : withColorAlpha(accent, 0x55 / 0xff)}`,
             color: engineering ? c.textPrimary : filled ? c.textOnColor : accentText,
             fontSize,
             fontWeight: 800,
@@ -521,7 +522,7 @@ export function StepCard({
         radius: engineering ? 5 : radius,
         shadow: engineering ? false : shadow,
         background: engineering ? getToneFill(tone, c) : undefined,
-        borderColor: engineering ? accent : `${accent}88`,
+        borderColor: engineering ? accent : withColorAlpha(accent, 0x88 / 0xff),
         children: React.createElement('div', {
             style: {
                 width: '100%',
@@ -618,7 +619,7 @@ export function MetricCard({
         padding,
         radius,
         shadow,
-        borderColor: `${accent}66`,
+        borderColor: withColorAlpha(accent, 0x66 / 0xff),
         children: React.createElement('div', {
             style: {
                 width: '100%',

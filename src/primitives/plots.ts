@@ -3,6 +3,7 @@ import {
     type ThemeColors,
     type ColorName,
     getReadableColor,
+    withColorAlpha,
 } from '../theme'
 
 import { clamp } from './layout'
@@ -852,14 +853,14 @@ export function Badge({ label, c, color = 'primary' }: BadgeProps): React.ReactE
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: `${solidColor}20`,
+            backgroundColor: withColorAlpha(solidColor, 0x20 / 0xff),
             color: solidColor,
             borderRadius: 999,
             padding: '4px 12px',
             fontSize: 11,
             fontWeight: 600,
             fontFamily: 'Inter',
-            border: `1px solid ${solidColor}40`,
+            border: `1px solid ${withColorAlpha(solidColor, 0x40 / 0xff)}`,
         }
     }, label)
 }
@@ -892,7 +893,7 @@ export function DotPoint({ x, y, label, color, c, size = 12, labelOffset }: DotP
                 height: size,
                 borderRadius: '50%',
                 backgroundColor: color,
-                boxShadow: `0 0 14px ${color}50`,
+                boxShadow: `0 0 14px ${withColorAlpha(color, 0x50 / 0xff)}`,
                 display: 'flex',
             }
         }),

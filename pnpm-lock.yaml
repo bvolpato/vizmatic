@@ -30,7 +30,7 @@ importers:
         specifier: ^19.2.8
         version: 19.3.0
       satori:
-        specifier: ^0.35.0
+        specifier: 0.35.0
         version: 0.35.0
       tsx:
         specifier: ^4.23.12
