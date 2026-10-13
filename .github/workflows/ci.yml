@@ -57,11 +57,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --config.ignore-scripts=true pack --pack-destination /tmp/vizmatic-runtime-package
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
       - run: node scripts/check-runtime.mjs
-      - run: node scripts/check-consumer.mjs
+      - run: node scripts/check-consumer.mjs /tmp/vizmatic-runtime-package/*.tgz
       # Vitest 5 requires Node 22.12+; Node 20 exercises the built package directly.
       - if: matrix.node-version != 20
         run: node node_modules/vitest/vitest.mjs run

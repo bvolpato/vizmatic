@@ -3,7 +3,7 @@ import { execFile, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { copyFile, mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -13,20 +13,24 @@ const directory = await mkdtemp(join(tmpdir(), 'vizmatic-consumer-'))
 const registry = 'https://registry.npmjs.org/'
 
 try {
-    // npm 10 still runs prepare with --ignore-scripts. Pack the existing build without invoking pnpm.
-    const packed = await run('npm', ['pack', '--ignore-scripts', '--script-shell=true', '--json', '--pack-destination', directory], {
-        cwd: repository, encoding: 'utf8', timeout: 60_000,
-    })
-    const metadataStart = packed.stdout.search(/^\[/m)
-    assert.ok(metadataStart >= 0, 'npm pack must return JSON metadata')
-    const metadata = JSON.parse(packed.stdout.slice(metadataStart))
-    assert.equal(metadata.length, 1, 'npm pack must produce one package')
+    let tarball = process.argv[2] ? resolve(process.argv[2]) : undefined
+    if (!tarball) {
+        // Older npm 10 ignores script-shell during prepare. CI packs on Node 22 before switching runtimes.
+        const packed = await run('npm', ['pack', '--ignore-scripts', '--script-shell=true', '--json', '--pack-destination', directory], {
+            cwd: repository, encoding: 'utf8', timeout: 60_000,
+        })
+        const metadataStart = packed.stdout.search(/^\[/m)
+        assert.ok(metadataStart >= 0, 'npm pack must return JSON metadata')
+        const metadata = JSON.parse(packed.stdout.slice(metadataStart))
+        assert.equal(metadata.length, 1, 'npm pack must produce one package')
+        tarball = join(directory, metadata[0].filename)
+    }
     const consumer = join(directory, 'consumer')
     await mkdir(consumer)
     await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }))
     const npmrc = join(directory, 'npmrc')
     await writeFile(npmrc, '')
-    await run('npm', ['install', join(directory, metadata[0].filename),
+    await run('npm', ['install', tarball,
         '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', '--prefer-online',
         '--registry', registry, '--userconfig', npmrc], {
         cwd: consumer, encoding: 'utf8', timeout: 120_000,
