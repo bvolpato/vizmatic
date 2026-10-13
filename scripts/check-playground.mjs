@@ -113,6 +113,16 @@ try {
         const digest = await crypto.subtle.digest('SHA-256', context.getImageData(0, 0, canvas.width, canvas.height).data)
         return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
     })
+    const renderedCornerAlpha = async (target = page) => target.locator('#playgroundCanvas img').evaluate(async (image) => {
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
+        const context = canvas.getContext('2d')
+        if (!context) throw new Error('Could not inspect the rendered preview pixels.')
+        context.drawImage(image, 0, 0)
+        return context.getImageData(0, 0, 1, 1).data[3]
+    })
     const selectInstance = async (name, pageTarget = page) => {
         const value = await pageTarget.locator('#explorerInstance').evaluate((select, target) => {
             const option = [...select.options].find((entry) => entry.textContent?.trim().startsWith(target))
@@ -140,22 +150,202 @@ try {
         await ready()
         assert.equal(await source(), expected, description)
     }
+    const cleanURL = new URL(pageURL)
+    cleanURL.search = ''
+    cleanURL.hash = ''
+    const cleanPageURL = cleanURL.href
+    const runSource = async (next) => {
+        await page.locator('#explorerCode').evaluate((details) => { details.open = true })
+        await page.locator('#playgroundSource').fill(next)
+        await page.locator('#playgroundRunButton').click()
+        await ready()
+    }
+    const canvasItemGeometry = (tsx, component) => {
+        const componentPosition = tsx.indexOf(`<${component}`)
+        if (componentPosition < 0) return undefined
+        const itemStart = tsx.lastIndexOf('<CanvasItem', componentPosition)
+        if (itemStart < 0) return undefined
+        const itemEnd = tsx.indexOf('>', itemStart)
+        if (itemEnd < 0) return undefined
+        return tsx.slice(itemStart, itemEnd + 1).match(/<CanvasItem\s+x=\{(\d+)\}\s+y=\{(\d+)\}\s+width=\{(\d+)\}\s+height=\{(\d+)\}/)
+    }
+    const textEditTargets = page.locator('.playground-text-target')
+    const exampleStories = [
+        { id: 'daybreak-launch', title: 'Daybreak launch', marker: 'The launch found its people.' },
+        { id: 'aurora-incident', title: 'Aurora incident room', marker: 'AURORA / RELIABILITY DRILL 07' },
+        { id: 'model-garden', title: 'Model garden', marker: 'MODEL OPTIONS / COST × QUALITY FRONTIER' },
+        { id: 'weekend-field-notes', title: 'Weekend field notes', marker: 'Take the long way through Bellweather.' },
+    ]
     const drag = async (handle, dx, dy) => {
+        await handle.scrollIntoViewIfNeeded()
         const box = await handle.boundingBox()
         assert.ok(box, 'Canvas handle should be visible.')
-        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+        const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+        const hit = await handle.evaluate((element, point) => document.elementFromPoint(point.x, point.y) === element, center)
+        assert.equal(hit, true, `The pointer should hit the visible canvas handle at ${center.x},${center.y}.`)
+        await page.mouse.move(center.x, center.y)
         await page.mouse.down()
-        await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 5 })
+        await page.mouse.move(center.x + dx, center.y + dy, { steps: 5 })
         await page.mouse.up()
     }
 
-    await page.goto(pageURL)
+    await page.goto(cleanPageURL)
+    await ready()
+    const firstVisitSource = await source()
+    assert.match(firstVisitSource, /^width\s*=\s*1100$/m)
+    assert.match(firstVisitSource, /^height\s*=\s*700$/m)
+    assert.match(firstVisitSource, /<Board\s+width=\{1100\}\s+height=\{700\}/)
+    assert.match(firstVisitSource, /text="The week in motion"/)
+    assert.equal(await page.locator('#playgroundTemplate').inputValue(), 'builder', 'A clean visit should open the polished builder starter.')
+    assert.equal(await page.locator('#playgroundTemplate option[value="builder"]').textContent(), 'Orbit weekly brief')
+    assert.equal(await page.locator('.playground-canvas-item').count(), 8, 'The default Orbit brief should show all eight editable canvas blocks.')
+
+    const firstDraftSource = firstVisitSource.replace('title="Weekly readout"', 'title="Saved local draft"')
+    assert.notEqual(firstDraftSource, firstVisitSource, 'The starter should expose the readout text for a draft persistence check.')
+    await runSource(firstDraftSource)
+    await page.waitForFunction(() => document.querySelector('#playgroundDraftStatus')?.textContent === 'Draft saved in this browser.')
+    await page.reload()
+    await ready()
+    assert.equal(await source(), firstDraftSource, 'A clean URL should restore the latest local draft.')
+
+    const delayedQueryURL = new URL(cleanPageURL)
+    delayedQueryURL.searchParams.set('example', 'daybreak-launch')
+    let releaseInitialExample
+    let initialExampleStartedResolve
+    let initialExampleFinishedResolve
+    const initialExampleStarted = new Promise((resolve) => { initialExampleStartedResolve = resolve })
+    const initialExampleFinished = new Promise((resolve) => { initialExampleFinishedResolve = resolve })
+    const initialExampleGate = new Promise((resolve) => { releaseInitialExample = resolve })
+    await page.route('**/assets/sources/daybreak-launch.json', async (route) => {
+        try {
+            const response = await route.fetch()
+            initialExampleStartedResolve()
+            await initialExampleGate
+            await route.fulfill({ response })
+        } finally { initialExampleFinishedResolve() }
+    })
+    await page.goto(delayedQueryURL.href)
+    await initialExampleStarted
+    await page.locator('[data-vizmatic-playground-mounted="true"]').waitFor()
+    await page.locator('#playgroundNewCanvas').click()
+    await ready()
+    const newCanvasDuringInitialFetch = await source()
+    assert.equal(new URL(page.url()).searchParams.has('example'), false, 'Starting a new canvas should cancel the pending example query.')
+    releaseInitialExample()
+    await initialExampleFinished
+    await page.waitForTimeout(300)
+    assert.equal(await source(), newCanvasDuringInitialFetch, 'A late initial example response must not replace a new canvas.')
+    assert.equal(new URL(page.url()).hash, '', 'A cancelled initial example must not add a stale share hash.')
+    await page.unroute('**/assets/sources/daybreak-launch.json')
+
+    const conflictingDraftSource = firstVisitSource.replace('title="Weekly readout"', 'title="Conflicting local draft"')
+    await runSource(conflictingDraftSource)
+    await page.waitForFunction(() => document.querySelector('#playgroundDraftStatus')?.textContent === 'Draft saved in this browser.')
+    await page.goto(delayedQueryURL.href)
+    await page.waitForFunction(() => location.hash.startsWith('#vizmatic-playground='))
+    await page.waitForFunction(() => document.querySelector('#playgroundSource')?.value.includes('The launch found its people.'))
+    await ready()
+    const queryExampleSource = await source()
+    assert.match(queryExampleSource, /The launch found its people\./, 'An explicit example query should load the requested editable story.')
+    assert.notEqual(queryExampleSource, conflictingDraftSource, 'The explicit example query should take precedence over a saved local draft.')
+    assert.equal(new URL(page.url()).searchParams.has('example'), false, 'The resolved query example should become a shareable source hash.')
+    await page.reload()
+    await ready()
+    assert.equal(await source(), queryExampleSource, 'A source hash should take precedence over a conflicting saved draft.')
+
+    await page.evaluate(() => localStorage.clear())
+    await page.goto(cleanPageURL)
+    await ready()
+    for (const story of exampleStories) {
+        const previousStorySource = await source()
+        const button = page.locator(`[data-vizmatic-playground-example="${story.id}"]`)
+        assert.equal(await button.count(), 1, `${story.title} should be available as a visible starter.`)
+        await button.click()
+        await page.waitForFunction((marker) => document.querySelector('#playgroundSource')?.value.includes(marker), story.marker)
+        await ready()
+        const loadedStorySource = await source()
+        assert.match(loadedStorySource, /<Board\b/, `${story.title} should load an editable Board scene.`)
+        assert.ok(loadedStorySource.includes(story.marker), `${story.title} should load its own showcase source.`)
+        assert.equal(await page.locator('#playgroundProjectName').inputValue(), story.title, 'Choosing a starter should name the working project.')
+
+        const loadedStoryImage = await renderedImageHash()
+        await page.locator('#explorerBackground').selectOption('transparent')
+        await ready()
+        assert.match(await source(), /^background\s*=\s*["']transparent["'];?$/m, `${story.title} should accept a transparent canvas setting.`)
+        assert.notEqual(await renderedImageHash(), loadedStoryImage, `${story.title} canvas background settings should affect its rendered preview.`)
+        assert.equal(await renderedCornerAlpha(), 0, `${story.title} transparent canvas should preserve alpha in an empty corner.`)
+        await undoTo(loadedStorySource, `Undo should restore ${story.title} after a canvas background edit.`)
+        assert.equal(await renderedImageHash(), loadedStoryImage, `Undo should restore the original ${story.title} preview.`)
+
+        assert.ok(await textEditTargets.count() > 0, `${story.title} should expose inline text editing.`)
+
+        const editableText = textEditTargets.first()
+        const accessibleLabel = await editableText.getAttribute('aria-label')
+        assert.ok(accessibleLabel?.startsWith('Edit text: '), `${story.title} should expose an accessible editable text target.`)
+        const editedText = `${accessibleLabel.slice('Edit text: '.length)} edited`
+        await editableText.dblclick()
+        await page.locator('.playground-text-input').fill(editedText)
+        await page.locator('.playground-text-input').press('Enter')
+        await ready()
+        const editedStorySource = await source()
+        assert.notEqual(editedStorySource, loadedStorySource, `${story.title} should accept an inline text edit.`)
+        assert.ok(editedStorySource.includes(editedText), `${story.title} should persist edited text back into TSX.`)
+        await page.locator('#playgroundCopyButton').click()
+        await page.waitForFunction(() => document.querySelector('#playgroundStatus')?.textContent === 'Source copied.')
+        assert.equal(await page.evaluate(() => navigator.clipboard.readText()), editedStorySource, 'A selected starter should remain copyable after editing.')
+        await undoTo(loadedStorySource, `Undo should restore ${story.title} after its inline text edit.`)
+        await undoTo(previousStorySource, `Undo should restore the scene that preceded ${story.title}.`)
+    }
+
+    const sourceBeforeExampleError = await source()
+    const nameBeforeExampleError = await page.locator('#playgroundProjectName').inputValue()
+    await page.route('**/assets/sources/weekend-field-notes.json', (route) => route.fulfill({ status: 503, body: 'unavailable' }))
+    await page.locator('[data-vizmatic-playground-example="weekend-field-notes"]').click()
+    await page.waitForFunction(() => document.querySelector('#playgroundStatus')?.textContent === 'Could not load this starter.')
+    assert.equal(await source(), sourceBeforeExampleError, 'A failed starter request should preserve the current scene.')
+    assert.equal(await page.locator('#playgroundProjectName').inputValue(), nameBeforeExampleError, 'A failed starter request should preserve the current project name.')
+    assert.equal(await page.locator('#playgroundError').textContent(), 'Example request failed (503).')
+    await page.unroute('**/assets/sources/weekend-field-notes.json')
+
+    const sourceBeforeStarterRace = await source()
+    const nameBeforeStarterRace = await page.locator('#playgroundProjectName').inputValue()
+    let releaseStarterExample
+    let starterExampleStartedResolve
+    let starterExampleFinishedResolve
+    const starterExampleStarted = new Promise((resolve) => { starterExampleStartedResolve = resolve })
+    const starterExampleFinished = new Promise((resolve) => { starterExampleFinishedResolve = resolve })
+    const starterExampleGate = new Promise((resolve) => { releaseStarterExample = resolve })
+    await page.route('**/assets/sources/daybreak-launch.json', async (route) => {
+        try {
+            const response = await route.fetch()
+            starterExampleStartedResolve()
+            await starterExampleGate
+            await route.fulfill({ response })
+        } finally { starterExampleFinishedResolve() }
+    })
+    const delayedStarterButton = page.locator('[data-vizmatic-playground-example="daybreak-launch"]')
+    await delayedStarterButton.click()
+    await starterExampleStarted
+    const racedEdit = sourceBeforeStarterRace.replace('title="Weekly readout"', 'title="Edit during fetch"')
+    assert.notEqual(racedEdit, sourceBeforeStarterRace)
+    await runSource(racedEdit)
+    assert.equal(await page.locator('#playgroundProjectName').inputValue(), nameBeforeStarterRace, 'An in-flight starter should not change the project name before it succeeds.')
+    releaseStarterExample()
+    await starterExampleFinished
+    await page.waitForFunction(() => !document.querySelector('[data-vizmatic-playground-example="daybreak-launch"]')?.hasAttribute('aria-busy'))
+    assert.equal(await source(), racedEdit, 'A late starter response must not overwrite source edits made while it loads.')
+    assert.equal(await page.locator('#playgroundProjectName').inputValue(), nameBeforeStarterRace, 'A stale starter response must not overwrite the project name.')
+    await page.unroute('**/assets/sources/daybreak-launch.json')
+    await undoTo(sourceBeforeStarterRace, 'Undo should still work after an in-flight starter is superseded by an edit.')
+
+    await page.evaluate(() => localStorage.clear())
+    await page.goto(cleanPageURL)
     await ready()
     await page.locator('#playgroundNewCanvas').click()
     await ready()
     const initialCanvas = await source()
     assert.match(initialCanvas, /<Board\b/)
-    assert.equal(await page.locator('.playground-canvas-item').count(), 3, 'The starter canvas should expose all three movable items.')
+    assert.equal(await page.locator('.playground-canvas-item').count(), 8, 'The starter canvas should expose all eight movable items.')
 
     await selectInstance('Board')
     const boardWidth = page.locator('[data-control-prop="width"]')
@@ -211,7 +401,7 @@ try {
     await ready()
     assert.equal(await source(), freshCanvas, 'One resize should be one undo step.')
 
-    await page.getByRole('button', { name: 'Edit text: Build your visual', exact: true }).dblclick()
+    await page.getByRole('button', { name: 'Edit text: The week in motion', exact: true }).dblclick()
     await page.locator('.playground-text-input').fill('My visual')
     await page.locator('.playground-text-input').press('Enter')
     await ready()
@@ -222,11 +412,16 @@ try {
     await firstBarValue.fill('905')
     await firstBarValue.press('Tab')
     await ready()
-    assert.match(await source(), /"value":905/)
+    assert.match(await source(), /["']?value["']?\s*:\s*905/)
+    const barRowsBeforeAdd = await page.locator('.explorer-data-row').count()
     await page.getByRole('button', { name: 'Add data row', exact: true }).click()
     await ready()
-    assert.equal(await page.locator('.explorer-data-row').count(), 4)
-    assert.match(await source(), /"label":"Item 4","value":1/)
+    assert.equal(await page.locator('.explorer-data-row').count(), barRowsBeforeAdd + 1, 'Adding a chart row should append one editable data point.')
+    const lastBarRow = barRowsBeforeAdd + 1
+    const appendedLabel = await page.getByLabel(`Data row ${lastBarRow} label`, { exact: true }).inputValue()
+    const appendedValue = await page.getByLabel(`Data row ${lastBarRow} value`, { exact: true }).inputValue()
+    const escapedLabel = appendedLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    assert.match(await source(), new RegExp(`["']?label["']?\\s*:\\s*["']${escapedLabel}["']\\s*,\\s*["']?value["']?\\s*:\\s*${appendedValue}`))
     await page.locator('.explorer-canvas-settings').evaluate((details) => { details.open = true })
 
     const beforeWidth = await source()
@@ -279,10 +474,10 @@ try {
     await undoTo(beforePalette, 'The first palette edit should return to the original source.')
 
     const beforeBackground = await source()
-    await page.locator('#explorerBackground').selectOption('theme')
+    await page.locator('#explorerBackground').selectOption('transparent')
     await ready()
-    const themeBackgroundSource = await source()
-    assert.match(themeBackgroundSource, /^background\s*=\s*["']theme["']$/m)
+    const transparentBackgroundSource = await source()
+    assert.match(transparentBackgroundSource, /^background\s*=\s*["']transparent["']$/m)
     await undoTo(beforeBackground, 'Canvas fill selection should be undoable.')
 
     await page.locator('#explorerBackground').selectOption('custom')
@@ -315,13 +510,18 @@ try {
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), configuredFrame,
         'Copy source should preserve the editable frame settings metadata.')
 
-    const chartHandle = page.locator('.playground-canvas-item .playground-canvas-move').nth(2)
+    const chartSourceBeforeMove = await source()
+    const chartTagPosition = chartSourceBeforeMove.indexOf('<BarChart')
+    assert.notEqual(chartTagPosition, -1, 'The builder should contain an editable BarChart block.')
+    const chartItemIndex = (chartSourceBeforeMove.slice(0, chartTagPosition).match(/<CanvasItem\b/g) ?? []).length - 1
+    assert.ok(chartItemIndex >= 0, 'The BarChart should be nested in a movable CanvasItem.')
+    const chartHandle = page.locator('.playground-canvas-item .playground-canvas-move').nth(chartItemIndex)
     await drag(chartHandle, 22, 18)
     await ready()
     await selectInstance('BarChart')
     const fullBuilderSource = await source()
     const fullBuilderImage = await renderedImageHash()
-    const chartGeometry = fullBuilderSource.match(/<CanvasItem\s+x=\{(\d+)\}\s+y=\{(\d+)\}\s+width=\{(\d+)\}\s+height=\{(\d+)\}>\s*<BarChart\b/)
+    const chartGeometry = canvasItemGeometry(fullBuilderSource, 'BarChart')
     assert.ok(chartGeometry, 'The edited chart should remain inside its positioned canvas item.')
     const copyBlock = page.locator('#explorerCopyBlock')
     assert.equal(await copyBlock.isEnabled(), true, 'A selected chart should enable Copy block.')
@@ -334,8 +534,9 @@ try {
     assert.match(copiedBlock, /themeColors\s*=\s*.*"primary"\s*:\s*"#0f766e"/)
     assert.match(copiedBlock, /^background\s*=\s*["']#102030["']$/m)
     assert.match(copiedBlock, /<Board\s+width=\{1100\}\s+height=\{700\}/)
-    assert.match(copiedBlock, /"label":"Item 4","value":1/)
-    const copiedGeometry = copiedBlock.match(/<CanvasItem\s+x=\{(\d+)\}\s+y=\{(\d+)\}\s+width=\{(\d+)\}\s+height=\{(\d+)\}>\s*<BarChart\b/)
+    assert.match(copiedBlock, /["']?value["']?\s*:\s*905/)
+    assert.match(copiedBlock, new RegExp(`["']?label["']?\\s*:\\s*["']${escapedLabel}["']\\s*,\\s*["']?value["']?\\s*:\\s*${appendedValue}`))
+    const copiedGeometry = canvasItemGeometry(copiedBlock, 'BarChart')
     assert.deepEqual(copiedGeometry?.slice(1, 5), chartGeometry.slice(1, 5), 'Copy block should retain the edited chart geometry.')
 
     await page.locator('#explorerCode').evaluate((details) => { details.open = true })
@@ -344,6 +545,9 @@ try {
     await ready()
     assert.equal(await page.locator('.playground-canvas-item').count(), 1, 'The copied standalone frame should render only the selected chart block.')
     assert.match(await source(), /<BarChart\b/)
+    await selectInstance('BarChart')
+    assert.equal(await page.locator('.explorer-data-row').count(), barRowsBeforeAdd + 1, 'The copied chart should retain all edited data rows.')
+    assert.equal(await page.getByLabel('Data row 1 value', { exact: true }).inputValue(), '905', 'The copied chart should retain its edited data value.')
     const copiedRender = await renderedImageHash()
     assert.notEqual(copiedRender, fullBuilderImage, 'The copied frame should render only its selected chart rather than the full builder canvas.')
 
@@ -373,6 +577,12 @@ try {
         assert.match(await source(), new RegExp(`<${name}\\b`), `${name} should load and render from the component chooser.`)
         if (name === 'PieChart') {
             await selectInstance('PieChart')
+            const presentFooter = page.locator('[data-control-prop="footer"]')
+            if (await presentFooter.count() === 1) {
+                await page.locator('[data-remove-prop="footer"]').click()
+                await ready()
+                assert.doesNotMatch(await source(), /\bfooter\s*=/, 'A present optional footer should be removable.')
+            }
             const addFooter = page.locator('[data-add-prop="footer"]')
             assert.equal(await addFooter.count(), 1, 'An absent optional footer should be available to add.')
             await addFooter.click()
@@ -384,6 +594,12 @@ try {
             await ready()
             assert.doesNotMatch(await source(), /\bfooter\s*=/, 'Removing an optional footer should remove only that prop.')
 
+            const presentFormat = page.locator('select[data-control-prop="format"]')
+            if (await presentFormat.count() === 1) {
+                await page.locator('[data-remove-prop="format"]').click()
+                await ready()
+                assert.doesNotMatch(await source(), /\bformat\s*=/, 'A present optional chart format should be removable.')
+            }
             const addFormat = page.locator('[data-add-prop="format"]')
             assert.equal(await addFormat.count(), 1, 'A missing chart format should be available to add as a literal.')
             await addFormat.click()
@@ -568,6 +784,7 @@ try {
         result: 'PASS',
         checks: [
             'canvas item drag and resize with single-step undo, repeated keyboard move and resize', 'root Board inspector keeps frame metadata synchronized', 'inline text editing', 'chart data row edit and add',
+            'starter canvas background changes preview pixels and transparency with undo',
             'canvas dimensions, preset, palette, and background metadata edits with undo', 'share and source copy preserve frame settings',
             'Copy block preserves edited chart data and geometry, renders when pasted, supports clipboard API fallback and focused Ctrl+C without intercepting editor copy',
             'all ten chart chooser examples render distinct image output, with optional chart format literals', 'orthogonal routing control',

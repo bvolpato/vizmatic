@@ -36,15 +36,16 @@ export function Board({ children, c, width = 960, height = 540, background }: Bo
     } }, children)
 }
 
-/** Positions an item in Board coordinates and supplies its size to the child. */
+/** Positions an item in Board coordinates, sizing its child or fitting a complete chart. */
 export function CanvasItem({ children, x, y, width, height }: CanvasItemProps): React.ReactElement {
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error('CanvasItem x and y must be finite numbers.')
     const sizedChildren = React.Children.map(children, (child) => {
         if (!React.isValidElement<Record<string, unknown>>(child)) return child
-        const sized = React.cloneElement(child, { ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) })
-        return width !== undefined && height !== undefined && isCanvasChart(child.type)
-            ? React.createElement(CanvasChartFit, { width, height, __vizmaticTextScope: child.props.__vizmaticTextScope }, sized)
-            : sized
+        if (width !== undefined && height !== undefined && isCanvasChart(child.type)) {
+            const chart = React.cloneElement(child, { width: child.props.width ?? width, height: child.props.height ?? height })
+            return React.createElement(CanvasChartFit, { width, height, __vizmaticTextScope: child.props.__vizmaticTextScope }, chart)
+        }
+        return React.cloneElement(child, { ...(width !== undefined ? { width } : {}), ...(height !== undefined ? { height } : {}) })
     })
     return React.createElement('div', { style: {
         display: 'flex', position: 'absolute', left: x, top: y,

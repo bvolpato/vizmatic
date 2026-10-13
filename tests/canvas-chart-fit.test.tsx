@@ -67,6 +67,26 @@ describe('CanvasItem chart fitting', () => {
         expectInside(nodes, 16, 24, 300, 220)
     })
 
+    it('preserves explicit chart plotting dimensions and scales the complete chart when its block is resized', async () => {
+        const chart = <BarChart {...heading} width={462} height={260} data={values} />
+        const original: SatoriNode[] = []
+        await renderToSvg(<Board c={c} width={900} height={600}>
+            <CanvasItem x={20} y={24} width={496} height={400}>{chart}</CanvasItem>
+        </Board>, 900, 600, { onNodeDetected: (node) => original.push(node) })
+        expectInside(original, 20, 24, 496, 400)
+        const originalTitle = original.find((node) => node.textContent === heading.title)
+        expect(originalTitle?.props.style?.fontSize).toBeGreaterThanOrEqual(11)
+
+        const resized: SatoriNode[] = []
+        await renderToSvg(<Board c={c} width={900} height={600}>
+            <CanvasItem x={20} y={24} width={248} height={200}>{chart}</CanvasItem>
+        </Board>, 900, 600, { onNodeDetected: (node) => resized.push(node) })
+        expectInside(resized, 20, 24, 248, 200)
+        const resizedTitle = resized.find((node) => node.textContent === heading.title)
+        expect(resizedTitle?.width).toBeCloseTo(originalTitle!.width / 2, 0)
+        expect(resizedTitle?.props.style?.fontSize).toBeCloseTo(Number(originalTitle!.props.style?.fontSize) / 2, 1)
+    })
+
     it('preserves themed source references and reports text hit targets inside the fitted chart', async () => {
         const source = `width = 640
 height = 360

@@ -411,6 +411,7 @@ export function mountPlayground(root: HTMLElement): void {
     if (hashSource && (sharedTheme === 'dark' || sharedTheme === 'light')) theme = sharedTheme
     let explorer: ComponentExplorerController | undefined
     let settingsEditor: ReturnType<typeof mountPlaygroundSettingsEditor> | undefined
+    let exampleLoadVersion = 0
     const copyBlock = root.querySelector<HTMLButtonElement>('#explorerCopyBlock')
 
     function syncCopyBlock() {
@@ -480,10 +481,11 @@ export function mountPlayground(root: HTMLElement): void {
 
     function syncSourceLink(source: string) {
         const linkedSource = getPlaygroundHashSource()
-        if (linkedSource !== undefined && linkedSource !== source) clearProjectLink()
+        if ((linkedSource !== undefined && linkedSource !== source) || new URLSearchParams(location.search).has('example')) clearProjectLink()
     }
 
     const loadSharedSource = (source: string, immediate = true, options: { history?: boolean; group?: string } = {}) => {
+        exampleLoadVersion += 1
         stopPlayback()
         animation = undefined
         animationTime = 0
@@ -577,6 +579,7 @@ export function mountPlayground(root: HTMLElement): void {
     const applyHistory = (direction: 'undo' | 'redo') => {
         const source = direction === 'undo' ? history.undo() : history.redo()
         if (source === undefined) return
+        exampleLoadVersion += 1
         stopPlayback(); animation = undefined; animationTime = 0; syncAnimation()
         elements.source.value = source
         syncSourceLink(source)
@@ -599,6 +602,7 @@ export function mountPlayground(root: HTMLElement): void {
         applyHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo')
     })
     elements.source.addEventListener('input', () => {
+        exampleLoadVersion += 1
         stopPlayback(); animation = undefined; animationTime = 0; syncAnimation()
         syncSourceLink(elements.source.value)
         history.record(elements.source.value, 'typing')
@@ -639,6 +643,29 @@ export function mountPlayground(root: HTMLElement): void {
     root.addEventListener('vizmatic-builder-selection', syncCopyBlock)
     for (const control of findElements<HTMLElement>(root, '[data-vizmatic-playground-template]')) {
         control.addEventListener('click', () => { const template = findPlaygroundTemplate(control.dataset.vizmaticPlaygroundTemplate); if (template) loadSharedSource(template.source) })
+    }
+    for (const control of findElements<HTMLButtonElement>(root, '[data-vizmatic-playground-example]')) {
+        control.addEventListener('click', async () => {
+            const name = control.dataset.vizmaticPlaygroundExample
+            if (!name) return
+            const version = ++exampleLoadVersion
+            control.setAttribute('aria-busy', 'true')
+            try {
+                const response = await fetch(new URL(`assets/sources/${encodeURIComponent(name)}.json`, document.baseURI))
+                if (!response.ok) throw new Error(`Example request failed (${response.status}).`)
+                const example = await response.json() as { playgroundCode?: string }
+                if (typeof example.playgroundCode !== 'string') throw new Error('This example has no editable source.')
+                if (version !== exampleLoadVersion) return
+                clearProjectLink()
+                if (projectName) projectName.value = control.dataset.exampleTitle ?? 'Untitled visual'
+                loadSharedSource(example.playgroundCode)
+            } catch (error) {
+                if (version === exampleLoadVersion) {
+                    setStatus(elements, 'error', 'Could not load this starter.')
+                    setError(elements, error instanceof Error ? error.message : String(error))
+                }
+            } finally { control.removeAttribute('aria-busy') }
+        })
     }
     for (const control of findElements<HTMLSelectElement>(root, '#playgroundTemplate, select[data-vizmatic-playground-template]')) {
         control.addEventListener('change', () => { const template = findPlaygroundTemplate(control.value); if (template) loadSharedSource(template.source) })

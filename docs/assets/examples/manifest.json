@@ -26,6 +26,14 @@
     ]
   },
   {
+    "name": "aurora-incident",
+    "source": "examples/aurora-incident.tsx",
+    "outputs": [
+      "aurora-incident_dark.png",
+      "aurora-incident_light.png"
+    ]
+  },
+  {
     "name": "building-blocks",
     "source": "examples/building-blocks.tsx",
     "outputs": [
@@ -122,6 +130,14 @@
     ]
   },
   {
+    "name": "daybreak-launch",
+    "source": "examples/daybreak-launch.tsx",
+    "outputs": [
+      "daybreak-launch_dark.png",
+      "daybreak-launch_light.png"
+    ]
+  },
+  {
     "name": "desired-quadrant",
     "source": "examples/desired-quadrant.tsx",
     "outputs": [
@@ -151,6 +167,14 @@
     "outputs": [
       "eval-dashboard_dark.png",
       "eval-dashboard_light.png"
+    ]
+  },
+  {
+    "name": "model-garden",
+    "source": "examples/model-garden.tsx",
+    "outputs": [
+      "model-garden_dark.png",
+      "model-garden_light.png"
     ]
   },
   {
@@ -337,6 +361,14 @@
     "outputs": [
       "website-workflow_dark.png",
       "website-workflow_light.png"
+    ]
+  },
+  {
+    "name": "weekend-field-notes",
+    "source": "examples/weekend-field-notes.tsx",
+    "outputs": [
+      "weekend-field-notes_dark.png",
+      "weekend-field-notes_light.png"
     ]
   }
 ]

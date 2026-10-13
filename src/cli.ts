@@ -681,6 +681,8 @@ function __withTheme(Component, returnsArray = false) {
             : React.createElement(Component, themedProps)
     }
     VizmaticAutoTheme.__vizmaticPrimitive = true
+    const chartMarker = Symbol.for('vizmatic.canvasChartComponent')
+    if (Component[chartMarker]) Object.defineProperty(VizmaticAutoTheme, chartMarker, { value: true })
     return VizmaticAutoTheme
 }
 const Frame = ({ children }) => React.createElement(React.Fragment, null, children)

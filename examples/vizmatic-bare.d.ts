@@ -8,9 +8,14 @@ declare global {
     var width: number
     var height: number
     var preset: import('../src').ThemePreset
+    var background: string
 
     const c: import('../src').ThemeColors
+    const BadgePill: AutoTheme<typeof import('../src').BadgePill>
     const BarChart: AutoTheme<typeof import('../src').BarChart>
+    const Board: AutoTheme<typeof import('../src').Board>
+    const CanvasItem: AutoTheme<typeof import('../src').CanvasItem>
+    const Card: AutoTheme<typeof import('../src').Card>
     const CalloutCard: AutoTheme<typeof import('../src').CalloutCard>
     const Column: AutoTheme<typeof import('../src').Column>
     const DataTable: AutoTheme<typeof import('../src').DataTable>
@@ -28,6 +33,8 @@ declare global {
     const MetricCard: AutoTheme<typeof import('../src').MetricCard>
     const MiniBarChart: AutoTheme<typeof import('../src').MiniBarChart>
     const Panel: AutoTheme<typeof import('../src').Panel>
+    const ParetoBarChart: AutoTheme<typeof import('../src').ParetoBarChart>
+    const ParetoChart: AutoTheme<typeof import('../src').ParetoChart>
     const QuadrantChart: AutoTheme<typeof import('../src').QuadrantChart>
     const Row: AutoTheme<typeof import('../src').Row>
     const ScatterPlot: AutoTheme<typeof import('../src').ScatterPlot>

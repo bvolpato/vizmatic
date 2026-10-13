@@ -72,6 +72,15 @@
   </aside>
   <div class="explorer-stage">
     <div class="explorer-project-toolbar"><label for="playgroundProjectName"><span class="sr-only">Project name</span><input id="playgroundProjectName" type="text" value="Untitled visual" maxlength="120" aria-label="Project name"></label><div class="explorer-project-actions"><button class="button primary small" type="button" id="playgroundNewCanvas">New canvas</button><button class="button small" type="button" id="playgroundOpenProject">Open project</button><button class="button small" type="button" id="playgroundSaveProject">Save project</button><button class="button small" type="button" id="playgroundFullscreen" aria-pressed="false">Fullscreen</button><label class="explorer-snap"><input type="checkbox" id="playgroundSnap" checked> Snap to grid</label></div><input id="playgroundProjectFile" type="file" accept=".json,.vizmatic.json,application/json" hidden></div>
+    <section class="explorer-starters" aria-labelledby="playgroundStartersTitle">
+      <div class="explorer-starters-heading"><h4 id="playgroundStartersTitle">Start with a story</h4><span>Every piece is yours to edit</span></div>
+      <div class="explorer-starter-grid">
+        <button type="button" data-vizmatic-playground-example="daybreak-launch" data-example-title="Daybreak launch"><img data-theme-image src="assets/examples/daybreak-launch_dark.png" alt="" width="2240" height="1600" loading="lazy" decoding="async"><strong>Daybreak launch</strong><span>Growth, channels, and momentum</span></button>
+        <button type="button" data-vizmatic-playground-example="aurora-incident" data-example-title="Aurora incident room"><img data-theme-image src="assets/examples/aurora-incident_dark.png" alt="" width="2240" height="1600" loading="lazy" decoding="async"><strong>Aurora incident room</strong><span>Routes, recovery, and a timeline</span></button>
+        <button type="button" data-vizmatic-playground-example="model-garden" data-example-title="Model garden"><img data-theme-image src="assets/examples/model-garden_dark.png" alt="" width="2240" height="1520" loading="lazy" decoding="async"><strong>Model garden</strong><span>Trade-offs and a clear decision</span></button>
+        <button type="button" data-vizmatic-playground-example="weekend-field-notes" data-example-title="Weekend field notes"><img data-theme-image src="assets/examples/weekend-field-notes_dark.png" alt="" width="2240" height="1600" loading="lazy" decoding="async"><strong>Weekend field notes</strong><span>A city guide with a visual route</span></button>
+      </div>
+    </section>
     <header class="explorer-component-heading"><div><span id="explorerCategory" class="eyebrow">Component playground</span><h3 id="explorerTitle">Choose. Change. See.</h3><p id="explorerDescription">Explore a live example, then make it your own.</p></div><button class="button small" type="button" id="explorerReset">Reset example</button></header>
     <div class="playground-toolbar explorer-toolbar">
       <div class="playground-theme-control" role="group" aria-label="Output theme"><button type="button" data-playground-theme="dark" aria-pressed="true">Dark</button><button type="button" data-playground-theme="light" aria-pressed="false">Light</button></div>
@@ -1141,163 +1150,207 @@ height = 480
   &lt;/ChartFrame&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy ChartFrame example source">Copy source</button><a class="component-try-link" href="playground.html#component-ChartFrame">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-DonutChart" data-catalog-item data-catalog-search="donutchart part-to-whole composition with center label. charts"><div class="catalog-item-copy"><code>DonutChart</code><p>Part-to-whole composition with center label.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 480
+height = 520
 
-&lt;Scene title=&quot;DonutChart example&quot; subtitle=&quot;Edit this focused DonutChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · first-session activation&quot; subtitle=&quot;SAMPLE DATA · 2,400 new workspaces&quot; padding={22} gap={18}&gt;
   &lt;DonutChart
-    title=&#39;Evaluation results&#39;
-    subtitle=&#39;Share by outcome&#39;
-    width={420}
-    height={280}
-    size={190}
-    thickness={34}
-    centerValue=&#39;92%&#39;
-    centerLabel=&#39;passed&#39;
-    segments={[{ label: &#39;Passed&#39;, value: 0.72, color: &#39;positive&#39; },
-        { label: &#39;Review&#39;, value: 0.2, color: &#39;secondary&#39; },
-        { label: &#39;Failed&#39;, value: 0.08, color: &#39;critical&#39; }]} /&gt;
+    title=&#39;72% created a project before leaving&#39;
+    subtitle=&#39;What 2,400 new teams did in their first 10 minutes&#39;
+    width={840}
+    height={300}
+    size={244}
+    thickness={38}
+    format=&#39;integer&#39;
+    centerValue=&#39;72%&#39;
+    centerLabel=&#39;activated&#39;
+    segments={[{ label: &#39;Created a project&#39;, value: 1728, color: &#39;positive&#39; },
+        { label: &#39;Explored templates&#39;, value: 432, color: &#39;primary&#39; },
+        { label: &#39;Left before setup&#39;, value: 240, color: &#39;critical&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy DonutChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-DonutChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-PieChart" data-catalog-item data-catalog-search="piechart part-to-whole composition with a full circular radius. charts"><div class="catalog-item-copy"><code>PieChart</code><p>Part-to-whole composition with a full circular radius.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 570
 
-&lt;Scene title=&quot;PieChart example&quot; subtitle=&quot;Edit this focused PieChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · launch-day acquisition&quot; subtitle=&quot;SAMPLE DATA · 42,600 first-touch visits&quot; padding={22} gap={18}&gt;
   &lt;PieChart
-    title=&#39;Requests by outcome&#39;
-    subtitle=&#39;Relative share of completed requests&#39;
-    width={500}
-    height={300}
-    segments={[{ label: &#39;Successful&#39;, value: 68, color: &#39;positive&#39; },
-        { label: &#39;Retried&#39;, value: 22, color: &#39;warning&#39; },
-        { label: &#39;Failed&#39;, value: 10, color: &#39;critical&#39; }]} /&gt;
+    title=&#39;Community made the biggest first impression&#39;
+    subtitle=&#39;42,600 first-touch visits on launch day&#39;
+    width={840}
+    height={320}
+    size={250}
+    format=&#39;integer&#39;
+    segments={[{ label: &#39;Community&#39;, value: 18700, color: &#39;positive&#39; },
+        { label: &#39;Search&#39;, value: 12400, color: &#39;primary&#39; },
+        { label: &#39;Social&#39;, value: 7900, color: &#39;secondary&#39; },
+        { label: &#39;Partners&#39;, value: 3600, color: &#39;warning&#39; }]}
+    footer=&#39;Sample launch data · first touch only&#39; /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy PieChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-PieChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-StackedBar" data-catalog-item data-catalog-search="stackedbar part-to-whole values along one dimension. charts"><div class="catalog-item-copy"><code>StackedBar</code><p>Part-to-whole values along one dimension.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 480
+height = 340
 
-&lt;Scene title=&quot;StackedBar example&quot; subtitle=&quot;Edit this focused StackedBar scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · device mix&quot; subtitle=&quot;SAMPLE DATA · 48,000 launch sessions&quot; padding={22} gap={18}&gt;
   &lt;StackedBar
-    title=&#39;Requests by outcome&#39;
-    subtitle=&#39;Share of total traffic&#39;
-    width={720}
-    height={80}
-    segments={[{ label: &#39;Success&#39;, value: 68, color: &#39;positive&#39; },
-        { label: &#39;Retry&#39;, value: 22, color: &#39;warning&#39; },
-        { label: &#39;Error&#39;, value: 10, color: &#39;critical&#39; }]} /&gt;
+    title=&#39;Mobile already brings 38% of launch traffic&#39;
+    subtitle=&#39;Share of 48,000 sessions by device&#39;
+    width={840}
+    height={76}
+    segments={[{ label: &#39;Desktop&#39;, value: 54, valueLabel: &#39;54%&#39;, color: &#39;primary&#39; },
+        { label: &#39;Mobile&#39;, value: 38, valueLabel: &#39;38%&#39;, color: &#39;positive&#39; },
+        { label: &#39;Tablet&#39;, value: 8, valueLabel: &#39;8%&#39;, color: &#39;warning&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy StackedBar example source">Copy source</button><a class="component-try-link" href="playground.html#component-StackedBar">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-BarChart" data-catalog-item data-catalog-search="barchart categorical comparison with labels and values. charts"><div class="catalog-item-copy"><code>BarChart</code><p>Categorical comparison with labels and values.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 600
 
-&lt;Scene title=&quot;BarChart example&quot; subtitle=&quot;Edit this focused BarChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · signups in week one&quot; subtitle=&quot;SAMPLE DATA · daily new workspaces&quot; padding={22} gap={18}&gt;
   &lt;BarChart
-    title=&#39;Pass rate&#39;
-    subtitle=&#39;By validation stage&#39;
-    width={760}
-    height={340}
-    format=&#39;percent&#39;
-    yAxisLabel=&#39;success&#39;
-    data={[{ label: &#39;Build&#39;, value: 0.82, color: &#39;secondary&#39; },
-        { label: &#39;Layout&#39;, value: 0.91, color: &#39;primary&#39; },
-        { label: &#39;Contrast&#39;, value: 0.98, color: &#39;positive&#39; }]} /&gt;
+    title=&#39;Friday set a new signup record&#39;
+    subtitle=&#39;Daily new workspaces · target was 250&#39;
+    width={840}
+    height={360}
+    min={0}
+    max={380}
+    format=&#39;integer&#39;
+    yAxisLabel=&#39;new workspaces&#39;
+    footer=&#39;Sample launch week · 1,626 workspaces total&#39;
+    data={[{ label: &#39;Mon&#39;, value: 186, color: &#39;primary&#39; },
+        { label: &#39;Tue&#39;, value: 204, color: &#39;primary&#39; },
+        { label: &#39;Wed&#39;, value: 231, color: &#39;secondary&#39; },
+        { label: &#39;Thu&#39;, value: 278, color: &#39;positive&#39; },
+        { label: &#39;Fri&#39;, value: 356, color: &#39;positive&#39; },
+        { label: &#39;Sat&#39;, value: 242, color: &#39;secondary&#39; },
+        { label: &#39;Sun&#39;, value: 129, color: &#39;neutral&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy BarChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-BarChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-LineChart" data-catalog-item data-catalog-search="linechart one or more trends across an ordered axis. charts"><div class="catalog-item-copy"><code>LineChart</code><p>One or more trends across an ordered axis.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 600
 
-&lt;Scene title=&quot;LineChart example&quot; subtitle=&quot;Edit this focused LineChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · guided setup experiment&quot; subtitle=&quot;SAMPLE DATA · activation over seven days&quot; padding={22} gap={18}&gt;
   &lt;LineChart
-    title=&#39;Quality over time&#39;
-    subtitle=&#39;Two runs per release&#39;
-    width={760}
-    height={340}
-    labels={[&#39;r1&#39;, &#39;r2&#39;, &#39;r3&#39;, &#39;r4&#39;]}
-    yAxisLabel=&#39;score&#39;
+    title=&#39;The checklist added 19 points of activation&#39;
+    subtitle=&#39;Share of new workspaces with a first project · week after launch&#39;
+    width={840}
+    height={360}
+    labels={[&#39;Mon&#39;, &#39;Tue&#39;, &#39;Wed&#39;, &#39;Thu&#39;, &#39;Fri&#39;, &#39;Sat&#39;, &#39;Sun&#39;]}
+    min={0}
+    max={1}
+    yAxisLabel=&#39;activated&#39;
     format=&#39;percent&#39;
-    series={[{ name: &#39;Quality&#39;, points: [0.62, 0.7, 0.81, 0.93], color: &#39;positive&#39; },
-        { name: &#39;Coverage&#39;, points: [0.48, 0.61, 0.72, 0.84], color: &#39;primary&#39; }]} /&gt;
+    footer=&#39;Sample experiment · guided setup vs. original flow&#39;
+    series={[{ name: &#39;Original flow&#39;, points: [0.36, 0.39, 0.42, 0.45, 0.47, 0.5, 0.51], color: &#39;neutral&#39; },
+        { name: &#39;Guided checklist&#39;, points: [0.35, 0.4, 0.48, 0.55, 0.61, 0.68, 0.7], color: &#39;positive&#39;, area: true }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy LineChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-LineChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-ScatterPlot" data-catalog-item data-catalog-search="scatterplot point distribution across two numeric axes. charts"><div class="catalog-item-copy"><code>ScatterPlot</code><p>Point distribution across two numeric axes.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 620
 
-&lt;Scene title=&quot;ScatterPlot example&quot; subtitle=&quot;Edit this focused ScatterPlot scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · onboarding flows&quot; subtitle=&quot;SAMPLE DATA · time to first project and activation&quot; padding={22} gap={18}&gt;
   &lt;ScatterPlot
-    title=&#39;Cost vs. quality&#39;
-    subtitle=&#39;Choose the right operating point&#39;
-    width={760}
-    height={340}
+    title=&#39;Shorter paths reach activation more often&#39;
+    subtitle=&#39;Six onboarding flows · time to first project vs. completion rate&#39;
+    width={840}
+    height={380}
     xMin={0}
-    xMax={10}
+    xMax={9}
     yMin={0}
-    yMax={10}
-    xAxisLabel=&#39;cost&#39;
-    yAxisLabel=&#39;quality&#39;
-    points={[{ x: 2, y: 6.8, label: &#39;fast&#39;, color: &#39;secondary&#39; },
-        { x: 4.8, y: 8.1, label: &#39;balanced&#39;, color: &#39;positive&#39; },
-        { x: 8, y: 9.2, label: &#39;deep&#39;, color: &#39;primary&#39; }]} /&gt;
+    yMax={1}
+    xAxisLabel=&#39;minutes to first project&#39;
+    yAxisLabel=&#39;activated workspaces&#39;
+    formatX=&#39;integer&#39;
+    formatY=&#39;percent&#39;
+    footer=&#39;Sample cohort · one point per guided path&#39;
+    points={[{ x: 1.1, y: 0.86, label: &#39;One-click&#39;, color: &#39;positive&#39;, size: 10 },
+        { x: 2.3, y: 0.79, label: &#39;Template&#39;, color: &#39;primary&#39; },
+        { x: 3.6, y: 0.73, label: &#39;Guided&#39;, color: &#39;secondary&#39; },
+        { x: 4.7, y: 0.65, label: &#39;Team invite&#39;, color: &#39;info&#39; },
+        { x: 5.8, y: 0.55, label: &#39;Import&#39;, color: &#39;warning&#39; },
+        { x: 7.6, y: 0.39, label: &#39;Blank start&#39;, color: &#39;neutral&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy ScatterPlot example source">Copy source</button><a class="component-try-link" href="playground.html#component-ScatterPlot">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-ParetoBarChart" data-catalog-item data-catalog-search="paretobarchart descending category counts with a cumulative percentage line. charts"><div class="catalog-item-copy"><code>ParetoBarChart</code><p>Descending category counts with a cumulative percentage line.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 610
 
-&lt;Scene title=&quot;ParetoBarChart example&quot; subtitle=&quot;Edit this focused ParetoBarChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · onboarding support&quot; subtitle=&quot;SAMPLE DATA · 240 first-week tickets&quot; padding={22} gap={18}&gt;
   &lt;ParetoBarChart
-    title=&#39;Support issues&#39;
-    subtitle=&#39;Sorted counts with cumulative share&#39;
-    width={760}
-    height={340}
-    data={[{ label: &#39;Setup&#39;, value: 42, color: &#39;primary&#39; },
-        { label: &#39;Auth&#39;, value: 28, color: &#39;secondary&#39; },
-        { label: &#39;Latency&#39;, value: 18, color: &#39;warning&#39; },
-        { label: &#39;Other&#39;, value: 12, color: &#39;neutral&#39; }]} /&gt;
+    title=&#39;Three fixes could remove 84% of support tickets&#39;
+    subtitle=&#39;First-week onboarding issues · 240 tickets, sorted by count&#39;
+    width={840}
+    height={370}
+    format=&#39;integer&#39;
+    footer=&#39;The line tracks cumulative share of all tickets.&#39;
+    data={[{ label: &#39;Setup&#39;, value: 91, color: &#39;critical&#39; },
+        { label: &#39;Invites&#39;, value: 65, color: &#39;warning&#39; },
+        { label: &#39;Import&#39;, value: 46, color: &#39;secondary&#39; },
+        { label: &#39;Billing&#39;, value: 24, color: &#39;primary&#39; },
+        { label: &#39;Other&#39;, value: 14, color: &#39;neutral&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy ParetoBarChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-ParetoBarChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-ParetoChart" data-catalog-item data-catalog-search="paretochart automatic non-dominated frontier across competing numeric objectives. charts"><div class="catalog-item-copy"><code>ParetoChart</code><p>Automatic non-dominated frontier across competing numeric objectives.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 620
 
-&lt;Scene title=&quot;ParetoChart example&quot; subtitle=&quot;Edit this focused ParetoChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · renderer trade-offs&quot; subtitle=&quot;SYNTHETIC BENCHMARK · render time and image score&quot; padding={22} gap={18}&gt;
   &lt;ParetoChart
-    title=&#39;Quality frontier&#39;
-    subtitle=&#39;Higher quality at lower cost&#39;
-    width={760}
-    height={340}
+    title=&#39;Studio is the quickest preset above 90 quality&#39;
+    subtitle=&#39;Sample render benchmark · image score vs. seconds per frame&#39;
+    width={840}
+    height={380}
     xMin={0}
-    xMax={10}
-    yMin={0}
-    yMax={10}
-    xAxisLabel=&#39;cost&#39;
-    points={[{ x: 1.2, y: 4, label: &#39;fast&#39;, color: &#39;info&#39; },
-        { x: 3.8, y: 6.8, label: &#39;balanced&#39;, color: &#39;positive&#39; },
-        { x: 7, y: 9.1, label: &#39;deep&#39;, color: &#39;primary&#39; },
-        { x: 8.4, y: 7.3, label: &#39;dominated&#39;, color: &#39;warning&#39; }]}
+    xMax={9}
+    yMin={65}
+    yMax={105}
+    xAxisLabel=&#39;render time · seconds&#39;
+    yAxisLabel=&#39;image score · / 100&#39;
+    formatX=&#39;decimal&#39;
+    formatY=&#39;integer&#39;
+    xObjective=&#39;minimize&#39;
+    yObjective=&#39;maximize&#39;
+    footer=&#39;Synthetic benchmark · aim for the upper-left frontier.&#39;
+    points={[{ x: 0.6, y: 71, label: &#39;Swift&#39;, color: &#39;info&#39; },
+        { x: 1.3, y: 82, label: &#39;Balanced&#39;, color: &#39;primary&#39; },
+        { x: 2.2, y: 91, label: &#39;Studio&#39;, color: &#39;positive&#39;, size: 10 },
+        { x: 4.7, y: 96, label: &#39;Cinema&#39;, color: &#39;secondary&#39; },
+        { x: 7.6, y: 98, label: &#39;Ultra&#39;, color: &#39;primary&#39; },
+        { x: 3.4, y: 79, label: &#39;Legacy&#39;, color: &#39;neutral&#39; },
+        { x: 3.8, y: 88, label: &#39;Oversharp&#39;, color: &#39;warning&#39; }]}
     frontierColor=&#39;positive&#39;
-    goalLabel=&#39;higher quality · lower cost&#39; /&gt;
+    goalLabel=&#39;less time · higher score&#39; /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy ParetoChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-ParetoChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-QuadrantChart" data-catalog-item data-catalog-search="quadrantchart numeric decision map split by configurable policy thresholds. charts"><div class="catalog-item-copy"><code>QuadrantChart</code><p>Numeric decision map split by configurable policy thresholds.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 620
 
-&lt;Scene title=&quot;QuadrantChart example&quot; subtitle=&quot;Edit this focused QuadrantChart scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · next sprint&quot; subtitle=&quot;SAMPLE ROADMAP · effort and retention impact&quot; padding={22} gap={18}&gt;
   &lt;QuadrantChart
-    title=&#39;Prioritization map&#39;
-    subtitle=&#39;Effort vs. user value&#39;
-    width={760}
-    height={360}
-    xAxisLabel=&#39;effort&#39;
-    yAxisLabel=&#39;user value&#39;
-    regions={{ topLeft: { label: &#39;Quick wins&#39;, color: &#39;positive&#39;, emphasis: true }, topRight: { label: &#39;Big bets&#39;, color: &#39;primary&#39; }, bottomLeft: { label: &#39;Defer&#39;, color: &#39;neutral&#39; }, bottomRight: { label: &#39;Avoid&#39;, color: &#39;warning&#39; } }}
-    points={[{ x: 0.24, y: 0.8, label: &#39;A&#39;, color: &#39;positive&#39; },
-        { x: 0.75, y: 0.7, label: &#39;B&#39;, color: &#39;primary&#39; },
-        { x: 0.34, y: 0.25, label: &#39;C&#39;, color: &#39;neutral&#39; }]} /&gt;
+    title=&#39;Templates are a quick win; team spaces are the big bet&#39;
+    subtitle=&#39;Effort vs. estimated lift in week-four retention&#39;
+    width={840}
+    height={380}
+    xMin={0}
+    xMax={1}
+    yMin={0}
+    yMax={1}
+    xAxisLabel=&#39;engineering effort&#39;
+    yAxisLabel=&#39;retention lift&#39;
+    formatX=&#39;percent&#39;
+    formatY=&#39;percent&#39; showTicks showGrid
+    footer=&#39;Sample roadmap discussion · thresholds split the four regions.&#39;
+    regions={{ topLeft: { label: &#39;Quick wins&#39;, detail: &#39;High impact, lower effort&#39;, color: &#39;positive&#39;, emphasis: true }, topRight: { label: &#39;Big bets&#39;, detail: &#39;Worth a larger investment&#39;, color: &#39;primary&#39; }, bottomLeft: { label: &#39;Polish later&#39;, detail: &#39;Small lift, easy work&#39;, color: &#39;neutral&#39; }, bottomRight: { label: &#39;Too costly&#39;, detail: &#39;Revisit with new evidence&#39;, color: &#39;warning&#39; } }}
+    points={[{ x: 0.2, y: 0.79, label: &#39;Templates&#39;, color: &#39;positive&#39;, size: 10 },
+        { x: 0.78, y: 0.82, label: &#39;Team spaces&#39;, color: &#39;primary&#39;, size: 10 },
+        { x: 0.81, y: 0.24, label: &#39;Billing portal&#39;, color: &#39;warning&#39; },
+        { x: 0.22, y: 0.22, label: &#39;Icon polish&#39;, color: &#39;neutral&#39; },
+        { x: 0.44, y: 0.67, label: &#39;Guided tour&#39;, color: &#39;secondary&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy QuadrantChart example source">Copy source</button><a class="component-try-link" href="playground.html#component-QuadrantChart">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-IntervalPlot" data-catalog-item data-catalog-search="intervalplot low, midpoint, and high ranges by category. charts"><div class="catalog-item-copy"><code>IntervalPlot</code><p>Low, midpoint, and high ranges by category.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 640
+height = 600
 
-&lt;Scene title=&quot;IntervalPlot example&quot; subtitle=&quot;Edit this focused IntervalPlot scene&quot; padding={22} gap={18}&gt;
+&lt;Scene title=&quot;Aster Studio · export timing&quot; subtitle=&quot;DEMO TIMINGS · 100 sample renders&quot; padding={22} gap={18}&gt;
   &lt;IntervalPlot
-    title=&#39;Latency ranges&#39;
-    subtitle=&#39;Low, median, and high values&#39;
-    width={760}
-    height={340}
+    title=&#39;SVG stays quick; animation takes the longest&#39;
+    subtitle=&#39;Median and observed range across 100 sample renders&#39;
+    width={840}
+    height={360}
     min={0}
-    max={100}
-    axisLabel=&#39;milliseconds&#39;
+    max={1000}
+    axisLabel=&#39;render time · milliseconds&#39;
     format=&#39;integer&#39;
-    data={[{ label: &#39;API&#39;, low: 18, mid: 32, high: 46, color: &#39;secondary&#39; },
-        { label: &#39;Worker&#39;, low: 34, mid: 51, high: 78, color: &#39;primary&#39; }]} /&gt;
+    footer=&#39;Same 1,200 × 630 source frame · demo timings&#39;
+    data={[{ label: &#39;SVG&#39;, low: 120, mid: 180, high: 260, color: &#39;positive&#39; },
+        { label: &#39;PNG&#39;, low: 220, mid: 360, high: 510, color: &#39;primary&#39; },
+        { label: &#39;GIF&#39;, low: 420, mid: 650, high: 940, color: &#39;warning&#39; }]} /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy IntervalPlot example source">Copy source</button><a class="component-try-link" href="playground.html#component-IntervalPlot">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-Legend" data-catalog-item data-catalog-search="legend reusable color key for charts and diagrams. charts"><div class="catalog-item-copy"><code>Legend</code><p>Reusable color key for charts and diagrams.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
 height = 480

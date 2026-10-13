@@ -504,6 +504,24 @@ height = 420
         ]))
     }, 30_000)
 
+    it('fits bare-source chart headings, plots, and footers inside positioned canvas blocks', async () => {
+        const { result, report } = await runCheck(`width = 600
+height = 400
+background = "theme"
+<Board width={600} height={400}>
+  <CanvasItem x={20} y={240} width={560} height={140}>
+    <BarChart title="Launch signups" subtitle="All labels must stay inside this block" footer="Illustrative launch data"
+      data={[{ label: "Mon", value: 186 }, { label: "Tue", value: 204 }, { label: "Wed", value: 231 }]} />
+  </CanvasItem>
+</Board>`, ['--theme', 'dark,light'])
+
+        expect(result.status, result.stderr).toBe(0)
+        expect(report.files[0]?.themes).toHaveLength(2)
+        for (const theme of report.files[0]?.themes ?? []) {
+            expect(theme.diagnostics.some(({ code }) => code === 'layout.overflow')).toBe(false)
+        }
+    }, 30_000)
+
     it('keeps every playground template free of rendering errors', async () => {
         for (const template of playgroundTemplates) {
             const { result, report } = await runCheck(template.source)

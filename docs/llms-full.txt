@@ -591,7 +591,7 @@ After creating a visual, report:
 
 # Vizmatic components
 
-Package: vizmatic@0.3.1. Catalog: 75 runnable examples across 11 categories.
+Package: vizmatic@0.3.2. Catalog: 75 runnable examples across 11 categories.
 
 Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 
@@ -2590,21 +2590,22 @@ Props:
 
 ```tsx
 width = 960
-height = 480
+height = 520
 
-<Scene title="DonutChart example" subtitle="Edit this focused DonutChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · first-session activation" subtitle="SAMPLE DATA · 2,400 new workspaces" padding={22} gap={18}>
   <DonutChart
-    title='Evaluation results'
-    subtitle='Share by outcome'
-    width={420}
-    height={280}
-    size={190}
-    thickness={34}
-    centerValue='92%'
-    centerLabel='passed'
-    segments={[{ label: 'Passed', value: 0.72, color: 'positive' },
-        { label: 'Review', value: 0.2, color: 'secondary' },
-        { label: 'Failed', value: 0.08, color: 'critical' }]} />
+    title='72% created a project before leaving'
+    subtitle='What 2,400 new teams did in their first 10 minutes'
+    width={840}
+    height={300}
+    size={244}
+    thickness={38}
+    format='integer'
+    centerValue='72%'
+    centerLabel='activated'
+    segments={[{ label: 'Created a project', value: 1728, color: 'positive' },
+        { label: 'Explored templates', value: 432, color: 'primary' },
+        { label: 'Left before setup', value: 240, color: 'critical' }]} />
 </Scene>
 ```
 
@@ -2626,17 +2627,21 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 570
 
-<Scene title="PieChart example" subtitle="Edit this focused PieChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · launch-day acquisition" subtitle="SAMPLE DATA · 42,600 first-touch visits" padding={22} gap={18}>
   <PieChart
-    title='Requests by outcome'
-    subtitle='Relative share of completed requests'
-    width={500}
-    height={300}
-    segments={[{ label: 'Successful', value: 68, color: 'positive' },
-        { label: 'Retried', value: 22, color: 'warning' },
-        { label: 'Failed', value: 10, color: 'critical' }]} />
+    title='Community made the biggest first impression'
+    subtitle='42,600 first-touch visits on launch day'
+    width={840}
+    height={320}
+    size={250}
+    format='integer'
+    segments={[{ label: 'Community', value: 18700, color: 'positive' },
+        { label: 'Search', value: 12400, color: 'primary' },
+        { label: 'Social', value: 7900, color: 'secondary' },
+        { label: 'Partners', value: 3600, color: 'warning' }]}
+    footer='Sample launch data · first touch only' />
 </Scene>
 ```
 
@@ -2655,17 +2660,17 @@ Props:
 
 ```tsx
 width = 960
-height = 480
+height = 340
 
-<Scene title="StackedBar example" subtitle="Edit this focused StackedBar scene" padding={22} gap={18}>
+<Scene title="Aster Studio · device mix" subtitle="SAMPLE DATA · 48,000 launch sessions" padding={22} gap={18}>
   <StackedBar
-    title='Requests by outcome'
-    subtitle='Share of total traffic'
-    width={720}
-    height={80}
-    segments={[{ label: 'Success', value: 68, color: 'positive' },
-        { label: 'Retry', value: 22, color: 'warning' },
-        { label: 'Error', value: 10, color: 'critical' }]} />
+    title='Mobile already brings 38% of launch traffic'
+    subtitle='Share of 48,000 sessions by device'
+    width={840}
+    height={76}
+    segments={[{ label: 'Desktop', value: 54, valueLabel: '54%', color: 'primary' },
+        { label: 'Mobile', value: 38, valueLabel: '38%', color: 'positive' },
+        { label: 'Tablet', value: 8, valueLabel: '8%', color: 'warning' }]} />
 </Scene>
 ```
 
@@ -2690,19 +2695,26 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 600
 
-<Scene title="BarChart example" subtitle="Edit this focused BarChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · signups in week one" subtitle="SAMPLE DATA · daily new workspaces" padding={22} gap={18}>
   <BarChart
-    title='Pass rate'
-    subtitle='By validation stage'
-    width={760}
-    height={340}
-    format='percent'
-    yAxisLabel='success'
-    data={[{ label: 'Build', value: 0.82, color: 'secondary' },
-        { label: 'Layout', value: 0.91, color: 'primary' },
-        { label: 'Contrast', value: 0.98, color: 'positive' }]} />
+    title='Friday set a new signup record'
+    subtitle='Daily new workspaces · target was 250'
+    width={840}
+    height={360}
+    min={0}
+    max={380}
+    format='integer'
+    yAxisLabel='new workspaces'
+    footer='Sample launch week · 1,626 workspaces total'
+    data={[{ label: 'Mon', value: 186, color: 'primary' },
+        { label: 'Tue', value: 204, color: 'primary' },
+        { label: 'Wed', value: 231, color: 'secondary' },
+        { label: 'Thu', value: 278, color: 'positive' },
+        { label: 'Fri', value: 356, color: 'positive' },
+        { label: 'Sat', value: 242, color: 'secondary' },
+        { label: 'Sun', value: 129, color: 'neutral' }]} />
 </Scene>
 ```
 
@@ -2728,19 +2740,22 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 600
 
-<Scene title="LineChart example" subtitle="Edit this focused LineChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · guided setup experiment" subtitle="SAMPLE DATA · activation over seven days" padding={22} gap={18}>
   <LineChart
-    title='Quality over time'
-    subtitle='Two runs per release'
-    width={760}
-    height={340}
-    labels={['r1', 'r2', 'r3', 'r4']}
-    yAxisLabel='score'
+    title='The checklist added 19 points of activation'
+    subtitle='Share of new workspaces with a first project · week after launch'
+    width={840}
+    height={360}
+    labels={['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']}
+    min={0}
+    max={1}
+    yAxisLabel='activated'
     format='percent'
-    series={[{ name: 'Quality', points: [0.62, 0.7, 0.81, 0.93], color: 'positive' },
-        { name: 'Coverage', points: [0.48, 0.61, 0.72, 0.84], color: 'primary' }]} />
+    footer='Sample experiment · guided setup vs. original flow'
+    series={[{ name: 'Original flow', points: [0.36, 0.39, 0.42, 0.45, 0.47, 0.5, 0.51], color: 'neutral' },
+        { name: 'Guided checklist', points: [0.35, 0.4, 0.48, 0.55, 0.61, 0.68, 0.7], color: 'positive', area: true }]} />
 </Scene>
 ```
 
@@ -2768,23 +2783,29 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 620
 
-<Scene title="ScatterPlot example" subtitle="Edit this focused ScatterPlot scene" padding={22} gap={18}>
+<Scene title="Aster Studio · onboarding flows" subtitle="SAMPLE DATA · time to first project and activation" padding={22} gap={18}>
   <ScatterPlot
-    title='Cost vs. quality'
-    subtitle='Choose the right operating point'
-    width={760}
-    height={340}
+    title='Shorter paths reach activation more often'
+    subtitle='Six onboarding flows · time to first project vs. completion rate'
+    width={840}
+    height={380}
     xMin={0}
-    xMax={10}
+    xMax={9}
     yMin={0}
-    yMax={10}
-    xAxisLabel='cost'
-    yAxisLabel='quality'
-    points={[{ x: 2, y: 6.8, label: 'fast', color: 'secondary' },
-        { x: 4.8, y: 8.1, label: 'balanced', color: 'positive' },
-        { x: 8, y: 9.2, label: 'deep', color: 'primary' }]} />
+    yMax={1}
+    xAxisLabel='minutes to first project'
+    yAxisLabel='activated workspaces'
+    formatX='integer'
+    formatY='percent'
+    footer='Sample cohort · one point per guided path'
+    points={[{ x: 1.1, y: 0.86, label: 'One-click', color: 'positive', size: 10 },
+        { x: 2.3, y: 0.79, label: 'Template', color: 'primary' },
+        { x: 3.6, y: 0.73, label: 'Guided', color: 'secondary' },
+        { x: 4.7, y: 0.65, label: 'Team invite', color: 'info' },
+        { x: 5.8, y: 0.55, label: 'Import', color: 'warning' },
+        { x: 7.6, y: 0.39, label: 'Blank start', color: 'neutral' }]} />
 </Scene>
 ```
 
@@ -2806,18 +2827,21 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 610
 
-<Scene title="ParetoBarChart example" subtitle="Edit this focused ParetoBarChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · onboarding support" subtitle="SAMPLE DATA · 240 first-week tickets" padding={22} gap={18}>
   <ParetoBarChart
-    title='Support issues'
-    subtitle='Sorted counts with cumulative share'
-    width={760}
-    height={340}
-    data={[{ label: 'Setup', value: 42, color: 'primary' },
-        { label: 'Auth', value: 28, color: 'secondary' },
-        { label: 'Latency', value: 18, color: 'warning' },
-        { label: 'Other', value: 12, color: 'neutral' }]} />
+    title='Three fixes could remove 84% of support tickets'
+    subtitle='First-week onboarding issues · 240 tickets, sorted by count'
+    width={840}
+    height={370}
+    format='integer'
+    footer='The line tracks cumulative share of all tickets.'
+    data={[{ label: 'Setup', value: 91, color: 'critical' },
+        { label: 'Invites', value: 65, color: 'warning' },
+        { label: 'Import', value: 46, color: 'secondary' },
+        { label: 'Billing', value: 24, color: 'primary' },
+        { label: 'Other', value: 14, color: 'neutral' }]} />
 </Scene>
 ```
 
@@ -2851,25 +2875,34 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 620
 
-<Scene title="ParetoChart example" subtitle="Edit this focused ParetoChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · renderer trade-offs" subtitle="SYNTHETIC BENCHMARK · render time and image score" padding={22} gap={18}>
   <ParetoChart
-    title='Quality frontier'
-    subtitle='Higher quality at lower cost'
-    width={760}
-    height={340}
+    title='Studio is the quickest preset above 90 quality'
+    subtitle='Sample render benchmark · image score vs. seconds per frame'
+    width={840}
+    height={380}
     xMin={0}
-    xMax={10}
-    yMin={0}
-    yMax={10}
-    xAxisLabel='cost'
-    points={[{ x: 1.2, y: 4, label: 'fast', color: 'info' },
-        { x: 3.8, y: 6.8, label: 'balanced', color: 'positive' },
-        { x: 7, y: 9.1, label: 'deep', color: 'primary' },
-        { x: 8.4, y: 7.3, label: 'dominated', color: 'warning' }]}
+    xMax={9}
+    yMin={65}
+    yMax={105}
+    xAxisLabel='render time · seconds'
+    yAxisLabel='image score · / 100'
+    formatX='decimal'
+    formatY='integer'
+    xObjective='minimize'
+    yObjective='maximize'
+    footer='Synthetic benchmark · aim for the upper-left frontier.'
+    points={[{ x: 0.6, y: 71, label: 'Swift', color: 'info' },
+        { x: 1.3, y: 82, label: 'Balanced', color: 'primary' },
+        { x: 2.2, y: 91, label: 'Studio', color: 'positive', size: 10 },
+        { x: 4.7, y: 96, label: 'Cinema', color: 'secondary' },
+        { x: 7.6, y: 98, label: 'Ultra', color: 'primary' },
+        { x: 3.4, y: 79, label: 'Legacy', color: 'neutral' },
+        { x: 3.8, y: 88, label: 'Oversharp', color: 'warning' }]}
     frontierColor='positive'
-    goalLabel='higher quality · lower cost' />
+    goalLabel='less time · higher score' />
 </Scene>
 ```
 
@@ -2901,20 +2934,29 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 620
 
-<Scene title="QuadrantChart example" subtitle="Edit this focused QuadrantChart scene" padding={22} gap={18}>
+<Scene title="Aster Studio · next sprint" subtitle="SAMPLE ROADMAP · effort and retention impact" padding={22} gap={18}>
   <QuadrantChart
-    title='Prioritization map'
-    subtitle='Effort vs. user value'
-    width={760}
-    height={360}
-    xAxisLabel='effort'
-    yAxisLabel='user value'
-    regions={{ topLeft: { label: 'Quick wins', color: 'positive', emphasis: true }, topRight: { label: 'Big bets', color: 'primary' }, bottomLeft: { label: 'Defer', color: 'neutral' }, bottomRight: { label: 'Avoid', color: 'warning' } }}
-    points={[{ x: 0.24, y: 0.8, label: 'A', color: 'positive' },
-        { x: 0.75, y: 0.7, label: 'B', color: 'primary' },
-        { x: 0.34, y: 0.25, label: 'C', color: 'neutral' }]} />
+    title='Templates are a quick win; team spaces are the big bet'
+    subtitle='Effort vs. estimated lift in week-four retention'
+    width={840}
+    height={380}
+    xMin={0}
+    xMax={1}
+    yMin={0}
+    yMax={1}
+    xAxisLabel='engineering effort'
+    yAxisLabel='retention lift'
+    formatX='percent'
+    formatY='percent' showTicks showGrid
+    footer='Sample roadmap discussion · thresholds split the four regions.'
+    regions={{ topLeft: { label: 'Quick wins', detail: 'High impact, lower effort', color: 'positive', emphasis: true }, topRight: { label: 'Big bets', detail: 'Worth a larger investment', color: 'primary' }, bottomLeft: { label: 'Polish later', detail: 'Small lift, easy work', color: 'neutral' }, bottomRight: { label: 'Too costly', detail: 'Revisit with new evidence', color: 'warning' } }}
+    points={[{ x: 0.2, y: 0.79, label: 'Templates', color: 'positive', size: 10 },
+        { x: 0.78, y: 0.82, label: 'Team spaces', color: 'primary', size: 10 },
+        { x: 0.81, y: 0.24, label: 'Billing portal', color: 'warning' },
+        { x: 0.22, y: 0.22, label: 'Icon polish', color: 'neutral' },
+        { x: 0.44, y: 0.67, label: 'Guided tour', color: 'secondary' }]} />
 </Scene>
 ```
 
@@ -2937,20 +2979,22 @@ Props:
 
 ```tsx
 width = 960
-height = 640
+height = 600
 
-<Scene title="IntervalPlot example" subtitle="Edit this focused IntervalPlot scene" padding={22} gap={18}>
+<Scene title="Aster Studio · export timing" subtitle="DEMO TIMINGS · 100 sample renders" padding={22} gap={18}>
   <IntervalPlot
-    title='Latency ranges'
-    subtitle='Low, median, and high values'
-    width={760}
-    height={340}
+    title='SVG stays quick; animation takes the longest'
+    subtitle='Median and observed range across 100 sample renders'
+    width={840}
+    height={360}
     min={0}
-    max={100}
-    axisLabel='milliseconds'
+    max={1000}
+    axisLabel='render time · milliseconds'
     format='integer'
-    data={[{ label: 'API', low: 18, mid: 32, high: 46, color: 'secondary' },
-        { label: 'Worker', low: 34, mid: 51, high: 78, color: 'primary' }]} />
+    footer='Same 1,200 × 630 source frame · demo timings'
+    data={[{ label: 'SVG', low: 120, mid: 180, high: 260, color: 'positive' },
+        { label: 'PNG', low: 220, mid: 360, high: 510, color: 'primary' },
+        { label: 'GIF', low: 420, mid: 650, high: 940, color: 'warning' }]} />
 </Scene>
 ```
 

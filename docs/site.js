@@ -485,6 +485,9 @@
 
     function demoTitle(name) {
       const titles = {
+        'daybreak-launch': 'Daybreak launch',
+        'aurora-incident': 'Aurora incident room',
+        'weekend-field-notes': 'Weekend field notes',
         'website-workflow': 'From idea to visual',
         'system-architecture': 'System architecture',
         'eval-dashboard': 'Evaluation dashboard',
@@ -495,6 +498,9 @@
 
     function updateDemoCopy(name) {
       const labels = {
+        'daybreak-launch': 'A fictional launch brief with growth trends, channel mix, and launch priorities.',
+        'aurora-incident': 'A fictional incident room with routed services, recovery signals, and a timeline.',
+        'weekend-field-notes': 'A fictional city guide with a visual route and neighborhood stops.',
         'website-workflow': 'A prompt becomes a rendered Vizmatic visual.',
         'system-architecture': 'System architecture diagram rendered with Vizmatic.',
         'eval-dashboard': 'Evaluation dashboard rendered with Vizmatic.',
@@ -901,6 +907,7 @@
     if (!name || !/^[a-z0-9-]+$/.test(name)) return
 
     loadSource(name).then((example) => {
+      if (new URLSearchParams(window.location.search).get('example') !== name) return
       const oldUrl = window.location.href
       const url = new URL(oldUrl)
       url.searchParams.delete('example')
@@ -908,6 +915,7 @@
       window.history.replaceState(null, '', url)
       window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: oldUrl, newURL: url.href }))
     }).catch(() => {
+      if (new URLSearchParams(window.location.search).get('example') !== name) return
       const error = $('#playgroundError')
       if (!error) return
       error.textContent = 'Could not load this example. Choose a template or try again.'
