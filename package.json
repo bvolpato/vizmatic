@@ -104,7 +104,7 @@
     "@types/react": "^19.2.18",
     "esbuild": "0.28.2",
     "github-actionlint": "1.7.12",
-    "harfbuzzjs": "0.10.0",
+    "harfbuzzjs": "1.6.3",
     "playwright": "1.63.0",
     "publint": "0.3.25",
     "shiki": "^4.5.0",
