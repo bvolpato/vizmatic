@@ -35,7 +35,7 @@ import interBold from '../assets/fonts/Inter-Bold.ttf'
 import jetBrainsMono from '../assets/fonts/JetBrainsMono-Regular.ttf'
 import notoSans from '../assets/fonts/NotoSans-Regular.ttf'
 import notoSansMath from '../assets/fonts/NotoSansMath-Regular.ttf'
-import yogaWasm from 'satori/yoga.wasm'
+import layoutWasm from 'satori/layout.wasm'
 import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm'
 import harfbuzzWasm from 'harfbuzzjs/hb.wasm'
 
@@ -192,7 +192,7 @@ function initializeRuntime(): Promise<PlaygroundRuntime> {
 
 function loadRuntime(): Promise<PlaygroundRuntime> {
     return Promise.all([
-        loadStaticAsset(yogaWasm),
+        loadStaticAsset(layoutWasm),
         loadStaticAsset(resvgWasm),
         loadStaticAsset(harfbuzzWasm),
         loadStaticAsset(interRegular),
@@ -201,8 +201,8 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
         loadStaticAsset(jetBrainsMono),
         loadStaticAsset(notoSans),
         loadStaticAsset(notoSansMath),
-    ]).then(async ([yoga, resvg, harfbuzz, regular, semiBold, bold, mono, sans, math]) => {
-        await Promise.all([initializeSatoriRuntime(yoga), initializeResvgRuntime(resvg), initializeHarfbuzzRuntime(harfbuzz)])
+    ]).then(async ([layout, resvg, harfbuzz, regular, semiBold, bold, mono, sans, math]) => {
+        await Promise.all([initializeSatoriRuntime(layout), initializeResvgRuntime(resvg), initializeHarfbuzzRuntime(harfbuzz)])
         const fonts: PlaygroundRuntime['fonts'] = [
             { name: 'Inter', data: regular, weight: 400, style: 'normal' },
             { name: 'Inter', data: semiBold, weight: 600, style: 'normal' },

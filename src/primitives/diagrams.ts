@@ -1131,6 +1131,7 @@ export function GraphDiagram({
                         alignItems: icon ? 'flex-start' : 'center',
                         gap: node.detail ? 5 : 0,
                         minWidth: 0,
+                        flexShrink: 1,
                     }
                 },
                     React.createElement('div', {

@@ -42,25 +42,47 @@ export function CanvasChartFit({ children, width, height }: { children?: ReactNo
 
 function prepareChartFits(element: ReactNode): { element: ReactNode; sizes: Map<string, FitSize> } {
     const sizes = new Map<string, FitSize>()
+    const hasText = (node: ReactNode): boolean => {
+        if (typeof node === 'string' || typeof node === 'number' || typeof node === 'bigint') return true
+        if (Array.isArray(node)) return node.some(hasText)
+        return isValidElement<{ children?: ReactNode }>(node) && node.type === React.Fragment && hasText(node.props.children)
+    }
     const visit = (node: ReactNode, scope?: string): ReactNode => {
         if (Array.isArray(node)) return node.map((child) => visit(child, scope))
         if (!isValidElement<Record<string, unknown>>(node)) return node
-        if (typeof node.type === 'function') {
-            const resolved = visit((node.type as (props: Record<string, unknown>) => ReactNode)(node.props), scope)
+        type RenderComponent = (props: Record<string, unknown>) => ReactNode
+        const forwarded = node.type as unknown as { $$typeof?: symbol; render?: RenderComponent } | null
+        const render = typeof node.type === 'function'
+            ? node.type as RenderComponent
+            : forwarded?.$$typeof === Symbol.for('react.forward_ref') ? forwarded.render : undefined
+        if (render) {
+            const resolved = visit(render(node.props), scope)
             return node.key != null && isValidElement(resolved) ? React.cloneElement(resolved, { key: node.key }) : resolved
         }
         const size = node.props[FIT_PROP] as FitSize | undefined
         const props = { ...node.props }
         delete props[FIT_PROP]
+        let childScope = scope
         if (size) {
             const id = String(sizes.size)
             sizes.set(id, size)
             props[VIEWPORT_PROP] = id
-            return React.cloneElement(node, props, visit(node.props.children as ReactNode, id))
+            childScope = id
+        } else if (scope !== undefined && typeof node.type === 'string') {
+            props[SCOPE_PROP] = scope
         }
-        if (scope !== undefined && typeof node.type === 'string') props[SCOPE_PROP] = scope
         const children = node.props.children as ReactNode
-        return children === undefined ? React.cloneElement(node, props) : React.cloneElement(node, props, visit(children, scope))
+        const preparedChildren = children === undefined ? undefined : visit(children, childScope)
+        if (typeof node.type === 'string') {
+            const style = node.props.style as React.CSSProperties | undefined
+            // Preserve the diagram layout defaults used before Satori's browser layout engine.
+            props.style = {
+                minWidth: 0, minHeight: 0,
+                ...(style?.flex === undefined ? { flexShrink: hasText(preparedChildren) ? 1 : 0 } : {}),
+                ...style,
+            }
+        }
+        return children === undefined ? React.cloneElement(node, props) : React.cloneElement(node, props, preparedChildren)
     }
     return { element: visit(element), sizes }
 }
@@ -91,7 +113,7 @@ export async function renderWithCanvasChartFit(render: Renderer, element: ReactN
         const viewport = node.props[VIEWPORT_PROP]
         if (typeof viewport === 'string') viewports.set(viewport, node)
         const id = node.props[SCOPE_PROP]
-        if (typeof id !== 'string' || node.width <= 0 || node.height <= 0) return
+        if (typeof id !== 'string' || node.width < 0 || node.height < 0) return
         const prior = bounds.get(id)
         bounds.set(id, {
             left: Math.min(prior?.left ?? Infinity, node.left), top: Math.min(prior?.top ?? Infinity, node.top),

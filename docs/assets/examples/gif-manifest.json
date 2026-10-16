@@ -18,7 +18,7 @@
         "encodedFrameCount": 37,
         "deltaFrameCount": 36,
         "duration": 5050,
-        "bytes": 266874
+        "bytes": 266159
       },
       {
         "theme": "light",
@@ -29,7 +29,7 @@
         "encodedFrameCount": 37,
         "deltaFrameCount": 36,
         "duration": 5050,
-        "bytes": 323868
+        "bytes": 343362
       }
     ]
   },
@@ -49,10 +49,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 68,
-        "deltaFrameCount": 67,
+        "encodedFrameCount": 70,
+        "deltaFrameCount": 69,
         "duration": 5400,
-        "bytes": 150548
+        "bytes": 151948
       },
       {
         "theme": "light",
@@ -60,10 +60,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 67,
-        "deltaFrameCount": 66,
+        "encodedFrameCount": 69,
+        "deltaFrameCount": 68,
         "duration": 5400,
-        "bytes": 153113
+        "bytes": 152638
       }
     ]
   },
@@ -83,10 +83,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 68,
-        "deltaFrameCount": 67,
+        "encodedFrameCount": 71,
+        "deltaFrameCount": 70,
         "duration": 5400,
-        "bytes": 118047
+        "bytes": 118788
       },
       {
         "theme": "light",
@@ -94,10 +94,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 67,
-        "deltaFrameCount": 66,
+        "encodedFrameCount": 70,
+        "deltaFrameCount": 69,
         "duration": 5400,
-        "bytes": 115853
+        "bytes": 116216
       }
     ]
   },
@@ -117,10 +117,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 66,
-        "deltaFrameCount": 65,
+        "encodedFrameCount": 67,
+        "deltaFrameCount": 66,
         "duration": 5400,
-        "bytes": 305961
+        "bytes": 309462
       },
       {
         "theme": "light",
@@ -128,10 +128,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 66,
-        "deltaFrameCount": 65,
+        "encodedFrameCount": 67,
+        "deltaFrameCount": 66,
         "duration": 5400,
-        "bytes": 306701
+        "bytes": 306940
       }
     ]
   },
@@ -154,7 +154,7 @@
         "encodedFrameCount": 59,
         "deltaFrameCount": 58,
         "duration": 5000,
-        "bytes": 84487
+        "bytes": 84303
       },
       {
         "theme": "light",
@@ -165,7 +165,7 @@
         "encodedFrameCount": 59,
         "deltaFrameCount": 58,
         "duration": 5000,
-        "bytes": 85465
+        "bytes": 85304
       }
     ]
   },
@@ -185,10 +185,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 67,
-        "deltaFrameCount": 66,
+        "encodedFrameCount": 69,
+        "deltaFrameCount": 68,
         "duration": 5400,
-        "bytes": 233532
+        "bytes": 236419
       },
       {
         "theme": "light",
@@ -196,10 +196,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 67,
-        "deltaFrameCount": 66,
+        "encodedFrameCount": 69,
+        "deltaFrameCount": 68,
         "duration": 5400,
-        "bytes": 237347
+        "bytes": 236744
       }
     ]
   }
