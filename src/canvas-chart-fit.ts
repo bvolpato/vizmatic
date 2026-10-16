@@ -43,15 +43,20 @@ export function CanvasChartFit({ children, width, height }: { children?: ReactNo
 function prepareChartFits(element: ReactNode): { element: ReactNode; sizes: Map<string, FitSize> } {
     const sizes = new Map<string, FitSize>()
     const hasText = (node: ReactNode): boolean => {
-        if (typeof node === 'string' || typeof node === 'number') return true
+        if (typeof node === 'string' || typeof node === 'number' || typeof node === 'bigint') return true
         if (Array.isArray(node)) return node.some(hasText)
         return isValidElement<{ children?: ReactNode }>(node) && node.type === React.Fragment && hasText(node.props.children)
     }
     const visit = (node: ReactNode, scope?: string): ReactNode => {
         if (Array.isArray(node)) return node.map((child) => visit(child, scope))
         if (!isValidElement<Record<string, unknown>>(node)) return node
-        if (typeof node.type === 'function') {
-            const resolved = visit((node.type as (props: Record<string, unknown>) => ReactNode)(node.props), scope)
+        type RenderComponent = (props: Record<string, unknown>) => ReactNode
+        const forwarded = node.type as unknown as { $$typeof?: symbol; render?: RenderComponent } | null
+        const render = typeof node.type === 'function'
+            ? node.type as RenderComponent
+            : forwarded?.$$typeof === Symbol.for('react.forward_ref') ? forwarded.render : undefined
+        if (render) {
+            const resolved = visit(render(node.props), scope)
             return node.key != null && isValidElement(resolved) ? React.cloneElement(resolved, { key: node.key }) : resolved
         }
         const size = node.props[FIT_PROP] as FitSize | undefined

@@ -27,15 +27,23 @@ it.each([
     expect(nodes.map((node) => node.width)).toEqual(widths)
 })
 
-it('fits long text beside a fixed-width sibling without shrinking the sibling', async () => {
+it.each(['plain', 'fragment', 'function', 'forwardRef', 'bigint'] as const)('fits %s text beside a fixed-width sibling without shrinking the sibling', async (kind) => {
     const nodes: SatoriNode[] = []
     const font = await readFile(new URL('../assets/fonts/Inter-Regular.ttf', import.meta.url))
+    const text = 'A long text paragraph that must wrap beside its fixed-width sibling.'
+    let calls = 0
+    const renderText = () => { calls += 1; return text }
+    const content = kind === 'plain' ? text
+        : kind === 'fragment' ? React.createElement(React.Fragment, {}, text)
+        : kind === 'function' ? React.createElement(renderText)
+        : kind === 'forwardRef' ? React.createElement(React.forwardRef(renderText))
+        : 123456789012345678901234567890n
     const element = React.createElement('div', {
         style: { display: 'flex', width: 200, height: 200 },
     }, React.createElement('div', {
         'data-text': true,
         style: { fontSize: 16 },
-    }, React.createElement(React.Fragment, {}, 'A long text paragraph that must wrap beside its fixed-width sibling.')),
+    }, content),
     React.createElement('div', {
         'data-fixed': true,
         style: { width: 80, height: 20 },
@@ -48,4 +56,5 @@ it('fits long text beside a fixed-width sibling without shrinking the sibling', 
     })
     expect(nodes.find((node) => node.props['data-text'])?.width).toBe(120)
     expect(nodes.find((node) => node.props['data-fixed'])?.width).toBe(80)
+    expect(calls).toBe(kind === 'function' || kind === 'forwardRef' ? 1 : 0)
 })
