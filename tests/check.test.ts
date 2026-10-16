@@ -331,7 +331,7 @@ height = 540
 height = 240
 
 <Scene>
-  <div style={{ display: "grid", width: 280, height: 120 }}>Unsupported</div>
+  <div style={{ display: "table", width: 280, height: 120 }}>Unsupported</div>
 </Scene>
 `)
         expect(unsupported.result.status).toBe(1)
