@@ -574,6 +574,89 @@ await renderAnimationGif(createAnimation("dark"), {
 
 `createScenes(theme)` and `renderAnimatedGif(AnimatedScene[])` remain supported for intentional scene cuts and pixel crossfades. `fps` controls their transition sampling as well as typed timelines. GIF output uses one shared 256-color palette and centisecond timing. Opaque animations use changed rectangles by default; set `deltaFrames: false` only for legacy decoder debugging. Transparent animations stay full-frame to preserve one-bit compositing. Use PNG/SVG for smooth alpha edges.
 
+## MP4 export and mathematical motion
+
+`renderRgbaVideo` streams caller-rendered RGBA frames to FFmpeg as an H.264 MP4.
+It supports 1–120 fps, even pixel dimensions, optional audio, and backpressure,
+without retaining the whole film in memory. Install FFmpeg with libx264 and AAC
+support separately. Canvas painters can use the optional `@napi-rs/canvas` package:
+
+```ts
+import { createCanvas } from '@napi-rs/canvas'
+import { renderRgbaVideo, pointAlongPath, tracePolyline } from 'vizmatic'
+
+const canvas = createCanvas(1280, 720)
+const ctx = canvas.getContext('2d')
+const path = [{ x: 150, y: 550 }, { x: 640, y: 200 }, { x: 1130, y: 550 }]
+
+await renderRgbaVideo((frame) => {
+  ctx.fillStyle = '#101827'
+  ctx.fillRect(0, 0, 1280, 720)
+  const progress = Math.min(1, frame.time / 2000)
+  const visible = tracePolyline(path, progress)
+  ctx.beginPath()
+  visible.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y))
+  ctx.strokeStyle = '#63deec'
+  ctx.lineWidth = 5
+  ctx.stroke()
+  const point = pointAlongPath(path, progress)
+  ctx.beginPath()
+  ctx.arc(point.x, point.y, 14, 0, Math.PI * 2)
+  ctx.fillStyle = '#f4d477'
+  ctx.fill()
+  return canvas.data()
+}, {
+  width: 1280, height: 720, duration: 3000, fps: 30,
+  outputPath: 'lesson.mp4',
+  // audioPath: 'narration.wav',
+})
+```
+
+Durations and `frame.time` are milliseconds, as in typed animation timelines.
+`videoFrameSchedule(duration, fps)` lazily yields the same frame timestamps;
+the endpoint is not emitted as an extra frame. The callback can be async and
+must return exactly `width * height * 4` bytes. Each frame is consumed before
+requesting the next. Optional audio is padded or trimmed to the video duration
+and encoded as stereo AAC at 48 kHz. `signal` cancels an export. A failed
+callback or encoder removes temporary files and preserves an existing output.
+
+Use `defineAnimation` and `sampleAnimation(animation, frame.time)` to drive
+multiple properties from a shared timeline. Sample per frame rather than
+building a GIF frame array for a long video.
+
+Motion helpers operate on `{ x, y }` points:
+
+- `tracePolyline(points, progress)` reveals a path by actual arc length.
+- `pointAlongPath(points, progress)` locates a moving marker on the same path.
+- `arcSwap(from, to, progress, { lift, easing })` exchanges positions along
+  opposite arcs. `lift` is the maximum perpendicular displacement, defaulting
+  to 80; the default easing is `smoothstep`.
+- `smoothstep(progress)` clamps and eases progress between zero and one.
+
+Path results use fresh points and handle repeated vertices. Empty paths trace
+to an empty array; following an empty path throws. These helpers let a lesson
+draw a curve, trace a computation graph, or exchange token positions while
+keeping the underlying numerical state explicit.
+
+Use `renderMathSvg` to typeset TeX into standalone SVG paths for a canvas,
+figure, or video frame:
+
+```ts
+import { renderMathSvg } from 'vizmatic'
+
+const formula = renderMathSvg(String.raw`\frac{\partial L}{\partial W_x} + x^2`, {
+  fontSize: 48,
+  color: '#63deec',
+})
+// formula.svg contains glyph paths; width, height, and baseline are pixels.
+```
+
+The synchronous renderer supports AMS equations, fractions, subscripts, and
+superscripts. It returns baseline metrics for alignment with other labels,
+caches formulas, and isolates macro definitions between calls. Invalid TeX
+throws an error. SVG paths render with local assets and require no browser or
+network access.
+
 ## Development
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, testing, visual review, dependency updates, and pull request guidance.

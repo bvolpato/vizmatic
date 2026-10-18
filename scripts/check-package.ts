@@ -10,7 +10,8 @@ interface PackResult {
 
 const limits = {
     size: 2_500_000,
-    unpackedSize: 5_000_000,
+    // Native MP4 export, motion helpers, and their public types add to the package.
+    unpackedSize: 5_050_000,
     entryCount: 100,
 }
 
