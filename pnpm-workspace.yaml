@@ -8,6 +8,7 @@ minimumReleaseAgeExclude:
 minimumReleaseAgeIgnoreMissingTime: true
 minimumReleaseAgeStrict: false
 overrides:
+  '@xmldom/xmldom': 0.9.12
   adm-zip: 0.6.1
   esbuild: 0.28.2
   fflate: 0.7.5
