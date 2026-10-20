@@ -3,7 +3,9 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { renderRgbaVideo, videoFrameSchedule } from '../src/video'
+import React from 'react'
+import { defineAnimation, hold, tween, type AnimationFrameContext } from '../src/timeline'
+import { renderAnimationVideo, renderRgbaVideo, videoFrameSchedule } from '../src/video'
 
 const tempDirs: string[] = []
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
@@ -152,5 +154,91 @@ describe('RGBA video export', () => {
         await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
         expect(await readFile(outputPath, 'utf8')).toBe('previous output')
         expect(await readdir(directory)).toEqual(['lesson.mp4'])
+    }, 30_000)
+})
+
+describe('typed animation video export', () => {
+    it('rejects transparent backgrounds and invalid scaled dimensions', async () => {
+        const animation = defineAnimation({ initial: {}, timeline: [hold(100)], render: () => null })
+        const options = { width: 64, height: 48, outputPath: join(tmpdir(), 'invalid-animation.mp4') }
+
+        await expect(renderAnimationVideo(animation, { ...options, background: 'transparent' }))
+            .rejects.toThrow('MP4 requires an opaque background')
+        await expect(renderAnimationVideo(animation, { ...options, background: 'rgba(0, 0, 0, 0.5)' }))
+            .rejects.toThrow('MP4 requires an opaque background')
+        await expect(renderAnimationVideo(animation, { ...options, scale: 0 }))
+            .rejects.toThrow('scale must be a positive finite number')
+        await expect(renderAnimationVideo(animation, { ...options, scale: 0.3 }))
+            .rejects.toThrow('width must be a positive even integer')
+    })
+
+    it.skipIf(!hasFfmpeg)('samples exact 60 fps motion and encodes scaled scenes on an opaque background', async () => {
+        const directory = await tempDirectory()
+        const contexts: Readonly<AnimationFrameContext>[] = []
+        const positions: number[] = []
+        const animation = defineAnimation({
+            initial: { x: 0 },
+            timeline: [hold(25, 'ready'), tween({ x: 40 }, { duration: 75, label: 'move' })],
+            render: (state, frame) => {
+                positions.push(state.x)
+                contexts.push(frame)
+                return React.createElement('div', { style: { display: 'flex', width: 64, height: 48 } },
+                    React.createElement('div', { style: {
+                        display: 'flex', position: 'absolute', left: state.x, top: 12,
+                        width: 16, height: 16, backgroundColor: 'rgba(255, 0, 0, 0.5)',
+                    } }),
+                )
+            },
+        })
+        const outputPath = join(directory, 'motion.mp4')
+        const result = await renderAnimationVideo(animation, {
+            width: 64, height: 48, scale: 2, fps: 60, background: '#ffffff', outputPath,
+        })
+
+        expect(result).toMatchObject({ width: 128, height: 96, frameCount: 6, duration: 100, fps: 60, audioIncluded: false })
+        expect(contexts.map((frame) => frame.time)).toEqual(Array.from({ length: 6 }, (_, index) => index * 1_000 / 60))
+        expect(contexts[2]).toMatchObject({ index: 2, count: 6, step: 1, label: 'move', fps: 60 })
+        expect(contexts[2].delay).toBeCloseTo(1_000 / 60)
+        expect(positions[2]).toBeCloseTo(40 / 9)
+        expect(positions.at(-1)).toBeLessThan(40)
+
+        const decoded = spawnSync('ffmpeg', [
+            '-v', 'error', '-i', outputPath, '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1',
+        ], { maxBuffer: 128 * 96 * 3 * 7 })
+        expect(decoded.status, decoded.stderr.toString()).toBe(0)
+        expect(decoded.stdout.byteLength).toBe(128 * 96 * 3 * 6)
+        const rgb = (frame: number, x: number, y: number) => [...decoded.stdout.subarray(
+            (frame * 128 * 96 + y * 128 + x) * 3,
+            (frame * 128 * 96 + y * 128 + x) * 3 + 3,
+        )]
+        expect(rgb(0, 120, 80).every((channel) => channel >= 245)).toBe(true)
+        expect(rgb(0, 16, 36)[1]).toBeLessThan(150)
+        expect(rgb(5, 16, 36)[1]).toBeGreaterThan(240)
+        expect(rgb(5, 78, 36)[1]).toBeLessThan(150)
+
+        if (hasFfprobe) {
+            const probe = spawnSync('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-of', 'json', outputPath], { encoding: 'utf8' })
+            expect(probe.status, probe.stderr).toBe(0)
+            expect(JSON.parse(probe.stdout).streams[0]).toMatchObject({
+                codec_name: 'h264', pix_fmt: 'yuv420p', width: 128, height: 96, nb_read_frames: '6', r_frame_rate: '60/1',
+            })
+        }
+    }, 30_000)
+
+    it.skipIf(!hasFfmpeg)('reports the overflowing scene timestamp and preserves an existing output', async () => {
+        const directory = await tempDirectory()
+        const outputPath = join(directory, 'motion.mp4')
+        await writeFile(outputPath, 'previous output')
+        const animation = defineAnimation({
+            initial: { x: 0 },
+            timeline: [tween({ x: 100 }, { duration: 200, label: 'move' })],
+            render: ({ x }) => React.createElement('div', { style: {
+                display: 'flex', position: 'absolute', left: x, width: 32, height: 24, backgroundColor: 'red',
+            } }),
+        })
+        await expect(renderAnimationVideo(animation, { width: 64, height: 48, fps: 10, outputPath }))
+            .rejects.toMatchObject({ name: 'CanvasOverflowError', animation: { frameIndex: 1, time: 100, label: 'move' } })
+        expect(await readFile(outputPath, 'utf8')).toBe('previous output')
+        expect(await readdir(directory)).toEqual(['motion.mp4'])
     }, 30_000)
 })

@@ -886,7 +886,32 @@
     installPlaygroundShortcut()
     installSharedExample()
     installHashDeepLinks()
+    installVideoChapters()
     document.documentElement.classList.add('js')
+  }
+
+  function installVideoChapters() {
+    const video = $('#showcaseVideo')
+    if (!(video instanceof HTMLVideoElement)) return
+    const buttons = $$('[data-video-time]')
+    let requestedTime
+    video.addEventListener('loadedmetadata', () => {
+      if (requestedTime !== undefined) video.currentTime = requestedTime
+    })
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      requestedTime = Number(button.dataset.videoTime)
+      if (video.readyState >= 1) video.currentTime = requestedTime
+      video.play().catch(() => {
+        video.focus()
+      })
+    }))
+    video.addEventListener('timeupdate', () => {
+      const current = [...buttons].reverse().find((button) => video.currentTime >= Number(button.dataset.videoTime))
+      buttons.forEach((button) => {
+        if (button === current) button.setAttribute('aria-current', 'true')
+        else button.removeAttribute('aria-current')
+      })
+    })
   }
 
   function installPlaygroundShortcut() {

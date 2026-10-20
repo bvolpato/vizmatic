@@ -2,7 +2,7 @@
 
 # Vizmatic agent prompt
 
-Use Vizmatic to create diagrams, figures, dashboards, presentation frames, and animated GIFs from React scene primitives. Render dark and light files locally or in CI.
+Use Vizmatic to create diagrams, figures, dashboards, presentation frames, animated GIFs, and MP4 videos from React scene primitives. Render dark and light files locally or in CI.
 
 ## Quick start
 
@@ -191,7 +191,9 @@ vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,lig
 
 ## Animated frames
 
-An animated module exports `createAnimation(theme)` for GIF output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every GIF frame.
+An animated module exports `createAnimation(theme)` for GIF or MP4 output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every frame.
+
+For smooth video, run `vizmatic video frames/lesson.tsx --out public/videos --theme dark --fps 30`. This requires FFmpeg with libx264; add `--audio narration.wav` for AAC audio. Exported canvas dimensions after `--scale` must be even integers. MP4 uses an opaque theme background by default and supports 1–120 fps independently of GIF cadence. The browser builder exports GIF; MP4 runs in Node.js. Use the current repository build for the video command, or `node dist/cli.js video` from the checkout. See `examples/videos/signal-to-story.tsx` for a finite 18-second film with parallel tracks, path tracing, camera motion, and a readable ending. Regenerate its website assets with `pnpm render:video`.
 
 ```tsx
 import React from "react"
@@ -411,9 +413,13 @@ Theme and render APIs:
 - `keyframe(value, label?)`: apply instant partial state update.
 - `parallel(tracks, label?)`: run property tracks concurrently; each track accepts `hold`, `tween`, and `keyframe` steps.
 - `sampleAnimation(animation, time)`: evaluate state at exact millisecond.
+- `sampleAnimationFrame(animation, time, { index, count, delay, fps })`: sample state and timeline context at an exact video timestamp.
 - `sampleAnimationFrames(animation, { fps? })`: return deterministic state/frame samples with GIF-compatible delays.
 - `analyzeAnimationCadence(animation, { fps? })`: return frame count, encoded duration, target interval, and delay range without rendering.
 - `renderAnimationGif(animation, options)`: stream timeline samples into GIF.
+- `renderAnimationVideo(animation, { width, height, outputPath, fps?, scale?, theme?, background?, watermark?, audioPath?, crf?, preset?, threads?, signal? })`: render typed TSX frames to H.264 MP4. Defaults to 30 fps and an opaque theme background; streams frames and checks overflow at each timestamp. FFmpeg is installed separately.
+- `renderRgbaVideo(renderFrame, { width, height, duration, outputPath, fps?, audioPath?, crf?, preset?, signal? })`: encode caller-painted RGBA frames without buffering the whole film.
+- `tracePolyline(points, progress)` and `pointAlongPath(points, progress)`: reveal and follow a path by arc length; `arcSwap(from, to, progress, options?)` exchanges positions along mirrored arcs; `smoothstep(progress)` clamps and eases progress.
 - `renderAnimationGifWithOutput(animation, options)`: same arguments and returns dimensions, input/encoded frame counts, delta-frame count, duration, and byte size.
 - `renderAnimatedGif(scenes, options)`: legacy `AnimatedScene[]` renderer for scene cuts and pixel transitions. It also accepts a defined animation.
 - `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns dimensions and encoding metrics.

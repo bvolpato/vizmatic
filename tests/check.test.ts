@@ -197,6 +197,19 @@ describe('vizmatic check', () => {
         }))
     })
 
+    it('checks numeric JSX labels including zero', async () => {
+        const report = await checkFrame({
+            width: 240,
+            height: 120,
+            create: () => createElement('div', {
+                style: { display: 'flex', gap: 32, padding: 16, width: 240, height: 120, fontSize: 18, color: '#111111', backgroundColor: '#ffffff' },
+            }, createElement('span', null, 0), createElement('span', null, 42)),
+        }, { themes: ['light'] })
+
+        expect(report.rendered).toBe(true)
+        expect(report.summary.errors).toBe(0)
+    })
+
     it('inherits rendered font sizes without treating overlapping line boxes as overlapping glyphs', () => {
         const inheritedSmallText: SatoriNode[] = [
             { type: 'div', left: 0, top: 0, width: 200, height: 80, props: { style: { fontSize: 8 } } },

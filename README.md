@@ -576,6 +576,66 @@ await renderAnimationGif(createAnimation("dark"), {
 
 ## MP4 export and mathematical motion
 
+Export an existing TSX animation directly with `vizmatic video`:
+
+```bash
+vizmatic video ./lesson.tsx --out ./videos --theme dark --fps 30
+vizmatic video ./lesson.tsx --out ./videos --theme dark,light --fps 60 --audio narration.wav
+```
+
+The module exports `width`, `height`, and `createAnimation(theme)`, just like the
+GIF examples. The video command samples the timeline at exact video timestamps,
+renders each React scene, and streams it to FFmpeg. It writes `lesson_dark.mp4`
+and a `video-manifest.json`. Use `--crf 18` for crisp text, `--preset medium` for
+a smaller file, and `--scale 2` for twice the pixel dimensions. FFmpeg with
+libx264 is required; audio export also needs AAC. MP4 requires an opaque
+background, with the theme background used by default. Set `--background` to
+an opaque CSS color to choose another fill. The browser builder exports GIF;
+MP4 encoding runs in Node.js.
+
+The same workflow is available through the API:
+
+```ts
+import { renderAnimationVideo } from "vizmatic"
+import { createAnimation, width, height } from "./lesson"
+
+await renderAnimationVideo(createAnimation("dark"), {
+  width, height, fps: 30, theme: "dark",
+  outputPath: "videos/lesson.mp4",
+  crf: 18, preset: "medium",
+  // audioPath: "narration.wav",
+})
+```
+
+Video supports 1–120 fps independently of the GIF cadence. Canvas dimensions
+after scaling must be positive even integers. Every frame is checked for
+overflow; failures report its timestamp and timeline label and preserve an
+existing output file. `signal`, audio alignment, and streaming use the same
+contracts as `renderRgbaVideo` below. Keep a finite film's last state visible
+long enough to read. Use `parallel` tracks for overlapping transitions and
+path helpers for continuous motion.
+
+Watch **[From noise to signal](https://bvolpato.github.io/vizmatic/#video)**,
+an 18-second motion design example built from
+[`examples/videos/signal-to-story.tsx`](examples/videos/signal-to-story.tsx).
+Its chart fits actual least-squares coefficients to explicitly synthetic data.
+The source demonstrates staggered entrances, arc-length line reveals,
+parallel tracks, camera motion, and an ending held on screen. From a repository
+checkout, generate the film, posters, captions, and downloadable source with:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm render:video
+```
+
+To render your own module from this checkout, use `node dist/cli.js video`
+in place of `vizmatic video`. Video assets live in `docs/assets/video` and are
+generated from source and excluded from Git. `pnpm site:build` creates the
+posters, descriptions, and source download; `pnpm render:video` also encodes
+the MP4. Pages builds the MP4 and verifies it with `pnpm docs:check --require-video`
+before publication. The website loads the poster until playback is requested
+and provides chapter controls and a text description.
+
 `renderRgbaVideo` streams caller-rendered RGBA frames to FFmpeg as an H.264 MP4.
 It supports 1–120 fps, even pixel dimensions, optional audio, and backpressure,
 without retaining the whole film in memory. Install FFmpeg with libx264 and AAC
@@ -628,6 +688,13 @@ Motion helpers operate on `{ x, y }` points:
 
 - `tracePolyline(points, progress)` reveals a path by actual arc length.
 - `pointAlongPath(points, progress)` locates a moving marker on the same path.
+- `morphPolyline(from, to, progress, { samples, easing })` smoothly changes one
+  path into another, including paths with different vertex counts. It matches
+  equal arc-length positions, uses 64 samples and `smoothstep` by default,
+  and preserves the inputs. Use it for trajectories and changing curves.
+- `createPolylineMorph(from, to, options)` prepares the same arc-length
+  correspondence once and returns a `(progress) => points` sampler. Reuse it
+  across frames to avoid repeating path measurement and resampling.
 - `arcSwap(from, to, progress, { lift, easing })` exchanges positions along
   opposite arcs. `lift` is the maximum perpendicular displacement, defaulting
   to 80; the default easing is `smoothstep`.
@@ -738,6 +805,18 @@ Numerical helpers include `seededRandom(seed)`, `lerpArray`, `dotProduct`,
 `sampleGaussian(random)`. Softmax subtracts the largest logit before scaling;
 entropy accepts normalized probabilities; normalization preserves zero vectors.
 Seeded sampling makes simulations reproducible during rendering and review.
+Camera helpers keep world geometry and screen annotations aligned:
+
+- `interpolateCamera(from, to, progress)` eases a camera's world-space center
+  and interpolates zoom logarithmically. Optional `minZoom` and `maxZoom`
+  constrain both endpoints.
+- `cameraSvgTransform(camera, { width, height })` centers an SVG group on that
+  camera. `projectWorldPoint(point, camera, viewport)` applies the same transform
+  to a label anchor rendered outside the group.
+
+Keep event progress separate from camera progress when cutting between views.
+The event can continue from its previous state while each shot has its own
+pan or zoom. Simulation time and camera movement can follow separate timelines.
 
 Use `renderMathSvg` to typeset TeX into standalone SVG paths for a canvas,
 figure, or video frame:

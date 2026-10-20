@@ -32,6 +32,7 @@ import { CanvasOverflowError, renderToPngWithOutput, renderToSvg, type RenderBac
 import type { SatoriNode } from './satori'
 import { type ThemeMode, type ThemePreset } from './theme'
 import type { DefinedAnimation } from './timeline'
+import { renderAnimationVideo, type RgbaVideoOutput } from './video'
 
 interface FrameModule {
     width?: number
@@ -81,6 +82,14 @@ interface CheckArgs {
     themes: ThemeMode[]
     background?: RenderBackground
     json: boolean
+}
+
+interface VideoArgs extends RenderArgs {
+    audioPath?: string
+    ffmpegPath?: string
+    preset?: string
+    crf?: number
+    threads?: number
 }
 
 interface CheckThemeReport {
@@ -153,8 +162,10 @@ function usageText() {
   vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--format png|svg|both]
   vizmatic check <file-or-directory...> [--theme dark,light] [--background transparent|theme|color] [--json]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1] [--fps 20]
+  vizmatic video <file-or-directory...> [--out <dir>] [--theme dark,light] [--background theme|color] [--scale 1] [--fps 30] [--audio <file>] [--crf 18] [--preset fast] [--threads 4] [--ffmpeg <path>]
 
   Browser animation metadata renders at t=0 in static output; GIF output still requires createAnimation(theme) or createScenes(theme).
+  Video requires createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
 
 Examples:
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
@@ -163,7 +174,8 @@ Examples:
   vizmatic check ./frame.tsx --theme dark,light --json
   vizmatic render examples --out docs/assets/examples --theme dark --watermark Vizmatic
   vizmatic render frames/attention.tsx --out dist/frames --theme dark,light
-  vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic`
+  vizmatic gif examples/animated-pipeline.tsx --out docs/assets/examples --theme dark --watermark Vizmatic
+  vizmatic video examples/nccl-all-reduce.tsx --out dist/videos --theme dark --fps 60`
 }
 
 function usage(): never {
@@ -789,9 +801,9 @@ async function importRewrittenFrame(filePath: string, source: string): Promise<F
     }
 }
 
-function parseRenderArgs(argv: string[]): RenderArgs {
+function parseRenderArgs(argv: string[], defaults: { maxFps?: number; outDir?: string } = {}): RenderArgs {
     const inputs: string[] = []
-    let outDir = 'dist/frames'
+    let outDir = defaults.outDir ?? 'dist/frames'
     let themes: ThemeMode[] = ['dark', 'light']
     let watermark: WatermarkInput | undefined
     let watermarkOptions: WatermarkOptions | undefined
@@ -897,7 +909,7 @@ function parseRenderArgs(argv: string[]): RenderArgs {
             scale = rawScale
         } else if (arg === '--fps') {
             const rawFps = Number(argv[++index])
-            if (!Number.isInteger(rawFps) || rawFps < 1 || rawFps > 50) usage()
+            if (!Number.isInteger(rawFps) || rawFps < 1 || rawFps > (defaults.maxFps ?? 50)) usage()
             fps = rawFps
         } else if (arg === '--format') {
             const rawFormat = argv[++index]
@@ -912,6 +924,26 @@ function parseRenderArgs(argv: string[]): RenderArgs {
 
     if (inputs.length === 0) usage()
     return { inputs, outDir, themes, watermark, crop, scale, fps, background, format }
+}
+
+function parseVideoArgs(argv: string[]): VideoArgs {
+    const common: string[] = []
+    const video: Pick<VideoArgs, 'audioPath' | 'ffmpegPath' | 'preset' | 'crf' | 'threads'> = {}
+    for (let index = 0; index < argv.length; index++) {
+        const arg = argv[index]
+        if (arg === '--audio' || arg === '--ffmpeg' || arg === '--preset' || arg === '--crf' || arg === '--threads') {
+            const value = argv[++index]
+            if (!value || value.startsWith('--')) throw new Error(`${arg} requires a value`)
+            if (arg === '--audio') video.audioPath = value
+            else if (arg === '--ffmpeg') video.ffmpegPath = value
+            else if (arg === '--preset') video.preset = value
+            else if (arg === '--crf') video.crf = Number(value)
+            else video.threads = Number(value)
+        } else {
+            common.push(arg)
+        }
+    }
+    return { ...parseRenderArgs(common, { maxFps: 120, outDir: 'dist/videos' }), ...video }
 }
 
 function parseCheckArgs(argv: string[]): CheckArgs {
@@ -1781,6 +1813,77 @@ async function gifCommand(argv: string[]) {
     await writeFile(join(args.outDir, 'gif-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 }
 
+async function videoCommand(argv: string[]) {
+    const args = parseVideoArgs(argv)
+    if (args.format !== 'png') throw new Error('--format applies to static rendering only; video always writes MP4 output')
+    const cliWatermark = await resolveWatermarkAssets(args.watermark)
+    const files = await findFrameFiles(args.inputs)
+    if (files.length === 0) throw new Error('no frame files found')
+    const stems = outputStems(files)
+    const manifest: Array<{
+        name: string
+        source: string
+        width: number
+        height: number
+        outputs: string[]
+        outputDetails: Array<RgbaVideoOutput & { theme: ThemeMode; path: string }>
+    }> = []
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    process.once('SIGINT', abort)
+    process.once('SIGTERM', abort)
+    try {
+        await mkdir(args.outDir, { recursive: true })
+        for (const file of files) {
+            const mod = normalizeFrameModule(await importFrame(file))
+            if (!mod.createAnimation) {
+                throw new Error(`${relative(process.cwd(), file)} must export createAnimation(theme) for video rendering`)
+            }
+            const name = stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')
+            const outputDetails: Array<RgbaVideoOutput & { theme: ThemeMode; path: string }> = []
+            const moduleWatermark = await resolveWatermarkAssets(mod.watermark ?? mod.brand)
+            for (const theme of args.themes) {
+                const outputName = `${name}_${theme}.mp4`
+                const outputPath = join(args.outDir, outputName)
+                const animation = withFrameReactBinding(mod, () => mod.createAnimation!(theme))
+                const rendered = await renderAnimationVideo({
+                    ...animation,
+                    render: (state, frame) => withFrameReactBinding(mod, () => animation.render(state, frame)),
+                }, {
+                    width: mod.width,
+                    height: mod.height,
+                    outputPath,
+                    fps: args.fps,
+                    scale: args.scale,
+                    theme,
+                    background: sourceFrameBackground(mod, theme, args.background) ?? 'theme',
+                    watermark: cliWatermark ?? moduleWatermark,
+                    audioPath: args.audioPath,
+                    ffmpegPath: args.ffmpegPath,
+                    crf: args.crf,
+                    preset: args.preset,
+                    threads: args.threads,
+                    signal: controller.signal,
+                })
+                outputDetails.push({ ...rendered, theme, path: outputName })
+                console.log(`rendered ${relative(process.cwd(), outputPath)}`)
+            }
+            manifest.push({
+                name,
+                source: relative(process.cwd(), file),
+                width: mod.width,
+                height: mod.height,
+                outputs: outputDetails.map((output) => output.path),
+                outputDetails,
+            })
+        }
+        await writeFile(join(args.outDir, 'video-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    } finally {
+        process.removeListener('SIGINT', abort)
+        process.removeListener('SIGTERM', abort)
+    }
+}
+
 async function main() {
     const args = process.argv.slice(2)
     const [command, ...rest] = args
@@ -1790,6 +1893,8 @@ async function main() {
         await checkCommand(rest)
     } else if (command === 'gif') {
         await gifCommand(rest)
+    } else if (command === 'video') {
+        await videoCommand(rest)
     } else if (!command || command === 'help' || command === '--help' || command === '-h') {
         help()
     } else if (!command.startsWith('-')) {
@@ -1805,5 +1910,5 @@ main().catch((error) => {
     } else {
         console.error(error instanceof Error ? error.message : String(error))
     }
-    process.exit(1)
+    process.exit(error instanceof Error && error.name === 'AbortError' ? 130 : 1)
 })

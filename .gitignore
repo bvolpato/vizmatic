@@ -7,3 +7,4 @@ dist/
 coverage/
 *.tgz
 .playwright-mcp/
+/docs/assets/video/

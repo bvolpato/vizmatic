@@ -2,6 +2,13 @@ import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { mkdir, open, rename, rm, stat } from 'fs/promises'
 import { basename, dirname, join, resolve } from 'path'
+import { Resvg } from '@resvg/resvg-js'
+import parseCssColor from 'parse-css-color'
+import type { OverflowResult } from './autocrop'
+import type { WatermarkInput } from './brand'
+import { CanvasOverflowError, renderToSvg, type RenderBackground } from './render'
+import { getThemeColors, type ThemeMode } from './theme'
+import { sampleAnimationFrame, type DefinedAnimation } from './timeline'
 
 export interface VideoFrameInfo {
     /** Zero-based frame index. The final frame is always before the video endpoint. */
@@ -41,6 +48,16 @@ export interface RgbaVideoOutput {
     bytes: number
     outputPath: string
     audioIncluded: boolean
+}
+
+export interface AnimationVideoOptions extends Omit<RgbaVideoOptions, 'duration'> {
+    /** Physical output pixels per logical scene pixel. Defaults to 1. Scaled dimensions must be even integers. */
+    scale?: number
+    theme?: ThemeMode
+    /** MP4 has no alpha channel. Defaults to the opaque theme background. */
+    background?: RenderBackground
+    watermark?: WatermarkInput
+    brand?: boolean | string
 }
 
 export type RgbaVideoFrameRenderer = (frame: VideoFrameInfo) => Uint8Array | Promise<Uint8Array>
@@ -91,6 +108,67 @@ export function* videoFrameSchedule(duration: number, fps = 30): Generator<Video
     for (let index = 0; index < schedule.count; index++) {
         yield frameInfo(index, schedule, fps)
     }
+}
+
+/** Streams a typed TSX animation to H.264 MP4 at exact video frame times (30 fps by default). */
+export async function renderAnimationVideo<S extends object>(
+    animation: DefinedAnimation<S>,
+    options: AnimationVideoOptions,
+): Promise<RgbaVideoOutput> {
+    const scale = options.scale ?? 1
+    if (!Number.isFinite(options.width) || options.width <= 0
+        || !Number.isFinite(options.height) || options.height <= 0) {
+        throw new Error('Animation width and height must be positive finite numbers')
+    }
+    if (!Number.isFinite(scale) || scale <= 0) throw new Error('scale must be a positive finite number')
+    const theme = options.theme ?? 'dark'
+    const background = options.background ?? 'theme'
+    const backgroundColor = background === 'theme' ? getThemeColors(theme).bg : background
+    const parsedBackground = parseCssColor(backgroundColor)
+    if (!parsedBackground || parsedBackground.alpha !== 1) {
+        throw new Error('MP4 requires an opaque background; use "theme" or an opaque CSS color')
+    }
+
+    return renderRgbaVideo(async (info) => {
+        const sampled = sampleAnimationFrame(animation, info.time, {
+            index: info.index, count: info.count, delay: 1_000 / info.fps, fps: info.fps,
+        })
+        const edges = { top: false, right: false, bottom: false, left: false }
+        const svg = await renderToSvg(animation.render(sampled.state, sampled.frame), options.width, options.height, {
+            theme,
+            background,
+            watermark: options.watermark ?? options.brand,
+            onNodeDetected: (node) => {
+                edges.top ||= node.top < -0.5
+                edges.right ||= node.left + node.width > options.width + 0.5
+                edges.bottom ||= node.top + node.height > options.height + 0.5
+                edges.left ||= node.left < -0.5
+            },
+        })
+        const names = Object.keys(edges).filter((edge) => edges[edge as keyof typeof edges])
+        if (names.length) {
+            const overflow: OverflowResult = {
+                overflows: true, edges,
+                message: `Content overflows canvas at: ${names.join(', ')}. Increase the illustration dimensions.`,
+            }
+            throw new CanvasOverflowError(options.width, options.height, overflow, {
+                frameIndex: info.index, frameCount: info.count, time: info.time, label: sampled.frame.label,
+            })
+        }
+        const rendered = new Resvg(svg, {
+            fitTo: { mode: 'width', value: options.width * scale },
+            background: backgroundColor,
+        }).render()
+        if (rendered.width !== options.width * scale || rendered.height !== options.height * scale) {
+            throw new Error('All video frames must match the scaled canvas dimensions')
+        }
+        return rendered.pixels
+    }, {
+        ...options,
+        width: options.width * scale,
+        height: options.height * scale,
+        duration: animation.duration,
+    })
 }
 
 function abortError(): Error {

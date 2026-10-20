@@ -13,7 +13,7 @@
         <a class="release-pill" href="https://github.com/bvolpato/vizmatic/releases"><span class="status-dot"></span>Open source <span class="pill-divider">/</span> v{{VERSION}} <span aria-hidden="true">↗</span></a>
         <h1 id="hero-title">Your ideas.<br><span>Rendered.</span></h1>
         <p>Turn code into diagrams, charts, and animations. One editable TSX scene. Dark and light. Ready for your docs, your team, and your agents.</p>
-        <div class="cta-row"><a class="button primary" href="#component-browser">Explore components <span aria-hidden="true">↗</span></a><a class="button" href="agents.html">Set up your agent <span aria-hidden="true">→</span></a></div>
+        <div class="cta-row"><a class="button primary" href="#component-browser">Explore components <span aria-hidden="true">↗</span></a><a class="button" href="#video">Watch the film <span aria-hidden="true">▷</span></a><a class="text-link" href="agents.html">Set up your agent →</a></div>
         <div class="hero-install"><pre data-shiki="bash"><code>npm install -g vizmatic</code></pre><span>Node.js 20+ · MIT licensed</span></div>
       </div>
       <div class="hero-studio" id="featured-example">
@@ -25,6 +25,20 @@
       </div>
     </section>
     <div class="capability-strip"><div><span class="capability-icon">&lt;/&gt;</span>Editable TSX</div><div><span class="capability-icon">◐</span>Theme-aware</div><div><span class="capability-icon">✓</span>Layout diagnostics</div><div><span class="capability-icon">↗</span>Headless export</div></div>
+    <section id="video" class="section film-section" aria-labelledby="film-title">
+      <div class="section-intro"><div><div class="eyebrow">Made to move</div><h2 id="film-title">A little code.<br>A lot of motion.</h2></div><p>Watch a cloud of observations become a story. Staggered entrances, a line that draws itself, and a camera that knows where to look. Every frame comes from one editable TSX scene.</p></div>
+      <div class="film-player">
+        <div class="film-heading"><span><span class="status-dot"></span>From noise to signal</span><span>18 seconds · 720p · 30 fps · Silent</span></div>
+        <video id="showcaseVideo" controls playsinline preload="none" width="1280" height="720" poster="assets/video/signal-to-story_dark.png" aria-label="From noise to signal, a Vizmatic motion design example" aria-describedby="film-description">
+          <source src="assets/video/signal-to-story.mp4" type="video/mp4">
+          <track kind="captions" src="assets/video/signal-to-story.vtt" srclang="en" label="English descriptions">
+          <p><a href="assets/video/signal-to-story.mp4">Download the film</a> to watch it in your video player.</p>
+        </video>
+        <div class="film-chapters" role="group" aria-label="Film chapters"><button type="button" data-video-time="2" aria-controls="showcaseVideo"><span>01 / 0:02</span>Collect the observations <span aria-hidden="true">↗</span></button><button type="button" data-video-time="5" aria-controls="showcaseVideo"><span>02 / 0:05</span>Reveal the relationship <span aria-hidden="true">↗</span></button><button type="button" data-video-time="9.4" aria-controls="showcaseVideo"><span>03 / 0:09</span>Make it mean something <span aria-hidden="true">↗</span></button></div>
+      </div>
+      <div class="film-below"><div><p id="film-description">A least-squares fit through synthetic data, brought to life with typed timelines and parallel tracks. Press play, jump to a chapter, or make it yours.</p><div class="cta-row"><a class="button primary small" href="assets/video/signal-to-story.tsx" download="signal-to-story.tsx">Get the TSX source ↓</a><a class="button small" href="assets/video/signal-to-story.mp4" download>Download MP4 ↓</a></div></div><div class="film-recipe"><span class="card-kicker">Render your own</span><pre data-shiki="bash"><code>vizmatic video signal-to-story.tsx --theme dark --fps 30</code></pre><p>Use the current repository build and FFmpeg. <a href="https://github.com/bvolpato/vizmatic#mp4-export-and-mathematical-motion">Video export guide ↗</a></p></div></div>
+      <details class="film-transcript"><summary>Read the visual story</summary><p>The film opens with “Make the invisible click.” Twelve synthetic observations arrive in a chart. A least-squares trend line traces from left to right while a marker follows it. The camera moves closer, and a callout explains the fitted slope. The original observations remain visible. The closing frame reads “Give your ideas a little motion.”</p></details>
+    </section>
     <section id="component-browser" class="section home-component-section" aria-labelledby="component-heading">
       <div class="section-intro"><div><div class="eyebrow">Try the building blocks</div><h2 id="component-heading">Choose a component.<br>Make it your own.</h2></div><div><p>Explore {{COMPONENT_COUNT}} components. Edit chart data, route connectors, or start a canvas and arrange your own visual.</p><a class="text-link" href="playground.html">Open the visual builder →</a></div></div>
       {{COMPONENT_EXPLORER}}

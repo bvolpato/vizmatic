@@ -5,17 +5,17 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vizmatic | Your ideas, rendered</title>
-  <meta name="description" content="Compose diagrams, charts, and animated visuals in TSX. Explore runnable examples, render locally, or give your coding agent the Vizmatic skill.">
+  <meta name="description" content="Compose diagrams, charts, and smooth MP4 videos in TSX. Watch the motion design film, explore runnable examples, or give your coding agent the Vizmatic skill.">
   <meta name="theme-color" content="#0b0d16">
   <link rel="canonical" href="https://bvolpato.github.io/vizmatic/">
   <meta property="og:title" content="Vizmatic | Your ideas, rendered">
-  <meta property="og:description" content="Compose diagrams, charts, and animated visuals in TSX. Explore runnable examples, render locally, or give your coding agent the Vizmatic skill.">
+  <meta property="og:description" content="Compose diagrams, charts, and smooth MP4 videos in TSX. Watch the motion design film, explore runnable examples, or give your coding agent the Vizmatic skill.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bvolpato.github.io/vizmatic/">
   <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Vizmatic | Your ideas, rendered">
-  <meta name="twitter:description" content="Compose diagrams, charts, and animated visuals in TSX. Explore runnable examples, render locally, or give your coding agent the Vizmatic skill.">
+  <meta name="twitter:description" content="Compose diagrams, charts, and smooth MP4 videos in TSX. Watch the motion design film, explore runnable examples, or give your coding agent the Vizmatic skill.">
   <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="alternate" type="text/markdown" href="llms.txt" title="Agent documentation index">
@@ -60,7 +60,7 @@
         <a class="release-pill" href="https://github.com/bvolpato/vizmatic/releases"><span class="status-dot"></span>Open source <span class="pill-divider">/</span> v0.3.2 <span aria-hidden="true">↗</span></a>
         <h1 id="hero-title">Your ideas.<br><span>Rendered.</span></h1>
         <p>Turn code into diagrams, charts, and animations. One editable TSX scene. Dark and light. Ready for your docs, your team, and your agents.</p>
-        <div class="cta-row"><a class="button primary" href="#component-browser">Explore components <span aria-hidden="true">↗</span></a><a class="button" href="agents.html">Set up your agent <span aria-hidden="true">→</span></a></div>
+        <div class="cta-row"><a class="button primary" href="#component-browser">Explore components <span aria-hidden="true">↗</span></a><a class="button" href="#video">Watch the film <span aria-hidden="true">▷</span></a><a class="text-link" href="agents.html">Set up your agent →</a></div>
         <div class="hero-install"><pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">npm</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> install</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> -g</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> vizmatic</span></span></code></pre><span>Node.js 20+ · MIT licensed</span></div>
       </div>
       <div class="hero-studio" id="featured-example">
@@ -72,6 +72,20 @@
       </div>
     </section>
     <div class="capability-strip"><div><span class="capability-icon">&lt;/&gt;</span>Editable TSX</div><div><span class="capability-icon">◐</span>Theme-aware</div><div><span class="capability-icon">✓</span>Layout diagnostics</div><div><span class="capability-icon">↗</span>Headless export</div></div>
+    <section id="video" class="section film-section" aria-labelledby="film-title">
+      <div class="section-intro"><div><div class="eyebrow">Made to move</div><h2 id="film-title">A little code.<br>A lot of motion.</h2></div><p>Watch a cloud of observations become a story. Staggered entrances, a line that draws itself, and a camera that knows where to look. Every frame comes from one editable TSX scene.</p></div>
+      <div class="film-player">
+        <div class="film-heading"><span><span class="status-dot"></span>From noise to signal</span><span>18 seconds · 720p · 30 fps · Silent</span></div>
+        <video id="showcaseVideo" controls playsinline preload="none" width="1280" height="720" poster="assets/video/signal-to-story_dark.png" aria-label="From noise to signal, a Vizmatic motion design example" aria-describedby="film-description">
+          <source src="assets/video/signal-to-story.mp4" type="video/mp4">
+          <track kind="captions" src="assets/video/signal-to-story.vtt" srclang="en" label="English descriptions">
+          <p><a href="assets/video/signal-to-story.mp4">Download the film</a> to watch it in your video player.</p>
+        </video>
+        <div class="film-chapters" role="group" aria-label="Film chapters"><button type="button" data-video-time="2" aria-controls="showcaseVideo"><span>01 / 0:02</span>Collect the observations <span aria-hidden="true">↗</span></button><button type="button" data-video-time="5" aria-controls="showcaseVideo"><span>02 / 0:05</span>Reveal the relationship <span aria-hidden="true">↗</span></button><button type="button" data-video-time="9.4" aria-controls="showcaseVideo"><span>03 / 0:09</span>Make it mean something <span aria-hidden="true">↗</span></button></div>
+      </div>
+      <div class="film-below"><div><p id="film-description">A least-squares fit through synthetic data, brought to life with typed timelines and parallel tracks. Press play, jump to a chapter, or make it yours.</p><div class="cta-row"><a class="button primary small" href="assets/video/signal-to-story.tsx" download="signal-to-story.tsx">Get the TSX source ↓</a><a class="button small" href="assets/video/signal-to-story.mp4" download>Download MP4 ↓</a></div></div><div class="film-recipe"><span class="card-kicker">Render your own</span><pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">vizmatic</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> video</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> signal-to-story.tsx</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --theme</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> dark</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --fps</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> 30</span></span></code></pre><p>Use the current repository build and FFmpeg. <a href="https://github.com/bvolpato/vizmatic#mp4-export-and-mathematical-motion">Video export guide ↗</a></p></div></div>
+      <details class="film-transcript"><summary>Read the visual story</summary><p>The film opens with “Make the invisible click.” Twelve synthetic observations arrive in a chart. A least-squares trend line traces from left to right while a marker follows it. The camera moves closer, and a callout explains the fitted slope. The original observations remain visible. The closing frame reads “Give your ideas a little motion.”</p></details>
+    </section>
     <section id="component-browser" class="section home-component-section" aria-labelledby="component-heading">
       <div class="section-intro"><div><div class="eyebrow">Try the building blocks</div><h2 id="component-heading">Choose a component.<br>Make it your own.</h2></div><div><p>Explore 75 components. Edit chart data, route connectors, or start a canvas and arrange your own visual.</p><a class="text-link" href="playground.html">Open the visual builder →</a></div></div>
       <div class="component-explorer playground-tool" data-vizmatic-playground data-component-explorer data-vizmatic-playground-background="transparent" data-preview-zoom="content">
@@ -283,7 +297,7 @@
     <section class="section workflow-section" aria-labelledby="workflow-heading"><div class="section-intro"><div><div class="eyebrow">Built for your workflow</div><h2 id="workflow-heading">Good visuals.<br>Repeatable process.</h2></div><a class="text-link" href="benchmarks.html">See measured render results <span aria-hidden="true">→</span></a></div><div class="steps-grid"><article class="step-card"><span class="step-number">01</span><h3>Compose with meaning.</h3><p>Use semantic color tones and components that fit your story. Keep editable source next to your code.</p></article><article class="step-card"><span class="step-number">02</span><h3>Check before you share.</h3><p>Run diagnostics for layout, contrast, and assets. Inspect the rendered output in both themes.</p></article><article class="step-card"><span class="step-number">03</span><h3>Render anywhere.</h3><p>Export static assets in Node or CI. Use typed state timelines when your explanation needs motion.</p></article></div></section>
     <section id="onboarding" class="onboarding-band"><div class="section onboarding"><div class="onboarding-intro"><div class="eyebrow">The next idea starts here</div><h2>Your agent can<br>make this, too.</h2><p>Give it the components, the workflow, and a clear brief. Start with one prompt, or install the skill for future tasks.</p><div class="cta-row"><button class="button primary" type="button" data-copy-prompt>Copy agent prompt</button><a class="button" href="agents.html">Read the agent guide →</a></div></div><div class="skill-panel" id="skill"><span class="card-kicker">Portable agent skill</span><h3>One install. Your favorite agent.</h3><p>Instructions for Codex, Claude Code, Cursor, OpenCode, and other agents that support skills.</p><pre class="skill-command"><code id="skillCommand">npx skills add bvolpato/vizmatic --skill vizmatic -g -y</code><button class="code-copy-button" type="button" id="copySkillButton" aria-label="Copy skill install command">Copy</button></pre><div class="skill-agent-list"><span>Codex</span><span>Claude Code</span><span>Cursor</span><span>OpenCode</span></div><a class="text-link" href="agents.html#resources">Machine-readable resources →</a></div><details class="prompt-details"><summary>Read the full agent prompt <span aria-hidden="true">+</span></summary><pre class="prompt-preview"><code id="promptPreview"># Vizmatic agent prompt
 
-Use Vizmatic to create diagrams, figures, dashboards, presentation frames, and animated GIFs from React scene primitives. Render dark and light files locally or in CI.
+Use Vizmatic to create diagrams, figures, dashboards, presentation frames, animated GIFs, and MP4 videos from React scene primitives. Render dark and light files locally or in CI.
 
 ## Quick start
 
@@ -472,7 +486,9 @@ vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,lig
 
 ## Animated frames
 
-An animated module exports `createAnimation(theme)` for GIF output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every GIF frame.
+An animated module exports `createAnimation(theme)` for GIF or MP4 output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every frame.
+
+For smooth video, run `vizmatic video frames/lesson.tsx --out public/videos --theme dark --fps 30`. This requires FFmpeg with libx264; add `--audio narration.wav` for AAC audio. Exported canvas dimensions after `--scale` must be even integers. MP4 uses an opaque theme background by default and supports 1–120 fps independently of GIF cadence. The browser builder exports GIF; MP4 runs in Node.js. Use the current repository build for the video command, or `node dist/cli.js video` from the checkout. See `examples/videos/signal-to-story.tsx` for a finite 18-second film with parallel tracks, path tracing, camera motion, and a readable ending. Regenerate its website assets with `pnpm render:video`.
 
 ```tsx
 import React from &quot;react&quot;
@@ -692,9 +708,13 @@ Theme and render APIs:
 - `keyframe(value, label?)`: apply instant partial state update.
 - `parallel(tracks, label?)`: run property tracks concurrently; each track accepts `hold`, `tween`, and `keyframe` steps.
 - `sampleAnimation(animation, time)`: evaluate state at exact millisecond.
+- `sampleAnimationFrame(animation, time, { index, count, delay, fps })`: sample state and timeline context at an exact video timestamp.
 - `sampleAnimationFrames(animation, { fps? })`: return deterministic state/frame samples with GIF-compatible delays.
 - `analyzeAnimationCadence(animation, { fps? })`: return frame count, encoded duration, target interval, and delay range without rendering.
 - `renderAnimationGif(animation, options)`: stream timeline samples into GIF.
+- `renderAnimationVideo(animation, { width, height, outputPath, fps?, scale?, theme?, background?, watermark?, audioPath?, crf?, preset?, threads?, signal? })`: render typed TSX frames to H.264 MP4. Defaults to 30 fps and an opaque theme background; streams frames and checks overflow at each timestamp. FFmpeg is installed separately.
+- `renderRgbaVideo(renderFrame, { width, height, duration, outputPath, fps?, audioPath?, crf?, preset?, signal? })`: encode caller-painted RGBA frames without buffering the whole film.
+- `tracePolyline(points, progress)` and `pointAlongPath(points, progress)`: reveal and follow a path by arc length; `arcSwap(from, to, progress, options?)` exchanges positions along mirrored arcs; `smoothstep(progress)` clamps and eases progress.
 - `renderAnimationGifWithOutput(animation, options)`: same arguments and returns dimensions, input/encoded frame counts, delta-frame count, duration, and byte size.
 - `renderAnimatedGif(scenes, options)`: legacy `AnimatedScene[]` renderer for scene cuts and pixel transitions. It also accepts a defined animation.
 - `renderAnimatedGifWithOutput(scenes, options)`: same arguments as `renderAnimatedGif`; returns dimensions and encoding metrics.

@@ -1,7 +1,7 @@
 const baseUrl = 'https://bvolpato.github.io/vizmatic/'
 
 export const sitePages = [
-    { file: 'index.html', title: 'Vizmatic | Your ideas, rendered', description: 'Compose diagrams, charts, and animated visuals in TSX. Explore runnable examples, render locally, or give your coding agent the Vizmatic skill.' },
+    { file: 'index.html', title: 'Vizmatic | Your ideas, rendered', description: 'Compose diagrams, charts, and smooth MP4 videos in TSX. Watch the motion design film, explore runnable examples, or give your coding agent the Vizmatic skill.' },
     { file: 'components.html', title: 'Components | Vizmatic', description: 'Choose a Vizmatic component and see it render. Explore live examples, change visual settings, edit the TSX, and download the result.' },
     { file: 'playground.html', title: 'Builder | Vizmatic', description: 'Build diagrams and charts on an editable canvas. Arrange components, edit data, route connectors, save projects, and export PNG, SVG, or GIF.' },
     { file: 'agents.html', title: 'For agents | Vizmatic', description: 'Install the Vizmatic skill, use a verified render workflow, and discover machine-readable instructions and runnable component examples.' },

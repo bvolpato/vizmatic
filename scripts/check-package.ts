@@ -10,8 +10,8 @@ interface PackResult {
 
 const limits = {
     size: 2_500_000,
-    // Video export, checked teaching components, numerical helpers, and public types.
-    unpackedSize: 5_150_000,
+    // Video rendering, checked teaching components, motion helpers, and public types.
+    unpackedSize: 5_200_000,
     entryCount: 100,
 }
 

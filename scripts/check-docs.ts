@@ -73,6 +73,7 @@ const missing: string[] = []
 for (const ref of refs) {
     const cleanRef = ref.split('#')[0]?.split('?')[0]
     if (!cleanRef) continue
+    if (cleanRef === 'assets/video/signal-to-story.mp4' && !process.argv.includes('--require-video')) continue
     const target = join(root, 'docs', cleanRef)
     await access(target).catch(() => missing.push(ref))
 }

@@ -33,8 +33,13 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Build showcase media from source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pnpm render:video
       - run: pnpm render:examples
-      - run: pnpm docs:check
+      - run: pnpm docs:check --require-video
       - name: Ensure generated site is committed
         run: git diff --exit-code -- docs examples/README.md
       - uses: actions/configure-pages@v6

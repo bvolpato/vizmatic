@@ -5,6 +5,7 @@ import { catalogComponentCount, componentCatalog, type ComponentCatalogCategory 
 import { buildAgentDocs } from './build-agent-docs'
 import { applySiteShell, sitePages } from './site-shell'
 import { toPlaygroundExample } from './playground-example'
+import { renderVideoExample } from './render-video-example'
 
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
@@ -21,6 +22,7 @@ const agentsTemplatePath = 'docs/agents.template.html'
 const agentsOutPath = 'docs/agents.html'
 
 await mkdir('docs/assets/licenses', { recursive: true })
+await renderVideoExample(false)
 await Promise.all([
     copyFile('assets/THIRD_PARTY_LICENSES.md', 'docs/assets/THIRD_PARTY_LICENSES.md'),
     ...(await readdir('assets/licenses')).map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
@@ -294,6 +296,7 @@ function preparePage(template: string, file: string): string {
 }
 
 const searchIndex = [
+    { title: 'From noise to signal', description: 'Watch the motion design film and download its TSX source or MP4. Learn video export.', url: 'index.html#video', category: 'Video' },
     ...sitePages.map((page) => ({ title: page.title.split(' | ')[0], description: page.description, url: page.file, category: 'Page' })),
     ...componentCatalog.flatMap((category) => category.components.map((component) => ({
         title: component.name,

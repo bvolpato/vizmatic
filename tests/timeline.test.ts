@@ -6,12 +6,29 @@ import {
     keyframe,
     parallel,
     sampleAnimation,
+    sampleAnimationFrame,
     sampleAnimationFrames,
     tween,
     type AnimationTimelineStep,
 } from '../src/timeline'
 
 describe('animation timeline', () => {
+    it('samples exact caller timestamps with step context independently of GIF cadence', () => {
+        const animation = defineAnimation({
+            initial: { x: 0 },
+            timeline: [hold(25, 'ready'), tween({ x: 9 }, { duration: 75, label: 'move' })],
+            render: () => null,
+        })
+        const sampled = sampleAnimationFrame(animation, 1_000 / 30, { index: 2, count: 6, delay: 1_000 / 60, fps: 60 })
+        expect(sampled.state.x).toBeCloseTo(1)
+        expect(sampled.frame).toMatchObject({ time: 1_000 / 30, index: 2, count: 6, fps: 60, step: 1, label: 'move' })
+        expect(sampled.frame.stepProgress).toBeCloseTo(1 / 9)
+        expect(sampleAnimationFrame(animation, 200, { index: 0, count: 1, delay: 10, fps: 100 }).frame)
+            .toMatchObject({ time: 100, progress: 1, stepProgress: 1 })
+        expect(() => sampleAnimationFrame(animation, NaN, { index: 0, count: 1, delay: 10, fps: 100 }))
+            .toThrow('Animation sample time must be finite')
+    })
+
     it('samples holds, tweens, keyframes, and exact final state', () => {
         const animation = defineAnimation({
             initial: { x: 0, opacity: 0, phase: 'idle' },

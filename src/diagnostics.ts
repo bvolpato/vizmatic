@@ -331,7 +331,7 @@ function renderedTextNodes(nodes: SatoriNode[]): TextLayoutNode[] {
         const style = styleRecord(node.props.style)
         const fontSize = fontSizePixels(style.fontSize, inherited?.fontSize) ?? 16
         const textAlign = typeof style.textAlign === 'string' ? style.textAlign : (inherited?.textAlign ?? 'left')
-        const text = node.textContent?.trim()
+        const text = String(node.textContent ?? '').trim()
 
         if (text && node.width > 0 && node.height > 0) {
             const estimatedLines = Math.max(1, Math.round(node.height / Math.max(fontSize * 1.5, 1)))

@@ -396,6 +396,29 @@ export function sampleAnimation<S extends object>(animation: DefinedAnimation<S>
     return evaluateAnimation(animation, time).state
 }
 
+/** Samples an exact timestamp with caller-provided frame timing, without GIF cadence rounding. */
+export function sampleAnimationFrame<S extends object>(
+    animation: DefinedAnimation<S>,
+    requestedTime: number,
+    timing: Pick<AnimationFrameContext, 'index' | 'count' | 'delay' | 'fps'>,
+): SampledAnimationFrame<S> {
+    if (!Number.isFinite(requestedTime)) throw new Error('Animation sample time must be finite')
+    const time = Math.max(0, Math.min(animation.duration, requestedTime))
+    const evaluated = evaluateAnimation(animation, time)
+    return {
+        state: evaluated.state,
+        frame: {
+            ...timing,
+            time,
+            duration: animation.duration,
+            progress: time / animation.duration,
+            step: evaluated.step,
+            stepProgress: evaluated.stepProgress,
+            label: evaluated.label,
+        },
+    }
+}
+
 interface AnimationCadenceSchedule {
     times: number[]
     delays: number[]
@@ -451,22 +474,10 @@ export function sampleAnimationFrames<S extends object>(
     const cadence = animationCadence(animation.duration, fps)
     const count = cadence.times.length
 
-    return cadence.times.map((time, index) => {
-        const evaluated = evaluateAnimation(animation, time)
-        return {
-            state: evaluated.state,
-            frame: {
-                index,
-                count,
-                time,
-                duration: animation.duration,
-                delay: cadence.delays[index],
-                progress: time / animation.duration,
-                step: evaluated.step,
-                stepProgress: evaluated.stepProgress,
-                label: evaluated.label,
-                fps,
-            },
-        }
-    })
+    return cadence.times.map((time, index) => sampleAnimationFrame(animation, time, {
+        index,
+        count,
+        delay: cadence.delays[index],
+        fps,
+    }))
 }
