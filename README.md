@@ -638,6 +638,55 @@ to an empty array; following an empty path throws. These helpers let a lesson
 draw a curve, trace a computation graph, or exchange token positions while
 keeping the underlying numerical state explicit.
 
+`createCanvasComponents(painter)` provides reusable panels, labeled cards,
+matrices, token rows, and moving particles for a Canvas video renderer. Inject
+the renderer's drawing interface, including its containment and opacity
+scopes. Every component uses those methods, so host layout checks and shape
+metadata remain available. The components use no raw Canvas operations or
+raster intermediates.
+
+```ts
+import { createCanvasComponents, type CanvasPainter } from 'vizmatic'
+
+// The host supplies checked primitives. Scope callbacks must keep those
+// checks active, and opacity must restore drawing state with try/finally.
+function drawLesson<Shape>(painter: CanvasPainter<Shape>) {
+  const scene = createCanvasComponents(painter)
+  const node = scene.card({
+    x: 40, y: 40, width: 160, height: 68, label: 'query',
+    fill: '#18283b', stroke: '#63deec', textColor: '#fff',
+  })
+  scene.matrix({
+    values: [[1, -2], [3, 4]], x: 240, y: 40, cellSize: 80,
+    style: { fill: '#18283b', textColor: '#fff', fontSize: 26 },
+    cellStyle: (value) => ({ labelOpacity: value < 0 ? 0.5 : 1 }),
+  })
+  scene.tokenRow({
+    values: ['dogs', 'chase', 'cats'], centerX: 300, y: 240,
+    fill: '#18283b', textColor: '#fff', reveal: 0.6,
+  })
+  return node // Original host geometry, usable for connector anchors.
+}
+```
+
+Panels default to a container scope with 10 pixels of padding and a 14 pixel
+corner radius; pass `scope: 'label'` for a label-only scope. Cards center their
+label with a baseline offset of `fontSize * 0.34`. `opacity` affects the whole
+card; `labelOpacity` reveals the text independently. Panel and card geometry
+remains available at zero opacity. Finite opacity values are clamped to the
+range from zero to one before composing fades or token reveals. Non-finite
+opacity values throw. Matrices and token rows skip invisible
+cells or items. Matrix `format(value, row, column)` and
+`cellStyle(value, row, column)` customize individual cells without rebuilding
+the component.
+
+`layoutTokenRow(values, options)` returns `{ text, x, width }` items for shared
+layout and connector placement. Automatic widths use the literal spelling;
+pass `width` for fixed-width cards. `x` takes precedence over `centerX`.
+`tokenRow` adds staggered reveal, with each item's opacity equal to
+`clamp(reveal * itemCount - index, 0, 1)`. Use `particle({ points, progress,
+fill })` to move a marker by route length; endpoints remain unpainted.
+
 Use `renderMathSvg` to typeset TeX into standalone SVG paths for a canvas,
 figure, or video frame:
 
