@@ -235,15 +235,18 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
         const alpha = amount(opacity, 'Scatter opacity')
         const projected = points.map((point) => {
             positive(point.radius ?? radius, 'Scatter point radius')
-            return { ...plot.point(point.x, point.y), radius: point.radius ?? radius, color: point.color ?? color }
+            return {
+                ...plot.point(point.x, point.y), radius: point.radius ?? radius, color: point.color ?? color,
+                inDomain: point.x >= plot.xDomain[0] && point.x <= plot.xDomain[1]
+                    && point.y >= plot.yDomain[0] && point.y <= plot.yDomain[1],
+            }
         })
         const shapes: unknown[] = []
         if (alpha === 0) return shapes
-        const { x, y, width, height } = plot.bounds
         painter.opacity(alpha, () => {
             for (const point of projected) {
-                // Keep the complete mark inside the plot without hiding any ink from host checks.
-                if (point.x - point.radius < x || point.x + point.radius > x + width || point.y - point.radius < y || point.y + point.radius > y + height) continue
+                // Admit centers in the closed domain and expose the complete marker to host checks.
+                if (!point.inDomain) continue
                 shapes.push(painter.circle(point.x, point.y, point.radius, point.color))
             }
         })

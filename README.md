@@ -760,6 +760,12 @@ with the same checked methods plus `math`, `line`, `arrow`, `path`, and `connect
 Its `connect` method returns `{ from, to }` endpoints. No component bypasses the
 host's paint, containment, or opacity checks.
 
+Scatter markers with centers inside the closed data domains remain fully
+visible, including points on axis endpoints. Their circles can extend beyond
+the axis rectangle; the host audits that complete geometry. Leave room around
+the axes or pad the data domains when a surrounding container needs clearance.
+Centers outside the data domains are omitted.
+
 ```ts
 import { createTeachingCanvas, sampleFunction, stableSoftmax } from 'vizmatic'
 

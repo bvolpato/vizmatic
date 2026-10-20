@@ -157,7 +157,7 @@ describe('checked teaching Canvas compositions', () => {
         expect(host.events).toEqual([])
     })
 
-    it('keeps scatter marks within the plot and composes checked opacity', () => {
+    it('keeps in-domain scatter marks visible and composes checked opacity', () => {
         const host = recordingPainter()
         const scene = createTeachingCanvas(host.painter)
         const plot = scene.axes({ x: 100, y: 100, width: 200, height: 200, xDomain: [0, 10], yDomain: [0, 10] })
@@ -165,13 +165,38 @@ describe('checked teaching Canvas compositions', () => {
         const result = scene.scatter({ plot, opacity: 0.4, color: '#0ff', points: [
             { x: 5, y: 5 }, { x: 6, y: 4, radius: 11, color: '#f80' }, { x: -1, y: 3 }, { x: 0, y: 1 },
         ] })
-        expect(result).toEqual([{ x: 200, y: 200, radius: 7 }, { x: 220, y: 220, radius: 11 }])
+        expect(result).toEqual([{ x: 200, y: 200, radius: 7 }, { x: 220, y: 220, radius: 11 }, { x: 100, y: 280, radius: 7 }])
         expect(host.events).toEqual([
             { kind: 'circle', shape: result[0], fill: '#0ff', alpha: 0.4 },
             { kind: 'circle', shape: result[1], fill: '#f80', alpha: 0.4 },
+            { kind: 'circle', shape: result[2], fill: '#0ff', alpha: 0.4 },
         ])
         expect(host.alpha()).toBe(1)
         expect(scene.scatter({ plot, points: [{ x: 1, y: 1 }], opacity: 0 })).toEqual([])
+    })
+
+    it('paints complete markers on every domain edge and corner without moving their centers', () => {
+        const host = recordingPainter()
+        const scene = createTeachingCanvas(host.painter)
+        const plot = scene.axes({ x: 100, y: 100, width: 200, height: 200, xDomain: [0, 10], yDomain: [0, 10] })
+        host.events.length = 0
+        const points = [
+            { x: 0, y: 0 }, { x: 0, y: 10 }, { x: 10, y: 0 }, { x: 10, y: 10 },
+            { x: 0, y: 5 }, { x: 10, y: 5 }, { x: 5, y: 0 }, { x: 5, y: 10 },
+            { x: 0.1, y: 5, radius: 20 },
+        ]
+        const marks = scene.scatter({ plot, points })
+        expect(marks).toEqual(points.map(({ x, y, radius = 7 }) => ({ ...plot.point(x, y), radius })))
+        expect(host.events.map(({ kind }) => kind)).toEqual(points.map(() => 'circle'))
+        expect(scene.scatter({ plot, points: [{ x: -0.1, y: 5 }, { x: 10.1, y: 5 }, { x: 5, y: -0.1 }, { x: 5, y: 10.1 }] })).toEqual([])
+    })
+
+    it('admits endpoints in data coordinates despite fractional pixel roundoff', () => {
+        const host = recordingPainter()
+        const scene = createTeachingCanvas(host.painter)
+        const plot = scene.axes({ x: 0.3, y: 0.3, width: 0.6, height: 0.6, xDomain: [0, 1], yDomain: [0, 1] })
+        expect(plot.point(0, 1).y).toBeLessThan(plot.bounds.y)
+        expect(scene.scatter({ plot, points: [{ x: 0, y: 1 }] })).toEqual([{ ...plot.point(0, 1), radius: 7 }])
     })
 
     it('animates positive bars from a shared baseline and retains zero-value indices', () => {
