@@ -825,6 +825,44 @@ Supply `{ x, y, width, height, rows, columns }`; returns
 `{ shape, bounds, cells, cell(row, column) }`. Connect to the painted `shape`;
 cells are label/math geometry. `layoutCellGrid` returns layout without paint.
 
+`timeline` draws supplied intervals on named lanes. One `time` controls elapsed
+fills, completion flags, and the axis cursor. Intervals on the same lane must
+not overlap; use separate lanes for concurrent work. Bounds include the lane
+labels and time axis. Labels occupy their full planned span above the fill;
+omit labels on spans too narrow for the chosen font. Future intervals paint
+nothing, and visible interval labels use the same local opacity as their fill.
+
+`allocation` draws a capacity-scaled strip and a value ledger from the same
+nonnegative parts. Unused capacity remains visible; over-allocation throws.
+Supply bounds tall enough for the header, strip, and one row per part plus Free.
+`format` and `unit` apply to the computed totals and ledger values.
+
+```ts
+const trace = charts.timeline({
+  x: 140, y: 260, width: 1640, height: 300, domain: [0, 100], time: 50,
+  lanes: [{ id: 'cpu', label: 'CPU' }, { id: 'gpu', label: 'GPU' }],
+  intervals: [
+    { id: 'submit', lane: 'cpu', start: 0, end: 20, label: 'Submit' },
+    { id: 'kernel', lane: 'gpu', start: 20, end: 80, label: 'Kernel' },
+  ],
+})
+const memory = charts.allocation({
+  x: 260, y: 650, width: 1400, height: 370, capacity: 100, unit: 'GB',
+  parts: [{ id: 'weights', label: 'Weights', value: 20 },
+          { id: 'state', label: 'Optimizer state', value: 30 }],
+})
+// trace.intervals.kernel.elapsed === 30; memory.remaining === 50
+```
+
+Timeline results expose `time`, `point(time)` (the canvas x coordinate), live
+lane shapes, and ID-keyed intervals with `shape`, `bounds`, `elapsed`,
+`complete`, and local `opacity`.
+Zero elapsed time or zero opacity returns a null interval shape. Allocation
+returns `used`, `remaining`, capacity-strip `bounds`, `freeBounds`, ordered
+part geometry, the painted strip `shape`, and per-part `shapes` (null at zero
+area). Connect only to those painted references. `layoutAllocation` computes
+pure strip geometry for custom diagrams, with the supplied bounds as the strip.
+
 `createCueTrack` holds one simulation snapshot until an explicit beat cue.
 Sample once and derive tables, metrics and decisions from that same snapshot.
 

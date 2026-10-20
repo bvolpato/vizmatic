@@ -7,6 +7,8 @@ import {
 import { tracePolyline } from './motion'
 import { createTeachingTransfer } from './teaching-transfer'
 import { createTeachingGrid } from './teaching-grid'
+import { createTeachingTimeline } from './teaching-timeline'
+import { createTeachingAllocation } from './teaching-allocation'
 
 export interface TeachingPathOptions {
     color?: string
@@ -322,5 +324,5 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
         return { nodes: descriptors, routes }
     }
 
-    return { axes, curve, scatter, bars, flowGraph, transfer: createTeachingTransfer(painter), grid: createTeachingGrid(painter) }
+    return { axes, curve, scatter, bars, flowGraph, transfer: createTeachingTransfer(painter), grid: createTeachingGrid(painter), timeline: createTeachingTimeline(painter), allocation: createTeachingAllocation(painter) }
 }
