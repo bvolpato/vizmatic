@@ -5,6 +5,8 @@ import {
     type CanvasPoint,
 } from './canvas-components'
 import { tracePolyline } from './motion'
+import { createTeachingTransfer } from './teaching-transfer'
+import { createTeachingGrid } from './teaching-grid'
 
 export interface TeachingPathOptions {
     color?: string
@@ -320,5 +322,5 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
         return { nodes: descriptors, routes }
     }
 
-    return { axes, curve, scatter, bars, flowGraph }
+    return { axes, curve, scatter, bars, flowGraph, transfer: createTeachingTransfer(painter), grid: createTeachingGrid(painter) }
 }

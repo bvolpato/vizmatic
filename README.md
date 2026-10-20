@@ -799,6 +799,53 @@ geometry metadata onto the connector references. The returned `{ nodes, routes }
 supports subsequent annotations and movement. Keep topic-specific numerical
 models in the lesson; share their chart and graph composition through this API.
 
+`transfer` coordinates an attached connector and optional particle. Supply each
+painted card and its matching local opacity. Both marks use the minimum endpoint
+and edge opacity; a shared host frame scope multiplies that opacity once.
+
+```ts
+const route = charts.transfer({
+  source: { shape: source, opacity: 1 }, target: { shape: target, opacity: 0.6 },
+  progress: 0.5, color: '#63deec', particle: { radius: 9, fill: '#ffce73' },
+})
+```
+
+Hidden endpoints return `null`; progress outside `(0, 1)` omits the particle.
+Gaps clear both cards by the marker/stroke extent plus `margin` (default 2),
+preserving larger requests. Coincident centers or insufficient room throw.
+The host must anchor rounded cards along their center ray and offset gaps along
+that ray. Original routes and shape references retain audit evidence; the host
+still checks intervening obstacles.
+
+`grid` uses one panel and `rows + columns - 2` paths. `lineWidth` controls internal
+lines; the border uses the host's rectangle stroke. Highlights and literal text
+labels stay scoped; label dimensions must match the grid.
+
+Supply `{ x, y, width, height, rows, columns }`; returns
+`{ shape, bounds, cells, cell(row, column) }`. Connect to the painted `shape`;
+cells are label/math geometry. `layoutCellGrid` returns layout without paint.
+
+`createCueTrack` holds one simulation snapshot until an explicit beat cue.
+Sample once and derive tables, metrics and decisions from that same snapshot.
+
+```ts
+import { createCueTrack } from 'vizmatic'
+
+const cutoffs = createCueTrack({
+  initial: { id: 'morning', snapshot: { cutoff: 540, ageHours: 8 } },
+  cues: [
+    { id: 'noon', beat: 3, at: 0.2, snapshot: { cutoff: 720, ageHours: 3.5 } },
+  ],
+})
+const { id, snapshot } = cutoffs.sample({ beat: state.beat, beatP: state.beatP })
+```
+
+Cue IDs are unique and positions increase strictly. Commits are inclusive;
+beat-end `1` equals next-beat `0`. End snapshots hold outside the cues. Beats are
+nonnegative safe integers; progress is `[0, 1]`. Definitions are copied and result
+records frozen; snapshots retain identity without mutation or cloning. Treat
+snapshots as immutable. The timeline still owns audio timing and motion.
+
 Numerical helpers include `seededRandom(seed)`, `lerpArray`, `dotProduct`,
 `multiplyMatrices`, `stableSoftmax(values, temperature)`, `entropy`,
 `normalizeVector`, `sampleFunction`, `gaussian(mean, sigma, x)`, and
