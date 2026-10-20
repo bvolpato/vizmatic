@@ -687,6 +687,58 @@ pass `width` for fixed-width cards. `x` takes precedence over `centerX`.
 `clamp(reveal * itemCount - index, 0, 1)`. Use `particle({ points, progress,
 fill })` to move a marker by route length; endpoints remain unpainted.
 
+`createTeachingCanvas(painter)` adds checked axes, traced curves, scatter plots,
+positive bar charts, and explicit-layout flow graphs. Supply a `TeachingPainter`
+with the same checked methods plus `math`, `line`, `arrow`, `path`, and `connect`.
+Its `connect` method returns `{ from, to }` endpoints. No component bypasses the
+host's paint, containment, or opacity checks.
+
+```ts
+import { createTeachingCanvas, sampleFunction, stableSoftmax } from 'vizmatic'
+
+const charts = createTeachingCanvas(painter)
+const plot = charts.axes({
+  x: 160, y: 140, width: 640, height: 360,
+  xDomain: [-3, 3], yDomain: [0, 1],
+  xTicks: [-3, 0, 3], yTicks: [0, 0.5, 1],
+  xLabel: 'Input', yLabel: 'Probability', gridColor: '#283447',
+})
+charts.curve({
+  plot, points: sampleFunction(x => 1 / (1 + Math.exp(-x)), -3, 3),
+  color: '#63deec', progress: 0.7,
+})
+charts.bars({
+  x: 980, y: 140, width: 480, height: 360,
+  values: stableSoftmax([2, 1, 0]), labels: ['cat', 'dog', 'bird'], max: 1,
+})
+```
+
+Axes return `{ point(x, y), bounds, xDomain, yDomain }`; plot bounds contain the
+data marks, while tick labels and titles occupy space outside the plot. Use
+`axes({ ..., equalUnits: true })` to preserve angles and distances. This
+fits both requested domains at equal pixels per data unit and centers the
+resulting plot inside the requested rectangle. Returned bounds, axes, labels,
+point projection, and curve clipping use that fitted plot. The default fills
+the requested rectangle with independent horizontal and vertical scales. Curves
+return the visible mapped polyline and delegate clipping to the checked host.
+Scatter omits circles whose complete mark would extend beyond the plot.
+Bars accept nonnegative values and return `{ bars, slots, bounds }`, preserving
+input indices with `null` for zero-height bars. `slots` describe full-height
+columns, including zero values. Progress is clamped to the unit interval.
+
+`flowGraph({ nodes, edges })` takes explicit node bounds and ID-based edges. It
+draws edges and optional moving particles behind the cards, then transfers host
+geometry metadata onto the connector references. The returned `{ nodes, routes }`
+supports subsequent annotations and movement. Keep topic-specific numerical
+models in the lesson; share their chart and graph composition through this API.
+
+Numerical helpers include `seededRandom(seed)`, `lerpArray`, `dotProduct`,
+`multiplyMatrices`, `stableSoftmax(values, temperature)`, `entropy`,
+`normalizeVector`, `sampleFunction`, `gaussian(mean, sigma, x)`, and
+`sampleGaussian(random)`. Softmax subtracts the largest logit before scaling;
+entropy accepts normalized probabilities; normalization preserves zero vectors.
+Seeded sampling makes simulations reproducible during rendering and review.
+
 Use `renderMathSvg` to typeset TeX into standalone SVG paths for a canvas,
 figure, or video frame:
 

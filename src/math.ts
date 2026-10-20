@@ -18,7 +18,7 @@ export interface RenderMathSvgResult {
     svg: string
     width: number
     height: number
-    /** Baseline position in pixels from the top edge of the SVG. */
+    /** Baseline from the SVG top, possibly outside the ink bounds for isolated symbols. */
     baseline: number
 }
 
@@ -113,7 +113,7 @@ export function renderMathSvg(tex: string, options: RenderMathSvgOptions = {}): 
 
     const [, viewBoxY, , viewBoxHeight] = parseViewBox(adaptor.getAttribute(svgElement, 'viewBox'))
     const baseline = -viewBoxY * height / viewBoxHeight
-    if (!Number.isFinite(baseline) || baseline < 0 || baseline > height) {
+    if (!Number.isFinite(baseline)) {
         throw new Error('MathJax returned an invalid SVG baseline')
     }
 

@@ -39,6 +39,18 @@ describe('MathJax SVG rendering', () => {
         expect(display.baseline).toBeLessThan(display.height)
     })
 
+    it('keeps an isolated operator baseline below its tight SVG ink bounds', () => {
+        const result = renderMathSvg(String.raw`\times`, { fontSize: 48 })
+        expect(result.baseline).toBeGreaterThan(result.height)
+        expect(Number.isFinite(result.baseline)).toBe(true)
+        const rendered = new Resvg(result.svg, { font: { loadSystemFonts: false } }).render()
+        expect(rendered.width).toBeGreaterThan(0)
+        expect(rendered.height).toBeGreaterThan(0)
+        expect(rendered.pixels.some((value, index) => index % 4 === 3 && value > 0)).toBe(true)
+        const larger = renderMathSvg(String.raw`\times`, { fontSize: 96 })
+        expect(larger.baseline).toBeCloseTo(result.baseline * 2)
+    })
+
     it('renders AMS matrices, cases, aligned equations, and isolated new commands', () => {
         const expressions = [
             String.raw`\begin{bmatrix}a & b \\ c & d\end{bmatrix}`,
