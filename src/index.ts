@@ -18,6 +18,10 @@ export type { TeachingTransferEndpoint, TeachingTransferOptions } from './teachi
 export * from './camera-motion'
 export * from './path-morph'
 export * from './video'
+export { renderSceneFrame, renderSceneVideo } from './scene-renderer'
+export type { RenderSceneFrameOptions, RenderSceneVideoOptions, SceneRenderOutput } from './scene-renderer'
+export { evaluateSceneSource, prepareScene, SCENE_RUNTIME_VERSION, SCENE_LIMITS } from './scene-runtime'
+export type { SceneRequest, SceneFrameRequest, EvaluatedSceneFrame, PreparedScene } from './scene-runtime'
 export * from './autocrop'
 export * from './brand'
 export type {

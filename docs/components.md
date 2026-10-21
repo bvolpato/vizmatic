@@ -1,6 +1,6 @@
 # Vizmatic components
 
-Package: vizmatic@0.3.2. Catalog: 75 runnable examples across 11 categories.
+Package: vizmatic@0.4.0. Catalog: 75 runnable examples across 11 categories.
 
 Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 

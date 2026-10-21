@@ -9,9 +9,9 @@ interface PackResult {
 }
 
 const limits = {
-    size: 2_500_000,
-    // Video rendering, checked teaching components, motion helpers, and public types.
-    unpackedSize: 5_250_000,
+    // Safe-scene evaluator/CLI and its ESM/CJS types join the existing renderers.
+    size: 2_600_000,
+    unpackedSize: 5_600_000,
     entryCount: 100,
 }
 

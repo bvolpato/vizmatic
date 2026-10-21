@@ -151,8 +151,10 @@ export function extractRootJsx(source: string): string {
     return (end == null ? body : body.slice(0, end)).trim()
 }
 
-export function findBareRootJsxStart(source: string): number {
-    const candidates = source.matchAll(/(^|\n)([\t ]*)(?:(?:export\s+default\s+)?(?:\(\s*)*)(<(?:[A-Z]|>))/g)
+export function findBareRootJsxStart(source: string, allowNativeTags = false): number {
+    const candidates = source.matchAll(allowNativeTags
+        ? /(^|\n)([\t ]*)(?:(?:export\s+default\s+)?(?:\(\s*)*)(<(?:[A-Za-z]|>))/g
+        : /(^|\n)([\t ]*)(?:(?:export\s+default\s+)?(?:\(\s*)*)(<(?:[A-Z]|>))/g)
     for (const candidate of candidates) {
         if (candidate.index == null) continue
         const lineStart = candidate.index + (candidate[1]?.length ?? 0)

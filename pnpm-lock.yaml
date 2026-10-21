@@ -10,6 +10,7 @@ overrides:
   esbuild: 0.28.2
   fflate: 0.7.5
   nanoid@<3.3.17: 3.3.18
+  vite@>=7.0.0 <7.3.7: 7.3.7
 
 importers:
 
@@ -30,12 +31,18 @@ importers:
       parse-css-color:
         specifier: 0.2.1
         version: 0.2.1
+      quickjs-emscripten:
+        specifier: 0.32.0
+        version: 0.32.0
       react:
         specifier: ^19.2.8
         version: 19.3.0
       satori:
         specifier: 0.41.0
         version: 0.41.0
+      sucrase:
+        specifier: 3.35.1
+        version: 3.35.1
       tsx:
         specifier: ^4.23.12
         version: 4.23.15
@@ -67,9 +74,6 @@ importers:
       shiki:
         specifier: ^4.5.0
         version: 4.5.0
-      sucrase:
-        specifier: 3.35.1
-        version: 3.35.1
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.29)(tsx@4.23.15)(typescript@6.0.3)
@@ -78,7 +82,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.6.4)(vite@7.3.6(@types/node@26.6.4)(tsx@4.23.15))
+        version: 5.0.3(@types/node@26.6.4)(vite@7.3.7(@types/node@26.6.4)(tsx@4.23.15))
 
 packages:
 
@@ -247,6 +251,21 @@ packages:
   '@isaacs/fs-minipass@4.0.1':
     resolution: {integrity: sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==}
     engines: {node: '>=18.0.0'}
+
+  '@jitl/quickjs-ffi-types@0.32.0':
+    resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
+
+  '@jitl/quickjs-wasmfile-debug-asyncify@0.32.0':
+    resolution: {integrity: sha512-EX8zbXwGqCgAE764M+qvkHtyXDi/FUoMBea0JnES7vCM3P7a2+EOZOjGv85wtZ2sJhI1oJ+nekmqpOODFDY+hw==}
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.32.0':
+    resolution: {integrity: sha512-LeYWrPGC1uNCTBWvibo3ZLJj0CSVNYUXvJpXMCmuQ5Sap2cCACc3uvGvYV4homHHBAzfw5akoTqMMS4YFRtw+Q==}
+
+  '@jitl/quickjs-wasmfile-release-asyncify@0.32.0':
+    resolution: {integrity: sha512-3oSwPfja12ICz4aIblB58cuY8JlEq5Txt8Cut4VLo+LH47QN+mzCnSgnbB03hWzg1LBcc+VyyI9UOag7a1NF+Q==}
+
+  '@jitl/quickjs-wasmfile-release-sync@0.32.0':
+    resolution: {integrity: sha512-BKNDI/TPBfGlLNGYpLrhcDGXmIk4xHm4MRAisOBnOzpXVn9HZWsfmMAc9WMBrAHjvvds6HOikKeaOBKdPdpVrg==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -702,7 +721,7 @@ packages:
     resolution: {integrity: sha512-T8sWAIbkSyAjkwTcaEc3Iu0o9A27X1/kdXrizhZkGuSKScRQtRzclfAMpOTcGdXCsqxeWlpGy3XjqaW8CpLORg==}
     peerDependencies:
       msw: ^2.4.9
-      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+      vite: 7.3.7
     peerDependenciesMeta:
       msw:
         optional: true
@@ -1058,6 +1077,13 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  quickjs-emscripten-core@0.32.0:
+    resolution: {integrity: sha512-QFnPfjFey8EqknSrSxe1hZrf1/8z7/6s1QzGOmKo6++02r7QRRX7ZoyNaZh7JuVjWsVW87KnQrbZqnHkOAzUyg==}
+
+  quickjs-emscripten@0.32.0:
+    resolution: {integrity: sha512-So0Sqw869y/S2oE3Nuc0uT3Dhqgvsj8FSrwBdsuTosVsG8ME5/OcudU1GxsrIFdFABgy17GHnTVO9TYV/bLQcA==}
+    engines: {node: '>=16.0.0'}
+
   react@19.3.0:
     resolution: {integrity: sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==}
     engines: {node: '>=0.10.0'}
@@ -1228,8 +1254,8 @@ packages:
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
 
-  vite@7.3.6:
-    resolution: {integrity: sha512-4XP60spRGjSZFf1qYH+dJIkK2znL3zQfl9KkOV9MkkRR/3Dls0dxaBsQPTloEc5BLXWPL9vsOxopxyKoMmDueg==}
+  vite@7.3.7:
+    resolution: {integrity: sha512-AHEzTORMbi7/7aXp7w7KZ5+DCUdSeLsJz0grY8xHpc9DHdYb0vQu6DqJfm2tOw3gDExNgPgnJTXxM6syYFHaCA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -1284,7 +1310,7 @@ packages:
       '@vitest/ui': 5.0.3
       happy-dom: '*'
       jsdom: '*'
-      vite: ^6.4.0 || ^7.0.0 || ^8.0.0
+      vite: 7.3.7
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -1413,6 +1439,24 @@ snapshots:
   '@isaacs/fs-minipass@4.0.1':
     dependencies:
       minipass: 7.1.3
+
+  '@jitl/quickjs-ffi-types@0.32.0': {}
+
+  '@jitl/quickjs-wasmfile-debug-asyncify@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+
+  '@jitl/quickjs-wasmfile-debug-sync@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+
+  '@jitl/quickjs-wasmfile-release-asyncify@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+
+  '@jitl/quickjs-wasmfile-release-sync@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -1714,14 +1758,14 @@ snapshots:
 
   '@ungap/structured-clone@1.4.0': {}
 
-  '@vitest/mocker@5.0.3(vite@7.3.6(@types/node@26.6.4)(tsx@4.23.15))':
+  '@vitest/mocker@5.0.3(vite@7.3.7(@types/node@26.6.4)(tsx@4.23.15))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.0.3
       estree-walker: 3.0.3
       magic-string: 1.4.2
     optionalDependencies:
-      vite: 7.3.6(@types/node@26.6.4)(tsx@4.23.15)
+      vite: 7.3.7(@types/node@26.6.4)(tsx@4.23.15)
 
   '@vitest/spy@5.0.3': {}
 
@@ -2038,6 +2082,18 @@ snapshots:
       picocolors: 1.1.1
       sade: 1.8.1
 
+  quickjs-emscripten-core@0.32.0:
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
+
+  quickjs-emscripten@0.32.0:
+    dependencies:
+      '@jitl/quickjs-wasmfile-debug-asyncify': 0.32.0
+      '@jitl/quickjs-wasmfile-debug-sync': 0.32.0
+      '@jitl/quickjs-wasmfile-release-asyncify': 0.32.0
+      '@jitl/quickjs-wasmfile-release-sync': 0.32.0
+      quickjs-emscripten-core: 0.32.0
+
   react@19.3.0: {}
 
   readdirp@4.1.2: {}
@@ -2292,7 +2348,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@7.3.6(@types/node@26.6.4)(tsx@4.23.15):
+  vite@7.3.7(@types/node@26.6.4)(tsx@4.23.15):
     dependencies:
       esbuild: 0.28.2
       fdir: 6.5.0(picomatch@4.0.7)
@@ -2305,10 +2361,10 @@ snapshots:
       fsevents: 2.3.3
       tsx: 4.23.15
 
-  vitest@5.0.3(@types/node@26.6.4)(vite@7.3.6(@types/node@26.6.4)(tsx@4.23.15)):
+  vitest@5.0.3(@types/node@26.6.4)(vite@7.3.7(@types/node@26.6.4)(tsx@4.23.15)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.0.3(vite@7.3.6(@types/node@26.6.4)(tsx@4.23.15))
+      '@vitest/mocker': 5.0.3(vite@7.3.7(@types/node@26.6.4)(tsx@4.23.15))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -2319,7 +2375,7 @@ snapshots:
       tinybench: 6.2.0
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 7.3.6(@types/node@26.6.4)(tsx@4.23.15)
+      vite: 7.3.7(@types/node@26.6.4)(tsx@4.23.15)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 26.6.4

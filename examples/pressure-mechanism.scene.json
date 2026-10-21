@@ -1,0 +1,14 @@
+{
+    "width": 960,
+    "height": 540,
+    "duration": 8,
+    "fps": 30,
+    "theme": "dark",
+    "seed": 0,
+    "cues": {
+        "heat": 1,
+        "pressure": 3,
+        "release": 5.5
+    },
+    "source": "const heat = ease(cue('heat', 2));\nconst pressure = ease(cue('pressure', 2));\nconst release = easeOut(cue('release', 1.4));\nfunction Label({x,y,text,color=c.textPrimary,size=24}) { return <text x={x} y={y} fill={color} fontFamily='Inter' fontSize={size} textAnchor='middle'>{text}</text>; }\n<svg width={width} height={height} viewBox='0 0 960 540'>\n <rect width={960} height={540} fill={c.bg}/>\n <Label x={480} y={54} text='An animated mechanism, not a slide' size={32}/>\n <Label x={480} y={97} text='Heat → pressure → release' color={c.textSecondary} size={22}/>\n <rect x={360} y={165} width={240} height={240} rx={35} fill={c.bgCard} stroke={c.border} strokeWidth={3}/>\n <rect x={375} y={lerp(365,245,heat)} width={210} height={lerp(25,145,heat)} rx={20} fill={c.warning} opacity={0.25+heat*0.5}/>\n {Array.from({length:18},(_,i) => {const a=i*2.399; const r=35+(i%4)*17;return <circle key={i} cx={480+Math.cos(a+time*(0.15+heat*0.3))*r} cy={285+Math.sin(a+time*(0.15+heat*0.3))*r*(1-pressure*0.4)} r={5} fill={c.infoLight}/>;})}\n <g opacity={pressure*(1-release)}><VectorArrow x1={420} y1={285} x2={385} y2={285} color={c.warningLight}/><VectorArrow x1={540} y1={285} x2={575} y2={285} color={c.warningLight}/></g>\n <g transform={`translate(0 ${-release*25})`}><rect x={350} y={153} width={260} height={20} rx={10} fill={c.textSecondary}/></g>\n <g opacity={release}><VectorArrow x1={455} y1={230} x2={455} y2={115+release*5} color={c.infoLight}/><VectorArrow x1={505} y1={230} x2={505} y2={115+release*5} color={c.infoLight}/></g>\n <Label x={480} y={456} text={release>0.1?'Release changes the system':pressure>0.1?'Pressure rises inside the container':'Heat drives particle motion'} size={25}/>\n <rect x={180} y={487} width={600} height={5} rx={2} fill={c.border}/><rect x={180} y={487} width={600*progress} height={5} rx={2} fill={c.info}/>\n</svg>"
+}

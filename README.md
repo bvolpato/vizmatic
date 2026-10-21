@@ -261,6 +261,90 @@ Published packages include Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and
 
 The complete Twemoji set stays available offline but ships as one Brotli bundle instead of 3,720 individual SVG files. `pnpm deps:check` keeps the package below 2.5 MB compressed, 5 MB unpacked, and 100 files.
 
+## Editable scenes for video applications
+
+Use `vizmatic-scene` when an application stores editable TSX from a user or an
+agent. The regular `vizmatic` CLI loads trusted Node modules; it is not the entry
+point for running editable source inside an application.
+
+```bash
+vizmatic-scene --input examples/pressure-mechanism.scene.json --output pressure.mp4
+```
+
+The JSON request contains `source`, `width`, `height`, `duration`, optional `fps`
+(24 by default), `theme`, `cues`, `seed`, and optional preview `time`. All times
+are **seconds**. Output is PNG for an exact preview time or a silent H.264 MP4.
+FFmpeg must be on PATH for MP4. Narration, captions and final assembly remain the
+calling application's responsibility.
+
+```ts
+import { renderSceneFrame, renderSceneVideo } from 'vizmatic'
+
+const scene = {
+    width: 1920, height: 1080, duration: 12, fps: 24, theme: 'dark' as const,
+    cues: { reveal: 3.2 }, seed: 0,
+    source: `const amount = ease(cue('reveal', 2));
+<svg width={width} height={height}>
+    <rect width={width} height={height} fill={c.bg}/>
+    <circle cx={lerp(300, 1600, amount)} cy={540} r={70} fill={c.info}/>
+    <text x={150} y={200} fontSize={64} fill={c.textPrimary}>Follow the mechanism</text>
+</svg>`,
+}
+await renderSceneFrame({ ...scene, time: 4, outputPath: './preview.png' })
+await renderSceneVideo({ ...scene, outputPath: './scene.mp4' })
+```
+
+Source uses local JavaScript/TypeScript declarations and helper components followed
+by one JSX root. Imports, exports and module wrappers are not supported. Vizmatic
+JSX primitives are provided automatically. SVG geometry and `<text>`/`<tspan>` use
+the bundled fonts through Resvg, including inside HTML layouts. `Scene`, `Board`,
+`CanvasItem`, charts and other trusted Vizmatic components use the same rendering
+path in previews and video frames. Function-valued props are unsupported; calculate
+formatted values and geometry in the source before returning JSX.
+
+| Source value | Meaning |
+| --- | --- |
+| `width`, `height` | Exact output canvas dimensions |
+| `time` / `t`, `duration` | Current position and narration duration in seconds |
+| `progress`, `frame`, `fps` | Normalized progress, zero-based frame and cadence |
+| `theme`, `c` | Theme name and frozen Vizmatic theme colors |
+| `cues` | Named narration cue positions in seconds |
+| `seed`, `Math.random()` | Explicit uint32 seed and deterministic random sequence |
+| `clamp(x, min=0, max=1)`, `lerp(a,b,p)` | Clamp and linear interpolation |
+| `ease(p)`, `easeInOut(p)`, `easeOut(p)` | Clamped smoothstep and cubic ease-out |
+| `cue(name, span=1)` | Progress from a named cue over a span in seconds |
+
+A missing named cue fails preparation rather than inventing a timing. Applications
+should resolve production cues against actual narration and label estimated preview
+cues as estimates. Source can be evaluated without Node rendering through
+`evaluateSceneSource` or `prepareScene` from `vizmatic/scene-runtime`, suitable for
+a browser Worker. The same evaluator produces a validated JSON scene graph in both
+environments.
+
+Editable JavaScript executes inside QuickJS WebAssembly with no host objects,
+callbacks, filesystem, network, browser storage or module loader. Each frame gets
+a fresh context, a 64 MiB guest memory limit, a 256 KiB stack and a 250 ms evaluation
+deadline. Only bounded JSON reaches trusted components. External image references,
+resource URLs, event handlers, raw HTML and executable props are rejected. The
+renderer uses fingerprinted package fonts and emoji assets, with no environment
+overrides, system fonts or network fallback. Local SVG fragment references work.
+
+Limits are 128 KiB of source, 2 MiB of serialized graph, 2,000 JSX elements, 64
+levels of nesting, at most 1,920 pixels per edge and 2,073,600 pixels per canvas,
+120 seconds per scene, 1–60 fps and 3,600 frames. Nested SVGs also share a per-frame
+allocation budget. Run the CLI in a subprocess with a bounded environment, captured
+stderr, memory limit and total deadline; the QuickJS deadline governs author code,
+while the caller's process deadline also covers trusted layout and FFmpeg.
+
+The CLI writes one JSON metadata line on success. `runtimeVersion`,
+`sourceSha256`, `inputSha256`, `assetSha256`, `fontAssetsSha256`, dimensions,
+duration, fps, timeline `frameCount`, output byte count and output path identify the
+result. `assetSha256` hashes the actual output file. Preview metadata adds `time`;
+MP4 adds `encodedDuration`. Cache inputs include the runtime, exact source, cues,
+seed, theme, dimensions, duration, cadence, pinned assets, output kind and preview
+time. Like the existing video API, MP4 duration rounds to the nearest frame.
+Existing output files survive a failed render.
+
 ## API
 
 ### Themes
