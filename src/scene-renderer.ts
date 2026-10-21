@@ -20,8 +20,18 @@ import { SCENE_COMPONENT_NAMES, SCENE_DOM_TAGS } from './scene-components'
 import { validateResolvedSceneResources } from './scene-graph'
 import { getThemeColors } from './theme'
 
-export interface RenderSceneFrameOptions extends SceneFrameRequest { outputPath: string }
-export interface RenderSceneVideoOptions extends SceneRequest { outputPath: string; signal?: AbortSignal }
+interface SceneRasterOptions {
+    /** Physical pixels per logical scene pixel, from 0.25 to 1. Scaled dimensions must be even integers. */
+    outputScale?: number
+}
+
+export interface RenderSceneFrameOptions extends SceneFrameRequest, SceneRasterOptions { outputPath: string }
+export interface RenderSceneVideoOptions extends SceneRequest, SceneRasterOptions {
+    outputPath: string
+    signal?: AbortSignal
+    /** Sample fewer output frames without changing the scene's logical fps or frame globals. */
+    previewFps?: number
+}
 
 export interface SceneRenderOutput {
     runtimeVersion: string
@@ -42,6 +52,33 @@ export interface SceneRenderOutput {
     time?: number
     /** MP4 duration after rounding to a whole number of frames, in seconds. */
     encodedDuration?: number
+    /** Present for a reduced-resolution or reduced-frame-rate preview. */
+    outputScale?: number
+    previewFps?: number
+    logicalWidth?: number
+    logicalHeight?: number
+    logicalFps?: number
+    logicalFrameCount?: number
+}
+
+interface SceneOutputSettings { width: number; height: number; fps: number; frameCount: number; outputScale: number; preview: boolean }
+
+function outputSettings(prepared: PreparedScene, outputScale = 1, previewFps?: number): SceneOutputSettings {
+    if (!Number.isFinite(outputScale) || outputScale < 0.25 || outputScale > 1) {
+        throw new Error('Scene outputScale must be from 0.25 to 1.')
+    }
+    const { width: logicalWidth, height: logicalHeight, fps: logicalFps, duration } = prepared.request
+    const width = logicalWidth * outputScale, height = logicalHeight * outputScale
+    if (![width, height].every((value) => Number.isInteger(value) && value >= 2 && value % 2 === 0)) {
+        throw new Error('Scaled scene width and height must be positive even integers.')
+    }
+    const fps = previewFps === undefined ? logicalFps : previewFps
+    if (!Number.isInteger(fps) || fps < 1 || fps > logicalFps) {
+        throw new Error('Scene previewFps must be an integer from 1 to the logical scene fps.')
+    }
+    const frameCount = Math.round(duration * fps)
+    if (frameCount < 1) throw new Error('Scene preview duration must round to at least one output frame.')
+    return { width, height, fps, frameCount, outputScale, preview: outputScale !== 1 || fps !== logicalFps }
 }
 
 const assetPins = {
@@ -162,15 +199,16 @@ function graphToReact(value: SceneJson, theme: ReturnType<typeof getThemeColors>
     return React.createElement((component ?? value.type) as React.ElementType, props, ...value.children.map((child) => graphToReact(child, theme)))
 }
 
-function renderSvgImage(element: ReactElement<Record<string, unknown>>, assets: SceneAssets, width: number, height: number, budget: RasterBudget): { pixels: Uint8Array; png: Uint8Array } {
+function renderSvgImage(element: ReactElement<Record<string, unknown>>, assets: SceneAssets, width: number, height: number, budget: RasterBudget, outputScale = 1, includePng = true): { pixels: Uint8Array; png?: Uint8Array } {
     const root = React.cloneElement(element, { xmlns: 'http://www.w3.org/2000/svg', width, height })
     const svg = serializeSvg(root, budget)
     const image = new Resvg(svg, {
         font: { loadSystemFonts: false, fontFiles: assets.fontFiles, defaultFontFamily: 'Inter' },
         background: 'rgba(0,0,0,0)',
+        ...(outputScale !== 1 ? { fitTo: { mode: 'width' as const, value: width * outputScale } } : {}),
     }).render()
-    if (image.width !== width || image.height !== height) throw new Error('SVG frame does not match scene dimensions.')
-    return { pixels: image.pixels, png: image.asPng() }
+    if (image.width !== width * outputScale || image.height !== height * outputScale) throw new Error('SVG frame does not match scaled scene dimensions.')
+    return { pixels: image.pixels, ...(includePng ? { png: image.asPng() } : {}) }
 }
 
 function rasterizeNestedSvg(node: ReactNode, assets: SceneAssets, defaultWidth: number, defaultHeight: number, budget: RasterBudget): ReactNode {
@@ -190,7 +228,7 @@ function rasterizeNestedSvg(node: ReactNode, assets: SceneAssets, defaultWidth: 
             throw new Error('Nested SVG rasterization exceeds the per-frame pixel or image budget.')
         }
         const { png } = renderSvgImage(node, assets, width, height, budget)
-        return React.createElement('img', { width, height, src: `data:image/png;base64,${Buffer.from(png).toString('base64')}`,
+        return React.createElement('img', { width, height, src: `data:image/png;base64,${Buffer.from(png!).toString('base64')}`,
             style: { display: 'flex', flexShrink: 0, ...(node.props.style as React.CSSProperties | undefined) } })
     }
     // Trusted components are resolved here so SVG fragments produced by them get
@@ -200,7 +238,7 @@ function rasterizeNestedSvg(node: ReactNode, assets: SceneAssets, defaultWidth: 
     return React.cloneElement(node, {}, rasterizeNestedSvg(node.props.children as ReactNode, assets, defaultWidth, defaultHeight, budget))
 }
 
-async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets, time: number): Promise<{ png: Uint8Array; pixels: Uint8Array }> {
+async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets, time: number, outputScale: number, includePng: boolean): Promise<{ png?: Uint8Array; pixels: Uint8Array }> {
     const evaluated = await prepared.evaluate(time)
     const { width, height, theme } = prepared.request
     const c = getThemeColors(theme)
@@ -210,7 +248,7 @@ async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets,
         // The exact same pinned-font rasterizer is used by PNG preview and MP4.
         const image = renderSvgImage(React.cloneElement(element, {
             children: [React.createElement('rect', { key: '__scene_background', width, height, fill: c.bg }), element.props.children],
-        }), assets, width, height, { pixels: 0, count: 0, nodes: 0, svgBytes: 0 })
+        }), assets, width, height, { pixels: 0, count: 0, nodes: 0, svgBytes: 0 }, outputScale, includePng)
         return image
     }
     element = React.createElement('div', { style: { display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: 'Inter', color: c.textPrimary } }, element)
@@ -231,20 +269,27 @@ async function renderPreparedFrame(prepared: PreparedScene, assets: SceneAssets,
             onNodeDetected: (node) => layoutNodes.push(node),
         })
         const svg = addSvgAccessibility(rendered, accessible.graphs, layoutNodes)
-        const image = new Resvg(svg, { background: c.bg, font: { loadSystemFonts: false, fontFiles: assets.fontFiles } }).render()
-        return { png: image.asPng(), pixels: image.pixels }
+        const image = new Resvg(svg, { background: c.bg, font: { loadSystemFonts: false, fontFiles: assets.fontFiles },
+            ...(outputScale !== 1 ? { fitTo: { mode: 'width' as const, value: width * outputScale } } : {}),
+        }).render()
+        if (image.width !== width * outputScale || image.height !== height * outputScale) throw new Error('Layout frame does not match scaled scene dimensions.')
+        return { pixels: image.pixels, ...(includePng ? { png: image.asPng() } : {}) }
     })
 }
 
-async function outputMetadata(prepared: PreparedScene, assets: SceneAssets, outputPath: string, bytes: number, kind: 'png' | 'mp4', time?: number): Promise<SceneRenderOutput> {
+async function outputMetadata(prepared: PreparedScene, assets: SceneAssets, settings: SceneOutputSettings, outputPath: string, bytes: number, kind: 'png' | 'mp4', time?: number): Promise<SceneRenderOutput> {
     const { width, height, duration, fps, frameCount } = prepared.request
     const digest = createHash('sha256')
     for await (const chunk of createReadStream(outputPath)) digest.update(chunk)
     return {
         runtimeVersion: SCENE_RUNTIME_VERSION, sourceSha256: prepared.sourceSha256,
-        inputSha256: await sceneSha256(JSON.stringify({ requestSha256: prepared.inputSha256, fontAssetsSha256: assets.sha256, kind, ...(time !== undefined ? { time } : {}) })),
+        inputSha256: await sceneSha256(JSON.stringify({ requestSha256: prepared.inputSha256, fontAssetsSha256: assets.sha256, kind, ...(time !== undefined ? { time } : {}),
+            ...(settings.preview ? { outputScale: settings.outputScale, width: settings.width, height: settings.height, fps: settings.fps, frameCount: settings.frameCount } : {}),
+        })),
         assetSha256: digest.digest('hex'), fontAssetsSha256: assets.sha256,
-        width, height, duration, fps, frameCount, bytes, outputPath: resolve(outputPath),
+        width: settings.width, height: settings.height, duration, fps: settings.fps, frameCount: settings.frameCount, bytes, outputPath: resolve(outputPath),
+        ...(settings.preview ? { outputScale: settings.outputScale, ...(kind === 'mp4' ? { previewFps: settings.fps } : {}),
+            logicalWidth: width, logicalHeight: height, logicalFps: fps, logicalFrameCount: frameCount } : {}),
     }
 }
 
@@ -267,20 +312,22 @@ async function atomicWrite(outputPath: string, bytes: Uint8Array): Promise<void>
 export async function renderSceneFrame(options: RenderSceneFrameOptions): Promise<SceneRenderOutput> {
     if (typeof options.outputPath !== 'string' || !options.outputPath) throw new Error('Scene outputPath is required.')
     const prepared = await prepareScene(options)
+    const settings = outputSettings(prepared, options.outputScale)
     const time = normalizeSceneTime(options.time, prepared.request.duration)
     const assets = await sceneAssets()
-    const image = await renderPreparedFrame(prepared, assets, time)
-    await atomicWrite(options.outputPath, image.png)
-    return { ...await outputMetadata(prepared, assets, options.outputPath, image.png.byteLength, 'png', time), time }
+    const image = await renderPreparedFrame(prepared, assets, time, settings.outputScale, true)
+    await atomicWrite(options.outputPath, image.png!)
+    return { ...await outputMetadata(prepared, assets, settings, options.outputPath, image.png!.byteLength, 'png', time), time }
 }
 
 export async function renderSceneVideo(options: RenderSceneVideoOptions): Promise<SceneRenderOutput> {
     if (typeof options.outputPath !== 'string' || !options.outputPath) throw new Error('Scene outputPath is required.')
     const prepared = await prepareScene(options)
+    const settings = outputSettings(prepared, options.outputScale, options.previewFps)
     const assets = await sceneAssets()
-    const { width, height, duration, fps } = prepared.request
-    const output = await renderRgbaVideo(async (frame) => (await renderPreparedFrame(prepared, assets, frame.time / 1_000)).pixels, {
-        width, height, duration: duration * 1_000, fps, outputPath: options.outputPath, signal: options.signal,
+    const { duration } = prepared.request
+    const output = await renderRgbaVideo(async (frame) => (await renderPreparedFrame(prepared, assets, frame.time / 1_000, settings.outputScale, false)).pixels, {
+        width: settings.width, height: settings.height, duration: duration * 1_000, fps: settings.fps, outputPath: options.outputPath, signal: options.signal,
     })
-    return { ...await outputMetadata(prepared, assets, options.outputPath, output.bytes, 'mp4'), encodedDuration: output.duration / 1_000 }
+    return { ...await outputMetadata(prepared, assets, settings, options.outputPath, output.bytes, 'mp4'), encodedDuration: output.duration / 1_000 }
 }
