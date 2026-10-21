@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Diagrams, charts, dashboards, and GIFs from TSX.</strong><br/>
-  Render dark and light PNG, SVG, and GIF files locally or in CI.
+  <strong>Diagrams, charts, dashboards, GIFs, and MP4 videos from TSX.</strong><br/>
+  Render theme-aware PNG, SVG, and GIF in the browser; export H.264 MP4 from Node.js or CI.
 </p>
 
 <p align="center">
@@ -691,6 +691,30 @@ background, with the theme background used by default. Set `--background` to
 an opaque CSS color to choose another fill. The browser builder exports GIF;
 MP4 encoding runs in Node.js.
 
+### Render a complete video example
+
+The short [request lifecycle starter](examples/videos/request-lifecycle.tsx)
+shows one request moving through a three-step workflow. It uses only Vizmatic's
+published package and keeps the motion tied to the work being explained. The
+longer [From noise to signal film](examples/videos/signal-to-story.tsx) shows a
+chart, synthetic observations, and a fitted trend.
+
+In a Node.js 20 or newer project, install Vizmatic and React. [Install FFmpeg](https://ffmpeg.org/download.html)
+separately and check that its encoder list includes `libx264`. Audio output
+also needs the `aac` encoder.
+
+```bash
+npm install --save-dev vizmatic@0.4.0 react
+npx vizmatic video ./request-lifecycle.tsx --out ./dist/videos --theme dark --fps 30
+```
+
+The CLI writes `request-lifecycle_dark.mp4` and `video-manifest.json` under
+`./dist/videos`. Add narration with `--audio ./narration.wav`; the audio is
+trimmed or padded to the animation duration and encoded as AAC. Vizmatic renders
+the picture and optional audio. Keep `.vtt` or `.srt` captions as separate files
+and synchronize their cues to the finished timeline. The downloadable source
+and a copyable command are also on the [website video example](https://bvolpato.github.io/vizmatic/#video).
+
 The same workflow is available through the API:
 
 ```ts
@@ -726,13 +750,13 @@ pnpm install --frozen-lockfile
 pnpm render:video
 ```
 
-To render your own module from this checkout, use `node dist/cli.js video`
-in place of `vizmatic video`. Video assets live in `docs/assets/video` and are
-generated from source and excluded from Git. `pnpm site:build` creates the
-posters, descriptions, and source download; `pnpm render:video` also encodes
-the MP4. Pages builds the MP4 and verifies it with `pnpm docs:check --require-video`
-before publication. The website loads the poster until playback is requested
-and provides chapter controls and a text description.
+The repository's `pnpm render:video` script regenerates the showcase poster,
+captions, downloadable sources, and MP4. `pnpm site:build` regenerates the
+website preview and source downloads without encoding the MP4. Those generated
+media files live under `docs/assets/video/` and are excluded from Git. Pages
+builds the MP4 and verifies it with `pnpm docs:check --require-video` before
+publication. The website loads the poster until playback is requested and
+provides chapter controls and a text description.
 
 `renderRgbaVideo` streams caller-rendered RGBA frames to FFmpeg as an H.264 MP4.
 It supports 1–120 fps, even pixel dimensions, optional audio, and backpressure,

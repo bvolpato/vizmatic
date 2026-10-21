@@ -2645,6 +2645,42 @@ export default frame.default
         expectTightHorizontalPadding(image)
     }, 30_000)
 
+    it.each([1, 2])('balances modest gutters without reflow at scale %s', async (scale) => {
+        const dir = await mkdtemp(join(tmpdir(), 'vizmatic-modest-crop-'))
+        const outputPath = join(dir, 'frame.png')
+
+        try {
+            const element = <div style={{ display: 'flex', position: 'relative', width: 500, height: 400 }}>
+                <div style={{ display: 'flex', position: 'absolute', left: 24, top: 56, width: 452, height: 320, backgroundColor: 'blue' }}>K → V</div>
+            </div>
+            const output = await renderToPngWithOutput(element, {
+                width: 500,
+                height: 400,
+                outputPath,
+                crop: 'both',
+                scale,
+                watermark: false,
+            })
+
+            // Trimming 32 pixels saves only 8%, but the original top gutter is uneven.
+            expect(output.width).toBe(500)
+            expect(output.height).toBe(368)
+            expect(output.contentBounds).toEqual({ x: 24, y: 24, width: 452, height: 320 })
+            const image = decodePng(await readFile(outputPath))
+            expect(image.width).toBe(500 * scale)
+            expect(image.height).toBe(368 * scale)
+            const background = detectBackgroundColor(image.pixels)
+            expect(detectContentBounds(image.pixels, image.width, image.height, background, 0)).toEqual({
+                x: 24 * scale,
+                y: 24 * scale,
+                width: 452 * scale,
+                height: 320 * scale,
+            })
+        } finally {
+            await rm(dir, { recursive: true, force: true })
+        }
+    })
+
     it('can crop height while preserving declared width for fixed-frame consumers', async () => {
         const dir = await mkdtemp(join(tmpdir(), 'vizmatic-height-crop-'))
         const outputPath = join(dir, 'frame.png')

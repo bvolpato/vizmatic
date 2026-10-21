@@ -83,7 +83,26 @@
         </video>
         <div class="film-chapters" role="group" aria-label="Film chapters"><button type="button" data-video-time="2" aria-controls="showcaseVideo"><span>01 / 0:02</span>Collect the observations <span aria-hidden="true">↗</span></button><button type="button" data-video-time="5" aria-controls="showcaseVideo"><span>02 / 0:05</span>Reveal the relationship <span aria-hidden="true">↗</span></button><button type="button" data-video-time="9.4" aria-controls="showcaseVideo"><span>03 / 0:09</span>Make it mean something <span aria-hidden="true">↗</span></button></div>
       </div>
-      <div class="film-below"><div><p id="film-description">A least-squares fit through synthetic data, brought to life with typed timelines and parallel tracks. Press play, jump to a chapter, or make it yours.</p><div class="cta-row"><a class="button primary small" href="assets/video/signal-to-story.tsx" download="signal-to-story.tsx">Get the TSX source ↓</a><a class="button small" href="assets/video/signal-to-story.mp4" download>Download MP4 ↓</a></div></div><div class="film-recipe"><span class="card-kicker">Render your own</span><pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">vizmatic</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> video</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> signal-to-story.tsx</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --theme</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> dark</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --fps</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> 30</span></span></code></pre><p>Use the current repository build and FFmpeg. <a href="https://github.com/bvolpato/vizmatic#mp4-export-and-mathematical-motion">Video export guide ↗</a></p></div></div>
+      <div class="film-below">
+        <div>
+          <p id="film-description">A least-squares fit through synthetic data, brought to life with typed timelines and parallel tracks. Press play, jump to a chapter, or make it yours.</p>
+          <div class="cta-row">
+            <a class="button primary small" href="assets/video/signal-to-story.tsx" download="signal-to-story.tsx">Get the film source ↓</a>
+            <a class="button small" href="assets/video/request-lifecycle.tsx" download="request-lifecycle.tsx">Get the starter TSX ↓</a>
+            <a class="button small" href="assets/video/signal-to-story.mp4" download>Download MP4 ↓</a>
+          </div>
+        </div>
+        <div class="film-recipe">
+          <span class="card-kicker">Render your own</span>
+          <pre data-shiki="bash" class="shiki shiki-themes github-light-high-contrast github-dark-high-contrast" tabindex="0"><code><span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">npm</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> install</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --save-dev</span><span style="--shiki-light:#A0111F;--shiki-dark:#FF9492"> \</span></span>
+<span class="line"><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF">  vizmatic@0.4.0</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> react</span></span>
+<span class="line"><span style="--shiki-light:#702C00;--shiki-dark:#FFB757">npx</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> vizmatic</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> video</span><span style="--shiki-light:#A0111F;--shiki-dark:#FF9492"> \</span></span>
+<span class="line"><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF">  ./request-lifecycle.tsx</span><span style="--shiki-light:#A0111F;--shiki-dark:#FF9492"> \</span></span>
+<span class="line"><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">  --out</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> ./videos</span><span style="--shiki-light:#A0111F;--shiki-dark:#FF9492"> \</span></span>
+<span class="line"><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF">  --theme</span><span style="--shiki-light:#032563;--shiki-dark:#ADDCFF"> dark</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> --fps</span><span style="--shiki-light:#023B95;--shiki-dark:#91CBFF"> 30</span></span></code></pre>
+          <p>Use Node.js 20+ and <a href="https://ffmpeg.org/download.html">FFmpeg</a> with the <code>libx264</code> encoder. Add <code>--audio narration.wav</code> for a voice track; FFmpeg must also include AAC. Keep VTT or SRT captions as sidecar files. <a href="https://github.com/bvolpato/vizmatic#mp4-export-and-mathematical-motion">Read the video guide ↗</a></p>
+        </div>
+      </div>
       <details class="film-transcript"><summary>Read the visual story</summary><p>The film opens with “Make the invisible click.” Twelve synthetic observations arrive in a chart. A least-squares trend line traces from left to right while a marker follows it. The camera moves closer, and a callout explains the fitted slope. The original observations remain visible. The closing frame reads “Give your ideas a little motion.”</p></details>
     </section>
     <section id="component-browser" class="section home-component-section" aria-labelledby="component-heading">
@@ -472,7 +491,7 @@ export const watermark = (
       fontSize: 12,
     }}&gt;
       &lt;img src=&quot;data:image/svg+xml;base64,...&quot; width={14} height={14} /&gt;
-      LeetLLM
+      Your Product
     &lt;/div&gt;
   &lt;/Watermark&gt;
 )
@@ -488,7 +507,7 @@ vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,lig
 
 An animated module exports `createAnimation(theme)` for GIF or MP4 output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every frame.
 
-For smooth video, run `vizmatic video frames/lesson.tsx --out public/videos --theme dark --fps 30`. This requires FFmpeg with libx264; add `--audio narration.wav` for AAC audio. Exported canvas dimensions after `--scale` must be even integers. MP4 uses an opaque theme background by default and supports 1–120 fps independently of GIF cadence. The browser builder exports GIF; MP4 runs in Node.js. Use the current repository build for the video command, or `node dist/cli.js video` from the checkout. See `examples/videos/signal-to-story.tsx` for a finite 18-second film with parallel tracks, path tracing, camera motion, and a readable ending. Regenerate its website assets with `pnpm render:video`.
+For MP4, export `createAnimation(theme)` and run `vizmatic video frames/lesson.tsx --out public/videos --theme dark --fps 30`. This requires Node.js 20 or newer and FFmpeg with the `libx264` encoder; add `--audio narration.wav` for AAC audio. The CLI pads or trims audio to the animation duration. Exported canvas dimensions after `--scale` must be positive even integers. MP4 uses an opaque theme background by default and supports 1–120 fps independently of GIF cadence. The browser builder exports GIF; MP4 runs in Node.js. Keep `.vtt` or `.srt` captions as separate files and synchronize them to the finished timeline. Use `examples/videos/request-lifecycle.tsx` as a short, generic starting point and `examples/videos/signal-to-story.tsx` for a longer film with parallel tracks, path tracing, camera motion, and an ending held on screen. Animate the data or mechanism the lesson explains; avoid decorative logo or icon reveals. For package consumers, install Vizmatic and React in the project and FFmpeg separately. In the repository, `pnpm render:video` regenerates the showcase media.
 
 ```tsx
 import React from &quot;react&quot;

@@ -36,7 +36,26 @@
         </video>
         <div class="film-chapters" role="group" aria-label="Film chapters"><button type="button" data-video-time="2" aria-controls="showcaseVideo"><span>01 / 0:02</span>Collect the observations <span aria-hidden="true">↗</span></button><button type="button" data-video-time="5" aria-controls="showcaseVideo"><span>02 / 0:05</span>Reveal the relationship <span aria-hidden="true">↗</span></button><button type="button" data-video-time="9.4" aria-controls="showcaseVideo"><span>03 / 0:09</span>Make it mean something <span aria-hidden="true">↗</span></button></div>
       </div>
-      <div class="film-below"><div><p id="film-description">A least-squares fit through synthetic data, brought to life with typed timelines and parallel tracks. Press play, jump to a chapter, or make it yours.</p><div class="cta-row"><a class="button primary small" href="assets/video/signal-to-story.tsx" download="signal-to-story.tsx">Get the TSX source ↓</a><a class="button small" href="assets/video/signal-to-story.mp4" download>Download MP4 ↓</a></div></div><div class="film-recipe"><span class="card-kicker">Render your own</span><pre data-shiki="bash"><code>vizmatic video signal-to-story.tsx --theme dark --fps 30</code></pre><p>Use the current repository build and FFmpeg. <a href="https://github.com/bvolpato/vizmatic#mp4-export-and-mathematical-motion">Video export guide ↗</a></p></div></div>
+      <div class="film-below">
+        <div>
+          <p id="film-description">A least-squares fit through synthetic data, brought to life with typed timelines and parallel tracks. Press play, jump to a chapter, or make it yours.</p>
+          <div class="cta-row">
+            <a class="button primary small" href="assets/video/signal-to-story.tsx" download="signal-to-story.tsx">Get the film source ↓</a>
+            <a class="button small" href="assets/video/request-lifecycle.tsx" download="request-lifecycle.tsx">Get the starter TSX ↓</a>
+            <a class="button small" href="assets/video/signal-to-story.mp4" download>Download MP4 ↓</a>
+          </div>
+        </div>
+        <div class="film-recipe">
+          <span class="card-kicker">Render your own</span>
+          <pre data-shiki="bash"><code>npm install --save-dev \
+  vizmatic@0.4.0 react
+npx vizmatic video \
+  ./request-lifecycle.tsx \
+  --out ./videos \
+  --theme dark --fps 30</code></pre>
+          <p>Use Node.js 20+ and <a href="https://ffmpeg.org/download.html">FFmpeg</a> with the <code>libx264</code> encoder. Add <code>--audio narration.wav</code> for a voice track; FFmpeg must also include AAC. Keep VTT or SRT captions as sidecar files. <a href="https://github.com/bvolpato/vizmatic#mp4-export-and-mathematical-motion">Read the video guide ↗</a></p>
+        </div>
+      </div>
       <details class="film-transcript"><summary>Read the visual story</summary><p>The film opens with “Make the invisible click.” Twelve synthetic observations arrive in a chart. A least-squares trend line traces from left to right while a marker follows it. The camera moves closer, and a callout explains the fitted slope. The original observations remain visible. The closing frame reads “Give your ideas a little motion.”</p></details>
     </section>
     <section id="component-browser" class="section home-component-section" aria-labelledby="component-heading">

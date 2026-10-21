@@ -307,8 +307,8 @@ const AUTOCROP_PADDING = 24
 
 
 /**
- * If the crop saves less than this percentage of area, skip it.
- * Prevents unnecessary re-rendering for images that are already well-fitted.
+ * Minimum height saving before a responsive re-render.
+ * The final viewport crop can trim smaller gutters without changing layout.
  */
 const CROP_THRESHOLD_PERCENT = 10
 
@@ -348,11 +348,6 @@ function cropLayoutNodes(nodes: SatoriNode[], region: CropRegion): SatoriNode[] 
             height: bottom - top,
         }]
     })
-}
-
-function cropSavesEnough(source: number, target: number): boolean {
-    if (source <= 0 || target >= source) return false
-    return ((source - target) / source) * 100 >= CROP_THRESHOLD_PERCENT
 }
 
 // ─── Core Render Function ────────────────────────────────────────────────────
@@ -612,8 +607,8 @@ async function renderToPngInContext(
         )
 
         if (
-            cropSavesEnough(finalWidth, viewportBounds.width)
-            || cropSavesEnough(viewportCheck.height, viewportBounds.height)
+            viewportBounds.width < finalWidth
+            || viewportBounds.height < viewportCheck.height
         ) {
             finalSvg = cropSvgViewport(finalSvg, viewportBounds)
             finalRender.layoutNodes = cropLayoutNodes(finalRender.layoutNodes, viewportBounds)

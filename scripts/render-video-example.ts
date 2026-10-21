@@ -16,6 +16,7 @@ export async function renderVideoExample(encodeVideo = true): Promise<void> {
     }
 
     await copyFile('examples/videos/signal-to-story.tsx', `${directory}/signal-to-story.tsx`)
+    await copyFile('examples/videos/request-lifecycle.tsx', `${directory}/request-lifecycle.tsx`)
     await writeFile(`${directory}/signal-to-story.vtt`, `WEBVTT
 
 00:00.000 --> 00:02.000
