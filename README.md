@@ -1054,7 +1054,7 @@ Choose the Animation scene template to play, pause, scrub time, and export a GIF
 
 The generated `components.json` includes compiler-derived prop types, requiredness, and finite allowed-value references. Shared value lists live in `propEnums`; defaults are not inferred. Full TypeScript definitions remain the contract for structured data and React values.
 
-The website is generated from `docs/*.template.html`, the shared shell in `scripts/site-shell.ts`, and the component registry. Run `pnpm site:build` after editing these sources, then `pnpm docs:check`. Use `pnpm site:serve` for browser validation. The generated agent references, property controls, and example adapters update with the same build. If the bundled fonts change, regenerate the website's WOFF2 files with `pnpm site:fonts` using uv.
+The website is generated from `docs/*.template.html`, the shared shell in `scripts/site-shell.ts`, and the component registry. Run `pnpm site:build` after editing these sources, then `pnpm docs:check`. Use `pnpm site:serve` for browser validation. The generated agent references, property controls, and example adapters update with the same build. If the bundled fonts change, regenerate the website's WOFF2 files with `pnpm site:fonts` using uv 0.9.17 or newer.
 
 ## Publishing
 
