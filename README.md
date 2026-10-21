@@ -294,6 +294,20 @@ await renderSceneFrame({ ...scene, time: 4, outputPath: './preview.png' })
 await renderSceneVideo({ ...scene, outputPath: './scene.mp4' })
 ```
 
+For editor previews, add `outputScale: 0.5` to either renderer and
+`previewFps: 12` to `renderSceneVideo`. The renderer still evaluates and lays out
+the original logical `width`, `height`, `duration`, `fps`, `frame`, and cues; it
+only rasterizes fewer pixels and samples fewer video frames. `outputScale` must
+be from 0.25 to 1 and produce even integer dimensions. `previewFps` must be an
+integer from 1 to the scene's logical fps. These options also work in the
+`vizmatic-scene` JSON request (`previewFps` is MP4-only).
+
+Preview metadata reports effective `width`, `height`, `fps`, and `frameCount`,
+plus `logicalWidth`, `logicalHeight`, `logicalFps`, `logicalFrameCount`,
+`outputScale`, and, for video, `previewFps`. Its input hash binds the effective
+output settings. Omitting the options preserves full-quality rendering and its
+existing input hash.
+
 Source uses local JavaScript/TypeScript declarations and helper components followed
 by one JSX root. Imports, exports and module wrappers are not supported. Vizmatic
 JSX primitives are provided automatically. SVG geometry and `<text>`/`<tspan>` use
@@ -304,7 +318,7 @@ formatted values and geometry in the source before returning JSX.
 
 | Source value | Meaning |
 | --- | --- |
-| `width`, `height` | Exact output canvas dimensions |
+| `width`, `height` | Logical canvas dimensions before optional preview scaling |
 | `time` / `t`, `duration` | Current position and narration duration in seconds |
 | `progress`, `frame`, `fps` | Normalized progress, zero-based frame and cadence |
 | `theme`, `c` | Theme name and frozen Vizmatic theme colors |
