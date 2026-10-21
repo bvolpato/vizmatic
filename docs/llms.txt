@@ -1,6 +1,6 @@
 # Vizmatic
 
-> Theme-aware visual primitives and a headless renderer for diagrams, figures, and presentation frames.
+> Theme-aware diagrams, charts, animations, and MP4 video from TSX.
 
 Vizmatic turns editable TSX scenes into diagrams, charts, documentation figures, and animations. The Node.js CLI renders locally or in CI; the browser playground supports interactive editing and preview.
 

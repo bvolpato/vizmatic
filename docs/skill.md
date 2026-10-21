@@ -1,11 +1,11 @@
 ---
 name: vizmatic
-description: Create and render theme-aware diagrams, charts, docs figures, and animated GIFs from TSX. Use when a coding agent needs an architecture diagram, process flow, RAG graph, evaluation dashboard, slide frame, release card, or animated pipeline.
+description: Create and render theme-aware diagrams, charts, docs figures, animated GIFs, and MP4 videos from TSX. Use when a coding agent needs an architecture diagram, process flow, RAG graph, evaluation dashboard, slide frame, release card, or animated pipeline.
 ---
 
 # Vizmatic
 
-Use Vizmatic when a request needs a diagram, chart, presentation frame, or animated GIF. Prefer its React scene primitives over hand-written SVG for common layouts.
+Use Vizmatic when a request needs a diagram, chart, presentation frame, animated GIF, or MP4 video. Prefer its React scene primitives over hand-written SVG for common layouts.
 
 ## Workflow
 
@@ -42,12 +42,18 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
    ```bash
    vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --fps 20 --scale 1
    ```
+   For an H.264 MP4, export `createAnimation(theme)` and run:
+   ```bash
+   vizmatic video ./frames/animated.tsx --out ./public/videos --theme dark --fps 30
+   ```
+   MP4 rendering requires Node.js 20 or newer and FFmpeg with the `libx264` encoder. Add `--audio narration.wav` when FFmpeg also provides AAC. Audio is padded or trimmed to the timeline duration. Keep `.vtt` or `.srt` captions as sidecar files and synchronize their cues to the rendered timeline. Animate the data or mechanism the lesson explains; avoid decorative logo or icon reveals. Use `examples/videos/request-lifecycle.tsx` as a short generic starter or `examples/videos/signal-to-story.tsx` as a longer example.
 9. Inspect the output. Check file dimensions and visual layout. When an asset appears on a page, verify that page too. Fix clipping, overlap, low contrast, and uneven spacing before finishing.
 
 ## Starting points
 
 - Copy `assets/starter-frame.tsx` for static diagrams and dashboards.
 - Copy `assets/animated-frame.tsx` for GIFs.
+- Use `examples/videos/request-lifecycle.tsx` for an MP4 starter and `examples/videos/signal-to-story.tsx` for a longer video.
 - Read `references/patterns.md` for primitive selection, tone usage, and render commands.
 
 ## Design rules
@@ -68,5 +74,5 @@ Use Vizmatic when a request needs a diagram, chart, presentation frame, or anima
 - "Explain transformer parallelism" -> use `TransformerTopology` with tensor shapes and collective routes.
 - "Turn this eval data into a figure" -> use metric cards plus bar or line charts.
 - "Compare score and cost" -> use `ParetoChart` with automatic frontier detection and a logarithmic cost axis when needed.
-- "Make this pipeline animated" -> define numeric state transitions with `createAnimation(theme)` and render GIFs.
+- "Make this pipeline animated" -> define numeric state transitions with `createAnimation(theme)`, move the parts that explain the mechanism, and render a GIF or MP4.
 - "Add a docs visual" -> put output under the repo's docs/public asset path and verify the page if present.

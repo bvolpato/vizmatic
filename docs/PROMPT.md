@@ -175,7 +175,7 @@ export const watermark = (
       fontSize: 12,
     }}>
       <img src="data:image/svg+xml;base64,..." width={14} height={14} />
-      LeetLLM
+      Your Product
     </div>
   </Watermark>
 )
@@ -191,7 +191,7 @@ vizmatic gif frames/animated-pipeline.tsx --out public/vizmatic --theme dark,lig
 
 An animated module exports `createAnimation(theme)` for GIF or MP4 output and keeps `create(theme)` for a static or reduced-motion fallback. Define state once, then describe holds, eased transitions, instant keyframes, and parallel property tracks. Vizmatic samples absolute timeline time and renders every frame.
 
-For smooth video, run `vizmatic video frames/lesson.tsx --out public/videos --theme dark --fps 30`. This requires FFmpeg with libx264; add `--audio narration.wav` for AAC audio. Exported canvas dimensions after `--scale` must be even integers. MP4 uses an opaque theme background by default and supports 1–120 fps independently of GIF cadence. The browser builder exports GIF; MP4 runs in Node.js. Use the current repository build for the video command, or `node dist/cli.js video` from the checkout. See `examples/videos/signal-to-story.tsx` for a finite 18-second film with parallel tracks, path tracing, camera motion, and a readable ending. Regenerate its website assets with `pnpm render:video`.
+For MP4, export `createAnimation(theme)` and run `vizmatic video frames/lesson.tsx --out public/videos --theme dark --fps 30`. This requires Node.js 20 or newer and FFmpeg with the `libx264` encoder; add `--audio narration.wav` for AAC audio. The CLI pads or trims audio to the animation duration. Exported canvas dimensions after `--scale` must be positive even integers. MP4 uses an opaque theme background by default and supports 1–120 fps independently of GIF cadence. The browser builder exports GIF; MP4 runs in Node.js. Keep `.vtt` or `.srt` captions as separate files and synchronize them to the finished timeline. Use `examples/videos/request-lifecycle.tsx` as a short, generic starting point and `examples/videos/signal-to-story.tsx` for a longer film with parallel tracks, path tracing, camera motion, and an ending held on screen. Animate the data or mechanism the lesson explains; avoid decorative logo or icon reveals. For package consumers, install Vizmatic and React in the project and FFmpeg separately. In the repository, `pnpm render:video` regenerates the showcase media.
 
 ```tsx
 import React from "react"

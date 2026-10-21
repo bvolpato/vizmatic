@@ -1,7 +1,7 @@
 {
   "name": "vizmatic",
   "version": "0.4.0",
-  "description": "Theme-aware visual primitives and a headless renderer for diagrams, figures, and presentation frames.",
+  "description": "Theme-aware diagrams, charts, animations, and MP4 video from TSX.",
   "type": "module",
   "license": "MIT",
   "author": "Bruno Volpato",
@@ -27,6 +27,9 @@
     "react",
     "diagrams",
     "presentations",
+    "animation",
+    "video",
+    "mp4",
     "theme-aware",
     "ai-agents",
     "structured-visuals"

@@ -2,7 +2,9 @@ import { spawnSync } from 'child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
+import { Resvg } from '@resvg/resvg-js'
 import { afterEach, describe, expect, it } from 'vitest'
+import { detectBackgroundColor, detectContentBounds } from '../src/autocrop'
 
 interface OutputDetail {
     theme: 'dark' | 'light'
@@ -131,6 +133,33 @@ describe('CLI output formats', () => {
         expect((await readFile(join(renderDir, 'format-frame_light.png'))).subarray(0, 8).toString('hex'))
             .toBe('89504e470d0a1a0a')
         expect((await readFile(join(renderDir, 'format-frame_light.svg'), 'utf8')).startsWith('<svg')).toBe(true)
+    }, 30_000)
+
+    it.each(['svg', 'both'])('balances modest SVG gutters with --format %s without changing geometry', async (format) => {
+        const source = `import React from 'react'
+export const width = 500
+export const height = 400
+export const create = () => <div style={{ display: 'flex', position: 'absolute', left: 24, top: 56, width: 452, height: 320, backgroundColor: 'blue' }} />
+`
+        const { renderDir, result } = await renderCli(source, ['--format', format, '--scale', '1'])
+
+        expect(result.status, result.stderr || result.stdout).toBe(0)
+        const manifest = await manifestAt(renderDir)
+        const detail = manifest[0]?.outputDetails.find(({ format }) => format === 'svg')
+        const svg = await readFile(join(renderDir, 'format-frame_light.svg'), 'utf8')
+        expect(svgRoot(svg)).toEqual({ width: 500, height: 368, viewBox: '0 32 500 368' })
+        expect(detail).toMatchObject({ width: 500, height: 368 })
+
+        const raster = new Resvg(svg).render()
+        const pixels = new Uint8Array(raster.pixels.buffer)
+        expect(detectContentBounds(pixels, raster.width, raster.height, detectBackgroundColor(pixels), 0)).toEqual({
+            x: 24, y: 24, width: 452, height: 320,
+        })
+        if (format === 'both') {
+            const png = await readFile(join(renderDir, 'format-frame_light.png'))
+            expect(png.readUInt32BE(16)).toBe(raster.width)
+            expect(png.readUInt32BE(20)).toBe(raster.height)
+        }
     }, 30_000)
 
     it('uses the resolved canvas size, not a cropped SVG size, for the next theme', async () => {

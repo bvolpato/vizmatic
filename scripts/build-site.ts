@@ -296,7 +296,7 @@ function preparePage(template: string, file: string): string {
 }
 
 const searchIndex = [
-    { title: 'From noise to signal', description: 'Watch the motion design film and download its TSX source or MP4. Learn video export.', url: 'index.html#video', category: 'Video' },
+    { title: 'From noise to signal', description: 'Render TSX scenes as H.264 MP4, add narration, keep captions as sidecar files, and download a runnable starter video source.', url: 'index.html#video', category: 'Video' },
     ...sitePages.map((page) => ({ title: page.title.split(' | ')[0], description: page.description, url: page.file, category: 'Page' })),
     ...componentCatalog.flatMap((category) => category.components.map((component) => ({
         title: component.name,

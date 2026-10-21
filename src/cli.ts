@@ -1278,10 +1278,6 @@ function cropSvgToRegion(svg: string, region: CropRegion): { svg: string; width:
     return { svg: cropped, width, height }
 }
 
-function cropSavesEnough(source: number, target: number): boolean {
-    return source > target && ((source - target) / source) * 100 >= SVG_CROP_THRESHOLD_PERCENT
-}
-
 async function renderFrameToSvg(
     mod: NormalizedFrameModule,
     theme: ThemeMode,
@@ -1394,8 +1390,8 @@ async function renderFrameToSvg(
         )
 
         if (
-            cropSavesEnough(finalWidth, viewportBounds.width)
-            || cropSavesEnough(viewportRaster.height, viewportBounds.height)
+            viewportBounds.width < finalWidth
+            || viewportBounds.height < viewportRaster.height
         ) {
             const cropped = cropSvgToRegion(finalSvg, viewportBounds)
             finalSvg = cropped.svg
