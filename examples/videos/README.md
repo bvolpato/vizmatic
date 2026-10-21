@@ -9,7 +9,8 @@ generic example that depends on the published Vizmatic package.
   observations to a chart, traces a fitted line, and holds the result on screen.
 
 Use Node.js 20 or newer. In a project that contains the downloaded or copied
-TSX file, install Vizmatic and React:
+TSX file, add the [consumer security overrides](../../README.md#consumer-security-overrides)
+before installing Vizmatic and React:
 
 ```bash
 npm install --save-dev vizmatic@0.4.0 react
