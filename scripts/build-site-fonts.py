@@ -2,6 +2,8 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = ["fonttools==4.60.1", "brotli==1.1.0"]
+# [tool.uv]
+# exclude-newer = "P7D"
 # ///
 
 from pathlib import Path
