@@ -27,14 +27,22 @@ try {
     }
     const consumer = join(directory, 'consumer')
     await mkdir(consumer)
-    await writeFile(join(consumer, 'package.json'), JSON.stringify({ private: true, type: 'module' }))
+    await writeFile(join(consumer, 'package.json'), JSON.stringify({
+        private: true,
+        type: 'module',
+        overrides: { '@xmldom/xmldom': '0.9.12', fflate: '0.7.5' },
+    }))
     const npmrc = join(directory, 'npmrc')
     await writeFile(npmrc, '')
     await run('npm', ['install', tarball,
-        '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', '--prefer-online',
+        '--ignore-scripts', '--no-audit', '--no-fund', '--prefer-online',
         '--registry', registry, '--userconfig', npmrc], {
         cwd: consumer, encoding: 'utf8', timeout: 120_000,
     })
+    const audit = await run('npm', ['audit', '--audit-level=low', '--registry', registry, '--userconfig', npmrc], {
+        cwd: consumer, encoding: 'utf8', timeout: 60_000,
+    })
+    process.stdout.write(audit.stdout)
     await copyFile(join(repository, 'scripts/check-runtime.mjs'), join(consumer, 'check-runtime.mjs'))
     const runtimeLog = join(directory, 'runtime.log')
     const output = await open(runtimeLog, 'w')

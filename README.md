@@ -88,6 +88,37 @@ When a frame omits `width` or `height`, Vizmatic starts at `960x540` and grows t
 
 Bare CLI frames do not need imports. Use a regular module when a frame needs helper code, data loading, other dependencies, animation, or direct renderer APIs.
 
+### Consumer security overrides
+
+Vizmatic 0.4.0's MathJax tree resolves `speech-rule-engine`, which uses
+`@xmldom/xmldom`; its Satori tree resolves `fflate`. Pin these patched
+transitive versions in a consuming project before installing Vizmatic.
+
+For npm, add these root-level entries to `package.json`:
+
+```json
+{
+  "overrides": {
+    "@xmldom/xmldom": "0.9.12",
+    "fflate": "0.7.5"
+  }
+}
+```
+
+For pnpm 11, add these entries to the root `pnpm-workspace.yaml`. The CLI uses
+esbuild to compile TSX, so allow its install script:
+
+```yaml
+overrides:
+  '@xmldom/xmldom': 0.9.12
+  fflate: 0.7.5
+allowBuilds:
+  esbuild: true
+```
+
+Then add Vizmatic with your package manager. The install updates the lockfile
+with these transitive pins.
+
 Add Vizmatic to a project for scripts, editor types, or direct renderer APIs:
 
 ```bash
@@ -702,6 +733,9 @@ chart, synthetic observations, and a fitted trend.
 In a Node.js 20 or newer project, install Vizmatic and React. [Install FFmpeg](https://ffmpeg.org/download.html)
 separately and check that its encoder list includes `libx264`. Audio output
 also needs the `aac` encoder.
+
+For a fresh app, add the [consumer security overrides](#consumer-security-overrides)
+before installing.
 
 ```bash
 npm install --save-dev vizmatic@0.4.0 react
