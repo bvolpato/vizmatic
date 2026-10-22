@@ -114,7 +114,7 @@
     "parse-css-color": "0.2.1",
     "quickjs-emscripten": "0.32.0",
     "react": "^19.2.8",
-    "satori": "0.60.0",
+    "satori": "0.41.0",
     "sucrase": "3.35.1",
     "tsx": "^4.23.12"
   },

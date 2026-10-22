@@ -41,8 +41,8 @@ importers:
         specifier: ^19.2.8
         version: 19.3.1
       satori:
-        specifier: 0.60.0
-        version: 0.60.0
+        specifier: 0.41.0
+        version: 0.41.0
       sucrase:
         specifier: 3.35.1
         version: 3.35.1
@@ -1119,8 +1119,8 @@ packages:
     resolution: {integrity: sha512-xal3CZX1Xlo/k4ApwCFrHVACi9fBqJ7V+mwhBsuf/1IOKbBy098Fex+Wa/5QMubw09pSZ/u8EY8PWgevJsXp1A==}
     engines: {node: '>=6'}
 
-  satori@0.60.0:
-    resolution: {integrity: sha512-OSnpxSr166mj2M9i6Cm3kFWYG6i36FnYDfQU0SR8nsZe5zgp/PskLkyfNAqV8phdGkDfQdFHyJZvrtdss3HAVw==}
+  satori@0.41.0:
+    resolution: {integrity: sha512-RXagfUbczs7RX8jMzViI4GlLDPUCkQXkSGFADG9/OOMziMrw7yOdxGz8IWYi1BhaXwE7Aboh0yx/41KK4HUjNw==}
     engines: {node: '>=16'}
 
   shiki@4.5.0:
@@ -2178,7 +2178,7 @@ snapshots:
     dependencies:
       mri: 1.2.0
 
-  satori@0.60.0:
+  satori@0.41.0:
     dependencies:
       '@shuding/opentype.js': 1.4.0-beta.0
       css-background-parser: 0.1.0
