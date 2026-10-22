@@ -107,7 +107,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",
-    "@resvg/resvg-js": "^2.6.2",
+    "@resvg/resvg-js": "2.7.0-alpha.2",
     "@resvg/resvg-wasm": "2.6.2",
     "gifenc": "^1.0.3",
     "mathjax-full": "3.2.2",
