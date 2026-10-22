@@ -40,6 +40,7 @@ jobs:
       - run: pnpm site:build
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check:playground
+      - run: pnpm check:scene-browser
 
   runtime:
     name: runtime (Node ${{ matrix.node-version }})

@@ -290,7 +290,7 @@ Vizmatic uses `react` for JSX frames, `satori` for layout, `@resvg/resvg-js` for
 
 Published packages include Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and a compressed Twemoji bundle under `assets/`, so normal CLI rendering does not fetch them at runtime. Set `VIZMATIC_FONT_DIR` or `VIZMATIC_ASSET_DIR` to use other local assets. Set `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` to disable public fallbacks.
 
-The complete Twemoji set stays available offline but ships as one Brotli bundle instead of 3,720 individual SVG files. `pnpm deps:check` keeps the package below 2.5 MB compressed, 5 MB unpacked, and 100 files.
+The complete Twemoji set stays available offline but ships as one Brotli bundle instead of 3,720 individual SVG files. `pnpm deps:check` keeps the package below 3.2 MB compressed, 7.3 MB unpacked, and 100 files, including the separately loaded browser scene renderer.
 
 ## Editable scenes for video applications
 
@@ -365,6 +365,57 @@ cues as estimates. Source can be evaluated without Node rendering through
 `evaluateSceneSource` or `prepareScene` from `vizmatic/scene-runtime`, suitable for
 a browser Worker. The same evaluator produces a validated JSON scene graph in both
 environments.
+
+### Realtime browser previews
+
+Use `vizmatic/scene-browser` in a dedicated module Worker for local editing,
+scrubbing and playback. It uses the same bounded QuickJS evaluator, fonts, trusted
+components and Resvg rasterizer as the Node scene renderer. Both native SVG and
+Vizmatic layouts are supported. Compile once per source revision and render each
+new time locally; a full MP4 or HTTP request is not required for playback.
+
+```ts
+// Inside a dedicated Worker. The application fetches these assets from its own origin.
+import { createBrowserSceneRenderer } from 'vizmatic/scene-browser'
+
+const renderer = await createBrowserSceneRenderer({
+    quickjsWasm, resvgWasm,
+    layoutWasm: () => loadLayoutWasm(),
+    fonts: { interRegular, interSemiBold, interBold, jetBrainsMono, notoSans, notoSansMath },
+    emoji: () => loadOfflineEmoji(), // Optional, loaded only for an emoji glyph.
+})
+const prepared = await renderer.prepare(scene, { outputScale: 0.5 })
+const frame = await prepared.render(4)
+postMessage(frame, [frame.pixels.buffer])
+```
+
+The three WASM inputs and six font inputs are `ArrayBuffer`s. `layoutWasm` also
+accepts a loader, so native SVG previews never load Satori's chunk or layout WASM.
+Their hashes are checked before initialization, and initialization is reused. The
+optional emoji loader returns the parsed pinned emoji JSON; it is checked and
+cached on first use. Satori's standalone build embeds its HarfBuzz runtime.
+
+At application build time, `getSceneBrowserAssetPaths()` from
+`vizmatic/browser-assets` resolves `quickjsWasm`, `layoutWasm`, `resvgWasm`,
+`fonts`, and `emojiBrotli` to installed local files. Copy them to your static assets;
+decompress the emoji Brotli file at build time if the browser does not support
+Brotli streams. The browser entry is prebundled ESM and requires no Node shims or
+special file loaders. Keep it out of the initial application bundle and load its
+Worker when a preview becomes visible. Keep ESM code splitting enabled in your
+application's Worker build to preserve the deferred Satori download.
+
+Frames contain owned, transferable RGBA `pixels`, effective `width` and `height`,
+`time`, source and input hashes, runtime version, and `timings` in milliseconds.
+Draw them with `ImageData` on a canvas. A single unchanged graph retains one backing
+raster while each caller receives an independent pixel buffer. Logical scene
+dimensions, fps, cues and frame globals remain unchanged by `outputScale`.
+
+Keep only the latest queued frame, stop playback when hidden, and terminate the
+Worker on an application deadline or when its editor closes. QuickJS limits author
+execution; the Worker deadline also bounds trusted layout and rasterization. Keep
+narration alignment and final export validation in the application's server path.
+`pnpm check:scene-browser` checks real Chromium Worker rendering against Node pixels,
+isolation, error recovery and playback without network requests.
 
 Editable JavaScript executes inside QuickJS WebAssembly with no host objects,
 callbacks, filesystem, network, browser storage or module loader. Each frame gets

@@ -9,9 +9,9 @@ interface PackResult {
 }
 
 const limits = {
-    // Safe-scene evaluator/CLI and its ESM/CJS types join the existing renderers.
-    size: 2_600_000,
-    unpackedSize: 5_600_000,
+    // Includes the lazy browser scene bundle, its types and build-time asset helper.
+    size: 3_200_000,
+    unpackedSize: 7_300_000,
     entryCount: 100,
 }
 

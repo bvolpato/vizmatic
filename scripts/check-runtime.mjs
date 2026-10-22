@@ -10,6 +10,14 @@ const installed = process.argv.includes('--installed')
 const packageRoot = installed ? 'node_modules/vizmatic' : '.'
 const esm = await import(installed ? 'vizmatic' : '../dist/index.js')
 const cjs = createRequire(import.meta.url)(installed ? 'vizmatic' : '../dist/index.cjs')
+const { getSceneBrowserAssetPaths } = await import(installed ? 'vizmatic/browser-assets' : '../dist/scene-browser-assets.js')
+const browserAssets = getSceneBrowserAssetPaths()
+for (const name of ['quickjsWasm', 'layoutWasm', 'resvgWasm']) {
+    assert.equal((await readFile(browserAssets[name])).subarray(0, 4).toString('hex'), '0061736d', `${name} must resolve in an installed consumer`)
+}
+for (const path of Object.values(browserAssets.fonts)) assert.ok((await readFile(path)).length > 100_000)
+assert.ok((await readFile(browserAssets.emojiBrotli)).length > 100_000)
+console.log('Browser scene asset helper resolves installed offline assets')
 const element = React.createElement('div', {
     style: { display: 'flex', backgroundColor: '#ffffff', color: '#000000' },
 }, 'Runtime check')
