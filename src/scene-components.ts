@@ -1,16 +1,16 @@
 /** Explicit names keep the editable scene language separate from the Node API. */
 export const SCENE_COMPONENT_NAMES = Object.freeze([
-    'Arrow', 'ArrowMarkerDef', 'AxisPlot', 'Badge', 'BadgePill', 'BarChart', 'Board', 'Box',
+    'Arrow', 'ArrowMarkerDef', 'AttentionMatrix', 'AxisPlot', 'Badge', 'BadgePill', 'BarChart', 'Board', 'Box',
     'CalloutCard', 'Canvas', 'CanvasItem', 'Card', 'ChartFrame', 'CodeBlock', 'Column',
     'Comparison', 'Connector', 'DashedLine', 'DataTable', 'DataflowDiagram', 'DeploymentDiagram',
-    'DetailList', 'DonutChart', 'DotPoint', 'EquationCard', 'Flow', 'FlowArrow', 'GradientChip',
-    'GraphDiagram', 'Grid', 'Heatmap', 'Icon', 'IntervalPlot', 'KeyValueList', 'LayeredNetwork',
-    'Legend', 'LineChart', 'MathText', 'Matrix', 'MetricCard', 'MiniBarChart', 'Panel',
+    'DetailList', 'DonutChart', 'DotPoint', 'EquationCard', 'Flow', 'FlowArrow',
+    'FreeBodyDiagram', 'GeometryDiagram', 'GradientChip', 'GraphDiagram', 'Grid', 'Heatmap', 'Icon', 'IntervalPlot', 'KeyValueList', 'LayeredNetwork',
+    'Legend', 'LineChart', 'MathText', 'Matrix', 'MetricCard', 'MiniBarChart', 'MoleculeDiagram', 'NumberLine', 'Panel',
     'ParetoBarChart', 'ParetoChart', 'PieChart', 'Pipeline', 'ProgressList', 'ProgressRow',
-    'QuadrantChart', 'Row', 'ScatterPlot', 'Scene', 'SequenceDiagram', 'Stack', 'StackedBar',
+    'QuadrantChart', 'ReactionEnergyDiagram', 'ReactionEquation', 'Row', 'ScatterPlot', 'Scene', 'SequenceDiagram', 'Stack', 'StackedBar',
     'StatusList', 'StatusRow', 'StepCard', 'SvgFrame', 'SvgMathText', 'SvgPoint', 'TextLabel',
     'Tile', 'TileGrid', 'TiledMatrix', 'Timeline', 'TitleBar', 'ToneStrip', 'TransformerTopology',
-    'TreeDiagram', 'ValuePill', 'VectorArrow', 'VectorSegment', 'WindowFrame',
+    'TreeDiagram', 'ValuePill', 'VectorArrow', 'VectorSegment', 'WaveDiagram', 'WindowFrame',
 ] as const)
 
 export const SCENE_DOM_TAGS = Object.freeze([

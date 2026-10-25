@@ -74,6 +74,14 @@ const snippets: Record<string, string> = {
     DotPoint: "<div style={{ position: 'relative', display: 'flex', width: 460, height: 220 }}>{DotPoint({ x: 230, y: 100, label: 'deploy', color: c.infoLight, size: 14 })}<TextLabel text='Labeled coordinate point' fontSize={15} /></div>",
     DashedLine: "<div style={{ position: 'relative', display: 'flex', width: 460, height: 220 }}>{DashedLine({ x1: 36, y1: 110, x2: 424, y2: 110, color: c.warningLight, dotSpacing: 12, dotSize: 3 })}<TextLabel text='Threshold' fontSize={15} /></div>",
     AxisPlot: "<AxisPlot width={700} height={380} xMin={-1} xMax={1} yMin={-1} yMax={1} showGrid xAxisLabel='x' yAxisLabel='y' points={[{ x: -0.5, y: 0.3, r: 6, tone: 'blue' }, { x: 0.6, y: 0.7, r: 7, tone: 'green' }]} vectors={[{ x1: 0, y1: 0, x2: 0.45, y2: 0.55, tone: 'purple', arrow: true }]} />",
+    NumberLine: "<NumberLine c={c} min={-3} max={3} ticks={[{ value: -2 }, { value: -1 }, { value: 0 }, { value: 1 }, { value: 2 }]} markers={[{ id: 'origin', label: '0', value: 0, color: c.info }]} interval={{ from: -1.5, to: 2, includeFrom: true, includeTo: false, label: '−3/2 ≤ x < 2', color: c.primary }} title='A half-open interval on the number line' />",
+    GeometryDiagram: "<GeometryDiagram c={c} width={620} height={380} points={[{ id: 'A', x: 0, y: 0 }, { id: 'B', x: 4, y: 0 }, { id: 'C', x: 4, y: 3 }]} segments={[{ from: 'A', to: 'B', label: '4' }, { from: 'B', to: 'C', label: '3' }, { from: 'A', to: 'C', label: '5' }]} angles={[{ vertex: 'B', from: 'A', to: 'C', label: '90°' }]} title='A 3–4–5 right triangle' />",
+    FreeBodyDiagram: "<FreeBodyDiagram c={c} width={620} height={380} forces={[{ id: 'weight', label: 'weight · 9.8 N', x: 0, y: -9.8, color: c.primary }, { id: 'normal', label: 'normal · 9.8 N', x: 0, y: 9.8, color: c.info }, { id: 'push', label: 'push · 8 N', x: 8, y: 0, color: c.positive }, { id: 'drag', label: 'drag · 3 N', x: -3, y: 0, color: c.warning }]} showResultant showComponents title='A cart accelerates right with a 5 N net force' />",
+    WaveDiagram: "<WaveDiagram c={c} width={760} height={420} waves={[{ amplitude: 1, wavelength: 4, phase: 0, color: c.info, label: 'wave 1 · A' }, { amplitude: 1, wavelength: 4, phase: 0, color: c.primary, label: 'wave 2 · A' }]} time={0} xMin={-4} xMax={4} yMin={-2.4} yMax={2.4} showComponents showSum probeX={1} title='Two in-phase waves add to amplitude 2A' />",
+    MoleculeDiagram: "<MoleculeDiagram c={c} width={540} height={340} atoms={[{ id: 'O', element: 'O', x: 0, y: 0 }, { id: 'H1', element: 'H', x: -0.79, y: 0.61 }, { id: 'H2', element: 'H', x: 0.79, y: 0.61 }]} bonds={[{ from: 'O', to: 'H1', order: 1 }, { from: 'O', to: 'H2', order: 1 }]} title='Water · bent molecular geometry' />",
+    ReactionEquation: "<ReactionEquation c={c} width={760} reactants={[{ formula: 'H₂', coefficient: 2, state: 'g', composition: { H: 2 } }, { formula: 'O₂', state: 'g', composition: { O: 2 } }]} products={[{ formula: 'H₂O', coefficient: 2, state: 'l', composition: { H: 2, O: 1 } }]} conditions='ignition' />",
+    ReactionEnergyDiagram: "<ReactionEnergyDiagram c={c} width={760} height={380} reactants={0} products={-100} barrier={140} catalyzedBarrier={70} unit='relative energy' reactantLabel='reactants' productLabel='products' />",
+    AttentionMatrix: "<AttentionMatrix c={c} width={760} height={420} queryLabels={['The', 'robot', 'turns', 'left']} keyLabels={['The', 'robot', 'turns', 'left']} weights={[[1, 0, 0, 0], [0.35, 0.65, 0, 0], [0.2, 0.3, 0.5, 0], [0.08, 0.18, 0.24, 0.5]]} mask={[[true, false, false, false], [true, true, false, false], [true, true, true, false], [true, true, true, true]]} activeQuery={3} activeKey={2} title='Causal attention · each row sums to 1' />",
 }
 
 function formatSnippet(snippet: string): string {
@@ -86,10 +94,10 @@ function formatSnippet(snippet: string): string {
 export function catalogExample(name: string): string {
     const rawSnippet = snippets[name]
     if (!rawSnippet) throw new Error('Missing runnable component example for ' + name + '.')
-    const wideExamples = ['CanvasItem', 'DataflowDiagram', 'DeploymentDiagram', 'TransformerTopology']
+    const wideExamples = ['CanvasItem', 'DataflowDiagram', 'DeploymentDiagram', 'TransformerTopology', 'WaveDiagram', 'AttentionMatrix']
     const width = name === 'Board' ? 960 : wideExamples.includes(name) ? 1040 : 960
     const chartExamples = ['DonutChart', 'PieChart', 'StackedBar', 'BarChart', 'ParetoBarChart', 'LineChart', 'ScatterPlot', 'ParetoChart', 'QuadrantChart', 'IntervalPlot']
-    const tallExamples = ['CanvasItem', ...chartExamples]
+    const tallExamples = ['CanvasItem', ...chartExamples, 'NumberLine', 'GeometryDiagram', 'FreeBodyDiagram', 'WaveDiagram', 'MoleculeDiagram', 'ReactionEquation', 'ReactionEnergyDiagram', 'AttentionMatrix']
     const diagramExamples = ['DataflowDiagram', 'DeploymentDiagram', 'TransformerTopology', 'LayeredNetwork', 'SequenceDiagram']
     const chartHeights: Record<string, number> = {
         DonutChart: 520,
@@ -102,6 +110,14 @@ export function catalogExample(name: string): string {
         ParetoChart: 620,
         QuadrantChart: 620,
         IntervalPlot: 600,
+        NumberLine: 560,
+        GeometryDiagram: 540,
+        FreeBodyDiagram: 540,
+        WaveDiagram: 580,
+        MoleculeDiagram: 520,
+        ReactionEquation: 480,
+        ReactionEnergyDiagram: 560,
+        AttentionMatrix: 580,
     }
     const height = name === 'Board' ? 480
         : chartExamples.includes(name) ? chartHeights[name] ?? 640

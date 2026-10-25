@@ -1179,6 +1179,19 @@ The generated `components.json` includes compiler-derived prop types, requiredne
 
 The website is generated from `docs/*.template.html`, the shared shell in `scripts/site-shell.ts`, and the component registry. Run `pnpm site:build` after editing these sources, then `pnpm docs:check`. Use `pnpm site:serve` for browser validation. The generated agent references, property controls, and example adapters update with the same build. If the bundled fonts change, regenerate the website's WOFF2 files with `pnpm site:fonts` using uv 0.9.17 or newer.
 
+## Scientific videos and diagrams
+
+Use the [science guide](SCIENCE.md) for mathematical plots and geometry,
+force and wave diagrams, molecular structures, reaction equations and energy
+profiles, and computed attention. Eight subject components complement the
+existing equations, matrices, graphs, and transformer tools. Each is available
+in the component explorer and the isolated browser scene renderer.
+
+The [four animated lesson sources](examples/videos/README.md) demonstrate a
+secant approaching a tangent, signed wave superposition, catalyst pathways,
+and causal attention with a computed weighted output. Render the checked-out
+sources to GIF or MP4; examples use explicit numerical state and both themes.
+
 ## Publishing
 
 Prepare release commit locally, push it to protected `main`, and wait for required CI before pushing its tag:

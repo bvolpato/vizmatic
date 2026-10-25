@@ -80,6 +80,16 @@ try {
         { source: primitive, width: 640, height: 360, duration: 2, fps: 25, theme: 'light' },
         { source: '<div style={{display:"flex",fontSize:40}}>Pinned emoji 😀</div>', width: 320, height: 180, duration: 2, fps: 25, theme: 'dark' },
         { source: '<Scene title="Math parity" padding={12}><MathText text="x² + λ → y"/><EquationCard title="Balance" formula="E = mc²"/></Scene>', width: 640, height: 360, duration: 2, fps: 25, theme: 'dark' },
+        ...['dark', 'light'].flatMap(theme => [
+            { source: '<NumberLine min={-2} max={2} width={640} height={180} markers={[{id:"x",label:"x",value:-1+2*progress}]} interval={{from:-1,to:1,includeFrom:true,includeTo:false}}/>', width: 640, height: 180, duration: 2, fps: 25, theme },
+            { source: '<GeometryDiagram width={640} height={400} points={[{id:"A",x:0,y:0},{id:"B",x:4,y:0},{id:"C",x:4,y:3}]} segments={[{from:"A",to:"B",label:"4"},{from:"B",to:"C",label:"3"},{from:"A",to:"C",label:"5"}]} angles={[{vertex:"B",from:"A",to:"C",label:"90°"}]}/>', width: 640, height: 400, duration: 2, fps: 25, theme },
+            { source: '<FreeBodyDiagram width={640} height={400} forces={[{id:"push",label:"push",x:4,y:3},{id:"drag",label:"drag",x:-1,y:0}]} showResultant showComponents/>', width: 640, height: 400, duration: 2, fps: 25, theme },
+            { source: '<WaveDiagram width={760} height={420} waves={[{amplitude:1,wavelength:4},{amplitude:1,wavelength:4,phase:progress*Math.PI}]} time={time} xMin={-4} xMax={4} yMin={-2.5} yMax={2.5} showComponents showSum/>', width: 760, height: 420, duration: 2, fps: 25, theme },
+            { source: '<MoleculeDiagram width={600} height={360} atoms={[{id:"O",element:"O",x:0,y:0},{id:"H1",element:"H",x:-0.8,y:0.6},{id:"H2",element:"H",x:0.8,y:0.6}]} bonds={[{from:"O",to:"H1",order:1},{from:"O",to:"H2",order:1}]}/>', width: 600, height: 360, duration: 2, fps: 25, theme },
+            { source: '<ReactionEquation width={760} reactants={[{formula:"H₂",coefficient:2,state:"g",composition:{H:2}},{formula:"O₂",state:"g",composition:{O:2}}]} products={[{formula:"H₂O",coefficient:2,state:"l",composition:{H:2,O:1}}]}/>', width: 760, height: 240, duration: 2, fps: 25, theme },
+            { source: '<ReactionEnergyDiagram width={760} height={420} reactants={20} products={-40} barrier={120} catalyzedBarrier={65} progress={progress} unit="kJ/mol"/>', width: 760, height: 420, duration: 2, fps: 25, theme },
+            { source: '<AttentionMatrix width={760} height={420} weights={[[1,0],[0.25,0.75]]} queryLabels={["a","b"]} keyLabels={["a","b"]} mask={[[true,false],[true,true]]} activeQuery={1}/>', width: 760, height: 420, duration: 2, fps: 25, theme },
+        ]),
     ]
     const results = []
     for (const [index, request] of cases.entries()) {

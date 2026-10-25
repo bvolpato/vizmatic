@@ -12,7 +12,8 @@ const limits = {
     // Includes the lazy browser scene bundle, its types and build-time asset helper.
     size: 3_200_000,
     unpackedSize: 7_300_000,
-    entryCount: 100,
+    // Scientific source examples and their guide ship with the public API.
+    entryCount: 110,
 }
 
 const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {

@@ -580,6 +580,25 @@ height = 620;
 </Scene>
 ```
 
+## Scientific explanations
+
+Use `NumberLine` and `GeometryDiagram` for intervals and explicit geometric
+relations, `FreeBodyDiagram` for vectors on a common force scale, and
+`WaveDiagram` for signed sinusoidal superposition. Use `MoleculeDiagram` for
+explicit 2D atom positions and bonds, `ReactionEquation` for coefficients and
+states, and `ReactionEnergyDiagram` for explicitly supplied energy levels.
+`AttentionMatrix` displays normalized probabilities; `scaledDotProductAttention`
+computes one head from explicit Q, K, and V tensors in regular TypeScript.
+These components complement `AxisPlot`, equations, matrices, graphs, and
+`TransformerTopology`. See [SCIENCE.md](SCIENCE.md) for contracts and worked
+examples. Bare editor scenes use the component names without imports.
+
+Keep units and coordinate scales stable, animate the changing mechanism, and
+drive its diagram and readout from the same numerical state. Chemical balance
+requires supplied composition maps; molecular drawings do not infer chemical
+validity. Label illustrative data, and do not present attention weights as an
+explanation of model reasoning.
+
 ## Final response
 
 After creating a visual, report:

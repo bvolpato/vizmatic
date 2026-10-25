@@ -59,3 +59,6 @@ export type {
 } from './primitives/charts'
 export * from './primitives/plots'
 export * from './primitives/board'
+export * from './primitives/science-math-physics'
+export * from './primitives/science-chemistry'
+export * from './primitives/science-ai'

@@ -164,6 +164,46 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
         ],
     },
     {
+        id: 'science-math',
+        label: 'Math',
+        description: 'Number lines and geometric constructions for clear mathematical reasoning.',
+        source: 'catalog-science-math',
+        components: [
+            { name: 'NumberLine', description: 'Signed intervals, labeled values, and markers on a numeric line.' },
+            { name: 'GeometryDiagram', description: 'Labeled points, measured segments, and angle constructions.' },
+        ],
+    },
+    {
+        id: 'science-physics',
+        label: 'Physics',
+        description: 'Force vectors and wave superposition with explicit axes and measurements.',
+        source: 'catalog-science-physics',
+        components: [
+            { name: 'FreeBodyDiagram', description: 'Forces, components, and the resultant acting on one body.' },
+            { name: 'WaveDiagram', description: 'Component waves and their superposition across position and time.' },
+        ],
+    },
+    {
+        id: 'science-chemistry',
+        label: 'Chemistry',
+        description: 'Molecular structures, balanced equations, and reaction energy profiles.',
+        source: 'catalog-science-chemistry',
+        components: [
+            { name: 'MoleculeDiagram', description: 'Element-labeled atoms, bond orders, charges, and isotopes.' },
+            { name: 'ReactionEquation', description: 'Reactants and products with coefficients, states, and conditions.' },
+            { name: 'ReactionEnergyDiagram', description: 'Reactant and product energy with activation barriers.' },
+        ],
+    },
+    {
+        id: 'science-ai',
+        label: 'AI',
+        description: 'Normalized causal attention weights and query-to-token relationships.',
+        source: 'catalog-science-ai',
+        components: [
+            { name: 'AttentionMatrix', description: 'Probability-normalized attention with causal masks and focus highlights.' },
+        ],
+    },
+    {
         id: 'drawing',
         label: 'Drawing',
         description: 'Low-level SVG geometry for custom technical figures.',
@@ -200,8 +240,15 @@ export const catalogUtilities = [
     'defineIllustration',
     'formatMathText',
     'formatTensorShape',
+    'geometryBounds',
     'getToneColor',
     'getToneGradient',
+    'mapNumberLine',
+    'reactionBalance',
+    'sampleWave',
+    'scaledDotProductAttention',
+    'sumForces',
+    'waveValue',
 ] as const
 
 export const catalogComponentCount = componentCatalog.reduce(

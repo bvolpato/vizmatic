@@ -7,6 +7,20 @@ generic example that depends on the published Vizmatic package.
   one request through receive, process, and return stages.
 - [`signal-to-story.tsx`](signal-to-story.tsx) is a longer example. It adds
   observations to a chart, traces a fitted line, and holds the result on screen.
+- [`calculus-tangent.tsx`](calculus-tangent.tsx) couples a moving secant,
+  shrinking increment, and slope approaching the derivative.
+- [`wave-interference.tsx`](wave-interference.tsx) changes relative phase while
+  showing both waves and their signed sum on fixed axes.
+- [`catalyst-pathway.tsx`](catalyst-pathway.tsx) compares illustrative reaction
+  pathways with different barriers and unchanged endpoint energies.
+- [`causal-attention.tsx`](causal-attention.tsx) computes masked softmax weights
+  and the corresponding weighted value output from explicit small tensors.
+
+The four science examples require the scientific components in this checkout.
+Build it with `pnpm build`, then use `node dist/cli.js video` in place of
+`npx vizmatic video` below. See the [science guide](../../SCIENCE.md) for the
+data contracts and references. They are short visual lesson segments; narration
+and publication review remain separate production steps.
 
 Use Node.js 20 or newer. In a project that contains the downloaded or copied
 TSX file, add the [consumer security overrides](../../README.md#consumer-security-overrides)

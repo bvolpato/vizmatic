@@ -85,4 +85,30 @@ export function validateSceneComponentProps(name: string, props: Props): void {
         tree(props.root)
     }
     if (name === 'ParetoChart') entries(props.points, 'ParetoChart.points', 512)
+    if (name === 'NumberLine') {
+        entries(props.ticks, 'NumberLine.ticks', 128)
+        entries(props.markers, 'NumberLine.markers', 64)
+    }
+    if (name === 'GeometryDiagram') {
+        entries(props.points, 'GeometryDiagram.points', 128)
+        entries(props.segments, 'GeometryDiagram.segments', 256)
+        entries(props.angles, 'GeometryDiagram.angles', 64)
+    }
+    if (name === 'FreeBodyDiagram') entries(props.forces, 'FreeBodyDiagram.forces', 32)
+    if (name === 'WaveDiagram') {
+        entries(props.waves, 'WaveDiagram.waves', 8)
+        if (props.sampleCount !== undefined) integer(props.sampleCount, 'WaveDiagram.sampleCount', 2, 512)
+    }
+    if (name === 'MoleculeDiagram') {
+        entries(props.atoms, 'MoleculeDiagram.atoms', 64)
+        entries(props.bonds, 'MoleculeDiagram.bonds', 96)
+    }
+    if (name === 'ReactionEquation') {
+        entries(props.reactants, 'ReactionEquation.reactants', 16)
+        entries(props.products, 'ReactionEquation.products', 16)
+    }
+    if (name === 'AttentionMatrix') {
+        for (const row of entries(props.weights, 'AttentionMatrix.weights', 32)) entries(row, 'AttentionMatrix row', 32)
+        for (const row of entries(props.mask, 'AttentionMatrix.mask', 32)) entries(row, 'AttentionMatrix mask row', 32)
+    }
 }
