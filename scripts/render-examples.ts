@@ -1,4 +1,4 @@
-import { readFile, readdir, writeFile } from 'fs/promises'
+import { access, readFile, readdir, writeFile } from 'fs/promises'
 import { spawnSync } from 'child_process'
 import { basename, join } from 'path'
 import { codeToHtml } from 'shiki'
@@ -11,6 +11,15 @@ const themes = ['dark', 'light'] as const
 const files = (await readdir(examplesDir))
     .filter((file) => file.endsWith('.tsx'))
     .sort()
+const onlyArgument = process.argv.slice(2).find((argument) => argument.startsWith('--only='))
+const selected = onlyArgument ? new Set(onlyArgument.slice(7).split(',').filter(Boolean)) : undefined
+if (selected) {
+    const names = new Set(files.map((file) => basename(file, '.tsx')))
+    if (!selected.size || [...selected].some((name) => !names.has(name))) {
+        throw new Error('--only requires comma-separated example names without the .tsx extension')
+    }
+}
+let rendered = 0
 
 const manifest: Array<{ name: string; source: string; outputs: string[] }> = []
 const sources: Array<{ name: string; title: string; source: string; code: string; html: Record<(typeof themes)[number], string> }> = []
@@ -83,12 +92,11 @@ for (const file of files) {
     if (name.startsWith('nccl-')) renderArgs.push('--no-crop')
     if (name !== 'vizmatic-hero') renderArgs.push('--watermark', 'Vizmatic')
 
-    const result = spawnSync(process.execPath, renderArgs, {
-        stdio: 'inherit',
-    })
-
-    if (result.status !== 0) {
-        process.exit(result.status ?? 1)
+    const shouldRender = !selected || selected.has(name)
+    if (shouldRender) {
+        const result = spawnSync(process.execPath, renderArgs, { stdio: 'inherit' })
+        if (result.status !== 0) process.exit(result.status ?? 1)
+        rendered++
     }
 
     const code = sourceForGallery(await readFile(source, 'utf8'))
@@ -111,8 +119,15 @@ for (const file of files) {
     const outputs = themes.map((theme) => `${name}_${theme}.png`)
 
     if (code.includes('createScenes') || code.includes('createAnimation')) {
-        animatedSources.push(source)
+        if (shouldRender) animatedSources.push(source)
         outputs.push(...themes.map((theme) => `${name}_${theme}.gif`))
+    }
+    if (!shouldRender) {
+        for (const output of outputs) {
+            await access(join(outDir, output)).catch(() => {
+                throw new Error(`Missing ${output}; run the full example render before using --only`)
+            })
+        }
     }
 
     manifest.push({
@@ -147,4 +162,4 @@ if (animatedSources.length > 0) {
 await writeFile(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`)
 await writeFile(join(outDir, 'sources.json'), `${JSON.stringify(sources, null, 2)}\n`)
 await writeFile(examplesReadmePath, generateExamplesReadme(manifest))
-console.log(`rendered ${files.length} example frames in ${themes.join('/')} themes`)
+console.log(`rendered ${rendered} example frames in ${themes.join('/')} themes; indexed ${files.length}`)

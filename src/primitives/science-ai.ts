@@ -1,6 +1,6 @@
 import React from 'react'
 import { stableSoftmax } from '../teaching-math'
-import { getReadableColor, getReadableTextColor, withColorAlpha, type ThemeColors } from '../theme'
+import { compositeColor, getReadableColor, getReadableTextColor, withColorAlpha, type ThemeColors } from '../theme'
 import { SvgMathText } from './layout'
 
 export interface AttentionOptions {
@@ -121,9 +121,11 @@ export function AttentionMatrix({
     if (cellWidth < 24 || cellHeight < 20 || keyNames.some(value => value.length * 7 > cellWidth - 6)) {
         throw new Error('AttentionMatrix dimensions must leave room for readable cells and labels')
     }
-    const text = (key: string, value: string, x: number, y: number, size = 14, fill = c.textPrimary, anchor: 'start' | 'middle' | 'end' = 'middle') => React.cloneElement(SvgMathText({
-        text: value, x, y, fill, fontSize: size, fontFamily: c.fontSans, fontWeight: 500, textAnchor: anchor, dominantBaseline: 'alphabetic',
-    }), { key })
+    const text = (key: string, value: string, x: number, y: number, size = 14, fill = c.textPrimary, anchor: 'start' | 'middle' | 'end' = 'middle', background?: string) => {
+        const label = SvgMathText({ text: value, x, y, fill, fontSize: size, fontFamily: c.fontSans, fontWeight: 500, textAnchor: anchor, dominantBaseline: 'alphabetic' })
+        const style = (label.props as { style: React.CSSProperties }).style
+        return React.cloneElement(label, { key, ...(background ? { style: { ...style, backgroundColor: background } } : {}) })
+    }
     const marks: React.ReactNode[] = [
         React.createElement('title', { key: 'title' }, title),
         React.createElement('desc', { key: 'description' }, 'Rows are queries and columns are keys. Visible rows sum to one. Crosses denote masked keys. Values are attention probabilities, not explanations of model reasoning.'),
@@ -140,7 +142,7 @@ export function AttentionMatrix({
             const x = left + j * cellWidth
             const masked = mask?.[i][j] === false
             const selected = activeQuery === i && (activeKey === undefined || activeKey === j)
-            const fill = masked ? c.bgCardAlt : withColorAlpha(c.primary, 0.12 + 0.88 * weight)
+            const fill = masked ? c.bgCardAlt : compositeColor(withColorAlpha(c.primary, 0.12 + 0.88 * weight), c.bg)
             marks.push(React.createElement('rect', { key: `cell-${i}-${j}`, x: x + 2, y: y + 2, width: cellWidth - 4, height: cellHeight - 4,
                 rx: 4, fill, stroke: selected ? c.primary : c.borderSubtle, strokeWidth: selected ? 2.5 : 1 }))
             if (masked) {
@@ -148,7 +150,7 @@ export function AttentionMatrix({
                 marks.push(React.createElement('path', { key: `mask-${i}-${j}`, d: `M${centerX - 4},${centerY - 4}l8,8m-8,0l8,-8`, stroke: c.textMuted, strokeWidth: 1.4 }))
             } else {
                 const label = weight.toFixed(2)
-                if (cellWidth >= 38 && cellHeight >= 24) marks.push(text(`value-${i}-${j}`, label, x + cellWidth / 2, y + cellHeight / 2 + 5, 14, getReadableTextColor(fill, c, c.bg)))
+                if (cellWidth >= 38 && cellHeight >= 24) marks.push(text(`value-${i}-${j}`, label, x + cellWidth / 2, y + cellHeight / 2 + 5, 14, getReadableTextColor(fill, c, c.bg), 'middle', fill))
             }
         })
         const total = row.reduce((sum, value) => sum + value, 0)

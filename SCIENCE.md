@@ -83,10 +83,15 @@ Run from a checkout containing the scientific components:
 
 ```sh
 pnpm build
+pnpm exec tsx scripts/render-examples.ts --only=catalog-science-math,catalog-science-physics,catalog-science-chemistry,catalog-science-ai
 node dist/cli.js render examples/catalog-science-chemistry.tsx --theme dark,light --out /tmp/science
 node dist/cli.js gif examples/videos/wave-interference.tsx --theme dark,light --fps 20 --out /tmp/science
 node dist/cli.js video examples/videos/causal-attention.tsx --theme dark --fps 30 --out /tmp/science
 ```
+
+The scoped gallery command retains existing assets and refreshes all source
+metadata. It requires the other examples to have been rendered already. The
+default `pnpm render:examples` still rebuilds the complete gallery.
 
 MP4 output requires FFmpeg with `libx264`. Captions and narration can be added
 through the existing video APIs. The examples are visual lesson segments, not

@@ -39,7 +39,7 @@ export function create(theme: ThemeMode = 'dark') {
                     <NumberLine
                         c={c}
                         width={600}
-                        height={300}
+                        height={380}
                         min={-3}
                         max={3}
                         ticks={[

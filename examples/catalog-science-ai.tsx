@@ -77,14 +77,15 @@ export function create(theme: ThemeMode = 'dark') {
                     tone="cyan"
                     width={428}
                     minHeight={450}
+                    justify="center"
                 >
                     <Column width="100%" gap={15} align="stretch">
                         <TextLabel c={c} text={`Computed weights for “${tokens[queryIndex]}”: ${formatVector(queryWeights)}. Highest weight: “${tokens[strongestKey]}” (${queryWeights[strongestKey].toFixed(2)}).`} fontSize={13} color={c.textPrimary} />
                         <EquationCard c={c} title="Scaled dot-product attention" formula="softmax(QKᵀ / √2) V" result={formatVector(queryOutput)} detail="weighted value for “left” · computed" tone="purple" width={366} math />
                         <Column width="100%" gap={4} align="stretch">
-                            <TextLabel c={c} text={`Illustrative Q rows: ${formatRows(queries)}`} fontSize={10} mono color={c.textSecondary} />
-                            <TextLabel c={c} text={`K rows: ${formatRows(keys)}`} fontSize={10} mono color={c.textSecondary} />
-                            <TextLabel c={c} text={`V rows: ${formatRows(values)}`} fontSize={10} mono color={c.textSecondary} />
+                            <TextLabel c={c} text={`Illustrative Q rows: ${formatRows(queries)}`} fontSize={12} mono color={c.textSecondary} />
+                            <TextLabel c={c} text={`K rows: ${formatRows(keys)}`} fontSize={12} mono color={c.textSecondary} />
+                            <TextLabel c={c} text={`V rows: ${formatRows(values)}`} fontSize={12} mono color={c.textSecondary} />
                         </Column>
                         <TextLabel c={c} text="A masked future key receives zero weight. Attention weights show routing strength, not a causal explanation of the model's decision." fontSize={12} color={c.textSecondary} />
                     </Column>

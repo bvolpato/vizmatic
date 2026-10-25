@@ -491,6 +491,18 @@ function colorLuminance(color: string, backdrop?: string): number | undefined {
     return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
+/** Resolve a translucent foreground over its background using CSS alpha compositing. */
+export function compositeColor(foreground: string, background: string): string {
+    const front = parseColor(foreground), back = parseColor(background)
+    if (!front || !back) throw new Error('Color compositing requires valid CSS colors')
+    const alpha = front.alpha + back.alpha * (1 - front.alpha)
+    if (alpha === 0) return 'transparent'
+    const channels = front.channels.map((value, index) => Math.round(
+        (value * front.alpha + back.channels[index] * back.alpha * (1 - front.alpha)) / alpha,
+    ))
+    return alpha === 1 ? `rgb(${channels.join(', ')})` : `rgba(${channels.join(', ')}, ${Number(alpha.toFixed(6))})`
+}
+
 function colorContrast(left: string, right: string, rightBackdrop?: string): number {
     const leftLuminance = colorLuminance(left)
     const rightLuminance = colorLuminance(right, rightBackdrop)

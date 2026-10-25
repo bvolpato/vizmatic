@@ -61,6 +61,7 @@ export function create(theme: ThemeMode = 'dark') {
                     width={776}
                     minHeight={344}
                     align="center"
+                    justify="center"
                     footer="2 H₂(g) + O₂(g) → 2 H₂O(l) · atom counts match"
                 >
                     <ReactionEquation

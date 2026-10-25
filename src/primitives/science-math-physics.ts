@@ -295,7 +295,7 @@ export function NumberLine({
         elements.push(
             React.createElement('line', { key: `marker-line-${marker.id}`, x1: markerX, y1: axisY - 4, x2: markerX, y2: labelY + 7, stroke: color, strokeWidth: 1.5, strokeDasharray: '4 4', opacity: 0.8 }),
             React.createElement('circle', { key: `marker-point-${marker.id}`, cx: markerX, cy: axisY, r: 7, fill: color, stroke: c.bgCard, strokeWidth: 2 }),
-            React.createElement('text', { key: `marker-label-${marker.id}`, x: labelX, y: labelY, textAnchor: 'middle', fill: color, fontFamily: c.fontSans, fontSize: 12, fontWeight: 650 }, marker.label),
+            React.createElement('text', { key: `marker-label-${marker.id}`, x: labelX, y: labelY, textAnchor: 'middle', fill: c.textPrimary, fontFamily: c.fontSans, fontSize: 12, fontWeight: 650 }, marker.label),
         )
     })
     const intervalDescription = interval
@@ -461,7 +461,7 @@ export function GeometryDiagram({
         if (segment.label) {
             const labelX = clamp((from.x + to.x) / 2, 24 + textWidth(segment.label) / 2, width - 24 - textWidth(segment.label) / 2)
             const labelY = clamp((from.y + to.y) / 2 - 9, 58, height - 22)
-            elements.push(React.createElement('text', { key: `segment-label-${index}`, x: labelX, y: labelY, textAnchor: 'middle', fill: c.textSecondary, fontFamily: c.fontSans, fontSize: FONT_SIZE }, segment.label))
+            elements.push(React.createElement('text', { key: `segment-label-${index}`, x: labelX, y: labelY, textAnchor: 'middle', fill: c.textPrimary, fontFamily: c.fontSans, fontSize: FONT_SIZE }, segment.label))
         }
     })
     angles.forEach((angle, index) => {
@@ -485,7 +485,7 @@ export function GeometryDiagram({
             const middle = a1 + delta / 2
             const labelX = clamp(v.x + (radius + 18) * Math.cos(middle), 28 + textWidth(angle.label) / 2, width - 28 - textWidth(angle.label) / 2)
             const labelY = clamp(v.y - (radius + 18) * Math.sin(middle) + 4, 58, height - 20)
-            elements.push(React.createElement('text', { key: `angle-label-${index}`, x: labelX, y: labelY, textAnchor: 'middle', fill: color, fontFamily: c.fontSans, fontSize: FONT_SIZE, fontWeight: 650 }, angle.label))
+            elements.push(React.createElement('text', { key: `angle-label-${index}`, x: labelX, y: labelY, textAnchor: 'middle', fill: c.textPrimary, fontFamily: c.fontSans, fontSize: FONT_SIZE, fontWeight: 650 }, angle.label))
         }
     })
     points.forEach((point) => {
@@ -589,7 +589,7 @@ export function FreeBodyDiagram({
         React.createElement('line', { key: 'y-axis', x1: center.x, y1: center.y - available - 28, x2: center.x, y2: center.y + available + 28, stroke: c.borderSubtle, strokeWidth: 1.3 }),
         React.createElement('circle', { key: 'body', cx: center.x, cy: center.y, r: 6, fill: c.bgCard, stroke: c.textPrimary, strokeWidth: 2 }),
     ]
-    forces.forEach((force, index) => {
+    forces.forEach((force) => {
         const color = colorValue(force.color, c.secondary, `FreeBodyDiagram force "${force.id}" color`)
         const end = mapVector(force.x, force.y)
         if (showComponents) {
@@ -599,7 +599,7 @@ export function FreeBodyDiagram({
             if (force.y !== 0) elements.push(React.createElement('line', { key: `component-y-${force.id}`, x1: yStart.x, y1: yStart.y, x2: end.x, y2: end.y, stroke: color, strokeWidth: 1.6, strokeDasharray: '5 5', opacity: 0.56 }))
         }
         elements.push(arrow(center, end, color, `force-${force.id}`, 3))
-        const direction = Math.sign(end.x - center.x) || (index % 2 === 0 ? 1 : -1)
+        const direction = Math.sign(end.x - center.x) || 1
         const anchor = direction > 0 ? 'start' : 'end'
         const labelX = boundedTextX(end.x + direction * 12, width, force.label, anchor, 20)
         const labelY = clamp(end.y - 11, 60, height - 20)
@@ -616,17 +616,17 @@ export function FreeBodyDiagram({
             x: boundedTextX(end.x + direction * 12, width, label, anchor, 20),
             y: clamp(end.y + 20, 60, height - 20),
             textAnchor: anchor,
-            fill: c.positive,
+            fill: c.textPrimary,
             fontFamily: c.fontSans,
             fontSize: FONT_SIZE,
             fontWeight: 700,
         }, label))
     } else if (showResultant) {
-        elements.push(React.createElement('text', { key: 'zero-resultant', x: center.x + 38, y: center.y + 38, fill: c.positive, fontFamily: c.fontSans, fontSize: FONT_SIZE, fontWeight: 700 }, 'R = 0'))
+        elements.push(React.createElement('text', { key: 'zero-resultant', x: center.x + 38, y: center.y + 38, fill: c.textPrimary, fontFamily: c.fontSans, fontSize: FONT_SIZE, fontWeight: 700 }, 'R = 0'))
     }
     elements.push(
-        React.createElement('text', { key: 'positive-x', x: width - 42, y: center.y - 8, textAnchor: 'end', fill: c.textMuted, fontFamily: c.fontMono, fontSize: 12 }, '+x'),
-        React.createElement('text', { key: 'positive-y', x: center.x + 8, y: 72, fill: c.textMuted, fontFamily: c.fontMono, fontSize: 12 }, '+y'),
+        React.createElement('text', { key: 'positive-x', x: width - 42, y: center.y - 8, textAnchor: 'end', fill: c.textSecondary, fontFamily: c.fontMono, fontSize: 12 }, '+x'),
+        React.createElement('text', { key: 'positive-y', x: center.x - 12, y: 72, textAnchor: 'end', fill: c.textSecondary, fontFamily: c.fontMono, fontSize: 12 }, '+y'),
     )
     return svgShell({ c, width, height, title, ariaLabel, description: `${forces.length} physical force vectors use one scale. The resultant is the vector sum ${formatNumber(resultant.x)} x plus ${formatNumber(resultant.y)} y. The vertical axis points upward in physical coordinates.`, children: elements })
 }
@@ -783,8 +783,8 @@ export function WaveDiagram({
         elements.push(
             React.createElement('line', { key: `grid-x-${index}`, x1: gridX, y1: plot.top, x2: gridX, y2: plot.bottom, stroke: c.borderSubtle, strokeWidth: 1 }),
             React.createElement('line', { key: `grid-y-${index}`, x1: plot.left, y1: gridY, x2: plot.right, y2: gridY, stroke: c.borderSubtle, strokeWidth: 1 }),
-            React.createElement('text', { key: `x-label-${index}`, x: gridX, y: plot.bottom + 22, textAnchor: 'middle', fill: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }, formatNumber(xValue)),
-            React.createElement('text', { key: `y-label-${index}`, x: plot.left - 10, y: gridY + 4, textAnchor: 'end', fill: c.textMuted, fontFamily: c.fontMono, fontSize: 11 }, formatNumber(yValue)),
+            React.createElement('text', { key: `x-label-${index}`, x: gridX, y: plot.bottom + 22, textAnchor: 'middle', fill: c.textSecondary, fontFamily: c.fontMono, fontSize: 11 }, formatNumber(xValue)),
+            React.createElement('text', { key: `y-label-${index}`, x: plot.left - 10, y: gridY + 4, textAnchor: 'end', fill: c.textSecondary, fontFamily: c.fontMono, fontSize: 11 }, formatNumber(yValue)),
         )
     }
     elements.push(
@@ -810,11 +810,21 @@ export function WaveDiagram({
         const row = index % 4
         const legendX = plot.left + column * (plot.right - plot.left) / 2
         const legendY = plot.top - 58 + row * 14
+        elements.push(React.createElement('line', {
+            key: `legend-swatch-${index}`,
+            x1: legendX,
+            y1: legendY - 4,
+            x2: legendX + 10,
+            y2: legendY - 4,
+            stroke: color,
+            strokeWidth: 3,
+            strokeLinecap: 'round',
+        }))
         elements.push(React.createElement('text', {
             key: `legend-${index}`,
-            x: boundedTextX(legendX, width, label, 'start', 20, 11),
+            x: boundedTextX(legendX + 16, width, label, 'start', 20, 11),
             y: legendY,
-            fill: color,
+            fill: c.textPrimary,
             fontFamily: c.fontSans,
             fontSize: 11,
             fontWeight: 650,
@@ -828,7 +838,7 @@ export function WaveDiagram({
         elements.push(
             React.createElement('line', { key: 'probe-line', x1: probePosition.x, y1: plot.top, x2: probePosition.x, y2: plot.bottom, stroke: c.warning, strokeWidth: 1.5, strokeDasharray: '5 5' }),
             React.createElement('circle', { key: 'probe-point', cx: probePosition.x, cy: probePosition.y, r: 6, fill: c.warning, stroke: c.bgCard, strokeWidth: 2 }),
-            React.createElement('text', { key: 'probe-label', x: clamp(probePosition.x + 10, plot.left + 8, plot.right - textWidth(label)), y: clamp(probePosition.y - 12, plot.top + 40, plot.bottom - 10), fill: c.warning, fontFamily: c.fontSans, fontSize: 12, fontWeight: 650 }, label),
+            React.createElement('text', { key: 'probe-label', x: clamp(probePosition.x + 10, plot.left + 8, plot.right - textWidth(label)), y: clamp(probePosition.y - 12, plot.top + 40, plot.bottom - 10), fill: c.textPrimary, fontFamily: c.fontSans, fontSize: 12, fontWeight: 650 }, label),
         )
     }
     const summary = waves.map((wave, index) => `${wave.label ?? `wave ${index + 1}`} (A=${formatNumber(wave.amplitude)}, λ=${formatNumber(wave.wavelength)}, φ=${formatNumber(wave.phase ?? 0)}, v=${formatNumber(wave.speed ?? 0)})`).join('; ')

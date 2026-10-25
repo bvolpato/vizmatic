@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { renderToSvg } from '../src/render'
 import { AttentionMatrix, scaledDotProductAttention } from '../src/primitives/science-ai'
-import { getThemeColors } from '../src/theme'
+import { compositeColor, getThemeColors } from '../src/theme'
+import { analyzeContrast } from '../src/diagnostics'
 
 describe('single-head scaled dot-product attention', () => {
     it('scales scores by feature dimension, normalizes, and computes weighted values', () => {
@@ -46,6 +47,12 @@ describe('AttentionMatrix', () => {
         expect(svg).toMatch(/<svg/)
         expect(svg).toMatch(/<path/)
         expect(svg).not.toMatch(/NaN|Infinity/)
+        expect(analyzeContrast(AttentionMatrix({ ...options, c: getThemeColors(theme) }), theme)).not.toContainEqual(expect.objectContaining({ code: 'accessibility.low_contrast' }))
+    })
+    it('composites cell backgrounds before choosing and auditing their label ink', () => {
+        expect(compositeColor('rgba(255, 0, 0, 0.5)', '#0000ff')).toBe('rgb(128, 0, 128)')
+        expect(compositeColor('transparent', '#ffffff')).toBe('rgb(255, 255, 255)')
+        expect(compositeColor('hsl(120, 100%, 50%)', '#000000')).toBe('rgb(0, 255, 0)')
     })
     it('rejects unnormalized, masked, malformed and unreadable probability views', () => {
         const c = getThemeColors('dark')

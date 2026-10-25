@@ -156,6 +156,10 @@ describe('science, math, and physics primitives', () => {
         ]
         expect(sumForces(forces)).toEqual({ x: 6, y: 0, magnitude: 6 })
         const diagram = FreeBodyDiagram({ c: getThemeColors('light'), forces, showComponents: true })
+        const normalLabel = collect(diagram, (element) => element.type === SvgMathText && props(element).text === 'normal')[0]
+        const yAxisLabel = collect(diagram, (element) => element.type === SvgMathText && props(element).text === '+y')[0]
+        expect(Number(props(normalLabel).x)).toBeGreaterThan(Number(props(diagram).style.width) / 2)
+        expect(Number(props(yAxisLabel).x)).toBeLessThan(Number(props(diagram).style.width) / 2)
         const push = collect(diagram, (element) => element.type === 'g' && props(element)['data-vector-id'] === 'push')[0]
         const forceLine = React.Children.toArray(props(push).children).find((child) => React.isValidElement(child) && child.type === 'line') as React.ReactElement
         expect(Number(props(forceLine).x2)).toBeGreaterThan(Number(props(forceLine).x1))
@@ -214,7 +218,7 @@ describe('science, math, and physics primitives', () => {
             const diagram = FreeBodyDiagram({
                 c,
                 forces: [{ id: 'force', label: 'small force', x: 0, y: 1, color: c.secondary }],
-                showResultant: false,
+                showResultant: true,
             })
             expect(analyzeContrast(diagram, mode, new Set(), c.bgSubtle)).not.toContainEqual(expect.objectContaining({
                 code: 'accessibility.low_contrast',
