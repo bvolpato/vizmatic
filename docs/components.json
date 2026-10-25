@@ -1,7 +1,7 @@
 {
   "name": "vizmatic",
   "version": "0.4.0",
-  "count": 75,
+  "count": 83,
   "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html",
   "propEnums": {
     "values1": [
@@ -6530,6 +6530,501 @@
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Legend%20example%22%20subtitle%3D%22Edit%20this%20focused%20Legend%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CLegend%0A%20%20%20%20title%3D'Result%20types'%0A%20%20%20%20items%3D%7B%5B%7B%20label%3A%20'Success'%2C%20color%3A%20'positive'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Queued'%2C%20color%3A%20'warning'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Blocked'%2C%20color%3A%20c.critical%2C%20style%3A%20'dashed'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "science-math",
+      "label": "Math",
+      "description": "Number lines and geometric constructions for clear mathematical reasoning.",
+      "source": "catalog-science-math",
+      "count": 2,
+      "components": [
+        {
+          "name": "NumberLine",
+          "description": "Signed intervals, labeled values, and markers on a numeric line.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"NumberLine example\" subtitle=\"Edit this focused NumberLine scene\" padding={22} gap={18}>\n  <NumberLine\n    c={c}\n    min={-3}\n    max={3}\n    ticks={[{ value: -2 },\n        { value: -1 },\n        { value: 0 },\n        { value: 1 },\n        { value: 2 }]}\n    markers={[{ id: 'origin', label: '0', value: 0, color: c.info }]}\n    interval={{ from: -1.5, to: 2, includeFrom: true, includeTo: false, label: '−3/2 ≤ x < 2', color: c.primary }}\n    title='A half-open interval on the number line' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "ariaLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "interval",
+              "type": "NumberLineInterval",
+              "required": false
+            },
+            {
+              "name": "markers",
+              "type": "NumberLineMarker[]",
+              "required": false
+            },
+            {
+              "name": "max",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "min",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "ticks",
+              "type": "NumberLineTick[]",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22NumberLine%20example%22%20subtitle%3D%22Edit%20this%20focused%20NumberLine%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CNumberLine%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20min%3D%7B-3%7D%0A%20%20%20%20max%3D%7B3%7D%0A%20%20%20%20ticks%3D%7B%5B%7B%20value%3A%20-2%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%20-1%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%200%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%201%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%202%20%7D%5D%7D%0A%20%20%20%20markers%3D%7B%5B%7B%20id%3A%20'origin'%2C%20label%3A%20'0'%2C%20value%3A%200%2C%20color%3A%20c.info%20%7D%5D%7D%0A%20%20%20%20interval%3D%7B%7B%20from%3A%20-1.5%2C%20to%3A%202%2C%20includeFrom%3A%20true%2C%20includeTo%3A%20false%2C%20label%3A%20'%E2%88%923%2F2%20%E2%89%A4%20x%20%3C%202'%2C%20color%3A%20c.primary%20%7D%7D%0A%20%20%20%20title%3D'A%20half-open%20interval%20on%20the%20number%20line'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "GeometryDiagram",
+          "description": "Labeled points, measured segments, and angle constructions.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"GeometryDiagram example\" subtitle=\"Edit this focused GeometryDiagram scene\" padding={22} gap={18}>\n  <GeometryDiagram\n    c={c}\n    width={620}\n    height={380}\n    points={[{ id: 'A', x: 0, y: 0 },\n        { id: 'B', x: 4, y: 0 },\n        { id: 'C', x: 4, y: 3 }]}\n    segments={[{ from: 'A', to: 'B', label: '4' },\n        { from: 'B', to: 'C', label: '3' },\n        { from: 'A', to: 'C', label: '5' }]}\n    angles={[{ vertex: 'B', from: 'A', to: 'C', label: '90°' }]}\n    title='A 3–4–5 right triangle' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "angles",
+              "type": "GeometryAngle[]",
+              "required": false
+            },
+            {
+              "name": "ariaLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "points",
+              "type": "GeometryPoint[]",
+              "required": true
+            },
+            {
+              "name": "segments",
+              "type": "GeometrySegment[]",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22GeometryDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20GeometryDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CGeometryDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20points%3D%7B%5B%7B%20id%3A%20'A'%2C%20x%3A%200%2C%20y%3A%200%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'B'%2C%20x%3A%204%2C%20y%3A%200%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'C'%2C%20x%3A%204%2C%20y%3A%203%20%7D%5D%7D%0A%20%20%20%20segments%3D%7B%5B%7B%20from%3A%20'A'%2C%20to%3A%20'B'%2C%20label%3A%20'4'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20'B'%2C%20to%3A%20'C'%2C%20label%3A%20'3'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20'A'%2C%20to%3A%20'C'%2C%20label%3A%20'5'%20%7D%5D%7D%0A%20%20%20%20angles%3D%7B%5B%7B%20vertex%3A%20'B'%2C%20from%3A%20'A'%2C%20to%3A%20'C'%2C%20label%3A%20'90%C2%B0'%20%7D%5D%7D%0A%20%20%20%20title%3D'A%203%E2%80%934%E2%80%935%20right%20triangle'%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "science-physics",
+      "label": "Physics",
+      "description": "Force vectors and wave superposition with explicit axes and measurements.",
+      "source": "catalog-science-physics",
+      "count": 2,
+      "components": [
+        {
+          "name": "FreeBodyDiagram",
+          "description": "Forces, components, and the resultant acting on one body.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"FreeBodyDiagram example\" subtitle=\"Edit this focused FreeBodyDiagram scene\" padding={22} gap={18}>\n  <FreeBodyDiagram\n    c={c}\n    width={620}\n    height={380}\n    forces={[{ id: 'weight', label: 'weight · 9.8 N', x: 0, y: -9.8, color: c.primary },\n        { id: 'normal', label: 'normal · 9.8 N', x: 0, y: 9.8, color: c.info },\n        { id: 'push', label: 'push · 8 N', x: 8, y: 0, color: c.positive },\n        { id: 'drag', label: 'drag · 3 N', x: -3, y: 0, color: c.warning }]} showResultant showComponents\n    title='A cart accelerates right with a 5 N net force' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "ariaLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "forces",
+              "type": "ForceVector[]",
+              "required": true
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "showComponents",
+              "type": "boolean",
+              "required": false,
+              "allowedValuesRef": "values2"
+            },
+            {
+              "name": "showResultant",
+              "type": "boolean",
+              "required": false,
+              "allowedValuesRef": "values2"
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22FreeBodyDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20FreeBodyDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFreeBodyDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20forces%3D%7B%5B%7B%20id%3A%20'weight'%2C%20label%3A%20'weight%20%C2%B7%209.8%20N'%2C%20x%3A%200%2C%20y%3A%20-9.8%2C%20color%3A%20c.primary%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'normal'%2C%20label%3A%20'normal%20%C2%B7%209.8%20N'%2C%20x%3A%200%2C%20y%3A%209.8%2C%20color%3A%20c.info%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'push'%2C%20label%3A%20'push%20%C2%B7%208%20N'%2C%20x%3A%208%2C%20y%3A%200%2C%20color%3A%20c.positive%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'drag'%2C%20label%3A%20'drag%20%C2%B7%203%20N'%2C%20x%3A%20-3%2C%20y%3A%200%2C%20color%3A%20c.warning%20%7D%5D%7D%20showResultant%20showComponents%0A%20%20%20%20title%3D'A%20cart%20accelerates%20right%20with%20a%205%20N%20net%20force'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "WaveDiagram",
+          "description": "Component waves and their superposition across position and time.",
+          "example": "width = 1040\nheight = 640\n\n<Scene title=\"WaveDiagram example\" subtitle=\"Edit this focused WaveDiagram scene\" padding={22} gap={18}>\n  <WaveDiagram\n    c={c}\n    width={760}\n    height={420}\n    waves={[{ amplitude: 1, wavelength: 4, phase: 0, color: c.info, label: 'wave 1 · A' },\n        { amplitude: 1, wavelength: 4, phase: 0, color: c.primary, label: 'wave 2 · A' }]}\n    time={0}\n    xMin={-4}\n    xMax={4}\n    yMin={-2.4}\n    yMax={2.4} showComponents showSum\n    probeX={1}\n    title='Two in-phase waves add to amplitude 2A' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "ariaLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "probeX",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "sampleCount",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "showComponents",
+              "type": "boolean",
+              "required": false,
+              "allowedValuesRef": "values2"
+            },
+            {
+              "name": "showSum",
+              "type": "boolean",
+              "required": false,
+              "allowedValuesRef": "values2"
+            },
+            {
+              "name": "time",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "waves",
+              "type": "Wave[]",
+              "required": true
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "xMax",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "xMin",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "yMax",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "yMin",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22WaveDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20WaveDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CWaveDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B420%7D%0A%20%20%20%20waves%3D%7B%5B%7B%20amplitude%3A%201%2C%20wavelength%3A%204%2C%20phase%3A%200%2C%20color%3A%20c.info%2C%20label%3A%20'wave%201%20%C2%B7%20A'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20amplitude%3A%201%2C%20wavelength%3A%204%2C%20phase%3A%200%2C%20color%3A%20c.primary%2C%20label%3A%20'wave%202%20%C2%B7%20A'%20%7D%5D%7D%0A%20%20%20%20time%3D%7B0%7D%0A%20%20%20%20xMin%3D%7B-4%7D%0A%20%20%20%20xMax%3D%7B4%7D%0A%20%20%20%20yMin%3D%7B-2.4%7D%0A%20%20%20%20yMax%3D%7B2.4%7D%20showComponents%20showSum%0A%20%20%20%20probeX%3D%7B1%7D%0A%20%20%20%20title%3D'Two%20in-phase%20waves%20add%20to%20amplitude%202A'%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "science-chemistry",
+      "label": "Chemistry",
+      "description": "Molecular structures, balanced equations, and reaction energy profiles.",
+      "source": "catalog-science-chemistry",
+      "count": 3,
+      "components": [
+        {
+          "name": "MoleculeDiagram",
+          "description": "Element-labeled atoms, bond orders, charges, and isotopes.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"MoleculeDiagram example\" subtitle=\"Edit this focused MoleculeDiagram scene\" padding={22} gap={18}>\n  <MoleculeDiagram\n    c={c}\n    width={540}\n    height={340}\n    atoms={[{ id: 'O', element: 'O', x: 0, y: 0 },\n        { id: 'H1', element: 'H', x: -0.79, y: 0.61 },\n        { id: 'H2', element: 'H', x: 0.79, y: 0.61 }]}\n    bonds={[{ from: 'O', to: 'H1', order: 1 },\n        { from: 'O', to: 'H2', order: 1 }]}\n    title='Water · bent molecular geometry' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "atoms",
+              "type": "MoleculeAtom[]",
+              "required": true
+            },
+            {
+              "name": "bonds",
+              "type": "MoleculeBond[]",
+              "required": true
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22MoleculeDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20MoleculeDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMoleculeDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B540%7D%0A%20%20%20%20height%3D%7B340%7D%0A%20%20%20%20atoms%3D%7B%5B%7B%20id%3A%20'O'%2C%20element%3A%20'O'%2C%20x%3A%200%2C%20y%3A%200%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'H1'%2C%20element%3A%20'H'%2C%20x%3A%20-0.79%2C%20y%3A%200.61%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'H2'%2C%20element%3A%20'H'%2C%20x%3A%200.79%2C%20y%3A%200.61%20%7D%5D%7D%0A%20%20%20%20bonds%3D%7B%5B%7B%20from%3A%20'O'%2C%20to%3A%20'H1'%2C%20order%3A%201%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20from%3A%20'O'%2C%20to%3A%20'H2'%2C%20order%3A%201%20%7D%5D%7D%0A%20%20%20%20title%3D'Water%20%C2%B7%20bent%20molecular%20geometry'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ReactionEquation",
+          "description": "Reactants and products with coefficients, states, and conditions.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"ReactionEquation example\" subtitle=\"Edit this focused ReactionEquation scene\" padding={22} gap={18}>\n  <ReactionEquation\n    c={c}\n    width={760}\n    reactants={[{ formula: 'H₂', coefficient: 2, state: 'g', composition: { H: 2 } },\n        { formula: 'O₂', state: 'g', composition: { O: 2 } }]}\n    products={[{ formula: 'H₂O', coefficient: 2, state: 'l', composition: { H: 2, O: 1 } }]}\n    conditions='ignition' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "conditions",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "products",
+              "type": "ReactionTerm[]",
+              "required": true
+            },
+            {
+              "name": "reactants",
+              "type": "ReactionTerm[]",
+              "required": true
+            },
+            {
+              "name": "reversible",
+              "type": "boolean",
+              "required": false,
+              "allowedValuesRef": "values2"
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22ReactionEquation%20example%22%20subtitle%3D%22Edit%20this%20focused%20ReactionEquation%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CReactionEquation%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20reactants%3D%7B%5B%7B%20formula%3A%20'H%E2%82%82'%2C%20coefficient%3A%202%2C%20state%3A%20'g'%2C%20composition%3A%20%7B%20H%3A%202%20%7D%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20formula%3A%20'O%E2%82%82'%2C%20state%3A%20'g'%2C%20composition%3A%20%7B%20O%3A%202%20%7D%20%7D%5D%7D%0A%20%20%20%20products%3D%7B%5B%7B%20formula%3A%20'H%E2%82%82O'%2C%20coefficient%3A%202%2C%20state%3A%20'l'%2C%20composition%3A%20%7B%20H%3A%202%2C%20O%3A%201%20%7D%20%7D%5D%7D%0A%20%20%20%20conditions%3D'ignition'%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "ReactionEnergyDiagram",
+          "description": "Reactant and product energy with activation barriers.",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"ReactionEnergyDiagram example\" subtitle=\"Edit this focused ReactionEnergyDiagram scene\" padding={22} gap={18}>\n  <ReactionEnergyDiagram\n    c={c}\n    width={760}\n    height={380}\n    reactants={0}\n    products={-100}\n    barrier={140}\n    catalyzedBarrier={70}\n    unit='relative energy'\n    reactantLabel='reactants'\n    productLabel='products' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "ariaLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "barrier",
+              "type": "number",
+              "required": true,
+              "description": "Absolute peak energy for the uncatalyzed path, in the supplied unit."
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "catalyzedBarrier",
+              "type": "number",
+              "required": false,
+              "description": "Absolute peak energy for the catalyzed path; endpoints remain unchanged."
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "productLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "products",
+              "type": "number",
+              "required": true,
+              "description": "Explicit relative energy for the product endpoint, in the supplied unit."
+            },
+            {
+              "name": "progress",
+              "type": "number",
+              "required": false,
+              "description": "Static path reveal from 0 to 1; does not change the path or its endpoints."
+            },
+            {
+              "name": "reactantLabel",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "reactants",
+              "type": "number",
+              "required": true,
+              "description": "Explicit relative energy for the reactant endpoint, in the supplied unit."
+            },
+            {
+              "name": "unit",
+              "type": "string",
+              "required": false,
+              "description": "Caller-supplied energy unit. Values are not converted or simulated."
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22ReactionEnergyDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20ReactionEnergyDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CReactionEnergyDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20reactants%3D%7B0%7D%0A%20%20%20%20products%3D%7B-100%7D%0A%20%20%20%20barrier%3D%7B140%7D%0A%20%20%20%20catalyzedBarrier%3D%7B70%7D%0A%20%20%20%20unit%3D'relative%20energy'%0A%20%20%20%20reactantLabel%3D'reactants'%0A%20%20%20%20productLabel%3D'products'%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
+    {
+      "id": "science-ai",
+      "label": "AI",
+      "description": "Normalized causal attention weights and query-to-token relationships.",
+      "source": "catalog-science-ai",
+      "count": 1,
+      "components": [
+        {
+          "name": "AttentionMatrix",
+          "description": "Probability-normalized attention with causal masks and focus highlights.",
+          "example": "width = 1040\nheight = 640\n\n<Scene title=\"AttentionMatrix example\" subtitle=\"Edit this focused AttentionMatrix scene\" padding={22} gap={18}>\n  <AttentionMatrix\n    c={c}\n    width={760}\n    height={420}\n    queryLabels={['The', 'robot', 'turns', 'left']}\n    keyLabels={['The', 'robot', 'turns', 'left']}\n    weights={[[1, 0, 0, 0],\n        [0.35, 0.65, 0, 0],\n        [0.2, 0.3, 0.5, 0],\n        [0.08, 0.18, 0.24, 0.5]]}\n    mask={[[true, false, false, false],\n        [true, true, false, false],\n        [true, true, true, false],\n        [true, true, true, true]]}\n    activeQuery={3}\n    activeKey={2}\n    title='Causal attention · each row sums to 1' />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "activeKey",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "activeQuery",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "keyLabels",
+              "type": "readonly string[]",
+              "required": false
+            },
+            {
+              "name": "mask",
+              "type": "readonly (readonly boolean[])[]",
+              "required": false,
+              "description": "True permits attention. Masked entries must be zero."
+            },
+            {
+              "name": "queryLabels",
+              "type": "readonly string[]",
+              "required": false
+            },
+            {
+              "name": "title",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "weights",
+              "type": "readonly (readonly number[])[]",
+              "required": true
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22AttentionMatrix%20example%22%20subtitle%3D%22Edit%20this%20focused%20AttentionMatrix%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CAttentionMatrix%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B420%7D%0A%20%20%20%20queryLabels%3D%7B%5B'The'%2C%20'robot'%2C%20'turns'%2C%20'left'%5D%7D%0A%20%20%20%20keyLabels%3D%7B%5B'The'%2C%20'robot'%2C%20'turns'%2C%20'left'%5D%7D%0A%20%20%20%20weights%3D%7B%5B%5B1%2C%200%2C%200%2C%200%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.35%2C%200.65%2C%200%2C%200%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.2%2C%200.3%2C%200.5%2C%200%5D%2C%0A%20%20%20%20%20%20%20%20%5B0.08%2C%200.18%2C%200.24%2C%200.5%5D%5D%7D%0A%20%20%20%20mask%3D%7B%5B%5Btrue%2C%20false%2C%20false%2C%20false%5D%2C%0A%20%20%20%20%20%20%20%20%5Btrue%2C%20true%2C%20false%2C%20false%5D%2C%0A%20%20%20%20%20%20%20%20%5Btrue%2C%20true%2C%20true%2C%20false%5D%2C%0A%20%20%20%20%20%20%20%20%5Btrue%2C%20true%2C%20true%2C%20true%5D%5D%7D%0A%20%20%20%20activeQuery%3D%7B3%7D%0A%20%20%20%20activeKey%3D%7B2%7D%0A%20%20%20%20title%3D'Causal%20attention%20%C2%B7%20each%20row%20sums%20to%201'%20%2F%3E%0A%3C%2FScene%3E"
         }
       ]
     },

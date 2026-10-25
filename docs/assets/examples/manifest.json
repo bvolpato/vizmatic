@@ -122,6 +122,38 @@
     ]
   },
   {
+    "name": "catalog-science-ai",
+    "source": "examples/catalog-science-ai.tsx",
+    "outputs": [
+      "catalog-science-ai_dark.png",
+      "catalog-science-ai_light.png"
+    ]
+  },
+  {
+    "name": "catalog-science-chemistry",
+    "source": "examples/catalog-science-chemistry.tsx",
+    "outputs": [
+      "catalog-science-chemistry_dark.png",
+      "catalog-science-chemistry_light.png"
+    ]
+  },
+  {
+    "name": "catalog-science-math",
+    "source": "examples/catalog-science-math.tsx",
+    "outputs": [
+      "catalog-science-math_dark.png",
+      "catalog-science-math_light.png"
+    ]
+  },
+  {
+    "name": "catalog-science-physics",
+    "source": "examples/catalog-science-physics.tsx",
+    "outputs": [
+      "catalog-science-physics_dark.png",
+      "catalog-science-physics_light.png"
+    ]
+  },
+  {
     "name": "catalog-sequence",
     "source": "examples/catalog-sequence.tsx",
     "outputs": [
