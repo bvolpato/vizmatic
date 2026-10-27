@@ -1,9 +1,10 @@
 import type { CanvasBounds } from './canvas-components'
 import type { TeachingPainter } from './teaching-canvas'
 
-export interface TeachingTimeLane { id: string, label: string }
+export interface TeachingTimeLane { id: string, label: string, focusTarget?: string }
 export interface TeachingTimeInterval {
     id: string
+    focusTarget?: string
     lane: string
     start: number
     end: number
@@ -43,6 +44,7 @@ export interface TeachingTimelineResult<Shape> {
 
 /** A supplied event trace; a single current time governs all interval lengths. */
 export function createTeachingTimeline<Shape extends CanvasBounds>(painter: TeachingPainter<Shape>) {
+    const target = <Result>(id: string | undefined, draw: () => Result): Result => id && painter.target ? painter.target(id, draw) : draw()
     return (options: TeachingTimelineOptions): TeachingTimelineResult<Shape> => {
         const { x, y, width, height, domain: [lo, hi], lanes, intervals,
             time = hi, ticks = [lo, hi], formatTime = String, labelWidth = 180, laneGap = 18,
@@ -75,7 +77,7 @@ export function createTeachingTimeline<Shape extends CanvasBounds>(painter: Teac
         const bounds = { x, y, width, height }
         const result: TeachingTimelineResult<Shape> = { bounds, time, point, lanes: Object.create(null), intervals: Object.create(null) }
         painter.container(bounds, () => {
-            lanes.forEach((lane, index) => {
+            lanes.forEach((lane, index) => target(lane.focusTarget, () => {
                 const top = y + index * (laneHeight + laneGap)
                 const track = { x: left - 2, y: top + labelHeight, width: plotWidth + 4, height: barHeight }
                 const shape = painter.rect(track.x, track.y, track.width, track.height, trackColor, color, 0)
@@ -91,15 +93,15 @@ export function createTeachingTimeline<Shape extends CanvasBounds>(painter: Teac
                     const item: TeachingTimelineInterval<Shape> = { id: interval.id, shape: null, bounds: bar, elapsed, opacity, complete: time >= interval.end }
                     result.intervals[interval.id] = item
                     if (elapsed === 0 || opacity === 0) continue
-                    painter.opacity(opacity, () => {
+                    target(interval.focusTarget, () => painter.opacity(opacity, () => {
                         painter.container(track, () => { item.shape = painter.rect(bar.x, bar.y, bar.width, bar.height, interval.color ?? '#63DEEC', undefined, 0) }, { padding: 0 })
                         if (interval.label) {
                             const labelBounds = { x: point(interval.start), y: top, width: point(interval.end) - point(interval.start), height: labelHeight }
                             painter.labelScope(labelBounds, () => painter.text(interval.label!, labelBounds.x + labelBounds.width / 2, top + fontSize, fontSize, interval.color ?? '#63DEEC', 'center'), { padding: 2 })
                         }
-                    })
+                    }))
                 }
-            })
+            }))
             const axisY = y + height - axisHeight + Math.max(10, fontSize * .5)
             painter.line(left, axisY, left + plotWidth, axisY, color, 2)
             for (const tick of ticks) {

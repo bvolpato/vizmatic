@@ -50,6 +50,19 @@ function recordingPainter() {
 }
 
 describe('injected Canvas components', () => {
+    it('targets the actual card and matrix cell paint once while preserving host geometry', () => {
+        const host = recordingPainter(), scopes: string[] = []
+        host.painter.target = (id, draw) => { scopes.push(id); return draw() }
+        const components = createCanvasComponents(host.painter)
+        const card = components.card({ x: 0, y: 0, width: 100, height: 50, label: 'input', focusTarget: 'input' })
+        const matrix = components.matrix({ values: [[1, 2]], x: 0, y: 100,
+            cellStyle: (_value, _row, column) => ({ focusTarget: `cell-${column}` }) })
+        expect(scopes).toEqual(['input', 'cell-0', 'cell-1'])
+        expect(host.shapes).toHaveLength(3)
+        expect(host.labels).toHaveLength(3)
+        expect(card).toBe(host.shapes[0])
+        expect(matrix).toEqual(host.shapes.slice(1))
+    })
     it('returns host geometry and runs panel content inside the selected checked scope', () => {
         const host = recordingPainter()
         const components = createCanvasComponents(host.painter)

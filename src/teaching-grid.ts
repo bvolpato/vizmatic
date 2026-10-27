@@ -21,6 +21,7 @@ export interface TeachingGridHighlight {
 }
 
 export interface TeachingGridOptions extends CellGridOptions {
+    cellFocusTarget?: (row: number, column: number) => string | readonly string[] | undefined
     fill?: string
     stroke?: string
     lineWidth?: number
@@ -77,8 +78,32 @@ export function createTeachingGrid<Shape extends CanvasBounds>(painter: Teaching
             layout.cell(highlight.row, highlight.column)
             if (!Number.isFinite(highlight.opacity ?? 1)) throw new Error('Grid highlight opacity must be finite')
         }
-        const shape = components.panel({ ...layout.bounds, fill, stroke, radius: 0, padding: 0 }, () => {
-            for (const highlight of highlights) {
+        const cellFocusTarget = painter.target ? options.cellFocusTarget : undefined
+        const shape = components.panel({ ...layout.bounds, fill: cellFocusTarget ? 'transparent' : fill, stroke, radius: 0, padding: 0 }, () => {
+            const drawLabel = (r: number, column: number) => {
+                if (!labels) return
+                const cell = layout.cell(r, column), value = String(labels[r][column])
+                const baseline = cell.y + cell.height / 2 + fontSize * 0.34 - (value.split('\n').length - 1) * fontSize * 0.7
+                painter.labelScope(cell, () => painter.text(value, cell.x + cell.width / 2, baseline, fontSize, textColor, 'center'), { padding })
+            }
+            if (cellFocusTarget) for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
+                const named = cellFocusTarget(row, column), ids = typeof named === 'string' ? [named] : named ?? []
+                const draw = () => {
+                    const cell = layout.cell(row, column), inset = lineWidth / 2
+                    painter.rect(cell.x + inset, cell.y + inset, cell.width - lineWidth, cell.height - lineWidth, fill, undefined, 0)
+                    for (const highlight of highlights.filter(item => item.row === row && item.column === column)) {
+                        const pad = Math.min(2, cell.width / 4, cell.height / 4)
+                        components.fade(highlight.opacity ?? 1, () => painter.rect(cell.x + pad, cell.y + pad, cell.width - pad * 2, cell.height - pad * 2, highlight.fill, highlight.stroke, 0))
+                    }
+                    drawLabel(row, column)
+                }
+                const scoped = (index: number): void => {
+                    if (index < ids.length && painter.target) painter.target(ids[index], () => scoped(index + 1))
+                    else draw()
+                }
+                scoped(0)
+            }
+            for (const highlight of cellFocusTarget ? [] : highlights) {
                 const cell = layout.cell(highlight.row, highlight.column)
                 const inset = Math.min(2, cell.width / 4, cell.height / 4)
                 components.fade(highlight.opacity ?? 1, () => {
@@ -94,11 +119,7 @@ export function createTeachingGrid<Shape extends CanvasBounds>(painter: Teaching
                 const top = y + row * height / rows
                 painter.path([{ x: x + inset, y: top }, { x: x + width - inset, y: top }], { color: stroke, width: lineWidth })
             }
-            labels?.forEach((row, r) => row.forEach((label, column) => {
-                const cell = layout.cell(r, column), value = String(label)
-                const baseline = cell.y + cell.height / 2 + fontSize * 0.34 - (value.split('\n').length - 1) * fontSize * 0.7
-                painter.labelScope(cell, () => painter.text(value, cell.x + cell.width / 2, baseline, fontSize, textColor, 'center'), { padding })
-            }))
+            if (!cellFocusTarget) labels?.forEach((row, r) => row.forEach((_, column) => drawLabel(r, column)))
         })
         return { ...layout, shape }
     }

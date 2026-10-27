@@ -15,8 +15,12 @@ generic example that depends on the published Vizmatic package.
   pathways with different barriers and unchanged endpoint energies.
 - [`causal-attention.tsx`](causal-attention.tsx) computes masked softmax weights
   and the corresponding weighted value output from explicit small tensors.
+- [`matrix-multiplication.tsx`](matrix-multiplication.tsx) follows each selected
+  row/column pair through its dot product, including negative values.
+- [`image-to-matrix.tsx`](image-to-matrix.tsx) reconstructs a real CIFAR-10 frog,
+  splits its RGB channels, and carries the same pixel bytes into numerical crops.
 
-The four science examples require the scientific components in this checkout.
+The scientific examples require the scientific components in this checkout.
 Build it with `pnpm build`, then use `node dist/cli.js video` in place of
 `npx vizmatic video` below. See the [science guide](../../SCIENCE.md) for the
 data contracts and references. They are short visual lesson segments; narration

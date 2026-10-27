@@ -954,6 +954,28 @@ cells or items. Matrix `format(value, row, column)` and
 `cellStyle(value, row, column)` customize individual cells without rebuilding
 the component.
 
+Panels and cards accept `focusTarget`, including through a matrix's `cellStyle`.
+Flow-graph nodes and edges, timeline lanes and intervals, and allocation parts
+accept the same field. Grids accept `cellFocusTarget(row, column)`. These call
+the optional host `painter.target(id, draw)` around the actual painted object,
+retaining the original geometry and all host checks.
+
+`createFocusDirector(painter, { cues })` samples already timed semantic cues.
+The host applies `director.paint(draw, originalAlpha)` to its checked primitives
+and `director.target(id, draw)` to related marks. The active target retains its
+authored brightness while surrounding marks dim. `minimumContextAlpha` can keep
+fading context legible without making a mark brighter than its authored alpha.
+`reveal(id, draw)` preserves geometry before a cue, `progress(id, fallback)`
+drives a transformation, and completed reveals remain visible. Supply measured
+cue times from the narration provider; the director does not estimate speech.
+
+`focusFrame({ bounds, strength, avoid, clip })` adds corner annotations through
+the checked painter. Pass visible label bounds in `avoid` to move annotations
+away from text. Crowded annotations are omitted while the brightness cue remains.
+`mergeFocusRegions(parts)` groups adjacent parts of one semantic object and
+keeps distant parts separate. All focus state is sampled per frame, so seeking
+and parallel frame rendering preserve the same result.
+
 `layoutTokenRow(values, options)` returns `{ text, x, width }` items for shared
 layout and connector placement. Automatic widths use the literal spelling;
 pass `width` for fixed-width cards. `x` takes precedence over `centerX`.
@@ -966,6 +988,36 @@ positive bar charts, and explicit-layout flow graphs. Supply a `TeachingPainter`
 with the same checked methods plus `math`, `line`, `arrow`, `path`, and `connect`.
 Its `connect` method returns `{ from, to }` endpoints. No component bypasses the
 host's paint, containment, or opacity checks.
+
+Use `changeCue` to mark a numerical update in an existing equation. The cue
+briefly highlights the changed region, then settles into the normal text color.
+Drive the plotted geometry and displayed value from the returned `value` so the
+number and its consequence move together:
+
+```ts
+import { createTeachingCanvas } from 'vizmatic'
+
+const charts = createTeachingCanvas(painter)
+const update = charts.changeCue({
+  x: 120, y: 160, width: 260, height: 80,
+  from: 20, to: 10, progress: updateProgress,
+  color: '#F4D477', restColor: '#E9EFFF',
+}, ({ value, color }) => {
+  painter.math(`m=${value.toFixed(1)}`, 150, 215, 36, color)
+})
+// Plot the fitted line with update.value as its slope.
+```
+
+`valueChange` draws a labeled numeric card with the previous and target values
+and a signed delta. Supply `format`, `fontSize`, and explicit bounds; give a
+three-line card at least `fontSize * 3` height. Both methods return `value`,
+`previous`, `target`, `delta`, `changed`, `emphasis`, and `color`.
+`valueChangeState({ from, to, progress })` exposes the same numerical state and
+emphasis envelope without drawing. Progress is clamped to zero through one;
+unchanged values remain quiet. For an accelerated sequence, pass one steady
+`emphasis` envelope across the changing interval to avoid flashing on every
+iteration. All cues sample explicit inputs, so seeking and out-of-order frame
+rendering produce the same result.
 
 Scatter markers with centers inside the closed data domains remain fully
 visible, including points on axis endpoints. Their circles can extend beyond
@@ -1187,10 +1239,17 @@ profiles, and computed attention. Eight subject components complement the
 existing equations, matrices, graphs, and transformer tools. Each is available
 in the component explorer and the isolated browser scene renderer.
 
-The [four animated lesson sources](examples/videos/README.md) demonstrate a
+The [animated lesson sources](examples/videos/README.md) demonstrate a
 secant approaching a tangent, signed wave superposition, catalyst pathways,
 and causal attention with a computed weighted output. Render the checked-out
 sources to GIF or MP4; examples use explicit numerical state and both themes.
+
+For numbers and computer vision, try the [numeric matrix example](examples/catalog-numeric-matrices.tsx)
+or the [actual CIFAR-10 image split into RGB matrices](examples/catalog-image-tensors.tsx).
+The latter reconstructs one original 32×32 frog image from byte data and follows
+the same selected pixel into three numerical channel crops. `PixelGrid`, channel
+and tensor helpers, and matrix focus controls are reusable in browser previews
+and native video renders.
 
 ## Publishing
 

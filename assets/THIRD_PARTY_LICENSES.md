@@ -3,6 +3,20 @@
 Vizmatic vendors these assets so the CLI and renderer can run without public
 runtime fetches.
 
+## CIFAR-10 example
+
+`examples/catalog-image-tensors.tsx` contains the 3,072 RGB bytes from training
+batch 1, record 0 (frog), plus its numerical channel views. Source:
+https://www.cs.toronto.edu/~kriz/cifar.html. Cite Alex Krizhevsky,
+*Learning Multiple Layers of Features from Tiny Images* (2009).
+
+The dataset page does not specify a dataset license. The sample bytes and their
+rendered reconstruction are third-party material, not part of Vizmatic's MIT
+code license. `node scripts/extract-cifar-sample.mjs` reproduces the exact sample
+from the official binary archive without loading pickle or downloading the full
+dataset. The reviewed record SHA-256 is
+`945dc5584f8efcf7dc58367c3b072c0a23dacc05ae824d7c77a33874a8ec83c7`.
+
 ## Fonts
 
 - Inter: SIL Open Font License 1.1.

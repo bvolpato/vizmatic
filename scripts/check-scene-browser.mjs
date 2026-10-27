@@ -81,6 +81,8 @@ try {
         { source: '<div style={{display:"flex",fontSize:40}}>Pinned emoji 😀</div>', width: 320, height: 180, duration: 2, fps: 25, theme: 'dark' },
         { source: '<Scene title="Math parity" padding={12}><MathText text="x² + λ → y"/><EquationCard title="Balance" formula="E = mc²"/></Scene>', width: 640, height: 360, duration: 2, fps: 25, theme: 'dark' },
         ...['dark', 'light'].flatMap(theme => [
+            { source: '<PixelGrid pixels={Array.from({length:32},(_,row)=>Array.from({length:32},(_,col)=>[row*8,col*8,(row+col)*4]))} width={320} height={320} activeCell={{row:31,column:31}}/>', width: 320, height: 320, duration: 2, fps: 25, theme },
+            { source: '<Matrix data={[[0,128],[192,255]]} format="integer" fontSize={24} cellWidth={100} cellHeight={60} colorDomain={[0,255]} highlightRow={1} highlightCell={{row:1,col:1}}/>', width: 400, height: 240, duration: 2, fps: 25, theme },
             { source: '<NumberLine min={-2} max={2} width={640} height={180} markers={[{id:"x",label:"x",value:-1+2*progress}]} interval={{from:-1,to:1,includeFrom:true,includeTo:false}}/>', width: 640, height: 180, duration: 2, fps: 25, theme },
             { source: '<GeometryDiagram width={640} height={400} points={[{id:"A",x:0,y:0},{id:"B",x:4,y:0},{id:"C",x:4,y:3}]} segments={[{from:"A",to:"B",label:"4"},{from:"B",to:"C",label:"3"},{from:"A",to:"C",label:"5"}]} angles={[{vertex:"B",from:"A",to:"C",label:"90°"}]}/>', width: 640, height: 400, duration: 2, fps: 25, theme },
             { source: '<FreeBodyDiagram width={640} height={400} forces={[{id:"push",label:"push",x:4,y:3},{id:"drag",label:"drag",x:-1,y:0}]} showResultant showComponents/>', width: 640, height: 400, duration: 2, fps: 25, theme },

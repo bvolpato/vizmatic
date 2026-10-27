@@ -21,6 +21,15 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
     components: Omit<ComponentCatalogItem, 'example' | 'controls'>[]
 })[] = [
     {
+        id: 'image-tensors',
+        label: 'Image tensors',
+        description: 'Exact RGB pixels, channel matrices, crops, and image-to-tensor explanations.',
+        source: 'catalog-image-tensors',
+        components: [
+            { name: 'PixelGrid', description: 'Byte-accurate RGB image and channel planes with square pixels, crop outlines, and active-cell focus.' },
+        ],
+    },
+    {
         id: 'foundations',
         label: 'Foundations',
         description: 'Scene structure, responsive layout, and framed surfaces.',
@@ -244,6 +253,11 @@ export const catalogUtilities = [
     'getToneColor',
     'getToneGradient',
     'mapNumberLine',
+    'multiplyMatrices',
+    'transposeMatrix',
+    'rgbChannel',
+    'cropRgbImage',
+    'flattenRgbImage',
     'reactionBalance',
     'sampleWave',
     'scaledDotProductAttention',

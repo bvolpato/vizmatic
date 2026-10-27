@@ -96,6 +96,7 @@ describe('editable scene evaluation', () => {
         '<TileGrid tiles={[{title:"x"}]} columns="1000000000"/>',
         '<TiledMatrix rows={1000000000} cols={1000000000}/>',
         '<TiledMatrix rows={1000} cols={1000}/>',
+        '<PixelGrid pixels={Array.from({length:32},()=>Array.from({length:33},()=>[1,2,3]))}/>',
         '<AxisPlot width={100} height={100} gridCount={1000000000}/>',
         '<TransformerTopology expandRepeats blocks={[{id:"x",kind:"custom",repeat:1000000000}]}/>',
         '<LayeredNetwork layers={Array.from({length:4},()=>({title:"Layer",nodes:Array(32).fill("x")}))}/>',

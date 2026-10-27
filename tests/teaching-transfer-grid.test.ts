@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createTeachingCanvas, type TeachingPainter } from '../src/teaching-canvas'
 import { layoutCellGrid } from '../src/teaching-grid'
+import { createFocusDirector } from '../src/teaching-focus'
 import type { CanvasBounds } from '../src/canvas-components'
 
 interface Shape extends CanvasBounds { auditId: number }
@@ -100,6 +101,49 @@ describe('coordinated checked transfers', () => {
 })
 
 describe('bounded dense teaching grids', () => {
+    function fillAlphaAt(host: ReturnType<typeof hostPainter>, x: number, y: number) {
+        return host.events.filter(event => {
+            if (event.kind !== 'rect' || !event.fill || event.fill === 'transparent') return false
+            const shape = event.shape as CanvasBounds
+            return x > shape.x && x < shape.x + shape.width && y > shape.y && y < shape.y + shape.height
+        }).reduce((alpha, event) => event.alpha + alpha * (1 - event.alpha), 0)
+    }
+
+    it.each([false, true])('retains authored fill opacity when focus metadata has no visual effect (hook: %s)', (hook) => {
+        const host = hostPainter()
+        if (hook) host.painter.target = (_id, draw) => draw()
+        host.painter.opacity(0.5, () => createTeachingCanvas(host.painter).grid({
+            x: 0, y: 0, width: 200, height: 100, rows: 1, columns: 2,
+            cellFocusTarget: (_row, column) => hook ? undefined : `cell-${column}`,
+            labels: [[1, 2]],
+        }))
+        expect(fillAlphaAt(host, 50, 50)).toBe(0.5)
+        expect(fillAlphaAt(host, 150, 50)).toBe(0.5)
+        expect(host.events.filter(event => event.kind === 'text').map(event => event.alpha)).toEqual([0.5, 0.5])
+        expect(host.alpha()).toBe(1)
+    })
+
+    it('focuses each cell background and label without brightening its authored fade', () => {
+        const host = hostPainter()
+        const focus = createFocusDirector(host.painter, { contextOpacity: 0.5, cues: {
+            current: { id: 'current', start: 0, targets: ['cell-0'], color: '#fc0', active: true,
+                strength: 1, progress: 0.5, reveal: 1, phase: 'during' },
+        } })
+        const rect = host.painter.rect, text = host.painter.text
+        host.painter.target = (id, draw) => focus.target(id, draw)
+        host.painter.rect = (...args) => focus.paint(() => rect(...args), host.alpha())
+        host.painter.text = (...args) => focus.paint(() => text(...args), host.alpha())
+        host.painter.opacity(0.5, () => createTeachingCanvas(host.painter).grid({
+            x: 0, y: 0, width: 200, height: 100, rows: 1, columns: 2,
+            cellFocusTarget: (_row, column) => ['row-0', `cell-${column}`],
+            labels: [[1, 2]],
+        }))
+        expect(fillAlphaAt(host, 50, 50)).toBe(0.5)
+        expect(fillAlphaAt(host, 150, 50)).toBe(0.25)
+        expect(host.events.filter(event => event.kind === 'text').map(event => event.alpha)).toEqual([0.5, 0.25])
+        expect(host.alpha()).toBe(1)
+    })
+
     it('represents a 28 by 28 patch grid with one real panel and 54 structural paths', () => {
         const host = hostPainter()
         const grid = createTeachingCanvas(host.painter).grid({ x: 100, y: 200, width: 350, height: 350, rows: 28, columns: 28 })

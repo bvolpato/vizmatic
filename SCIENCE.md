@@ -22,6 +22,31 @@ equation, diagram, and explanation.
 
 ## Make the mechanism visible
 
+For numerical linear algebra, start with
+[numeric matrices](examples/catalog-numeric-matrices.tsx) and the
+[animated dot product](examples/videos/matrix-multiplication.tsx). `Matrix` and
+`Heatmap` support readable `fontSize`, row/column/cell highlights, and an explicit
+`colorDomain` that changes the color scale without changing the displayed
+numbers. `multiplyMatrices` computes the result; `transposeMatrix` exchanges
+rows and columns without mutating the input.
+
+For computer vision, use [the actual CIFAR-10 sample](examples/catalog-image-tensors.tsx)
+and its [image-to-matrix animation](examples/videos/image-to-matrix.tsx).
+`PixelGrid` displays row-major RGB byte tuples as square pixels. `rgbChannel`
+extracts one 0–255 matrix, `cropRgbImage` copies a rectangular region, and
+`flattenRgbImage(pixels, 'CHW')` reproduces channel-first storage. Use `'HWC'`
+for interleaved storage and the third argument `true` to divide by 255.
+The helpers reject invalid bytes and support up to 1,024 pixels. A 32×32 color
+image contains three 32×32 matrices, or 3,072 values; a single scalar matrix
+does not preserve its RGB colors.
+
+The CIFAR example embeds training batch 1, record 0 (frog), so preview and
+rendering need no runtime downloads. It shows the full image and three full
+channel planes, then enlarges the same 4×4 crop into numerical matrices.
+Moving values land in the corresponding row and column. Regenerate the pinned
+record with `node scripts/extract-cifar-sample.mjs`; provenance and the
+third-party notice are in `assets/THIRD_PARTY_LICENSES.md`.
+
 Start with the objects the lesson explains. Keep the coordinate system and color
 meaning stable while the relevant quantity changes. A force diagram keeps one
 scale for every vector; an interference diagram adds signed displacements; an

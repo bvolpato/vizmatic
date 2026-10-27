@@ -587,6 +587,14 @@ relations, `FreeBodyDiagram` for vectors on a common force scale, and
 `WaveDiagram` for signed sinusoidal superposition. Use `MoleculeDiagram` for
 explicit 2D atom positions and bonds, `ReactionEquation` for coefficients and
 states, and `ReactionEnergyDiagram` for explicitly supplied energy levels.
+For numerical arrays, use `Matrix` with a readable `fontSize` and explicit
+`colorDomain` when values are outside 0–1. Highlight the selected row, column,
+or cell; derive multiplication and transpose results with `multiplyMatrices`
+and `transposeMatrix`. For image-to-tensor lessons, use `PixelGrid`, `rgbChannel`,
+`cropRgbImage`, and `flattenRgbImage`. An RGB image has three channel matrices.
+Keep full channel planes separate from an enlarged numeric crop, preserve
+row/column indices and byte order, and identify the actual image source.
+
 `AttentionMatrix` displays normalized probabilities; `scaledDotProductAttention`
 computes one head from explicit Q, K, and V tensors in regular TypeScript.
 These components complement `AxisPlot`, equations, matrices, graphs, and

@@ -3,7 +3,7 @@ import type { TeachingPainter } from './teaching-canvas'
 
 const COLORS = ['#63DEEC', '#79A6FF', '#D6A0FF', '#FFCE73']
 
-export interface AllocationPart { id: string, label: string, value: number, color?: string }
+export interface AllocationPart { id: string, label: string, value: number, color?: string, focusTarget?: string }
 export interface AllocationLayoutOptions extends CanvasBounds { capacity: number, parts: readonly AllocationPart[] }
 export interface AllocationLayout {
     bounds: CanvasBounds
@@ -13,6 +13,7 @@ export interface AllocationLayout {
     freeBounds: CanvasBounds
 }
 export interface TeachingAllocationOptions extends AllocationLayoutOptions {
+    freeFocusTarget?: string
     fontSize?: number
     unit?: string
     format?: (value: number) => string
@@ -44,6 +45,7 @@ export function layoutAllocation(options: AllocationLayoutOptions): AllocationLa
 }
 
 export function createTeachingAllocation<Shape extends CanvasBounds>(painter: TeachingPainter<Shape>) {
+    const target = <Result>(id: string | undefined, draw: () => Result): Result => id && painter.target ? painter.target(id, draw) : draw()
     return (options: TeachingAllocationOptions): AllocationLayout & { shapes: (Shape | null)[], shape: Shape } => {
         const { x, y, width, height, fontSize = 28, unit = '', format = String, color = '#8D9CB9', trackColor = '#18283B' } = options
         if (!Number.isFinite(fontSize) || fontSize <= 0) throw new Error('Allocation font size must be finite and positive')
@@ -57,15 +59,15 @@ export function createTeachingAllocation<Shape extends CanvasBounds>(painter: Te
             const strip = { x: x + 1, y: y + header + 1, width: width - 2, height: barHeight - 2 }
             shape = painter.rect(strip.x, strip.y, strip.width, strip.height, trackColor, color, 0)
             painter.container(strip, () => {
-                layout.parts.forEach((part, index) => shapes.push(part.bounds.width === 0 ? null : painter.rect(part.bounds.x, part.bounds.y, part.bounds.width, part.bounds.height, options.parts[index].color ?? COLORS[index % COLORS.length], undefined, 0)))
+                layout.parts.forEach((part, index) => shapes.push(part.bounds.width === 0 ? null : target(options.parts[index].focusTarget, () => painter.rect(part.bounds.x, part.bounds.y, part.bounds.width, part.bounds.height, options.parts[index].color ?? COLORS[index % COLORS.length], undefined, 0))))
             }, { padding: 0 })
-            const rows = [...options.parts, { id: 'free', label: 'Free', value: layout.remaining, color }]
-            rows.forEach((part, index) => {
+            const rows = [...options.parts, { id: 'free', label: 'Free', value: layout.remaining, color, focusTarget: options.freeFocusTarget }]
+            rows.forEach((part, index) => target(part.focusTarget, () => {
                 const top = y + header + barHeight + gap + index * rowHeight, baseline = top + rowHeight / 2 + fontSize * .34
                 painter.rect(x, top + (rowHeight - fontSize * .6) / 2, fontSize * .6, fontSize * .6, part.color ?? COLORS[index % COLORS.length], undefined, 0)
                 painter.labelScope({ x: x + fontSize, y: top, width: width * .67 - fontSize, height: rowHeight }, () => painter.text(part.label, x + fontSize, baseline, fontSize, color, 'left'), { padding: 0 })
                 painter.labelScope({ x: x + width * .7, y: top, width: width * .3, height: rowHeight }, () => painter.text(`${format(part.value)}${suffix}`, x + width, baseline, fontSize, color, 'right'), { padding: 0 })
-            })
+            }))
         }, { padding: 0 })
         return { ...layout, shapes, shape }
     }

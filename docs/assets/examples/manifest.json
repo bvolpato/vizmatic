@@ -114,11 +114,27 @@
     ]
   },
   {
+    "name": "catalog-image-tensors",
+    "source": "examples/catalog-image-tensors.tsx",
+    "outputs": [
+      "catalog-image-tensors_dark.png",
+      "catalog-image-tensors_light.png"
+    ]
+  },
+  {
     "name": "catalog-ml",
     "source": "examples/catalog-ml.tsx",
     "outputs": [
       "catalog-ml_dark.png",
       "catalog-ml_light.png"
+    ]
+  },
+  {
+    "name": "catalog-numeric-matrices",
+    "source": "examples/catalog-numeric-matrices.tsx",
+    "outputs": [
+      "catalog-numeric-matrices_dark.png",
+      "catalog-numeric-matrices_light.png"
     ]
   },
   {

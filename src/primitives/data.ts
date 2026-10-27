@@ -4,6 +4,7 @@ import {
     heatColor,
     type ThemeColors,
     type ToneName,
+    compositeColor,
     getReadableToneColor,
     getReadableTextColor,
     getToneColor,
@@ -29,6 +30,12 @@ interface MatrixProps {
     format?: 'decimal' | 'percent' | 'integer'
     colorize?: boolean
     colorScale?: 'heat' | 'strength'
+    fontSize?: number
+    highlightRow?: number
+    highlightCol?: number
+    highlightCell?: { row: number; col: number }
+    highlightColor?: string
+    colorDomain?: readonly [number, number]
 }
 
 export function Matrix({
@@ -45,7 +52,51 @@ export function Matrix({
     format = 'decimal',
     colorize = true,
     colorScale = 'heat',
+    fontSize = 11,
+    highlightRow,
+    highlightCol,
+    highlightCell,
+    highlightColor = c.info,
+    colorDomain,
 }: MatrixProps): React.ReactElement {
+    if (!Number.isFinite(fontSize) || fontSize <= 0) {
+        throw new Error('Matrix fontSize must be a positive finite number')
+    }
+    if (highlightRow !== undefined && (!Number.isInteger(highlightRow) || highlightRow < 0 || highlightRow >= data.length)) {
+        throw new Error('Matrix highlightRow must be an integer row index inside the data')
+    }
+    if (highlightCol !== undefined && (!Number.isInteger(highlightCol) || highlightCol < 0 || !data.some(row => Object.hasOwn(row, highlightCol)))) {
+        throw new Error('Matrix highlightCol must be an integer column index inside the data')
+    }
+    if (highlightCell !== undefined) {
+        if (!highlightCell || !Number.isInteger(highlightCell.row) || !Number.isInteger(highlightCell.col)
+            || highlightCell.row < 0 || highlightCell.row >= data.length
+            || highlightCell.col < 0 || !Object.hasOwn(data[highlightCell.row] ?? [], highlightCell.col)) {
+            throw new Error('Matrix highlightCell must point to a cell inside the data')
+        }
+    }
+    if (highlightColor !== c.info) {
+        try {
+            compositeColor(highlightColor, c.bgCard)
+        } catch {
+            throw new Error('Matrix highlightColor must be a valid CSS color')
+        }
+    }
+    if (colorDomain !== undefined) {
+        if (!Array.isArray(colorDomain) || colorDomain.length !== 2
+            || !Number.isFinite(colorDomain[0]) || !Number.isFinite(colorDomain[1])
+            || colorDomain[0] >= colorDomain[1]) {
+            throw new Error('Matrix colorDomain must contain finite [min, max] values where min is less than max')
+        }
+        for (const row of data) {
+            for (let columnIndex = 0; columnIndex < row.length; columnIndex += 1) {
+                if (!Number.isFinite(row[columnIndex])) {
+                    throw new Error('Matrix data must contain only finite values when colorDomain is set')
+                }
+            }
+        }
+    }
+
     const resolvedCellWidth = cellWidth ?? cellSize
     const resolvedCellHeight = cellHeight ?? cellSize
     const resolvedRowLabelWidth = rowLabelWidth ?? cellSize
@@ -55,9 +106,12 @@ export function Matrix({
         return v.toFixed(2)
     }
     const cellColor = (value: number) => {
-        if (colorScale === 'heat') return heatColor(value)
-        if (value < 0.34) return c.bgHover
-        if (value < 0.67) return c.infoDark
+        const colorValue = colorDomain
+            ? Math.max(0, Math.min(1, (value - colorDomain[0]) / (colorDomain[1] - colorDomain[0])))
+            : value
+        if (colorScale === 'heat') return heatColor(colorValue)
+        if (colorValue < 0.34) return c.bgHover
+        if (colorValue < 0.67) return c.infoDark
         return c.positiveDark
     }
 
@@ -94,7 +148,7 @@ export function Matrix({
                         style: {
                             width: resolvedCellWidth,
                             textAlign: 'center' as const,
-                            fontSize: 11,
+                            fontSize,
                             fontWeight: 600,
                             color: c.textSecondary,
                             fontFamily: 'JetBrains Mono',
@@ -118,7 +172,7 @@ export function Matrix({
                             width: resolvedRowLabelWidth,
                             textAlign: 'right' as const,
                             paddingRight: 4,
-                            fontSize: 11,
+                            fontSize,
                             fontWeight: 600,
                             color: c.textSecondary,
                             fontFamily: 'JetBrains Mono',
@@ -126,7 +180,12 @@ export function Matrix({
                     }, rowLabels[ri]),
 
                     ...row.map((value, ci) => {
-                        const backgroundColor = colorize ? cellColor(value) : c.bgCard
+                        const baseBackgroundColor = colorize ? cellColor(value) : c.bgCard
+                        const highlighted = ri === highlightRow || ci === highlightCol
+                        const backgroundColor = highlighted
+                            ? compositeColor(withColorAlpha(highlightColor, 0.24), baseBackgroundColor)
+                            : baseBackgroundColor
+                        const exactCell = ri === highlightCell?.row && ci === highlightCell?.col
                         return React.createElement('div', {
                             key: `cell-${ri}-${ci}`,
                             style: {
@@ -137,9 +196,14 @@ export function Matrix({
                                 justifyContent: 'center',
                                 backgroundColor,
                                 borderRadius: 6,
-                                fontSize: 11,
+                                ...(exactCell
+                                    ? { boxShadow: `inset 0 0 0 3px ${highlightColor}` }
+                                    : highlighted
+                                        ? { boxShadow: `inset 0 0 0 1px ${withColorAlpha(highlightColor, 0.88)}` }
+                                        : {}),
+                                fontSize,
                                 fontWeight: 600,
-                                color: colorize ? getReadableTextColor(backgroundColor, c) : c.textPrimary,
+                                color: colorize || highlighted ? getReadableTextColor(backgroundColor, c) : c.textPrimary,
                                 fontFamily: 'JetBrains Mono',
                             }
                         }, labels?.[ri]?.[ci] ?? formatValue(value))
@@ -164,6 +228,12 @@ interface HeatmapProps {
     cellHeight?: number
     rowLabelWidth?: number
     colorScale?: 'heat' | 'strength'
+    fontSize?: number
+    highlightRow?: number
+    highlightCol?: number
+    highlightCell?: { row: number; col: number }
+    highlightColor?: string
+    colorDomain?: readonly [number, number]
 }
 
 export function Heatmap({
@@ -178,6 +248,12 @@ export function Heatmap({
     cellHeight,
     rowLabelWidth,
     colorScale,
+    fontSize,
+    highlightRow,
+    highlightCol,
+    highlightCell,
+    highlightColor,
+    colorDomain,
 }: HeatmapProps): React.ReactElement {
     return Matrix({
         data,
@@ -192,6 +268,12 @@ export function Heatmap({
         cellHeight,
         rowLabelWidth,
         colorScale,
+        fontSize,
+        highlightRow,
+        highlightCol,
+        highlightCell,
+        highlightColor,
+        colorDomain,
     })
 }
 

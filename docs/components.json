@@ -1,9 +1,15 @@
 {
   "name": "vizmatic",
   "version": "0.4.0",
-  "count": 83,
+  "count": 84,
   "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html",
   "propEnums": {
+    "RgbChannel": [
+      "rgb",
+      "red",
+      "green",
+      "blue"
+    ],
     "values1": [
       "center",
       "flex-start",
@@ -34,13 +40,13 @@
     "ToneName": [
       "critical",
       "neutral",
+      "red",
+      "green",
       "blue",
       "purple",
-      "green",
       "warm",
       "cyan",
       "pink",
-      "red",
       "sunset",
       "ocean",
       "dark"
@@ -183,6 +189,65 @@
     ]
   },
   "categories": [
+    {
+      "id": "image-tensors",
+      "label": "Image tensors",
+      "description": "Exact RGB pixels, channel matrices, crops, and image-to-tensor explanations.",
+      "source": "catalog-image-tensors",
+      "count": 1,
+      "components": [
+        {
+          "name": "PixelGrid",
+          "description": "Byte-accurate RGB image and channel planes with square pixels, crop outlines, and active-cell focus.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"PixelGrid example\" subtitle=\"Edit this focused PixelGrid scene\" padding={22} gap={18}>\n  <Column\n    gap={16}\n    align='center'>\n  <PixelGrid\n    c={c}\n    pixels={[[[255,0,0],\n        [0,255,0]],\n        [[0,0,255],\n        [255,255,255]]]}\n    width={300}\n    height={300}\n    activeCell={{row:0,column:1}}/>\n  <TextLabel\n    text='Exact RGB bytes · square pixels · highlighted pixel'\n    fontSize={18}/>\n  </Column>\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "activeCell",
+              "type": "{ row: number; column: number; }",
+              "required": false
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": false
+            },
+            {
+              "name": "channel",
+              "type": "RgbChannel",
+              "required": false,
+              "allowedValuesRef": "RgbChannel"
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "highlightColor",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "pixels",
+              "type": "readonly (readonly RgbPixel[])[]",
+              "required": true
+            },
+            {
+              "name": "region",
+              "type": "PixelRegion",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22PixelGrid%20example%22%20subtitle%3D%22Edit%20this%20focused%20PixelGrid%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B16%7D%0A%20%20%20%20align%3D'center'%3E%0A%20%20%3CPixelGrid%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20pixels%3D%7B%5B%5B%5B255%2C0%2C0%5D%2C%0A%20%20%20%20%20%20%20%20%5B0%2C255%2C0%5D%5D%2C%0A%20%20%20%20%20%20%20%20%5B%5B0%2C0%2C255%5D%2C%0A%20%20%20%20%20%20%20%20%5B255%2C255%2C255%5D%5D%5D%7D%0A%20%20%20%20width%3D%7B300%7D%0A%20%20%20%20height%3D%7B300%7D%0A%20%20%20%20activeCell%3D%7B%7Brow%3A0%2Ccolumn%3A1%7D%7D%2F%3E%0A%20%20%3CTextLabel%0A%20%20%20%20text%3D'Exact%20RGB%20bytes%20%C2%B7%20square%20pixels%20%C2%B7%20highlighted%20pixel'%0A%20%20%20%20fontSize%3D%7B18%7D%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
     {
       "id": "foundations",
       "label": "Foundations",
@@ -4557,6 +4622,11 @@
               "required": false
             },
             {
+              "name": "colorDomain",
+              "type": "readonly [number, number]",
+              "required": false
+            },
+            {
               "name": "colorize",
               "type": "boolean",
               "required": false,
@@ -4574,10 +4644,35 @@
               "required": true
             },
             {
+              "name": "fontSize",
+              "type": "number",
+              "required": false
+            },
+            {
               "name": "format",
               "type": "\"decimal\" | \"percent\" | \"integer\"",
               "required": false,
               "allowedValuesRef": "values13"
+            },
+            {
+              "name": "highlightCell",
+              "type": "{ row: number; col: number; }",
+              "required": false
+            },
+            {
+              "name": "highlightCol",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "highlightColor",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "highlightRow",
+              "type": "number",
+              "required": false
             },
             {
               "name": "labels",
@@ -4671,6 +4766,11 @@
               "required": false
             },
             {
+              "name": "colorDomain",
+              "type": "readonly [number, number]",
+              "required": false
+            },
+            {
               "name": "colorScale",
               "type": "\"heat\" | \"strength\"",
               "required": false,
@@ -4680,6 +4780,31 @@
               "name": "data",
               "type": "number[][]",
               "required": true
+            },
+            {
+              "name": "fontSize",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "highlightCell",
+              "type": "{ row: number; col: number; }",
+              "required": false
+            },
+            {
+              "name": "highlightCol",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "highlightColor",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "highlightRow",
+              "type": "number",
+              "required": false
             },
             {
               "name": "labels",

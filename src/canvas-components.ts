@@ -18,6 +18,7 @@ export interface CanvasScopeOptions {
 
 /** Inject checked drawing methods to retain the host renderer's audit metadata. */
 export interface CanvasPainter<Shape = unknown> {
+    target?<Result>(id: string, draw: () => Result): Result
     rect(x: number, y: number, width: number, height: number, fill?: string, stroke?: string, radius?: number): Shape
     text(value: string, x: number, y: number, size: number, color?: string, align?: 'left' | 'center' | 'right', font?: string): unknown
     container(bounds: CanvasBounds, draw: () => void, options?: CanvasScopeOptions): unknown
@@ -27,6 +28,7 @@ export interface CanvasPainter<Shape = unknown> {
 }
 
 export interface CanvasPanelStyle {
+    focusTarget?: string
     fill?: string
     stroke?: string
     radius?: number
@@ -164,7 +166,7 @@ export function createCanvasComponents<Shape>(painter: CanvasPainter<Shape>) {
         const alpha = normalizedOpacity(opacity)
         if (scope !== 'container' && scope !== 'label') throw new Error('Canvas scope must be container or label')
         let shape!: Shape
-        painter.opacity(alpha, () => {
+        const paint = () => painter.opacity(alpha, () => {
             shape = painter.rect(x, y, width, height, fill, stroke, radius)
             if (draw) {
                 const bounds = { x, y, width, height, radius }
@@ -173,6 +175,8 @@ export function createCanvasComponents<Shape>(painter: CanvasPainter<Shape>) {
                 else painter.container(bounds, draw, scopeOptions)
             }
         })
+        if (options.focusTarget && painter.target) painter.target(options.focusTarget, paint)
+        else paint()
         return shape
     }
 

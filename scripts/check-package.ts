@@ -11,7 +11,8 @@ interface PackResult {
 const limits = {
     // Includes the lazy browser scene bundle, its types and build-time asset helper.
     size: 3_200_000,
-    unpackedSize: 7_400_000,
+    // Includes teaching helpers and the embedded RGB/numeric worked examples.
+    unpackedSize: 7_500_000,
     // Scientific source examples and their guide ship with the public API.
     entryCount: 110,
 }

@@ -111,4 +111,9 @@ export function validateSceneComponentProps(name: string, props: Props): void {
         for (const row of entries(props.weights, 'AttentionMatrix.weights', 32)) entries(row, 'AttentionMatrix row', 32)
         for (const row of entries(props.mask, 'AttentionMatrix.mask', 32)) entries(row, 'AttentionMatrix mask row', 32)
     }
+    if (name === 'PixelGrid') {
+        const rows = entries(props.pixels, 'PixelGrid.pixels', 128)
+        const cells = rows.reduce<number>((sum, row) => sum + entries(row, 'PixelGrid row', 128).length, 0)
+        if (cells > 1024) throw new Error('Editable scene PixelGrid supports at most 1024 pixels.')
+    }
 }

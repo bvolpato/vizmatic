@@ -6,7 +6,7 @@ export const SCENE_COMPONENT_NAMES = Object.freeze([
     'DetailList', 'DonutChart', 'DotPoint', 'EquationCard', 'Flow', 'FlowArrow',
     'FreeBodyDiagram', 'GeometryDiagram', 'GradientChip', 'GraphDiagram', 'Grid', 'Heatmap', 'Icon', 'IntervalPlot', 'KeyValueList', 'LayeredNetwork',
     'Legend', 'LineChart', 'MathText', 'Matrix', 'MetricCard', 'MiniBarChart', 'MoleculeDiagram', 'NumberLine', 'Panel',
-    'ParetoBarChart', 'ParetoChart', 'PieChart', 'Pipeline', 'ProgressList', 'ProgressRow',
+    'ParetoBarChart', 'ParetoChart', 'PieChart', 'Pipeline', 'PixelGrid', 'ProgressList', 'ProgressRow',
     'QuadrantChart', 'ReactionEnergyDiagram', 'ReactionEquation', 'Row', 'ScatterPlot', 'Scene', 'SequenceDiagram', 'Stack', 'StackedBar',
     'StatusList', 'StatusRow', 'StepCard', 'SvgFrame', 'SvgMathText', 'SvgPoint', 'TextLabel',
     'Tile', 'TileGrid', 'TiledMatrix', 'Timeline', 'TitleBar', 'ToneStrip', 'TransformerTopology',

@@ -1,9 +1,54 @@
 # Vizmatic components
 
-Package: vizmatic@0.4.0. Catalog: 83 runnable examples across 15 categories.
+Package: vizmatic@0.4.0. Catalog: 84 runnable examples across 16 categories.
 
 Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 
+## Image tensors
+
+
+
+Exact RGB pixels, channel matrices, crops, and image-to-tensor explanations.
+
+
+
+### PixelGrid
+
+Byte-accurate RGB image and channel planes with square pixels, crop outlines, and active-cell focus.
+
+Props:
+- `activeCell`: `{ row: number; column: number; }` (optional)
+- `c`: `ThemeColors` (optional)
+- `channel`: `RgbChannel` (optional; allowed values: `propEnums.RgbChannel`)
+- `height`: `number` (optional)
+- `highlightColor`: `string` (optional)
+- `pixels`: `readonly (readonly RgbPixel[])[]` (required)
+- `region`: `PixelRegion` (optional)
+- `width`: `number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="PixelGrid example" subtitle="Edit this focused PixelGrid scene" padding={22} gap={18}>
+  <Column
+    gap={16}
+    align='center'>
+  <PixelGrid
+    c={c}
+    pixels={[[[255,0,0],
+        [0,255,0]],
+        [[0,0,255],
+        [255,255,255]]]}
+    width={300}
+    height={300}
+    activeCell={{row:0,column:1}}/>
+  <TextLabel
+    text='Exact RGB bytes · square pixels · highlighted pixel'
+    fontSize={18}/>
+  </Column>
+</Scene>
+```
 ## Foundations
 
 
@@ -1737,10 +1782,16 @@ Props:
 - `cellSize`: `number` (optional)
 - `cellWidth`: `number` (optional)
 - `colLabels`: `string[]` (optional)
+- `colorDomain`: `readonly [number, number]` (optional)
 - `colorize`: `boolean` (optional; allowed values: `propEnums.values2`)
 - `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values12`)
 - `data`: `number[][]` (required)
+- `fontSize`: `number` (optional)
 - `format`: `"decimal" | "percent" | "integer"` (optional; allowed values: `propEnums.values13`)
+- `highlightCell`: `{ row: number; col: number; }` (optional)
+- `highlightCol`: `number` (optional)
+- `highlightColor`: `string` (optional)
+- `highlightRow`: `number` (optional)
 - `labels`: `React.ReactNode[][]` (optional)
 - `rowLabels`: `string[]` (optional)
 - `rowLabelWidth`: `number` (optional)
@@ -1773,8 +1824,14 @@ Props:
 - `cellHeight`: `number` (optional)
 - `cellSize`: `number` (optional)
 - `cellWidth`: `number` (optional)
+- `colorDomain`: `readonly [number, number]` (optional)
 - `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values12`)
 - `data`: `number[][]` (required)
+- `fontSize`: `number` (optional)
+- `highlightCell`: `{ row: number; col: number; }` (optional)
+- `highlightCol`: `number` (optional)
+- `highlightColor`: `string` (optional)
+- `highlightRow`: `number` (optional)
 - `labels`: `React.ReactNode[][]` (optional)
 - `rowLabelWidth`: `number` (optional)
 - `title`: `string` (optional)
@@ -3186,12 +3243,13 @@ height = 560
 
 Finite allowed values referenced by component props:
 
+- `propEnums.RgbChannel`: ["rgb","red","green","blue"]
 - `propEnums.values1`: ["center","flex-start","space-between","space-around"]
 - `propEnums.FlexAlign`: ["center","start","end","stretch"]
 - `propEnums.FlexJustify`: ["center","space-between","space-around","start","end"]
 - `propEnums.values2`: [false,true]
 - `propEnums.values3`: ["vertical","horizontal"]
-- `propEnums.ToneName`: ["critical","neutral","blue","purple","green","warm","cyan","pink","red","sunset","ocean","dark"]
+- `propEnums.ToneName`: ["critical","neutral","red","green","blue","purple","warm","cyan","pink","sunset","ocean","dark"]
 - `propEnums.values4`: ["window","browser","terminal"]
 - `propEnums.IconName`: ["warning","browser","terminal","agent","bucket","cache","chart","check","cluster","code","cloud","container","database","file","firewall","gateway","git","globe","image","layers","lock","load-balancer","mobile","monitor","network","play","queue","server","spark","storage","stream","tool","user"]
 - `propEnums.values5`: ["center","left","right"]

@@ -9,8 +9,11 @@ import { createTeachingTransfer } from './teaching-transfer'
 import { createTeachingGrid } from './teaching-grid'
 import { createTeachingTimeline } from './teaching-timeline'
 import { createTeachingAllocation } from './teaching-allocation'
+import { createTeachingValueChange } from './teaching-value'
+import { createTeachingFocus } from './teaching-focus'
 
 export interface TeachingPathOptions {
+    id?: string
     color?: string
     width?: number
     clip?: CanvasBounds
@@ -104,6 +107,7 @@ export interface TeachingBarsResult<Shape> {
 
 export interface TeachingFlowNode extends CanvasBounds {
     id: string
+    focusTarget?: string
     label: string
     color?: string
     fill?: string
@@ -111,6 +115,7 @@ export interface TeachingFlowNode extends CanvasBounds {
 }
 
 export interface TeachingFlowEdge extends TeachingConnectionOptions {
+    focusTarget?: string
     from: string
     to: string
     progress?: number
@@ -309,23 +314,24 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
                 if (gap !== undefined) finite(gap, 'Flow edge gap')
             }
         }
-        const routes = edges.map((edge) => {
-            const { from, to, progress, ...style } = edge
+        const target = <Result>(id: string | undefined, draw: () => Result): Result => id && painter.target ? painter.target(id, draw) : draw()
+        const routes = edges.map((edge) => target(edge.focusTarget, () => {
+            const { from, to, progress, focusTarget: _focusTarget, ...style } = edge
             const route = painter.connect(descriptors[from], descriptors[to], { color: stroke, ...style })
             if (progress !== undefined) components.particle({ points: [route.from, route.to], progress, radius: 7, fill: style.color ?? stroke })
             return route
-        })
+        }))
         for (const node of nodes) {
-            const shape = components.card({
+            const shape = target(node.focusTarget, () => components.card({
                 ...descriptors[node.id], label: node.label, id: node.id,
                 fill: node.fill ?? fill, stroke: node.color ?? stroke, textColor,
                 fontSize: node.fontSize ?? 30, padding,
-            })
+            }))
             // Connectors retain these descriptor references while the host supplies their audit IDs.
             Object.assign(descriptors[node.id], shape)
         }
         return { nodes: descriptors, routes }
     }
 
-    return { axes, curve, scatter, bars, flowGraph, transfer: createTeachingTransfer(painter), grid: createTeachingGrid(painter), timeline: createTeachingTimeline(painter), allocation: createTeachingAllocation(painter) }
+    return { axes, curve, scatter, bars, flowGraph, transfer: createTeachingTransfer(painter), grid: createTeachingGrid(painter), timeline: createTeachingTimeline(painter), allocation: createTeachingAllocation(painter), ...createTeachingValueChange(painter), ...createTeachingFocus(painter) }
 }
