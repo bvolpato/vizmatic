@@ -58,6 +58,14 @@
     ]
   },
   {
+    "name": "catalog-convolution-kernel",
+    "source": "examples/catalog-convolution-kernel.tsx",
+    "outputs": [
+      "catalog-convolution-kernel_dark.png",
+      "catalog-convolution-kernel_light.png"
+    ]
+  },
+  {
     "name": "catalog-data",
     "source": "examples/catalog-data.tsx",
     "outputs": [
@@ -111,6 +119,14 @@
     "outputs": [
       "catalog-foundations_dark.png",
       "catalog-foundations_light.png"
+    ]
+  },
+  {
+    "name": "catalog-gaussian-blur",
+    "source": "examples/catalog-gaussian-blur.tsx",
+    "outputs": [
+      "catalog-gaussian-blur_dark.png",
+      "catalog-gaussian-blur_light.png"
     ]
   },
   {

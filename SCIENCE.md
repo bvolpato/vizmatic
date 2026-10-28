@@ -12,7 +12,7 @@ requests or scientific drawing service.
 | Mathematics | `NumberLine`, `GeometryDiagram`, `AxisPlot`, `MathText`, `EquationCard`, matrices, function sampling | [Intervals and geometry](examples/catalog-science-math.tsx), [secant to tangent](examples/videos/calculus-tangent.tsx) |
 | Physics | `FreeBodyDiagram`, `WaveDiagram`, vectors, coordinate paths, `sumForces`, `waveValue`, `sampleWave` | [Forces and interference](examples/catalog-science-physics.tsx), [wave superposition](examples/videos/wave-interference.tsx) |
 | Chemistry | `MoleculeDiagram`, `ReactionEquation`, `ReactionEnergyDiagram`, `reactionBalance` | [Structures, conservation, and energy](examples/catalog-science-chemistry.tsx), [catalyst pathways](examples/videos/catalyst-pathway.tsx) |
-| Artificial intelligence | `AttentionMatrix`, `scaledDotProductAttention`, `TransformerTopology`, `LayeredNetwork`, `Heatmap`, `Matrix`, tensor shapes and collectives | [Causal probabilities](examples/catalog-science-ai.tsx), [computed attention](examples/videos/causal-attention.tsx) |
+| Artificial intelligence | `AttentionMatrix`, `scaledDotProductAttention`, `TransformerTopology`, `LayeredNetwork`, convolution kernels, `Heatmap`, `Matrix`, tensor shapes and collectives | [Causal probabilities](examples/catalog-science-ai.tsx), [convolution filter](examples/catalog-convolution-kernel.tsx), [computed attention](examples/videos/causal-attention.tsx) |
 
 The component explorer includes runnable snippets and typed props for every
 component. The four subject examples render in dark and light themes. Video
@@ -39,6 +39,33 @@ for interleaved storage and the third argument `true` to divide by 255.
 The helpers reject invalid bytes and support up to 1,024 pixels. A 32×32 color
 image contains three 32×32 matrices, or 3,072 values; a single scalar matrix
 does not preserve its RGB colors.
+
+For deep-learning filters, see the [single-channel kernel example](examples/catalog-convolution-kernel.tsx)
+and its [animated lesson](examples/videos/convolution-kernel.tsx). It uses a
+synthetic image and one hand-set edge filter to show each multiply and sum,
+then applies ReLU. The weights are illustrative, not learned. `crossCorrelate2d`
+implements the unflipped cross-correlation convention used by deep-learning
+`Conv2d` layers; it handles one 2D input and one 2D kernel, with no channel
+stacking, bias, or learned parameters. The default stride is 1 and
+`padding: 'valid'` emits only fully covered windows. `padding: 'same'` uses
+SAME_UPPER zero padding, returns `ceil(input / stride)` output dimensions, and
+places any odd extra padding at the bottom or right. Padding a blur with zeros
+can dim the image edges; a constant image stays constant only where the full
+kernel fits. This helper supports strides greater than 1 with `same`; PyTorch
+`Conv2d` currently limits `padding='same'` to stride 1.
+
+For smoothing, the [Gaussian blur example](examples/catalog-gaussian-blur.tsx)
+and [animation](examples/videos/gaussian-blur.tsx) follow a normalized kernel
+through a bright point and its neighbors. `gaussianKernel(size, sigma)` samples and normalizes the Gaussian
+function. The displayed 3×3 `[[1,2,1],[2,4,2],[1,2,1]] / 16` kernel is a
+separable binomial approximation to a Gaussian, not the exact sampled kernel.
+Both helpers preserve floating-point values without rounding; choose any
+integer conversion or rounding when turning results back into pixel bytes.
+These helpers are available in this source checkout; consumers need a Vizmatic
+release that includes them.
+See [PyTorch Conv2d](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html)
+for learned spatial filters and [OpenCV image filtering](https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html)
+for Gaussian blur and border handling.
 
 The CIFAR example embeds training batch 1, record 0 (frog), so preview and
 rendering need no runtime downloads. It shows the full image and three full

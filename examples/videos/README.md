@@ -19,12 +19,20 @@ generic example that depends on the published Vizmatic package.
   row/column pair through its dot product, including negative values.
 - [`image-to-matrix.tsx`](image-to-matrix.tsx) reconstructs a real CIFAR-10 frog,
   splits its RGB channels, and carries the same pixel bytes into numerical crops.
+- [`convolution-kernel.tsx`](convolution-kernel.tsx) follows each pixel and
+  hand-set filter weight into one signed response, then shows ReLU across the
+  feature map.
+- [`gaussian-blur.tsx`](gaussian-blur.tsx) tracks weighted pixel taps as a
+  bright point spreads through a normalized binomial blur kernel.
 
 The scientific examples require the scientific components in this checkout.
 Build it with `pnpm build`, then use `node dist/cli.js video` in place of
 `npx vizmatic video` below. See the [science guide](../../SCIENCE.md) for the
-data contracts and references. They are short visual lesson segments; narration
-and publication review remain separate production steps.
+data contracts and references. The image-kernel helpers handle one 2D channel
+and preserve floating-point results; the [kernel section](../../SCIENCE.md#make-the-mechanism-visible)
+explains stride and padding. The kernel helpers are available in this checkout;
+consumers need a Vizmatic release that includes them. These are short lesson
+segments; narration and publication review remain separate production steps.
 
 Use Node.js 20 or newer. In a project that contains the downloaded or copied
 TSX file, add the [consumer security overrides](../../README.md#consumer-security-overrides)

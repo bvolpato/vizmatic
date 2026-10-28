@@ -1251,6 +1251,12 @@ the same selected pixel into three numerical channel crops. `PixelGrid`, channel
 and tensor helpers, and matrix focus controls are reusable in browser previews
 and native video renders.
 
+For deep learning and image smoothing, try the [convolution filter](examples/catalog-convolution-kernel.tsx)
+and [Gaussian blur](examples/catalog-gaussian-blur.tsx) examples. They show an
+unflipped, single-channel filter calculation and a normalized blur kernel; the
+weights are illustrative. The [science guide](SCIENCE.md#make-the-mechanism-visible)
+covers stride, padding, Gaussian sampling, and border behavior.
+
 ## Publishing
 
 Prepare release commit locally, push it to protected `main`, and wait for required CI before pushing its tag:

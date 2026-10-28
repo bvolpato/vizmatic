@@ -13,8 +13,8 @@ const limits = {
     size: 3_200_000,
     // Includes teaching helpers and the embedded RGB/numeric worked examples.
     unpackedSize: 7_500_000,
-    // Scientific source examples and their guide ship with the public API.
-    entryCount: 110,
+    // Includes the convolution and Gaussian-blur stills and animation sources.
+    entryCount: 112,
 }
 
 const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {

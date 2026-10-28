@@ -258,6 +258,8 @@ export const catalogUtilities = [
     'rgbChannel',
     'cropRgbImage',
     'flattenRgbImage',
+    'crossCorrelate2d',
+    'gaussianKernel',
     'reactionBalance',
     'sampleWave',
     'scaledDotProductAttention',
