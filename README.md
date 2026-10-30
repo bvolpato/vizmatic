@@ -1257,6 +1257,11 @@ unflipped, single-channel filter calculation and a normalized blur kernel; the
 weights are illustrative. The [science guide](SCIENCE.md#make-the-mechanism-visible)
 covers stride, padding, Gaussian sampling, and border behavior.
 
+The [photo blur lesson](examples/catalog-photo-blur.tsx) applies the kernel to a
+real CIFAR-10 image and reveals the computed color result beside the original.
+Its [animation](examples/videos/photo-gaussian-blur.tsx) connects the pixel
+neighborhood, weighted channel sums, and before/after photos.
+
 ## Publishing
 
 Prepare release commit locally, push it to protected `main`, and wait for required CI before pushing its tag:

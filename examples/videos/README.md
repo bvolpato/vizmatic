@@ -24,6 +24,9 @@ generic example that depends on the published Vizmatic package.
   feature map.
 - [`gaussian-blur.tsx`](gaussian-blur.tsx) tracks weighted pixel taps as a
   bright point spreads through a normalized binomial blur kernel.
+- [`photo-gaussian-blur.tsx`](photo-gaussian-blur.tsx) follows a real photo's
+  RGB pixel neighborhood through the same blur, then reveals the filtered photo
+  beside a source crop with matching framing.
 
 The scientific examples require the scientific components in this checkout.
 Build it with `pnpm build`, then use `node dist/cli.js video` in place of

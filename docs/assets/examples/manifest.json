@@ -154,6 +154,14 @@
     ]
   },
   {
+    "name": "catalog-photo-blur",
+    "source": "examples/catalog-photo-blur.tsx",
+    "outputs": [
+      "catalog-photo-blur_dark.png",
+      "catalog-photo-blur_light.png"
+    ]
+  },
+  {
     "name": "catalog-science-ai",
     "source": "examples/catalog-science-ai.tsx",
     "outputs": [

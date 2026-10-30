@@ -63,6 +63,15 @@ Both helpers preserve floating-point values without rounding; choose any
 integer conversion or rounding when turning results back into pixel bytes.
 These helpers are available in this source checkout; consumers need a Vizmatic
 release that includes them.
+
+The [photo blur example](examples/catalog-photo-blur.tsx) and
+[animation](examples/videos/photo-gaussian-blur.tsx) apply that same kernel to
+all three channels of the actual CIFAR-10 frog photo. Follow a selected pixel
+through its neighborhood and weighted sum, then watch the filtered color image
+appear. Both images show the same 30×30 field of view: the source's central crop
+and the result of a valid 3×3 filter on the original 32×32 image. Numerical
+results retain fractions; only the displayed RGB bytes are rounded.
+
 See [PyTorch Conv2d](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html)
 for learned spatial filters and [OpenCV image filtering](https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html)
 for Gaussian blur and border handling.
@@ -71,7 +80,7 @@ The CIFAR example embeds training batch 1, record 0 (frog), so preview and
 rendering need no runtime downloads. It shows the full image and three full
 channel planes, then enlarges the same 4×4 crop into numerical matrices.
 Moving values land in the corresponding row and column. Regenerate the pinned
-record with `node scripts/extract-cifar-sample.mjs`; provenance and the
+record in both photo examples with `node scripts/extract-cifar-sample.mjs`; provenance and the
 third-party notice are in `assets/THIRD_PARTY_LICENSES.md`.
 
 Start with the objects the lesson explains. Keep the coordinate system and color

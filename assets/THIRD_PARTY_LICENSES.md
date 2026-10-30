@@ -5,8 +5,9 @@ runtime fetches.
 
 ## CIFAR-10 example
 
-`examples/catalog-image-tensors.tsx` contains the 3,072 RGB bytes from training
-batch 1, record 0 (frog), plus its numerical channel views. Source:
+`examples/catalog-image-tensors.tsx` and `examples/catalog-photo-blur.tsx`
+contain the same 3,072 RGB bytes from training batch 1, record 0 (frog), plus
+their numerical channel views and filtered reconstruction. Source:
 https://www.cs.toronto.edu/~kriz/cifar.html. Cite Alex Krizhevsky,
 *Learning Multiple Layers of Features from Tiny Images* (2009).
 

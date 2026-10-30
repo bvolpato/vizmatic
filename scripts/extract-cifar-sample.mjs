@@ -57,13 +57,19 @@ try {
         const index = row * 32 + column
         return [record[1 + index], record[1025 + index], record[2049 + index]]
     }))
-    const output = fileURLToPath(new URL('../examples/catalog-image-tensors.tsx', import.meta.url))
-    const original = await readFile(output, 'utf8')
+    const outputs = ['catalog-image-tensors.tsx', 'catalog-photo-blur.tsx']
+        .map(name => fileURLToPath(new URL(`../examples/${name}`, import.meta.url)))
+    const originals = await Promise.all(outputs.map(output => readFile(output, 'utf8')))
     const start = '// CIFAR_SAMPLE_START', end = '// CIFAR_SAMPLE_END'
-    if (!original.includes(start) || !original.includes(end)) throw new Error('The CIFAR sample markers are missing')
+    for (const original of originals) {
+        if (!original.includes(start) || !original.includes(end)) throw new Error('The CIFAR sample markers are missing')
+    }
     const block = `${start}\n// Official training batch 1, record 0, label 6 (frog). Record SHA-256: ${sha256}\nexport const cifar10Pixels: RgbPixel[][] = [\n${pixels.map(row => '    [' + row.map(pixel => '[' + pixel.join(',') + ']').join(',') + '],').join('\n')}\n]\n${end}`
-    await writeFile(output, original.slice(0, original.indexOf(start)) + block + original.slice(original.indexOf(end) + end.length))
-    console.log(JSON.stringify({ source: url, member, recordIndex: 0, label: 6, className: 'frog', recordSha256: sha256, output }))
+    for (const [index, output] of outputs.entries()) {
+        const original = originals[index]
+        await writeFile(output, original.slice(0, original.indexOf(start)) + block + original.slice(original.indexOf(end) + end.length))
+    }
+    console.log(JSON.stringify({ source: url, member, recordIndex: 0, label: 6, className: 'frog', recordSha256: sha256, outputs }))
 } finally {
     clearTimeout(timeout)
     source?.unpipe(gzip)
