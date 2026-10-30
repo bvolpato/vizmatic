@@ -8,13 +8,12 @@ import {
 export const width = 1040
 export const height = 570
 
-// Brumark v10 max-effort snapshots, post-regrade July 23, 2026.
-// Cost per task is each run's recorded/estimated total cost divided by 306 tasks.
+// Illustrative values show how Pareto dominance separates score and cost tradeoffs.
 const results = [
-    { x: 0.008280, y: 56.9015, label: 'Luna · max', color: 'info', size: 7 },
-    { x: 0.086881, y: 71.3691, label: 'Terra · max', color: 'positive', size: 7 },
-    { x: 0.216884, y: 88.3919, label: 'Sol · max', color: 'primary', size: 8 },
-    { x: 0.314285, y: 79.7092, label: 'Opus 5 · max', color: 'warning', size: 7 },
+    { x: 0.01, y: 57, label: 'low cost', color: 'info', size: 7 },
+    { x: 0.09, y: 72, label: 'balanced', color: 'positive', size: 7 },
+    { x: 0.22, y: 89, label: 'high score', color: 'primary', size: 8 },
+    { x: 0.32, y: 80, label: 'dominated', color: 'warning', size: 7 },
 ]
 
 const formatCost = (value: number) => value < 0.01
@@ -38,21 +37,21 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 width={960}
                 height={300}
-                title="Brumark v10 · max reasoning effort"
-                subtitle="A run is efficient when no cheaper run scores at least as high"
+                title="Illustrative model score and cost tradeoffs"
+                subtitle="A point is efficient when no cheaper option scores at least as high"
                 points={results}
                 xScale="log"
                 xMin={0.006}
                 xMax={0.4}
                 yMin={50}
                 yMax={92}
-                xAxisLabel="recorded cost per task · log scale"
+                xAxisLabel="cost per task · log scale"
                 yAxisLabel="score"
                 formatX={formatCost}
                 formatY={(value) => `${Math.round(value)}%`}
                 frontierColor="positive"
                 goalLabel="more efficient ↖"
-                footer="306 tasks · post-regrade snapshot · estimated costs"
+                footer="Illustrative values · lower cost and higher score are preferred"
             />
         </Scene>
     )

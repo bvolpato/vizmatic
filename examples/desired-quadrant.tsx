@@ -8,13 +8,12 @@ import {
 export const width = 1040
 export const height = 570
 
-// Same Brumark v10 max-effort snapshot as pareto-frontier.tsx.
-// Points stay in raw cost-per-task and weighted-score units.
+// Same illustrative values as pareto-frontier.tsx, shown against policy thresholds.
 const points = [
-    { x: 0.008280, y: 56.9015, label: 'Luna · max', color: 'info', size: 7 },
-    { x: 0.216884, y: 88.3919, label: 'Sol · max', color: 'primary', size: 8 },
-    { x: 0.086881, y: 71.3691, label: 'Terra · max', color: 'positive', size: 7 },
-    { x: 0.314285, y: 79.7092, label: 'Opus 5 · max', color: 'warning', size: 7 },
+    { x: 0.01, y: 57, label: 'low cost', color: 'info', size: 7 },
+    { x: 0.22, y: 89, label: 'high score', color: 'primary', size: 8 },
+    { x: 0.09, y: 72, label: 'balanced', color: 'positive', size: 7 },
+    { x: 0.32, y: 80, label: 'dominated', color: 'warning', size: 7 },
 ]
 
 export function create(theme: ThemeMode = 'dark') {
@@ -35,14 +34,14 @@ export function create(theme: ThemeMode = 'dark') {
                 width={960}
                 height={300}
                 title="Price × score selection policy"
-                subtitle="Green region satisfies both operating thresholds"
+                subtitle="Illustrative values; green satisfies both operating thresholds"
                 xMin={0}
                 xMax={0.4}
                 yMin={40}
                 yMax={100}
                 xThreshold={0.2}
                 yThreshold={70}
-                xAxisLabel="recorded cost per task"
+                xAxisLabel="cost per task"
                 formatX={(value) => `$${value.toFixed(2)}`}
                 formatY={(value) => `${Math.round(value)}`}
                 showTicks

@@ -30,7 +30,7 @@ export function create(theme: ThemeMode = 'dark') {
                 minHeight={560}
                 padding={14}
                 align="center"
-                footer="Ingress enters at HTTPS/443; service-to-service traffic uses mTLS or gRPC; workload identity remains inside its trust boundary."
+                footer="Ingress: HTTPS/443 · gateway → API: mTLS/8080 · API → model: gRPC/50051 · model → cache/warehouse: TCP/6379 and TCP/5432."
             >
                 <DeploymentDiagram
                     c={c}

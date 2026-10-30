@@ -258,7 +258,7 @@
         {
           "name": "Canvas",
           "description": "Root canvas with transparent or custom backgrounds and padding.",
-          "example": "width = 960\nheight = 480\n\n<Canvas\n    padding={24}>\n  <Column\n    gap={14}>\n  <TitleBar\n    title='Canvas surface'\n    subtitle='A theme aware root with alpha background support' />\n  <MetricCard\n    label='Render time'\n    value='42 ms'\n    tone='green'\n    detail='p95 across 1,200 frames' />\n  </Column>\n  </Canvas>",
+          "example": "width = 960\nheight = 480\n\n<Canvas\n    padding={24}>\n  <Column\n    gap={14}>\n  <TitleBar\n    title='Canvas surface'\n    subtitle='A theme aware root with alpha background support' />\n  <MetricCard\n    label='Render time'\n    value='42 ms'\n    tone='green'\n    detail='sample p95 · 1,200 frames' />\n  </Column>\n  </Canvas>",
           "controls": [],
           "props": [
             {
@@ -288,12 +288,12 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CCanvas%0A%20%20%20%20padding%3D%7B24%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D'Canvas%20surface'%0A%20%20%20%20subtitle%3D'A%20theme%20aware%20root%20with%20alpha%20background%20support'%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Render%20time'%0A%20%20%20%20value%3D'42%20ms'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20detail%3D'p95%20across%201%2C200%20frames'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%20%20%3C%2FCanvas%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CCanvas%0A%20%20%20%20padding%3D%7B24%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D'Canvas%20surface'%0A%20%20%20%20subtitle%3D'A%20theme%20aware%20root%20with%20alpha%20background%20support'%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Render%20time'%0A%20%20%20%20value%3D'42%20ms'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20detail%3D'sample%20p95%20%C2%B7%201%2C200%20frames'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%20%20%3C%2FCanvas%3E"
         },
         {
           "name": "Board",
           "description": "Fixed-size canvas for freely positioned visuals in one coordinate space.",
-          "example": "width = 960\nheight = 480\n\n<Board\n    width={960}\n    height={480}\n    background={c.bgSubtle}>\n  <CanvasItem\n    x={48}\n    y={44}\n    width={288}\n    height={132}>\n  <MetricCard\n    label='API latency'\n    value='82 ms'\n    detail='budget: 120 ms'\n    tone='green' />\n  </CanvasItem>\n  <CanvasItem\n    x={368}\n    y={184}\n    width={264}\n    height={132}>\n  <MetricCard\n    label='Queue depth'\n    value='14'\n    detail='steady over 5 min'\n    tone='purple' />\n  </CanvasItem>\n  <CanvasItem\n    x={672}\n    y={52}\n    width={240}\n    height={116}>\n  <MetricCard\n    label='Deploy'\n    value='healthy'\n    detail='all regions'\n    tone='blue' />\n  </CanvasItem>\n  </Board>",
+          "example": "width = 960\nheight = 480\n\n<Board\n    width={960}\n    height={480}\n    background={c.bgSubtle}>\n  <CanvasItem\n    x={48}\n    y={44}\n    width={288}\n    height={132}>\n  <MetricCard\n    label='Sample API latency'\n    value='82 ms'\n    detail='budget: 120 ms'\n    tone='green' />\n  </CanvasItem>\n  <CanvasItem\n    x={368}\n    y={184}\n    width={264}\n    height={132}>\n  <MetricCard\n    label='Queue depth'\n    value='14'\n    detail='sample · steady over 5 min'\n    tone='purple' />\n  </CanvasItem>\n  <CanvasItem\n    x={672}\n    y={52}\n    width={240}\n    height={116}>\n  <MetricCard\n    label='Deploy'\n    value='healthy'\n    detail='sample · all regions'\n    tone='blue' />\n  </CanvasItem>\n  </Board>",
           "controls": [],
           "props": [
             {
@@ -322,12 +322,12 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CBoard%0A%20%20%20%20width%3D%7B960%7D%0A%20%20%20%20height%3D%7B480%7D%0A%20%20%20%20background%3D%7Bc.bgSubtle%7D%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B48%7D%0A%20%20%20%20y%3D%7B44%7D%0A%20%20%20%20width%3D%7B288%7D%0A%20%20%20%20height%3D%7B132%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'API%20latency'%0A%20%20%20%20value%3D'82%20ms'%0A%20%20%20%20detail%3D'budget%3A%20120%20ms'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B368%7D%0A%20%20%20%20y%3D%7B184%7D%0A%20%20%20%20width%3D%7B264%7D%0A%20%20%20%20height%3D%7B132%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Queue%20depth'%0A%20%20%20%20value%3D'14'%0A%20%20%20%20detail%3D'steady%20over%205%20min'%0A%20%20%20%20tone%3D'purple'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B672%7D%0A%20%20%20%20y%3D%7B52%7D%0A%20%20%20%20width%3D%7B240%7D%0A%20%20%20%20height%3D%7B116%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Deploy'%0A%20%20%20%20value%3D'healthy'%0A%20%20%20%20detail%3D'all%20regions'%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3C%2FBoard%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CBoard%0A%20%20%20%20width%3D%7B960%7D%0A%20%20%20%20height%3D%7B480%7D%0A%20%20%20%20background%3D%7Bc.bgSubtle%7D%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B48%7D%0A%20%20%20%20y%3D%7B44%7D%0A%20%20%20%20width%3D%7B288%7D%0A%20%20%20%20height%3D%7B132%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Sample%20API%20latency'%0A%20%20%20%20value%3D'82%20ms'%0A%20%20%20%20detail%3D'budget%3A%20120%20ms'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B368%7D%0A%20%20%20%20y%3D%7B184%7D%0A%20%20%20%20width%3D%7B264%7D%0A%20%20%20%20height%3D%7B132%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Queue%20depth'%0A%20%20%20%20value%3D'14'%0A%20%20%20%20detail%3D'sample%20%C2%B7%20steady%20over%205%20min'%0A%20%20%20%20tone%3D'purple'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B672%7D%0A%20%20%20%20y%3D%7B52%7D%0A%20%20%20%20width%3D%7B240%7D%0A%20%20%20%20height%3D%7B116%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Deploy'%0A%20%20%20%20value%3D'healthy'%0A%20%20%20%20detail%3D'sample%20%C2%B7%20all%20regions'%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3C%2FBoard%3E"
         },
         {
           "name": "CanvasItem",
           "description": "Positions and sizes a visual relative to its parent Board.",
-          "example": "width = 1040\nheight = 640\n\n<Scene title=\"CanvasItem example\" subtitle=\"Edit this focused CanvasItem scene\" padding={22} gap={18}>\n  <Board\n    width={960}\n    height={480}\n    background={c.bgSubtle}>\n  <CanvasItem\n    x={52}\n    y={48}\n    width={300}\n    height={138}>\n  <MetricCard\n    label='API latency'\n    value='82 ms'\n    detail='budget: 120 ms'\n    tone='green' />\n  </CanvasItem>\n  <CanvasItem\n    x={404}\n    y={196}\n    width={360}\n    height={148}>\n  <Panel\n    title='Worker pool'\n    subtitle='positioned as one canvas item'\n    tone='purple'\n    width='100%'\n    padding={16}>\n  <StatusRow\n    label='Workers'\n    detail='8 / 8 ready'\n    status='check' />\n  </Panel>\n  </CanvasItem>\n  </Board>\n</Scene>",
+          "example": "width = 1040\nheight = 640\n\n<Scene title=\"CanvasItem example\" subtitle=\"Edit this focused CanvasItem scene\" padding={22} gap={18}>\n  <Board\n    width={960}\n    height={480}\n    background={c.bgSubtle}>\n  <CanvasItem\n    x={52}\n    y={48}\n    width={300}\n    height={138}>\n  <MetricCard\n    label='Sample API latency'\n    value='82 ms'\n    detail='budget: 120 ms'\n    tone='green' />\n  </CanvasItem>\n  <CanvasItem\n    x={404}\n    y={196}\n    width={360}\n    height={148}>\n  <Panel\n    title='Worker pool'\n    subtitle='positioned as one canvas item'\n    tone='purple'\n    width='100%'\n    padding={16}>\n  <StatusRow\n    fontSize={13}\n    label='Workers'\n    detail='8 / 8 ready'\n    status='check' />\n  </Panel>\n  </CanvasItem>\n  </Board>\n</Scene>",
           "controls": [
             {
               "prop": "x",
@@ -401,7 +401,7 @@
               "required": true
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22CanvasItem%20example%22%20subtitle%3D%22Edit%20this%20focused%20CanvasItem%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CBoard%0A%20%20%20%20width%3D%7B960%7D%0A%20%20%20%20height%3D%7B480%7D%0A%20%20%20%20background%3D%7Bc.bgSubtle%7D%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B52%7D%0A%20%20%20%20y%3D%7B48%7D%0A%20%20%20%20width%3D%7B300%7D%0A%20%20%20%20height%3D%7B138%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'API%20latency'%0A%20%20%20%20value%3D'82%20ms'%0A%20%20%20%20detail%3D'budget%3A%20120%20ms'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B404%7D%0A%20%20%20%20y%3D%7B196%7D%0A%20%20%20%20width%3D%7B360%7D%0A%20%20%20%20height%3D%7B148%7D%3E%0A%20%20%3CPanel%0A%20%20%20%20title%3D'Worker%20pool'%0A%20%20%20%20subtitle%3D'positioned%20as%20one%20canvas%20item'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D'100%25'%0A%20%20%20%20padding%3D%7B16%7D%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Workers'%0A%20%20%20%20detail%3D'8%20%2F%208%20ready'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3C%2FPanel%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3C%2FBoard%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22CanvasItem%20example%22%20subtitle%3D%22Edit%20this%20focused%20CanvasItem%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CBoard%0A%20%20%20%20width%3D%7B960%7D%0A%20%20%20%20height%3D%7B480%7D%0A%20%20%20%20background%3D%7Bc.bgSubtle%7D%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B52%7D%0A%20%20%20%20y%3D%7B48%7D%0A%20%20%20%20width%3D%7B300%7D%0A%20%20%20%20height%3D%7B138%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Sample%20API%20latency'%0A%20%20%20%20value%3D'82%20ms'%0A%20%20%20%20detail%3D'budget%3A%20120%20ms'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3CCanvasItem%0A%20%20%20%20x%3D%7B404%7D%0A%20%20%20%20y%3D%7B196%7D%0A%20%20%20%20width%3D%7B360%7D%0A%20%20%20%20height%3D%7B148%7D%3E%0A%20%20%3CPanel%0A%20%20%20%20title%3D'Worker%20pool'%0A%20%20%20%20subtitle%3D'positioned%20as%20one%20canvas%20item'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D'100%25'%0A%20%20%20%20padding%3D%7B16%7D%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Workers'%0A%20%20%20%20detail%3D'8%20%2F%208%20ready'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3C%2FPanel%3E%0A%20%20%3C%2FCanvasItem%3E%0A%20%20%3C%2FBoard%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "Scene",
@@ -577,7 +577,7 @@
         {
           "name": "Column",
           "description": "Vertical flex layout for stacked composition.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"Column example\" subtitle=\"Edit this focused Column scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    align='stretch'>\n  <StatusRow\n    label='Layout'\n    detail='ready'\n    status='check' />\n  <StatusRow\n    label='Contrast'\n    detail='inspect'\n    status='pending' />\n  <StatusRow\n    label='Export'\n    detail='PNG + SVG'\n    status='info' />\n  </Column>\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Column example\" subtitle=\"Edit this focused Column scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    align='stretch'>\n  <StatusRow\n    fontSize={13}\n    label='Layout'\n    detail='ready'\n    status='check' />\n  <StatusRow\n    fontSize={13}\n    label='Contrast'\n    detail='inspect'\n    status='pending' />\n  <StatusRow\n    fontSize={13}\n    label='Export'\n    detail='PNG + SVG'\n    status='info' />\n  </Column>\n</Scene>",
           "controls": [
             {
               "prop": "gap",
@@ -636,7 +636,7 @@
               "allowedValuesRef": "values2"
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Column%20example%22%20subtitle%3D%22Edit%20this%20focused%20Column%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Layout'%0A%20%20%20%20detail%3D'ready'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Contrast'%0A%20%20%20%20detail%3D'inspect'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Export'%0A%20%20%20%20detail%3D'PNG%20%2B%20SVG'%0A%20%20%20%20status%3D'info'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Column%20example%22%20subtitle%3D%22Edit%20this%20focused%20Column%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Layout'%0A%20%20%20%20detail%3D'ready'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Contrast'%0A%20%20%20%20detail%3D'inspect'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Export'%0A%20%20%20%20detail%3D'PNG%20%2B%20SVG'%0A%20%20%20%20status%3D'info'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "Stack",
@@ -690,31 +690,31 @@
         {
           "name": "Panel",
           "description": "Titled container for grouped visual content.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"Panel example\" subtitle=\"Edit this focused Panel scene\" padding={22} gap={18}>\n  <Panel\n    title='Service health'\n    subtitle='Live state grouped in a titled surface'\n    tone='green'\n    width='100%'\n    padding={18}>\n  <StatusList\n    rows={[{ label: 'API', detail: 'healthy', status: 'check' },\n        { label: 'Queue', detail: '12 jobs', status: 'info' }]} />\n  </Panel>\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Panel example\" subtitle=\"Edit this focused Panel scene\" padding={22} gap={18}>\n  <Panel\n    title='Sample service health'\n    subtitle='Illustrative state grouped in a titled surface'\n    tone='green'\n    width='100%'\n    padding={18}>\n  <StatusList\n    fontSize={13}\n    rows={[{ label: 'API', detail: 'healthy', status: 'check' },\n        { label: 'Queue', detail: '12 jobs', status: 'info' }]} />\n  </Panel>\n</Scene>",
           "controls": [
             {
               "prop": "title",
               "label": "Title",
               "type": "text",
-              "value": "Service health",
+              "value": "Sample service health",
               "start": 132,
-              "end": 154
+              "end": 161
             },
             {
               "prop": "subtitle",
               "label": "Subtitle",
               "type": "text",
-              "value": "Live state grouped in a titled surface",
-              "start": 159,
-              "end": 208
+              "value": "Illustrative state grouped in a titled surface",
+              "start": 166,
+              "end": 223
             },
             {
               "prop": "tone",
               "label": "Tone",
               "type": "select",
               "value": "green",
-              "start": 213,
-              "end": 225,
+              "start": 228,
+              "end": 240,
               "options": [
                 "blue",
                 "purple",
@@ -735,8 +735,8 @@
               "label": "Padding",
               "type": "number",
               "value": 18,
-              "start": 247,
-              "end": 259,
+              "start": 262,
+              "end": 274,
               "min": 0,
               "max": 80,
               "step": 1
@@ -858,7 +858,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Panel%20example%22%20subtitle%3D%22Edit%20this%20focused%20Panel%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CPanel%0A%20%20%20%20title%3D'Service%20health'%0A%20%20%20%20subtitle%3D'Live%20state%20grouped%20in%20a%20titled%20surface'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D'100%25'%0A%20%20%20%20padding%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'API'%2C%20detail%3A%20'healthy'%2C%20status%3A%20'check'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Queue'%2C%20detail%3A%20'12%20jobs'%2C%20status%3A%20'info'%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FPanel%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Panel%20example%22%20subtitle%3D%22Edit%20this%20focused%20Panel%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CPanel%0A%20%20%20%20title%3D'Sample%20service%20health'%0A%20%20%20%20subtitle%3D'Illustrative%20state%20grouped%20in%20a%20titled%20surface'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D'100%25'%0A%20%20%20%20padding%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'API'%2C%20detail%3A%20'healthy'%2C%20status%3A%20'check'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Queue'%2C%20detail%3A%20'12%20jobs'%2C%20status%3A%20'info'%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FPanel%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "Card",
@@ -1793,7 +1793,7 @@
         {
           "name": "ValuePill",
           "description": "Small label-value pair.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"ValuePill example\" subtitle=\"Edit this focused ValuePill scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <ValuePill\n    label='Batch size'\n    value='128'\n    detail='tokens / step'\n    tone='purple'\n    width={170} />\n  <ValuePill\n    label='Throughput'\n    value='940'\n    detail='items / second'\n    tone='green'\n    width={190} />\n  </Row>\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"ValuePill example\" subtitle=\"Edit this focused ValuePill scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <ValuePill\n    label='Batch size'\n    value='128'\n    detail='tokens / step'\n    tone='purple'\n    width={170} />\n  <ValuePill\n    label='Throughput'\n    value='940'\n    detail='sample · items / second'\n    tone='green'\n    width={190} />\n  </Row>\n</Scene>",
           "controls": [
             {
               "prop": "label",
@@ -1892,12 +1892,12 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ValuePill%20example%22%20subtitle%3D%22Edit%20this%20focused%20ValuePill%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D'Batch%20size'%0A%20%20%20%20value%3D'128'%0A%20%20%20%20detail%3D'tokens%20%2F%20step'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B170%7D%20%2F%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D'Throughput'%0A%20%20%20%20value%3D'940'%0A%20%20%20%20detail%3D'items%20%2F%20second'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B190%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ValuePill%20example%22%20subtitle%3D%22Edit%20this%20focused%20ValuePill%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D'Batch%20size'%0A%20%20%20%20value%3D'128'%0A%20%20%20%20detail%3D'tokens%20%2F%20step'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B170%7D%20%2F%3E%0A%20%20%3CValuePill%0A%20%20%20%20label%3D'Throughput'%0A%20%20%20%20value%3D'940'%0A%20%20%20%20detail%3D'sample%20%C2%B7%20items%20%2F%20second'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B190%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "EquationCard",
           "description": "Formula, result, and supporting detail.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"EquationCard example\" subtitle=\"Edit this focused EquationCard scene\" padding={22} gap={18}>\n  <EquationCard\n    title='Throughput'\n    formula='items ÷ seconds'\n    result='940/s'\n    detail='measured over 5 minutes'\n    tone='purple'\n    width={300} math />\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"EquationCard example\" subtitle=\"Edit this focused EquationCard scene\" padding={22} gap={18}>\n  <EquationCard\n    title='Throughput'\n    formula='items ÷ seconds'\n    result='940/s'\n    detail='illustrative 5-minute sample'\n    tone='purple'\n    width={300} math />\n</Scene>",
           "controls": [],
           "props": [
             {
@@ -1954,7 +1954,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22EquationCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20EquationCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CEquationCard%0A%20%20%20%20title%3D'Throughput'%0A%20%20%20%20formula%3D'items%20%C3%B7%20seconds'%0A%20%20%20%20result%3D'940%2Fs'%0A%20%20%20%20detail%3D'measured%20over%205%20minutes'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B300%7D%20math%20%2F%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22EquationCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20EquationCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CEquationCard%0A%20%20%20%20title%3D'Throughput'%0A%20%20%20%20formula%3D'items%20%C3%B7%20seconds'%0A%20%20%20%20result%3D'940%2Fs'%0A%20%20%20%20detail%3D'illustrative%205-minute%20sample'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B300%7D%20math%20%2F%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "StepCard",
@@ -2095,7 +2095,7 @@
         {
           "name": "MetricCard",
           "description": "KPI value with label and context.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"MetricCard example\" subtitle=\"Edit this focused MetricCard scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <MetricCard\n    label='Build success'\n    value='98.7%'\n    detail='last 30 days'\n    tone='green'\n    width={220}\n    minHeight={120} />\n  <MetricCard\n    label='Open issues'\n    value='4'\n    detail='2 need review'\n    tone='warm'\n    width={220}\n    minHeight={120} />\n  </Row>\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"MetricCard example\" subtitle=\"Edit this focused MetricCard scene\" padding={22} gap={18}>\n  <Row\n    gap={14}>\n  <MetricCard\n    label='Build success'\n    value='98.7%'\n    detail='sample · last 30 days'\n    tone='green'\n    width={220}\n    minHeight={120} />\n  <MetricCard\n    label='Open issues'\n    value='4'\n    detail='sample · 2 need review'\n    tone='warm'\n    width={220}\n    minHeight={120} />\n  </Row>\n</Scene>",
           "controls": [
             {
               "prop": "label",
@@ -2117,17 +2117,17 @@
               "prop": "detail",
               "label": "Detail",
               "type": "text",
-              "value": "last 30 days",
+              "value": "sample · last 30 days",
               "start": 212,
-              "end": 233
+              "end": 242
             },
             {
               "prop": "tone",
               "label": "Tone",
               "type": "select",
               "value": "green",
-              "start": 238,
-              "end": 250,
+              "start": 247,
+              "end": 259,
               "options": [
                 "blue",
                 "purple",
@@ -2148,8 +2148,8 @@
               "label": "Width",
               "type": "number",
               "value": 220,
-              "start": 255,
-              "end": 266,
+              "start": 264,
+              "end": 275,
               "min": 100,
               "max": 1400,
               "step": 1
@@ -2159,8 +2159,8 @@
               "label": "Min Height",
               "type": "number",
               "value": 120,
-              "start": 271,
-              "end": 286,
+              "start": 280,
+              "end": 295,
               "min": 40,
               "max": 600,
               "step": 1
@@ -2253,7 +2253,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MetricCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20MetricCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Build%20success'%0A%20%20%20%20value%3D'98.7%25'%0A%20%20%20%20detail%3D'last%2030%20days'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Open%20issues'%0A%20%20%20%20value%3D'4'%0A%20%20%20%20detail%3D'2%20need%20review'%0A%20%20%20%20tone%3D'warm'%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MetricCard%20example%22%20subtitle%3D%22Edit%20this%20focused%20MetricCard%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Build%20success'%0A%20%20%20%20value%3D'98.7%25'%0A%20%20%20%20detail%3D'sample%20%C2%B7%20last%2030%20days'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Open%20issues'%0A%20%20%20%20value%3D'4'%0A%20%20%20%20detail%3D'sample%20%C2%B7%202%20need%20review'%0A%20%20%20%20tone%3D'warm'%0A%20%20%20%20width%3D%7B220%7D%0A%20%20%20%20minHeight%3D%7B120%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "CalloutCard",
@@ -2828,7 +2828,7 @@
         {
           "name": "Watermark",
           "description": "Frame metadata for text, image, or custom branding.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"Watermark example\" subtitle=\"Edit this focused Watermark scene\" padding={22} gap={18}>\n  <Row\n    width={680}\n    height={300}\n    align='center'\n    justify='center'>{wrapWithWatermark(<Scene\n    title='Published report'\n    subtitle='Watermark stays anchored to the rendered frame'\n    padding={22}>\n  <MetricCard\n    label='Verified runs'\n    value='1,284'\n    detail='this week'\n    tone='green'\n    width={250} />\n  </Scene>, 640, 260, 'dark', <Watermark\n    text='Vizmatic'\n    color={c.textSecondary}\n    opacity={0.9}\n    position='bottom-right' />)}</Row>\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Watermark example\" subtitle=\"Edit this focused Watermark scene\" padding={22} gap={18}>\n  <Row\n    width={680}\n    height={300}\n    align='center'\n    justify='center'>{wrapWithWatermark(<Scene\n    title='Published report'\n    subtitle='Watermark stays anchored to the rendered frame'\n    padding={22}>\n  <MetricCard\n    label='Sample runs'\n    value='1,284'\n    detail='this week'\n    tone='green'\n    width={250} />\n  </Scene>, 640, 260, 'dark', <Watermark\n    text='Vizmatic'\n    color={c.textSecondary}\n    opacity={0.9}\n    position='bottom-right' />)}</Row>\n</Scene>",
           "controls": [],
           "props": [
             {
@@ -2873,7 +2873,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Watermark%20example%22%20subtitle%3D%22Edit%20this%20focused%20Watermark%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20height%3D%7B300%7D%0A%20%20%20%20align%3D'center'%0A%20%20%20%20justify%3D'center'%3E%7BwrapWithWatermark(%3CScene%0A%20%20%20%20title%3D'Published%20report'%0A%20%20%20%20subtitle%3D'Watermark%20stays%20anchored%20to%20the%20rendered%20frame'%0A%20%20%20%20padding%3D%7B22%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Verified%20runs'%0A%20%20%20%20value%3D'1%2C284'%0A%20%20%20%20detail%3D'this%20week'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B250%7D%20%2F%3E%0A%20%20%3C%2FScene%3E%2C%20640%2C%20260%2C%20'dark'%2C%20%3CWatermark%0A%20%20%20%20text%3D'Vizmatic'%0A%20%20%20%20color%3D%7Bc.textSecondary%7D%0A%20%20%20%20opacity%3D%7B0.9%7D%0A%20%20%20%20position%3D'bottom-right'%20%2F%3E)%7D%3C%2FRow%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Watermark%20example%22%20subtitle%3D%22Edit%20this%20focused%20Watermark%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20height%3D%7B300%7D%0A%20%20%20%20align%3D'center'%0A%20%20%20%20justify%3D'center'%3E%7BwrapWithWatermark(%3CScene%0A%20%20%20%20title%3D'Published%20report'%0A%20%20%20%20subtitle%3D'Watermark%20stays%20anchored%20to%20the%20rendered%20frame'%0A%20%20%20%20padding%3D%7B22%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Sample%20runs'%0A%20%20%20%20value%3D'1%2C284'%0A%20%20%20%20detail%3D'this%20week'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B250%7D%20%2F%3E%0A%20%20%3C%2FScene%3E%2C%20640%2C%20260%2C%20'dark'%2C%20%3CWatermark%0A%20%20%20%20text%3D'Vizmatic'%0A%20%20%20%20color%3D%7Bc.textSecondary%7D%0A%20%20%20%20opacity%3D%7B0.9%7D%0A%20%20%20%20position%3D'bottom-right'%20%2F%3E)%7D%3C%2FRow%3E%0A%3C%2FScene%3E"
         }
       ]
     },
@@ -2887,31 +2887,42 @@
         {
           "name": "StatusRow",
           "description": "Single operational state with detail.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusRow example\" subtitle=\"Edit this focused StatusRow scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    width={620}\n    align='stretch'>\n  <StatusRow\n    label='Build'\n    detail='passed'\n    status='check' />\n  <StatusRow\n    label='Review'\n    detail='2 comments'\n    status='pending' />\n  <StatusRow\n    label='Security'\n    detail='attention'\n    status='warn' />\n  </Column>\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusRow example\" subtitle=\"Edit this focused StatusRow scene\" padding={22} gap={18}>\n  <Column\n    gap={10}\n    width={620}\n    align='stretch'>\n  <StatusRow\n    fontSize={13}\n    label='Build'\n    detail='passed'\n    status='check' />\n  <StatusRow\n    fontSize={13}\n    label='Review'\n    detail='2 comments'\n    status='pending' />\n  <StatusRow\n    fontSize={13}\n    label='Security'\n    detail='attention'\n    status='warn' />\n  </Column>\n</Scene>",
           "controls": [
+            {
+              "prop": "fontSize",
+              "label": "Font Size",
+              "type": "number",
+              "value": 13,
+              "start": 204,
+              "end": 217,
+              "min": 8,
+              "max": 36,
+              "step": 1
+            },
             {
               "prop": "label",
               "label": "Label",
               "type": "text",
               "value": "Build",
-              "start": 204,
-              "end": 217
+              "start": 222,
+              "end": 235
             },
             {
               "prop": "detail",
               "label": "Detail",
               "type": "text",
               "value": "passed",
-              "start": 222,
-              "end": 237
+              "start": 240,
+              "end": 255
             },
             {
               "prop": "status",
               "label": "Status",
               "type": "select",
               "value": "check",
-              "start": 242,
-              "end": 256,
+              "start": 260,
+              "end": 274,
               "options": [
                 "check",
                 "cross",
@@ -2973,12 +2984,12 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusRow%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusRow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Build'%0A%20%20%20%20detail%3D'passed'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Review'%0A%20%20%20%20detail%3D'2%20comments'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20label%3D'Security'%0A%20%20%20%20detail%3D'attention'%0A%20%20%20%20status%3D'warn'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusRow%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusRow%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Build'%0A%20%20%20%20detail%3D'passed'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Review'%0A%20%20%20%20detail%3D'2%20comments'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Security'%0A%20%20%20%20detail%3D'attention'%0A%20%20%20%20status%3D'warn'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "StatusList",
           "description": "Grouped checks, warnings, and pending work.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusList example\" subtitle=\"Edit this focused StatusList scene\" padding={22} gap={18}>\n  <StatusList\n    width={620}\n    rows={[{ label: 'Build', detail: 'passed', status: 'check' },\n        { label: 'Review', detail: '2 comments', status: 'pending' },\n        { label: 'Security', detail: 'attention', status: 'warn' }]} />\n</Scene>",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusList example\" subtitle=\"Edit this focused StatusList scene\" padding={22} gap={18}>\n  <StatusList\n    fontSize={13}\n    width={620}\n    rows={[{ label: 'Build', detail: 'passed', status: 'check' },\n        { label: 'Review', detail: '2 comments', status: 'pending' },\n        { label: 'Security', detail: 'attention', status: 'warn' }]} />\n</Scene>",
           "controls": [],
           "props": [
             {
@@ -3019,7 +3030,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusList%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'Build'%2C%20detail%3A%20'passed'%2C%20status%3A%20'check'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Review'%2C%20detail%3A%20'2%20comments'%2C%20status%3A%20'pending'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Security'%2C%20detail%3A%20'attention'%2C%20status%3A%20'warn'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusList%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStatusList%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'Build'%2C%20detail%3A%20'passed'%2C%20status%3A%20'check'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Review'%2C%20detail%3A%20'2%20comments'%2C%20status%3A%20'pending'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Security'%2C%20detail%3A%20'attention'%2C%20status%3A%20'warn'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "Timeline",
@@ -5302,7 +5313,7 @@
         {
           "name": "ChartFrame",
           "description": "Shared chart title, subtitle, legend, and footer.",
-          "example": "width = 960\nheight = 480\n\n<Scene title=\"ChartFrame example\" subtitle=\"Edit this focused ChartFrame scene\" padding={22} gap={18}>\n  <ChartFrame\n    title='Weekly quality'\n    subtitle='A reusable title, legend, and footer'\n    width={680}\n    footer='Source: evaluation runs'>\n  <BarChart\n    width={620}\n    height={220}\n    data={[{ label: 'Mon', value: 0.72, color: 'secondary' },\n        { label: 'Wed', value: 0.84, color: 'primary' },\n        { label: 'Fri', value: 0.96, color: 'positive' }]}\n    format='percent' />\n  </ChartFrame>\n</Scene>",
+          "example": "width = 960\nheight = 600\n\n<Scene title=\"ChartFrame example\" subtitle=\"Edit this focused ChartFrame scene\" padding={22} gap={18}>\n  <ChartFrame\n    title='Weekly quality'\n    subtitle='A reusable title, legend, and footer'\n    width={680}\n    footer='Illustrative evaluation data · not measured results'>\n  <BarChart\n    width={620}\n    height={220}\n    data={[{ label: 'Mon', value: 0.72, color: 'secondary' },\n        { label: 'Wed', value: 0.84, color: 'primary' },\n        { label: 'Fri', value: 0.96, color: 'positive' }]}\n    format='percent' />\n  </ChartFrame>\n</Scene>",
           "controls": [
             {
               "prop": "title",
@@ -5379,7 +5390,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22ChartFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20ChartFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CChartFrame%0A%20%20%20%20title%3D'Weekly%20quality'%0A%20%20%20%20subtitle%3D'A%20reusable%20title%2C%20legend%2C%20and%20footer'%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20footer%3D'Source%3A%20evaluation%20runs'%3E%0A%20%20%3CBarChart%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B220%7D%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'Mon'%2C%20value%3A%200.72%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Wed'%2C%20value%3A%200.84%2C%20color%3A%20'primary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Fri'%2C%20value%3A%200.96%2C%20color%3A%20'positive'%20%7D%5D%7D%0A%20%20%20%20format%3D'percent'%20%2F%3E%0A%20%20%3C%2FChartFrame%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20600%0A%0A%3CScene%20title%3D%22ChartFrame%20example%22%20subtitle%3D%22Edit%20this%20focused%20ChartFrame%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CChartFrame%0A%20%20%20%20title%3D'Weekly%20quality'%0A%20%20%20%20subtitle%3D'A%20reusable%20title%2C%20legend%2C%20and%20footer'%0A%20%20%20%20width%3D%7B680%7D%0A%20%20%20%20footer%3D'Illustrative%20evaluation%20data%20%C2%B7%20not%20measured%20results'%3E%0A%20%20%3CBarChart%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B220%7D%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'Mon'%2C%20value%3A%200.72%2C%20color%3A%20'secondary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Wed'%2C%20value%3A%200.84%2C%20color%3A%20'primary'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Fri'%2C%20value%3A%200.96%2C%20color%3A%20'positive'%20%7D%5D%7D%0A%20%20%20%20format%3D'percent'%20%2F%3E%0A%20%20%3C%2FChartFrame%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "DonutChart",
@@ -6668,7 +6679,7 @@
         {
           "name": "NumberLine",
           "description": "Signed intervals, labeled values, and markers on a numeric line.",
-          "example": "width = 960\nheight = 640\n\n<Scene title=\"NumberLine example\" subtitle=\"Edit this focused NumberLine scene\" padding={22} gap={18}>\n  <NumberLine\n    c={c}\n    min={-3}\n    max={3}\n    ticks={[{ value: -2 },\n        { value: -1 },\n        { value: 0 },\n        { value: 1 },\n        { value: 2 }]}\n    markers={[{ id: 'origin', label: '0', value: 0, color: c.info }]}\n    interval={{ from: -1.5, to: 2, includeFrom: true, includeTo: false, label: '−3/2 ≤ x < 2', color: c.primary }}\n    title='A half-open interval on the number line' />\n</Scene>",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"NumberLine example\" subtitle=\"Edit this focused NumberLine scene\" padding={22} gap={18}>\n  <NumberLine\n    c={c}\n    min={-3}\n    max={3}\n    ticks={[{ value: -2 },\n        { value: -1 },\n        { value: 0 },\n        { value: 1 },\n        { value: 2 }]}\n    markers={[{ id: 'origin', label: '0', value: 0, color: c.info }]}\n    interval={{ from: -1.5, to: 2, includeFrom: true, includeTo: false, label: '−3/2 ≤ x < 2', color: c.primary }}\n    title='A half-open interval' />\n</Scene>",
           "controls": [],
           "props": [
             {
@@ -6722,7 +6733,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22NumberLine%20example%22%20subtitle%3D%22Edit%20this%20focused%20NumberLine%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CNumberLine%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20min%3D%7B-3%7D%0A%20%20%20%20max%3D%7B3%7D%0A%20%20%20%20ticks%3D%7B%5B%7B%20value%3A%20-2%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%20-1%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%200%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%201%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%202%20%7D%5D%7D%0A%20%20%20%20markers%3D%7B%5B%7B%20id%3A%20'origin'%2C%20label%3A%20'0'%2C%20value%3A%200%2C%20color%3A%20c.info%20%7D%5D%7D%0A%20%20%20%20interval%3D%7B%7B%20from%3A%20-1.5%2C%20to%3A%202%2C%20includeFrom%3A%20true%2C%20includeTo%3A%20false%2C%20label%3A%20'%E2%88%923%2F2%20%E2%89%A4%20x%20%3C%202'%2C%20color%3A%20c.primary%20%7D%7D%0A%20%20%20%20title%3D'A%20half-open%20interval%20on%20the%20number%20line'%20%2F%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22NumberLine%20example%22%20subtitle%3D%22Edit%20this%20focused%20NumberLine%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CNumberLine%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20min%3D%7B-3%7D%0A%20%20%20%20max%3D%7B3%7D%0A%20%20%20%20ticks%3D%7B%5B%7B%20value%3A%20-2%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%20-1%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%200%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%201%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20value%3A%202%20%7D%5D%7D%0A%20%20%20%20markers%3D%7B%5B%7B%20id%3A%20'origin'%2C%20label%3A%20'0'%2C%20value%3A%200%2C%20color%3A%20c.info%20%7D%5D%7D%0A%20%20%20%20interval%3D%7B%7B%20from%3A%20-1.5%2C%20to%3A%202%2C%20includeFrom%3A%20true%2C%20includeTo%3A%20false%2C%20label%3A%20'%E2%88%923%2F2%20%E2%89%A4%20x%20%3C%202'%2C%20color%3A%20c.primary%20%7D%7D%0A%20%20%20%20title%3D'A%20half-open%20interval'%20%2F%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "GeometryDiagram",
@@ -6785,7 +6796,7 @@
         {
           "name": "FreeBodyDiagram",
           "description": "Forces, components, and the resultant acting on one body.",
-          "example": "width = 960\nheight = 640\n\n<Scene title=\"FreeBodyDiagram example\" subtitle=\"Edit this focused FreeBodyDiagram scene\" padding={22} gap={18}>\n  <FreeBodyDiagram\n    c={c}\n    width={620}\n    height={380}\n    forces={[{ id: 'weight', label: 'weight · 9.8 N', x: 0, y: -9.8, color: c.primary },\n        { id: 'normal', label: 'normal · 9.8 N', x: 0, y: 9.8, color: c.info },\n        { id: 'push', label: 'push · 8 N', x: 8, y: 0, color: c.positive },\n        { id: 'drag', label: 'drag · 3 N', x: -3, y: 0, color: c.warning }]} showResultant showComponents\n    title='A cart accelerates right with a 5 N net force' />\n</Scene>",
+          "example": "width = 960\nheight = 640\n\n<Scene title=\"FreeBodyDiagram example\" subtitle=\"Edit this focused FreeBodyDiagram scene\" padding={22} gap={18}>\n  <FreeBodyDiagram\n    c={c}\n    width={620}\n    height={380}\n    forces={[{ id: 'weight', label: 'weight · 9.8 N', x: 0, y: -9.8, color: c.primary },\n        { id: 'normal', label: 'normal · 9.8 N', x: 0, y: 9.8, color: c.info },\n        { id: 'push', label: 'push · 8 N', x: 8, y: 0, color: c.positive },\n        { id: 'drag', label: 'drag · 3 N', x: -3, y: 0, color: c.warning }]} showResultant showComponents\n    title='Net force · 5 N to the right' />\n</Scene>",
           "controls": [],
           "props": [
             {
@@ -6831,12 +6842,12 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22FreeBodyDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20FreeBodyDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFreeBodyDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20forces%3D%7B%5B%7B%20id%3A%20'weight'%2C%20label%3A%20'weight%20%C2%B7%209.8%20N'%2C%20x%3A%200%2C%20y%3A%20-9.8%2C%20color%3A%20c.primary%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'normal'%2C%20label%3A%20'normal%20%C2%B7%209.8%20N'%2C%20x%3A%200%2C%20y%3A%209.8%2C%20color%3A%20c.info%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'push'%2C%20label%3A%20'push%20%C2%B7%208%20N'%2C%20x%3A%208%2C%20y%3A%200%2C%20color%3A%20c.positive%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'drag'%2C%20label%3A%20'drag%20%C2%B7%203%20N'%2C%20x%3A%20-3%2C%20y%3A%200%2C%20color%3A%20c.warning%20%7D%5D%7D%20showResultant%20showComponents%0A%20%20%20%20title%3D'A%20cart%20accelerates%20right%20with%20a%205%20N%20net%20force'%20%2F%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22FreeBodyDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20FreeBodyDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFreeBodyDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B620%7D%0A%20%20%20%20height%3D%7B380%7D%0A%20%20%20%20forces%3D%7B%5B%7B%20id%3A%20'weight'%2C%20label%3A%20'weight%20%C2%B7%209.8%20N'%2C%20x%3A%200%2C%20y%3A%20-9.8%2C%20color%3A%20c.primary%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'normal'%2C%20label%3A%20'normal%20%C2%B7%209.8%20N'%2C%20x%3A%200%2C%20y%3A%209.8%2C%20color%3A%20c.info%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'push'%2C%20label%3A%20'push%20%C2%B7%208%20N'%2C%20x%3A%208%2C%20y%3A%200%2C%20color%3A%20c.positive%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20id%3A%20'drag'%2C%20label%3A%20'drag%20%C2%B7%203%20N'%2C%20x%3A%20-3%2C%20y%3A%200%2C%20color%3A%20c.warning%20%7D%5D%7D%20showResultant%20showComponents%0A%20%20%20%20title%3D'Net%20force%20%C2%B7%205%20N%20to%20the%20right'%20%2F%3E%0A%3C%2FScene%3E"
         },
         {
           "name": "WaveDiagram",
           "description": "Component waves and their superposition across position and time.",
-          "example": "width = 1040\nheight = 640\n\n<Scene title=\"WaveDiagram example\" subtitle=\"Edit this focused WaveDiagram scene\" padding={22} gap={18}>\n  <WaveDiagram\n    c={c}\n    width={760}\n    height={420}\n    waves={[{ amplitude: 1, wavelength: 4, phase: 0, color: c.info, label: 'wave 1 · A' },\n        { amplitude: 1, wavelength: 4, phase: 0, color: c.primary, label: 'wave 2 · A' }]}\n    time={0}\n    xMin={-4}\n    xMax={4}\n    yMin={-2.4}\n    yMax={2.4} showComponents showSum\n    probeX={1}\n    title='Two in-phase waves add to amplitude 2A' />\n</Scene>",
+          "example": "width = 1040\nheight = 640\n\n<Scene title=\"WaveDiagram example\" subtitle=\"Edit this focused WaveDiagram scene\" padding={22} gap={18}>\n  <WaveDiagram\n    c={c}\n    width={760}\n    height={420}\n    waves={[{ amplitude: 1, wavelength: 4, phase: 0, color: c.info, label: 'wave 1 · A' },\n        { amplitude: 1, wavelength: 4, phase: 0, color: c.primary, label: 'wave 2 · A' }]}\n    time={0}\n    xMin={-4}\n    xMax={4}\n    yMin={-2.4}\n    yMax={2.4} showComponents showSum\n    probeX={1}\n    title='In-phase sum · amplitude 2A' />\n</Scene>",
           "controls": [],
           "props": [
             {
@@ -6917,7 +6928,7 @@
               "required": false
             }
           ],
-          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22WaveDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20WaveDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CWaveDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B420%7D%0A%20%20%20%20waves%3D%7B%5B%7B%20amplitude%3A%201%2C%20wavelength%3A%204%2C%20phase%3A%200%2C%20color%3A%20c.info%2C%20label%3A%20'wave%201%20%C2%B7%20A'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20amplitude%3A%201%2C%20wavelength%3A%204%2C%20phase%3A%200%2C%20color%3A%20c.primary%2C%20label%3A%20'wave%202%20%C2%B7%20A'%20%7D%5D%7D%0A%20%20%20%20time%3D%7B0%7D%0A%20%20%20%20xMin%3D%7B-4%7D%0A%20%20%20%20xMax%3D%7B4%7D%0A%20%20%20%20yMin%3D%7B-2.4%7D%0A%20%20%20%20yMax%3D%7B2.4%7D%20showComponents%20showSum%0A%20%20%20%20probeX%3D%7B1%7D%0A%20%20%20%20title%3D'Two%20in-phase%20waves%20add%20to%20amplitude%202A'%20%2F%3E%0A%3C%2FScene%3E"
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%201040%0Aheight%20%3D%20640%0A%0A%3CScene%20title%3D%22WaveDiagram%20example%22%20subtitle%3D%22Edit%20this%20focused%20WaveDiagram%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CWaveDiagram%0A%20%20%20%20c%3D%7Bc%7D%0A%20%20%20%20width%3D%7B760%7D%0A%20%20%20%20height%3D%7B420%7D%0A%20%20%20%20waves%3D%7B%5B%7B%20amplitude%3A%201%2C%20wavelength%3A%204%2C%20phase%3A%200%2C%20color%3A%20c.info%2C%20label%3A%20'wave%201%20%C2%B7%20A'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20amplitude%3A%201%2C%20wavelength%3A%204%2C%20phase%3A%200%2C%20color%3A%20c.primary%2C%20label%3A%20'wave%202%20%C2%B7%20A'%20%7D%5D%7D%0A%20%20%20%20time%3D%7B0%7D%0A%20%20%20%20xMin%3D%7B-4%7D%0A%20%20%20%20xMax%3D%7B4%7D%0A%20%20%20%20yMin%3D%7B-2.4%7D%0A%20%20%20%20yMax%3D%7B2.4%7D%20showComponents%20showSum%0A%20%20%20%20probeX%3D%7B1%7D%0A%20%20%20%20title%3D'In-phase%20sum%20%C2%B7%20amplitude%202A'%20%2F%3E%0A%3C%2FScene%3E"
         }
       ]
     },

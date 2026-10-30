@@ -61,6 +61,7 @@ export function create(theme: ThemeMode = 'dark') {
                                 fields: [
                                     { name: 'id', type: 'uuid', required: true },
                                     { name: 'ts', type: 'int64', required: true },
+                                    { name: 'user', type: 'string', required: true },
                                 ],
                             },
                         },

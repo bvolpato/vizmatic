@@ -65,7 +65,7 @@ function sequenceFixture(theme: 'dark' | 'light'): React.ReactElement {
                 id: 'retry-loop',
                 kind: 'loop',
                 label: 'retry',
-                items: [{ id: 'retry', from: 'api', to: 'api', label: 'retry', kind: 'sync' }],
+                items: [{ id: 'retry', from: 'api', to: 'api', label: 'retry work', kind: 'sync' }],
             },
             {
                 id: 'auth-alt',
@@ -225,6 +225,21 @@ describe('technical diagram primitives', () => {
         expect(text).toContain('cache hit')
         expect(text).toContain('authorized?')
         expect(text).toContain('yes')
+    })
+
+    it.each(['dark', 'light'] as const)('renders sequence message labels in the %s output', async (theme) => {
+        const layoutNodes: SatoriNode[] = []
+        await renderToSvg(sequenceFixture(theme), 820, 760, {
+            theme,
+            onNodeDetected: (node) => layoutNodes.push(node),
+        })
+
+        for (const label of ['GET /items', 'SQL', 'rows', 'retry work', '200', '403']) {
+            const rendered = layoutNodes.find((node) => node.textContent === label)
+            expect(rendered, label).toBeDefined()
+            expect(rendered!.width, label).toBeGreaterThan(0)
+            expect(rendered!.height, label).toBeGreaterThan(0)
+        }
     })
 
     it('rejects duplicate participants and missing sequence references', () => {
