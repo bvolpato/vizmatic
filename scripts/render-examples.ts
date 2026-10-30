@@ -138,6 +138,10 @@ for (const file of files) {
 }
 
 if (animatedSources.length > 0) {
+    const gifManifestPath = join(outDir, 'gif-manifest.json')
+    const previousGifs: Array<{ name: string }> = selected
+        ? JSON.parse(await readFile(gifManifestPath, 'utf8'))
+        : []
     const gifResult = spawnSync(process.execPath, [
         'dist/cli.js',
         'gif',
@@ -156,6 +160,17 @@ if (animatedSources.length > 0) {
 
     if (gifResult.status !== 0) {
         process.exit(gifResult.status ?? 1)
+    }
+
+    if (selected) {
+        const updatedGifs: Array<{ name: string }> = JSON.parse(await readFile(gifManifestPath, 'utf8'))
+        const gifsByName = new Map([...previousGifs, ...updatedGifs].map(entry => [entry.name, entry]))
+        const completeGifs = manifest.filter(entry => entry.outputs.some(output => output.endsWith('.gif'))).map(entry => {
+            const gif = gifsByName.get(entry.name)
+            if (!gif) throw new Error(`Missing ${entry.name} GIF metadata; run the full example render`)
+            return gif
+        })
+        await writeFile(gifManifestPath, `${JSON.stringify(completeGifs, null, 2)}\n`)
     }
 }
 

@@ -100,7 +100,7 @@ function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: n
                     ? 'exchange grid preserves source → destination'
                     : p < 0.88
                         ? 'route chunks to destination ranks'
-                        : p < 0.96
+                        : p < 1
                             ? 'pack by source within each destination'
                             : 'grouped by destination rank'
 

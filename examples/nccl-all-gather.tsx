@@ -83,14 +83,14 @@ function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: n
     const textColor = getReadableTextColor(color, c)
     const p = clamp(progress)
     const gather = clamp(p / 0.5)
-    const replicate = clamp((p - 0.44) / 0.56)
-    const inputOpacity = 1 - clamp((p - 0.46) / 0.12)
+    const replicate = clamp((p - 0.5) / 0.5)
+    const inputOpacity = 1 - clamp((p - 0.5) / 0.12)
     const centerX = 548
     const centerY = 181
     const sourceX = 226
     const outputX = 730
     const labels = ['A', 'B', 'C', 'D']
-    const phase = p < 0.46 ? 'gather rank-owned shards' : p < 0.92 ? 'replicate ordered tensor' : 'A · B · C · D on every rank'
+    const phase = p < 0.5 ? 'gather rank-owned shards' : p < 1 ? 'replicate ordered tensor' : 'A · B · C · D on every rank'
 
     return (
         <div style={{ display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: c.fontSans }}>

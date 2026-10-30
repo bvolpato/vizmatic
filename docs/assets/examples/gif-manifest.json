@@ -52,7 +52,7 @@
         "encodedFrameCount": 70,
         "deltaFrameCount": 69,
         "duration": 5400,
-        "bytes": 151948
+        "bytes": 150106
       },
       {
         "theme": "light",
@@ -63,7 +63,7 @@
         "encodedFrameCount": 69,
         "deltaFrameCount": 68,
         "duration": 5400,
-        "bytes": 152638
+        "bytes": 151899
       }
     ]
   },
@@ -86,7 +86,7 @@
         "encodedFrameCount": 71,
         "deltaFrameCount": 70,
         "duration": 5400,
-        "bytes": 118788
+        "bytes": 117976
       },
       {
         "theme": "light",
@@ -97,7 +97,7 @@
         "encodedFrameCount": 70,
         "deltaFrameCount": 69,
         "duration": 5400,
-        "bytes": 116216
+        "bytes": 114929
       }
     ]
   },
@@ -117,10 +117,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 67,
-        "deltaFrameCount": 66,
+        "encodedFrameCount": 68,
+        "deltaFrameCount": 67,
         "duration": 5400,
-        "bytes": 309462
+        "bytes": 305638
       },
       {
         "theme": "light",
@@ -128,10 +128,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 109,
-        "encodedFrameCount": 67,
-        "deltaFrameCount": 66,
+        "encodedFrameCount": 68,
+        "deltaFrameCount": 67,
         "duration": 5400,
-        "bytes": 306940
+        "bytes": 303326
       }
     ]
   },
@@ -151,10 +151,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 101,
-        "encodedFrameCount": 59,
-        "deltaFrameCount": 58,
+        "encodedFrameCount": 60,
+        "deltaFrameCount": 59,
         "duration": 5000,
-        "bytes": 84303
+        "bytes": 82580
       },
       {
         "theme": "light",
@@ -162,10 +162,10 @@
         "width": 1040,
         "height": 500,
         "frameCount": 101,
-        "encodedFrameCount": 59,
-        "deltaFrameCount": 58,
+        "encodedFrameCount": 60,
+        "deltaFrameCount": 59,
         "duration": 5000,
-        "bytes": 85304
+        "bytes": 83547
       }
     ]
   },
@@ -188,7 +188,7 @@
         "encodedFrameCount": 69,
         "deltaFrameCount": 68,
         "duration": 5400,
-        "bytes": 236419
+        "bytes": 235673
       },
       {
         "theme": "light",
@@ -199,7 +199,7 @@
         "encodedFrameCount": 69,
         "deltaFrameCount": 68,
         "duration": 5400,
-        "bytes": 236744
+        "bytes": 236462
       }
     ]
   }

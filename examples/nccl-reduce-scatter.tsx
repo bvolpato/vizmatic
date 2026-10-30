@@ -85,8 +85,8 @@ function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: n
     const gather = clamp(p / 0.46)
     const collapse = clamp((p - 0.46) / 0.18)
     const scatter = clamp((p - 0.64) / 0.36)
-    const inputOpacity = 1 - clamp((p - 0.52) / 0.14)
-    const resultOpacity = clamp((p - 0.52) / 0.14)
+    const inputOpacity = 1 - clamp((p - 0.64) / 0.14)
+    const resultOpacity = clamp((p - 0.64) / 0.14)
     const centerX = 548
     const centerY = 181
     const outputX = 850
@@ -97,11 +97,11 @@ function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: n
     const gridRowGap = 32
     const phase = p < 0.12
         ? 'rank-local chunks'
-        : p < 0.44
+        : p < 0.46
             ? 'align matching chunk indices'
-            : p < 0.58
+            : p < 0.64
                 ? 'reduce each chunk index'
-                : p < 0.92
+                : p < 1
                     ? 'scatter one completed chunk per rank'
                     : 'partitioned reduced result'
 
