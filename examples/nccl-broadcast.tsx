@@ -83,7 +83,7 @@ function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: n
     const p = clamp(progress)
     const sourceX = 226
     const targetX = 850
-    const phase = p < 0.08 ? 'root buffer' : p < 0.92 ? 'fan-out copies' : 'replicated on every rank'
+    const phase = p < 0.08 ? 'root buffer' : p < 1 ? 'fan-out copies' : 'replicated on every rank'
 
     return (
         <div style={{ display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: c.fontSans }}>

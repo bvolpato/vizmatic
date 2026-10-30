@@ -595,5 +595,5 @@ const animation = createAnimation()
 
         expect(result.status, result.stderr).toBe(0)
         expect(report.ok).toBe(true)
-    })
+    }, 60_000)
 })

@@ -13,7 +13,7 @@ export function createAnimation(theme: ThemeMode = 'dark') {
         hold(600, 'Select the first 3 by 3 patch'),
     ]
     for (let term = 1; term < 9; term++) {
-        timeline.push(keyframe<Partial<KernelLessonState>>({ term }, `Multiply pixel ${term + 1} by its kernel weight`), hold(230))
+        timeline.push(keyframe<Partial<KernelLessonState>>({ term }, `Multiply pixel ${term + 1} by its kernel weight`), hold(500))
     }
     timeline.push(keyframe<Partial<KernelLessonState>>({ filled: 1 }), hold(650, 'Write the first sum and its ReLU'))
     for (let cell = 1; cell < 16; cell++) {
