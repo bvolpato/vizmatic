@@ -202,7 +202,7 @@ height = 480
     label=&#39;Render time&#39;
     value=&#39;42 ms&#39;
     tone=&#39;green&#39;
-    detail=&#39;p95 across 1,200 frames&#39; /&gt;
+    detail=&#39;sample p95 · 1,200 frames&#39; /&gt;
   &lt;/Column&gt;
   &lt;/Canvas&gt;" aria-live="polite" aria-label="Copy Canvas example source">Copy source</button><a class="component-try-link" href="playground.html#component-Canvas">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-Board" data-catalog-item data-catalog-search="board fixed-size canvas for freely positioned visuals in one coordinate space. foundations"><div class="catalog-item-copy"><code>Board</code><p>Fixed-size canvas for freely positioned visuals in one coordinate space.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
@@ -218,7 +218,7 @@ height = 480
     width={288}
     height={132}&gt;
   &lt;MetricCard
-    label=&#39;API latency&#39;
+    label=&#39;Sample API latency&#39;
     value=&#39;82 ms&#39;
     detail=&#39;budget: 120 ms&#39;
     tone=&#39;green&#39; /&gt;
@@ -231,7 +231,7 @@ height = 480
   &lt;MetricCard
     label=&#39;Queue depth&#39;
     value=&#39;14&#39;
-    detail=&#39;steady over 5 min&#39;
+    detail=&#39;sample · steady over 5 min&#39;
     tone=&#39;purple&#39; /&gt;
   &lt;/CanvasItem&gt;
   &lt;CanvasItem
@@ -242,7 +242,7 @@ height = 480
   &lt;MetricCard
     label=&#39;Deploy&#39;
     value=&#39;healthy&#39;
-    detail=&#39;all regions&#39;
+    detail=&#39;sample · all regions&#39;
     tone=&#39;blue&#39; /&gt;
   &lt;/CanvasItem&gt;
   &lt;/Board&gt;" aria-live="polite" aria-label="Copy Board example source">Copy source</button><a class="component-try-link" href="playground.html#component-Board">Try / edit <span aria-hidden="true">→</span></a></div></article>
@@ -260,7 +260,7 @@ height = 640
     width={300}
     height={138}&gt;
   &lt;MetricCard
-    label=&#39;API latency&#39;
+    label=&#39;Sample API latency&#39;
     value=&#39;82 ms&#39;
     detail=&#39;budget: 120 ms&#39;
     tone=&#39;green&#39; /&gt;
@@ -277,6 +277,7 @@ height = 640
     width=&#39;100%&#39;
     padding={16}&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Workers&#39;
     detail=&#39;8 / 8 ready&#39;
     status=&#39;check&#39; /&gt;
@@ -348,14 +349,17 @@ height = 480
     gap={10}
     align=&#39;stretch&#39;&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Layout&#39;
     detail=&#39;ready&#39;
     status=&#39;check&#39; /&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Contrast&#39;
     detail=&#39;inspect&#39;
     status=&#39;pending&#39; /&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Export&#39;
     detail=&#39;PNG + SVG&#39;
     status=&#39;info&#39; /&gt;
@@ -384,12 +388,13 @@ height = 480
 
 &lt;Scene title=&quot;Panel example&quot; subtitle=&quot;Edit this focused Panel scene&quot; padding={22} gap={18}&gt;
   &lt;Panel
-    title=&#39;Service health&#39;
-    subtitle=&#39;Live state grouped in a titled surface&#39;
+    title=&#39;Sample service health&#39;
+    subtitle=&#39;Illustrative state grouped in a titled surface&#39;
     tone=&#39;green&#39;
     width=&#39;100%&#39;
     padding={18}&gt;
   &lt;StatusList
+    fontSize={13}
     rows={[{ label: &#39;API&#39;, detail: &#39;healthy&#39;, status: &#39;check&#39; },
         { label: &#39;Queue&#39;, detail: &#39;12 jobs&#39;, status: &#39;info&#39; }]} /&gt;
   &lt;/Panel&gt;
@@ -598,7 +603,7 @@ height = 480
   &lt;ValuePill
     label=&#39;Throughput&#39;
     value=&#39;940&#39;
-    detail=&#39;items / second&#39;
+    detail=&#39;sample · items / second&#39;
     tone=&#39;green&#39;
     width={190} /&gt;
   &lt;/Row&gt;
@@ -611,7 +616,7 @@ height = 480
     title=&#39;Throughput&#39;
     formula=&#39;items ÷ seconds&#39;
     result=&#39;940/s&#39;
-    detail=&#39;measured over 5 minutes&#39;
+    detail=&#39;illustrative 5-minute sample&#39;
     tone=&#39;purple&#39;
     width={300} math /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy EquationCard example source">Copy source</button><a class="component-try-link" href="playground.html#component-EquationCard">Try / edit <span aria-hidden="true">→</span></a></div></article>
@@ -650,14 +655,14 @@ height = 480
   &lt;MetricCard
     label=&#39;Build success&#39;
     value=&#39;98.7%&#39;
-    detail=&#39;last 30 days&#39;
+    detail=&#39;sample · last 30 days&#39;
     tone=&#39;green&#39;
     width={220}
     minHeight={120} /&gt;
   &lt;MetricCard
     label=&#39;Open issues&#39;
     value=&#39;4&#39;
-    detail=&#39;2 need review&#39;
+    detail=&#39;sample · 2 need review&#39;
     tone=&#39;warm&#39;
     width={220}
     minHeight={120} /&gt;
@@ -756,7 +761,7 @@ height = 480
     subtitle=&#39;Watermark stays anchored to the rendered frame&#39;
     padding={22}&gt;
   &lt;MetricCard
-    label=&#39;Verified runs&#39;
+    label=&#39;Sample runs&#39;
     value=&#39;1,284&#39;
     detail=&#39;this week&#39;
     tone=&#39;green&#39;
@@ -791,14 +796,17 @@ height = 480
     width={620}
     align=&#39;stretch&#39;&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Build&#39;
     detail=&#39;passed&#39;
     status=&#39;check&#39; /&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Review&#39;
     detail=&#39;2 comments&#39;
     status=&#39;pending&#39; /&gt;
   &lt;StatusRow
+    fontSize={13}
     label=&#39;Security&#39;
     detail=&#39;attention&#39;
     status=&#39;warn&#39; /&gt;
@@ -809,6 +817,7 @@ height = 480
 
 &lt;Scene title=&quot;StatusList example&quot; subtitle=&quot;Edit this focused StatusList scene&quot; padding={22} gap={18}&gt;
   &lt;StatusList
+    fontSize={13}
     width={620}
     rows={[{ label: &#39;Build&#39;, detail: &#39;passed&#39;, status: &#39;check&#39; },
         { label: &#39;Review&#39;, detail: &#39;2 comments&#39;, status: &#39;pending&#39; },
@@ -1173,14 +1182,14 @@ height = 480
 <button class="source-button" type="button" data-source="catalog-charts" aria-label="View source for Charts catalog" title="View source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg></button>
 </div>
 <div class="catalog-items"><article class="catalog-item" id="reference-component-ChartFrame" data-catalog-item data-catalog-search="chartframe shared chart title, subtitle, legend, and footer. charts"><div class="catalog-item-copy"><code>ChartFrame</code><p>Shared chart title, subtitle, legend, and footer.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
-height = 480
+height = 600
 
 &lt;Scene title=&quot;ChartFrame example&quot; subtitle=&quot;Edit this focused ChartFrame scene&quot; padding={22} gap={18}&gt;
   &lt;ChartFrame
     title=&#39;Weekly quality&#39;
     subtitle=&#39;A reusable title, legend, and footer&#39;
     width={680}
-    footer=&#39;Source: evaluation runs&#39;&gt;
+    footer=&#39;Illustrative evaluation data · not measured results&#39;&gt;
   &lt;BarChart
     width={620}
     height={220}
@@ -1433,7 +1442,7 @@ height = 640
         { value: 2 }]}
     markers={[{ id: &#39;origin&#39;, label: &#39;0&#39;, value: 0, color: c.info }]}
     interval={{ from: -1.5, to: 2, includeFrom: true, includeTo: false, label: &#39;−3/2 ≤ x &lt; 2&#39;, color: c.primary }}
-    title=&#39;A half-open interval on the number line&#39; /&gt;
+    title=&#39;A half-open interval&#39; /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy NumberLine example source">Copy source</button><a class="component-try-link" href="playground.html#component-NumberLine">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-GeometryDiagram" data-catalog-item data-catalog-search="geometrydiagram labeled points, measured segments, and angle constructions. math"><div class="catalog-item-copy"><code>GeometryDiagram</code><p>Labeled points, measured segments, and angle constructions.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 960
 height = 640
@@ -1479,7 +1488,7 @@ height = 640
         { id: &#39;normal&#39;, label: &#39;normal · 9.8 N&#39;, x: 0, y: 9.8, color: c.info },
         { id: &#39;push&#39;, label: &#39;push · 8 N&#39;, x: 8, y: 0, color: c.positive },
         { id: &#39;drag&#39;, label: &#39;drag · 3 N&#39;, x: -3, y: 0, color: c.warning }]} showResultant showComponents
-    title=&#39;A cart accelerates right with a 5 N net force&#39; /&gt;
+    title=&#39;Net force · 5 N to the right&#39; /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy FreeBodyDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#component-FreeBodyDiagram">Try / edit <span aria-hidden="true">→</span></a></div></article>
 <article class="catalog-item" id="reference-component-WaveDiagram" data-catalog-item data-catalog-search="wavediagram component waves and their superposition across position and time. physics"><div class="catalog-item-copy"><code>WaveDiagram</code><p>Component waves and their superposition across position and time.</p></div><div class="catalog-component-actions"><button class="component-copy-button" type="button" data-copy-component data-component-source="width = 1040
 height = 640
@@ -1497,7 +1506,7 @@ height = 640
     yMin={-2.4}
     yMax={2.4} showComponents showSum
     probeX={1}
-    title=&#39;Two in-phase waves add to amplitude 2A&#39; /&gt;
+    title=&#39;In-phase sum · amplitude 2A&#39; /&gt;
 &lt;/Scene&gt;" aria-live="polite" aria-label="Copy WaveDiagram example source">Copy source</button><a class="component-try-link" href="playground.html#component-WaveDiagram">Try / edit <span aria-hidden="true">→</span></a></div></article></div>
 </div>
 </section>

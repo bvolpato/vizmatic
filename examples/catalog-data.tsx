@@ -90,8 +90,8 @@ export function create(theme: ThemeMode = 'dark') {
                 >
                     <TiledMatrix
                         c={c}
-                        title="TiledMatrix"
-                        subtitle="causal attention mask"
+                        title="Block-sparse tile pattern"
+                        subtitle="highlighted rectangular regions; no causal mask"
                         rows={6}
                         cols={7}
                         cellSize={20}

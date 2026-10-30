@@ -1,7 +1,7 @@
 width = 1040;
 height = 560;
 
-<Scene title="One attention head, one context vector" subtitle="QKᵀ scores keys, then softmax weights their value vectors" align="center">
+<Scene title="One attention head, one context vector" subtitle="QKᵀ / √dₖ scores keys; softmax weights their value vectors" align="center">
     <GraphDiagram
         ariaLabel="Attention head computation from query scores through weighted value vectors to a context vector"
         width={900}

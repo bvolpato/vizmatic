@@ -16,38 +16,38 @@ export function create(theme: ThemeMode = 'dark') {
         <Scene
             c={c}
             title="ML topology catalog"
-            subtitle="tensor shapes, repeated blocks, residual paths, KV state, and collective communication"
+            subtitle="tensor shapes, residual updates, and key-value state in a decoder block"
             background={c.bg}
             padding={24}
             gap={12}
         >
             <Panel
                 c={c}
-                title="Decoder-only transformer"
-                subtitle="one compact block stands for ×24 layers; typed routes expose data, state, residual, and rank-level paths"
+                title="One pre-norm decoder block"
+                subtitle="Attention and MLP each have an explicit residual update"
                 tone="purple"
                 width="100%"
                 minHeight={560}
                 padding={14}
                 align="center"
-                footer="Shapes use B=batch, T=tokens, H=heads, and d=model width. Dashed routes are residual or collective; dotted routes persist KV state."
+                footer="Repeat this complete attention + MLP block 24 times. Shapes use B=batch, T=tokens, and d=model width; residual routes add each sublayer output to its input, and KV routes persist keys and values."
             >
                 <TransformerTopology
                     c={c}
-                    width={1666}
+                    width={1400}
                     height={432}
                     sizing="content"
                     direction="LR"
-                    nodeWidth={174}
-                    nodeHeight={82}
-                    nodeGap={30}
-                    rankGap={52}
+                    nodeWidth={150}
+                    nodeHeight={78}
+                    nodeGap={26}
+                    rankGap={38}
                     edgeGap={12}
-                    padding={26}
+                    padding={24}
                     labelFontSize={13}
                     detailFontSize={11}
                     iconSize={18}
-                    ariaLabel="Decoder transformer topology from token embeddings through normalized attention and repeated MLP blocks to logits, including residual, KV-cache, and all-reduce routes"
+                    ariaLabel="One pre-norm decoder block repeated 24 times, with attention and MLP residual additions, a key-value cache, and logits"
                     blocks={[
                         {
                             id: 'tokens',
@@ -58,26 +58,32 @@ export function create(theme: ThemeMode = 'dark') {
                             outputShape: { dims: ['B', 'T', 'd'], dtype: 'bf16' },
                         },
                         {
-                            id: 'norm',
-                            label: 'RMSNorm',
-                            kind: 'norm',
-                            shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' },
-                            tone: 'neutral',
-                        },
-                        {
                             id: 'attention',
-                            label: 'GQA attention',
+                            label: 'Norm → GQA',
                             kind: 'attention',
                             detail: '32Q / 8KV heads',
                             shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' },
                         },
                         {
-                            id: 'mlp',
-                            label: 'SwiGLU MLP',
-                            kind: 'mlp',
-                            detail: 'expert width 11k',
+                            id: 'attention-residual',
+                            label: 'Add attention',
+                            kind: 'residual',
+                            detail: 'x + attn(norm(x))',
                             shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' },
-                            repeat: 24,
+                        },
+                        {
+                            id: 'mlp',
+                            label: 'Norm → SwiGLU',
+                            kind: 'mlp',
+                            detail: 'width 11k',
+                            shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' },
+                        },
+                        {
+                            id: 'mlp-residual',
+                            label: 'Add MLP',
+                            kind: 'residual',
+                            detail: 'x′ + MLP(norm(x′))',
+                            shape: { dims: ['B', 'T', 'd'], dtype: 'bf16' },
                         },
                         {
                             id: 'kv',
@@ -96,12 +102,14 @@ export function create(theme: ThemeMode = 'dark') {
                         },
                     ]}
                     routes={[
-                        { id: 'embed-norm', from: 'tokens', to: 'norm', kind: 'activation', label: 'hidden · [B×T×d]', shape: ['B', 'T', 'd'] },
-                        { id: 'norm-attn', from: 'norm', to: 'attention', kind: 'activation', label: 'QKV · [B×T×d]', shape: ['B', 'T', 'd'] },
-                        { id: 'attn-mlp', from: 'attention', to: 'mlp', kind: 'activation', label: 'context · [B×T×d]', shape: ['B', 'T', 'd'] },
-                        { id: 'attn-kv', from: 'attention', to: 'kv', kind: 'kv-cache', label: 'persist K/V', shape: ['B', '8', 'T', '128'] },
-                        { id: 'norm-residual', from: 'norm', to: 'mlp', kind: 'residual', label: 'residual · x + f(x)', arrow: 'both' },
-                        { id: 'mlp-collective', from: 'mlp', to: 'logits', kind: 'collective', label: 'all-reduce · 8 ranks', collective: 'all-reduce', arrow: 'both' },
+                        { id: 'embed-attn', from: 'tokens', to: 'attention', kind: 'activation', label: 'input x' },
+                        { id: 'attn-output', from: 'attention', to: 'attention-residual', kind: 'activation' },
+                        { id: 'attention-skip', from: 'tokens', to: 'attention-residual', kind: 'residual', arrow: 'forward' },
+                        { id: 'attn-kv', from: 'attention', to: 'kv', kind: 'kv-cache', label: 'cache K/V' },
+                        { id: 'attention-mlp', from: 'attention-residual', to: 'mlp', kind: 'activation' },
+                        { id: 'mlp-output', from: 'mlp', to: 'mlp-residual', kind: 'activation' },
+                        { id: 'mlp-skip', from: 'attention-residual', to: 'mlp-residual', kind: 'residual', arrow: 'forward' },
+                        { id: 'to-logits', from: 'mlp-residual', to: 'logits', kind: 'activation', label: 'after 24 layers' },
                     ]}
                 />
             </Panel>

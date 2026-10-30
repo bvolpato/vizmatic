@@ -83,7 +83,7 @@ height = 480
     label='Render time'
     value='42 ms'
     tone='green'
-    detail='p95 across 1,200 frames' />
+    detail='sample p95 · 1,200 frames' />
   </Column>
   </Canvas>
 ```
@@ -113,7 +113,7 @@ height = 480
     width={288}
     height={132}>
   <MetricCard
-    label='API latency'
+    label='Sample API latency'
     value='82 ms'
     detail='budget: 120 ms'
     tone='green' />
@@ -126,7 +126,7 @@ height = 480
   <MetricCard
     label='Queue depth'
     value='14'
-    detail='steady over 5 min'
+    detail='sample · steady over 5 min'
     tone='purple' />
   </CanvasItem>
   <CanvasItem
@@ -137,7 +137,7 @@ height = 480
   <MetricCard
     label='Deploy'
     value='healthy'
-    detail='all regions'
+    detail='sample · all regions'
     tone='blue' />
   </CanvasItem>
   </Board>
@@ -169,7 +169,7 @@ height = 640
     width={300}
     height={138}>
   <MetricCard
-    label='API latency'
+    label='Sample API latency'
     value='82 ms'
     detail='budget: 120 ms'
     tone='green' />
@@ -186,6 +186,7 @@ height = 640
     width='100%'
     padding={16}>
   <StatusRow
+    fontSize={13}
     label='Workers'
     detail='8 / 8 ready'
     status='check' />
@@ -323,14 +324,17 @@ height = 480
     gap={10}
     align='stretch'>
   <StatusRow
+    fontSize={13}
     label='Layout'
     detail='ready'
     status='check' />
   <StatusRow
+    fontSize={13}
     label='Contrast'
     detail='inspect'
     status='pending' />
   <StatusRow
+    fontSize={13}
     label='Export'
     detail='PNG + SVG'
     status='info' />
@@ -404,12 +408,13 @@ height = 480
 
 <Scene title="Panel example" subtitle="Edit this focused Panel scene" padding={22} gap={18}>
   <Panel
-    title='Service health'
-    subtitle='Live state grouped in a titled surface'
+    title='Sample service health'
+    subtitle='Illustrative state grouped in a titled surface'
     tone='green'
     width='100%'
     padding={18}>
   <StatusList
+    fontSize={13}
     rows={[{ label: 'API', detail: 'healthy', status: 'check' },
         { label: 'Queue', detail: '12 jobs', status: 'info' }]} />
   </Panel>
@@ -812,7 +817,7 @@ height = 480
   <ValuePill
     label='Throughput'
     value='940'
-    detail='items / second'
+    detail='sample · items / second'
     tone='green'
     width={190} />
   </Row>
@@ -844,7 +849,7 @@ height = 480
     title='Throughput'
     formula='items ÷ seconds'
     result='940/s'
-    detail='measured over 5 minutes'
+    detail='illustrative 5-minute sample'
     tone='purple'
     width={300} math />
 </Scene>
@@ -930,14 +935,14 @@ height = 480
   <MetricCard
     label='Build success'
     value='98.7%'
-    detail='last 30 days'
+    detail='sample · last 30 days'
     tone='green'
     width={220}
     minHeight={120} />
   <MetricCard
     label='Open issues'
     value='4'
-    detail='2 need review'
+    detail='sample · 2 need review'
     tone='warm'
     width={220}
     minHeight={120} />
@@ -1191,7 +1196,7 @@ height = 480
     subtitle='Watermark stays anchored to the rendered frame'
     padding={22}>
   <MetricCard
-    label='Verified runs'
+    label='Sample runs'
     value='1,284'
     detail='this week'
     tone='green'
@@ -1236,14 +1241,17 @@ height = 480
     width={620}
     align='stretch'>
   <StatusRow
+    fontSize={13}
     label='Build'
     detail='passed'
     status='check' />
   <StatusRow
+    fontSize={13}
     label='Review'
     detail='2 comments'
     status='pending' />
   <StatusRow
+    fontSize={13}
     label='Security'
     detail='attention'
     status='warn' />
@@ -1270,6 +1278,7 @@ height = 480
 
 <Scene title="StatusList example" subtitle="Edit this focused StatusList scene" padding={22} gap={18}>
   <StatusList
+    fontSize={13}
     width={620}
     rows={[{ label: 'Build', detail: 'passed', status: 'check' },
         { label: 'Review', detail: '2 comments', status: 'pending' },
@@ -2016,14 +2025,14 @@ Props:
 
 ```tsx
 width = 960
-height = 480
+height = 600
 
 <Scene title="ChartFrame example" subtitle="Edit this focused ChartFrame scene" padding={22} gap={18}>
   <ChartFrame
     title='Weekly quality'
     subtitle='A reusable title, legend, and footer'
     width={680}
-    footer='Source: evaluation runs'>
+    footer='Illustrative evaluation data · not measured results'>
   <BarChart
     width={620}
     height={220}
@@ -2525,7 +2534,7 @@ height = 640
         { value: 2 }]}
     markers={[{ id: 'origin', label: '0', value: 0, color: c.info }]}
     interval={{ from: -1.5, to: 2, includeFrom: true, includeTo: false, label: '−3/2 ≤ x < 2', color: c.primary }}
-    title='A half-open interval on the number line' />
+    title='A half-open interval' />
 </Scene>
 ```
 
@@ -2597,7 +2606,7 @@ height = 640
         { id: 'normal', label: 'normal · 9.8 N', x: 0, y: 9.8, color: c.info },
         { id: 'push', label: 'push · 8 N', x: 8, y: 0, color: c.positive },
         { id: 'drag', label: 'drag · 3 N', x: -3, y: 0, color: c.warning }]} showResultant showComponents
-    title='A cart accelerates right with a 5 N net force' />
+    title='Net force · 5 N to the right' />
 </Scene>
 ```
 
@@ -2639,7 +2648,7 @@ height = 640
     yMin={-2.4}
     yMax={2.4} showComponents showSum
     probeX={1}
-    title='Two in-phase waves add to amplitude 2A' />
+    title='In-phase sum · amplitude 2A' />
 </Scene>
 ```
 ## Chemistry

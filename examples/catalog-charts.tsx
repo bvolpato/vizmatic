@@ -141,15 +141,15 @@ export function create(theme: ThemeMode = 'dark') {
                 <LineChart
                     c={c}
                     title="LineChart"
-                    subtitle="multi-series trend"
+                    subtitle="illustrative pass and failure rates by release"
                     width={348}
                     height={188}
                     format="percent"
-                    yAxisLabel="score"
+                    yAxisLabel="share of evaluations"
                     labels={['r1', 'r2', 'r3', 'r4', 'r5']}
                     series={[
-                        { name: 'quality', points: [0.62, 0.69, 0.76, 0.83, 0.91], color: 'positive', area: true },
-                        { name: 'latency', points: [0.84, 0.76, 0.70, 0.65, 0.61], color: 'primary' },
+                        { name: 'pass rate', points: [0.62, 0.69, 0.76, 0.83, 0.91], color: 'positive', area: true },
+                        { name: 'failure rate', points: [0.38, 0.31, 0.24, 0.17, 0.09], color: 'primary' },
                     ]}
                 />
 

@@ -449,7 +449,7 @@ export function SequenceDiagram({
                 lineHeight: 1.1,
                 textTransform: 'uppercase' as const,
             },
-        }, span.fragment.kind, span.fragment.label),
+        }, span.fragment.kind, span.fragment.label != null && ' · ', span.fragment.label),
         ...span.branchStarts.map((branch) => React.createElement('div', {
             key: `sequence-branch-${span.id}-${branch.row}`,
             style: {
@@ -514,6 +514,7 @@ export function SequenceDiagram({
         })
     }).filter(Boolean)
 
+    const messageLabels: React.ReactElement[] = []
     const messageElements = rows.map((row, rowIndex) => {
         if (!row.item || isFragment(row.item) || isActivation(row.item) || isNote(row.item)) return null
         const message = row.item
@@ -525,18 +526,9 @@ export function SequenceDiagram({
         const markerId = `sequence-arrow-${participants.findIndex((participant) => participant.id === message.to)}-${kind}`
         const y = rowCenter(rowIndex)
         const selfLoop = message.from === message.to
-        return React.createElement(React.Fragment, { key: `sequence-message-${message.id ?? row.key}` },
-            React.createElement('path', {
-                d: sequenceMarkerPath(fromX, toX, y, rowHeight, selfLoop),
-                fill: 'none',
-                stroke: color,
-                strokeWidth: message.muted ? 1.25 : 2,
-                strokeDasharray: kind === 'sync' ? undefined : '7 5',
-                strokeLinecap: 'round',
-                opacity: message.muted ? 0.48 : 0.9,
-                markerEnd: `url(#${markerId})`,
-            }),
-            message.label != null && React.createElement('div', {
+        if (message.label != null) {
+            messageLabels.push(React.createElement('div', {
+                key: `sequence-message-label-${message.id ?? row.key}`,
                 style: {
                     position: 'absolute' as const,
                     left: selfLoop ? fromX + 34 : (fromX + toX) / 2,
@@ -553,8 +545,19 @@ export function SequenceDiagram({
                     whiteSpace: 'nowrap' as const,
                     ...textFitStyle('center'),
                 },
-            }, message.label),
-        )
+            }, message.label))
+        }
+        return React.createElement('path', {
+            key: `sequence-message-${message.id ?? row.key}`,
+            d: sequenceMarkerPath(fromX, toX, y, rowHeight, selfLoop),
+            fill: 'none',
+            stroke: color,
+            strokeWidth: message.muted ? 1.25 : 2,
+            strokeDasharray: kind === 'sync' ? undefined : '7 5',
+            strokeLinecap: 'round',
+            opacity: message.muted ? 0.48 : 0.9,
+            markerEnd: `url(#${markerId})`,
+        })
     }).filter(Boolean)
 
     const noteElements = rows.map((row, rowIndex) => {
@@ -685,6 +688,7 @@ export function SequenceDiagram({
             ...messageElements,
         ),
         ...activationElements,
+        ...messageLabels,
         ...noteElements,
         ...participantElements,
         title != null && React.createElement('div', {

@@ -1,10 +1,16 @@
 import { existsSync } from 'fs'
 import { resolve } from 'path'
+import React from 'react'
+import { transform } from 'sucrase'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import * as primitives from '../src/primitives'
 import { Watermark } from '../src/brand'
 import { preparePlaygroundSource } from '../src/playground-source'
+import { createPlaygroundApi } from '../src/playground-api'
+import { checkFrame } from '../src/check'
+import { getThemeColors } from '../src/theme'
+import { catalogExample } from '../scripts/component-examples'
 import {
     catalogComponentCount,
     catalogUtilities,
@@ -12,6 +18,25 @@ import {
 } from '../scripts/component-catalog'
 
 describe('component catalog', () => {
+    it.each(['ChartFrame', 'NumberLine', 'FreeBodyDiagram', 'WaveDiagram'])('renders the copied %s example within its declared canvas in both themes', async (name) => {
+        const prepared = preparePlaygroundSource(catalogExample(name))
+        const compiled = transform(`${prepared.setup}\nreturn (${prepared.jsx});`, {
+            transforms: ['typescript', 'jsx'], jsxPragma: 'React.createElement',
+        }).code
+        const report = await checkFrame({
+            width: prepared.metadata.width,
+            height: prepared.metadata.height,
+            create(theme) {
+                const c = getThemeColors(theme)
+                const api = createPlaygroundApi(c)
+                const render = Function('React', 'c', ...Object.keys(api), compiled) as (...args: unknown[]) => React.ReactNode
+                return render(React, c, ...Object.values(api))
+            },
+        })
+        expect(report.summary.errors, JSON.stringify(report.themes)).toBe(0)
+        expect(report.rendered).toBe(true)
+    }, 15_000)
+
     it('covers every public primitive function exactly once', () => {
         const primitiveFunctions = Object.entries(primitives)
             .filter(([, value]) => typeof value === 'function')
