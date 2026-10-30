@@ -83,13 +83,13 @@ function Frame({ theme, progress, opacity = 1 }: { theme: ThemeMode; progress: n
     const textColor = getReadableTextColor(color, c)
     const p = clamp(progress)
     const reduce = clamp(p / 0.5)
-    const broadcast = clamp((p - 0.46) / 0.54)
-    const inputOpacity = 1 - clamp((p - 0.46) / 0.12)
+    const broadcast = clamp((p - 0.5) / 0.5)
+    const inputOpacity = 1 - clamp((p - 0.5) / 0.12)
     const centerX = 548
     const centerY = 181
     const sourceX = 226
     const targetX = 850
-    const phase = p < 0.46 ? 'reduce matching values' : p < 0.92 ? 'broadcast completed sum' : 'same sum on every rank'
+    const phase = p < 0.5 ? 'reduce matching values' : p < 1 ? 'broadcast completed sum' : 'same sum on every rank'
 
     return (
         <div style={{ display: 'flex', position: 'relative', width, height, backgroundColor: c.bg, fontFamily: c.fontSans }}>
