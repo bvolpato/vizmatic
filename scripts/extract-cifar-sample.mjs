@@ -57,7 +57,7 @@ try {
         const index = row * 32 + column
         return [record[1 + index], record[1025 + index], record[2049 + index]]
     }))
-    const outputs = ['catalog-image-tensors.tsx', 'catalog-photo-blur.tsx']
+    const outputs = ['catalog-image-tensors.tsx']
         .map(name => fileURLToPath(new URL(`../examples/${name}`, import.meta.url)))
     const originals = await Promise.all(outputs.map(output => readFile(output, 'utf8')))
     const start = '// CIFAR_SAMPLE_START', end = '// CIFAR_SAMPLE_END'

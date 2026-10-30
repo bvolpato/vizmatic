@@ -1257,10 +1257,25 @@ unflipped, single-channel filter calculation and a normalized blur kernel; the
 weights are illustrative. The [science guide](SCIENCE.md#make-the-mechanism-visible)
 covers stride, padding, Gaussian sampling, and border behavior.
 
-The [photo blur lesson](examples/catalog-photo-blur.tsx) applies the kernel to a
-real CIFAR-10 image and reveals the computed color result beside the original.
-Its [animation](examples/videos/photo-gaussian-blur.tsx) connects the pixel
-neighborhood, weighted channel sums, and before/after photos.
+The [photo blur lesson](examples/catalog-photo-blur.tsx) uses a sharp CC0 coffee
+photo. Its [animation](examples/videos/photo-gaussian-blur.tsx) computes and
+shows actual 25 × 25 Gaussian results from σ = 0 to 4, with σ = 0 as the
+unchanged identity crop. The sharp source and filtered image use the same size
+and crop. The embedded 384 × 256 sample is prepared by
+[`scripts/prepare-photo-sample.mjs`](scripts/prepare-photo-sample.mjs), which
+requires Node.js and FFmpeg. The photo and codec notices are in
+[`assets/THIRD_PARTY_LICENSES.md`](assets/THIRD_PARTY_LICENSES.md).
+
+The raster helpers `decodeRgbPng`, `encodeRgbPng`, `cropRgbRaster`, and
+`gaussianBlurRgb` operate on flat row-major RGB data. Decoding accepts opaque,
+noninterlaced 8-bit PNG data URIs up to 2 MiB and 1,048,576 pixels and rejects
+embedded ICC profiles. Raster operations use the same 1,048,576-pixel limit.
+Blur uses the stored, gamma-encoded channel values without linearizing them and
+returns floating-point RGB with valid convolution and an integer radius from 0
+to 64, defaulting to `ceil(3σ)`. PNG encoding rounds values when writing the
+output image. These helpers are available from full Vizmatic SDK modules and
+the full Playground, not from the isolated QuickJS author-code environment
+described above.
 
 ## Publishing
 

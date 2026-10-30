@@ -56,32 +56,46 @@ kernel fits. This helper supports strides greater than 1 with `same`; PyTorch
 
 For smoothing, the [Gaussian blur example](examples/catalog-gaussian-blur.tsx)
 and [animation](examples/videos/gaussian-blur.tsx) follow a normalized kernel
-through a bright point and its neighbors. `gaussianKernel(size, sigma)` samples and normalizes the Gaussian
-function. The displayed 3×3 `[[1,2,1],[2,4,2],[1,2,1]] / 16` kernel is a
-separable binomial approximation to a Gaussian, not the exact sampled kernel.
-Both helpers preserve floating-point values without rounding; choose any
-integer conversion or rounding when turning results back into pixel bytes.
-These helpers are available in this source checkout; consumers need a Vizmatic
-release that includes them.
+through a bright point and its neighbors. `gaussianKernel(size, sigma)` samples
+and normalizes a finite, odd-sized 2D Gaussian kernel. The displayed 3×3
+`[[1,2,1],[2,4,2],[1,2,1]] / 16` kernel is a separable binomial approximation
+to a Gaussian, not the exact sampled kernel. `crossCorrelate2d` preserves
+floating-point results.
 
-The [photo blur example](examples/catalog-photo-blur.tsx) and
-[animation](examples/videos/photo-gaussian-blur.tsx) apply that same kernel to
-all three channels of the actual CIFAR-10 frog photo. Follow a selected pixel
-through its neighborhood and weighted sum, then watch the filtered color image
-appear. Both images show the same 30×30 field of view: the source's central crop
-and the result of a valid 3×3 filter on the original 32×32 image. Numerical
-results retain fractions; only the displayed RGB bytes are rounded.
+For an actual photo, the [photo blur example](examples/catalog-photo-blur.tsx)
+and [animation](examples/videos/photo-gaussian-blur.tsx) use a sharp 384 × 256
+CC0 coffee photograph. They compute nine outputs at σ = 0, 0.5, …, 4 using a
+25 × 25 Gaussian footprint; σ = 0 is the unchanged identity crop. The source
+crop and each valid-convolution output share a 360 × 232 field of view. Each
+animation stage displays its computed result. The separable implementation
+returns floating-point RGB values; the lesson rounds them only for the byte
+readout and PNG encoding. Blur uses stored, gamma-encoded channel values and
+does not linearize RGB before filtering.
+
+The full SDK exposes `RgbRaster`, `decodeRgbPng`, `encodeRgbPng`,
+`cropRgbRaster`, and `gaussianBlurRgb` to imported scene modules and the full
+browser Playground. A raster is a flat, row-major RGB buffer. PNG decoding
+accepts opaque, noninterlaced 8-bit images up to 2 MiB and 1,048,576 pixels; it
+rejects embedded ICC profiles. Raster operations also cap dimensions at
+1,048,576 pixels. Gaussian blur uses valid convolution, returns a `Float64Array`,
+accepts σ ≥ 0 and integer radius 0–64, and defaults the radius to `ceil(3σ)`.
+An explicit radius at σ = 0 keeps the matching valid crop while leaving its
+pixels unchanged. These helpers are not part of the bare QuickJS author-code
+environment. The helpers are in this source checkout; consumers need a
+Vizmatic release that includes them.
 
 See [PyTorch Conv2d](https://docs.pytorch.org/docs/stable/generated/torch.nn.Conv2d.html)
 for learned spatial filters and [OpenCV image filtering](https://docs.opencv.org/4.x/d4/d86/group__imgproc__filter.html)
 for Gaussian blur and border handling.
 
-The CIFAR example embeds training batch 1, record 0 (frog), so preview and
-rendering need no runtime downloads. It shows the full image and three full
-channel planes, then enlarges the same 4×4 crop into numerical matrices.
-Moving values land in the corresponding row and column. Regenerate the pinned
-record in both photo examples with `node scripts/extract-cifar-sample.mjs`; provenance and the
-third-party notice are in `assets/THIRD_PARTY_LICENSES.md`.
+The CIFAR image-to-matrix example embeds training batch 1, record 0 (frog), so
+preview and rendering need no runtime downloads. It shows the full image and
+three full channel planes, then enlarges the same 4×4 crop into numerical
+matrices. Moving values land in the corresponding row and column. Regenerate
+the pinned record in `examples/catalog-image-tensors.tsx` with
+`node scripts/extract-cifar-sample.mjs`; the photo lesson has its own prepared
+sample from `node scripts/prepare-photo-sample.mjs`. Provenance and third-party
+notices are in `assets/THIRD_PARTY_LICENSES.md`.
 
 Start with the objects the lesson explains. Keep the coordinate system and color
 meaning stable while the relevant quantity changes. A force diagram keeps one

@@ -110,6 +110,8 @@
     "@dagrejs/dagre": "3.1.1",
     "@resvg/resvg-js": "2.7.0-alpha.2",
     "@resvg/resvg-wasm": "2.6.2",
+    "fast-png": "8.0.0",
+    "fflate": "0.7.5",
     "gifenc": "^1.0.3",
     "mathjax-full": "3.2.2",
     "parse-css-color": "0.2.1",

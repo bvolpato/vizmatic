@@ -196,8 +196,8 @@ const playgroundAssetFiles = await readdir(join(root, 'docs', 'assets', 'playgro
 if (playgroundMain.size > 100 * 1024) {
     fail('playground main bundle must stay below 100 KiB')
 }
-if (playgroundWorker.size > 1_600_000) {
-    fail('playground worker bundle must stay below 1.6 MB, including scientific components')
+if (playgroundWorker.size > 1_650_000) {
+    fail('playground worker bundle must stay below 1.65 MB, including scientific components and PNG codecs')
 }
 if (playgroundScene.size > 150 * 1024) {
     fail('playground scene inspector bundle must stay below 150 KiB')

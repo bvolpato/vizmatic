@@ -9,12 +9,12 @@ interface PackResult {
 }
 
 const limits = {
-    // Includes the lazy browser scene bundle, its types and build-time asset helper.
-    size: 3_200_000,
-    // Includes teaching helpers and the standalone photographic blur sample.
-    unpackedSize: 7_550_000,
-    // Includes the photo blur still and animation sources.
-    entryCount: 114,
+    // Includes browser rendering and the portable PNG codecs.
+    size: 3_400_000,
+    // Includes teaching helpers and the sharp photographic blur sample.
+    unpackedSize: 8_000_000,
+    // Includes the bundled raster codec license notice.
+    entryCount: 115,
 }
 
 const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {

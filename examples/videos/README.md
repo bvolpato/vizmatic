@@ -24,18 +24,21 @@ generic example that depends on the published Vizmatic package.
   feature map.
 - [`gaussian-blur.tsx`](gaussian-blur.tsx) tracks weighted pixel taps as a
   bright point spreads through a normalized binomial blur kernel.
-- [`photo-gaussian-blur.tsx`](photo-gaussian-blur.tsx) follows a real photo's
-  RGB pixel neighborhood through the same blur, then reveals the filtered photo
-  beside a source crop with matching framing.
+- [`photo-gaussian-blur.tsx`](photo-gaussian-blur.tsx) opens on a sharp CC0
+  coffee photo, then reveals its matching crop and a 25 × 25 Gaussian weight
+  map. It steps through the computed RGB outputs from σ = 0 to 4, keeping the
+  source and result the same size and showing the 360 × 232 valid crop.
 
 The scientific examples require the scientific components in this checkout.
 Build it with `pnpm build`, then use `node dist/cli.js video` in place of
 `npx vizmatic video` below. See the [science guide](../../SCIENCE.md) for the
-data contracts and references. The image-kernel helpers handle one 2D channel
-and preserve floating-point results; the [kernel section](../../SCIENCE.md#make-the-mechanism-visible)
-explains stride and padding. The kernel helpers are available in this checkout;
-consumers need a Vizmatic release that includes them. These are short lesson
-segments; narration and publication review remain separate production steps.
+data contracts and references. `crossCorrelate2d` handles one 2D channel;
+`gaussianBlurRgb` processes row-major RGB rasters and retains floating-point
+results until PNG encoding. These helpers are available in this checkout;
+consumers need a Vizmatic release that includes them. They are part of full
+SDK imports and the full Playground, not the isolated QuickJS author-code
+environment. These are short lesson segments; narration and publication review
+remain separate production steps.
 
 Use Node.js 20 or newer. In a project that contains the downloaded or copied
 TSX file, add the [consumer security overrides](../../README.md#consumer-security-overrides)
