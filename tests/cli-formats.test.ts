@@ -1,7 +1,7 @@
 import { spawnSync } from 'child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
-import { join, resolve } from 'path'
+import { dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import { afterEach, describe, expect, it } from 'vitest'
 import { detectBackgroundColor, detectContentBounds } from '../src/autocrop'
@@ -89,7 +89,111 @@ export const height = 200
 export const create = (theme) => <div style={{ display: 'flex', position: 'absolute', left: 40, top: 40, width: theme === 'dark' ? 180 : 420, height: 60, backgroundColor: '#3157d5' }} />
 `
 
+async function checkCli(
+    sources: Array<{ name: string; source: string }>,
+    consumerPackageType: 'commonjs-default' | 'module' = 'commonjs-default',
+) {
+    const directory = await mkdtemp(join(tmpdir(), 'vizmatic-cli-check-'))
+    tempDirs.push(directory)
+    const fixtureModules = join(directory, 'node_modules')
+    const fixturePackage = join(fixtureModules, 'vizmatic')
+    await writeFile(join(directory, 'package.json'), JSON.stringify({
+        name: 'vizmatic-cli-fixture',
+        ...(consumerPackageType === 'module' ? { type: 'module' } : {}),
+    }))
+    await writeFile(join(directory, 'tsconfig.json'), JSON.stringify({
+        compilerOptions: { module: 'ESNext', moduleResolution: 'Bundler', jsx: 'react-jsx' },
+    }))
+    await mkdir(fixtureModules, { recursive: true })
+    await symlink(resolve('.'), fixturePackage, 'dir')
+    await symlink(resolve('node_modules/react'), join(fixtureModules, 'react'), 'dir')
+    const framePaths = await Promise.all(sources.map(async ({ name, source }) => {
+        const framePath = join(directory, name)
+        await mkdir(dirname(framePath), { recursive: true })
+        await writeFile(framePath, source)
+        return framePath
+    }))
+    const env: NodeJS.ProcessEnv = { ...process.env, VIZMATIC_DISABLE_NETWORK: '1' }
+    delete env.NODE_OPTIONS
+    for (const key of Object.keys(env)) {
+        if (key.startsWith('TSX_') || key.startsWith('VITEST')) delete env[key]
+    }
+
+    const result = spawnSync(process.execPath, [
+        join(fixturePackage, 'dist/cli.js'),
+        'check',
+        ...framePaths,
+        '--theme',
+        'dark,light',
+        '--json',
+    ], {
+        cwd: directory,
+        encoding: 'utf8',
+        env,
+    })
+
+    return {
+        result,
+        report: JSON.parse(result.stdout) as {
+            ok: boolean
+            files: Array<{ ok: boolean; themes: Array<{ theme: string; ok: boolean }> }>
+            summary: { files: number; errors: number }
+        },
+    }
+}
+
+const componentFrame = `import React from 'react'
+import { getThemeColors } from 'vizmatic'
+export const width = 320
+export const height = 180
+export const create = (theme) => {
+    const c = getThemeColors(theme)
+    return React.createElement('div', {
+        style: { display: 'flex', width: 180, height: 48, backgroundColor: c.bg, color: c.textPrimary },
+    }, 'A simple frame')
+}
+export default create()
+`
+
+const texFrame = `import React from 'react'
+import { Buffer } from 'node:buffer'
+import { renderMathSvg } from 'vizmatic'
+export const width = 320
+export const height = 180
+export const create = () => {
+    const math = renderMathSvg('x^2', { fontSize: 24, color: '#111111' })
+    return React.createElement('img', {
+        src: 'data:image/svg+xml;base64,' + Buffer.from(math.svg).toString('base64'),
+        width: math.width,
+        height: math.height,
+        style: { display: 'block' },
+    })
+}
+export default create()
+`
+
 describe('CLI output formats', () => {
+    it.each(['commonjs-default', 'module'] as const)(
+        'checks a TeX frame after another TSX frame in a %s consumer in both themes',
+        async (consumerPackageType) => {
+            const { result, report } = await checkCli([
+                { name: 'src/content/first/illustrations/01-components.tsx', source: componentFrame },
+                { name: 'src/content/second/illustrations/02-tex.tsx', source: texFrame },
+            ], consumerPackageType)
+
+            expect(result.status, result.stderr || result.stdout).toBe(0)
+            expect(report).toMatchObject({
+                ok: true,
+                summary: { files: 2, errors: 0 },
+                files: [
+                    { ok: true, themes: [{ theme: 'dark', ok: true }, { theme: 'light', ok: true }] },
+                    { ok: true, themes: [{ theme: 'dark', ok: true }, { theme: 'light', ok: true }] },
+                ],
+            })
+        },
+        30_000,
+    )
+
     it('keeps PNG as the default format', async () => {
         const { renderDir, result } = await renderCli(fittedFrame)
 
