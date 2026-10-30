@@ -402,14 +402,18 @@ function withTemporaryGlobalReactSync<T>(callback: () => T): T {
 }
 
 let registeredTsxImport: ((specifier: string, parentURL: string) => Promise<unknown>) | undefined
+let tsxLoaderRegistered = false
 
-function supportsProcessWideTsxLoader(): boolean {
-    return typeof Module.register === 'function' || typeof Module.registerHooks === 'function'
+function needsProcessWideTsxLoader(): boolean {
+    const [nodeMajor, nodeMinor, nodePatch] = process.versions.node.split('.').map(Number)
+    return nodeMajor >= 24
+        || (nodeMajor === 22 && (nodeMinor > 22 || (nodeMinor === 22 && nodePatch >= 3)))
 }
 
 async function importWithTsx<T>(url: string): Promise<T> {
-    // Node 20.6 added module.register(); older supported Node 20 releases need tsx's scoped importer.
-    if (supportsProcessWideTsxLoader()) {
+    // Node 22.22.2 and 23.11.1 need a scoped importer; process-wide loading triggers ERR_REQUIRE_CYCLE_MODULE.
+    // Node 22.22.3+ and 24+ use process-wide loading; Node 24's scoped importer cannot resolve TSX URLs.
+    if (typeof Module.register === 'function' && !needsProcessWideTsxLoader()) {
         let scopedImport = registeredTsxImport
         if (!scopedImport) {
             const { register } = await import('tsx/esm/api') as unknown as {
@@ -417,11 +421,19 @@ async function importWithTsx<T>(url: string): Promise<T> {
                     import: (specifier: string, parentURL: string) => Promise<unknown>
                 }
             }
-            // Reuse one TSX module namespace so every frame shares the same dependency cache.
             scopedImport = register({ namespace: randomUUID() }).import
             registeredTsxImport = scopedImport
         }
         return await scopedImport(url, import.meta.url) as T
+    }
+
+    if (needsProcessWideTsxLoader()) {
+        if (!tsxLoaderRegistered) {
+            const { register } = await import('tsx/esm/api') as unknown as { register: () => unknown }
+            register()
+            tsxLoaderRegistered = true
+        }
+        return await import(url) as T
     }
 
     const { tsImport } = await import('tsx/esm/api')
@@ -1071,7 +1083,7 @@ async function importFrame(filePath: string): Promise<FrameModule> {
 
     let loadError: unknown
     const cliRunsFromTypeScript = extname(fileURLToPath(import.meta.url)) === '.ts'
-    if (!supportsProcessWideTsxLoader() || cliRunsFromTypeScript) {
+    if (!needsProcessWideTsxLoader() || cliRunsFromTypeScript) {
         try {
             const mod = await importWithOptionalReactBinding(() => import(url) as Promise<FrameModule>)
             if (!isBareFrame || mod.create || mod.default || mod.createScenes || mod.createAnimation) return mod
