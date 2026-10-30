@@ -525,7 +525,7 @@ height = 540;
 | `VectorSegment` | Labeled segment/vector primitive for geometry and embedding visuals. |
 | `SvgFrame` | SVG container with theme-aware background and border. |
 | `SvgPoint` / `DotPoint` | Point markers with optional labels. |
-| `ArrowMarkerDef` | SVG arrowhead marker definition for custom line charts and graph edges. |
+| `ArrowMarkerDef` | SVG arrowhead marker definition for custom paths and graph edges. Use `direction="start"` to define a backward-facing path-start tip. |
 | `DashedLine` | Dotted/dashed SVG line helper. |
 | `Legend` | Reusable legend block with colored items and optional title. |
 

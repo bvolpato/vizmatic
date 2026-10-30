@@ -2882,6 +2882,7 @@ Reusable SVG arrowhead definition.
 
 Props:
 - `color`: `string` (required)
+- `direction`: `"start" | "end"` (optional; allowed values: `propEnums.values15`)
 - `id`: `string` (required)
 - `size`: `number` (optional)
 
@@ -3278,3 +3279,4 @@ Finite allowed values referenced by component props:
 - `propEnums.ParetoObjective`: ["minimize","maximize"]
 - `propEnums.ParetoXScale`: ["linear","log"]
 - `propEnums.values14`: ["left","right","down","up"]
+- `propEnums.values15`: ["start","end"]

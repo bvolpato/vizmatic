@@ -408,20 +408,22 @@ interface ArrowMarkerDefProps {
     id: string
     color: string
     size?: number  // marker width/height in pixels
+    direction?: 'start' | 'end'
 }
 
-export function ArrowMarkerDef({ id, color, size = 5 }: ArrowMarkerDefProps): React.ReactElement {
+export function ArrowMarkerDef({ id, color, size = 5, direction = 'end' }: ArrowMarkerDefProps): React.ReactElement {
+    const isStart = direction === 'start'
     return React.createElement('marker', {
         id,
         viewBox: '0 0 10 10',
-        refX: 9.5,
+        refX: isStart ? 0.5 : 9.5,
         refY: 5,
         markerWidth: size,
         markerHeight: size,
-        orient: 'auto-start-reverse',
+        orient: 'auto',
     },
         React.createElement('path', {
-            d: 'M 0 0 L 10 5 L 0 10 z',
+            d: isStart ? 'M 10 0 L 0 5 L 10 10 z' : 'M 0 0 L 10 5 L 0 10 z',
             fill: color,
         }),
     )

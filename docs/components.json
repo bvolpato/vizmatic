@@ -186,6 +186,10 @@
       "right",
       "down",
       "up"
+    ],
+    "values15": [
+      "start",
+      "end"
     ]
   },
   "categories": [
@@ -7369,6 +7373,12 @@
               "name": "color",
               "type": "string",
               "required": true
+            },
+            {
+              "name": "direction",
+              "type": "\"start\" | \"end\"",
+              "required": false,
+              "allowedValuesRef": "values15"
             },
             {
               "name": "id",

@@ -14,6 +14,7 @@ import {
     detectContentBounds,
     detectOverflow,
     colors,
+    ArrowMarkerDef,
     CalloutCard,
     defineAnimation,
     getReadableColor,
@@ -193,6 +194,40 @@ function pixelAt(image: { width: number; pixels: Uint8Array }, x: number, y: num
         image.pixels[offset + 2],
         image.pixels[offset + 3],
     ]
+}
+
+function magentaCentroid(
+    image: { width: number; height: number; pixels: Uint8Array },
+    center: { x: number; y: number },
+    scale: number,
+    radius: number,
+): { x: number; y: number; count: number } {
+    let xTotal = 0
+    let yTotal = 0
+    let weightTotal = 0
+    let count = 0
+    const minX = Math.max(0, Math.floor((center.x - radius) * scale))
+    const maxX = Math.min(image.width - 1, Math.ceil((center.x + radius) * scale))
+    const minY = Math.max(0, Math.floor((center.y - radius) * scale))
+    const maxY = Math.min(image.height - 1, Math.ceil((center.y + radius) * scale))
+
+    for (let y = minY; y <= maxY; y += 1) {
+        for (let x = minX; x <= maxX; x += 1) {
+            const [red, green, blue, alpha] = pixelAt(image, x, y)
+            if (red < 170 || blue < 170 || green > 130 || alpha < 64) continue
+            const weight = alpha / 255
+            xTotal += (x + 0.5) / scale * weight
+            yTotal += (y + 0.5) / scale * weight
+            weightTotal += weight
+            count += 1
+        }
+    }
+
+    return {
+        x: xTotal / weightTotal,
+        y: yTotal / weightTotal,
+        count,
+    }
 }
 
 function gifTransparencyFlags(buffer: Buffer): boolean[] {
@@ -1064,6 +1099,7 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
             edges: [
                 { from: 'client', to: 'api', kind: 'sync', arrow: 'both' },
                 { from: 'api', to: 'db', kind: 'event' },
+                { from: 'db', to: 'api', kind: 'association', arrow: 'backward' },
             ],
         })
         const groups = collectElements(graph, (element) => Boolean(reactProps(element)['data-vizmatic-graph-group']))
@@ -1071,18 +1107,93 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         const paths = collectElements(graph, (element) => element.type === 'path' && Boolean(reactProps(element).d))
             .map(reactProps)
             .filter((props) => props.markerStart || props.markerEnd)
+        const markers = collectElements(graph, (element) => element.type === 'marker')
+            .map(reactProps)
 
         expect(reactProps(graph)['aria-label']).toBe('Production architecture')
         expect(groups).toHaveLength(2)
         expect(Number(groups[0].width)).toBeGreaterThan(Number(groups[1].width))
         expect(Number(groups[0].height)).toBeGreaterThan(Number(groups[1].height))
-        expect(paths).toHaveLength(2)
+        expect(paths).toHaveLength(3)
         expect(paths[0].markerStart).toBeTruthy()
         expect(paths[0].markerEnd).toBeTruthy()
+        expect(paths[0].markerStart).not.toBe(paths[0].markerEnd)
+        const startMarkerId = String(paths[0].markerStart).match(/#([^)]*)/)?.[1]
+        const endMarkerId = String(paths[0].markerEnd).match(/#([^)]*)/)?.[1]
+        const startMarker = markers.find((marker) => marker.id === startMarkerId)
+        const endMarker = markers.find((marker) => marker.id === endMarkerId)
+        expect(startMarker?.orient).toBe('auto')
+        expect(endMarker?.orient).toBe('auto')
+        expect(reactProps(startMarker?.children as React.ReactElement).d).toBe('M 10 0 L 0 5 L 10 10 z')
+        expect(reactProps(endMarker?.children as React.ReactElement).d).toBe('M 0 0 L 10 5 L 0 10 z')
+        expect(paths[2].markerStart).toBeTruthy()
+        expect(paths[2].markerEnd).toBeUndefined()
+        expect(new Set(markers.map((marker) => marker.id)).size).toBe(markers.length)
         expect(paths[1].strokeDasharray).toBe('2 6')
         expect(collectElements(graph, (element) => element.type === 'svg' && reactProps(element)['aria-label'] === 'API icon')).toHaveLength(1)
         const apiIcon = collectElements(graph, (element) => reactProps(element)['data-vizmatic-graph-icon'] === 'api')[0]
         expect(reactProps(apiIcon).style).toMatchObject({ width: 50, height: 50, overflow: 'hidden' })
+    })
+
+    it('rasterizes horizontal, vertical, and diagonal arrow tips in their requested directions', async () => {
+        const modes = ['forward', 'backward', 'both'] as const
+        const cases = modes.flatMap((mode, column) => [
+            {
+                mode,
+                start: { x: column * 120 + 20, y: 40 },
+                end: { x: column * 120 + 80, y: 40 },
+                tangent: { x: 1, y: 0 },
+            },
+            {
+                mode,
+                start: { x: column * 120 + 55, y: 110 },
+                end: { x: column * 120 + 55, y: 170 },
+                tangent: { x: 0, y: 1 },
+            },
+            {
+                mode,
+                start: { x: column * 120 + 20, y: 208 },
+                end: { x: column * 120 + 80, y: 268 },
+                tangent: { x: Math.SQRT1_2, y: Math.SQRT1_2 },
+            },
+        ])
+        const element = React.createElement('svg', {
+            width: 360,
+            height: 300,
+            viewBox: '0 0 360 300',
+        },
+        React.createElement('defs', {},
+            ArrowMarkerDef({ id: 'raster-test-start', color: '#ff00ff', size: 14, direction: 'start' }),
+            ArrowMarkerDef({ id: 'raster-test-end', color: '#ff00ff', size: 14 }),
+        ),
+        ...cases.map((item, index) => React.createElement('path', {
+            key: `directional-case-${index}`,
+            d: `M ${item.start.x} ${item.start.y} L ${item.end.x} ${item.end.y}`,
+            fill: 'none',
+            stroke: '#334155',
+            strokeWidth: 2,
+            markerStart: item.mode === 'backward' || item.mode === 'both' ? 'url(#raster-test-start)' : undefined,
+            markerEnd: item.mode === 'forward' || item.mode === 'both' ? 'url(#raster-test-end)' : undefined,
+        })))
+        const scale = 2
+        const image = decodePng(await renderToBuffer(element, 360, 300, { scale }))
+
+        for (const item of cases) {
+            const expectedTips = [
+                ...(item.mode === 'backward' || item.mode === 'both' ? [{ point: item.start, sign: 1 }] : []),
+                ...(item.mode === 'forward' || item.mode === 'both' ? [{ point: item.end, sign: -1 }] : []),
+            ]
+            for (const tip of expectedTips) {
+                const center = magentaCentroid(image, tip.point, scale, 18)
+                expect(center.count, `${item.mode} marker at (${tip.point.x}, ${tip.point.y})`).toBeGreaterThan(8)
+                const dx = center.x - tip.point.x
+                const dy = center.y - tip.point.y
+                const along = dx * item.tangent.x + dy * item.tangent.y
+                const across = dx * -item.tangent.y + dy * item.tangent.x
+                expect(tip.sign * along, `${item.mode} marker tangent at (${tip.point.x}, ${tip.point.y})`).toBeGreaterThan(2)
+                expect(Math.abs(across), `${item.mode} marker alignment at (${tip.point.x}, ${tip.point.y})`).toBeLessThan(2.5)
+            }
+        }
     })
 
     it('exports accessible SVG metadata, stable graph IDs, and linked node and edge hit targets', async () => {

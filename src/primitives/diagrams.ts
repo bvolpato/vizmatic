@@ -399,7 +399,8 @@ type PositionedGraphEdge = GraphDiagramEdge & {
     index: number
     stableId: string
     color: string
-    markerId: string
+    markerStartId: string
+    markerEndId: string
     points: Point[]
     labelX: number
     labelY: number
@@ -888,7 +889,7 @@ export function GraphDiagram({
             : c.preset === 'engineering' && edge.tone == null
                 ? c.textSecondary
                 : getToneColor(edge.tone ?? 'blue', c)
-        const markerId = `graph-arrow-${edge.from}-${edge.to}-${index}-${arrowSize}-${color}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+        const markerBaseId = `graph-arrow-${edge.from}-${edge.to}-${index}-${arrowSize}-${color}`.replace(/[^a-zA-Z0-9_-]/g, '-')
 
         const loopClearance = Math.max(24, arrowSize * 5)
         const manualLoopPoints = selfLoop ? [
@@ -914,7 +915,8 @@ export function GraphDiagram({
             index,
             stableId: stableEdgeIds[index],
             color,
-            markerId,
+            markerStartId: `${markerBaseId}-start`,
+            markerEndId: `${markerBaseId}-end`,
             points,
             labelX: routedLabel?.x ?? automatic?.labelX ?? manualLoopLabel?.x ?? (points[0].x + points[points.length - 1].x) / 2,
             labelY: routedLabel?.y ?? automatic?.labelY ?? manualLoopLabel?.y ?? (points[0].y + points[points.length - 1].y) / 2,
@@ -1007,11 +1009,22 @@ export function GraphDiagram({
             style: { position: 'absolute' as const, inset: 0, overflow: 'visible' },
         },
             React.createElement('defs', {},
-                ...edgeLayouts.map((edge) => ArrowMarkerDef({
-                    id: edge.markerId,
-                    color: edge.color,
-                    size: arrowSize,
-                }))
+                ...edgeLayouts.flatMap((edge) => {
+                    const arrow = resolvedGraphEdgeArrow(edge)
+                    return [
+                        ...(arrow === 'backward' || arrow === 'both' ? [ArrowMarkerDef({
+                            id: edge.markerStartId,
+                            color: edge.color,
+                            size: arrowSize,
+                            direction: 'start',
+                        })] : []),
+                        ...(arrow === 'forward' || arrow === 'both' ? [ArrowMarkerDef({
+                            id: edge.markerEndId,
+                            color: edge.color,
+                            size: arrowSize,
+                        })] : []),
+                    ]
+                })
             ),
             ...edgeLayouts.map((edge) => React.createElement('path', {
                 key: `graph-edge-${edge.index}`,
@@ -1033,10 +1046,10 @@ export function GraphDiagram({
                 strokeLinecap: 'round',
                 opacity: edge.muted ? 0.48 : 0.9,
                 markerStart: resolvedGraphEdgeArrow(edge) === 'backward' || resolvedGraphEdgeArrow(edge) === 'both'
-                    ? `url(#${edge.markerId})`
+                    ? `url(#${edge.markerStartId})`
                     : undefined,
                 markerEnd: resolvedGraphEdgeArrow(edge) === 'forward' || resolvedGraphEdgeArrow(edge) === 'both'
-                    ? `url(#${edge.markerId})`
+                    ? `url(#${edge.markerEndId})`
                     : undefined,
             })),
         ),

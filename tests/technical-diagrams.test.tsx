@@ -208,6 +208,7 @@ describe('technical diagram primitives', () => {
         const diagram = sequenceFixture('light')
         const props = reactProps(diagram)
         const paths = collectElements(diagram, (element) => element.type === 'path' && Boolean(reactProps(element).markerEnd))
+        const markers = collectElements(diagram, (element) => element.type === 'marker')
 
         expect(props.role).toBe('img')
         expect(props['aria-label']).toBe('Request lifecycle')
@@ -219,6 +220,9 @@ describe('technical diagram primitives', () => {
             .toEqual(expect.arrayContaining(['retry-loop', 'auth-alt']))
         expect(paths.map((path) => reactProps(path).strokeDasharray)).toContain('7 5')
         expect(paths.map((path) => reactProps(path).strokeDasharray)).toContain(undefined)
+        expect(paths.every((path) => !reactProps(path).markerStart)).toBe(true)
+        expect(markers.length).toBeGreaterThan(0)
+        expect(markers.every((marker) => reactProps(marker).orient === 'auto')).toBe(true)
 
         const text = renderedText(diagram)
         expect(text).toContain('GET /items')
