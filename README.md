@@ -1260,8 +1260,10 @@ covers stride, padding, Gaussian sampling, and border behavior.
 The [photo blur lesson](examples/catalog-photo-blur.tsx) uses a sharp CC0 coffee
 photo. Its [animation](examples/videos/photo-gaussian-blur.tsx) computes and
 shows actual 25 × 25 Gaussian results from σ = 0 to 4, with σ = 0 as the
-unchanged identity crop. The sharp source and filtered image use the same size
-and crop. The embedded 384 × 256 sample is prepared by
+unchanged identity crop. A numerical matrix shows the center 5 × 5 weights
+rounded to six decimals; the sum covers the full 25 × 25 filter. The sharp
+source and filtered image use the same size and crop. The embedded 384 × 256
+sample is prepared by
 [`scripts/prepare-photo-sample.mjs`](scripts/prepare-photo-sample.mjs), which
 requires Node.js and FFmpeg. The photo and codec notices are in
 [`assets/THIRD_PARTY_LICENSES.md`](assets/THIRD_PARTY_LICENSES.md).

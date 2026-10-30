@@ -25,9 +25,10 @@ generic example that depends on the published Vizmatic package.
 - [`gaussian-blur.tsx`](gaussian-blur.tsx) tracks weighted pixel taps as a
   bright point spreads through a normalized binomial blur kernel.
 - [`photo-gaussian-blur.tsx`](photo-gaussian-blur.tsx) opens on a sharp CC0
-  coffee photo, then reveals its matching crop and a 25 × 25 Gaussian weight
-  map. It steps through the computed RGB outputs from σ = 0 to 4, keeping the
-  source and result the same size and showing the 360 × 232 valid crop.
+  coffee photo, then reveals its matching crop and the numerical center 5 × 5
+  of the 25 × 25 Gaussian filter matrix. It steps through the computed RGB
+  outputs from σ = 0 to 4, keeping the source and result the same size and
+  showing the 360 × 232 valid crop.
 
 The scientific examples require the scientific components in this checkout.
 Build it with `pnpm build`, then use `node dist/cli.js video` in place of

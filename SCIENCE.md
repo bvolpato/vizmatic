@@ -67,7 +67,10 @@ and [animation](examples/videos/photo-gaussian-blur.tsx) use a sharp 384 × 256
 CC0 coffee photograph. They compute nine outputs at σ = 0, 0.5, …, 4 using a
 25 × 25 Gaussian footprint; σ = 0 is the unchanged identity crop. The source
 crop and each valid-convolution output share a 360 × 232 field of view. Each
-animation stage displays its computed result. The separable implementation
+animation stage displays its computed result. The numerical matrix shows the
+center 5 × 5 weights, rounded to six decimals, with the center coefficient
+highlighted. The sum readout covers all 625 weights, including the 600 omitted
+from the excerpt. The separable implementation
 returns floating-point RGB values; the lesson rounds them only for the byte
 readout and PNG encoding. Blur uses stored, gamma-encoded channel values and
 does not linearize RGB before filtering.

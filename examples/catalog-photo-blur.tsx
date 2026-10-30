@@ -9,7 +9,7 @@ import {
     gaussianBlurRgb,
     gaussianKernel,
     getThemeColors,
-    type RgbPixel,
+    Matrix,
     type RgbRaster,
     type ThemeMode,
 } from 'vizmatic'
@@ -54,17 +54,13 @@ export interface PhotoBlurLevel {
     raster: RgbRaster
     pngDataUri: string
     kernel: number[][]
-    kernelHeatmapPngDataUri: string
     kernelSum: number
     centerWeight: number
     targetFloatRgb: readonly [number, number, number]
     targetByteRgb: readonly [number, number, number]
 }
 
-type PhotoBlurCore = Omit<PhotoBlurLevel, 'kernelHeatmapPngDataUri'>
-
-const blurCache = new Map<number, PhotoBlurCore>()
-const themedLevelCache = new Map<string, PhotoBlurLevel>()
+const blurCache = new Map<number, PhotoBlurLevel>()
 
 function impulseKernel(size: number): number[][] {
     const center = Math.floor(size / 2)
@@ -72,79 +68,44 @@ function impulseKernel(size: number): number[][] {
         Array.from({ length: size }, (_, column) => Number(row === center && column === center)))
 }
 
-function relativeWeightColor(weight: number, peak: number, theme: ThemeMode): RgbPixel {
-    const intensity = peak > 0 ? weight / peak : 0
-    const low: RgbPixel = theme === 'dark' ? [18, 42, 61] : [224, 239, 246]
-    const high: RgbPixel = theme === 'dark' ? [92, 211, 249] : [12, 112, 153]
-    return [
-        Math.round(low[0] + (high[0] - low[0]) * intensity),
-        Math.round(low[1] + (high[1] - low[1]) * intensity),
-        Math.round(low[2] + (high[2] - low[2]) * intensity),
-    ]
-}
-
 /** Compute and cache a truthful blur result, kernel, and readout for each sigma. */
-export function getPhotoBlurLevel(level: number, theme: ThemeMode = 'dark'): PhotoBlurLevel {
+export function getPhotoBlurLevel(level: number): PhotoBlurLevel {
     if (!Number.isFinite(level)) throw new Error('Photo blur level must be a finite number')
     const levelIndex = Math.max(0, Math.min(photoBlurOptions.maxSigma / photoBlurOptions.sigmaStep, Math.round(level)))
-    const themeKey = `${levelIndex}:${theme}`
-    const themedCached = themedLevelCache.get(themeKey)
-    if (themedCached) return themedCached
-
-    let core = blurCache.get(levelIndex)
-    if (!core) {
-        const sigma = levelIndex * photoBlurOptions.sigmaStep
-        const kernel = sigma === 0
-            ? impulseKernel(photoBlurOptions.kernelSize)
-            : gaussianKernel(photoBlurOptions.kernelSize, sigma)
-        const kernelValues = kernel.flat()
-        const raster = gaussianBlurRgb(photoSourceRaster, {
-            sigma,
-            radius: photoBlurOptions.radius,
-        })
-        const targetOffset = (photoBlurTarget.row * raster.width + photoBlurTarget.column) * 3
-        const targetFloatRgb = [
-            raster.data[targetOffset],
-            raster.data[targetOffset + 1],
-            raster.data[targetOffset + 2],
-        ] as const
-        const targetByteRgb = [
-            Math.round(targetFloatRgb[0]),
-            Math.round(targetFloatRgb[1]),
-            Math.round(targetFloatRgb[2]),
-        ] as const
-        core = {
-            level: levelIndex,
-            sigma,
-            raster,
-            pngDataUri: encodeRgbPng(raster),
-            kernel,
-            kernelSum: kernelValues.reduce((sum, weight) => sum + weight, 0),
-            centerWeight: kernel[Math.floor(photoBlurOptions.kernelSize / 2)][Math.floor(photoBlurOptions.kernelSize / 2)],
-            targetFloatRgb,
-            targetByteRgb,
-        }
-        blurCache.set(levelIndex, core)
-    }
-
-    const peak = Math.max(...core.kernel.flat())
-    const heatmapData = new Uint8Array(photoBlurOptions.kernelSize * photoBlurOptions.kernelSize * 3)
-    core.kernel.forEach((row, rowIndex) => row.forEach((weight, columnIndex) => {
-        const offset = (rowIndex * photoBlurOptions.kernelSize + columnIndex) * 3
-        const color = relativeWeightColor(weight, peak, theme)
-        heatmapData[offset] = color[0]
-        heatmapData[offset + 1] = color[1]
-        heatmapData[offset + 2] = color[2]
-    }))
+    const cached = blurCache.get(levelIndex)
+    if (cached) return cached
+    const sigma = levelIndex * photoBlurOptions.sigmaStep
+    const kernel = sigma === 0
+        ? impulseKernel(photoBlurOptions.kernelSize)
+        : gaussianKernel(photoBlurOptions.kernelSize, sigma)
+    const kernelValues = kernel.flat()
+    const raster = gaussianBlurRgb(photoSourceRaster, {
+        sigma,
+        radius: photoBlurOptions.radius,
+    })
+    const targetOffset = (photoBlurTarget.row * raster.width + photoBlurTarget.column) * 3
+    const targetFloatRgb = [
+        raster.data[targetOffset],
+        raster.data[targetOffset + 1],
+        raster.data[targetOffset + 2],
+    ] as const
+    const targetByteRgb = [
+        Math.round(targetFloatRgb[0]),
+        Math.round(targetFloatRgb[1]),
+        Math.round(targetFloatRgb[2]),
+    ] as const
     const result: PhotoBlurLevel = {
-        ...core,
-        kernelHeatmapPngDataUri: encodeRgbPng({
-            width: photoBlurOptions.kernelSize,
-            height: photoBlurOptions.kernelSize,
-            data: heatmapData,
-        }),
+        level: levelIndex,
+        sigma,
+        raster,
+        pngDataUri: encodeRgbPng(raster),
+        kernel,
+        kernelSum: kernelValues.reduce((sum, weight) => sum + weight, 0),
+        centerWeight: kernel[Math.floor(photoBlurOptions.kernelSize / 2)][Math.floor(photoBlurOptions.kernelSize / 2)],
+        targetFloatRgb,
+        targetByteRgb,
     }
-    themedLevelCache.set(themeKey, result)
+    blurCache.set(levelIndex, result)
     return result
 }
 
@@ -152,12 +113,11 @@ const photoSourcePngDataUri = encodeRgbPng(photoSourceCrop)
 const photoWidth = 344
 const photoHeight = photoWidth * photoSourceCrop.height / photoSourceCrop.width
 const photoTop = 193
-const sourcePhotoStartX = 458.5
+const sourcePhotoStartX = (width - photoWidth) / 2
 const sourcePhotoFinalX = 62
-const outputPhotoX = 855
+const outputPhotoX = 875
 const cardTop = 151
 const cardHeight = 354
-const kernelDisplaySize = 180
 
 export interface PhotoBlurState {
     layout: number
@@ -181,7 +141,10 @@ export function photoBlurFrame(
     const c = getThemeColors(theme)
     const layout = clamped(state.layout)
     const reveal = clamped(state.reveal)
-    const level = getPhotoBlurLevel(state.level, theme)
+    const level = getPhotoBlurLevel(state.level)
+    const center = photoBlurOptions.radius
+    const kernelCenter = level.kernel.slice(center - 2, center + 3)
+        .map(row => row.slice(center - 2, center + 3))
     const sourceX = sourcePhotoStartX + (sourcePhotoFinalX - sourcePhotoStartX) * layout
     const accent = theme === 'dark' ? c.warningLight : c.warningDark
     const positive = theme === 'dark' ? c.positiveLight : c.positiveDark
@@ -196,17 +159,20 @@ export function photoBlurFrame(
             <div style={{ position: 'absolute', left: 44, top: 101, color: c.textSecondary, fontSize: 17 }}>The same 25 × 25 Gaussian filter is applied to every RGB channel.</div>
 
             <div style={{ position: 'absolute', left: 44, top: cardTop, width: 380, height: cardHeight, boxSizing: 'border-box', border: `1px solid ${c.borderSubtle}`, borderRadius: 16, backgroundColor: c.bgCard, opacity: reveal }} />
-            <div style={{ position: 'absolute', left: 440, top: cardTop, width: 360, height: cardHeight, display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box', border: `1px solid ${c.borderSubtle}`, borderRadius: 16, backgroundColor: c.bgCard, opacity: reveal }}>
-                <span style={{ position: 'absolute', top: 14, color: c.textPrimary, fontSize: 18, fontWeight: 730 }}>The actual filter</span>
+            <div style={{ position: 'absolute', left: 440, top: cardTop, width: 400, height: cardHeight, display: 'flex', flexDirection: 'column', alignItems: 'center', boxSizing: 'border-box', border: `1px solid ${c.borderSubtle}`, borderRadius: 16, backgroundColor: c.bgCard, opacity: reveal }}>
+                <span style={{ position: 'absolute', top: 14, color: c.textPrimary, fontSize: 18, fontWeight: 730 }}>The filter matrix</span>
                 <span style={{ position: 'absolute', top: 40, color: metricColor(theme, c), fontFamily: c.fontMono, fontSize: 14, fontWeight: 700 }}>σ = {level.sigma.toFixed(1)} px · 25 × 25</span>
-                <img alt={`Normalized ${photoBlurOptions.kernelSize} by ${photoBlurOptions.kernelSize} Gaussian weight map at sigma ${level.sigma.toFixed(1)}`}
-                    src={level.kernelHeatmapPngDataUri} width={kernelDisplaySize} height={kernelDisplaySize}
-                    style={{ position: 'absolute', left: (360 - kernelDisplaySize) / 2, top: 69, width: kernelDisplaySize, height: kernelDisplaySize, objectFit: 'fill', imageRendering: 'pixelated', border: `1px solid ${c.borderSubtle}`, borderRadius: 5 }} />
-                <span style={{ position: 'absolute', top: 263, color: c.textSecondary, fontFamily: c.fontMono, fontSize: 13 }}>Σ weights = {level.kernelSum.toFixed(6)}</span>
+                <span style={{ position: 'absolute', top: 68, color: c.textSecondary, fontSize: 13 }}>Center 5 × 5 · rounded to 6 decimals</span>
+                <div style={{ position: 'absolute', left: 16, top: 98, width: 368, display: 'flex', justifyContent: 'center' }}>
+                    <Matrix c={c} data={kernelCenter} labels={kernelCenter.map(row => row.map(value => value.toFixed(6)))}
+                        colorize={false} fontSize={13} cellWidth={70} cellHeight={28}
+                        highlightCell={{ row: 2, col: 2 }} highlightColor={accent} />
+                </div>
+                <span style={{ position: 'absolute', top: 263, color: c.textSecondary, fontFamily: c.fontMono, fontSize: 13 }}>Σ all 625 weights = {level.kernelSum.toFixed(6)}</span>
                 <span style={{ position: 'absolute', top: 286, color: c.textSecondary, fontFamily: c.fontMono, fontSize: 13 }}>center = {level.centerWeight.toFixed(6)}</span>
-                <span style={{ position: 'absolute', top: 316, color: c.textSecondary, fontSize: 13 }}>Heatmap scaled to its peak weight</span>
+                <span style={{ position: 'absolute', top: 316, color: c.textSecondary, fontSize: 13 }}>600 outer weights omitted here</span>
             </div>
-            <div style={{ position: 'absolute', left: 818, top: cardTop, width: 418, height: cardHeight, boxSizing: 'border-box', border: `1px solid ${c.borderSubtle}`, borderRadius: 16, backgroundColor: c.bgCard, opacity: reveal }} />
+            <div style={{ position: 'absolute', left: 858, top: cardTop, width: 378, height: cardHeight, boxSizing: 'border-box', border: `1px solid ${c.borderSubtle}`, borderRadius: 16, backgroundColor: c.bgCard, opacity: reveal }} />
 
             <div style={{ position: 'absolute', left: sourceX, top: 164, width: photoWidth, textAlign: 'center', color: c.textPrimary, fontFamily: c.fontMono, fontSize: 13, fontWeight: 700, letterSpacing: 0.3 }}>SHARP INPUT</div>
             <img alt="Sharp, unblurred coffee on a saucer with a spoon" src={photoSourcePngDataUri} width={photoWidth} height={photoHeight}

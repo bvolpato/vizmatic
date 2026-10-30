@@ -17,7 +17,7 @@ export function createAnimation(theme: 'dark' | 'light' = 'dark') {
         hold(1300, 'Start with the unblurred coffee photograph'),
         { type: 'tween' as const, to: { layout: 1 }, duration: 1200, easing: 'ease-out' as const, label: 'Move the sharp photo into the comparison layout' },
         hold(300, 'Let the photograph settle before the comparison appears'),
-        { type: 'tween' as const, to: { reveal: 1 }, duration: 500, easing: 'ease-out' as const, label: 'Reveal the real Gaussian kernel and matching crop' },
+        { type: 'tween' as const, to: { reveal: 1 }, duration: 500, easing: 'ease-out' as const, label: 'Reveal the Gaussian coefficient matrix excerpt and matching crop' },
         hold(2000, 'Before blurring, sigma zero reproduces the sharp input; all kernel weights together sum to one'),
         ...blurSteps.flatMap(level => {
             const sigma = level * photoBlurOptions.sigmaStep
