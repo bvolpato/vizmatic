@@ -45,6 +45,12 @@ The [browser playground](https://bvolpato.github.io/vizmatic/playground.html) su
 
 For scenes already created inside a build or editor, use the typed `checkFrame` API instead of writing a frame file and launching the CLI. Pass a React element as `scene` or use `create(theme)` for theme-specific scenes. Set `failOn` to `"warning"` when warnings should fail CI. Reports include per-theme dimensions and diagnostics with stable codes plus element IDs or rendered locations where available. Use `vizmatic check <files> --json` when the CLI should discover and load frame modules.
 
+### SVG context diagnostics
+
+`render.svg_context` reports an error when an SVG-only element appears in a known HTML context. `Board` and `CanvasItem` create HTML containers. Place `SvgFrame` inside a native `<svg>` or `AxisPlot` so its rectangle renders. Satori can otherwise complete rendering while omitting the shape. The diagnostic identifies the component or tag, React element path, and element ID when available.
+
+Native and nested `<svg>` elements establish SVG context. `AxisPlot` places its children inside its generated SVG. Children of `<foreignObject>` use HTML context, so SVG shapes there need another `<svg>` wrapper. The checker follows resolved wrappers and known primitive contracts. It does not infer the child namespace of opaque function wrappers. Inspect their rendered output to confirm that shapes appear.
+
 ## Install in a project
 
 Use the package manager already present in the project.

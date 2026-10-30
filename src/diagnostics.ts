@@ -21,6 +21,7 @@ export const CHECK_DIAGNOSTIC_CODES = [
     'layout.whitespace_imbalance',
     'readability.small_text',
     'render.error',
+    'render.svg_context',
     'render.warning',
     'style.unsupported',
 ] as const
@@ -70,6 +71,16 @@ interface ContrastContext {
 const MAX_CONTRAST_NODES = 5_000
 const MAX_DIAGNOSTICS_PER_RULE = 12
 const MIN_TEXT_SIZE = 11
+const SVG_ONLY_ELEMENTS = new Set([
+    'circle', 'clipPath', 'defs', 'ellipse', 'foreignObject', 'g', 'image',
+    'line', 'linearGradient', 'marker', 'mask', 'path', 'pattern', 'polygon',
+    'polyline', 'radialGradient', 'rect', 'stop', 'symbol', 'text', 'textPath', 'tspan', 'use',
+])
+
+export interface SvgContextComponents {
+    shapes: ReadonlyMap<unknown, string>
+    children: ReadonlyMap<unknown, 'html' | 'svg'>
+}
 
 function hslToRgb(hue: number, saturation: number, lightness: number): [number, number, number] {
     const h = ((hue % 360) + 360) % 360
@@ -205,20 +216,50 @@ export function analyzeContrast(
     trustedComponents: ReadonlySet<unknown> = new Set(),
     rootBackground?: string,
 ): CheckDiagnostic[] {
+    return analyzeScene(element, theme, trustedComponents, rootBackground)
+}
+
+export function analyzeScene(
+    element: ReactNode,
+    theme: ThemeMode,
+    trustedComponents: ReadonlySet<unknown>,
+    rootBackground?: string,
+    svgComponents?: SvgContextComponents,
+): CheckDiagnostic[] {
     const diagnostics: CheckDiagnostic[] = []
     const seen = new Set<string>()
     let visited = 0
 
-    function visit(node: ReactNode, inherited: ContrastContext, path: string) {
+    function visit(node: ReactNode, inherited: ContrastContext, path: string, namespace: 'html' | 'svg' | undefined) {
         if (visited++ >= MAX_CONTRAST_NODES || !isValidElement(node)) return
 
         const resolved = resolveFunctionComponent(node, trustedComponents)
         if (resolved !== undefined) {
-            visit(resolved, inherited, path)
+            visit(resolved, inherited, path, namespace)
             return
         }
 
         const props = node.props as Record<string, unknown>
+        const svgShape = svgComponents?.shapes.get(node.type)
+            ?? (svgComponents && typeof node.type === 'string' && SVG_ONLY_ELEMENTS.has(node.type) ? `<${node.type}>` : undefined)
+        if (namespace === 'html' && svgShape) {
+            diagnostics.push({
+                code: 'render.svg_context',
+                severity: 'error',
+                theme,
+                message: `${svgShape} requires an <svg> ancestor at ${path}; its SVG geometry will not render in an HTML layout.`,
+                suggestion: 'Place the element inside a native <svg> or an SVG container such as AxisPlot.',
+                elementId: elementId(props),
+                location: { path },
+            })
+        }
+        // Opaque components may place children in a different namespace. Only
+        // known contracts and resolved native elements establish that context.
+        const childNamespace = typeof node.type === 'string'
+            ? node.type === 'svg' ? 'svg' : node.type === 'foreignObject' ? 'html' : namespace
+            : typeof node.type === 'function'
+                ? svgComponents?.children.get(node.type)
+                : namespace
         const style = typeof node.type === 'string' ? styleRecord(props.style) : {}
         const backgroundImage = typeof style.backgroundImage === 'string'
             ? style.backgroundImage.trim().toLowerCase()
@@ -278,10 +319,10 @@ export function analyzeContrast(
             }
         }
 
-        Children.forEach(props.children as ReactNode, (child, index) => visit(child, context, `${path}.${index}`))
+        Children.forEach(props.children as ReactNode, (child, index) => visit(child, context, `${path}.${index}`, childNamespace))
     }
 
-    visit(element, { background: colorFromCss(rootBackground) }, 'root')
+    visit(element, { background: colorFromCss(rootBackground) }, 'root', 'html')
     return diagnostics
 }
 

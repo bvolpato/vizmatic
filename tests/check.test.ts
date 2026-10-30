@@ -2,10 +2,11 @@ import { mkdtemp, readdir, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { spawnSync } from 'child_process'
-import { createElement } from 'react'
+import { createElement, type ReactNode } from 'react'
+import { decode } from 'fast-png'
 import { afterEach, describe, expect, it } from 'vitest'
 import { analyzeContrast, analyzeRenderedLayout, diagnosticFromMessage } from '../src/diagnostics'
-import { checkFrame } from '../src'
+import { AxisPlot, Board, CanvasItem, SvgFrame, SvgPoint, checkFrame, getThemeColors, renderToBuffer } from '../src'
 import type { CheckFrameReport, SatoriNode } from '../src'
 import { playgroundTemplates } from '../src/playground-templates'
 
@@ -97,6 +98,84 @@ async function runStaticRender(source: string) {
 }
 
 describe('vizmatic check', () => {
+    it('reports SVG primitives outside an SVG with their source element location', async () => {
+        const c = getThemeColors('light')
+        const frameProps = { c, width: 80, height: 40, fill: '#17a34a', id: 'data-bar' }
+        const scene = createElement(Board, { c, width: 240, height: 160 },
+            createElement(CanvasItem, { x: 24, y: 24, width: 160, height: 100 }, createElement(SvgFrame, frameProps)))
+        const report = await checkFrame({ source: 'bars.tsx', scene, width: 240, height: 160 }, { themes: ['light'] })
+
+        expect(report.source).toBe('bars.tsx')
+        expect(report.ok).toBe(false)
+        expect(report.rendered).toBe(true)
+        expect(report.themes[0]?.diagnostics).toContainEqual(expect.objectContaining({
+            code: 'render.svg_context',
+            severity: 'error',
+            elementId: 'data-bar',
+            location: { path: 'root.0.0' },
+            message: expect.stringContaining('SvgFrame requires an <svg> ancestor'),
+        }))
+    })
+
+    it.each([
+        ['SvgPoint', createElement(SvgPoint, { cx: 30, cy: 30, r: 12, fill: '#17a34a' })],
+        ['<rect>', createElement('rect', { x: 20, y: 20, width: 40, height: 30, fill: '#17a34a' })],
+    ])('reports %s outside an SVG', async (name, shape) => {
+        const scene = createElement('div', { style: { display: 'flex', width: 160, height: 120 } }, shape)
+        const report = await checkFrame({ scene, width: 160, height: 120 }, { themes: ['light'] })
+
+        expect(report.ok).toBe(false)
+        expect(report.themes[0]?.diagnostics).toContainEqual(expect.objectContaining({
+            code: 'render.svg_context',
+            message: expect.stringContaining(`${name} requires an <svg> ancestor`),
+            location: { path: 'root.0' },
+        }))
+    })
+
+    it.each(['native', 'nested', 'wrapper', 'opaque wrapper', 'AxisPlot'] as const)('keeps %s SVG children valid and paints their geometry', async (container) => {
+        const c = getThemeColors('light')
+        const shape = createElement(SvgFrame, { c, x: 20, y: 20, width: 80, height: 40, fill: '#17a34a', stroke: '#17a34a' })
+        function SvgWrapper({ children }: { children?: ReactNode }) {
+            return createElement('svg', { width: 160, height: 100, viewBox: '0 0 160 100' }, children)
+        }
+        if (container === 'opaque wrapper') Object.defineProperty(SvgWrapper, '__vizmaticPrimitive', { value: true })
+        const svg = container === 'AxisPlot'
+            ? createElement(AxisPlot, { c, width: 160, height: 100, showFrame: false, showAxes: false }, shape)
+            : container === 'wrapper' || container === 'opaque wrapper'
+                ? createElement(SvgWrapper, null, shape)
+                : createElement('svg', { width: 160, height: 100, viewBox: '0 0 160 100' },
+                    container === 'nested'
+                        ? createElement('svg', { width: 160, height: 100, viewBox: '0 0 160 100' }, shape)
+                        : shape)
+        const scene = createElement(Board, { c, width: 240, height: 160 },
+            createElement(CanvasItem, { x: 24, y: 24, width: 160, height: 100 }, svg))
+        const report = await checkFrame({ scene, width: 240, height: 160 }, { themes: ['light'] })
+
+        expect(report.ok).toBe(true)
+        expect(report.rendered).toBe(true)
+        expect(report.summary).toMatchObject({ errors: 0, warnings: 0 })
+        const png = decode(await renderToBuffer(scene, 240, 160, { scale: 1 }))
+        let paintedPixels = 0
+        for (let offset = 0; offset < png.data.length; offset += png.channels) {
+            if (png.data[offset] === 0x17 && png.data[offset + 1] === 0xa3 && png.data[offset + 2] === 0x4a) paintedPixels += 1
+        }
+        expect(paintedPixels).toBeGreaterThan(2_000)
+    })
+
+    it('preserves component render failures without assuming a child namespace', async () => {
+        function BrokenContainer(): ReactNode {
+            throw new Error('source component failed')
+        }
+        const scene = createElement(BrokenContainer, null,
+            createElement(SvgPoint, { cx: 30, cy: 30, fill: '#17a34a' }))
+        const report = await checkFrame({ scene, width: 160, height: 120 }, { themes: ['light'] })
+
+        expect(report.rendered).toBe(false)
+        expect(report.themes[0]?.diagnostics).toEqual([
+            expect.objectContaining({ code: 'render.error', message: 'source component failed' }),
+        ])
+    })
+
     it('checks in-memory scenes through the public API with configurable failure severity', async () => {
         const scene = createElement('div', {
             id: 'headline',

@@ -683,6 +683,8 @@ if (!report.ok) throw new Error(`Visual check failed: ${report.summary.errors} e
 
 `failOn` accepts `"error"` (the default), `"warning"`, `"info"`, or `"never"`. `report.ok` means the diagnostics pass that policy; `report.rendered` means every requested theme completed rendering. Each theme report includes resolved and output dimensions, stable diagnostic codes, and severity counts. Diagnostics expose `elementId`, related IDs, and a `location` path or rendered bounds when available. Import `CHECK_DIAGNOSTIC_CODES`, `CheckDiagnostic`, `CheckFrameInput`, and `CheckFrameReport` for typed integrations. Use `vizmatic check ... --json` when the checker should discover and load frame files itself.
 
+The [`render.svg_context` diagnostic](PROMPT.md#svg-context-diagnostics) detects SVG shapes placed in known HTML contexts, including `SvgFrame` directly inside `Board` or `CanvasItem`. Use a native `<svg>` or `AxisPlot` to provide the required SVG context.
+
 ### Rendering
 
 ```ts

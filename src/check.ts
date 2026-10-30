@@ -5,12 +5,13 @@ import { join } from 'path'
 import type { ReactNode } from 'react'
 import * as primitives from './primitives'
 import {
-    analyzeContrast,
+    analyzeScene,
     analyzeRenderedLayout,
     analyzeWhitespaceBalance,
     diagnosticFromMessage,
     type CheckDiagnostic,
     type DiagnosticSeverity,
+    type SvgContextComponents,
 } from './diagnostics'
 import { CanvasOverflowError, renderToPngWithOutput, type SatoriNode } from './render'
 import type { RenderBackground } from './renderContext'
@@ -31,6 +32,24 @@ const MAX_HEIGHT = 1440
 const GROWTH = 1.25
 const MAX_AUTO_SIZE_ATTEMPTS = 6
 const TRUSTED_COMPONENTS = new Set(Object.values(primitives))
+const SVG_CONTEXT_COMPONENTS: SvgContextComponents = {
+    shapes: new Map<unknown, string>([
+        [primitives.SvgFrame, 'SvgFrame'],
+        [primitives.SvgPoint, 'SvgPoint'],
+        [primitives.VectorArrow, 'VectorArrow'],
+        [primitives.VectorSegment, 'VectorSegment'],
+        [primitives.ArrowMarkerDef, 'ArrowMarkerDef'],
+    ]),
+    children: new Map<unknown, 'html' | 'svg'>([
+        ...[
+            primitives.Board, primitives.CanvasItem, primitives.Canvas, primitives.Scene,
+            primitives.Row, primitives.Column, primitives.Panel, primitives.Stack,
+            primitives.Card, primitives.Tile, primitives.WindowFrame,
+            primitives.CalloutCard, primitives.ChartFrame,
+        ].map((component): [unknown, 'html'] => [component, 'html']),
+        [primitives.AxisPlot, 'svg'],
+    ]),
+}
 
 export interface CheckAutoSizeAxes {
     width: boolean
@@ -331,7 +350,7 @@ export async function checkFrame(input: CheckFrameInput, options: CheckOptions =
             const prepared = await captureConsole(async () => {
                 const element = create(theme)
                 const background = rootBackground(options.background, theme)
-                return analyzeContrast(element, theme, TRUSTED_COMPONENTS, background)
+                return analyzeScene(element, theme, TRUSTED_COMPONENTS, background, SVG_CONTEXT_COMPONENTS)
             })
             diagnostics.push(...messageDiagnostics(prepared.messages, theme))
 
