@@ -228,7 +228,8 @@ interface VectorArrowProps {
     y2: number
     color: string
     strokeWidth?: number
-    arrowSize?: number      // arrowhead length as multiplier of strokeWidth
+    /** Arrowhead length as a multiplier of strokeWidth (default 2.2). Short segments cap the head at the segment length and omit the shaft; clipped heads stay wider than the shaft. */
+    arrowSize?: number
     opacity?: number
 }
 
@@ -248,8 +249,11 @@ export function VectorArrow({
     const px = -uy
     const py = ux
 
-    const headLen = strokeWidth * arrowSize
-    const headWidth = headLen * 0.6
+    const requestedHeadLen = strokeWidth * arrowSize
+    const headLen = Math.min(requestedHeadLen, len)
+    const headWidth = headLen < requestedHeadLen
+        ? Math.max(headLen * 0.6, strokeWidth * 1.5)
+        : headLen * 0.6
 
     const backX = x2 - ux * headLen
     const backY = y2 - uy * headLen
@@ -257,7 +261,7 @@ export function VectorArrow({
     const points = `${x2},${y2} ${backX + px * headWidth / 2},${backY + py * headWidth / 2} ${backX - px * headWidth / 2},${backY - py * headWidth / 2}`
 
     return React.createElement('g', { key, opacity },
-        React.createElement('line', {
+        len > headLen && React.createElement('line', {
             x1, y1, x2: backX, y2: backY,
             stroke: color,
             strokeWidth,

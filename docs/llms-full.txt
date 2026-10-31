@@ -3603,7 +3603,7 @@ height = 480
 Vector with optional endpoints and arrowhead.
 
 Props:
-- `arrowSize`: `number` (optional)
+- `arrowSize`: `number` (optional): Arrowhead length as a multiplier of strokeWidth (default 2.2). Short segments cap the head at the segment length and omit the shaft; clipped heads stay wider than the shaft.
 - `color`: `string` (required)
 - `key`: `React.Key` (optional)
 - `opacity`: `number` (optional)

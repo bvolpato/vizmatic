@@ -7608,7 +7608,8 @@
             {
               "name": "arrowSize",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Arrowhead length as a multiplier of strokeWidth (default 2.2). Short segments cap the head at the segment length and omit the shaft; clipped heads stay wider than the shaft."
             },
             {
               "name": "color",
