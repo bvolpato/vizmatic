@@ -138,7 +138,9 @@
     "security:audit": "pnpm audit --audit-level low",
     "deps:check": "pnpm security:audit && pnpm assets:check && publint && tsx scripts/check-package.ts && node scripts/check-consumer.mjs",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm check:examples && pnpm docs:check && pnpm deps:check",
-    "prepublishOnly": "pnpm verify"
+    "prepublishOnly": "pnpm verify",
+    "check:studio": "node scripts/check-studio.mjs",
+    "studio:build": "tsx scripts/build-studio.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.1",

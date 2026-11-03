@@ -1,0 +1,93 @@
+[
+  {
+    "id": "vizmatic-title",
+    "title": "Vizmatic",
+    "description": "Lit curves gather into the wordmark and let go again, as a seamless ten-second loop.",
+    "file": "vizmatic-title.tsx",
+    "poster": "assets/films/vizmatic-title.png"
+  },
+  {
+    "id": "fourier-epicycles",
+    "title": "A drawing is a sum of circles",
+    "description": "A real Fourier transform of an ampersand, redrawn by a chain of rotating arrows as the term count grows from 1 to 200.",
+    "file": "fourier-epicycles.tsx",
+    "poster": "assets/films/fourier-epicycles.png"
+  },
+  {
+    "id": "linear-maps",
+    "title": "A matrix moves the whole plane",
+    "description": "A grid under one matrix: basis arrows, the determinant as area, and the two directions that stay on their lines.",
+    "file": "linear-maps.tsx",
+    "poster": "assets/films/linear-maps.png"
+  },
+  {
+    "id": "complex-maps",
+    "title": "The grid bends, its right angles survive",
+    "description": "A grid unfolds under z squared and curls into a disk under a Mobius map, with the angle at every crossing measured live.",
+    "file": "complex-maps.tsx",
+    "poster": "assets/films/complex-maps.png"
+  },
+  {
+    "id": "euler-circle",
+    "title": "One point, two shadows",
+    "description": "A point sweeps the unit circle, sine and cosine trace themselves, and the formula collapses into Euler's identity.",
+    "file": "euler-circle.tsx",
+    "poster": "assets/films/euler-circle.png"
+  },
+  {
+    "id": "gradient-descent",
+    "title": "Downhill, one step at a time",
+    "description": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
+    "file": "gradient-descent.tsx",
+    "poster": "assets/films/gradient-descent.png"
+  },
+  {
+    "id": "attention",
+    "title": "Attention, computed",
+    "description": "Queries, keys, and values produce a live heatmap as softmax(QK^T / sqrt(d)) V builds up term by term.",
+    "file": "attention.tsx",
+    "poster": "assets/films/attention.png"
+  },
+  {
+    "id": "lorenz",
+    "title": "The rules are exact, the future is not",
+    "description": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
+    "file": "lorenz.tsx",
+    "poster": "assets/films/lorenz.png"
+  },
+  {
+    "id": "central-limit",
+    "title": "Twelve coin flips, nine hundred times",
+    "description": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
+    "file": "central-limit.tsx",
+    "poster": "assets/films/central-limit.png"
+  },
+  {
+    "id": "pythagoras",
+    "title": "Move the pieces, keep the square",
+    "description": "A proof by rearrangement: four triangles slide inside a square, and the leftover area writes the theorem.",
+    "file": "pythagoras.tsx",
+    "poster": "assets/films/pythagoras.png"
+  },
+  {
+    "id": "taylor-series",
+    "title": "Sine, from what it does at zero",
+    "description": "Polynomials hug the sine curve further out as each term grows in, with the trusted range measured live.",
+    "file": "taylor-series.tsx",
+    "poster": "assets/films/taylor-series.png"
+  },
+  {
+    "id": "cache-miss",
+    "title": "One key expires",
+    "description": "A dense service diagram comes alive: a hot key expires at 12,000 requests per second, and a simulated stampede hits Postgres.",
+    "file": "cache-miss.tsx",
+    "poster": "assets/films/cache-miss.png"
+  },
+  {
+    "id": "deck-example",
+    "title": "Why we rebuilt the renderer",
+    "description": "A six-chapter talk that plays in stepped mode, with a live timeline and measured results.",
+    "file": "deck-example.tsx",
+    "poster": "assets/films/deck-example.png"
+  }
+]
