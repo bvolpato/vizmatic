@@ -39,6 +39,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm site:build
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Install FFmpeg, which the Studio journey uses to decode its exports
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
       - run: pnpm check:playground
       - run: pnpm check:scene-browser
       - run: pnpm check:studio
