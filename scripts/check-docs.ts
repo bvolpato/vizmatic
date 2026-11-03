@@ -89,6 +89,8 @@ for (const { path, html: page } of pageEntries) {
     for (const ref of refs) {
         const cleanRef = ref.split('#')[0]?.split('?')[0]
         if (!cleanRef) continue
+        // Film MP4s are ignored by git and built by the Pages workflow, where --require-video checks them.
+        if (/assets\/films\/[\w-]+\.mp4$/.test(cleanRef)) continue
         const target = cleanRef.startsWith('/') ? join(root, 'docs', cleanRef) : resolve(dirname(path), cleanRef)
         await access(target).catch(() => missing.push(`${relative(root, path)}: ${ref}`))
     }

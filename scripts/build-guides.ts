@@ -46,7 +46,8 @@ function sampleExtension(lang: string): string {
 export async function prepareGuides(): Promise<{ guides: Guide[]; demos: Record<string, string>; fences: Map<string, PendingFence> }> {
     await rm(SAMPLE_DIR, { recursive: true, force: true })
     await mkdir(SAMPLE_DIR, { recursive: true })
-    const names = (await readdir(GUIDE_DIR).catch(() => [] as string[])).filter((name) => name.endsWith('.md'))
+    // readdir order differs between filesystems, and generated files must not.
+    const names = (await readdir(GUIDE_DIR).catch(() => [] as string[])).filter((name) => name.endsWith('.md')).sort()
     const demos: Record<string, string> = {}
     const fences = new Map<string, PendingFence>()
     const guides: Guide[] = []

@@ -22,7 +22,7 @@ export async function loadFilmCatalog(): Promise<FilmEntry[]> {
     const raw = await readFile('examples/films/catalog.json', 'utf8').catch(() => null)
     const parsed = raw ? JSON.parse(raw) as FilmEntry[] | { films: FilmEntry[] } : []
     const listed = Array.isArray(parsed) ? parsed : parsed.films
-    const names = (await readdir('examples/films').catch(() => [] as string[])).filter((name) => /\.tsx?$/.test(name) && !name.startsWith('_') && !name.endsWith('.d.ts'))
+    const names = (await readdir('examples/films').catch(() => [] as string[])).filter((name) => /\.tsx?$/.test(name) && !name.startsWith('_') && !name.endsWith('.d.ts')).sort()
     const ids = new Set(names.map((name) => name.replace(/\.tsx?$/, '')))
     const out = listed.filter((film) => ids.has(film.id))
     const known = new Set(listed.map((film) => film.id))

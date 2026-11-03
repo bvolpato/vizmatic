@@ -300,7 +300,6 @@ await Promise.all(films.map(async (film, index) => {
     const sourcePath = (await exists(`examples/films/${film.id}.ts`)) ? `examples/films/${film.id}.ts` : `examples/films/${film.id}.tsx`
     const source = await readFile(sourcePath, 'utf8')
     const code = await highlight(source, sourcePath.endsWith('x') ? 'tsx' : 'ts')
-    const hasMp4 = await exists(`docs/assets/films/${film.id}.mp4`)
     const previous = films[index - 1]
     const next = films[index + 1]
     const meta = [film.topic, formatDuration(film.duration)].filter(Boolean).join(', ')
@@ -318,7 +317,7 @@ await Promise.all(films.map(async (film, index) => {
       <ol class="chapter-list" data-chapters hidden></ol>
       <p class="film-page-summary">${escapeHtml(film.summary)}</p>
       <div class="film-actions">
-        ${hasMp4 ? `<a class="button primary" href="../assets/films/${film.id}.mp4" download>Download MP4</a>` : ''}
+        <a class="button primary" href="../assets/films/${film.id}.mp4" download>Download MP4</a>
         <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/${sourcePath}">Source on GitHub</a>
         ${hasStudio ? `<a class="button" href="../studio.html?film=${film.id}">Open in the Studio</a>` : ''}
       </div>
