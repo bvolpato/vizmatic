@@ -136,7 +136,8 @@ export async function writeGuides(prepared: Awaited<ReturnType<typeof prepareGui
         description: guide.description,
     }))
     registerSitePages(allPages)
-    const searchEntries: GuideSearchEntry[] = []
+    // Pages finish in any order, so each guide fills its own list and the lists join in guide order.
+    const searchByGuide: GuideSearchEntry[][] = guides.map(() => [])
 
     await Promise.all(guides.map(async (guide, index) => {
         let article = guide.html.replace(/@@FENCE:[^@]+@@/g, (token) => rendered.get(token) ?? '')
@@ -176,11 +177,11 @@ export async function writeGuides(prepared: Awaited<ReturnType<typeof prepareGui
 </html>
 `, file)
         await writeFile(join('docs', file), `<!DOCTYPE html>\n<!-- Generated from docs/guides by scripts/build-site.ts. Edit the guide. -->\n${inject(page).replace('<!DOCTYPE html>\n', '')}`)
-        searchEntries.push({ title: guide.title, description: guide.description, url: file, category: 'Guide' })
+        searchByGuide[index]!.push({ title: guide.title, description: guide.description, url: file, category: 'Guide' })
         for (const heading of guide.headings) {
-            if (heading.level === 2 || heading.level === 3) searchEntries.push({ title: heading.text, description: `${guide.title}`, url: `${file}#${heading.id}`, category: 'Guide section' })
+            if (heading.level === 2 || heading.level === 3) searchByGuide[index]!.push({ title: heading.text, description: `${guide.title}`, url: `${file}#${heading.id}`, category: 'Guide section' })
         }
-        if (guide.slug === 'api') searchEntries.push(...api.search.map((entry) => ({ ...entry, url: `${file}#${entry.anchor}` })))
+        if (guide.slug === 'api') searchByGuide[index]!.push(...api.search.map((entry) => ({ ...entry, url: `${file}#${entry.anchor}` })))
     }))
-    return searchEntries
+    return searchByGuide.flat()
 }
