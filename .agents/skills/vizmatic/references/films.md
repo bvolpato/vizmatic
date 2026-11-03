@@ -4,6 +4,7 @@
 
 - The stage is 1920 by 1080. (0, 0) is the center and y points down. `film({ aspect: '9:16' })` changes the shape.
 - The build function runs once and may run again while fonts or math load. Keep it free of side effects and randomness that is not seeded.
+- Use `font: 'text-serif'` for sentences, labels, and numbers. Use `font: 'serif'` only for short titles at a large size, because its fine strokes fade at phone size.
 - `s.add(node)` puts a node on stage now. `s.play(...)` writes animation and moves time forward. `s.wait(seconds)` holds.
 - Reveal verbs such as `write`, `draw`, and `fadeIn` also add the node, so `s.add` is optional before them.
 - Setters such as `.at`, `.fill`, and `.scale` apply at the current time. On a node that is not on stage, they set its initial state.
@@ -85,5 +86,6 @@ s.play(view.orbit({ theta: 1.4 }, { duration: 4 }))
 - `film.off_canvas`: a mark leaves the frame. Text that is clipped is an error. Other marks are warnings. A mark that spans the whole frame, such as a grid line, is not reported.
 - `film.text_overlap`: two text blocks share pixels at rest.
 - `film.text_crossed`: a stroke passes through text. A strong stroke is an error. An opaque shape between the stroke and the text prevents this report, so give a label a backing when it must sit on a line.
+- `film.missing_glyph`: no bundled font has a character, so it renders as an empty box. Replace the character, or set it with `tex`.
 
 The check looks at moments between animations, because objects may cross while moving. Pass `samples` to `checkFilm` to add more moments.

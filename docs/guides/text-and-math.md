@@ -25,7 +25,7 @@ export default film({ fps: 30 }, (s) => {
 | Option | Meaning |
 |---|---|
 | `size` | Font size in stage units. |
-| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'mono'` (JetBrains Mono), or `'noto'`. |
+| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'text-serif'` (Source Serif 4), `'mono'` (JetBrains Mono), or `'noto'`. |
 | `weight` | `400`, `600`, or `700` where the family has that weight. |
 | `italic` | Use the italic of the family. |
 | `color` | A look token, CSS color, or gradient. |
@@ -33,6 +33,10 @@ export default film({ fps: 30 }, (s) => {
 | `maxWidth` | Wrap to this width. |
 | `leading` | Line height as a multiple of size. |
 | `tracking` | Extra letter space as a fraction of size. |
+
+Use `'text-serif'` for sentences, labels, and numbers. Its strokes stay visible when a film plays at phone size, and it keeps `1` and `l`, and `O` and `0`, easy to tell apart. It also sits well next to TeX. Use `'serif'` for short titles at a large size. It is narrow and has fine strokes, and it has no Greek letters or math symbols.
+
+If a font does not have a character, the engine draws that character with the next bundled font. `'serif'` tries Source Serif 4 first. Then every family tries Noto Sans and Noto Sans Math. If no bundled font has the character, the engine draws an empty box and `vizmatic check` reports `film.missing_glyph`.
 
 Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment, so you can color or animate one word.
 

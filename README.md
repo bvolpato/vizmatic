@@ -120,7 +120,7 @@ Agents can also read [`llms.txt`](https://bvolpato.github.io/vizmatic/llms.txt),
 
 ## Consumer security overrides
 
-Vizmatic 0.5.0's MathJax tree resolves `speech-rule-engine`, which uses `@xmldom/xmldom`. Its Satori tree resolves `fflate`. Pin these patched transitive versions in a consuming project before you install Vizmatic.
+Vizmatic 0.6.0's MathJax tree resolves `speech-rule-engine`, which uses `@xmldom/xmldom`. Its Satori tree resolves `fflate`. Pin these patched transitive versions in a consuming project before you install Vizmatic.
 
 For npm, add these root-level entries to `package.json`:
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-    applyMatrix, arcPath, arrow, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, lagged,
+    applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, lagged,
     line, linePath, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
     plane, pointAt, rect, rotate, scaleBy, seq, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type PathOp,
 } from '../src/stage/index'
@@ -55,6 +55,18 @@ describe('geometry', () => {
 })
 
 describe('morphing', () => {
+    it('keeps finished pieces on screen until a lagged morph ends', async () => {
+        const row = (y: number) => [-150, -50, 50, 150].map((x) => circle(20, { fill: 'blue' }).at(x, y))
+        const compiled = await compileFilm(film((s) => {
+            const from = row(-100)
+            for (const node of from) s.add(node)
+            s.play(morph(from, row(100), { lag: 0.5 }), { duration: 1 })
+            s.wait(0.1)
+        }))
+        // The pieces finish at 0.4, 0.6, 0.8, and 1.0 seconds. The first three must not vanish.
+        for (const time of [0.1, 0.5, 0.7, 0.9, 1.05]) expect(paths(compiled, time).length).toBe(4)
+    })
+
     it('returns the exact source and target at the endpoints', () => {
         const from = circlePath(0, 0, 10), to = linePath([0, 0], [50, 50])
         const mix = pathMixer(from, to)
@@ -279,6 +291,31 @@ describe('text and math', () => {
             // The ink gap closes by the kerning amount, compared with setting both glyphs by advance.
             expect(gap).toBeLessThan(noKern)
         }))
+    })
+
+    it('draws a character the chosen font lacks with the next bundled font', async () => {
+        await compileFilm(film(() => {
+            // Instrument Serif has no arrows or Greek, and Source Serif 4 has both.
+            for (const char of ['\u2192', '\u03B1']) {
+                const borrowed = text(char, { font: 'serif', size: 100 }).chars[0]!
+                const direct = text(char, { font: 'text-serif', size: 100 }).chars[0]!
+                expect(borrowed.data['missingGlyph']).toBeUndefined()
+                expect(borrowed.bounds().width).toBeCloseTo(direct.bounds().width, 3)
+                expect(borrowed.bounds().height).toBeCloseTo(direct.bounds().height, 3)
+            }
+            // Source Serif 4 has no element-of sign, so Noto Sans Math draws it.
+            expect(text('\u2208', { font: 'text-serif', size: 100 }).chars[0]!.data['missingGlyph']).toBeUndefined()
+        }))
+    })
+
+    it('reports a character that no bundled font can draw', async () => {
+        const report = await checkFilm(film((s) => {
+            s.add(text('a\u{10FFFD}b', { font: 'text-serif', size: 100 }))
+            s.wait(0.5)
+        }))
+        expect(report.ok).toBe(false)
+        expect(report.diagnostics.map((entry) => entry.code)).toContain('film.missing_glyph')
+        expect(report.diagnostics.find((entry) => entry.code === 'film.missing_glyph')?.message).toContain('U+10FFFD')
     })
 
     it('centers a text block on its position', async () => {

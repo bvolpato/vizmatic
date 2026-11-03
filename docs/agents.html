@@ -271,7 +271,7 @@ npx vizmatic film intro.ts --frame 3,6.5,12 --width 1280 --out stills
 npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 ```
 
-`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, and `film.text_crossed`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review.
+`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review.
 
 Motion guidance:
 

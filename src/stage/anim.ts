@@ -565,7 +565,7 @@ function bake(leaf: Node): Baked {
 }
 
 /** A temporary shape that exists only while a morph plays. */
-function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: number; ease: Ease; appear?: number }): Node {
+function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: number; ease: Ease; appear?: number; hide?: number }): Node {
     const node = new Node()
     node.base.visible = false
     node.base.path = from.path
@@ -590,7 +590,7 @@ function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: numb
     node.tween('strokeOpacity', to.strokeOpacity, ctx.t0, ctx.t1, ctx.ease)
     node.tween('strokeWidth', to.strokeWidth || from.strokeWidth, ctx.t0, ctx.t1, ctx.ease)
     if (from.glow !== to.glow) node.tween('glow', to.glow, ctx.t0, ctx.t1, ctx.ease)
-    stepAt(node, 'visible', false, ctx.t1)
+    stepAt(node, 'visible', false, ctx.hide ?? ctx.t1)
     return node
 }
 
@@ -628,7 +628,8 @@ export function morph(from: Target, to: Target, options: AnimOptions & { lag?: n
             const each = (ctx.t1 - ctx.t0) / (1 + Math.max(0, pairs.length - 1) * lag)
             pairs.forEach(([x, y], i) => {
                 const start = ctx.t0 + i * lag * each
-                ghost(ctx.stage, x, y, { t0: start, t1: start + each, ease: ctx.ease, appear: ctx.t0 })
+                // A piece that finishes early stays until the target appears at the end.
+                ghost(ctx.stage, x, y, { t0: start, t1: start + each, ease: ctx.ease, appear: ctx.t0, hide: ctx.t1 })
             })
             finishMorph(a, b, ctx)
         },
