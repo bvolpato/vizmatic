@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
-import { mkdir, open, rename, rm, stat } from 'fs/promises'
+import { chmod, mkdir, open, rename, rm, stat } from 'fs/promises'
 import { basename, dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
@@ -23,6 +23,8 @@ export interface VideoFrameInfo {
     fps: number
 }
 
+export type VideoCodec = 'h264' | 'vp9'
+
 export interface RgbaVideoOptions {
     width: number
     height: number
@@ -31,8 +33,14 @@ export interface RgbaVideoOptions {
     outputPath: string
     fps?: number
     audioPath?: string
+    /** Seconds to skip in the audio file, for a render that starts partway through a timeline. */
+    audioOffset?: number
     ffmpegPath?: string
+    /** H.264 writes MP4. VP9 writes WebM. */
+    codec?: VideoCodec
     preset?: string
+    /** Encoder tuning for H.264, such as "animation" for flat color and line art. */
+    tune?: string
     crf?: number
     threads?: number
     signal?: AbortSignal
@@ -75,6 +83,15 @@ interface EncoderExit {
 
 const MAX_STDERR_CHARS = 8_192
 
+/**
+ * Convert full-range sRGB input to limited-range BT.709 and tag the stream.
+ *
+ * Without this, FFmpeg converts with its BT.601 default and writes no tags. Players
+ * then decode HD video as BT.709, which shifts saturated yellows, greens, and blues.
+ */
+const COLOR_FILTER = 'scale=in_range=pc:out_range=tv:out_color_matrix=bt709:flags=lanczos+accurate_rnd+full_chroma_int,format=yuv420p,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709'
+const COLOR_TAGS = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv']
+
 function validateTiming(duration: number, fps: number): FrameSchedule {
     if (!Number.isFinite(duration) || duration <= 0) {
         throw new Error('duration must be a positive finite number')
@@ -110,7 +127,7 @@ export function* videoFrameSchedule(duration: number, fps = 30): Generator<Video
     }
 }
 
-/** Streams a typed TSX animation to H.264 MP4 at exact video frame times (30 fps by default). */
+/** Streams a typed TSX animation to H.264 MP4 with BT.709 color at exact video frame times (30 fps by default). */
 export async function renderAnimationVideo<S extends object>(
     animation: DefinedAnimation<S>,
     options: AnimationVideoOptions,
@@ -227,8 +244,9 @@ async function stopEncoder(child: ReturnType<typeof spawn>, exited: Promise<unkn
 }
 
 /**
- * Encodes caller-rendered RGBA frames as H.264 MP4. Frames are requested and
- * written one at a time, so the caller controls rendering and memory use.
+ * Encodes caller-rendered RGBA frames as H.264 MP4 or VP9 WebM, tagged BT.709.
+ * Frames are requested and written one at a time, so the caller controls
+ * rendering and memory use.
  */
 export async function renderRgbaVideo(
     renderFrame: RgbaVideoFrameRenderer,
@@ -253,12 +271,21 @@ export async function renderRgbaVideo(
     }
 
     const ffmpegPath = options.ffmpegPath ?? 'ffmpeg'
+    const codec = options.codec ?? 'h264'
+    if (codec !== 'h264' && codec !== 'vp9') throw new Error('codec must be h264 or vp9')
     const preset = options.preset ?? 'fast'
-    const crf = options.crf ?? 18
+    const crf = options.crf ?? (codec === 'vp9' ? 30 : 18)
     const threads = options.threads ?? 4
     if (typeof ffmpegPath !== 'string' || ffmpegPath.length === 0) throw new Error('ffmpegPath must be a non-empty path')
     if (typeof preset !== 'string' || preset.length === 0) throw new Error('preset must be a non-empty string')
-    if (!Number.isInteger(crf) || crf < 0 || crf > 51) throw new Error('crf must be an integer between 0 and 51')
+    const maxCrf = codec === 'vp9' ? 63 : 51
+    if (!Number.isInteger(crf) || crf < 0 || crf > maxCrf) throw new Error(`crf must be an integer between 0 and ${maxCrf}`)
+    if (options.tune !== undefined && (typeof options.tune !== 'string' || options.tune.length === 0)) {
+        throw new Error('tune must be a non-empty string when provided')
+    }
+    if (options.audioOffset !== undefined && (!Number.isFinite(options.audioOffset) || options.audioOffset < 0)) {
+        throw new Error('audioOffset must be a non-negative finite number of seconds')
+    }
     if (!Number.isSafeInteger(threads) || threads < 1) throw new Error('threads must be a positive safe integer')
     if (options.audioPath !== undefined && (typeof options.audioPath !== 'string' || options.audioPath.length === 0)) {
         throw new Error('audioPath must be a non-empty path when provided')
@@ -268,7 +295,8 @@ export async function renderRgbaVideo(
     const outputPath = resolve(options.outputPath)
     const outputDirectory = dirname(outputPath)
     await mkdir(outputDirectory, { recursive: true })
-    const tempPath = join(outputDirectory, `.${basename(outputPath)}.${randomUUID()}.tmp.mp4`)
+    const extension = codec === 'vp9' ? 'webm' : 'mp4'
+    const tempPath = join(outputDirectory, `.${basename(outputPath)}.${randomUUID()}.tmp.${extension}`)
     const tempFile = await open(tempPath, 'wx', 0o600)
     try {
         await tempFile.close()
@@ -282,17 +310,28 @@ export async function renderRgbaVideo(
         '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`,
         '-framerate', String(fps), '-i', 'pipe:0',
     ]
-    if (options.audioPath) args.push('-i', resolve(options.audioPath))
+    if (options.audioPath) {
+        if (options.audioOffset) args.push('-ss', String(options.audioOffset))
+        args.push('-i', resolve(options.audioPath))
+    }
     args.push('-map', '0:v:0')
     if (options.audioPath) args.push('-map', '1:a:0', '-af', `asetpts=PTS-STARTPTS,apad,atrim=duration=${seconds}`)
-    args.push(
-        '-frames:v', String(schedule.count),
-        '-t', seconds,
-        '-c:v', 'libx264', '-preset', preset, '-crf', String(crf), '-threads:v', String(threads),
-        '-pix_fmt', 'yuv420p',
-    )
-    if (options.audioPath) args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2')
-    args.push('-movflags', '+faststart', tempPath)
+    args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', COLOR_FILTER)
+    if (codec === 'vp9') {
+        // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
+        args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
+    } else {
+        args.push('-c:v', 'libx264', '-preset', preset)
+        if (options.tune) args.push('-tune', options.tune)
+        args.push('-crf', String(crf), '-threads:v', String(threads))
+    }
+    args.push('-pix_fmt', 'yuv420p', ...COLOR_TAGS)
+    if (options.audioPath) {
+        if (codec === 'vp9') args.push('-c:a', 'libopus', '-b:a', '160k', '-ar', '48000', '-ac', '2')
+        else args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2')
+    }
+    if (codec === 'h264') args.push('-movflags', '+faststart')
+    args.push(tempPath)
 
     let stderr = ''
     let inputError: Error | undefined
@@ -387,6 +426,8 @@ export async function renderRgbaVideo(
         if (exit.code !== 0) throw describeExit(exit.code, exit.signal, stderr)
 
         const outputStat = await stat(tempPath)
+        // The temp file is private while it is incomplete. The finished video is a normal file.
+        await chmod(tempPath, 0o644)
         await rename(tempPath, outputPath)
         return {
             width,

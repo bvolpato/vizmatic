@@ -1,0 +1,423 @@
+import {
+    apply, compose, matScale, mul, pathBounds, pathLength, pathToD, transformPath, trimPath,
+    type Mat, type Path, type Ring,
+} from './geometry'
+import { css, isGradient, sampleStops, type Gradient, type Paint, type Rgba } from './color'
+import { clock } from './track'
+import type { BlendMode, Node, StageImage } from './node'
+
+const clockNow = () => clock.now
+
+export interface PathOp {
+    readonly kind: 'path'
+    readonly path: Path
+    /** Stroke geometry when it differs from the fill, such as during a partial draw. */
+    readonly strokePath: Path
+    readonly fill: Paint | null
+    readonly fillAlpha: number
+    readonly stroke: Paint | null
+    readonly strokeAlpha: number
+    readonly strokeWidth: number
+    readonly cap: 'round' | 'butt' | 'square'
+    readonly join: 'round' | 'miter' | 'bevel'
+    readonly dash: readonly number[] | null
+    readonly dashOffset: number
+    readonly glow: number
+    readonly glowColor: Rgba | null
+    readonly blend: BlendMode
+    /** The node that produced this mark, for checks and tools. */
+    readonly node?: Node
+}
+
+export interface ImageOp {
+    readonly kind: 'image'
+    readonly image: StageImage
+    readonly matrix: Mat
+    readonly alpha: number
+}
+
+export type DrawOp = PathOp | ImageOp
+
+export interface Frame {
+    readonly width: number
+    readonly height: number
+    readonly background: string | null
+    readonly bloom: number
+    readonly ops: readonly DrawOp[]
+    readonly dark: boolean
+}
+
+export interface CameraState {
+    readonly x: number
+    readonly y: number
+    readonly zoom: number
+    readonly rotation: number
+}
+
+const ALONG_PIECE_LENGTH = 14
+const MAX_ALONG_PIECES = 96
+
+function worldPaint(paint: Paint | null, m: Mat): Paint | null {
+    if (!paint || !isGradient(paint)) return paint
+    if (paint.type === 'linear') {
+        return { ...paint, from: apply(m, paint.from[0], paint.from[1]), to: apply(m, paint.to[0], paint.to[1]) }
+    }
+    if (paint.type === 'radial') {
+        return { ...paint, center: apply(m, paint.center[0], paint.center[1]), radius: paint.radius * matScale(m) }
+    }
+    return paint
+}
+
+function sameMatrix(a: Mat, b: Mat): boolean {
+    return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3] && a[4] === b[4] && a[5] === b[5]
+}
+
+interface WorldCache {
+    path: Path
+    matrix: Mat
+    world: Path
+}
+
+const worldCache = new WeakMap<Node, WorldCache>()
+
+function toWorld(node: Node, path: Path, m: Mat): Path {
+    const cached = worldCache.get(node)
+    if (cached && cached.path === path && sameMatrix(cached.matrix, m)) return cached.world
+    const world = transformPath(path, m)
+    worldCache.set(node, { path, matrix: m, world })
+    return world
+}
+
+function emit(node: Node, path: Path, m: Mat, alpha: number, ops: DrawOp[]): void {
+    const fill = node.get('fill')
+    const stroke = node.get('stroke')
+    const fillAlpha = fill ? alpha * node.get('fillOpacity') : 0
+    const strokeAlpha = stroke ? alpha * node.get('strokeOpacity') : 0
+    const glow = node.get('glow')
+    if (fillAlpha <= 0.002 && strokeAlpha <= 0.002 && glow <= 0) return
+    const world = toWorld(node, path, m)
+    const scale = matScale(m)
+    const trimFrom = node.get('trimFrom'), trimTo = node.get('trimTo')
+    let strokePath = world
+    if (trimFrom > 0 || trimTo < 1) strokePath = trimPath(world, trimFrom, trimTo, node.get('trimEach'))
+    if (strokePath.length === 0 && fillAlpha <= 0.002) return
+    const dash = node.get('dash')
+    const op: PathOp = {
+        kind: 'path',
+        path: world,
+        strokePath,
+        fill: fillAlpha > 0.002 ? worldPaint(fill, m) : null,
+        fillAlpha,
+        stroke: strokeAlpha > 0.002 ? worldPaint(stroke, m) : null,
+        strokeAlpha,
+        strokeWidth: node.get('strokeWidth') * scale,
+        cap: node.get('cap'),
+        join: node.get('join'),
+        dash: dash ? dash.map((value) => value * scale) : null,
+        dashOffset: node.get('dashOffset') * scale,
+        glow: glow * scale,
+        glowColor: node.get('glowColor'),
+        blend: node.get('blend'),
+        node,
+    }
+    if (op.stroke && isGradient(op.stroke) && op.stroke.type === 'along') splitAlong(op, op.stroke, ops)
+    else ops.push(op)
+}
+
+/** A stroke whose color changes along its length draws as short solid pieces. */
+function splitAlong(op: PathOp, paint: Gradient, ops: DrawOp[]): void {
+    ops.push({ ...op, stroke: null, strokeAlpha: 0 })
+    const glowless = { ...op, fill: null, fillAlpha: 0, glow: 0 }
+    const length = pathLength(op.strokePath)
+    const full = pathLength(op.path)
+    if (length === 0) return
+    const fraction = full > 0 ? Math.min(1, length / full) : 1
+    const pieces = Math.min(MAX_ALONG_PIECES, Math.max(2, Math.ceil(length / ALONG_PIECE_LENGTH)))
+    const overlap = 0.6 / pieces
+    for (let i = 0; i < pieces; i++) {
+        const from = i / pieces, to = Math.min(1, (i + 1) / pieces + overlap)
+        const piece = trimPath(op.strokePath, from, to)
+        if (piece.length === 0) continue
+        ops.push({
+            ...glowless,
+            strokePath: piece,
+            path: piece,
+            stroke: sampleStops(paint.stops, ((i + 0.5) / pieces) * fraction),
+            cap: i === 0 || i === pieces - 1 ? op.cap : 'butt',
+        })
+    }
+}
+
+function walk(node: Node, parent: Mat, screen: Mat, alpha: number, ops: DrawOp[]): void {
+    if (!node.get('visible')) return
+    const opacity = node.get('opacity') * alpha
+    if (opacity <= 0.002) return
+    const base = node.get('fixed') ? screen : parent
+    const m = mul(base, node.localMatrix())
+    const path = node.get('path')
+    if (path && path.length > 0) emit(node, path, m, opacity, ops)
+    const image = node.get('image')
+    if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity })
+    if (node.rawOps) node.rawOps(m, opacity, ops)
+    if (node.draw) {
+        const built = node.draw(clockNow())
+        if (built) {
+            const list: readonly Node[] = Array.isArray(built) ? built as readonly Node[] : [built as Node]
+            for (const child of list) walk(child, m, screen, opacity, ops)
+        }
+    }
+    const children = node.children
+    if (children.length === 0) return
+    let sorted = false
+    for (let i = 0; i < children.length; i++) {
+        if (children[i]!.get('z') !== 0) {
+            sorted = true
+            break
+        }
+    }
+    const ordered = sorted ? children.map((child, index) => ({ child, index, z: child.get('z') }))
+        .sort((a, b) => a.z - b.z || a.index - b.index).map((entry) => entry.child) : children
+    for (const child of ordered) walk(child, m, screen, opacity, ops)
+}
+
+export function buildOps(root: Node, camera: CameraState, width: number, height: number): DrawOp[] {
+    const screen: Mat = [1, 0, 0, 1, width / 2, height / 2]
+    const view = mul(screen, compose(0, 0, -camera.rotation, camera.zoom, camera.zoom, camera.x, camera.y))
+    const ops: DrawOp[] = []
+    walk(root, view, screen, 1, ops)
+    return ops
+}
+
+// ── Glow ────────────────────────────────────────────────────────────────────
+
+const GLOW_PASSES = 7
+
+/** Passes of a soft glow, from widest to narrowest, with weights that sum to a gentle core. */
+function glowPasses(glow: number, width: number): { width: number; alpha: number }[] {
+    const out: { width: number; alpha: number }[] = []
+    for (let i = GLOW_PASSES; i >= 1; i--) {
+        const k = i / GLOW_PASSES
+        out.push({ width: width + glow * 2 * k, alpha: 0.16 * (1 - k) * (1 - k) + 0.018 })
+    }
+    return out
+}
+
+function glowOf(op: PathOp): Rgba | null {
+    if (op.glowColor) return op.glowColor
+    const paint = op.stroke ?? op.fill
+    if (!paint) return null
+    return isGradient(paint) ? sampleStops(paint.stops, 0.5) : paint as Rgba
+}
+
+// ── SVG backend ─────────────────────────────────────────────────────────────
+
+const dCache = new WeakMap<Path & object, string>()
+
+function pathData(path: Path): string {
+    let d = dCache.get(path as Path & object)
+    if (d === undefined) {
+        d = pathToD(path)
+        dCache.set(path as Path & object, d)
+    }
+    return d
+}
+
+function fmt(value: number): string {
+    return String(Math.round(value * 1000) / 1000)
+}
+
+function gradientDef(id: string, paint: Gradient): string {
+    const stops = paint.stops.map(([at, color]) =>
+        `<stop offset="${fmt(at)}" stop-color="${css([color[0], color[1], color[2], 1])}"${color[3] < 1 ? ` stop-opacity="${fmt(color[3])}"` : ''}/>`).join('')
+    if (paint.type === 'linear') {
+        return `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${fmt(paint.from[0])}" y1="${fmt(paint.from[1])}" x2="${fmt(paint.to[0])}" y2="${fmt(paint.to[1])}">${stops}</linearGradient>`
+    }
+    if (paint.type === 'radial') {
+        return `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${fmt(paint.center[0])}" cy="${fmt(paint.center[1])}" r="${fmt(paint.radius)}">${stops}</radialGradient>`
+    }
+    return ''
+}
+
+function strokeAttrs(op: PathOp): string {
+    let attrs = ` stroke-linecap="${op.cap}" stroke-linejoin="${op.join}"`
+    if (op.dash) attrs += ` stroke-dasharray="${op.dash.map(fmt).join(' ')}" stroke-dashoffset="${fmt(op.dashOffset)}"`
+    return attrs
+}
+
+function escapeAttr(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+}
+
+/** Serialize a frame to standalone SVG. Text is already outlines, so no fonts are needed. */
+export function frameToSvg(frame: Frame, options: { scale?: number; transparent?: boolean } = {}): string {
+    const scale = options.scale ?? 1
+    const w = frame.width, h = frame.height
+    const defs: string[] = []
+    const body: string[] = []
+    let gradientCount = 0
+    const paintAttr = (paint: Paint, attr: 'fill' | 'stroke', alpha: number): string => {
+        if (isGradient(paint)) {
+            const id = `g${gradientCount++}`
+            defs.push(gradientDef(id, paint))
+            return `${attr}="url(#${id})"${alpha < 1 ? ` ${attr}-opacity="${fmt(alpha)}"` : ''}`
+        }
+        const rgba = paint as Rgba
+        const a = rgba[3] * alpha
+        return `${attr}="${css([rgba[0], rgba[1], rgba[2], 1])}"${a < 1 ? ` ${attr}-opacity="${fmt(a)}"` : ''}`
+    }
+    if (frame.background && !options.transparent) body.push(`<rect width="${w}" height="${h}" fill="${frame.background}"/>`)
+    for (const op of frame.ops) {
+        if (op.kind === 'image') {
+            const m = op.matrix
+            body.push(`<image href="${escapeAttr(op.image.src)}" width="${op.image.width}" height="${op.image.height}" transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''} preserveAspectRatio="none"/>`)
+            continue
+        }
+        const style = op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
+        if (op.glow > 0) {
+            const color = glowOf(op)
+            const glowD = pathData(op.strokePath.length ? op.strokePath : op.path)
+            if (color && glowD) {
+                const base = Math.max(op.fillAlpha, op.strokeAlpha)
+                const mode = frame.dark ? ' style="mix-blend-mode:screen"' : ''
+                const passes = glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)
+                    .map((pass) => `<path d="${glowD}" fill="none" stroke="${css([color[0], color[1], color[2], 1])}" stroke-opacity="${fmt(pass.alpha * base)}" stroke-width="${fmt(pass.width)}" stroke-linecap="round" stroke-linejoin="round"/>`)
+                    .join('')
+                body.push(`<g${mode}>${passes}</g>`)
+            }
+        }
+        if (op.fill && op.stroke && op.strokePath === op.path) {
+            body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)} ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
+            continue
+        }
+        if (op.fill) body.push(`<path d="${pathData(op.path)}" ${paintAttr(op.fill, 'fill', op.fillAlpha)}${style}/>`)
+        if (op.stroke && op.strokePath.length) {
+            body.push(`<path d="${pathData(op.strokePath)}" fill="none" ${paintAttr(op.stroke, 'stroke', op.strokeAlpha)} stroke-width="${fmt(op.strokeWidth)}"${strokeAttrs(op)}${style}/>`)
+        }
+    }
+    const defsBlock = defs.length ? `<defs>${defs.join('')}</defs>` : ''
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w * scale}" height="${h * scale}" viewBox="0 0 ${w} ${h}">${defsBlock}${body.join('')}</svg>`
+}
+
+// ── Canvas backend ──────────────────────────────────────────────────────────
+
+export type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+
+const path2dCache = new WeakMap<Path & object, Path2D>()
+
+function ringsToPath2D(path: Path): Path2D {
+    let cached = path2dCache.get(path as Path & object)
+    if (cached) return cached
+    cached = new Path2D()
+    for (const r of path as readonly Ring[]) {
+        const p = r.p
+        if (p.length < 2) continue
+        cached.moveTo(p[0]!, p[1]!)
+        if (r.straight) for (let o = 2; o + 5 < p.length; o += 6) cached.lineTo(p[o + 4]!, p[o + 5]!)
+        else for (let o = 2; o + 5 < p.length; o += 6) cached.bezierCurveTo(p[o]!, p[o + 1]!, p[o + 2]!, p[o + 3]!, p[o + 4]!, p[o + 5]!)
+        if (r.closed) cached.closePath()
+    }
+    path2dCache.set(path as Path & object, cached)
+    return cached
+}
+
+function canvasPaint(ctx: Canvas2D, paint: Paint): string | CanvasGradient {
+    if (!isGradient(paint)) return css(paint as Rgba)
+    const gradient = paint.type === 'linear'
+        ? ctx.createLinearGradient(paint.from[0], paint.from[1], paint.to[0], paint.to[1])
+        : paint.type === 'radial'
+            ? ctx.createRadialGradient(paint.center[0], paint.center[1], 0, paint.center[0], paint.center[1], paint.radius)
+            : null
+    if (!gradient) return css(sampleStops(paint.stops, 0.5))
+    for (const [at, color] of paint.stops) gradient.addColorStop(at, css(color))
+    return gradient
+}
+
+const BLEND: Record<BlendMode, GlobalCompositeOperation> = {
+    normal: 'source-over', screen: 'screen', multiply: 'multiply', overlay: 'overlay',
+}
+
+export interface ImageLookup {
+    (image: StageImage): CanvasImageSource | null
+}
+
+/** Paint a frame to a 2D context at a device scale. Same result as the SVG backend. */
+export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: ImageLookup): void {
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.clearRect(0, 0, frame.width * scale, frame.height * scale)
+    ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    if (frame.background) {
+        ctx.fillStyle = frame.background
+        ctx.fillRect(0, 0, frame.width, frame.height)
+    }
+    for (const op of frame.ops) {
+        if (op.kind === 'image') {
+            const source = images?.(op.image)
+            if (!source) continue
+            const m = op.matrix
+            ctx.save()
+            ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5])
+            ctx.globalAlpha = op.alpha
+            ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
+            ctx.restore()
+            continue
+        }
+        ctx.globalCompositeOperation = BLEND[op.blend]
+        if (op.glow > 0) {
+            const color = glowOf(op)
+            if (color) {
+                const base = Math.max(op.fillAlpha, op.strokeAlpha)
+                const previous = ctx.globalCompositeOperation
+                if (frame.dark) ctx.globalCompositeOperation = 'screen'
+                ctx.strokeStyle = css([color[0], color[1], color[2], 1])
+                ctx.lineCap = 'round'
+                ctx.lineJoin = 'round'
+                ctx.setLineDash([])
+                const glowPath = ringsToPath2D(op.strokePath.length ? op.strokePath : op.path)
+                for (const pass of glowPasses(op.glow, op.stroke ? op.strokeWidth : 0)) {
+                    ctx.globalAlpha = pass.alpha * base
+                    ctx.lineWidth = pass.width
+                    ctx.stroke(glowPath)
+                }
+                ctx.globalCompositeOperation = previous
+            }
+        }
+        if (op.fill) {
+            ctx.globalAlpha = op.fillAlpha
+            ctx.fillStyle = canvasPaint(ctx, op.fill)
+            ctx.fill(ringsToPath2D(op.path))
+        }
+        if (op.stroke && op.strokePath.length) {
+            ctx.globalAlpha = op.strokeAlpha
+            ctx.strokeStyle = canvasPaint(ctx, op.stroke)
+            ctx.lineWidth = op.strokeWidth
+            ctx.lineCap = op.cap
+            ctx.lineJoin = op.join
+            ctx.setLineDash(op.dash ? [...op.dash] : [])
+            ctx.lineDashOffset = op.dashOffset
+            ctx.stroke(ringsToPath2D(op.strokePath))
+        }
+    }
+    ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
+}
+
+/** Pixel-space bounds of a frame's ink, used by checks for off-canvas marks. */
+export function frameInkBounds(frame: Frame): { x: number; y: number; width: number; height: number } | null {
+    let result: { x: number; y: number; width: number; height: number } | null = null
+    for (const op of frame.ops) {
+        if (op.kind !== 'path') continue
+        const b = pathBounds(op.path)
+        if (!b) continue
+        const pad = op.stroke ? op.strokeWidth / 2 : 0
+        const next = { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }
+        if (!result) result = next
+        else {
+            const x = Math.min(result.x, next.x), y = Math.min(result.y, next.y)
+            result = { x, y, width: Math.max(result.x + result.width, next.x + next.width) - x, height: Math.max(result.y + result.height, next.y + next.height) - y }
+        }
+    }
+    return result
+}
+

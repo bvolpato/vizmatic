@@ -1,0 +1,235 @@
+import { spawnSync } from 'child_process'
+import { existsSync } from 'fs'
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join, resolve } from 'path'
+import { afterEach, describe, expect, it } from 'vitest'
+import { decode } from 'fast-png'
+import { film, line, text, write } from '../src/stage/index'
+import { planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
+import { checkFilm } from '../src/stage/check'
+import { compileFilm } from '../src/stage/stage'
+
+const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
+const tempDirs: string[] = []
+
+afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
+})
+
+async function tempDirectory(): Promise<string> {
+    const directory = await mkdtemp(join(tmpdir(), 'vizmatic-stage-export-'))
+    tempDirs.push(directory)
+    return directory
+}
+
+const simple = film({ title: 'Simple', fps: 12 }, (s) => {
+    const label = s.add(text('Simple', { size: 120 }))
+    s.play(write(label), { duration: 0.5 })
+    s.wait(0.5)
+})
+
+describe('render planning', () => {
+    it('holds a bounded number of frames at 4K', () => {
+        const budget = 2 * 1024 ** 3
+        for (const blur of [1, 4, 8]) {
+            const plan = planRender(3840, 2160, blur, { workers: 12, memoryBudget: budget })
+            const frameBytes = 3840 * 2160 * 4
+            expect(plan.workers).toBeGreaterThanOrEqual(1)
+            expect(plan.readAhead).toBeGreaterThan(plan.workers)
+            // Workers plus finished frames waiting for the encoder must fit the budget.
+            const perWorker = frameBytes * (blur > 1 ? blur + 4 : 3)
+            expect(plan.workers * perWorker + (plan.readAhead - plan.workers) * frameBytes).toBeLessThanOrEqual(budget * 1.05)
+        }
+    })
+
+    it('uses every requested worker at HD', () => {
+        expect(planRender(1920, 1080, 1, { workers: 8, memoryBudget: 2 * 1024 ** 3 }).workers).toBe(8)
+    })
+})
+
+describe('film export', () => {
+    it('writes a PNG of the requested size, in the film\'s colors', async () => {
+        const directory = await tempDirectory()
+        const output = await renderFilmFrame(simple, 1, join(directory, 'frame.png'), { width: 320 })
+        expect(output).toMatchObject({ width: 320, height: 180 })
+        const png = decode(await readFile(output.outputPath))
+        expect([png.width, png.height]).toEqual([320, 180])
+        expect(Array.from(png.data.subarray(0, 3))).toEqual([11, 12, 16])
+    })
+
+    it('honors a look at compile time', async () => {
+        const directory = await tempDirectory()
+        const output = await renderFilmFrame(simple, 1, join(directory, 'frame.png'), { width: 320, look: 'paper' })
+        const png = decode(await readFile(output.outputPath))
+        expect(Array.from(png.data.subarray(0, 3))).toEqual([247, 243, 234])
+    })
+
+    it('writes standalone SVG without fonts', async () => {
+        const directory = await tempDirectory()
+        const output = await renderFilmSvg(simple, 1, join(directory, 'frame.svg'))
+        const svg = await readFile(output.outputPath, 'utf8')
+        expect(svg.startsWith('<svg')).toBe(true)
+        expect(svg).not.toContain('<text')
+    })
+
+    it('encodes a GIF that stores only changed regions', async () => {
+        const directory = await tempDirectory()
+        const output = await renderFilmGif(simple, join(directory, 'film.gif'), { width: 240, fps: 10, workers: 2 })
+        expect(output).toMatchObject({ width: 240, frameCount: 10 })
+        const bytes = await readFile(output.outputPath)
+        expect(bytes.subarray(0, 6).toString('ascii')).toBe('GIF89a')
+        // A static hold at the end costs nothing, so far fewer bytes than ten full frames.
+        expect(bytes.length).toBeLessThan(240 * 135 * 2)
+    })
+
+    it.skipIf(!hasFfmpeg)('tags MP4 output BT.709 and keeps colors after decoding', async () => {
+        const directory = await tempDirectory()
+        const output = await renderFilmVideo(simple, join(directory, 'film.mp4'), { width: 320, quality: 'standard', workers: 2 })
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=color_space,color_transfer,color_primaries,color_range', '-of', 'json', output.outputPath], { encoding: 'utf8' })
+        expect(JSON.parse(probe.stdout).streams[0]).toEqual({ color_range: 'tv', color_space: 'bt709', color_transfer: 'bt709', color_primaries: 'bt709' })
+        const decoded = spawnSync('ffmpeg', ['-v', 'error', '-ss', '0.9', '-i', output.outputPath, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { encoding: 'buffer', maxBuffer: 1 << 24 })
+        const [r, g, b] = decoded.stdout
+        expect(Math.abs(r! - 11)).toBeLessThanOrEqual(2)
+        expect(Math.abs(g! - 12)).toBeLessThanOrEqual(2)
+        expect(Math.abs(b! - 16)).toBeLessThanOrEqual(2)
+    }, 60_000)
+
+    it('chooses a poster at rest and honors the author\'s choice', async () => {
+        const compiled = await compileFilm(simple)
+        const time = await posterTime(compiled)
+        expect(compiled.clips.some((clip) => clip.t0 < time && time < clip.t1)).toBe(false)
+        const chosen = await compileFilm(film({ poster: 0.25 }, (s) => { s.wait(1) }))
+        expect(await posterTime(chosen)).toBe(0.25)
+    })
+
+    it('writes captions as WebVTT', async () => {
+        const compiled = await compileFilm(film((s) => {
+            s.caption('Hello there', 1.5)
+            s.wait(2)
+        }))
+        expect(captionsToVtt(compiled)).toBe('WEBVTT\n\n00:00.000 --> 00:01.500\nHello there\n')
+    })
+})
+
+describe('film check', () => {
+    it('passes a clean film', async () => {
+        const report = await checkFilm(film((s) => {
+            s.add(text('Clean', { size: 80 }))
+            s.wait(1)
+        }))
+        expect(report.ok).toBe(true)
+        expect(report.diagnostics).toEqual([])
+        expect(report.sampled.length).toBeGreaterThan(0)
+    })
+
+    it('ignores text that only crosses while moving', async () => {
+        const report = await checkFilm(film(async (s) => {
+            const { to } = await import('../src/stage/anim')
+            const a = s.add(text('Moving', { size: 80 }).at(-400, 0))
+            s.add(text('Still', { size: 80 }).at(400, 0))
+            s.play(to(a, (n) => n.at(400, 0)), { duration: 1 })
+            s.play(to(a, (n) => n.at(-400, 200)), { duration: 1 })
+        }))
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('does not flag a label with an opaque backing over a line', async () => {
+        const { line, rect } = await import('../src/stage/shapes')
+        const report = await checkFilm(film((s) => {
+            s.add(line([-300, 0], [300, 0], { stroke: 'ink', width: 3 }))
+            s.add(rect(240, 90, { fill: 'bg', stroke: null }))
+            s.add(text('Label', { size: 50 }))
+            s.wait(1)
+        }))
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('reports a clipped title as an error and a crossing stroke with its location', async () => {
+        const { line } = await import('../src/stage/shapes')
+        const report = await checkFilm(film((s) => {
+            s.add(text('Way off the side of the frame', { size: 90 }).at(900, -300))
+            s.add(text('Crossed', { size: 70 }).at(0, 100))
+            s.add(line([-200, 100], [200, 100], { stroke: 'ink', width: 3 }))
+            s.wait(1)
+        }))
+        expect(report.ok).toBe(false)
+        const off = report.diagnostics.find((entry) => entry.code === 'film.off_canvas')!
+        expect(off).toMatchObject({ severity: 'error', text: 'Way off the side of the frame' })
+        const crossed = report.diagnostics.find((entry) => entry.code === 'film.text_crossed')!
+        expect(crossed.text).toBe('Crossed')
+        expect(Math.abs(crossed.stage.y - 100)).toBeLessThan(30)
+    })
+
+    it('does not flag a grid line that spans the whole frame', async () => {
+        const { line } = await import('../src/stage/shapes')
+        const report = await checkFilm(film((s) => {
+            s.add(line([-1000, -400], [1000, -400], { stroke: 'blue', width: 2 }))
+            s.wait(1)
+        }))
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('warns about a mark that leaves the frame', async () => {
+        const { circle } = await import('../src/stage/shapes')
+        const report = await checkFilm(film((s) => {
+            s.add(circle(100, { stroke: 'blue' }).at(960, 0))
+            s.wait(1)
+        }))
+        expect(report.ok).toBe(true)
+        expect(report.diagnostics).toMatchObject([{ code: 'film.off_canvas', severity: 'warning' }])
+    })
+})
+
+// These run against the package build, because the point is the shipped module formats.
+describe.skipIf(!existsSync(resolve('dist/stage.cjs')))('built modules', () => {
+    const script = `const f = stage.film({ title: 'x' }, (s) => { s.add(stage.text('Built', { size: 80 })); s.add(stage.tex('x^2').at(0, 120)); s.wait(0.2) })
+Promise.resolve(exporter.renderFilmFrame(f, 0.1, OUT, { width: 320 })).then((r) => console.log(JSON.stringify(r))).catch((e) => { console.error(e); process.exit(1) })`
+
+    it('renders through the CommonJS build, with fonts and the worker found from dist', async () => {
+        const directory = await tempDirectory()
+        const out = join(directory, 'cjs.png')
+        const file = join(directory, 'run.cjs')
+        await writeFile(file, `const stage = require(${JSON.stringify(resolve('dist/stage.cjs'))})
+const exporter = require(${JSON.stringify(resolve('dist/stage-export.cjs'))})
+const OUT = ${JSON.stringify(out)}
+${script}`)
+        const result = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { PATH: process.env.PATH } })
+        expect(result.status, result.stderr).toBe(0)
+        expect(decode(await readFile(out)).width).toBe(320)
+    }, 60_000)
+
+    it('renders through the ESM build', async () => {
+        const directory = await tempDirectory()
+        const out = join(directory, 'esm.png')
+        const file = join(directory, 'run.mjs')
+        await writeFile(file, `import * as stage from ${JSON.stringify(`file://${resolve('dist/stage.js')}`)}
+import * as exporter from ${JSON.stringify(`file://${resolve('dist/stage-export.js')}`)}
+const OUT = ${JSON.stringify(out)}
+${script}`)
+        const result = spawnSync(process.execPath, [file], { encoding: 'utf8', env: { PATH: process.env.PATH } })
+        expect(result.status, result.stderr).toBe(0)
+        expect(decode(await readFile(out)).width).toBe(320)
+    }, 60_000)
+})
+
+describe('film check and bleed', () => {
+    const overscan = (bleed: boolean) => film({ bleed }, (s) => {
+        s.add(line([-2000, -300], [200, -300], { stroke: 'blue' }))
+        s.wait(1)
+    })
+
+    it('reports a line past the frame edge unless the film declares that it bleeds', async () => {
+        const codes = async (bleed: boolean) => (await checkFilm(overscan(bleed))).diagnostics.map((finding) => finding.code)
+        expect(await codes(false)).toContain('film.off_canvas')
+        expect(await codes(true)).not.toContain('film.off_canvas')
+    })
+
+    it('still reports text that runs off the frame in a film that bleeds', async () => {
+        const report = await checkFilm(film({ bleed: true }, (s) => {
+            s.add(text('Off the edge', { size: 60 }).at(960, 0))
+            s.wait(1)
+        }))
+        expect(report.diagnostics.map((finding) => finding.code)).toContain('film.off_canvas')
+    })
+})

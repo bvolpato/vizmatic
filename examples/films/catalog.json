@@ -1,0 +1,132 @@
+[
+  {
+    "id": "vizmatic-title",
+    "title": "Vizmatic",
+    "summary": "Lit curves gather into the wordmark and let go again, as a seamless ten-second loop.",
+    "topic": "Brand",
+    "duration": 10,
+    "posterTime": 0.8,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "fourier-epicycles",
+    "title": "A drawing is a sum of circles",
+    "summary": "A real Fourier transform of an ampersand, redrawn by a chain of rotating arrows as the term count grows from 1 to 200.",
+    "topic": "Mathematics",
+    "duration": 48.15,
+    "posterTime": 30.5,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "linear-maps",
+    "title": "A matrix moves the whole plane",
+    "summary": "A grid under one matrix: basis arrows, the determinant as area, and the two directions that stay on their lines.",
+    "topic": "Mathematics",
+    "duration": 37.6,
+    "posterTime": 36,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "complex-maps",
+    "title": "The grid bends, its right angles survive",
+    "summary": "A grid unfolds under z squared and curls into a disk under a Mobius map, with the angle at every crossing measured live.",
+    "topic": "Mathematics",
+    "duration": 40.5,
+    "posterTime": 38.5,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "euler-circle",
+    "title": "One point, two shadows",
+    "summary": "A point sweeps the unit circle, sine and cosine trace themselves, and the formula collapses into Euler's identity.",
+    "topic": "Mathematics",
+    "duration": 34.8,
+    "posterTime": 15.5,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "gradient-descent",
+    "title": "Downhill, one step at a time",
+    "summary": "Real gradient descent on a two-basin loss surface: two starts 0.12 apart travel together, then finish in different minima.",
+    "topic": "Machine learning",
+    "duration": 38.5,
+    "posterTime": 28,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "attention",
+    "title": "Attention, computed",
+    "summary": "Queries, keys, and values produce a live heatmap as softmax(QK^T / sqrt(d)) V builds up term by term.",
+    "topic": "Machine learning",
+    "duration": 32.9,
+    "posterTime": 31.5,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "lorenz",
+    "title": "The rules are exact, the future is not",
+    "summary": "The Lorenz system integrated with real numbers: two starts a hair apart part ways, then 72 fill the butterfly.",
+    "topic": "Physics",
+    "duration": 44,
+    "posterTime": 41,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "central-limit",
+    "title": "Twelve coin flips, nine hundred times",
+    "summary": "A Galton board settles into a histogram that meets the Gaussian curve, with mean and deviation measured from the balls.",
+    "topic": "Statistics",
+    "duration": 43.82,
+    "posterTime": 42.8,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "pythagoras",
+    "title": "Move the pieces, keep the square",
+    "summary": "A proof by rearrangement: four triangles slide inside a square, and the leftover area writes the theorem.",
+    "topic": "Mathematics",
+    "duration": 27.45,
+    "posterTime": 26,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "taylor-series",
+    "title": "Sine, from what it does at zero",
+    "summary": "Polynomials hug the sine curve further out as each term grows in, with the trusted range measured live.",
+    "topic": "Mathematics",
+    "duration": 24.4,
+    "posterTime": 16.5,
+    "featured": false,
+    "look": "midnight"
+  },
+  {
+    "id": "cache-miss",
+    "title": "One key expires",
+    "summary": "A dense service diagram comes alive: a hot key expires at 12,000 requests per second, and a simulated stampede hits Postgres.",
+    "topic": "Systems",
+    "duration": 49,
+    "posterTime": 30,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
+    "id": "deck-example",
+    "title": "Why we rebuilt the renderer",
+    "summary": "A six-chapter talk that plays in stepped mode, with a live timeline and measured results.",
+    "topic": "Presentation",
+    "duration": 33,
+    "posterTime": 16,
+    "featured": false,
+    "look": "paper"
+  }
+]

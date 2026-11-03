@@ -15,7 +15,8 @@ const browserAssets = getSceneBrowserAssetPaths()
 for (const name of ['quickjsWasm', 'layoutWasm', 'resvgWasm']) {
     assert.equal((await readFile(browserAssets[name])).subarray(0, 4).toString('hex'), '0061736d', `${name} must resolve in an installed consumer`)
 }
-for (const path of Object.values(browserAssets.fonts)) assert.ok((await readFile(path)).length > 100_000)
+// The smallest bundled face is Instrument Serif, at about 70 KB.
+for (const path of Object.values(browserAssets.fonts)) assert.ok((await readFile(path)).length > 50_000)
 assert.ok((await readFile(browserAssets.emojiBrotli)).length > 100_000)
 console.log('Browser scene asset helper resolves installed offline assets')
 const element = React.createElement('div', {

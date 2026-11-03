@@ -11,7 +11,7 @@ import React, { isValidElement } from 'react'
 import type { ReactNode } from 'react'
 import { Resvg } from '@resvg/resvg-js'
 import * as publicApi from './index'
-import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion } from './autocrop'
+import { detectBackgroundColor, detectContentBounds, detectLayoutOverflow, detectOverflow, type CropRegion } from './autocrop'
 import { checkFrame } from './check'
 import { renderAnimatedGifWithOutput, renderAnimationGifWithOutput, type AnimatedScene } from './animate'
 import type { WatermarkImageOptions, WatermarkInput, WatermarkOptions, WatermarkPosition } from './brand'
@@ -30,13 +30,21 @@ import {
 import { validatePlaygroundAnimation } from './playground-animation'
 import { CanvasOverflowError, renderToPngWithOutput, renderToSvg, type RenderBackground } from './render'
 import type { SatoriNode } from './satori'
-import { type ThemeMode, type ThemePreset } from './theme'
+import { parseDensity, setDefaultDensity, type Density } from './density'
+import type { ThemeMode, ThemePreset } from './theme'
 import type { DefinedAnimation } from './timeline'
 import { renderAnimationVideo, type RgbaVideoOutput } from './video'
+import {
+    checkFilmFile, filmFromModule, isLookName, parseFilmArgs, printFilmCheck, runFilmCommand, runLooksCommand,
+    runNewCommand, runObjectsCommand, type FilmCheckFileReport,
+} from './film-cli'
+import type { LookName } from './stage/look'
 
 interface FrameModule {
     width?: number
     height?: number
+    /** Type, spacing, and stroke scale for this frame: dense, compact, comfortable, presentation, or a number. */
+    density?: Density
     autoSize?: boolean | Partial<AutoSizeAxes>
     __vizmaticAutoSize?: Partial<AutoSizeAxes>
     __vizmaticThemeColors?: PlaygroundThemeColors
@@ -82,6 +90,10 @@ interface CheckArgs {
     themes: ThemeMode[]
     background?: RenderBackground
     json: boolean
+    /** Looks for film files. Frames ignore this. */
+    looks: LookName[]
+    /** Whether --theme appeared, so a film can map it to a look. */
+    explicitTheme: boolean
 }
 
 interface VideoArgs extends RenderArgs {
@@ -107,16 +119,19 @@ interface CheckFileReport {
     source: string
     ok: boolean
     autoSize?: AutoSizeAxes
-    diagnostics: CheckDiagnostic[]
+    diagnostics: Array<CheckDiagnostic | FilmCheckFileReport['diagnostics'][number]>
     themes: CheckThemeReport[]
+    /** Present when the file is a film. Diagnostics carry times and bounding boxes. */
+    film?: Pick<FilmCheckFileReport, 'title' | 'width' | 'height' | 'duration' | 'sampled'> & { look?: string }
 }
 
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
 const IMPORT_RESOLUTION_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json']
 const DEFAULT_FRAME_WIDTH = 960
 const DEFAULT_FRAME_HEIGHT = 540
-const AUTO_SIZE_MAX_WIDTH = 1920
-const AUTO_SIZE_MAX_HEIGHT = 1440
+// Large enough for a presentation-density system map. The limit only stops a runaway layout.
+const AUTO_SIZE_MAX_WIDTH = 8192
+const AUTO_SIZE_MAX_HEIGHT = 8192
 const AUTO_SIZE_GROWTH = 1.25
 const AUTO_SIZE_ATTEMPTS = 6
 const SVG_AUTOCROP_PADDING = 24
@@ -157,17 +172,32 @@ type ResolveFilename = (request: string, parent: unknown, isMain: boolean, optio
 const framesNeedingGlobalReact = new WeakSet<object>()
 
 function usageText() {
-    return `Usage:
+    return `Films:
+  vizmatic new <name> [--template explainer|equation|architecture|chart|deck] [--force]
+  vizmatic preview <file> [--port <n>] [--open]
+  vizmatic check <file> [--look midnight,paper] [--json]
+  vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
+                [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--poster]
+                [--workers <n>] [--audio <file>] [--background <color|none>] [--ffmpeg <path>] [--json]
+  vizmatic looks [--json]
+  vizmatic objects [--json]
+
+Frames:
   vizmatic <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop]
-  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--format png|svg|both]
+  vizmatic render <file-or-directory...> [--out <dir>] [--theme dark,light] [--density dense|compact|comfortable|presentation|number] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--no-crop] [--format png|svg|both]
   vizmatic check <file-or-directory...> [--theme dark,light] [--background transparent|theme|color] [--json]
   vizmatic gif <file-or-directory...> [--out <dir>] [--theme dark] [--background transparent|theme|color] [--watermark Label] [--watermark-image path-or-url] [--watermark-position top-right] [--scale 1] [--fps 20]
   vizmatic video <file-or-directory...> [--out <dir>] [--theme dark,light] [--background theme|color] [--scale 1] [--fps 30] [--audio <file>] [--crf 18] [--preset fast] [--threads 4] [--ffmpeg <path>]
 
   Browser animation metadata renders at t=0 in static output; GIF output still requires createAnimation(theme) or createScenes(theme).
-  Video requires createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
+  Video requires a film or createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
+  A film is a file whose default export comes from film() in vizmatic/stage. The render, check, and video commands detect films.
 
 Examples:
+  vizmatic new intro --template explainer
+  vizmatic preview intro.ts
+  vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
+  vizmatic film intro.ts --frame 2.5,7 --width 1280
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
   vizmatic ./frame.tsx --out ./dist/frames --theme dark
   vizmatic ./frame.tsx --out ./dist/frames --theme light --background theme
@@ -262,14 +292,38 @@ function resolveSelfImportSpecifier(): string {
     return entry ? pathToFileURL(entry).href : 'vizmatic'
 }
 
+/** Find the engine beside the CLI, so a film works without a local install of the package. */
+function resolveStageImportSpecifier(subpath: 'stage' | 'stage/export'): string {
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    const bundled = join(moduleDir, subpath === 'stage' ? 'stage.js' : 'stage-export.js')
+    if (existsSync(bundled)) return pathToFileURL(bundled).href
+    const source = join(moduleDir, subpath === 'stage' ? 'stage/index.ts' : 'stage/export.ts')
+    if (existsSync(source)) return pathToFileURL(source).href
+    return `vizmatic/${subpath}`
+}
+
 function resolveReactImportSpecifier(): string {
     const entry = resolveFrameDependency('react') ?? 'react'
     return isAbsolute(entry) ? pathToFileURL(entry).href : entry
 }
 
+/** CommonJS entry of the engine beside this CLI, for a film loaded without a local install. */
+function resolveStageEntry(subpath: 'stage' | 'stage/export'): string | undefined {
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    for (const candidate of subpath === 'stage'
+        ? ['stage.cjs', 'stage/index.ts']
+        : ['stage-export.cjs', 'stage/export.ts']) {
+        const path = join(moduleDir, candidate)
+        if (existsSync(path)) return path
+    }
+    return undefined
+}
+
 function resolveFrameDependency(request: string): string | undefined {
     try {
         if (request === 'vizmatic') return resolveSelfEntry()
+        if (request === 'vizmatic/stage') return resolveStageEntry('stage')
+        if (request === 'vizmatic/stage/export') return resolveStageEntry('stage/export')
         if (request === 'react' || request.startsWith('react/')) return cliRequire.resolve(request)
     } catch {
         return undefined
@@ -468,7 +522,15 @@ function rewriteFrameModuleImports(source: string): string {
     const selfImport = JSON.stringify(resolveSelfImportSpecifier())
     const reactImport = JSON.stringify(resolveReactImportSpecifier())
     const rewritten = rewritePackageImports(
-        rewritePackageImports(source, 'vizmatic', selfImport),
+        rewritePackageImports(
+            rewritePackageImports(
+                rewritePackageImports(source, 'vizmatic', selfImport),
+                'vizmatic/stage',
+                JSON.stringify(resolveStageImportSpecifier('stage')),
+            ),
+            'vizmatic/stage/export',
+            JSON.stringify(resolveStageImportSpecifier('stage/export')),
+        ),
         'react',
         reactImport,
     )
@@ -573,6 +635,7 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
     let width: number | undefined
     let height: number | undefined
     let preset: ThemePreset = 'default'
+    let density: Density | undefined
     let animationDuration: number | undefined
     let animationFps: number | undefined
     let themeColors: PlaygroundThemeColors = {}
@@ -621,6 +684,12 @@ function buildBareFrameModule(framePath: string, source: string): string | undef
         if (dimension) {
             if (dimension.name === 'width') width = dimension.value
             if (dimension.name === 'height') height = dimension.value
+            continue
+        }
+
+        const frameDensity = metadataPreamble ? line.match(/^\s*(?:\/\/\s*)?(?:export\s+)?(?:(?:const|let|var)\s+)?density\s*[:=]\s*['"]?([\w.]+)['"]?\s*;?\s*$/) : undefined
+        if (frameDensity?.[1]) {
+            density = parseDensity(frameDensity[1])
             continue
         }
 
@@ -720,6 +789,7 @@ ${buildAutoImportDeclarations(autoImports, preset)}
 export const width = ${width}
 export const height = ${height}
 export const __vizmaticAutoSize = ${JSON.stringify(autoSize)}
+${density !== undefined ? `export const density = ${JSON.stringify(density)}` : ''}
 export const __vizmaticThemeColors = ${JSON.stringify(themeColors)}
 export const __vizmaticBackground = ${JSON.stringify(sourceBackground)}
 export const __vizmaticPreset = ${JSON.stringify(preset)}
@@ -918,6 +988,8 @@ function parseRenderArgs(argv: string[], defaults: { maxFps?: number; outDir?: s
             crop = false
         } else if (arg === '--transparent' || arg === '--transparent-background') {
             background = 'transparent'
+        } else if (arg === '--density') {
+            requestedDensity = parseDensity(argv[++index])
         } else if (arg === '--background') {
             background = argv[++index] ?? usage()
         } else if (arg === '--scale') {
@@ -968,6 +1040,8 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     let themes: ThemeMode[] = ['dark', 'light']
     let background: RenderBackground | undefined
     let json = false
+    let looks: LookName[] = []
+    let explicitTheme = false
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index]
@@ -977,8 +1051,16 @@ function parseCheckArgs(argv: string[]): CheckArgs {
             const raw = argv[++index] ?? usage()
             themes = raw.split(',').map((theme) => theme.trim()).filter(Boolean) as ThemeMode[]
             if (themes.length === 0 || themes.some((theme) => theme !== 'dark' && theme !== 'light')) usage()
+            explicitTheme = true
+        } else if (arg === '--look') {
+            const raw = argv[++index] ?? usage()
+            looks = raw.split(',').map((look) => look.trim()).filter(Boolean) as LookName[]
+            const unknown = looks.find((look) => !isLookName(look))
+            if (unknown || looks.length === 0) throw new Error(`Unknown look ${JSON.stringify(unknown ?? raw)}. Run "vizmatic looks" to see all looks.`)
         } else if (arg === '--transparent' || arg === '--transparent-background') {
             background = 'transparent'
+        } else if (arg === '--density') {
+            requestedDensity = parseDensity(argv[++index])
         } else if (arg === '--background') {
             background = argv[++index] ?? usage()
         } else if (arg === '--json') {
@@ -991,7 +1073,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, themes, background, json }
+    return { inputs, themes, background, json, looks, explicitTheme }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
@@ -1123,6 +1205,9 @@ type NormalizedFrameModule = Required<Pick<FrameModule, 'width' | 'height'>> & F
     autoSize: AutoSizeAxes
 }
 
+/** Density from --density, which wins over a frame's own setting. */
+let requestedDensity: Density | undefined
+
 function normalizeAutoSize(value: FrameModule['autoSize'] | FrameModule['__vizmaticAutoSize'] | undefined, defaults: AutoSizeAxes): AutoSizeAxes {
     if (value === true) return { width: true, height: true }
     if (value === false) return { width: false, height: false }
@@ -1147,7 +1232,11 @@ function normalizeFrameModule(mod: FrameModule): NormalizedFrameModule {
     const hasHeight = mod.height != null || defaultObject?.height != null
     const width = mod.width ?? defaultObject?.width ?? DEFAULT_FRAME_WIDTH
     const height = mod.height ?? defaultObject?.height ?? DEFAULT_FRAME_HEIGHT
-    const autoSize = normalizeAutoSize(mod.autoSize ?? mod.__vizmaticAutoSize, {
+    // A frame's size suits the density it was written for. With --density, its size is a minimum:
+    // asking for a larger density must grow the canvas, not fail on overflow.
+    // A bare frame's __vizmaticAutoSize is derived from its size, so only an explicit autoSize opts out.
+    const growForDensity = requestedDensity !== undefined && mod.autoSize == null
+    const autoSize = normalizeAutoSize(mod.autoSize ?? (growForDensity ? true : mod.__vizmaticAutoSize), {
         width: !hasWidth || (!hasAutoSizeSetting && width === DEFAULT_FRAME_WIDTH),
         height: !hasHeight || (!hasAutoSizeSetting && height === DEFAULT_FRAME_HEIGHT),
     })
@@ -1169,6 +1258,8 @@ function withFrameReactBinding<T>(mod: FrameModule, callback: () => T): T {
 }
 
 function frameElement(mod: FrameModule, theme: ThemeMode, background?: RenderBackground): ReactNode {
+    // Primitives can run while the frame builds, or later during layout, so both see this default.
+    setDefaultDensity(requestedDensity ?? mod.density)
     const element = withFrameReactBinding(mod, () => {
         if (mod.create) return mod.create(theme)
         if (mod.default && !(typeof mod.default === 'object' && 'create' in mod.default)) return mod.default as ReactNode
@@ -1208,7 +1299,8 @@ function overflowEdges(error: unknown): OverflowEdge[] | undefined {
 }
 
 function growDimension(value: number, max: number): number {
-    return Math.min(max, Math.ceil((value * AUTO_SIZE_GROWTH) / 10) * 10)
+    // A frame may already be larger than the limit. Growing must never shrink it.
+    return Math.max(value, Math.min(max, Math.ceil((value * AUTO_SIZE_GROWTH) / 10) * 10))
 }
 
 function nextAutoSize(width: number, height: number, autoSize: AutoSizeAxes, edges: OverflowEdge[]): { width: number; height: number } | undefined {
@@ -1315,10 +1407,12 @@ async function renderFrameToSvg(
 
     for (let attempt = 0; attempt < AUTO_SIZE_ATTEMPTS; attempt += 1) {
         originalElement = frameElement(mod, theme, frameBackground)
+        const layoutNodes: SatoriNode[] = []
         try {
             originalSvg = await renderToSvg(originalElement, width, height, {
                 background: frameBackground,
                 theme,
+                onNodeDetected: (node) => layoutNodes.push(node),
             })
         } catch (error) {
             const edges = overflowEdges(error)
@@ -1332,7 +1426,8 @@ async function renderFrameToSvg(
         const initialRaster = rasterizeSvgForBounds(originalSvg, width)
         const pixels = new Uint8Array(initialRaster.pixels.buffer)
         const background = detectBackgroundColor(pixels)
-        const overflow = detectOverflow(pixels, initialRaster.width, initialRaster.height, background)
+        const rasterOverflow = detectOverflow(pixels, initialRaster.width, initialRaster.height, background)
+        const overflow = rasterOverflow.overflows ? rasterOverflow : detectLayoutOverflow(layoutNodes, width, height)
         if (overflow.overflows) {
             const edges = (Object.entries(overflow.edges) as Array<[OverflowEdge, boolean]>)
                 .filter(([, overflows]) => overflows)
@@ -1426,8 +1521,24 @@ async function renderFrameToSvg(
     }
 }
 
+/** A film has looks in place of themes. Map --theme when someone asked for one by name. */
+function looksForThemes(themes: readonly ThemeMode[], explicit: boolean): LookName[] {
+    if (!explicit) return []
+    return themes.map((theme) => theme === 'light' ? 'paper' : 'midnight')
+}
+
+/** Show a film's frames from the static commands. A single render writes its poster. */
+async function renderFilmFromFrameCommand(file: string, stem: string, args: RenderArgs, explicitTheme: boolean, formats: Array<'png' | 'svg' | 'mp4'>): Promise<void> {
+    const filmArgs = parseFilmArgs([file, '--out', args.outDir])
+    filmArgs.looks = looksForThemes(args.themes, explicitTheme)
+    filmArgs.formats = formats
+    filmArgs.fps = args.fps
+    await runFilmCommand(filmArgs, [file], new Map([[file, stem]]), importFrame)
+}
+
 async function renderCommand(argv: string[]) {
     const args = parseRenderArgs(argv)
+    const explicitTheme = argv.includes('--theme')
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
     if (files.length === 0) throw new Error('no frame files found')
@@ -1453,6 +1564,11 @@ async function renderCommand(argv: string[]) {
 
     for (const file of files) {
         const rawMod = await importFrame(file)
+        if (filmFromModule(rawMod)) {
+            const formats: Array<'png' | 'svg'> = args.format === 'both' ? ['png', 'svg'] : [args.format]
+            await renderFilmFromFrameCommand(file, stems.get(file) ?? basename(file).replace(/\.[^.]+$/, ''), args, explicitTheme, formats)
+            continue
+        }
         const mod = normalizeFrameModule(rawMod)
         const name = stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')
         const outputs: string[] = []
@@ -1627,6 +1743,8 @@ function checkDiagnosticCounts(files: CheckFileReport[]) {
 
 function printCheckReport(files: CheckFileReport[]) {
     for (const file of files) {
+        // Films print with their times and boxes as they are checked.
+        if (file.film) continue
         console.log(`${file.ok ? 'ok' : 'error'} ${file.source}`)
         for (const theme of file.themes) {
             const resolved = theme.dimensions.resolved ?? theme.dimensions.input
@@ -1675,6 +1793,27 @@ async function checkCommandWithArgs(args: CheckArgs) {
                 message: imported.error instanceof Error ? imported.error.message : String(imported.error),
             })
             reports.push({ source, ok: false, diagnostics, themes: [] })
+            continue
+        }
+
+        if (filmFromModule(imported.value)) {
+            const looks = args.looks.length > 0 ? args.looks : looksForThemes(args.themes, args.explicitTheme)
+            const module = imported.value
+            const filmReports = await checkFilmFile(file, async () => module, looks)
+            filmReports.forEach((filmReport, index) => {
+                reports.push({
+                    source,
+                    ok: filmReport.ok,
+                    diagnostics: filmReport.diagnostics,
+                    themes: [],
+                    film: {
+                        title: filmReport.title, width: filmReport.width, height: filmReport.height,
+                        duration: filmReport.duration, sampled: filmReport.sampled,
+                        ...(looks[index] ? { look: looks[index] } : {}),
+                    },
+                })
+                if (!args.json) printFilmCheck(filmReport)
+            })
             continue
         }
 
@@ -1828,6 +1967,7 @@ async function gifCommand(argv: string[]) {
 
 async function videoCommand(argv: string[]) {
     const args = parseVideoArgs(argv)
+    const explicitTheme = argv.includes('--theme')
     if (args.format !== 'png') throw new Error('--format applies to static rendering only; video always writes MP4 output')
     const cliWatermark = await resolveWatermarkAssets(args.watermark)
     const files = await findFrameFiles(args.inputs)
@@ -1848,7 +1988,18 @@ async function videoCommand(argv: string[]) {
     try {
         await mkdir(args.outDir, { recursive: true })
         for (const file of files) {
-            const mod = normalizeFrameModule(await importFrame(file))
+            const imported = await importFrame(file)
+            if (filmFromModule(imported)) {
+                const filmArgs = parseFilmArgs([file, '--out', args.outDir])
+                filmArgs.looks = looksForThemes(args.themes, explicitTheme)
+                filmArgs.formats = ['mp4']
+                filmArgs.fps = args.fps
+                filmArgs.audioPath = args.audioPath
+                filmArgs.ffmpegPath = args.ffmpegPath
+                await runFilmCommand(filmArgs, [file], new Map([[file, stems.get(file) ?? basename(file).replace(/\.[^.]+$/, '')]]), importFrame)
+                continue
+            }
+            const mod = normalizeFrameModule(imported)
             if (!mod.createAnimation) {
                 throw new Error(`${relative(process.cwd(), file)} must export createAnimation(theme) for video rendering`)
             }
@@ -1897,6 +2048,48 @@ async function videoCommand(argv: string[]) {
     }
 }
 
+async function filmCommand(argv: string[]) {
+    const args = parseFilmArgs(argv)
+    const found = await findFrameFiles(args.inputs)
+    // A directory can hold helpers beside its films. A file named directly must be a film.
+    const named = new Set(args.inputs.map((input) => resolve(input)))
+    const files: string[] = []
+    for (const file of found) {
+        if (named.has(file) || /\bfilm\s*\(/.test(await readFile(file, 'utf8'))) files.push(file)
+    }
+    await runFilmCommand(args, files, outputStems(files), importFrame)
+}
+
+async function previewCommand(argv: string[]) {
+    let port: number | undefined
+    let open = false
+    const inputs: string[] = []
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index]!
+        if (arg === '--port') {
+            port = Number(argv[++index])
+            if (!Number.isInteger(port) || port < 0 || port > 65_535) throw new Error('--port must be a port number')
+        } else if (arg === '--open') {
+            open = true
+        } else if (arg.startsWith('--')) {
+            throw new Error(`Unknown option for vizmatic preview: ${arg}`)
+        } else {
+            inputs.push(arg)
+        }
+    }
+    if (inputs.length !== 1) throw new Error('vizmatic preview needs one film file, such as: vizmatic preview ./intro.ts')
+    const { startPreview } = await import('./stage/preview/server')
+    const preview = await startPreview({ file: resolve(inputs[0]!), port, log: (line) => console.log(line) })
+    console.log(`Preview: ${preview.url}`)
+    console.log('Press Ctrl+C to stop.')
+    if (open) await preview.open()
+    await new Promise<void>((done) => {
+        const stop = () => { void preview.close().then(done) }
+        process.once('SIGINT', stop)
+        process.once('SIGTERM', stop)
+    })
+}
+
 async function main() {
     const args = process.argv.slice(2)
     const [command, ...rest] = args
@@ -1908,6 +2101,16 @@ async function main() {
         await gifCommand(rest)
     } else if (command === 'video') {
         await videoCommand(rest)
+    } else if (command === 'film') {
+        await filmCommand(rest)
+    } else if (command === 'preview') {
+        await previewCommand(rest)
+    } else if (command === 'new') {
+        await runNewCommand(rest)
+    } else if (command === 'looks') {
+        runLooksCommand(rest)
+    } else if (command === 'objects') {
+        runObjectsCommand(rest)
     } else if (!command || command === 'help' || command === '--help' || command === '-h') {
         help()
     } else if (!command.startsWith('-')) {
