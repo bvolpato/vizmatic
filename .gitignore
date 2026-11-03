@@ -8,3 +8,4 @@ coverage/
 *.tgz
 .playwright-mcp/
 /docs/assets/video/
+/docs/assets/films/*.mp4

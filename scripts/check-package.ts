@@ -9,12 +9,12 @@ interface PackResult {
 }
 
 const limits = {
-    // Includes browser rendering and the portable PNG codecs.
-    size: 3_400_000,
-    // Includes teaching helpers and the sharp photographic blur sample.
-    unpackedSize: 8_000_000,
-    // Includes the bundled raster codec license notice.
-    entryCount: 115,
+    // Includes browser rendering, the browser film engine with its math chunk, and the portable PNG codecs.
+    size: 5_000_000,
+    // Includes teaching helpers, the sharp photographic blur sample, and film examples.
+    unpackedSize: 13_000_000,
+    // Includes the bundled raster codec license notice and film examples.
+    entryCount: 190,
 }
 
 const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {

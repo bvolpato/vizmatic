@@ -8,6 +8,31 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
+
+/** Films from the installed package: both module formats, the bundled fonts, the worker, and the CLI. */
+async function checkFilms(consumer) {
+    const body = `(s) => { s.add(stage.text('Installed', { font: 'serif', size: 80 })); s.add(stage.tex('e^{i\\\\pi} = -1').at(0, 160)); s.wait(0.2) }`
+    await writeFile(join(consumer, 'film-esm.mjs'), `import * as stage from 'vizmatic/stage'
+import { renderFilmFrame } from 'vizmatic/stage/export'
+const output = await renderFilmFrame(stage.film(${body}), 0.1, 'film-esm.png', { width: 320 })
+console.log('ESM film rendered', output.width)
+`)
+    await writeFile(join(consumer, 'film-cjs.cjs'), `const stage = require('vizmatic/stage')
+const { renderFilmFrame } = require('vizmatic/stage/export')
+renderFilmFrame(stage.film(${body}), 0.1, 'film-cjs.png', { width: 320 }).then((output) => console.log('CJS film rendered', output.width), (error) => { console.error(error); process.exit(1) })
+`)
+    for (const script of ['film-esm.mjs', 'film-cjs.cjs']) {
+        const { stdout } = await run(process.execPath, [script], { cwd: consumer, encoding: 'utf8', timeout: 90_000 })
+        process.stdout.write(stdout)
+    }
+    const cli = join(consumer, 'node_modules/vizmatic/dist/cli.js')
+    await run(process.execPath, [cli, 'new', 'intro', '--template', 'explainer'], { cwd: consumer, encoding: 'utf8', timeout: 60_000 })
+    const check = await run(process.execPath, [cli, 'check', 'intro.ts', '--json'], { cwd: consumer, encoding: 'utf8', timeout: 90_000 })
+    assert.equal(JSON.parse(check.stdout).ok, true, 'A new film must pass its own check')
+    await run(process.execPath, [cli, 'film', 'intro.ts', '--frame', '3', '--width', '320', '--out', 'stills'], { cwd: consumer, encoding: 'utf8', timeout: 90_000 })
+    assert.equal((await readFile(join(consumer, 'stills/intro_t003.000.png'))).subarray(1, 4).toString('ascii'), 'PNG')
+    console.log('Film CLI passed from the installed package')
+}
 const repository = fileURLToPath(new URL('../', import.meta.url))
 const directory = await mkdtemp(join(tmpdir(), 'vizmatic-consumer-'))
 const registry = 'https://registry.npmjs.org/'
@@ -59,6 +84,7 @@ try {
     const log = await readFile(runtimeLog, 'utf8')
     assert.equal(code, 0, log.slice(-4_000))
     process.stdout.write(log)
+    await checkFilms(consumer)
     console.log(`Packed npm consumer passed on ${process.version}`)
 } catch (error) {
     const details = error.stderr || error.stdout || error.message

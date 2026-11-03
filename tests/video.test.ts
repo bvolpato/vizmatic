@@ -50,6 +50,33 @@ describe('RGBA video export', () => {
         })).rejects.toThrow('duration must round to at least one frame')
     })
 
+    it.skipIf(!hasFfmpeg || !hasFfprobe)('tags BT.709 and keeps colors through a decode', async () => {
+        const swatches = [[255, 215, 94], [92, 196, 240], [79, 216, 196], [255, 107, 107]] as const
+        const size = 64
+        const frame = new Uint8Array(size * size * 4)
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const swatch = swatches[Math.floor(x / (size / 2)) + 2 * Math.floor(y / (size / 2))]!
+                frame.set([swatch[0], swatch[1], swatch[2], 255], (y * size + x) * 4)
+            }
+        }
+        const directory = await tempDirectory()
+        for (const [codec, name] of [['h264', 'color.mp4'], ['vp9', 'color.webm']] as const) {
+            const outputPath = join(directory, name)
+            await renderRgbaVideo(() => frame, { width: size, height: size, duration: 200, fps: 15, outputPath, codec, crf: 10 })
+            const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,color_space,color_transfer,color_primaries,color_range', '-of', 'json', outputPath], { encoding: 'utf8' })
+            expect(JSON.parse(probe.stdout).streams[0]).toMatchObject({ color_range: 'tv', color_space: 'bt709', color_transfer: 'bt709', color_primaries: 'bt709' })
+            // A decoder that reads the tags recovers the source colors. The earlier untagged BT.601 output missed by 16.
+            const decoded = spawnSync('ffmpeg', ['-v', 'error', '-i', outputPath, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { encoding: 'buffer', maxBuffer: 1 << 24 })
+            swatches.forEach((swatch, index) => {
+                const x = Math.floor(((index % 2) + 0.5) * size / 2), y = Math.floor((Math.floor(index / 2) + 0.5) * size / 2)
+                const offset = (y * size + x) * 3
+                const worst = Math.max(...swatch.map((value, channel) => Math.abs(decoded.stdout[offset + channel]! - value)))
+                expect(worst, `${codec} swatch ${index}`).toBeLessThanOrEqual(4)
+            })
+        }
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg)('writes a small H.264 MP4 with optional padded AAC audio', async () => {
         const directory = await tempDirectory()
         const outputPath = join(directory, 'lesson.mp4')

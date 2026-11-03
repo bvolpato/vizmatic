@@ -256,3 +256,34 @@ export function detectOverflow(
         message,
     }
 }
+
+/**
+ * Text placed past the canvas edge, found from layout rather than pixels. Flat
+ * designs have no shadow or fill at the edge, so a clipped row of plain text
+ * leaves no pixels behind for the raster check to see.
+ */
+export function detectLayoutOverflow(
+    nodes: ReadonlyArray<{ left: number; top: number; width: number; height: number; textContent?: string; props: Record<string, unknown> }>,
+    width: number,
+    height: number,
+): OverflowResult {
+    const edges = { top: false, right: false, bottom: false, left: false }
+    for (const node of nodes) {
+        if (!String(node.textContent ?? '').trim() || node.width <= 0 || node.height <= 0) continue
+        const style = node.props.style as { transform?: unknown } | undefined
+        // Layout boxes ignore transforms, so a moved label cannot be judged from its box.
+        if (style?.transform) continue
+        edges.top ||= node.top + node.height < 0
+        edges.left ||= node.left + node.width < 0
+        edges.bottom ||= node.top + node.height > height + 1
+        edges.right ||= node.left + node.width > width + 1
+    }
+    const names = (Object.keys(edges) as Array<keyof typeof edges>).filter((edge) => edges[edge])
+    return {
+        overflows: names.length > 0,
+        edges,
+        message: names.length > 0
+            ? `Content overflows canvas at: ${names.join(', ')}. Increase the illustration dimensions.`
+            : '',
+    }
+}

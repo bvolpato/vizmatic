@@ -18,7 +18,9 @@
     "noUncheckedIndexedAccess": false,
     "resolveJsonModule": true,
     "paths": {
-      "vizmatic": ["./src/index.ts"]
+      "vizmatic": ["./src/index.ts"],
+      "vizmatic/stage": ["./src/stage/index.ts"],
+      "vizmatic/stage/export": ["./src/stage/export.ts"]
     },
     "types": ["node", "react"]
   },

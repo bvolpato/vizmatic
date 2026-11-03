@@ -34,7 +34,9 @@
     "ai-agents",
     "structured-visuals"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./dist/stage-browser/**"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -63,8 +65,14 @@
       }
     },
     "./scene-runtime": {
-      "import": { "types": "./dist/scene-runtime.d.ts", "default": "./dist/scene-runtime.js" },
-      "require": { "types": "./dist/scene-runtime.d.cts", "default": "./dist/scene-runtime.cjs" }
+      "import": {
+        "types": "./dist/scene-runtime.d.ts",
+        "default": "./dist/scene-runtime.js"
+      },
+      "require": {
+        "types": "./dist/scene-runtime.d.cts",
+        "default": "./dist/scene-runtime.cjs"
+      }
     },
     "./scene-browser": {
       "types": "./dist/scene-browser.d.ts",
@@ -73,6 +81,30 @@
     "./browser-assets": {
       "types": "./dist/scene-browser-assets.d.ts",
       "import": "./dist/scene-browser-assets.js"
+    },
+    "./stage": {
+      "import": {
+        "types": "./dist/stage.d.ts",
+        "default": "./dist/stage.js"
+      },
+      "require": {
+        "types": "./dist/stage.d.cts",
+        "default": "./dist/stage.cjs"
+      }
+    },
+    "./stage/export": {
+      "import": {
+        "types": "./dist/stage-export.d.ts",
+        "default": "./dist/stage-export.js"
+      },
+      "require": {
+        "types": "./dist/stage-export.d.cts",
+        "default": "./dist/stage-export.cjs"
+      }
+    },
+    "./stage/browser": {
+      "types": "./dist/stage-browser/browser.d.ts",
+      "import": "./dist/stage-browser/stage.js"
     }
   },
   "bin": {
@@ -80,8 +112,8 @@
     "vizmatic-scene": "dist/scene-cli.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts src/scene-runtime.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts src/scene-runtime.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts src/scene-cli.ts --format esm --dts --target node20 --external react --minify-whitespace && pnpm build:browser",
-    "build:browser": "tsup src/scene-browser.ts --dts-only --format esm --target es2022 --external react && tsup src/scene-browser-assets.ts --format esm --dts --target node20 && tsx scripts/build-scene-browser.ts",
+    "build": "tsup src/index.ts src/scene-runtime.ts src/stage.ts src/stage-export.ts --format esm --dts --target node20 --clean --external react && tsup src/index.ts src/scene-runtime.ts src/stage.ts src/stage-export.ts --format cjs --dts --target node20 --external react --define.import.meta.url undefined && tsup src/cli.ts src/scene-cli.ts --format esm --dts --target node20 --external react --minify-whitespace && pnpm build:browser",
+    "build:browser": "tsup src/scene-browser.ts --dts-only --format esm --target es2022 --external react && tsup src/scene-browser-assets.ts --format esm --dts --target node20 && tsx scripts/build-scene-browser.ts && tsup src/stage/browser.ts --dts-only --format esm --target es2022 --out-dir dist/stage-browser && tsx scripts/build-stage-browser.ts",
     "assets:emoji": "node scripts/build-emoji-bundle.mjs",
     "assets:check": "node scripts/build-emoji-bundle.mjs --check",
     "prepare": "pnpm build",
@@ -92,6 +124,8 @@
     "render:video": "pnpm build && tsx scripts/render-video-example.ts",
     "benchmark:quality": "pnpm build && tsx scripts/benchmark-quality.ts && pnpm site:build",
     "check:examples": "tsx scripts/check-examples.ts",
+    "render:films": "tsx scripts/render-films.ts",
+    "check:films": "tsx src/cli.ts check examples/films",
     "playground:build": "tsx scripts/build-playground.ts",
     "check:playground": "node scripts/check-playground.mjs",
     "check:scene-browser": "node scripts/check-scene-browser.mjs",

@@ -47,6 +47,9 @@ each under the MIT License. Their full notices are in
 - JetBrains Mono: SIL Open Font License 1.1.
   Copyright 2020 The JetBrains Mono Project Authors.
   Source: https://github.com/JetBrains/JetBrainsMono
+- Instrument Serif: SIL Open Font License 1.1.
+  Copyright 2022 The Instrument Serif Project Authors.
+  Source: https://github.com/Instrument/instrument-serif
 - Noto Sans: SIL Open Font License 1.1.
   Copyright Google Inc.
   Source: https://github.com/notofonts/noto-fonts
@@ -56,7 +59,7 @@ each under the MIT License. Their full notices are in
 
 Full license: [`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt).
 
-The website uses WOFF2 copies of the same Inter and JetBrains Mono font files.
+The website uses WOFF2 copies of the same Inter, JetBrains Mono, and Instrument Serif font files.
 Regenerate them with `pnpm site:fonts`; the original font licenses apply.
 
 ## Emoji
