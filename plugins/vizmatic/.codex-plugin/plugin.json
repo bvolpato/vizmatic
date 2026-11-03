@@ -1,7 +1,7 @@
 {
   "name": "vizmatic",
-  "version": "0.4.0",
-  "description": "Create and render theme-aware diagrams, charts, docs figures, and animated GIFs from TSX.",
+  "version": "0.5.0",
+  "description": "Make explainer films, dense technical diagrams, charts, and docs figures from code, then check and render them.",
   "author": {
     "name": "Bruno Volpato",
     "url": "https://github.com/bvolpato"
@@ -20,8 +20,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Vizmatic",
-    "shortDescription": "Create diagrams and charts from TSX",
-    "longDescription": "Use Vizmatic scene primitives to render diagrams, dashboards, docs figures, presentation frames, and animated GIFs.",
+    "shortDescription": "Make explainer films, diagrams, and charts from code",
+    "longDescription": "Use Vizmatic to write vector animation films and dense technical figures, check them for layout defects, and render MP4, WebM, GIF, PNG, and SVG.",
     "developerName": "Bruno Volpato",
     "category": "Productivity",
     "capabilities": [

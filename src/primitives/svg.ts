@@ -8,6 +8,7 @@ import {
     getReadableTextColor,
     getToneColor,
     withColorAlpha,
+    densityOf,
 } from '../theme'
 
 // ─── Box — Gradient or solid colored rectangle with label ────────────────────
@@ -37,13 +38,16 @@ export function Box({
     color = 'primary',
     width,
     height,
-    fontSize = 14,
+    fontSize: fontSizeProp,
     gradient = false,
     sublabel,
     icon,
-    radius = 8,
+    radius: radiusProp,
     outlined = false,
 }: BoxProps): React.ReactElement {
+    const fontSize = fontSizeProp ?? densityOf(c).f(14)
+    const radius = radiusProp ?? densityOf(c).r(8)
+    const d = densityOf(c)
     const solidColor = getColor(color, c)
     const gradientBg = getGradient(color)
     const solidTextColor = getReadableTextColor(solidColor, c)
@@ -54,21 +58,19 @@ export function Box({
         alignItems: 'center',
         justifyContent: 'center',
         borderRadius: radius,
-        padding: '12px 20px',
-        gap: 4,
+        padding: `${densityOf(c).s(12)}px ${densityOf(c).s(20)}px`,
+        gap: densityOf(c).s(4),
         ...(width ? { width } : {}),
         ...(height ? { height } : {}),
     }
 
     if (outlined) {
-        style.border = `2px solid ${solidColor}`
+        style.border = `${d.w(2)}px solid ${solidColor}`
         style.backgroundColor = 'transparent'
     } else if (gradient) {
         style.backgroundImage = gradientBg
-        style.boxShadow = `0 4px 20px ${withColorAlpha(solidColor, 0x30 / 0xff)}`
     } else {
         style.backgroundColor = solidColor
-        style.boxShadow = `0 4px 20px ${withColorAlpha(solidColor, 0x30 / 0xff)}`
     }
 
     return React.createElement('div', { style },
@@ -116,34 +118,21 @@ export function Arrow({
 }: ArrowProps): React.ReactElement {
     const arrowColor = color || c.textMuted
     const isVertical = direction === 'down' || direction === 'up'
+    const d = densityOf(c)
+    const headLong = d.f(9), headWide = d.f(8)
     const arrowHead = {
-        down: {
-            width: 14,
-            height: 10,
-            points: '0,0 14,0 7,10',
-        },
-        up: {
-            width: 14,
-            height: 10,
-            points: '0,10 14,10 7,0',
-        },
-        right: {
-            width: 10,
-            height: 14,
-            points: '0,0 10,7 0,14',
-        },
-        left: {
-            width: 10,
-            height: 14,
-            points: '10,0 0,7 10,14',
-        },
+        down: { width: headWide, height: headLong, points: `0,0 ${headWide},0 ${headWide / 2},${headLong}` },
+        up: { width: headWide, height: headLong, points: `0,${headLong} ${headWide},${headLong} ${headWide / 2},0` },
+        right: { width: headLong, height: headWide, points: `0,0 ${headLong},${headWide / 2} 0,${headWide}` },
+        left: { width: headLong, height: headWide, points: `${headLong},0 0,${headWide / 2} ${headLong},${headWide}` },
     }[direction]
+    const shaft = d.w(1.5)
 
     const line = React.createElement('div', {
         style: {
             ...(isVertical
-                ? { width: 2, flexGrow: 1, minHeight: 1 }
-                : { height: 2, flexGrow: 1, minWidth: 1 }),
+                ? { width: shaft, flexGrow: 1, minHeight: 1 }
+                : { height: shaft, flexGrow: 1, minWidth: 1 }),
             backgroundColor: arrowColor,
         }
     })
@@ -169,7 +158,7 @@ export function Arrow({
             flexDirection: isVertical ? 'column' as const : 'row' as const,
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 0,
+            gap: densityOf(c).s(0),
             ...(isVertical ? { height: length } : { width: length }),
         }
     },
@@ -177,7 +166,7 @@ export function Arrow({
         // Optional label
         label && React.createElement('div', {
             style: {
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 color: c.textMuted,
                 fontFamily: c.fontSans,
                 fontWeight: 500,

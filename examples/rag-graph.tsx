@@ -8,18 +8,18 @@ height = 560;
         height={390}
         nodeWidth={120}
         nodes={[
-            { id: 'query', label: 'Query', detail: 'user intent', x: 0.08, y: 0.52, tone: 'blue' },
-            { id: 'rewrite', label: 'Rewrite', detail: 'search form', x: 0.30, y: 0.25, tone: 'purple' },
-            { id: 'retrieve', label: 'Retrieve', detail: 'top-k docs', x: 0.52, y: 0.25, tone: 'cyan' },
+            { id: 'query', label: 'Query', detail: 'user intent', x: 0.08, y: 0.52 },
+            { id: 'rewrite', label: 'Rewrite', detail: 'search form', x: 0.30, y: 0.25 },
+            { id: 'retrieve', label: 'Retrieve', detail: 'top-k docs', x: 0.52, y: 0.25 },
             { id: 'rerank', label: 'Rerank', detail: 'cross-encoder', x: 0.72, y: 0.25, tone: 'warm' },
             { id: 'answer', label: 'Answer', detail: 'grounded draft', x: 0.94, y: 0.52, tone: 'green' },
             { id: 'verify', label: 'Verify', detail: 'citations', x: 0.52, y: 0.78, tone: 'critical' },
         ]}
         edges={[
-            { from: 'query', to: 'rewrite', label: 'normalize', tone: 'blue' },
-            { from: 'rewrite', to: 'retrieve', label: 'search', tone: 'purple' },
-            { from: 'retrieve', to: 'rerank', label: 'rank', tone: 'cyan' },
-            { from: 'rerank', to: 'answer', label: 'context', tone: 'green' },
+            { from: 'query', to: 'rewrite', label: 'normalize' },
+            { from: 'rewrite', to: 'retrieve', label: 'search' },
+            { from: 'retrieve', to: 'rerank', label: 'rank' },
+            { from: 'rerank', to: 'answer', label: 'context' },
             { from: 'answer', to: 'verify', label: 'claims', tone: 'critical' },
             { from: 'verify', to: 'retrieve', label: 'retry', dashed: true, tone: 'warm' },
         ]}

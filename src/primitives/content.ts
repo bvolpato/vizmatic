@@ -1,12 +1,13 @@
 import React from 'react'
 import {
-    typography,
     type ThemeColors,
     type ToneName,
     getReadableToneColor,
     getToneColor,
-    getToneGradient,
     withColorAlpha,
+    densityOf,
+    typeOf,
+    hasShadow,
 } from '../theme'
 
 import { Column, compactChildren, type FlexAlign, formatMathText, Panel, Row } from './layout'
@@ -39,9 +40,11 @@ export function ProgressRow({
     c,
     labelWidth = 42,
     valueWidth = 38,
-    barHeight = 8,
-    fontSize = 11,
+    barHeight: barHeightProp,
+    fontSize: fontSizeProp,
 }: ProgressRowProps): React.ReactElement {
+    const barHeight = barHeightProp ?? Math.max(3, densityOf(c).g(6))
+    const fontSize = fontSizeProp ?? densityOf(c).f(11)
     const accent = muted ? c.textMuted : getToneColor(tone, c)
     const accentText = muted ? c.textMuted : getReadableToneColor(tone, c)
     const pct = Math.round(Math.max(0, Math.min(1, value)) * 100)
@@ -50,7 +53,7 @@ export function ProgressRow({
         style: {
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: densityOf(c).s(8),
             width: '100%',
         }
     },
@@ -59,7 +62,7 @@ export function ProgressRow({
                 width: labelWidth,
                 color: muted ? c.textMuted : c.textPrimary,
                 fontSize,
-                fontWeight: 800,
+                fontWeight: 400,
                 lineHeight: 1,
             }
         }, label),
@@ -68,9 +71,8 @@ export function ProgressRow({
                 display: 'flex',
                 flex: 1,
                 height: barHeight,
-                borderRadius: 999,
-                backgroundColor: c.bgSubtle,
-                border: `1px solid ${c.borderSubtle}`,
+                borderRadius: 1,
+                backgroundColor: c.borderSubtle,
                 overflow: 'hidden',
             }
         },
@@ -78,7 +80,6 @@ export function ProgressRow({
                 style: {
                     width: `${pct}%`,
                     height: '100%',
-                    borderRadius: 999,
                     backgroundColor: accent,
                     opacity: muted ? 0.62 : 1,
                 }
@@ -89,7 +90,7 @@ export function ProgressRow({
                 width: valueWidth,
                 color: accentText,
                 fontSize,
-                fontWeight: 800,
+                fontWeight: 400,
                 fontFamily: 'JetBrains Mono',
                 lineHeight: 1,
                 textAlign: 'right' as const,
@@ -111,12 +112,13 @@ interface ProgressListProps {
 export function ProgressList({
     rows,
     c,
-    gap = 8,
+    gap: gapProp,
     labelWidth,
     valueWidth,
     barHeight,
     fontSize,
 }: ProgressListProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(8)
     return Column({
         gap,
         align: 'stretch',
@@ -161,14 +163,18 @@ export function MiniBarChart({
     data,
     c,
     max,
-    minBarHeight = 8,
+    minBarHeight = 3,
     height = 92,
-    barWidth = 22,
-    gap = 10,
-    radius = 7,
-    fontSize = 11,
+    barWidth: barWidthProp,
+    gap: gapProp,
+    radius: radiusProp,
+    fontSize: fontSizeProp,
     showValues = false,
 }: MiniBarChartProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(10)
+    const radius = radiusProp ?? densityOf(c).r(3)
+    const fontSize = fontSizeProp ?? densityOf(c).type.micro
+    const barWidth = barWidthProp ?? densityOf(c).f(20)
     // A non-positive explicit max would divide bar heights by zero and emit NaN geometry.
     const requestedMax = max != null && max > 0 ? max : undefined
     const safeMax = requestedMax ?? Math.max(1, ...data.map((item) => Math.max(0, item.value)))
@@ -182,14 +188,14 @@ export function MiniBarChart({
             gap,
             height,
             width: '100%',
-            padding: '0 4px',
+            padding: `${densityOf(c).s(0)}px ${densityOf(c).s(4)}px`,
             boxSizing: 'border-box' as const,
         }
     },
         ...data.map((item, index) => {
             const tone = item.tone ?? 'blue'
             const barHeight = Math.max(minBarHeight, Math.round((Math.max(0, item.value) / safeMax) * barMaxHeight))
-            const fill = item.color ?? getToneGradient(tone)
+            const fill = item.color ?? getToneColor(tone, c)
 
             return React.createElement('div', {
                 key: `mini-bar-${index}-${String(item.label)}`,
@@ -198,7 +204,7 @@ export function MiniBarChart({
                     flexDirection: 'column' as const,
                     alignItems: 'center',
                     justifyContent: 'flex-end',
-                    gap: 5,
+                    gap: densityOf(c).s(5),
                     height: '100%',
                     minWidth: barWidth,
                 }
@@ -210,7 +216,7 @@ export function MiniBarChart({
                         color: getReadableToneColor(tone, c),
                         fontFamily: 'JetBrains Mono',
                         fontSize,
-                        fontWeight: 800,
+                        fontWeight: 600,
                         lineHeight: 1,
                     }
                 }, item.valueLabel ?? item.value),
@@ -219,11 +225,11 @@ export function MiniBarChart({
                         display: 'flex',
                         width: barWidth,
                         height: barHeight,
-                        borderRadius: `${radius}px ${radius}px 4px 4px`,
+                        borderRadius: `${radius}px ${radius}px 0 0`,
                         ...(fill.startsWith('linear-gradient')
                             ? { backgroundImage: fill }
                             : { backgroundColor: fill }),
-                        opacity: item.opacity ?? 0.92,
+                        opacity: item.opacity ?? 1,
                     }
                 }),
                 React.createElement('div', {
@@ -260,12 +266,15 @@ export function DetailList({
     items,
     c,
     tone,
-    gap = 7,
-    padding = '7px 8px',
-    fontSize = 11,
+    gap: gapProp,
+    padding: paddingProp,
+    fontSize: fontSizeProp,
     mono = false,
     math = false,
 }: DetailListProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(7)
+    const padding = paddingProp ?? `${densityOf(c).s(7)}px ${densityOf(c).s(8)}px`
+    const fontSize = fontSizeProp ?? densityOf(c).f(11)
     const accent = tone ? getToneColor(tone, c) : c.borderSubtle
 
     return Column({
@@ -274,10 +283,9 @@ export function DetailList({
         children: items.map((item, index) => React.createElement('div', {
             key: `detail-${index}`,
             style: {
+                display: 'flex',
                 padding,
-                borderRadius: 8,
-                backgroundColor: c.bgSubtle,
-                border: `1px solid ${tone ? withColorAlpha(accent, 0x44 / 0xff) : c.borderSubtle}`,
+                ...(index === 0 ? {} : { borderTop: `1px solid ${tone ? withColorAlpha(accent, 0x33 / 0xff) : c.borderSubtle}` }),
                 color: c.textSecondary,
                 fontSize,
                 lineHeight: 1.3,
@@ -315,20 +323,21 @@ export function Tile({
     subtitle,
     eyebrow,
     icon,
-    tone = 'blue',
+    tone,
     lines,
     children,
     width,
-    minHeight = 84,
+    minHeight,
     c,
-    align = 'center',
-    padding = '14px 16px',
-    radius = 10,
-    shadow = true,
+    align = 'left',
+    padding: paddingProp,
+    radius: radiusProp,
+    shadow = false,
     math = false,
 }: TileProps): React.ReactElement {
-    const accent = getToneColor(tone, c)
-    const accentText = getReadableToneColor(tone, c)
+    const padding = paddingProp ?? `${densityOf(c).s(10)}px ${densityOf(c).s(12)}px`
+    const radius = radiusProp ?? densityOf(c).r(8)
+    const accent = getToneColor(tone ?? 'neutral', c)
     const textAlign = align
     const crossAlign = align === 'center' ? 'center' : 'flex-start'
 
@@ -338,8 +347,8 @@ export function Tile({
             display: 'flex',
             alignItems: 'center',
             justifyContent: align === 'center' ? 'center' : 'flex-start',
-            gap: 6,
-            ...typography.tiny,
+            gap: densityOf(c).s(6),
+            ...typeOf(c, 'tiny'),
             color: c.textSecondary,
             lineHeight: 1.3,
             textAlign,
@@ -348,10 +357,10 @@ export function Tile({
         React.createElement('span', {
             style: {
                 display: 'flex',
-                width: 4,
-                height: 4,
+                width: 3,
+                height: 3,
                 borderRadius: 999,
-                backgroundColor: accent,
+                backgroundColor: tone ? accent : c.textMuted,
                 flexShrink: 0,
             }
         }),
@@ -365,7 +374,7 @@ export function Tile({
         padding,
         radius,
         shadow,
-        borderColor: withColorAlpha(accent, 0x88 / 0xff),
+        borderColor: tone ? withColorAlpha(accent, 0.5) : c.border,
         children: React.createElement('div', {
             style: {
                 width: '100%',
@@ -373,36 +382,34 @@ export function Tile({
                 flexDirection: 'column' as const,
                 justifyContent: 'center',
                 alignItems: crossAlign,
-                gap: 5,
+                gap: densityOf(c).s(4),
             }
         },
             ...compactChildren([
             icon != null && React.createElement('div', {
-                style: { display: 'flex', fontSize: 22, lineHeight: 1 }
+                style: { display: 'flex', fontSize: densityOf(c).f(22), lineHeight: 1 }
             }, icon),
             eyebrow != null && React.createElement('div', {
                 style: {
-                    ...typography.tiny,
-                    color: c.textMuted,
-                    fontWeight: 800,
-                    textTransform: 'uppercase' as const,
-                    letterSpacing: '0.05em',
+                    ...typeOf(c, 'tiny'),
+                    color: tone ? getReadableToneColor(tone, c) : c.textMuted,
+                    fontWeight: 400,
                     lineHeight: 1.2,
                     textAlign,
                 }
             }, renderMaybeMath(eyebrow, math)),
             React.createElement('div', {
                 style: {
-                    ...typography.label,
-                    color: accentText,
-                    fontWeight: 800,
+                    ...typeOf(c, 'label'),
+                    color: c.textPrimary,
+                    fontWeight: 600,
                     lineHeight: 1.15,
                     textAlign,
                 }
             }, renderMaybeMath(title, math)),
             subtitle != null && React.createElement('div', {
                 style: {
-                    ...typography.tiny,
+                    ...typeOf(c, 'tiny'),
                     color: c.textSecondary,
                     lineHeight: 1.3,
                     textAlign,
@@ -413,8 +420,8 @@ export function Tile({
                     width: '100%',
                     display: 'flex',
                     flexDirection: 'column' as const,
-                    gap: 4,
-                    marginTop: 2,
+                    gap: densityOf(c).s(4),
+                    marginTop: densityOf(c).s(2),
                 }
             }, ...detailLines),
             children,
@@ -438,12 +445,13 @@ export function TileGrid({
     tiles,
     c,
     columns,
-    gap = 12,
+    gap: gapProp,
     tileWidth,
     minHeight,
-    align = 'center',
+    align = 'left',
     math = false,
 }: TileGridProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(12)
     const renderTile = (tile: TileSpec, index: number) => React.createElement(React.Fragment, { key: `tile-${index}` },
         Tile({
             ...tile,
@@ -456,7 +464,7 @@ export function TileGrid({
     )
 
     if (!columns || columns >= tiles.length) {
-        return Row({ gap, align: 'stretch', justify: 'center', wrap: true, children: tiles.map(renderTile) })
+        return Row({ gap, align: 'stretch', justify: 'start', wrap: true, children: tiles.map(renderTile) })
     }
 
     const rows: TileSpec[][] = []
@@ -468,7 +476,7 @@ export function TileGrid({
         gap,
         align: 'stretch',
         children: rows.map((rowTiles, rowIndex) => React.createElement(React.Fragment, { key: `tile-row-${rowIndex}` },
-            Row({ gap, align: 'stretch', justify: 'center', children: rowTiles.map((tile, colIndex) => renderTile(tile, rowIndex * columns + colIndex)) })
+            Row({ gap, align: 'stretch', justify: 'start', children: rowTiles.map((tile, colIndex) => renderTile(tile, rowIndex * columns + colIndex)) })
         )),
     })
 }
@@ -509,21 +517,24 @@ export function CodeBlock({
     tone,
     width,
     minWidth,
-    fontSize = 12,
+    fontSize: fontSizeProp,
     showLineNumbers = false,
-    padding = 14,
-    radius = 10,
+    padding: paddingProp,
+    radius: radiusProp,
     background,
     shadow = false,
     math = false,
 }: CodeBlockProps): React.ReactElement {
+    const fontSize = fontSizeProp ?? densityOf(c).f(12)
+    const padding = paddingProp ?? densityOf(c).s(14)
+    const radius = radiusProp ?? densityOf(c).r(10)
     const headerAccent = tone ? getToneColor(tone, c) : c.textMuted
     const numberWidth = String(lines.length).length * (fontSize * 0.62) + 8
 
     const lineElements = lines.map((line, index) => {
         const spec: CodeLineSpec = isCodeLineSpec(line) ? line : { text: line }
         const accent = spec.tone ? getToneColor(spec.tone, c) : undefined
-        const accentText = spec.tone ? getReadableToneColor(spec.tone, c) : undefined
+        const accentText = spec.tone && accent ? getReadableToneColor(spec.tone, c, withColorAlpha(accent, 0x1f / 0xff), background ?? c.bgSubtle) : undefined
         const textColor = spec.dim ? c.textMuted : (accentText ?? c.textSecondary)
 
         return React.createElement('div', {
@@ -531,7 +542,7 @@ export function CodeBlock({
             style: {
                 display: 'flex',
                 alignItems: 'flex-start',
-                gap: 8,
+                gap: densityOf(c).s(8),
                 width: '100%',
                 padding: accent ? '3px 7px' : '1px 0',
                 borderRadius: accent ? 5 : 0,
@@ -546,11 +557,10 @@ export function CodeBlock({
                     width: numberWidth,
                     flexShrink: 0,
                     justifyContent: 'flex-end',
-                    color: c.textMuted,
+                    color: accent ? c.textSecondary : c.textMuted,
                     fontFamily: 'JetBrains Mono',
                     fontSize: fontSize - 1,
                     lineHeight: 1.5,
-                    opacity: 0.7,
                 }
             }, String(index + 1)),
             spec.prefix != null && React.createElement('div', {
@@ -559,7 +569,7 @@ export function CodeBlock({
                     flexShrink: 0,
                     color: accentText ?? c.textMuted,
                     fontFamily: 'JetBrains Mono',
-                    fontWeight: 800,
+                    fontWeight: 600,
                     fontSize,
                     lineHeight: 1.5,
                 }
@@ -570,9 +580,9 @@ export function CodeBlock({
                     flex: 1,
                     color: textColor,
                     fontFamily: 'JetBrains Mono',
-                    fontWeight: accent ? 700 : 500,
+                    fontWeight: 400,
                     fontSize,
-                    lineHeight: 1.5,
+                    lineHeight: 1.45,
                     whiteSpace: 'pre-wrap' as const,
                 }
             }, math && typeof spec.text === 'string' ? formatMathText(spec.text) : spec.text),
@@ -584,7 +594,7 @@ export function CodeBlock({
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 8,
+            gap: densityOf(c).s(8),
             ...(width != null ? { width } : {}),
             ...(minWidth != null ? { minWidth } : {}),
             padding,
@@ -592,7 +602,7 @@ export function CodeBlock({
             backgroundColor: background ?? c.bgSubtle,
             border: `1px solid ${tone ? withColorAlpha(headerAccent, 0x44 / 0xff) : c.borderSubtle}`,
             boxSizing: 'border-box' as const,
-            ...(shadow ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            ...(shadow && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }
     },
         ...compactChildren([
@@ -600,14 +610,13 @@ export function CodeBlock({
             style: {
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                paddingBottom: 8,
+                gap: densityOf(c).s(8),
+                paddingBottom: densityOf(c).s(8),
                 borderBottom: `1px solid ${c.borderSubtle}`,
                 color: c.textSecondary,
                 fontFamily: 'JetBrains Mono',
                 fontSize: fontSize - 1,
-                fontWeight: 800,
-                letterSpacing: '0.02em',
+                fontWeight: 400,
             }
         },
             React.createElement('span', {
@@ -626,7 +635,7 @@ export function CodeBlock({
             style: {
                 display: 'flex',
                 flexDirection: 'column' as const,
-                gap: 2,
+                gap: densityOf(c).s(2),
                 width: '100%',
             }
         }, ...lineElements),
@@ -676,19 +685,16 @@ function renderComparisonDivider(divider: React.ReactNode | boolean, c: ThemeCol
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                minWidth: 30,
-                height: 30,
-                padding: '0 8px',
+                minWidth: densityOf(c).f(26),
+                height: densityOf(c).f(22),
+                padding: `0 ${densityOf(c).s(6)}px`,
                 borderRadius: 999,
                 backgroundColor: c.bgCard,
                 border: `1px solid ${c.borderLight}`,
                 color: c.textMuted,
                 fontFamily: 'Inter',
-                fontSize: 11,
-                fontWeight: 900,
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.06em',
-                boxShadow: `0 4px 12px ${c.shadow}`,
+                fontSize: densityOf(c).type.micro,
+                fontWeight: 400,
             }
         }, label),
     )
@@ -698,14 +704,15 @@ export function Comparison({
     sides,
     c,
     divider = false,
-    gap = 14,
+    gap: gapProp,
     sideWidth,
     minHeight,
     align = 'stretch',
     math = false,
 }: ComparisonProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(14)
     const children = sides.flatMap((side, index) => {
-        const tone = side.tone ?? 'blue'
+        const tone = side.tone
         const panel = React.createElement(React.Fragment, { key: `comparison-side-${index}` },
             Panel({
                 c,
@@ -720,11 +727,9 @@ export function Comparison({
                     ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column' as const, gap: 8 } },
                         React.createElement('div', {
                             style: {
-                                ...typography.tiny,
+                                ...typeOf(c, 'tiny'),
                                 color: c.textMuted,
-                                fontWeight: 800,
-                                textTransform: 'uppercase' as const,
-                                letterSpacing: '0.05em',
+                                fontWeight: 400,
                             }
                         }, renderMaybeMath(side.eyebrow, math)),
                         side.children ?? DetailList({ items: side.lines ?? [], c, tone, math }),
@@ -772,12 +777,14 @@ export function KeyValueList({
     width,
     minWidth,
     keyWidth,
-    gap = 0,
-    fontSize = 11,
+    gap: gapProp,
+    fontSize: fontSizeProp,
     divider = true,
     keyMono = false,
     math = false,
 }: KeyValueListProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(0)
+    const fontSize = fontSizeProp ?? densityOf(c).type.small
     const rowElements = rows.map((row, index) => {
         const accent = row.tone ? getReadableToneColor(row.tone, c) : undefined
         const isLast = index === rows.length - 1
@@ -789,9 +796,9 @@ export function KeyValueList({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: 14,
+                gap: densityOf(c).s(14),
                 width: '100%',
-                padding: divider ? '7px 0' : '4px 0',
+                padding: `${divider ? densityOf(c).s(5) : densityOf(c).s(2)}px 0`,
                 ...(divider && !isLast ? { borderBottom: `1px solid ${c.borderSubtle}` } : {}),
                 boxSizing: 'border-box' as const,
             }
@@ -803,7 +810,7 @@ export function KeyValueList({
                     color: c.textSecondary,
                     fontFamily: keyMono ? 'JetBrains Mono' : 'Inter',
                     fontSize,
-                    fontWeight: 600,
+                    fontWeight: 400,
                     lineHeight: 1.3,
                 }
             }, renderMaybeMath(row.key, math)),
@@ -816,7 +823,7 @@ export function KeyValueList({
                     color: accent ?? c.textPrimary,
                     fontFamily: valueMono ? 'JetBrains Mono' : 'Inter',
                     fontSize,
-                    fontWeight: 800,
+                    fontWeight: 400,
                     lineHeight: 1.3,
                 }
             }, renderMaybeMath(row.value, math)),
@@ -836,12 +843,10 @@ export function KeyValueList({
         title != null && React.createElement('div', {
             style: {
                 display: 'flex',
-                ...typography.tiny,
-                color: c.textMuted,
-                fontWeight: 800,
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.05em',
-                paddingBottom: 4,
+                ...typeOf(c, 'small'),
+                color: c.textPrimary,
+                fontWeight: 600,
+                paddingBottom: densityOf(c).s(4),
             }
         }, renderMaybeMath(title, math)),
         ...rowElements,
@@ -880,28 +885,30 @@ export function WindowFrame({
     minWidth,
     height,
     minHeight,
-    padding = 16,
-    radius = 10,
-    shadow = true,
+    padding: paddingProp,
+    radius: radiusProp,
+    shadow = false,
     background,
     bodyStyle,
 }: WindowFrameProps): React.ReactElement {
+    const padding = paddingProp ?? densityOf(c).s(16)
+    const radius = radiusProp ?? densityOf(c).r(10)
     const isTerminal = variant === 'terminal'
     const surface = background ?? (isTerminal ? c.bgSubtle : c.bgCard)
     const titleColor = isTerminal ? getReadableToneColor(tone, c, c.bgHover) : c.textSecondary
 
     const trafficDot = (color: string, key: string) => React.createElement('span', {
         key,
-        style: { display: 'flex', width: 10, height: 10, borderRadius: 999, backgroundColor: color }
+        style: { display: 'flex', width: densityOf(c).g(9), height: densityOf(c).g(9), borderRadius: 999, backgroundColor: color }
     })
 
     const titleBar = React.createElement('div', {
         style: {
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
+            gap: densityOf(c).s(10),
             width: '100%',
-            padding: '8px 12px',
+            padding: `${densityOf(c).s(8)}px ${densityOf(c).s(12)}px`,
             backgroundColor: isTerminal ? c.bg === 'transparent' ? c.bgHover : c.bgHover : c.bgSubtle,
             borderBottom: `1px solid ${c.borderSubtle}`,
             boxSizing: 'border-box' as const,
@@ -909,11 +916,11 @@ export function WindowFrame({
     },
         ...compactChildren([
         dots && React.createElement('div', {
-            style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }
+            style: { display: 'flex', alignItems: 'center', gap: densityOf(c).s(6), flexShrink: 0 }
         },
-            trafficDot(c.criticalLight, 'dot-r'),
-            trafficDot(c.warningLight, 'dot-y'),
-            trafficDot(c.positiveLight, 'dot-g'),
+            trafficDot(c.borderLight, 'dot-r'),
+            trafficDot(c.borderLight, 'dot-y'),
+            trafficDot(c.borderLight, 'dot-g'),
         ),
         title != null && (variant === 'browser'
             ? React.createElement('div', {
@@ -921,14 +928,14 @@ export function WindowFrame({
                     display: 'flex',
                     flex: 1,
                     alignItems: 'center',
-                    height: 22,
-                    padding: '0 12px',
-                    borderRadius: 999,
+                    height: densityOf(c).f(22),
+                    padding: `0 ${densityOf(c).s(12)}px`,
+                    borderRadius: densityOf(c).r(6),
                     backgroundColor: c.bgCard,
                     border: `1px solid ${c.borderSubtle}`,
                     color: c.textSecondary,
                     fontFamily: 'JetBrains Mono',
-                    fontSize: 11,
+                    fontSize: densityOf(c).f(11),
                     fontWeight: 600,
                     lineHeight: 1,
                 }
@@ -940,8 +947,8 @@ export function WindowFrame({
                     justifyContent: dots ? 'center' : 'flex-start',
                     color: titleColor,
                     fontFamily: isTerminal ? 'JetBrains Mono' : 'Inter',
-                    fontSize: 12,
-                    fontWeight: 700,
+                    fontSize: densityOf(c).type.small,
+                    fontWeight: 400,
                     lineHeight: 1,
                 }
             }, title)),
@@ -964,7 +971,7 @@ export function WindowFrame({
             backgroundColor: surface,
             overflow: 'hidden' as const,
             boxSizing: 'border-box' as const,
-            ...(shadow ? { boxShadow: `0 12px 30px ${c.shadow}` } : {}),
+            ...(shadow && hasShadow(c) ? { boxShadow: `0 12px 30px ${c.shadow}` } : {}),
         }
     },
         titleBar,

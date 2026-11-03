@@ -1,9 +1,236 @@
 # Vizmatic components
 
-Package: vizmatic@0.4.0. Catalog: 84 runnable examples across 16 categories.
+Package: vizmatic@0.5.0. Catalog: 92 runnable examples across 17 categories.
 
 Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 
+## Dense information
+
+
+
+Word-sized charts, fact rows, and keys that pack real data into nodes and dashboards.
+
+
+
+### Sparkline
+
+A word-sized trend line to set beside a number.
+
+Props:
+- `area`: `boolean` (optional; allowed values: `propEnums.values1`): Fill under the line.
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `endDot`: `boolean` (optional; allowed values: `propEnums.values1`): Mark the final value.
+- `height`: `number` (optional)
+- `max`: `number` (optional)
+- `min`: `number` (optional)
+- `strokeWidth`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `values`: `readonly number[]` (required)
+- `width`: `number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="Sparkline example" subtitle="Edit this focused Sparkline scene" padding={22} gap={18}>
+  <Row
+    gap={14}
+    justify='start'>
+  <MetricStrip
+    width={120}
+    metrics={[{ label: 'requests', value: '18.4', unit: 'k/s' }]} />
+  <Sparkline
+    values={[12, 14, 13, 17, 16, 21, 24, 22, 26]}
+    width={120}
+    height={28} area
+    tone='blue' />
+  </Row>
+</Scene>
+```
+
+### SmallMultiples
+
+One chart repeated across services or regions, with an optional shared scale.
+
+Props:
+- `area`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `c`: `ThemeColors` (required)
+- `cellHeight`: `number` (optional)
+- `cellWidth`: `number` (optional)
+- `columns`: `number` (optional)
+- `items`: `readonly SmallMultipleItem[]` (required)
+- `sharedScale`: `boolean` (optional; allowed values: `propEnums.values1`): Give all cells one y scale, so they compare directly.
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="SmallMultiples example" subtitle="Edit this focused SmallMultiples scene" padding={22} gap={18}>
+  <SmallMultiples
+    columns={3} sharedScale
+    items={[{ label: 'api', values: [42, 44, 41, 48, 52, 49], value: '49', unit: 'ms', status: 'ok', reference: 60 },
+        { label: 'search', values: [80, 84, 92, 110, 118, 124], value: '124', unit: 'ms', status: 'warn', tone: 'warm', reference: 60 },
+        { label: 'ledger', values: [30, 31, 29, 33, 32, 31], value: '31', unit: 'ms', status: 'ok', reference: 60 }]} />
+</Scene>
+```
+
+### MetricStrip
+
+Numbers with units side by side, without a card around each one.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `direction`: `"row" | "column"` (optional; allowed values: `propEnums.values2`): Lay out in a row with even columns, or stack.
+- `metrics`: `readonly StripMetric[]` (required)
+- `sparkWidth`: `number` (optional)
+- `width`: `string | number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="MetricStrip example" subtitle="Edit this focused MetricStrip scene" padding={22} gap={18}>
+  <MetricStrip
+    width={420}
+    metrics={[{ label: 'p50', value: '42', unit: 'ms' },
+        { label: 'p99', value: '310', unit: 'ms', tone: 'warm', bar: 0.78 },
+        { label: 'error rate', value: '0.04', unit: '%', spark: [3, 2, 4, 2, 1, 1] }]} />
+</Scene>
+```
+
+### FactRows
+
+Tight key and value rows with optional capacity bars.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values1`): Set values in monospace, so columns of numbers line up.
+- `rows`: `readonly FactRow[]` (required)
+- `width`: `string | number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="FactRows example" subtitle="Edit this focused FactRows scene" padding={22} gap={18}>
+  <FactRows
+    width={240}
+    rows={[{ key: 'region', value: 'us-east-1' },
+        { key: 'replicas', value: '12 / 12' },
+        { key: 'capacity', value: '71%', bar: 0.71 },
+        { key: 'disk', value: '91%', bar: 0.91, tone: 'warm' }]} />
+</Scene>
+```
+
+### InlineBar
+
+A hairline capacity bar that sits under a value.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `color`: `string` (optional)
+- `height`: `number` (optional)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+- `value`: `number` (required)
+- `warnAt`: `number` (optional): Past this fraction the bar turns to the warning color, for capacity.
+- `width`: `string | number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="InlineBar example" subtitle="Edit this focused InlineBar scene" padding={22} gap={18}>
+  <Column
+    gap={8}
+    align='stretch'
+    width={220}>
+  <InlineBar
+    value={0.42} />
+  <InlineBar
+    value={0.71}
+    tone='blue' />
+  <InlineBar
+    value={0.93}
+    warnAt={0.85} />
+  </Column>
+</Scene>
+```
+
+### StatusDot
+
+A small health marker: ok, warn, error, idle, or any tone.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `size`: `number` (optional)
+- `status`: `DiagramStatus` (optional; allowed values: `propEnums.DiagramStatus`)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="StatusDot example" subtitle="Edit this focused StatusDot scene" padding={22} gap={18}>
+  <Row
+    gap={12}
+    justify='start'>
+  <StatusDot
+    status='ok' />
+  <StatusDot
+    status='warn' />
+  <StatusDot
+    status='error' />
+  <StatusDot
+    status='idle' />
+  </Row>
+</Scene>
+```
+
+### TagList
+
+Small hairline tags for runtime, region, tier, or owner.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `tags`: `readonly React.ReactNode[]` (required)
+- `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="TagList example" subtitle="Edit this focused TagList scene" padding={22} gap={18}>
+  <TagList
+    tags={['rust', 'us-east-1', 'tier 0', 'on-call: payments']} />
+</Scene>
+```
+
+### DiagramLegend
+
+A one-line key with line samples and swatches.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `items`: `readonly DiagramLegendItem[]` (required)
+- `title`: `React.ReactNode` (optional)
+- `width`: `string | number` (optional)
+
+```tsx
+width = 960
+height = 480
+
+<Scene title="DiagramLegend example" subtitle="Edit this focused DiagramLegend scene" padding={22} gap={18}>
+  <DiagramLegend
+    width={420}
+    title='Relationships'
+    items={[{ label: 'synchronous', style: 'solid' },
+        { label: 'asynchronous', style: 'dashed' },
+        { label: 'event', style: 'dotted' },
+        { label: 'degraded', style: 'dot', tone: 'warm' }]} />
+</Scene>
+```
 ## Image tensors
 
 
@@ -65,7 +292,7 @@ Props:
 - `background`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (optional)
-- `justify`: `"center" | "flex-start" | "space-between" | "space-around"` (optional; allowed values: `propEnums.values1`)
+- `justify`: `"center" | "flex-start" | "space-between" | "space-around"` (optional; allowed values: `propEnums.values3`)
 - `padding`: `number` (optional)
 
 ```tsx
@@ -207,11 +434,14 @@ Props:
 - `children`: `React.ReactNode` (required)
 - `contentStyle`: `React.CSSProperties` (optional)
 - `contentWidth`: `string | number` (optional)
+- `density`: `Density` (optional): Type, spacing, and stroke scale for this scene and everything inside it.
 - `gap`: `number` (optional)
-- `justify`: `"center" | "flex-start" | "space-between" | "space-around" | undefined` (optional; allowed values: `propEnums.values1`)
+- `justify`: `"center" | "flex-start" | "space-between" | "space-around" | undefined` (optional; allowed values: `propEnums.values3`)
 - `padding`: `number` (optional)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
+- `titleAlign`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
+- `titleFont`: `"sans" | "serif"` (optional; allowed values: `propEnums.values5`)
 
 ```tsx
 width = 960
@@ -239,9 +469,11 @@ height = 480
 Standalone heading and supporting copy.
 
 Props:
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `subtitle`: `string` (optional)
 - `title`: `string` (required)
+- `titleFont`: `"sans" | "serif"` (optional; allowed values: `propEnums.values5`): Title voice. Serif suits articles and covers. Sans suits technical figures.
 
 ```tsx
 width = 960
@@ -272,7 +504,7 @@ Props:
 - `justify`: `FlexJustify` (optional; allowed values: `propEnums.FlexJustify`)
 - `style`: `React.CSSProperties` (optional)
 - `width`: `string | number` (optional)
-- `wrap`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `wrap`: `boolean` (optional; allowed values: `propEnums.values1`)
 
 ```tsx
 width = 960
@@ -313,7 +545,7 @@ Props:
 - `justify`: `FlexJustify` (optional; allowed values: `propEnums.FlexJustify`)
 - `style`: `React.CSSProperties` (optional)
 - `width`: `string | number` (optional)
-- `wrap`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `wrap`: `boolean` (optional; allowed values: `propEnums.values1`)
 
 ```tsx
 width = 960
@@ -349,9 +581,9 @@ Compact vertical grouping for related content.
 Props:
 - `align`: `"center" | "start" | "end" | "stretch"` (optional; allowed values: `propEnums.FlexAlign`)
 - `children`: `React.ReactNode` (required)
-- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values3`)
+- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values6`)
 - `gap`: `number` (optional)
-- `wrap`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `wrap`: `boolean` (optional; allowed values: `propEnums.values1`)
 
 ```tsx
 width = 960
@@ -395,7 +627,7 @@ Props:
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `React.ReactNode` (optional)
 - `title`: `React.ReactNode` (required)
 - `titleFontSize`: `number` (optional)
@@ -440,7 +672,7 @@ Props:
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `React.ReactNode` (optional)
 - `title`: `React.ReactNode` (optional)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
@@ -478,16 +710,16 @@ Props:
 - `bodyStyle`: `React.CSSProperties` (optional)
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (optional)
-- `dots`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `dots`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `height`: `string | number` (optional)
 - `minHeight`: `string | number` (optional)
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `title`: `React.ReactNode` (optional)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
-- `variant`: `"window" | "browser" | "terminal"` (optional; allowed values: `propEnums.values4`)
+- `variant`: `"window" | "browser" | "terminal"` (optional; allowed values: `propEnums.values7`)
 - `width`: `string | number` (optional)
 
 ```tsx
@@ -558,7 +790,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `color`: `string` (optional)
 - `label`: `string` (optional)
-- `muted`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `muted`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `name`: `IconName` (required; allowed values: `propEnums.IconName`)
 - `size`: `number` (optional)
 - `strokeWidth`: `number` (optional)
@@ -593,15 +825,15 @@ height = 480
 Wrapping-safe SVG or flex label.
 
 Props:
-- `align`: `"center" | "left" | "right"` (optional; allowed values: `propEnums.values5`)
+- `align`: `"center" | "left" | "right"` (optional; allowed values: `propEnums.values8`)
 - `c`: `ThemeColors` (required)
 - `color`: `string` (optional)
 - `fontSize`: `number` (optional)
 - `fontWeight`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `mono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `text`: `string` (required)
-- `variant`: `"code" | "title" | "subtitle" | "label" | "body" | "small" | "tiny" | "annotation"` (optional; allowed values: `propEnums.values6`)
+- `variant`: `"code" | "title" | "subtitle" | "label" | "body" | "small" | "tiny" | "annotation"` (optional; allowed values: `propEnums.values9`)
 - `width`: `string | number` (optional)
 
 ```tsx
@@ -661,7 +893,7 @@ Props:
 - `fontWeight`: `number` (optional)
 - `opacity`: `number` (optional)
 - `text`: `string` (required)
-- `textAnchor`: `"start" | "end" | "middle"` (optional; allowed values: `propEnums.values7`)
+- `textAnchor`: `"start" | "end" | "middle"` (optional; allowed values: `propEnums.values10`)
 - `x`: `number` (required)
 - `y`: `number` (required)
 
@@ -719,12 +951,12 @@ Inline status, category, or metadata label.
 
 Props:
 - `c`: `ThemeColors` (required)
-- `filled`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `filled`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `fontSize`: `number` (optional)
 - `height`: `string | number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minWidth`: `string | number` (optional)
-- `mono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
 - `text`: `React.ReactNode` (required)
@@ -757,18 +989,18 @@ height = 480
 Emphasized label with tone gradient.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `gradient`: `string` (optional)
 - `height`: `string | number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `React.ReactNode` (optional)
-- `subtitleMono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `subtitleMono`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `title`: `React.ReactNode` (required)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 - `width`: `string | number` (optional)
@@ -796,7 +1028,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `detail`: `React.ReactNode` (optional)
 - `label`: `React.ReactNode` (required)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 - `value`: `React.ReactNode` (required)
 - `width`: `string | number` (optional)
@@ -829,12 +1061,12 @@ height = 480
 Formula, result, and supporting detail.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `detail`: `React.ReactNode` (optional)
 - `formula`: `React.ReactNode` (required)
 - `height`: `string | number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `result`: `React.ReactNode` (optional)
 - `title`: `React.ReactNode` (required)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
@@ -860,15 +1092,15 @@ height = 480
 Numbered or staged process card.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `eyebrow`: `React.ReactNode` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `React.ReactNode` (optional)
 - `title`: `React.ReactNode` (required)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
@@ -908,21 +1140,21 @@ height = 480
 KPI value with label and context.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `detail`: `React.ReactNode` (optional)
 - `label`: `React.ReactNode` (required)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 - `value`: `React.ReactNode` (required)
 - `valueColor`: `string` (optional)
 - `valueFontSize`: `number` (optional)
-- `valueMono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `valueMono`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `width`: `string | number` (optional)
 
 ```tsx
@@ -955,12 +1187,12 @@ height = 480
 Focused takeaway, warning, or recommendation.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (optional)
 - `detail`: `React.ReactNode` (optional)
 - `detailFontSize`: `number` (optional)
-- `filled`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `filled`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `title`: `React.ReactNode` (optional)
@@ -991,8 +1223,8 @@ Props:
 - `fontSize`: `number` (optional)
 - `gap`: `number` (optional)
 - `items`: `React.ReactNode[]` (required)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `mono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `mono`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `padding`: `string | number` (optional)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 
@@ -1017,12 +1249,12 @@ Props:
 - `c`: `ThemeColors` (required)
 - `fontSize`: `number` (optional)
 - `lines`: `(React.ReactNode | CodeLineSpec)[]` (required)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minWidth`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showLineNumbers`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showLineNumbers`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `title`: `React.ReactNode` (optional)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 - `width`: `string | number` (optional)
@@ -1051,7 +1283,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `divider`: `React.ReactNode` (optional)
 - `gap`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `sides`: `ComparisonSideSpec[]` (required)
 - `sideWidth`: `string | number` (optional)
@@ -1075,12 +1307,12 @@ Aligned technical metadata rows.
 
 Props:
 - `c`: `ThemeColors` (required)
-- `divider`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `divider`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `fontSize`: `number` (optional)
 - `gap`: `number` (optional)
-- `keyMono`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `keyMono`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `keyWidth`: `string | number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minWidth`: `string | number` (optional)
 - `rows`: `KeyValueRow[]` (required)
 - `title`: `React.ReactNode` (optional)
@@ -1105,17 +1337,17 @@ height = 480
 Single labeled unit for feature or system maps.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (optional)
 - `eyebrow`: `React.ReactNode` (optional)
 - `icon`: `React.ReactNode` (optional)
 - `lines`: `React.ReactNode[]` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `padding`: `string | number` (optional)
 - `radius`: `number` (optional)
-- `shadow`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `shadow`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `React.ReactNode` (optional)
 - `title`: `React.ReactNode` (required)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
@@ -1143,11 +1375,11 @@ height = 480
 Dense grid of related labeled units.
 
 Props:
-- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values8`)
+- `align`: `"center" | "left"` (optional; allowed values: `propEnums.values4`)
 - `c`: `ThemeColors` (required)
 - `columns`: `number` (optional)
 - `gap`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `minHeight`: `string | number` (optional)
 - `tiles`: `TileSpec[]` (required)
 - `tileWidth`: `string | number` (optional)
@@ -1221,12 +1453,12 @@ Processes, timelines, status, and progress.
 Single operational state with detail.
 
 Props:
-- `boxed`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `boxed`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `c`: `ThemeColors` (required)
 - `detail`: `React.ReactNode` (optional)
 - `fontSize`: `number` (optional)
 - `label`: `React.ReactNode` (required)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `status`: `StatusKind` (optional; allowed values: `propEnums.StatusKind`)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 - `width`: `string | number` (optional)
@@ -1264,11 +1496,11 @@ height = 480
 Grouped checks, warnings, and pending work.
 
 Props:
-- `boxed`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `boxed`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `c`: `ThemeColors` (required)
 - `fontSize`: `number` (optional)
 - `gap`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `rows`: `StatusRowSpec[]` (required)
 - `width`: `string | number` (optional)
 
@@ -1292,12 +1524,12 @@ Ordered events in horizontal or vertical form.
 
 Props:
 - `c`: `ThemeColors` (required)
-- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values3`)
+- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values6`)
 - `events`: `TimelineEventSpec[]` (required)
 - `eventWidth`: `string | number` (optional)
 - `gap`: `number` (optional)
 - `markerSize`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `React.ReactNode` (optional)
 - `title`: `React.ReactNode` (optional)
 - `width`: `string | number` (optional)
@@ -1328,9 +1560,9 @@ Props:
 - `c`: `ThemeColors` (required)
 - `connectorLength`: `number` (optional)
 - `connectorTone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
-- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values3`)
+- `direction`: `"vertical" | "horizontal"` (optional; allowed values: `propEnums.values6`)
 - `gap`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `stages`: `FlowStageSpec[]` (required)
 
 ```tsx
@@ -1379,7 +1611,7 @@ Props:
 - `fontSize`: `number` (optional)
 - `label`: `React.ReactNode` (required)
 - `labelWidth`: `number` (optional)
-- `muted`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `muted`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
 - `value`: `number` (required)
 - `valueLabel`: `React.ReactNode` (optional)
@@ -1455,7 +1687,7 @@ Props:
 - `layers`: `LayeredNetworkLayer[]` (required)
 - `legend`: `string` (optional)
 - `nodeSize`: `number` (optional)
-- `showFormula`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showFormula`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `width`: `number` (optional)
 
 ```tsx
@@ -1479,29 +1711,34 @@ height = 560
 Auto-laid architecture graph with nested groups, icons, and semantic edges.
 
 Props:
+- `annotations`: `GraphDiagramAnnotation[]` (optional): Notes with leader lines, pointing at nodes.
 - `ariaLabel`: `string` (optional)
 - `arrowSize`: `number` (optional)
 - `c`: `ThemeColors` (required)
+- `crossingBudget`: `number` (optional): Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges.
+- `density`: `Density` (optional): Type, spacing, and stroke scale for this diagram.
 - `description`: `string` (optional)
 - `detailFontSize`: `number` (optional)
-- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values9`)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`)
 - `edgeGap`: `number` (optional)
 - `edges`: `GraphDiagramEdge[]` (required)
+- `groupDirection`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`): Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction="TB" and groupDirection="LR".
 - `groups`: `GraphDiagramGroup[]` (optional)
 - `height`: `number` (optional)
 - `iconSize`: `number` (optional)
 - `id`: `string` (optional)
 - `labelFontSize`: `number` (optional)
-- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values10`)
+- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values12`)
+- `legend`: `boolean | DiagramLegendItem[]` (optional): A key below the diagram. Pass true to build one from the relationship kinds in use.
 - `nodeGap`: `number` (optional)
-- `nodeHeight`: `number` (optional)
+- `nodeHeight`: `number` (optional): Minimum node height. Nodes grow when their content needs more.
 - `nodes`: `GraphDiagramNode[]` (required)
-- `nodeWidth`: `number` (optional)
+- `nodeWidth`: `number` (optional): Fixed node width. Omit it to size each node to its content.
 - `padding`: `number` (optional)
 - `rankGap`: `number` (optional)
-- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.
+- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers.
 - `routingClearance`: `number` (optional): Minimum node clearance in logical pixels for orthogonal routing.
-- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values11`)
+- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values13`)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
 
@@ -1532,7 +1769,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `height`: `number` (optional)
 - `levelGap`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `nodeHeight`: `number` (optional)
 - `nodeWidth`: `number` (optional)
 - `padding`: `number` (optional)
@@ -1622,7 +1859,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `description`: `string` (optional)
 - `detailFontSize`: `number` (optional)
-- `direction`: `"LR" | "RL" | "TB" | "BT" | undefined` (optional; allowed values: `propEnums.values9`)
+- `direction`: `"LR" | "RL" | "TB" | "BT" | undefined` (optional; allowed values: `propEnums.values11`)
 - `edgeGap`: `number` (optional)
 - `edges`: `DataflowEdge[]` (required)
 - `height`: `number` (optional)
@@ -1637,7 +1874,7 @@ Props:
 - `rankGap`: `number` (optional)
 - `routing`: `GraphRouting | undefined` (optional; allowed values: `propEnums.GraphRouting`)
 - `routingClearance`: `number | undefined` (optional)
-- `sizing`: `"content" | "fixed" | undefined` (optional; allowed values: `propEnums.values11`)
+- `sizing`: `"content" | "fixed" | undefined` (optional; allowed values: `propEnums.values13`)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
 
@@ -1672,29 +1909,34 @@ Infrastructure boundaries, workloads, ports, protocols, and trust direction.
 Nested region, network, and runtime boundaries with typed network connections.
 
 Props:
+- `annotations`: `GraphDiagramAnnotation[]` (optional): Notes with leader lines, pointing at nodes.
 - `ariaLabel`: `string` (optional)
 - `arrowSize`: `number` (optional)
 - `boundaries`: `DeploymentBoundary[]` (optional)
 - `c`: `ThemeColors` (required)
 - `connections`: `DeploymentConnection[]` (optional)
+- `crossingBudget`: `number` (optional): Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges.
+- `density`: `Density` (optional): Type, spacing, and stroke scale for this diagram.
 - `description`: `string` (optional)
 - `detailFontSize`: `number` (optional)
-- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values9`)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`)
 - `edgeGap`: `number` (optional)
+- `groupDirection`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`): Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction="TB" and groupDirection="LR".
 - `height`: `number` (optional)
 - `iconSize`: `number` (optional)
 - `id`: `string` (optional)
 - `labelFontSize`: `number` (optional)
-- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values10`)
+- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values12`)
+- `legend`: `boolean | DiagramLegendItem[]` (optional): A key below the diagram. Pass true to build one from the relationship kinds in use.
 - `nodeGap`: `number` (optional)
-- `nodeHeight`: `number` (optional)
+- `nodeHeight`: `number` (optional): Minimum node height. Nodes grow when their content needs more.
 - `nodes`: `DeploymentNode[]` (required)
-- `nodeWidth`: `number` (optional)
+- `nodeWidth`: `number` (optional): Fixed node width. Omit it to size each node to its content.
 - `padding`: `number` (optional)
 - `rankGap`: `number` (optional)
-- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.
+- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers.
 - `routingClearance`: `number` (optional): Minimum node clearance in logical pixels for orthogonal routing.
-- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values11`)
+- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values13`)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
 
@@ -1729,29 +1971,34 @@ Transformer blocks, tensor shapes, repeated layers, and distributed routes.
 Transformer computation topology with tensor metadata and collective routes.
 
 Props:
+- `annotations`: `GraphDiagramAnnotation[]` (optional): Notes with leader lines, pointing at nodes.
 - `ariaLabel`: `string` (optional)
 - `arrowSize`: `number` (optional)
 - `blocks`: `TransformerBlock[]` (required)
 - `c`: `ThemeColors` (required)
+- `crossingBudget`: `number` (optional): Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges.
+- `density`: `Density` (optional): Type, spacing, and stroke scale for this diagram.
 - `description`: `string` (optional)
 - `detailFontSize`: `number` (optional)
-- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values9`)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`)
 - `edgeGap`: `number` (optional)
-- `expandRepeats`: `boolean` (optional; allowed values: `propEnums.values2`): Expand repeat counts into individually addressable graph nodes.
+- `expandRepeats`: `boolean` (optional; allowed values: `propEnums.values1`): Expand repeat counts into individually addressable graph nodes.
+- `groupDirection`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`): Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction="TB" and groupDirection="LR".
 - `height`: `number` (optional)
 - `iconSize`: `number` (optional)
 - `id`: `string` (optional)
 - `labelFontSize`: `number` (optional)
-- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values10`)
+- `layout`: `"auto" | "manual"` (optional; allowed values: `propEnums.values12`)
+- `legend`: `boolean | DiagramLegendItem[]` (optional): A key below the diagram. Pass true to build one from the relationship kinds in use.
 - `nodeGap`: `number` (optional)
-- `nodeHeight`: `number` (optional)
-- `nodeWidth`: `number` (optional)
+- `nodeHeight`: `number` (optional): Minimum node height. Nodes grow when their content needs more.
+- `nodeWidth`: `number` (optional): Fixed node width. Omit it to size each node to its content.
 - `padding`: `number` (optional)
 - `rankGap`: `number` (optional)
 - `routes`: `TransformerRoute[]` (optional)
-- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.
+- `routing`: `GraphRouting` (optional; allowed values: `propEnums.GraphRouting`): Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers.
 - `routingClearance`: `number` (optional): Minimum node clearance in logical pixels for orthogonal routing.
-- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values11`)
+- `sizing`: `"content" | "fixed"` (optional; allowed values: `propEnums.values13`)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
 
@@ -1792,11 +2039,11 @@ Props:
 - `cellWidth`: `number` (optional)
 - `colLabels`: `string[]` (optional)
 - `colorDomain`: `readonly [number, number]` (optional)
-- `colorize`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values12`)
+- `colorize`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values14`)
 - `data`: `number[][]` (required)
 - `fontSize`: `number` (optional)
-- `format`: `"decimal" | "percent" | "integer"` (optional; allowed values: `propEnums.values13`)
+- `format`: `"decimal" | "percent" | "integer"` (optional; allowed values: `propEnums.values15`)
 - `highlightCell`: `{ row: number; col: number; }` (optional)
 - `highlightCol`: `number` (optional)
 - `highlightColor`: `string` (optional)
@@ -1834,7 +2081,7 @@ Props:
 - `cellSize`: `number` (optional)
 - `cellWidth`: `number` (optional)
 - `colorDomain`: `readonly [number, number]` (optional)
-- `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values12`)
+- `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values14`)
 - `data`: `number[][]` (required)
 - `fontSize`: `number` (optional)
 - `highlightCell`: `{ row: number; col: number; }` (optional)
@@ -1875,9 +2122,9 @@ Props:
 - `c`: `ThemeColors` (required)
 - `cellSize`: `number` (optional)
 - `cols`: `number` (required)
-- `crossedOut`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `crossedOut`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `gap`: `number` (optional)
-- `muted`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `muted`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `regions`: `TiledMatrixRegion[]` (optional)
 - `rows`: `number` (required)
 - `subtitle`: `React.ReactNode` (optional)
@@ -1907,16 +2154,18 @@ height = 480
 Structured rows and columns with headers.
 
 Props:
+- `align`: `readonly ("center" | "left" | "right")[]` (optional): Text alignment per column. Defaults to left for the first column and right for the rest.
 - `c`: `ThemeColors` (required)
 - `cellHeight`: `number` (optional)
-- `cellWidth`: `number` (optional)
+- `cellWidth`: `number` (optional): Fixed column width. Omit it to size columns to their content.
 - `firstColWidth`: `number` (optional)
 - `fontSize`: `number` (optional)
 - `gap`: `number` (optional)
 - `headerCols`: `number` (optional)
 - `headerRows`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `rows`: `React.ReactNode[][]` (required)
+- `width`: `string | number` (optional)
 
 ```tsx
 width = 960
@@ -1945,7 +2194,7 @@ Props:
 - `gap`: `number` (optional)
 - `headerCols`: `number` (optional)
 - `headerRows`: `number` (optional)
-- `math`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `math`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `radius`: `number` (optional)
 - `rows`: `(React.ReactNode | GridCell)[][]` (required)
 
@@ -1983,7 +2232,7 @@ Props:
 - `max`: `number` (optional)
 - `minBarHeight`: `number` (optional)
 - `radius`: `number` (optional)
-- `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showValues`: `boolean` (optional; allowed values: `propEnums.values1`)
 
 ```tsx
 width = 960
@@ -2016,6 +2265,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (required)
 - `footer`: `string` (optional)
+- `framed`: `boolean` (optional; allowed values: `propEnums.values1`): Draw a card around the chart. Off by default, since most charts already sit in a panel.
 - `height`: `string | number` (optional)
 - `legend`: `ChartLegendItem[]` (optional)
 - `padding`: `number` (optional)
@@ -2056,7 +2306,7 @@ Props:
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `segments`: `DonutChartSegment[]` (required)
-- `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `size`: `number` (optional)
 - `subtitle`: `string` (optional)
 - `thickness`: `number` (optional)
@@ -2094,7 +2344,7 @@ Props:
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `segments`: `DonutChartSegment[]` (required)
-- `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `size`: `number` (optional)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
@@ -2128,7 +2378,7 @@ Props:
 - `c`: `ThemeColors` (required)
 - `height`: `number` (optional)
 - `segments`: `StackedBarSegment[]` (required)
-- `showLegend`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2161,8 +2411,8 @@ Props:
 - `height`: `number` (optional)
 - `max`: `number` (optional)
 - `min`: `number` (optional)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showValues`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2199,6 +2449,7 @@ One or more trends across an ordered axis.
 
 Props:
 - `c`: `ThemeColors` (required)
+- `directLabels`: `boolean` (optional; allowed values: `propEnums.values1`): Name each line at its end instead of in a legend. On when there are several series.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
@@ -2206,8 +2457,8 @@ Props:
 - `max`: `number` (optional)
 - `min`: `number` (optional)
 - `series`: `LineChartSeries[]` (required)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showPoints`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showPoints`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2245,7 +2496,7 @@ Props:
 - `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
 - `points`: `ScatterPoint[]` (required)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2294,8 +2545,8 @@ Props:
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showValues`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showValues`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2333,8 +2584,8 @@ Props:
 - `goalLabel`: `string` (optional)
 - `height`: `number` (optional)
 - `points`: `ScatterPoint[]` (required)
-- `showGoal`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGoal`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2393,8 +2644,8 @@ Props:
 - `height`: `number` (optional)
 - `points`: `ScatterPoint[]` (required)
 - `regions`: `{ topLeft: QuadrantRegion; topRight: QuadrantRegion; bottomLeft: QuadrantRegion; bottomRight: QuadrantRegion; }` (required)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showTicks`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showTicks`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
@@ -2588,8 +2839,8 @@ Props:
 - `c`: `ThemeColors` (required)
 - `forces`: `ForceVector[]` (required)
 - `height`: `number` (optional)
-- `showComponents`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showResultant`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showComponents`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showResultant`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `title`: `string` (optional)
 - `width`: `number` (optional)
 
@@ -2620,8 +2871,8 @@ Props:
 - `height`: `number` (optional)
 - `probeX`: `number` (optional)
 - `sampleCount`: `number` (optional)
-- `showComponents`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showSum`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showComponents`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showSum`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `time`: `number` (required)
 - `title`: `string` (optional)
 - `waves`: `Wave[]` (required)
@@ -2698,7 +2949,7 @@ Props:
 - `conditions`: `string` (optional)
 - `products`: `ReactionTerm[]` (required)
 - `reactants`: `ReactionTerm[]` (required)
-- `reversible`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `reversible`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `width`: `number` (optional)
 
 ```tsx
@@ -2816,11 +3067,11 @@ Props:
 - `c`: `ThemeColors` (required)
 - `color`: `ColorName` (optional; allowed values: `propEnums.ColorName`)
 - `fontSize`: `number` (optional)
-- `gradient`: `boolean` (optional; allowed values: `propEnums.values2`): Use gradient background instead of solid
+- `gradient`: `boolean` (optional; allowed values: `propEnums.values1`): Use gradient background instead of solid
 - `height`: `number` (optional)
 - `icon`: `string` (optional): Optional icon/emoji before label
 - `label`: `string` (required)
-- `outlined`: `boolean` (optional; allowed values: `propEnums.values2`): Outlined style instead of filled
+- `outlined`: `boolean` (optional; allowed values: `propEnums.values1`): Outlined style instead of filled
 - `radius`: `number` (optional): Border radius
 - `sublabel`: `string` (optional): Optional sub-label below main label
 - `width`: `number` (optional)
@@ -2859,7 +3110,7 @@ Straight labeled SVG arrow.
 Props:
 - `c`: `ThemeColors` (required)
 - `color`: `string` (optional)
-- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values14`)
+- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values16`)
 - `label`: `string` (optional)
 - `length`: `number` (optional)
 
@@ -2882,7 +3133,7 @@ Reusable SVG arrowhead definition.
 
 Props:
 - `color`: `string` (required)
-- `direction`: `"start" | "end"` (optional; allowed values: `propEnums.values15`)
+- `direction`: `"start" | "end"` (optional; allowed values: `propEnums.values17`)
 - `id`: `string` (required)
 - `size`: `number` (optional)
 
@@ -2925,7 +3176,7 @@ Straight directional connector with label and tone.
 Props:
 - `c`: `ThemeColors` (required)
 - `color`: `string` (optional)
-- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values14`)
+- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values16`)
 - `label`: `string` (optional)
 - `length`: `number` (optional)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
@@ -2950,7 +3201,7 @@ Alias for flow connectors in diagram code.
 Props:
 - `c`: `ThemeColors` (required)
 - `color`: `string` (optional)
-- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values14`)
+- `direction`: `"left" | "right" | "down" | "up"` (optional; allowed values: `propEnums.values16`)
 - `label`: `string` (optional)
 - `length`: `number` (optional)
 - `tone`: `ToneName` (optional; allowed values: `propEnums.ToneName`)
@@ -3024,8 +3275,8 @@ Props:
 - `dotRadius`: `number` (optional)
 - `key`: `React.Key` (optional)
 - `opacity`: `number` (optional)
-- `showEndDot`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showStartDot`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showEndDot`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showStartDot`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `strokeWidth`: `number` (optional)
 - `x1`: `number` (required)
 - `x2`: `number` (required)
@@ -3218,9 +3469,9 @@ Props:
 - `padding`: `number` (optional)
 - `paths`: `AxisPlotPath[]` (optional)
 - `points`: `AxisPlotPoint[]` (optional)
-- `showAxes`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showFrame`: `boolean` (optional; allowed values: `propEnums.values2`)
-- `showGrid`: `boolean` (optional; allowed values: `propEnums.values2`)
+- `showAxes`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showFrame`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `vectors`: `AxisPlotVector[]` (optional)
 - `width`: `number` (required)
 - `xAxisLabel`: `string` (optional)
@@ -3253,30 +3504,33 @@ height = 560
 
 Finite allowed values referenced by component props:
 
+- `propEnums.values1`: [false,true]
+- `propEnums.ToneName`: ["blue","purple","green","warm","cyan","pink","red","critical","neutral","sunset","ocean","dark"]
+- `propEnums.values2`: ["row","column"]
+- `propEnums.DiagramStatus`: ["ok","warn","error","idle","critical","neutral","blue","purple","green","warm","cyan","pink","red","sunset","ocean","dark"]
 - `propEnums.RgbChannel`: ["rgb","red","green","blue"]
-- `propEnums.values1`: ["center","flex-start","space-between","space-around"]
-- `propEnums.FlexAlign`: ["center","start","end","stretch"]
-- `propEnums.FlexJustify`: ["center","space-between","space-around","start","end"]
-- `propEnums.values2`: [false,true]
-- `propEnums.values3`: ["vertical","horizontal"]
-- `propEnums.ToneName`: ["critical","neutral","red","green","blue","purple","warm","cyan","pink","sunset","ocean","dark"]
-- `propEnums.values4`: ["window","browser","terminal"]
-- `propEnums.IconName`: ["warning","browser","terminal","agent","bucket","cache","chart","check","cluster","code","cloud","container","database","file","firewall","gateway","git","globe","image","layers","lock","load-balancer","mobile","monitor","network","play","queue","server","spark","storage","stream","tool","user"]
-- `propEnums.values5`: ["center","left","right"]
-- `propEnums.values6`: ["code","title","subtitle","label","body","small","tiny","annotation"]
-- `propEnums.values7`: ["start","end","middle"]
-- `propEnums.ColorName`: ["primary","secondary","positive","warning","critical","info","accent","neutral"]
-- `propEnums.values8`: ["center","left"]
+- `propEnums.values3`: ["center","flex-start","space-between","space-around"]
+- `propEnums.FlexAlign`: ["start","center","end","stretch"]
+- `propEnums.values4`: ["center","left"]
+- `propEnums.values5`: ["sans","serif"]
+- `propEnums.FlexJustify`: ["start","center","end","space-between","space-around"]
+- `propEnums.values6`: ["vertical","horizontal"]
+- `propEnums.values7`: ["window","browser","terminal"]
+- `propEnums.IconName`: ["agent","bucket","browser","cache","chart","check","cluster","code","cloud","container","database","file","firewall","gateway","git","globe","image","layers","lock","load-balancer","mobile","monitor","network","play","queue","server","spark","storage","stream","terminal","tool","user","warning"]
+- `propEnums.values8`: ["center","left","right"]
+- `propEnums.values9`: ["code","title","subtitle","label","body","small","tiny","annotation"]
+- `propEnums.values10`: ["start","end","middle"]
+- `propEnums.ColorName`: ["primary","secondary","positive","warning","critical","info","accent","neutral","violet"]
 - `propEnums.WatermarkPosition`: ["top-left","top-right","bottom-left","bottom-right"]
-- `propEnums.StatusKind`: ["info","check","cross","warn","pending","dot"]
-- `propEnums.values9`: ["LR","RL","TB","BT"]
-- `propEnums.values10`: ["auto","manual"]
+- `propEnums.StatusKind`: ["check","cross","warn","info","pending","dot"]
+- `propEnums.values11`: ["LR","RL","TB","BT"]
+- `propEnums.values12`: ["auto","manual"]
 - `propEnums.GraphRouting`: ["dagre","straight","orthogonal"]
-- `propEnums.values11`: ["content","fixed"]
-- `propEnums.values12`: ["heat","strength"]
-- `propEnums.values13`: ["decimal","percent","integer"]
+- `propEnums.values13`: ["content","fixed"]
+- `propEnums.values14`: ["heat","strength"]
+- `propEnums.values15`: ["decimal","percent","integer"]
 - `propEnums.ChartValueFormat`: ["decimal","percent","integer","compact"]
 - `propEnums.ParetoObjective`: ["minimize","maximize"]
 - `propEnums.ParetoXScale`: ["linear","log"]
-- `propEnums.values14`: ["left","right","down","up"]
-- `propEnums.values15`: ["start","end"]
+- `propEnums.values16`: ["left","right","down","up"]
+- `propEnums.values17`: ["start","end"]

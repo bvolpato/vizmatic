@@ -7,6 +7,7 @@ type AutoTheme<T> = T extends (props: infer Props) => infer Result
 declare global {
     var width: number
     var height: number
+    var density: import('../src').Density
     var preset: import('../src').ThemePreset
     var background: string
 

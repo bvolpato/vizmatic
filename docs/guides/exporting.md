@@ -1,0 +1,91 @@
+---
+title: Exporting
+nav: Exporting
+section: Ship
+order: 2
+description: Export MP4, WebM, GIF, PNG, and SVG from the command line or from code. Frames rasterize on worker threads and encode in order.
+---
+
+## From the command line
+
+```bash
+npx vizmatic film my-film.ts --out ./out
+npx vizmatic film my-film.ts --format mp4,webm,gif --quality high
+npx vizmatic film my-film.ts --look midnight,paper --width 3840
+```
+
+MP4 export needs FFmpeg with `libx264`. WebM also needs `libvpx-vp9`. The CLI writes a manifest with sizes and timings beside the files.
+
+## Quality
+
+| Quality | Use | H.264 CRF | Motion blur |
+|---|---|---|---|
+| `draft` | Checking timing. | 26 | off |
+| `standard` | The default. | 18 | off |
+| `high` | Publishing. | 15 | 4 samples |
+| `master` | Archiving and re-encoding. | 11 | 8 samples |
+
+Motion blur averages real sub-frames across the shutter, so it costs one render for each sample. `--motion-blur` and `--shutter` set these directly.
+
+## Resolution
+
+A film is authored in stage units, so `--width` changes only the pixel count. MP4 and WebM need even dimensions, so the export rounds an odd width or height up to the next even number.
+
+## Stills
+
+`--frame` writes PNG files at the given times. `--poster` also writes the fullest moment at rest, or the time you set with `film({ poster: 12 })`.
+
+```bash
+npx vizmatic film my-film.ts --frame 2.5,7 --width 1280
+```
+
+## SVG
+
+A frame is a list of vector paths, so it exports as standalone SVG with no fonts needed.
+
+```bash
+npx vizmatic film my-film.ts --format svg --frame 7
+```
+
+## Part of a film
+
+`--range` renders part of the timeline, which helps while you adjust one section.
+
+```bash
+npx vizmatic film my-film.ts --range 12:18 --quality draft
+```
+
+## Sound
+
+`--audio` adds a track. The audio is padded or trimmed to the film's length. FFmpeg must include AAC.
+
+```bash
+npx vizmatic film my-film.ts --audio narration.wav
+```
+
+Captions from `s.caption` export as a WebVTT file beside the video.
+
+## From code
+
+```ts
+import { compileFilm, film, text, write } from 'vizmatic/stage'
+import { renderFilmFrame, renderFilmVideo } from 'vizmatic/stage/export'
+
+const intro = film((s) => {
+    s.play(write(s.add(text('Hello', { font: 'serif', size: 200 }))))
+})
+
+export async function render(): Promise<void> {
+    const compiled = await compileFilm(intro, { look: 'paper' })
+    await renderFilmVideo(compiled, 'out/intro.mp4', { quality: 'high' })
+    await renderFilmFrame(compiled, compiled.duration, 'out/intro.png', { width: 1280 })
+}
+```
+
+## Bloom
+
+Bloom is part of a look, and export applies it after rasterizing. Pass `bloom` on the film to change it. Set it to `0` for line art that needs exact colors.
+
+## Speed
+
+Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.

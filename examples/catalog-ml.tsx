@@ -25,9 +25,7 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 title="One pre-norm decoder block"
                 subtitle="Attention and MLP each have an explicit residual update"
-                tone="purple"
                 width="100%"
-                minHeight={560}
                 padding={14}
                 align="center"
                 footer="Repeat this complete attention + MLP block 24 times. Shapes use B=batch, T=tokens, and d=model width; residual routes add each sublayer output to its input, and KV routes persist keys and values."
@@ -91,7 +89,6 @@ export function create(theme: ThemeMode = 'dark') {
                             kind: 'custom',
                             detail: 'paged state',
                             shape: { dims: ['B', '8', 'T', '128'], dtype: 'bf16' },
-                            tone: 'cyan',
                         },
                         {
                             id: 'logits',

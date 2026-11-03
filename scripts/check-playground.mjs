@@ -566,7 +566,7 @@ try {
         textarea.focus()
         textarea.setSelectionRange(selection.start, selection.end)
     }, { start: selectionStart, end: selectionStart + selectedText.length })
-    await editor.press('Control+C')
+    await editor.press('ControlOrMeta+C')
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), selectedText,
         'Ctrl+C in the source editor should copy selected text instead of the canvas block.')
 

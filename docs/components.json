@@ -1,67 +1,95 @@
 {
   "name": "vizmatic",
-  "version": "0.4.0",
-  "count": 84,
+  "version": "0.5.0",
+  "count": 92,
   "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html",
   "propEnums": {
+    "values1": [
+      false,
+      true
+    ],
+    "ToneName": [
+      "blue",
+      "purple",
+      "green",
+      "warm",
+      "cyan",
+      "pink",
+      "red",
+      "critical",
+      "neutral",
+      "sunset",
+      "ocean",
+      "dark"
+    ],
+    "values2": [
+      "row",
+      "column"
+    ],
+    "DiagramStatus": [
+      "ok",
+      "warn",
+      "error",
+      "idle",
+      "critical",
+      "neutral",
+      "blue",
+      "purple",
+      "green",
+      "warm",
+      "cyan",
+      "pink",
+      "red",
+      "sunset",
+      "ocean",
+      "dark"
+    ],
     "RgbChannel": [
       "rgb",
       "red",
       "green",
       "blue"
     ],
-    "values1": [
+    "values3": [
       "center",
       "flex-start",
       "space-between",
       "space-around"
     ],
     "FlexAlign": [
-      "center",
       "start",
+      "center",
       "end",
       "stretch"
     ],
-    "FlexJustify": [
+    "values4": [
       "center",
-      "space-between",
-      "space-around",
+      "left"
+    ],
+    "values5": [
+      "sans",
+      "serif"
+    ],
+    "FlexJustify": [
       "start",
-      "end"
+      "center",
+      "end",
+      "space-between",
+      "space-around"
     ],
-    "values2": [
-      false,
-      true
-    ],
-    "values3": [
+    "values6": [
       "vertical",
       "horizontal"
     ],
-    "ToneName": [
-      "critical",
-      "neutral",
-      "red",
-      "green",
-      "blue",
-      "purple",
-      "warm",
-      "cyan",
-      "pink",
-      "sunset",
-      "ocean",
-      "dark"
-    ],
-    "values4": [
+    "values7": [
       "window",
       "browser",
       "terminal"
     ],
     "IconName": [
-      "warning",
-      "browser",
-      "terminal",
       "agent",
       "bucket",
+      "browser",
       "cache",
       "chart",
       "check",
@@ -88,15 +116,17 @@
       "spark",
       "storage",
       "stream",
+      "terminal",
       "tool",
-      "user"
+      "user",
+      "warning"
     ],
-    "values5": [
+    "values8": [
       "center",
       "left",
       "right"
     ],
-    "values6": [
+    "values9": [
       "code",
       "title",
       "subtitle",
@@ -106,7 +136,7 @@
       "tiny",
       "annotation"
     ],
-    "values7": [
+    "values10": [
       "start",
       "end",
       "middle"
@@ -119,11 +149,8 @@
       "critical",
       "info",
       "accent",
-      "neutral"
-    ],
-    "values8": [
-      "center",
-      "left"
+      "neutral",
+      "violet"
     ],
     "WatermarkPosition": [
       "top-left",
@@ -132,20 +159,20 @@
       "bottom-right"
     ],
     "StatusKind": [
-      "info",
       "check",
       "cross",
       "warn",
+      "info",
       "pending",
       "dot"
     ],
-    "values9": [
+    "values11": [
       "LR",
       "RL",
       "TB",
       "BT"
     ],
-    "values10": [
+    "values12": [
       "auto",
       "manual"
     ],
@@ -154,15 +181,15 @@
       "straight",
       "orthogonal"
     ],
-    "values11": [
+    "values13": [
       "content",
       "fixed"
     ],
-    "values12": [
+    "values14": [
       "heat",
       "strength"
     ],
-    "values13": [
+    "values15": [
       "decimal",
       "percent",
       "integer"
@@ -181,18 +208,345 @@
       "linear",
       "log"
     ],
-    "values14": [
+    "values16": [
       "left",
       "right",
       "down",
       "up"
     ],
-    "values15": [
+    "values17": [
       "start",
       "end"
     ]
   },
   "categories": [
+    {
+      "id": "dense",
+      "label": "Dense information",
+      "description": "Word-sized charts, fact rows, and keys that pack real data into nodes and dashboards.",
+      "source": "catalog-dense",
+      "count": 8,
+      "components": [
+        {
+          "name": "Sparkline",
+          "description": "A word-sized trend line to set beside a number.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"Sparkline example\" subtitle=\"Edit this focused Sparkline scene\" padding={22} gap={18}>\n  <Row\n    gap={14}\n    justify='start'>\n  <MetricStrip\n    width={120}\n    metrics={[{ label: 'requests', value: '18.4', unit: 'k/s' }]} />\n  <Sparkline\n    values={[12, 14, 13, 17, 16, 21, 24, 22, 26]}\n    width={120}\n    height={28} area\n    tone='blue' />\n  </Row>\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "area",
+              "type": "boolean",
+              "required": false,
+              "description": "Fill under the line.",
+              "allowedValuesRef": "values1"
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "color",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "endDot",
+              "type": "boolean",
+              "required": false,
+              "description": "Mark the final value.",
+              "allowedValuesRef": "values1"
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "max",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "min",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "strokeWidth",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "tone",
+              "type": "ToneName",
+              "required": false,
+              "allowedValuesRef": "ToneName"
+            },
+            {
+              "name": "values",
+              "type": "readonly number[]",
+              "required": true
+            },
+            {
+              "name": "width",
+              "type": "number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Sparkline%20example%22%20subtitle%3D%22Edit%20this%20focused%20Sparkline%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%0A%20%20%20%20justify%3D'start'%3E%0A%20%20%3CMetricStrip%0A%20%20%20%20width%3D%7B120%7D%0A%20%20%20%20metrics%3D%7B%5B%7B%20label%3A%20'requests'%2C%20value%3A%20'18.4'%2C%20unit%3A%20'k%2Fs'%20%7D%5D%7D%20%2F%3E%0A%20%20%3CSparkline%0A%20%20%20%20values%3D%7B%5B12%2C%2014%2C%2013%2C%2017%2C%2016%2C%2021%2C%2024%2C%2022%2C%2026%5D%7D%0A%20%20%20%20width%3D%7B120%7D%0A%20%20%20%20height%3D%7B28%7D%20area%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "SmallMultiples",
+          "description": "One chart repeated across services or regions, with an optional shared scale.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"SmallMultiples example\" subtitle=\"Edit this focused SmallMultiples scene\" padding={22} gap={18}>\n  <SmallMultiples\n    columns={3} sharedScale\n    items={[{ label: 'api', values: [42, 44, 41, 48, 52, 49], value: '49', unit: 'ms', status: 'ok', reference: 60 },\n        { label: 'search', values: [80, 84, 92, 110, 118, 124], value: '124', unit: 'ms', status: 'warn', tone: 'warm', reference: 60 },\n        { label: 'ledger', values: [30, 31, 29, 33, 32, 31], value: '31', unit: 'ms', status: 'ok', reference: 60 }]} />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "area",
+              "type": "boolean",
+              "required": false,
+              "allowedValuesRef": "values1"
+            },
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "cellHeight",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "cellWidth",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "columns",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "items",
+              "type": "readonly SmallMultipleItem[]",
+              "required": true
+            },
+            {
+              "name": "sharedScale",
+              "type": "boolean",
+              "required": false,
+              "description": "Give all cells one y scale, so they compare directly.",
+              "allowedValuesRef": "values1"
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22SmallMultiples%20example%22%20subtitle%3D%22Edit%20this%20focused%20SmallMultiples%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CSmallMultiples%0A%20%20%20%20columns%3D%7B3%7D%20sharedScale%0A%20%20%20%20items%3D%7B%5B%7B%20label%3A%20'api'%2C%20values%3A%20%5B42%2C%2044%2C%2041%2C%2048%2C%2052%2C%2049%5D%2C%20value%3A%20'49'%2C%20unit%3A%20'ms'%2C%20status%3A%20'ok'%2C%20reference%3A%2060%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'search'%2C%20values%3A%20%5B80%2C%2084%2C%2092%2C%20110%2C%20118%2C%20124%5D%2C%20value%3A%20'124'%2C%20unit%3A%20'ms'%2C%20status%3A%20'warn'%2C%20tone%3A%20'warm'%2C%20reference%3A%2060%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'ledger'%2C%20values%3A%20%5B30%2C%2031%2C%2029%2C%2033%2C%2032%2C%2031%5D%2C%20value%3A%20'31'%2C%20unit%3A%20'ms'%2C%20status%3A%20'ok'%2C%20reference%3A%2060%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "MetricStrip",
+          "description": "Numbers with units side by side, without a card around each one.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"MetricStrip example\" subtitle=\"Edit this focused MetricStrip scene\" padding={22} gap={18}>\n  <MetricStrip\n    width={420}\n    metrics={[{ label: 'p50', value: '42', unit: 'ms' },\n        { label: 'p99', value: '310', unit: 'ms', tone: 'warm', bar: 0.78 },\n        { label: 'error rate', value: '0.04', unit: '%', spark: [3, 2, 4, 2, 1, 1] }]} />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "direction",
+              "type": "\"row\" | \"column\"",
+              "required": false,
+              "description": "Lay out in a row with even columns, or stack.",
+              "allowedValuesRef": "values2"
+            },
+            {
+              "name": "metrics",
+              "type": "readonly StripMetric[]",
+              "required": true
+            },
+            {
+              "name": "sparkWidth",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "string | number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MetricStrip%20example%22%20subtitle%3D%22Edit%20this%20focused%20MetricStrip%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMetricStrip%0A%20%20%20%20width%3D%7B420%7D%0A%20%20%20%20metrics%3D%7B%5B%7B%20label%3A%20'p50'%2C%20value%3A%20'42'%2C%20unit%3A%20'ms'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'p99'%2C%20value%3A%20'310'%2C%20unit%3A%20'ms'%2C%20tone%3A%20'warm'%2C%20bar%3A%200.78%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'error%20rate'%2C%20value%3A%20'0.04'%2C%20unit%3A%20'%25'%2C%20spark%3A%20%5B3%2C%202%2C%204%2C%202%2C%201%2C%201%5D%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "FactRows",
+          "description": "Tight key and value rows with optional capacity bars.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"FactRows example\" subtitle=\"Edit this focused FactRows scene\" padding={22} gap={18}>\n  <FactRows\n    width={240}\n    rows={[{ key: 'region', value: 'us-east-1' },\n        { key: 'replicas', value: '12 / 12' },\n        { key: 'capacity', value: '71%', bar: 0.71 },\n        { key: 'disk', value: '91%', bar: 0.91, tone: 'warm' }]} />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "fontSize",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "gap",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "mono",
+              "type": "boolean",
+              "required": false,
+              "description": "Set values in monospace, so columns of numbers line up.",
+              "allowedValuesRef": "values1"
+            },
+            {
+              "name": "rows",
+              "type": "readonly FactRow[]",
+              "required": true
+            },
+            {
+              "name": "width",
+              "type": "string | number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22FactRows%20example%22%20subtitle%3D%22Edit%20this%20focused%20FactRows%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CFactRows%0A%20%20%20%20width%3D%7B240%7D%0A%20%20%20%20rows%3D%7B%5B%7B%20key%3A%20'region'%2C%20value%3A%20'us-east-1'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20'replicas'%2C%20value%3A%20'12%20%2F%2012'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20'capacity'%2C%20value%3A%20'71%25'%2C%20bar%3A%200.71%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20key%3A%20'disk'%2C%20value%3A%20'91%25'%2C%20bar%3A%200.91%2C%20tone%3A%20'warm'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "InlineBar",
+          "description": "A hairline capacity bar that sits under a value.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"InlineBar example\" subtitle=\"Edit this focused InlineBar scene\" padding={22} gap={18}>\n  <Column\n    gap={8}\n    align='stretch'\n    width={220}>\n  <InlineBar\n    value={0.42} />\n  <InlineBar\n    value={0.71}\n    tone='blue' />\n  <InlineBar\n    value={0.93}\n    warnAt={0.85} />\n  </Column>\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "color",
+              "type": "string",
+              "required": false
+            },
+            {
+              "name": "height",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "tone",
+              "type": "ToneName",
+              "required": false,
+              "allowedValuesRef": "ToneName"
+            },
+            {
+              "name": "value",
+              "type": "number",
+              "required": true
+            },
+            {
+              "name": "warnAt",
+              "type": "number",
+              "required": false,
+              "description": "Past this fraction the bar turns to the warning color, for capacity."
+            },
+            {
+              "name": "width",
+              "type": "string | number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22InlineBar%20example%22%20subtitle%3D%22Edit%20this%20focused%20InlineBar%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B8%7D%0A%20%20%20%20align%3D'stretch'%0A%20%20%20%20width%3D%7B220%7D%3E%0A%20%20%3CInlineBar%0A%20%20%20%20value%3D%7B0.42%7D%20%2F%3E%0A%20%20%3CInlineBar%0A%20%20%20%20value%3D%7B0.71%7D%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3CInlineBar%0A%20%20%20%20value%3D%7B0.93%7D%0A%20%20%20%20warnAt%3D%7B0.85%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "StatusDot",
+          "description": "A small health marker: ok, warn, error, idle, or any tone.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"StatusDot example\" subtitle=\"Edit this focused StatusDot scene\" padding={22} gap={18}>\n  <Row\n    gap={12}\n    justify='start'>\n  <StatusDot\n    status='ok' />\n  <StatusDot\n    status='warn' />\n  <StatusDot\n    status='error' />\n  <StatusDot\n    status='idle' />\n  </Row>\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "size",
+              "type": "number",
+              "required": false
+            },
+            {
+              "name": "status",
+              "type": "DiagramStatus",
+              "required": false,
+              "allowedValuesRef": "DiagramStatus"
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22StatusDot%20example%22%20subtitle%3D%22Edit%20this%20focused%20StatusDot%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20justify%3D'start'%3E%0A%20%20%3CStatusDot%0A%20%20%20%20status%3D'ok'%20%2F%3E%0A%20%20%3CStatusDot%0A%20%20%20%20status%3D'warn'%20%2F%3E%0A%20%20%3CStatusDot%0A%20%20%20%20status%3D'error'%20%2F%3E%0A%20%20%3CStatusDot%0A%20%20%20%20status%3D'idle'%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "TagList",
+          "description": "Small hairline tags for runtime, region, tier, or owner.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"TagList example\" subtitle=\"Edit this focused TagList scene\" padding={22} gap={18}>\n  <TagList\n    tags={['rust', 'us-east-1', 'tier 0', 'on-call: payments']} />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "tags",
+              "type": "readonly React.ReactNode[]",
+              "required": true
+            },
+            {
+              "name": "tone",
+              "type": "ToneName",
+              "required": false,
+              "allowedValuesRef": "ToneName"
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TagList%20example%22%20subtitle%3D%22Edit%20this%20focused%20TagList%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CTagList%0A%20%20%20%20tags%3D%7B%5B'rust'%2C%20'us-east-1'%2C%20'tier%200'%2C%20'on-call%3A%20payments'%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        },
+        {
+          "name": "DiagramLegend",
+          "description": "A one-line key with line samples and swatches.",
+          "example": "width = 960\nheight = 480\n\n<Scene title=\"DiagramLegend example\" subtitle=\"Edit this focused DiagramLegend scene\" padding={22} gap={18}>\n  <DiagramLegend\n    width={420}\n    title='Relationships'\n    items={[{ label: 'synchronous', style: 'solid' },\n        { label: 'asynchronous', style: 'dashed' },\n        { label: 'event', style: 'dotted' },\n        { label: 'degraded', style: 'dot', tone: 'warm' }]} />\n</Scene>",
+          "controls": [],
+          "props": [
+            {
+              "name": "c",
+              "type": "ThemeColors",
+              "required": true
+            },
+            {
+              "name": "items",
+              "type": "readonly DiagramLegendItem[]",
+              "required": true
+            },
+            {
+              "name": "title",
+              "type": "React.ReactNode",
+              "required": false
+            },
+            {
+              "name": "width",
+              "type": "string | number",
+              "required": false
+            }
+          ],
+          "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DiagramLegend%20example%22%20subtitle%3D%22Edit%20this%20focused%20DiagramLegend%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDiagramLegend%0A%20%20%20%20width%3D%7B420%7D%0A%20%20%20%20title%3D'Relationships'%0A%20%20%20%20items%3D%7B%5B%7B%20label%3A%20'synchronous'%2C%20style%3A%20'solid'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'asynchronous'%2C%20style%3A%20'dashed'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'event'%2C%20style%3A%20'dotted'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'degraded'%2C%20style%3A%20'dot'%2C%20tone%3A%20'warm'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
+        }
+      ]
+    },
     {
       "id": "image-tensors",
       "label": "Image tensors",
@@ -284,7 +638,7 @@
               "name": "justify",
               "type": "\"center\" | \"flex-start\" | \"space-between\" | \"space-around\"",
               "required": false,
-              "allowedValuesRef": "values1"
+              "allowedValuesRef": "values3"
             },
             {
               "name": "padding",
@@ -445,6 +799,12 @@
               "required": false
             },
             {
+              "name": "density",
+              "type": "Density",
+              "required": false,
+              "description": "Type, spacing, and stroke scale for this scene and everything inside it."
+            },
+            {
               "name": "gap",
               "type": "number",
               "required": false
@@ -453,7 +813,7 @@
               "name": "justify",
               "type": "\"center\" | \"flex-start\" | \"space-between\" | \"space-around\" | undefined",
               "required": false,
-              "allowedValuesRef": "values1"
+              "allowedValuesRef": "values3"
             },
             {
               "name": "padding",
@@ -469,6 +829,18 @@
               "name": "title",
               "type": "string",
               "required": false
+            },
+            {
+              "name": "titleAlign",
+              "type": "\"center\" | \"left\"",
+              "required": false,
+              "allowedValuesRef": "values4"
+            },
+            {
+              "name": "titleFont",
+              "type": "\"sans\" | \"serif\"",
+              "required": false,
+              "allowedValuesRef": "values5"
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%0A%20%20%20%20title%3D'Scene%20layout'%0A%20%20%20%20subtitle%3D'A%20title%2C%20content%20area%2C%20and%20consistent%20spacing'%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B14%7D%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Build'%0A%20%20%20%20value%3D'ready'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3CMetricCard%0A%20%20%20%20label%3D'Review'%0A%20%20%20%20value%3D'2%20items'%0A%20%20%20%20tone%3D'warm'%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%20%20%3C%2FScene%3E"
@@ -497,6 +869,12 @@
           ],
           "props": [
             {
+              "name": "align",
+              "type": "\"center\" | \"left\"",
+              "required": false,
+              "allowedValuesRef": "values4"
+            },
+            {
               "name": "c",
               "type": "ThemeColors",
               "required": true
@@ -510,6 +888,13 @@
               "name": "title",
               "type": "string",
               "required": true
+            },
+            {
+              "name": "titleFont",
+              "type": "\"sans\" | \"serif\"",
+              "required": false,
+              "description": "Title voice. Serif suits articles and covers. Sans suits technical figures.",
+              "allowedValuesRef": "values5"
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22TitleBar%20example%22%20subtitle%3D%22Edit%20this%20focused%20TitleBar%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B16%7D%3E%0A%20%20%3CTitleBar%0A%20%20%20%20title%3D'Release%20overview'%0A%20%20%20%20subtitle%3D'One%20clear%20headline%20with%20supporting%20context'%20%2F%3E%0A%20%20%3CProgressList%0A%20%20%20%20rows%3D%7B%5B%7B%20label%3A%20'Build'%2C%20value%3A%201%2C%20tone%3A%20'green'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'Review'%2C%20value%3A%200.72%2C%20tone%3A%20'purple'%20%7D%5D%7D%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
@@ -573,7 +958,7 @@
               "name": "wrap",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Row%20example%22%20subtitle%3D%22Edit%20this%20focused%20Row%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CRow%0A%20%20%20%20gap%3D%7B12%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D'Plan'%0A%20%20%20%20subtitle%3D'shape%20the%20story'%0A%20%20%20%20tone%3D'blue'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D'Render'%0A%20%20%20%20subtitle%3D'check%20both%20themes'%0A%20%20%20%20tone%3D'purple'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3CStepCard%0A%20%20%20%20title%3D'Ship'%0A%20%20%20%20subtitle%3D'publish%20the%20asset'%0A%20%20%20%20tone%3D'green'%0A%20%20%20%20width%3D%7B220%7D%20%2F%3E%0A%20%20%3C%2FRow%3E%0A%3C%2FScene%3E"
@@ -637,7 +1022,7 @@
               "name": "wrap",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Column%20example%22%20subtitle%3D%22Edit%20this%20focused%20Column%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CColumn%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Layout'%0A%20%20%20%20detail%3D'ready'%0A%20%20%20%20status%3D'check'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Contrast'%0A%20%20%20%20detail%3D'inspect'%0A%20%20%20%20status%3D'pending'%20%2F%3E%0A%20%20%3CStatusRow%0A%20%20%20%20fontSize%3D%7B13%7D%0A%20%20%20%20label%3D'Export'%0A%20%20%20%20detail%3D'PNG%20%2B%20SVG'%0A%20%20%20%20status%3D'info'%20%2F%3E%0A%20%20%3C%2FColumn%3E%0A%3C%2FScene%3E"
@@ -675,7 +1060,7 @@
               "name": "direction",
               "type": "\"vertical\" | \"horizontal\"",
               "required": false,
-              "allowedValuesRef": "values3"
+              "allowedValuesRef": "values6"
             },
             {
               "name": "gap",
@@ -686,7 +1071,7 @@
               "name": "wrap",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22Stack%20example%22%20subtitle%3D%22Edit%20this%20focused%20Stack%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CStack%0A%20%20%20%20gap%3D%7B10%7D%0A%20%20%20%20align%3D'stretch'%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'INPUT'%0A%20%20%20%20tone%3D'blue'%20%2F%3E%0A%20%20%3CArrow%0A%20%20%20%20direction%3D'down'%0A%20%20%20%20length%3D%7B24%7D%20%2F%3E%0A%20%20%3CBadgePill%0A%20%20%20%20text%3D'OUTPUT'%0A%20%20%20%20tone%3D'green'%20%2F%3E%0A%20%20%3C%2FStack%3E%0A%3C%2FScene%3E"
@@ -833,7 +1218,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -1015,7 +1400,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -1126,7 +1511,7 @@
               "name": "dots",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "height",
@@ -1157,7 +1542,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "title",
@@ -1174,7 +1559,7 @@
               "name": "variant",
               "type": "\"window\" | \"browser\" | \"terminal\"",
               "required": false,
-              "allowedValuesRef": "values4"
+              "allowedValuesRef": "values7"
             },
             {
               "name": "width",
@@ -1322,7 +1707,7 @@
               "name": "muted",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "name",
@@ -1379,7 +1764,7 @@
               "name": "align",
               "type": "\"center\" | \"left\" | \"right\"",
               "required": false,
-              "allowedValuesRef": "values5"
+              "allowedValuesRef": "values8"
             },
             {
               "name": "c",
@@ -1405,13 +1790,13 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "mono",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "text",
@@ -1422,7 +1807,7 @@
               "name": "variant",
               "type": "\"code\" | \"title\" | \"subtitle\" | \"label\" | \"body\" | \"small\" | \"tiny\" | \"annotation\"",
               "required": false,
-              "allowedValuesRef": "values6"
+              "allowedValuesRef": "values9"
             },
             {
               "name": "width",
@@ -1491,7 +1876,7 @@
               "name": "textAnchor",
               "type": "\"start\" | \"end\" | \"middle\"",
               "required": false,
-              "allowedValuesRef": "values7"
+              "allowedValuesRef": "values10"
             },
             {
               "name": "x",
@@ -1586,7 +1971,7 @@
               "name": "filled",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "fontSize",
@@ -1602,7 +1987,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minWidth",
@@ -1613,7 +1998,7 @@
               "name": "mono",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "padding",
@@ -1715,7 +2100,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -1736,7 +2121,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -1762,7 +2147,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -1773,7 +2158,7 @@
               "name": "subtitleMono",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "title",
@@ -1877,7 +2262,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "tone",
@@ -1908,7 +2293,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -1934,7 +2319,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "result",
@@ -2028,7 +2413,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -2044,7 +2429,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -2070,7 +2455,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -2175,7 +2560,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -2196,7 +2581,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -2222,7 +2607,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "tone",
@@ -2249,7 +2634,7 @@
               "name": "valueMono",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "width",
@@ -2330,7 +2715,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -2356,7 +2741,7 @@
               "name": "filled",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -2422,13 +2807,13 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "mono",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "padding",
@@ -2524,7 +2909,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minWidth",
@@ -2545,13 +2930,13 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showLineNumbers",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "title",
@@ -2603,7 +2988,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -2638,7 +3023,7 @@
               "name": "divider",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "fontSize",
@@ -2654,7 +3039,7 @@
               "name": "keyMono",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "keyWidth",
@@ -2665,7 +3050,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minWidth",
@@ -2700,7 +3085,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -2731,7 +3116,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -2752,7 +3137,7 @@
               "name": "shadow",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -2788,7 +3173,7 @@
               "name": "align",
               "type": "\"center\" | \"left\"",
               "required": false,
-              "allowedValuesRef": "values8"
+              "allowedValuesRef": "values4"
             },
             {
               "name": "c",
@@ -2809,7 +3194,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "minHeight",
@@ -2942,7 +3327,7 @@
               "name": "boxed",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "c",
@@ -2968,7 +3353,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "status",
@@ -3000,7 +3385,7 @@
               "name": "boxed",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "c",
@@ -3021,7 +3406,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "rows",
@@ -3102,7 +3487,7 @@
               "name": "direction",
               "type": "\"vertical\" | \"horizontal\"",
               "required": false,
-              "allowedValuesRef": "values3"
+              "allowedValuesRef": "values6"
             },
             {
               "name": "events",
@@ -3128,7 +3513,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -3203,7 +3588,7 @@
               "name": "direction",
               "type": "\"vertical\" | \"horizontal\"",
               "required": false,
-              "allowedValuesRef": "values3"
+              "allowedValuesRef": "values6"
             },
             {
               "name": "gap",
@@ -3214,7 +3599,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "stages",
@@ -3333,7 +3718,7 @@
               "name": "muted",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "tone",
@@ -3498,7 +3883,7 @@
               "name": "showFormula",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "width",
@@ -3562,6 +3947,12 @@
           ],
           "props": [
             {
+              "name": "annotations",
+              "type": "GraphDiagramAnnotation[]",
+              "required": false,
+              "description": "Notes with leader lines, pointing at nodes."
+            },
+            {
               "name": "ariaLabel",
               "type": "string",
               "required": false
@@ -3577,6 +3968,18 @@
               "required": true
             },
             {
+              "name": "crossingBudget",
+              "type": "number",
+              "required": false,
+              "description": "Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges."
+            },
+            {
+              "name": "density",
+              "type": "Density",
+              "required": false,
+              "description": "Type, spacing, and stroke scale for this diagram."
+            },
+            {
               "name": "description",
               "type": "string",
               "required": false
@@ -3590,7 +3993,7 @@
               "name": "direction",
               "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\"",
               "required": false,
-              "allowedValuesRef": "values9"
+              "allowedValuesRef": "values11"
             },
             {
               "name": "edgeGap",
@@ -3601,6 +4004,13 @@
               "name": "edges",
               "type": "GraphDiagramEdge[]",
               "required": true
+            },
+            {
+              "name": "groupDirection",
+              "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\"",
+              "required": false,
+              "description": "Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction=\"TB\" and groupDirection=\"LR\".",
+              "allowedValuesRef": "values11"
             },
             {
               "name": "groups",
@@ -3631,7 +4041,13 @@
               "name": "layout",
               "type": "\"auto\" | \"manual\"",
               "required": false,
-              "allowedValuesRef": "values10"
+              "allowedValuesRef": "values12"
+            },
+            {
+              "name": "legend",
+              "type": "boolean | DiagramLegendItem[]",
+              "required": false,
+              "description": "A key below the diagram. Pass true to build one from the relationship kinds in use."
             },
             {
               "name": "nodeGap",
@@ -3641,7 +4057,8 @@
             {
               "name": "nodeHeight",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Minimum node height. Nodes grow when their content needs more."
             },
             {
               "name": "nodes",
@@ -3651,7 +4068,8 @@
             {
               "name": "nodeWidth",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Fixed node width. Omit it to size each node to its content."
             },
             {
               "name": "padding",
@@ -3667,7 +4085,7 @@
               "name": "routing",
               "type": "GraphRouting",
               "required": false,
-              "description": "Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.",
+              "description": "Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers.",
               "allowedValuesRef": "GraphRouting"
             },
             {
@@ -3680,7 +4098,7 @@
               "name": "sizing",
               "type": "\"content\" | \"fixed\"",
               "required": false,
-              "allowedValuesRef": "values11"
+              "allowedValuesRef": "values13"
             },
             {
               "name": "title",
@@ -3748,7 +4166,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "nodeHeight",
@@ -4040,7 +4458,7 @@
               "name": "direction",
               "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\" | undefined",
               "required": false,
-              "allowedValuesRef": "values9"
+              "allowedValuesRef": "values11"
             },
             {
               "name": "edgeGap",
@@ -4117,7 +4535,7 @@
               "name": "sizing",
               "type": "\"content\" | \"fixed\" | undefined",
               "required": false,
-              "allowedValuesRef": "values11"
+              "allowedValuesRef": "values13"
             },
             {
               "name": "title",
@@ -4209,6 +4627,12 @@
           ],
           "props": [
             {
+              "name": "annotations",
+              "type": "GraphDiagramAnnotation[]",
+              "required": false,
+              "description": "Notes with leader lines, pointing at nodes."
+            },
+            {
               "name": "ariaLabel",
               "type": "string",
               "required": false
@@ -4234,6 +4658,18 @@
               "required": false
             },
             {
+              "name": "crossingBudget",
+              "type": "number",
+              "required": false,
+              "description": "Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges."
+            },
+            {
+              "name": "density",
+              "type": "Density",
+              "required": false,
+              "description": "Type, spacing, and stroke scale for this diagram."
+            },
+            {
               "name": "description",
               "type": "string",
               "required": false
@@ -4247,12 +4683,19 @@
               "name": "direction",
               "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\"",
               "required": false,
-              "allowedValuesRef": "values9"
+              "allowedValuesRef": "values11"
             },
             {
               "name": "edgeGap",
               "type": "number",
               "required": false
+            },
+            {
+              "name": "groupDirection",
+              "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\"",
+              "required": false,
+              "description": "Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction=\"TB\" and groupDirection=\"LR\".",
+              "allowedValuesRef": "values11"
             },
             {
               "name": "height",
@@ -4278,7 +4721,13 @@
               "name": "layout",
               "type": "\"auto\" | \"manual\"",
               "required": false,
-              "allowedValuesRef": "values10"
+              "allowedValuesRef": "values12"
+            },
+            {
+              "name": "legend",
+              "type": "boolean | DiagramLegendItem[]",
+              "required": false,
+              "description": "A key below the diagram. Pass true to build one from the relationship kinds in use."
             },
             {
               "name": "nodeGap",
@@ -4288,7 +4737,8 @@
             {
               "name": "nodeHeight",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Minimum node height. Nodes grow when their content needs more."
             },
             {
               "name": "nodes",
@@ -4298,7 +4748,8 @@
             {
               "name": "nodeWidth",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Fixed node width. Omit it to size each node to its content."
             },
             {
               "name": "padding",
@@ -4314,7 +4765,7 @@
               "name": "routing",
               "type": "GraphRouting",
               "required": false,
-              "description": "Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.",
+              "description": "Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers.",
               "allowedValuesRef": "GraphRouting"
             },
             {
@@ -4327,7 +4778,7 @@
               "name": "sizing",
               "type": "\"content\" | \"fixed\"",
               "required": false,
-              "allowedValuesRef": "values11"
+              "allowedValuesRef": "values13"
             },
             {
               "name": "title",
@@ -4419,6 +4870,12 @@
           ],
           "props": [
             {
+              "name": "annotations",
+              "type": "GraphDiagramAnnotation[]",
+              "required": false,
+              "description": "Notes with leader lines, pointing at nodes."
+            },
+            {
               "name": "ariaLabel",
               "type": "string",
               "required": false
@@ -4439,6 +4896,18 @@
               "required": true
             },
             {
+              "name": "crossingBudget",
+              "type": "number",
+              "required": false,
+              "description": "Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges."
+            },
+            {
+              "name": "density",
+              "type": "Density",
+              "required": false,
+              "description": "Type, spacing, and stroke scale for this diagram."
+            },
+            {
               "name": "description",
               "type": "string",
               "required": false
@@ -4452,7 +4921,7 @@
               "name": "direction",
               "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\"",
               "required": false,
-              "allowedValuesRef": "values9"
+              "allowedValuesRef": "values11"
             },
             {
               "name": "edgeGap",
@@ -4464,7 +4933,14 @@
               "type": "boolean",
               "required": false,
               "description": "Expand repeat counts into individually addressable graph nodes.",
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
+            },
+            {
+              "name": "groupDirection",
+              "type": "\"LR\" | \"RL\" | \"TB\" | \"BT\"",
+              "required": false,
+              "description": "Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction=\"TB\" and groupDirection=\"LR\".",
+              "allowedValuesRef": "values11"
             },
             {
               "name": "height",
@@ -4490,7 +4966,13 @@
               "name": "layout",
               "type": "\"auto\" | \"manual\"",
               "required": false,
-              "allowedValuesRef": "values10"
+              "allowedValuesRef": "values12"
+            },
+            {
+              "name": "legend",
+              "type": "boolean | DiagramLegendItem[]",
+              "required": false,
+              "description": "A key below the diagram. Pass true to build one from the relationship kinds in use."
             },
             {
               "name": "nodeGap",
@@ -4500,12 +4982,14 @@
             {
               "name": "nodeHeight",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Minimum node height. Nodes grow when their content needs more."
             },
             {
               "name": "nodeWidth",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Fixed node width. Omit it to size each node to its content."
             },
             {
               "name": "padding",
@@ -4526,7 +5010,7 @@
               "name": "routing",
               "type": "GraphRouting",
               "required": false,
-              "description": "Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers.",
+              "description": "Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers.",
               "allowedValuesRef": "GraphRouting"
             },
             {
@@ -4539,7 +5023,7 @@
               "name": "sizing",
               "type": "\"content\" | \"fixed\"",
               "required": false,
-              "allowedValuesRef": "values11"
+              "allowedValuesRef": "values13"
             },
             {
               "name": "title",
@@ -4645,13 +5129,13 @@
               "name": "colorize",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "colorScale",
               "type": "\"heat\" | \"strength\"",
               "required": false,
-              "allowedValuesRef": "values12"
+              "allowedValuesRef": "values14"
             },
             {
               "name": "data",
@@ -4667,7 +5151,7 @@
               "name": "format",
               "type": "\"decimal\" | \"percent\" | \"integer\"",
               "required": false,
-              "allowedValuesRef": "values13"
+              "allowedValuesRef": "values15"
             },
             {
               "name": "highlightCell",
@@ -4789,7 +5273,7 @@
               "name": "colorScale",
               "type": "\"heat\" | \"strength\"",
               "required": false,
-              "allowedValuesRef": "values12"
+              "allowedValuesRef": "values14"
             },
             {
               "name": "data",
@@ -4962,7 +5446,7 @@
               "name": "crossedOut",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "gap",
@@ -4973,7 +5457,7 @@
               "name": "muted",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "regions",
@@ -5045,6 +5529,12 @@
           ],
           "props": [
             {
+              "name": "align",
+              "type": "readonly (\"center\" | \"left\" | \"right\")[]",
+              "required": false,
+              "description": "Text alignment per column. Defaults to left for the first column and right for the rest."
+            },
+            {
               "name": "c",
               "type": "ThemeColors",
               "required": true
@@ -5057,7 +5547,8 @@
             {
               "name": "cellWidth",
               "type": "number",
-              "required": false
+              "required": false,
+              "description": "Fixed column width. Omit it to size columns to their content."
             },
             {
               "name": "firstColWidth",
@@ -5088,12 +5579,17 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "rows",
               "type": "React.ReactNode[][]",
               "required": true
+            },
+            {
+              "name": "width",
+              "type": "string | number",
+              "required": false
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22DataTable%20example%22%20subtitle%3D%22Edit%20this%20focused%20DataTable%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CDataTable%0A%20%20%20%20cellWidth%3D%7B94%7D%0A%20%20%20%20firstColWidth%3D%7B120%7D%0A%20%20%20%20cellHeight%3D%7B34%7D%0A%20%20%20%20rows%3D%7B%5B%5B%20'Service'%2C%20'p95'%2C%20'State'%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20'API'%2C%20'82%20ms'%2C%20'ready'%20%5D%2C%0A%20%20%20%20%20%20%20%20%5B%20'Worker'%2C%20'140%20ms'%2C%20'ready'%20%5D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
@@ -5188,7 +5684,7 @@
               "name": "math",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "radius",
@@ -5300,7 +5796,7 @@
               "name": "showValues",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             }
           ],
           "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html#vizmatic-playground=width%20%3D%20960%0Aheight%20%3D%20480%0A%0A%3CScene%20title%3D%22MiniBarChart%20example%22%20subtitle%3D%22Edit%20this%20focused%20MiniBarChart%20scene%22%20padding%3D%7B22%7D%20gap%3D%7B18%7D%3E%0A%20%20%3CMiniBarChart%0A%20%20%20%20height%3D%7B170%7D%0A%20%20%20%20barWidth%3D%7B48%7D%0A%20%20%20%20gap%3D%7B18%7D%20showValues%0A%20%20%20%20data%3D%7B%5B%7B%20label%3A%20'plan'%2C%20value%3A%2074%2C%20tone%3A%20'blue'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'build'%2C%20value%3A%2092%2C%20tone%3A%20'purple'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'check'%2C%20value%3A%2086%2C%20tone%3A%20'cyan'%20%7D%2C%0A%20%20%20%20%20%20%20%20%7B%20label%3A%20'ship'%2C%20value%3A%2098%2C%20tone%3A%20'green'%20%7D%5D%7D%20%2F%3E%0A%3C%2FScene%3E"
@@ -5362,6 +5858,13 @@
               "name": "footer",
               "type": "string",
               "required": false
+            },
+            {
+              "name": "framed",
+              "type": "boolean",
+              "required": false,
+              "description": "Draw a card around the chart. Off by default, since most charts already sit in a panel.",
+              "allowedValuesRef": "values1"
             },
             {
               "name": "height",
@@ -5503,7 +6006,7 @@
               "name": "showLegend",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "size",
@@ -5619,7 +6122,7 @@
               "name": "showLegend",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "size",
@@ -5697,7 +6200,7 @@
               "name": "showLegend",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -5802,13 +6305,13 @@
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showValues",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -5884,6 +6387,13 @@
               "required": true
             },
             {
+              "name": "directLabels",
+              "type": "boolean",
+              "required": false,
+              "description": "Name each line at its end instead of in a legend. On when there are several series.",
+              "allowedValuesRef": "values1"
+            },
+            {
               "name": "footer",
               "type": "string",
               "required": false
@@ -5923,13 +6433,13 @@
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showPoints",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -6035,7 +6545,7 @@
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -6160,13 +6670,13 @@
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showValues",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -6301,13 +6811,13 @@
               "name": "showGoal",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -6477,13 +6987,13 @@
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showTicks",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "subtitle",
@@ -6827,13 +7337,13 @@
               "name": "showComponents",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showResultant",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "title",
@@ -6883,13 +7393,13 @@
               "name": "showComponents",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showSum",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "time",
@@ -7012,7 +7522,7 @@
               "name": "reversible",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "width",
@@ -7249,7 +7759,7 @@
               "type": "boolean",
               "required": false,
               "description": "Use gradient background instead of solid",
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "height",
@@ -7272,7 +7782,7 @@
               "type": "boolean",
               "required": false,
               "description": "Outlined style instead of filled",
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "radius",
@@ -7348,7 +7858,7 @@
               "name": "direction",
               "type": "\"left\" | \"right\" | \"down\" | \"up\"",
               "required": false,
-              "allowedValuesRef": "values14"
+              "allowedValuesRef": "values16"
             },
             {
               "name": "label",
@@ -7378,7 +7888,7 @@
               "name": "direction",
               "type": "\"start\" | \"end\"",
               "required": false,
-              "allowedValuesRef": "values15"
+              "allowedValuesRef": "values17"
             },
             {
               "name": "id",
@@ -7469,7 +7979,7 @@
               "name": "direction",
               "type": "\"left\" | \"right\" | \"down\" | \"up\"",
               "required": false,
-              "allowedValuesRef": "values14"
+              "allowedValuesRef": "values16"
             },
             {
               "name": "label",
@@ -7566,7 +8076,7 @@
               "name": "direction",
               "type": "\"left\" | \"right\" | \"down\" | \"up\"",
               "required": false,
-              "allowedValuesRef": "values14"
+              "allowedValuesRef": "values16"
             },
             {
               "name": "label",
@@ -7712,13 +8222,13 @@
               "name": "showEndDot",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showStartDot",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "strokeWidth",
@@ -8129,19 +8639,19 @@
               "name": "showAxes",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showFrame",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "showGrid",
               "type": "boolean",
               "required": false,
-              "allowedValuesRef": "values2"
+              "allowedValuesRef": "values1"
             },
             {
               "name": "vectors",

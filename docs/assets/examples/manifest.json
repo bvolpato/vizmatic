@@ -82,6 +82,14 @@
     ]
   },
   {
+    "name": "catalog-dense",
+    "source": "examples/catalog-dense.tsx",
+    "outputs": [
+      "catalog-dense_dark.png",
+      "catalog-dense_light.png"
+    ]
+  },
+  {
     "name": "catalog-deployment",
     "source": "examples/catalog-deployment.tsx",
     "outputs": [
@@ -202,6 +210,22 @@
     ]
   },
   {
+    "name": "data-pipeline-lineage-presentation",
+    "source": "examples/data-pipeline-lineage-presentation.tsx",
+    "outputs": [
+      "data-pipeline-lineage-presentation_dark.png",
+      "data-pipeline-lineage-presentation_light.png"
+    ]
+  },
+  {
+    "name": "data-pipeline-lineage",
+    "source": "examples/data-pipeline-lineage.tsx",
+    "outputs": [
+      "data-pipeline-lineage_dark.png",
+      "data-pipeline-lineage_light.png"
+    ]
+  },
+  {
     "name": "daybreak-launch",
     "source": "examples/daybreak-launch.tsx",
     "outputs": [
@@ -226,6 +250,22 @@
     ]
   },
   {
+    "name": "engineering-dashboard-presentation",
+    "source": "examples/engineering-dashboard-presentation.tsx",
+    "outputs": [
+      "engineering-dashboard-presentation_dark.png",
+      "engineering-dashboard-presentation_light.png"
+    ]
+  },
+  {
+    "name": "engineering-dashboard",
+    "source": "examples/engineering-dashboard.tsx",
+    "outputs": [
+      "engineering-dashboard_dark.png",
+      "engineering-dashboard_light.png"
+    ]
+  },
+  {
     "name": "engineering-flow",
     "source": "examples/engineering-flow.tsx",
     "outputs": [
@@ -239,6 +279,22 @@
     "outputs": [
       "eval-dashboard_dark.png",
       "eval-dashboard_light.png"
+    ]
+  },
+  {
+    "name": "llm-serving-stack-presentation",
+    "source": "examples/llm-serving-stack-presentation.tsx",
+    "outputs": [
+      "llm-serving-stack-presentation_dark.png",
+      "llm-serving-stack-presentation_light.png"
+    ]
+  },
+  {
+    "name": "llm-serving-stack",
+    "source": "examples/llm-serving-stack.tsx",
+    "outputs": [
+      "llm-serving-stack_dark.png",
+      "llm-serving-stack_light.png"
     ]
   },
   {
@@ -345,6 +401,22 @@
     "outputs": [
       "presentation-frame_dark.png",
       "presentation-frame_light.png"
+    ]
+  },
+  {
+    "name": "production-system-map-presentation",
+    "source": "examples/production-system-map-presentation.tsx",
+    "outputs": [
+      "production-system-map-presentation_dark.png",
+      "production-system-map-presentation_light.png"
+    ]
+  },
+  {
+    "name": "production-system-map",
+    "source": "examples/production-system-map.tsx",
+    "outputs": [
+      "production-system-map_dark.png",
+      "production-system-map_light.png"
     ]
   },
   {

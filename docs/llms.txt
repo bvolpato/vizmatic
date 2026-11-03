@@ -1,19 +1,27 @@
 # Vizmatic
 
-> Theme-aware diagrams, charts, animations, and MP4 video from TSX.
+> Code-driven animation, diagrams, and charts: vector films that play live in a browser and export to MP4, with typed components for dense technical figures.
 
-Vizmatic turns editable TSX scenes into diagrams, charts, documentation figures, and animations. The Node.js CLI renders locally or in CI; the browser playground supports interactive editing and preview.
+Vizmatic makes two kinds of output from code. Films are vector animations written in TypeScript with `vizmatic/stage`. They play live in a browser and export to MP4. Figures are dense technical diagrams and charts written in TSX. The Node.js CLI renders both locally or in CI, and `vizmatic check --json` reports layout defects with locations.
 
 The CLI requires Node.js 20 or newer. The portable agent skill is separate from the renderer installation.
 
 ## Resources
 
-- [Website](https://bvolpato.github.io/vizmatic/): Product overview, examples, and quick start.
+- [Website](https://bvolpato.github.io/vizmatic/): Product overview, films, and quick start.
+- [Documentation](https://bvolpato.github.io/vizmatic/docs/): Guides for films, objects, the CLI, exporting, embedding, and figures.
+- [Getting started](https://bvolpato.github.io/vizmatic/docs/index.html): Write, preview, and export a film in about two minutes.
+- [Guide for agents](https://bvolpato.github.io/vizmatic/docs/agents.html): A check, stills, and export loop for films that an agent can run.
+- [API reference](https://bvolpato.github.io/vizmatic/docs/api.html): Every public export of the stage engine, generated from its TypeScript source.
+- [Films](https://bvolpato.github.io/vizmatic/films.html): Finished films with their full source.
 - [Agent guide](https://bvolpato.github.io/vizmatic/agents.html): Installation choices and a verified agent workflow.
-- [Full prompt and API guidance](https://bvolpato.github.io/vizmatic/PROMPT.md): Complete prompt, usage guidance, and API reference.
+- [Task prompt](https://bvolpato.github.io/vizmatic/PROMPT.md): A short prompt with the film and figure workflows, and links for depth.
 - [Portable skill](https://bvolpato.github.io/vizmatic/skill.md): Installable agent workflow instructions.
-- [Patterns](https://bvolpato.github.io/vizmatic/patterns.md): Guidance for choosing components and structuring visuals.
+- [Film reference](https://bvolpato.github.io/vizmatic/references/films.md): Engine rules, patterns, and check codes for films.
+- [Starter film](https://bvolpato.github.io/vizmatic/assets/starter-film.ts): A complete film to copy and change.
+- [Patterns](https://bvolpato.github.io/vizmatic/patterns.md): Guidance for choosing figure components and structuring visuals.
 - [Component catalog JSON](https://bvolpato.github.io/vizmatic/components.json): Structured component metadata with compiler-derived prop types, requiredness, finite value sets, runnable examples, and playground links.
 - [Component catalog Markdown](https://bvolpato.github.io/vizmatic/components.md): Category descriptions, typed prop summaries, shared finite value sets, and full runnable TSX examples.
-- [Full context bundle](https://bvolpato.github.io/vizmatic/llms-full.txt): PROMPT.md followed by the complete component catalog.
-- [Playground](https://bvolpato.github.io/vizmatic/playground.html): Edit source and preview a scene in the browser.
+- [Full context bundle](https://bvolpato.github.io/vizmatic/llms-full.txt): PROMPT.md, every guide, and the complete component catalog.
+- [Studio](https://bvolpato.github.io/vizmatic/studio.html): Build and export a film in the browser.
+- [Playground](https://bvolpato.github.io/vizmatic/playground.html): Edit source and preview a figure in the browser.

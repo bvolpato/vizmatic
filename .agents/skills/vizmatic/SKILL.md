@@ -1,78 +1,102 @@
 ---
 name: vizmatic
-description: Create and render theme-aware diagrams, charts, docs figures, animated GIFs, and MP4 videos from TSX. Use when a coding agent needs an architecture diagram, process flow, RAG graph, evaluation dashboard, slide frame, release card, or animated pipeline.
+description: Create and render theme-aware diagrams, charts, docs figures, animated explainer films, GIFs, and MP4 videos from code. Use when a request needs a mathematical or technical animation, an architecture diagram, a process flow, an evaluation dashboard, a presentation, or any figure for documentation.
 ---
 
 # Vizmatic
 
-Use Vizmatic when a request needs a diagram, chart, presentation frame, animated GIF, or MP4 video. Prefer its React scene primitives over hand-written SVG for common layouts.
+Vizmatic makes two kinds of output. Choose first.
 
-## Workflow
+- **Film**: anything that moves to explain something. Write TypeScript with `vizmatic/stage`. Vector geometry, TeX, morphs, 3D, frame-exact MP4.
+- **Figure**: a still for a document or a slide. Write TSX with typed components from `vizmatic`. Dense by default, dark and light from one source.
 
-1. Decide whether output needs static images, an animated GIF, or both. Ask about size, branding, or destination only when it changes the result.
-2. Confirm Node.js 20 or newer is available, then install or reuse the CLI:
-   ```bash
-   command -v vizmatic || npm install -g vizmatic
-   ```
-   Add project dependencies when code imports Vizmatic or the repository needs a committed render script:
-   ```bash
-   pnpm add vizmatic react
-   ```
-3. Start with a bare `.tsx` frame. Omit dimensions during exploration; output starts at `960x540` and grows when content overflows. Set `width` and `height` for fixed output. Set `autoSize = false` when overflow should fail instead of resizing.
-4. Add imports, `defineIllustration`, or `c` props only when the frame needs helper code, data, explicit theme tokens, other dependencies, or animation. `Scene` title and subtitle are optional.
-5. Choose primitives by intent. Read `references/patterns.md` for component choices and frame examples.
-6. Check both themes and fix reported errors:
-   ```bash
-   vizmatic check ./frames/diagram.tsx --theme dark,light --json
-   ```
-7. Render dark and light outputs:
-   ```bash
-   vizmatic ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light
-   ```
-   For directories:
-   ```bash
-   vizmatic frames --out ./public/vizmatic --theme dark,light
-   ```
-   PNG and SVG output is transparent by default. Add a theme fill when the destination needs an opaque canvas:
-   ```bash
-   vizmatic frames --out ./public/vizmatic --theme dark,light --background theme
-   ```
-   Autocrop keeps 24 source pixels around detected content. Use `--no-crop` only when the full declared canvas is part of the composition.
-8. For GIFs, prefer typed state timelines: export `createAnimation(theme)` with `defineAnimation`, `hold`, `tween`, `keyframe`, and optional `parallel` tracks. Keep nodes and text fixed; move semantic objects without coarse position snapping. Vizmatic samples cadence boundaries, checks every frame for overflow, and delta-encodes opaque GIFs. Use `analyzeAnimationCadence` when exact timing matters. For infinite loops, make terminal and initial visuals match: fade moving content out, reset it with a zero-duration keyframe while hidden, then let the next loop fade it in. Do not animate a semantic operation backward only to close the loop. Keep `create(theme)` as static fallback. Use legacy `createScenes(theme)` only for deliberate cuts or pixel crossfades. Render:
-   ```bash
-   vizmatic gif ./frames/animated.tsx --out ./public/vizmatic --theme dark,light --fps 20 --scale 1
-   ```
-   For an H.264 MP4, export `createAnimation(theme)` and run:
-   ```bash
-   vizmatic video ./frames/animated.tsx --out ./public/videos --theme dark --fps 30
-   ```
-   MP4 rendering requires Node.js 20 or newer and FFmpeg with the `libx264` encoder. Add `--audio narration.wav` when FFmpeg also provides AAC. Audio is padded or trimmed to the timeline duration. Keep `.vtt` or `.srt` captions as sidecar files and synchronize their cues to the rendered timeline. Animate the data or mechanism the lesson explains; avoid decorative logo or icon reveals. Use `examples/videos/request-lifecycle.tsx` as a short generic starter or `examples/videos/signal-to-story.tsx` as a longer example.
-9. Inspect the output. Check file dimensions and visual layout. When an asset appears on a page, verify that page too. Fix clipping, overlap, low contrast, and uneven spacing before finishing.
+Use a TSX animation (`createAnimation`) only to animate a figure that already exists. For new motion, write a film.
 
-## Starting points
+## Setup
 
-- Copy `assets/starter-frame.tsx` for static diagrams and dashboards.
-- Copy `assets/animated-frame.tsx` for GIFs.
-- Use `examples/videos/request-lifecycle.tsx` for an MP4 starter and `examples/videos/signal-to-story.tsx` for a longer video.
-- Read `references/patterns.md` for primitive selection, tone usage, and render commands.
+Confirm Node.js 20 or newer, then install or reuse the package. MP4 and WebM also need FFmpeg with `libx264` and `libvpx-vp9`.
+
+```bash
+npm install vizmatic
+```
+
+## Film workflow
+
+1. Start from `assets/starter-film.ts`, or run `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`.
+2. Read `references/films.md` for the engine rules and patterns. Run `npx vizmatic objects` for the object catalog and `npx vizmatic looks` for the looks.
+3. Check it, and fix every error. Each finding has times, a `box` in canvas pixels, and a `stage` center in authoring coordinates.
+   ```bash
+   npx vizmatic check intro.ts --json
+   ```
+4. Look at it. You cannot watch a video, so render stills at the end of each beat and open them.
+   ```bash
+   npx vizmatic film intro.ts --frame 2,5.5,9,12 --width 1280 --out stills
+   ```
+5. Export when the stills are right.
+   ```bash
+   npx vizmatic film intro.ts --out dist/films --quality high
+   ```
+
+`--format mp4,webm,gif,png,svg` picks formats. `--look midnight,paper` renders each look. `--quality draft` is fast. `--range 12:18` renders part of the timeline. `--poster` adds a poster frame. Add `--json` for a machine-readable report. `film-manifest.json` lists all outputs. `npx vizmatic preview intro.ts` gives a person a live player with a timeline.
+
+## Judge your own output
+
+The check finds defects. It does not find weak work. For each still, ask:
+
+- Can a reader get the point of this frame in three seconds?
+- Is the eye drawn to the thing being explained? Is one color doing one job?
+- Is there a clipped label, a line through text, or an arrow that misses its target?
+- Is the space used well? Fill a figure with useful detail, or make the one idea large. Avoid a few small boxes in a large empty frame.
+- Does text read at the output size? On a 1920 stage, keep labels at 18 or more, unless the film is meant to be paused and studied.
+
+If the answer to any of these is wrong, change the film and look again. Report the stills you checked.
+
+## Figure workflow
+
+1. Start with a bare `.tsx` frame or `assets/starter-frame.tsx`. Omit `width` and `height` while exploring. Output starts at 960x540 and grows to fit. Read `references/patterns.md` for how to choose components.
+2. Check both themes, and fix reported errors.
+   ```bash
+   npx vizmatic check ./frames/diagram.tsx --theme dark,light --json
+   ```
+3. Render.
+   ```bash
+   npx vizmatic ./frames/diagram.tsx --out ./public/vizmatic --theme dark,light --format both
+   ```
+4. Open the PNG, and fix clipping, overlap, low contrast, and uneven spacing. When an asset appears on a page, verify that page too.
+
+PNG and SVG output is transparent by default. Add `--background theme` for an opaque canvas.
+
+### Density
+
+Figures default to `dense`: 10 to 12 pixel small type, hairlines, and tight gutters. Pack in useful information such as runtimes, rates, schemas, and limits. A figure with three large boxes reads like a slide, so add what a reader would need to act on it.
+
+Change the density only for the destination: `density="presentation"` on a `Scene`, or `density` in a render option, for a room. The densities are `dense`, `compact`, `comfortable`, `presentation`, or a number such as `1.25`.
 
 ## Design rules
 
-- Use semantic tones such as `blue`, `purple`, `cyan`, `green`, `warm`, `critical`, `neutral`, `ocean`, and `sunset`.
-- Use `preset = "engineering";` for flat technical article figures. Render the light theme and avoid dashboard chrome, shadows, gradients, or decorative color.
-- Keep labels short. Prefer cards, rows, grids, and tables that wrap safely.
-- Use Vizmatic charts for data summaries instead of screenshotting tables.
-- Keep presentation frames concise and readable. Remove marketing filler.
-- Return generated file paths and the exact render command that produced them.
+- Give color a meaning and keep it. Use the look tokens (`blue`, `teal`, `yellow`, `ink`, `dim`) in films, and semantic tones in figures, so every theme works.
+- Move the thing being explained. Hold after each reveal. Avoid decorative motion and logo reveals.
+- Use real data and exact labels. Remove marketing filler.
+- Use `preset = "engineering";` with `--theme light` for flat article figures.
+- Return the generated paths, the exact command, and the result of the check.
 
 ## Common requests
 
-- "Create an architecture diagram for this service" -> use `GraphDiagram` groups, technical icons, and labeled relationship kinds, then render PNGs.
-- "Show request interactions" -> use `SequenceDiagram` with messages, activations, notes, and control fragments.
-- "Show data provenance" -> use `DataflowDiagram` with schemas and explicit batch or stream edges.
-- "Show where services run" -> use `DeploymentDiagram` with nested boundaries, ports, protocols, and trust direction.
-- "Explain transformer parallelism" -> use `TransformerTopology` with tensor shapes and collective routes.
-- "Turn this eval data into a figure" -> use metric cards plus bar or line charts.
-- "Compare score and cost" -> use `ParetoChart` with automatic frontier detection and a logarithmic cost axis when needed.
-- "Make this pipeline animated" -> define numeric state transitions with `createAnimation(theme)`, move the parts that explain the mechanism, and render a GIF or MP4.
-- "Add a docs visual" -> put output under the repo's docs/public asset path and verify the page if present.
+- "Explain this math or algorithm" -> film with `axes`, `plane`, `tex`, and `morphMatching`. Drive motion with `s.value` and `dynamic`.
+- "Animate this system or request path" -> film with `infoBox`, `connector`, and `pulse`, or the `architecture` template.
+- "Make a talk or deck" -> film with one `s.chapter` per step, or the `deck` template. Present it with `<vz-film stepped>`.
+- "Create an architecture diagram" -> figure with `GraphDiagram`, nested groups, technical icons, and labeled relationship kinds.
+- "Show request interactions" -> figure with `SequenceDiagram`, messages, activations, and fragments.
+- "Show data provenance" -> figure with `DataflowDiagram`, schemas, and batch or stream edges.
+- "Show where services run" -> figure with `DeploymentDiagram`, boundaries, ports, and trust direction.
+- "Turn this eval data into a figure" -> figure with `DataTable`, `LineChart`, and `BarChart`.
+- "Compare score and cost" -> figure with `ParetoChart`, with a logarithmic cost axis when needed.
+- "Add a docs visual" -> put output under the repository's docs or public path and verify the page.
+
+## Starting points
+
+- `assets/starter-film.ts`: a film with a graph, a moving value, and an equation.
+- `assets/starter-frame.tsx`: a static figure.
+- `assets/animated-frame.tsx`: a TSX animation for a GIF.
+- `references/films.md`: engine rules and film patterns.
+- `references/patterns.md`: how to choose figure components.

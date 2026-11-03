@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'fs/promises'
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
 import { catalogComponentCount, componentCatalog } from './component-catalog'
 import { buildComponentPropMetadata, type ComponentPropMetadata, type ComponentPropMetadataBundle } from './build-component-props'
 
@@ -108,15 +108,23 @@ function buildComponentsJson(
 
 function buildLlmsIndex(packageMetadata: PackageMetadata, baseUrl: URL): string {
     const resources = [
-        ['Website', '', 'Product overview, examples, and quick start.'],
+        ['Website', '', 'Product overview, films, and quick start.'],
+        ['Documentation', 'docs/', 'Guides for films, objects, the CLI, exporting, embedding, and figures.'],
+        ['Getting started', 'docs/index.html', 'Write, preview, and export a film in about two minutes.'],
+        ['Guide for agents', 'docs/agents.html', 'A check, stills, and export loop for films that an agent can run.'],
+        ['API reference', 'docs/api.html', 'Every public export of the stage engine, generated from its TypeScript source.'],
+        ['Films', 'films.html', 'Finished films with their full source.'],
         ['Agent guide', 'agents.html', 'Installation choices and a verified agent workflow.'],
-        ['Full prompt and API guidance', 'PROMPT.md', 'Complete prompt, usage guidance, and API reference.'],
+        ['Task prompt', 'PROMPT.md', 'A short prompt with the film and figure workflows, and links for depth.'],
         ['Portable skill', 'skill.md', 'Installable agent workflow instructions.'],
-        ['Patterns', 'patterns.md', 'Guidance for choosing components and structuring visuals.'],
+        ['Film reference', 'references/films.md', 'Engine rules, patterns, and check codes for films.'],
+        ['Starter film', 'assets/starter-film.ts', 'A complete film to copy and change.'],
+        ['Patterns', 'patterns.md', 'Guidance for choosing figure components and structuring visuals.'],
         ['Component catalog JSON', 'components.json', 'Structured component metadata with compiler-derived prop types, requiredness, finite value sets, runnable examples, and playground links.'],
         ['Component catalog Markdown', 'components.md', 'Category descriptions, typed prop summaries, shared finite value sets, and full runnable TSX examples.'],
-        ['Full context bundle', 'llms-full.txt', 'PROMPT.md followed by the complete component catalog.'],
-        ['Playground', 'playground.html', 'Edit source and preview a scene in the browser.'],
+        ['Full context bundle', 'llms-full.txt', 'PROMPT.md, every guide, and the complete component catalog.'],
+        ['Studio', 'studio.html', 'Build and export a film in the browser.'],
+        ['Playground', 'playground.html', 'Edit source and preview a figure in the browser.'],
     ]
 
     return [
@@ -124,7 +132,7 @@ function buildLlmsIndex(packageMetadata: PackageMetadata, baseUrl: URL): string 
         '',
         `> ${packageMetadata.description}`,
         '',
-        'Vizmatic turns editable TSX scenes into diagrams, charts, documentation figures, and animations. The Node.js CLI renders locally or in CI; the browser playground supports interactive editing and preview.',
+        'Vizmatic makes two kinds of output from code. Films are vector animations written in TypeScript with `vizmatic/stage`. They play live in a browser and export to MP4. Figures are dense technical diagrams and charts written in TSX. The Node.js CLI renders both locally or in CI, and `vizmatic check --json` reports layout defects with locations.',
         '',
         'The CLI requires Node.js 20 or newer. The portable agent skill is separate from the renderer installation.',
         '',
@@ -133,6 +141,20 @@ function buildLlmsIndex(packageMetadata: PackageMetadata, baseUrl: URL): string 
         ...resources.map(([label, path, description]) => `- [${label}](${absoluteUrl(baseUrl, path)}): ${description}`),
         '',
     ].join('\n')
+}
+
+/** All guides as one document, with front matter reduced to a heading. The API reference is generated separately. */
+async function readGuides(): Promise<string> {
+    const names = (await readdir('docs/guides').catch(() => [] as string[])).filter((name) => name.endsWith('.md')).sort()
+    const parts: string[] = []
+    for (const name of names) {
+        const source = await readFile(`docs/guides/${name}`, 'utf8')
+        const match = /^---\n([\s\S]*?)\n---\n?/.exec(source)
+        const title = match ? /^title:\s*(.+)$/m.exec(match[1]!)?.[1] : undefined
+        const body = match ? source.slice(match[0].length) : source
+        parts.push(`# Guide: ${title ?? name}\n\n${body.trim()}\n`)
+    }
+    return parts.length > 0 ? `${parts.join('\n')}\n` : ''
 }
 
 export async function buildAgentDocs(): Promise<void> {
@@ -147,7 +169,8 @@ export async function buildAgentDocs(): Promise<void> {
     const componentsMarkdown = buildComponentsMarkdown(packageMetadata, propMetadata)
     const componentsJson = buildComponentsJson(packageMetadata, baseUrl, propMetadata)
     const llmsIndex = buildLlmsIndex(packageMetadata, baseUrl)
-    const llmsFull = `# Prompt\n\n${prompt}\n# Component catalog\n\n${componentsMarkdown}`
+    const guides = await readGuides()
+    const llmsFull = `# Prompt\n\n${prompt}\n${guides}# Component catalog\n\n${componentsMarkdown}`
 
     await Promise.all([
         mkdir('docs', { recursive: true }),
@@ -162,6 +185,8 @@ export async function buildAgentDocs(): Promise<void> {
         copyFile('plugins/vizmatic/skills/vizmatic/SKILL.md', 'docs/skill.md'),
         copyFile('plugins/vizmatic/skills/vizmatic/references/patterns.md', 'docs/patterns.md'),
         copyFile('plugins/vizmatic/skills/vizmatic/references/patterns.md', 'docs/references/patterns.md'),
+        copyFile('plugins/vizmatic/skills/vizmatic/references/films.md', 'docs/references/films.md'),
+        copyFile('plugins/vizmatic/skills/vizmatic/assets/starter-film.ts', 'docs/assets/starter-film.ts'),
         copyFile('plugins/vizmatic/skills/vizmatic/assets/starter-frame.tsx', 'docs/assets/starter-frame.tsx'),
         copyFile('plugins/vizmatic/skills/vizmatic/assets/animated-frame.tsx', 'docs/assets/animated-frame.tsx'),
     ])

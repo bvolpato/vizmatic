@@ -6,17 +6,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Benchmarks | Vizmatic</title>
   <meta name="description" content="Inspect reproducible Vizmatic render time, process memory, environment details, and automated example-check results.">
-  <meta name="theme-color" content="#0b0d16">
+  <meta name="theme-color" content="#0c0b09">
   <link rel="canonical" href="https://bvolpato.github.io/vizmatic/benchmarks.html">
   <meta property="og:title" content="Benchmarks | Vizmatic">
   <meta property="og:description" content="Inspect reproducible Vizmatic render time, process memory, environment details, and automated example-check results.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://bvolpato.github.io/vizmatic/benchmarks.html">
-  <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
+  <meta property="og:image" content="https://bvolpato.github.io/vizmatic/assets/site/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Benchmarks | Vizmatic">
   <meta name="twitter:description" content="Inspect reproducible Vizmatic render time, process memory, environment details, and automated example-check results.">
-  <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/examples/vizmatic-hero_dark.png">
+  <meta name="twitter:image" content="https://bvolpato.github.io/vizmatic/assets/site/og.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="alternate" type="text/markdown" href="llms.txt" title="Agent documentation index">
   <script>
@@ -24,49 +26,32 @@
       let mode = 'system'
       try { mode = localStorage.getItem('vizmatic-theme') || 'system' } catch {}
       if (mode !== 'light' && mode !== 'dark') mode = 'system'
-      document.documentElement.dataset.themeMode = mode
-      document.documentElement.dataset.siteTheme = mode === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : mode
+      const root = document.documentElement
+      root.dataset.themeMode = mode
+      root.dataset.siteTheme = mode === 'system' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : mode
+      root.dataset.siteRoot = ""
+      root.classList.add('js')
     })()
   </script>
+  <link rel="preload" href="assets/fonts/InstrumentSerif-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="assets/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="site.js"></script>
-  <style>
-    .benchmark-section { display: grid; gap: 24px; }
-    .benchmark-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
-    .benchmark-meta > div, .benchmark-method, .benchmark-quality { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
-    .benchmark-meta dt, .benchmark-method h3 { color: var(--muted); font: 600 0.78rem "IBM Plex Mono", monospace; text-transform: uppercase; }
-    .benchmark-meta dd { margin-top: 7px; overflow-wrap: anywhere; font-size: 0.95rem; }
-    .benchmark-method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-    .benchmark-method p, .benchmark-quality p { margin-top: 10px; color: var(--muted); line-height: 1.65; }
-    .benchmark-summary { display: flex; flex-wrap: wrap; gap: 10px; }
-    .benchmark-summary span { padding: 9px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); }
-    .benchmark-summary strong { color: var(--text); }
-    .benchmark-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-    .benchmark-table { width: 100%; border-collapse: collapse; text-align: left; }
-    .benchmark-table th, .benchmark-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    .benchmark-table thead th { color: var(--muted); font: 600 0.75rem "IBM Plex Mono", monospace; text-transform: uppercase; white-space: nowrap; }
-    .benchmark-table tbody tr:last-child th, .benchmark-table tbody tr:last-child td { border-bottom: 0; }
-    .benchmark-table tbody th { white-space: nowrap; }
-    .benchmark-clean { color: var(--green) !important; }
-    .benchmark-note { color: var(--faint); font-size: 0.9rem; line-height: 1.6; }
-    @media (max-width: 560px) { .benchmark-table th, .benchmark-table td { padding: 10px; } }
-  </style>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
   <div class="nav-shell">
     <nav class="nav" aria-label="Primary navigation">
-      <a class="brand" href="index.html" aria-label="Vizmatic home"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic<span class="brand-dot">.</span></span></a>
-      <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="siteNavigation">Menu <span aria-hidden="true">☰</span></button>
+      <a class="brand" href="index.html" aria-label="Vizmatic home"><svg class="mark" viewBox="0 0 40 40" width="30" height="30" aria-hidden="true"><path class="mark-curve" pathLength="1" d="M5.5 8.2C9.4 8.2 11.2 12.1 13.2 18.2C15.1 24 16.6 29.8 18.4 29.8C20.6 29.8 22.5 22.6 25.2 15.9C26.8 11.9 28.6 9 31 7.6"/><circle class="mark-point" cx="33.4" cy="6.4" r="2.9"/></svg><span>vizmatic</span></a>
+      <button class="menu-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="siteNavigation">Menu</button>
       <div class="nav-actions" id="siteNavigation" data-site-navigation>
-        <div class="nav-links"><a href="index.html#gallery">Examples</a><a href="components.html">Components</a><a href="playground.html">Builder</a><a href="agents.html">For agents</a></div>
+        <div class="nav-links"><a href="films.html">Films</a><a href="docs/index.html">Docs</a><a href="components.html">Components</a><a href="examples.html">Examples</a><a href="studio.html">Studio</a><a href="agents.html">For agents</a></div>
         <div class="nav-tools">
-          <button class="search-trigger" type="button" data-open-search aria-label="Search Vizmatic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><span>Search</span><kbd>⌘ K</kbd></button>
+          <button class="search-trigger" type="button" data-open-search aria-label="Search Vizmatic"><span>Search</span><kbd>⌘K</kbd></button>
           <div class="theme-toggle" role="group" aria-label="Site theme">
-            <button type="button" data-theme-choice="system" aria-pressed="true" aria-label="Use system theme" title="System theme">◐</button>
-            <button type="button" data-theme-choice="light" aria-pressed="false" aria-label="Use light theme" title="Light theme">☼</button>
-            <button type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Use dark theme" title="Dark theme">☾</button>
+            <button type="button" data-theme-choice="system" aria-pressed="true" aria-label="Use system theme" title="System theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15z" stroke="none" fill="currentColor"/></svg></button>
+            <button type="button" data-theme-choice="light" aria-pressed="false" aria-label="Use light theme" title="Light theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.6" fill="none"/><path d="M12 3.5v2.4M12 18.1v2.4M3.5 12h2.4M18.1 12h2.4M6 6l1.7 1.7M16.3 16.3 18 18M18 6l-1.7 1.7M7.7 16.3 6 18"/></svg></button>
+            <button type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Use dark theme" title="Dark theme"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10Z" fill="none"/></svg></button>
           </div>
           <a class="github-link" href="https://github.com/bvolpato/vizmatic" aria-label="Vizmatic on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.57 9.57 0 0 1 5 0c1.9-1.29 2.74-1.02 2.74-1.02.55 1.37.21 2.39.11 2.64.64.7 1.03 1.6 1.03 2.69 0 3.85-2.34 4.69-4.58 4.94.36.31.68.92.68 1.85v2.76c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg></a>
         </div>
@@ -148,20 +133,24 @@
 
   <footer class="site-footer">
     <div class="footer-main">
-      <div><a class="brand" href="index.html"><img src="assets/icon.svg" alt="" width="28" height="28"><span>vizmatic<span class="brand-dot">.</span></span></a><p>Visuals you can build on.</p></div>
-      <div class="footer-links"><div><h2>Create</h2><a href="playground.html">Playground</a><a href="index.html#gallery">Examples</a><a href="components.html">Components</a></div><div><h2>Learn</h2><a href="index.html#quick-start">Quick start</a><a href="agents.html">For agents</a><a href="benchmarks.html">Benchmarks</a></div><div><h2>Source</h2><a href="https://github.com/bvolpato/vizmatic">GitHub ↗</a><a href="https://www.npmjs.com/package/vizmatic">npm ↗</a><a href="llms.txt">llms.txt</a></div></div>
+      <div class="footer-brand"><a class="brand" href="index.html" aria-label="Vizmatic home"><svg class="mark" viewBox="0 0 40 40" width="30" height="30" aria-hidden="true"><path class="mark-curve" pathLength="1" d="M5.5 8.2C9.4 8.2 11.2 12.1 13.2 18.2C15.1 24 16.6 29.8 18.4 29.8C20.6 29.8 22.5 22.6 25.2 15.9C26.8 11.9 28.6 9 31 7.6"/><circle class="mark-point" cx="33.4" cy="6.4" r="2.9"/></svg><span>vizmatic</span></a><p>Moving pictures of ideas, written as code.</p></div>
+      <div class="footer-links">
+        <div><h2>Make</h2><a href="films.html">Films</a><a href="studio.html">Studio</a><a href="playground.html">Diagram builder</a><a href="examples.html">Examples</a><a href="components.html">Components</a></div>
+        <div><h2>Learn</h2><a href="docs/index.html">Getting started</a><a href="docs/animations.html">Animations</a><a href="docs/cookbook.html">Cookbook</a><a href="docs/api.html">API reference</a><a href="benchmarks.html">Benchmarks</a></div>
+        <div><h2>Source</h2><a href="https://github.com/bvolpato/vizmatic">GitHub</a><a href="https://www.npmjs.com/package/vizmatic">npm</a><a href="agents.html">For agents</a><a href="llms.txt">llms.txt</a></div>
+      </div>
     </div>
     <div class="footer-bottom"><p>MIT licensed. Built by <a href="https://github.com/bvolpato">Bruno Volpato</a>.</p><a href="assets/THIRD_PARTY_LICENSES.md">Third-party licenses</a></div>
   </footer>
   <dialog class="search-dialog" id="searchDialog" aria-labelledby="searchTitle">
-    <div class="search-dialog-heading"><h2 id="searchTitle">Find your next building block</h2><button class="button small" type="button" data-close-search>Close <kbd>Esc</kbd></button></div>
-    <label class="site-search-label" for="siteSearch">Search pages, components, and examples</label>
-    <input id="siteSearch" type="search" placeholder="Try architecture, chart, or agent…" autocomplete="off" aria-controls="siteSearchResults">
+    <div class="search-dialog-heading"><h2 id="searchTitle">Search</h2><button class="button small" type="button" data-close-search>Close <kbd>Esc</kbd></button></div>
+    <label class="site-search-label" for="siteSearch">Search films, guides, the API, and components</label>
+    <input id="siteSearch" type="search" placeholder="Try morph, camera, or architecture" autocomplete="off" aria-controls="siteSearchResults">
     <p id="siteSearchStatus" class="search-status" role="status"></p><div id="siteSearchResults" class="search-results"></div>
     <div class="search-help"><span>↑ ↓ to navigate</span><span>Enter to open</span><span>Esc to close</span></div>
   </dialog>
   <dialog class="source-dialog" id="sourceDialog" aria-labelledby="sourceTitle">
-    <div class="source-dialog-panel"><header><div><span>Editable TSX</span><h2 id="sourceTitle">Example source</h2></div><div class="dialog-actions"><a class="button primary" id="trySourceLink" href="playground.html">Try / edit ↗</a><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div></header><p class="source-note">Open the builder to edit this scene, preview animations, and export your visual.</p><div class="source-code" id="sourceCode"></div></div>
+    <div class="source-dialog-panel"><header><div><span>Editable TSX</span><h2 id="sourceTitle">Example source</h2></div><div class="dialog-actions"><a class="button primary" id="trySourceLink" href="playground.html">Open in the builder</a><button class="button" type="button" id="copySourceButton">Copy code</button><button class="button" type="button" id="closeSourceButton">Close</button></div></header><p class="source-note">Open the builder to edit this scene, preview animations, and export your visual.</p><div class="source-code" id="sourceCode"></div></div>
   </dialog>
   <dialog class="image-dialog" id="imageDialog" aria-labelledby="imageDialogTitle">
     <div class="image-dialog-panel"><div class="image-dialog-header"><h2 id="imageDialogTitle">Example preview</h2><button class="button" type="button" id="closeImageButton">Close</button></div><div class="image-dialog-viewport"><img id="imageDialogImage" alt=""></div></div>

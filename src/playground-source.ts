@@ -1,4 +1,5 @@
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
+import type { Density } from './density'
 import { validatePlaygroundAnimation, type PlaygroundAnimationMetadata } from './playground-animation'
 import {
     isBackgroundMetadataLine,
@@ -12,6 +13,7 @@ import {
     DEFAULT_PLAYGROUND_HEIGHT,
     DEFAULT_PLAYGROUND_WIDTH,
     readAnimationLine,
+    readDensityLine,
     readPresetLine,
     type PlaygroundPreset,
 } from './playground-settings'
@@ -23,6 +25,7 @@ export interface PlaygroundMetadata {
     width: number
     height: number
     preset: PlaygroundPreset
+    density?: Density
     warnings: string[]
     themeColors?: PlaygroundThemeColors
     background?: PlaygroundBackground
@@ -60,6 +63,7 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
     let width = DEFAULT_PLAYGROUND_WIDTH
     let height = DEFAULT_PLAYGROUND_HEIGHT
     let preset: PlaygroundPreset = 'default'
+    let density: Density | undefined
     let animationDuration: number | undefined
     let animationFps: number | undefined
     let themeColors: PlaygroundThemeColors | undefined
@@ -108,6 +112,13 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
             continue
         }
 
+        const parsedDensity = metadataPreamble ? readDensityLine(line) : undefined
+        if (parsedDensity) {
+            if (parsedDensity.density !== undefined) density = parsedDensity.density
+            else warnings.push(`Unknown density ${JSON.stringify(parsedDensity.requested)}. Using "dense".`)
+            continue
+        }
+
         const animation = metadataPreamble ? readAnimationLine(line) : undefined
         if (animation) {
             if (animation.name === 'animationDuration') animationDuration = animation.value
@@ -145,6 +156,7 @@ export function preparePlaygroundSource(source: string): PreparedPlaygroundSourc
             width,
             height,
             preset,
+            ...(density !== undefined ? { density } : {}),
             warnings,
             ...(themeColors ? { themeColors } : {}),
             ...(background ? { background } : {}),

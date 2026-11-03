@@ -54,8 +54,9 @@ describe('science, math, and physics primitives', () => {
             markers: [{ id: 'h', value: 2.5, label: 'h = 2.5' }],
             interval: { from: 2, to: 8, includeFrom: true, includeTo: false, label: '[2, 8)' },
         })
-        const endpoints = collect(diagram, (element) => element.type === 'circle' && Number(props(element).cy) > 200 && props(element).stroke === '#0891b2')
-        expect(endpoints.map((element) => props(element).fill)).toEqual(['#0891b2', '#f5f7fa'])
+        const light = getThemeColors('light')
+        const endpoints = collect(diagram, (element) => element.type === 'circle' && Number(props(element).cy) > 200 && props(element).stroke === light.info)
+        expect(endpoints.map((element) => props(element).fill)).toEqual([light.info, light.bgSubtle])
         expect(labels(diagram)).toContain('[2, 8)')
         expect(props(diagram).role).toBe('img')
     })
@@ -270,7 +271,7 @@ describe('science, math, and physics primitives', () => {
                 expect(collect(diagram, (child) => child.type === 'desc')).toHaveLength(1)
                 expect(props(diagram).role).toBe('img')
                 expect(props(diagram)['aria-label']).toBeDefined()
-                expect(svg).toContain(encodeURIComponent(mode === 'dark' ? '#151620' : '#f5f7fa'))
+                expect(svg).toContain(getThemeColors(mode).textPrimary)
             }
         }
     })

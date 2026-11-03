@@ -1,11 +1,16 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from 'fs/promises'
-import { codeToHtml } from 'shiki'
+import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { buildPlayground } from './build-playground'
 import { catalogComponentCount, componentCatalog, type ComponentCatalogCategory } from './component-catalog'
 import { buildAgentDocs } from './build-agent-docs'
-import { applySiteShell, sitePages } from './site-shell'
+import { buildLogo } from './build-logo'
+import { buildStage } from './build-stage'
+import { prepareGuides, writeGuides } from './build-guides'
+import { buildSiteMedia } from './build-site-media'
+import { applySiteShell, configureSiteShell, registerSitePages, sitePages } from './site-shell'
+import { highlight, highlightPage } from './site-highlight'
+import { escapeHtml } from './site-markdown'
+import { formatDuration, loadFilmCatalog, renderClaims, renderFigures, renderFilmWall } from './site-content'
 import { toPlaygroundExample } from './playground-example'
-import { renderVideoExample } from './render-video-example'
 
 const templatePath = 'docs/index.template.html'
 const outPath = 'docs/index.html'
@@ -20,16 +25,23 @@ const promptPath = 'PROMPT.md'
 const docsPromptPath = 'docs/PROMPT.md'
 const agentsTemplatePath = 'docs/agents.template.html'
 const agentsOutPath = 'docs/agents.html'
+const filmsTemplatePath = 'docs/films.template.html'
+const examplesTemplatePath = 'docs/examples.template.html'
+const studioTemplatePath = 'docs/studio.template.html'
+
+const exists = (path: string) => access(path).then(() => true, () => false)
+const hasStudio = await exists(studioTemplatePath)
+configureSiteShell({ studio: hasStudio })
 
 await mkdir('docs/assets/licenses', { recursive: true })
-await renderVideoExample(false)
 await Promise.all([
     copyFile('assets/THIRD_PARTY_LICENSES.md', 'docs/assets/THIRD_PARTY_LICENSES.md'),
     ...(await readdir('assets/licenses')).map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
 ])
 await mkdir('docs/assets/fonts', { recursive: true })
-await Promise.all(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2']
+await Promise.all(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2', 'InstrumentSerif-Regular.woff2', 'InstrumentSerif-Italic.woff2']
     .map((name) => copyFile('assets/site-fonts/' + name, 'docs/assets/fonts/' + name)))
+await buildLogo()
 
 function generatedNotice(source: string): string {
     return `<!-- Generated from ${source} by pnpm site:build. Edit template. -->`
@@ -44,27 +56,6 @@ function encodeHtml(value: string): string {
         .replace(/'/g, '&#39;')
 }
 
-function decodeHtml(value: string): string {
-    return value
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&amp;/g, '&')
-}
-
-function getAttribute(attrs: string, name: string): string | undefined {
-    return attrs.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1]
-}
-
-function removeAttribute(attrs: string, name: string): string {
-    return attrs.replace(new RegExp(`\\s${name}="[^"]*"`, 'g'), '')
-}
-
-function formatAttributes(attrs: string): string {
-    const trimmed = attrs.trim()
-    return trimmed ? ` ${trimmed}` : ''
-}
 
 const sourceIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>'
 
@@ -236,36 +227,6 @@ function renderBenchmarkSummary(results: BenchmarkResults): string {
     ].join('\n')
 }
 
-async function highlightCodeBlock(_match: string, beforeDataAttr: string, lang: string, afterDataAttr: string, codeAttrs: string, encodedCode: string): Promise<string> {
-    const rawPreAttrs = `${beforeDataAttr}${afterDataAttr}`
-    const originalClass = getAttribute(rawPreAttrs, 'class')
-    const preAttrs = removeAttribute(removeAttribute(rawPreAttrs, 'class'), 'tabindex')
-    const classes = ['shiki', 'shiki-themes', 'github-light-high-contrast', 'github-dark-high-contrast', originalClass].filter(Boolean).join(' ')
-    const code = decodeHtml(encodedCode)
-    const highlighted = await codeToHtml(code, {
-        lang,
-        themes: {
-            light: 'github-light-high-contrast',
-            dark: 'github-dark-high-contrast',
-        },
-        defaultColor: false,
-    })
-
-    return highlighted
-        .replace(/^<pre[^>]*>/, `<pre${formatAttributes(preAttrs)} data-shiki="${lang}" class="${classes}" tabindex="0">`)
-        .replace('<code>', `<code${codeAttrs}>`)
-}
-
-async function replaceAsync(input: string, pattern: RegExp): Promise<string> {
-    const replacements = await Promise.all(
-        Array.from(input.matchAll(pattern), ([match, beforeDataAttr, lang, afterDataAttr, codeAttrs, encodedCode]) =>
-            highlightCodeBlock(match, beforeDataAttr, lang, afterDataAttr, codeAttrs, encodedCode),
-        ),
-    )
-    let index = 0
-    return input.replace(pattern, () => replacements[index++] ?? '')
-}
-
 await buildPlayground()
 
 const prompt = await readFile(promptPath, 'utf8')
@@ -277,17 +238,46 @@ interface ExampleSource {
     code: string
     html: { dark: string; light: string }
 }
+/**
+ * A density variant re-exports another example and overrides its size and density. The builder
+ * runs one source with no imports, so it opens the base example with those settings applied.
+ */
+async function playgroundCodeFor(path: string): Promise<string> {
+    const source = await readFile(path, 'utf8')
+    const base = source.match(/from ['"]\.\/([\w-]+)['"]/)?.[1]
+    const settings = source.match(/^export const (?:density|width|height) = .+$/gm)
+    if (!base || !settings || !/^export const density\b/m.test(source)) return toPlaygroundExample(source)
+    const code = toPlaygroundExample(await readFile(`examples/${base}.tsx`, 'utf8'))
+    // A variant that passes its density to a shared function keeps that argument too.
+    const argument = source.match(/createAt\(theme, '(\w+)'\)/)?.[1]
+    const body = code.replace(/^(?:width|height|density) = .+\n/gm, '')
+        .replace(/createAt\(theme, '\w+'\)/, (call) => argument ? `createAt(theme, '${argument}')` : call)
+    return `${settings.map((line) => line.replace('export const ', '')).join('\n')}\n${body}`
+}
+
 const sources = JSON.parse(await readFile('docs/assets/examples/sources.json', 'utf8')) as ExampleSource[]
 const sourceByName = new Map(sources.map((source) => [source.name, source]))
 await mkdir('docs/assets/sources', { recursive: true })
 await Promise.all(sources.map(async (source) => {
-    const playgroundCode = toPlaygroundExample(await readFile(source.source, 'utf8'))
+    const playgroundCode = await playgroundCodeFor(source.source)
     await writeFile(`docs/assets/sources/${source.name}.json`, JSON.stringify({ ...source, playgroundCode }))
 }))
+
+const prepared = await prepareGuides()
+await buildStage({ demos: prepared.demos })
+// Studio is its own application with its own page. The site only links to it.
+if (hasStudio) {
+    const { buildStudio } = await import('./build-studio')
+    await buildStudio()
+    registerSitePages([{ file: 'studio.html', title: 'Studio | Vizmatic', description: 'Build and animate films in one browser tab: a timeline, an inspector, live code, and frame-exact MP4 export.' }])
+}
+await buildSiteMedia()
+const films = await loadFilmCatalog()
 
 function preparePage(template: string, file: string): string {
     return applySiteShell(template, file)
         .replaceAll('{{VERSION}}', packageJson.version)
+        .replaceAll('{{STUDIO_HREF}}', hasStudio ? 'studio.html' : 'playground.html')
         .replace(/\{\{EXAMPLE_URL:([\w-]+)\}\}/g, (_match, name: string) => {
             const source = sourceByName.get(name)
             if (!source) throw new Error(`Unknown website example: ${name}`)
@@ -295,29 +285,75 @@ function preparePage(template: string, file: string): string {
         })
 }
 
-const searchIndex = [
-    { title: 'From noise to signal', description: 'Render TSX scenes as H.264 MP4, add narration, keep captions as sidecar files, and download a runnable starter video source.', url: 'index.html#video', category: 'Video' },
-    ...sitePages.map((page) => ({ title: page.title.split(' | ')[0], description: page.description, url: page.file, category: 'Page' })),
-    ...componentCatalog.flatMap((category) => category.components.map((component) => ({
-        title: component.name,
-        description: component.description,
-        url: 'components.html#component-' + component.name,
-        category: category.label,
-    }))),
-    ...sources.filter((source) => !source.name.startsWith('catalog-')).map((source) => ({
-        title: source.title,
-        description: 'View and edit the ' + source.title.toLowerCase() + ' example.',
-        url: 'index.html#example-' + source.name,
-        category: 'Example',
-    })),
-    { title: 'Quick start', description: 'Install the CLI, write a TSX frame, check it, and render both themes.', url: 'index.html#quick-start', category: 'Guide' },
-    { title: 'Agent resources', description: 'Markdown instructions, skills, and a machine-readable component catalog.', url: 'agents.html#resources', category: 'Guide' },
-]
-await writeFile('docs/search-index.json', JSON.stringify(searchIndex))
-await writeFile('docs/sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    + sitePages.map((page) => `<url><loc>https://bvolpato.github.io/vizmatic/${page.file === 'index.html' ? '' : page.file}</loc></url>`).join('\n') + '\n</urlset>\n')
-await writeFile('docs/robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: https://bvolpato.github.io/vizmatic/sitemap.xml\n')
+// ── Film pages ──────────────────────────────────────────────────────────────
+
+registerSitePages(await Promise.all(films.map(async (film) => ({
+    file: `film/${film.id}.html`,
+    title: `${film.title} | Vizmatic films`,
+    description: film.summary,
+    ...(await exists(`docs/assets/site/posters/${film.id}_dark.webp`) ? { image: `assets/site/posters/${film.id}_dark.webp` } : {}),
+}))))
+await rm('docs/film', { recursive: true, force: true })
+await mkdir('docs/film', { recursive: true })
+await Promise.all(films.map(async (film, index) => {
+    const file = `film/${film.id}.html`
+    const sourcePath = (await exists(`examples/films/${film.id}.ts`)) ? `examples/films/${film.id}.ts` : `examples/films/${film.id}.tsx`
+    const source = await readFile(sourcePath, 'utf8')
+    const code = await highlight(source, sourcePath.endsWith('x') ? 'tsx' : 'ts')
+    const previous = films[index - 1]
+    const next = films[index + 1]
+    const meta = [film.topic, formatDuration(film.duration)].filter(Boolean).join(', ')
+    const page = applySiteShell(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  {{SITE_HEAD}}
+</head>
+<body>
+  {{SITE_NAV}}
+  <main id="main-content" tabindex="-1">
+    <article class="section" style="padding-top:0" data-film-page>
+      <header class="film-page-head"><h1>${escapeHtml(film.title)}</h1><span class="meta">${escapeHtml(meta)}</span></header>
+      <vz-film src="../assets/stage/films/${film.id}.js" autoplay${film.look && film.look !== 'midnight' ? ` data-fixed-look look="${escapeHtml(film.look)}"` : ''} label="${escapeHtml(film.summary || film.title)}"></vz-film>
+      <ol class="chapter-list" data-chapters hidden></ol>
+      <p class="film-page-summary">${escapeHtml(film.summary)}</p>
+      <div class="film-actions">
+        <a class="button primary" href="../assets/films/${film.id}.mp4" download>Download MP4</a>
+        <a class="button" href="https://github.com/bvolpato/vizmatic/blob/main/${sourcePath}">Source on GitHub</a>
+        ${hasStudio ? `<a class="button" href="../studio.html?film=${film.id}">Open in the Studio</a>` : ''}
+      </div>
+      <details class="film-source"><summary>Read the source</summary>${code}</details>
+      <nav class="film-pager" aria-label="Other films">${previous ? `<a href="${previous.id}.html"><small>Previous</small>${escapeHtml(previous.title)}</a>` : ''}${next ? `<a href="${next.id}.html"><small>Next</small>${escapeHtml(next.title)}</a>` : ''}</nav>
+    </article>
+  </main>
+  {{SITE_FOOTER}}
+  {{SITE_DIALOGS}}
+</body>
+</html>
+`, file)
+    await writeFile(`docs/${file}`, `<!DOCTYPE html>\n<!-- Generated from examples/films/catalog.json by scripts/build-site.ts. -->\n${page.replace('<!DOCTYPE html>\n', '')}`)
+}))
+
+// ── Guides and agent files ──────────────────────────────────────────────────
+
+const guideSearch = await writeGuides(prepared, (page) => hasStudio ? page : page.replaceAll('../studio.html', '../playground.html'))
 await buildAgentDocs()
+
+// ── Landing page content ────────────────────────────────────────────────────
+
+const besideSource = await readFile('scripts/site-films/beside.ts', 'utf8')
+const besideLines = besideSource.split('\n').flatMap((line, index) => /^\s*s\.play\(/.test(line) ? [index] : [])
+const heroFilm = (await exists('examples/films/vizmatic-title.ts')) ? 'assets/stage/films/vizmatic-title.js' : 'assets/stage/site/scrub.js'
+const figures = await renderFigures([
+    { name: 'production-system-map', label: 'System map', alt: 'A dense production system map with services, data stores, regions, ports, and live metrics', caption: 'A production system on one page: services, boundaries, ports, protocols, and live numbers.' },
+    { name: 'production-system-map-presentation', label: 'Same source, larger', alt: 'The same production system map rendered at presentation density, with larger type and strokes', caption: 'The same source at presentation density. One prop changes, and nothing else does.' },
+    { name: 'system-architecture', label: 'Architecture', alt: 'System architecture diagram with nested production boundaries and labeled relationships', caption: 'Nested boundaries, typed relationships, and labeled protocols.' },
+    { name: 'aurora-incident', label: 'Incident room', alt: 'A fictional reliability drill with routed services, recovery signals, and a timeline', caption: 'Routing, recovery metrics, and a response timeline on one page.' },
+    { name: 'eval-dashboard', label: 'Dashboard', alt: 'An evaluation dashboard with charts and tables', caption: 'Charts and tables that share one scale of type and rule.' },
+])
+const landingWall = await renderFilmWall(films, '', { limit: 6 })
+const fullWall = await renderFilmWall(films, '')
+const claims = await renderClaims(catalogComponentCount)
+
 const benchmarkTemplate = await readFile(benchmarksTemplatePath, 'utf8')
 const benchmarkResults = JSON.parse(await readFile(benchmarkResultsPath, 'utf8')) as BenchmarkResults
 const catalogReplacements = (template: string) => template
@@ -326,44 +362,73 @@ const catalogReplacements = (template: string) => template
     .replace('{{COMPONENT_FILTERS}}', renderCatalogFilters)
     .replace('{{COMPONENT_CATALOG}}', () => renderComponentCatalog())
     .replace('{{HOME_COMPONENT_CATALOG}}', () => renderComponentCatalog(false))
-const indexTemplate = preparePage(catalogReplacements((await readFile(templatePath, 'utf8'))
-    .replace('{{PROMPT_MD}}', () => encodeHtml(prompt))), 'index.html')
-const componentsTemplate = preparePage(catalogReplacements(await readFile(componentsTemplatePath, 'utf8')), 'components.html')
-const playgroundTemplate = preparePage(catalogReplacements(await readFile(playgroundTemplatePath, 'utf8')), 'playground.html')
-const agentsTemplate = preparePage((await readFile(agentsTemplatePath, 'utf8'))
-    .replace('{{PROMPT_MD}}', () => encodeHtml(prompt)), 'agents.html')
-const [highlightedIndex, highlightedComponents, highlightedAgents] = await Promise.all([
-    replaceAsync(indexTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
-    replaceAsync(componentsTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
-    replaceAsync(agentsTemplate, /<pre([^>]*)\sdata-shiki="([^"]+)"([^>]*)><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g),
-])
-const output = highlightedIndex.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice(templatePath)}\n`)
-const componentsOutput = highlightedComponents.replace(
-    '<!DOCTYPE html>\n',
-    `<!DOCTYPE html>\n${generatedNotice(componentsTemplatePath)}\n`,
-)
-const playgroundOutput = playgroundTemplate.replace(
-    '<!DOCTYPE html>\n',
-    `<!DOCTYPE html>\n${generatedNotice(playgroundTemplatePath)}\n`,
-)
-const agentsOutput = highlightedAgents.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice(agentsTemplatePath)}\n`)
+
+const notice = (source: string, html: string) => html.replace('<!DOCTYPE html>\n', `<!DOCTYPE html>\n${generatedNotice(source)}\n`)
+
+const landing = (await readFile(templatePath, 'utf8'))
+    .replace('{{HERO_FILM}}', heroFilm)
+    .replace('{{BESIDE_SOURCE}}', () => encodeHtml(besideSource.trimEnd()))
+    .replace('{{BESIDE_LINES}}', besideLines.join(','))
+    .replace('{{FILM_WALL}}', () => landingWall)
+    .replace('{{FIGURES}}', () => figures)
+    .replace('{{CLAIMS}}', () => claims)
+const filmsPage = (await readFile(filmsTemplatePath, 'utf8')).replace('{{FILM_WALL_ALL}}', () => fullWall)
+const examplesPage = await readFile(examplesTemplatePath, 'utf8')
+const componentsTemplate = catalogReplacements(await readFile(componentsTemplatePath, 'utf8'))
+const playgroundTemplate = catalogReplacements(await readFile(playgroundTemplatePath, 'utf8'))
+const agentsTemplate = (await readFile(agentsTemplatePath, 'utf8')).replace('{{PROMPT_MD}}', () => encodeHtml(prompt))
 const benchmarksOutput = preparePage(benchmarkTemplate, 'benchmarks.html')
     .replaceAll('{{GENERATED_AT}}', () => encodeHtml(benchmarkResults.generatedAt))
     .replace('{{ENVIRONMENT}}', () => renderBenchmarkEnvironment(benchmarkResults))
     .replace('{{QUALITY_SUMMARY}}', () => renderBenchmarkSummary(benchmarkResults))
     .replace('{{QUALITY_FINDINGS}}', () => renderBenchmarkFindings(benchmarkResults))
     .replace('{{BENCHMARK_ROWS}}', () => renderBenchmarkRows(benchmarkResults))
-    .replace(
-        '<!DOCTYPE html>\n',
-        `<!DOCTYPE html>\n${generatedNotice(benchmarksTemplatePath)}\n`,
-    )
 
-await Promise.all([
-    writeFile(outPath, output),
-    writeFile(componentsOutPath, componentsOutput),
-    writeFile(playgroundOutPath, playgroundOutput),
-    writeFile(benchmarksOutPath, benchmarksOutput),
-    writeFile(agentsOutPath, agentsOutput),
-    writeFile(docsPromptPath, prompt),
+// ── Search and sitemap ──────────────────────────────────────────────────────
+
+const searchIndex = [
+    ...sitePages.filter((page) => !page.file.startsWith('docs/') && !page.file.startsWith('film/')).map((page) => ({ title: page.title.split(' | ')[0], description: page.description, url: page.file, category: 'Page' })),
+    ...films.map((film) => ({ title: film.title, description: film.summary, url: `film/${film.id}.html`, category: 'Film' })),
+    ...guideSearch.map(({ title, description, url, category }) => ({ title, description, url, category })),
+    ...componentCatalog.flatMap((category) => category.components.map((component) => ({
+        title: component.name,
+        description: component.description,
+        url: 'components.html#component-' + component.name,
+        category: category.label,
+    }))),
+    // A -presentation file is another size of one example, and that example's card links to it.
+    ...sources.filter((source) => !source.name.startsWith('catalog-') && !source.name.endsWith('-presentation')).map((source) => ({
+        title: source.title,
+        description: 'View and edit the ' + source.title.toLowerCase() + ' example.',
+        url: 'examples.html#example-' + source.name,
+        category: 'Example',
+    })),
+    { title: 'Agent resources', description: 'Markdown instructions, skills, and a machine-readable component catalog.', url: 'agents.html#resources', category: 'Guide' },
+]
+await writeFile('docs/search-index.json', JSON.stringify(searchIndex))
+await writeFile('docs/sitemap.xml', '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    + sitePages.map((page) => `<url><loc>https://bvolpato.github.io/vizmatic/${page.file === 'index.html' ? '' : page.file}</loc></url>`).join('\n') + '\n</urlset>\n')
+await writeFile('docs/robots.txt', 'User-agent: *\nAllow: /\n\nSitemap: https://bvolpato.github.io/vizmatic/sitemap.xml\n')
+
+// ── Pages ───────────────────────────────────────────────────────────────────
+
+const [output, filmsOutput, examplesOutput, componentsOutput, agentsOutput] = await Promise.all([
+    highlightPage(preparePage(landing, 'index.html')),
+    highlightPage(preparePage(filmsPage, 'films.html')),
+    highlightPage(preparePage(examplesPage, 'examples.html')),
+    highlightPage(preparePage(componentsTemplate, 'components.html')),
+    highlightPage(preparePage(agentsTemplate, 'agents.html')),
 ])
-console.log(`built ${outPath}, ${componentsOutPath}, ${playgroundOutPath}, ${agentsOutPath}, ${benchmarksOutPath}, and agent references`)
+const playgroundOutput = preparePage(playgroundTemplate, 'playground.html')
+const writes: Promise<void>[] = [
+    writeFile(outPath, notice(templatePath, output)),
+    writeFile('docs/films.html', notice(filmsTemplatePath, filmsOutput)),
+    writeFile('docs/examples.html', notice(examplesTemplatePath, examplesOutput)),
+    writeFile(componentsOutPath, notice(componentsTemplatePath, componentsOutput)),
+    writeFile(playgroundOutPath, notice(playgroundTemplatePath, playgroundOutput)),
+    writeFile(benchmarksOutPath, notice(benchmarksTemplatePath, benchmarksOutput)),
+    writeFile(agentsOutPath, notice(agentsTemplatePath, agentsOutput)),
+    writeFile(docsPromptPath, prompt),
+]
+await Promise.all(writes)
+console.log(`built ${sitePages.length} pages, ${films.length} film pages, and ${Object.keys(prepared.demos).length} guide demos`)

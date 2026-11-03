@@ -94,9 +94,10 @@ export async function createBrowserSceneRenderer(assets: BrowserSceneAssets): Pr
         initializeBrowserQuickJS(assets.quickjsWasm),
         initializeRasterizer(assets.resvgWasm),
     ])
-    const definitions: Array<[string, keyof typeof SCENE_BROWSER_FONT_PINS, 400 | 600 | 700]> = [
+    const definitions: Array<[string, keyof typeof SCENE_BROWSER_FONT_PINS, 400 | 600 | 700, ('normal' | 'italic')?]> = [
         ['Inter', 'interRegular', 400], ['Inter', 'interSemiBold', 600], ['Inter', 'interBold', 700],
         ['JetBrains Mono', 'jetBrainsMono', 400], ['Noto Sans', 'notoSans', 400], ['Noto Sans Math', 'notoSansMath', 400],
+        ['Instrument Serif', 'instrumentSerif', 400], ['Instrument Serif', 'instrumentSerifItalic', 400, 'italic'],
     ]
     let emojiPromise: Promise<Record<string, string>> | undefined
     let layoutPromise: Promise<typeof satori> | undefined
@@ -113,7 +114,7 @@ export async function createBrowserSceneRenderer(assets: BrowserSceneAssets): Pr
         return layoutPromise
     }
     const rasterAssets: BrowserRasterAssets = {
-        fonts: definitions.map(([name, key, weight]) => ({ name, weight, style: 'normal', data: assets.fonts[key] })),
+        fonts: definitions.map(([name, key, weight, style]) => ({ name, weight, style: style ?? 'normal', data: assets.fonts[key] })),
         fontOptions: { fontBuffers: definitions.map(([, key]) => new Uint8Array(assets.fonts[key])), defaultFontFamily: 'Inter' },
         layout: async (element, options) => (await layout())(element, options),
         emoji: () => {

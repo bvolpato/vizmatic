@@ -342,3 +342,131 @@ export function routingLabelPosition(points: RoutingPoint[]): RoutingPoint {
     }
     return position
 }
+
+// ─── Smooth connectors ──────────────────────────────────────────────────────
+
+export interface SmoothRoute {
+    /** SVG path data. */
+    d: string
+    /** The curve as a polyline, for collision checks and label placement. */
+    samples: RoutingPoint[]
+}
+
+const SIDE_DIRECTION: Record<GraphPortSide, RoutingPoint> = {
+    right: { x: 1, y: 0 }, left: { x: -1, y: 0 }, top: { x: 0, y: -1 }, bottom: { x: 0, y: 1 },
+}
+
+function fmt(value: number): number {
+    return Math.round(value * 100) / 100
+}
+
+function sampleCubic(p0: RoutingPoint, p1: RoutingPoint, p2: RoutingPoint, p3: RoutingPoint, out: RoutingPoint[], steps = 14): void {
+    for (let i = 1; i <= steps; i++) {
+        const t = i / steps, u = 1 - t
+        out.push({
+            x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+            y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+        })
+    }
+}
+
+/**
+ * A curve that leaves and enters at right angles to the node sides, passing
+ * through any waypoints. Perpendicular ends keep arrowheads square to the box.
+ */
+export function smoothConnector(
+    start: RoutingPoint,
+    end: RoutingPoint,
+    startSide: GraphPortSide,
+    endSide: GraphPortSide,
+    waypoints: readonly RoutingPoint[] = [],
+): SmoothRoute {
+    const out = SIDE_DIRECTION[startSide], into = SIDE_DIRECTION[endSide]
+    const points = [start, ...waypoints, end]
+    const tangents: RoutingPoint[] = points.map((_, index) => {
+        if (index === 0) return out
+        if (index === points.length - 1) return { x: -into.x, y: -into.y }
+        const previous = points[index - 1]!, next = points[index + 1]!
+        const dx = next.x - previous.x, dy = next.y - previous.y
+        const length = Math.hypot(dx, dy) || 1
+        return { x: dx / length, y: dy / length }
+    })
+    const samples: RoutingPoint[] = [start]
+    let d = `M ${fmt(start.x)} ${fmt(start.y)}`
+    for (let i = 0; i + 1 < points.length; i++) {
+        const a = points[i]!, b = points[i + 1]!
+        const ta = tangents[i]!, tb = tangents[i + 1]!
+        const dx = b.x - a.x, dy = b.y - a.y
+        const distance = Math.hypot(dx, dy)
+        // Handles follow the travel along each tangent. A sideways offset gets a
+        // small extra reach to round the corner, so curves bend once and never loop.
+        const along = (tangent: RoutingPoint) => Math.abs(dx * tangent.x + dy * tangent.y)
+        const handle = (tangent: RoutingPoint) => Math.min(along(tangent) * 0.5 + (distance - along(tangent)) * 0.12, distance * 0.6)
+        const c1 = { x: a.x + ta.x * handle(ta), y: a.y + ta.y * handle(ta) }
+        const c2 = { x: b.x - tb.x * handle(tb), y: b.y - tb.y * handle(tb) }
+        d += ` C ${fmt(c1.x)} ${fmt(c1.y)}, ${fmt(c2.x)} ${fmt(c2.y)}, ${fmt(b.x)} ${fmt(b.y)}`
+        sampleCubic(a, c1, c2, b, samples)
+    }
+    return { d, samples }
+}
+
+/** An orthogonal route with rounded bends. Sharp corners are what make wiring look mechanical. */
+export function roundedPolylinePath(points: readonly RoutingPoint[], radius: number): SmoothRoute {
+    if (points.length === 0) return { d: '', samples: [] }
+    const samples: RoutingPoint[] = [points[0]!]
+    let d = `M ${fmt(points[0]!.x)} ${fmt(points[0]!.y)}`
+    for (let i = 1; i < points.length; i++) {
+        const corner = points[i]!
+        const next = points[i + 1]
+        if (!next) {
+            d += ` L ${fmt(corner.x)} ${fmt(corner.y)}`
+            samples.push(corner)
+            break
+        }
+        const previous = points[i - 1]!
+        const inLength = Math.hypot(corner.x - previous.x, corner.y - previous.y)
+        const outLength = Math.hypot(next.x - corner.x, next.y - corner.y)
+        const r = Math.min(radius, inLength / 2, outLength / 2)
+        if (r < 0.5) {
+            d += ` L ${fmt(corner.x)} ${fmt(corner.y)}`
+            samples.push(corner)
+            continue
+        }
+        const before = { x: corner.x + (previous.x - corner.x) * r / inLength, y: corner.y + (previous.y - corner.y) * r / inLength }
+        const after = { x: corner.x + (next.x - corner.x) * r / outLength, y: corner.y + (next.y - corner.y) * r / outLength }
+        d += ` L ${fmt(before.x)} ${fmt(before.y)} Q ${fmt(corner.x)} ${fmt(corner.y)}, ${fmt(after.x)} ${fmt(after.y)}`
+        samples.push(before, corner, after)
+    }
+    return { d, samples }
+}
+
+/** Does any part of a sampled curve pass through a box? */
+export function samplesHitBox(samples: readonly RoutingPoint[], obstacle: RoutingObstacle): boolean {
+    for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1]!, b = samples[i]!
+        // Curve samples sit close together, so a coarse subdivision of each step is enough.
+        const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 6))
+        for (let k = 0; k <= steps; k++) {
+            const x = a.x + (b.x - a.x) * k / steps, y = a.y + (b.y - a.y) * k / steps
+            if (x > obstacle.left && x < obstacle.right && y > obstacle.top && y < obstacle.bottom) return true
+        }
+    }
+    return false
+}
+
+/** Point and tangent at a fraction of a polyline's length. */
+export function pointAlongSamples(samples: readonly RoutingPoint[], fraction: number): RoutingPoint {
+    let total = 0
+    for (let i = 1; i < samples.length; i++) total += Math.hypot(samples[i]!.x - samples[i - 1]!.x, samples[i]!.y - samples[i - 1]!.y)
+    let remaining = total * fraction
+    for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1]!, b = samples[i]!
+        const length = Math.hypot(b.x - a.x, b.y - a.y)
+        if (remaining <= length && length > 0) {
+            const t = remaining / length
+            return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }
+        }
+        remaining -= length
+    }
+    return samples[samples.length - 1] ?? { x: 0, y: 0 }
+}

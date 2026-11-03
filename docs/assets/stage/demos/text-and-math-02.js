@@ -1,0 +1,1 @@
+import{Sa as o,jb as i,ub as e}from"../chunk-5QST552B.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var r=i({fps:30},t=>{let a=t.add(e("Look at this word.",{font:"serif",size:170}));t.wait(.5),t.play(...a.find("this").map(f=>o(f,"yellow"))),t.wait(1)});export{r as default};

@@ -1,3 +1,4 @@
+density = "compact";
 width = 1120;
 height = 800;
 background = "theme";
@@ -64,11 +65,11 @@ background = "theme";
                     { id: 'orders', label: 'Orders store', detail: 'writes steady', x: 0.91, y: 0.50, tone: 'green', icon: 'database' },
                 ]}
                 edges={[
-                    { from: 'edge', to: 'queue', fromSide: 'right', toSide: 'left', tone: 'blue' },
+                    { from: 'edge', to: 'queue', fromSide: 'right', toSide: 'left' },
                     { from: 'queue', to: 'worker-a', fromSide: 'right', toSide: 'left', tone: 'critical', style: 'dashed' },
-                    { from: 'queue', to: 'worker-b', fromSide: 'right', toSide: 'left', tone: 'green' },
+                    { from: 'queue', to: 'worker-b', fromSide: 'right', toSide: 'left' },
                     { from: 'worker-a', to: 'orders', fromSide: 'right', toSide: 'left', tone: 'warm', style: 'dashed' },
-                    { from: 'worker-b', to: 'orders', fromSide: 'right', toSide: 'left', tone: 'green' },
+                    { from: 'worker-b', to: 'orders', fromSide: 'right', toSide: 'left' },
                 ]}
             />
         </Panel>

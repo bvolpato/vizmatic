@@ -5,6 +5,7 @@
  *   tsx scripts/render-films.ts
  *   tsx scripts/render-films.ts --film lorenz,attention --quality high
  *   tsx scripts/render-films.ts --posters
+ *   tsx scripts/render-films.ts --no-posters
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -39,6 +40,8 @@ async function main(): Promise<void> {
     const quality = (flag('quality') ?? 'standard') as Quality
     const workers = Number(flag('workers') ?? 4)
     const postersOnly = process.argv.includes('--posters')
+    // Posters are committed. The Pages workflow builds only the MP4s, which git ignores.
+    const videosOnly = process.argv.includes('--no-posters')
     const catalog = (await readCatalog()).filter((entry) => !pick || pick.includes(entry.id))
     if (pick && catalog.length !== pick.length) throw new Error(`Unknown film in --film ${pick.join(',')}`)
     await mkdir(OUT, { recursive: true })
@@ -46,8 +49,10 @@ async function main(): Promise<void> {
         const module = await import(pathToFileURL(resolve('examples/films', `${entry.id}.ts`)).href) as { default: unknown }
         if (!isFilm(module.default)) throw new Error(`${entry.id} must export a film as its default export.`)
         const film = await compileFilm(module.default, { look: entry.look })
-        const poster = await renderFilmFrame(film, entry.posterTime, join(OUT, `${entry.id}.png`), { workers: 1 })
-        console.log(`poster ${entry.id} ${poster.width}x${poster.height}`)
+        if (!videosOnly) {
+            const poster = await renderFilmFrame(film, entry.posterTime, join(OUT, `${entry.id}.png`), { workers: 1 })
+            console.log(`poster ${entry.id} ${poster.width}x${poster.height}`)
+        }
         if (postersOnly) continue
         const started = performance.now()
         const video = await renderFilmVideo(film, join(OUT, `${entry.id}.mp4`), { quality, workers })

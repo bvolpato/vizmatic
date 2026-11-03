@@ -20,6 +20,8 @@ export function getSceneBrowserAssetPaths() {
             jetBrainsMono: join(assetDirectory, 'fonts/JetBrainsMono-Regular.ttf'),
             notoSans: join(assetDirectory, 'fonts/NotoSans-Regular.ttf'),
             notoSansMath: join(assetDirectory, 'fonts/NotoSansMath-Regular.ttf'),
+            instrumentSerif: join(assetDirectory, 'fonts/InstrumentSerif-Regular.ttf'),
+            instrumentSerifItalic: join(assetDirectory, 'fonts/InstrumentSerif-Italic.ttf'),
         },
         emojiBrotli: join(assetDirectory, 'emoji.json.br'),
     }

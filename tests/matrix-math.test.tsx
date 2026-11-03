@@ -83,8 +83,8 @@ describe('Matrix numeric emphasis', () => {
         expect(cells[1][1].props.style.boxShadow).toContain('#ef4444')
     })
 
-    it('keeps legacy default value size, color range, and decimal labels', () => {
-        const cells = renderedMatrixCells(Matrix({ data: [[0.5]], c }))
+    it('keeps the legacy value size at comfortable density, with the same color range and decimal labels', () => {
+        const cells = renderedMatrixCells(Matrix({ data: [[0.5]], c: { ...c, density: 'comfortable' } }))
         expect(cells[0][0].props.style.fontSize).toBe(11)
         expect(cells[0][0].props.style.backgroundColor).toBe(heatColor(0.5))
         expect(cells[0][0].props.children).toBe('0.50')

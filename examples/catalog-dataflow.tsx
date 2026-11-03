@@ -25,9 +25,7 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 title="Feature pipeline"
                 subtitle="schema metadata stays attached to nodes and edges while stream and batch paths remain distinct"
-                tone="purple"
                 width="100%"
-                minHeight={690}
                 padding={14}
                 align="center"
                 footer="Dashed edges are stream delivery; solid edges are batch delivery. Invalid records stay observable in quarantine."
@@ -54,7 +52,6 @@ export function create(theme: ThemeMode = 'dark') {
                             label: 'Event ingest',
                             detail: 'SDK + webhook',
                             kind: 'source',
-                            tone: 'blue',
                             icon: 'stream',
                             schema: {
                                 name: 'Event.v1',
@@ -70,7 +67,6 @@ export function create(theme: ThemeMode = 'dark') {
                             label: 'Validate + dedupe',
                             detail: 'contract gate',
                             kind: 'transform',
-                            tone: 'purple',
                             icon: 'check',
                             schema: 'Valid.v1 { id, ts, user }',
                         },
@@ -79,7 +75,6 @@ export function create(theme: ThemeMode = 'dark') {
                             label: 'Build features',
                             detail: 'window + join',
                             kind: 'transform',
-                            tone: 'cyan',
                             icon: 'tool',
                             schema: 'FeatureRow { id, x₁…xₙ }',
                         },
@@ -112,10 +107,10 @@ export function create(theme: ThemeMode = 'dark') {
                         },
                     ]}
                     edges={[
-                        { from: 'ingest', to: 'validate', mode: 'stream', label: 'stream · Event.v1', tone: 'blue' },
-                        { from: 'validate', to: 'features', mode: 'stream', label: 'stream · Valid.v1', tone: 'purple' },
-                        { from: 'features', to: 'serving', mode: 'stream', label: 'stream · vector', tone: 'cyan' },
-                        { from: 'features', to: 'warehouse', mode: 'batch', label: 'batch · FeatureRow', tone: 'green' },
+                        { from: 'ingest', to: 'validate', mode: 'stream', label: 'stream · Event.v1' },
+                        { from: 'validate', to: 'features', mode: 'stream', label: 'stream · Valid.v1' },
+                        { from: 'features', to: 'serving', mode: 'stream', label: 'stream · vector' },
+                        { from: 'features', to: 'warehouse', mode: 'batch', label: 'batch · FeatureRow' },
                         { from: 'validate', to: 'quarantine', mode: 'stream', label: 'stream · rejects', tone: 'warm' },
                     ]}
                 />

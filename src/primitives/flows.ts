@@ -5,9 +5,10 @@ import {
     getReadableToneColor,
     getToneColor,
     withColorAlpha,
+    densityOf,
 } from '../theme'
 
-import { Column, compactChildren, type FlexAlign, Panel, Row, textFitStyle, ToneStrip } from './layout'
+import { Column, compactChildren, type FlexAlign, Panel, Row, textFitStyle } from './layout'
 import { FlowArrow } from './svg'
 import { renderMaybeMath, StepCard } from './surfaces'
 import { DetailList } from './content'
@@ -55,11 +56,12 @@ export function StatusRow({
     status = 'check',
     tone,
     c,
-    boxed = true,
-    fontSize = 11,
+    boxed = false,
+    fontSize: fontSizeProp,
     width,
     math = false,
 }: StatusRowProps): React.ReactElement {
+    const fontSize = fontSizeProp ?? densityOf(c).f(11)
     const resolvedTone = tone ?? statusTones[status]
     const accent = getToneColor(resolvedTone, c)
     // Account for the marker tint composited over its row tint when boxed.
@@ -75,16 +77,16 @@ export function StatusRow({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 18,
-            height: 18,
+            width: densityOf(c).f(16),
+            height: densityOf(c).f(16),
             flexShrink: 0,
             borderRadius: 999,
-            backgroundColor: status === 'dot' ? accent : withColorAlpha(accent, 0x26 / 0xff),
-            border: `1px solid ${accent}`,
+            backgroundColor: status === 'dot' ? accent : withColorAlpha(accent, 0x20 / 0xff),
+            border: `1px solid ${withColorAlpha(accent, 0.7)}`,
             color: accentText,
             fontFamily: 'Inter',
             fontSize: status === 'warn' || status === 'info' ? 12 : 11,
-            fontWeight: 900,
+            fontWeight: 600,
             lineHeight: 1,
         }
     }, glyph)
@@ -93,12 +95,12 @@ export function StatusRow({
         style: {
             display: 'flex',
             alignItems: 'center',
-            gap: 9,
+            gap: densityOf(c).s(9),
             width: width ?? '100%',
             boxSizing: 'border-box' as const,
             ...(boxed ? {
-                padding: '7px 10px',
-                borderRadius: 8,
+                padding: `${densityOf(c).s(7)}px ${densityOf(c).s(10)}px`,
+                borderRadius: densityOf(c).r(8),
                 backgroundColor: withColorAlpha(accent, 0x12 / 0xff),
                 border: `1px solid ${withColorAlpha(accent, 0x3a / 0xff)}`,
             } : { padding: '3px 0' }),
@@ -143,12 +145,13 @@ interface StatusListProps {
 export function StatusList({
     rows,
     c,
-    gap = 7,
-    boxed = true,
+    gap: gapProp,
+    boxed = false,
     fontSize,
     width,
     math = false,
 }: StatusListProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(7)
     return Column({
         gap,
         align: 'stretch',
@@ -185,7 +188,6 @@ interface TimelineProps {
 
 function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: boolean, width?: number | string): React.ReactElement {
     const resolvedTone = event.tone ?? statusTones[event.status ?? 'dot']
-    const accent = getToneColor(resolvedTone, c)
     const accentText = getReadableToneColor(resolvedTone, c)
     const resolvedWidth = event.width ?? width
 
@@ -193,14 +195,10 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 5,
+            gap: densityOf(c).s(5),
             ...(resolvedWidth != null ? { width: resolvedWidth } : {}),
             ...(typeof resolvedWidth === 'string' ? { minWidth: 0 } : {}),
-            padding: '10px 12px',
-            borderRadius: 8,
-            border: `1px solid ${withColorAlpha(accent, 0x44 / 0xff)}`,
-            backgroundColor: c.bgCard,
-            boxShadow: `0 7px 18px ${c.shadow}`,
+            padding: `${densityOf(c).s(4)}px 0`,
             boxSizing: 'border-box' as const,
         }
     },
@@ -208,13 +206,11 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
         event.time != null && React.createElement('div', {
             style: {
                 display: 'flex',
-                color: accentText,
+                color: event.tone || event.status ? accentText : c.textMuted,
                 fontFamily: 'JetBrains Mono',
-                fontSize: 11,
-                fontWeight: 900,
+                fontSize: densityOf(c).type.micro,
+                fontWeight: 400,
                 lineHeight: 1.15,
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.04em',
             }
         }, renderMaybeMath(event.time, math)),
         React.createElement('div', {
@@ -222,8 +218,8 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
                 display: 'flex',
                 color: c.textPrimary,
                 fontFamily: 'Inter',
-                fontSize: 14,
-                fontWeight: 900,
+                fontSize: densityOf(c).f(14),
+                fontWeight: 600,
                 lineHeight: 1.18,
                 ...textFitStyle(),
             }
@@ -233,7 +229,7 @@ function renderTimelineCard(event: TimelineEventSpec, c: ThemeColors, math: bool
                 display: 'flex',
                 color: c.textSecondary,
                 fontFamily: 'Inter',
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 fontWeight: 500,
                 lineHeight: 1.35,
                 ...textFitStyle(),
@@ -251,10 +247,12 @@ export function Timeline({
     direction = 'vertical',
     width,
     eventWidth,
-    gap = 12,
-    markerSize = 14,
+    gap: gapProp,
+    markerSize: markerSizeProp,
     math = false,
 }: TimelineProps): React.ReactElement {
+    const markerSize = markerSizeProp ?? densityOf(c).g(9)
+    const gap = gapProp ?? densityOf(c).s(12)
     const header = (title != null || subtitle != null) && React.createElement('div', {
         style: {
             display: 'flex',
@@ -268,20 +266,20 @@ export function Timeline({
             style: {
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: densityOf(c).s(8),
                 color: c.textPrimary,
                 fontFamily: 'Inter',
-                fontSize: 16,
-                fontWeight: 900,
+                fontSize: densityOf(c).f(16),
+                fontWeight: 600,
                 lineHeight: 1.2,
             }
-        }, ToneStrip({ tone: events[0]?.tone ?? 'blue' }), renderMaybeMath(title, math)),
+        }, renderMaybeMath(title, math)),
         subtitle != null && React.createElement('div', {
             style: {
                 display: 'flex',
                 color: c.textSecondary,
                 fontFamily: 'Inter',
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 fontWeight: 500,
                 lineHeight: 1.35,
             }
@@ -304,7 +302,7 @@ export function Timeline({
                 style: {
                     display: 'flex',
                     alignItems: 'stretch',
-                    gap: 0,
+                    gap: densityOf(c).s(0),
                     width: '100%',
                 }
             }, ...events.map((event, index) => {
@@ -314,7 +312,7 @@ export function Timeline({
                     style: {
                         display: 'flex',
                         flexDirection: 'column' as const,
-                        gap: 8,
+                        gap: densityOf(c).s(8),
                         ...(eventWidth == null ? { flex: 1 } : {}),
                         ...((event.width ?? eventWidth) != null ? { width: event.width ?? eventWidth } : {}),
                         minWidth: 0,
@@ -331,8 +329,8 @@ export function Timeline({
                             style: {
                                 display: 'flex',
                                 flex: 1,
-                                height: 2,
-                                backgroundColor: c.borderLight,
+                                height: 1,
+                                backgroundColor: c.border,
                                 opacity: index === 0 ? 0 : 1,
                             }
                         }),
@@ -343,8 +341,7 @@ export function Timeline({
                                 height: markerSize,
                                 borderRadius: 999,
                                 backgroundColor: accent,
-                                border: `3px solid ${c.bg}`,
-                                boxShadow: `0 0 0 1px ${accent}`,
+                                
                                 flexShrink: 0,
                             }
                         }),
@@ -352,8 +349,8 @@ export function Timeline({
                             style: {
                                 display: 'flex',
                                 flex: 1,
-                                height: 2,
-                                backgroundColor: c.borderLight,
+                                height: 1,
+                                backgroundColor: c.border,
                                 opacity: index === events.length - 1 ? 0 : 1,
                             }
                         }),
@@ -389,7 +386,7 @@ export function Timeline({
                 style: {
                     display: 'flex',
                     alignItems: 'stretch',
-                    gap: 11,
+                    gap: densityOf(c).s(11),
                     width: '100%',
                 }
             },
@@ -407,8 +404,8 @@ export function Timeline({
                             display: 'flex',
                             flex: 1,
                             minHeight: 4,
-                            width: 2,
-                            backgroundColor: c.borderLight,
+                            width: 1,
+                            backgroundColor: c.border,
                             opacity: index === 0 ? 0 : 1,
                         }
                     }),
@@ -419,8 +416,7 @@ export function Timeline({
                             height: markerSize,
                             borderRadius: 999,
                             backgroundColor: accent,
-                            border: `3px solid ${c.bg}`,
-                            boxShadow: `0 0 0 1px ${accent}`,
+                            
                             flexShrink: 0,
                         }
                     }),
@@ -429,8 +425,8 @@ export function Timeline({
                             display: 'flex',
                             flex: 1,
                             minHeight: 4,
-                            width: 2,
-                            backgroundColor: c.borderLight,
+                            width: 1,
+                            backgroundColor: c.border,
                             opacity: index === events.length - 1 ? 0 : 1,
                         }
                     }),
@@ -469,7 +465,7 @@ interface FlowProps {
 }
 
 function renderFlowStage(stage: FlowStageSpec, c: ThemeColors, math: boolean): React.ReactElement {
-    const tone = stage.tone ?? 'blue'
+    const tone = stage.tone
     const hasDetails = Boolean(stage.children || stage.lines?.length)
 
     if (!hasDetails) {
@@ -505,12 +501,14 @@ export function Flow({
     stages,
     c,
     direction = 'horizontal',
-    gap = 10,
-    connectorLength = 28,
+    gap: gapProp,
+    connectorLength: connectorLengthProp,
     connectorTone = 'neutral',
     align = 'center',
     math = false,
 }: FlowProps): React.ReactElement {
+    const connectorLength = connectorLengthProp ?? densityOf(c).s(32)
+    const gap = gapProp ?? densityOf(c).s(10)
     const isHorizontal = direction === 'horizontal'
     const children = stages.flatMap((stage, index) => {
         const elements: React.ReactElement[] = [
@@ -534,7 +532,7 @@ export function Flow({
     return (isHorizontal ? Row : Column)({
         gap,
         align,
-        justify: 'center',
+        justify: isHorizontal ? 'start' : 'center',
         children,
     })
 }

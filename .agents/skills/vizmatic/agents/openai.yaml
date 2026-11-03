@@ -1,7 +1,7 @@
 interface:
   display_name: "Vizmatic"
-  short_description: "Create diagrams and charts from TSX"
-  default_prompt: "Use $vizmatic to create a theme-aware diagram and render dark and light PNG files."
+  short_description: "Make explainer films, diagrams, and charts from code"
+  default_prompt: "Use $vizmatic to explain this with a short film or a dense figure, check it, and render it."
 
 policy:
   allow_implicit_invocation: true

@@ -1,5 +1,7 @@
 import React from 'react'
-import { getReadableColor, getReadableTextColor, type ThemeColors } from '../theme'
+import { getReadableColor, getReadableTextColor, type ThemeColors,
+    densityOf,
+} from '../theme'
 import { SvgMathText } from './layout'
 
 type OverlayTextProps = Parameters<typeof SvgMathText>[0]
@@ -238,7 +240,7 @@ export function MoleculeDiagram({
         const point = points.get(atom.id)!
         const accent = atomColor(atom.element, c)
         return React.createElement('g', { key: atom.id, 'data-atom-id': atom.id, 'data-element': atom.element },
-            React.createElement('circle', { cx: point.x, cy: point.y, r: 19, fill: c.bgCard, stroke: accent, strokeWidth: 2 }),
+            React.createElement('circle', { cx: point.x, cy: point.y, r: 19, fill: c.bgCard, stroke: accent, strokeWidth: densityOf(c).w(2) }),
         )
     })
     const textNodes = atoms.flatMap((atom) => {
@@ -246,9 +248,9 @@ export function MoleculeDiagram({
         const labelY = point.y + 34 <= svgHeight - 10 ? point.y + 34 : point.y - 25
         return [
             overlayText(`atom-${atom.id}-element`, { text: atom.element, x: point.x, y: point.y + 1, fill: atomColor(atom.element, c), fontSize: atom.element.length === 1 ? 17 : 14, fontFamily: c.fontSans, fontWeight: 700 }),
-            ...(atom.isotope === undefined ? [] : [overlayText(`atom-${atom.id}-isotope`, { text: String(atom.isotope), x: point.x - 15, y: point.y - 12, fill: c.textPrimary, fontSize: 10, fontFamily: c.fontSans, fontWeight: 700, textAnchor: 'end' })]),
-            ...(atom.charge === undefined || atom.charge === 0 ? [] : [overlayText(`atom-${atom.id}-charge`, { text: `${Math.abs(atom.charge)}${atom.charge > 0 ? '+' : '−'}`, x: point.x + 15, y: point.y - 12, fill: c.textPrimary, fontSize: 10, fontFamily: c.fontSans, fontWeight: 700, textAnchor: 'start' })]),
-            ...(atom.label ? [overlayText(`atom-${atom.id}-label`, { text: atom.label, x: point.x, y: labelY, fill: c.textSecondary, fontSize: 10, fontFamily: c.fontSans, textAnchor: 'middle' })] : []),
+            ...(atom.isotope === undefined ? [] : [overlayText(`atom-${atom.id}-isotope`, { text: String(atom.isotope), x: point.x - 15, y: point.y - 12, fill: c.textPrimary, fontSize: densityOf(c).f(10), fontFamily: c.fontSans, fontWeight: 700, textAnchor: 'end' })]),
+            ...(atom.charge === undefined || atom.charge === 0 ? [] : [overlayText(`atom-${atom.id}-charge`, { text: `${Math.abs(atom.charge)}${atom.charge > 0 ? '+' : '−'}`, x: point.x + 15, y: point.y - 12, fill: c.textPrimary, fontSize: densityOf(c).f(10), fontFamily: c.fontSans, fontWeight: 700, textAnchor: 'start' })]),
+            ...(atom.label ? [overlayText(`atom-${atom.id}-label`, { text: atom.label, x: point.x, y: labelY, fill: c.textSecondary, fontSize: densityOf(c).f(10), fontFamily: c.fontSans, textAnchor: 'middle' })] : []),
         ]
     })
     const geometry = React.createElement('svg', {
@@ -271,7 +273,7 @@ export function MoleculeDiagram({
         style: { position: 'relative', width: svgWidth, height: svgHeight, overflow: 'hidden' },
     },
         geometry,
-        ...(title ? [overlayText('molecule-title', { text: title, x: svgWidth / 2, y: 24, fill: c.textPrimary, fontSize: 15, fontFamily: c.fontSans, fontWeight: 700 })] : []),
+        ...(title ? [overlayText('molecule-title', { text: title, x: svgWidth / 2, y: 24, fill: c.textPrimary, fontSize: densityOf(c).f(15), fontFamily: c.fontSans, fontWeight: 700 })] : []),
         ...textNodes,
     )
 }
@@ -440,7 +442,7 @@ function equationSide(terms: ReactionTerm[], label: string, c: ThemeColors): Rea
             flex: '1 1 0',
             minWidth: 0,
             lineHeight: 1.5,
-            fontSize: 20,
+            fontSize: densityOf(c).f(20),
         },
     }, ...children)
 }
@@ -477,12 +479,12 @@ export function ReactionEquation({
             boxSizing: 'border-box',
             display: 'flex',
             flexDirection: 'column',
-            gap: 12,
+            gap: densityOf(c).s(12),
             width: equationWidth,
             maxWidth: '100%',
-            padding: 18,
+            padding: densityOf(c).s(18),
             border: `1px solid ${c.borderSubtle}`,
-            borderRadius: 14,
+            borderRadius: densityOf(c).r(14),
             background: c.bgCard,
             color: c.textPrimary,
             fontFamily: c.fontSans,
@@ -493,20 +495,20 @@ export function ReactionEquation({
         },
             equationSide(reactants, 'Reactants', c),
             React.createElement('span', {
-                style: { flex: '0 0 auto', color: c.primaryLight, fontSize: 26, fontWeight: 700, padding: '0 2px' },
+                style: { flex: '0 0 auto', color: c.primaryLight, fontSize: densityOf(c).f(26), fontWeight: 700, padding: '0 2px' },
                 'aria-hidden': true,
             }, reversible ? '⇌' : '→'),
             equationSide(products, 'Products', c),
         ),
         conditions !== undefined && conditions.length > 0
-            ? React.createElement('div', { style: { color: c.textSecondary, fontSize: 13 } }, `Conditions: ${conditions}`)
+            ? React.createElement('div', { style: { color: c.textSecondary, fontSize: densityOf(c).f(13) } }, `Conditions: ${conditions}`)
             : null,
         React.createElement('div', {
             style: {
                 paddingTop: 8,
                 borderTop: `1px solid ${c.borderSubtle}`,
                 color: balance.status === 'balanced' ? getReadableColor('positive', c) : balance.status === 'unbalanced' ? getReadableColor('critical', c) : c.textSecondary,
-                fontSize: 13,
+                fontSize: densityOf(c).f(13),
                 lineHeight: 1.4,
             },
         }, balanceText),
@@ -565,9 +567,9 @@ function measurement(x: number, y1: number, y2: number, color: string, key: stri
     const bottom = Math.max(y1, y2)
     const cap = 5
     return React.createElement('g', { key, 'data-measurement': label, 'aria-hidden': true },
-        React.createElement('line', { x1: x, y1: top, x2: x, y2: bottom, stroke: color, strokeWidth: 1.5, strokeDasharray: '3 3' }),
-        React.createElement('line', { x1: x - cap, y1: top, x2: x + cap, y2: top, stroke: color, strokeWidth: 1.5 }),
-        React.createElement('line', { x1: x - cap, y1: bottom, x2: x + cap, y2: bottom, stroke: color, strokeWidth: 1.5 }),
+        React.createElement('line', { x1: x, y1: top, x2: x, y2: bottom, stroke: color, strokeWidth: densityOf().w(1.5), strokeDasharray: '3 3' }),
+        React.createElement('line', { x1: x - cap, y1: top, x2: x + cap, y2: top, stroke: color, strokeWidth: densityOf().w(1.5) }),
+        React.createElement('line', { x1: x - cap, y1: bottom, x2: x + cap, y2: bottom, stroke: color, strokeWidth: densityOf().w(1.5) }),
     )
 }
 
@@ -660,8 +662,8 @@ export function ReactionEnergyDiagram({
                 React.createElement('rect', { x: x0 - 4, y: plotTop, width: revealWidth, height: plotBottom - plotTop }),
             ),
         ),
-        React.createElement('line', { key: 'y-axis', x1: plotLeft, y1: plotTop, x2: plotLeft, y2: plotBottom, stroke: c.borderLight, strokeWidth: 1.4 }),
-        React.createElement('line', { key: 'x-axis', x1: plotLeft, y1: plotBottom, x2: plotRight, y2: plotBottom, stroke: c.borderLight, strokeWidth: 1.4 }),
+        React.createElement('line', { key: 'y-axis', x1: plotLeft, y1: plotTop, x2: plotLeft, y2: plotBottom, stroke: c.borderLight, strokeWidth: densityOf(c).w(1.4) }),
+        React.createElement('line', { key: 'x-axis', x1: plotLeft, y1: plotBottom, x2: plotRight, y2: plotBottom, stroke: c.borderLight, strokeWidth: densityOf(c).w(1.4) }),
         ...gridValues.map((value, index) => React.createElement('line', {
             key: `grid-${index}`,
             x1: plotLeft,
@@ -669,7 +671,7 @@ export function ReactionEnergyDiagram({
             x2: plotRight,
             y2: yFor(value),
             stroke: c.borderSubtle,
-            strokeWidth: 1,
+            strokeWidth: densityOf(c).w(1),
             strokeDasharray: '3 5',
         })),
         React.createElement('path', {
@@ -677,7 +679,7 @@ export function ReactionEnergyDiagram({
             d: path,
             fill: 'none',
             stroke: c.critical,
-            strokeWidth: 4,
+            strokeWidth: densityOf(c).w(4),
             strokeLinecap: 'round',
             strokeLinejoin: 'round',
             clipPath: `url(#${revealClipId})`,
@@ -689,7 +691,7 @@ export function ReactionEnergyDiagram({
             d: catalyzedPath,
             fill: 'none',
             stroke: c.positive,
-            strokeWidth: 4,
+            strokeWidth: densityOf(c).w(4),
             strokeLinecap: 'round',
             strokeLinejoin: 'round',
             clipPath: `url(#${revealClipId})`,
@@ -701,7 +703,7 @@ export function ReactionEnergyDiagram({
         measurement(deltaX, yReactants, yProducts, c.secondary, 'reaction-energy-change', 'reaction-energy-change'),
     ]
     const overlayNodes = [
-        overlayText('title', { text: `${chartTitle} · ${unit}`, x: svgWidth / 2, y: 24, fill: c.textPrimary, fontSize: 16, fontFamily: c.fontSans, fontWeight: 700 }),
+        overlayText('title', { text: `${chartTitle} · ${unit}`, x: svgWidth / 2, y: 24, fill: c.textPrimary, fontSize: densityOf(c).f(16), fontFamily: c.fontSans, fontWeight: 700 }),
         React.createElement('div', {
             key: 'energy-label',
             style: {
@@ -710,19 +712,19 @@ export function ReactionEnergyDiagram({
                 top: (plotTop + plotBottom) / 2,
                 display: 'flex',
                 color: c.textSecondary,
-                fontSize: 12,
+                fontSize: densityOf(c).f(12),
                 fontFamily: c.fontSans,
                 lineHeight: 1,
                 whiteSpace: 'nowrap' as const,
                 transform: 'translate(-50%, -50%) rotate(-90deg)',
             },
         }, 'Energy'),
-        ...gridValues.map((value, index) => overlayText(`grid-label-${index}`, { text: energyText(value), x: plotLeft - 8, y: yFor(value) + 4, fill: readableInk, fontSize: 12, fontFamily: c.fontSans, textAnchor: 'end' })),
-        overlayText('reactant-label', { text: reactantLabel, x: x0, y: plotBottom + 25, fill: c.textPrimary, fontSize: 13, fontFamily: c.fontSans, fontWeight: 600 }),
-        overlayText('product-label', { text: productLabel, x: x1, y: plotBottom + 25, fill: c.textPrimary, fontSize: 13, fontFamily: c.fontSans, fontWeight: 600 }),
-        overlayText('activation-value', { text: `Ea (uncatalyzed) = ${energyText(activation)} ${unit}`, x: svgWidth / 2, y: svgHeight - (catalyzedActivation === undefined ? 45 : 57), fill: getReadableColor('critical', c), fontSize: 12, fontFamily: c.fontSans }),
-        ...(catalyzedActivation === undefined ? [] : [overlayText('catalyzed-activation-value', { text: `Ea (catalyzed) = ${energyText(catalyzedActivation)} ${unit}`, x: svgWidth / 2, y: svgHeight - 39, fill: getReadableColor('positive', c), fontSize: 12, fontFamily: c.fontSans })]),
-        overlayText('delta-value', { text: `ΔE = ${signedEnergyText(delta)} ${unit}`, x: svgWidth / 2, y: svgHeight - 21, fill: getReadableColor('secondary', c), fontSize: 12, fontFamily: c.fontSans }),
+        ...gridValues.map((value, index) => overlayText(`grid-label-${index}`, { text: energyText(value), x: plotLeft - 8, y: yFor(value) + 4, fill: readableInk, fontSize: densityOf(c).f(12), fontFamily: c.fontSans, textAnchor: 'end' })),
+        overlayText('reactant-label', { text: reactantLabel, x: x0, y: plotBottom + 25, fill: c.textPrimary, fontSize: densityOf(c).f(13), fontFamily: c.fontSans, fontWeight: 600 }),
+        overlayText('product-label', { text: productLabel, x: x1, y: plotBottom + 25, fill: c.textPrimary, fontSize: densityOf(c).f(13), fontFamily: c.fontSans, fontWeight: 600 }),
+        overlayText('activation-value', { text: `Ea (uncatalyzed) = ${energyText(activation)} ${unit}`, x: svgWidth / 2, y: svgHeight - (catalyzedActivation === undefined ? 45 : 57), fill: getReadableColor('critical', c), fontSize: densityOf(c).f(12), fontFamily: c.fontSans }),
+        ...(catalyzedActivation === undefined ? [] : [overlayText('catalyzed-activation-value', { text: `Ea (catalyzed) = ${energyText(catalyzedActivation)} ${unit}`, x: svgWidth / 2, y: svgHeight - 39, fill: getReadableColor('positive', c), fontSize: densityOf(c).f(12), fontFamily: c.fontSans })]),
+        overlayText('delta-value', { text: `ΔE = ${signedEnergyText(delta)} ${unit}`, x: svgWidth / 2, y: svgHeight - 21, fill: getReadableColor('secondary', c), fontSize: densityOf(c).f(12), fontFamily: c.fontSans }),
     ]
     const geometry = React.createElement('svg', {
         width: svgWidth,

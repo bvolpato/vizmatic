@@ -1,13 +1,16 @@
 import React from 'react'
 import {
-    typography,
     type ThemeColors,
     type ColorName,
     getReadableColor,
     getReadableTextColor,
+    densityOf,
+    typeOf,
+    hasShadow,
 } from '../theme'
 
 import { clamp, textFitStyle } from './layout'
+import { estimateTextWidth } from './dense'
 import { CANVAS_CHART_COMPONENT, CHART_FRAME_COMPONENT } from '../canvas-chart-fit'
 
 // ─── Chart helpers — Reusable axes, bars, curves, ranges, and points ────────
@@ -48,12 +51,15 @@ interface ChartFrameProps {
     width?: number | string
     height?: number | string
     padding?: number
+    /** Draw a card around the chart. Off by default, since most charts already sit in a panel. */
+    framed?: boolean
 }
 
-const chartPalette: ColorName[] = ['primary', 'secondary', 'positive', 'warning', 'info', 'accent', 'critical']
+// A small categorical set, in an order where neighbors stay easy to tell apart.
+const chartPalette: ColorName[] = ['primary', 'warning', 'positive', 'violet', 'info', 'accent', 'critical']
 
 function isColorName(value: string): value is ColorName {
-    return chartPalette.includes(value as ColorName) || value === 'neutral'
+    return chartPalette.includes(value as ColorName) || value === 'neutral' || value === 'secondary'
 }
 
 export function chartColor(color: ColorName | string | undefined, c: ThemeColors, index = 0): string {
@@ -91,11 +97,35 @@ export function chartTicks(min: number, max: number, count = 4): number[] {
 }
 
 
+/**
+ * Round tick values and the domain they imply. Axis labels should read like
+ * 0, 200, 400, not 0, 170.67, 341.33. Explicit limits are the caller's to keep.
+ */
+export function niceChartScale(
+    values: readonly number[],
+    min: number | undefined,
+    max: number | undefined,
+    count = 4,
+): { domain: { min: number; max: number; range: number }; ticks: number[] } {
+    const domain = chartDomain([...values], min, max)
+    if (min !== undefined && max !== undefined) return { domain, ticks: chartTicks(domain.min, domain.max, count) }
+    const span = domain.max - domain.min
+    const rough = span / Math.max(1, count - 1)
+    const power = Math.pow(10, Math.floor(Math.log10(rough || 1)))
+    const unit = rough / power
+    const step = (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * power
+    const low = min ?? Math.floor(domain.min / step + 1e-9) * step
+    const high = max ?? Math.ceil(domain.max / step - 1e-9) * step
+    const ticks: number[] = []
+    for (let tick = low; tick <= high + step * 1e-6; tick += step) ticks.push(Math.round(tick / step) * step)
+    return { domain: { min: low, max: high, range: high - low || 1 }, ticks: ticks.length > 1 ? ticks : chartTicks(low, high, count) }
+}
+
 function axisTextStyle(c: ThemeColors): React.CSSProperties {
     return {
-        fontFamily: 'JetBrains Mono',
-        fontSize: 11,
-        fontWeight: 600,
+        fontFamily: c.fontSans,
+        fontSize: densityOf(c).type.micro,
+        fontWeight: 400,
         color: c.textMuted,
         lineHeight: 1,
     }
@@ -159,7 +189,7 @@ export function chartLabel(
 ): React.ReactElement {
     const align = options.align ?? 'center'
     const width = options.width ?? 72
-    const fontSize = options.fontSize ?? 11
+    const fontSize = options.fontSize ?? densityOf(c).type.micro
     const labelHeight = options.height ?? Math.ceil(fontSize * 1.4)
     let left = x
     let top = y
@@ -204,8 +234,8 @@ export function chartLabel(
             pointerEvents: 'none' as const,
             ...axisTextStyle(c),
             color: options.color ?? c.textMuted,
-            fontFamily: options.fontFamily ?? 'JetBrains Mono',
-            fontWeight: options.fontWeight ?? 600,
+            fontFamily: options.fontFamily ?? c.fontSans,
+            fontWeight: options.fontWeight ?? 400,
             fontSize,
             lineHeight: 1.15,
         }
@@ -237,7 +267,7 @@ export function pointLabelPlacement(
             y: plot.y,
             width: plot.innerWidth,
             height: plot.innerHeight,
-            padding: 6,
+            padding: 4,
         },
     }
 }
@@ -255,8 +285,11 @@ function ChartFrameContent({
     footer,
     width = '100%',
     height,
-    padding = 16,
+    padding: paddingProp,
+    framed = false,
 }: ChartFrameProps): React.ReactElement {
+    const d = densityOf(c)
+    const padding = paddingProp ?? (framed ? d.s(14) : 0)
     return React.createElement('div', {
         style: {
             width,
@@ -264,22 +297,19 @@ function ChartFrameContent({
             boxSizing: 'border-box' as const,
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 12,
+            gap: d.s(8),
             padding,
-            borderRadius: 8,
-            border: `1px solid ${c.borderSubtle}`,
-            backgroundColor: c.bgCard,
-            boxShadow: `0 9px 24px ${c.shadow}`,
+            ...(framed ? { borderRadius: d.r(8), border: `1px solid ${c.borderSubtle}`, backgroundColor: c.bgCard } : {}),
         }
     },
         (title || subtitle) && React.createElement('div', {
-            style: { display: 'flex', flexDirection: 'column' as const, gap: 4, minWidth: 0, maxWidth: '100%' }
+            style: { display: 'flex', flexDirection: 'column' as const, gap: d.s(2), minWidth: 0, maxWidth: '100%' }
         },
             title && React.createElement('div', {
-                style: { ...typography.small, ...textFitStyle(), color: c.textPrimary, fontWeight: 900 }
+                style: { ...typeOf(c, 'label'), ...textFitStyle(), color: c.textPrimary, fontWeight: 600 }
             }, title),
             subtitle && React.createElement('div', {
-                style: { ...typography.tiny, ...textFitStyle(), color: c.textSecondary, lineHeight: 1.35 }
+                style: { ...typeOf(c, 'tiny'), ...textFitStyle(), color: c.textSecondary, lineHeight: 1.35 }
             }, subtitle),
         ),
         children,
@@ -287,34 +317,32 @@ function ChartFrameContent({
             style: {
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: legend ? 'space-between' : 'center',
-                gap: 12,
-                minHeight: 18,
+                justifyContent: legend ? 'space-between' : 'flex-end',
+                gap: d.s(12),
             }
         },
             legend && React.createElement('div', {
-                style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' as const, minWidth: 0 }
+                style: { display: 'flex', alignItems: 'center', gap: d.s(12), flexWrap: 'wrap' as const, minWidth: 0 }
             },
                 ...legend.map((item, index) => React.createElement('div', {
                     key: `${item.label}-${index}`,
-                    style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }
+                    style: { display: 'flex', alignItems: 'center', gap: d.s(6), minWidth: 0 }
                 },
                     React.createElement('span', {
                         style: {
-                            width: 14,
-                            height: 3,
-                            borderRadius: 999,
+                            width: d.f(12),
+                            height: Math.max(2, d.w(2)),
                             backgroundColor: chartColor(item.color, c, index),
                             display: 'flex',
                         }
                     }),
                     React.createElement('span', {
-                        style: { ...typography.tiny, ...textFitStyle(), color: c.textSecondary }
+                        style: { ...typeOf(c, 'tiny'), ...textFitStyle(), color: c.textSecondary }
                     }, item.label),
                 )),
             ),
             footer && React.createElement('div', {
-                style: { ...typography.tiny, ...textFitStyle('right'), color: c.textMuted }
+                style: { ...typeOf(c, 'tiny'), ...textFitStyle('right'), color: c.textMuted }
             }, footer),
         ),
     )
@@ -465,7 +493,7 @@ export function PieChart({
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 8,
+            gap: densityOf(c).s(8),
             flex: 1,
             minWidth: 112,
         },
@@ -482,20 +510,20 @@ export function PieChart({
                     display: 'flex',
                     width: 10,
                     height: 10,
-                    borderRadius: 3,
+                    borderRadius: densityOf(c).r(3),
                     backgroundColor: chartColor(segment.color, c, index),
                     flexShrink: 0,
                 },
             }),
             React.createElement('span', {
-                style: { ...typography.tiny, ...textFitStyle(), color: c.textSecondary, flex: 1 },
+                style: { ...typeOf(c, 'tiny'), ...textFitStyle(), color: c.textSecondary, flex: 1 },
             }, segment.label),
             React.createElement('span', {
                 style: {
-                    ...typography.tiny,
+                    ...typeOf(c, 'tiny'),
                     color: c.textPrimary,
                     fontFamily: 'JetBrains Mono',
-                    fontWeight: 850,
+                    fontWeight: 600,
                     flexShrink: 0,
                 },
             }, label),
@@ -513,7 +541,7 @@ export function PieChart({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: showLegend ? 'space-between' : 'center',
-                gap: 18,
+                gap: densityOf(c).s(18),
                 minHeight: resolvedSize,
                 width: '100%',
             },
@@ -586,7 +614,7 @@ export function DonutChart({
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 8,
+            gap: densityOf(c).s(8),
             flex: 1,
             minWidth: 112,
         }
@@ -595,7 +623,7 @@ export function DonutChart({
         style: {
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
+            gap: densityOf(c).s(8),
             minWidth: 0,
         }
     },
@@ -604,14 +632,14 @@ export function DonutChart({
                 display: 'flex',
                 width: 10,
                 height: 10,
-                borderRadius: 3,
+                borderRadius: densityOf(c).r(3),
                 backgroundColor: chartColor(segment.color, c, index),
                 flexShrink: 0,
             }
         }),
         React.createElement('span', {
             style: {
-                ...typography.tiny,
+                ...typeOf(c, 'tiny'),
                 ...textFitStyle(),
                 color: c.textSecondary,
                 flex: 1,
@@ -619,10 +647,10 @@ export function DonutChart({
         }, segment.label),
         React.createElement('span', {
             style: {
-                ...typography.tiny,
+                ...typeOf(c, 'tiny'),
                 color: c.textPrimary,
                 fontFamily: 'JetBrains Mono',
-                fontWeight: 850,
+                fontWeight: 600,
                 flexShrink: 0,
             }
         }, segment.valueLabel ?? formatChartValue(segment.value, format)),
@@ -635,13 +663,13 @@ export function DonutChart({
         footer,
         width,
         height,
-        padding: 16,
+        padding: densityOf(c).s(16),
         children: React.createElement('div', {
             style: {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: showLegend ? 'space-between' : 'center',
-                gap: 18,
+                gap: densityOf(c).s(18),
                 minHeight: resolvedSize,
                 width: '100%',
             }
@@ -684,24 +712,24 @@ export function DonutChart({
                         flexDirection: 'column' as const,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: 3,
+                        gap: densityOf(c).s(3),
                         textAlign: 'center' as const,
                     }
                 },
                     resolvedCenterValue != null && React.createElement('div', {
                         style: {
-                            ...typography.small,
+                            ...typeOf(c, 'small'),
                             color: c.textPrimary,
                             fontFamily: 'JetBrains Mono',
-                            fontSize: 18,
-                            fontWeight: 900,
+                            fontSize: densityOf(c).f(18),
+                            fontWeight: 600,
                             lineHeight: 1.05,
                             ...textFitStyle('center'),
                         }
                     }, resolvedCenterValue),
                     centerLabel != null && React.createElement('div', {
                         style: {
-                            ...typography.tiny,
+                            ...typeOf(c, 'tiny'),
                             color: c.textMuted,
                             lineHeight: 1.2,
                             ...textFitStyle('center'),
@@ -755,21 +783,21 @@ export function StackedBar({
             width,
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 10,
+            gap: densityOf(c).s(10),
         }
     },
         (title || subtitle) && React.createElement('div', {
             style: {
                 display: 'flex',
                 flexDirection: 'column' as const,
-                gap: 3,
+                gap: densityOf(c).s(3),
             }
         },
             title && React.createElement('div', {
-                style: { ...typography.label, color: c.textPrimary, fontWeight: 850 }
+                style: { ...typeOf(c, 'label'), color: c.textPrimary, fontWeight: 600 }
             }, title),
             subtitle && React.createElement('div', {
-                style: { ...typography.tiny, color: c.textSecondary }
+                style: { ...typeOf(c, 'tiny'), color: c.textSecondary }
             }, subtitle),
         ),
         React.createElement('div', {
@@ -778,10 +806,10 @@ export function StackedBar({
                 height,
                 display: 'flex',
                 overflow: 'hidden',
-                borderRadius: 14,
+                borderRadius: densityOf(c).r(14),
                 border: `1px solid ${c.borderLight}`,
                 backgroundColor: c.bgCard,
-                boxShadow: `0 8px 22px ${c.shadow}`,
+                ...(hasShadow(c) ? { boxShadow: `0 8px 22px ${c.shadow}` } : {}),
             }
         },
             ...positiveSegments.map((segment, index) => {
@@ -804,9 +832,9 @@ export function StackedBar({
                 },
                     segmentWidth >= 64 && React.createElement('span', {
                         style: {
-                            ...typography.small,
+                            ...typeOf(c, 'small'),
                             color: getReadableTextColor(color, c),
-                            fontWeight: 900,
+                            fontWeight: 600,
                             whiteSpace: 'nowrap' as const,
                         }
                     }, segment.valueLabel ?? formatChartValue(share, 'percent')),
@@ -817,7 +845,7 @@ export function StackedBar({
             style: {
                 display: 'flex',
                 alignItems: 'center',
-                gap: 16,
+                gap: densityOf(c).s(16),
                 flexWrap: 'wrap' as const,
             }
         },
@@ -831,13 +859,13 @@ export function StackedBar({
                         style: {
                             width: 12,
                             height: 12,
-                            borderRadius: 4,
+                            borderRadius: densityOf(c).r(4),
                             display: 'flex',
                             backgroundColor: chartColor(segment.color, c, index),
                         }
                     }),
                     React.createElement('span', {
-                        style: { ...typography.tiny, color: c.textSecondary }
+                        style: { ...typeOf(c, 'tiny'), color: c.textSecondary }
                     }, `${segment.label} ${segment.valueLabel ?? formatChartValue(share, 'percent')}`),
                 )
             }),
@@ -876,12 +904,12 @@ export function BarChart({
     yAxisLabel,
     footer,
 }: BarChartProps): React.ReactElement {
-    const margin: ChartMargins = { top: 18, right: 38, bottom: 40, left: yAxisLabel ? 52 : 38 }
+    const d = densityOf(c)
+    const margin: ChartMargins = { top: d.f(16), right: d.g(8), bottom: d.f(26), left: d.f(yAxisLabel ? 62 : 34) }
     const plot = createPlotArea(width, height, margin)
-    const domain = chartDomain(data.map((item) => item.value), min, max)
-    const ticks = chartTicks(domain.min, domain.max, 4)
+    const { domain, ticks } = niceChartScale(data.map((item) => item.value), min, max)
     const barSlot = plot.innerWidth / Math.max(data.length, 1)
-    const barWidth = Math.max(8, Math.min(76, barSlot * 0.72))
+    const barWidth = Math.max(4, Math.min(d.f(60), barSlot * 0.62))
     const zeroY = yInPlot(0, domain, plot)
     const baselineY = clamp(zeroY, plot.y, plot.bottom)
 
@@ -896,7 +924,8 @@ export function BarChart({
         const y = growsUp
             ? Math.max(plot.y, baselineY - barHeight)
             : Math.min(plot.bottom - barHeight, baselineY)
-        return { item, index, x, y, barHeight, valueY, color: chartColor(item.color, c, index) }
+        // One series, one color. Give a bar its own color only when it means something.
+        return { item, index, x, y, barHeight, valueY, color: chartColor(item.color, c, 0) }
     })
 
     return ChartFrame({ c, title, subtitle, width, footer, children:
@@ -912,12 +941,11 @@ export function BarChart({
                             x2: plot.right,
                             y2: y,
                             stroke: c.borderSubtle,
-                            strokeWidth: 1,
+                            strokeWidth: d.stroke.hair,
                         })
                     })
                 ),
-                React.createElement('line', { x1: plot.x, y1: plot.y, x2: plot.x, y2: plot.bottom, stroke: c.borderLight, strokeWidth: 1.2 }),
-                React.createElement('line', { x1: plot.x, y1: baselineY, x2: plot.right, y2: baselineY, stroke: c.borderLight, strokeWidth: 1.2 }),
+                React.createElement('line', { x1: plot.x, y1: baselineY, x2: plot.right, y2: baselineY, stroke: c.borderLight, strokeWidth: d.stroke.hair }),
                 ...barGeometries.map(({ item, index, x, y, barHeight, color }) =>
                     React.createElement('rect', {
                         key: `${item.label}-${index}`,
@@ -925,20 +953,17 @@ export function BarChart({
                         y,
                         width: barWidth,
                         height: barHeight,
-                        rx: 5,
+                        rx: d.r(3),
                         fill: color,
-                        opacity: 0.92,
                     })
                 ),
             ),
             ...ticks.map((tick) => {
                 const y = yInPlot(tick, domain, plot)
-                return chartLabel(`tick-label-${tick}`, formatChartValue(tick, format), plot.x - 8, y, c, { align: 'right', width: 36 })
+                return chartLabel(`tick-label-${tick}`, formatChartValue(tick, format), plot.x - d.s(8), y, c, { align: 'right', width: d.f(36) })
             }),
-            yAxisLabel && chartLabel('y-axis-label', yAxisLabel, 12, plot.y + plot.innerHeight / 2, c, {
+            yAxisLabel && chartLabel('y-axis-label', yAxisLabel, d.f(9), plot.y + plot.innerHeight / 2, c, {
                 width: plot.innerHeight,
-                fontFamily: 'Inter',
-                fontWeight: 700,
                 transform: 'translate(-50%, -50%) rotate(-90deg)',
             }),
             ...barGeometries.flatMap(({ item, index, x, y, barHeight, valueY }) => [
@@ -946,11 +971,11 @@ export function BarChart({
                     `bar-value-${index}`,
                     item.valueLabel ?? formatChartValue(item.value, format),
                     x + barWidth / 2,
-                    item.value < 0 ? y + barHeight + 12 : clamp(valueY - 8, 10, height - 28),
+                    item.value < 0 ? y + barHeight + d.f(10) : clamp(valueY - d.g(8), d.g(8), height - d.f(26)),
                     c,
-                    { color: c.textPrimary, fontWeight: 800, width: 54, bounds: { x: plot.x, y: 0, width: plot.innerWidth, height } },
+                    { color: c.textPrimary, width: d.f(54), fontFamily: c.fontMono, bounds: { x: plot.x, y: 0, width: plot.innerWidth, height } },
                 )] : []),
-                chartLabel(`bar-label-${index}`, item.label, x + barWidth / 2, height - 16, c, { width: 54 }),
+                chartLabel(`bar-label-${index}`, item.label, x + barWidth / 2, height - d.f(12), c, { width: barSlot }),
             ]),
         )
     })
@@ -997,7 +1022,8 @@ export function ParetoBarChart({
         .map((item, index) => ({ item, index }))
         .sort((left, right) => right.item.value - left.item.value || left.index - right.index)
     const maximum = Math.max(1, ...sorted.map(({ item }) => item.value))
-    const margin: ChartMargins = { top: 24, right: 48, bottom: 48, left: 48 }
+    const d = densityOf(c)
+    const margin: ChartMargins = { top: d.f(20), right: d.f(38), bottom: d.f(36), left: d.f(38) }
     const plot = createPlotArea(width, height, margin)
     const valueDomain = {
         min: 0,
@@ -1061,11 +1087,7 @@ export function ParetoBarChart({
                 ),
                 React.createElement('line', {
                     x1: plot.x, y1: plot.bottom, x2: plot.right, y2: plot.bottom,
-                    stroke: c.borderLight, strokeWidth: 1.2,
-                }),
-                React.createElement('line', {
-                    x1: plot.right, y1: plot.y, x2: plot.right, y2: plot.bottom,
-                    stroke: c.borderLight, strokeWidth: 1.2,
+                    stroke: c.borderLight, strokeWidth: d.stroke.hair,
                 }),
                 ...bars.map(({ item, order, x, y, height: barHeight, color }) => React.createElement('rect', {
                     key: `pareto-bar-${item.label}-${order}`,
@@ -1073,9 +1095,8 @@ export function ParetoBarChart({
                     y,
                     width: barWidth,
                     height: barHeight,
-                    rx: 4,
+                    rx: d.r(3),
                     fill: color,
-                    opacity: 0.86,
                     'data-pareto-bar': item.label,
                     'data-pareto-value': item.value,
                     'data-pareto-order': order,
@@ -1084,7 +1105,7 @@ export function ParetoBarChart({
                     d: cumulativePath,
                     fill: 'none',
                     stroke: chartColor('critical', c),
-                    strokeWidth: 3,
+                    strokeWidth: d.w(2.5),
                     strokeLinecap: 'round',
                     strokeLinejoin: 'round',
                     'data-pareto-cumulative-line': true,
@@ -1093,10 +1114,8 @@ export function ParetoBarChart({
                     key: `pareto-cumulative-point-${order}`,
                     cx: centerX,
                     cy: cumulativeY,
-                    r: 4,
+                    r: d.g(3.5),
                     fill: chartColor('critical', c),
-                    stroke: c.bgCard,
-                    strokeWidth: 2,
                     'data-pareto-category': item.label,
                     'data-pareto-source-index': sourceIndex,
                     'data-pareto-cumulative-percent': cumulative * 100,
@@ -1105,18 +1124,18 @@ export function ParetoBarChart({
             ...countTicks.map((tick) => chartLabel(
                 `pareto-count-label-${tick}`,
                 formatChartValue(tick, format),
-                plot.x - 7,
+                plot.x - d.s(8),
                 yInPlot(tick, valueDomain, plot),
                 c,
-                { align: 'right', width: 36 },
+                { align: 'right', width: d.f(36) },
             )),
             ...[0, 0.5, 1].map((share) => chartLabel(
                 `pareto-percent-label-${share}`,
                 `${Math.round(share * 100)}%`,
-                plot.right + 7,
+                plot.right + d.s(8),
                 plot.bottom - share * plot.innerHeight,
                 c,
-                { align: 'left', width: 38 },
+                { align: 'left', width: d.f(38) },
             )),
             ...bars.flatMap(({ item, order, centerX, y }) => [
                 ...(showValues ? [chartLabel(
@@ -1125,13 +1144,13 @@ export function ParetoBarChart({
                     centerX,
                     clamp(y - 8, plot.y + 8, plot.bottom - 12),
                     c,
-                    { color: c.textPrimary, fontWeight: 800, width: Math.min(slot, 64), bounds: { x: plot.x, y: plot.y, width: plot.innerWidth, height: plot.innerHeight } },
+                    { color: c.textPrimary, fontFamily: c.fontMono, width: Math.min(slot, d.f(64)), bounds: { x: plot.x, y: plot.y, width: plot.innerWidth, height: plot.innerHeight } },
                 )] : []),
                 chartLabel(
                     `pareto-category-${order}`,
                     item.label,
                     centerX,
-                    height - 17,
+                    height - d.f(14),
                     c,
                     {
                         width: Math.max(1, Math.min(96, slot - 2)),
@@ -1163,6 +1182,8 @@ interface LineChartProps {
     format?: ChartValueFormat
     showGrid?: boolean
     showPoints?: boolean
+    /** Name each line at its end instead of in a legend. On when there are several series. */
+    directLabels?: boolean
     yAxisLabel?: string
     footer?: string
 }
@@ -1180,24 +1201,29 @@ export function LineChart({
     format = 'decimal',
     showGrid = true,
     showPoints = true,
+    directLabels,
     yAxisLabel,
     footer,
 }: LineChartProps): React.ReactElement {
-    const margin: ChartMargins = { top: 18, right: 20, bottom: labels ? 36 : 24, left: yAxisLabel ? 54 : 40 }
+    const d = densityOf(c)
+    const direct = directLabels ?? series.length > 1
+    const labelRoom = direct
+        ? Math.min(width * 0.28, Math.max(...series.map((item) => estimateTextWidth(item.name, d.type.micro))) + d.s(10))
+        : d.f(12)
+    const margin: ChartMargins = { top: d.f(12), right: labelRoom, bottom: d.f(labels ? 24 : 12), left: d.f(yAxisLabel ? 62 : 34) }
     const plot = createPlotArea(width, height, margin)
     const allValues = series.flatMap((item) => item.points)
-    const domain = chartDomain(allValues, min, max)
+    const { domain, ticks } = niceChartScale(allValues, min, max)
     const maxPoints = Math.max(labels?.length ?? 0, ...series.map((item) => item.points.length), 1)
-    const xInset = maxPoints <= 1 ? 0 : Math.min(26, Math.max(14, plot.innerWidth * 0.06))
+    const xInset = maxPoints <= 1 ? 0 : d.g(8)
     const xStart = maxPoints <= 1 ? plot.x + plot.innerWidth / 2 : plot.x + xInset
     const xSpan = maxPoints <= 1 ? 0 : Math.max(1, plot.innerWidth - xInset * 2)
     const xStep = maxPoints <= 1 ? 0 : xSpan / (maxPoints - 1)
-    const ticks = chartTicks(domain.min, domain.max, 4)
 
     const pointFor = (value: number, index: number) => {
         const x = xStart + index * xStep
         // Values outside an explicit min/max clamp to the plot edge rather than drawing off-canvas.
-        const markerInset = showPoints ? 6.5 : 2
+        const markerInset = showPoints ? d.g(4) : 2
         const y = clamp(yInPlot(value, domain, plot), plot.y + markerInset, plot.bottom - markerInset)
         return { x, y }
     }
@@ -1215,7 +1241,7 @@ export function LineChart({
         subtitle,
         width,
         footer,
-        legend: series.map((item, index) => ({ label: item.name, color: item.color ?? chartPalette[index % chartPalette.length] })),
+        ...(direct ? {} : { legend: series.length > 1 ? series.map((item, index) => ({ label: item.name, color: item.color ?? chartPalette[index % chartPalette.length] })) : undefined }),
         children: React.createElement('div', { style: { position: 'relative' as const, width, height, display: 'flex' } },
             React.createElement('svg', { width, height, viewBox: `0 0 ${width} ${height}` },
                 showGrid && React.createElement('g', {},
@@ -1228,12 +1254,11 @@ export function LineChart({
                             x2: plot.right,
                             y2: y,
                             stroke: c.borderSubtle,
-                            strokeWidth: 1,
+                            strokeWidth: d.stroke.hair,
                         })
                     })
                 ),
-                React.createElement('line', { x1: plot.x, y1: plot.y, x2: plot.x, y2: plot.bottom, stroke: c.borderLight, strokeWidth: 1.2 }),
-                React.createElement('line', { x1: plot.x, y1: plot.bottom, x2: plot.right, y2: plot.bottom, stroke: c.borderLight, strokeWidth: 1.2 }),
+                React.createElement('line', { x1: plot.x, y1: plot.bottom, x2: plot.right, y2: plot.bottom, stroke: c.borderLight, strokeWidth: d.stroke.hair }),
                 ...series.flatMap((item, seriesIndex) => {
                     if (item.points.length === 0) return []
                     const color = chartColor(item.color, c, seriesIndex)
@@ -1246,14 +1271,14 @@ export function LineChart({
                     }
                     const elements: React.ReactElement[] = []
                     if (areaPath) {
-                        elements.push(React.createElement('path', { key: `${item.name}-area`, d: areaPath, fill: color, opacity: 0.12 }))
+                        elements.push(React.createElement('path', { key: `${item.name}-area`, d: areaPath, fill: color, opacity: 0.1 }))
                     }
                     elements.push(React.createElement('path', {
                         key: `${item.name}-line`,
                         d: linePath,
                         fill: 'none',
                         stroke: color,
-                        strokeWidth: 4,
+                        strokeWidth: d.w(2.5),
                         strokeLinecap: 'round',
                         strokeLinejoin: 'round',
                     }))
@@ -1264,10 +1289,8 @@ export function LineChart({
                                 key: `${item.name}-point-${index}`,
                                 cx: point.x,
                                 cy: point.y,
-                                r: 5,
-                                fill: c.bgCard,
-                                stroke: color,
-                                strokeWidth: 3,
+                                r: d.g(3),
+                                fill: color,
                             })
                         }))
                     }
@@ -1276,20 +1299,42 @@ export function LineChart({
             ),
             ...ticks.map((tick) => {
                 const y = yInPlot(tick, domain, plot)
-                return chartLabel(`line-tick-label-${tick}`, formatChartValue(tick, format), plot.x - 8, y, c, { align: 'right', width: 36 })
+                return chartLabel(`line-tick-label-${tick}`, formatChartValue(tick, format), plot.x - d.s(8), y, c, { align: 'right', width: d.f(36) })
             }),
-            yAxisLabel && chartLabel('line-y-axis-label', yAxisLabel, 12, plot.y + plot.innerHeight / 2, c, {
+            yAxisLabel && chartLabel('line-y-axis-label', yAxisLabel, d.f(9), plot.y + plot.innerHeight / 2, c, {
                 width: plot.innerHeight,
-                fontFamily: 'Inter',
-                fontWeight: 700,
                 transform: 'translate(-50%, -50%) rotate(-90deg)',
             }),
             ...(labels ?? []).map((label, index) => {
                 const x = xStart + index * xStep
-                return chartLabel(`line-x-${label}`, label, x, height - 14, c, { width: 72 })
+                return chartLabel(`line-x-${label}`, label, x, height - d.g(9), c, { width: Math.max(d.f(36), xStep * 0.96) })
             }),
+            ...(direct ? directSeriesLabels(series, pointFor, plot, c) : []),
         )
     })
+}
+
+/** Series names beside the last point, nudged apart when lines finish close together. */
+function directSeriesLabels(
+    series: LineChartSeries[],
+    pointFor: (value: number, index: number) => { x: number; y: number },
+    plot: PlotArea,
+    c: ThemeColors,
+): React.ReactElement[] {
+    const d = densityOf(c)
+    const height = d.type.micro * 1.25
+    const ends = series.flatMap((item, seriesIndex) => {
+        if (item.points.length === 0) return []
+        const end = pointFor(item.points[item.points.length - 1]!, item.points.length - 1)
+        return [{ item, seriesIndex, x: end.x, y: end.y }]
+    }).sort((left, right) => left.y - right.y)
+    for (let i = 1; i < ends.length; i += 1) {
+        ends[i]!.y = Math.max(ends[i]!.y, ends[i - 1]!.y + height)
+    }
+    return ends.map(({ item, seriesIndex, x, y }) => chartLabel(
+        `line-direct-${seriesIndex}`, item.name, x + d.s(8), y, c,
+        { align: 'left', width: Math.max(8, plot.right + plot.margin.right - x - d.s(8)), color: chartColor(item.color, c, seriesIndex) },
+    ))
 }
 
 for (const chart of [PieChart, DonutChart, StackedBar, BarChart, ParetoBarChart, LineChart]) {

@@ -1,3 +1,4 @@
+import { parseDensity, type Density } from './density'
 import { findBareRootJsxStart } from './bare-source'
 import {
     isThemeColorsMetadataLine,
@@ -156,7 +157,7 @@ function scanMetadata(source: string): MetadataScan {
             if (preset.preset) entries.push({ line, name: 'preset', value: preset.preset })
             continue
         }
-        if (readAnimationLine(text)) continue
+        if (readAnimationLine(text) || readDensityLine(text)) continue
         if (isThemeColorsMetadataLine(text)) {
             const colors = parseThemeColorsMetadataLine(text)
             if (colors) entries.push({ line, name: 'themeColors', value: colors })
@@ -199,6 +200,19 @@ function readDimensionLine(line: string): { name: 'width' | 'height'; value: num
     const match = candidate.match(/^\s*(?:export\s+)?(?:(?:const|let|var)\s+)?(width|height)\s*[:=]\s*(\d+)\s*;?\s*$/i)
     if (!match?.[1] || !match[2]) return undefined
     return { name: match[1].toLowerCase() as 'width' | 'height', value: Number(match[2]) }
+}
+
+/** A `density = "compact"` metadata line. A value that is not a density returns `requested` alone. */
+export function readDensityLine(line: string): { density?: Density; requested: string } | undefined {
+    const candidate = stripLineComment(line.replace(/^\s*\/\/\s*/, '')).trim()
+    const match = candidate.match(/^(?:export\s+)?(?:(?:const|let|var)\s+)?density(?:\s*:\s*Density)?\s*[:=]\s*(.+)$/i)
+    if (!match?.[1]) return undefined
+    const requested = match[1].trim().replace(/;\s*$/, '').trim().replace(/^(['"])(.*)\1$/, '$2').trim()
+    try {
+        return { density: parseDensity(requested), requested }
+    } catch {
+        return { requested }
+    }
 }
 
 export function readPresetLine(line: string): { preset?: PlaygroundPreset; requested: string } | undefined {

@@ -44,23 +44,20 @@ function buildFrame(theme: ThemeMode, active: number, opacity = 1) {
                         subtitle={stage.subtitle}
                         tone={stage.tone}
                         width={stage.width}
-                        minHeight={104}
                         align="center"
                         justify="center"
                     />,
                     ...(index < visibleStages.length - 1
-                        ? [<FlowArrow key={`connector-${index}`} c={c} direction="right" length={20} tone="purple" />]
+                        ? [<FlowArrow key={`connector-${index}`} c={c} direction="right" length={20} />]
                         : []),
                 ])}
             </Row>
             <Row width="100%" gap={16} align="stretch">
                 <CalloutCard
                     c={c}
-                    tone="purple"
                     title={`Frame ${active + 1} of 4`}
                     detail={`${stages[active].title} is active`}
                     width={300}
-                    minHeight={118}
                 />
                 <CalloutCard
                     c={c}
@@ -68,7 +65,6 @@ function buildFrame(theme: ThemeMode, active: number, opacity = 1) {
                     title={active === stages.length - 1 ? 'Export complete' : `Rendering frame ${active + 1}`}
                     detail="createAnimation(theme) defines typed state, timing, and reset."
                     width={644}
-                    minHeight={118}
                 />
             </Row>
         </Scene>

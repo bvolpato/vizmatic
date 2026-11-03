@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-    typography,
     heatColor,
     type ThemeColors,
     type ToneName,
@@ -9,9 +8,13 @@ import {
     getReadableTextColor,
     getToneColor,
     withColorAlpha,
+    densityOf,
+    typeOf,
+    hasShadow,
 } from '../theme'
 
 import { compactChildren, formatMathText, textFitStyle } from './layout'
+import { estimateTextWidth } from './dense'
 import { SvgFrame, SvgPoint, VectorArrow, VectorSegment } from './svg'
 
 // ─── Matrix — Grid of values with optional heatmap coloring ─────────────────
@@ -45,20 +48,22 @@ export function Matrix({
     colLabels,
     labels,
     title,
-    cellSize = 48,
+    cellSize: cellSizeProp,
     cellWidth,
     cellHeight,
     rowLabelWidth,
     format = 'decimal',
     colorize = true,
     colorScale = 'heat',
-    fontSize = 11,
+    fontSize: fontSizeProp,
     highlightRow,
     highlightCol,
     highlightCell,
     highlightColor = c.info,
     colorDomain,
 }: MatrixProps): React.ReactElement {
+    const cellSize = cellSizeProp ?? densityOf(c).f(38)
+    const fontSize = fontSizeProp ?? densityOf(c).type.small
     if (!Number.isFinite(fontSize) || fontSize <= 0) {
         throw new Error('Matrix fontSize must be a positive finite number')
     }
@@ -119,26 +124,26 @@ export function Matrix({
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            alignItems: 'center',
-            gap: 12,
+            alignItems: 'flex-start',
+            gap: densityOf(c).s(8),
         }
     },
         title && React.createElement('div', {
-            style: { ...typography.label, color: c.textPrimary }
+            style: { ...typeOf(c, 'label'), color: c.textPrimary }
         }, title),
 
         React.createElement('div', {
             style: {
                 display: 'flex',
                 flexDirection: 'column' as const,
-                gap: 2,
+                gap: densityOf(c).s(2),
             }
         },
             // Column labels
             colLabels && React.createElement('div', {
                 style: {
                     display: 'flex',
-                    gap: 2,
+                    gap: densityOf(c).s(2),
                     marginLeft: rowLabels ? resolvedRowLabelWidth + 4 : 0,
                 }
             },
@@ -149,9 +154,9 @@ export function Matrix({
                             width: resolvedCellWidth,
                             textAlign: 'center' as const,
                             fontSize,
-                            fontWeight: 600,
-                            color: c.textSecondary,
-                            fontFamily: 'JetBrains Mono',
+                            fontWeight: 400,
+                            color: c.textMuted,
+                            fontFamily: c.fontSans,
                         }
                     }, label)
                 )
@@ -163,7 +168,7 @@ export function Matrix({
                     key: `row-${ri}`,
                     style: {
                         display: 'flex',
-                        gap: 2,
+                        gap: densityOf(c).s(2),
                         alignItems: 'center',
                     }
                 },
@@ -173,9 +178,9 @@ export function Matrix({
                             textAlign: 'right' as const,
                             paddingRight: 4,
                             fontSize,
-                            fontWeight: 600,
-                            color: c.textSecondary,
-                            fontFamily: 'JetBrains Mono',
+                            fontWeight: 400,
+                            color: c.textMuted,
+                            fontFamily: c.fontSans,
                         }
                     }, rowLabels[ri]),
 
@@ -195,14 +200,14 @@ export function Matrix({
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 backgroundColor,
-                                borderRadius: 6,
+                                borderRadius: densityOf(c).r(3),
                                 ...(exactCell
                                     ? { boxShadow: `inset 0 0 0 3px ${highlightColor}` }
                                     : highlighted
                                         ? { boxShadow: `inset 0 0 0 1px ${withColorAlpha(highlightColor, 0.88)}` }
                                         : {}),
                                 fontSize,
-                                fontWeight: 600,
+                                fontWeight: 400,
                                 color: colorize || highlighted ? getReadableTextColor(backgroundColor, c) : c.textPrimary,
                                 fontFamily: 'JetBrains Mono',
                             }
@@ -311,11 +316,12 @@ export function TiledMatrix({
     title,
     subtitle,
     cellSize = 24,
-    gap = 3,
+    gap: gapProp,
     tone = 'blue',
     muted = false,
     crossedOut = false,
 }: TiledMatrixProps): React.ReactElement {
+    const gap = gapProp ?? densityOf(c).s(3)
     const safeRows = Math.max(1, Math.floor(rows))
     const safeCols = Math.max(1, Math.floor(cols))
     const baseAccent = getToneColor(tone, c)
@@ -362,10 +368,10 @@ export function TiledMatrix({
             flexDirection: 'column' as const,
             gap,
             padding: gap,
-            borderRadius: 10,
+            borderRadius: densityOf(c).r(10),
             backgroundColor: c.bgSubtle,
             border: `1px solid ${c.borderLight}`,
-            boxShadow: `0 8px 18px ${c.shadow}`,
+            ...(hasShadow(c) ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
             overflow: 'hidden',
         }
     },
@@ -411,7 +417,7 @@ export function TiledMatrix({
             display: 'flex',
             flexDirection: 'column' as const,
             alignItems: 'center',
-            gap: 7,
+            gap: densityOf(c).s(7),
         }
     },
         ...compactChildren([
@@ -419,8 +425,8 @@ export function TiledMatrix({
                 style: {
                     color: muted ? c.textMuted : getReadableToneColor(tone, c),
                     fontFamily: 'Inter',
-                    fontSize: 13,
-                    fontWeight: 900,
+                    fontSize: densityOf(c).f(13),
+                    fontWeight: 600,
                     lineHeight: 1.1,
                     textAlign: 'center' as const,
                 }
@@ -429,7 +435,7 @@ export function TiledMatrix({
                 style: {
                     color: c.textMuted,
                     fontFamily: 'JetBrains Mono',
-                    fontSize: 11,
+                    fontSize: densityOf(c).f(11),
                     fontWeight: 700,
                     lineHeight: 1.1,
                     textAlign: 'center' as const,
@@ -445,6 +451,7 @@ export function TiledMatrix({
 interface DataTableProps {
     rows: React.ReactNode[][]
     c: ThemeColors
+    /** Fixed column width. Omit it to size columns to their content. */
     cellWidth?: number
     firstColWidth?: number
     cellHeight?: number
@@ -453,29 +460,50 @@ interface DataTableProps {
     headerCols?: number
     fontSize?: number
     math?: boolean
+    /** Text alignment per column. Defaults to left for the first column and right for the rest. */
+    align?: ReadonlyArray<'left' | 'center' | 'right'>
+    width?: number | string
 }
 
 export function DataTable({
     rows,
     c,
-    cellWidth = 54,
-    firstColWidth = cellWidth,
-    cellHeight = 28,
-    gap = 5,
+    cellWidth,
+    firstColWidth,
+    cellHeight,
+    gap: gapProp,
     headerRows = 1,
     headerCols = 1,
-    fontSize = 11,
+    fontSize: fontSizeProp,
     math = false,
+    align,
+    width,
 }: DataTableProps): React.ReactElement {
+    const d = densityOf(c)
+    const gap = gapProp ?? d.s(14)
+    const fontSize = fontSizeProp ?? d.type.small
+    const rowHeight = cellHeight ?? Math.ceil(fontSize * 1.25) + d.s(7)
     const renderCell = (cell: React.ReactNode) =>
         math && typeof cell === 'string' ? formatMathText(cell) : cell
+    const columnCount = Math.max(0, ...rows.map((row) => row.length))
+    const columnWidth = (colIndex: number): number => {
+        if (colIndex === 0 && firstColWidth != null) return firstColWidth
+        if (cellWidth != null) return colIndex === 0 ? firstColWidth ?? cellWidth : cellWidth
+        return Math.ceil(Math.max(d.f(24), ...rows.map((row, rowIndex) => {
+            const cell = row[colIndex]
+            const text = typeof cell === 'string' || typeof cell === 'number' ? String(cell) : ''
+            const header = rowIndex < headerRows || colIndex < headerCols
+            return estimateTextWidth(text, fontSize, { mono: !header, weight: header ? 600 : 400 })
+        })))
+    }
+    const widths = Array.from({ length: columnCount }, (_, index) => columnWidth(index))
+    const alignmentOf = (colIndex: number) => align?.[colIndex] ?? (colIndex < headerCols ? 'left' : 'right')
 
     return React.createElement('div', {
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap,
-            alignItems: 'center',
+            ...(width != null ? { width } : {}),
         }
     },
         ...rows.map((row, rowIndex) => React.createElement('div', {
@@ -483,27 +511,28 @@ export function DataTable({
             style: {
                 display: 'flex',
                 gap,
+                height: rowHeight,
+                alignItems: 'center',
+                borderBottom: `1px solid ${rowIndex === headerRows - 1 ? c.borderLight : c.borderSubtle}`,
             }
         },
             ...row.map((cell, colIndex) => {
                 const isHeaderRow = rowIndex < headerRows
                 const isHeaderCol = colIndex < headerCols
+                const alignment = alignmentOf(colIndex)
                 return React.createElement('div', {
                     key: `${rowIndex}-${colIndex}-${String(cell)}`,
                     style: {
-                        width: colIndex === 0 ? firstColWidth : cellWidth,
-                        height: cellHeight,
+                        ...(width != null && colIndex === 0 ? { flex: 1 } : { width: widths[colIndex] }),
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        borderRadius: 7,
-                        backgroundColor: isHeaderRow ? c.bgSubtle : c.bgHover,
-                        color: isHeaderCol ? c.textPrimary : c.textSecondary,
-                        fontFamily: 'JetBrains Mono',
+                        justifyContent: alignment === 'left' ? 'flex-start' : alignment === 'right' ? 'flex-end' : 'center',
+                        color: isHeaderRow ? c.textMuted : isHeaderCol ? c.textPrimary : c.textSecondary,
+                        fontFamily: isHeaderRow || isHeaderCol ? c.fontSans : c.fontMono,
                         fontSize,
-                        fontWeight: isHeaderCol ? 850 : 650,
+                        fontWeight: isHeaderCol && !isHeaderRow ? 600 : 400,
                         lineHeight: 1.15,
-                        ...textFitStyle('center'),
+                        ...textFitStyle(alignment),
                     }
                 }, renderCell(cell))
             }),
@@ -549,15 +578,20 @@ function isGridCell(cell: React.ReactNode | GridCell): cell is GridCell {
 export function Grid({
     rows,
     c,
-    cellWidth = 34,
-    cellHeight = 30,
-    gap = 5,
-    radius = 7,
-    fontSize = 11,
+    cellWidth: cellWidthProp,
+    cellHeight: cellHeightProp,
+    gap: gapProp,
+    radius: radiusProp,
+    fontSize: fontSizeProp,
     math = false,
     headerRows = 0,
     headerCols = 0,
 }: GridProps): React.ReactElement {
+    const cellWidth = cellWidthProp ?? densityOf(c).f(34)
+    const cellHeight = cellHeightProp ?? densityOf(c).f(26)
+    const gap = gapProp ?? densityOf(c).s(3)
+    const radius = radiusProp ?? densityOf(c).r(4)
+    const fontSize = fontSizeProp ?? densityOf(c).type.small
     const renderCellLabel = (cell: React.ReactNode | GridCell) => {
         const label = isGridCell(cell) ? cell.label : cell
         return math && typeof label === 'string' ? formatMathText(label) : label
@@ -567,7 +601,7 @@ export function Grid({
         const config = isGridCell(cell) ? cell : {}
         const toneColor = config.tone ? getToneColor(config.tone, c) : undefined
         const isHeader = rowIndex < headerRows || colIndex < headerCols
-        const backgroundColor = config.backgroundColor ?? (toneColor ? withColorAlpha(toneColor, 0x22 / 0xff) : isHeader ? c.bgSubtle : c.bgHover)
+        const backgroundColor = config.backgroundColor ?? (toneColor ? withColorAlpha(toneColor, 0x1a / 0xff) : isHeader ? 'transparent' : c.bgCard)
         const toneTextColor = config.tone
             ? getReadableToneColor(config.tone, c, backgroundColor, c.bgHover)
             : undefined
@@ -579,12 +613,12 @@ export function Grid({
             justifyContent: 'center',
             borderRadius: radius,
             backgroundColor,
-            border: `1px solid ${config.borderColor ?? (toneColor ? withColorAlpha(toneColor, 0x55 / 0xff) : c.borderSubtle)}`,
-            color: config.color ?? (toneTextColor ?? (isHeader ? c.textPrimary : c.textSecondary)),
+            border: `1px solid ${config.borderColor ?? (toneColor ? withColorAlpha(toneColor, 0x55 / 0xff) : isHeader ? 'transparent' : c.borderSubtle)}`,
+            color: config.color ?? (toneTextColor ?? (isHeader ? c.textMuted : c.textSecondary)),
             ...(config.opacity !== undefined ? { opacity: config.opacity } : {}),
             fontFamily: 'JetBrains Mono',
             fontSize,
-            fontWeight: isHeader || toneColor ? 850 : 650,
+            fontWeight: 400,
             lineHeight: 1.15,
             ...textFitStyle('center'),
         }
@@ -685,7 +719,7 @@ export function AxisPlot({
     xMax = 1,
     yMin = -1,
     yMax = 1,
-    padding = 18,
+    padding: paddingProp,
     showFrame = true,
     showAxes = true,
     showGrid = false,
@@ -701,6 +735,7 @@ export function AxisPlot({
     yAxisLabel,
     children,
 }: AxisPlotProps): React.ReactElement {
+    const padding = paddingProp ?? densityOf(c).s(18)
     const innerWidth = Math.max(1, width - padding * 2)
     const innerHeight = Math.max(1, height - padding * 2)
     const xRange = xMax === xMin ? 1 : xMax - xMin
@@ -881,7 +916,7 @@ export function AxisPlot({
                 textAlign: 'center' as const,
                 color: c.textMuted,
                 fontFamily: 'Inter',
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 fontWeight: 750,
             }
         }, xAxisLabel),
@@ -896,7 +931,7 @@ export function AxisPlot({
                 textAlign: 'center' as const,
                 color: c.textMuted,
                 fontFamily: 'Inter',
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 fontWeight: 750,
             }
         }, yAxisLabel),

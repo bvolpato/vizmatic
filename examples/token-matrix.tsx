@@ -15,7 +15,7 @@ function heatText(background: string) {
 
 <Scene title="Token matrix view" subtitle="tables and grids use wrapping-safe cells" background={c.bg} gap={18}>
     <Row gap={18} align="stretch">
-        <Panel title="Attention weights" tone="purple" width={480} align="center">
+        <Panel title="Attention weights" width={480} align="center">
             <Grid
                 cellWidth={48}
                 cellHeight={34}
@@ -30,7 +30,7 @@ function heatText(background: string) {
                 ]}
             />
         </Panel>
-        <Panel title="Feature table" tone="cyan" width={420} align="center">
+        <Panel title="Feature table" width={420} align="center">
             <Column gap={12}>
                 <DataTable
                     firstColWidth={98}
@@ -40,6 +40,8 @@ function heatText(background: string) {
                         ['BLEU', '31.2', '34.8', '+3.6'],
                         ['faith', '.72', '.81', '+.09'],
                         ['latency', '1.3s', '1.1s', '-.2s'],
+                        ['cost', '$4.10', '$2.75', '-$1.35'],
+                        ['recall', '.64', '.71', '+.07'],
                     ]}
                 />
                 <TextLabel text="Same component renders dark and light themes without rewriting cells." align="center" width={330} />

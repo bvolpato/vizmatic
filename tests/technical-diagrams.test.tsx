@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
     DataflowDiagram,
     DeploymentDiagram,
+    densityOf,
     formatTensorShape,
     getThemeColors,
     renderToSvg,
@@ -10,6 +11,10 @@ import {
     TransformerTopology,
     type SatoriNode,
 } from '../src'
+
+// Connector dash patterns follow the active density.
+const DASHED = `${densityOf().s(7)} ${densityOf().s(6)}`
+const DOTTED = `${densityOf().w(2)} ${densityOf().s(6)}`
 
 function reactProps(element: React.ReactElement): Record<string, any> {
     return element.props as Record<string, any>
@@ -273,9 +278,9 @@ describe('technical diagram primitives', () => {
         expect(reactProps(diagram)['aria-label']).toBe('Events pipeline')
         expect(collectElements(diagram, (element) => Boolean(reactProps(element)['data-vizmatic-graph-group']))).toHaveLength(1)
         expect(paths).toHaveLength(3)
-        expect(reactProps(paths[0]).strokeDasharray).toBe('7 6')
+        expect(reactProps(paths[0]).strokeDasharray).toBe(DASHED)
         expect(reactProps(paths[1]).strokeDasharray).toBeUndefined()
-        expect(reactProps(paths[2]).strokeDasharray).toBe('7 6')
+        expect(reactProps(paths[2]).strokeDasharray).toBe(DASHED)
         expect(text).toContain('Event v1 { id: uuid *, kind: string }')
         expect(text).toContain('events')
         expect(text).toContain('rows')
@@ -370,8 +375,8 @@ describe('technical diagram primitives', () => {
         expect(paths.map((path) => reactProps(path).strokeDasharray)).toEqual([
             undefined,
             undefined,
-            '7 6',
-            '2 6',
+            DASHED,
+            DOTTED,
         ])
         expect(text).toContain('Production')
         expect(text).toContain('trusted runtime')
@@ -424,9 +429,9 @@ describe('technical diagram primitives', () => {
         expect(icons).toHaveLength(7)
         expect(paths).toHaveLength(5)
         expect(reactProps(paths[0]).strokeDasharray).toBeUndefined()
-        expect(reactProps(paths[1]).strokeDasharray).toBe('7 6')
-        expect(reactProps(paths[2]).strokeDasharray).toBe('2 6')
-        expect(reactProps(paths[4]).strokeDasharray).toBe('7 6')
+        expect(reactProps(paths[1]).strokeDasharray).toBe(DASHED)
+        expect(reactProps(paths[2]).strokeDasharray).toBe(DOTTED)
+        expect(reactProps(paths[4]).strokeDasharray).toBe(DASHED)
         expect(text).toContain('1/2')
         expect(text).toContain('2/2')
         expect(text).toContain('1/3')

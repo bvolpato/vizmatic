@@ -6,7 +6,7 @@ const tones = ['blue', 'purple', 'green', 'warm', 'cyan', 'pink', 'critical', 'o
 <Scene title="Theme-aware primitives" subtitle="semantic tones, not hard-coded colors" gap={18}>
     <Row gap={14} wrap width="100%">
         {tones.map((tone) => (
-            <Panel key={tone} title={tone} tone={tone} width={225} minHeight={106}>
+            <Panel key={tone} title={tone} tone={tone} width={225}>
                 <Column gap={9} align="stretch">
                     <ToneStrip tone={tone} width={62} />
                     <TextLabel text="inherits border, fill, label, and chart color" fontSize={11} />

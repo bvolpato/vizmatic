@@ -30,9 +30,7 @@ export function create(theme: ThemeMode = 'dark') {
                     c={c}
                     title="Molecular shape"
                     subtitle="Water has a bent geometry."
-                    tone="cyan"
                     width={440}
-                    minHeight={344}
                     align="center"
                 >
                     <MoleculeDiagram
@@ -57,9 +55,7 @@ export function create(theme: ThemeMode = 'dark') {
                     c={c}
                     title="Conserve each element"
                     subtitle="The coefficients balance four hydrogen atoms and two oxygen atoms on both sides."
-                    tone="blue"
                     width={776}
-                    minHeight={344}
                     align="center"
                     justify="center"
                     footer="2 H₂(g) + O₂(g) → 2 H₂O(l) · atom counts match"
@@ -83,9 +79,7 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 title="A catalyst changes the path, not the endpoints"
                 subtitle="Both pathways begin and end at the same energies; the catalyzed route has a smaller activation barrier."
-                tone="purple"
                 width="100%"
-                minHeight={350}
                 align="center"
                 footer="Illustrative relative energy values · not measured data for hydrogen combustion"
             >

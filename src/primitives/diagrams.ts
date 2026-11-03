@@ -1,7 +1,6 @@
 import React from 'react'
 import dagre, { type Point } from '@dagrejs/dagre'
 import {
-    typography,
     type ThemeColors,
     type ColorName,
     type ToneName,
@@ -9,17 +8,38 @@ import {
     getReadableTextColor,
     getToneColor,
     getToneFill,
-    getToneGradient,
     withColorAlpha,
+    withDensity,
+    type Density,
+    type DensityTokens,
+    densityOf,
+    typeOf,
+    hasShadow,
 } from '../theme'
 
 import { clamp, compactChildren, formatMathText, Icon, textFitStyle, ToneStrip, type IconName } from './layout'
 import { Arrow, ArrowMarkerDef, Box } from './svg'
 import { renderMaybeMath } from './surfaces'
+import {
+    DiagramLegend,
+    estimateTextWidth,
+    FactRows,
+    MetricStrip,
+    Sparkline,
+    StatusDot,
+    TagList,
+    type DiagramLegendItem,
+    type DiagramStatus,
+    type FactRow,
+    type StripMetric,
+} from './dense'
 import { SVG_ACCESSIBILITY_COMPONENT } from '../svg-accessibility'
 import {
+    pointAlongSamples,
+    roundedPolylinePath,
     routeOrthogonalGraph,
-    routingLabelPosition,
+    samplesHitBox,
+    smoothConnector,
     straightGraphRoute,
     type GraphPortSide,
     type GraphRouting,
@@ -107,8 +127,8 @@ export function LayeredNetwork({
         y: number,
         labelWidth: number,
         color: string,
-        fontSize = 13,
-        fontWeight = 800,
+        fontSize = densityOf(c).f(13),
+        fontWeight = 600,
         fontFamily = 'Inter',
     ) => React.createElement('div', {
         key,
@@ -170,8 +190,8 @@ export function LayeredNetwork({
                         boxSizing: 'border-box' as const,
                         boxShadow: active ? `0 0 16px ${withColorAlpha(c.warningLight, 0x70 / 0xff)}` : `0 8px 14px ${c.shadow}`,
                         fontFamily: 'JetBrains Mono',
-                        fontSize: 16,
-                        fontWeight: 900,
+                        fontSize: densityOf(c).f(16),
+                        fontWeight: 600,
                         lineHeight: 1,
                     },
                 }, formatMathText(layer.nodes[nodeIndex])),
@@ -203,7 +223,7 @@ export function LayeredNetwork({
                 top: height - 52,
                 width: 488,
                 height: 44,
-                borderRadius: 10,
+                borderRadius: densityOf(c).r(10),
                 border: `1px solid ${c.borderSubtle}`,
                 backgroundColor: c.bgCard,
                 display: 'flex',
@@ -211,9 +231,9 @@ export function LayeredNetwork({
                 justifyContent: 'center',
                 color: c.textPrimary,
                 fontFamily: 'Inter',
-                fontSize: 15,
-                fontWeight: 850,
-                boxShadow: `0 8px 18px ${c.shadow}`,
+                fontSize: densityOf(c).f(15),
+                fontWeight: 600,
+                ...(hasShadow(c) ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
             },
         }, formatMathText(formula))
         : null
@@ -228,11 +248,11 @@ export function LayeredNetwork({
                 width: 160,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 14,
+                gap: densityOf(c).s(14),
                 color: c.textSecondary,
                 fontFamily: 'Inter',
-                fontSize: 12,
-                fontWeight: 800,
+                fontSize: densityOf(c).f(12),
+                fontWeight: 600,
             },
         },
             React.createElement('div', {
@@ -286,6 +306,7 @@ export interface GraphDiagramNode {
     title?: string
     x?: number
     y?: number
+    /** Names a category. It colors the icon and the border, and leaves text in ink. */
     tone?: ToneName
     muted?: boolean
     width?: number
@@ -294,6 +315,19 @@ export interface GraphDiagramNode {
     icon?: IconName | DiagramIconDefinition | React.ReactElement
     iconSize?: number
     ports?: GraphDiagramPort[]
+    /** Health shown as a dot beside the title. */
+    status?: DiagramStatus
+    /** Key and value rows, such as region, replicas, or capacity. */
+    rows?: FactRow[]
+    /** Numbers with units, optionally with a sparkline or capacity bar. */
+    metrics?: StripMetric[]
+    /** Small labels such as runtime or tier. */
+    tags?: React.ReactNode[]
+    version?: string
+    owner?: string
+    footer?: React.ReactNode
+    /** A trend across the width of the node. */
+    spark?: readonly number[]
 }
 
 /** A fixed geometric connector anchor on a node boundary. Offset runs left to right or top to bottom. */
@@ -333,6 +367,8 @@ export interface GraphDiagramGroup {
     parent?: string
     tone?: ToneName
     muted?: boolean
+    /** Totals for the whole group, shown at the right of its header. */
+    summary?: React.ReactNode
 }
 
 export type GraphDiagramEdgeKind = 'sync' | 'async' | 'event' | 'data' | 'dependency' | 'association'
@@ -356,6 +392,17 @@ export interface GraphDiagramEdge {
     toPort?: string
     fromSide?: GraphPortSide
     toSide?: GraphPortSide
+    /** Make this connector heavier, to show traffic or importance. */
+    emphasis?: boolean
+}
+
+export interface GraphDiagramAnnotation {
+    /** The node this note refers to. */
+    target: string
+    text: React.ReactNode
+    side?: GraphPortSide
+    tone?: ToneName
+    width?: number
 }
 
 export interface GraphDiagramProps {
@@ -365,7 +412,9 @@ export interface GraphDiagramProps {
     c: ThemeColors
     width?: number
     height?: number
+    /** Fixed node width. Omit it to size each node to its content. */
     nodeWidth?: number
+    /** Minimum node height. Nodes grow when their content needs more. */
     nodeHeight?: number
     labelFontSize?: number
     detailFontSize?: number
@@ -373,10 +422,12 @@ export interface GraphDiagramProps {
     padding?: number
     layout?: 'auto' | 'manual'
     direction?: 'LR' | 'RL' | 'TB' | 'BT'
+    /** Flow inside each group. Stack tiers top to bottom and read each tier left to right with direction="TB" and groupDirection="LR". */
+    groupDirection?: 'LR' | 'RL' | 'TB' | 'BT'
     nodeGap?: number
     rankGap?: number
     edgeGap?: number
-    /** Dagre retains existing routes. Orthogonal routes avoid node boxes and group headers. */
+    /** Dagre draws smooth curves. Orthogonal routes avoid node boxes and group headers. */
     routing?: GraphRouting
     /** Minimum node clearance in logical pixels for orthogonal routing. */
     routingClearance?: number
@@ -386,6 +437,14 @@ export interface GraphDiagramProps {
     ariaLabel?: string
     title?: string
     description?: string
+    /** A key below the diagram. Pass true to build one from the relationship kinds in use. */
+    legend?: boolean | DiagramLegendItem[]
+    /** Notes with leader lines, pointing at nodes. */
+    annotations?: GraphDiagramAnnotation[]
+    /** Type, spacing, and stroke scale for this diagram. */
+    density?: Density
+    /** Crossings a large map accepts before `vizmatic check` warns. Defaults to one for every six edges. */
+    crossingBudget?: number
 }
 
 type PositionedGraphNode = GraphDiagramNode & {
@@ -401,9 +460,15 @@ type PositionedGraphEdge = GraphDiagramEdge & {
     color: string
     markerStartId: string
     markerEndId: string
+    /** Polyline approximation, used for collisions and label placement. */
     points: Point[]
+    /** Corner points of an orthogonal route, or the sampled curve. */
+    route: Point[]
+    path: string
     labelX: number
     labelY: number
+    labelWidth: number
+    labelHeight: number
 }
 
 type PositionedGraphGroup = GraphDiagramGroup & {
@@ -412,19 +477,20 @@ type PositionedGraphGroup = GraphDiagramGroup & {
     cx: number
     cy: number
     depth: number
+    headerX: number
+    headerY: number
+    headerFlipped?: boolean
 }
 
 function manualGraphLayout(
     nodes: GraphDiagramNode[],
+    sizes: Map<string, { width: number; height: number }>,
     width: number,
     height: number,
-    nodeWidth: number,
-    nodeHeight: number,
     padding: number,
 ): Map<string, PositionedGraphNode> {
     return new Map(nodes.map((node) => {
-        const resolvedWidth = node.width ?? nodeWidth
-        const resolvedHeight = node.height ?? nodeHeight
+        const { width: resolvedWidth, height: resolvedHeight } = sizes.get(node.id)!
         const minCx = resolvedWidth / 2
         const maxCx = width - resolvedWidth / 2
         const minCy = resolvedHeight / 2
@@ -449,7 +515,9 @@ function segmentCrosses(a1: Point, a2: Point, b1: Point, b2: Point): boolean {
     const d3 = cross(b1, b2, a1)
     const d4 = cross(b1, b2, a2)
     const epsilon = 0.01
-    return d1 * d2 < -epsilon && d3 * d4 < -epsilon
+    // Sampled curves can meet exactly on a shared sample, so a touch counts unless the segments are collinear.
+    if (Math.abs(d1) < epsilon && Math.abs(d2) < epsilon) return false
+    return d1 * d2 <= epsilon && d3 * d4 <= epsilon && (d1 * d2 < -epsilon || d3 * d4 < -epsilon || (Math.abs(d1 * d2) <= epsilon && Math.abs(d3 * d4) <= epsilon))
 }
 
 function connectorCrossings(edges: PositionedGraphEdge[]): number {
@@ -493,46 +561,55 @@ function rectanglesOverlap(left: Rectangle, right: Rectangle, padding = 0): bool
         && left.bottom > right.top - padding
 }
 
+function labelRect(edge: Pick<PositionedGraphEdge, 'labelX' | 'labelY' | 'labelWidth' | 'labelHeight'>): Rectangle {
+    return {
+        left: edge.labelX - edge.labelWidth / 2,
+        right: edge.labelX + edge.labelWidth / 2,
+        top: edge.labelY - edge.labelHeight / 2,
+        bottom: edge.labelY + edge.labelHeight / 2,
+    }
+}
+
+function nodeRect(node: { cx: number; cy: number; width: number; height: number }): Rectangle {
+    return { left: node.cx - node.width / 2, right: node.cx + node.width / 2, top: node.cy - node.height / 2, bottom: node.cy + node.height / 2 }
+}
+
 function connectorLabelCollisions(
     edges: PositionedGraphEdge[],
     nodes: Map<string, PositionedGraphNode>,
-    groups: PositionedGraphGroup[] = [],
+    headers: Rectangle[] = [],
 ): number {
-    const labels = edges.flatMap((edge) => edge.label ? [{
-        bounds: {
-            left: edge.labelX - estimatedEdgeLabelWidth(edge.label) / 2,
-            right: edge.labelX + estimatedEdgeLabelWidth(edge.label) / 2,
-            top: edge.labelY - 10,
-            bottom: edge.labelY + 10,
-        },
-    }] : [])
+    const labels = edges.filter((edge) => edge.label).map(labelRect)
     let collisions = 0
 
     for (let index = 0; index < labels.length; index += 1) {
         for (let otherIndex = index + 1; otherIndex < labels.length; otherIndex += 1) {
-            if (rectanglesOverlap(labels[index].bounds, labels[otherIndex].bounds, 4)) collisions += 1
+            if (rectanglesOverlap(labels[index], labels[otherIndex], 2)) collisions += 1
         }
         for (const node of nodes.values()) {
-            const bounds = {
-                left: node.cx - node.width / 2,
-                right: node.cx + node.width / 2,
-                top: node.cy - node.height / 2,
-                bottom: node.cy + node.height / 2,
-            }
-            if (rectanglesOverlap(labels[index].bounds, bounds)) collisions += 1
+            if (rectanglesOverlap(labels[index], nodeRect(node))) collisions += 1
         }
-        for (const group of groups) {
-            const headerBounds = {
-                left: group.cx - group.width / 2,
-                right: group.cx + group.width / 2,
-                top: group.cy - group.height / 2,
-                bottom: group.cy - group.height / 2 + 26,
-            }
-            if (rectanglesOverlap(labels[index].bounds, headerBounds)) collisions += 1
+        for (const header of headers) {
+            if (rectanglesOverlap(labels[index], header)) collisions += 1
         }
     }
 
     return collisions
+}
+
+/** Connectors that pass behind another relationship's label, or behind a group title. */
+function labelCrossings(edges: PositionedGraphEdge[], headers: Rectangle[]): number {
+    let crossings = 0
+    for (const edge of edges) {
+        for (const other of edges) {
+            if (other === edge || !other.label) continue
+            if (samplesHitBox(edge.points, labelRect(other))) crossings += 1
+        }
+        for (const header of headers) {
+            if (samplesHitBox(edge.points, header)) crossings += 1
+        }
+    }
+    return crossings
 }
 
 function crowdedConnectorEndpoints(edges: PositionedGraphEdge[]): number {
@@ -541,7 +618,8 @@ function crowdedConnectorEndpoints(edges: PositionedGraphEdge[]): number {
         degrees.set(edge.from, (degrees.get(edge.from) ?? 0) + 1)
         degrees.set(edge.to, (degrees.get(edge.to) ?? 0) + 1)
     }
-    return Array.from(degrees.values()).filter((degree) => degree > 4).length
+    // Dense diagrams separate many connectors along a side, so hubs are normal here.
+    return Array.from(degrees.values()).filter((degree) => degree > 8).length
 }
 
 function parallelConnectorGroups(edges: PositionedGraphEdge[]): number {
@@ -551,16 +629,6 @@ function parallelConnectorGroups(edges: PositionedGraphEdge[]): number {
         routes.set(key, (routes.get(key) ?? 0) + 1)
     }
     return Array.from(routes.values()).filter((count) => count > 1).length
-}
-
-function edgePath(points: Point[]): string {
-    return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
-}
-
-function estimatedEdgeLabelWidth(label: string): number {
-    const units = Array.from(label.normalize('NFC')).reduce((sum, character) =>
-        sum + ((character.codePointAt(0) ?? 0) > 0xff ? 1.7 : 1), 0)
-    return Math.max(28, Math.ceil(units * 6 + 14))
 }
 
 function validateGraphDiagramSpec(
@@ -661,7 +729,7 @@ function validateGraphDiagramSpec(
 
 function validateDiagramHref(href: string | undefined, owner: string): void {
     if (href == null) return
-    const normalized = href.trim().replace(/[\u0000-\u0020\u007f]/g, '')
+    const normalized = href.trim().replace(/[\u0000- \u007f]/g, '')
     const scheme = /^([a-z][a-z\d+.-]*):/i.exec(normalized)?.[1]?.toLowerCase()
     if (scheme && !['http', 'https', 'mailto', 'tel'].includes(scheme)) {
         throw new Error(`GraphDiagram ${owner} has an unsupported link scheme "${scheme}:".`)
@@ -716,33 +784,324 @@ function resolvedGraphEdgeArrow(edge: GraphDiagramEdge): GraphDiagramEdgeArrow {
     return edge.arrow ?? (edge.kind === 'association' ? 'none' : 'forward')
 }
 
+interface GraphNodeMetrics {
+    labelSize: number
+    detailSize: number
+    iconSize: number
+    padX: number
+    padY: number
+    gap: number
+    lineHeight: number
+    microLine: number
+    micro: number
+}
+
+function lineCount(text: string, size: number, available: number, weight = 400): number {
+    if (!text) return 0
+    const words = text.split(/\s+/)
+    let lines = 1, current = 0
+    const space = estimateTextWidth(' ', size, { weight })
+    for (const word of words) {
+        const width = estimateTextWidth(word, size, { weight })
+        if (current > 0 && current + space + width > available) {
+            lines += 1
+            current = width
+        } else {
+            current += (current > 0 ? space : 0) + width
+        }
+    }
+    return lines
+}
+
+/** Width and height a node needs, from its content. Layout runs on these numbers. */
+function measureGraphNode(node: GraphDiagramNode, fixedWidth: number | undefined, minHeight: number | undefined, m: GraphNodeMetrics, d: DensityTokens): { width: number; height: number } {
+    const label = graphAccessibleText(node.label) || node.id
+    const detail = graphAccessibleText(node.detail)
+    const hasIcon = node.icon != null
+    // An oversized icon must not stretch its node. Rendering clamps it to the box.
+    const measuredIcon = Math.min(node.iconSize ?? m.iconSize, d.f(48))
+    const iconSpace = hasIcon ? measuredIcon + d.s(9) : 0
+    const statusSpace = node.status ? d.g(8) + d.s(6) : 0
+    const versionWidth = node.version ? estimateTextWidth(node.version, m.micro, { mono: true }) + d.s(8) : 0
+    const rowsWidth = Math.max(0, ...(node.rows ?? []).map((row) =>
+        estimateTextWidth(graphAccessibleText(row.key), m.micro) + d.s(10) + estimateTextWidth(graphAccessibleText(row.value), m.micro, { mono: true })))
+    const metricCells = (node.metrics ?? []).map((metric) => Math.max(
+        estimateTextWidth(graphAccessibleText(metric.value), d.f(14), { mono: true }) + (metric.unit != null ? estimateTextWidth(graphAccessibleText(metric.unit), m.micro) + d.s(3) : 0),
+        estimateTextWidth(graphAccessibleText(metric.label), m.micro),
+    ))
+    const metricsWidth = metricCells.length ? Math.max(...metricCells) * metricCells.length + d.s(14) * (metricCells.length - 1) : 0
+    const footerText = [node.owner, graphAccessibleText(node.footer)].filter(Boolean).join(' · ')
+    const footerWidth = estimateTextWidth(footerText, m.micro)
+    const headerWidth = iconSpace + statusSpace + versionWidth + Math.max(
+        estimateTextWidth(label, m.labelSize, { weight: 600 }),
+        estimateTextWidth(detail, m.detailSize),
+    )
+    // A little slack absorbs kerning and font-hinting differences, so one-line labels stay on one line.
+    const natural = Math.ceil(Math.max(headerWidth, rowsWidth, metricsWidth, footerWidth) * 1.04) + m.padX * 2 + 4
+    const minimum = d.f(92)
+    const maximum = d.f(300)
+    const width = node.width ?? fixedWidth ?? clamp(natural, minimum, maximum)
+
+    const inner = width - m.padX * 2 - 2 - iconSpace - statusSpace - versionWidth
+    const labelLines = lineCount(label, m.labelSize, inner, 600)
+    const detailLines = lineCount(detail, m.detailSize, inner)
+    const rich = Boolean(node.rows?.length || node.metrics?.length || node.tags?.length || node.footer || node.owner || node.spark)
+    let content = labelLines * m.labelSize * 1.2
+    if (detailLines) content += d.s(3) + detailLines * m.detailSize * 1.25
+    if (hasIcon) content = Math.max(content, measuredIcon)
+    // Each row block sits under a rule, with the node's gap above and below that rule.
+    if (node.rows?.length) content += m.gap * 2 + 1 + node.rows.length * m.microLine + (node.rows.length - 1) * d.s(2) + node.rows.filter((row) => row.bar != null).length * (Math.max(2, d.g(3)) + 1)
+    if (node.metrics?.length) {
+        const hasSpark = node.metrics.some((metric) => metric.spark)
+        const hasBar = node.metrics.some((metric) => metric.bar != null)
+        content += m.gap + d.f(14) * 1.1 + d.s(1) + m.micro * 1.2 + (hasSpark ? d.f(14) + d.s(1) : 0) + (hasBar ? Math.max(2, d.g(3)) + d.s(1) : 0)
+    }
+    if (node.spark) content += m.gap + d.f(18)
+    if (node.tags?.length) {
+        const tagWidths = node.tags.map((tag) => estimateTextWidth(graphAccessibleText(tag), m.micro) + d.s(10) + 2)
+        let tagLines = 1, current = 0
+        for (const tagWidth of tagWidths) {
+            if (current > 0 && current + d.s(3) + tagWidth > width - m.padX * 2 - 2) {
+                tagLines += 1
+                current = tagWidth
+            } else current += (current > 0 ? d.s(3) : 0) + tagWidth
+        }
+        content += m.gap + tagLines * (m.micro * 1.1 + Math.max(1, d.s(1.5)) * 2 + 2) + (tagLines - 1) * d.s(3)
+    }
+    if (footerText) content += m.gap + m.microLine
+    const natural_height = Math.ceil(content) + m.padY * 2 + 2 + (rich ? d.s(2) : 0)
+    const floor = minHeight ?? d.f(rich ? 0 : 38)
+    return { width, height: node.height ?? Math.max(floor, natural_height) }
+}
+
+interface ScopePlacement {
+    width: number
+    height: number
+    nodes: Map<string, { x: number; y: number }>
+    groups: Map<string, Rectangle>
+}
+
+interface GroupedLayoutOptions {
+    direction: 'LR' | 'RL' | 'TB' | 'BT'
+    groupDirection: 'LR' | 'RL' | 'TB' | 'BT'
+    nodeGap: number
+    rankGap: number
+    edgeGap: number
+    groupPad: number
+    headerHeight: number
+    /** Largest stack of unconnected siblings before they wrap into another column. */
+    wrapAt: number
+    measureLabel: (label: string) => { width: number; height: number }
+}
+
+/**
+ * Lays out each group on its own, then lays the groups out as blocks. Each group
+ * stays a compact unit, and links between groups cannot stretch one apart.
+ */
+function layoutGroupedGraph(
+    nodes: GraphDiagramNode[],
+    edges: GraphDiagramEdge[],
+    groups: GraphDiagramGroup[],
+    sizes: Map<string, { width: number; height: number }>,
+    options: GroupedLayoutOptions,
+): { positions: Map<string, { x: number; y: number }>; rects: Map<string, Rectangle> } {
+    const groupById = new Map(groups.map((group) => [group.id, group]))
+    const chain = (nodeId: string): string[] => {
+        const node = nodes.find((entry) => entry.id === nodeId)
+        const out: string[] = []
+        for (let group = node?.group; group != null; group = groupById.get(group)?.parent) out.push(group)
+        return out
+    }
+    const chains = new Map(nodes.map((node) => [node.id, chain(node.id)]))
+    const isHorizontal = (direction: GroupedLayoutOptions['direction']) => direction === 'LR' || direction === 'RL'
+
+    const childIn = (nodeId: string, scope: string | null): string | undefined => {
+        const ancestors = chains.get(nodeId) ?? []
+        if (scope === null) return ancestors.length ? ancestors[ancestors.length - 1] : nodeId
+        const index = ancestors.indexOf(scope)
+        if (index < 0) return undefined
+        return index === 0 ? nodeId : ancestors[index - 1]
+    }
+
+    const place = (scope: string | null, order: Map<string, number>): ScopePlacement => {
+        const direction = scope === null ? options.direction : options.groupDirection
+        const horizontal = isHorizontal(direction)
+        const nodeChildren = nodes.filter((node) => (node.group ?? null) === scope).map((node) => node.id)
+        const groupChildren = groups.filter((group) => (group.parent ?? null) === scope).map((group) => group.id)
+        const childIds = [...groupChildren, ...nodeChildren]
+            .map((id, index) => ({ id, index, key: order.get(id) ?? index }))
+            .sort((left, right) => left.key - right.key || left.index - right.index)
+            .map((entry) => entry.id)
+        const inner = new Map(groupChildren.map((id) => [id, place(id, order)]))
+        const sizeOf = (id: string) => inner.get(id) ?? sizes.get(id)!
+
+        const links = new Map<string, { from: string; to: string; label?: string }>()
+        for (const edge of edges) {
+            const from = childIn(edge.from, scope), to = childIn(edge.to, scope)
+            if (!from || !to || from === to) continue
+            const key = `${from}\u0000${to}`
+            const previous = links.get(key)
+            const label = edge.label && (!previous?.label || edge.label.length > previous.label.length) ? edge.label : previous?.label
+            links.set(key, { from, to, ...(label ? { label } : {}) })
+        }
+
+        const centers = new Map<string, { x: number; y: number }>()
+        if (links.size === 0 && childIds.length > options.wrapAt) {
+            // Unconnected siblings stack in columns rather than one very tall run.
+            const lines = Math.ceil(childIds.length / options.wrapAt)
+            const perLine = Math.ceil(childIds.length / lines)
+            let offset = 0
+            for (let line = 0; line < lines; line += 1) {
+                const members = childIds.slice(line * perLine, (line + 1) * perLine)
+                const across = Math.max(...members.map((id) => horizontal ? sizeOf(id).width : sizeOf(id).height))
+                let along = 0
+                for (const id of members) {
+                    const size = sizeOf(id)
+                    const span = horizontal ? size.height : size.width
+                    centers.set(id, horizontal ? { x: offset + across / 2, y: along + span / 2 } : { x: along + span / 2, y: offset + across / 2 })
+                    along += span + options.nodeGap
+                }
+                offset += across + options.nodeGap
+            }
+        } else {
+            const graph = new dagre.graphlib.Graph({ multigraph: false })
+                .setGraph({ rankdir: direction, nodesep: options.nodeGap, ranksep: options.rankGap, edgesep: options.edgeGap, marginx: 0, marginy: 0 })
+                .setDefaultEdgeLabel(() => ({}))
+            for (const id of childIds) graph.setNode(id, { width: sizeOf(id).width, height: sizeOf(id).height })
+            for (const link of links.values()) {
+                const size = link.label ? options.measureLabel(link.label) : { width: 0, height: 0 }
+                graph.setEdge(link.from, link.to, { width: size.width, height: size.height })
+            }
+            dagre.layout(graph)
+            for (const id of childIds) {
+                const position = graph.node(id)
+                centers.set(id, { x: position?.x ?? 0, y: position?.y ?? 0 })
+            }
+        }
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const id of childIds) {
+            const size = sizeOf(id), center = centers.get(id)!
+            minX = Math.min(minX, center.x - size.width / 2)
+            minY = Math.min(minY, center.y - size.height / 2)
+            maxX = Math.max(maxX, center.x + size.width / 2)
+            maxY = Math.max(maxY, center.y + size.height / 2)
+        }
+        if (minX === Infinity) {
+            minX = 0
+            minY = 0
+            maxX = 0
+            maxY = 0
+        }
+        const framed = scope !== null
+        const pad = framed ? options.groupPad : 0
+        const header = framed ? options.headerHeight : 0
+        const originX = pad - minX
+        const originY = pad + header - minY
+        const placedNodes = new Map<string, { x: number; y: number }>()
+        const placedGroups = new Map<string, Rectangle>()
+        for (const id of childIds) {
+            const center = centers.get(id)!, size = sizeOf(id)
+            const left = center.x - size.width / 2 + originX
+            const top = center.y - size.height / 2 + originY
+            const child = inner.get(id)
+            if (child) {
+                placedGroups.set(id, { left, top, right: left + size.width, bottom: top + size.height })
+                for (const [nodeId, point] of child.nodes) placedNodes.set(nodeId, { x: point.x + left, y: point.y + top })
+                for (const [groupId, rect] of child.groups) {
+                    placedGroups.set(groupId, { left: rect.left + left, right: rect.right + left, top: rect.top + top, bottom: rect.bottom + top })
+                }
+            } else {
+                placedNodes.set(id, { x: center.x + originX, y: center.y + originY })
+            }
+        }
+        return { width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 + header, nodes: placedNodes, groups: placedGroups }
+    }
+
+    // The second pass reorders siblings toward their neighbors, which removes most avoidable crossings.
+    const first = place(null, new Map())
+    const perpendicular = (id: string) => {
+        const point = first.nodes.get(id)
+        return point ? (isHorizontal(options.direction) ? point.y : point.x) : 0
+    }
+    const pull = new Map<string, number[]>()
+    for (const edge of edges) {
+        ;(pull.get(edge.from) ?? pull.set(edge.from, []).get(edge.from)!).push(perpendicular(edge.to))
+        ;(pull.get(edge.to) ?? pull.set(edge.to, []).get(edge.to)!).push(perpendicular(edge.from))
+    }
+    const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+    const order = new Map<string, number>()
+    for (const node of nodes) {
+        const values = pull.get(node.id)
+        order.set(node.id, values?.length ? mean(values) : perpendicular(node.id))
+    }
+    for (const group of [...groups].sort((left, right) => graphGroupDepth(right, groupById) - graphGroupDepth(left, groupById))) {
+        const members = nodes.filter((node) => chains.get(node.id)?.includes(group.id)).map((node) => order.get(node.id) ?? 0)
+        order.set(group.id, members.length ? mean(members) : 0)
+    }
+    const second = place(null, order)
+    return { positions: second.nodes, rects: second.groups }
+}
+
+type RoutedSide = GraphPortSide
+
+const OPPOSITE: Record<RoutedSide, RoutedSide> = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }
+
+/** Which sides a connector should use. Primary flow leaves the far side and enters the near side. */
+function chooseSides(from: PositionedGraphNode, to: PositionedGraphNode, horizontal: boolean): [RoutedSide, RoutedSide] {
+    const dx = to.cx - from.cx, dy = to.cy - from.cy
+    const separatedX = Math.abs(dx) > (from.width + to.width) / 2 + 4
+    const separatedY = Math.abs(dy) > (from.height + to.height) / 2 + 4
+    const useX = horizontal ? separatedX || !separatedY : separatedX && !separatedY
+    if (useX) {
+        const side: RoutedSide = dx >= 0 ? 'right' : 'left'
+        return [side, OPPOSITE[side]]
+    }
+    const side: RoutedSide = dy >= 0 ? 'bottom' : 'top'
+    return [side, OPPOSITE[side]]
+}
+
 export function GraphDiagram({
     nodes,
     edges,
     groups = [],
-    c,
+    c: baseTheme,
     width,
     height,
-    nodeWidth = 150,
-    nodeHeight = 66,
-    labelFontSize = 14,
-    detailFontSize = 11,
-    arrowSize = 5,
-    padding = 28,
+    nodeWidth,
+    nodeHeight,
+    labelFontSize,
+    detailFontSize,
+    arrowSize,
+    padding: paddingProp,
     layout: requestedLayout,
     direction = 'LR',
-    nodeGap = 34,
-    rankGap = 64,
-    edgeGap = 14,
+    groupDirection,
+    nodeGap: nodeGapProp,
+    rankGap: rankGapProp,
+    edgeGap: edgeGapProp,
     routing = 'dagre',
-    routingClearance = 12,
+    routingClearance: routingClearanceProp,
     sizing = 'content',
-    iconSize = 20,
+    iconSize: iconSizeProp,
     id,
     ariaLabel,
     title,
     description,
+    legend,
+    annotations = [],
+    density,
+    crossingBudget,
 }: GraphDiagramProps): React.ReactElement {
+    const c = density !== undefined ? withDensity(baseTheme, density) : baseTheme
+    const d = densityOf(c)
+    const padding = paddingProp ?? d.s(28)
+    const nodeGap = nodeGapProp ?? d.s(40)
+    const rankGap = rankGapProp ?? d.s(72)
+    const edgeGap = edgeGapProp ?? d.s(14)
+    const routingClearance = routingClearanceProp ?? d.s(12)
+    const iconSize = iconSizeProp ?? d.f(20)
+    const engineering = c.preset === 'engineering'
     if (id != null && id.trim().length === 0) throw new Error('GraphDiagram id must not be empty.')
     if (!['dagre', 'straight', 'orthogonal'].includes(routing)) throw new Error('GraphDiagram routing must be "dagre", "straight", or "orthogonal".')
     if (!Number.isFinite(routingClearance) || routingClearance <= 0) throw new Error('GraphDiagram routingClearance must be a finite positive number.')
@@ -751,7 +1110,7 @@ export function GraphDiagram({
     if (partiallyPositioned || (fullyPositioned > 0 && fullyPositioned < nodes.length)) {
         throw new Error('GraphDiagram nodes must either all define both x and y, or all omit coordinates for automatic layout.')
     }
-    const layoutMode = requestedLayout ?? (fullyPositioned === nodes.length ? 'manual' : 'auto')
+    const layoutMode = requestedLayout ?? (fullyPositioned === nodes.length && nodes.length > 0 ? 'manual' : 'auto')
     if (layoutMode === 'manual' && fullyPositioned !== nodes.length) {
         throw new Error('GraphDiagram layout="manual" requires x and y on every node.')
     }
@@ -769,167 +1128,372 @@ export function GraphDiagram({
     }
     const svgTitle = title?.trim() || ariaLabel?.trim() || 'Graph diagram'
     const svgDescription = description ?? graphDescription(nodes, edges)
-    let resolvedWidth = width ?? 520
-    let resolvedHeight = height ?? 420
+
+    const metrics: GraphNodeMetrics = {
+        labelSize: labelFontSize ?? d.type.label,
+        detailSize: detailFontSize ?? d.type.small,
+        iconSize,
+        padX: d.s(11),
+        padY: d.s(8),
+        gap: d.s(7),
+        lineHeight: 1.2,
+        micro: d.type.micro,
+        microLine: d.type.micro * 1.25,
+    }
+    const sizes = new Map(nodes.map((node) => [node.id, measureGraphNode(node, nodeWidth, nodeHeight, metrics, d)]))
+    const edgeLabelSize = d.type.micro
+    const edgeLabelPad = { x: d.s(5), y: Math.max(1, d.s(2)) }
+    const measureEdgeLabel = (label: string) => ({
+        width: Math.ceil(estimateTextWidth(label, edgeLabelSize, { mono: engineering })) + edgeLabelPad.x * 2 + 2,
+        height: Math.ceil(edgeLabelSize * 1.15) + edgeLabelPad.y * 2,
+    })
+
+    let resolvedWidth = width ?? 0
+    let resolvedHeight = height ?? 0
     let layout: Map<string, PositionedGraphNode>
     let groupLayout: PositionedGraphGroup[] = []
-    let autoEdgePoints = new Map<number, { points: Point[]; labelX: number; labelY: number }>()
+    let autoEdgePoints = new Map<number, Point[]>()
+    const groupHeaderHeight = d.type.small * 1.25 + d.s(8)
+    const groupPad = d.s(12)
 
     if (layoutMode === 'auto') {
-        const compoundGap = groups.length > 0 ? 34 : 0
-        const graph = new dagre.graphlib.Graph({ multigraph: true, compound: groups.length > 0 })
-            .setGraph({
-                rankdir: direction,
-                nodesep: Math.max(nodeGap, compoundGap),
-                ranksep: Math.max(rankGap, compoundGap),
-                edgesep: edgeGap,
-                marginx: padding,
-                marginy: padding,
-            })
-            .setDefaultEdgeLabel(() => ({}))
-        for (const group of groups) graph.setNode(group.id, { width: 0, height: 0 })
-        for (const node of nodes) {
-            graph.setNode(node.id, { width: node.width ?? nodeWidth, height: node.height ?? nodeHeight })
-        }
-        for (const group of groups) {
-            if (group.parent != null) graph.setParent(group.id, group.parent)
-        }
-        for (const node of nodes) {
-            if (node.group != null) graph.setParent(node.id, node.group)
-        }
-        edges.forEach((edge, index) => {
-            const labelWidth = edge.label ? estimatedEdgeLabelWidth(edge.label) : 0
-            graph.setEdge(edge.from, edge.to, { width: labelWidth, height: edge.label ? 18 : 0 }, `edge-${index}`)
-        })
-        dagre.layout(graph)
-
-        const graphSize = graph.graph()
-        if (sizing === 'content') {
-            resolvedWidth = Math.max(width ?? 520, Math.ceil(graphSize.width ?? 0))
-            resolvedHeight = Math.max(height ?? 420, Math.ceil(graphSize.height ?? 0))
-        }
-        const offsetX = (resolvedWidth - (graphSize.width ?? resolvedWidth)) / 2
-        const offsetY = (resolvedHeight - (graphSize.height ?? resolvedHeight)) / 2
-        layout = new Map(nodes.map((node) => {
-            const position = graph.node(node.id)
-            return [node.id, {
-                ...node,
-                width: node.width ?? nodeWidth,
-                height: node.height ?? nodeHeight,
-                cx: (position?.x ?? resolvedWidth / 2) + offsetX,
-                cy: (position?.y ?? resolvedHeight / 2) + offsetY,
-            }]
-        }))
+        const boxes = new Map<string, Rectangle>()
         const groupsById = new Map(groups.map((group) => [group.id, group]))
+        if (groups.length > 0) {
+            const grouped = layoutGroupedGraph(nodes, edges, groups, sizes, {
+                direction,
+                groupDirection: groupDirection ?? direction,
+                nodeGap,
+                rankGap,
+                edgeGap,
+                groupPad,
+                headerHeight: groupHeaderHeight,
+                wrapAt: 5,
+                measureLabel: measureEdgeLabel,
+            })
+            layout = new Map(nodes.map((node) => {
+                const point = grouped.positions.get(node.id) ?? { x: 0, y: 0 }
+                return [node.id, { ...node, width: sizes.get(node.id)!.width, height: sizes.get(node.id)!.height, cx: point.x, cy: point.y }]
+            }))
+            for (const [id, rect] of grouped.rects) boxes.set(id, rect)
+        } else {
+            const graph = new dagre.graphlib.Graph({ multigraph: true })
+                .setGraph({
+                    rankdir: direction,
+                    nodesep: nodeGap,
+                    ranksep: rankGap,
+                    edgesep: edgeGap,
+                    marginx: padding,
+                    marginy: padding,
+                })
+                .setDefaultEdgeLabel(() => ({}))
+            for (const node of nodes) {
+                graph.setNode(node.id, { width: sizes.get(node.id)!.width, height: sizes.get(node.id)!.height })
+            }
+            edges.forEach((edge, index) => {
+                const size = edge.label ? measureEdgeLabel(edge.label) : { width: 0, height: 0 }
+                graph.setEdge(edge.from, edge.to, { width: size.width, height: size.height }, `edge-${index}`)
+            })
+            dagre.layout(graph)
+            layout = new Map(nodes.map((node) => {
+                const position = graph.node(node.id)
+                return [node.id, {
+                    ...node,
+                    width: sizes.get(node.id)!.width,
+                    height: sizes.get(node.id)!.height,
+                    cx: position?.x ?? 0,
+                    cy: position?.y ?? 0,
+                }]
+            }))
+            autoEdgePoints = new Map(edges.map((edge, index) => {
+                const placed = graph.edge({ v: edge.from, w: edge.to, name: `edge-${index}` })
+                return [index, (placed?.points ?? []).map((point: Point) => ({ x: point.x, y: point.y }))]
+            }))
+        }
         groupLayout = groups.map((group) => {
-            const position = graph.node(group.id)
+            const rect = boxes.get(group.id) ?? { left: 0, right: 0, top: 0, bottom: 0 }
             return {
                 ...group,
-                width: position?.width ?? 0,
-                height: position?.height ?? 0,
-                cx: (position?.x ?? resolvedWidth / 2) + offsetX,
-                cy: (position?.y ?? resolvedHeight / 2) + offsetY,
+                width: rect.right - rect.left,
+                height: rect.bottom - rect.top,
+                cx: (rect.left + rect.right) / 2,
+                cy: (rect.top + rect.bottom) / 2,
                 depth: graphGroupDepth(group, groupsById),
+                headerX: rect.left + d.s(8),
+                headerY: rect.top + d.s(4),
             }
         }).sort((left, right) => left.depth - right.depth)
-        autoEdgePoints = new Map(edges.map((edge, index) => {
-            const placed = graph.edge({ v: edge.from, w: edge.to, name: `edge-${index}` })
-            const points = (placed?.points ?? []).map((point: Point) => ({ x: point.x + offsetX, y: point.y + offsetY }))
-            return [index, {
-                points,
-                labelX: placed?.x != null ? placed.x + offsetX : (points[Math.floor(points.length / 2)]?.x ?? resolvedWidth / 2),
-                labelY: placed?.y != null ? placed.y + offsetY : (points[Math.floor(points.length / 2)]?.y ?? resolvedHeight / 2),
-            }]
-        }))
+
+        // Fit the canvas to the real extents, then center inside any requested size.
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        const extend = (rect: Rectangle) => {
+            minX = Math.min(minX, rect.left)
+            minY = Math.min(minY, rect.top)
+            maxX = Math.max(maxX, rect.right)
+            maxY = Math.max(maxY, rect.bottom)
+        }
+        for (const node of layout.values()) extend(nodeRect(node))
+        for (const rect of boxes.values()) extend(rect)
+        for (const points of autoEdgePoints.values()) for (const point of points) extend({ left: point.x, right: point.x, top: point.y, bottom: point.y })
+        if (minX === Infinity) {
+            minX = 0
+            minY = 0
+            maxX = 0
+            maxY = 0
+        }
+        // Notes hang outside the nodes they point at, so reserve a margin for them.
+        const notes = annotations.length ? d.s(26) + d.type.micro * 1.3 * 3 + 4 : 0
+        const contentWidth = Math.ceil(maxX - minX + padding * 2)
+        const contentHeight = Math.ceil(maxY - minY + padding * 2 + notes * 2)
+        if (sizing === 'content') {
+            resolvedWidth = Math.max(width ?? 0, contentWidth)
+            resolvedHeight = Math.max(height ?? 0, contentHeight)
+        } else {
+            resolvedWidth = width ?? contentWidth
+            resolvedHeight = height ?? contentHeight
+        }
+        const offsetX = (resolvedWidth - (maxX - minX)) / 2 - minX
+        const offsetY = (resolvedHeight - (maxY - minY)) / 2 - minY
+        for (const node of layout.values()) {
+            node.cx += offsetX
+            node.cy += offsetY
+        }
+        for (const group of groupLayout) {
+            group.cx += offsetX
+            group.cy += offsetY
+            group.headerX += offsetX
+            group.headerY += offsetY
+        }
+        for (const points of autoEdgePoints.values()) {
+            for (const point of points) {
+                point.x += offsetX
+                point.y += offsetY
+            }
+        }
     } else {
-        layout = manualGraphLayout(nodes, resolvedWidth, resolvedHeight, nodeWidth, nodeHeight, padding)
+        resolvedWidth = width ?? 520
+        resolvedHeight = height ?? 420
+        layout = manualGraphLayout(nodes, sizes, resolvedWidth, resolvedHeight, padding)
     }
 
     const anchored = (edge: GraphDiagramEdge) => edge.fromPort != null || edge.toPort != null || edge.fromSide != null || edge.toSide != null
+    const groupOf = new Map(nodes.map((node) => [node.id, node.group]))
+    const flowIsHorizontal = (edge: GraphDiagramEdge) => {
+        const sameGroup = groupOf.get(edge.from) != null && groupOf.get(edge.from) === groupOf.get(edge.to)
+        const flow = sameGroup ? groupDirection ?? direction : direction
+        return flow === 'LR' || flow === 'RL'
+    }
+    const headerRects = new Map(groupLayout.map((group) => [group.id, {
+        left: group.headerX,
+        right: Math.min(group.cx + group.width / 2 - d.s(6), group.headerX + groupHeaderWidth(group, d)),
+        top: group.headerY,
+        bottom: group.headerY + groupHeaderHeight - d.s(4),
+    }]))
+
     // Explicit anchors opt into obstacle-aware geometry even while Dagre remains the layout engine.
     const orthogonalEdges = edges.flatMap((edge, index) => routing === 'orthogonal' || (routing === 'dagre' && anchored(edge))
         || (routing === 'straight' && edge.from === edge.to) ? [{ edge, index }] : [])
-    const routed = routeOrthogonalGraph(
-        Array.from(layout.values()), orthogonalEdges.map(({ edge }) => edge), resolvedWidth, resolvedHeight,
+    const routeWith = (subset: { edge: GraphDiagramEdge; index: number }[]) => routeOrthogonalGraph(
+        Array.from(layout.values()), subset.map(({ edge }) => edge), resolvedWidth, resolvedHeight,
         routingClearance, edgeGap,
-        groupLayout.map((group) => ({
-            left: group.cx - group.width / 2, right: group.cx + group.width / 2,
-            top: group.cy - group.height / 2, bottom: group.cy - group.height / 2 + 26,
-        })),
+        Array.from(headerRects.values()),
     )
-    const orthogonalPoints = new Map(Array.from(routed.routes, ([index, points]) => [orthogonalEdges[index].index, points]))
-    const failedIndexes = new Set(routed.failures.map((failure) => orthogonalEdges[failure.index].index))
+    const routed = routeWith(orthogonalEdges)
+    const orthogonalPoints = new Map(Array.from(routed.routes, ([index, points]) => [orthogonalEdges[index]!.index, points]))
+    const failedIndexes = new Set(routed.failures.map((failure) => orthogonalEdges[failure.index]!.index))
     const routingFailures = routed.failures.map((failure) => {
-        const { edge } = orthogonalEdges[failure.index]
+        const { edge } = orthogonalEdges[failure.index]!
         return `Connector "${edge.from}" -> "${edge.to}" was not drawn: ${failure.reason}.`
     })
-    const edgeLayouts: PositionedGraphEdge[] = edges.flatMap((edge, index) => {
+
+    // Connectors share a node side in the order of what they connect to, so they fan out without crossing.
+    const slotOffsets = new Map<string, number>()
+    if (routing === 'dagre') {
+        const sideUsers = new Map<string, { key: string; other: number; length: number }[]>()
+        edges.forEach((edge, index) => {
+            if (edge.from === edge.to || orthogonalPoints.has(index) || failedIndexes.has(index)) return
+            const from = layout.get(edge.from), to = layout.get(edge.to)
+            if (!from || !to) return
+            const [fromSide, toSide] = chooseSides(from, to, flowIsHorizontal(edge))
+            const coordinate = (node: PositionedGraphNode, side: RoutedSide) => side === 'left' || side === 'right' ? node.cy : node.cx
+            const add = (node: PositionedGraphNode, side: RoutedSide, other: PositionedGraphNode, end: 'from' | 'to') => {
+                const key = `${node.id}\u0000${side}`
+                const list = sideUsers.get(key) ?? []
+                list.push({ key: `${index}\u0000${end}`, other: coordinate(other, side) + index * 0.001, length: side === 'left' || side === 'right' ? node.height : node.width })
+                sideUsers.set(key, list)
+            }
+            add(from, fromSide, to, 'from')
+            add(to, toSide, from, 'to')
+        })
+        for (const users of sideUsers.values()) {
+            users.sort((left, right) => left.other - right.other)
+            const length = users[0]!.length
+            const spacing = users.length > 1 ? Math.min(d.s(12) + edgeLabelSize * 0.2, (length * 0.78) / (users.length - 1)) : 0
+            users.forEach((user, position) => slotOffsets.set(user.key, (position - (users.length - 1) / 2) * spacing))
+        }
+    }
+
+    const sideAnchor = (node: PositionedGraphNode, side: RoutedSide, offset: number): Point => {
+        if (side === 'left') return { x: node.cx - node.width / 2, y: node.cy + offset }
+        if (side === 'right') return { x: node.cx + node.width / 2, y: node.cy + offset }
+        if (side === 'top') return { x: node.cx + offset, y: node.cy - node.height / 2 }
+        return { x: node.cx + offset, y: node.cy + node.height / 2 }
+    }
+
+    const placedLabels: Rectangle[] = []
+    const nodeRects = Array.from(layout.values()).map((node) => ({ id: node.id, rect: nodeRect(node) }))
+    const rawEdgeLayouts: Omit<PositionedGraphEdge, 'labelX' | 'labelY'>[] = edges.flatMap((edge, index) => {
         if (failedIndexes.has(index)) return []
         const from = layout.get(edge.from)
         const to = layout.get(edge.to)
         if (!from || !to) return []
         const automatic = autoEdgePoints.get(index)
         const selfLoop = edge.from === edge.to
-        if (!selfLoop && from.cx === to.cx && from.cy === to.cy && !automatic?.points.length) return []
+        if (!selfLoop && from.cx === to.cx && from.cy === to.cy && !automatic?.length) return []
 
-        const dx = to.cx - from.cx
-        const dy = to.cy - from.cy
-        const absDx = Math.abs(dx)
-        const absDy = Math.abs(dy)
-        const fromScale = Math.min(
-            absDx > 0 ? (from.width / 2) / absDx : Infinity,
-            absDy > 0 ? (from.height / 2) / absDy : Infinity,
-        )
-        const toScale = Math.min(
-            absDx > 0 ? (to.width / 2) / absDx : Infinity,
-            absDy > 0 ? (to.height / 2) / absDy : Infinity,
-        )
         const color = edge.muted
             ? c.textMuted
-            : c.preset === 'engineering' && edge.tone == null
-                ? c.textSecondary
-                : getToneColor(edge.tone ?? 'blue', c)
-        const markerBaseId = `graph-arrow-${edge.from}-${edge.to}-${index}-${arrowSize}-${color}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+            : edge.tone != null
+                ? getToneColor(edge.tone, c)
+                : engineering ? c.textSecondary : c.textMuted
+        const markerBaseId = `graph-arrow-${edge.from}-${edge.to}-${index}-${arrowSize ?? d.arrow}-${color}`.replace(/[^a-zA-Z0-9_-]/g, '-')
 
-        const loopClearance = Math.max(24, arrowSize * 5)
-        const manualLoopPoints = selfLoop ? [
-            { x: from.cx + from.width / 2, y: from.cy - 8 },
-            { x: from.cx + from.width / 2 + loopClearance, y: from.cy - 8 },
-            { x: from.cx + from.width / 2 + loopClearance, y: from.cy - from.height / 2 - loopClearance },
-            { x: from.cx + 10, y: from.cy - from.height / 2 - loopClearance },
-            { x: from.cx + 10, y: from.cy - from.height / 2 },
-        ] : undefined
+        const loopClearance = Math.max(d.s(24), d.arrow * 3)
         const routedPoints = orthogonalPoints.get(index)
-        const points = routedPoints ?? (routing === 'straight' ? straightGraphRoute(from, to, edge) : automatic?.points.length ? automatic.points : manualLoopPoints ?? [
-            { x: from.cx + dx * fromScale, y: from.cy + dy * fromScale },
-            { x: to.cx - dx * toScale, y: to.cy - dy * toScale },
-        ])
-        const manualLoopLabel = manualLoopPoints ? {
-            x: from.cx + from.width / 2 + loopClearance,
-            y: from.cy - from.height / 2 - loopClearance / 2,
-        } : undefined
+        let path: string
+        let samples: Point[]
+        let route: Point[]
+        if (routedPoints) {
+            const rounded = roundedPolylinePath(routedPoints, d.s(8))
+            path = rounded.d
+            samples = rounded.samples
+            route = routedPoints
+        } else if (routing === 'straight') {
+            route = straightGraphRoute(from, to, edge)
+            path = route.map((point, position) => `${position === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+            samples = route
+        } else if (selfLoop) {
+            const right = from.cx + from.width / 2, top = from.cy - from.height / 2
+            const start = { x: right, y: from.cy - d.s(8) }
+            const corner1 = { x: right + loopClearance, y: from.cy - d.s(8) }
+            const corner2 = { x: right + loopClearance, y: top - loopClearance }
+            const corner3 = { x: from.cx + d.s(10), y: top - loopClearance }
+            const end = { x: from.cx + d.s(10), y: top }
+            const rounded = roundedPolylinePath([start, corner1, corner2, corner3, end], d.s(8))
+            path = rounded.d
+            samples = rounded.samples
+            route = [start, corner1, corner2, corner3, end]
+        } else {
+            const [fromSide, toSide] = chooseSides(from, to, flowIsHorizontal(edge))
+            const start = sideAnchor(from, fromSide, slotOffsets.get(`${index}\u0000from`) ?? 0)
+            const end = sideAnchor(to, toSide, slotOffsets.get(`${index}\u0000to`) ?? 0)
+            // A direct curve reads best. Dagre's waypoints only help when that curve clips a node.
+            let smooth = smoothConnector(start, end, fromSide, toSide)
+            let hit = false
+            const clearance = 2
+            const hitsAnything = (candidate: { samples: Point[] }) => nodeRects.some(({ id: nodeId, rect }) =>
+                nodeId !== edge.from && nodeId !== edge.to && samplesHitBox(candidate.samples, {
+                    left: rect.left - clearance, right: rect.right + clearance, top: rect.top - clearance, bottom: rect.bottom + clearance,
+                }))
+            if (hitsAnything(smooth)) {
+                const interior = automatic && automatic.length > 2 ? automatic.slice(1, -1).filter((point) => {
+                    const clearOf = (rect: Rectangle) => !(point.x > rect.left - 6 && point.x < rect.right + 6 && point.y > rect.top - 6 && point.y < rect.bottom + 6)
+                    return clearOf(nodeRect(from)) && clearOf(nodeRect(to))
+                }) : []
+                const guided = smoothConnector(start, end, fromSide, toSide, interior)
+                if (interior.length > 0 && !hitsAnything(guided)) smooth = guided
+                else hit = true
+            }
+            if (hit) {
+                const detour = routeOrthogonalGraph(Array.from(layout.values()), [{ ...edge, fromSide, toSide }], resolvedWidth, resolvedHeight, Math.min(routingClearance, d.s(8)), edgeGap, [])
+                const points = detour.routes.get(0)
+                if (points) {
+                    const rounded = roundedPolylinePath(points, d.s(8))
+                    path = rounded.d
+                    samples = rounded.samples
+                    route = points
+                } else {
+                    path = smooth.d
+                    samples = smooth.samples
+                    route = smooth.samples
+                }
+            } else {
+                path = smooth.d
+                samples = smooth.samples
+                route = smooth.samples
+            }
+        }
 
-        const routedLabel = routedPoints || routing === 'straight' ? routingLabelPosition(points) : undefined
+        const labelSize = edge.label ? measureEdgeLabel(edge.label) : { width: 0, height: 0 }
         return [{
             ...edge,
             index,
-            stableId: stableEdgeIds[index],
+            stableId: stableEdgeIds[index]!,
             color,
             markerStartId: `${markerBaseId}-start`,
             markerEndId: `${markerBaseId}-end`,
-            points,
-            labelX: routedLabel?.x ?? automatic?.labelX ?? manualLoopLabel?.x ?? (points[0].x + points[points.length - 1].x) / 2,
-            labelY: routedLabel?.y ?? automatic?.labelY ?? manualLoopLabel?.y ?? (points[0].y + points[points.length - 1].y) / 2,
+            points: samples,
+            route,
+            path,
+            labelWidth: labelSize.width,
+            labelHeight: labelSize.height,
         }]
     })
 
+    // Place each label on its own line at the clearest spot, away from boxes, titles, and other wires.
+    const headerList = Array.from(headerRects.values())
+    const edgeLayouts: PositionedGraphEdge[] = rawEdgeLayouts.map((edge) => {
+        if (!edge.label) {
+            const mid = pointAlongSamples(edge.points, 0.5)
+            return { ...edge, labelX: mid.x, labelY: mid.y }
+        }
+        const candidates = [0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74, 0.18, 0.82]
+        let best = { x: 0, y: 0, score: Infinity }
+        candidates.forEach((fraction, order) => {
+            const point = pointAlongSamples(edge.points, fraction)
+            const rect = { left: point.x - edge.labelWidth / 2, right: point.x + edge.labelWidth / 2, top: point.y - edge.labelHeight / 2, bottom: point.y + edge.labelHeight / 2 }
+            let score = order * 0.2
+            for (const { rect: box } of nodeRects) if (rectanglesOverlap(rect, box, 1)) score += 40
+            for (const header of headerList) if (rectanglesOverlap(rect, header, 1)) score += 20
+            for (const placed of placedLabels) if (rectanglesOverlap(rect, placed, 2)) score += 30
+            for (const other of rawEdgeLayouts) if (other !== edge && samplesHitBox(other.points, rect)) score += 8
+            if (rect.left < 0 || rect.right > resolvedWidth || rect.top < 0 || rect.bottom > resolvedHeight) score += 15
+            if (score < best.score) best = { x: point.x, y: point.y, score }
+        })
+        placedLabels.push({ left: best.x - edge.labelWidth / 2, right: best.x + edge.labelWidth / 2, top: best.y - edge.labelHeight / 2, bottom: best.y + edge.labelHeight / 2 })
+        return { ...edge, labelX: best.x, labelY: best.y }
+    })
+
+    // A group title moves to a free corner when connectors run through its usual spot.
+    for (const group of groupLayout) {
+        const rect = headerRects.get(group.id)
+        if (!rect) continue
+        const width = rect.right - rect.left, headerHeight = rect.bottom - rect.top
+        const left = group.cx - group.width / 2, right = group.cx + group.width / 2
+        const top = group.cy - group.height / 2
+        const options = [
+            { x: left + d.s(8), y: top + d.s(4) },
+            { x: right - width - d.s(8), y: top + d.s(4) },
+        ]
+        const clear = options.find((option) => !edgeLayouts.some((edge) => samplesHitBox(edge.points, {
+            left: option.x, right: option.x + width, top: option.y, bottom: option.y + headerHeight,
+        })))
+        const chosen = clear ?? options[0]!
+        group.headerX = chosen.x
+        group.headerY = chosen.y
+        group.headerFlipped = chosen === options[1]
+        headerRects.set(group.id, { left: chosen.x, right: chosen.x + width, top: chosen.y, bottom: chosen.y + headerHeight })
+    }
+    const finalHeaders = Array.from(headerRects.values())
+
     const crossings = connectorCrossings(edgeLayouts)
-    const labelCollisions = connectorLabelCollisions(edgeLayouts, layout, groupLayout)
+    const labelCollisions = connectorLabelCollisions(edgeLayouts, layout, finalHeaders)
+    const crossedLabels = labelCrossings(edgeLayouts, finalHeaders)
     const crowdedEndpoints = crowdedConnectorEndpoints(edgeLayouts)
     const parallelGroups = parallelConnectorGroups(edgeLayouts.filter((edge) => !orthogonalPoints.has(edge.index)))
 
     const groupElements = groupLayout.map((group) => {
-        const accent = group.muted ? c.textMuted : getToneColor(group.tone ?? 'blue', c)
+        const accent = group.muted ? c.textMuted : getToneColor(group.tone ?? 'neutral', c)
         return React.createElement('div', {
             key: `graph-group-${group.id}`,
             'data-vizmatic-graph-group': group.id,
@@ -941,45 +1505,182 @@ export function GraphDiagram({
                 height: group.height,
                 display: 'flex',
                 boxSizing: 'border-box' as const,
-                borderRadius: c.preset === 'engineering' ? 6 : 12,
-                border: `${c.preset === 'engineering' ? 1.25 : 1.5}px ${group.muted ? 'dashed' : 'solid'} ${withColorAlpha(accent, (group.muted ? 0x55 : 0x77) / 0xff)}`,
-                backgroundColor: withColorAlpha(accent, (c.preset === 'engineering' ? 0x08 : 0x0d) / 0xff),
+                borderRadius: engineering ? 6 : d.r(10),
+                border: `1px ${group.muted ? 'dashed' : 'solid'} ${group.tone ? withColorAlpha(accent, (group.muted ? 0x55 : 0x77) / 0xff) : c.border}`,
+                backgroundColor: group.tone ? withColorAlpha(accent, (engineering ? 0x08 : 0x07) / 0xff) : withColorAlpha(c.textPrimary, 0.012),
                 opacity: group.muted ? 0.68 : 1,
             },
-        }, React.createElement('div', {
+        })
+    })
+
+    // Titles sit above the connectors with a solid backing, so nothing strikes through them.
+    const groupHeaderElements = groupLayout.map((group) => {
+        const rect = headerRects.get(group.id)!
+        const outerLeft = group.cx - group.width / 2 + d.s(8)
+        const outerRight = group.cx + group.width / 2 - d.s(8)
+        const spansGroup = group.summary != null
+        return React.createElement('div', {
+            key: `graph-group-header-${group.id}`,
+            'data-vizmatic-graph-group-header': group.id,
             style: {
                 position: 'absolute' as const,
-                left: 10,
-                top: 5,
+                left: spansGroup ? outerLeft : group.headerX,
+                top: group.headerY,
+                width: Math.max(0, spansGroup ? outerRight - outerLeft : rect.right - rect.left),
+                height: rect.bottom - rect.top,
                 display: 'flex',
+                // A title moved aside by connectors trades places with the group's summary.
+                flexDirection: group.headerFlipped && spansGroup ? 'row-reverse' as const : 'row' as const,
                 alignItems: 'baseline',
-                gap: 7,
-                width: Math.max(0, group.width - 20),
-                overflow: 'hidden',
-                color: group.muted ? c.textMuted : getReadableToneColor(group.tone ?? 'blue', c),
+                justifyContent: 'space-between',
+                gap: d.s(10),
+                color: group.muted ? c.textMuted : c.textPrimary,
                 fontFamily: c.fontSans,
-                lineHeight: 1,
+                lineHeight: 1.25,
                 whiteSpace: 'nowrap' as const,
+                opacity: group.muted ? 0.75 : 1,
             },
         },
             React.createElement('div', {
-                style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 12, fontWeight: 800 },
-            }, group.label),
-            group.detail && React.createElement('div', {
                 style: {
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    color: c.textMuted,
-                    fontFamily: c.fontMono,
-                    fontSize: 11,
-                    fontWeight: 500,
+                    display: 'flex', alignItems: 'baseline', gap: d.s(7), minWidth: 0, overflow: 'hidden',
+                    backgroundColor: c.bg, padding: `0 ${d.s(3)}px`,
                 },
-            }, group.detail),
-        ))
+            },
+                React.createElement('div', {
+                    style: {
+                        minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: d.type.small, fontWeight: 600,
+                        color: group.tone && !group.muted ? getReadableToneColor(group.tone, c) : undefined,
+                    },
+                }, group.label),
+                group.detail && React.createElement('div', {
+                    style: {
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        color: c.textMuted,
+                        fontFamily: c.fontSans,
+                        fontSize: d.type.micro,
+                        fontWeight: 400,
+                    },
+                }, group.detail),
+            ),
+            group.summary != null && React.createElement('div', {
+                style: {
+                    display: 'flex', flexShrink: 0, color: c.textSecondary, fontFamily: c.fontMono, fontSize: d.type.micro,
+                    backgroundColor: c.bg, padding: `0 ${d.s(3)}px`,
+                },
+            }, group.summary),
+        )
     })
 
-    return React.createElement('div', {
+    // Notes point at nodes from outside, along short leader lines.
+    const annotationElements: React.ReactElement[] = []
+    const leaderLines: React.ReactElement[] = []
+    const annotationSize = d.type.micro
+    annotations.forEach((annotation, index) => {
+        const node = layout.get(annotation.target)
+        if (!node) throw new Error(`GraphDiagram annotation references missing node "${annotation.target}".`)
+        const text = graphAccessibleText(annotation.text)
+        const boxWidth = annotation.width ?? Math.min(d.f(190), Math.ceil(estimateTextWidth(text, annotationSize)) + 4)
+        const lines = lineCount(text, annotationSize, boxWidth)
+        const boxHeight = Math.ceil(lines * annotationSize * 1.3) + 2
+        const reach = d.s(26)
+        // Each side is scored by what it would cover, so a crowded spot takes the least bad option.
+        const cost = (rect: Rectangle) => {
+            let score = 0
+            for (const { rect: box } of nodeRects) if (rectanglesOverlap(rect, box, 3)) score += 40
+            for (const box of finalHeaders) if (rectanglesOverlap(rect, box, 3)) score += 20
+            for (const box of placedLabels) if (rectanglesOverlap(rect, box, 2)) score += 20
+            for (const edge of edgeLayouts) if (samplesHitBox(edge.points, rect)) score += 6
+            // The note's backing is opaque, so straddling a group's edge would cut a gap in its border.
+            for (const group of groupLayout) {
+                const box = {
+                    left: group.cx - group.width / 2, right: group.cx + group.width / 2,
+                    top: group.cy - group.height / 2, bottom: group.cy + group.height / 2,
+                }
+                const inside = rect.left >= box.left && rect.right <= box.right && rect.top >= box.top && rect.bottom <= box.bottom
+                if (!inside && rectanglesOverlap(rect, box, 0)) score += 8
+            }
+            if (rect.left < 0 || rect.top < 0 || rect.right > resolvedWidth || rect.bottom > resolvedHeight) score += 60
+            return score
+        }
+        const rectFor = (side: RoutedSide, out: number, along: number): Rectangle => {
+            const distance = reach * out
+            if (side === 'top' || side === 'bottom') {
+                const left = node.cx - boxWidth / 2 + along * boxWidth
+                const top = side === 'top' ? node.cy - node.height / 2 - distance - boxHeight : node.cy + node.height / 2 + distance
+                return { left, right: left + boxWidth, top, bottom: top + boxHeight }
+            }
+            const top = node.cy - boxHeight / 2 + along * boxHeight
+            const left = side === 'right' ? node.cx + node.width / 2 + distance : node.cx - node.width / 2 - distance - boxWidth
+            return { left, right: left + boxWidth, top, bottom: top + boxHeight }
+        }
+        // Near and centered wins when it is clear. Otherwise the note moves out or along its side.
+        const sides: RoutedSide[] = annotation.side ? [annotation.side] : ['top', 'bottom', 'right', 'left']
+        const options: { side: RoutedSide; rect: Rectangle; score: number }[] = []
+        for (const side of sides) {
+            for (const out of [1, 1.7, 2.6]) {
+                for (const along of [0, 0.42, -0.42]) {
+                    const rect = rectFor(side, out, along)
+                    options.push({ side, rect, score: cost(rect) + (out - 1) * 2 + Math.abs(along) * 2 })
+                }
+            }
+        }
+        const placed = options.reduce((best, option) => option.score < best.score ? option : best)
+        placedLabels.push(placed.rect)
+        const color = annotation.tone ? getToneColor(annotation.tone, c) : c.textMuted
+        const anchor = sideAnchor(node, placed.side, 0)
+        const clampTo = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value))
+        const tipX = clampTo(node.cx, placed.rect.left + 2, placed.rect.right - 2)
+        const tipY = clampTo(node.cy, placed.rect.top + 2, placed.rect.bottom - 2)
+        const tip = placed.side === 'top' ? { x: tipX, y: placed.rect.bottom }
+            : placed.side === 'bottom' ? { x: tipX, y: placed.rect.top }
+                : placed.side === 'right' ? { x: placed.rect.left, y: tipY } : { x: placed.rect.right, y: tipY }
+        leaderLines.push(
+            React.createElement('line', {
+                key: `leader-${index}`, x1: anchor.x, y1: anchor.y, x2: tip.x, y2: tip.y, stroke: color, strokeWidth: d.stroke.hair,
+            }),
+            React.createElement('circle', { key: `leader-dot-${index}`, cx: anchor.x, cy: anchor.y, r: d.g(2), fill: color }),
+        )
+        annotationElements.push(React.createElement('div', {
+            key: `graph-annotation-${index}`,
+            'data-vizmatic-graph-annotation': annotation.target,
+            style: {
+                position: 'absolute' as const,
+                left: placed.rect.left,
+                top: placed.rect.top,
+                width: boxWidth,
+                display: 'flex',
+                color: annotation.tone ? getReadableToneColor(annotation.tone, c) : c.textSecondary,
+                backgroundColor: c.bg,
+                fontFamily: c.fontSans,
+                fontSize: annotationSize,
+                fontStyle: 'italic' as const,
+                lineHeight: 1.3,
+                ...textFitStyle(),
+            },
+        }, annotation.text))
+    })
+
+    const kindLabels: Record<GraphDiagramEdgeKind, string> = {
+        sync: 'synchronous', async: 'asynchronous', event: 'event', data: 'data', dependency: 'dependency', association: 'association',
+    }
+    const legendItems: DiagramLegendItem[] = legend === true
+        ? [...new Set(edges.map((edge) => edge.kind).filter((kind): kind is GraphDiagramEdgeKind => kind != null))].map((kind) => ({
+            label: kindLabels[kind],
+            style: resolvedGraphEdgeStyle({ from: '', to: '', kind }),
+        }))
+        : Array.isArray(legend) ? legend : []
+    const legendHeight = legendItems.length ? d.type.micro * 1.4 + d.s(8) : 0
+
+    const strokeFor = (edge: PositionedGraphEdge) => {
+        if (edge.muted) return d.w(1.25)
+        if (edge.emphasis) return d.w(2.5)
+        return engineering ? 1.7 : d.w(2)
+    }
+
+    const graphElement = React.createElement('div', {
         key: 'vizmatic-graph-root',
         role: 'img',
         'aria-label': ariaLabel ?? svgTitle,
@@ -987,7 +1688,10 @@ export function GraphDiagram({
         'data-vizmatic-svg-description': svgDescription,
         'data-vizmatic-svg-id': id,
         'data-vizmatic-connector-crossings': crossings,
+        // Large maps always have a few crossings. Only more than this reads as congestion.
+        'data-vizmatic-connector-crossing-budget': crossingBudget ?? Math.floor(edges.length / 6),
         'data-vizmatic-connector-label-collisions': labelCollisions,
+        'data-vizmatic-connector-label-crossings': crossedLabels,
         'data-vizmatic-crowded-connector-endpoints': crowdedEndpoints,
         'data-vizmatic-parallel-connector-groups': parallelGroups,
         'data-vizmatic-unrouted-connectors': routingFailures.length,
@@ -996,8 +1700,9 @@ export function GraphDiagram({
             position: 'relative' as const,
             display: 'flex',
             width: resolvedWidth,
-            height: resolvedHeight,
-            maxWidth: '100%',
+            height: resolvedHeight + legendHeight,
+            // Content sizing must report overflow to the canvas, so it never shrinks to fit a parent.
+            ...(sizing === 'content' ? {} : { maxWidth: '100%' }),
             flexShrink: 0,
         }
     },
@@ -1015,13 +1720,13 @@ export function GraphDiagram({
                         ...(arrow === 'backward' || arrow === 'both' ? [ArrowMarkerDef({
                             id: edge.markerStartId,
                             color: edge.color,
-                            size: arrowSize,
+                            size: arrowSize ?? d.arrow,
                             direction: 'start',
                         })] : []),
                         ...(arrow === 'forward' || arrow === 'both' ? [ArrowMarkerDef({
                             id: edge.markerEndId,
                             color: edge.color,
-                            size: arrowSize,
+                            size: arrowSize ?? d.arrow,
                         })] : []),
                     ]
                 })
@@ -1034,17 +1739,18 @@ export function GraphDiagram({
                 'data-vizmatic-graph-edge-label': encodeURIComponent(edge.label ?? ''),
                 'data-vizmatic-graph-edge-title': encodeURIComponent(edge.title ?? ''),
                 'data-vizmatic-graph-edge-href': edge.href == null ? undefined : encodeURIComponent(edge.href),
-                d: edgePath(edge.points),
+                'data-vizmatic-graph-edge-route': JSON.stringify(edge.route.length <= 24 ? edge.route : []),
+                d: edge.path,
                 fill: 'none',
                 stroke: edge.color,
-                strokeWidth: edge.muted ? 1.4 : (c.preset === 'engineering' ? 1.7 : 2.8),
+                strokeWidth: strokeFor(edge),
                 strokeDasharray: resolvedGraphEdgeStyle(edge) === 'dashed'
-                    ? '7 6'
+                    ? `${d.s(7)} ${d.s(6)}`
                     : resolvedGraphEdgeStyle(edge) === 'dotted'
-                        ? '2 6'
+                        ? `${d.w(2)} ${d.s(6)}`
                         : undefined,
-                strokeLinecap: 'round',
-                opacity: edge.muted ? 0.48 : 0.9,
+                strokeLinecap: resolvedGraphEdgeStyle(edge) === 'dotted' ? 'round' : 'butt',
+                opacity: edge.muted ? 0.6 : 1,
                 markerStart: resolvedGraphEdgeArrow(edge) === 'backward' || resolvedGraphEdgeArrow(edge) === 'both'
                     ? `url(#${edge.markerStartId})`
                     : undefined,
@@ -1052,6 +1758,7 @@ export function GraphDiagram({
                     ? `url(#${edge.markerEndId})`
                     : undefined,
             })),
+            ...leaderLines,
         ),
         ...edgeLayouts.flatMap((edge) => edge.label ? [
             React.createElement('div', {
@@ -1061,16 +1768,15 @@ export function GraphDiagram({
                     left: edge.labelX,
                     top: edge.labelY,
                     transform: 'translate(-50%, -50%)',
-                    padding: c.preset === 'engineering' ? '3px 5px' : '3px 7px',
-                    borderRadius: c.preset === 'engineering' ? 0 : 999,
-                    backgroundColor: c.preset === 'engineering' ? c.bg : c.bgCard,
-                    border: c.preset === 'engineering' ? 'none' : `1px solid ${c.borderSubtle}`,
-                    color: edge.muted ? c.textMuted : (c.preset === 'engineering' ? c.textSecondary : getReadableToneColor(edge.tone ?? 'blue', c)),
-                    fontFamily: c.fontMono,
-                    fontSize: 11,
-                    fontWeight: c.preset === 'engineering' ? 400 : 800,
-                    lineHeight: 1,
-                    ...(c.preset === 'engineering' ? {
+                    padding: `${edgeLabelPad.y}px ${edgeLabelPad.x}px`,
+                    borderRadius: engineering ? 0 : d.r(3),
+                    backgroundColor: c.bg,
+                    color: edge.muted ? c.textMuted : (edge.tone && !engineering ? getReadableToneColor(edge.tone, c, c.bg, c.bg) : c.textSecondary),
+                    fontFamily: engineering ? c.fontMono : c.fontSans,
+                    fontSize: edgeLabelSize,
+                    fontWeight: 400,
+                    lineHeight: 1.15,
+                    ...(engineering ? {
                         textTransform: 'uppercase' as const,
                         letterSpacing: '0.02em',
                     } : {}),
@@ -1078,99 +1784,156 @@ export function GraphDiagram({
                 }
             }, edge.label),
         ] : []),
-        ...Array.from(layout.values()).map((node) => {
-            const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
-            const fill = getToneFill(node.tone ?? 'blue', c)
-            const accentText = node.muted
-                ? c.textMuted
-                : getReadableToneColor(node.tone ?? 'blue', c, fill, c.bg)
-            const resolvedIconSize = clamp(
-                node.iconSize ?? iconSize,
-                8,
-                Math.max(8, Math.min(node.width, node.height) - 16),
-            )
-            const iconLabel = typeof node.label === 'string' ? `${node.label} icon` : undefined
-            const iconElement = typeof node.icon === 'string'
-                ? Icon({ c, name: node.icon, color: accent, size: resolvedIconSize, label: iconLabel, muted: node.muted })
-                : React.isValidElement(node.icon)
-                    ? node.icon
-                    : node.icon?.render({ c, color: accent, size: resolvedIconSize, label: iconLabel })
-            const icon = iconElement && React.createElement('div', {
-                'data-vizmatic-graph-icon': node.id,
-                style: {
-                    width: resolvedIconSize,
-                    height: resolvedIconSize,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flex: `0 0 ${resolvedIconSize}px`,
-                    overflow: 'hidden',
-                },
-            }, iconElement)
-            return React.createElement('div', {
-                key: `graph-node-${node.id}`,
-                'data-vizmatic-graph-node-id': node.id,
-                'data-vizmatic-graph-node-label': graphAccessibleText(node.label) || node.id,
-                'data-vizmatic-graph-node-detail': graphAccessibleText(node.detail),
-                'data-vizmatic-graph-node-title': node.title ?? '',
-                'data-vizmatic-graph-node-href': node.href,
-                style: {
-                    position: 'absolute' as const,
-                    left: node.cx - node.width / 2,
-                    top: node.cy - node.height / 2,
-                    width: node.width,
-                    height: node.height,
-                    display: 'flex',
-                    flexDirection: icon ? 'row' as const : 'column' as const,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: icon ? 9 : node.detail ? 5 : 0,
-                    padding: '8px 10px',
-                    boxSizing: 'border-box' as const,
-                    borderRadius: c.preset === 'engineering' ? 5 : 10,
-                    backgroundColor: node.muted ? c.bgSubtle : fill,
-                    border: `${c.preset === 'engineering' ? 1.25 : 1.5}px solid ${node.muted ? c.borderLight : c.preset === 'engineering' ? accent : withColorAlpha(accent, 0x88 / 0xff)}`,
-                    ...(!node.muted && c.preset !== 'engineering' ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
-                    opacity: node.muted ? 0.62 : 1,
-                    color: c.preset === 'engineering' ? c.textPrimary : accentText,
-                    textAlign: icon ? 'left' as const : 'center' as const,
-                }
-            },
-                icon,
-                React.createElement('div', {
-                    style: {
-                        display: 'flex',
-                        flexDirection: 'column' as const,
-                        alignItems: icon ? 'flex-start' : 'center',
-                        gap: node.detail ? 5 : 0,
-                        minWidth: 0,
-                        flexShrink: 1,
-                    }
-                },
-                    React.createElement('div', {
-                        style: {
-                            fontFamily: c.fontSans,
-                            fontSize: labelFontSize,
-                            fontWeight: c.preset === 'engineering' ? 700 : 900,
-                            lineHeight: 1.15,
-                        }
-                    }, node.label),
-                    node.detail && React.createElement('div', {
-                        style: {
-                            color: c.textMuted,
-                            fontFamily: c.fontMono,
-                            fontSize: detailFontSize,
-                            fontWeight: c.preset === 'engineering' ? 400 : 650,
-                            lineHeight: 1.2,
-                        }
-                    }, node.detail),
-                ),
-            )
-        }),
+        ...groupHeaderElements,
+        ...annotationElements,
+        ...Array.from(layout.values()).map((node) => renderGraphNode(node, { c, d, metrics, labelFontSize, detailFontSize, iconSize, engineering })),
+        ...(legendItems.length ? [React.createElement('div', {
+            key: 'graph-legend',
+            style: { position: 'absolute' as const, left: padding, top: resolvedHeight + d.s(4), display: 'flex' },
+        }, DiagramLegend({ items: legendItems, c }))] : []),
     )
+    return graphElement
 }
 
 Object.defineProperty(GraphDiagram, SVG_ACCESSIBILITY_COMPONENT, { value: true })
+
+function groupHeaderWidth(group: GraphDiagramGroup, d: DensityTokens): number {
+    const label = graphAccessibleText(group.label)
+    const detail = graphAccessibleText(group.detail)
+    return Math.ceil(estimateTextWidth(label, d.type.small, { weight: 600 })
+        + (detail ? d.s(7) + estimateTextWidth(detail, d.type.micro) : 0)) + d.s(6) + 2
+}
+
+interface GraphNodeContext {
+    c: ThemeColors
+    d: DensityTokens
+    metrics: GraphNodeMetrics
+    labelFontSize?: number
+    detailFontSize?: number
+    iconSize: number
+    engineering: boolean
+}
+
+function renderGraphNode(node: PositionedGraphNode, { c, d, metrics, labelFontSize, detailFontSize, iconSize, engineering }: GraphNodeContext): React.ReactElement {
+    const toned = node.tone != null
+    const tone = node.tone ?? 'neutral'
+    const accent = node.muted ? c.textMuted : getToneColor(tone, c)
+    const fill = getToneFill(tone, c)
+    const resolvedIconSize = clamp(
+        node.iconSize ?? iconSize,
+        8,
+        Math.max(8, Math.min(node.width, node.height) - metrics.padY * 2 - 2),
+    )
+    const iconLabel = typeof node.label === 'string' ? `${node.label} icon` : undefined
+    const iconElement = typeof node.icon === 'string'
+        ? Icon({ c, name: node.icon, color: toned ? accent : c.textSecondary, size: resolvedIconSize, label: iconLabel, muted: node.muted })
+        : React.isValidElement(node.icon)
+            ? node.icon
+            : node.icon?.render({ c, color: accent, size: resolvedIconSize, label: iconLabel })
+    const icon = iconElement && React.createElement('div', {
+        'data-vizmatic-graph-icon': node.id,
+        style: {
+            width: resolvedIconSize,
+            height: resolvedIconSize,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flex: `0 0 ${resolvedIconSize}px`,
+            overflow: 'hidden',
+        },
+    }, iconElement)
+    const hasBody = Boolean(node.rows?.length || node.metrics?.length || node.tags?.length || node.footer || node.owner || node.spark)
+    const leftAligned = Boolean(icon) || hasBody || Boolean(node.status) || Boolean(node.version)
+    const title = React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            alignItems: leftAligned ? 'flex-start' : 'center',
+            gap: node.detail ? d.s(3) : 0,
+            minWidth: 0,
+            flex: 1,
+        }
+    },
+        React.createElement('div', {
+            style: {
+                fontFamily: c.fontSans,
+                fontSize: labelFontSize ?? metrics.labelSize,
+                fontWeight: 600,
+                lineHeight: 1.2,
+                color: node.muted ? c.textMuted : c.textPrimary,
+                ...textFitStyle(leftAligned ? 'left' : 'center'),
+            }
+        }, node.label),
+        node.detail && React.createElement('div', {
+            style: {
+                color: engineering ? c.textMuted : c.textSecondary,
+                fontFamily: engineering ? c.fontMono : c.fontSans,
+                fontSize: detailFontSize ?? metrics.detailSize,
+                fontWeight: 400,
+                lineHeight: 1.25,
+                ...textFitStyle(leftAligned ? 'left' : 'center'),
+            }
+        }, node.detail),
+    )
+    const trailing = compactChildren([
+        node.version && React.createElement('div', {
+            key: 'version',
+            style: { display: 'flex', flexShrink: 0, color: c.textMuted, fontFamily: c.fontMono, fontSize: metrics.micro, lineHeight: 1.2 },
+        }, node.version),
+        node.status && React.createElement(React.Fragment, { key: 'status' }, StatusDot({ status: node.status, c })),
+    ])
+    const divider = () => React.createElement('div', {
+        style: { display: 'flex', width: '100%', height: 1, backgroundColor: c.borderSubtle, flexShrink: 0 },
+    })
+    const footerParts = compactChildren([node.owner, node.footer])
+    return React.createElement('div', {
+        key: `graph-node-${node.id}`,
+        'data-vizmatic-graph-node-id': node.id,
+        'data-vizmatic-graph-node-label': graphAccessibleText(node.label) || node.id,
+        'data-vizmatic-graph-node-detail': graphAccessibleText(node.detail),
+        'data-vizmatic-graph-node-title': node.title ?? '',
+        'data-vizmatic-graph-node-href': node.href,
+        style: {
+            position: 'absolute' as const,
+            left: node.cx - node.width / 2,
+            top: node.cy - node.height / 2,
+            width: node.width,
+            height: node.height,
+            display: 'flex',
+            flexDirection: 'column' as const,
+            alignItems: 'stretch',
+            justifyContent: hasBody ? 'flex-start' : 'center',
+            gap: metrics.gap,
+            padding: `${metrics.padY}px ${metrics.padX}px`,
+            boxSizing: 'border-box' as const,
+            borderRadius: engineering ? 5 : d.r(8),
+            backgroundColor: node.muted ? c.bgSubtle : engineering ? fill : c.bgCard,
+            border: `1px solid ${node.muted ? c.borderLight : engineering ? accent : toned ? withColorAlpha(accent, 0.55) : c.borderLight}`,
+            opacity: node.muted ? 0.62 : 1,
+            color: c.textPrimary,
+        }
+    },
+        React.createElement('div', {
+            style: {
+                display: 'flex',
+                alignItems: leftAligned && !node.detail ? 'center' : leftAligned ? 'flex-start' : 'center',
+                justifyContent: leftAligned ? 'flex-start' : 'center',
+                gap: d.s(9),
+                width: '100%',
+            },
+        }, ...compactChildren([icon, title, ...trailing])),
+        ...compactChildren([
+            node.rows?.length ? React.createElement(React.Fragment, { key: 'rows' }, divider(), FactRows({ rows: node.rows, c })) : undefined,
+            node.metrics?.length ? React.createElement(React.Fragment, { key: 'metrics' }, MetricStrip({ metrics: node.metrics, c })) : undefined,
+            node.spark ? React.createElement(React.Fragment, { key: 'spark' }, Sparkline({ values: node.spark, c, tone: node.tone, width: node.width - metrics.padX * 2 - 2, height: d.f(18), area: true })) : undefined,
+            node.tags?.length ? React.createElement(React.Fragment, { key: 'tags' }, TagList({ tags: node.tags, c })) : undefined,
+            footerParts.length ? React.createElement('div', {
+                key: 'footer',
+                style: { display: 'flex', gap: d.s(6), color: c.textMuted, fontFamily: c.fontSans, fontSize: metrics.micro, lineHeight: 1.25, whiteSpace: 'nowrap' as const, overflow: 'hidden' },
+            }, ...footerParts.map((part, index) => React.createElement('div', { key: `footer-${index}`, style: { display: 'flex' } }, part))) : undefined,
+        ]),
+    )
+}
 
 // ─── TreeDiagram — Auto-laid hierarchy for orgs, routes, and decisions ──────
 
@@ -1230,13 +1993,18 @@ export function TreeDiagram({
     subtitle,
     width,
     height,
-    nodeWidth = 156,
-    nodeHeight = 64,
-    levelGap = 58,
-    siblingGap = 24,
-    padding = 28,
+    nodeWidth: nodeWidthProp,
+    nodeHeight: nodeHeightProp,
+    levelGap: levelGapProp,
+    siblingGap: siblingGapProp,
+    padding: paddingProp,
     math = false,
 }: TreeDiagramProps): React.ReactElement {
+    const nodeWidth = nodeWidthProp ?? densityOf(c).f(150)
+    const nodeHeight = nodeHeightProp ?? densityOf(c).f(50)
+    const levelGap = levelGapProp ?? densityOf(c).s(58)
+    const siblingGap = siblingGapProp ?? densityOf(c).s(20)
+    const padding = paddingProp ?? densityOf(c).s(28)
     const explicitIds = new Set<string>()
     const validateIds = (node: TreeNodeSpec): void => {
         if (node.id) {
@@ -1314,20 +2082,20 @@ export function TreeDiagram({
             style: {
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
+                gap: densityOf(c).s(8),
                 color: c.textPrimary,
                 fontFamily: 'Inter',
-                fontSize: 16,
-                fontWeight: 900,
+                fontSize: densityOf(c).f(16),
+                fontWeight: 600,
                 lineHeight: 1.2,
             }
-        }, ToneStrip({ tone: root.tone ?? 'blue' }), renderMaybeMath(title, math)),
+        }, ...compactChildren([root.tone && ToneStrip({ tone: root.tone }), renderMaybeMath(title, math)])),
         subtitle != null && React.createElement('div', {
             style: {
                 display: 'flex',
                 color: c.textSecondary,
                 fontFamily: 'Inter',
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 fontWeight: 500,
                 lineHeight: 1.35,
             }
@@ -1339,7 +2107,7 @@ export function TreeDiagram({
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: header ? 10 : 0,
+            gap: densityOf(c).s(header ? 10 : 0),
             width: resolvedWidth,
             maxWidth: '100%',
         }
@@ -1364,8 +2132,7 @@ export function TreeDiagram({
                 viewBox: `0 0 ${resolvedWidth} ${resolvedHeight}`,
                 style: { position: 'absolute' as const, inset: 0, overflow: 'visible' },
             }, ...edges.map((edge) => {
-                const tone = edge.to.muted ? 'neutral' : (edge.to.tone ?? edge.from.tone ?? 'blue')
-                const color = edge.to.muted ? c.textMuted : getToneColor(tone, c)
+                const color = c.borderLight
                 const startY = edge.from.cy + nodeHeight / 2
                 const endY = edge.to.cy - nodeHeight / 2
                 const midY = startY + (endY - startY) / 2
@@ -1374,14 +2141,14 @@ export function TreeDiagram({
                     d: `M ${edge.from.cx} ${startY} C ${edge.from.cx} ${midY}, ${edge.to.cx} ${midY}, ${edge.to.cx} ${endY}`,
                     fill: 'none',
                     stroke: color,
-                    strokeWidth: edge.to.muted ? 1.4 : 2.4,
+                    strokeWidth: densityOf(c).w(edge.to.muted ? 1.5 : 2),
                     strokeLinecap: 'round',
-                    opacity: edge.to.muted ? 0.4 : 0.74,
+                    opacity: edge.to.muted ? 0.5 : 1,
                 })
             })),
             ...positioned.map((node) => {
-                const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'blue', c)
-                const accentText = node.muted ? c.textMuted : getReadableToneColor(node.tone ?? 'blue', c)
+                const accent = node.muted ? c.textMuted : getToneColor(node.tone ?? 'neutral', c)
+                const accentText = node.muted ? c.textMuted : c.textPrimary
                 return React.createElement('div', {
                     key: `tree-node-${node.key}`,
                     style: {
@@ -1394,13 +2161,13 @@ export function TreeDiagram({
                         flexDirection: 'column' as const,
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: node.detail ? 4 : 0,
-                        padding: '8px 10px',
+                        gap: densityOf(c).s(node.detail ? 4 : 0),
+                        padding: `${densityOf(c).s(8)}px ${densityOf(c).s(10)}px`,
                         boxSizing: 'border-box' as const,
-                        borderRadius: 8,
+                        borderRadius: densityOf(c).r(8),
                         backgroundColor: node.muted ? c.bgSubtle : c.bgCard,
-                        border: `1.5px solid ${node.muted ? c.borderLight : withColorAlpha(accent, 0x88 / 0xff)}`,
-                        ...(!node.muted ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
+                        border: `1px solid ${node.muted ? c.borderLight : node.tone ? withColorAlpha(accent, 0.55) : c.borderLight}`,
+                        ...(!node.muted && hasShadow(c) ? { boxShadow: `0 8px 18px ${c.shadow}` } : {}),
                         opacity: node.muted ? 0.62 : 1,
                         color: accentText,
                         textAlign: 'center' as const,
@@ -1410,8 +2177,8 @@ export function TreeDiagram({
                         style: {
                             color: accentText,
                             fontFamily: 'Inter',
-                            fontSize: 13,
-                            fontWeight: 900,
+                            fontSize: densityOf(c).f(13),
+                            fontWeight: 600,
                             lineHeight: 1.15,
                             ...textFitStyle('center'),
                         }
@@ -1420,7 +2187,7 @@ export function TreeDiagram({
                         style: {
                             color: c.textMuted,
                             fontFamily: 'JetBrains Mono',
-                            fontSize: 11,
+                            fontSize: densityOf(c).f(11),
                             fontWeight: 650,
                             lineHeight: 1.2,
                             ...textFitStyle('center'),
@@ -1458,14 +2225,15 @@ export function CalloutCard({
     tone = 'blue',
     width,
     minHeight,
-    padding = 12,
+    padding: paddingProp,
     titleFontSize,
     detailFontSize,
     filled = true,
-    align = 'center',
+    align = 'left',
 }: CalloutCardProps): React.ReactElement {
+    const d = densityOf(c)
+    const padding = paddingProp ?? `${d.s(9)}px ${d.s(13)}px`
     const accent = getToneColor(tone, c)
-    const accentText = getReadableToneColor(tone, c)
     const engineering = c.preset === 'engineering'
     const textAlign = align
 
@@ -1474,40 +2242,38 @@ export function CalloutCard({
             ...(width != null ? { width } : {}),
             ...(minHeight != null ? { minHeight } : {}),
             padding,
-            borderRadius: engineering ? 5 : 10,
+            borderRadius: engineering ? 5 : d.r(8),
             boxSizing: 'border-box' as const,
+            // A filled callout is a quiet tint with a colored rule. Solid banners read as slides.
             ...(engineering
                 ? { backgroundColor: getToneFill(tone, c), color: c.textPrimary, border: `1px solid ${accent}` }
                 : filled
-                ? { backgroundImage: getToneGradient(tone), color: c.textOnColor, border: `1px solid ${withColorAlpha(accent, 0)}` }
-                : { backgroundColor: c.bgCard, color: c.textPrimary, border: `1px solid ${withColorAlpha(accent, 0x66 / 0xff)}` }),
+                    ? { backgroundColor: withColorAlpha(accent, 0x12 / 0xff), color: c.textPrimary, border: `1px solid ${withColorAlpha(accent, 0.4)}` }
+                    : { backgroundColor: c.bgCard, color: c.textPrimary, border: `1px solid ${c.border}` }),
             display: 'flex',
             flexDirection: 'column' as const,
             alignItems: align === 'center' ? 'center' : 'flex-start',
             justifyContent: 'center',
-            gap: detail ? 5 : 0,
-            ...(!engineering ? { boxShadow: `0 10px 24px ${c.shadow}` } : {}),
+            gap: detail ? d.s(3) : 0,
             textAlign,
         }
     },
         ...compactChildren([
         title && React.createElement('div', {
             style: {
-                ...typography.small,
-                ...(titleFontSize != null ? { fontSize: titleFontSize } : {}),
-                color: engineering ? c.textPrimary : filled ? c.textOnColor : accentText,
+                fontSize: titleFontSize ?? d.type.body,
+                color: c.textPrimary,
                 fontFamily: c.fontSans,
-                fontWeight: 900,
+                fontWeight: 600,
                 lineHeight: 1.2,
                 textAlign,
             }
         }, title),
         detail && React.createElement('div', {
             style: {
-                ...typography.tiny,
-                ...(detailFontSize != null ? { fontSize: detailFontSize } : {}),
-                color: engineering ? c.textSecondary : filled ? 'rgba(255,255,255,0.84)' : c.textSecondary,
-                fontFamily: engineering ? c.fontMono : typography.tiny.fontFamily,
+                fontSize: detailFontSize ?? d.type.small,
+                color: c.textSecondary,
+                fontFamily: engineering ? c.fontMono : c.fontSans,
                 lineHeight: 1.3,
                 textAlign,
             }
@@ -1517,8 +2283,8 @@ export function CalloutCard({
                 display: 'flex',
                 flexDirection: 'column' as const,
                 alignItems: align === 'center' ? 'center' : 'flex-start',
-                fontSize: 12,
-                fontWeight: 700,
+                fontSize: d.type.small,
+                fontWeight: 400,
                 lineHeight: 1.3,
                 textAlign,
             }
@@ -1548,18 +2314,18 @@ export function Pipeline({ stages, c, title }: PipelineProps): React.ReactElemen
             display: 'flex',
             flexDirection: 'column' as const,
             alignItems: 'center',
-            gap: 20,
+            gap: densityOf(c).s(20),
         }
     },
         title && React.createElement('div', {
-            style: { ...typography.label, color: c.textPrimary }
+            style: { ...typeOf(c, 'label'), color: c.textPrimary }
         }, title),
 
         React.createElement('div', {
             style: {
                 display: 'flex',
                 alignItems: 'center',
-                gap: 0,
+                gap: densityOf(c).s(0),
             }
         },
             ...stages.flatMap((stage, i) => {
@@ -1573,7 +2339,7 @@ export function Pipeline({ stages, c, title }: PipelineProps): React.ReactElemen
                         color: stage.color || 'primary',
                         gradient: true,
                         c,
-                        fontSize: 13,
+                        fontSize: densityOf(c).f(13),
                     })
                 )
 

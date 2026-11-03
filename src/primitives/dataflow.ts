@@ -2,6 +2,7 @@ import React from 'react'
 import {
     type ThemeColors,
     type ToneName,
+    densityOf,
 } from '../theme'
 
 import {
@@ -173,7 +174,7 @@ function detailWithSchema(detail: React.ReactNode, schema: DataflowSchema | unde
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 3,
+            gap: densityOf().s(3),
             minWidth: 0,
         },
     },

@@ -2,27 +2,6 @@
 <html lang="en">
 <head>
   {{SITE_HEAD}}
-  <style>
-    .benchmark-section { display: grid; gap: 24px; }
-    .benchmark-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
-    .benchmark-meta > div, .benchmark-method, .benchmark-quality { padding: 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
-    .benchmark-meta dt, .benchmark-method h3 { color: var(--muted); font: 600 0.78rem "IBM Plex Mono", monospace; text-transform: uppercase; }
-    .benchmark-meta dd { margin-top: 7px; overflow-wrap: anywhere; font-size: 0.95rem; }
-    .benchmark-method-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
-    .benchmark-method p, .benchmark-quality p { margin-top: 10px; color: var(--muted); line-height: 1.65; }
-    .benchmark-summary { display: flex; flex-wrap: wrap; gap: 10px; }
-    .benchmark-summary span { padding: 9px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); }
-    .benchmark-summary strong { color: var(--text); }
-    .benchmark-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-    .benchmark-table { width: 100%; border-collapse: collapse; text-align: left; }
-    .benchmark-table th, .benchmark-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
-    .benchmark-table thead th { color: var(--muted); font: 600 0.75rem "IBM Plex Mono", monospace; text-transform: uppercase; white-space: nowrap; }
-    .benchmark-table tbody tr:last-child th, .benchmark-table tbody tr:last-child td { border-bottom: 0; }
-    .benchmark-table tbody th { white-space: nowrap; }
-    .benchmark-clean { color: var(--green) !important; }
-    .benchmark-note { color: var(--faint); font-size: 0.9rem; line-height: 1.6; }
-    @media (max-width: 560px) { .benchmark-table th, .benchmark-table td { padding: 10px; } }
-  </style>
 </head>
 <body>
   {{SITE_NAV}}

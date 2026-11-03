@@ -1,76 +1,58 @@
-# Technical diagram roadmap
+# Roadmap
 
-Vizmatic aims to make polished technical diagrams easy from TSX while keeping rendering deterministic, offline-capable, theme-aware, and composable with charts or presentation frames.
-
-Benchmarks: [Diagrams](https://diagrams.mingrammer.com/), [D2](https://d2lang.com/), [Structurizr](https://docs.structurizr.com/), [Mermaid](https://mermaid.js.org/), and [PlantUML](https://plantuml.com/).
+This page states what Vizmatic can do now and what comes next. Vizmatic aims to make technical ideas easy to explain from code: motion that teaches, and figures that hold real information. Rendering stays deterministic, offline, and theme-aware.
 
 ## Available now
 
-- Deterministic Dagre layout in four directions.
-- Nested system boundaries through `GraphDiagram.groups`.
-- Built-in generic icons for users, clients, services, infrastructure, data, networks, and operations.
-- Reusable custom icon definitions and typed icon registries.
-- Labeled synchronous, asynchronous, event, data, dependency, and association relationships.
-- Solid, dashed, and dotted connectors with forward, backward, bidirectional, or no arrows.
-- Named ports and endpoint sides, with straight or obstacle-aware orthogonal routing and separated parallel connectors.
-- Manual positioning for ungrouped editorial diagrams.
-- Connector diagnostics for crossings, label collisions, crowded endpoints, and parallel routes.
-- Typed in-process visual checks with stable diagnostic codes, element locations where available, and configurable failure policy.
-- Dark, light, and Engineering visual presets with PNG, SVG, and GIF output.
-- Accessible SVG titles, descriptions, stable element IDs, and optional links for graph diagrams and their typed graph views.
-- Conservative Mermaid flowchart and D2 text import with explicit diagnostics for unsupported or lossy syntax.
-- Typed state timelines with holds, eased tweens, keyframes, parallel tracks, deterministic sampling, and streamed GIF encoding.
-- Sequence diagrams with participants, lifelines, activations, sync/async/return messages, notes, and `alt`, `loop`, or `parallel` fragments.
-- Typed batch/stream dataflow and lineage views with schema metadata.
-- Deployment and network views with nested boundaries, ports, protocols, and trust direction.
-- Transformer topology views with tensor shapes, repeated blocks, residual/cache/expert routes, and collectives.
-- Cadence-boundary animation sampling, per-frame overflow detection, and opaque delta-frame GIF encoding.
-- Compressed offline Twemoji bundle instead of thousands of package entries.
-- Positioned browser builder with editable text and chart data, drag/resize, undo/redo, local drafts, and portable project files.
-- Pie, donut, bar, line, scatter, classic Pareto bar, Pareto frontier, quadrant, and interval charts.
+### Films
 
-## Next capability batches
+- A vector animation engine in `vizmatic/stage`. Every object is Bezier geometry, so any shape can trace itself, morph, or bend through a function.
+- A timeline that is a pure function of time. Any frame can be sampled in any order, so scrubbing is instant and output is reproducible.
+- TeX glyphs for equations, with `morphMatching` to carry shared terms between lines.
+- Objects for math, charts, computer science, and systems, plus 3D scenes with surfaces, curves, and an orbiting camera.
+- Five looks, gradient strokes, glow, and bloom.
+- `<vz-film>`, a live, seekable player for any page, with chapters and a stepped presentation mode.
+- `fromSvg` and `fromComponent`, which turn any SVG or TSX figure into shapes that films can animate.
+- Export to MP4 and WebM with BT.709 color, GIF with a shared palette, PNG, and SVG. Frames rasterize on worker threads with a memory limit, with optional motion blur.
+- `vizmatic new`, `preview`, `check`, `film`, `looks`, and `objects`. Preview reloads on save and keeps the playhead.
+- `vizmatic check` for films: off-canvas marks, overlapping text, and strokes through text, with times and bounding boxes as JSON.
+- The Studio, which builds and exports a film in the browser.
 
-Specialized APIs remain declarative and reusable. Examples contain complete scenario code, while scenario-specific NCCL or model helpers stay outside core presets.
+### Figures
 
-### Architecture model and views
+- Typed primitives for system, sequence, dataflow, deployment, and transformer diagrams, with charts, tables, and scientific components.
+- A density system: `dense` by default, with `compact`, `comfortable`, `presentation`, or a numeric scale from one source.
+- Deterministic Dagre layout with nested boundaries, named ports, and obstacle-aware orthogonal routing.
+- Dark, light, and Engineering presets with PNG, SVG, and GIF output.
+- Accessible SVG titles, descriptions, stable element IDs, and links for graph diagrams.
+- Typed checks with stable diagnostic codes for overflow, contrast, small text, overlaps, and connector congestion.
+- Conservative Mermaid and D2 text import with explicit diagnostics for lossy syntax.
+- A positioned browser builder with editable text and data, undo and redo, and portable project files.
+- An isolated runtime for editable scenes from users or agents, with resource limits, in Node and in browsers.
 
-- C4 person, software system, container, component, and deployment semantics.
-- One reusable model with context, container, component, deployment, and dynamic views.
-- Named views, filtered views, legends, tags, and technology metadata.
-- Drill-down links and stable element identifiers in SVG output.
+## Next
 
-### Technical icon packs
+### Films
 
-- Build-time generated GCP and Kubernetes packs from pinned Apache-2.0 Iconify data.
-- Optional provider modules so unused icons do not increase core bundle size.
-- Asset metadata with source, version, license, and trademark notice.
-- User-supplied AWS and Azure adapters until redistribution terms support bundled packs.
-- No default runtime icon API or network dependency.
+- Burned-in captions and audio-synchronized timing from a narration script. Today captions export as a VTT sidecar.
+- ProRes and 4:4:4 masters for video editors. MP4 and WebM use 4:2:0 today for browser compatibility.
+- Frame caching for faster incremental renders.
+- Parity tests between the canvas and SVG backends, which today share one display list but use separate painters.
 
-### Interaction and software design
+### Figures
 
-- UML class and component diagrams with compartments, inheritance, aggregation, composition, multiplicity, and stereotypes.
-- State machines with nested states, guards, entry/exit actions, and parallel regions.
-- ER diagrams with tables, fields, keys, data types, and cardinality-aware relationships.
-
-### Infrastructure and data systems
-
-- Swimlanes and activity diagrams for ownership, handoffs, conditions, and parallel work.
-
-### Layout and rendering
-
-- Curved and user-routed connectors with editable waypoints.
-- Layout adapter interface with Dagre as default and ELK as optional backend.
-- Per-boundary direction, collapsed groups, named scenarios, and reusable animation compositions.
-- Extend structured SVG accessibility beyond graph diagrams to charts and other visual primitives.
-- Expand Mermaid and D2 interoperability, and add Structurizr, Kubernetes, and Terraform adapters where semantics map safely.
+- C4 semantics: one reusable model with context, container, component, deployment, and dynamic views.
+- UML class and component diagrams, state machines with nested states, and ER diagrams with keys and cardinality.
+- Swimlanes and activity diagrams.
+- A layout adapter interface with Dagre as the default and ELK as an option. Per-boundary direction and collapsed groups.
+- Build-time icon packs for GCP and Kubernetes from pinned Apache-2.0 data, as optional modules. User-supplied AWS and Azure adapters until redistribution terms support bundled packs.
+- Structured accessibility for charts and other primitives, as graph diagrams have today.
+- Wider Mermaid and D2 import, and Structurizr, Kubernetes, and Terraform adapters where semantics map safely.
 
 ## Design constraints
 
-- Keep current `GraphDiagram` input backward compatible.
-- Compile specialized diagram APIs into shared typed models instead of separate rendering stacks.
+- Keep public APIs backward compatible, or document the break in the release notes.
 - Keep default rendering deterministic and offline.
 - Treat provider licensing and trademarks as product requirements.
-- Add tests for behavior contracts and regressions, not source-text presence.
-- Ship each capability with dark/light reference renders, docs, and diagnostics.
+- Add tests for behavior contracts and regressions, not for source-text presence.
+- Ship each capability with dark and light reference renders, docs, and diagnostics.

@@ -10,11 +10,11 @@ height = 620;
             subtitle="sample task scores"
             format="percent"
             data={[
-                { label: 'tools', value: 0.82, color: 'positive' },
-                { label: 'math', value: 0.71, color: 'secondary' },
-                { label: 'code', value: 0.77, color: 'primary' },
-                { label: 'long', value: 0.58, color: 'warning' },
-                { label: 'cite', value: 0.64, color: 'info' },
+                { label: 'tools', value: 0.82 },
+                { label: 'math', value: 0.71 },
+                { label: 'code', value: 0.77 },
+                { label: 'long', value: 0.58 },
+                { label: 'cite', value: 0.64 },
             ]}
         />
         <LineChart
@@ -30,5 +30,5 @@ height = 620;
             ]}
         />
     </Row>
-    <CalloutCard tone="cyan" title="Shared chart styling" detail="Bar and line charts use the same typography, grid, and semantic colors." width={900} />
+    <CalloutCard title="Shared chart styling" detail="Bar and line charts use the same typography, grid, and semantic colors." width={900} />
 </Scene>

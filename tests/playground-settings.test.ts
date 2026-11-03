@@ -156,7 +156,7 @@ describe('playground source settings', () => {
         const light = mergePlaygroundThemeColors('light', 'default', palette)
         const engineering = mergePlaygroundThemeColors('dark', 'engineering', palette)
         expect(light.primary).toBe('#123456')
-        expect(light.bg).toBe('#f5f7fa')
+        expect(light.bg).toBe('#f7f3ea')
         expect(engineering.primary).toBe('#123456')
         expect(engineering.bg).toBe('#f4f4f5')
 

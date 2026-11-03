@@ -21,8 +21,9 @@ function edges(graph: React.ReactElement): React.ReactElement[] {
     return descendants(graph).filter((element) => props(element)['data-vizmatic-graph-edge-id'] != null)
 }
 
+/** Routed corners. The drawn path rounds them, so its own commands are not all on the grid. */
 function pathPoints(edge: React.ReactElement): RoutingPoint[] {
-    return [...String(props(edge).d).matchAll(/[ML] ([\d.e+-]+) ([\d.e+-]+)/g)].map((match) => ({ x: Number(match[1]), y: Number(match[2]) }))
+    return JSON.parse(String(props(edge)['data-vizmatic-graph-edge-route'])) as RoutingPoint[]
 }
 
 const routeNodes: RoutingNode[] = [
@@ -33,7 +34,7 @@ const routeNodes: RoutingNode[] = [
 
 function fixture(theme: 'dark' | 'light' = 'light', overrides: Partial<GraphDiagramProps> = {}): GraphDiagramProps {
     return {
-        c: getThemeColors(theme), width: 600, height: 320, nodeWidth: 100, nodeHeight: 60,
+        c: getThemeColors(theme), width: 600, height: 320, nodeWidth: 100, nodeHeight: 60, padding: 28,
         nodes: [
             { id: 'left', label: 'Input', x: 0.1, y: 0.5, ports: [{ id: 'out', side: 'right', offset: 0.25 }] },
             { id: 'obstacle', label: 'Firewall', x: 0.5, y: 0.5, width: 140, height: 120 },
@@ -152,11 +153,10 @@ describe('graph connector routing', () => {
             edges: [{ from: 'client', to: 'api' }, { from: 'api', to: 'db' }],
         })
         expect(props(graph)['data-vizmatic-unrouted-connectors']).toBe(0)
-        const obstacles = descendants(graph).filter((element) => props(element)['data-vizmatic-graph-node-id'] || props(element)['data-vizmatic-graph-group'])
+        const obstacles = descendants(graph).filter((element) => props(element)['data-vizmatic-graph-node-id'] || props(element)['data-vizmatic-graph-group-header'])
             .map((element) => {
                 const style = props(element).style as { left: number; top: number; width: number; height: number }
-                return { left: style.left, right: style.left + style.width, top: style.top,
-                    bottom: style.top + (props(element)['data-vizmatic-graph-group'] ? 26 : style.height) }
+                return { left: style.left, right: style.left + style.width, top: style.top, bottom: style.top + style.height }
             })
         for (const edge of edges(graph)) {
             const points = pathPoints(edge)
@@ -199,9 +199,11 @@ describe('graph connector routing', () => {
                 { id: 'api', label: 'API', kind: 'api' as const, x: 0.9, y: 0.5, ports: [{ id: 'https', side: 'left' as const, offset: 0.75 }] },
             ], connections: [{ from: 'client', to: 'api', fromPort: 'out', toPort: 'https' }],
         }
-        const points = pathPoints(edges(DeploymentDiagram({ ...base, routing: 'orthogonal' }))[0])
-        expect(points[0].y).toBe(143.5)
-        expect(points.at(-1)?.y).toBe(176.5)
+        const deployed = DeploymentDiagram({ ...base, routing: 'orthogonal' })
+        const points = pathPoints(edges(deployed)[0])
+        const box = (id: string) => props(descendants(deployed).find((element) => props(element)['data-vizmatic-graph-node-id'] === id)!).style as { top: number; height: number }
+        expect(points[0].y).toBeCloseTo(box('client').top + box('client').height * 0.25)
+        expect(points.at(-1)?.y).toBeCloseTo(box('api').top + box('api').height * 0.75)
         expect(() => DeploymentDiagram({ ...base, routing: 'orthogonal', nodes: base.nodes.map((node) => ({ ...node, ports: [] })) })).toThrow('references missing from port "out"')
         expect(() => DeploymentDiagram({ ...base, nodes: base.nodes.map((node) => ({ ...node, ports: [] })) })).not.toThrow()
     })

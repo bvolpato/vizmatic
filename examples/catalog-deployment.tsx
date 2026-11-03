@@ -25,9 +25,7 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 title="Regional inference plane"
                 subtitle="network edges carry protocol and port intent; dotted links cross a declared trust or subnet boundary"
-                tone="cyan"
                 width="100%"
-                minHeight={560}
                 padding={14}
                 align="center"
                 footer="Ingress: HTTPS/443 · gateway → API: mTLS/8080 · API → model: gRPC/50051 · model → cache/warehouse: TCP/6379 and TCP/5432."
@@ -49,10 +47,10 @@ export function create(theme: ThemeMode = 'dark') {
                     iconSize={18}
                     ariaLabel="Regional inference deployment with internet ingress, nested VPC and subnet boundaries, inference namespace, identity trust boundary, and protocol-specific service connections"
                     boundaries={[
-                        { id: 'region', label: 'us-east-1', detail: 'REGION', kind: 'region', tone: 'blue' },
-                        { id: 'vpc', label: 'prod-vpc', detail: '10.20.0.0/16', kind: 'vpc', parent: 'region', tone: 'purple' },
-                        { id: 'public', label: 'public subnet', detail: '10.20.1.0/24', kind: 'subnet', parent: 'vpc', tone: 'cyan' },
-                        { id: 'private', label: 'private subnet', detail: '10.20.2.0/24', kind: 'subnet', parent: 'vpc', tone: 'purple' },
+                        { id: 'region', label: 'us-east-1', detail: 'REGION', kind: 'region' },
+                        { id: 'vpc', label: 'prod-vpc', detail: '10.20.0.0/16', kind: 'vpc', parent: 'region' },
+                        { id: 'public', label: 'public subnet', detail: '10.20.1.0/24', kind: 'subnet', parent: 'vpc' },
+                        { id: 'private', label: 'private subnet', detail: '10.20.2.0/24', kind: 'subnet', parent: 'vpc' },
                         { id: 'inference', label: 'inference', detail: 'NAMESPACE', kind: 'namespace', parent: 'private', tone: 'green' },
                         { id: 'identity', label: 'workload identity', detail: 'TRUST · mTLS', kind: 'trust', parent: 'vpc', tone: 'warm' },
                     ]}
@@ -62,7 +60,6 @@ export function create(theme: ThemeMode = 'dark') {
                             label: 'Internet',
                             detail: 'external clients',
                             kind: 'internet',
-                            tone: 'neutral',
                             icon: 'globe',
                             ports: [{ id: 'https', port: 443, protocol: 'HTTPS', direction: 'egress' }],
                         },
@@ -72,7 +69,6 @@ export function create(theme: ThemeMode = 'dark') {
                             detail: 'public ingress',
                             kind: 'gateway',
                             boundary: 'public',
-                            tone: 'cyan',
                             ports: [
                                 { id: 'https', port: 443, protocol: 'HTTPS', direction: 'ingress' },
                                 { id: 'mesh', port: 15008, protocol: 'mTLS', direction: 'egress' },
@@ -84,7 +80,6 @@ export function create(theme: ThemeMode = 'dark') {
                             detail: 'namespace service',
                             kind: 'service',
                             boundary: 'inference',
-                            tone: 'purple',
                             ports: [
                                 { id: 'http', port: 8080, protocol: 'HTTP', direction: 'ingress' },
                                 { id: 'grpc', port: 50051, protocol: 'gRPC', direction: 'egress' },
@@ -108,7 +103,6 @@ export function create(theme: ThemeMode = 'dark') {
                             detail: 'private state',
                             kind: 'cache',
                             boundary: 'private',
-                            tone: 'blue',
                             ports: [{ id: 'redis', port: 6379, protocol: 'TCP', direction: 'bidirectional' }],
                         },
                         {
