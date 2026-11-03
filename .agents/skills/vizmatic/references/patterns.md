@@ -1,5 +1,11 @@
 # Vizmatic patterns
 
+This file covers figures. For motion, read `films.md`.
+
+## Density
+
+Figures render at the `dense` density by default. Keep the default for documents, and carry more detail in each element: runtime, rate, version, and limit. Use `density="presentation"` on `Scene` only for a room.
+
 ## Choose a primitive
 
 - Linear workflow: `Flow` with 3-5 stages. Add `CalloutCard` or `MetricCard` only when the flow needs supporting detail.

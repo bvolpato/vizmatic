@@ -38,6 +38,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           pnpm render:video
+      - name: Render the film catalog
+        run: pnpm render:films --workers 4
       - run: pnpm render:examples
       - run: pnpm docs:check --require-video
       - name: Ensure generated site is committed

@@ -1,0 +1,105 @@
+---
+title: Text and math
+nav: Text and math
+section: Motion
+order: 2
+description: Text and equations are real vector glyphs. Handwrite them, stagger them, or morph one equation into another, term by term.
+---
+
+## Text
+
+`text(content, options)` lays out a block of glyphs. The node's position is the middle of the block.
+
+```film paired label="A serif headline and a smaller sans line write themselves"
+import { film, text, write } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const head = s.add(text('Every glyph is a path.', { font: 'serif', size: 170 }).at(0, -80))
+    const body = s.add(text('So every letter can move.', { size: 62, color: 'dim' }).at(0, 120))
+    s.play(write(head), { duration: 1.6 })
+    s.play(write(body), { duration: 1 })
+    s.wait(0.8)
+})
+```
+
+| Option | Meaning |
+|---|---|
+| `size` | Font size in stage units. |
+| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'mono'` (JetBrains Mono), or `'noto'`. |
+| `weight` | `400`, `600`, or `700` where the family has that weight. |
+| `italic` | Use the italic of the family. |
+| `color` | A look token, CSS color, or gradient. |
+| `align` | `'left'`, `'center'`, or `'right'` inside the block. |
+| `maxWidth` | Wrap to this width. |
+| `leading` | Line height as a multiple of size. |
+| `tracking` | Extra letter space as a fraction of size. |
+
+Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment, so you can color or animate one word.
+
+```film paired label="One word turns yellow inside a sentence"
+import { film, recolor, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const line = s.add(text('Look at this word.', { font: 'serif', size: 170 }))
+    s.wait(0.5)
+    s.play(...line.find('this').map((glyph) => recolor(glyph, 'yellow')))
+    s.wait(1)
+})
+```
+
+## Equations
+
+`tex(source, options)` typesets TeX with a bundled engine, so you do not install LaTeX. The output is vector glyphs in the Computer Modern style.
+
+```film paired label="The quadratic formula handwrites itself"
+import { film, tex, write } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const eq = s.add(tex('x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}', { size: 130 }))
+    s.play(write(eq, { duration: 2.4 }))
+    s.wait(1)
+})
+```
+
+The math engine is a separate download of about 1.6 MB in the browser. It loads only when a film first calls `tex`.
+
+## Selecting terms
+
+`eq.part('b^2')` returns the glyphs of a fragment. `eq.parts('x')` returns every occurrence. Use them to color a term or point at it.
+
+```film paired label="Two terms of an equation change color"
+import { film, recolor, tex } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const eq = s.add(tex('a^2 + b^2 = c^2', { size: 170 }))
+    s.wait(0.4)
+    s.play(...eq.part('a^2').map((glyph) => recolor(glyph, 'teal')))
+    s.play(...eq.part('b^2').map((glyph) => recolor(glyph, 'orange')))
+    s.wait(0.8)
+})
+```
+
+## Derivations
+
+`morphMatching` matches glyphs by what they are. A line of a derivation can grow out of the line before it.
+
+```film paired label="An equation is solved over three morphs"
+import { film, morphMatching, tex, write } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const step = (source: string) => tex(source, { size: 170 })
+    const a = s.add(step('2x + 3 = 11'))
+    const b = step('2x = 11 - 3')
+    const c = step('2x = 8')
+    const d = step('x = 4')
+    s.play(write(a))
+    s.play(morphMatching(a, b))
+    s.play(morphMatching(b, c))
+    s.play(morphMatching(c, d))
+    s.wait(0.8)
+})
+```
+
+## Readouts
+
+`decimal(read, options)` draws a number that follows a function of the timeline. Use the `mono` font so digits do not jump.

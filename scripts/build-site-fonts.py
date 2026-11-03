@@ -16,7 +16,14 @@ root = Path(__file__).resolve().parent.parent
 destination = root / "assets" / "site-fonts"
 destination.mkdir(parents=True, exist_ok=True)
 
-for name in ("Inter-Regular", "Inter-SemiBold", "Inter-Bold", "JetBrainsMono-Regular"):
+for name in (
+    "Inter-Regular",
+    "Inter-SemiBold",
+    "Inter-Bold",
+    "JetBrainsMono-Regular",
+    "InstrumentSerif-Regular",
+    "InstrumentSerif-Italic",
+):
     font = TTFont(root / "assets" / "fonts" / f"{name}.ttf", recalcTimestamp=False)
     font.flavor = "woff2"
     font.save(destination / f"{name}.woff2")

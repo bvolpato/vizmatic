@@ -23,6 +23,7 @@ const types = new Map([
     ['.ttf', 'font/ttf'],
     ['.wasm', 'application/wasm'],
     ['.woff2', 'font/woff2'],
+    ['.webp', 'image/webp'],
 ])
 
 function resolvePath(url) {

@@ -3,6 +3,8 @@
 
   const $ = (selector, scope = document) => scope.querySelector(selector)
   const $$ = (selector, scope = document) => Array.from(scope.querySelectorAll(selector))
+  const siteRoot = document.documentElement.dataset.siteRoot ?? ''
+  const fromRoot = (path) => new URL(siteRoot + path, document.baseURI)
   const copyTimers = new WeakMap()
   const sources = new Map()
   const catalogControllers = new WeakMap()
@@ -160,7 +162,7 @@
       const current = preview?.textContent ?? ''
       if (current.trim() && !current.includes('{{PROMPT_MD}}')) return current
       if (!promptRequest) {
-        promptRequest = fetch(new URL('PROMPT.md', document.baseURI))
+        promptRequest = fetch(fromRoot('PROMPT.md'))
           .then((response) => {
             if (!response.ok) throw new Error(`Could not load PROMPT.md (${response.status}).`)
             return response.text()
@@ -218,10 +220,10 @@
       const animated = image.hasAttribute('data-animated')
       const extension = animated && !reducedMotion.matches ? 'gif' : 'png'
       const base = image.dataset.themeImageBase
-      if (base) return `${base}_${theme}.${extension}`
+      if (base) return `${base}_${theme}.${animated ? extension : image.dataset.themeImageExt ?? 'png'}`
 
       const source = image.getAttribute('src') ?? ''
-      const match = source.match(/^(.*)_(?:dark|light)\.(png|gif)([?#].*)?$/i)
+      const match = source.match(/^(.*)_(?:dark|light)\.(png|gif|webp)([?#].*)?$/i)
       if (!match) return source
       const selectedExtension = animated ? extension : match[2]
       return `${match[1]}_${theme}.${selectedExtension}${match[3] ?? ''}`
@@ -243,7 +245,7 @@
         localStorage.setItem('vizmatic-theme', normalized)
       } catch {}
 
-      meta?.setAttribute('content', resolved === 'light' ? '#fafafc' : '#0b0d16')
+      meta?.setAttribute('content', resolved === 'light' ? '#f7f3ea' : '#0c0b09')
       buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === normalized)))
       $$('[data-theme-image]').forEach((image) => renderImage(image, resolved))
 
@@ -261,12 +263,14 @@
 
       if ($('#sourceDialog')?.open) renderActiveSource()
       if ($('#imageDialog')?.open) renderActiveImage()
+      document.dispatchEvent(new CustomEvent('vizmatic-site-theme', { detail: { theme: resolved } }))
     }
 
     $$('[data-theme-image]').forEach((image) => {
       const source = image.getAttribute('src') ?? ''
-      const match = source.match(/^(.*)_(?:dark|light)\.(?:png|gif)(?:[?#].*)?$/i)
+      const match = source.match(/^(.*)_(?:dark|light)\.(png|gif|webp)(?:[?#].*)?$/i)
       if (!image.dataset.themeImageBase && match) image.dataset.themeImageBase = match[1]
+      if (!image.dataset.themeImageExt && match && match[2] !== 'gif') image.dataset.themeImageExt = match[2]
 
       image.addEventListener('load', () => {
         const wrapper = image.closest('.media-wrap')
@@ -295,7 +299,7 @@
   }
 
   function makePlaygroundHref(code) {
-    const url = new URL('playground.html', document.baseURI)
+    const url = fromRoot('playground.html')
     url.hash = `vizmatic-playground=${encodeURIComponent(code)}`
     return url.href
   }
@@ -318,7 +322,7 @@
     if (!name) return Promise.reject(new Error('No source was selected.'))
     if (sources.has(name)) return sources.get(name)
 
-    const request = fetch(new URL(`assets/sources/${encodeURIComponent(name)}.json`, document.baseURI))
+    const request = fetch(fromRoot(`assets/sources/${encodeURIComponent(name)}.json`))
       .then((response) => {
         if (!response.ok) throw new Error(`Could not load source ${name} (${response.status}).`)
         return response.json()
@@ -454,99 +458,6 @@
     dialog?.addEventListener('click', (event) => {
       if (event.target === dialog) closeDialog(dialog)
     })
-  }
-
-  function installDemoShowcase() {
-    const image = $('#demoImage')
-    const sourceButton = $('#demoSourceButton')
-    const tryLink = $('#demoTryLink')
-    const title = $('#demoTitle')
-    const choices = $$('[data-demo-choice]')
-    if (!image || choices.length === 0) return
-    let selectionSequence = 0
-
-    function nameFromImage() {
-      const match = (image.getAttribute('src') ?? '').match(/\/([^/]+)_(?:dark|light)\.(?:png|gif)$/i)
-      return image.dataset.demoExample ?? match?.[1] ?? 'system-architecture'
-    }
-
-    function setDemoImage(name) {
-      const animated = name === 'animated-pipeline'
-      image.dataset.demoExample = name
-      image.dataset.themeImageBase = `assets/examples/${name}`
-      if (animated) image.setAttribute('data-animated', '')
-      else image.removeAttribute('data-animated')
-
-      const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
-      const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      const extension = animated && !reduced ? 'gif' : 'png'
-      image.src = `${image.dataset.themeImageBase}_${theme}.${extension}`
-    }
-
-    function demoTitle(name) {
-      const titles = {
-        'daybreak-launch': 'Daybreak launch',
-        'aurora-incident': 'Aurora incident room',
-        'weekend-field-notes': 'Weekend field notes',
-        'website-workflow': 'From idea to visual',
-        'system-architecture': 'System architecture',
-        'eval-dashboard': 'Evaluation dashboard',
-        'animated-pipeline': 'Animated pipeline',
-      }
-      return titles[name] ?? name.replace(/[-_]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-    }
-
-    function updateDemoCopy(name) {
-      const labels = {
-        'daybreak-launch': 'A fictional launch brief with growth trends, channel mix, and launch priorities.',
-        'aurora-incident': 'A fictional incident room with routed services, recovery signals, and a timeline.',
-        'weekend-field-notes': 'A fictional city guide with a visual route and neighborhood stops.',
-        'website-workflow': 'A prompt becomes a rendered Vizmatic visual.',
-        'system-architecture': 'System architecture diagram rendered with Vizmatic.',
-        'eval-dashboard': 'Evaluation dashboard rendered with Vizmatic.',
-        'animated-pipeline': 'Animated agent pipeline rendered with Vizmatic.',
-      }
-      if (title) title.textContent = demoTitle(name)
-      image.alt = labels[name] ?? `${demoTitle(name)} rendered with Vizmatic.`
-    }
-
-    async function choose(name) {
-      if (!name) return
-      const selectionId = ++selectionSequence
-      choices.forEach((choice) => {
-        if (choice instanceof HTMLButtonElement) choice.setAttribute('aria-pressed', String(choice.dataset.demoChoice === name))
-        else if (choice instanceof HTMLSelectElement) choice.value = name
-      })
-      setDemoImage(name)
-      updateDemoCopy(name)
-      if (sourceButton) sourceButton.dataset.source = name
-      setLinkAvailability(tryLink, null)
-
-      try {
-        const source = await loadSource(name)
-        if (selectionId !== selectionSequence) return
-        if (title) title.textContent = source.title ?? name
-        setLinkAvailability(tryLink, makePlaygroundHref(source.playgroundCode ?? source.code))
-      } catch {
-        if (selectionId !== selectionSequence) return
-        setLinkAvailability(tryLink, null)
-      }
-    }
-
-    choices.forEach((choice) => {
-      const name = choice.dataset.demoChoice ?? (choice instanceof HTMLSelectElement ? choice.value : '')
-      if (choice instanceof HTMLSelectElement) choice.addEventListener('change', () => choose(choice.value))
-      else choice.addEventListener('click', () => choose(name))
-    })
-
-    const initialName = nameFromImage()
-    setDemoImage(initialName)
-    updateDemoCopy(initialName)
-    choices.forEach((choice) => {
-      if (choice instanceof HTMLButtonElement) choice.setAttribute('aria-pressed', String(choice.dataset.demoChoice === initialName))
-      else if (choice instanceof HTMLSelectElement && !choice.value) choice.value = initialName
-    })
-    if (sourceButton) sourceButton.dataset.source = initialName
   }
 
   function installGalleryFilters() {
@@ -722,7 +633,7 @@
 
   function loadSearchIndex() {
     if (!searchIndexRequest) {
-      searchIndexRequest = fetch(new URL('search-index.json', document.baseURI))
+      searchIndexRequest = fetch(fromRoot('search-index.json'))
         .then((response) => {
           if (!response.ok) throw new Error(`Search index unavailable (${response.status}).`)
           return response.json()
@@ -775,7 +686,7 @@
       matches.forEach(({ entry }) => {
         let url
         try {
-          url = new URL(entry.url, document.baseURI)
+          url = fromRoot(entry.url)
         } catch {
           return
         }
@@ -872,46 +783,394 @@
     })
   }
 
+
+  // ── Films ──────────────────────────────────────────────────────────────────
+
+  const FILM_THEMES = { dark: { look: 'midnight', background: '#0c0b09' }, light: { look: 'paper', background: '#f7f3ea' } }
+
+  function filmTheme() {
+    return FILM_THEMES[document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark']
+  }
+
+  function applyFilmTheme(film) {
+    if (film.hasAttribute('data-fixed-look')) return
+    const { look, background } = filmTheme()
+    film.setAttribute('look', look)
+    film.setAttribute('background', background)
+  }
+
+  /** The engine loads once, and only on pages that show a film. */
+  let stageModule
+  function loadStage() {
+    stageModule ??= import(fromRoot('assets/stage/stage.js').href)
+    return stageModule
+  }
+
+  function installFilms() {
+    const films = $$('vz-film')
+    if (films.length === 0 && !$('[data-live-src]')) return
+    films.forEach(applyFilmTheme)
+    // The hero fades in when it is ready, so the page never shows an empty frame popping into a full one.
+    const revealHero = (film) => film.addEventListener('ready', () => film.classList.add('is-ready'), { once: true })
+    $$('.hero-film').forEach(revealHero)
+    if (films.length > 0) loadStage().catch((error) => console.error('Could not load the film engine.', error))
+    document.addEventListener('vizmatic-site-theme', () => {
+      // Replacing the element recompiles the film in the new look and keeps its place.
+      $$('vz-film').forEach((film) => {
+        const { look } = filmTheme()
+        if (film.hasAttribute('data-fixed-look') || film.getAttribute('look') === look) return
+        const next = film.cloneNode(false)
+        const player = film.controller
+        applyFilmTheme(next)
+        if (player) next.setAttribute('start', String(player.time))
+        if (next.classList.contains('hero-film')) {
+          next.classList.remove('is-ready')
+          revealHero(next)
+        }
+        film.replaceWith(next)
+        next.dispatchEvent(new CustomEvent('vizmatic-film-replaced', { bubbles: true, detail: { film: next } }))
+      })
+    })
+  }
+
+  function whenFilmReady(film, callback) {
+    if (film.controller) callback(film.controller)
+    else film.addEventListener('ready', (event) => callback(event.detail.player), { once: true })
+  }
+
+  /** Scroll position is the timeline. */
+  function installScrub() {
+    const section = $('[data-scrub]')
+    if (!section) return
+    const clock = $('[data-scrub-clock]', section)
+    const notes = $$('[data-scrub-notes] li', section)
+    const bar = $('.scrub-progress', section)
+    let player = null
+    let queued = false
+
+    function progress() {
+      const rect = section.getBoundingClientRect()
+      const travel = rect.height - window.innerHeight
+      return travel > 0 ? Math.max(0, Math.min(1, -rect.top / travel)) : 0
+    }
+
+    function render() {
+      queued = false
+      const amount = progress()
+      section.style.setProperty('--scrub', amount.toFixed(4))
+      if (!player) return
+      const film = player.film
+      const time = amount * film.duration
+      player.seek(time)
+      if (clock) clock.textContent = `t = ${time.toFixed(2)} s, frame ${Math.round(time * film.fps)}`
+      let index = 0
+      film.chapters.forEach((chapter, i) => {
+        if (time >= chapter.time) index = i
+      })
+      notes.forEach((note, i) => note.classList.toggle('is-active', i === index))
+    }
+
+    function request() {
+      if (queued) return
+      queued = true
+      requestAnimationFrame(render)
+    }
+
+    function attach(film) {
+      whenFilmReady(film, (next) => {
+        player = next
+        if (bar && $$('.scrub-mark', bar).length === 0) {
+          player.film.chapters.forEach((chapter) => {
+            if (chapter.time <= 0) return
+            const mark = document.createElement('i')
+            mark.className = 'scrub-mark'
+            mark.style.left = `${(chapter.time / player.film.duration) * 100}%`
+            bar.append(mark)
+          })
+        }
+        render()
+      })
+    }
+
+    // This film uses TeX, so it and the math engine load only once the reader heads toward it.
+    const holder = $('[data-scrub-src]', section)
+    let mounted = false
+    function mountWhenNear() {
+      if (mounted || !holder || section.getBoundingClientRect().top > window.innerHeight * 0.75) return
+      mounted = true
+      const film = document.createElement('vz-film')
+      film.setAttribute('src', fromRoot(holder.dataset.scrubSrc).href)
+      film.setAttribute('nocontrols', '')
+      film.setAttribute('tabindex', '-1')
+      film.setAttribute('label', holder.dataset.label ?? '')
+      film.style.pointerEvents = 'none'
+      applyFilmTheme(film)
+      holder.append(film)
+      attach(film)
+      loadStage().catch((error) => console.error('Could not load the film engine.', error))
+    }
+
+    section.addEventListener('vizmatic-film-replaced', (event) => {
+      player = null
+      attach(event.detail.film)
+    })
+    window.addEventListener('scroll', () => {
+      mountWhenNear()
+      request()
+    }, { passive: true })
+    window.addEventListener('resize', request)
+    mountWhenNear()
+    render()
+  }
+
+  /** Highlight the source line of the animation that is playing. */
+  function installCodeSync() {
+    $$('[data-code-sync]').forEach((root) => {
+      const pre = $('pre[data-play-lines]', root)
+      if (!pre) return
+      const lines = $$('.line', pre)
+      const playLines = (pre.dataset.playLines ?? '').split(',').filter(Boolean).map(Number)
+
+      function attach(film) {
+        whenFilmReady(film, (player) => {
+          const clips = player.film.clips
+          let active = -1
+          const paint = (time) => {
+            let index = -1
+            clips.forEach((clip, i) => {
+              if (time >= clip.t0) index = i
+            })
+            if (index === active) return
+            active = index
+            lines.forEach((line) => line.classList.remove('is-active'))
+            const line = lines[playLines[index]]
+            if (line) line.classList.add('is-active')
+          }
+          film.addEventListener('timeupdate', (event) => paint(event.detail.time))
+          paint(player.time)
+        })
+      }
+
+      const film = $('vz-film', root)
+      if (film) attach(film)
+      root.addEventListener('vizmatic-film-replaced', (event) => attach(event.detail.film))
+    })
+  }
+
+  /** Posters become live on hover or focus. Touch devices keep the poster and the link. */
+  function installFilmWall() {
+    const frames = $$('[data-live-src]')
+    if (frames.length === 0) return
+    const canHover = window.matchMedia('(hover: hover)').matches
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    frames.forEach((frame) => {
+      const item = frame.closest('.wall-item') ?? frame
+      const poster = $('img', frame)
+      const start = () => {
+        if (frame.querySelector('vz-film')) return
+        const film = document.createElement('vz-film')
+        film.setAttribute('src', fromRoot(frame.dataset.liveSrc).href)
+        film.setAttribute('nocontrols', '')
+        film.setAttribute('autoplay', '')
+        film.setAttribute('loop', '')
+        film.setAttribute('tabindex', '-1')
+        film.setAttribute('start', frame.dataset.posterTime ?? '0')
+        film.setAttribute('label', frame.dataset.label ?? 'Film preview')
+        if (frame.dataset.look) {
+          film.setAttribute('data-fixed-look', '')
+          film.setAttribute('look', frame.dataset.look)
+        }
+        applyFilmTheme(film)
+        loadStage().catch(() => {})
+        frame.append(film)
+        film.addEventListener('ready', () => {
+          if (poster) poster.style.opacity = '0'
+        }, { once: true })
+      }
+      const stop = () => {
+        frame.querySelector('vz-film')?.remove()
+        if (poster) poster.style.opacity = ''
+      }
+      if (canHover && !reduced) {
+        item.addEventListener('pointerenter', start)
+        item.addEventListener('pointerleave', stop)
+        item.addEventListener('focusin', start)
+        item.addEventListener('focusout', stop)
+      }
+      // A film without a poster shows its own frame, compiled when it scrolls near.
+      if (!poster) {
+        const observer = new IntersectionObserver((entries) => {
+          if (!entries.some((entry) => entry.isIntersecting)) return
+          observer.disconnect()
+          const film = document.createElement('vz-film')
+          film.setAttribute('src', fromRoot(frame.dataset.liveSrc).href)
+          film.setAttribute('nocontrols', '')
+          film.setAttribute('tabindex', '-1')
+          film.setAttribute('label', frame.dataset.label ?? 'Film preview')
+          if (frame.dataset.look) {
+            film.setAttribute('data-fixed-look', '')
+            film.setAttribute('look', frame.dataset.look)
+          }
+          applyFilmTheme(film)
+          film.addEventListener('ready', (event) => {
+            const { player, film: compiled } = event.detail
+            const time = frame.dataset.posterTime ? Number(frame.dataset.posterTime) : compiled.duration * 0.66
+            player.seek(time)
+          }, { once: true })
+          loadStage().catch(() => {})
+          frame.append(film)
+        }, { rootMargin: '200px' })
+        observer.observe(frame)
+      }
+    })
+  }
+
+  function installFilmPage() {
+    const root = $('[data-film-page]')
+    if (!root) return
+    const film = $('vz-film', root)
+    const list = $('[data-chapters]', root)
+    if (!film || !list) return
+
+    function attach(current) {
+      whenFilmReady(current, (player) => {
+        const chapters = player.film.chapters
+        const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+        list.replaceChildren(...chapters.map((chapter, index) => {
+          const item = document.createElement('li')
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.textContent = chapter.title
+          const stamp = document.createElement('span')
+          stamp.textContent = format(chapter.time)
+          button.append(stamp)
+          button.addEventListener('click', () => {
+            player.seek(chapter.time)
+            player.play()
+          })
+          button.dataset.index = String(index)
+          item.append(button)
+          return item
+        }))
+        const buttons = $$('button', list)
+        current.addEventListener('timeupdate', (event) => {
+          let active = -1
+          chapters.forEach((chapter, i) => {
+            if (event.detail.time >= chapter.time) active = i
+          })
+          buttons.forEach((button, i) => button.classList.toggle('is-active', i === active))
+        })
+        list.hidden = chapters.length === 0
+      })
+    }
+    attach(film)
+    root.addEventListener('vizmatic-film-replaced', (event) => attach(event.detail.film))
+  }
+
+  function installLab() {
+    const lab = $('[data-lab]')
+    if (!lab) return
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return
+      observer.disconnect()
+      Promise.all([loadStage(), import(fromRoot('assets/stage/site/lab.js').href)])
+        .then(([, module]) => module.mountLab(lab, filmTheme))
+        .catch((error) => console.error('Could not start the live laboratory.', error))
+    }, { rootMargin: '400px' })
+    observer.observe(lab)
+  }
+
+  function installFigures() {
+    $$('[data-figures]').forEach((root) => {
+      const buttons = $$('[data-figure]', root)
+      const image = $('img', root)
+      const caption = $('[data-figure-caption]', root)
+      const size = $('[data-figure-size]', root)
+      buttons.forEach((button) => button.addEventListener('click', () => {
+        buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)))
+        const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
+        image.dataset.themeImageBase = `${siteRoot}assets/examples/${button.dataset.figure}`
+        image.src = `${image.dataset.themeImageBase}_${theme}.png`
+        image.alt = button.dataset.alt ?? ''
+        if (caption) caption.textContent = button.dataset.caption ?? ''
+        if (size) size.textContent = button.dataset.source ?? ''
+      }))
+    })
+  }
+
+  function installInstallCopy() {
+    $$('[data-copy-install]').forEach((button) => {
+      button.addEventListener('click', () => copyFromButton(button, button.parentElement?.querySelector('code')?.textContent ?? ''))
+    })
+  }
+
+  /** On-page navigation that follows the reader. */
+  function installDocsToc() {
+    const links = $$('[data-toc] a')
+    if (links.length === 0) return
+    const targets = links.map((link) => document.getElementById(link.getAttribute('href').slice(1))).filter(Boolean)
+    const observer = new IntersectionObserver(() => {
+      let current = targets[0]
+      for (const target of targets) {
+        if (target.getBoundingClientRect().top < 140) current = target
+      }
+      links.forEach((link) => link.classList.toggle('is-active', link.getAttribute('href') === `#${current?.id}`))
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: [0, 1] })
+    targets.forEach((target) => observer.observe(target))
+  }
+
+  function installApiFilter() {
+    const input = $('[data-api-filter]')
+    if (!input) return
+    const entries = $$('[data-api-entry]')
+    input.addEventListener('input', () => {
+      const query = input.value.trim().toLocaleLowerCase()
+      entries.forEach((entry) => {
+        entry.hidden = Boolean(query) && !(entry.dataset.apiEntry ?? '').includes(query)
+      })
+      $$('[data-api-group]').forEach((group) => {
+        group.hidden = $$('[data-api-entry]', group).every((entry) => entry.hidden)
+      })
+    })
+  }
+
+  /** Old links to the landing page sections still arrive at the right place. */
+  function installLegacyAnchors() {
+    if (!$('.hero')) return
+    const hash = window.location.hash
+    if (!hash) return
+    const moved = (target) => window.location.replace(fromRoot(target).href)
+    if (/^#(gallery|science|example-)/.test(hash)) moved(`examples.html${hash}`)
+    else if (/^#(component-browser|components|category-|component-|reference-component-)/.test(hash)) moved(`components.html${hash}`)
+    else if (hash === '#video') moved('films.html')
+    else if (hash === '#agent-prompt' || hash === '#onboarding') moved('agents.html')
+  }
+
   function startSite() {
+    installLegacyAnchors()
     installCodeCopyButtons()
     installCatalogs()
     installCopyPromptAndSkill()
     installTheme()
     installSourceModal()
     installImageModal()
-    installDemoShowcase()
     installGalleryFilters()
     installNavigation()
     installSearchPalette()
     installPlaygroundShortcut()
     installSharedExample()
     installHashDeepLinks()
-    installVideoChapters()
+    installFilms()
+    installScrub()
+    installCodeSync()
+    installFilmWall()
+    installFilmPage()
+    installLab()
+    installFigures()
+    installInstallCopy()
+    installDocsToc()
+    installApiFilter()
     document.documentElement.classList.add('js')
-  }
-
-  function installVideoChapters() {
-    const video = $('#showcaseVideo')
-    if (!(video instanceof HTMLVideoElement)) return
-    const buttons = $$('[data-video-time]')
-    let requestedTime
-    video.addEventListener('loadedmetadata', () => {
-      if (requestedTime !== undefined) video.currentTime = requestedTime
-    })
-    buttons.forEach((button) => button.addEventListener('click', () => {
-      requestedTime = Number(button.dataset.videoTime)
-      if (video.readyState >= 1) video.currentTime = requestedTime
-      video.play().catch(() => {
-        video.focus()
-      })
-    }))
-    video.addEventListener('timeupdate', () => {
-      const current = [...buttons].reverse().find((button) => video.currentTime >= Number(button.dataset.videoTime))
-      buttons.forEach((button) => {
-        if (button === current) button.setAttribute('aria-current', 'true')
-        else button.removeAttribute('aria-current')
-      })
-    })
   }
 
   function installPlaygroundShortcut() {

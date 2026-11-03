@@ -18,6 +18,17 @@
       </div>
     </header>
 
+    <section id="film-loop" class="section" aria-labelledby="filmLoopTitle">
+      <div class="section-intro">
+        <div><h2 id="filmLoopTitle">Films: check, look at stills, then export.</h2></div>
+        <p>An agent cannot watch a video, so the loop relies on a report and on stills it can read. See the <a class="text-link" href="docs/agents.html">guide for agents</a>.</p>
+      </div>
+      <pre data-shiki="bash"><code>npx vizmatic new intro --template explainer
+npx vizmatic check intro.ts --json
+npx vizmatic film intro.ts --frame 2,6,12 --width 1280 --out ./stills
+npx vizmatic film intro.ts --quality high --out ./out</code></pre>
+    </section>
+
     <section id="workflow" class="section agent-workflow" aria-labelledby="workflowTitle">
       <div class="section-intro">
         <div>

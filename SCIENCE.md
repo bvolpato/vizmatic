@@ -200,3 +200,51 @@ and data that would silently distort their stated numerical contract.
 - [OpenStax University Physics Volume 1: Interference of Waves](https://openstax.org/books/university-physics-volume-1/pages/16-5-interference-of-waves)
 - [OpenStax Chemistry 2e: Catalysis](https://openstax.org/books/chemistry-2e/pages/12-7-catalysis)
 - [Vaswani et al.: Attention Is All You Need](https://arxiv.org/abs/1706.03762)
+
+## Lesson sources
+
+Use this guide for mathematical plots and geometry,
+force and wave diagrams, molecular structures, reaction equations and energy
+profiles, and computed attention. Eight subject components complement the
+existing equations, matrices, graphs, and transformer tools. Each is available
+in the component explorer and the isolated browser scene renderer.
+
+The [animated lesson sources](examples/videos/README.md) demonstrate a
+secant approaching a tangent, signed wave superposition, catalyst pathways,
+and causal attention with a computed weighted output. Render the checked-out
+sources to GIF or MP4; examples use explicit numerical state and both themes.
+
+For numbers and computer vision, try the [numeric matrix example](examples/catalog-numeric-matrices.tsx)
+or the [actual CIFAR-10 image split into RGB matrices](examples/catalog-image-tensors.tsx).
+The latter reconstructs one original 32×32 frog image from byte data and follows
+the same selected pixel into three numerical channel crops. `PixelGrid`, channel
+and tensor helpers, and matrix focus controls are reusable in browser previews
+and native video renders.
+
+For deep learning and image smoothing, try the [convolution filter](examples/catalog-convolution-kernel.tsx)
+and [Gaussian blur](examples/catalog-gaussian-blur.tsx) examples. They show an
+unflipped, single-channel filter calculation and a normalized blur kernel; the
+weights are illustrative. The [mechanism section](#make-the-mechanism-visible)
+covers stride, padding, Gaussian sampling, and border behavior.
+
+The [photo blur lesson](examples/catalog-photo-blur.tsx) uses a sharp CC0 coffee
+photo. Its [animation](examples/videos/photo-gaussian-blur.tsx) computes and
+shows actual 25 × 25 Gaussian results from σ = 0 to 4, with σ = 0 as the
+unchanged identity crop. A numerical matrix shows the center 5 × 5 weights
+rounded to six decimals; the sum covers the full 25 × 25 filter. The sharp
+source and filtered image use the same size and crop. The embedded 384 × 256
+sample is prepared by
+[`scripts/prepare-photo-sample.mjs`](scripts/prepare-photo-sample.mjs), which
+requires Node.js and FFmpeg. The photo and codec notices are in
+[`assets/THIRD_PARTY_LICENSES.md`](assets/THIRD_PARTY_LICENSES.md).
+
+The raster helpers `decodeRgbPng`, `encodeRgbPng`, `cropRgbRaster`, and
+`gaussianBlurRgb` operate on flat row-major RGB data. Decoding accepts opaque,
+noninterlaced 8-bit PNG data URIs up to 2 MiB and 1,048,576 pixels and rejects
+embedded ICC profiles. Raster operations use the same 1,048,576-pixel limit.
+Blur uses the stored, gamma-encoded channel values without linearizing them and
+returns floating-point RGB with valid convolution and an integer radius from 0
+to 64, defaulting to `ceil(3σ)`. PNG encoding rounds values when writing the
+output image. These helpers are available from full Vizmatic SDK modules and
+the full Playground, not from the isolated QuickJS author-code environment
+described above.
