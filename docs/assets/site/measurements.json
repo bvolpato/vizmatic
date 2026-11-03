@@ -1,0 +1,24 @@
+{
+  "measuredAt": "2026-11-03",
+  "export": {
+    "fps": 59.9,
+    "frames": 1410,
+    "width": 1920,
+    "height": 1080,
+    "filmFps": 60,
+    "threads": 12,
+    "machine": "Apple M5 Max, 18 logical CPUs"
+  },
+  "legacyVideo": {
+    "fps": 8.4,
+    "frames": 234,
+    "height": 720,
+    "machine": "Apple M5 Max, 18 logical CPUs"
+  },
+  "seek": {
+    "ms": 5.21,
+    "film": "scrub",
+    "canvasWidth": 2160,
+    "machine": "Apple M5 Max, 18 logical CPUs"
+  }
+}

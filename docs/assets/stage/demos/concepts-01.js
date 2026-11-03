@@ -1,0 +1,1 @@
+import{Aa as r,Jb as m,Oa as t,jb as d}from"../chunk-5QST552B.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var p=d({fps:30},e=>{let n=e.add(m(40,"yellow")),o=(l,a)=>t(n,[l,a],{duration:.6});e.play(r(o(800,-400),o(800,400),o(-800,400),o(-800,-400),o(0,0)))});export{p as default};

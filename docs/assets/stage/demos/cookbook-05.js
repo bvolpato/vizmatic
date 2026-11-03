@@ -1,0 +1,1 @@
+import{Fa as a,Ia as e,Jb as r,Y as t,jb as d,ub as l}from"../chunk-5QST552B.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var p=d({fps:30},o=>{let f=o.add(l("v",{font:"serif",size:620}));o.play(a(f,{duration:1.4}));let i=o.add(r(36,"yellow").glow(24).at(190,-160));o.play(e(i,{scale:.05,ease:t()})),o.wait(.6)});export{p as default};
