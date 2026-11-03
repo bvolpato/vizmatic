@@ -383,7 +383,7 @@ export default film({ title: 'A matrix bends space', fps: 60 }, (s) => {
     s.chapter('Apply it')
     s.play(applyMatrix(grid, [[1, 1], [0, 1]]), { duration: 2.4 })
 
-    const note = s.add(text('Every line stays straight.', { font: 'serif', size: 52 }).moveTo([560, 420]))
+    const note = s.add(text('Every line stays straight.', { font: 'text-serif', size: 52 }).moveTo([560, 420]))
     s.play(write(note))
     s.wait(1.5)
 })

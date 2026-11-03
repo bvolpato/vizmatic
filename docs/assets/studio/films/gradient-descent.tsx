@@ -268,7 +268,7 @@ export default film({
         return node
     }
     const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
-    const title = place(text('Downhill, one step at a time.', { font: 'serif', size: 58, maxWidth: 410, leading: 1.08 }), -490)
+    const title = place(text('Downhill, one step at a time.', { font: 'text-serif', size: 58, maxWidth: 410, leading: 1.08 }), -490)
     const rule1 = place(tex('\\theta_{t+1} = \\theta_t - \\eta \\, \\nabla f(\\theta_t)', { size: 36 }), -340)
     const etaNote = place(text(`Step size eta = ${ETA}. Each step moves against the local slope, and nothing else.`, { size: 22, color: 'dim', maxWidth: 400, leading: 1.4 }), -280)
 

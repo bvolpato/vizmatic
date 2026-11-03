@@ -162,7 +162,7 @@ export default film({
     // ── The sentence and its arcs ───────────────────────────────────────────
 
     const SENTENCE_Y = 440
-    const sentence = text('the river bank flooded last spring', { font: 'serif', size: 92 }).moveTo([-250, -30])
+    const sentence = text('the river bank flooded last spring', { font: 'text-serif', size: 92 }).moveTo([-250, -30])
     const wordEnds: [number, number][] = []
     let cursor = 0
     for (const word of WORDS) {
@@ -202,7 +202,7 @@ export default film({
         node.alignTo([COLUMN, 0], 'left').alignTo([0, top], 'top')
         return node
     }
-    const title = place(text('Every word asks a question of every other word.', { font: 'serif', size: 52, maxWidth: 420, leading: 1.08 }), -490)
+    const title = place(text('Every word asks a question of every other word.', { font: 'text-serif', size: 52, maxWidth: 420, leading: 1.08 }), -490)
     const eq0 = place(tex('Q K^{T}', { size: 48 }), -304)
     const eq1 = place(tex('\\frac{Q K^{T}}{\\sqrt{d}}', { size: 42 }), -322)
     const eq2 = place(tex('\\mathrm{softmax}\\left(\\frac{Q K^{T}}{\\sqrt{d}}\\right)', { size: 38 }), -322)

@@ -110,7 +110,7 @@ function lowerBound(items: { at: number }[], t: number): number {
 // ── Drawing helpers ─────────────────────────────────────────────────────────
 
 type Align = 'left' | 'right' | 'center'
-interface LabelStyle { size?: number; font?: 'sans' | 'mono' | 'serif'; color?: ColorInput; weight?: 400 | 600 | 700; align?: Align; caps?: boolean }
+interface LabelStyle { size?: number; font?: 'sans' | 'mono' | 'text-serif'; color?: ColorInput; weight?: 400 | 600 | 700; align?: Align; caps?: boolean }
 
 function label(content: string, x: number, y: number, style: LabelStyle = {}): Node {
     const node = text(content, {
@@ -384,10 +384,10 @@ export default film({
 
     // ── Header and footer ───────────────────────────────────────────────────
 
-    const title = label('One key expires.', -880, -492, { size: 62, font: 'serif' })
+    const title = label('One key expires.', -880, -492, { size: 62, font: 'text-serif' })
     const route = label('GET /products/:sku', 880, -492, { size: 22, font: 'mono', color: 'dim', align: 'right' })
     const caveat = label('Illustrative hop times. Queueing is simulated per request, in this film\'s source.', 880, 510, { size: 16, color: 'faint', align: 'right' })
-    const ratio = label(`${(MISS_MS / HIT_MS).toFixed(0)} times slower, for one request`, WF.x + WF.labelW, WF.y + 46 + 8 * WF.rowH, { size: 21, font: 'serif', color: 'orange' })
+    const ratio = label(`${(MISS_MS / HIT_MS).toFixed(0)} times slower, for one request`, WF.x + WF.labelW, WF.y + 46 + 8 * WF.rowH, { size: 21, font: 'text-serif', color: 'orange' })
 
     // ── Timeline ────────────────────────────────────────────────────────────
 

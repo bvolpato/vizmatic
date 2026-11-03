@@ -131,7 +131,7 @@ export default film({
     s.play(fadeOut([arms, wave, heading, axisX, axisY]), { duration: 0.9 })
 
     // The outline of a serif letter, sampled and turned into rotating circles.
-    const letter = text('v', { font: 'serif', size: 900 })
+    const letter = text('v', { font: 'text-serif', size: 900 })
     const leaf = letter.chars[0]!
     const ringPath = [leaf.get('path')![0]!]
     const outline: Vec[] = []

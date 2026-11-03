@@ -187,7 +187,7 @@ export default film({
     }
     const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
 
-    const title = place(text('The grid bends. Its right angles survive.', { font: 'serif', size: 58, maxWidth: 410, leading: 1.08 }), -490)
+    const title = place(text('The grid bends. Its right angles survive.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
     const eqIdentity = place(tex('w = z', { size: 54 }), -296)
     const eqPower = place(tex('w = z^{p}', { size: 54 }), -296)
     const eqSquare = place(tex('w = z^{2}', { size: 54, color: 'ink' }), -296)

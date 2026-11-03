@@ -4,7 +4,7 @@ import { pathToD, transformPath } from '../src/stage/geometry'
 
 /**
  * The mark is one drawn curve that ends on a point: a "v" made in a single
- * stroke. The wordmark is outlined from Instrument Serif, so the SVG needs no font.
+ * stroke. The wordmark is outlined from Source Serif 4, so the SVG needs no font.
  */
 export const MARK_PATH = 'M5.5 8.2C9.4 8.2 11.2 12.1 13.2 18.2C15.1 24 16.6 29.8 18.4 29.8C20.6 29.8 22.5 22.6 25.2 15.9C26.8 11.9 28.6 9 31 7.6'
 export const MARK_POINT = { x: 33.4, y: 6.4, r: 2.9 }
@@ -12,7 +12,7 @@ export const MARK_POINT = { x: 33.4, y: 6.4, r: 2.9 }
 const SCHEME = (ink: string, paperInk: string, accent: string, paperAccent: string) => `<style>.i{stroke:${ink};fill:none}.w{fill:${ink}}.p{fill:${accent}}@media (prefers-color-scheme:light){.i{stroke:${paperInk}}.w{fill:${paperInk}}.p{fill:${paperAccent}}}</style>`
 
 export async function buildLogo(): Promise<void> {
-    const bytes = await readFile('assets/fonts/InstrumentSerif-Regular.ttf')
+    const bytes = await readFile('assets/fonts/SourceSerif4-24pt-Regular.ttf')
     const font = parseFont(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
     const size = 34
     const scale = size / font.unitsPerEm

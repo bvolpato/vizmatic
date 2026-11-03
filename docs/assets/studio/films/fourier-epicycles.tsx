@@ -42,7 +42,7 @@ export default film({
     fps: 60,
 }, (s) => {
     fontFor('serif', 400, true)
-    const glyph = text('&', { font: 'serif', italic: true, size: 900 }).at(-300, 40)
+    const glyph = text('&', { font: 'text-serif', italic: true, size: 900 }).at(-300, 40)
     const leaf = glyph.chars[0]!
     const world = transformPath(leaf.get('path')!, leaf.worldMatrix())
     const outline: Ring = [...world].sort((a, b) => Math.abs(signedArea(b)) - Math.abs(signedArea(a)))[0]!
@@ -160,7 +160,7 @@ export default film({
     // An opaque column keeps the readouts clean while the camera works underneath it.
     const backing = rect(960 - COLUMN + 60, 1080, { fill: 'bg', stroke: null }).at((COLUMN - 60 + 960) / 2 , 0).pin()
     const rule = line([COLUMN - 60, -540], [COLUMN - 60, 540], { stroke: 'grid', width: 1.2 }).pin()
-    const title = text('A drawing is a sum of circles.', { font: 'serif', size: 66 }).pin()
+    const title = text('A drawing is a sum of circles.', { font: 'text-serif', size: 66 }).pin()
     title.alignTo([-864, 0], 'left').alignTo([0, -484], 'top')
     const eqTerm = tex('z(t) = \\sum_{k=1}^{N} c_k \\, e^{2\\pi i n_k t}', { size: 44 }).pin()
     eqTerm.alignTo([COLUMN, 0], 'left').alignTo([0, -466], 'top')

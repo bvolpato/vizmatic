@@ -21,8 +21,8 @@ for name in (
     "Inter-SemiBold",
     "Inter-Bold",
     "JetBrainsMono-Regular",
-    "InstrumentSerif-Regular",
-    "InstrumentSerif-Italic",
+    "SourceSerif4-24pt-Regular",
+    "SourceSerif4-24pt-Italic",
 ):
     font = TTFont(root / "assets" / "fonts" / f"{name}.ttf", recalcTimestamp=False)
     font.flavor = "woff2"

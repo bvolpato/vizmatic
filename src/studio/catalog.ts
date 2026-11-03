@@ -970,7 +970,7 @@ export const KINDS: Readonly<Record<string, KindDef>> = Object.freeze({
 const icon = (body: string) => `<svg viewBox="0 0 20 20" aria-hidden="true">${body}</svg>`
 
 export const PALETTE: readonly PaletteEntry[] = [
-    { id: 'title', label: 'Title', kind: 'text', group: 'Type', props: { content: 'A title worth reading', size: 96, font: 'serif' }, icon: icon('<path d="M4 5h12M10 5v11M7.5 16h5"/>') },
+    { id: 'title', label: 'Title', kind: 'text', group: 'Type', props: { content: 'A title worth reading', size: 96, font: 'text-serif' }, icon: icon('<path d="M4 5h12M10 5v11M7.5 16h5"/>') },
     { id: 'text', label: 'Text', kind: 'text', group: 'Type', key: 't', props: { content: 'Write something clear.', size: 40 }, icon: icon('<path d="M5 6V4.5h10V6M10 4.5V16M8 16h4"/>') },
     { id: 'label', label: 'Label', kind: 'text', group: 'Type', props: { content: 'Section label', size: 20, font: 'mono', color: 'dim', uppercase: true, tracking: 0.12 }, icon: icon('<path d="M3 8h14M3 12h9"/>') },
     { id: 'tex', label: 'Equation', kind: 'tex', group: 'Type', key: 'e', icon: icon('<path d="M4 4h10l-5 6 5 6H4"/>') },

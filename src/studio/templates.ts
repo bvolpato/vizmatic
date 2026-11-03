@@ -29,7 +29,7 @@ function explainer(): StudioProject {
         variables: [{ name: 'h', value: 1.6 }],
         objects: [
             object('graph', 'graph', -290, 90, { expr: 'x^2', xMin: -1, xMax: 3, yMin: -1, yMax: 9, plotWidth: 980, plotHeight: 640, stroke: 'blue', width: 5, glow: 8 }, { name: 'Curve' }),
-            object('title', 'text', 0, -462, { content: 'Two points become one tangent', font: 'serif', size: 72 }),
+            object('title', 'text', 0, -462, { content: 'Two points become one tangent', font: 'text-serif', size: 72 }),
             object('secant-formula', 'tex', 590, -180, { source: 'm = \\frac{f(1+h) - f(1)}{h}', size: 58 }, { name: 'Secant slope' }),
             object('simplified', 'tex', 590, -180, { source: 'm = 2 + h', size: 72, color: 'yellow' }, { name: 'Simplified' }),
             object('slope-readout', 'readout', 590, -30, { expr: '2 + h', prefix: 'm = ', size: 50, digits: 2 }, { name: 'Slope readout' }),
@@ -59,7 +59,7 @@ function equationStory(): StudioProject {
             object('step-1', 'tex', 0, -40, { source: 'a^2 + b^2 = c^2', size: 130 }, { name: 'Theorem' }),
             object('step-2', 'tex', 0, -40, { source: 'c^2 = a^2 + b^2', size: 130 }, { name: 'Swapped' }),
             object('step-3', 'tex', 0, -40, { source: 'c = \\sqrt{a^2 + b^2}', size: 130, color: 'yellow' }, { name: 'Solved' }),
-            object('note', 'text', 0, 190, { content: 'The same symbols, carried to new places.', font: 'serif', italic: true, size: 50, color: 'dim' }),
+            object('note', 'text', 0, 190, { content: 'The same symbols, carried to new places.', font: 'text-serif', italic: true, size: 50, color: 'dim' }),
         ],
         beats: [
             beat('label', 'fadeIn', 0, 0.7, { direction: 'up', distance: 20 }),
@@ -86,7 +86,7 @@ function architecture(): StudioProject {
         look: 'blueprint',
         hold: 1.2,
         objects: [
-            object('title', 'text', -541, -440, { content: 'How one request crosses the system', font: 'serif', size: 54, align: 'left' }),
+            object('title', 'text', -541, -440, { content: 'How one request crosses the system', font: 'text-serif', size: 54, align: 'left' }),
             object('caption', 'text', -651, -386, { content: 'p99 budget 450 ms, measured at the edge', font: 'mono', size: 18, color: 'dim' }, { name: 'Budget' }),
             node('client', -700, -130, 'Web client', 'React, 1.4M sessions/day', 'blue', 'TTFB: 86 ms\nRetry rate: 0.4%', 'edge', 'https, cdn'),
             node('api', -180, -130, 'API gateway', 'us-east-1, 12 pods', 'teal', 'p99: 128 ms\nThroughput: 2.1k req/s\nError rate: 0.07%', 'healthy', 'go, grpc'),
@@ -139,7 +139,7 @@ function chartReveal(): StudioProject {
         look: 'paper',
         hold: 1.2,
         objects: [
-            object('title', 'text', 0, -430, { content: 'Growth doubled in the final quarter', font: 'serif', size: 72 }),
+            object('title', 'text', 0, -430, { content: 'Growth doubled in the final quarter', font: 'text-serif', size: 72 }),
             object('axis', 'line', 0, baseline, { length: 1280, stroke: 'dim', width: 2 }, { name: 'Baseline' }),
             ...data.flatMap(([label, value, color], i) => {
                 const height = value * unit
@@ -170,14 +170,14 @@ function slideDeck(): StudioProject {
         ...emptyProject('Three-slide deck'),
         hold: 0.6,
         objects: [
-            object('s1-title', 'text', 0, -40, { content: 'Ship the idea, not the slides', font: 'serif', size: 104 }, { name: 'Slide 1 title' }),
+            object('s1-title', 'text', 0, -40, { content: 'Ship the idea, not the slides', font: 'text-serif', size: 104 }, { name: 'Slide 1 title' }),
             object('s1-sub', 'text', 0, 70, { content: 'A deck that animates with the argument', size: 34, color: 'dim' }, { name: 'Slide 1 subtitle' }),
-            object('s2-title', 'text', -325, -280, { content: 'Claim', font: 'serif', size: 76 }, { name: 'Slide 2 title' }),
+            object('s2-title', 'text', -325, -280, { content: 'Claim', font: 'text-serif', size: 76 }, { name: 'Slide 2 title' }),
             object('s2-a', 'text', 15, -120, { content: 'Press the right arrow to step through chapters.', size: 38, align: 'left' }, { name: 'Point one' }),
             object('s2-b', 'text', -56, -30, { content: 'Each chapter plays, then waits for you.', size: 38, align: 'left' }, { name: 'Point two' }),
             object('s2-c', 'text', -12, 60, { content: 'Export the same film as an MP4 afterwards.', size: 38, align: 'left' }, { name: 'Point three' }),
             object('s3-eq', 'tex', 0, -30, { source: '\\int_0^1 x^2\\,dx = \\frac{1}{3}', size: 120, color: 'yellow' }, { name: 'Closing equation' }),
-            object('s3-note', 'text', 0, 170, { content: 'Close on the one thing to remember.', font: 'serif', italic: true, size: 48, color: 'dim' }, { name: 'Closing note' }),
+            object('s3-note', 'text', 0, 170, { content: 'Close on the one thing to remember.', font: 'text-serif', italic: true, size: 48, color: 'dim' }, { name: 'Closing note' }),
         ],
         beats: [
             beat('s1-title', 'write', 0, 1.5),
@@ -210,7 +210,7 @@ function gridTransform(): StudioProject {
         objects: [
             object('grid', 'plane', 0, 0, { unit: 130, color: 'blue', lineWidth: 1.5 }, { name: 'Plane' }),
             object('matrix', 'tex', -640, -370, { source: '\\begin{bmatrix} 1 & 1 \\\\ 0 & 1 \\end{bmatrix}', size: 70, color: 'yellow' }, { name: 'Matrix' }),
-            object('caption', 'text', 560, 420, { content: 'Every line stays straight.', font: 'serif', size: 52 }),
+            object('caption', 'text', 560, 420, { content: 'Every line stays straight.', font: 'text-serif', size: 52 }),
         ],
         beats: [
             beat('grid', 'draw', 0, 2),

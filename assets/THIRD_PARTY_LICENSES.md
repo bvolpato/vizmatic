@@ -63,7 +63,7 @@ each under the MIT License. Their full notices are in
 
 Full license: [`licenses/OFL-1.1.txt`](licenses/OFL-1.1.txt).
 
-The website uses WOFF2 copies of the same Inter, JetBrains Mono, and Instrument Serif font files.
+The website uses WOFF2 copies of the same Inter, JetBrains Mono, and Source Serif 4 font files.
 Regenerate them with `pnpm site:fonts`; the original font licenses apply.
 
 ## Emoji

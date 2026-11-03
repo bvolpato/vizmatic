@@ -2,7 +2,7 @@
 @font-face { font-family: Inter; src: url("assets/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: Inter; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("assets/fonts/JetBrainsMono-Regular.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
-@font-face { font-family: "Instrument Serif"; src: url("assets/studio/assets/fonts/InstrumentSerif-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("assets/studio/assets/fonts/SourceSerif4-24pt-Regular.ttf") format("truetype"); font-display: swap; }
 
 :root {
   color-scheme: dark;
@@ -27,7 +27,7 @@ body.studio-page { background: var(--bg); color: var(--text); font: var(--ui); o
   /* The editor is three panels and a timeline, which cannot fit a phone. Say so instead of overflowing. */
   #studio, .studio { display: none !important; }
   .studio-narrow { display: grid; align-content: center; gap: 16px; height: 100%; padding: 32px; box-sizing: border-box; }
-  .studio-narrow h1 { margin: 0; font: 400 40px/1.1 "Instrument Serif", Georgia, serif; }
+  .studio-narrow h1 { margin: 0; font: 400 40px/1.1 "Source Serif 4", Georgia, serif; }
   .studio-narrow p { margin: 0; color: var(--text-dim, var(--text)); font-size: 15px; line-height: 1.5; }
   .studio-narrow a { color: var(--accent); margin-right: 16px; }
 }
@@ -348,7 +348,7 @@ select.field-input { appearance: none; padding-right: 18px; background-image: li
 .is-welcome .modal { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; background: radial-gradient(1000px 460px at 50% -120px, #1a1b22 0%, #0a0b0e 66%); box-shadow: none; }
 .welcome { width: min(1180px, 100%); margin: 0 auto; padding: 64px 40px 80px; }
 .welcome-head { margin-bottom: 28px; }
-.welcome-title { margin: 0; font: 400 74px/1.02 "Instrument Serif", Georgia, serif; letter-spacing: -.012em; color: #f4f1e8; }
+.welcome-title { margin: 0; font: 400 74px/1.02 "Source Serif 4", Georgia, serif; letter-spacing: -.012em; color: #f4f1e8; }
 .welcome-lede { margin: 14px 0 0; max-width: 620px; font-size: 15px; line-height: 1.55; color: var(--text-dim); }
 .welcome-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 44px; }
 .welcome-actions .text-button { height: 30px; }

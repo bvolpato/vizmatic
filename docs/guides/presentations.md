@@ -17,7 +17,7 @@ import { fadeIn, film, morphMatching, tex, text, write } from 'vizmatic/stage'
 
 export default film({ title: 'A short talk' }, (s) => {
     s.chapter('The claim')
-    const title = s.add(text('Why squares add up', { font: 'serif', size: 110 }).at(0, -300))
+    const title = s.add(text('Why squares add up', { font: 'text-serif', size: 110 }).at(0, -300))
     s.play(fadeIn(title, { shift: [0, 24] }))
     const eq = s.add(tex('a^2 + b^2 = c^2', { size: 150 }))
     s.play(write(eq))

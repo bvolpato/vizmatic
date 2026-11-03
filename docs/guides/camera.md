@@ -32,7 +32,7 @@ import { film, Node, plane, text, to } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     s.add(plane({ unit: 160 }))
-    s.add(text('This title is pinned.', { font: 'serif', size: 120 }).at(0, -380).pin())
+    s.add(text('This title is pinned.', { font: 'text-serif', size: 120 }).at(0, -380).pin())
     s.play(to(s.camera, (c: Node) => c.at(700, 300).set('sx', 1.6), { duration: 2 }))
     s.wait(0.5)
 })

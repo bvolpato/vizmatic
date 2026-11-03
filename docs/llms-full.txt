@@ -237,7 +237,7 @@ Fades can also travel with `shift` and change size with `scale`. With `lag`, a g
 import { fadeIn, fadeOut, film, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const word = text('arrive', { font: 'serif', size: 280 })
+    const word = text('arrive', { font: 'text-serif', size: 280 })
     s.play(fadeIn(word, { shift: [0, 90], lag: 0.1, duration: 1.2 }))
     s.wait(0.6)
     s.play(fadeOut(word, { shift: [0, -90] }))
@@ -335,7 +335,7 @@ import { circle, film, morph, rect, text } from 'vizmatic/stage'
 export default film({ fps: 30 }, (s) => {
     const a = s.add(rect(520, 520, { fill: 'blue', stroke: null }))
     const b = circle(290, { fill: 'teal', stroke: null })
-    const c = text('v', { font: 'serif', size: 900, color: 'yellow' })
+    const c = text('v', { font: 'text-serif', size: 900, color: 'yellow' })
     s.play(morph(a, b))
     s.wait(0.3)
     s.play(morph(b, c))
@@ -407,7 +407,7 @@ export default film({ fps: 30 }, (s) => {
 import { film, shake, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const word = s.add(text('careful', { font: 'serif', size: 300, color: 'red' }))
+    const word = s.add(text('careful', { font: 'text-serif', size: 300, color: 'red' }))
     s.wait(0.3)
     s.play(shake(word, { angle: 0.12 }))
     s.wait(0.6)
@@ -420,7 +420,7 @@ export default film({ fps: 30 }, (s) => {
 import { circumscribe, film, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const word = s.add(text('this one', { font: 'serif', size: 260 }))
+    const word = s.add(text('this one', { font: 'text-serif', size: 260 }))
     s.wait(0.2)
     s.play(circumscribe(word, { pad: 40, width: 7 }))
     s.wait(0.4)
@@ -541,7 +541,7 @@ import { film, Node, plane, text, to } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     s.add(plane({ unit: 160 }))
-    s.add(text('This title is pinned.', { font: 'serif', size: 120 }).at(0, -380).pin())
+    s.add(text('This title is pinned.', { font: 'text-serif', size: 120 }).at(0, -380).pin())
     s.play(to(s.camera, (c: Node) => c.at(700, 300).set('sx', 1.6), { duration: 2 }))
     s.wait(0.5)
 })
@@ -839,7 +839,7 @@ A glyph outline is a path, so a mark can draw itself and settle.
 import { dot, draw, fadeIn, film, overshoot, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const mark = s.add(text('v', { font: 'serif', size: 620 }))
+    const mark = s.add(text('v', { font: 'text-serif', size: 620 }))
     s.play(draw(mark, { duration: 1.4 }))
     const point = s.add(dot(36, 'yellow').glow(24).at(190, -160))
     s.play(fadeIn(point, { scale: 0.05, ease: overshoot() }))
@@ -1174,7 +1174,7 @@ Use `FilmPlayer` on your own canvas when you want your own controls.
 import { compileFilm, FilmPlayer, film, text, write } from 'vizmatic/stage/browser'
 
 const intro = film((s) => {
-    s.play(write(s.add(text('Hello', { font: 'serif', size: 200 }))))
+    s.play(write(s.add(text('Hello', { font: 'text-serif', size: 200 }))))
 })
 
 export async function mount(canvas: HTMLCanvasElement): Promise<FilmPlayer> {
@@ -1258,7 +1258,7 @@ import { compileFilm, film, text, write } from 'vizmatic/stage'
 import { renderFilmFrame, renderFilmVideo } from 'vizmatic/stage/export'
 
 const intro = film((s) => {
-    s.play(write(s.add(text('Hello', { font: 'serif', size: 200 }))))
+    s.play(write(s.add(text('Hello', { font: 'text-serif', size: 200 }))))
 })
 
 export async function render(): Promise<void> {
@@ -2387,7 +2387,7 @@ Choose a look in the film, or override it when you render.
 import { film, text, write } from 'vizmatic/stage'
 
 export default film({ look: 'blueprint', title: 'Plans' }, (s) => {
-    s.play(write(s.add(text('Plans', { font: 'serif', size: 200 }))))
+    s.play(write(s.add(text('Plans', { font: 'text-serif', size: 200 }))))
 })
 ```
 
@@ -2445,7 +2445,7 @@ const studio: Look = {
 }
 
 export default film({ look: studio }, (s) => {
-    s.play(write(s.add(text('Our colors', { font: 'serif', size: 200, color: 'yellow' }))))
+    s.play(write(s.add(text('Our colors', { font: 'text-serif', size: 200, color: 'yellow' }))))
 })
 ```
 
@@ -2621,7 +2621,7 @@ import { fadeIn, film, morphMatching, tex, text, write } from 'vizmatic/stage'
 
 export default film({ title: 'A short talk' }, (s) => {
     s.chapter('The claim')
-    const title = s.add(text('Why squares add up', { font: 'serif', size: 110 }).at(0, -300))
+    const title = s.add(text('Why squares add up', { font: 'text-serif', size: 110 }).at(0, -300))
     s.play(fadeIn(title, { shift: [0, 24] }))
     const eq = s.add(tex('a^2 + b^2 = c^2', { size: 150 }))
     s.play(write(eq))
@@ -2677,7 +2677,7 @@ npx vizmatic film talk.ts --frame 2.5,7,12 --out ./stills
 import { film, text, write } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const head = s.add(text('Every glyph is a path.', { font: 'serif', size: 170 }).at(0, -80))
+    const head = s.add(text('Every glyph is a path.', { font: 'text-serif', size: 170 }).at(0, -80))
     const body = s.add(text('So every letter can move.', { size: 62, color: 'dim' }).at(0, 120))
     s.play(write(head), { duration: 1.6 })
     s.play(write(body), { duration: 1 })
@@ -2707,7 +2707,7 @@ Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment
 import { film, recolor, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const line = s.add(text('Look at this word.', { font: 'serif', size: 170 }))
+    const line = s.add(text('Look at this word.', { font: 'text-serif', size: 170 }))
     s.wait(0.5)
     s.play(...line.find('this').map((glyph) => recolor(glyph, 'yellow')))
     s.wait(1)

@@ -115,7 +115,7 @@ export default film({
 
     // ── Words and equations ─────────────────────────────────────────────────
 
-    const title = text('One point, two shadows.', { font: 'serif', size: 66 })
+    const title = text('One point, two shadows.', { font: 'text-serif', size: 66 })
     title.alignTo([LEFT, 0], 'left').alignTo([0, -504], 'top')
 
     const EQ_Y = 452
@@ -139,7 +139,7 @@ export default film({
     paint(reduced, 'e^{i\\pi}', 'yellow')
     const identity = tex('e^{i\\pi} + 1 = 0', { size: 170 }).moveTo([0, 10])
     paint(identity, 'e^{i\\pi}', 'yellow')
-    const caption = text('Half a turn, and you land on minus one.', { font: 'serif', italic: true, size: 50, color: 'dim' }).moveTo([0, 210])
+    const caption = text('Half a turn, and you land on minus one.', { font: 'text-serif', italic: true, size: 50, color: 'dim' }).moveTo([0, 210])
 
     // ── Timeline ────────────────────────────────────────────────────────────
 

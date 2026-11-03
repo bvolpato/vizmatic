@@ -40,7 +40,7 @@ Choose a look in the film, or override it when you render.
 import { film, text, write } from 'vizmatic/stage'
 
 export default film({ look: 'blueprint', title: 'Plans' }, (s) => {
-    s.play(write(s.add(text('Plans', { font: 'serif', size: 200 }))))
+    s.play(write(s.add(text('Plans', { font: 'text-serif', size: 200 }))))
 })
 ```
 
@@ -98,6 +98,6 @@ const studio: Look = {
 }
 
 export default film({ look: studio }, (s) => {
-    s.play(write(s.add(text('Our colors', { font: 'serif', size: 200, color: 'yellow' }))))
+    s.play(write(s.add(text('Our colors', { font: 'text-serif', size: 200, color: 'yellow' }))))
 })
 ```

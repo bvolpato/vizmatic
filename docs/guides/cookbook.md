@@ -95,7 +95,7 @@ A glyph outline is a path, so a mark can draw itself and settle.
 import { dot, draw, fadeIn, film, overshoot, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const mark = s.add(text('v', { font: 'serif', size: 620 }))
+    const mark = s.add(text('v', { font: 'text-serif', size: 620 }))
     s.play(draw(mark, { duration: 1.4 }))
     const point = s.add(dot(36, 'yellow').glow(24).at(190, -160))
     s.play(fadeIn(point, { scale: 0.05, ease: overshoot() }))
