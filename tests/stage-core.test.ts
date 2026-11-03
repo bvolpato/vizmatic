@@ -55,6 +55,18 @@ describe('geometry', () => {
 })
 
 describe('morphing', () => {
+    it('keeps finished pieces on screen until a lagged morph ends', async () => {
+        const row = (y: number) => [-150, -50, 50, 150].map((x) => circle(20, { fill: 'blue' }).at(x, y))
+        const compiled = await compileFilm(film((s) => {
+            const from = row(-100)
+            s.add(...from)
+            s.play(morph(from, row(100), { lag: 0.5 }), { duration: 1 })
+            s.wait(0.1)
+        }))
+        // The pieces finish at 0.4, 0.6, 0.8, and 1.0 seconds. The first three must not vanish.
+        for (const time of [0.1, 0.5, 0.7, 0.9, 1.05]) expect(paths(compiled, time).length).toBe(4)
+    })
+
     it('returns the exact source and target at the endpoints', () => {
         const from = circlePath(0, 0, 10), to = linePath([0, 0], [50, 50])
         const mix = pathMixer(from, to)
