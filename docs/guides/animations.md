@@ -47,7 +47,7 @@ Fades can also travel with `shift` and change size with `scale`. With `lag`, a g
 import { fadeIn, fadeOut, film, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const word = text('arrive', { font: 'serif', size: 280 })
+    const word = text('arrive', { font: 'text-serif', size: 280 })
     s.play(fadeIn(word, { shift: [0, 90], lag: 0.1, duration: 1.2 }))
     s.wait(0.6)
     s.play(fadeOut(word, { shift: [0, -90] }))
@@ -145,7 +145,7 @@ import { circle, film, morph, rect, text } from 'vizmatic/stage'
 export default film({ fps: 30 }, (s) => {
     const a = s.add(rect(520, 520, { fill: 'blue', stroke: null }))
     const b = circle(290, { fill: 'teal', stroke: null })
-    const c = text('v', { font: 'serif', size: 900, color: 'yellow' })
+    const c = text('v', { font: 'text-serif', size: 900, color: 'yellow' })
     s.play(morph(a, b))
     s.wait(0.3)
     s.play(morph(b, c))
@@ -217,7 +217,7 @@ export default film({ fps: 30 }, (s) => {
 import { film, shake, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const word = s.add(text('careful', { font: 'serif', size: 300, color: 'red' }))
+    const word = s.add(text('careful', { font: 'text-serif', size: 300, color: 'red' }))
     s.wait(0.3)
     s.play(shake(word, { angle: 0.12 }))
     s.wait(0.6)
@@ -230,7 +230,7 @@ export default film({ fps: 30 }, (s) => {
 import { circumscribe, film, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const word = s.add(text('this one', { font: 'serif', size: 260 }))
+    const word = s.add(text('this one', { font: 'text-serif', size: 260 }))
     s.wait(0.2)
     s.play(circumscribe(word, { pad: 40, width: 7 }))
     s.wait(0.4)

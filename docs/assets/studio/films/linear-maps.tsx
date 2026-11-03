@@ -107,7 +107,7 @@ export default film({
         node.zIndex(6)
         return node
     }
-    const title = place(text('A matrix moves the whole plane.', { font: 'serif', size: 58, maxWidth: 400, leading: 1.08 }), -490)
+    const title = place(text('A matrix moves the whole plane.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
     const matrix = place(tex('A = \\begin{bmatrix} 2 & 1 \\\\ 0.5 & 1.5 \\end{bmatrix}', { size: 44 }), -340)
     // Column one is where the first arrow lands. Column two is where the second lands.
     for (const i of [3, 5, 6, 7]) matrix.glyphs[i]!.fill('green')

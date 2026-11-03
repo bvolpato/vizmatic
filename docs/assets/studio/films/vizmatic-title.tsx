@@ -37,7 +37,7 @@ export default film({
     fps: 60,
     bloom: 0.24,
 }, (s) => {
-    const mark = text('vizmatic', { font: 'serif', size: 360 }).at(0, -6)
+    const mark = text('vizmatic', { font: 'text-serif', size: 280 }).at(0, -6)
     const bounds = mark.bounds()
     const glyphs = mark.chars.map((leaf) => transformPath(leaf.get('path')!, leaf.worldMatrix()))
     const left = bounds.x, width = bounds.width

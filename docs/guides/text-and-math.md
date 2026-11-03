@@ -14,7 +14,7 @@ description: Text and equations are real vector glyphs. Handwrite them, stagger 
 import { film, text, write } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const head = s.add(text('Every glyph is a path.', { font: 'serif', size: 170 }).at(0, -80))
+    const head = s.add(text('Every glyph is a path.', { font: 'text-serif', size: 170 }).at(0, -80))
     const body = s.add(text('So every letter can move.', { size: 62, color: 'dim' }).at(0, 120))
     s.play(write(head), { duration: 1.6 })
     s.play(write(body), { duration: 1 })
@@ -44,7 +44,7 @@ Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment
 import { film, recolor, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
-    const line = s.add(text('Look at this word.', { font: 'serif', size: 170 }))
+    const line = s.add(text('Look at this word.', { font: 'text-serif', size: 170 }))
     s.wait(0.5)
     s.play(...line.find('this').map((glyph) => recolor(glyph, 'yellow')))
     s.wait(1)

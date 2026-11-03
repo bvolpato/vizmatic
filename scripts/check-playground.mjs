@@ -780,6 +780,21 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false, 'The builder should fit a 320px viewport.')
     assert.deepEqual(pageErrors, [], `Unexpected browser errors: ${pageErrors.join('; ')}`)
 
+    // A figure tab changes the image. Only the separate button opens the source.
+    const landing = await context.newPage()
+    await landing.goto(`${origin}/index.html`, { waitUntil: 'load' })
+    const figures = landing.locator('[data-figures]').first()
+    const figureImage = figures.locator('img')
+    const firstFigure = await figureImage.getAttribute('src')
+    const sourceIsOpen = () => landing.locator('#sourceDialog').evaluate((dialog) => dialog.open)
+    await figures.locator('[data-figure]').nth(1).click()
+    assert.notEqual(await figureImage.getAttribute('src'), firstFigure, 'A figure tab must change the image.')
+    assert.equal(await sourceIsOpen(), false, 'A figure tab must not open the source.')
+    await figures.locator('[data-figure-source]').click()
+    assert.equal(await sourceIsOpen(), true, 'The source button must open the source.')
+    await landing.waitForFunction(() => document.querySelector('#sourceDialog code')?.textContent?.includes('presentation'))
+    await landing.close()
+
     console.log(JSON.stringify({
         result: 'PASS',
         checks: [
@@ -790,7 +805,7 @@ try {
             'all ten chart chooser examples render distinct image output, with optional chart format literals', 'orthogonal routing control',
             'share link and copied source', 'project save/open with canvas, palette, background, and theme source metadata',
             'syntax error recovery', 'animation scrub changes PNG output', 'GIF89a export with custom HSL matte and RGBA theme color',
-            '320px responsive layout',
+            '320px responsive layout', 'landing page figure tabs change the image, and only the source button opens the source',
         ],
     }))
     await context.close()

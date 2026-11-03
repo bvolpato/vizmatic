@@ -1,5 +1,5 @@
-@font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: "Instrument Serif"; src: url("assets/fonts/InstrumentSerif-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("assets/fonts/SourceSerif4-24pt-Regular.woff2") format("woff2"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Source Serif 4"; src: url("assets/fonts/SourceSerif4-24pt-Italic.woff2") format("woff2"); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: Inter; src: url("assets/fonts/Inter-Regular.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: Inter; src: url("assets/fonts/Inter-SemiBold.woff2") format("woff2"); font-weight: 600; font-display: swap; }
 @font-face { font-family: Inter; src: url("assets/fonts/Inter-Bold.woff2") format("woff2"); font-weight: 700 900; font-display: swap; }
@@ -8,7 +8,7 @@
 /* ── Tokens ─────────────────────────────────────────────────────────────── */
 :root {
   color-scheme: dark;
-  --serif: "Instrument Serif", "Iowan Old Style", "Times New Roman", serif;
+  --serif: "Source Serif 4", "Iowan Old Style", "Times New Roman", serif;
   --sans: Inter, ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --page: min(1360px, calc(100vw - clamp(36px, 6.6vw, 112px)));
@@ -133,7 +133,7 @@ vz-film:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .hero-film.is-ready { opacity: 1; }
 .hero-scrim { position: absolute; z-index: -1; inset: auto 0 0 0; height: 62%; background: linear-gradient(to top, var(--bg) 18%, color-mix(in srgb, var(--bg) 70%, transparent) 58%, transparent); pointer-events: none; }
 .hero-copy { width: var(--page); margin: 0 auto; padding: 0 0 clamp(28px, 4vw, 52px); display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; align-items: end; }
-.hero h1 { grid-column: 1 / span 9; font-size: clamp(50px, 8.1vw, 132px); line-height: .96; letter-spacing: -.018em; }
+.hero h1 { grid-column: 1 / span 9; font-size: clamp(44px, 6.1vw, 104px); line-height: 1; letter-spacing: -.018em; }
 .hero h1 em { font-style: italic; }
 .hero-aside { grid-column: 10 / span 3; display: grid; gap: 14px; padding-bottom: .55em; }
 .hero-aside p { color: var(--muted); font-size: 15px; line-height: 1.5; }
@@ -224,6 +224,8 @@ input[type="range"] { accent-color: var(--mark); }
 .figure-tabs button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--mark); }
 .figure-frame img { width: 100%; }
 .figure-caption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; margin-top: 12px; color: var(--muted); font-size: 14px; }
+.figure-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.figure-actions button { padding: 0; border: 0; background: transparent; font-family: inherit; cursor: pointer; }
 
 /* ── Claims ─────────────────────────────────────────────────────────────── */
 .claims { margin: 0; padding: 0; list-style: none; border-bottom: 1px solid var(--border); }
@@ -492,7 +494,7 @@ h3 + .demo.is-paired { padding-top: 0; border-top: 0; margin-top: 16px; }
   .docs { grid-template-columns: 200px minmax(0, 1fr); }
   .docs-toc { display: none; }
   .hero-aside { grid-column: 8 / -1; }
-  .hero h1 { grid-column: 1 / span 7; font-size: clamp(50px, 7vw, 92px); }
+  .hero h1 { grid-column: 1 / span 7; font-size: clamp(44px, 5.2vw, 72px); }
   .scrub-film { grid-column: 1 / -1; }
   .scrub-notes { grid-column: 1 / -1; grid-row: 3; min-height: 112px; align-self: start; padding-top: 12px; }
   .scrub-notes h3 { font-size: 22px; margin-bottom: 4px; }
@@ -540,7 +542,7 @@ h3 + .demo.is-paired { padding-top: 0; border-top: 0; margin-top: 16px; }
   .hero { min-height: calc(100svh - 57px); }
   .hero-film { top: 30%; width: min(170%, 660px); }
   .hero-copy { display: block; }
-  .hero h1 { font-size: clamp(46px, 13.2vw, 72px); }
+  .hero h1 { font-size: clamp(40px, 10.6vw, 60px); }
   .hero-aside { margin-top: 18px; }
   .hero-strap { flex-direction: column; gap: 2px; }
   .scrub { height: 560vh; }

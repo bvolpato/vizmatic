@@ -1085,7 +1085,7 @@
       const buttons = $$('[data-figure]', root)
       const image = $('img', root)
       const caption = $('[data-figure-caption]', root)
-      const size = $('[data-figure-size]', root)
+      const sourceButton = $('[data-figure-source]', root)
       buttons.forEach((button) => button.addEventListener('click', () => {
         buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)))
         const theme = document.documentElement.dataset.siteTheme === 'light' ? 'light' : 'dark'
@@ -1093,7 +1093,7 @@
         image.src = `${image.dataset.themeImageBase}_${theme}.png`
         image.alt = button.dataset.alt ?? ''
         if (caption) caption.textContent = button.dataset.caption ?? ''
-        if (size) size.textContent = button.dataset.source ?? ''
+        if (sourceButton) sourceButton.dataset.source = button.dataset.figure
       }))
     })
   }

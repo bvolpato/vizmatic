@@ -97,7 +97,7 @@ export default film({
     const BAND_Y = -402
     const plate = rect(1920, 208, { fill: 'bg', stroke: null }).at(0, -436).zIndex(4)
     const plateEdge = line([-960, -332], [960, -332], { stroke: 'grid', width: 1.2 }).zIndex(4)
-    const title = text('Sine, from what it does at zero.', { font: 'serif', size: 60 }).zIndex(5)
+    const title = text('Sine, from what it does at zero.', { font: 'text-serif', size: 60 }).zIndex(5)
     title.alignTo([-888, 0], 'left').alignTo([0, -522], 'top')
     const eqAt = (order: number) => {
         const eq = tex(source(order), { size: 42 })
@@ -122,7 +122,7 @@ export default film({
         return node
     }).zIndex(5)
 
-    const closing = text('The polynomial only ever looked at one point. It learned the whole wave.', { font: 'serif', italic: true, size: 44, color: 'ink' }).zIndex(5)
+    const closing = text('The polynomial only ever looked at one point. It learned the whole wave.', { font: 'text-serif', italic: true, size: 44, color: 'ink' }).zIndex(5)
     closing.moveTo([0, 470])
     const closingPlate = rect(1340, 84, { fill: 'bg', stroke: null, radius: 6 }).at(0, 470).zIndex(4)
 

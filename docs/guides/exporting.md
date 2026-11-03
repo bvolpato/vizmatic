@@ -72,7 +72,7 @@ import { compileFilm, film, text, write } from 'vizmatic/stage'
 import { renderFilmFrame, renderFilmVideo } from 'vizmatic/stage/export'
 
 const intro = film((s) => {
-    s.play(write(s.add(text('Hello', { font: 'serif', size: 200 }))))
+    s.play(write(s.add(text('Hello', { font: 'text-serif', size: 200 }))))
 })
 
 export async function render(): Promise<void> {

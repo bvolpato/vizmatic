@@ -73,7 +73,7 @@ ${page.image ? '' : `  <meta property="og:image:width" content="1200">
       root.classList.add('js')
     })()
   </script>
-  <link rel="preload" href="${root}assets/fonts/InstrumentSerif-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="${root}assets/fonts/SourceSerif4-24pt-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="${root}assets/fonts/Inter-Regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="${root}style.css">${TOOL_PAGES.has(file) ? `\n  <link rel="stylesheet" href="${root}explorer.css">` : ''}
   <script type="module" src="${root}site.js"></script>`

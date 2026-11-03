@@ -27,7 +27,7 @@ export default film({
     fps: 60,
     look: 'paper',
 }, (s) => {
-    const heading = (content: string) => place(text(content, { font: 'serif', size: 72 }), LEFT, -370)
+    const heading = (content: string) => place(text(content, { font: 'text-serif', size: 72 }), LEFT, -370)
     const kicker = (content: string) => place(text(content, { size: 20, color: 'dim', uppercase: true, tracking: 0.1, weight: 600 }), LEFT, -446)
     const pageNumber = s.value(2)
     const pageMark = dynamic(() => {
@@ -41,7 +41,7 @@ export default film({
 
     s.chapter('Title')
     const lead = place(text('Engineering review', { size: 24, color: 'dim', uppercase: true, tracking: 0.1, weight: 600 }), LEFT, -220)
-    const big = text('Drawing a frame should not mean laying out a page.', { font: 'serif', size: 116, maxWidth: 1400, leading: 1.02 })
+    const big = text('Drawing a frame should not mean laying out a page.', { font: 'text-serif', size: 116, maxWidth: 1400, leading: 1.02 })
     big.alignTo([LEFT, 0], 'left').alignTo([0, -170], 'top')
     const underline = line([LEFT, 220], [LEFT + 340, 220], { stroke: 'teal', width: 5 })
     s.play(fadeIn(lead, { shift: [0, 10] }), write(big), { duration: 2.2 })
@@ -170,7 +170,7 @@ export default film({
     const factNodes = facts.map(([value, note], i) => {
         const x = LEFT + i * 560
         return new Node().add(
-            place(text(value, { font: 'serif', size: 86, color: 'ink' }), x, 150),
+            place(text(value, { font: 'text-serif', size: 86, color: 'ink' }), x, 150),
             place(text(note, { size: 26, color: 'dim' }), x, 226),
         )
     })
@@ -198,7 +198,7 @@ export default film({
         const x = LEFT + i * 560
         return new Node().add(
             line([x, -68], [x + 510, -68], { stroke: color, width: 4 }),
-            place(text(name, { font: 'serif', size: 62 }), x, -16),
+            place(text(name, { font: 'text-serif', size: 62 }), x, -16),
             (() => {
                 const paragraph = text(body, { size: 30, color: 'dim', maxWidth: 500, leading: 1.4 })
                 paragraph.alignTo([x, 0], 'left').alignTo([0, 44], 'top')
@@ -214,7 +214,7 @@ export default film({
 
     s.chapter('Next')
     s.play(fadeOut([k5, h5, eq, ...cards], { shift: [0, -24] }), { duration: 0.6 })
-    const closing = text('Ship the film, not a screenshot.', { font: 'serif', size: 124, maxWidth: 1660, leading: 1.02 })
+    const closing = text('Ship the film, not a screenshot.', { font: 'text-serif', size: 124, maxWidth: 1660, leading: 1.02 })
     closing.alignTo([LEFT, 0], 'left').alignTo([0, -190], 'top')
     const contact = place(text('This deck is one TypeScript file. Press the right arrow to step through it.', { size: 32, color: 'dim' }), LEFT, 210)
     pageNumber.set(6)

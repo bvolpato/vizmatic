@@ -144,7 +144,7 @@ export default film({
     const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
     const column = rect(960 - COLUMN + 70, 1080, { fill: 'bg', stroke: null }).at((COLUMN - 70 + 960) / 2, 0).zIndex(5)
 
-    const title = place(text('The rules are exact. The future is not.', { font: 'serif', size: 58, maxWidth: 410, leading: 1.08 }), -490)
+    const title = place(text('The rules are exact. The future is not.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
     const equations = place(tex('\\begin{aligned} \\dot{x} &= \\sigma (y - x) \\\\ \\dot{y} &= x (\\rho - z) - y \\\\ \\dot{z} &= x y - \\beta z \\end{aligned}', { size: 36 }), -348)
     const constants = place(tex('\\sigma = 10, \\quad \\rho = 28, \\quad \\beta = 8/3', { size: 26, color: 'dim' }), -196)
     const timeLabel = label('Model time', -128)

@@ -3,7 +3,7 @@ import { axes, colorAlong, dot, draw, dynamic, fadeIn, film, line, tex, text, to
 // One idea, shown as it changes: a secant line becomes a tangent.
 export default film({ title: 'A limit you can see' }, (s) => {
     s.chapter('The curve')
-    const title = s.add(text('A limit you can see', { font: 'serif', size: 72 }).at(0, -440))
+    const title = s.add(text('A limit you can see', { font: 'text-serif', size: 72 }).at(0, -440))
     s.play(write(title))
 
     const plot = s.add(axes({ x: [-1, 4], y: [-1, 9], width: 1080, height: 660, grid: true, xLabel: 'x' }).at(-340, 60))

@@ -64,7 +64,7 @@ Use `FilmPlayer` on your own canvas when you want your own controls.
 import { compileFilm, FilmPlayer, film, text, write } from 'vizmatic/stage/browser'
 
 const intro = film((s) => {
-    s.play(write(s.add(text('Hello', { font: 'serif', size: 200 }))))
+    s.play(write(s.add(text('Hello', { font: 'text-serif', size: 200 }))))
 })
 
 export async function mount(canvas: HTMLCanvasElement): Promise<FilmPlayer> {

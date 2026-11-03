@@ -39,7 +39,7 @@ await Promise.all([
     ...(await readdir('assets/licenses')).map((name) => copyFile('assets/licenses/' + name, 'docs/assets/licenses/' + name)),
 ])
 await mkdir('docs/assets/fonts', { recursive: true })
-await Promise.all(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2', 'InstrumentSerif-Regular.woff2', 'InstrumentSerif-Italic.woff2']
+await Promise.all(['Inter-Regular.woff2', 'Inter-SemiBold.woff2', 'Inter-Bold.woff2', 'JetBrainsMono-Regular.woff2', 'SourceSerif4-24pt-Regular.woff2', 'SourceSerif4-24pt-Italic.woff2']
     .map((name) => copyFile('assets/site-fonts/' + name, 'docs/assets/fonts/' + name)))
 await buildLogo()
 

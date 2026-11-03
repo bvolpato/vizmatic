@@ -41,7 +41,7 @@ export default film({
     const labelC = tex('c', { size: 44, color: 'pink', display: false }).moveTo([heroAt(A / 2, B / 2)[0] + 28, heroAt(A / 2, B / 2)[1] + 22])
     const corner = shape(polyPath([heroAt(0.3, 0), heroAt(0.3, 0.3), heroAt(0, 0.3)]), { stroke: 'ink', width: 2 })
 
-    const title = text('Move the pieces. Keep the square.', { font: 'serif', size: 66 })
+    const title = text('Move the pieces. Keep the square.', { font: 'text-serif', size: 66 })
     title.moveTo([0, -462])
 
     // Each triangle is rigid: placed by its own origin and rotation, moved only by translation.
@@ -86,8 +86,8 @@ export default film({
     const bSquared = tex('b^2', { size: 64, color: 'teal' }).moveTo(at(RIGHT_X, B / 2, B / 2))
     const aSquared = tex('a^2', { size: 52, color: 'orange' }).moveTo(at(RIGHT_X, B + A / 2, B + A / 2))
 
-    const sameLeft = text('Same square', { font: 'serif', italic: true, size: 38, color: 'dim' }).moveTo([0, CY - 28])
-    const sameRight = text('Same four triangles', { font: 'serif', italic: true, size: 38, color: 'dim' }).moveTo([0, CY + 28])
+    const sameLeft = text('Same square', { font: 'text-serif', italic: true, size: 38, color: 'dim' }).moveTo([0, CY - 28])
+    const sameRight = text('Same four triangles', { font: 'text-serif', italic: true, size: 38, color: 'dim' }).moveTo([0, CY + 28])
 
     const equation = tex('c^2 = a^2 + b^2', { size: 96 }).moveTo([0, 448])
     for (const glyph of equation.part('c^2')) glyph.fill('yellow')

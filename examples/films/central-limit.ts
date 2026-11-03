@@ -198,7 +198,7 @@ export default film({
         return node
     }
     const label = (content: string, top: number) => place(text(content, { size: 19, color: 'dim', uppercase: true, tracking: 0.08, weight: 600 }), top)
-    const title = place(text('Twelve coin flips. Nine hundred times.', { font: 'serif', size: 58, maxWidth: 410, leading: 1.08 }), -490)
+    const title = place(text('Twelve coin flips. Nine hundred times.', { font: 'text-serif', size: 46, maxWidth: 440, leading: 1.08 }), -490)
 
     const flipLabel = label('First ball, bounce by bounce', -340)
     const flipRead = dynamic(() => {
