@@ -6,9 +6,10 @@ import { join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { decode } from 'fast-png'
 import { film, line, text, write } from '../src/stage/index'
-import { planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
+import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
+import { renderRgbaVideo } from '../src/video'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
 const tempDirs: string[] = []
@@ -82,6 +83,28 @@ describe('film export', () => {
         // A static hold at the end costs nothing, so far fewer bytes than ten full frames.
         expect(bytes.length).toBeLessThan(240 * 135 * 2)
     })
+
+    it.skipIf(!hasFfmpeg)('stays at H.264 level 4.2 at 1080p60, and a clip with the film settings shares its decoder settings', async () => {
+        const directory = await tempDirectory()
+        const clip = film({ fps: 60 }, (s) => {
+            s.add(text('Same settings', { size: 120 }))
+            s.wait(0.2)
+        })
+        const movie = await renderFilmVideo(clip, join(directory, 'film.mp4'), { quality: 'high', workers: 2, motionBlur: 1 })
+        const other = await renderRgbaVideo(() => Buffer.alloc(1920 * 1080 * 4, 40), {
+            width: 1920, height: 1080, fps: 60, duration: 200, outputPath: join(directory, 'other.mp4'), ...filmEncoderSettings('high'),
+        })
+        const level = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=level,profile', '-of', 'json', movie.outputPath], { encoding: 'utf8' })
+        expect(JSON.parse(level.stdout).streams[0].level).toBeLessThanOrEqual(42)
+        // QuickTime reads one set of these from the start of a file and stops at a clip that differs.
+        const settings = (path: string) => spawnSync('ffmpeg', ['-hide_banner', '-i', path, '-map', '0:v:0', '-c', 'copy', '-bsf:v', 'trace_headers', '-f', 'null', '-'], { encoding: 'utf8' }).stderr
+            .split('\n')
+            .filter((row) => /level_idc|max_num_ref_frames|log2_max_frame_num|pic_init_qp|max_dec_frame_buffering/.test(row))
+            .map((row) => row.replace(/^.*\] +\d+ +/, '').replace(/\s+/g, ' '))
+        const expected = settings(movie.outputPath)
+        expect(expected.length).toBeGreaterThan(0)
+        expect(settings(other.outputPath)).toEqual(expected)
+    }, 120_000)
 
     it.skipIf(!hasFfmpeg)('tags MP4 output BT.709 and keeps colors after decoding', async () => {
         const directory = await tempDirectory()

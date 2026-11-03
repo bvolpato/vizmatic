@@ -1213,6 +1213,8 @@ MP4 export needs FFmpeg with `libx264`. WebM also needs `libvpx-vp9`. The CLI wr
 
 Motion blur averages real sub-frames across the shutter, so it costs one render for each sample. `--motion-blur` and `--shutter` set these directly.
 
+MP4 files stay at H.264 level 4.2 at 1080p60, so they play in QuickTime, Quick Look, and on Apple devices. To join another clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`. QuickTime reads one set of decoder settings from the start of a file, and it stops at a clip that uses different ones.
+
 ## Resolution
 
 A film is authored in stage units, so `--width` changes only the pixel count. MP4 and WebM need even dimensions, so the export rounds an odd width or height up to the next even number.

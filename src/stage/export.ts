@@ -167,6 +167,17 @@ function frameStream(
 }
 
 /** Encode a film to H.264 MP4 or VP9 WebM. Frames rasterize in parallel and encode in order. */
+/**
+ * The H.264 settings that a film uses at a quality. Use them for any clip you join to a film
+ * without encoding it again. Players such as QuickTime read one set of decoder settings from
+ * the start of a file, and they stop decoding at a clip that uses different ones.
+ */
+export function filmEncoderSettings(quality: Quality = 'standard'): { crf: number; preset: string; tune: 'animation' } {
+    const settings = QUALITY[quality]
+    if (!settings) throw new Error(`Unknown quality: ${quality}. Use draft, standard, high, or master.`)
+    return { crf: settings.crf, preset: settings.preset, tune: 'animation' }
+}
+
 export async function renderFilmVideo(
     film: FilmDefinition | CompiledFilm,
     outputPath: string,
@@ -192,7 +203,7 @@ export async function renderFilmVideo(
             crf: codec === 'vp9' ? quality.vp9Crf : quality.crf,
             preset: quality.preset,
             // Flat color and fine lines keep their edges better with this tuning.
-            tune: codec === 'h264' ? 'animation' : undefined,
+            tune: codec === 'h264' ? filmEncoderSettings(options.quality).tune : undefined,
             threads: options.threads ?? 6,
             audioPath: options.audioPath,
             audioOffset: from > 0 ? from : undefined,

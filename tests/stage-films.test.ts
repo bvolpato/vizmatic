@@ -28,6 +28,24 @@ it.each(catalog.map((entry) => [entry.id, entry] as const))('%s compiles and mat
     expect(film.frame(entry.posterTime).ops.length).toBeGreaterThan(0)
 }, 60_000)
 
+it('moves the Fourier camera smoothly while it follows the chain', async () => {
+    const film = await compileFilm(await load('fourier-epicycles'))
+    const camera = film.stage.camera
+    const steps: number[] = []
+    let last: [number, number] | null = null
+    // The close-up, where the camera is zoomed in 9 times and any jump shows as shaking.
+    for (let frame = 0; frame < 120; frame++) {
+        film.frame(34 + frame / 60)
+        const here: [number, number] = [camera.get('x') as number, camera.get('y') as number]
+        if (last) steps.push(Math.hypot(here[0] - last[0], here[1] - last[1]) * (camera.get('sx') as number))
+        last = here
+    }
+    expect(Math.max(...steps)).toBeGreaterThan(0)
+    let largestChange = 0
+    for (let i = 1; i < steps.length; i++) largestChange = Math.max(largestChange, Math.abs(steps[i]! - steps[i - 1]!))
+    expect(largestChange).toBeLessThan(4)
+}, 60_000)
+
 it('closes the title loop: its last moment matches its first', async () => {
     const film = await compileFilm(await load('vizmatic-title'))
     const numbers = (svg: string) => (svg.match(/-?\d+\.?\d*/g) ?? []).map(Number)
