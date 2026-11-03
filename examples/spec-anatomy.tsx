@@ -3,7 +3,7 @@ height = 680;
 
 <Scene title="Scene spec anatomy" subtitle="strong defaults with escape hatches" gap={18}>
     <Row gap={18} align="stretch">
-        <Panel title="Spec fields" tone="purple" width={420} align="center" justify="center">
+        <Panel title="Spec fields" width={420} align="center" justify="center">
             <DataTable
                 firstColWidth={110}
                 cellWidth={210}
@@ -18,13 +18,13 @@ height = 680;
                 ]}
             />
         </Panel>
-        <Panel title="Render path" tone="cyan" width={520}>
+        <Panel title="Render path" width={520}>
             <Flow
                 direction="vertical"
                 stages={[
-                    { title: 'Validate', subtitle: 'typed module or schema', tone: 'blue', width: 430 },
-                    { title: 'Compose', subtitle: 'React primitive tree', tone: 'purple', width: 430 },
-                    { title: 'Render', subtitle: 'Satori + resvg', tone: 'cyan', width: 430 },
+                    { title: 'Validate', subtitle: 'typed module or schema', width: 430 },
+                    { title: 'Compose', subtitle: 'React primitive tree', width: 430 },
+                    { title: 'Render', subtitle: 'Satori + resvg', width: 430 },
                     { title: 'Verify', subtitle: 'crop, contrast, overflow', tone: 'green', width: 430 },
                 ]}
             />

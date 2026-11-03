@@ -4,6 +4,7 @@ import {
     type ColorName,
     getReadableColor,
     withColorAlpha,
+    densityOf,
 } from '../theme'
 
 import { clamp } from './layout'
@@ -168,7 +169,7 @@ export function ScatterPlot({
                     width: placement.width,
                     bounds: placement.bounds,
                     color,
-                    fontWeight: 800,
+                    fontWeight: 600,
                 })]
             }),
         )
@@ -439,8 +440,8 @@ export function ParetoChart({
                 align: 'right',
                 width: 170,
                 color: frontier,
-                fontWeight: 850,
-                fontSize: 11,
+                fontWeight: 600,
+                fontSize: densityOf(c).f(11),
                 bounds: { x: plot.x, y: plot.y, width: plot.innerWidth, height: plot.innerHeight, padding: 4 },
             }),
             xAxisLabel && chartLabel('pareto-x-axis-label', xAxisLabel, plot.x + plot.innerWidth / 2, height - 8, c, {
@@ -677,13 +678,13 @@ export function QuadrantChart({
                         width: Math.max(1, regionWidth - 24),
                         color,
                         fontFamily: 'Inter',
-                        fontWeight: 900,
-                        fontSize: 11,
+                        fontWeight: 600,
+                        fontSize: densityOf(c).f(11),
                     }),
                     ...(region.detail ? [chartLabel(`quadrant-detail-${key}`, region.detail, x + regionWidth / 2, y + 34, c, {
                         width: Math.max(1, regionWidth - 24),
                         color: c.textMuted,
-                        fontSize: 11,
+                        fontSize: densityOf(c).f(11),
                     })] : []),
                 ]
             }),
@@ -707,8 +708,8 @@ export function QuadrantChart({
                     bounds: placement.bounds,
                     color,
                     fontFamily: 'Inter',
-                    fontWeight: 850,
-                    fontSize: 11,
+                    fontWeight: 600,
+                    fontSize: densityOf(c).f(11),
                 })]
             }),
             xAxisLabel && chartLabel('quadrant-x-axis-label', xAxisLabel, plot.x + plot.innerWidth / 2, height - 8, c, {
@@ -823,14 +824,14 @@ export function IntervalPlot({
                     width: 84,
                     color: c.textPrimary,
                     fontFamily: 'Inter',
-                    fontWeight: 900,
+                    fontWeight: 600,
                 }),
                 chartLabel(`interval-low-${index}`, item.lowLabel ?? formatChartValue(item.low, format), lowX, y + 25, c, { width: 48, bounds: { x: plot.x, y: 0, width: plot.innerWidth, height } }),
                 chartLabel(`interval-mid-${index}`, item.midLabel ?? formatChartValue(item.mid, format), midX, y - 16, c, {
                     width: 48,
                     bounds: { x: plot.x, y: 0, width: plot.innerWidth, height },
                     color: c.textPrimary,
-                    fontWeight: 900,
+                    fontWeight: 600,
                 }),
                 chartLabel(`interval-high-${index}`, item.highLabel ?? formatChartValue(item.high, format), highX, y + 25, c, { width: 48, bounds: { x: plot.x, y: 0, width: plot.innerWidth, height } }),
             ]),
@@ -856,8 +857,8 @@ export function Badge({ label, c, color = 'primary' }: BadgeProps): React.ReactE
             backgroundColor: withColorAlpha(solidColor, 0x20 / 0xff),
             color: solidColor,
             borderRadius: 999,
-            padding: '4px 12px',
-            fontSize: 11,
+            padding: `${densityOf(c).s(4)}px ${densityOf(c).s(12)}px`,
+            fontSize: densityOf(c).f(11),
             fontWeight: 600,
             fontFamily: 'Inter',
             border: `1px solid ${withColorAlpha(solidColor, 0x40 / 0xff)}`,
@@ -904,7 +905,7 @@ export function DotPoint({ x, y, label, color, c, size = 12, labelOffset }: DotP
                 position: 'absolute' as const,
                 left: x + offX - 30,
                 top: y + offY,
-                fontSize: 13,
+                fontSize: densityOf(c).f(13),
                 fontWeight: 600,
                 color: c.textPrimary,
                 fontFamily: 'JetBrains Mono',
@@ -976,16 +977,16 @@ export function Legend({ items, c, title }: LegendProps): React.ReactElement {
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            gap: 10,
+            gap: densityOf(c).s(10),
             backgroundColor: c.bgCard,
-            borderRadius: 8,
+            borderRadius: densityOf(c).r(8),
             border: `1px solid ${c.borderSubtle}`,
-            padding: '14px 16px',
+            padding: `${densityOf(c).s(14)}px ${densityOf(c).s(16)}px`,
         }
     },
         title && React.createElement('div', {
             style: {
-                fontSize: 11,
+                fontSize: densityOf(c).f(11),
                 fontWeight: 700,
                 color: c.textSecondary,
                 textTransform: 'uppercase' as const,
@@ -1011,7 +1012,7 @@ export function Legend({ items, c, title }: LegendProps): React.ReactElement {
                 }),
                 React.createElement('div', {
                     style: {
-                        fontSize: 11,
+                        fontSize: densityOf(c).f(11),
                         color: c.textMuted,
                         fontFamily: 'Inter',
                     }

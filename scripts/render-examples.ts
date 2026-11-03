@@ -90,7 +90,8 @@ for (const file of files) {
         themes.join(','),
     ]
     if (name.startsWith('nccl-')) renderArgs.push('--no-crop')
-    if (name !== 'vizmatic-hero') renderArgs.push('--watermark', 'Vizmatic')
+    // Gallery images stay opaque, so they read on any page. The two exceptions show transparency itself.
+    if (name !== 'transparent-badge') renderArgs.push('--background', 'theme')
 
     const shouldRender = !selected || selected.has(name)
     if (shouldRender) {

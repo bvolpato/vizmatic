@@ -22,8 +22,8 @@ height = 650;
             title="Render workflow"
             width={330}
             events={[
-                { time: 'draft', title: 'Choose primitives', detail: 'match components to content', tone: 'blue' },
-                { time: 'render', title: 'Export both themes', detail: 'create dark and light files', tone: 'purple' },
+                { time: 'draft', title: 'Choose primitives', detail: 'match components to content' },
+                { time: 'render', title: 'Export both themes', detail: 'create dark and light files' },
                 { time: 'review', title: 'Inspect output', detail: 'check layout and contrast', tone: 'green' },
             ]}
         />
@@ -35,11 +35,10 @@ height = 650;
             root={{
                 label: 'Scene',
                 detail: 'root',
-                tone: 'purple',
                 children: [
                     { label: 'Metrics', detail: 'Donut', tone: 'green' },
-                    { label: 'Flow', detail: 'Timeline', tone: 'blue' },
-                    { label: 'Org', detail: 'Tree', tone: 'cyan' },
+                    { label: 'Flow', detail: 'Timeline' },
+                    { label: 'Org', detail: 'Tree' },
                 ],
             }}
         />
@@ -54,18 +53,18 @@ height = 650;
                 </Column>
             </Row>
         </CalloutCard>
-        <CalloutCard tone="purple" filled={false} width={250} align="left">
+        <CalloutCard filled={false} width={250} align="left">
             <Row gap={10} justify="start" width="100%">
-                <Icon name="layers" tone="purple" size={28} />
+                <Icon name="layers" size={28} />
                 <Column gap={2} align="start">
                     <TextLabel text="Show sequence" variant="small" color={c.textPrimary} />
                     <TextLabel text="Timeline" variant="tiny" mono color={c.textMuted} />
                 </Column>
             </Row>
         </CalloutCard>
-        <CalloutCard tone="cyan" filled={false} width={250} align="left">
+        <CalloutCard filled={false} width={250} align="left">
             <Row gap={10} justify="start" width="100%">
-                <Icon name="git" tone="cyan" size={28} />
+                <Icon name="git" size={28} />
                 <Column gap={2} align="start">
                     <TextLabel text="Explain structure" variant="small" color={c.textPrimary} />
                     <TextLabel text="TreeDiagram" variant="tiny" mono color={c.textMuted} />

@@ -28,7 +28,6 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 title="LayeredNetwork"
                 subtitle="dense layers, active route, and annotations without coordinate code"
-                tone="purple"
                 width="100%"
                 padding={14}
                 align="center"
@@ -39,9 +38,9 @@ export function create(theme: ThemeMode = 'dark') {
                     height={218}
                     nodeSize={34}
                     layers={[
-                        { title: 'Signal', nodes: ['x₁', 'x₂', 'x₃'], tone: 'blue' },
-                        { title: 'Encode', nodes: ['h₁', 'h₂', 'h₃'], tone: 'purple' },
-                        { title: 'Route', nodes: ['r₁', 'r₂'], tone: 'cyan' },
+                        { title: 'Signal', nodes: ['x₁', 'x₂', 'x₃'] },
+                        { title: 'Encode', nodes: ['h₁', 'h₂', 'h₃'] },
+                        { title: 'Route', nodes: ['r₁', 'r₂'] },
                         { title: 'Output', nodes: ['ŷ'], tone: 'green' },
                     ]}
                     activePath={[1, 1, 0, 0]}
@@ -56,7 +55,6 @@ export function create(theme: ThemeMode = 'dark') {
                     c={c}
                     title="GraphDiagram"
                     subtitle="automatic layout, nested boundary, technical icons, and typed edges"
-                    tone="cyan"
                     width={514}
                     padding={14}
                     align="center"
@@ -78,18 +76,18 @@ export function create(theme: ThemeMode = 'dark') {
                         detailFontSize={11}
                         iconSize={14}
                         groups={[
-                            { id: 'runtime', label: 'Runtime', tone: 'cyan' },
+                            { id: 'runtime', label: 'Runtime' },
                         ]}
                         nodes={[
-                            { id: 'brief', label: 'Brief', icon: 'file', group: 'runtime', tone: 'blue' },
-                            { id: 'plan', label: 'Plan', icon: 'layers', group: 'runtime', tone: 'purple' },
-                            { id: 'check', label: 'Check', icon: 'monitor', group: 'runtime', tone: 'cyan' },
+                            { id: 'brief', label: 'Brief', icon: 'file', group: 'runtime' },
+                            { id: 'plan', label: 'Plan', icon: 'layers', group: 'runtime' },
+                            { id: 'check', label: 'Check', icon: 'monitor', group: 'runtime' },
                             { id: 'asset', label: 'Asset', icon: 'storage', group: 'runtime', tone: 'green' },
                         ]}
                         edges={[
-                            { from: 'brief', to: 'plan', kind: 'sync', tone: 'blue' },
-                            { from: 'plan', to: 'check', kind: 'event', tone: 'purple' },
-                            { from: 'check', to: 'asset', kind: 'data', tone: 'green' },
+                            { from: 'brief', to: 'plan', kind: 'sync' },
+                            { from: 'plan', to: 'check', kind: 'event' },
+                            { from: 'check', to: 'asset', kind: 'data' },
                         ]}
                     />
                 </Panel>
@@ -119,10 +117,9 @@ export function create(theme: ThemeMode = 'dark') {
                                 {
                                     label: 'Visual',
                                     detail: 'composition',
-                                    tone: 'blue',
                                     children: [
-                                        { label: 'Diagram', detail: 'structure', tone: 'purple' },
-                                        { label: 'Chart', detail: 'evidence', tone: 'cyan' },
+                                        { label: 'Diagram', detail: 'structure' },
+                                        { label: 'Chart', detail: 'evidence' },
                                     ],
                                 },
                                 {
@@ -130,7 +127,7 @@ export function create(theme: ThemeMode = 'dark') {
                                     detail: 'validation',
                                     tone: 'warm',
                                     children: [
-                                        { label: 'Dark', detail: 'contrast', tone: 'purple' },
+                                        { label: 'Dark', detail: 'contrast' },
                                         { label: 'Light', detail: 'clarity', tone: 'green' },
                                     ],
                                 },

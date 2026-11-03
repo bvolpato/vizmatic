@@ -3,6 +3,7 @@ export {
     Canvas,
     TitleBar,
     Scene,
+    scopeDensity,
     Row,
     Column,
     ToneStrip,
@@ -27,6 +28,7 @@ export {
     StepCard,
     MetricCard,
 } from './primitives/surfaces'
+export * from './primitives/dense'
 export * from './primitives/content'
 export * from './primitives/flows'
 export * from './primitives/diagrams'

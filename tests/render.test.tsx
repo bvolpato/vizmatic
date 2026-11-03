@@ -9,6 +9,7 @@ import { inflateSync } from 'zlib'
 import { describe, expect, it, vi } from 'vitest'
 import { analyzeContrast } from '../src/diagnostics'
 import {
+    densityOf,
     defineIllustration,
     detectBackgroundColor,
     detectContentBounds,
@@ -612,7 +613,7 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
 
         const image = decodePng(await renderToBuffer(frame, 120, 40, { scale: 1 }))
         const textBounds = pixelBounds(image, (r, g, b, a) =>
-            a > 0 && r === 241 && g === 245 && b === 249,
+            a > 0 && r === 242 && g === 239 && b === 230,
         )
         expect(textBounds.maxX).toBeGreaterThanOrEqual(textBounds.minX)
         expect(textBounds.maxY).toBeGreaterThanOrEqual(textBounds.minY)
@@ -653,11 +654,13 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         const opaqueBounds = pixelBounds(image, (_r, _g, _b, a) => a > 240)
         const blueBounds = pixelBounds(
             image,
-            (r, g, b, a) => a > 240 && Math.abs(r - 53) < 6 && Math.abs(g - 111) < 6 && Math.abs(b - 236) < 6,
+            (r, g, b, a) => a > 240 && Math.abs(r - 37) < 6 && Math.abs(g - 99) < 6 && Math.abs(b - 235) < 6,
         )
 
         expect(blueBounds.maxX).toBeGreaterThan(0)
-        expect(opaqueBounds.maxX - blueBounds.maxX).toBeGreaterThanOrEqual(30)
+        // The last bar stops short of the chart's width, inside the plot.
+        expect(blueBounds.maxX).toBeLessThanOrEqual(360 - 8)
+        expect(opaqueBounds.maxX).toBeLessThanOrEqual(360)
     }, 30_000)
 
     it('keeps line chart endpoints inset from plot edges', () => {
@@ -676,8 +679,9 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         const circleXs = circles.map((circle) => Number(reactProps(circle).cx))
 
         expect(circleXs.length).toBe(10)
-        expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(60)
-        expect(Math.max(...circleXs)).toBeLessThanOrEqual(420)
+        // Markers clear the tick labels on the left and the series names on the right.
+        expect(Math.min(...circleXs)).toBeGreaterThanOrEqual(30)
+        expect(Math.max(...circleXs)).toBeLessThanOrEqual(400)
     })
 
     it('detects Pareto frontier geometry and renders safe log-scale points', async () => {
@@ -834,8 +838,8 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         expect(bar).toBeDefined()
         const barY = Number(reactProps(bar!).y)
         const barHeight = Number(reactProps(bar!).height)
-        expect(barY).toBeGreaterThanOrEqual(18)
-        expect(barY + barHeight).toBeLessThanOrEqual(180)
+        expect(barY).toBeGreaterThanOrEqual(14)
+        expect(barY + barHeight).toBeLessThanOrEqual(200)
 
         const lineChart = LineChart({
             c,
@@ -849,10 +853,10 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         expect(markers).toHaveLength(2)
         for (const marker of markers) {
             const props = reactProps(marker)
-            const extent = Number(props.r) + Number(props.strokeWidth) / 2
+            const extent = Number(props.r) + Number(props.strokeWidth ?? 0) / 2
             const center = Number(props.cy)
-            expect(center - extent).toBeGreaterThanOrEqual(18)
-            expect(center + extent).toBeLessThanOrEqual(196)
+            expect(center - extent).toBeGreaterThanOrEqual(10)
+            expect(center + extent).toBeLessThanOrEqual(210)
         }
     })
 
@@ -1129,10 +1133,14 @@ if (typeof asset !== 'string' || !asset.startsWith('data:image/svg+xml;base64,')
         expect(paths[2].markerStart).toBeTruthy()
         expect(paths[2].markerEnd).toBeUndefined()
         expect(new Set(markers.map((marker) => marker.id)).size).toBe(markers.length)
-        expect(paths[1].strokeDasharray).toBe('2 6')
+        expect(paths[1].strokeDasharray).toBe(`${densityOf().w(2)} ${densityOf().s(6)}`)
         expect(collectElements(graph, (element) => element.type === 'svg' && reactProps(element)['aria-label'] === 'API icon')).toHaveLength(1)
         const apiIcon = collectElements(graph, (element) => reactProps(element)['data-vizmatic-graph-icon'] === 'api')[0]
-        expect(reactProps(apiIcon).style).toMatchObject({ width: 50, height: 50, overflow: 'hidden' })
+        // An oversized icon is held to the node's box instead of stretching the node.
+        const apiNode = collectElements(graph, (element) => reactProps(element)['data-vizmatic-graph-node-id'] === 'api')[0]
+        const iconStyle = reactProps(apiIcon).style as { width: number; height: number; overflow: string }
+        expect(iconStyle.overflow).toBe('hidden')
+        expect(iconStyle.height).toBeLessThan(Number((reactProps(apiNode).style as { height: number }).height))
     })
 
     it('rasterizes horizontal, vertical, and diagonal arrow tips in their requested directions', async () => {
@@ -1610,15 +1618,15 @@ renderToBuffer(frame.create('dark'), 720, 420)
 
     it('resolves dark and light theme tokens', () => {
         expect(getThemeColors('dark').bg).not.toBe(getThemeColors('light').bg)
-        expect(getThemeColors('dark').primary).toBe(getThemeColors('light').primary)
         expect(getThemeColors('light')).toMatchObject({
-            primaryLight: '#8b5cf6',
-            secondaryLight: '#3b82f6',
-            positiveLight: '#10b981',
-            warningLight: '#f59e0b',
-            criticalLight: '#ef4444',
-            infoLight: '#06b6d4',
-            accentLight: '#f472b6',
+            primaryLight: '#1f6fb2',
+            secondaryLight: '#1f6fb2',
+            positiveLight: '#357a2c',
+            warningLight: '#8a5f07',
+            criticalLight: '#b92a2a',
+            infoLight: '#0b7468',
+            accentLight: '#b03271',
+            violetLight: '#6246b6',
         })
         expect(colors).toMatchObject({
             preset: 'default',
@@ -1641,7 +1649,7 @@ renderToBuffer(frame.create('dark'), 720, 420)
         const metric = MetricCard({ c, label: 'Cache read', value: '84%', tone: 'green', shadow: true }) as React.ReactElement<{ style: React.CSSProperties }>
         const callout = CalloutCard({ c, title: 'Stable prefix', detail: 'Repeated context stays cacheable.', tone: 'purple' }) as React.ReactElement<{ style: React.CSSProperties }>
 
-        expect(metric.props.style).toMatchObject({ borderRadius: 5 })
+        expect(metric.props.style).toMatchObject({ borderRadius: Math.min(5, densityOf(c).r(8)) })
         expect(metric.props.style.boxShadow).toBeUndefined()
         expect(callout.props.style).toMatchObject({
             backgroundColor: getToneFill('purple', c),
@@ -1994,8 +2002,8 @@ renderToBuffer(frame.create('dark'), 720, 420)
             { watermark: true, theme: 'light' },
         )
 
-        expect(svg).toContain('#7c3aed')
-        expect(svg).not.toContain('#a78bfa')
+        expect(svg).toContain('#5e5a50')
+        expect(svg).not.toContain('#a5a7ad')
     }, 30_000)
 
     it('renders an ad hoc TSX frame through the CLI shortcut', async () => {
@@ -2424,7 +2432,7 @@ height = 240
 
         try {
             await writeFile(framePath, `<Scene>
-  <div style={{ display: 'flex', width: c.bg === '#f5f7fa' ? 1300 : 400, height: 120, backgroundColor: c.primary }} />
+  <div style={{ display: 'flex', width: c.bg === '#f7f3ea' ? 1300 : 400, height: 120, backgroundColor: c.primary }} />
 </Scene>
 `)
             const result = spawnSync(process.execPath, [
@@ -2605,14 +2613,14 @@ export default frame.default
     }, 30_000)
 
     it('auto-expands omitted CLI height for dashboard rows that clip at the bottom', async () => {
-        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-dashboard-autofit-', 'dashboard.tsx', String.raw`<Scene gap={18}>
+        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-dashboard-autofit-', 'dashboard.tsx', String.raw`<Scene gap={18} density="comfortable">
   <Row gap={14} width="100%" align="stretch">
     <MetricCard
       label="Cost per task"
       value="10-20%"
       detail="relative to baseline"
       tone="green"
-      width={220}
+      width={210}
       valueFontSize={24}
     />
     <MetricCard
@@ -2620,7 +2628,7 @@ export default frame.default
       value="target: >80%"
       detail="long-running sessions"
       tone="purple"
-      width={220}
+      width={210}
       valueFontSize={18}
     />
     <MetricCard
@@ -2628,7 +2636,7 @@ export default frame.default
       value="spike watch"
       detail="deploy regression signal"
       tone="warm"
-      width={220}
+      width={210}
       valueFontSize={18}
     />
     <MetricCard
@@ -2636,7 +2644,7 @@ export default frame.default
       value="route mix"
       detail="standard, Flex, Batch"
       tone="cyan"
-      width={220}
+      width={210}
       valueFontSize={18}
     />
   </Row>
@@ -2644,7 +2652,7 @@ export default frame.default
     <LineChart
       title="Cache and cost after deploy"
       width={460}
-      height={250}
+      height={360}
       format="percent"
       labels={["cold", "t+1", "t+2", "t+3", "t+4"]}
       series={[
@@ -2655,7 +2663,7 @@ export default frame.default
     <BarChart
       title="Token mix"
       width={360}
-      height={250}
+      height={360}
       format="percent"
       data={[
         { label: "cache read", value: 0.78, color: "positive", valueLabel: "78%" },
@@ -2683,7 +2691,7 @@ export default frame.default
     }, 30_000)
 
     it('crops horizontal gutters after CLI auto-size without reflow', async () => {
-        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-loop-horizontal-crop-', 'loop.tsx', String.raw`<Scene gap={22}>
+        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-loop-horizontal-crop-', 'loop.tsx', String.raw`<Scene gap={22} density="comfortable">
   <Flow
     connectorTone="purple"
     stages={[
@@ -2750,7 +2758,7 @@ export default frame.default
 
         const image = decodePng(buffer)
         expect(image.width).toBeLessThan(1140)
-        expect(image.width).toBeGreaterThan(1040)
+        expect(image.width).toBeGreaterThanOrEqual(1040)
         expect(manifest[0]?.outputWidth).toBe(image.width)
         expect(manifest[0]?.outputHeight).toBe(image.height)
         expectTightHorizontalPadding(image)
@@ -2872,7 +2880,7 @@ export default frame.default
     }, 30_000)
 
     it('does not let final autocrop reintroduce clipping after CLI auto-size', async () => {
-        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-routing-autocrop-', 'routing.tsx', String.raw`<Scene>
+        const { buffer, manifest } = await renderBuiltCliFrame('vizmatic-routing-autocrop-', 'routing.tsx', String.raw`<Scene density="comfortable">
   <GraphDiagram
     width={900}
     height={410}

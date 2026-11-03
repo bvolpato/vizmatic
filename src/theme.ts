@@ -6,118 +6,131 @@
  */
 
 import parseCssColor from 'parse-css-color'
+import { densityOf, withDensity, type Density } from './density'
+
+export * from './density'
 
 export type ThemeMode = 'dark' | 'light'
 export type ThemePreset = 'default' | 'engineering'
 
 // ─── Dark Colors ─────────────────────────────────────────────────────────────
+// Shared with the stage's midnight look: neutral black, warm ink, and pigments
+// that stay quiet until they mean something.
 
 const darkColors = {
     // Canvas backgrounds
-    bg: '#151620',
-    bgCard: '#1a1b26',
-    bgCardAlt: '#1e2030',
-    bgHover: '#24253a',
-    bgSubtle: '#151620',
+    bg: '#0b0c10',
+    bgCard: '#13151a',
+    bgCardAlt: '#191c22',
+    bgHover: '#21252c',
+    bgSubtle: '#0f1014',
 
-    // Brand / semantic colors (matches Mermaid palette)
-    primary: '#7c3aed',      // Purple — key/highlighted components
-    primaryLight: '#a78bfa',
-    primaryDark: '#6d28d9',
+    // The single accent. Everything else is semantic.
+    primary: '#2f8fc4',
+    primaryLight: '#5cc4f0',
+    primaryDark: '#1f6f9e',
 
-    secondary: '#2563eb',    // Blue — supporting elements
-    secondaryLight: '#60a5fa',
-    secondaryDark: '#1d4ed8',
+    secondary: '#2f8fc4',    // Blue: supporting elements
+    secondaryLight: '#5cc4f0',
+    secondaryDark: '#1f6f9e',
 
-    positive: '#059669',     // Green — output/success
-    positiveLight: '#34d399',
-    positiveDark: '#047857',
+    positive: '#4f9e4a',     // Green: output and success
+    positiveLight: '#8fe08a',
+    positiveDark: '#3a7a36',
 
-    warning: '#d97706',      // Amber — warnings
-    warningLight: '#fbbf24',
-    warningDark: '#b45309',
+    warning: '#b98a2e',      // Gold: warnings
+    warningLight: '#f2b84b',
+    warningDark: '#8a6620',
 
-    critical: '#dc2626',     // Red — errors/bottlenecks
-    criticalLight: '#f87171',
-    criticalDark: '#b91c1c',
+    critical: '#c94a4a',     // Red: errors and bottlenecks
+    criticalLight: '#ff6b6b',
+    criticalDark: '#9c3535',
 
-    info: '#06b6d4',         // Cyan — informational
-    infoLight: '#22d3ee',
-    infoDark: '#0891b2',
+    info: '#2fa394',         // Teal: informational
+    infoLight: '#4fd8c4',
+    infoDark: '#237d72',
 
-    accent: '#f472b6',       // Pink — accents
-    accentLight: '#f9a8d4',
+    accent: '#c7618f',       // Pink: rare highlights
+    accentLight: '#ff8fc0',
 
-    neutral: '#334155',      // Slate — infrastructure/background
-    neutralLight: '#475569',
-    neutralDark: '#1e293b',
+    violet: '#7f6bd0',       // Violet: categorical use only
+    violetLight: '#b49cff',
+    violetDark: '#5f4cab',
+
+    neutral: '#363a43',      // Infrastructure and background
+    neutralLight: '#4a4f5a',
+    neutralDark: '#22252c',
 
     // Text
-    textPrimary: '#f1f5f9',
-    textSecondary: '#94a3b8',
-    textMuted: '#8493a8',
+    textPrimary: '#f2efe6',
+    textSecondary: '#a5a7ad',
+    textMuted: '#95989f',
     textOnColor: '#ffffff',
 
     // Borders
-    border: '#334155',
-    borderSubtle: '#1e293b',
-    borderLight: '#475569',
-    shadow: 'rgba(0, 0, 0, 0.24)',
+    border: '#2c3038',
+    borderSubtle: '#1f2228',
+    borderLight: '#3d424c',
+    shadow: 'rgba(0, 0, 0, 0)',
 } as const
 
 // ─── Light Colors ────────────────────────────────────────────────────────────
+// Shared with the stage's paper look: warm paper and printed ink.
 
 const lightColors = {
     // Canvas backgrounds
-    bg: '#f5f7fa',
-    bgCard: '#f8fafc',
-    bgCardAlt: '#f1f5f9',
-    bgHover: '#e2e8f0',
-    bgSubtle: '#f5f7fa',
+    bg: '#f7f3ea',
+    bgCard: '#fbf8f1',
+    bgCardAlt: '#efe9db',
+    bgHover: '#e7e0cf',
+    bgSubtle: '#f2ede1',
 
-    // Brand / semantic colors (same hues, adjusted for light bg)
-    primary: '#7c3aed',
-    primaryLight: '#8b5cf6',
-    primaryDark: '#6d28d9',
+    primary: '#1f6fb2',
+    primaryLight: '#1f6fb2',
+    primaryDark: '#165689',
 
-    secondary: '#2563eb',
-    secondaryLight: '#3b82f6',
-    secondaryDark: '#1d4ed8',
+    secondary: '#1f6fb2',
+    secondaryLight: '#1f6fb2',
+    secondaryDark: '#165689',
 
-    positive: '#059669',
-    positiveLight: '#10b981',
-    positiveDark: '#047857',
+    positive: '#3f8a35',
+    positiveLight: '#357a2c',
+    positiveDark: '#2c6524',
 
-    warning: '#d97706',
-    warningLight: '#f59e0b',
-    warningDark: '#b45309',
+    warning: '#a8740a',
+    warningLight: '#8a5f07',
+    warningDark: '#7a5406',
 
-    critical: '#dc2626',
-    criticalLight: '#ef4444',
-    criticalDark: '#b91c1c',
+    critical: '#c62f2f',
+    criticalLight: '#b92a2a',
+    criticalDark: '#962222',
 
-    info: '#0891b2',
-    infoLight: '#06b6d4',
-    infoDark: '#0e7490',
+    info: '#0b7d70',
+    infoLight: '#0b7468',
+    infoDark: '#095e55',
 
-    accent: '#ec4899',
-    accentLight: '#f472b6',
+    accent: '#c2387e',
+    accentLight: '#b03271',
 
-    neutral: '#cbd5e1',
-    neutralLight: '#94a3b8',
-    neutralDark: '#e2e8f0',
+    violet: '#6a4bc4',
+    violetLight: '#6246b6',
+    violetDark: '#4f3896',
+
+    neutral: '#cdc5b3',
+    neutralLight: '#a29c8d',
+    neutralDark: '#e2dbca',
 
     // Text
-    textPrimary: '#0f172a',
-    textSecondary: '#475569',
-    textMuted: '#5b677a',
+    textPrimary: '#1d1b16',
+    textSecondary: '#5e5a50',
+    textMuted: '#696459',
     textOnColor: '#ffffff',
 
     // Borders
-    border: '#e2e8f0',
-    borderSubtle: '#e2e8f0',
-    borderLight: '#cbd5e1',
-    shadow: 'rgba(15, 23, 42, 0.12)',
+    border: '#d9d2c1',
+    borderSubtle: '#e6dfd0',
+    borderLight: '#c4bba6',
+    shadow: 'rgba(0, 0, 0, 0)',
 } as const
 
 // ─── Theme Accessor ──────────────────────────────────────────────────────────
@@ -126,6 +139,10 @@ interface ThemeStyleTokens {
     preset: ThemePreset
     fontSans: string
     fontMono: string
+    /** Display serif for titles that want a printed voice. */
+    fontSerif: string
+    /** Type, spacing, and stroke scale. Unset follows the render, then the default. */
+    density?: Density
 }
 
 export type ThemeColors = { [K in keyof typeof darkColors]: string } & ThemeStyleTokens
@@ -134,6 +151,7 @@ const defaultStyleTokens: ThemeStyleTokens = {
     preset: 'default',
     fontSans: 'Inter',
     fontMono: 'JetBrains Mono',
+    fontSerif: 'Instrument Serif',
 }
 
 const engineeringColors = {
@@ -146,6 +164,9 @@ const engineeringColors = {
     primary: '#632ca6',
     primaryLight: '#6d28d9',
     primaryDark: '#4c1d95',
+    violet: '#632ca6',
+    violetLight: '#6d28d9',
+    violetDark: '#4c1d95',
     secondary: '#124fc7',
     secondaryLight: '#1556d1',
     secondaryDark: '#123d96',
@@ -176,20 +197,16 @@ const engineeringColors = {
     shadow: 'rgba(0, 0, 0, 0)',
 } as const
 
-export function getThemeColors(mode: ThemeMode, preset: ThemePreset = 'default'): ThemeColors {
-    if (preset === 'engineering') {
-        return {
-            ...engineeringColors,
-            preset,
-            fontSans: 'Inter',
-            fontMono: 'JetBrains Mono',
-        }
-    }
+export interface ThemeOptions {
+    /** Render every primitive using this theme at a density, such as 'presentation'. */
+    density?: Density
+}
 
-    return {
-        ...(mode === 'light' ? lightColors : darkColors),
-        ...defaultStyleTokens,
-    }
+export function getThemeColors(mode: ThemeMode, preset: ThemePreset = 'default', options: ThemeOptions = {}): ThemeColors {
+    const colors: ThemeColors = preset === 'engineering'
+        ? { ...engineeringColors, preset, fontSans: 'Inter', fontMono: 'JetBrains Mono', fontSerif: 'Instrument Serif' }
+        : { ...(mode === 'light' ? lightColors : darkColors), ...defaultStyleTokens }
+    return options.density !== undefined ? withDensity(colors, options.density) : colors
 }
 
 /** Default for backward-compat: dark */
@@ -200,16 +217,20 @@ export const colors: ThemeColors = {
 
 // ─── Gradients ───────────────────────────────────────────────────────────────
 
+// Flat by design. The stops match so filled surfaces read as solid ink, and
+// callers that pass one of these to backgroundImage keep working.
+const flat = (color: string) => `linear-gradient(135deg, ${color}, ${color})`
+
 export const gradients = {
-    purple: 'linear-gradient(135deg, #7c3aed, #a855f7)',
-    blue: 'linear-gradient(135deg, #2563eb, #60a5fa)',
-    green: 'linear-gradient(135deg, #059669, #34d399)',
-    warm: 'linear-gradient(135deg, #f59e0b, #ef4444)',
-    cyan: 'linear-gradient(135deg, #06b6d4, #22d3ee)',
-    pink: 'linear-gradient(135deg, #ec4899, #f472b6)',
-    sunset: 'linear-gradient(135deg, #f97316, #db2777)',
-    ocean: 'linear-gradient(135deg, #0284c7, #7c3aed)',
-    dark: 'linear-gradient(180deg, #0f1117, #1a1b26)',
+    purple: flat('#5f4cab'),
+    blue: flat('#1f6f9e'),
+    green: flat('#2f7a3a'),
+    warm: flat('#8a6620'),
+    cyan: flat('#1d7a6e'),
+    pink: flat('#a04672'),
+    sunset: flat('#9c5526'),
+    ocean: flat('#1d5f86'),
+    dark: flat('#22252c'),
 } as const
 
 // ─── Tone Lookup ────────────────────────────────────────────────────────────
@@ -238,7 +259,7 @@ export function getToneGradient(tone: ToneName): string {
 export function getToneColor(tone: ToneName, c: ThemeColors): string {
     return {
         blue: c.secondaryLight,
-        purple: c.primaryLight,
+        purple: c.violetLight,
         green: c.positiveLight,
         warm: c.warningLight,
         cyan: c.infoLight,
@@ -261,7 +282,7 @@ export function getReadableToneColor(
 ): string {
     const semanticColor: Record<ToneName, ColorName> = {
         blue: 'secondary',
-        purple: 'primary',
+        purple: 'violet',
         green: 'positive',
         warm: 'warning',
         cyan: 'info',
@@ -311,6 +332,25 @@ export const typography = {
     code: { fontSize: 13, fontWeight: 400, fontFamily: 'JetBrains Mono' },
     annotation: { fontSize: 12, fontWeight: 500, fontFamily: 'Inter', fontStyle: 'italic' as const },
 } as const
+
+/** False when the theme's shadow token is fully transparent, so no shadow filter is emitted. */
+export function hasShadow(c: ThemeColors): boolean {
+    const parsed = parseCssColor(c.shadow)
+    return !!parsed && parsed.alpha > 0
+}
+
+export type TypographyVariant = keyof typeof typography
+
+/** A typography style at the theme's density. Spread it into a style object. */
+export function typeOf<V extends TypographyVariant>(c: ThemeColors, variant: V): Omit<typeof typography[V], 'fontSize' | 'fontWeight'> & { fontSize: number; fontWeight: number } {
+    const base = typography[variant]
+    return {
+        ...base,
+        fontSize: densityOf(c).f(base.fontSize),
+        // Bold headings at small sizes read as shouting, so they settle at semibold.
+        fontWeight: Math.min(base.fontWeight, 600),
+    }
+}
 
 // ─── Canvas Sizes ────────────────────────────────────────────────────────────
 
@@ -393,7 +433,7 @@ export const styles = {
 
 // ─── Color Lookup ────────────────────────────────────────────────────────────
 
-export type ColorName = 'primary' | 'secondary' | 'positive' | 'warning' | 'critical' | 'info' | 'accent' | 'neutral'
+export type ColorName = 'primary' | 'secondary' | 'positive' | 'warning' | 'critical' | 'info' | 'accent' | 'neutral' | 'violet'
 
 /**
  * Get a solid color by semantic name from a ThemeColors object.
@@ -414,6 +454,7 @@ export function getReadableColor(name: ColorName, c: ThemeColors): string {
         critical: [c.criticalLight, c.critical, c.criticalDark],
         info: [c.infoLight, c.info, c.infoDark],
         accent: [c.accentLight, c.accent, '#be185d'],
+        violet: [c.violetLight, c.violet, c.violetDark],
         neutral: [c.textSecondary, c.neutralLight, c.neutral, c.neutralDark],
     }
     return variants[name].reduce((best, candidate) =>
@@ -528,7 +569,8 @@ export function getReadableTextColor(background: string, c: ThemeColors, backdro
  */
 export function getGradient(name: ColorName): string {
     const map: Record<ColorName, string> = {
-        primary: gradients.purple,
+        primary: gradients.blue,
+        violet: gradients.purple,
         secondary: gradients.blue,
         positive: gradients.green,
         warning: gradients.warm,
@@ -543,23 +585,14 @@ export function getGradient(name: ColorName): string {
 // ─── Heat Scale ──────────────────────────────────────────────────────────────
 
 /**
- * Map a value 0..1 to a heat color (dark blue → cyan → green → yellow → red)
+ * Map a value 0..1 to a heat color: slate, then blue, then gold, then red at the top end.
  */
 export function heatColor(value: number): string {
     const v = Math.max(0, Math.min(1, value))
-    if (v < 0.25) {
-        const t = v / 0.25
-        return lerpColor('#1e293b', '#0891b2', t)
-    } else if (v < 0.5) {
-        const t = (v - 0.25) / 0.25
-        return lerpColor('#0891b2', '#059669', t)
-    } else if (v < 0.75) {
-        const t = (v - 0.5) / 0.25
-        return lerpColor('#059669', '#d97706', t)
-    } else {
-        const t = (v - 0.75) / 0.25
-        return lerpColor('#d97706', '#dc2626', t)
-    }
+    // A calm sequential ramp. Rainbow scales invent boundaries that the data does not have.
+    if (v < 0.5) return lerpColor('#1b2430', '#1f6f9e', v / 0.5)
+    if (v < 0.8) return lerpColor('#1f6f9e', '#c89a3c', (v - 0.5) / 0.3)
+    return lerpColor('#c89a3c', '#d9573f', (v - 0.8) / 0.2)
 }
 
 function lerpColor(a: string, b: string, t: number): string {

@@ -15,9 +15,9 @@ height = 600;
         nodeHeight={76}
         labelFontSize={17}
         nodes={[
-            { id: 'prefix', label: 'Stable prefix', detail: 'instructions + tools', x: 0.10, y: 0.50, tone: 'blue' },
+            { id: 'prefix', label: 'Stable prefix', detail: 'instructions + tools', x: 0.10, y: 0.50 },
             { id: 'turn', label: 'Dynamic turn', detail: 'history + input', x: 0.38, y: 0.50, tone: 'warm' },
-            { id: 'cache', label: 'Cache lookup', detail: 'match reusable bytes', x: 0.66, y: 0.50, tone: 'purple' },
+            { id: 'cache', label: 'Cache lookup', detail: 'match reusable bytes', x: 0.66, y: 0.50 },
             { id: 'model', label: 'Model response', detail: 'less uncached input', x: 0.92, y: 0.50, tone: 'green' },
         ]}
         edges={[
@@ -39,14 +39,12 @@ height = 600;
             label="Uncached input"
             value="-71%"
             detail="sample per task"
-            tone="purple"
             width={250}
             valueFontSize={25}
         />
         <CalloutCard
             title="Request layout example"
             detail="Place volatile fields after reusable context and preserve provider cache controls."
-            tone="blue"
             width={420}
             align="left"
         />

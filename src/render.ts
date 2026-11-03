@@ -20,8 +20,9 @@ import { fileURLToPath } from 'url'
 import { brotliDecompressSync } from 'zlib'
 import type { ReactNode } from 'react'
 import { wrapWithWatermark, type WatermarkInput } from './brand'
-import { detectBackgroundColor, detectContentBounds, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
+import { detectBackgroundColor, detectContentBounds, detectLayoutOverflow, detectOverflow, type CropRegion, type OverflowResult } from './autocrop'
 import { withRenderContext, type RenderBackground } from './renderContext'
+import type { Density } from './density'
 import { satori, type Font, type SatoriNode } from './satori'
 import { addSvgAccessibility, prepareAccessibleSvg } from './svg-accessibility'
 
@@ -77,6 +78,7 @@ const VENDORED_EMOJI_BUNDLE = ASSET_DIR ? join(ASSET_DIR, 'emoji.json.br') : und
  * 2. JetBrains Mono — monospace/code
  * 3. Noto Sans (544KB) — Phonetic Extensions: ᵀ (U+1D40), ᵢ (U+1D62), etc.
  * 4. Noto Sans Math (766KB) — Math operators: √, ≫, ∞, ≠, ×, arrows: →, ←
+ * Instrument Serif is a display face requested by name, not part of the fallback chain.
  */
 const FONT_URLS = {
     interRegular: 'https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfMZg.ttf',
@@ -89,6 +91,8 @@ const FONT_URLS = {
     // Noto Sans Math (766KB from gstatic): math operators (√, ∞, ≠, ×, ≫),
     // Greek letters (τ, Σ), and arrows (→, ←)
     notoSansMath: 'https://fonts.gstatic.com/s/notosansmath/v18/7Aump_cpkSecTWaHRlH2hyV5UHkG.ttf',
+    instrumentSerifRegular: 'https://raw.githubusercontent.com/google/fonts/main/ofl/instrumentserif/InstrumentSerif-Regular.ttf',
+    instrumentSerifItalic: 'https://raw.githubusercontent.com/google/fonts/main/ofl/instrumentserif/InstrumentSerif-Italic.ttf',
 } as const
 
 function fontReadPaths(filename: string): string[] {
@@ -149,6 +153,20 @@ async function loadFonts(): Promise<FontData[]> {
         fonts.push({ name: 'JetBrains Mono', data: toArrayBuffer(jetbrains), weight: 400, style: 'normal' })
     } catch (e) {
         console.warn('Warning: Could not load JetBrains Mono font:', e)
+    }
+
+    // Display serif for titles. A missing file only costs the serif voice, not the render.
+    try {
+        const [serif, serifItalic] = await Promise.all([
+            ensureFont('InstrumentSerif-Regular.ttf', FONT_URLS.instrumentSerifRegular),
+            ensureFont('InstrumentSerif-Italic.ttf', FONT_URLS.instrumentSerifItalic),
+        ])
+        fonts.push(
+            { name: 'Instrument Serif', data: toArrayBuffer(serif), weight: 400, style: 'normal' },
+            { name: 'Instrument Serif', data: toArrayBuffer(serifItalic), weight: 400, style: 'italic' },
+        )
+    } catch (e) {
+        console.warn('Warning: Could not load Instrument Serif font:', e)
     }
 
     // Noto Sans: fallback for Phonetic Extensions (ᵀ U+1D40, ᵢ U+1D62)
@@ -371,6 +389,8 @@ export interface RenderOptions {
     background?: RenderBackground
     /** Theme used for watermark defaults when calling renderer APIs directly. */
     theme?: 'dark' | 'light'
+    /** Density for primitives whose theme does not set one, such as 'presentation'. */
+    density?: Density
     /** Optional rendered-layout observer used by validation tooling. */
     onNodeDetected?: (node: SatoriNode) => void
 }
@@ -464,7 +484,7 @@ export async function renderToPngWithOutput(
     createFn?: (theme: 'dark' | 'light') => ReactNode,
     theme?: 'dark' | 'light',
 ): Promise<RenderOutput> {
-    return withRenderContext({ background: options.background ?? 'transparent' }, () =>
+    return withRenderContext({ background: options.background ?? 'transparent', ...(options.density !== undefined ? { density: options.density } : {}) }, () =>
         renderToPngInContext(element, options, createFn, theme)
     )
 }
@@ -479,11 +499,13 @@ async function renderToPngInContext(
     const renderTheme = options.theme ?? theme ?? 'dark'
 
     // Step 1: Render WITHOUT watermark to detect content bounds
+    const detectionNodes: SatoriNode[] = []
     let svg = await satori(element as React.ReactElement, {
         width: options.width,
         height: options.height,
         fonts,
         loadAdditionalAsset,
+        onNodeDetected: (node) => detectionNodes.push(node),
     })
     svg = sanitizeSvg(svg)
 
@@ -517,6 +539,10 @@ async function renderToPngInContext(
     )
     if (overflow.overflows) {
         throw new CanvasOverflowError(options.width, options.height, overflow)
+    }
+    const layoutOverflow = detectLayoutOverflow(detectionNodes, options.width, options.height)
+    if (layoutOverflow.overflows) {
+        throw new CanvasOverflowError(options.width, options.height, layoutOverflow)
     }
 
     // Step 3: Determine if we should crop height by re-rendering.
@@ -668,9 +694,9 @@ export async function renderToBuffer(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme' | 'onNodeDetected'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'scale' | 'background' | 'theme' | 'density' | 'onNodeDetected'> = {},
 ): Promise<Buffer> {
-    return withRenderContext({ background: options.background ?? 'transparent' }, () =>
+    return withRenderContext({ background: options.background ?? 'transparent', ...(options.density !== undefined ? { density: options.density } : {}) }, () =>
         renderToBufferInContext(element, width, height, options)
     )
 }
@@ -720,9 +746,9 @@ export async function renderToSvg(
     element: ReactNode,
     width: number,
     height: number,
-    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme' | 'onNodeDetected'> = {},
+    options: Pick<RenderOptions, 'brand' | 'watermark' | 'background' | 'theme' | 'density' | 'onNodeDetected'> = {},
 ): Promise<string> {
-    return withRenderContext({ background: options.background ?? 'transparent' }, () =>
+    return withRenderContext({ background: options.background ?? 'transparent', ...(options.density !== undefined ? { density: options.density } : {}) }, () =>
         renderToSvgInContext(element, width, height, options)
     )
 }

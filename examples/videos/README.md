@@ -46,7 +46,7 @@ TSX file, add the [consumer security overrides](../../README.md#consumer-securit
 before installing Vizmatic and React:
 
 ```bash
-npm install --save-dev vizmatic@0.4.0 react
+npm install --save-dev vizmatic@0.5.0 react
 npx vizmatic video ./request-lifecycle.tsx --out ./dist/videos --theme dark --fps 30
 ```
 

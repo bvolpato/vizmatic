@@ -5,6 +5,8 @@ export const SCENE_BROWSER_FONT_PINS = Object.freeze({
     jetBrainsMono: '44ce4a84f20d60f24539bd0cef11f79c29e38609e0f8adf18551c9794a5d9dc3',
     notoSans: '5be701a9511117e73603bdab95947feef4f18bd1851dbddc30659370b26c69f1',
     notoSansMath: '3cbaf44af13f592bc7f7172a50edab4c73ac2f3d19af2d697a01ebd3288e322d',
+    instrumentSerif: '498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88',
+    instrumentSerifItalic: '08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385',
 })
 
 export const SCENE_BROWSER_WASM_PINS = Object.freeze({

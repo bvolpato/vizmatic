@@ -29,17 +29,14 @@ export function create(theme: ThemeMode = 'dark') {
                     c={c}
                     title="A half-open interval"
                     subtitle="The left endpoint is included; the right endpoint is excluded."
-                    tone="purple"
                     width={608}
-                    minHeight={510}
                     align="center"
-                    padding={0}
                     footer="The hollow endpoint at 2 distinguishes x < 2 from x ≤ 2."
                 >
                     <NumberLine
                         c={c}
                         width={600}
-                        height={380}
+                        height={360}
                         min={-3}
                         max={3}
                         ticks={[
@@ -66,11 +63,8 @@ export function create(theme: ThemeMode = 'dark') {
                     c={c}
                     title="A 3–4–5 right triangle"
                     subtitle="Coordinates make the side lengths and right angle verifiable."
-                    tone="blue"
                     width={608}
-                    minHeight={510}
                     align="center"
-                    padding={0}
                     footer="AB² + BC² = AC² · 4² + 3² = 5²"
                 >
                     <GeometryDiagram

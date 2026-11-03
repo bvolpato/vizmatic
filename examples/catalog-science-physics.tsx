@@ -31,9 +31,7 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="Vertical forces cancel; horizontal forces leave a 5 N resultant."
                     tone="green"
                     width={608}
-                    minHeight={520}
                     align="center"
-                    padding={0}
                     footer="ΣFₓ = 8 N − 3 N = 5 N · ΣFᵧ = 9.8 N − 9.8 N = 0"
                 >
                     <FreeBodyDiagram
@@ -56,11 +54,8 @@ export function create(theme: ThemeMode = 'dark') {
                     c={c}
                     title="In-phase wave superposition"
                     subtitle="Two equal waves add point by point to a wave with twice the amplitude."
-                    tone="purple"
                     width={608}
-                    minHeight={520}
                     align="center"
-                    padding={0}
                     footer="Illustrative sinusoidal waves · A = 1 m each · λ = 4 m"
                 >
                     <WaveDiagram

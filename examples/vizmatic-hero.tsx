@@ -3,37 +3,29 @@ height = 640;
 
 <Scene
     title="From TSX scene to rendered files"
-    gap={24}
+    density="comfortable"
 >
     <GraphDiagram
         ariaLabel="Vizmatic rendering pipeline from an agent request through scene primitives and theme tokens to rendered assets"
-        width={900}
-        height={340}
-        nodeWidth={170}
-        nodeHeight={76}
-        labelFontSize={19}
-        arrowSize={7}
         nodes={[
-            { id: 'brief', label: 'Agent request', tone: 'blue' },
-            { id: 'primitives', label: 'Scene primitives', tone: 'purple' },
-            { id: 'theme', label: 'Theme tokens', tone: 'cyan' },
+            { id: 'brief', label: 'Agent request' },
+            { id: 'primitives', label: 'Scene primitives' },
+            { id: 'theme', label: 'Theme tokens' },
             { id: 'render', label: 'Node renderer', tone: 'warm' },
             { id: 'asset', label: 'PNG / SVG / GIF', tone: 'green' },
         ]}
         edges={[
-            { from: 'brief', to: 'primitives', tone: 'blue' },
-            { from: 'brief', to: 'theme', tone: 'cyan' },
-            { from: 'primitives', to: 'render', tone: 'purple' },
-            { from: 'theme', to: 'render', tone: 'cyan' },
-            { from: 'render', to: 'asset', tone: 'green' },
+            { from: 'brief', to: 'primitives' },
+            { from: 'brief', to: 'theme' },
+            { from: 'primitives', to: 'render' },
+            { from: 'theme', to: 'render' },
+            { from: 'render', to: 'asset' },
         ]}
     />
     <Row width="100%" gap={14}>
         <CalloutCard
             title="Source stays editable"
-            tone="purple"
             width={430}
-            minHeight={64}
             padding={18}
             titleFontSize={18}
         />
@@ -41,7 +33,6 @@ height = 640;
             title="Bundled assets work offline"
             tone="green"
             width={430}
-            minHeight={64}
             padding={18}
             titleFontSize={18}
         />

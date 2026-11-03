@@ -31,7 +31,7 @@ export function create(theme: ThemeMode = 'dark') {
             gap={16}
         >
             <Row width="100%" gap={16} align="stretch">
-                <Panel c={c} title="StatusRow + StatusList" subtitle="compact operational state" tone="green" width={330} minHeight={232}>
+                <Panel c={c} title="StatusRow + StatusList" subtitle="compact operational state" tone="green" width={330}>
                     <Column gap={9} align="stretch">
                         <StatusRow c={c} label="StatusRow" detail="single control" status="info" fontSize={12} />
                         <StatusList
@@ -61,7 +61,7 @@ export function create(theme: ThemeMode = 'dark') {
                 />
             </Row>
 
-            <Panel c={c} title="Flow" subtitle="stage cards with semantic connectors" tone="purple" width="100%" minHeight={162} align="center">
+            <Panel c={c} title="Flow" subtitle="stage cards with semantic connectors" tone="purple" width="100%" align="center">
                 <Flow
                     c={c}
                     gap={8}
@@ -77,7 +77,7 @@ export function create(theme: ThemeMode = 'dark') {
             </Panel>
 
             <Row width="100%" gap={16} align="stretch">
-                <Panel c={c} title="Pipeline" subtitle="classic labeled stage chain" tone="blue" width={610} minHeight={206} align="center" justify="center">
+                <Panel c={c} title="Pipeline" subtitle="classic labeled stage chain" tone="blue" width={610} align="center" justify="center">
                     <Pipeline
                         c={c}
                         title="Pipeline component"
@@ -88,7 +88,7 @@ export function create(theme: ThemeMode = 'dark') {
                         ]}
                     />
                 </Panel>
-                <Panel c={c} title="ProgressRow + ProgressList" subtitle="scores and completion bands" tone="cyan" width={434} minHeight={206}>
+                <Panel c={c} title="ProgressRow + ProgressList" subtitle="scores and completion bands" tone="cyan" width={434}>
                     <Column gap={13} align="stretch">
                         <ProgressRow c={c} label="ProgressRow" value={0.72} valueLabel="72%" tone="cyan" labelWidth={92} />
                         <ProgressList

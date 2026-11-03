@@ -21,6 +21,22 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
     components: Omit<ComponentCatalogItem, 'example' | 'controls'>[]
 })[] = [
     {
+        id: 'dense',
+        label: 'Dense information',
+        description: 'Word-sized charts, fact rows, and keys that pack real data into nodes and dashboards.',
+        source: 'catalog-dense',
+        components: [
+            { name: 'Sparkline', description: 'A word-sized trend line to set beside a number.' },
+            { name: 'SmallMultiples', description: 'One chart repeated across services or regions, with an optional shared scale.' },
+            { name: 'MetricStrip', description: 'Numbers with units side by side, without a card around each one.' },
+            { name: 'FactRows', description: 'Tight key and value rows with optional capacity bars.' },
+            { name: 'InlineBar', description: 'A hairline capacity bar that sits under a value.' },
+            { name: 'StatusDot', description: 'A small health marker: ok, warn, error, idle, or any tone.' },
+            { name: 'TagList', description: 'Small hairline tags for runtime, region, tier, or owner.' },
+            { name: 'DiagramLegend', description: 'A one-line key with line samples and swatches.' },
+        ],
+    },
+    {
         id: 'image-tensors',
         label: 'Image tensors',
         description: 'Exact RGB pixels, channel matrices, crops, and image-to-tensor explanations.',
@@ -244,6 +260,9 @@ export const componentCatalog: ComponentCatalogCategory[] = componentCatalogGrou
 
 export const catalogUtilities = [
     'createPlotArea',
+    'estimateTextWidth',
+    'scopeDensity',
+    'statusColor',
     'defineDiagramIcon',
     'defineIconRegistry',
     'defineIllustration',

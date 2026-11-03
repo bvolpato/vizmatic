@@ -18,6 +18,7 @@ export const CHECK_DIAGNOSTIC_CODES = [
     'layout.connector_unroutable',
     'layout.overflow',
     'layout.text_overlap',
+    'layout.text_overflow',
     'layout.whitespace_imbalance',
     'readability.small_text',
     'render.error',
@@ -70,7 +71,9 @@ interface ContrastContext {
 
 const MAX_CONTRAST_NODES = 5_000
 const MAX_DIAGNOSTICS_PER_RULE = 12
-const MIN_TEXT_SIZE = 11
+// Dense figures set small type near 9 to 11 px and render it at 2x, where it stays legible.
+// Charts fitted into smaller boxes can land a little under that, so the floor sits at 8.5.
+const MIN_TEXT_SIZE = 8.5
 const SVG_ONLY_ELEMENTS = new Set([
     'circle', 'clipPath', 'defs', 'ellipse', 'foreignObject', 'g', 'image',
     'line', 'linearGradient', 'marker', 'mask', 'path', 'pattern', 'polygon',
@@ -373,6 +376,8 @@ function renderedTextNodes(nodes: SatoriNode[]): TextLayoutNode[] {
         const fontSize = fontSizePixels(style.fontSize, inherited?.fontSize) ?? 16
         const textAlign = typeof style.textAlign === 'string' ? style.textAlign : (inherited?.textAlign ?? 'left')
         const text = String(node.textContent ?? '').trim()
+        // Layout boxes ignore rotation, so a rotated axis title cannot be compared by its box.
+        if (text && typeof style.transform === 'string' && style.transform.includes('rotate')) continue
 
         if (text && node.width > 0 && node.height > 0) {
             const estimatedLines = Math.max(1, Math.round(node.height / Math.max(fontSize * 1.5, 1)))
@@ -516,9 +521,10 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             location: { x: source.left, y: source.top, width: source.width, height: source.height },
         })
     }
-    const connectorCrossings = maxDataNumber('data-vizmatic-connector-crossings')
+    const connectorSource = nodes.find((node) => Number(node.props['data-vizmatic-connector-crossings']) > Number(node.props['data-vizmatic-connector-crossing-budget'] ?? 0))
+    const connectorCrossings = connectorSource ? Number(connectorSource.props['data-vizmatic-connector-crossings']) : 0
     if (connectorCrossings > 0) {
-        const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-crossings']) > 0)
+        const source = connectorSource
         diagnostics.push({
             code: 'layout.connector_congestion',
             severity: 'warning',
@@ -542,6 +548,19 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
         })
     }
+    const crossedLabels = maxDataNumber('data-vizmatic-connector-label-crossings')
+    if (crossedLabels > 0) {
+        const source = nodes.find((node) => Number(node.props['data-vizmatic-connector-label-crossings']) > 0)
+        diagnostics.push({
+            code: 'layout.connector_congestion',
+            severity: 'info',
+            theme,
+            message: `${crossedLabels} connector${crossedLabels === 1 ? ' passes' : 's pass'} behind a label or group title. The label masks it, but the line appears broken.`,
+            suggestion: 'Shorten or move the label, change graph direction, or route the connector with routing="orthogonal".',
+            elementId: source ? elementId(source.props) : undefined,
+            location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
+        })
+    }
     const crowdedEndpoints = maxDataNumber('data-vizmatic-crowded-connector-endpoints')
     if (crowdedEndpoints > 0) {
         const source = nodes.find((node) => Number(node.props['data-vizmatic-crowded-connector-endpoints']) > 0)
@@ -549,7 +568,7 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             code: 'layout.connector_congestion',
             severity: 'warning',
             theme,
-            message: `${crowdedEndpoints} node${crowdedEndpoints === 1 ? '' : 's'} connect more than four edges.`,
+            message: `${crowdedEndpoints} node${crowdedEndpoints === 1 ? '' : 's'} connect more than eight edges.`,
             suggestion: 'Group related branches, add an intermediate hub, or change graph direction.',
             elementId: source ? elementId(source.props) : undefined,
             location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
@@ -567,6 +586,32 @@ export function analyzeRenderedLayout(nodes: SatoriNode[], theme: ThemeMode): Ch
             elementId: source ? elementId(source.props) : undefined,
             location: source ? { x: source.left, y: source.top, width: source.width, height: source.height } : undefined,
         })
+    }
+
+    // Text that spills out of a graph node's box.
+    let overflowCount = 0
+    const graphNodes = nodes.filter((node) => typeof node.props['data-vizmatic-graph-node-id'] === 'string')
+    for (const box of graphNodes) {
+        for (const text of nodes) {
+            if (overflowCount >= MAX_DIAGNOSTICS_PER_RULE) break
+            if (!String(text.textContent ?? '').trim() || text === box) continue
+            const startsInside = text.left >= box.left - 1 && text.left < box.left + box.width && text.top >= box.top - 1 && text.top < box.top + box.height
+            if (!startsInside) continue
+            const spillsRight = text.left + text.width > box.left + box.width + 1
+            const spillsDown = text.top + text.height > box.top + box.height + 1
+            if (!spillsRight && !spillsDown) continue
+            diagnostics.push({
+                code: 'layout.text_overflow',
+                severity: 'warning',
+                theme,
+                message: `Text "${textExcerpt(String(text.textContent))}" spills out of node "${String(box.props['data-vizmatic-graph-node-id'])}".`,
+                suggestion: 'Omit the fixed node width and height so the node sizes to its content, or shorten the text.',
+                elementId: elementId(box.props),
+                location: { x: text.left, y: text.top, width: text.width, height: text.height },
+            })
+            overflowCount += 1
+            break
+        }
     }
 
     let whitespaceCount = 0

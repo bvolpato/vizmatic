@@ -1,12 +1,12 @@
 import parseCssColor from 'parse-css-color'
 import { getThemeColors, type ThemeColors, type ThemeMode, type ThemePreset } from './theme'
 
-export type ThemeColorKey = Exclude<keyof ThemeColors, 'preset' | 'fontSans' | 'fontMono'>
+export type ThemeColorKey = Exclude<keyof ThemeColors, 'preset' | 'fontSans' | 'fontMono' | 'density' | 'fontSerif'>
 export type PlaygroundThemeColors = Partial<Record<ThemeColorKey, string>>
 export type PlaygroundBackground = 'theme' | 'transparent' | string
 
 export const themeColorKeys: readonly ThemeColorKey[] = Object.freeze(
-    Object.keys(getThemeColors('dark')).filter((key) => key !== 'preset' && key !== 'fontSans' && key !== 'fontMono') as ThemeColorKey[],
+    Object.keys(getThemeColors('dark')).filter((key) => key !== 'preset' && key !== 'fontSans' && key !== 'fontMono' && key !== 'fontSerif' && key !== 'density') as ThemeColorKey[],
 )
 const themeColorKeySet = new Set<string>(themeColorKeys)
 

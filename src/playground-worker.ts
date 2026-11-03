@@ -3,6 +3,7 @@ import { Resvg, initWasm } from '@resvg/resvg-wasm'
 import satori, { init as initSatori, type SatoriNode } from 'satori/standalone'
 import { transform } from 'sucrase'
 import { getThemeColors } from './theme'
+import { setDefaultDensity } from './density'
 import { mergePlaygroundThemeColors } from './frame-theme'
 import { createPlaygroundApi } from './playground-api'
 import { mapPlaygroundText, prepareEditableText, editableTextTargets, editableCanvasItems } from './playground-text-mapping'
@@ -35,6 +36,8 @@ import interBold from '../assets/fonts/Inter-Bold.ttf'
 import jetBrainsMono from '../assets/fonts/JetBrainsMono-Regular.ttf'
 import notoSans from '../assets/fonts/NotoSans-Regular.ttf'
 import notoSansMath from '../assets/fonts/NotoSansMath-Regular.ttf'
+import instrumentSerif from '../assets/fonts/InstrumentSerif-Regular.ttf'
+import instrumentSerifItalic from '../assets/fonts/InstrumentSerif-Italic.ttf'
 import layoutWasm from 'satori/layout.wasm'
 import resvgWasm from '@resvg/resvg-wasm/index_bg.wasm'
 import harfbuzzWasm from 'harfbuzzjs/hb.wasm'
@@ -78,7 +81,7 @@ interface PlaygroundErrorResponse {
 }
 
 interface PlaygroundRuntime {
-    fonts: Array<{ name: string; data: ArrayBuffer; weight: 400 | 600 | 700; style: 'normal' }>
+    fonts: Array<{ name: string; data: ArrayBuffer; weight: 400 | 600 | 700; style: 'normal' | 'italic' }>
 }
 
 let runtime: Promise<PlaygroundRuntime> | undefined
@@ -201,7 +204,9 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
         loadStaticAsset(jetBrainsMono),
         loadStaticAsset(notoSans),
         loadStaticAsset(notoSansMath),
-    ]).then(async ([layout, resvg, harfbuzz, regular, semiBold, bold, mono, sans, math]) => {
+        loadStaticAsset(instrumentSerif),
+        loadStaticAsset(instrumentSerifItalic),
+    ]).then(async ([layout, resvg, harfbuzz, regular, semiBold, bold, mono, sans, math, serif, serifItalic]) => {
         await Promise.all([initializeSatoriRuntime(layout), initializeResvgRuntime(resvg), initializeHarfbuzzRuntime(harfbuzz)])
         const fonts: PlaygroundRuntime['fonts'] = [
             { name: 'Inter', data: regular, weight: 400, style: 'normal' },
@@ -210,6 +215,8 @@ function loadRuntime(): Promise<PlaygroundRuntime> {
             { name: 'JetBrains Mono', data: mono, weight: 400, style: 'normal' },
             { name: 'Noto Sans', data: sans, weight: 400, style: 'normal' },
             { name: 'Noto Sans Math', data: math, weight: 400, style: 'normal' },
+            { name: 'Instrument Serif', data: serif, weight: 400, style: 'normal' },
+            { name: 'Instrument Serif', data: serifItalic, weight: 400, style: 'italic' },
         ]
         return {
             fonts,
@@ -223,6 +230,8 @@ function compileScene(
     theme: PlaygroundTheme,
     background?: PlaygroundRenderBackground,
 ): (time: number) => React.ReactNode {
+    // Each render sets this, so a source without a density line cannot inherit the previous one.
+    setDefaultDensity(prepared.metadata.density)
     const api = createPlaygroundApi(c)
     api.getThemeColors = (mode: PlaygroundTheme = theme, preset = prepared.metadata.preset) =>
         mergePlaygroundThemeColors(mode, preset, prepared.metadata.themeColors)

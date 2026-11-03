@@ -140,12 +140,12 @@ function extractComponentProps(
         }
         const values = readLiteralValues(checker, propType)
         if (values) {
-            extracted.finiteValues = values
+            extracted.finiteValues = inDeclaredOrder(propType, values)
             extracted.enumName = aliasName(propType)
         } else {
             const suggestions = readLiteralSuggestions(checker, propType)
             if (suggestions) {
-                extracted.literalSuggestions = suggestions
+                extracted.literalSuggestions = inDeclaredOrder(propType, suggestions)
                 extracted.enumName = aliasName(propType)
             }
         }
@@ -197,6 +197,21 @@ export function buildComponentPropMetadata(componentNames: readonly string[]): C
         enums: Object.fromEntries(enumValues),
         propsByComponent,
     }
+}
+
+/**
+ * TypeScript orders union members by when each literal was first seen in the
+ * program, so an unrelated 'compact' elsewhere can reorder them. An alias keeps
+ * the order it was written in, which also puts its first choice first in the builder.
+ */
+function inDeclaredOrder(type: ts.Type, values: ComponentPropLiteral[]): ComponentPropLiteral[] {
+    const text = type.aliasSymbol?.declarations?.[0]?.getText()
+    if (!text) return values
+    const position = (value: ComponentPropLiteral) => {
+        const index = text.indexOf(typeof value === 'string' ? `'${value}'` : String(value))
+        return index < 0 ? Number.MAX_SAFE_INTEGER : index
+    }
+    return [...values].sort((left, right) => position(left) - position(right))
 }
 
 function literalValuesKey(values: ComponentPropLiteral[]): string {

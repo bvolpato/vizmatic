@@ -25,7 +25,6 @@ export function create(theme: ThemeMode = 'dark') {
                 c={c}
                 title="Checkout request"
                 subtitle="solid sync · dashed async · neutral returns · fragments mark alternate, repeated, and parallel work"
-                tone="blue"
                 width="100%"
                 padding={14}
                 align="center"
@@ -42,9 +41,9 @@ export function create(theme: ThemeMode = 'dark') {
                     title="POST /checkout"
                     ariaLabel="Authorized checkout enqueues fulfillment while the browser polls concurrently; parallel tasks complete and the order API returns ready"
                     participants={[
-                        { id: 'client', label: 'Browser', kind: 'actor', icon: 'browser', tone: 'blue' },
-                        { id: 'edge', label: 'Edge gateway', kind: 'boundary', icon: 'gateway', tone: 'cyan' },
-                        { id: 'orders', label: 'Order API', kind: 'control', icon: 'container', tone: 'purple' },
+                        { id: 'client', label: 'Browser', kind: 'actor', icon: 'browser' },
+                        { id: 'edge', label: 'Edge gateway', kind: 'boundary', icon: 'gateway' },
+                        { id: 'orders', label: 'Order API', kind: 'control', icon: 'container' },
                         { id: 'worker', label: 'Fulfillment', kind: 'entity', icon: 'agent', tone: 'green' },
                     ]}
                     items={[
@@ -78,7 +77,6 @@ export function create(theme: ThemeMode = 'dark') {
                                                                 { id: 'read-state', from: 'edge', to: 'orders', kind: 'sync', label: 'read status' },
                                                                 { id: 'pending', from: 'orders', to: 'client', kind: 'return', label: '202 · pending' },
                                                             ],
-                                                            tone: 'purple',
                                                         },
                                                     ],
                                                 },
@@ -101,14 +99,12 @@ export function create(theme: ThemeMode = 'dark') {
                                                                     items: [{ id: 'receipt', from: 'orders', to: 'worker', kind: 'async', label: 'send receipt' }],
                                                                 },
                                                             ],
-                                                            tone: 'cyan',
                                                         },
                                                         { id: 'fulfilled', from: 'worker', to: 'orders', kind: 'async', label: 'fulfillment complete' },
                                                         { id: 'mark-ready', from: 'orders', to: 'orders', kind: 'sync', label: 'persist ready' },
                                                     ],
                                                 },
                                             ],
-                                            tone: 'cyan',
                                         },
                                         { id: 'ready-poll', from: 'client', to: 'edge', kind: 'sync', label: 'GET /orders/:id' },
                                         { id: 'ready-state', from: 'edge', to: 'orders', kind: 'sync', label: 'read status' },
@@ -127,10 +123,10 @@ export function create(theme: ThemeMode = 'dark') {
                         },
                     ]}
                     activations={[
-                        { id: 'edge-span', type: 'activation', participant: 'edge', fromMessage: 'request', toMessage: 'accepted', tone: 'cyan' },
-                        { id: 'order-span', type: 'activation', participant: 'orders', fromMessage: 'authorize', toMessage: 'accepted', tone: 'purple' },
+                        { id: 'edge-span', type: 'activation', participant: 'edge', fromMessage: 'request', toMessage: 'accepted' },
+                        { id: 'order-span', type: 'activation', participant: 'orders', fromMessage: 'authorize', toMessage: 'accepted' },
                         { id: 'worker-span', type: 'activation', participant: 'worker', fromMessage: 'enqueue', toMessage: 'fulfilled', tone: 'green' },
-                        { id: 'poll-span', type: 'activation', participant: 'orders', fromMessage: 'read-state', toMessage: 'pending', depth: 1, tone: 'purple', muted: true },
+                        { id: 'poll-span', type: 'activation', participant: 'orders', fromMessage: 'read-state', toMessage: 'pending', depth: 1, muted: true },
                     ]}
                 />
             </Panel>

@@ -282,6 +282,38 @@ export const create = () => <div style={{ display: 'flex', position: 'absolute',
         }
     }, 30_000)
 
+    it('honors --density in a frame that imports its own copy of the package', async () => {
+        const frame = `import React from 'react'
+import { Flow, Scene, getThemeColors } from 'vizmatic'
+export const width = 1000
+export const height = 400
+export const create = (theme) => {
+    const c = getThemeColors(theme)
+    return <Scene c={c}><Flow c={c} stages={[{ title: 'One' }, { title: 'Two' }, { title: 'Three' }]} /></Scene>
+}
+`
+        const widthAt = async (options: string[] = []) => {
+            const run = await renderCli(frame, options)
+            expect(run.result.status, run.result.stderr || run.result.stdout).toBe(0)
+            return (await manifestAt(run.renderDir))[0]!.outputDetails[0]!.width
+        }
+        expect(await widthAt(['--density', 'presentation'])).toBeGreaterThan(await widthAt())
+    }, 60_000)
+
+    it('grows a fixed-size bare frame when --density needs more room', async () => {
+        const frame = `width = 500
+height = 240
+
+<Scene title="Asked to be larger" subtitle="This frame fits only at its original density">
+  <Row gap={12}><StepCard title="One" width={120} /><StepCard title="Two" width={120} /><StepCard title="Three" width={120} /></Row>
+</Scene>
+`
+        const base = await renderCli(frame)
+        expect(base.result.status, base.result.stderr || base.result.stdout).toBe(0)
+        const large = await renderCli(frame, ['--density', 'presentation'])
+        expect(large.result.status, large.result.stderr || large.result.stdout).toBe(0)
+    }, 60_000)
+
     it('rejects unknown formats and auto-grows SVG canvases when content overflows', async () => {
         const invalid = await renderCli(fittedFrame, ['--format', 'webp'])
         expect(invalid.result.status).toBe(1)

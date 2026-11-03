@@ -40,12 +40,12 @@ export function create(theme: ThemeMode = 'dark') {
             padding={28}
             gap={14}
         >
-            <Panel c={c} title="Box · Arrow · Connector · FlowArrow" subtitle="HTML flow primitives for readable directional composition" tone="blue" width="100%" minHeight={174} align="center">
+            <Panel c={c} title="Box · Arrow · Connector · FlowArrow" subtitle="HTML flow primitives for readable directional composition" width="100%" align="center">
                 <Row gap={8} align="center" justify="center">
                     <Box c={c} label="Box" sublabel="source" color="primary" gradient width={86} height={54} fontSize={13} />
                     <Arrow c={c} direction="right" label="Arrow" length={58} color={blue} />
                     <Box c={c} label="Connector" sublabel="alias" color="secondary" width={96} height={54} fontSize={13} />
-                    <Connector c={c} direction="right" label="Connector" length={66} tone="purple" />
+                    <Connector c={c} direction="right" label="Connector" length={66} />
                     <Box c={c} label="FlowArrow" sublabel="semantic" color="info" width={98} height={54} fontSize={13} />
                     <FlowArrow c={c} direction="right" label="FlowArrow" length={66} tone="green" />
                     <Box c={c} label="Output" sublabel="frame" color="positive" width={86} height={54} fontSize={13} />
@@ -53,7 +53,7 @@ export function create(theme: ThemeMode = 'dark') {
             </Panel>
 
             <Row width="100%" gap={14} align="stretch">
-                <Panel c={c} title="SVG primitives" subtitle="SvgFrame · SvgPoint · VectorSegment · VectorArrow · ArrowMarkerDef" tone="purple" width={500} minHeight={306}>
+                <Panel c={c} title="SVG primitives" subtitle="SvgFrame · SvgPoint · VectorSegment · VectorArrow · ArrowMarkerDef" width={500}>
                     <Column gap={8} align="stretch">
                         <svg width="468" height="184" viewBox="0 0 468 184">
                             <defs>
@@ -70,7 +70,7 @@ export function create(theme: ThemeMode = 'dark') {
                     </Column>
                 </Panel>
 
-                <Panel c={c} title="DotPoint + DashedLine" subtitle="absolute-position overlays" tone="warm" width={248} minHeight={306}>
+                <Panel c={c} title="DotPoint + DashedLine" subtitle="absolute-position overlays" tone="warm" width={248}>
                     <div style={{ position: 'relative', display: 'flex', width: 214, height: 184, borderRadius: 10, backgroundColor: c.bgSubtle, border: `1px solid ${c.borderSubtle}` }}>
                         {DashedLine({ x1: 38, y1: 142, x2: 172, y2: 58, color: warm, dotSpacing: 9, dotSize: 3 })}
                         {DotPoint({ x: 38, y: 142, label: 'A', color: warm, c, size: 13, labelOffset: { x: 0, y: 12 } })}
@@ -80,7 +80,7 @@ export function create(theme: ThemeMode = 'dark') {
                     <TextLabel c={c} text="DotPoint carries label and color." fontSize={11} mono />
                 </Panel>
 
-                <Panel c={c} title="AxisPlot" subtitle="points, paths, and vectors on axes" tone="cyan" width={282} minHeight={306} align="center">
+                <Panel c={c} title="AxisPlot" subtitle="points, paths, and vectors on axes" width={282} align="center">
                     <AxisPlot
                         c={c}
                         width={254}
@@ -93,9 +93,9 @@ export function create(theme: ThemeMode = 'dark') {
                         gridCount={4}
                         xAxisLabel="x axis"
                         yAxisLabel="y axis"
-                        paths={[{ points: [{ x: -2.4, y: -1.1 }, { x: -0.6, y: 0.2 }, { x: 0.7, y: 1.8 }, { x: 2.3, y: 2.4 }], tone: 'cyan', strokeWidth: 3 }]}
+                        paths={[{ points: [{ x: -2.4, y: -1.1 }, { x: -0.6, y: 0.2 }, { x: 0.7, y: 1.8 }, { x: 2.3, y: 2.4 }], strokeWidth: 3 }]}
                         vectors={[{ x1: 0, y1: 0, x2: 1.8, y2: 2.1, tone: 'green', arrow: true, strokeWidth: 3 }]}
-                        points={[{ x: -2.4, y: -1.1, tone: 'warm', r: 5 }, { x: 2.3, y: 2.4, tone: 'cyan', r: 5 }]}
+                        points={[{ x: -2.4, y: -1.1, tone: 'warm', r: 5 }, { x: 2.3, y: 2.4, r: 5 }]}
                     />
                 </Panel>
             </Row>

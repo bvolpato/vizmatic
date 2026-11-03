@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-    typography,
     type ThemeColors,
     type ToneName,
     getReadableToneColor,
@@ -8,6 +7,9 @@ import {
     getToneFill,
     getToneGradient,
     withColorAlpha,
+    densityOf,
+    typeOf,
+    hasShadow,
 } from '../theme'
 
 import {
@@ -33,11 +35,12 @@ interface StackProps {
 
 export function Stack({
     direction = 'vertical',
-    gap = 12,
+    gap: gapProp,
     align = 'center',
     wrap = false,
     children,
 }: StackProps): React.ReactElement {
+    const gap = gapProp ?? densityOf().s(12)
     const alignMap = {
         start: 'flex-start',
         center: 'center',
@@ -91,8 +94,8 @@ export function Card({
     minWidth,
     height,
     minHeight,
-    padding = 20,
-    radius = 8,
+    padding: paddingProp,
+    radius: radiusProp,
     gap,
     align = 'stretch',
     justify = 'start',
@@ -101,6 +104,8 @@ export function Card({
     borderColor,
     bodyStyle,
 }: CardProps): React.ReactElement {
+    const padding = paddingProp ?? densityOf(c).s(20)
+    const radius = radiusProp ?? densityOf(c).r(8)
     const hasHeader = title || subtitle || tone
     const engineering = c.preset === 'engineering'
 
@@ -119,7 +124,7 @@ export function Card({
             ...(minWidth !== undefined ? { minWidth } : {}),
             ...(height !== undefined ? { height } : {}),
             ...(minHeight !== undefined ? { minHeight } : {}),
-            ...(shadow && !engineering ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            ...(shadow && !engineering && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }
     },
         ...compactChildren([
@@ -128,7 +133,7 @@ export function Card({
                 width: '100%',
                 display: 'flex',
                 flexDirection: 'column' as const,
-                gap: subtitle ? 5 : 0,
+                gap: densityOf(c).s(subtitle ? 5 : 0),
             }
         },
             ...compactChildren([
@@ -136,23 +141,22 @@ export function Card({
                 style: {
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
+                    gap: densityOf(c).s(8),
                     color: c.textPrimary,
-                    ...typography.small,
+                    ...typeOf(c, 'small'),
                     fontFamily: c.fontSans,
                     ...textFitStyle(),
-                    fontWeight: 900,
+                    fontWeight: 600,
                     lineHeight: 1.2,
                 }
             },
-                tone && ToneStrip({ tone, width: 30, height: 4 }),
-                title,
+                ...compactChildren([tone && ToneStrip({ tone }), title]),
             ),
             subtitle && React.createElement('div', {
                 style: {
                     display: 'flex',
                     color: c.textSecondary,
-                    ...typography.tiny,
+                    ...typeOf(c, 'tiny'),
                     fontFamily: c.fontSans,
                     ...textFitStyle(),
                     lineHeight: 1.35,
@@ -173,7 +177,7 @@ export function Card({
                 width: '100%',
                 display: 'flex',
                 color: c.textMuted,
-                ...typography.tiny,
+                ...typeOf(c, 'tiny'),
                 fontFamily: c.fontSans,
                 ...textFitStyle(),
             }
@@ -202,51 +206,40 @@ export function ValuePill({
     label,
     value,
     c,
-    tone = 'blue',
+    tone,
     detail,
-    width = 112,
+    width,
     math = false,
 }: ValuePillProps): React.ReactElement {
-    const accent = getReadableToneColor(tone, c)
-
-    return Card({
-        c,
-        tone,
-        width,
-        padding: 12,
-        radius: 10,
-        shadow: true,
-        title: React.createElement('span', {
-            style: {
-                textTransform: 'uppercase' as const,
-                letterSpacing: '0.05em',
-            }
+    const d = densityOf(c)
+    return React.createElement('div', {
+        style: {
+            display: 'flex',
+            flexDirection: 'column' as const,
+            gap: d.s(3),
+            ...(width != null ? { width } : {}),
+            padding: `${d.s(8)}px ${d.s(11)}px`,
+            borderRadius: d.r(8),
+            border: `1px solid ${tone ? withColorAlpha(getToneColor(tone, c), 0.5) : c.border}`,
+            backgroundColor: c.bgCard,
+        },
+    },
+        React.createElement('div', {
+            style: { display: 'flex', color: c.textMuted, fontFamily: c.fontSans, fontSize: d.type.micro, lineHeight: 1.2 },
         }, renderMaybeMath(label, math)),
-        children: React.createElement('div', {
+        React.createElement('div', {
             style: {
                 display: 'flex',
-                flexDirection: 'column' as const,
-                gap: 4,
-            }
-        },
-            React.createElement('div', {
-                style: {
-                    color: accent,
-                    fontFamily: c.fontMono,
-                    fontSize: 24,
-                    fontWeight: 900,
-                    lineHeight: 1,
-                }
-            }, renderMaybeMath(value, math)),
-            detail && React.createElement('div', {
-                style: {
-                    color: c.textSecondary,
-                    ...typography.tiny,
-                    lineHeight: 1.3,
-                }
-            }, renderMaybeMath(detail, math)),
-        ),
-    })
+                color: tone ? getReadableToneColor(tone, c) : c.textPrimary,
+                fontFamily: c.fontMono,
+                fontSize: d.f(20),
+                lineHeight: 1.05,
+            },
+        }, renderMaybeMath(value, math)),
+        ...compactChildren([detail && React.createElement('div', {
+            style: { display: 'flex', color: c.textSecondary, fontFamily: c.fontSans, fontSize: d.type.micro, lineHeight: 1.3 },
+        }, renderMaybeMath(detail, math))]),
+    )
 }
 
 // ─── EquationCard — Reusable step card for calculation flows ───────────────
@@ -268,15 +261,15 @@ export function EquationCard({
     title,
     formula,
     c,
-    tone = 'purple',
+    tone,
     result,
     detail,
-    width = 190,
+    width,
     height,
     math = false,
     align = 'left',
 }: EquationCardProps): React.ReactElement {
-    const accent = getReadableToneColor(tone, c)
+    const accent = tone ? getReadableToneColor(tone, c) : c.textPrimary
     const textAlign = align
 
     return Card({
@@ -284,7 +277,7 @@ export function EquationCard({
         tone,
         width,
         height,
-        padding: 16,
+        padding: densityOf(c).s(16),
         radius: 10,
         shadow: true,
         title,
@@ -292,7 +285,7 @@ export function EquationCard({
             style: {
                 display: 'flex',
                 flexDirection: 'column' as const,
-                gap: 8,
+                gap: densityOf(c).s(8),
                 alignItems: align === 'center' ? 'center' : 'flex-start',
             }
         },
@@ -300,8 +293,8 @@ export function EquationCard({
                 style: {
                     color: c.textPrimary,
                     fontFamily: c.fontMono,
-                    fontSize: 15,
-                    fontWeight: 800,
+                    fontSize: densityOf(c).f(15),
+                    fontWeight: 600,
                     lineHeight: 1.3,
                     textAlign,
                 }
@@ -310,8 +303,8 @@ export function EquationCard({
                 style: {
                     color: accent,
                     fontFamily: c.fontMono,
-                    fontSize: 28,
-                    fontWeight: 900,
+                    fontSize: densityOf(c).f(28),
+                    fontWeight: 600,
                     lineHeight: 1,
                     textAlign,
                 }
@@ -319,7 +312,7 @@ export function EquationCard({
             detail && React.createElement('div', {
                 style: {
                     color: c.textSecondary,
-                    ...typography.tiny,
+                    ...typeOf(c, 'tiny'),
                     lineHeight: 1.35,
                     textAlign,
                 }
@@ -348,20 +341,24 @@ interface BadgePillProps {
 export function BadgePill({
     text,
     c,
-    tone = 'blue',
+    tone = 'neutral',
     width,
-    minWidth = 34,
-    height = 20,
-    padding = '0 8px',
-    radius = 6,
-    fontSize = 11,
-    mono = true,
+    minWidth,
+    height,
+    padding: paddingProp,
+    radius: radiusProp,
+    fontSize: fontSizeProp,
+    mono = false,
     filled = false,
     math = false,
 }: BadgePillProps): React.ReactElement {
+    const padding = paddingProp ?? `${densityOf(c).s(0)}px ${densityOf(c).s(8)}px`
+    const radius = radiusProp ?? densityOf(c).r(6)
+    const fontSize = fontSizeProp ?? densityOf(c).f(11)
     const accent = getToneColor(tone, c)
     const accentText = getReadableToneColor(tone, c)
     const engineering = c.preset === 'engineering'
+    const resolvedHeight = height ?? densityOf(c).f(20)
 
     return React.createElement('div', {
         style: {
@@ -370,18 +367,18 @@ export function BadgePill({
             justifyContent: 'center',
             ...(width != null ? { width } : {}),
             ...(minWidth != null ? { minWidth } : {}),
-            ...(height != null ? { height } : {}),
+            height: resolvedHeight,
             padding,
             borderRadius: engineering ? Math.min(radius, 5) : radius,
             ...(engineering
                 ? { backgroundColor: getToneFill(tone, c) }
                 : filled
                     ? { backgroundImage: getToneGradient(tone) }
-                    : { backgroundColor: withColorAlpha(accent, 0x18 / 0xff) }),
-            border: `1px solid ${engineering ? accent : filled ? withColorAlpha(accent, 0) : withColorAlpha(accent, 0x55 / 0xff)}`,
-            color: engineering ? c.textPrimary : filled ? c.textOnColor : accentText,
+                    : { backgroundColor: tone === 'neutral' ? 'transparent' : withColorAlpha(accent, 0x10 / 0xff) }),
+            border: `1px solid ${engineering ? accent : filled ? withColorAlpha(accent, 0) : tone === 'neutral' ? c.border : withColorAlpha(accent, 0x55 / 0xff)}`,
+            color: engineering ? c.textPrimary : filled ? c.textOnColor : tone === 'neutral' ? c.textSecondary : accentText,
             fontSize,
-            fontWeight: 800,
+            fontWeight: 400,
             lineHeight: 1,
             fontFamily: mono ? c.fontMono : c.fontSans,
             boxSizing: 'border-box' as const,
@@ -419,18 +416,24 @@ export function GradientChip({
     width,
     minWidth,
     height,
-    minHeight = 78,
-    padding = '0 18px',
-    radius = 8,
-    shadow = true,
+    minHeight: minHeightProp,
+    padding: paddingProp,
+    radius: radiusProp,
+    shadow = false,
     align = 'left',
-    subtitleMono = true,
+    subtitleMono = false,
     math = false,
 }: GradientChipProps): React.ReactElement {
+    const d = densityOf(c)
+    const minHeight = minHeightProp ?? d.s(60)
+    const padding = paddingProp ?? `${d.s(8)}px ${d.s(14)}px`
+    const radius = radiusProp ?? d.r(8)
     const textAlign = align
-    const engineering = c.preset === 'engineering' && gradient == null
-    const textColor = engineering ? c.textPrimary : c.textOnColor
+    const explicitFill = gradient != null
+    const engineering = c.preset === 'engineering' && !explicitFill
+    const flat = !explicitFill
     const accent = getToneColor(tone, c)
+    const textColor = flat ? c.textPrimary : c.textOnColor
 
     return React.createElement('div', {
         style: {
@@ -442,32 +445,34 @@ export function GradientChip({
             borderRadius: engineering ? Math.min(radius, 5) : radius,
             ...(engineering
                 ? { backgroundColor: getToneFill(tone, c), border: `1px solid ${accent}` }
-                : { backgroundImage: gradient ?? getToneGradient(tone) }),
+                : flat
+                    ? { backgroundColor: withColorAlpha(accent, 0x14 / 0xff), border: `1px solid ${withColorAlpha(accent, 0.45)}` }
+                    : { backgroundImage: gradient }),
             color: textColor,
             display: 'flex',
             flexDirection: 'column' as const,
             justifyContent: 'center',
             alignItems: align === 'center' ? 'center' : 'flex-start',
-            gap: 5,
+            gap: d.s(4),
             padding,
-            ...(shadow && !engineering ? { boxShadow: `0 12px 30px ${c.shadow}` } : {}),
+            ...(shadow && hasShadow(c) ? { boxShadow: `0 12px 30px ${c.shadow}` } : {}),
         },
     },
         React.createElement('div', {
             style: {
-                ...typography.label,
-                color: textColor,
                 fontFamily: c.fontSans,
-                fontWeight: 900,
-                lineHeight: 1.1,
+                fontSize: d.type.label,
+                color: textColor,
+                fontWeight: 600,
+                lineHeight: 1.15,
                 textAlign,
             }
         }, renderMaybeMath(title, math)),
         subtitle && React.createElement('div', {
             style: {
-                fontSize: 11,
-                color: engineering ? c.textSecondary : 'rgba(255,255,255,0.86)',
-                lineHeight: 1.2,
+                fontSize: d.type.small,
+                color: flat ? c.textSecondary : 'rgba(255,255,255,0.86)',
+                lineHeight: 1.25,
                 textAlign,
                 fontFamily: subtitleMono ? c.fontMono : c.fontSans,
             }
@@ -498,31 +503,36 @@ export function StepCard({
     c,
     subtitle,
     eyebrow,
-    tone = 'blue',
-    width = 210,
+    tone,
+    width,
     minWidth,
-    minHeight = 74,
-    padding = '12px 14px',
-    radius = 8,
-    shadow = true,
+    minHeight: minHeightProp,
+    padding: paddingProp,
+    radius: radiusProp,
+    shadow = false,
     align = 'center',
     math = false,
 }: StepCardProps): React.ReactElement {
-    const accent = getToneColor(tone, c)
-    const accentText = getReadableToneColor(tone, c)
+    const d = densityOf(c)
+    const minHeight = minHeightProp ?? d.s(66)
+    const padding = paddingProp ?? `${d.s(10)}px ${d.s(14)}px`
+    const radius = radiusProp ?? d.r(8)
+    const accent = getToneColor(tone ?? 'blue', c)
     const engineering = c.preset === 'engineering'
     const textAlign = align
 
     return Card({
         c,
-        width,
+        // Width follows the words by default, within reason.
+        width: width ?? d.f(200),
         minWidth,
         minHeight,
         padding,
         radius: engineering ? 5 : radius,
+        justify: 'center',
         shadow: engineering ? false : shadow,
-        background: engineering ? getToneFill(tone, c) : undefined,
-        borderColor: engineering ? accent : withColorAlpha(accent, 0x88 / 0xff),
+        background: engineering ? getToneFill(tone ?? 'blue', c) : undefined,
+        borderColor: engineering ? accent : tone ? withColorAlpha(accent, 0.5) : c.borderLight,
         children: React.createElement('div', {
             style: {
                 width: '100%',
@@ -530,36 +540,34 @@ export function StepCard({
                 flexDirection: 'column' as const,
                 justifyContent: 'center',
                 alignItems: align === 'center' ? 'center' : 'flex-start',
-                gap: subtitle ? 5 : 2,
+                gap: subtitle ? d.s(3) : d.s(2),
             }
         },
             eyebrow && React.createElement('div', {
                 style: {
-                    ...typography.tiny,
-                    fontFamily: c.fontMono,
-                    color: c.textMuted,
-                    fontWeight: engineering ? 400 : 800,
-                    textTransform: 'uppercase' as const,
-                    letterSpacing: '0.05em',
+                    fontFamily: c.fontSans,
+                    fontSize: d.type.micro,
+                    color: tone ? getReadableToneColor(tone, c) : c.textMuted,
+                    fontWeight: 400,
                     ...textFitStyle(textAlign),
                     lineHeight: 1.2,
                 }
             }, renderMaybeMath(eyebrow, math)),
             React.createElement('div', {
                 style: {
-                    ...typography.label,
                     fontFamily: c.fontSans,
-                    color: engineering ? c.textPrimary : accentText,
-                    fontWeight: 700,
-                    lineHeight: 1.15,
+                    fontSize: d.type.label,
+                    color: c.textPrimary,
+                    fontWeight: 600,
+                    lineHeight: 1.2,
                     ...textFitStyle(textAlign),
                 }
             }, renderMaybeMath(title, math)),
             subtitle && React.createElement('div', {
                 style: {
-                    ...typography.tiny,
-                    fontFamily: c.fontMono,
-                    color: c.textMuted,
+                    fontFamily: engineering ? c.fontMono : c.fontSans,
+                    fontSize: d.type.small,
+                    color: c.textSecondary,
                     lineHeight: 1.25,
                     ...textFitStyle(textAlign),
                 }
@@ -593,22 +601,24 @@ export function MetricCard({
     label,
     value,
     c,
-    tone = 'blue',
+    tone,
     detail,
     width,
     minWidth,
-    minHeight = 74,
-    padding = '10px 12px',
-    radius = 8,
-    shadow = true,
-    align = 'center',
+    minHeight,
+    padding: paddingProp,
+    radius: radiusProp,
+    shadow = false,
+    align = 'left',
     math = false,
     valueMono = true,
-    valueFontSize = 22,
+    valueFontSize,
     valueColor,
 }: MetricCardProps): React.ReactElement {
-    const accent = getToneColor(tone, c)
-    const accentText = getReadableToneColor(tone, c)
+    const d = densityOf(c)
+    const padding = paddingProp ?? `${d.s(9)}px ${d.s(12)}px`
+    const radius = radiusProp ?? d.r(8)
+    const accent = getToneColor(tone ?? 'blue', c)
     const textAlign = align
 
     return Card({
@@ -619,7 +629,8 @@ export function MetricCard({
         padding,
         radius,
         shadow,
-        borderColor: withColorAlpha(accent, 0x66 / 0xff),
+        justify: 'center',
+        borderColor: tone ? withColorAlpha(accent, 0.45) : c.border,
         children: React.createElement('div', {
             style: {
                 width: '100%',
@@ -627,36 +638,36 @@ export function MetricCard({
                 flexDirection: 'column' as const,
                 justifyContent: 'center',
                 alignItems: align === 'center' ? 'center' : 'flex-start',
-                gap: 3,
+                gap: d.s(3),
             }
         },
             ...compactChildren([
             React.createElement('div', {
                 style: {
-                    fontSize: 11,
-                    fontWeight: 800,
-                    color: accentText,
+                    fontSize: d.type.micro,
+                    fontWeight: 400,
+                    color: c.textMuted,
                     fontFamily: c.fontSans,
-                    lineHeight: 1.1,
+                    lineHeight: 1.2,
                     ...textFitStyle(textAlign),
                 }
             }, renderMaybeMath(label, math)),
             React.createElement('div', {
                 style: {
-                    fontSize: valueFontSize,
-                    fontWeight: 700,
-                    color: valueColor ?? c.textPrimary,
-                    lineHeight: 1.15,
+                    fontSize: valueFontSize ?? d.f(22),
+                    fontWeight: 400,
+                    color: valueColor ?? (tone ? getReadableToneColor(tone, c) : c.textPrimary),
+                    lineHeight: 1.1,
                     ...textFitStyle(textAlign),
                     fontFamily: valueMono ? c.fontMono : c.fontSans,
                 }
             }, renderMaybeMath(value, math)),
             detail && React.createElement('div', {
                 style: {
-                    ...typography.tiny,
+                    fontSize: d.type.micro,
                     fontFamily: c.fontSans,
-                    color: c.textMuted,
-                    lineHeight: 1.2,
+                    color: c.textSecondary,
+                    lineHeight: 1.25,
                     ...textFitStyle(textAlign),
                 }
             }, renderMaybeMath(detail, math)),

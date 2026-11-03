@@ -1,3 +1,4 @@
+density = "compact";
 width = 1120;
 height = 800;
 background = "theme";
@@ -39,8 +40,8 @@ background = "theme";
                 ]}
                 edges={[
                     { from: 'cafe', to: 'garden', tone: 'warm' },
-                    { from: 'garden', to: 'books', tone: 'green' },
-                    { from: 'books', to: 'market', tone: 'cyan' },
+                    { from: 'garden', to: 'books' },
+                    { from: 'books', to: 'market' },
                 ]}
             />
         </Card>

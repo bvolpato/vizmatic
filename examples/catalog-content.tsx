@@ -46,7 +46,7 @@ export function create(theme: ThemeMode = 'dark') {
             gap={12}
         >
             <Row width="100%" gap={12} align="stretch">
-                <Panel c={c} title="Inline language" subtitle="ToneStrip · Icon · TextLabel · MathText · SvgMathText" tone="purple" width={540} minHeight={148}>
+                <Panel c={c} title="Inline language" subtitle="ToneStrip · Icon · TextLabel · MathText · SvgMathText" tone="purple" width={540}>
                     <Row gap={12} wrap align="center" justify="start">
                         <Row gap={7}>
                             <ToneStrip tone="purple" width={42} height={6} />
@@ -66,13 +66,13 @@ export function create(theme: ThemeMode = 'dark') {
                         </div>
                     </Row>
                 </Panel>
-                <Panel c={c} title="Tokens and values" subtitle="Badge · BadgePill · GradientChip · ValuePill" tone="cyan" width={524} minHeight={148}>
+                <Panel c={c} title="Tokens and values" subtitle="Badge · BadgePill · GradientChip · ValuePill" tone="cyan" width={524}>
                     <Row gap={10} align="center" justify="start">
                         <Column gap={8} align="start">
                             <Badge c={c} label="Badge" color="secondary" />
                             <BadgePill c={c} text="BadgePill" tone="cyan" fontSize={11} />
                         </Column>
-                        <GradientChip c={c} title="GradientChip" subtitle="high-signal label" tone="cyan" width={174} minHeight={74} />
+                        <GradientChip c={c} title="GradientChip" subtitle="high-signal label" tone="cyan" width={174} />
                         <ValuePill c={c} label="ValuePill" value="42 ms" detail="p95 render" tone="green" width={132} />
                     </Row>
                 </Panel>
@@ -80,12 +80,12 @@ export function create(theme: ThemeMode = 'dark') {
 
             <Row width="100%" gap={12} align="stretch">
                 <EquationCard c={c} title="EquationCard" formula="rate = work / time" result="8.4" detail="units / second" tone="purple" width={212} math />
-                <StepCard c={c} eyebrow="01" title="StepCard" subtitle="named stage" tone="blue" width={194} minHeight={132} />
-                <MetricCard c={c} label="MetricCard" value="98.7%" detail="healthy output" tone="green" width={178} minHeight={132} />
-                <CalloutCard c={c} title="CalloutCard" detail="Emphasize one decision, caveat, or result without interrupting narrative flow." tone="ocean" width={462} minHeight={132} align="left" />
+                <StepCard c={c} eyebrow="01" title="StepCard" subtitle="named stage" tone="blue" width={194} />
+                <MetricCard c={c} label="MetricCard" value="98.7%" detail="healthy output" tone="green" width={178} />
+                <CalloutCard c={c} title="CalloutCard" detail="Emphasize one decision, caveat, or result without interrupting narrative flow." tone="ocean" width={462} align="left" />
             </Row>
 
-            <Panel c={c} title="Structured content" subtitle="DetailList · CodeBlock · Comparison · KeyValueList · TileGrid · Tile" tone="warm" width="100%" minHeight={286}>
+            <Panel c={c} title="Structured content" subtitle="DetailList · CodeBlock · Comparison · KeyValueList · TileGrid · Tile" tone="warm" width="100%">
                 <Row width="100%" gap={12} align="stretch" justify="center">
                     <Column gap={8} align="stretch" width={170}>
                         <TextLabel c={c} text="DetailList" fontSize={11} mono color={c.textMuted} />
@@ -109,7 +109,6 @@ export function create(theme: ThemeMode = 'dark') {
                             divider
                             gap={7}
                             sideWidth={103}
-                            minHeight={138}
                             sides={[
                                 { title: 'dense', tone: 'critical', lines: ['one signal', 'short label'] },
                                 { title: 'clear', tone: 'green', lines: ['grouped', 'scan-ready'] },
@@ -136,7 +135,6 @@ export function create(theme: ThemeMode = 'dark') {
                             columns={2}
                             gap={8}
                             tileWidth={108}
-                            minHeight={68}
                             tiles={[
                                 { title: 'Tile', subtitle: 'primitive', tone: 'blue' },
                                 { title: 'Grid', subtitle: 'layout', tone: 'purple' },

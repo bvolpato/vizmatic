@@ -1,5 +1,7 @@
 import React from 'react'
 import {
+    withDensity,
+    type Density,
     typography,
     getThemeColors,
     type ThemeColors,
@@ -7,6 +9,9 @@ import {
     type ToneName,
     getToneColor,
     getToneGradient,
+    densityOf,
+    typeOf,
+    hasShadow,
 } from '../theme'
 import { getRenderBackground } from '../renderContext'
 
@@ -39,7 +44,7 @@ interface CanvasProps {
     background?: string
 }
 
-export function Canvas({ children, c, padding = 40, justify = 'center', background }: CanvasProps): React.ReactElement {
+export function Canvas({ children, c, padding, justify = 'center', background }: CanvasProps): React.ReactElement {
     const renderBackground = getRenderBackground()
     const canvasBackground = background ?? (renderBackground === 'theme' ? c.bg : renderBackground)
 
@@ -54,7 +59,7 @@ export function Canvas({ children, c, padding = 40, justify = 'center', backgrou
             justifyContent: justify,
             backgroundColor: canvasBackground,
             fontFamily: c.fontSans,
-            padding,
+            padding: padding ?? densityOf(c).space.canvas,
         }
     }, children)
 }
@@ -65,37 +70,43 @@ interface TitleBarProps {
     title: string
     subtitle?: string
     c: ThemeColors
+    /** Title voice. Serif suits articles and covers. Sans suits technical figures. */
+    titleFont?: 'sans' | 'serif'
+    align?: 'left' | 'center'
 }
 
-export function TitleBar({ title, subtitle, c }: TitleBarProps): React.ReactElement {
+export function TitleBar({ title, subtitle, c, titleFont = 'sans', align = 'left' }: TitleBarProps): React.ReactElement {
     const engineering = c.preset === 'engineering'
+    const d = densityOf(c)
+    const serif = titleFont === 'serif'
     return React.createElement('div', {
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
-            alignItems: engineering ? 'flex-start' : 'center',
-            gap: 6,
-            ...(engineering ? { width: '100%' } : {}),
-            marginBottom: engineering ? 20 : 24,
+            alignItems: align === 'center' ? 'center' : 'flex-start',
+            gap: d.s(4),
+            width: '100%',
+            marginBottom: d.s(16),
         }
     },
         React.createElement('div', {
             style: {
-                ...typography.title,
-                fontFamily: c.fontSans,
-                fontSize: engineering ? 34 : typography.title.fontSize,
-                fontWeight: 700,
-                ...(engineering ? { lineHeight: 1.12 } : {}),
+                fontFamily: serif ? c.fontSerif : c.fontSans,
+                // A serif face has a smaller eye, so it takes a larger size for the same presence.
+                fontSize: serif ? d.f(34) : engineering ? d.f(34) : d.type.title,
+                fontWeight: serif ? 400 : 600,
+                lineHeight: 1.12,
+                letterSpacing: serif ? 0 : `${-0.012}em`,
                 color: c.textPrimary,
             }
         }, title),
         subtitle && React.createElement('div', {
             style: {
-                ...typography.body,
-                color: c.textSecondary,
-                fontFamily: c.fontMono,
-                fontSize: engineering ? 14 : typography.body.fontSize,
+                fontFamily: c.fontSans,
+                fontSize: d.type.body,
+                fontWeight: 400,
                 lineHeight: 1.35,
+                color: c.textSecondary,
             }
         }, subtitle),
     )
@@ -144,6 +155,23 @@ export function compactChildren(children: React.ReactNode[]): React.ReactNode[] 
     return children.filter((child) => child !== undefined && child !== null && child !== false)
 }
 
+/**
+ * Gives every element in a tree that takes a theme the same density. Elements
+ * built with JSX are still props at this point, so nested diagrams follow along.
+ */
+export function scopeDensity(node: React.ReactNode, density: Density, theme?: ThemeColors): React.ReactNode {
+    if (Array.isArray(node)) return node.map((child) => scopeDensity(child, density, theme))
+    if (!React.isValidElement(node)) return node
+    const props = node.props as { c?: ThemeColors; children?: React.ReactNode }
+    const next: { c?: ThemeColors; children?: React.ReactNode } = {}
+    if (props.c ? props.c.density === undefined : typeof node.type === 'function' && theme) {
+        // Bare frames fill in the theme later, so components with no theme get this scene's.
+        next.c = withDensity(props.c ?? theme!, density)
+    }
+    if (props.children !== undefined) next.children = scopeDensity(props.children, density, theme)
+    return Object.keys(next).length ? React.cloneElement(node as React.ReactElement<typeof next>, next) : node
+}
+
 interface SceneProps {
     c: ThemeColors
     children: React.ReactNode
@@ -156,34 +184,43 @@ interface SceneProps {
     contentWidth?: number | string
     background?: string
     contentStyle?: React.CSSProperties
+    /** Type, spacing, and stroke scale for this scene and everything inside it. */
+    density?: Density
+    titleFont?: 'sans' | 'serif'
+    titleAlign?: 'left' | 'center'
 }
 
 export function Scene({
-    c,
+    c: baseTheme,
     children,
     title,
     subtitle,
-    padding = 40,
-    gap = 24,
+    padding,
+    gap,
     justify = 'flex-start',
     align = 'stretch',
     contentWidth = '100%',
     background,
     contentStyle,
+    density,
+    titleFont,
+    titleAlign,
 }: SceneProps): React.ReactElement {
+    const c = density !== undefined ? withDensity(baseTheme, density) : baseTheme
+    const d = densityOf(c)
     return React.createElement(Canvas, { c, padding, justify, background },
         ...compactChildren([
-            title && React.createElement(TitleBar, { c, title, subtitle }),
+            title && React.createElement(TitleBar, { c, title, subtitle, titleFont, align: titleAlign }),
             React.createElement('div', {
             style: {
                 width: contentWidth,
                 display: 'flex',
                 flexDirection: 'column' as const,
                 alignItems: flexAlign(align),
-                gap,
+                gap: gap ?? d.s(24),
                 ...contentStyle,
             }
-            }, children),
+            }, density !== undefined ? scopeDensity(children, density, baseTheme) : children),
         ])
     )
 }
@@ -201,14 +238,16 @@ interface FlexBoxProps {
 
 function flexBox(direction: 'row' | 'column', {
     children,
-    gap = 12,
+    gap: gapProp,
     align = 'center',
-    justify = 'center',
+    // Rows start at the left edge, under the left-aligned title.
+    justify = direction === 'row' ? 'start' : 'center',
     wrap = false,
     width,
     height,
     style,
 }: FlexBoxProps): React.ReactElement {
+    const gap = gapProp ?? densityOf().s(12)
     return React.createElement('div', {
         style: {
             display: 'flex',
@@ -238,13 +277,14 @@ interface ToneStripProps {
     height?: number
 }
 
-export function ToneStrip({ tone, width = 34, height = 4 }: ToneStripProps): React.ReactElement {
+/** A small flat key beside a heading. It names the color instead of decorating the heading. */
+export function ToneStrip({ tone, width = 7, height = 7 }: ToneStripProps): React.ReactElement {
     return React.createElement('span', {
         style: {
             display: 'flex',
             width,
             height,
-            borderRadius: 999,
+            borderRadius: Math.min(2, Math.min(width, height) / 2),
             backgroundImage: getToneGradient(tone),
             flexShrink: 0,
         }
@@ -532,25 +572,28 @@ export function Panel({
     c,
     children,
     subtitle,
-    tone = 'blue',
+    tone,
     footer,
     width,
     minWidth,
     height,
     minHeight,
-    padding = 14,
-    radius = 8,
-    gap = 10,
+    padding: paddingProp,
+    radius: radiusProp,
+    gap: gapProp,
     align = 'stretch',
     justify = 'start',
-    shadow = true,
+    shadow = false,
     background,
     borderColor,
     titleFontSize,
-    accentWidth = 34,
-    accentHeight = 4,
+    accentWidth,
+    accentHeight,
     bodyStyle,
 }: PanelProps): React.ReactElement {
+    const padding = paddingProp ?? densityOf(c).s(14)
+    const radius = radiusProp ?? densityOf(c).r(8)
+    const gap = gapProp ?? densityOf(c).s(10)
     const engineering = c.preset === 'engineering'
     return React.createElement('div', {
         'data-vizmatic-layout-container': 'panel',
@@ -568,7 +611,7 @@ export function Panel({
             borderRadius: engineering ? 5 : radius,
             border: `1px solid ${borderColor ?? c.borderSubtle}`,
             backgroundColor: background ?? c.bgCard,
-            ...(shadow && !engineering ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
+            ...(shadow && !engineering && hasShadow(c) ? { boxShadow: `0 9px 24px ${c.shadow}` } : {}),
         }
     },
         ...compactChildren([
@@ -578,7 +621,7 @@ export function Panel({
                 width: '100%',
                 display: 'flex',
                 flexDirection: 'column' as const,
-                gap: subtitle ? 5 : 0,
+                gap: densityOf(c).s(subtitle ? 5 : 0),
             }
         },
             ...compactChildren([
@@ -586,24 +629,23 @@ export function Panel({
                 style: {
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
+                    gap: densityOf(c).s(8),
                     color: c.textPrimary,
-                    ...typography.small,
+                    ...typeOf(c, 'small'),
                     fontFamily: c.fontSans,
                     ...textFitStyle(),
-                    fontSize: titleFontSize ?? typography.small.fontSize,
-                    fontWeight: 900,
+                    fontSize: titleFontSize ?? densityOf(c).type.label,
+                    fontWeight: 600,
                     lineHeight: 1.2,
                 }
             },
-                ToneStrip({ tone, width: accentWidth, height: accentHeight }),
-                title,
+                ...compactChildren([tone && ToneStrip({ tone, width: accentWidth, height: accentHeight }), title]),
             ),
             subtitle && React.createElement('div', {
                 style: {
                     display: 'flex',
                     color: c.textSecondary,
-                    ...typography.tiny,
+                    ...typeOf(c, 'tiny'),
                     fontFamily: engineering ? c.fontMono : typography.tiny.fontFamily,
                     ...textFitStyle(),
                     lineHeight: 1.35,
@@ -627,7 +669,7 @@ export function Panel({
                 width: '100%',
                 display: 'flex',
                 color: c.textMuted,
-                ...typography.tiny,
+                ...typeOf(c, 'tiny'),
                 ...textFitStyle(),
             }
         }, footer),
@@ -834,7 +876,7 @@ export function TextLabel({
     math = false,
     mono = false,
 }: TextLabelProps): React.ReactElement {
-    const base = typography[variant]
+    const base = typeOf(c, variant)
     return React.createElement('div', {
         style: {
             display: 'flex',
@@ -889,13 +931,14 @@ export function SvgMathText({
     x,
     y,
     fill,
-    fontSize = 13,
+    fontSize: fontSizeProp,
     fontFamily = 'JetBrains Mono',
     fontWeight = 800,
     textAnchor = 'middle',
     dominantBaseline = 'middle',
     opacity = 1,
 }: SvgMathTextProps): React.ReactElement {
+    const fontSize = fontSizeProp ?? densityOf().f(13)
     const anchorOffset = textAnchor === 'start' ? '0' : textAnchor === 'end' ? '-100%' : '-50%'
     const baselineOffset = svgMathTextBaselineOffset(dominantBaseline)
 

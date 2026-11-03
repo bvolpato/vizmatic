@@ -34,7 +34,6 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="numeric values with optional headers"
                     tone="blue"
                     width={338}
-                    minHeight={210}
                     align="center"
                 >
                     <Matrix
@@ -59,7 +58,6 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="scaled intensity with named axes"
                     tone="purple"
                     width={338}
-                    minHeight={210}
                     align="center"
                 >
                     <Heatmap
@@ -85,7 +83,6 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="symbolic regions and block structure"
                     tone="cyan"
                     width={340}
-                    minHeight={210}
                     align="center"
                 >
                     <TiledMatrix
@@ -112,7 +109,6 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="structured rows with header bands"
                     tone="warm"
                     width={340}
-                    minHeight={220}
                     align="center"
                 >
                     <DataTable
@@ -135,7 +131,6 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="general labeled cells and tones"
                     tone="green"
                     width={280}
-                    minHeight={220}
                     align="center"
                 >
                     <Grid
@@ -158,7 +153,6 @@ export function create(theme: ThemeMode = 'dark') {
                     subtitle="dense distribution for cards and dashboards"
                     tone="ocean"
                     width={396}
-                    minHeight={220}
                     align="center"
                 >
                     <MiniBarChart

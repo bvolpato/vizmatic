@@ -1,3 +1,4 @@
+density = "compact";
 width = 1120;
 height = 800;
 background = "theme";

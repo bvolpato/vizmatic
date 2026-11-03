@@ -32,8 +32,8 @@ export interface WatermarkElementProps extends WatermarkOptions {
 export type WatermarkInput = boolean | string | WatermarkOptions | React.ReactElement<WatermarkElementProps>
 
 const DEFAULT_WATERMARK_TEXT = 'Vizmatic'
-const WATERMARK_COLOR_DARK = '#a78bfa'
-const WATERMARK_COLOR_LIGHT = '#7c3aed'
+const WATERMARK_COLOR_DARK = '#a5a7ad'
+const WATERMARK_COLOR_LIGHT = '#5e5a50'
 
 /**
  * Compact Vizmatic frame-grid mark. Kept as JSX so Satori can embed it in PNG,

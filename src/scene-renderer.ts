@@ -88,6 +88,8 @@ const assetPins = {
     'fonts/JetBrainsMono-Regular.ttf': '44ce4a84f20d60f24539bd0cef11f79c29e38609e0f8adf18551c9794a5d9dc3',
     'fonts/NotoSans-Regular.ttf': '5be701a9511117e73603bdab95947feef4f18bd1851dbddc30659370b26c69f1',
     'fonts/NotoSansMath-Regular.ttf': '3cbaf44af13f592bc7f7172a50edab4c73ac2f3d19af2d697a01ebd3288e322d',
+    'fonts/InstrumentSerif-Regular.ttf': '498efd461f6ddfcb7a111bf9a565709d2085d48201d501ead960d93e84ffbb88',
+    'fonts/InstrumentSerif-Italic.ttf': '08939b8bdf534afec24ae0ef5e03f948940cd9a8fe08e7fecbad040e62327385',
     'emoji.json.br': '4911e822be2ed684fe811cadf036139e3efe353ffe2990311e1763f38ae7daab',
 } as const
 
@@ -116,14 +118,15 @@ async function loadSceneAssets(): Promise<SceneAssets> {
         if (await sceneSha256(bytes) !== expected) throw new Error(`Pinned scene asset does not match: ${name}`)
         files.set(name, bytes)
     }
-    const fontDefinitions: Array<[string, string, 400 | 600 | 700]> = [
+    const fontDefinitions: Array<[string, string, 400 | 600 | 700, ('normal' | 'italic')?]> = [
         ['Inter', 'Inter-Regular.ttf', 400], ['Inter', 'Inter-SemiBold.ttf', 600],
         ['Inter', 'Inter-Bold.ttf', 700], ['JetBrains Mono', 'JetBrainsMono-Regular.ttf', 400],
         ['Noto Sans', 'NotoSans-Regular.ttf', 400], ['Noto Sans Math', 'NotoSansMath-Regular.ttf', 400],
+        ['Instrument Serif', 'InstrumentSerif-Regular.ttf', 400], ['Instrument Serif', 'InstrumentSerif-Italic.ttf', 400, 'italic'],
     ]
     return {
-        fonts: fontDefinitions.map(([name, filename, weight]) => ({
-            name, weight, style: 'normal', data: Uint8Array.from(files.get(`fonts/${filename}`)!).buffer,
+        fonts: fontDefinitions.map(([name, filename, weight, style]) => ({
+            name, weight, style: style ?? 'normal', data: Uint8Array.from(files.get(`fonts/${filename}`)!).buffer,
         })),
         fontFiles: fontDefinitions.map(([, filename]) => join(assetDir, 'fonts', filename)),
         emoji: JSON.parse(brotliDecompressSync(files.get('emoji.json.br')!).toString('utf8')) as Record<string, string>,
