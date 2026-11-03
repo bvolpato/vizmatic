@@ -323,6 +323,9 @@ export async function renderRgbaVideo(
     } else {
         args.push('-c:v', 'libx264', '-preset', preset)
         if (options.tune) args.push('-tune', options.tune)
+        // Slow presets and the animation tune raise the reference frames, which raises the H.264
+        // level. At 1080p60, more than 4 needs level 5, above the level 4.2 that Apple documents.
+        if (options.tune === 'animation' || /slow|placebo/.test(preset)) args.push('-refs', '4')
         args.push('-crf', String(crf), '-threads:v', String(threads))
     }
     args.push('-pix_fmt', 'yuv420p', ...COLOR_TAGS)

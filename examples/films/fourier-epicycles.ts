@@ -84,9 +84,21 @@ export default film({
     const phase = s.value(0)
     const count = s.value(1)
     const reveal = s.value(0)
+    // The exact end of the chain. The camera follows this, so it must not snap to the table's
+    // steps: at 9x zoom, one step is a jump of about 50 pixels, and the whole frame shakes.
     const tip = (): Vec => {
         const u = phase.value % 1
-        return curvePoint(Math.round(u * TRACE), count.value)
+        const n = count.value
+        let x = center.re, y = center.im
+        const limit = Math.min(terms.length, Math.ceil(n))
+        for (let k = 0; k < limit; k++) {
+            const term = terms[k]!, w = weightOf(k, n)
+            const angle = TAU * term.n * u
+            const c = Math.cos(angle), sn = Math.sin(angle)
+            x += w * (term.re * c - term.im * sn)
+            y += w * (term.re * sn + term.im * c)
+        }
+        return [x, y]
     }
 
     const stroke = linearGradient(
