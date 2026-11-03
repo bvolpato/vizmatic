@@ -1,5 +1,6 @@
 import { access, copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { build } from 'esbuild'
+import { STAGE_FONTS } from './build-stage'
 
 const out = 'docs/assets/studio'
 
@@ -78,7 +79,7 @@ export async function buildStudio(): Promise<{ films: number }> {
         define: { 'import.meta.url': 'undefined' },
         logLevel: 'warning',
     })
-    for (const font of ['Inter-Regular.ttf', 'Inter-SemiBold.ttf', 'Inter-Bold.ttf', 'JetBrainsMono-Regular.ttf', 'InstrumentSerif-Regular.ttf', 'InstrumentSerif-Italic.ttf']) {
+    for (const font of STAGE_FONTS) {
         await copyFile(`assets/fonts/${font}`, `${out}/assets/fonts/${font}`)
     }
     const films = await copyFilmCatalog()

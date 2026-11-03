@@ -4,7 +4,13 @@ import { build } from 'esbuild'
 
 const out = 'docs/assets/stage'
 
-const FONTS = ['Inter-Regular.ttf', 'Inter-SemiBold.ttf', 'Inter-Bold.ttf', 'JetBrainsMono-Regular.ttf', 'InstrumentSerif-Regular.ttf', 'InstrumentSerif-Italic.ttf']
+/** Every font the stage engine can ask for. The browser fetches a fallback only when a film needs it. */
+export const STAGE_FONTS = [
+    'Inter-Regular.ttf', 'Inter-SemiBold.ttf', 'Inter-Bold.ttf', 'JetBrainsMono-Regular.ttf',
+    'InstrumentSerif-Regular.ttf', 'InstrumentSerif-Italic.ttf',
+    'SourceSerif4-24pt-Regular.ttf', 'SourceSerif4-24pt-Italic.ttf',
+    'NotoSans-Regular.ttf', 'NotoSansMath-Regular.ttf',
+]
 
 async function listSources(directory: string): Promise<string[]> {
     const names = await readdir(directory).catch(() => [] as string[])
@@ -44,7 +50,7 @@ export async function buildStage(options: StageBuildOptions = {}): Promise<strin
         alias: { 'vizmatic/stage': './src/stage/browser.ts' },
         logLevel: 'warning',
     })
-    await Promise.all(FONTS.map((font) => copyFile(`assets/fonts/${font}`, `${out}/assets/fonts/${font}`)))
+    await Promise.all(STAGE_FONTS.map((font) => copyFile(`assets/fonts/${font}`, `${out}/assets/fonts/${font}`)))
     return films
 }
 

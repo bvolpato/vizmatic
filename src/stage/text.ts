@@ -1,4 +1,4 @@
-import { fontFor, glyphPath, type FontFamily, type FontWeight } from './font'
+import { fallbackGlyph, fontFor, glyphPath, type FontFamily, type FontWeight, type LoadedFont } from './font'
 import { Node } from './node'
 import { pathBounds, transformPath, type Path } from './geometry'
 import { toPaint, type ColorInput } from './color'
@@ -50,24 +50,37 @@ function centered(path: Path): { path: Path; x: number; y: number } {
 
 export function text(content: string, options: TextOptions = {}): TextNode {
     const size = options.size ?? 40
-    const font = fontFor(options.font ?? 'sans', options.weight ?? 400, options.italic ?? false)
+    const family = options.font ?? 'sans'
+    const weight = options.weight ?? 400
+    const italic = options.italic ?? false
+    const font = fontFor(family, weight, italic)
     const scale = size / font.unitsPerEm
     const tracking = (options.tracking ?? 0) * size
     const leading = (options.leading ?? 1.3) * size
     const paint = toPaint(options.color ?? 'ink')
     const source = options.uppercase ? content.toUpperCase() : content
 
-    type Placed = { code: number; glyph: number; x: number; char: string }
+    type Placed = { font: LoadedFont; glyph: number; x: number; char: string }
     const measureWord = (word: string): { glyphs: Placed[]; width: number } => {
         const glyphs: Placed[] = []
-        let x = 0, previous = 0
+        let x = 0, previous = 0, previousFont: LoadedFont | null = null
         for (const char of word) {
             const code = char.codePointAt(0)!
-            const glyph = font.glyphFor(code)
-            if (previous) x += font.kern(previous, glyph) * scale
-            glyphs.push({ code, glyph, x, char })
-            x += font.advance(glyph) * scale + tracking
+            let owner = font, glyph = font.glyphFor(code)
+            if (glyph === 0) {
+                const found = fallbackGlyph(family, code, weight, italic)
+                if (found) {
+                    owner = found.font
+                    glyph = found.glyph
+                }
+            }
+            const ownerScale = size / owner.unitsPerEm
+            // Kerning pairs exist only inside one font.
+            if (previous && previousFont === owner) x += owner.kern(previous, glyph) * ownerScale
+            glyphs.push({ font: owner, glyph, x, char })
+            x += owner.advance(glyph) * ownerScale + tracking
             previous = glyph
+            previousFont = owner
         }
         return { glyphs, width: x }
     }
@@ -99,13 +112,15 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     lines.forEach((line, row) => {
         const start = align === 'left' ? 0 : align === 'center' ? (blockWidth - line.width) / 2 : blockWidth - line.width
         for (const placed of line.glyphs) {
-            const path = glyphPath(font, placed.glyph, size)
+            const path = glyphPath(placed.font, placed.glyph, size)
             if (path.length === 0) continue
             const shape = centered(path)
             const leaf = new Node(shape.path).at(start + placed.x + shape.x, row * leading + shape.y)
             leaf.base.fill = paint
             leaf.base.trimEach = true
             leaf.data['key'] = placed.char
+            // Glyph 0 draws the font's empty box. The film check reports it.
+            if (placed.glyph === 0) leaf.data['missingGlyph'] = true
             node.chars.push(leaf)
             node.children.push(leaf)
             leaf.parent = node

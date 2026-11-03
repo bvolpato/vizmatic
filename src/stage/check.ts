@@ -4,7 +4,7 @@ import { pathBounds, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -274,6 +274,18 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): F
             }
         }
 
+        if (glyph && op.node!.data['missingGlyph'] && op.fillAlpha >= MIN_TEXT_ALPHA) {
+            const char = String(op.node!.data['key'])
+            const code = `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`
+            const text = block ? sourceOf(block) : ''
+            findings.push({
+                key: `film.missing_glyph:${text}:${code}`,
+                code: 'film.missing_glyph', severity: 'error', time, box: shape,
+                message: `Text ${JSON.stringify(text)} has a character that no bundled font can draw (${code}). It renders as an empty box.`,
+                text,
+            })
+        }
+
         if (glyph && block && op.fillAlpha >= MIN_TEXT_ALPHA) {
             let entry = blocks.get(block)
             if (!entry) blocks.set(block, entry = { id: block, source: sourceOf(block), bounds: shape, glyphs: [] })
@@ -351,8 +363,8 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): F
 }
 
 /**
- * Inspect a film for layout defects: marks off the canvas, text on text, and
- * strokes through text. It looks where the film comes to rest, because objects may
+ * Inspect a film for layout defects: marks off the canvas, text on text, strokes
+ * through text, and characters that no font can draw. It looks where the film comes to rest, because objects may
  * cross each other while moving. Runs anywhere, with no rendering.
  */
 export async function checkFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions = {}): Promise<FilmCheckReport> {

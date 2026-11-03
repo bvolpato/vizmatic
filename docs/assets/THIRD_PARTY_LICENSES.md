@@ -50,6 +50,10 @@ each under the MIT License. Their full notices are in
 - Instrument Serif: SIL Open Font License 1.1.
   Copyright 2022 The Instrument Serif Project Authors.
   Source: https://github.com/Instrument/instrument-serif
+- Source Serif 4: SIL Open Font License 1.1.
+  Copyright 2014 The Source Serif 4 Project Authors.
+  Source: https://github.com/adobe-fonts/source-serif
+  `SourceSerif4-24pt-Regular.ttf` and `SourceSerif4-24pt-Italic.ttf` are static cuts of the variable fonts at optical size 24. `scripts/build-stage-fonts.py` makes them.
 - Noto Sans: SIL Open Font License 1.1.
   Copyright Google Inc.
   Source: https://github.com/notofonts/noto-fonts

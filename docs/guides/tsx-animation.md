@@ -41,7 +41,7 @@ For a fresh app, add the [consumer security overrides](https://github.com/bvolpa
 before installing.
 
 ```bash
-npm install --save-dev vizmatic@0.5.0 react
+npm install --save-dev vizmatic@0.6.0 react
 npx vizmatic video ./request-lifecycle.tsx --out ./dist/videos --theme dark --fps 30
 ```
 

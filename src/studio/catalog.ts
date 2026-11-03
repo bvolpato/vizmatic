@@ -158,7 +158,7 @@ function exprEnv(ctx: BuildContext, scope: Readonly<Record<string, number>> = {}
 
 // ── The kinds ───────────────────────────────────────────────────────────────
 
-const FONT_OPTIONS = [['sans', 'Inter'], ['serif', 'Instrument Serif'], ['mono', 'JetBrains Mono']] as const
+const FONT_OPTIONS = [['sans', 'Inter'], ['serif', 'Instrument Serif'], ['text-serif', 'Source Serif 4'], ['mono', 'JetBrains Mono']] as const
 
 const textKind: KindDef = {
     kind: 'text', label: 'Text', group: 'Type',

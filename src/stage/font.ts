@@ -531,21 +531,34 @@ function readPairs(r: Reader, sub: number): KernLookup {
     return () => undefined
 }
 
-export type FontFamily = 'sans' | 'serif' | 'mono' | 'noto'
+export type FontFamily = 'sans' | 'serif' | 'text-serif' | 'mono' | 'noto'
 export type FontWeight = 400 | 600 | 700
 
-const FILES: Record<FontFamily, Partial<Record<string, string>>> = {
+type BundledFamily = FontFamily | 'math'
+
+const FILES: Record<BundledFamily, Partial<Record<string, string>>> = {
     sans: { '400': 'Inter-Regular.ttf', '600': 'Inter-SemiBold.ttf', '700': 'Inter-Bold.ttf' },
     serif: { '400': 'InstrumentSerif-Regular.ttf', 'italic': 'InstrumentSerif-Italic.ttf' },
+    'text-serif': { '400': 'SourceSerif4-24pt-Regular.ttf', 'italic': 'SourceSerif4-24pt-Italic.ttf' },
     mono: { '400': 'JetBrainsMono-Regular.ttf' },
     noto: { '400': 'NotoSans-Regular.ttf' },
+    math: { '400': 'NotoSansMath-Regular.ttf' },
+}
+
+/** The fonts to try, in order, for a character that a family does not have. */
+const FALLBACKS: Record<FontFamily, readonly BundledFamily[]> = {
+    sans: ['noto', 'math'],
+    serif: ['text-serif', 'noto', 'math'],
+    'text-serif': ['noto', 'math'],
+    mono: ['noto', 'math'],
+    noto: ['math'],
 }
 
 const fonts = new Map<string, LoadedFont>()
 const pending = new Map<string, Promise<void>>()
 
 /** Get a font now, or suspend the current compile until it arrives. */
-export function fontFor(family: FontFamily, weight: FontWeight = 400, italic = false): LoadedFont {
+export function fontFor(family: BundledFamily, weight: FontWeight = 400, italic = false): LoadedFont {
     const files = FILES[family]
     const file = (italic ? files['italic'] : undefined) ?? files[String(weight)] ?? files['400']!
     const loaded = fonts.get(file)
@@ -559,6 +572,16 @@ export function fontFor(family: FontFamily, weight: FontWeight = 400, italic = f
         pending.set(file, waiting)
     }
     throw new Suspend(waiting)
+}
+
+/** Find a character in the fonts behind a family. These load only when a film needs them. */
+export function fallbackGlyph(family: FontFamily, code: number, weight: FontWeight = 400, italic = false): { font: LoadedFont; glyph: number } | null {
+    for (const next of FALLBACKS[family]) {
+        const font = fontFor(next, weight, italic)
+        const glyph = font.glyphFor(code)
+        if (glyph !== 0) return { font, glyph }
+    }
+    return null
 }
 
 const glyphPaths = new WeakMap<LoadedFont, Map<number, Map<number, Path>>>()

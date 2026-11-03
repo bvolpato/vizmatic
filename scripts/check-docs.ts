@@ -326,6 +326,7 @@ if (!ofl.includes('SIL OPEN FONT LICENSE Version 1.1') || !ofl.includes('PERMISS
 }
 const thirdParty = await readFile(join(root, 'assets', 'THIRD_PARTY_LICENSES.md'), 'utf8')
 if (!thirdParty.includes('Instrument Serif')) fail('third-party licenses must credit Instrument Serif')
+if (!thirdParty.includes('Source Serif 4')) fail('third-party licenses must credit Source Serif 4')
 if (!twemojiLicense.includes('Copyright (c) 2023 Samuel Kopp') || !twemojiLicense.includes('Permission is hereby granted')) {
     fail('vendored Twemoji assets must include full MIT license text')
 }

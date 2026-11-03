@@ -66,7 +66,7 @@ npx vizmatic film intro.ts --frame 3,6.5,12 --width 1280 --out stills
 npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 ```
 
-`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, and `film.text_crossed`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review.
+`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review.
 
 Motion guidance:
 
@@ -2688,7 +2688,7 @@ export default film({ fps: 30 }, (s) => {
 | Option | Meaning |
 |---|---|
 | `size` | Font size in stage units. |
-| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'mono'` (JetBrains Mono), or `'noto'`. |
+| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'text-serif'` (Source Serif 4), `'mono'` (JetBrains Mono), or `'noto'`. |
 | `weight` | `400`, `600`, or `700` where the family has that weight. |
 | `italic` | Use the italic of the family. |
 | `color` | A look token, CSS color, or gradient. |
@@ -2696,6 +2696,10 @@ export default film({ fps: 30 }, (s) => {
 | `maxWidth` | Wrap to this width. |
 | `leading` | Line height as a multiple of size. |
 | `tracking` | Extra letter space as a fraction of size. |
+
+Use `'text-serif'` for sentences, labels, and numbers. Its strokes stay visible when a film plays at phone size, and it keeps `1` and `l`, and `O` and `0`, easy to tell apart. It also sits well next to TeX. Use `'serif'` for short titles at a large size. It is narrow and has fine strokes, and it has no Greek letters or math symbols.
+
+If a font does not have a character, the engine draws that character with the next bundled font. `'serif'` tries Source Serif 4 first. Then every family tries Noto Sans and Noto Sans Math. If no bundled font has the character, the engine draws an empty box and `vizmatic check` reports `film.missing_glyph`.
 
 Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment, so you can color or animate one word.
 
@@ -2868,7 +2872,7 @@ For a fresh app, add the [consumer security overrides](https://github.com/bvolpa
 before installing.
 
 ```bash
-npm install --save-dev vizmatic@0.5.0 react
+npm install --save-dev vizmatic@0.6.0 react
 npx vizmatic video ./request-lifecycle.tsx --out ./dist/videos --theme dark --fps 30
 ```
 
@@ -3270,7 +3274,7 @@ network access.
 
 # Vizmatic components
 
-Package: vizmatic@0.5.0. Catalog: 92 runnable examples across 17 categories.
+Package: vizmatic@0.6.0. Catalog: 92 runnable examples across 17 categories.
 
 Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 
