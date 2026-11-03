@@ -59,7 +59,7 @@ describe('morphing', () => {
         const row = (y: number) => [-150, -50, 50, 150].map((x) => circle(20, { fill: 'blue' }).at(x, y))
         const compiled = await compileFilm(film((s) => {
             const from = row(-100)
-            s.add(...from)
+            for (const node of from) s.add(node)
             s.play(morph(from, row(100), { lag: 0.5 }), { duration: 1 })
             s.wait(0.1)
         }))

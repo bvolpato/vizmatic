@@ -1,1 +1,1 @@
-import{Jb as l,Na as t,jb as a}from"../chunk-L7UPDKEG.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=a({fps:30},o=>{let d=o.add(l(70,"blue").at(-550,150));o.play(t(d,e=>e.at(550,-150).color("yellow").scale(2.4),{duration:1.5})),o.wait(.8)});export{f as default};
+import{Jb as l,Na as t,jb as a}from"../chunk-DDHUIWNJ.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=a({fps:30},o=>{let d=o.add(l(70,"blue").at(-550,150));o.play(t(d,e=>e.at(550,-150).color("yellow").scale(2.4),{duration:1.5})),o.wait(.8)});export{f as default};

@@ -1,1 +1,1 @@
-import{Cb as o,Fa as e,Ha as i,jb as p}from"../chunk-L7UPDKEG.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var l=p({fps:30},a=>{let t=o(r=>[-800+1600*r,Math.sin(r*14)*220],0,1,{stroke:"pink",width:10});a.play(e(t)),a.wait(.4),a.play(i(t))});export{l as default};
+import{Cb as o,Fa as e,Ha as i,jb as p}from"../chunk-DDHUIWNJ.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var l=p({fps:30},a=>{let t=o(r=>[-800+1600*r,Math.sin(r*14)*220],0,1,{stroke:"pink",width:10});a.play(e(t)),a.wait(.4),a.play(i(t))});export{l as default};
