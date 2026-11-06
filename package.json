@@ -148,7 +148,7 @@
     "studio:build": "tsx scripts/build-studio.ts"
   },
   "dependencies": {
-    "@dagrejs/dagre": "3.1.1",
+    "@dagrejs/dagre": "3.1.3",
     "@resvg/resvg-js": "2.7.0-alpha.2",
     "@resvg/resvg-wasm": "2.6.2",
     "fast-png": "8.0.0",
