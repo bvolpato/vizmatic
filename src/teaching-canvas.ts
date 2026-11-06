@@ -11,6 +11,11 @@ import { createTeachingTimeline } from './teaching-timeline'
 import { createTeachingAllocation } from './teaching-allocation'
 import { createTeachingValueChange } from './teaching-value'
 import { createTeachingFocus } from './teaching-focus'
+import { createTeachingVectorAccumulation } from './teaching-vector'
+import { createTeachingCategoricalSampling } from './teaching-categorical-sampling'
+import { createTeachingRoutedTransfer } from './teaching-routed-transfer'
+import { createTeachingByteDifference } from './teaching-byte-diff'
+import { createTeachingTokenHistory } from './teaching-token-history'
 
 export interface TeachingPathOptions {
     id?: string
@@ -333,5 +338,18 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
         return { nodes: descriptors, routes }
     }
 
-    return { axes, curve, scatter, bars, flowGraph, transfer: createTeachingTransfer(painter), grid: createTeachingGrid(painter), timeline: createTeachingTimeline(painter), allocation: createTeachingAllocation(painter), ...createTeachingValueChange(painter), ...createTeachingFocus(painter) }
+    return {
+        axes, curve, scatter, bars, flowGraph,
+        transfer: createTeachingTransfer(painter),
+        routedTransfer: createTeachingRoutedTransfer(painter),
+        grid: createTeachingGrid(painter),
+        timeline: createTeachingTimeline(painter),
+        allocation: createTeachingAllocation(painter),
+        vectorAccumulation: createTeachingVectorAccumulation(painter),
+        categoricalSampling: createTeachingCategoricalSampling(painter),
+        byteDifference: createTeachingByteDifference(painter),
+        tokenHistory: createTeachingTokenHistory(painter),
+        ...createTeachingValueChange(painter),
+        ...createTeachingFocus(painter),
+    }
 }

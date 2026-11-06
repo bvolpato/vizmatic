@@ -241,6 +241,40 @@ with the same checked methods plus `math`, `line`, `arrow`, `path`, and `connect
 Its `connect` method returns `{ from, to }` endpoints. No component bypasses the
 host's paint, containment, or opacity checks.
 
+### Construct a result before revealing it
+
+The teaching canvas also offers five components for explanations with persistent
+objects and computed intermediate states:
+
+| Method | State and drawing contract |
+|---|---|
+| `vectorAccumulation` | Accumulate ordered weighted vectors. Each term retains its ID, contribution, and endpoints. Use an equal-unit two-dimensional plot or declare a projection. `revealTotal` controls the displayed result independently of construction progress. |
+| `categoricalSampling` | Map supplied uniform draws through a categorical CDF. Declare probabilities or weights, retain draw IDs, and expose the empirical distribution with a separate `showEmpirical` flag after all retained draws arrive. |
+| `routedTransfer` | Plan an orthogonal route around declared obstacles. Clearance includes the stroke and moving marker. An impossible route fails before painting. |
+| `byteDifference` | Compare `Uint8Array` values with stable byte offsets, escaped controls, and explicit gaps. Scanning and the final equality verdict have separate controls. |
+| `tokenHistory` | Align prompt, accepted, processed, KV, and emitted occurrence IDs. Dropping and replaying KV preserve accepted output and rebuild the processed prefix. |
+
+The corresponding pure helpers are `weightedVectorState`,
+`categoricalSampling`, `planTeachingRoutedTransfer`, `byteDifferenceState`, and
+`tokenHistoryState`. They sample explicit inputs and support out-of-order frame
+rendering. The lesson supplies the data, model assumptions, and narration cues.
+
+Keep each component's scope visible in the explanation. The byte comparison
+aligns a common prefix and suffix with a positional middle; it does not compute
+a minimum-edit diff or establish artifact provenance. Categorical sampling
+uses the supplied draws and performs no hidden random experiment. Token
+history models ordinary autoregressive decoding with at most one accepted
+token awaiting processing. Speculative decoding needs its own verification
+contract. `assertTokenHistoryTransition` checks authored drop and replay
+transitions without storing mutable state in the renderer.
+
+The package includes worked examples in `examples/_teaching/teaching-weighted-vector.ts`,
+`examples/_teaching/categorical-tail-loss.ts`, `examples/_teaching/teaching-routed-transfer.ts`,
+`examples/_teaching/teaching-byte-diff.ts`, and `examples/_teaching/teaching-token-history.ts`.
+Render the prediction, intermediate, and payoff states at the intended output
+resolution. Check moving marks against actual glyphs as well as declared card
+bounds.
+
 Use `changeCue` to mark a numerical update in an existing equation. The cue
 briefly highlights the changed region, then settles into the normal text color.
 Drive the plotted geometry and displayed value from the returned `value` so the

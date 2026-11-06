@@ -93,6 +93,20 @@ npx vizmatic ./frame.tsx --out ./figures --theme dark,light --format both
 
 Read [Diagrams and density](https://bvolpato.github.io/vizmatic/docs/diagrams.html) and the [figures reference](https://bvolpato.github.io/vizmatic/docs/figures.html), or browse the [component catalog](https://bvolpato.github.io/vizmatic/components.html).
 
+## Teaching with a checked canvas
+
+`createTeachingCanvas(painter)` composes animated explanations through your host's checked drawing methods. Its components return computed state so labels and geometry follow the same calculation. Bind progress and answer reveals separately to the narration.
+
+| Component | A worked example |
+|---|---|
+| `vectorAccumulation` | [Retain momentum, add an opposing gradient, then reveal the resultant](examples/_teaching/teaching-weighted-vector.ts) |
+| `categoricalSampling` | [Watch a rare category disappear from a supplied finite sample](examples/_teaching/categorical-tail-loss.ts) |
+| `routedTransfer` | [Carry a value around visible obstacles](examples/_teaching/teaching-routed-transfer.ts) |
+| `byteDifference` | [Locate a changed byte while retaining offsets and escaped control characters](examples/_teaching/teaching-byte-diff.ts) |
+| `tokenHistory` | [Drop and rebuild KV while preserving accepted and emitted tokens](examples/_teaching/teaching-token-history.ts) |
+
+Each example supplies its own data and timing. Inspect prediction frames, moving states, and settled results at the delivery resolution. The [canvas guide](https://bvolpato.github.io/vizmatic/docs/tsx-animation.html) describes the painter contract and component limits.
+
 ## For coding agents
 
 Install the skill. It teaches the engine, the object catalog, and the check workflow.
@@ -120,7 +134,7 @@ Agents can also read [`llms.txt`](https://bvolpato.github.io/vizmatic/llms.txt),
 
 ## Package installation
 
-Vizmatic 0.6.1 bundles its tested Satori renderer and uses patched `fflate` 0.7.5. Consumer dependency overrides are no longer required.
+Vizmatic 0.7.0 bundles its tested Satori renderer and uses patched `fflate` 0.7.5. Consumer dependency overrides are no longer required.
 
 For pnpm 11, allow esbuild's install script in the root `pnpm-workspace.yaml`. The CLI uses esbuild to compile films and frames:
 
