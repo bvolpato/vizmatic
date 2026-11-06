@@ -182,7 +182,8 @@ export function createTeachingTokenHistory<Shape>(painter: CanvasPainter<Shape>)
                 const copyHeight = Math.min(from.height, fontSize * 1.8)
                 const movingWidth = copyWidth + (from.width - copyWidth) * grow
                 const movingHeight = copyHeight + (from.height - copyHeight) * grow
-                const startCenterX = from.x + 7 + copyWidth / 2
+                const startInset = Math.min(7, from.width - copyWidth)
+                const startCenterX = from.x + startInset + copyWidth / 2
                 const centerX = startCenterX + (from.x + from.width / 2 - startCenterX) * settle
                 const centerY = from.y + from.height / 2 + (to.y - from.y) * progress
                 const moving = { x: centerX - movingWidth / 2, y: centerY - movingHeight / 2, width: movingWidth, height: movingHeight }

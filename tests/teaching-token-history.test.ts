@@ -120,4 +120,27 @@ describe('token occurrence history and replay', () => {
         expect(() => tokenHistoryState(malformed)).toThrow('vocabulary ID')
         expect(() => tokenHistoryState({ ...history, phase: 'unknown' } as unknown as TokenHistoryOptions)).toThrow('Unknown')
     })
+
+    it('keeps replay copies inside narrow occurrence columns throughout their motion', () => {
+        let active: { x: number, y: number, width: number, height: number } | undefined
+        const painter: CanvasPainter = {
+            rect(x, y, width, height) {
+                if (active) {
+                    expect(x - 1).toBeGreaterThanOrEqual(active.x)
+                    expect(y - 1).toBeGreaterThanOrEqual(active.y)
+                    expect(x + width + 1).toBeLessThanOrEqual(active.x + active.width)
+                    expect(y + height + 1).toBeLessThanOrEqual(active.y + active.height)
+                }
+            },
+            text() {}, circle() {}, opacity(_alpha, draw) { draw() }, labelScope(_bounds, draw) { draw() },
+            container(bounds, draw) { active = bounds; try { draw() } finally { active = undefined } },
+        }
+        const token = { id: 'only-prompt', token: 101 }
+        for (const width of [311, 319, 333, 340, 400]) {
+            for (const replayProgress of [0.01, 0.1, 0.5, 0.65, 0.8, 0.9, 0.99]) {
+                createTeachingTokenHistory(painter)({ prompt: [token], accepted: [], processed: [token], emitted: [],
+                    phase: 'replay', replayProgress, x: 0, y: 0, width, height: 650 })
+            }
+        }
+    })
 })
