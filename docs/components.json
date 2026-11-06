@@ -1,6 +1,6 @@
 {
   "name": "vizmatic",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "count": 92,
   "playgroundUrl": "https://bvolpato.github.io/vizmatic/playground.html",
   "propEnums": {

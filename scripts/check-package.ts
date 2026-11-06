@@ -11,12 +11,14 @@ interface PackResult {
 const limits = {
     // Includes the shared Satori renderer, offline layout WASM, and bundled license notices.
     size: 5_500_000,
-    unpackedSize: 14_000_000,
+    // Includes the five checked teaching components, declarations, and worked examples.
+    unpackedSize: 14_500_000,
     // Includes the bundled raster codec license notice and film examples.
     entryCount: 190,
 }
 
-const result = spawnSync('npm', ['pack', '--dry-run', '--json'], {
+// Inspect the existing build. npm also runs prepare for a dry run unless suppressed.
+const result = spawnSync('npm', ['pack', '--ignore-scripts', '--script-shell=true', '--dry-run', '--json'], {
     encoding: 'utf8',
     maxBuffer: 20 * 1024 * 1024,
 })
