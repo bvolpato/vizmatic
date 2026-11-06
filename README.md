@@ -118,32 +118,18 @@ Agents can also read [`llms.txt`](https://bvolpato.github.io/vizmatic/llms.txt),
 | [Roadmap](ROADMAP.md) | What shipped and what comes next |
 | [Contributing](CONTRIBUTING.md) | Setup, checks, and the release process |
 
-## Consumer security overrides
+## Package installation
 
-Vizmatic 0.6.0's MathJax tree resolves `speech-rule-engine`, which uses `@xmldom/xmldom`. Its Satori tree resolves `fflate`. Pin these patched transitive versions in a consuming project before you install Vizmatic.
+Vizmatic 0.6.1 bundles its tested Satori renderer and uses patched `fflate` 0.7.5. Consumer dependency overrides are no longer required.
 
-For npm, add these root-level entries to `package.json`:
-
-```json
-{
-  "overrides": {
-    "@xmldom/xmldom": "0.9.12",
-    "fflate": "0.7.5"
-  }
-}
-```
-
-For pnpm 11, add these entries to the root `pnpm-workspace.yaml`. The CLI uses esbuild to compile films and frames, so allow its install script:
+For pnpm 11, allow esbuild's install script in the root `pnpm-workspace.yaml`. The CLI uses esbuild to compile films and frames:
 
 ```yaml
-overrides:
-  '@xmldom/xmldom': 0.9.12
-  fflate: 0.7.5
 allowBuilds:
   esbuild: true
 ```
 
-Then add Vizmatic with your package manager. The install updates the lockfile with these transitive pins.
+Then add Vizmatic with your package manager.
 
 ## License
 

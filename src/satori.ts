@@ -1,9 +1,9 @@
 import * as satoriModule from 'satori'
 import { renderWithCanvasChartFit } from './canvas-chart-fit'
 
-export type { Font, SatoriNode } from 'satori'
+export type { Font, SatoriNode } from 'satori/standalone'
 
-type SatoriFn = typeof import('satori').default
+type SatoriFn = typeof import('satori/standalone').default
 
 function resolveSatori(api: unknown): SatoriFn {
     if (typeof api === 'function') return api as SatoriFn

@@ -9,10 +9,9 @@ interface PackResult {
 }
 
 const limits = {
-    // Includes browser rendering, the browser film engine with its math chunk, and the portable PNG codecs.
-    size: 5_000_000,
-    // Includes teaching helpers, the sharp photographic blur sample, and film examples.
-    unpackedSize: 13_000_000,
+    // Includes the shared Satori renderer, offline layout WASM, and bundled license notices.
+    size: 5_500_000,
+    unpackedSize: 14_000_000,
     // Includes the bundled raster codec license notice and film examples.
     entryCount: 190,
 }

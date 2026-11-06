@@ -1,7 +1,7 @@
 {
   "name": "vizmatic",
   "displayName": "Vizmatic",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Make explainer films, dense technical diagrams, charts, and docs figures from code, then check and render them.",
   "author": {
     "name": "Bruno Volpato",

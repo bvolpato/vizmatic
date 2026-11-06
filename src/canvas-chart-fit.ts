@@ -1,5 +1,5 @@
 import React, { isValidElement, type ReactNode } from 'react'
-import type { SatoriNode, SatoriOptions } from 'satori'
+import type { SatoriNode, SatoriOptions } from 'satori/standalone'
 
 export const CANVAS_CHART_COMPONENT = Symbol.for('vizmatic.canvasChartComponent')
 export const CHART_FRAME_COMPONENT = Symbol.for('vizmatic.chartFrameComponent')

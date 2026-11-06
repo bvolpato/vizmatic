@@ -39,6 +39,15 @@ The raster helpers use `fast-png` 8.0.0, `iobuffer` 6.0.1, and `fflate` 0.7.5,
 each under the MIT License. Their full notices are in
 [`licenses/raster-codecs-MIT.txt`](licenses/raster-codecs-MIT.txt).
 
+## Figure layout renderer
+
+The package bundles Satori 0.41.0 and its layout WASM under MPL-2.0.
+The unmodified source is available at
+https://github.com/vercel/satori/tree/a7e9338e15fec771b7e2cfb90df737789104edeb.
+Its bundled dependencies retain their MIT and ISC licenses. Full licenses and
+upstream notices are in [`licenses/satori-NOTICES.txt`](licenses/satori-NOTICES.txt).
+Satori uses the package's patched `fflate` 0.7.5 dependency.
+
 ## Fonts
 
 - Inter: SIL Open Font License 1.1.

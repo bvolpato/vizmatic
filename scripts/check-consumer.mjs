@@ -55,7 +55,10 @@ try {
     await writeFile(join(consumer, 'package.json'), JSON.stringify({
         private: true,
         type: 'module',
-        overrides: { '@xmldom/xmldom': '0.9.12', fflate: '0.7.5' },
+        devDependencies: {
+            '@types/node': JSON.parse(await readFile(join(repository, 'node_modules/@types/node/package.json'), 'utf8')).version,
+            '@types/react': JSON.parse(await readFile(join(repository, 'node_modules/@types/react/package.json'), 'utf8')).version,
+        },
     }))
     const npmrc = join(directory, 'npmrc')
     await writeFile(npmrc, '')
@@ -68,6 +71,18 @@ try {
         cwd: consumer, encoding: 'utf8', timeout: 60_000,
     })
     process.stdout.write(audit.stdout)
+    await writeFile(join(consumer, 'consumer.ts'), `import React from 'react'
+import { renderToSvg, type SatoriNode } from 'vizmatic'
+void renderToSvg(React.createElement('div', null, 'Typed consumer'), 240, 80, {
+    onNodeDetected: (node: SatoriNode) => { void node.width },
+})
+`)
+    await copyFile(join(consumer, 'consumer.ts'), join(consumer, 'consumer.cts'))
+    await run(process.execPath, [join(repository, 'node_modules/typescript/bin/tsc'),
+        '--strict', '--noEmit', '--module', 'NodeNext', '--target', 'ES2022',
+        '--types', 'node,react', 'consumer.ts', 'consumer.cts',
+    ], { cwd: consumer, encoding: 'utf8', timeout: 60_000 })
+    console.log('Installed package TypeScript declarations passed')
     await copyFile(join(repository, 'scripts/check-runtime.mjs'), join(consumer, 'check-runtime.mjs'))
     const runtimeLog = join(directory, 'runtime.log')
     const output = await open(runtimeLog, 'w')

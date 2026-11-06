@@ -11,7 +11,7 @@ export function getSceneBrowserAssetPaths() {
     const assetDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets')
     return {
         quickjsWasm: quickjsRequire.resolve('@jitl/quickjs-wasmfile-release-sync/wasm'),
-        layoutWasm: require.resolve('satori/layout.wasm'),
+        layoutWasm: join(assetDirectory, '..', 'dist', 'scene-layout.wasm'),
         resvgWasm: require.resolve('@resvg/resvg-wasm/index_bg.wasm'),
         fonts: {
             interRegular: join(assetDirectory, 'fonts/Inter-Regular.ttf'),
