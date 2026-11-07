@@ -17,6 +17,7 @@ const GROUPS: [RegExp, string][] = [
     [/\/stage\/anim\.ts$/, 'Animations'],
     [/\/stage\/node\.ts$/, 'Nodes'],
     [/\/stage\/shapes\.ts$/, 'Shapes'],
+    [/\/stage\/image\.ts$/, 'Images'],
     [/\/stage\/objects/, 'Objects'],
     [/\/stage\/(three|scene3d|camera3d|view3d)/, '3D'],
     [/\/stage\/(text|tex|font)\.ts$/, 'Text and math'],

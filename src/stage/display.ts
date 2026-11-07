@@ -5,6 +5,7 @@ import {
 import { css, isGradient, sampleStops, type Gradient, type Paint, type Rgba } from './color'
 import { clock } from './track'
 import type { BlendMode, Node, StageImage } from './node'
+import { browserImageSource, imageHasVisiblePixels, ImageAssetError } from './image'
 
 const clockNow = () => clock.now
 
@@ -34,6 +35,7 @@ export interface ImageOp {
     readonly image: StageImage
     readonly matrix: Mat
     readonly alpha: number
+    readonly node?: Node
 }
 
 export type DrawOp = PathOp | ImageOp
@@ -157,7 +159,7 @@ function walk(node: Node, parent: Mat, screen: Mat, alpha: number, ops: DrawOp[]
     const path = node.get('path')
     if (path && path.length > 0) emit(node, path, m, opacity, ops)
     const image = node.get('image')
-    if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity })
+    if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity, node })
     if (node.rawOps) node.rawOps(m, opacity, ops)
     if (node.draw) {
         const built = node.draw(clockNow())
@@ -269,7 +271,13 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
     for (const op of frame.ops) {
         if (op.kind === 'image') {
             const m = op.matrix
-            body.push(`<image href="${escapeAttr(op.image.src)}" width="${op.image.width}" height="${op.image.height}" transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''} preserveAspectRatio="none"/>`)
+            const { image } = op, crop = image.crop
+            if (crop && !image.asset) throw new ImageAssetError('Cropped image SVG needs a prepared image asset.')
+            const picture = `<image href="${escapeAttr(image.src)}" width="${crop ? image.asset!.width : image.width}" height="${crop ? image.asset!.height : image.height}" preserveAspectRatio="none"/>`
+            const content = crop
+                ? `<svg width="${fmt(image.width)}" height="${fmt(image.height)}" viewBox="${[crop.x, crop.y, crop.width, crop.height].map(fmt).join(' ')}" preserveAspectRatio="none" overflow="hidden">${picture}</svg>`
+                : picture
+            body.push(`<g transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''}>${content}</g>`)
             continue
         }
         const style = op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
@@ -353,13 +361,16 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
     }
     for (const op of frame.ops) {
         if (op.kind === 'image') {
-            const source = images?.(op.image)
-            if (!source) continue
+            const source = images?.(op.image) ?? browserImageSource(op.image.asset)
+            if (!source) throw new ImageAssetError('Image pixels are unavailable. Await image preparation and provide an ImageLookup outside the browser.')
             const m = op.matrix
             ctx.save()
             ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5])
             ctx.globalAlpha = op.alpha
-            ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
+            ctx.globalCompositeOperation = 'source-over'
+            const crop = op.image.crop
+            if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)
+            else ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
             ctx.restore()
             continue
         }
@@ -407,10 +418,10 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
 export function frameInkBounds(frame: Frame): { x: number; y: number; width: number; height: number } | null {
     let result: { x: number; y: number; width: number; height: number } | null = null
     for (const op of frame.ops) {
-        if (op.kind !== 'path') continue
-        const b = pathBounds(op.path)
+        if (op.kind === 'image' && !imageHasVisiblePixels(op.image.asset, op.image.crop)) continue
+        const b = op.kind === 'image' ? imageOpBounds(op) : pathBounds(op.path)
         if (!b) continue
-        const pad = op.stroke ? op.strokeWidth / 2 : 0
+        const pad = op.kind === 'path' && op.stroke ? op.strokeWidth / 2 : 0
         const next = { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 }
         if (!result) result = next
         else {
@@ -419,5 +430,14 @@ export function frameInkBounds(frame: Frame): { x: number; y: number; width: num
         }
     }
     return result
+}
+
+/** Destination bounds after the node and camera transforms, in frame pixels. */
+export function imageOpBounds(op: ImageOp): { x: number; y: number; width: number; height: number } {
+    const { width, height } = op.image
+    const corners = [[0, 0], [width, 0], [0, height], [width, height]].map(([x, y]) => apply(op.matrix, x, y))
+    const xs = corners.map(p => p[0]), ys = corners.map(p => p[1])
+    const x = Math.min(...xs), y = Math.min(...ys)
+    return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }
 }
 

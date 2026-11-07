@@ -1,10 +1,12 @@
 import { isGradient, parseColor, sampleStops, type Paint, type Rgba } from './color'
 import type { DrawOp, Frame, PathOp } from './display'
+import { imageOpBounds } from './display'
+import { imageHasVisiblePixels, ImageAssetError } from './image'
 import { pathBounds, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
-import { isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
+import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -265,6 +267,18 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): F
     let outsideMarks = 0
 
     ops.forEach((op: DrawOp, order) => {
+        if (op.kind === 'image') {
+            if (op.alpha < MIN_ALPHA || !imageHasVisiblePixels(op.image.asset, op.image.crop)) return
+            const box = imageOpBounds(op)
+            const outside = box.x < -EDGE_TOLERANCE || box.y < -EDGE_TOLERANCE
+                || box.x + box.width > width + EDGE_TOLERANCE || box.y + box.height > height + EDGE_TOLERANCE
+            if (outside && !zoomed && !bleed) findings.push({
+                key: `film.off_canvas:image:${ownerKey(op.node)}`,
+                code: 'film.off_canvas', severity: 'warning', time, box,
+                message: `Image ${JSON.stringify(op.image.asset?.id ?? op.node?.label ?? 'image')} runs off the canvas.`,
+            })
+            return
+        }
         if (op.kind !== 'path' || op.path.length === 0) return
         const glyph = isGlyph(op)
         const alpha = Math.max(op.fillAlpha, op.strokeAlpha)
@@ -389,7 +403,11 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): F
 /** True when a frame holds something a viewer can see at or below `top`. */
 function hasContent(frame: Frame, top: number): boolean {
     return frame.ops.some((op: DrawOp) => {
-        if (op.kind !== 'path') return op.alpha >= BLANK_ALPHA
+        if (op.kind === 'image') {
+            const box = imageOpBounds(op)
+            return op.alpha >= BLANK_ALPHA && imageHasVisiblePixels(op.image.asset, op.image.crop)
+                && box.y + box.height > top && box.y < frame.height && box.x + box.width > 0 && box.x < frame.width
+        }
         const filled = op.fill !== null && op.fillAlpha >= BLANK_ALPHA
         const stroked = op.stroke !== null && op.strokeAlpha >= BLANK_ALPHA && op.strokeWidth > 0
         if (!filled && !stroked) return false
@@ -411,6 +429,22 @@ interface MovingRun {
  * cross each other while moving. With `motion`, it also looks at every frame. Runs anywhere, with no rendering.
  */
 export async function checkFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions = {}): Promise<FilmCheckReport> {
+    try {
+        return await inspectFilm(film, options)
+    } catch (error) {
+        if (!(error instanceof ImageAssetError) && (error as Error)?.name !== 'ImageAssetError') throw error
+        const dimensions = isFilm(film) ? new Stage(film.options) : film
+        return {
+            ok: false, width: dimensions.width, height: dimensions.height,
+            duration: isFilm(film) ? 0 : film.duration, sampled: [],
+            diagnostics: [{ code: 'film.image_asset', severity: 'error', message: (error as Error).message,
+                time: 0, until: 0, box: { x: 0, y: 0, width: 0, height: 0 }, stage: { x: 0, y: 0 } }],
+            summary: { errors: 1, warnings: 0 },
+        }
+    }
+}
+
+async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
     const merged = new Map<string, FilmDiagnostic>()

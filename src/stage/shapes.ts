@@ -1,6 +1,7 @@
 import { arcPath, circlePath, curveThrough, linePath, parametricPath, parseSvgPath, polyPath, rectPath, smoothPath, transformPath, type Path, type Vec } from './geometry'
 import { toPaint, type ColorInput } from './color'
 import { Node } from './node'
+import { imageFromAsset, type ImageAsset, type ImageFitOptions } from './image'
 
 export interface ShapeStyle {
     fill?: ColorInput | null
@@ -79,7 +80,7 @@ export function regularPolygon(sides: number, radius: number, style: ShapeStyle 
     return polygon(points, style)
 }
 
-export interface ImageOptions {
+export interface ImageOptions extends ImageFitOptions {
     /** Width on the stage. With only one of width and height, the other keeps the picture's proportions. */
     width?: number
     height?: number
@@ -116,7 +117,13 @@ function intrinsicSize(src: string): [number, number] | null {
  * data URL. A data URL keeps a film in one file and renders the same in every tool.
  * It fades, moves, and scales like any node. Give `width`, `height`, or both.
  */
-export function image(src: string, options: ImageOptions = {}): Node {
+export function image(src: string | ImageAsset, options: ImageOptions = {}): Node {
+    if (typeof src !== 'string') {
+        const node = imageFromAsset(src, options)
+        if (options.opacity !== undefined) node.opacity(options.opacity)
+        return node
+    }
+    if (options.crop !== undefined || options.fit !== undefined) throw new Error('Await resolveImageAsset before using image fit or crop options.')
     const natural = intrinsicSize(src)
     let width = options.width, height = options.height
     if (width === undefined && height === undefined) {

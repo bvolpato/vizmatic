@@ -2,13 +2,16 @@ import { setColorTokens } from './color'
 import { smooth, type Ease } from './ease'
 import { buildOps, frameToSvg, type Frame } from './display'
 import { resolveLook, type Look, type LookName } from './look'
-import { Node, mountTree } from './node'
+import { Node, mountTree, type StageImage } from './node'
+import { isImageAsset, resolveLegacyImage, validateStageImage, ImageAssetError, type ImageAsset } from './image'
 import { clock } from './track'
 import { Value, type Anim } from './anim'
 
 export type Aspect = '16:9' | '9:16' | '1:1' | '4:3' | '21:9'
 
 export interface FilmOptions {
+    /** Legacy URL images are allowed by default. Prepared image assets never use the network. */
+    imageNetwork?: 'allow' | 'deny'
     /** Lines and shapes run past the frame edges on purpose, as a warped grid does. Text is still checked. */
     bleed?: boolean
     title?: string
@@ -246,6 +249,7 @@ export function isSuspend(error: unknown): error is Suspend {
 }
 
 export interface CompileOverrides {
+    imageNetwork?: 'allow' | 'deny'
     look?: LookName | Look
     fps?: number
     bloom?: number
@@ -254,6 +258,9 @@ export interface CompileOverrides {
 
 /** A film ready to sample. `frame(t)` is pure: seek to any time, in any order. */
 export class CompiledFilm {
+    private readonly allowImageNetwork: boolean
+    private readonly imageAssets = new Map<string, ImageAsset>()
+    private readonly imageLoads = new Map<string, Promise<ImageAsset>>()
     readonly width: number
     readonly height: number
     readonly fps: number
@@ -272,6 +279,7 @@ export class CompiledFilm {
     readonly stage: Stage
 
     constructor(stage: Stage, options: FilmOptions, overrides: CompileOverrides) {
+        this.allowImageNetwork = (overrides.imageNetwork ?? options.imageNetwork ?? 'allow') === 'allow'
         this.stage = stage
         this.width = stage.width
         this.height = stage.height
@@ -296,6 +304,34 @@ export class CompiledFilm {
         return Math.max(1, Math.round(this.duration * this.fps))
     }
 
+    private async prepareImage(image: StageImage): Promise<ImageAsset> {
+        if (image.asset) {
+            if (!isImageAsset(image.asset)) throw new ImageAssetError('Image asset was not prepared by resolveImageAsset.')
+            validateStageImage(image, image.asset)
+            return image.asset
+        }
+        let pending = this.imageLoads.get(image.src)
+        if (!pending) {
+            pending = resolveLegacyImage(image.src, this.allowImageNetwork).then(asset => {
+                this.imageAssets.set(image.src, asset)
+                return asset
+            })
+            this.imageLoads.set(image.src, pending)
+        }
+        const asset = await pending
+        validateStageImage(image, asset)
+        return asset
+    }
+
+    /** Preload static and keyed images, including those not visible in the first frame. */
+    async preloadImages(): Promise<void> {
+        for (const node of this.stage.root.all()) {
+            const track = node.tracks?.get('image')
+            const images = [node.base.image, track?.initial, ...(track?.keys.map(key => key.to) ?? [])] as (StageImage | null | undefined)[]
+            for (const image of images) if (image) await this.prepareImage(image)
+        }
+    }
+
     /** The draw list at a time in seconds. May throw Suspend if a drawing needs a new asset. */
     frame(time: number): Frame {
         const t = Math.max(0, Math.min(this.duration, time))
@@ -313,7 +349,15 @@ export class CompiledFilm {
             const ops = buildOps(stage.root, {
                 x: camera.get('x'), y: camera.get('y'), zoom: camera.get('sx'), rotation: camera.get('rotation'),
             }, stage.width, stage.height)
-            return { width: stage.width, height: stage.height, background: this.background, bloom: this.bloom, dark: stage.look.dark, ops }
+            const preparedOps = ops.map(op => {
+                if (op.kind !== 'image') return op
+                const asset = op.image.asset ?? this.imageAssets.get(op.image.src)
+                if (!asset) throw new Suspend(this.prepareImage(op.image))
+                if (!isImageAsset(asset)) throw new ImageAssetError('Image asset was not prepared by resolveImageAsset.')
+                validateStageImage(op.image, asset)
+                return { ...op, image: { ...op.image, src: asset.src, asset } }
+            })
+            return { width: stage.width, height: stage.height, background: this.background, bloom: this.bloom, dark: stage.look.dark, ops: preparedOps }
         } finally {
             clock.mode = previous.mode
             clock.now = previous.now
@@ -340,6 +384,7 @@ export async function compileFilm(definition: FilmDefinition, overrides: Compile
             clock.mode = saved.mode
             clock.now = saved.now
             const compiled = new CompiledFilm(stage, options, overrides)
+            await compiled.preloadImages()
             // Drawings can ask for assets too, so sample across the timeline before returning.
             await probe(compiled)
             return compiled
