@@ -1,6 +1,6 @@
 ---
 name: vizmatic
-description: Create and render theme-aware diagrams, charts, docs figures, animated explainer films, GIFs, and MP4 videos from code. Use when a request needs a mathematical or technical animation, an architecture diagram, a process flow, an evaluation dashboard, a presentation, or any figure for documentation.
+description: Create and render theme-aware diagrams, charts, docs figures, animated explainer films, narrated lesson videos, GIFs, and MP4 videos from code. Use when a request needs a mathematical or technical animation, a teaching video, an architecture diagram, a process flow, an evaluation dashboard, a presentation, or any figure for documentation.
 ---
 
 # Vizmatic
@@ -10,7 +10,7 @@ Vizmatic makes two kinds of output. Choose first.
 - **Film**: anything that moves to explain something. Write TypeScript with `vizmatic/stage`. Vector geometry, TeX, morphs, 3D, frame-exact MP4.
 - **Figure**: a still for a document or a slide. Write TSX with typed components from `vizmatic`. Dense by default, dark and light from one source.
 
-Use a TSX animation (`createAnimation`) only to animate a figure that already exists. For new motion, write a film.
+Use a TSX animation (`createAnimation`) only to animate a figure that already exists. Use `createTeachingCanvas(painter)` only when a project already has a checked canvas host. For new motion, write a film.
 
 ## Setup
 
@@ -19,6 +19,8 @@ Confirm Node.js 20 or newer, then install or reuse the package. MP4 and WebM als
 ```bash
 npm install vizmatic
 ```
+
+For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }` in the root `pnpm-workspace.yaml`. The CLI uses esbuild to compile films and frames.
 
 ## Film workflow
 
@@ -37,7 +39,22 @@ npm install vizmatic
    npx vizmatic film intro.ts --out dist/films --quality high
    ```
 
-`--format mp4,webm,gif,png,svg` picks formats. `--look midnight,paper` renders each look. `--quality draft` is fast. `--range 12:18` renders part of the timeline. `--poster` adds a poster frame. Add `--json` for a machine-readable report. `film-manifest.json` lists all outputs. `npx vizmatic preview intro.ts` gives a person a live player with a timeline.
+`--format mp4,webm,gif,png,svg` picks formats. `--look midnight,paper` renders each look. `--quality draft` is fast. `--range 12:18` renders part of the timeline. `--poster` adds a poster frame. `--audio narration.wav` adds sound, padded or trimmed to the film's length. Add `--json` for a machine-readable report. `film-manifest.json` lists all outputs. MP4 output is H.264 with settings that QuickTime can play. An MP4 carries the film's chapters and captions, and `s.caption` also writes a WebVTT file beside the video.
+
+For a person, `npx vizmatic preview intro.ts` gives a live player with a timeline. [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor that runs in the browser, with no install. It has a canvas, an inspector, and per-object tracks, and it writes film source. Offer it when someone wants to edit by hand. An agent should write the source instead.
+
+### Timing traps
+
+- `s.play(a, b, { duration })` stretches both animations to fill the duration. A `duration` inside `a` or `b` has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset.
+- `vizmatic check` inspects moments of rest. A crossfade where two sentences overlap and a blank gap between two pictures both pass it. For a film longer than a minute or two, run the frame scan in `references/lessons.md`.
+
+### Lessons and narrated films
+
+When a film must teach, read `references/lessons.md` before you write the script. For a film that follows a recorded voice, `narration(s, timing)` places each change on a spoken phrase, and it stops the build if the voice does not say the phrase. Compute every number with an `assert`, and keep the voice and the screen in agreement. Keep every title true for as long as it is visible. Change pictures without a collision or a blank, and scan every frame. Accuracy comes before brevity. Do not cut content that teaches to reach a target length.
+
+The package computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. `references/lessons.md` lists them, the limits of each, and how to use them in a film or a canvas host.
+
+Report what you could not verify. You cannot watch a video, so a person must watch a lesson at full speed with sound before it is published.
 
 ## Judge your own output
 
@@ -83,6 +100,7 @@ Change the density only for the destination: `density="presentation"` on a `Scen
 ## Common requests
 
 - "Explain this math or algorithm" -> film with `axes`, `plane`, `tex`, and `morphMatching`. Drive motion with `s.value` and `dynamic`.
+- "Make a lesson that teaches this topic" -> narrated film. Follow `references/lessons.md`.
 - "Animate this system or request path" -> film with `infoBox`, `connector`, and `pulse`, or the `architecture` template.
 - "Make a talk or deck" -> film with one `s.chapter` per step, or the `deck` template. Present it with `<vz-film stepped>`.
 - "Create an architecture diagram" -> figure with `GraphDiagram`, nested groups, technical icons, and labeled relationship kinds.
@@ -98,5 +116,7 @@ Change the density only for the destination: `density="presentation"` on a `Scen
 - `assets/starter-film.ts`: a film with a graph, a moving value, and an equation.
 - `assets/starter-frame.tsx`: a static figure.
 - `assets/animated-frame.tsx`: a TSX animation for a GIF.
-- `references/films.md`: engine rules and film patterns.
+- `references/films.md`: engine rules, film patterns, check codes, and common mistakes.
+- `references/lessons.md`: how to plan, narrate, scan, and deliver a film that teaches.
 - `references/patterns.md`: how to choose figure components.
+- `examples/films/` in the package: finished films with full source. `references/films.md` says what each one shows.

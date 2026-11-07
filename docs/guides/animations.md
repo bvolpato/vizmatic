@@ -8,6 +8,8 @@ description: Every animation in the library, each with a small live demo. Pass a
 
 Each animation takes optional `duration` and `ease` settings. Without them it uses a length that suits it and the `smooth` ease.
 
+A `duration` on `s.play` stretches every animation in that call to fill it, and it overrides a `duration` set on any of them. To give animations different lengths, leave it off `s.play`.
+
 ## Reveal
 
 ### draw
@@ -283,6 +285,20 @@ export default film({ fps: 30 }, (s) => {
 ### delay, retime, and call
 
 `delay` waits before an animation begins. `retime` changes the length or ease of an animation without changing what it does. `call` runs a function at a moment on the timeline.
+
+`delay` gives a clean change from one sentence to the next. The old text fades before the new text can be read, so the two never overlap.
+
+```ts
+import { delay, fadeIn, fadeOut, film, text } from 'vizmatic/stage'
+
+export default film((s) => {
+    const oldText = s.add(text('The old sentence', { size: 72 }))
+    s.wait(1)
+    const newText = text('The new sentence', { size: 72 })
+    s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))
+    s.wait(1)
+})
+```
 
 ### Value.to
 
