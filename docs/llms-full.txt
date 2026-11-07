@@ -55,7 +55,7 @@ Rules of the engine:
 - `s.play(...)` writes animation and moves time forward. `s.wait(seconds)` holds. `s.at(time, build)` authors at another time.
 - A `dynamic(() => ...)` drawing rebuilds on every frame. Read `value.value` inside it to drive anything.
 - `morph(a, b)` leaves `b` on stage and `a` hidden. Later code refers to `b`.
-- A `duration` on `s.play` stretches every animation to fill it, and a `duration` inside one of those animations has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset: `s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))`.
+- A `duration` on `s.play` stretches every animation to fill it, and a `duration` inside one of those animations has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset: `s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))`. Inside a `s.play` that has a duration, use `seq(fadeOut(oldText), fadeIn(newText))`.
 - Use `font: 'text-serif'` for sentences, labels, and numbers. Use `font: 'serif'` only for short titles at a large size.
 - Colors are look tokens such as `'blue'`, `'yellow'`, `'ink'`, and `'dim'`, so a film renders in every look.
 - Run `vizmatic objects` and `vizmatic looks` to see what the installed version offers.
@@ -72,7 +72,7 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 
 `vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
 
-The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. `checkFilm(film, { times })` from `vizmatic/stage` inspects any times you pass. For a long film, pass every frame.
+The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, and 0.2 seconds or more with nothing visible as `film.blank`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top <px>` sets where the content starts, so that a heading that stays up does not hide a blank.
 
 `--audio narration.wav` adds sound, padded or trimmed to the film's length, so hold until the voice ends. `s.caption(text, seconds)` writes a WebVTT file beside the video and draws nothing into the picture. MP4 output is H.264 with settings that QuickTime can play. To join a clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`.
 
@@ -178,7 +178,7 @@ npx vizmatic film intro.ts --frame 2,6,12 --width 1280 --out ./stills
 npx vizmatic film intro.ts --quality high --out ./out
 ```
 
-The check inspects moments of rest. It misses a crossfade where two sentences overlap and a blank gap between two pictures. For a long film, pass every frame to `checkFilm(film, { times })`. Then extract frames from the MP4 around each change of picture, and read them.
+The check inspects moments of rest. It misses a crossfade where two sentences overlap and a blank gap between two pictures. Add `--motion` to inspect every frame, and judge each warning that it reports. Then extract frames from the MP4 around each change of picture, and read them.
 
 ## Films that teach
 
@@ -512,7 +512,7 @@ export default film({ fps: 30 }, (s) => {
 
 `delay` waits before an animation begins. `retime` changes the length or ease of an animation without changing what it does. `call` runs a function at a moment on the timeline.
 
-`delay` gives a clean change from one sentence to the next. The old text fades before the new text can be read, so the two never overlap.
+`delay` gives a clean change from one sentence to the next. The old text fades before the new text can be read, so the two never overlap. Inside a `s.play` that has a `duration`, `seq(fadeOut(oldText), fadeIn(newText))` does the same.
 
 ```ts
 import { delay, fadeIn, fadeOut, film, text } from 'vizmatic/stage'
@@ -645,6 +645,12 @@ A film whose lines run past the frame on purpose, such as a warped grid, sets `b
 
 ```bash
 npx vizmatic check intro.ts --look midnight,paper --json
+```
+
+The check looks where the film comes to rest, so it misses a problem that lasts only while something moves. `--motion` also inspects every frame. It reports a problem that appears only in motion as a warning, because it cannot tell a collision from one picture that replaces another. It reports 0.2 seconds or more with nothing visible as `film.blank`. `--content-top <px>` sets the canvas y where the content starts, so that a heading that stays up does not count as content.
+
+```bash
+npx vizmatic check intro.ts --motion --content-top 200
 ```
 
 ### vizmatic film

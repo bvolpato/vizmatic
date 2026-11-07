@@ -286,7 +286,7 @@ export default film({ fps: 30 }, (s) => {
 
 `delay` waits before an animation begins. `retime` changes the length or ease of an animation without changing what it does. `call` runs a function at a moment on the timeline.
 
-`delay` gives a clean change from one sentence to the next. The old text fades before the new text can be read, so the two never overlap.
+`delay` gives a clean change from one sentence to the next. The old text fades before the new text can be read, so the two never overlap. Inside a `s.play` that has a `duration`, `seq(fadeOut(oldText), fadeIn(newText))` does the same.
 
 ```ts
 import { delay, fadeIn, fadeOut, film, text } from 'vizmatic/stage'

@@ -1,1 +1,1 @@
-import{Qb as r,Va as n,jb as p}from"../chunk-GH4IHTMW.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=p({fps:30},a=>{let d=a.add(r({unit:180}));a.play(n(d,(t,i)=>[t+Math.sin(i/170)*120,i+Math.sin(t/170)*120],{duration:2.4})),a.wait(.8)});export{f as default};
+import{Qb as r,Va as n,jb as p}from"../chunk-ZE3CDRSB.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=p({fps:30},a=>{let d=a.add(r({unit:180}));a.play(n(d,(t,i)=>[t+Math.sin(i/170)*120,i+Math.sin(t/170)*120],{duration:2.4})),a.wait(.8)});export{f as default};

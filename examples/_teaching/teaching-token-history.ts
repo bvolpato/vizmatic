@@ -1,5 +1,5 @@
-import type { CanvasPainter } from '../../src/canvas-components'
-import { createTeachingTokenHistory, type TokenHistoryPhase } from '../../src/teaching-token-history'
+import type { CanvasPainter } from 'vizmatic'
+import { createTeachingTokenHistory, type TokenHistoryPhase } from 'vizmatic'
 
 // Vocabulary IDs can repeat; these IDs identify their immutable occurrences.
 const prompt = [101, 102, 103].map((token, i) => ({ id: `prompt-${i}`, token }))

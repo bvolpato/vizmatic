@@ -21,7 +21,7 @@ npx vizmatic film intro.ts --frame 2,6,12 --width 1280 --out ./stills
 npx vizmatic film intro.ts --quality high --out ./out
 ```
 
-The check inspects moments of rest. It misses a crossfade where two sentences overlap and a blank gap between two pictures. For a long film, pass every frame to `checkFilm(film, { times })`. Then extract frames from the MP4 around each change of picture, and read them.
+The check inspects moments of rest. It misses a crossfade where two sentences overlap and a blank gap between two pictures. Add `--motion` to inspect every frame, and judge each warning that it reports. Then extract frames from the MP4 around each change of picture, and read them.
 
 ## Films that teach
 

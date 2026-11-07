@@ -157,6 +157,61 @@ describe('film check', () => {
         expect(report.diagnostics).toEqual([])
     })
 
+    it('reports text that crosses only while moving as a warning in a motion scan', async () => {
+        const { fadeIn, fadeOut } = await import('../src/stage/anim')
+        const crossfade = film({ fps: 30 }, (s) => {
+            const before = s.add(text('Old sentence here', { size: 80 }))
+            s.wait(1)
+            s.play(fadeOut(before), fadeIn(text('New sentence here', { size: 80 })), { duration: 1 })
+            s.wait(1)
+        })
+        expect((await checkFilm(crossfade)).diagnostics).toEqual([])
+        const report = await checkFilm(crossfade, { motion: true })
+        expect(report.ok).toBe(true)
+        expect(report.frames).toBe(90)
+        expect(report.diagnostics).toHaveLength(1)
+        expect(report.diagnostics[0]).toMatchObject({ code: 'film.text_overlap', severity: 'warning', motion: { spans: 1 } })
+        expect(report.diagnostics[0]!.time).toBeGreaterThan(1)
+        expect(report.diagnostics[0]!.until).toBeLessThan(2)
+    })
+
+    it('reports a blank gap between two pictures, and not a quick change', async () => {
+        const { delay, fadeIn, fadeOut } = await import('../src/stage/anim')
+        const lesson = (gap: number) => film({ fps: 30 }, (s) => {
+            s.add(text('Heading', { size: 60 }).at(0, -460))
+            const before = s.add(text('Old', { size: 80 }))
+            s.wait(1)
+            if (gap > 0) {
+                s.play(fadeOut(before, { duration: 0.2 }))
+                s.wait(gap)
+                s.play(fadeIn(text('New', { size: 80 }), { duration: 0.2 }))
+            } else {
+                s.play(fadeOut(before, { duration: 0.15 }), delay(fadeIn(text('New', { size: 80 }), { duration: 0.25 }), 0.1))
+            }
+            s.wait(1)
+        })
+        // The heading stays up, so the whole frame is never blank.
+        expect((await checkFilm(lesson(0.6), { motion: true })).diagnostics).toEqual([])
+        const report = await checkFilm(lesson(0.6), { motion: true, contentTop: 200 })
+        expect(report.diagnostics).toHaveLength(1)
+        expect(report.diagnostics[0]).toMatchObject({ code: 'film.blank', severity: 'warning' })
+        expect(report.diagnostics[0]!.time).toBeGreaterThan(1)
+        expect(report.diagnostics[0]!.until).toBeLessThan(2.1)
+        expect((await checkFilm(lesson(0), { motion: true, contentTop: 200 })).diagnostics).toEqual([])
+    })
+
+    it('keeps a problem at rest as an error in a motion scan', async () => {
+        const report = await checkFilm(film({ fps: 30 }, (s) => {
+            s.add(text('First', { size: 80 }))
+            s.add(text('Second', { size: 80 }))
+            s.wait(1)
+        }), { motion: true })
+        expect(report.ok).toBe(false)
+        expect(report.diagnostics).toHaveLength(1)
+        expect(report.diagnostics[0]).toMatchObject({ code: 'film.text_overlap', severity: 'error' })
+        expect(report.diagnostics[0]!.motion).toBeUndefined()
+    })
+
     it('does not flag a label with an opaque backing over a line', async () => {
         const { line, rect } = await import('../src/stage/shapes')
         const report = await checkFilm(film((s) => {

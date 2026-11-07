@@ -267,9 +267,12 @@ export default film({
         camera.at((tx + 240 / z) * a, (ty) * a)
         camera.set('sx', z)
     })
-    s.play(fade(title, 0), fade(target, 0), follow.to(1, { ease: smoother }), zoom.to(9, { ease: smoother }), phase.to(phase.value + 0.06, { ease: linear }), { duration: 3 })
+    // The title leaves before the zoom carries the curve through it, and returns when the curve is back in place.
+    s.at(s.time, () => s.play(fade(title, 0), { duration: 0.3 }))
+    s.play(fade(target, 0), follow.to(1, { ease: smoother }), zoom.to(9, { ease: smoother }), phase.to(phase.value + 0.06, { ease: linear }), { duration: 3 })
     s.play(phase.to(phase.value + 0.14, { ease: linear }), { duration: 6 })
-    s.play(fade(title, 1), follow.to(0, { ease: smoother }), zoom.to(1, { ease: smoother }), phase.to(phase.value + 0.08, { ease: linear }), { duration: 3 })
+    s.at(s.time + 2.6, () => s.play(fade(title, 1), { duration: 0.4 }))
+    s.play(follow.to(0, { ease: smoother }), zoom.to(1, { ease: smoother }), phase.to(phase.value + 0.08, { ease: linear }), { duration: 3 })
 
     s.chapter('The whole curve')
     s.play(phase.to(phase.value + 1, { ease: linear }), { duration: 4.6 })

@@ -15,7 +15,7 @@ This page states what Vizmatic can do now and what comes next. Vizmatic aims to 
 - `fromSvg` and `fromComponent`, which turn any SVG or TSX figure into shapes that films can animate.
 - Export to MP4 and WebM with BT.709 color, GIF with a shared palette, PNG, and SVG. Frames rasterize on worker threads with a memory limit, with optional motion blur.
 - `vizmatic new`, `preview`, `check`, `film`, `looks`, and `objects`. Preview reloads on save and keeps the playhead.
-- `vizmatic check` for films: off-canvas marks, overlapping text, and strokes through text, with times and bounding boxes as JSON.
+- `vizmatic check` for films: off-canvas marks, overlapping text, and strokes through text, with times and bounding boxes as JSON. `--motion` inspects every frame for collisions and blank gaps between pictures.
 - The Studio, which builds and exports a film in the browser.
 
 ### Figures

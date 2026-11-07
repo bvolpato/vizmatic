@@ -36,6 +36,12 @@ A film whose lines run past the frame on purpose, such as a warped grid, sets `b
 npx vizmatic check intro.ts --look midnight,paper --json
 ```
 
+The check looks where the film comes to rest, so it misses a problem that lasts only while something moves. `--motion` also inspects every frame. It reports a problem that appears only in motion as a warning, because it cannot tell a collision from one picture that replaces another. It reports 0.2 seconds or more with nothing visible as `film.blank`. `--content-top <px>` sets the canvas y where the content starts, so that a heading that stays up does not count as content.
+
+```bash
+npx vizmatic check intro.ts --motion --content-top 200
+```
+
 ### vizmatic film
 
 Export a film. See [Exporting](exporting.md) for the options.
