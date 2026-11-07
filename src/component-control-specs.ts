@@ -57,6 +57,7 @@ export const componentControlSpecs: Record<string, ComponentControlSpec> = {
         selects: { direction: graphDirection, layout: ['auto', 'manual'], sizing: ['content', 'fixed'], routing: ['dagre', 'straight', 'orthogonal'] },
     },
     TreeDiagram: { text: ['title', 'subtitle'], numbers: ['width', 'height', 'nodeWidth', 'nodeHeight', 'levelGap', 'siblingGap', 'padding'] },
+    EntityRelationshipDiagram: { text: ['title', 'description'], numbers: ['width', 'height', 'entityWidth', 'fontSize', 'padding', 'gap'], selects: { direction: graphDirection }, booleans: ['showLegend'] },
     SequenceDiagram: { text: ['title', 'subtitle'], numbers: ['width', 'height', 'padding', 'participantWidth', 'participantGap', 'rowHeight', 'fragmentIndent', 'noteWidth'] },
     DataflowDiagram: { text: ['title', 'description'], numbers: ['width', 'height', 'nodeWidth', 'nodeHeight', 'labelFontSize', 'detailFontSize', 'padding'], selects: { direction: graphDirection } },
     DeploymentDiagram: { text: ['title', 'description'], numbers: ['width', 'height', 'nodeWidth', 'nodeHeight', 'labelFontSize', 'detailFontSize', 'padding'], selects: { direction: graphDirection } },
@@ -114,6 +115,7 @@ export function numberRange(prop: string, componentName: string): NumberRange {
     if (prop === 'detailFontSize') return { min: 7, max: 24, step: 1 }
     if (prop === 'strokeWidth') return { min: 0.5, max: 12, step: 0.1 }
     if (prop === 'nodeWidth') return { min: 24, max: 300, step: 1 }
+    if (prop === 'entityWidth') return { min: 120, max: 500, step: 1 }
     if (prop === 'nodeHeight') return { min: 20, max: 180, step: 1 }
     if (prop === 'nodeSize') return { min: 8, max: 160, step: 1 }
     if (prop === 'size') return ['DonutChart', 'PieChart'].includes(componentName)
@@ -162,4 +164,35 @@ export function controlLabel(prop: string): string {
     return prop
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/^./, (character) => character.toUpperCase())
+}
+
+/** Starting values for optional numeric controls, not replacements for component defaults. */
+export function numberPreset(prop: string, componentName: string): number | undefined {
+    if (!componentControlSpecs[componentName]?.numbers?.includes(prop)) return undefined
+    const presets: Record<string, number> = {
+        width: 640, height: 360, fontSize: 14, labelFontSize: 14, detailFontSize: 12,
+        titleFontSize: 18, valueFontSize: 28, nodeWidth: 160, nodeHeight: 64, entityWidth: 240,
+        padding: 16, gap: 12, nodeGap: 40, rankGap: 72, edgeGap: 14, routingClearance: 12,
+        cellWidth: 64, cellHeight: 32, cellSize: 16, firstColWidth: 120, rowLabelWidth: 100,
+        rows: 4, cols: 4, gridCount: 4, headerRows: 0, headerCols: 0,
+        size: 24, nodeSize: 32, iconSize: 20, arrowSize: 8, markerSize: 8,
+        strokeWidth: 1.5, radius: 8, rx: 8, r: 4, value: 0,
+        x: 0, y: 0, barWidth: 24, barHeight: 8, thickness: 16,
+        labelWidth: 100, valueWidth: 64, eventWidth: 180, length: 64, connectorLength: 32,
+        participantWidth: 120, participantGap: 64, rowHeight: 48, fragmentIndent: 16,
+        noteWidth: 160, contentWidth: 800, minWidth: 160, minHeight: 80,
+        levelGap: 64, siblingGap: 24,
+    }
+    const value = componentName === 'Board' && prop === 'width' ? 960
+        : componentName === 'Board' && prop === 'height' ? 540
+        : ['DonutChart', 'PieChart'].includes(componentName) && prop === 'size' ? 180 : presets[prop]
+    if (value === undefined) return undefined
+    const range = numberRange(prop, componentName)
+    return Math.min(range.max, Math.max(range.min, value))
+}
+
+export function numberMinimum(prop: string, componentName: string): number | undefined {
+    if (!componentControlSpecs[componentName]?.numbers?.includes(prop)) return undefined
+    const range = numberRange(prop, componentName)
+    return range.max > range.min ? range.min : undefined
 }

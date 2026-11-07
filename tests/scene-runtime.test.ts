@@ -101,6 +101,10 @@ describe('editable scene evaluation', () => {
         '<TransformerTopology expandRepeats blocks={[{id:"x",kind:"custom",repeat:1000000000}]}/>',
         '<LayeredNetwork layers={Array.from({length:4},()=>({title:"Layer",nodes:Array(32).fill("x")}))}/>',
         '<ParetoChart points={Array.from({length:513},(_,x)=>({x,y:x}))}/>',
+        '<EntityRelationshipDiagram entities={Array.from({length:129},(_,i)=>({id:String(i),attributes:[]}))}/>',
+        '<EntityRelationshipDiagram entities={[{id:"a",attributes:Array.from({length:65},(_,i)=>({name:String(i),type:"text"}))}]}/>',
+        '<EntityRelationshipDiagram entities={[{id:"a",attributes:[]}]} relationships={Array.from({length:257},(_,i)=>({id:String(i)}))}/>',
+        '<EntityRelationshipDiagram entityWidth={1000000} entities={[{id:"a",attributes:[]}]}/>',
     ])('bounds expansion-driving props before any trusted component invocation', async (source) => {
         await expect(evaluateSceneSource(request(source))).rejects.toThrow(/Editable scene/)
     })

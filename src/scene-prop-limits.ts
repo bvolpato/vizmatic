@@ -33,7 +33,7 @@ export function validateSceneComponentProps(name: string, props: Props): void {
     const check = (value: SceneJson, key: string): void => {
         if (++values > 8_192) throw new Error(`Editable scene ${name} props exceed their value budget.`)
         if (typeof value === 'number') {
-            if (/^(?:width|height|x|y|x1|y1|x2|y2|cx|cy|r|rx|ry|radius|length|padding|gap|nodeWidth|nodeHeight|cellSize|cellWidth|cellHeight|fontSize|nodeSize|tileWidth|minHeight)$/i.test(key)) finite(value, `${name}.${key}`)
+            if (/^(?:width|height|x|y|x1|y1|x2|y2|cx|cy|r|rx|ry|radius|length|padding|gap|nodeWidth|nodeHeight|entityWidth|cellSize|cellWidth|cellHeight|fontSize|nodeSize|tileWidth|minHeight)$/i.test(key)) finite(value, `${name}.${key}`)
             if (/^(?:rows|cols|columns|count|repeat|gridCount|tickCount)$/i.test(key)) integer(value, `${name}.${key}`, key === 'gridCount' ? 0 : 1, 2_000)
         }
         if (Array.isArray(value)) value.forEach((item) => check(item, ''))
@@ -64,6 +64,12 @@ export function validateSceneComponentProps(name: string, props: Props): void {
     if (['GraphDiagram', 'DataflowDiagram', 'DeploymentDiagram', 'TransformerTopology'].includes(name)) {
         for (const key of ['nodes', 'groups', 'boundaries', 'blocks']) entries(props[key], `${name}.${key}`, 128)
         for (const key of ['edges', 'connections', 'routes']) entries(props[key], `${name}.${key}`, 256)
+    }
+    if (name === 'EntityRelationshipDiagram') {
+        entries(props.entities, 'EntityRelationshipDiagram.entities', 128).forEach((entity) => {
+            entries(record(entity, 'Entity relationship entity').attributes, 'EntityRelationshipDiagram.attributes', 64)
+        })
+        entries(props.relationships, 'EntityRelationshipDiagram.relationships', 256)
     }
     if (name === 'TransformerTopology' && props.expandRepeats) {
         const blocks = entries(props.blocks, 'TransformerTopology.blocks', 128)

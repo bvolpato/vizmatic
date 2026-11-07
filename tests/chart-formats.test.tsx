@@ -121,7 +121,7 @@ describe('categorical chart formats', () => {
             expect(svg).toContain(`${theme} pie`)
             expect(svg).toContain('Success')
             expect(svg).toContain('Authentication')
-            expect(svg).not.toContain('<title')
+            expect(svg).toContain(`<title id="vizmatic-svg-title">${theme} pie. ${theme} Pareto</title>`)
             expect(svg).toContain('data-pareto-cumulative-line')
             expect(svg).not.toContain('NaN')
 

@@ -64,6 +64,7 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
     const find = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!
     const search = find<HTMLInputElement>('#componentExplorerSearch')
     const select = find<HTMLSelectElement>('#componentExplorerSelect')
+    const family = find<HTMLSelectElement>('#componentExplorerFamily')
     const instanceSelect = find<HTMLSelectElement>('#explorerInstance')
     const insertSelect = find<HTMLSelectElement>('#explorerInsert')
     insertSelect?.querySelector('option[value="custom"]')?.remove()
@@ -169,7 +170,11 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
                 input = document.createElement('input')
                 input.type = control.kind === 'boolean' ? 'checkbox' : control.kind === 'number' ? 'number' : 'text'
                 if (control.kind === 'boolean') input.checked = Boolean(control.value ?? control.initialValue)
-                if (control.kind === 'number') input.step = 'any'
+                if (control.kind === 'number') {
+                    input.step = 'any'
+                    input.placeholder = 'Enter a value'
+                    if (control.minimum !== undefined) input.min = String(control.minimum)
+                }
                 if (control.kind === 'number' && currentRootBoardDimension(control.prop)) {
                     input.min = '1'
                     input.max = '8192'
@@ -185,7 +190,7 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
                 if (control.kind === 'boolean') return (input as HTMLInputElement).checked
                 if (control.kind === 'number') {
                     const value = (input as HTMLInputElement).valueAsNumber
-                    return Number.isFinite(value) ? value : undefined
+                    return Number.isFinite(value) && (input as HTMLInputElement).checkValidity() ? value : undefined
                 }
                 if (control.kind === 'select') {
                     try { return JSON.parse(input.value) as SceneJsonValue } catch { return }
@@ -211,14 +216,14 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
                 addPropertyButton.setAttribute('aria-label', `Add ${control.label}`)
                 addPropertyButton.addEventListener('click', () => {
                     const value = readValue()
-                    if (value === undefined) { note.textContent = `${control.label} needs a valid value.`; return }
+                    if (value === undefined) { note.textContent = (input as HTMLInputElement).validationMessage || `${control.label} needs a valid value.`; return }
                     commit(value, group)
                 })
                 label.append(addPropertyButton)
             } else {
                 input.addEventListener(control.kind === 'select' || control.kind === 'boolean' ? 'change' : 'input', () => {
                     const value = readValue()
-                    if (value === undefined) { note.textContent = `${control.label} must be a finite number.`; return }
+                    if (value === undefined) { note.textContent = (input as HTMLInputElement).validationMessage || `${control.label} must be a finite number.`; return }
                     commit(value, group)
                 })
                 const rootBoardDimension = currentRootBoardDimension(control.prop)
@@ -413,12 +418,23 @@ export function mountComponentExplorer(root: HTMLElement, api: ExplorerApi): Com
     choices.forEach((button) => button.addEventListener('click', () => { void choose(button.dataset.exploreComponent!) }))
     select.addEventListener('change', () => { if (select.value !== 'custom') void choose(select.value) })
     reset.addEventListener('click', () => { if (selectedExample) void choose(selectedExample.name) })
-    search.addEventListener('input', () => {
-        const query = search.value.trim().toLowerCase()
-        choices.forEach((button) => { button.hidden = !button.dataset.explorerSearch?.includes(query) })
+    const filterChoices = () => {
+        const terms = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean)
+        choices.forEach((button) => {
+            button.hidden = family.value === 'diagrams' && button.dataset.explorerDiagram !== 'true'
+                || !terms.every((term) => button.dataset.explorerSearch?.includes(term))
+        })
         root.querySelectorAll<HTMLElement>('[data-explorer-category]').forEach((group) => { group.hidden = !group.querySelector('[data-explore-component]:not([hidden])') })
         find<HTMLElement>('.explorer-empty').hidden = choices.some((button) => !button.hidden)
-    })
+        for (const option of select.options) {
+            if (option.value === 'custom') continue
+            const button = choices.find((choice) => choice.dataset.exploreComponent === option.value)
+            option.hidden = button?.hidden ?? false
+            option.disabled = Boolean(option.hidden)
+        }
+    }
+    search.addEventListener('input', filterChoices)
+    family.addEventListener('change', filterChoices)
     root.querySelector('.explorer-choices')?.addEventListener('keydown', (event) => {
         if (!(event instanceof KeyboardEvent) || !['ArrowDown', 'ArrowUp'].includes(event.key)) return
         const visible = choices.filter((button) => !button.hidden)

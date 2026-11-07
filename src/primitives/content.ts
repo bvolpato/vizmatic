@@ -12,6 +12,7 @@ import {
 
 import { Column, compactChildren, type FlexAlign, formatMathText, Panel, Row } from './layout'
 import { Card, renderMaybeMath } from './surfaces'
+import { chartAccessibilityAttributes, chartDescription, type ChartAccessibilityProps } from '../svg-accessibility'
 
 // ─── ProgressRow / ProgressList — Compact labeled score bars ───────────────
 
@@ -146,7 +147,7 @@ export interface MiniBarDatum {
     opacity?: number
 }
 
-interface MiniBarChartProps {
+interface MiniBarChartProps extends ChartAccessibilityProps {
     data: MiniBarDatum[]
     c: ThemeColors
     max?: number
@@ -170,6 +171,7 @@ export function MiniBarChart({
     radius: radiusProp,
     fontSize: fontSizeProp,
     showValues = false,
+    ...accessibility
 }: MiniBarChartProps): React.ReactElement {
     const gap = gapProp ?? densityOf(c).s(10)
     const radius = radiusProp ?? densityOf(c).r(3)
@@ -181,6 +183,14 @@ export function MiniBarChart({
     const barMaxHeight = Math.max(minBarHeight, height - (showValues ? 34 : 20))
 
     return React.createElement('div', {
+        ...chartAccessibilityAttributes({
+            ...accessibility, ariaLabel: accessibility.ariaLabel ?? 'Mini bar chart',
+            description: chartDescription(accessibility.description, data.map((item, index) => {
+                const label = typeof item.label === 'string' || typeof item.label === 'number' ? item.label : `Item ${index + 1}`
+                const value = typeof item.valueLabel === 'string' || typeof item.valueLabel === 'number' ? item.valueLabel : item.value
+                return `${label}: ${value}`
+            })),
+        }),
         style: {
             display: 'flex',
             alignItems: 'flex-end',

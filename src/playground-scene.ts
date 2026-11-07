@@ -2,7 +2,7 @@ import { parse } from 'sucrase/dist/esm/parser/index.js'
 import { TokenType as tt } from 'sucrase/dist/esm/parser/tokenizer/types.js'
 import { extractRootJsx, findBareRootJsxStart } from './bare-source'
 import { applyComponentControls, type ComponentControl, type ComponentControlValues } from './component-controls'
-import { componentControlSpecs, controlLabel, numberRange, tones } from './component-control-specs'
+import { componentControlSpecs, controlLabel, numberMinimum, numberPreset, numberRange, tones } from './component-control-specs'
 import { structuredControlKind, validateSceneJson, validateStructuredSceneValue, type SceneJsonValue, type StructuredSceneControl } from './playground-data'
 
 export interface SceneInstance {
@@ -62,6 +62,7 @@ export interface ScenePropertyControl {
     value?: SceneJsonValue
     required: boolean
     initialValue?: SceneJsonValue
+    minimum?: number
     options?: SceneJsonValue[]
     description?: string
     start: number
@@ -133,7 +134,7 @@ function controlsFor(name: string, attributes: SceneAttribute[]): ComponentContr
 const reservedProps = new Set(['children', 'key', 'ref', 'dangerouslySetInnerHTML'])
 const editablePropName = /^[A-Za-z_$][\w$]*(?:[-:][A-Za-z_$][\w$]*)*$/
 
-function initialLiteral(schema: ScenePropSchema): SceneJsonValue | undefined {
+function initialLiteral(schema: ScenePropSchema, componentName: string): SceneJsonValue | undefined {
     const choices = schema.allowedValues ?? schema.literalValues
     if (choices?.length) return choices[0]
     const types = schema.type.replace(/\bundefined\b/g, '').split('|').map((value) => value.trim()).filter(Boolean)
@@ -141,7 +142,7 @@ function initialLiteral(schema: ScenePropSchema): SceneJsonValue | undefined {
         const literal = parseScalarTypeLiteral(type)
         if (literal !== undefined) return literal
         if (type === 'string') return ''
-        if (type === 'number') return 0
+        if (type === 'number') return numberPreset(schema.name, componentName)
         if (type === 'boolean') return false
         if (type.endsWith('[]') || /^Array\s*</.test(type)) return []
         if (type === 'React.CSSProperties' || type === 'ThemeColors' || type === 'object' || type.startsWith('{')) return {}
@@ -204,6 +205,7 @@ function propertiesFor(name: string, attributes: SceneAttribute[], schemas: read
         properties.push({
             prop, label: controlLabel(prop), kind: jsonKind, value: attribute.value,
             required: schema?.required ?? false, options: schema?.allowedValues ?? schema?.literalValues,
+            minimum: jsonKind === 'number' ? numberMinimum(prop, name) : undefined,
             description: schema?.description, start: attribute.start, end: attribute.end,
         })
     }
@@ -214,16 +216,16 @@ function propertiesFor(name: string, attributes: SceneAttribute[], schemas: read
             if (schema.name !== 'c') readOnlyProps.push({ prop: schema.name, reason: 'This required property is missing. Add a valid value in the TSX source.' })
             continue
         }
-        const initialValue = name === 'Board' && schema.name === 'width' ? 960
-            : name === 'Board' && schema.name === 'height' ? 540 : initialLiteral(schema)
+        const initialValue = initialLiteral(schema, name)
         const kind = propertyKind(initialValue, schema)
-        if (!kind || initialValue === undefined) {
+        if (!kind || initialValue === undefined && kind !== 'number') {
             readOnlyProps.push({ prop: schema.name, reason: `${schema.type} cannot be added as a JSON literal. Edit it in the TSX source.` })
             continue
         }
         properties.push({
             prop: schema.name, label: controlLabel(schema.name), kind, required: false,
             initialValue, options: schema.allowedValues ?? schema.literalValues, description: schema.description, start: -1, end: -1,
+            minimum: kind === 'number' ? numberMinimum(schema.name, name) : undefined,
         })
     }
     return { properties, readOnlyProps }

@@ -22,6 +22,27 @@ const componentProps: SceneComponentPropSchema = {
 }
 
 describe('complete visual property customization', () => {
+    it('starts optional dimensions and label sizes visibly, preserves valid zeros, and leaves unknown numbers blank', () => {
+        const schema: SceneComponentPropSchema = {
+            GraphDiagram: ['labelFontSize', 'nodeWidth', 'padding'].map((name) => ({ name, type: 'number', required: false })),
+            CanvasItem: [{ name: 'x', type: 'number', required: false }],
+            Demo: [{ name: 'threshold', type: 'number', required: false }],
+        }
+        const graph = analyzeScene('<GraphDiagram />', schema)
+        const properties = graph.instances[0].properties
+        expect(properties.find((prop) => prop.prop === 'labelFontSize')).toMatchObject({ initialValue: 14, minimum: 8 })
+        expect(properties.find((prop) => prop.prop === 'nodeWidth')?.initialValue).toBe(160)
+        expect(properties.find((prop) => prop.prop === 'padding')?.minimum).toBe(0)
+        const updated = setSceneLiteralProps(graph.source, graph, graph.rootID, {
+            labelFontSize: properties.find((prop) => prop.prop === 'labelFontSize')!.initialValue!, padding: 0,
+        })
+        expect(analyzeScene(updated, schema).instances[0].properties.find((prop) => prop.prop === 'labelFontSize')?.value).toBe(14)
+        expect(analyzeScene('<CanvasItem />', schema).instances[0].properties.find((prop) => prop.prop === 'x')?.initialValue).toBe(0)
+        const unknown = analyzeScene('<Demo />', schema).instances[0].properties.find((prop) => prop.prop === 'threshold')
+        expect(unknown?.kind).toBe('number')
+        expect(unknown?.initialValue).toBeUndefined()
+    })
+
     it('shows all literal props, including numeric values beyond slider hints and nested JSON styles', () => {
         const source = `<Demo title="Chart" width={960} height={480} size={900} showLegend={false} format="future-format" footer="Tail" data={[{label:'A', value:1}]} style={{ fontSize: 18, nested: { color: '#123456' } }} segments={[{label:'A',value:1}]} />`
         const scene = analyzeScene(source, componentProps)
