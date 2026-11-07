@@ -26,6 +26,22 @@ renderFilmFrame(stage.film(${body}), 0.1, 'film-cjs.png', { width: 320 }).then((
         process.stdout.write(stdout)
     }
     const cli = join(consumer, 'node_modules/vizmatic/dist/cli.js')
+    await writeFile(join(consumer, 'transparent-image.mjs'), `import { film, image, resolveImageAsset } from 'vizmatic/stage'
+const asset = await resolveImageAsset('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEElEQVR4XgEFAPr/AAAAAAAABQABvmmylwAAAABJRU5ErkJggg==')
+export default film({ width: 64, height: 64, fps: 10, bloom: 0 }, s => { s.add(image(asset)); s.wait(2) })
+`)
+    await writeFile(join(consumer, 'image-bundles.mjs'), `import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+import definition from './transparent-image.mjs'
+const other = createRequire(import.meta.url)('vizmatic/stage')
+const compiled = await definition.compile()
+assert.equal(other.frameInkBounds(compiled.frame(1)), null)
+assert.ok((await other.checkFilm(compiled, { motion: true })).diagnostics.some(d => d.code === 'film.blank'))
+`)
+    await run(process.execPath, ['image-bundles.mjs'], { cwd: consumer, encoding: 'utf8', timeout: 60_000 })
+    const imageCheck = await run(process.execPath, [cli, 'check', 'transparent-image.mjs', '--motion', '--json'], { cwd: consumer, encoding: 'utf8', timeout: 60_000 })
+    assert.ok(JSON.parse(imageCheck.stdout).files[0].diagnostics.some(d => d.code === 'film.blank'), 'Packaged CLI must retain image alpha across its engine bundles')
+    console.log('Installed image alpha survives ESM, CJS and CLI bundle boundaries')
     await run(process.execPath, [cli, 'new', 'intro', '--template', 'explainer'], { cwd: consumer, encoding: 'utf8', timeout: 60_000 })
     const check = await run(process.execPath, [cli, 'check', 'intro.ts', '--json'], { cwd: consumer, encoding: 'utf8', timeout: 90_000 })
     assert.equal(JSON.parse(check.stdout).ok, true, 'A new film must pass its own check')

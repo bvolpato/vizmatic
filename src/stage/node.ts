@@ -7,6 +7,7 @@ import { clock, Track, type Key } from './track'
 import type { Ease } from './ease'
 import { pathMixer } from './morph'
 import type { DrawOp } from './display'
+import type { ImageAsset, ImageCrop } from './image'
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay'
 export type Edge = 'left' | 'right' | 'top' | 'bottom'
@@ -45,10 +46,12 @@ export interface NodeProps {
 }
 
 export interface StageImage {
-    /** Browser-usable URL or data URL. */
+    /** Embedded raster, local filename or legacy URL, resolved before the film is rendered. */
     readonly src: string
     readonly width: number
     readonly height: number
+    readonly crop?: Readonly<ImageCrop>
+    readonly asset?: ImageAsset
 }
 
 export type PropName = keyof NodeProps

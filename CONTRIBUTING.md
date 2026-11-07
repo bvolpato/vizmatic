@@ -22,6 +22,15 @@ Run the full local gate before opening a pull request:
 
 This checks types, workflows, tests, rendered examples, docs, dependency advisories, package contents, and generated-file drift.
 
+The image pixel parity test runs in the browser CI job. To run it locally:
+
+```bash
+pnpm exec playwright install chromium
+VIZMATIC_BROWSER_TESTS=1 pnpm exec vitest run tests/stage-image.test.ts
+```
+
+The regular test suite runs the Node image checks without requiring a browser.
+
 ## Making changes
 
 - Keep public APIs typed and export them from `src/index.ts`.

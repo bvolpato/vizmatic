@@ -1,6 +1,7 @@
 import { paintFrame, type Frame } from './display'
 import { Suspend, type CompiledFilm } from './stage'
 import type { StageImage } from './node'
+import { browserImageSource, ImageAssetError } from './image'
 
 export interface PlayerOptions {
     loop?: boolean
@@ -25,7 +26,6 @@ export class FilmPlayer {
     private currentTime = 0
     private playing = false
     private scale = 1
-    private readonly images = new Map<string, HTMLImageElement>()
     private bloomLayers: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; factor: number; weight: number }[] = []
     private observer: ResizeObserver | null = null
     speed: number
@@ -160,16 +160,9 @@ export class FilmPlayer {
     }
 
     private lookupImage = (image: StageImage): CanvasImageSource | null => {
-        let element = this.images.get(image.src)
-        if (!element) {
-            element = new Image()
-            element.src = image.src
-            element.onload = () => {
-                if (!this.playing) this.paint()
-            }
-            this.images.set(image.src, element)
-        }
-        return element.complete && element.naturalWidth > 0 ? element : null
+        const element = browserImageSource(image.asset)
+        if (!element) throw new ImageAssetError('The film image was not preloaded before playback.')
+        return element
     }
 
     private paint(): void {

@@ -2709,6 +2709,108 @@ export default film({ fps: 30 }, (s) => {
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
 
+## Images
+
+Prepare an image once, then place it with the existing `image` stage primitive.
+Preparation validates its encoded bytes, dimensions and optional SHA-256 digest.
+The returned asset is immutable and embeds its pixels, so a rendered film does
+not depend on a filename or a network request.
+
+```ts
+import { fileURLToPath } from 'node:url'
+import { film, image, resolveImageAsset } from 'vizmatic/stage'
+
+const figure = await resolveImageAsset('./assets/figure.png', {
+    baseDir: fileURLToPath(new URL('.', import.meta.url)),
+    id: 'figure-1',
+})
+
+export default film((s) => {
+    s.add(image(figure, { width: 1200, height: 700 }).at(0, -40))
+    s.wait(2)
+})
+```
+
+`resolveImageAsset` accepts a local filename in Node, a `Uint8Array`, or a PNG
+base64 data URI. Browser callers pass embedded bytes or a data URI. It awaits
+browser decoding before returning. It does not fetch remote URLs.
+
+The supported format is a noninterlaced, 8-bit PNG, including RGB, RGBA,
+grayscale and palette images. Transparency is retained. Encoded input is limited
+to 16 MiB and decoded dimensions to 16,777,216 pixels. Animated PNGs and compressed
+color profiles are rejected. Convert other image formats or PDF pages to a local
+PNG before preparing them.
+
+For a pinned asset manifest, pass `sha256`, `mediaType: 'image/png'`, `width` and
+`height` in the preparation options. Width and height here are the expected
+intrinsic pixel dimensions. The resolved asset reports its actual digest and
+dimensions. A missing file, invalid PNG, wrong media type, dimension mismatch or
+digest mismatch throws `ImageAssetError`.
+
+### Fit, crop and transform
+
+`image(asset, options)` returns a node centered on its origin. Its normal node
+methods move, rotate, scale and fade it. `opacity` remains an image option too.
+
+- `width` and `height` describe the destination box in stage units. A single
+  dimension preserves the image proportions.
+- `fit: 'contain'` is the default. It fits inside that box without stretching.
+- `fit: 'cover'` fills the box by cropping the center of the source region.
+- `crop: { x, y, width, height }` selects intrinsic source pixels before fitting.
+  The crop must stay inside the image.
+
+```ts
+import { image, resolveImageAsset } from 'vizmatic/stage'
+const figure = await resolveImageAsset('./assets/figure.png')
+const detail = image(figure, {
+    width: 900,
+    height: 500,
+    crop: { x: 100, y: 80, width: 800, height: 400 },
+    fit: 'contain',
+    opacity: 0.9,
+})
+```
+
+The existing `image(src, { width, height, opacity })` constructor remains
+available. Compilation awaits and embeds PNG, JPEG and GIF sources. GIF playback uses the first decoded frame for export. Relative local
+filenames use the process working directory; explicit preparation with `baseDir`
+makes the dependency clearer. Use a prepared asset for fit and crop options.
+HTTP and HTTPS image strings remain supported and are fetched once during compilation. Set `imageNetwork: 'deny'` on the film or in compile overrides to require offline inputs. Node also honors `VIZMATIC_DISABLE_NETWORK=1` and `VIZMATIC_OFFLINE=1`. Requests have a ten-second timeout and the same encoded-byte limit. Missing files, failed HTTP requests and decoder errors are fatal. Use prepared PNG assets for reproducible local inputs.
+
+### Migrating browser URL images in 0.8
+
+Browser URL images must be fetchable under CORS. A cross-origin server must
+permit the film's origin so compilation can read, validate and embed its bytes.
+Earlier players could display a non-CORS image while tainting the canvas. That
+display-only path now fails with a loading error. Copy the image into local
+assets or embed its bytes and call `resolveImageAsset` for a reproducible film.
+Use `imageNetwork: 'deny'` when the film must stay offline.
+
+### Preflight and checks
+
+Compilation awaits static and keyed image sources, including hidden pictures.
+Use prepared assets when constructing nodes inside dynamic drawing callbacks.
+An image discovered by a later dynamic frame uses the same awaited asset path
+as other deferred stage resources, rather than painting an empty placeholder.
+
+SVG and Node exports carry the embedded bytes. Browser playback uses the decoded
+asset before its first paint. `paintFrame` outside a browser needs an `ImageLookup`
+that supplies decoded pixels; an absent source throws instead of silently
+dropping the image.
+
+`checkFilm` reports an image preparation failure as `film.image_asset`, an error.
+Image destination bounds now participate in `frameInkBounds`, blank-content
+checks and `film.off_canvas` diagnostics. Fully transparent PNGs and crops do not
+count as visible content; opaque white paper does. Legacy PNGs retain 16-bit and
+Adam7 support with the same bounded scanline preflight. The checks inspect the image rectangle;
+they do not read text inside raster pixels. Keep citations and captions as stage
+text so ordinary text checks can inspect them.
+
+Asset discovery and source citation belong to the calling application. Include
+the image bytes and any source-document or preprocessing manifest in its render
+fingerprint. Preparing an asset establishes its pixel identity, not permission to
+use a source or the correctness of its caption.
+
 # Guide: Presentations
 
 ## Chapters are steps
