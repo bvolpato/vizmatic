@@ -121,3 +121,5 @@ export default film((s) => {
     s.wait(6)
 })
 ```
+
+`--audio narration.wav` pads or trims the sound to the film's length, so a film that ends early cuts off the voice. Make the film at least as long as the narration.
