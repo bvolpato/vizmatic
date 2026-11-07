@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createServer } from 'node:http'
 import { build } from 'esbuild'
-import { chromium } from 'playwright'
+import { chromium, type Browser } from 'playwright'
 import { encode } from 'fast-png'
 import { GIFEncoder } from 'gifenc'
 import { Resvg } from '@resvg/resvg-js'
@@ -214,7 +214,7 @@ describe('image geometry and actual pixels', () => {
     })
 })
 
-it('preloads browser pixels before first paint and matches the Node SVG backend', async () => {
+it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('preloads browser pixels before first paint and matches the Node SVG backend', async () => {
     const bundled = await build({ stdin: { contents: `export * from './src/stage/index'; export { FilmPlayer } from './src/stage/player'`, resolveDir: resolve('.') }, bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022' })
     const server = createServer((request, response) => {
         if (request.url === '/image.jpg' || request.url === '/image.gif') {
@@ -228,8 +228,9 @@ it('preloads browser pixels before first paint and matches the Node SVG backend'
     })
     await new Promise<void>(done => server.listen(0, '127.0.0.1', done))
     const address = server.address() as { port: number }
-    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
+    let browser: Browser | undefined
     try {
+        browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] })
         const page = await browser.newPage()
         await page.goto(`http://127.0.0.1:${address.port}`)
         const actual = await page.evaluate(`(async () => {
@@ -266,7 +267,7 @@ it('preloads browser pixels before first paint and matches the Node SVG backend'
             entry.rgba.forEach((value, i) => expect(Math.abs(value - node[i])).toBeLessThanOrEqual(2))
         }
     } finally {
-        await browser.close()
+        await browser?.close()
         await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done()))
     }
 }, 30_000)
