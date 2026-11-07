@@ -1,6 +1,6 @@
-import type { CanvasBounds } from '../../src/canvas-components'
-import type { TeachingPainter } from '../../src/teaching-canvas'
-import { createTeachingRoutedTransfer } from '../../src/teaching-routed-transfer'
+import type { CanvasBounds } from 'vizmatic'
+import type { TeachingPainter } from 'vizmatic'
+import { createTeachingRoutedTransfer } from 'vizmatic'
 
 /** A new parameter copy passes around three completed rank replicas. */
 export function drawRoutedParameterBroadcast<Shape extends CanvasBounds>(painter: TeachingPainter<Shape>, progress: number) {

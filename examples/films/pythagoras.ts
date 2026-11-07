@@ -4,7 +4,7 @@
  * must have the same area both times, so c^2 = a^2 + b^2. Legs are 3 and 4 units.
  */
 import {
-    Node, draw, fade, fadeIn, fadeOut, film, morph, polygon, polyPath, rect, shape, smoother, text, tex, to, write,
+    Node, delay, draw, fade, fadeIn, fadeOut, film, morph, polygon, polyPath, rect, shape, smoother, text, tex, to, write,
     type Vec,
 } from 'vizmatic/stage'
 
@@ -180,6 +180,6 @@ export default film({
     s.play(fadeIn([...equation.part('='), ...equation.part('+')]), { duration: 0.6 })
     s.wait(1)
     check.moveTo([430, 448])
-    s.play(to(equation, (eq) => eq.shift(-300, 0)), fadeIn([tilesA, tilesB], { lag: 0.02 }), fadeIn(check, { shift: [-30, 0] }), fade(aSquared, 0), fade(bSquared, 0), { duration: 1.4 })
+    s.play(to(equation, (eq) => eq.shift(-300, 0)), fadeIn([tilesA, tilesB], { lag: 0.02 }), delay(fadeIn(check, { shift: [-30, 0] }), 0.5), fade(aSquared, 0), fade(bSquared, 0), { duration: 1.4 })
     s.wait(3)
 })

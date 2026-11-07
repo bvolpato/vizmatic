@@ -94,6 +94,10 @@ interface CheckArgs {
     looks: LookName[]
     /** Whether --theme appeared, so a film can map it to a look. */
     explicitTheme: boolean
+    /** For film files: also inspect every frame. */
+    motion: boolean
+    /** For film files: the canvas y where content starts, for the blank scan. */
+    contentTop?: number
 }
 
 interface VideoArgs extends RenderArgs {
@@ -122,7 +126,7 @@ interface CheckFileReport {
     diagnostics: Array<CheckDiagnostic | FilmCheckFileReport['diagnostics'][number]>
     themes: CheckThemeReport[]
     /** Present when the file is a film. Diagnostics carry times and bounding boxes. */
-    film?: Pick<FilmCheckFileReport, 'title' | 'width' | 'height' | 'duration' | 'sampled'> & { look?: string }
+    film?: Pick<FilmCheckFileReport, 'title' | 'width' | 'height' | 'duration' | 'sampled' | 'frames'> & { look?: string }
 }
 
 const RENDER_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx'])
@@ -175,7 +179,7 @@ function usageText() {
     return `Films:
   vizmatic new <name> [--template explainer|equation|architecture|chart|deck] [--force]
   vizmatic preview <file> [--port <n>] [--open]
-  vizmatic check <file> [--look midnight,paper] [--json]
+  vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
                 [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--poster]
                 [--workers <n>] [--audio <file>] [--background <color|none>] [--ffmpeg <path>] [--json]
@@ -192,6 +196,7 @@ Frames:
   Browser animation metadata renders at t=0 in static output; GIF output still requires createAnimation(theme) or createScenes(theme).
   Video requires a film or createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
   A film is a file whose default export comes from film() in vizmatic/stage. The render, check, and video commands detect films.
+  A film check looks where the film comes to rest. --motion also looks at every frame, and reports collisions and blank frames between pictures as warnings.
 
 Examples:
   vizmatic new intro --template explainer
@@ -1042,6 +1047,8 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     let json = false
     let looks: LookName[] = []
     let explicitTheme = false
+    let motion = false
+    let contentTop: number | undefined
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index]
@@ -1065,6 +1072,11 @@ function parseCheckArgs(argv: string[]): CheckArgs {
             background = argv[++index] ?? usage()
         } else if (arg === '--json') {
             json = true
+        } else if (arg === '--motion') {
+            motion = true
+        } else if (arg === '--content-top') {
+            contentTop = Number(argv[++index])
+            if (!Number.isFinite(contentTop) || contentTop < 0) throw new Error('--content-top needs a canvas y in pixels, such as 200')
         } else if (arg.startsWith('-')) {
             usage()
         } else {
@@ -1073,7 +1085,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, themes, background, json, looks, explicitTheme }
+    return { inputs, themes, background, json, looks, explicitTheme, motion, contentTop }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
@@ -1799,7 +1811,7 @@ async function checkCommandWithArgs(args: CheckArgs) {
         if (filmFromModule(imported.value)) {
             const looks = args.looks.length > 0 ? args.looks : looksForThemes(args.themes, args.explicitTheme)
             const module = imported.value
-            const filmReports = await checkFilmFile(file, async () => module, looks)
+            const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop })
             filmReports.forEach((filmReport, index) => {
                 reports.push({
                     source,
@@ -1809,6 +1821,7 @@ async function checkCommandWithArgs(args: CheckArgs) {
                     film: {
                         title: filmReport.title, width: filmReport.width, height: filmReport.height,
                         duration: filmReport.duration, sampled: filmReport.sampled,
+                        ...(filmReport.frames === undefined ? {} : { frames: filmReport.frames }),
                         ...(looks[index] ? { look: looks[index] } : {}),
                     },
                 })
@@ -2093,7 +2106,9 @@ async function previewCommand(argv: string[]) {
 async function main() {
     const args = process.argv.slice(2)
     const [command, ...rest] = args
-    if (command === 'render') {
+    if (rest.includes('--help') || rest.includes('-h')) {
+        help()
+    } else if (command === 'render') {
         await renderCommand(rest)
     } else if (command === 'check') {
         await checkCommand(rest)

@@ -262,7 +262,7 @@ Rules of the engine:
 - `s.play(...)` writes animation and moves time forward. `s.wait(seconds)` holds. `s.at(time, build)` authors at another time.
 - A `dynamic(() =&gt; ...)` drawing rebuilds on every frame. Read `value.value` inside it to drive anything.
 - `morph(a, b)` leaves `b` on stage and `a` hidden. Later code refers to `b`.
-- A `duration` on `s.play` stretches every animation to fill it, and a `duration` inside one of those animations has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset: `s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))`.
+- A `duration` on `s.play` stretches every animation to fill it, and a `duration` inside one of those animations has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset: `s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))`. Inside a `s.play` that has a duration, use `seq(fadeOut(oldText), fadeIn(newText))`.
 - Use `font: &#39;text-serif&#39;` for sentences, labels, and numbers. Use `font: &#39;serif&#39;` only for short titles at a large size.
 - Colors are look tokens such as `&#39;blue&#39;`, `&#39;yellow&#39;`, `&#39;ink&#39;`, and `&#39;dim&#39;`, so a film renders in every look.
 - Run `vizmatic objects` and `vizmatic looks` to see what the installed version offers.
@@ -279,7 +279,7 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 
 `vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
 
-The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. `checkFilm(film, { times })` from `vizmatic/stage` inspects any times you pass. For a long film, pass every frame.
+The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, and 0.2 seconds or more with nothing visible as `film.blank`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top &lt;px&gt;` sets where the content starts, so that a heading that stays up does not hide a blank.
 
 `--audio narration.wav` adds sound, padded or trimmed to the film&#39;s length, so hold until the voice ends. `s.caption(text, seconds)` writes a WebVTT file beside the video and draws nothing into the picture. MP4 output is H.264 with settings that QuickTime can play. To join a clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`.
 

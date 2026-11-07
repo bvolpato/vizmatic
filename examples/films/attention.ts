@@ -4,7 +4,7 @@
  * Q K^T, scaling by sqrt(d), softmax per row, and the weighted sum of values.
  */
 import {
-    Node, dynamic, fade, fadeIn, fadeOut, film, line, linear, morphMatching, parseColor, parseSvgPath, rect, smoother, text, tex, to, write, mixColor,
+    Node, dynamic, fade, fadeIn, fadeOut, film, line, linear, morphMatching, parseColor, parseSvgPath, rect, seq, smoother, text, tex, to, write, mixColor,
     type Rgba,
 } from 'vizmatic/stage'
 
@@ -256,12 +256,13 @@ export default film({
     s.wait(0.6)
 
     s.chapter('Scale')
-    s.play(morphMatching(eq0, eq1), fadeOut(note0), fadeIn(note1), { duration: 1.3 })
+    // One note leaves before the next arrives, so two sentences never share the same lines.
+    s.play(morphMatching(eq0, eq1), seq(fadeOut(note0), fadeIn(note1)), { duration: 1.3 })
     s.play(scaled.to(1, { ease: smoother }), { duration: 1.8 })
     s.wait(0.8)
 
     s.chapter('Softmax')
-    s.play(morphMatching(eq1, eq2), fadeOut(note1), fadeIn(note2), { duration: 1.3 })
+    s.play(morphMatching(eq1, eq2), seq(fadeOut(note1), fadeIn(note2)), { duration: 1.3 })
     s.add(sums, shares)
     s.play(soft.to(1, { ease: smoother }), fadeIn(shareLabel), focus.to(1), { duration: 2.6 })
     s.wait(0.6)
@@ -270,7 +271,7 @@ export default film({
     s.wait(1.2)
 
     s.chapter('Values')
-    s.play(morphMatching(eq2, eq3), fadeOut(note2), fadeIn(note3), fadeIn(vStrips, { lag: 0.01 }), fadeIn(vTag), { duration: 1.5 })
+    s.play(morphMatching(eq2, eq3), seq(fadeOut(note2), fadeIn(note3)), fadeIn(vStrips, { lag: 0.01 }), fadeIn(vTag), { duration: 1.5 })
     s.add(output)
     s.play(flow.to(1, { ease: linear }), fadeIn(outTag), { duration: 3.2 })
     s.play(fadeIn(caveat), { duration: 0.8 })

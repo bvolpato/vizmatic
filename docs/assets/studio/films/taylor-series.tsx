@@ -4,7 +4,7 @@
  * widest |x| where the partial sum stays within 0.01 of sin x.
  */
 import {
-    Node, axes, curveThrough, draw, dynamic, fadeIn, film, line, morphMatching, parametricPath, rect, smoother, text, tex, write,
+    Node, axes, curveThrough, draw, dynamic, fadeIn, film, line, morphMatching, parametricPath, rect, seq, smoother, text, tex, write,
     type Vec,
 } from 'vizmatic/stage'
 
@@ -154,6 +154,7 @@ export default film({
     }
 
     s.chapter('The whole wave')
-    s.play(fadeIn(closingPlate), fadeIn(closing, { shift: [0, 12] }), { duration: 1.2 })
+    // The plate covers the curve before the sentence arrives on it.
+    s.play(seq(fadeIn(closingPlate), fadeIn(closing, { shift: [0, 12] })), { duration: 1.2 })
     s.wait(3.2)
 })

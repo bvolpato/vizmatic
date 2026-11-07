@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
-import { createTeachingByteDifference } from '../../src/teaching-byte-diff'
-import type { CanvasBounds, CanvasPainter } from '../../src/canvas-components'
+import { createTeachingByteDifference } from 'vizmatic'
+import type { CanvasBounds, CanvasPainter } from 'vizmatic'
 
 const xml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
 const bytes = (value: string) => new TextEncoder().encode(value)
 const digest = (value: Uint8Array) => createHash('sha256').update(value).digest('hex').slice(0, 12)
 
-/** Run: pnpm exec tsx examples/teaching-byte-diff.ts [--reveal] > /tmp/byte-diff.svg */
+/** Run: npx tsx examples/_teaching/teaching-byte-diff.ts [--reveal] > /tmp/byte-diff.svg */
 export function renderByteDifferenceExample(revealVerdict = false, scanProgress = 1): string {
     const content: string[] = []
     const painter: CanvasPainter<CanvasBounds> = {

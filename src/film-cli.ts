@@ -2,7 +2,7 @@ import { existsSync } from 'fs'
 import { mkdir, stat, writeFile } from 'fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
 import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, type Quality } from './stage/export'
-import { checkFilm, type FilmCheckReport } from './stage/check'
+import { checkFilm, type FilmCheckOptions, type FilmCheckReport } from './stage/check'
 import { LOOKS, type LookName } from './stage/look'
 import { FILM_TEMPLATES } from './stage/templates'
 import { FILM_OBJECTS } from './stage/catalog'
@@ -365,13 +365,18 @@ export interface FilmCheckFileReport extends FilmCheckReport {
 }
 
 /** Check a loaded film and return a report in the shape agents read. */
-export async function checkFilmFile(file: string, load: FilmLoader, looks: readonly LookName[]): Promise<FilmCheckFileReport[]> {
+export async function checkFilmFile(
+    file: string,
+    load: FilmLoader,
+    looks: readonly LookName[],
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop'> = {},
+): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)
     const reports: FilmCheckFileReport[] = []
     for (const look of looks.length > 0 ? looks : [undefined]) {
         const compiled = await definition.compile(look ? { look } : {})
-        reports.push({ source, title: compiled.title, ...await checkFilm(compiled) })
+        reports.push({ source, title: compiled.title, ...await checkFilm(compiled, options) })
     }
     return reports
 }
@@ -379,9 +384,12 @@ export async function checkFilmFile(file: string, load: FilmLoader, looks: reado
 /** Print a film check the way a person reads it. */
 export function printFilmCheck(report: FilmCheckFileReport): void {
     const status = report.ok ? 'ok' : 'failed'
-    console.log(`${report.source}: ${status}, ${report.diagnostics.length} finding(s) in ${report.sampled.length} sampled moments over ${report.duration.toFixed(1)}s`)
+    const frames = report.frames === undefined ? '' : ` and ${report.frames} frames`
+    console.log(`${report.source}: ${status}, ${report.diagnostics.length} finding(s) in ${report.sampled.length} sampled moments${frames} over ${report.duration.toFixed(1)}s`)
     for (const entry of report.diagnostics) {
-        const when = entry.time === entry.until ? `${entry.time.toFixed(2)}s` : `${entry.time.toFixed(2)}s to ${entry.until.toFixed(2)}s`
+        const span = entry.time === entry.until ? `${entry.time.toFixed(2)}s` : `${entry.time.toFixed(2)}s to ${entry.until.toFixed(2)}s`
+        const repeats = entry.motion && entry.motion.spans > 1 ? `, ${entry.motion.spans} times, ${entry.motion.seconds}s in total` : ''
+        const when = entry.motion ? `${span} (in motion${repeats})` : span
         const { x, y, width, height } = entry.box
         console.log(`  ${entry.severity} ${entry.code} at ${when}: ${entry.message} Box x=${x} y=${y} w=${width} h=${height}. Stage (${entry.stage.x}, ${entry.stage.y}).`)
     }

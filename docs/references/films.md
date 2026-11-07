@@ -24,6 +24,12 @@ A `duration` on `s.play` stretches every animation to fill it. A `duration` insi
 s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))
 ```
 
+Inside a `s.play` that has a `duration`, use `seq`. It gives each animation its share of the time, so the old text leaves in the first half and the new text arrives in the second:
+
+```ts
+s.play(morphMatching(eq0, eq1), seq(fadeOut(oldNote), fadeIn(newNote)), { duration: 1.3 })
+```
+
 ## Sound and captions
 
 `--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture. `references/lessons.md` covers narrated films.
@@ -144,11 +150,18 @@ s.play(fade(logo, 1, { duration: 0.4 }))
 ## Check codes
 
 - `film.off_canvas`: a mark leaves the frame. Text that is clipped is an error. Other marks are warnings. A mark that spans the whole frame, such as a grid line, is not reported.
-- `film.text_overlap`: two text blocks share pixels at rest.
+- `film.text_overlap`: two text blocks share pixels.
 - `film.text_crossed`: a stroke passes through text. A strong stroke is an error. An opaque shape between the stroke and the text prevents this report, so give a label a backing when it must sit on a line.
 - `film.missing_glyph`: no bundled font has a character, so it renders as an empty box. Replace the character, or set it with `tex`.
+- `film.blank`: nothing is visible for 0.2 seconds or more. Only a motion scan reports it.
 
-The check looks at moments between animations, because objects may cross while moving. So it misses a crossfade where two sentences overlap, and a blank gap between two pictures. `checkFilm(film, { samples })` adds evenly spaced moments, and `checkFilm(film, { times })` inspects exactly the times you pass. The CLI has no flag for either. `references/lessons.md` has a script that scans every frame.
+The check looks at moments between animations, because objects may cross while moving. So it misses a crossfade where two sentences overlap, and a blank gap between two pictures. Add `--motion` to inspect every frame:
+
+```bash
+npx vizmatic check intro.ts --motion --content-top 200 --json
+```
+
+A finding that appears only while something moves is a warning, because the check cannot tell a collision from one picture that replaces another. It carries a `motion` field with the number of separate stretches and their total length, and `time` and `until` bound the longest stretch. Judge each one. `--content-top` is the canvas y where the content starts, so that a heading that stays up does not hide a blank. In code, use `checkFilm(film, { motion: true, contentTop: 200 })`. `samples` adds evenly spaced moments at rest, and `times` inspects exactly the times you pass.
 
 ## Mistakes to avoid
 

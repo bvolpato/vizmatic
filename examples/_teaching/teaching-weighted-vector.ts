@@ -1,6 +1,6 @@
-import { createTeachingCanvas, type TeachingPainter } from '../../src/teaching-canvas'
-import { createTeachingVectorAccumulation, type WeightedVectorTerm } from '../../src/teaching-vector'
-import type { CanvasBounds } from '../../src/canvas-components'
+import { createTeachingCanvas, type TeachingPainter } from 'vizmatic'
+import { createTeachingVectorAccumulation, type WeightedVectorTerm } from 'vizmatic'
+import type { CanvasBounds } from 'vizmatic'
 
 // A supplied two-coordinate EMA example, with beta=0.75.
 const terms: readonly WeightedVectorTerm[] = [

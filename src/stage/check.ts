@@ -4,7 +4,7 @@ import { pathBounds, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -22,6 +22,11 @@ export interface FilmDiagnostic {
     text?: string
     /** The second text involved in an overlap. */
     other?: string
+    /**
+     * Set when a motion scan finds the problem only while something moves. `time` and `until` then
+     * bound the longest stretch. `spans` counts the separate stretches, and `seconds` is their total length.
+     */
+    motion?: { spans: number; seconds: number }
 }
 
 export interface FilmCheckReport {
@@ -29,8 +34,10 @@ export interface FilmCheckReport {
     width: number
     height: number
     duration: number
-    /** The times that were inspected, in seconds. */
+    /** The moments at rest that were inspected, in seconds. */
     sampled: number[]
+    /** The number of frames that a motion scan inspected. */
+    frames?: number
     diagnostics: FilmDiagnostic[]
     summary: { errors: number; warnings: number }
 }
@@ -40,6 +47,17 @@ export interface FilmCheckOptions extends CompileOverrides {
     times?: readonly number[]
     /** Add this many evenly spaced samples to the moments at rest. */
     samples?: number
+    /**
+     * Also inspect every frame. A problem that appears only while something moves is a warning, because
+     * the check cannot tell a collision from one picture that replaces another. A stretch of 0.2 seconds
+     * or more with nothing visible is reported as `film.blank`.
+     */
+    motion?: boolean
+    /**
+     * For a motion scan, the canvas y where the content starts. Marks above it, such as a heading that
+     * stays up, do not count as content when the scan looks for blank frames.
+     */
+    contentTop?: number
 }
 
 interface TextBlock {
@@ -58,6 +76,12 @@ const MIN_RESTING_MOMENTS = 5
 const AUTO_SAMPLES = 12
 const CUBIC_STEPS = 6
 const CROSSING_ERROR_WIDTH = 2
+// A mark under this opacity is still fading in or out, so a viewer cannot read it.
+const BLANK_ALPHA = 0.25
+// A film may open on an empty stage and close on one.
+const BLANK_EDGE_SECONDS = 0.5
+// A quick change from one picture to the next dips for a few frames, and reads as a cut.
+const BLANK_MIN_SECONDS = 0.2
 const CROSSING_ERROR_CONTRAST = 2
 // Faint grid lines may run behind labels. A reader still reads the label.
 const MIN_STROKE_CONTRAST = 1.6
@@ -362,10 +386,29 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): F
     return findings
 }
 
+/** True when a frame holds something a viewer can see at or below `top`. */
+function hasContent(frame: Frame, top: number): boolean {
+    return frame.ops.some((op: DrawOp) => {
+        if (op.kind !== 'path') return op.alpha >= BLANK_ALPHA
+        const filled = op.fill !== null && op.fillAlpha >= BLANK_ALPHA
+        const stroked = op.stroke !== null && op.strokeAlpha >= BLANK_ALPHA && op.strokeWidth > 0
+        if (!filled && !stroked) return false
+        const box = pathBounds(filled ? op.path : op.strokePath)
+        return box !== null && box.y + box.height > top && box.y < frame.height && box.x + box.width > 0 && box.x < frame.width
+    })
+}
+
+/** A stretch of consecutive frames, as frame numbers, with the finding from its first frame. */
+interface MovingRun {
+    from: number
+    to: number
+    first: Finding
+}
+
 /**
  * Inspect a film for layout defects: marks off the canvas, text on text, strokes
  * through text, and characters that no font can draw. It looks where the film comes to rest, because objects may
- * cross each other while moving. Runs anywhere, with no rendering.
+ * cross each other while moving. With `motion`, it also looks at every frame. Runs anywhere, with no rendering.
  */
 export async function checkFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions = {}): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
@@ -387,6 +430,57 @@ export async function checkFilm(film: FilmDefinition | CompiledFilm, options: Fi
             }
         }
     }
+
+    const frameCount = options.motion ? Math.max(1, Math.round(compiled.duration * compiled.fps)) : 0
+    const step = 1 / compiled.fps
+    if (options.motion) {
+        const top = options.contentTop ?? 0
+        const moving = new Map<string, MovingRun[]>()
+        const blanks: { from: number; to: number }[] = []
+        for (let index = 0; index < frameCount; index++) {
+            const time = index * step
+            const frame = await frameAt(compiled, time)
+            for (const finding of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed)) {
+                // A problem that also shows at rest is already reported, with its own severity.
+                if (merged.has(finding.key)) continue
+                let runs = moving.get(finding.key)
+                if (!runs) moving.set(finding.key, runs = [])
+                const last = runs[runs.length - 1]
+                if (last && last.to === index - 1) last.to = index
+                else runs.push({ from: index, to: index, first: finding })
+            }
+            const edge = time < BLANK_EDGE_SECONDS || time > compiled.duration - BLANK_EDGE_SECONDS
+            if (!edge && !hasContent(frame, top)) {
+                const last = blanks[blanks.length - 1]
+                if (last && last.to === index - 1) last.to = index
+                else blanks.push({ from: index, to: index })
+            }
+        }
+        const seconds = (frames: number) => Math.round(frames * step * 100) / 100
+        for (const [key, runs] of moving) {
+            const longest = runs.reduce((best, run) => (run.to - run.from > best.to - best.from ? run : best))
+            const { key: _, ...finding } = longest.first
+            merged.set(key, {
+                ...finding,
+                severity: 'warning',
+                until: longest.to * step,
+                stage: { x: 0, y: 0 },
+                motion: { spans: runs.length, seconds: seconds(runs.reduce((sum, run) => sum + run.to - run.from + 1, 0)) },
+            })
+        }
+        for (const run of blanks) {
+            const length = seconds(run.to - run.from + 1)
+            if (length < BLANK_MIN_SECONDS) continue
+            merged.set(`film.blank:${run.from}`, {
+                code: 'film.blank', severity: 'warning',
+                message: `Nothing is visible${top > 0 ? ` below y=${top}` : ''} for ${length} s.`,
+                time: run.from * step, until: run.to * step,
+                box: { x: 0, y: top, width: compiled.width, height: compiled.height - top },
+                stage: { x: 0, y: 0 },
+                motion: { spans: 1, seconds: length },
+            })
+        }
+    }
     const round = (value: number) => Math.round(value * 100) / 100
     const diagnostics = [...merged.values()].map((entry) => ({
         ...entry,
@@ -405,6 +499,7 @@ export async function checkFilm(film: FilmDefinition | CompiledFilm, options: Fi
         height: compiled.height,
         duration: compiled.duration,
         sampled: times.map((time) => Math.round(time * 1000) / 1000),
+        ...(options.motion ? { frames: frameCount } : {}),
         diagnostics,
         summary: { errors, warnings: diagnostics.length - errors },
     }

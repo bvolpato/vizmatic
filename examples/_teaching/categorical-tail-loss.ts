@@ -1,6 +1,6 @@
-import { createTeachingCategoricalSampling, categoricalSampling } from '../../src/teaching-categorical-sampling'
-import type { TeachingPainter } from '../../src/teaching-canvas'
-import type { CanvasBounds } from '../../src/canvas-components'
+import { createTeachingCategoricalSampling, categoricalSampling } from 'vizmatic'
+import type { TeachingPainter } from 'vizmatic'
+import type { CanvasBounds } from 'vizmatic'
 
 /** Supplied deterministic draws illustrate one possible sample, not a randomly executed experiment. */
 export const tailLossFixture = {

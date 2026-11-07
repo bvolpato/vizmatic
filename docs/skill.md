@@ -45,8 +45,8 @@ For a person, `npx vizmatic preview intro.ts` gives a live player with a timelin
 
 ### Timing traps
 
-- `s.play(a, b, { duration })` stretches both animations to fill the duration. A `duration` inside `a` or `b` has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset.
-- `vizmatic check` inspects moments of rest. A crossfade where two sentences overlap and a blank gap between two pictures both pass it. For a film longer than a minute or two, run the frame scan in `references/lessons.md`.
+- `s.play(a, b, { duration })` stretches both animations to fill the duration. A `duration` inside `a` or `b` has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset. Inside a `s.play` that has a duration, `seq(fadeOut(a), fadeIn(b))` makes one text leave before the next arrives.
+- `vizmatic check` inspects moments of rest. A crossfade where two sentences overlap and a blank gap between two pictures both pass it. Before you export, run `npx vizmatic check intro.ts --motion --json`, which inspects every frame. It reports what appears only in motion as warnings, so judge each one. `references/lessons.md` explains the report. An older package rejects `--motion` as an unknown option, so update the package.
 
 ### Lessons and narrated films
 

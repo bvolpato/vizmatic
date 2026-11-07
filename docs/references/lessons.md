@@ -54,7 +54,7 @@ For some mechanisms, Vizmatic computes the intermediate states for you, so that 
   - `categoricalSampling` uses only the draws you supply and runs no hidden random experiment.
   - `tokenHistory` models ordinary autoregressive decoding, with at most one accepted token awaiting processing. Speculative decoding needs its own contract.
 - Render the prediction, the moving state, and the settled result at delivery size. Check moving marks against the actual glyphs, as well as the declared card bounds.
-- `examples/_teaching/` shows each construction. These files import from `../../src`, which the package does not ship, so read them for usage and import from `vizmatic` in your own code.
+- `examples/_teaching/` in the package shows each construction. `teaching-byte-diff.ts` also runs by itself: `npx tsx node_modules/vizmatic/examples/_teaching/teaching-byte-diff.ts > byte-diff.svg`.
 
 ## Follow a voice
 
@@ -111,6 +111,8 @@ An old picture must drop under about 25% opacity before new content reaches it. 
 s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))
 ```
 
+Inside a `s.play` that has a `duration`, use `seq(fadeOut(oldText), fadeIn(newText))`. It gives each animation its share of the time.
+
 - Keep something on screen through the change. A shape or a label that is clear of the new picture can linger for about half a second, which closes the blank. Do this when a shorter fade opens a gap.
 - Start each scene's first picture in its first half second, even if the first spoken cue comes later.
 - Text may meet other text or a shape only if it replaces it in place, becomes it with a morph, or sits behind an opaque tile.
@@ -119,49 +121,22 @@ s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0
 
 ## Scan the motion
 
-`vizmatic check` looks only at moments of rest, so it misses a crossfade collision and a blank gap between pictures. Scan every frame with the API. Save this as `scan.mts` in a project with `"type": "module"`, and run `npx tsx scan.mts`.
+`vizmatic check` looks only at moments of rest, so it misses a crossfade collision and a blank gap between pictures. Add `--motion` to inspect every frame.
 
-```ts
-import { checkFilm, compileFilm, pathBounds } from 'vizmatic/stage'
-import draft from './lesson.ts'
-
-const film = await compileFilm(draft)
-const times = Array.from({ length: Math.floor(film.duration * film.fps) }, (_, i) => i / film.fps)
-
-// Text that meets other text, or that a stroke crosses, at any moment. Judge each line.
-const report = await checkFilm(film, { times })
-for (const item of report.diagnostics) console.log(item.code, item.time.toFixed(2), item.message)
-
-const frameAt = async (time: number) => {
-    for (;;) {
-        try {
-            return film.frame(time)
-        } catch (error: any) {
-            if (!error?.promise) throw error
-            await error.promise
-        }
-    }
-}
-
-// Frames with nothing readable below the heading. HEADING is a canvas y, so 0 checks the whole frame.
-const HEADING = 0
-for (const time of times) {
-    const { ops } = await frameAt(time)
-    const visible = ops.some((op) => {
-        // A picture, such as a logo, counts as content.
-        if (op.kind === 'image') return op.alpha >= 0.25
-        if (Math.max(op.fillAlpha, op.strokeAlpha) < 0.25) return false
-        const box = pathBounds(op.path)
-        return box !== null && box.y + box.height > HEADING
-    })
-    if (!visible) console.log('blank', time.toFixed(2))
-}
+```bash
+npx vizmatic check lesson.ts --motion --content-top 200 --json
 ```
 
-The scan cannot see that one block replaces another, so decide each line yourself. An empty result does not prove a film clean:
+- A finding that appears only while something moves is a warning. It carries a `motion` field with the number of separate stretches and their total length. `time` and `until` bound the longest stretch.
+- `film.blank` reports 0.2 seconds or more with nothing visible. `--content-top` is the canvas y where the content starts. Set it when a heading stays up, because the heading otherwise hides every blank.
+- The scan compiles every frame and paints none. A film with heavy `dynamic` drawings can take a minute or more.
+- In code, use `checkFilm(film, { motion: true, contentTop: 200 })` from `vizmatic/stage`.
+- An older package rejects `--motion` as an unknown option. Update the package.
+
+The scan cannot see that one block replaces another, so decide each warning yourself. A curve that passes an axis number while it draws is usually fine. Two sentences on the same lines are a defect. An empty result does not prove a film clean:
 
 - The check reports text crossed by a stroke. It does not report text on the edge of a filled shape.
-- A frame with only a faint mark counts as visible, so a nearly empty frame can pass. Read the frames at each handover in the delivered movie.
+- A frame with one small mark counts as visible, so a nearly empty frame can pass. A blank shorter than 0.2 seconds is not reported. Read the frames at each handover in the delivered movie.
 
 ## Make it readable
 

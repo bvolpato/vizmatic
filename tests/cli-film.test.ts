@@ -177,4 +177,24 @@ export default film({ title: 'Bad' }, (s) => {
         expect(overlap.time).toBeGreaterThanOrEqual(0)
         expect(overlap.stage.y).toBeLessThan(0)
     }, 60_000)
+
+    it('finds a collision in motion only when --motion is set', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'crossfade.ts'), `import { fadeIn, fadeOut, film, text } from 'vizmatic/stage'
+export default film({ title: 'Crossfade', fps: 30 }, (s) => {
+    const before = s.add(text('Old sentence here', { size: 80 }))
+    s.wait(1)
+    s.play(fadeOut(before), fadeIn(text('New sentence here', { size: 80 })), { duration: 1 })
+    s.wait(1)
+})
+`)
+        const atRest = JSON.parse(cli(['check', 'crossfade.ts', '--json'], directory).stdout)
+        expect(atRest.files[0].diagnostics).toEqual([])
+        const result = cli(['check', 'crossfade.ts', '--motion', '--json'], directory)
+        expect(result.status).toBe(0)
+        const file = JSON.parse(result.stdout).files[0]
+        expect(file.film.frames).toBe(90)
+        expect(file.diagnostics).toHaveLength(1)
+        expect(file.diagnostics[0]).toMatchObject({ code: 'film.text_overlap', severity: 'warning', motion: { spans: 1 } })
+    }, 60_000)
 })
