@@ -259,6 +259,14 @@ The corresponding pure helpers are `weightedVectorState`,
 `tokenHistoryState`. They sample explicit inputs and support out-of-order frame
 rendering. The lesson supplies the data, model assumptions, and narration cues.
 
+Provide `painter.measureText(value, size, font)` to size moving token copies with
+the same font metrics used by `painter.text`. The helper adds the label's padding
+and keeps the copy inside its occurrence column. Without this optional method,
+the copy retains the full column width so a readable whole-word label does not
+shrink into a fixed three-character card.
+
+[Compare the same moving word token in v0.7.0 and v0.7.2.](../assets/teaching/token-replay-label-width.png)
+
 Keep each component's scope visible in the explanation. The byte comparison
 aligns a common prefix and suffix with a positional middle; it does not compute
 a minimum-edit diff or establish artifact provenance. Categorical sampling

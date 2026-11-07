@@ -178,7 +178,12 @@ export function createTeachingTokenHistory<Shape>(painter: CanvasPainter<Shape>)
                 const progress = state.moving.progress
                 const settle = Math.max(0, (progress - 0.65) / 0.35)
                 const grow = Math.max(0, (progress - 0.8) / 0.2)
-                const copyWidth = Math.min(from.width, fontSize * 3)
+                const measuredWidth = painter.measureText?.(String(state.moving.token.token), fontSize, 'mono')
+                if (measuredWidth !== undefined && (!Number.isFinite(measuredWidth) || measuredWidth < 0)) {
+                    throw new Error('Token history measured text width must be finite and nonnegative')
+                }
+                const copyWidth = Math.min(from.width, Math.max(fontSize * 3,
+                    measuredWidth === undefined ? from.width : measuredWidth + 10))
                 const copyHeight = Math.min(from.height, fontSize * 1.8)
                 const movingWidth = copyWidth + (from.width - copyWidth) * grow
                 const movingHeight = copyHeight + (from.height - copyHeight) * grow
