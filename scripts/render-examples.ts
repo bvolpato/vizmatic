@@ -106,6 +106,8 @@ for (const file of files) {
         await codeToHtml(code, {
             lang: 'tsx',
             theme: theme === 'light' ? 'github-light-high-contrast' : 'github-dark-high-contrast',
+            // Embedded image strings must retain the same grammar state on slower CI runners.
+            tokenizeTimeLimit: 0,
         }),
     ]))) as Record<(typeof themes)[number], string>
 
