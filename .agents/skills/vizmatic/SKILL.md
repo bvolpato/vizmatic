@@ -39,7 +39,7 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
    npx vizmatic film intro.ts --out dist/films --quality high
    ```
 
-`--format mp4,webm,gif,png,svg` picks formats. `--look midnight,paper` renders each look. `--quality draft` is fast. `--range 12:18` renders part of the timeline. `--poster` adds a poster frame. `--audio narration.wav` adds sound, padded or trimmed to the film's length. Add `--json` for a machine-readable report. `film-manifest.json` lists all outputs. MP4 output is H.264 with settings that QuickTime can play. `s.caption` writes a WebVTT file beside the video.
+`--format mp4,webm,gif,png,svg` picks formats. `--look midnight,paper` renders each look. `--quality draft` is fast. `--range 12:18` renders part of the timeline. `--poster` adds a poster frame. `--audio narration.wav` adds sound, padded or trimmed to the film's length. Add `--json` for a machine-readable report. `film-manifest.json` lists all outputs. MP4 output is H.264 with settings that QuickTime can play. An MP4 carries the film's chapters and captions, and `s.caption` also writes a WebVTT file beside the video.
 
 For a person, `npx vizmatic preview intro.ts` gives a live player with a timeline. [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor that runs in the browser, with no install. It has a canvas, an inspector, and per-object tracks, and it writes film source. Offer it when someone wants to edit by hand. An agent should write the source instead.
 
@@ -50,7 +50,7 @@ For a person, `npx vizmatic preview intro.ts` gives a live player with a timelin
 
 ### Lessons and narrated films
 
-When a film must teach, read `references/lessons.md` before you write the script. Compute every number with an `assert`, and keep the voice and the screen in agreement. Keep every title true for as long as it is visible. Change pictures without a collision or a blank, and scan every frame. Accuracy comes before brevity. Do not cut content that teaches to reach a target length.
+When a film must teach, read `references/lessons.md` before you write the script. For a film that follows a recorded voice, `narration(s, timing)` places each change on a spoken phrase, and it stops the build if the voice does not say the phrase. Compute every number with an `assert`, and keep the voice and the screen in agreement. Keep every title true for as long as it is visible. Change pictures without a collision or a blank, and scan every frame. Accuracy comes before brevity. Do not cut content that teaches to reach a target length.
 
 The package computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. `references/lessons.md` lists them, the limits of each, and how to use them in a film or a canvas host.
 

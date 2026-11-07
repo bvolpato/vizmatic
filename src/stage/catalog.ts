@@ -92,6 +92,8 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'gridPlane3d', group: THREE, usage: 'gridPlane3d(): a floor grid' },
     { name: 'label3d', group: THREE, usage: "label3d('x', [1, 0, 0]): a screen-facing label at a 3D point" },
     { name: 'fromSvg', group: BRIDGE, usage: 'fromSvg(svgText): any SVG as animatable shapes' },
+    { name: 'image', group: BRIDGE, usage: 'image(dataUrl, { width: 400 }): a logo or a photo, centered, that fades and moves like any node' },
+    { name: 'narration', group: TIMING, usage: "narration(s, timing).scene('intro').on('a spoken phrase', () => s.play(...)): place changes on measured words" },
     { name: 'fromComponent', group: BRIDGE, usage: "await fromComponent(<Flow ... />, { width, height }): any TSX figure as animatable shapes. Import from 'vizmatic/stage/export'. Node only" },
     { name: 'write', group: REVEAL, usage: 'write(node): handwrite text and equations glyph by glyph' },
     { name: 'draw', group: REVEAL, usage: 'draw(node): trace strokes in order, then fill' },

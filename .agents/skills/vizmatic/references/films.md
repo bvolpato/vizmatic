@@ -26,7 +26,11 @@ s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0
 
 ## Sound and captions
 
-`--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` writes a WebVTT file beside the video and draws nothing into the picture. `references/lessons.md` covers narrated films.
+`--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture. `references/lessons.md` covers narrated films.
+
+An MP4 carries the film's title, its chapters as markers on the player's timeline, and its captions as a track that the viewer can switch on. The same captions are also written as a WebVTT file beside the video. No second pass with FFmpeg is needed.
+
+For a film that follows a recorded voice, use `narration(s, timing)`. It places each scene from the measured length of the speech, and `scene.on('a spoken phrase', build)` runs `build` when the voice reaches that phrase. A phrase that the voice does not say stops the build. It also adds the captions and one chapter for each titled scene.
 
 ## Worked films
 
@@ -110,6 +114,33 @@ s.play(fadeIn(hill))
 s.play(view.orbit({ theta: 1.4 }, { duration: 4 }))
 ```
 
+A mark that rests on a surface, such as a path, a ball, or an arrow:
+
+```ts
+const height = (x: number, y: number) => 0.2 * (x * x + y * y)
+const u = s.value(0)
+const at = (t: number): [number, number, number] => [2 - 2 * t, 2 - 2 * t, height(2 - 2 * t, 2 - 2 * t) + 0.04]
+view.add(surface(height, { x: [-3, 3], y: [-3, 3], mesh: 'ink', meshOpacity: 0.16 }))
+const path = view.add(curve3d(at, 0, 1, { color: 'ink', onTop: true }))
+path.set('trimTo', 0)
+view.add(point3d(() => at(u.value), { color: 'yellow', halo: 1.3, onTop: true }))
+s.play(u.to(1, { duration: 4 }), to(path, (n) => n.set('trimTo', 1), { duration: 4 }))
+```
+
+Faces, lines, and points sort by depth, so a mark that touches a surface can fall behind the faces under it. Lift the mark a little above the surface, and set `onTop: true`. Use `bias` in place of `onTop` when a ridge must still hide the mark. `mesh` draws the grid lines that make the shape of a smooth surface readable.
+
+A logo or a photo:
+
+```ts
+import { readFileSync } from 'node:fs'
+
+const png = readFileSync(new URL('./logo.png', import.meta.url)).toString('base64')
+const logo = s.add(image(`data:image/png;base64,${png}`, { width: 420 }).opacity(0))
+s.play(fade(logo, 1, { duration: 0.4 }))
+```
+
+`image` reads the size of a PNG, GIF, or JPEG data URL, so one of `width` and `height` is enough. `preview` runs in the browser and cannot read a file, so pass a URL there, with both `width` and `height`.
+
 ## Check codes
 
 - `film.off_canvas`: a mark leaves the frame. Text that is clipped is an error. Other marks are warnings. A mark that spans the whole frame, such as a grid line, is not reported.
@@ -126,4 +157,5 @@ The check looks at moments between animations, because objects may cross while m
 - **Bend signs depend on direction.** With a positive `bend`, a left-to-right `arrow` bows down and a right-to-left `arrow` bows up.
 - **Long animations overlap the next cue.** A check can report an error from an animation that is still running at the next moment. Shorten it, or leave more time.
 - **Mesh surfaces cache their shape.** Set `animate: true` on a `parametricSurface` that changes with a value.
+- **`trail3d` counts film seconds.** Its `from` and `to` are times on the timeline, and `curve3d` takes a parameter range. For a path that is known in advance, draw a `curve3d` and animate its `trimTo`.
 - **Text under a filled shape still counts.** The viewer cannot see it, but the check can. Fade it out while the shape covers it. On a filled shape, draw text in `bg`.

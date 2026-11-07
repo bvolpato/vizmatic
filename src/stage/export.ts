@@ -25,6 +25,10 @@ export interface FilmRenderOptions extends CompileOverrides {
     memoryBudget?: number
     from?: number
     to?: number
+    /** Set to false to leave chapter markers out of an MP4. */
+    chapters?: boolean
+    /** Set to false to leave the caption track out of an MP4. The WebVTT sidecar is not affected. */
+    embedCaptions?: boolean
     audioPath?: string
     ffmpegPath?: string
     /** Encoder threads. Rasterizing is usually the slower step, so a few are enough. */
@@ -208,6 +212,10 @@ export async function renderFilmVideo(
             audioPath: options.audioPath,
             audioOffset: from > 0 ? from : undefined,
             ffmpegPath: options.ffmpegPath,
+            // An MP4 carries the film's title, chapters, and captions. A range render shifts them to its own start.
+            title: compiled.title,
+            chapters: options.chapters === false ? [] : shiftedChapters(compiled, from),
+            captions: options.embedCaptions === false ? [] : compiled.captions.map((cue) => ({ t0: cue.t0 - from, t1: cue.t1 - from, text: cue.text })),
             signal: options.signal,
             onProgress: options.onProgress,
         })
@@ -215,6 +223,14 @@ export async function renderFilmVideo(
     } finally {
         await pool.close()
     }
+}
+
+/** Chapters for a render that starts at `from`. The chapter already running at that moment starts the video. */
+function shiftedChapters(film: CompiledFilm, from: number): { title: string; time: number }[] {
+    const sorted = [...film.chapters].sort((a, b) => a.time - b.time)
+    const running = sorted.filter((chapter) => chapter.time <= from).pop()
+    const later = sorted.filter((chapter) => chapter.time > from).map((chapter) => ({ title: chapter.title, time: chapter.time - from }))
+    return running ? [{ title: running.title, time: 0 }, ...later] : later
 }
 
 // The package format differs between bundlers, so accept both shapes.

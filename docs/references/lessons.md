@@ -29,7 +29,7 @@ const label = text(shares[0].toFixed(3), { font: 'text-serif', size: 44 })
 
 - The voice and the screen use the same values, the same order, and the same rounding.
 - A title must stay true for as long as it is visible. A title that was true when it arrived can become false when the picture moves on. Sampling frames misses this. List every text block with the times it is visible, and read each one against the picture and the voice.
-- Say when numbers are invented for the example.
+- Say that numbers are invented where a viewer could take them for a measurement. Do not repeat the label on every example, because a repeated caveat distracts from the lesson.
 - Words such as "every", "always", and "never" must be true as stated, or they need a qualifier.
 
 ## Use the checked constructions
@@ -58,18 +58,35 @@ For some mechanisms, Vizmatic computes the intermediate states for you, so that 
 
 ## Follow a voice
 
-Measure the speech first. Then place each change at the moment the voice reaches it, with `s.at`, so that one section does not push the others around.
+Measure the speech first. Record each beat of the script as one take, and save its length and the time of each word. Most speech engines report word times, and a transcription tool can measure them from any recording. Then `narration` places the scenes, and each change runs when the voice reaches a phrase.
 
 ```ts
-import { fadeIn, film, text } from 'vizmatic/stage'
+import { fadeIn, film, narration, text } from 'vizmatic/stage'
+import timing from './timing.json'
 
-const VOICE_LENGTH = 6.4 // The measured length of narration.wav, in seconds.
+// timing.json: { "scenes": [{ "id": "problem", "title": "The problem", "beats": [
+//   { "say": "Latency climbs. Should we page someone?", "duration": 3.1, "hold": 1.5,
+//     "words": [{ "text": "Latency", "start": 0.2, "end": 0.7 }, ...] }] }] }
 
 export default film((s) => {
-    s.at(0.5, () => s.play(fadeIn(text('First point', { size: 72 }).at(0, -100))))
-    s.at(3.2, () => s.play(fadeIn(text('Second point', { size: 72 }).at(0, 60))))
-    s.wait(Math.max(0, VOICE_LENGTH - s.time))
+    const voice = narration(s, timing, { lead: 0.6, gap: 0.4 })
+    const problem = voice.scene('problem')
+    problem.at(0, () => s.play(fadeIn(text('p95 latency', { size: 72 }).at(0, -100))))
+    problem.on('should we page', () => s.play(fadeIn(text('Page someone?', { size: 72 }).at(0, 60))))
 })
+```
+
+- `lead` is the silence before the first word, and `gap` is the silence between scenes. The sound mix must place each take at the same times. `voice.placements()` lists them.
+- A beat's `hold` is silence after it. Use it to give the viewer time to think.
+- `scene.on(phrase, build, offset)` builds when the phrase starts, and `scene.after` when it ends. `scene.cue(phrase)` returns both times. A cue ignores case and punctuation. If the voice does not say the phrase, the build stops with the name of the scene and the phrase, so a script change cannot leave the picture behind.
+- A word in `timing.json` can hold a spoken form, such as "twenty seven B" for "27B". A cue matches the spoken form.
+- `narration` adds a caption for each spoken line and a chapter for each scene that has a `title`. The MP4 carries both.
+- The film lasts until the voice ends. Transcribe each new take before you render, and compare it with the script. A speech engine can say a word in a way that a listener hears as another word.
+
+Without word times, place changes with `s.at` at times that you measured by hand:
+
+```ts
+s.at(3.2, () => s.play(fadeIn(text('Second point', { size: 72 }).at(0, 60))))
 ```
 
 ```bash
@@ -77,9 +94,9 @@ npx vizmatic film lesson.ts --audio narration.wav --quality high --out dist/film
 ```
 
 - `--audio` pads or trims the sound to the film's length. A film that ends early cuts off the voice, so hold until the voice ends.
-- `s.caption(text, seconds)` writes a WebVTT file beside the video. It does not draw the caption into the picture.
+- `s.caption(text, seconds)` adds a caption by hand. It goes into the MP4 as a track that the viewer can switch on, and into a WebVTT file beside the video. It does not draw the caption into the picture.
 - Leave room to think. Start with a hold of about 1.5 seconds after a worked result, and about 5 seconds after a question to the viewer.
-- Use `s.chapter` for each section. Chapters mark the player's timeline.
+- Use `s.chapter` for each section, or a `title` on each scene of a narration. Chapters mark the timeline of the player and of the MP4.
 
 ## Change pictures cleanly
 
@@ -131,7 +148,9 @@ const HEADING = 0
 for (const time of times) {
     const { ops } = await frameAt(time)
     const visible = ops.some((op) => {
-        if (op.kind !== 'path' || Math.max(op.fillAlpha, op.strokeAlpha) < 0.25) return false
+        // A picture, such as a logo, counts as content.
+        if (op.kind === 'image') return op.alpha >= 0.25
+        if (Math.max(op.fillAlpha, op.strokeAlpha) < 0.25) return false
         const box = pathBounds(op.path)
         return box !== null && box.y + box.height > HEADING
     })

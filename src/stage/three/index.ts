@@ -771,6 +771,7 @@ export class Vector3D extends Line3D {
     private readonly from3: Reactive3
     private readonly to3: Reactive3
     private readonly tipSize: number
+    private readonly tipBias: number
 
     constructor(from: Reactive3, to: Reactive3, style: Line3DStyle & { tip?: number } = {}) {
         super(from, () => {
@@ -783,6 +784,8 @@ export class Vector3D extends Line3D {
         this.from3 = from
         this.to3 = to
         this.tipSize = style.tip ?? 24
+        // The head sorts with its shaft, so an arrow drawn on top keeps its head.
+        this.tipBias = style.onTop ? ON_TOP : style.bias ?? 0
     }
 
     override emit(view: View3D): void {
@@ -802,7 +805,7 @@ export class Vector3D extends Line3D {
         const rgb = solidOf(this.get('stroke'))
         const color = view.fogged(rgb[0], rgb[1], rgb[2], depth)
         const ring = polygonRing([bx, by, bx - ux * size - uy * half, by - uy * size + ux * half, bx - ux * size + uy * half, by - uy * size - ux * half])
-        view.push(fillOp([ring], color, alpha, null, 0, 0), depth + 0.01)
+        view.push(fillOp([ring], color, alpha, null, 0, 0), depth + 0.01 + this.tipBias)
     }
 }
 
@@ -818,6 +821,8 @@ export interface Points3DStyle {
     radius?: number
     opacity?: number
     onTop?: boolean
+    /** Nudge toward the camera so a point resting on a surface is not cut by it. */
+    bias?: number
     /** Soft ring around each point. */
     halo?: number
 }
@@ -837,7 +842,7 @@ export class Points3D extends Object3D {
         const trim = this.get('trimTo')
         const shown = Math.ceil(points.length * trim)
         const base = solidOf(this.get('fill'))
-        const bias = this.style.onTop ? ON_TOP : 0
+        const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
         for (let i = 0; i < shown; i++) {
             const point = points[i]!
             if (!view.project(point[0], point[1], point[2])) continue
@@ -901,13 +906,25 @@ export class Trail3D extends Object3D {
         const fade = this.style.fade ?? (tail !== undefined ? 0 : 1)
         const bias = this.style.onTop ? ON_TOP : this.style.bias ?? 0
         const glow = (this.style.glow ?? 0) * view.scale
-        const piece = Math.max(1, Math.ceil((i1 - i0) / 48))
-        for (let i = i0; i < i1; i += piece) {
+        // Keep only the samples where the point moved. A point that waits and then travels
+        // still gets every piece on the part it travelled, so each piece sorts by its own depth.
+        const moved: Vec3[] = []
+        let last: Vec3 | null = null
+        for (let k = i0; k <= i1; k++) {
+            const p = this.sample(k, rate)
+            if (last && Math.abs(p[0] - last[0]) + Math.abs(p[1] - last[1]) + Math.abs(p[2] - last[2]) < 1e-9) continue
+            moved.push(p)
+            last = p
+        }
+        const span = moved.length - 1
+        if (span < 1) return
+        const piece = Math.max(1, Math.ceil(span / 48))
+        for (let i = 0; i < span; i += piece) {
             const coords: Vec[] = []
             let depth = 0
             let scale = 0
-            for (let k = i; k <= Math.min(i1, i + piece); k++) {
-                const p = this.sample(k, rate)
+            for (let k = i; k <= Math.min(span, i + piece); k++) {
+                const p = moved[k]!
                 if (!view.project(p[0], p[1], p[2])) continue
                 coords.push([view.px, view.py])
                 depth += view.pz
@@ -916,7 +933,7 @@ export class Trail3D extends Object3D {
             if (coords.length < 2) continue
             depth /= coords.length
             scale /= coords.length
-            const fraction = (i + piece / 2 - i0) / (i1 - i0)
+            const fraction = Math.min(1, (i + piece / 2) / span)
             const light = fade + (1 - fade) * Math.pow(fraction, 1.6)
             const color = view.fogged(base[0], base[1], base[2], depth)
             view.push(strokeOp([chain(coords)], color, alpha * light, width * scale, glow, 'butt'), depth + bias)

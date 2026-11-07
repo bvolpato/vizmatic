@@ -79,6 +79,63 @@ export function regularPolygon(sides: number, radius: number, style: ShapeStyle 
     return polygon(points, style)
 }
 
+export interface ImageOptions {
+    /** Width on the stage. With only one of width and height, the other keeps the picture's proportions. */
+    width?: number
+    height?: number
+    opacity?: number
+}
+
+/** Pixel size of a PNG, GIF, or JPEG held in a base64 data URL. Other sources return null. */
+function intrinsicSize(src: string): [number, number] | null {
+    const match = /^data:image\/(png|gif|jpeg|jpg);base64,/.exec(src)
+    if (!match || typeof atob !== 'function') return null
+    // Sizes sit near the start of PNG and GIF files. A JPEG may carry metadata first.
+    // A slice of base64 that starts at the data and has a length divisible by four decodes on its own.
+    let head: string
+    try {
+        head = atob(src.slice(match[0].length, match[0].length + (match[1] === 'jpeg' || match[1] === 'jpg' ? 87384 : 44)))
+    } catch {
+        return null
+    }
+    const byte = (i: number) => head.charCodeAt(i)
+    if (match[1] === 'png') return head.length >= 24 ? [byte(16) * 16777216 + byte(17) * 65536 + byte(18) * 256 + byte(19), byte(20) * 16777216 + byte(21) * 65536 + byte(22) * 256 + byte(23)] : null
+    if (match[1] === 'gif') return head.length >= 10 ? [byte(6) + byte(7) * 256, byte(8) + byte(9) * 256] : null
+    for (let i = 2; i + 9 < head.length;) {
+        if (byte(i) !== 0xff) return null
+        const marker = byte(i + 1)
+        // A start-of-frame segment holds the height, then the width.
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return [byte(i + 7) * 256 + byte(i + 8), byte(i + 5) * 256 + byte(i + 6)]
+        i += 2 + byte(i + 2) * 256 + byte(i + 3)
+    }
+    return null
+}
+
+/**
+ * A raster picture, such as a logo or a photo, centered on its origin. `src` is a URL or a
+ * data URL. A data URL keeps a film in one file and renders the same in every tool.
+ * It fades, moves, and scales like any node. Give `width`, `height`, or both.
+ */
+export function image(src: string, options: ImageOptions = {}): Node {
+    const natural = intrinsicSize(src)
+    let width = options.width, height = options.height
+    if (width === undefined && height === undefined) {
+        if (!natural) throw new Error('image() needs a width or a height when the picture is not a PNG, GIF, or JPEG data URL.')
+        ;[width, height] = natural
+    } else if (width === undefined || height === undefined) {
+        if (!natural) throw new Error('image() needs both width and height when the picture is not a PNG, GIF, or JPEG data URL.')
+        if (width === undefined) width = height! * natural[0] / natural[1]
+        else height = width * natural[1] / natural[0]
+    }
+    if (!(width! > 0) || !(height! > 0)) throw new Error('image() needs a positive width and height.')
+    const picture = new Node().at(-width! / 2, -height! / 2)
+    picture.base.image = { src, width: width!, height: height! }
+    const out = new Node()
+    out.add(picture)
+    if (options.opacity !== undefined) out.opacity(options.opacity)
+    return out
+}
+
 /** A filled point. */
 export function dot(radius = 9, color: ColorInput = 'ink', style: ShapeStyle = {}): Node {
     return styled(new Node(circlePath(0, 0, radius)), style, { fill: color })
