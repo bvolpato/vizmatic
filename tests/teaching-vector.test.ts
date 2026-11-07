@@ -93,6 +93,23 @@ describe('weighted vector state', () => {
 })
 
 describe('checked weighted vector drawing', () => {
+    it('uses formatter defaults consistently for input, contribution and total coordinates', () => {
+        const { painter, events } = host()
+        const result = createTeachingVectorAccumulation(painter)({
+            terms: [{ id: 'decimal', label: 'Decimal input', weight: 0.4, values: [1.25, -2.75] }],
+            progress: 1, plot, ledger, revealTotal: true,
+            format: (value, precision = 3) => value.toFixed(precision),
+        })
+        const labels = events.filter(event => event.kind === 'text').map(event => event.value)
+        expect(labels).toContain('Decimal input: 0.400 × (1.250, -2.750)')
+        expect(labels).toContain('completed: (0.500, -1.100)')
+        expect(labels).toContain('Accumulated vector: (0.500, -1.100)')
+        expect(result.endpoint).toEqual({ x: 310, y: 322 })
+        expect(events.filter(event => event.kind === 'arrow')).toEqual([
+            { kind: 'arrow', alpha: 0.45, x1: 300, y1: 300, x2: 310, y2: 322 },
+        ])
+    })
+
     it('rejects a distorted plot mapping before drawing any contribution', () => {
         const { painter, events } = host()
         const distorted: TeachingPlot = { ...plot, point: (x, y) => ({ x: 300 + 20 * x, y: 300 - 10 * y }) }
