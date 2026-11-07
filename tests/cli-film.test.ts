@@ -71,6 +71,13 @@ describe('vizmatic film', () => {
             const [video] = JSON.parse(probe.stdout).streams
             expect(video).toMatchObject({ codec_name: 'h264', width: 160, height: 90, color_space: 'bt709', color_transfer: 'bt709', color_primaries: 'bt709', color_range: 'tv' })
             expect(Number(video.nb_read_frames)).toBe(entry.outputs.find((output: { format: string }) => output.format === 'mp4').frameCount)
+            // The MP4 carries the title, the chapter, and the caption, so no second pass is needed.
+            const inside = JSON.parse(spawnSync('ffprobe', ['-v', 'error', '-show_streams', '-show_chapters', '-show_format', '-of', 'json', join(out, 'short_midnight.mp4')], { encoding: 'utf8' }).stdout)
+            expect(inside.format.tags.title).toBe('Short')
+            expect(inside.chapters.map((chapter: { tags: { title: string } }) => chapter.tags.title)).toEqual(['Opening'])
+            expect(inside.streams.some((stream: { codec_name: string }) => stream.codec_name === 'mov_text')).toBe(true)
+            const caption = spawnSync('ffmpeg', ['-v', 'error', '-i', join(out, 'short_midnight.mp4'), '-map', '0:s:0', '-f', 'srt', '-'], { encoding: 'utf8' })
+            expect(caption.stdout).toContain('A short caption')
             const webm = spawnSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', join(out, 'short_paper.webm')], { encoding: 'utf8' })
             expect(JSON.parse(webm.stdout).streams[0]).toMatchObject({ codec_name: 'vp9', color_space: 'bt709' })
         }

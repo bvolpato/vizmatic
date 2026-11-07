@@ -13,6 +13,8 @@ Vizmatic requires Node.js 20 or newer. MP4 and WebM also need FFmpeg.
 npm install vizmatic
 ```
 
+For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }` in the root `pnpm-workspace.yaml`.
+
 ## Films
 
 Start from a template, or write the function yourself. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`.
@@ -53,6 +55,8 @@ Rules of the engine:
 - `s.play(...)` writes animation and moves time forward. `s.wait(seconds)` holds. `s.at(time, build)` authors at another time.
 - A `dynamic(() => ...)` drawing rebuilds on every frame. Read `value.value` inside it to drive anything.
 - `morph(a, b)` leaves `b` on stage and `a` hidden. Later code refers to `b`.
+- A `duration` on `s.play` stretches every animation to fill it, and a `duration` inside one of those animations has no effect. For different lengths, leave it off `s.play`, set it on each animation, and use `delay` for an offset: `s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))`.
+- Use `font: 'text-serif'` for sentences, labels, and numbers. Use `font: 'serif'` only for short titles at a large size.
 - Colors are look tokens such as `'blue'`, `'yellow'`, `'ink'`, and `'dim'`, so a film renders in every look.
 - Run `vizmatic objects` and `vizmatic looks` to see what the installed version offers.
 
@@ -66,7 +70,11 @@ npx vizmatic film intro.ts --frame 3,6.5,12 --width 1280 --out stills
 npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 ```
 
-`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review.
+`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
+
+The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. `checkFilm(film, { times })` from `vizmatic/stage` inspects any times you pass. For a long film, pass every frame.
+
+`--audio narration.wav` adds sound, padded or trimmed to the film's length, so hold until the voice ends. `s.caption(text, seconds)` writes a WebVTT file beside the video and draws nothing into the picture. MP4 output is H.264 with settings that QuickTime can play. To join a clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`.
 
 Motion guidance:
 
@@ -74,6 +82,20 @@ Motion guidance:
 - Move the thing being explained. Avoid decorative motion.
 - Give color a meaning and keep it. A quantity keeps its color from its first appearance to its last.
 - Use chapters. They mark the player's timeline and are the steps of a presentation.
+
+### Lessons
+
+When a film must teach a topic, [lessons.md](https://bvolpato.github.io/vizmatic/references/lessons.md) has the full method. In short:
+
+- Put accuracy first, then completeness, clarity, and brevity. There is no target length, so keep every passage that teaches.
+- Finish the script before the film. Teach the problem, then the mechanism, then the limits. Keep one worked example throughout.
+- Compute every number in the film, and check it with `assert`. The voice and the screen use the same values and the same rounding.
+- Keep each title true for as long as it is visible. List every text block with its visible times, and read each one against the picture and the voice.
+- Change pictures cleanly. Old text drops under about 25% opacity before new text reaches it, and something stays on screen through the change.
+- A person must watch the film at full speed with sound before it is published. You cannot do this, so say that it has not happened.
+- Use the computed states from `vizmatic` where they fit: `weightedVectorState`, `categoricalSampling`, `planTeachingRoutedTransfer`, `byteDifferenceState`, and `tokenHistoryState`. Show the limits of each. `check` and `film` accept this import, and `preview` refuses it because it runs in the browser. A project with a checked canvas host can use the same constructions through `createTeachingCanvas(painter)`.
+
+Read a finished film before you write a similar one. `examples/films/` in the package holds them with full source, and the [Films](https://bvolpato.github.io/vizmatic/films.html) page plays them.
 
 ## Figures
 
@@ -136,6 +158,8 @@ After creating a visual, report:
 - which looks or themes rendered
 - whether `vizmatic check` passed
 - any overflow or layout fixes made
+- for a film, which stills you opened, and whether you scanned the motion
+- anything you could not verify, including that nobody has watched the film with sound
 
 # Guide: For agents
 
@@ -154,6 +178,16 @@ npx vizmatic film intro.ts --frame 2,6,12 --width 1280 --out ./stills
 npx vizmatic film intro.ts --quality high --out ./out
 ```
 
+The check inspects moments of rest. It misses a crossfade where two sentences overlap and a blank gap between two pictures. For a long film, pass every frame to `checkFilm(film, { times })`. Then extract frames from the MP4 around each change of picture, and read them.
+
+## Films that teach
+
+A lesson needs more than a clean check. [The lesson reference](../references/lessons.md) covers the plan, computed numbers, narration, changes of picture, a frame scan, delivery, and review. An agent cannot judge a lesson at full speed, so a person must watch it with sound before it is published.
+
+[Finished films](../films.html) show the full source for each topic. The package includes them in `examples/films/`.
+
+The package also computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. A film can import them from `vizmatic` for `check` and `film`, but `preview` refuses that import because it runs in the browser. [The canvas guide](tsx-animation.html) covers the same constructions for a checked canvas host.
+
 ## Install the skill
 
 The portable skill teaches an agent the workflow and the API. See the [agent page](../agents.html) for plugin installs.
@@ -170,6 +204,8 @@ npx skills add bvolpato/vizmatic --skill vizmatic -g -y
 | [llms-full.txt](../llms-full.txt) | The prompt and the whole component catalog. |
 | [components.json](../components.json) | Component metadata, source, and builder links. |
 | [PROMPT.md](../PROMPT.md) | The full task prompt and API guidance. |
+| [references/films.md](../references/films.md) | Engine rules, patterns, check codes, and common mistakes. |
+| [references/lessons.md](../references/lessons.md) | How to plan, narrate, scan, and deliver a film that teaches. |
 
 `vizmatic objects --json` and `vizmatic looks --json` list what is available in the installed version.
 
@@ -197,6 +233,8 @@ export async function report(): Promise<string[]> {
 # Guide: Animations
 
 Each animation takes optional `duration` and `ease` settings. Without them it uses a length that suits it and the `smooth` ease.
+
+A `duration` on `s.play` stretches every animation in that call to fill it, and it overrides a `duration` set on any of them. To give animations different lengths, leave it off `s.play`.
 
 ## Reveal
 
@@ -473,6 +511,20 @@ export default film({ fps: 30 }, (s) => {
 ### delay, retime, and call
 
 `delay` waits before an animation begins. `retime` changes the length or ease of an animation without changing what it does. `call` runs a function at a moment on the timeline.
+
+`delay` gives a clean change from one sentence to the next. The old text fades before the new text can be read, so the two never overlap.
+
+```ts
+import { delay, fadeIn, fadeOut, film, text } from 'vizmatic/stage'
+
+export default film((s) => {
+    const oldText = s.add(text('The old sentence', { size: 72 }))
+    s.wait(1)
+    const newText = text('The new sentence', { size: 72 })
+    s.play(fadeOut(oldText, { duration: 0.15 }), delay(fadeIn(newText, { duration: 0.25 }), 0.1))
+    s.wait(1)
+})
+```
 
 ### Value.to
 
@@ -865,6 +917,8 @@ export default film((s) => {
     s.wait(6)
 })
 ```
+
+`--audio narration.wav` pads or trims the sound to the film's length, so a film that ends early cuts off the voice. Make the film at least as long as the narration.
 
 # Guide: Diagrams and density
 

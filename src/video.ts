@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
-import { chmod, mkdir, open, rename, rm, stat } from 'fs/promises'
+import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { basename, dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
@@ -43,8 +43,43 @@ export interface RgbaVideoOptions {
     tune?: string
     crf?: number
     threads?: number
+    /** Title in the file's metadata. MP4 only. */
+    title?: string
+    /** Chapter markers, in seconds from the start of the video. MP4 only. Players show them on the timeline. */
+    chapters?: readonly { title: string; time: number }[]
+    /** A caption track that the viewer can switch on, in seconds from the start of the video. MP4 only. */
+    captions?: readonly { t0: number; t1: number; text: string }[]
     signal?: AbortSignal
     onProgress?: (frame: VideoFrameInfo) => void | Promise<void>
+}
+
+/** FFmpeg metadata with a title and chapters. Each chapter ends where the next one starts. */
+export function chapterMetadata(title: string | undefined, chapters: readonly { title: string; time: number }[], duration: number): string {
+    const escape = (value: string) => value.replace(/[\\=;#]/g, (c) => `\\${c}`).replace(/\r?\n/g, ' ')
+    const marks = chapters.filter((chapter) => Number.isFinite(chapter.time) && chapter.time < duration).map((chapter) => ({ title: chapter.title, time: Math.max(0, chapter.time) })).sort((a, b) => a.time - b.time)
+    // Players expect the first chapter to cover the start of the video.
+    if (marks.length > 0) marks[0]!.time = 0
+    let out = ';FFMETADATA1\n'
+    if (title) out += `title=${escape(title)}\n`
+    marks.forEach((mark, index) => {
+        const end = index + 1 < marks.length ? marks[index + 1]!.time : duration
+        out += `[CHAPTER]\nTIMEBASE=1/1000\nSTART=${Math.round(mark.time * 1000)}\nEND=${Math.round(end * 1000)}\ntitle=${escape(mark.title)}\n`
+    })
+    return out
+}
+
+/** Captions as SubRip text, clipped to the video. */
+export function captionsToSrt(captions: readonly { t0: number; t1: number; text: string }[], duration: number): string {
+    const stamp = (seconds: number) => {
+        const ms = Math.round(seconds * 1000)
+        const pad = (value: number, size = 2) => String(value).padStart(size, '0')
+        return `${pad(Math.floor(ms / 3600000))}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)},${pad(ms % 1000, 3)}`
+    }
+    return captions
+        .filter((cue) => cue.t1 > 0 && cue.t0 < duration && cue.t1 > cue.t0 && cue.text.trim().length > 0)
+        .sort((a, b) => a.t0 - b.t0)
+        .map((cue, index) => `${index + 1}\n${stamp(Math.max(0, cue.t0))} --> ${stamp(Math.min(duration, cue.t1))}\n${cue.text.trim()}\n`)
+        .join('\n')
 }
 
 export interface RgbaVideoOutput {
@@ -310,12 +345,38 @@ export async function renderRgbaVideo(
         '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`,
         '-framerate', String(fps), '-i', 'pipe:0',
     ]
+    let inputs = 1
+    let audioInput = -1
     if (options.audioPath) {
         if (options.audioOffset) args.push('-ss', String(options.audioOffset))
         args.push('-i', resolve(options.audioPath))
+        audioInput = inputs++
+    }
+    // Chapters and captions travel inside an MP4. Other containers keep their sidecar files.
+    const sidecars: string[] = []
+    let metadataInput = -1, captionInput = -1
+    if (codec === 'h264') {
+        const chapters = options.chapters ?? []
+        if (options.title || chapters.length > 0) {
+            const path = join(outputDirectory, `.${basename(outputPath)}.${randomUUID()}.tmp.ffmeta`)
+            await writeFile(path, chapterMetadata(options.title, chapters, schedule.duration), { mode: 0o600 })
+            sidecars.push(path)
+            args.push('-f', 'ffmetadata', '-i', path)
+            metadataInput = inputs++
+        }
+        const srt = captionsToSrt(options.captions ?? [], schedule.duration)
+        if (srt) {
+            const path = join(outputDirectory, `.${basename(outputPath)}.${randomUUID()}.tmp.srt`)
+            await writeFile(path, srt, { mode: 0o600 })
+            sidecars.push(path)
+            args.push('-f', 'srt', '-i', path)
+            captionInput = inputs++
+        }
     }
     args.push('-map', '0:v:0')
-    if (options.audioPath) args.push('-map', '1:a:0', '-af', `asetpts=PTS-STARTPTS,apad,atrim=duration=${seconds}`)
+    if (options.audioPath) args.push('-map', `${audioInput}:a:0`, '-af', `asetpts=PTS-STARTPTS,apad,atrim=duration=${seconds}`)
+    if (captionInput >= 0) args.push('-map', `${captionInput}:0`, '-c:s', 'mov_text', '-metadata:s:s:0', 'language=eng')
+    if (metadataInput >= 0) args.push('-map_metadata', String(metadataInput), '-map_chapters', String(metadataInput))
     args.push('-frames:v', String(schedule.count), '-t', seconds, '-vf', COLOR_FILTER)
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
@@ -343,6 +404,7 @@ export async function renderRgbaVideo(
         child = spawn(ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] })
     } catch (error) {
         await rm(tempPath, { force: true })
+        for (const path of sidecars) await rm(path, { force: true })
         throw error
     }
     child.stderr?.on('data', (chunk: Buffer | string) => {
@@ -450,5 +512,6 @@ export async function renderRgbaVideo(
         throw error
     } finally {
         await rm(tempPath, { force: true })
+        for (const path of sidecars) await rm(path, { force: true })
     }
 }

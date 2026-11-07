@@ -21,6 +21,16 @@ npx vizmatic film intro.ts --frame 2,6,12 --width 1280 --out ./stills
 npx vizmatic film intro.ts --quality high --out ./out
 ```
 
+The check inspects moments of rest. It misses a crossfade where two sentences overlap and a blank gap between two pictures. For a long film, pass every frame to `checkFilm(film, { times })`. Then extract frames from the MP4 around each change of picture, and read them.
+
+## Films that teach
+
+A lesson needs more than a clean check. [The lesson reference](../references/lessons.md) covers the plan, computed numbers, narration, changes of picture, a frame scan, delivery, and review. An agent cannot judge a lesson at full speed, so a person must watch it with sound before it is published.
+
+[Finished films](../films.html) show the full source for each topic. The package includes them in `examples/films/`.
+
+The package also computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. A film can import them from `vizmatic` for `check` and `film`, but `preview` refuses that import because it runs in the browser. [The canvas guide](tsx-animation.html) covers the same constructions for a checked canvas host.
+
 ## Install the skill
 
 The portable skill teaches an agent the workflow and the API. See the [agent page](../agents.html) for plugin installs.
@@ -37,6 +47,8 @@ npx skills add bvolpato/vizmatic --skill vizmatic -g -y
 | [llms-full.txt](../llms-full.txt) | The prompt and the whole component catalog. |
 | [components.json](../components.json) | Component metadata, source, and builder links. |
 | [PROMPT.md](../PROMPT.md) | The full task prompt and API guidance. |
+| [references/films.md](../references/films.md) | Engine rules, patterns, check codes, and common mistakes. |
+| [references/lessons.md](../references/lessons.md) | How to plan, narrate, scan, and deliver a film that teaches. |
 
 `vizmatic objects --json` and `vizmatic looks --json` list what is available in the installed version.
 
