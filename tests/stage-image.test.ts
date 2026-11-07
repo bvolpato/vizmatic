@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createServer } from 'node:http'
+import { spawnSync } from 'node:child_process'
 import { build } from 'esbuild'
 import { chromium, type Browser } from 'playwright'
 import { encode } from 'fast-png'
@@ -15,6 +16,12 @@ const directories: string[] = []
 afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(directories.splice(0).map(p => rm(p, { recursive: true, force: true }))) })
 const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABMAAEBAAAAAAAAAAAAAAAAAAAABgEBAQAAAAAAAAAAAAAAAAAABgcQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCAAEAAQDASIAAhEAAxEA/9oADAMBAAIRAxEAPwCLAFF/f//Z'
 const gif = 'data:image/gif;base64,R0lGODlhAQABAIAAAP8AAP///yH5BAAAAAAALAAAAAABAAEAAAICRAEAOw=='
+const portrait = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYwLjMxLjEwMgD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABXAAEBAAAAAAAAAAAAAAAAAAAFBwEBAQAAAAAAAAAAAAAAAAAABQcQAQADAQAAAAAAAAAAAAAAAAAGRMODEQABBQEBAAAAAAAAAAAAAAAANwUHBLWFhP/AABEIAAQACAMBIgACEQADEQD/2gAMAwEAAhEDEQA/AJpKqffMOYlVPvmHVWEkxYejpWxGXlEevBn1j//Z'
+function exifJpeg(orientation: number): string {
+    const bytes = Buffer.from(portrait, 'base64')
+    const exif = Buffer.from([255, 225, 0, 34, 69, 120, 105, 102, 0, 0, 73, 73, 42, 0, 8, 0, 0, 0, 1, 0, 18, 1, 3, 0, 1, 0, 0, 0, orientation, 0, 0, 0, 0, 0, 0, 0])
+    return 'data:image/jpeg;base64,' + Buffer.concat([bytes.subarray(0, 2), exif, bytes.subarray(2)]).toString('base64')
+}
 const bytes = () => encode({ width: 2, height: 1, depth: 8, channels: 4, data: new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128]) })
 const cropBytes = () => encode({ width: 8, height: 4, depth: 8, channels: 4,
     data: new Uint8Array(Array(4).fill([...Array(4).fill([255, 0, 0, 255]).flat(), ...Array(4).fill([0, 255, 0, 128]).flat()]).flat()) })
@@ -46,6 +53,9 @@ describe('prepared image assets', () => {
         input.fill(0)
         expect(copied.src).toBe(asset.src)
         expect(await readFile(join(root, 'figure.png'))).not.toEqual(input)
+        const buffer = Buffer.from(bytes()), pending = resolveImageAsset(buffer)
+        buffer.fill(0)
+        expect((await pending).src).toBe(asset.src)
     })
 
     it('rejects missing, corrupt, wrong-MIME, wrong-size and wrong-digest sources', async () => {
@@ -157,6 +167,22 @@ describe('prepared image assets', () => {
 })
 
 describe('image geometry and actual pixels', () => {
+    it('retains alpha metadata in separately built engines and the packaged CLI', async () => {
+        const transparent = uri(encode({ width: 1, height: 1, depth: 8, channels: 4, data: new Uint8Array(4) }))
+        const partial = uri(encode({ width: 2, height: 1, depth: 8, channels: 4, data: new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0]) }))
+        const root = await directory()
+        for (const [index, [src, options]] of [[transparent, {}], [partial, { crop: { x: 1, y: 0, width: 1, height: 1 } }]].entries()) {
+            const fixture = `import * as e from ${JSON.stringify(resolve('dist/stage.js'))};const asset=await e.resolveImageAsset(${JSON.stringify(src)});export default e.film({width:64,height:64,fps:10,bloom:0},s=>{s.add(e.image(asset,${JSON.stringify(options)}));s.wait(2)});`
+            const path = join(root, `transparent-${index}.mjs`)
+            await writeFile(path, fixture)
+            const run = spawnSync(process.execPath, [resolve('dist/cli.js'), 'check', path, '--motion', '--json'], { encoding: 'utf8' })
+            expect(run.status, run.stderr).toBe(0)
+            expect(JSON.parse(run.stdout).files[0].diagnostics.some((d: { code: string }) => d.code === 'film.blank')).toBe(true)
+            const cross = spawnSync(process.execPath, ['--input-type=module', '-e', `import f from ${JSON.stringify(path)};import {createRequire} from 'node:module';const other=createRequire(import.meta.url)(${JSON.stringify(resolve('dist/stage.cjs'))});const compiled=await f.compile();console.log(JSON.stringify(other.frameInkBounds(compiled.frame(1))));`], { encoding: 'utf8' })
+            expect(cross.status, cross.stderr).toBe(0)
+            expect(JSON.parse(cross.stdout)).toBeNull()
+        }
+    })
     it('reports transparent-only films and transparent crops as blank while keeping white paper visible', async () => {
         const transparent = encode({ width: 2, height: 1, depth: 8, channels: 4, data: new Uint8Array([255, 255, 255, 0, 255, 255, 255, 0]) })
         const white = encode({ width: 2, height: 1, depth: 8, channels: 3, data: new Uint8Array([255, 255, 255, 255, 255, 255]) })
@@ -223,8 +249,9 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('preloads browser pixels be
             response.end(Buffer.from(src.split(',')[1], 'base64'))
             return
         }
-        response.setHeader('Content-Type', request.url === '/engine.js' ? 'text/javascript' : 'text/html')
-        response.end(request.url === '/engine.js' ? bundled.outputFiles[0].text : '<canvas width="64" height="64" style="width:64px;height:64px"></canvas>')
+        const script = request.url === '/engine.js' || request.url === '/engine-other.js'
+        response.setHeader('Content-Type', script ? 'text/javascript' : 'text/html')
+        response.end(script ? bundled.outputFiles[0].text : '<canvas width="64" height="64" style="width:64px;height:64px"></canvas>')
     })
     await new Promise<void>(done => server.listen(0, '127.0.0.1', done))
     const address = server.address() as { port: number }
@@ -244,6 +271,14 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('preloads browser pixels be
             const player = new engine.FilmPlayer(canvas, compiled, { pixelRatio: 1 })
             player.seek(.5)
             const rgba = Array.from(canvas.getContext('2d').getImageData(36, 29, 1, 1).data)
+            player.destroy()
+            const other = await import('/engine-other.js')
+            const otherPlayer = new other.FilmPlayer(canvas, compiled, {pixelRatio:1})
+            otherPlayer.seek(.5)
+            const crossBundle = Array.from(canvas.getContext('2d').getImageData(36,29,1,1).data)
+            otherPlayer.destroy()
+            const otherFilm = await other.compileFilm(other.film({width:64,height:64,bloom:0},s=>{s.add(other.image(asset,{width:16}));s.wait(1)}))
+            const sharedAssetPlayer = new other.FilmPlayer(canvas,otherFilm,{pixelRatio:1});sharedAssetPlayer.seek(.5);sharedAssetPlayer.destroy()
             const legacy = []
             for (const src of [${JSON.stringify(jpeg)}, ${JSON.stringify(gif)}, '/image.jpg', '/image.gif']) {
                 const f = await engine.compileFilm(engine.film({width:64,height:64,bloom:0}, s => { s.add(engine.image(src,{width:16,height:16})); s.wait(1) }))
@@ -251,16 +286,28 @@ it.runIf(process.env.VIZMATIC_BROWSER_TESTS === '1')('preloads browser pixels be
                 legacy.push({rgba:Array.from(canvas.getContext('2d').getImageData(32,32,1,1).data),svg:f.svg(.5)})
                 p.destroy()
             }
+            const exif = []
+            for (const src of ${JSON.stringify([exifJpeg(6), exifJpeg(8)])}) {
+                const f = await engine.compileFilm(engine.film({width:64,height:64,bloom:0}, s => {s.add(engine.image(src,{width:16,height:16}));s.wait(1)}))
+                const p = new engine.FilmPlayer(canvas,f,{pixelRatio:1});p.seek(.5)
+                exif.push({top:Array.from(canvas.getContext('2d').getImageData(32,26,1,1).data),bottom:Array.from(canvas.getContext('2d').getImageData(32,38,1,1).data)})
+                p.destroy()
+            }
             let denied = false
             try { await engine.compileFilm(engine.film({imageNetwork:'deny'}, s => {s.add(engine.image('/image.jpg',{width:16,height:16}));s.wait(1)})) } catch(e) { denied = e.message.includes('Network image loading is disabled') }
-            return { rgba, svg: compiled.svg(.5), errorCount: (await engine.checkFilm(compiled, { times: [.5] })).summary.errors, legacy, denied }
-        })()`) as { rgba: number[]; svg: string; errorCount: number; legacy: {rgba:number[];svg:string}[]; denied:boolean }
+            return { rgba, crossBundle, svg: compiled.svg(.5), errorCount: (await engine.checkFilm(compiled, { times: [.5] })).summary.errors, legacy, denied, exif }
+        })()`) as { rgba: number[]; crossBundle:number[]; svg: string; errorCount: number; legacy: {rgba:number[];svg:string}[]; denied:boolean; exif: {top:number[];bottom:number[]}[] }
         expect(actual.errorCount).toBe(0)
+        expect(actual.crossBundle).toEqual(actual.rgba)
         const reference = pixel(pixels(actual.svg), 36, 29)
         actual.rgba.forEach((value, i) => expect(Math.abs(value - reference[i]), JSON.stringify({ browser: actual.rgba, node: reference })).toBeLessThanOrEqual(1))
         expect(actual.rgba[1]).toBe(255)
         expect(actual.rgba[0]).toBeLessThan(200)
         expect(actual.denied).toBe(true)
+        expect(actual.exif[0].top[0]).toBeGreaterThan(200)
+        expect(actual.exif[0].bottom[2]).toBeGreaterThan(200)
+        expect(actual.exif[1].top[2]).toBeGreaterThan(200)
+        expect(actual.exif[1].bottom[0]).toBeGreaterThan(200)
         for (const entry of actual.legacy) {
             const node = pixel(pixels(entry.svg), 32, 32)
             expect(entry.rgba[0]).toBeGreaterThan(245)

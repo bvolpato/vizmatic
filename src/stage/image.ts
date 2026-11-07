@@ -48,25 +48,48 @@ export class ImageAssetError extends Error {
 const MAX_BYTES = 16 * 1024 * 1024
 const MAX_PIXELS = 16 * 1024 * 1024
 const PREFIX = 'data:image/png;base64,'
-const prepared = new WeakSet<ImageAsset>()
-const browserSources = new WeakMap<ImageAsset, CanvasImageSource>()
+const RUNTIME = Symbol.for('vizmatic.stage.image.runtime.v1')
+interface ImageRuntime {
+    prepared: WeakSet<ImageAsset>
+    browserSources: WeakMap<ImageAsset, CanvasImageSource>
+}
+const host = globalThis as typeof globalThis & { [RUNTIME]?: ImageRuntime }
+const runtime = host[RUNTIME] ?? Object.freeze({ prepared: new WeakSet<ImageAsset>(), browserSources: new WeakMap<ImageAsset, CanvasImageSource>() })
+if (!host[RUNTIME]) Object.defineProperty(host, RUNTIME, { value: runtime })
+const { prepared, browserSources } = runtime
 type Visibility = boolean | { width: number; height: number; mask: Uint8Array; crops: Map<string, boolean> }
 const visibility = new WeakMap<ImageAsset, Visibility>()
+const VISIBILITY = Symbol.for('vizmatic.stage.image.visibility.v1')
+type CarriedVisibility = boolean | Readonly<{ width: number; height: number; bits: string }>
+
+function freezeAsset(fields: ImageAsset, alpha?: Visibility): ImageAsset {
+    if (alpha !== undefined) {
+        const carried: CarriedVisibility = typeof alpha === 'boolean' ? alpha
+            : Object.freeze({ width: alpha.width, height: alpha.height, bits: base64(alpha.mask) })
+        Object.defineProperty(fields, VISIBILITY, { value: carried })
+        visibility.set(fields, alpha)
+    }
+    return Object.freeze(fields)
+}
 
 function fail(message: string): never {
     throw new ImageAssetError(message)
 }
 
-function dataUri(bytes: Uint8Array, mediaType = 'image/png'): string {
+function base64(bytes: Uint8Array): string {
     const chunks: string[] = []
     for (let at = 0; at < bytes.length; at += 8192) chunks.push(String.fromCharCode(...bytes.subarray(at, at + 8192)))
-    return `data:${mediaType};base64,` + btoa(chunks.join(''))
+    return btoa(chunks.join(''))
+}
+
+function dataUri(bytes: Uint8Array, mediaType = 'image/png'): string {
+    return `data:${mediaType};base64,${base64(bytes)}`
 }
 
 async function sourceBytes(source: string | Uint8Array, options: ImageAssetOptions): Promise<Uint8Array> {
     if (source instanceof Uint8Array) {
         if (source.byteLength > MAX_BYTES) fail(`Image asset exceeds ${MAX_BYTES} encoded bytes.`)
-        return source.slice()
+        return Uint8Array.from(source)
     }
     if (typeof source !== 'string' || !source) fail('Image asset needs encoded bytes, a PNG data URI, or a local filename.')
     if (source.startsWith('data:')) {
@@ -175,19 +198,20 @@ export async function resolveImageAsset(source: string | Uint8Array, options: Im
     const hash = await globalThis.crypto.subtle.digest('SHA-256', Uint8Array.from(bytes).buffer)
     const sha256 = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')
     if (options.sha256 !== undefined && sha256 !== options.sha256.toLowerCase()) fail(`Image asset SHA-256 mismatch: expected ${options.sha256.toLowerCase()}, received ${sha256}.`)
-    const asset: ImageAsset = Object.freeze({ ...(options.id ? { id: options.id } : {}), src: dataUri(bytes), mediaType: 'image/png', ...dimensions, sha256 })
-    visibility.set(asset, visible)
+    const asset = freezeAsset({ ...(options.id ? { id: options.id } : {}), src: dataUri(bytes), mediaType: 'image/png', ...dimensions, sha256 }, visible)
     await preloadBrowserImage(asset, bytes)
     prepared.add(asset)
     return asset
 }
 
 async function preloadBrowserImage(asset: ImageAsset, bytes: Uint8Array): Promise<void> {
+    const swapped = asset.mediaType === 'image/jpeg' && jpegOrientation(bytes) >= 5
+    const width = swapped ? asset.height : asset.width, height = swapped ? asset.width : asset.height
     // A GIF is a still stage node. Snapshot its first frame, matching SVG export.
     if (asset.mediaType === 'image/gif' && typeof createImageBitmap !== 'undefined') {
         try {
             const bitmap = await createImageBitmap(new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType }))
-            if (bitmap.width !== asset.width || bitmap.height !== asset.height) fail('Browser image dimensions differ from the validated asset.')
+            if (bitmap.width !== width || bitmap.height !== height) fail('Browser image dimensions differ from the validated asset.')
             browserSources.set(asset, bitmap)
         } catch (error) {
             if (error instanceof ImageAssetError) throw error
@@ -201,7 +225,7 @@ async function preloadBrowserImage(asset: ImageAsset, bytes: Uint8Array): Promis
         } catch (error) {
             fail(`Browser could not decode image asset: ${(error as Error).message}`)
         }
-        if (element.naturalWidth !== asset.width || element.naturalHeight !== asset.height) fail('Browser image dimensions differ from the validated asset.')
+        if (element.naturalWidth !== width || element.naturalHeight !== height) fail('Browser image dimensions differ from the validated asset.')
         if (asset.mediaType === 'image/gif') {
             const canvas = document.createElement('canvas')
             canvas.width = asset.width; canvas.height = asset.height
@@ -211,13 +235,41 @@ async function preloadBrowserImage(asset: ImageAsset, bytes: Uint8Array): Promis
     } else if (typeof createImageBitmap !== 'undefined') {
         try {
             const bitmap = await createImageBitmap(new Blob([Uint8Array.from(bytes).buffer], { type: asset.mediaType }))
-            if (bitmap.width !== asset.width || bitmap.height !== asset.height) fail('Browser image dimensions differ from the validated asset.')
+            if (bitmap.width !== width || bitmap.height !== height) fail('Browser image dimensions differ from the validated asset.')
             browserSources.set(asset, bitmap)
         } catch (error) {
             if (error instanceof ImageAssetError) throw error
             fail(`Browser could not decode image asset: ${(error as Error).message}`)
         }
     }
+}
+
+/** EXIF changes browser decode dimensions, independently of the legacy stage box. */
+function jpegOrientation(bytes: Uint8Array): number {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    for (let at = 2; at + 4 <= bytes.length;) {
+        if (bytes[at++] !== 255) break
+        while (bytes[at] === 255) at++
+        const marker = bytes[at++]
+        if (marker === 0xda || marker === 0xd9 || at + 2 > bytes.length) break
+        const length = view.getUint16(at), start = at + 2, end = at + length
+        if (length < 2 || end > bytes.length) break
+        if (marker === 0xe1 && end - start >= 14 && String.fromCharCode(...bytes.subarray(start, start + 6)) === 'Exif\0\0') {
+            const tiff = start + 6, order = view.getUint16(tiff), little = order === 0x4949
+            if (![0x4949, 0x4d4d].includes(order) || view.getUint16(tiff + 2, little) !== 42) return 1
+            const ifd = tiff + view.getUint32(tiff + 4, little)
+            if (ifd < tiff + 8 || ifd + 2 > end) return 1
+            const count = view.getUint16(ifd, little)
+            for (let entry = ifd + 2; entry + 12 <= end && entry < ifd + 2 + count * 12; entry += 12) {
+                if (view.getUint16(entry, little) === 0x112 && view.getUint16(entry + 2, little) === 3 && view.getUint32(entry + 4, little) === 1) {
+                    const orientation = view.getUint16(entry + 8, little)
+                    return orientation >= 1 && orientation <= 8 ? orientation : 1
+                }
+            }
+        }
+        at = end
+    }
+    return 1
 }
 
 /** Legacy string images retain JPEG, GIF and URL support; prepared assets never fetch. */
@@ -263,8 +315,7 @@ export async function resolveLegacyImage(source: string, allowNetwork: boolean):
     if (declared?.startsWith('image/') && declared !== info.mediaType) fail(`Image MIME type ${declared} does not match ${info.mediaType} bytes.`)
     const hash = await crypto.subtle.digest('SHA-256', Uint8Array.from(bytes).buffer)
     const sha256 = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('')
-    const asset: ImageAsset = Object.freeze({ src: dataUri(bytes, info.mediaType), sha256, ...info })
-    if (visible !== undefined) visibility.set(asset, visible)
+    const asset = freezeAsset({ src: dataUri(bytes, info.mediaType), sha256, ...info }, visible)
     if (typeof process !== 'undefined' && process.versions?.node) {
         // Use the same decoder as SVG export, rather than a second raster backend.
         const moduleName = '@resvg/resvg-js'
@@ -377,7 +428,13 @@ function pngVisibility(png: DecodedPng): Visibility {
 
 /** Alpha-aware presence for blank checks; raster text remains outside text diagnostics. */
 export function imageHasVisiblePixels(asset: ImageAsset | undefined, crop?: ImageCrop): boolean {
-    const value = asset ? visibility.get(asset) : undefined
+    let value = asset ? visibility.get(asset) : undefined
+    if (value === undefined && asset) {
+        const carried = (asset as ImageAsset & { [VISIBILITY]?: CarriedVisibility })[VISIBILITY]
+        value = typeof carried === 'boolean' ? carried : carried
+            ? { width: carried.width, height: carried.height, mask: Uint8Array.from(atob(carried.bits), c => c.charCodeAt(0)), crops: new Map() } : undefined
+        if (value !== undefined) visibility.set(asset, value)
+    }
     if (value === undefined) return true
     if (typeof value === 'boolean') return value
     if (!crop || crop.x === 0 && crop.y === 0 && crop.width === value.width && crop.height === value.height) return true
