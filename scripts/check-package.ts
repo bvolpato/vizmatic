@@ -9,7 +9,7 @@ interface PackResult {
 }
 
 const limits = {
-    // Includes the shared Satori renderer, offline layout WASM, and bundled license notices.
+    // Includes the shared renderer, offline assets, and typed diagram/accessibility APIs.
     size: 5_500_000,
     // Includes the five checked teaching components, declarations, and worked examples.
     unpackedSize: 14_500_000,

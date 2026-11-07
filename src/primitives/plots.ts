@@ -9,6 +9,7 @@ import {
 
 import { clamp } from './layout'
 import { CANVAS_CHART_COMPONENT } from '../canvas-chart-fit'
+import { chartDescription, type ChartAccessibilityProps } from '../svg-accessibility'
 
 for (const chart of [ScatterPlot, ParetoChart, QuadrantChart, IntervalPlot]) {
     Object.defineProperty(chart, CANVAS_CHART_COMPONENT, { value: true })
@@ -42,7 +43,21 @@ export interface ScatterPoint {
     size?: number
 }
 
-interface ScatterPlotProps {
+function pointDescription(
+    point: ScatterPoint, index: number, formatX: ChartValueFormat, formatY: ChartValueFormat,
+    xLabel = 'x', yLabel = 'y',
+): string {
+    return `${point.label ?? `Point ${index + 1}`}: ${xLabel} ${formatChartValue(point.x, formatX)}, ${yLabel} ${formatChartValue(point.y, formatY)}`
+}
+
+function pointDescriptions(
+    points: readonly ScatterPoint[], formatX: ChartValueFormat, formatY: ChartValueFormat,
+    xLabel = 'x', yLabel = 'y',
+): string[] {
+    return points.map((point, index) => pointDescription(point, index, formatX, formatY, xLabel, yLabel))
+}
+
+interface ScatterPlotProps extends ChartAccessibilityProps {
     points: ScatterPoint[]
     c: ThemeColors
     title?: string
@@ -78,6 +93,7 @@ export function ScatterPlot({
     formatY = 'decimal',
     showGrid = true,
     footer,
+    ...accessibility
 }: ScatterPlotProps): React.ReactElement {
     const margin: ChartMargins = { top: 20, right: 24, bottom: xAxisLabel ? 46 : 34, left: yAxisLabel ? 54 : 42 }
     const plot = createPlotArea(width, height, margin)
@@ -96,7 +112,11 @@ export function ScatterPlot({
         return { item, index, point, color: chartColor(item.color, c, index) }
     })
 
-    return ChartFrame({ c, title, subtitle, width, footer, children:
+    return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Scatter plot',
+        description: chartDescription(accessibility.description, pointDescriptions(points, formatX, formatY, xAxisLabel, yAxisLabel)),
+        c, title, subtitle, width, footer, children:
         React.createElement('div', { style: { position: 'relative' as const, width, height, display: 'flex' } },
             React.createElement('svg', { width, height, viewBox: `0 0 ${width} ${height}` },
                 showGrid && React.createElement('g', {},
@@ -179,7 +199,7 @@ export function ScatterPlot({
 export type ParetoObjective = 'minimize' | 'maximize'
 export type ParetoXScale = 'linear' | 'log'
 
-export interface ParetoChartProps {
+export interface ParetoChartProps extends ChartAccessibilityProps {
     points: ScatterPoint[]
     c: ThemeColors
     title?: string
@@ -290,6 +310,7 @@ export function ParetoChart({
     showGoal = true,
     goalLabel,
     footer,
+    ...accessibility
 }: ParetoChartProps): React.ReactElement {
     const margin: ChartMargins = { top: 22, right: 26, bottom: xAxisLabel ? 48 : 36, left: yAxisLabel ? 56 : 44 }
     const plot = createPlotArea(width, height, margin)
@@ -346,6 +367,15 @@ export function ParetoChart({
     const arrowSize = 5
 
     return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Pareto frontier',
+        description: chartDescription(accessibility.description, [
+            `${xObjective} ${xAxisLabel ?? 'x'}, ${yObjective} ${yAxisLabel ?? 'y'}`,
+            ...pointGeometries.map(({ point, index, frontier }) =>
+                `${pointDescription(point, index, formatX, formatY, xAxisLabel, yAxisLabel)}, ${frontier ? 'on the Pareto frontier' : 'dominated'}`,
+            ),
+            ...(pointGeometries.length ? [] : ['No points']),
+        ]),
         c,
         title,
         subtitle,
@@ -477,7 +507,7 @@ export interface QuadrantRegion {
     emphasis?: boolean
 }
 
-export interface QuadrantChartProps {
+export interface QuadrantChartProps extends ChartAccessibilityProps {
     points: ScatterPoint[]
     regions: {
         topLeft: QuadrantRegion
@@ -526,6 +556,7 @@ export function QuadrantChart({
     showTicks = false,
     showGrid = false,
     footer,
+    ...accessibility
 }: QuadrantChartProps): React.ReactElement {
     const margin: ChartMargins = {
         top: 18,
@@ -561,6 +592,14 @@ export function QuadrantChart({
     }))
 
     return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Quadrant chart',
+        description: chartDescription(accessibility.description, [
+            `Thresholds: ${xAxisLabel ?? 'x'} ${formatChartValue(resolvedXThreshold, formatX)}, ${yAxisLabel ?? 'y'} ${formatChartValue(resolvedYThreshold, formatY)}`,
+            ...regionEntries.map(({ key, region }) => `${key}: ${region.label}`),
+            ...pointDescriptions(points, formatX, formatY, xAxisLabel, yAxisLabel),
+            ...(points.length ? [] : ['No points']),
+        ]),
         c,
         title,
         subtitle,
@@ -738,7 +777,7 @@ export interface IntervalDatum {
     highLabel?: string
 }
 
-interface IntervalPlotProps {
+interface IntervalPlotProps extends ChartAccessibilityProps {
     data: IntervalDatum[]
     c: ThemeColors
     title?: string
@@ -764,6 +803,7 @@ export function IntervalPlot({
     format = 'decimal',
     axisLabel,
     footer,
+    ...accessibility
 }: IntervalPlotProps): React.ReactElement {
     const margin: ChartMargins = { top: 22, right: 28, bottom: axisLabel ? 44 : 30, left: 96 }
     const plot = createPlotArea(width, height, margin)
@@ -785,7 +825,13 @@ export function IntervalPlot({
         }
     })
 
-    return ChartFrame({ c, title, subtitle, width, footer, children:
+    return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Interval plot',
+        description: chartDescription(accessibility.description, data.map((item) =>
+            `${item.label}: low ${item.lowLabel ?? formatChartValue(item.low, format)}, midpoint ${item.midLabel ?? formatChartValue(item.mid, format)}, high ${item.highLabel ?? formatChartValue(item.high, format)}`,
+        )),
+        c, title, subtitle, width, footer, children:
         React.createElement('div', { style: { position: 'relative' as const, width, height, display: 'flex' } },
             React.createElement('svg', { width, height, viewBox: `0 0 ${width} ${height}` },
                 ...ticks.map((tick) => {

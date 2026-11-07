@@ -16,10 +16,11 @@ import {
 import { compactChildren, formatMathText, textFitStyle } from './layout'
 import { estimateTextWidth } from './dense'
 import { SvgFrame, SvgPoint, VectorArrow, VectorSegment } from './svg'
+import { chartAccessibilityAttributes, chartDescription, type ChartAccessibilityProps } from '../svg-accessibility'
 
 // ─── Matrix — Grid of values with optional heatmap coloring ─────────────────
 
-interface MatrixProps {
+interface MatrixProps extends ChartAccessibilityProps {
     data: number[][]
     c: ThemeColors
     rowLabels?: string[]
@@ -61,6 +62,7 @@ export function Matrix({
     highlightCell,
     highlightColor = c.info,
     colorDomain,
+    ...accessibility
 }: MatrixProps): React.ReactElement {
     const cellSize = cellSizeProp ?? densityOf(c).f(38)
     const fontSize = fontSizeProp ?? densityOf(c).type.small
@@ -119,8 +121,17 @@ export function Matrix({
         if (colorValue < 0.67) return c.infoDark
         return c.positiveDark
     }
+    const cellDescriptions = data.flatMap((row, rowIndex) => row.map((value, columnIndex) => {
+        const label = labels?.[rowIndex]?.[columnIndex]
+        const text = typeof label === 'string' || typeof label === 'number' ? label : formatValue(value)
+        return `${rowLabels?.[rowIndex] ?? `Row ${rowIndex + 1}`}, ${colLabels?.[columnIndex] ?? `column ${columnIndex + 1}`}: ${text}`
+    }))
 
     return React.createElement('div', {
+        ...chartAccessibilityAttributes({
+            ...accessibility, ariaLabel: accessibility.ariaLabel ?? title ?? 'Matrix',
+            description: chartDescription(accessibility.description, cellDescriptions),
+        }),
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
@@ -221,7 +232,7 @@ export function Matrix({
 
 // ─── Heatmap — Convenience alias for Matrix with colorize ───────────────────
 
-interface HeatmapProps {
+interface HeatmapProps extends ChartAccessibilityProps {
     data: number[][]
     xLabels: string[]
     yLabels: string[]
@@ -259,8 +270,11 @@ export function Heatmap({
     highlightCell,
     highlightColor,
     colorDomain,
+    ...accessibility
 }: HeatmapProps): React.ReactElement {
     return Matrix({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Heatmap',
         data,
         colLabels: xLabels,
         rowLabels: yLabels,
@@ -292,11 +306,10 @@ export interface TiledMatrixRegion {
     tone?: ToneName
 }
 
-interface TiledMatrixProps {
+interface TiledMatrixProps extends ChartAccessibilityProps {
     rows: number
     cols: number
     c: ThemeColors
-    ariaLabel?: string
     regions?: TiledMatrixRegion[]
     title?: React.ReactNode
     subtitle?: React.ReactNode
@@ -320,6 +333,8 @@ export function TiledMatrix({
     tone = 'blue',
     muted = false,
     crossedOut = false,
+    id,
+    description,
 }: TiledMatrixProps): React.ReactElement {
     const gap = gapProp ?? densityOf(c).s(3)
     const safeRows = Math.max(1, Math.floor(rows))
@@ -411,8 +426,13 @@ export function TiledMatrix({
     )
 
     return React.createElement('div', {
-        role: 'img',
-        'aria-label': ariaLabel ?? (typeof title === 'string' ? title : 'Tiled matrix'),
+        ...chartAccessibilityAttributes({
+            id, ariaLabel: ariaLabel ?? (typeof title === 'string' ? title : 'Tiled matrix'),
+            description: chartDescription(description, [
+                `${safeRows} rows by ${safeCols} columns`,
+                ...regions.map((region, index) => `Region ${index + 1}: rows ${region.rowStart + 1} to ${region.rowEnd + 1}, columns ${region.colStart + 1} to ${region.colEnd + 1}`),
+            ]),
+        }),
         style: {
             display: 'flex',
             flexDirection: 'column' as const,
@@ -686,7 +706,7 @@ export interface AxisPlotPath {
     dashed?: boolean
 }
 
-interface AxisPlotProps {
+interface AxisPlotProps extends ChartAccessibilityProps {
     c: ThemeColors
     width: number
     height: number
@@ -734,6 +754,7 @@ export function AxisPlot({
     xAxisLabel,
     yAxisLabel,
     children,
+    ...accessibility
 }: AxisPlotProps): React.ReactElement {
     const padding = paddingProp ?? densityOf(c).s(18)
     const innerWidth = Math.max(1, width - padding * 2)
@@ -888,7 +909,17 @@ export function AxisPlot({
 
     elements.push(...React.Children.toArray(children).filter(React.isValidElement))
 
+    const accessible = chartAccessibilityAttributes({
+        ...accessibility, ariaLabel: accessibility.ariaLabel ?? 'Axis plot',
+        description: chartDescription(accessibility.description, [
+            `${xAxisLabel ?? 'x'} range ${xMin} to ${xMax}, ${yAxisLabel ?? 'y'} range ${yMin} to ${yMax}`,
+            ...points.map((point, index) => `Point ${index + 1}: x ${point.x}, y ${point.y}`),
+            ...vectors.map((vector, index) => `Vector ${index + 1}: (${vector.x1}, ${vector.y1}) to (${vector.x2}, ${vector.y2})`),
+            ...paths.map((path, index) => `Path ${index + 1}: ${path.points.map((point) => `(${point.x}, ${point.y})`).join(', ')}`),
+        ]),
+    })
     const svg = React.createElement('svg', {
+        ...(!xAxisLabel && !yAxisLabel ? accessible : {}),
         width,
         height,
         viewBox: `0 0 ${width} ${height}`,
@@ -897,6 +928,7 @@ export function AxisPlot({
     if (!xAxisLabel && !yAxisLabel) return svg
 
     return React.createElement('div', {
+        ...accessible,
         style: {
             position: 'relative' as const,
             width,

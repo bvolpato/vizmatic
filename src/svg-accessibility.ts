@@ -3,6 +3,30 @@ import type { SatoriNode } from './satori'
 
 export const SVG_ACCESSIBILITY_COMPONENT = Symbol.for('vizmatic.svgAccessibilityComponent')
 
+export interface ChartAccessibilityProps {
+    /** Stable namespace for this chart's exported SVG metadata. */
+    id?: string
+    ariaLabel?: string
+    /** Context to include with the generated data summary. */
+    description?: string
+}
+
+export function chartAccessibilityAttributes({ id, ariaLabel, description }: ChartAccessibilityProps) {
+    const title = ariaLabel?.trim() || 'Chart'
+    return {
+        role: 'img',
+        'aria-label': title,
+        'aria-description': description,
+        'data-vizmatic-chart-id': id,
+        'data-vizmatic-chart-title': title,
+        'data-vizmatic-chart-description': description,
+    }
+}
+
+export function chartDescription(description: string | undefined, entries: readonly string[]): string {
+    return [description, entries.length ? `${entries.join('; ')}.` : 'No data.'].filter(Boolean).join(' ')
+}
+
 interface AccessibleNode {
     id: string
     label: string
@@ -242,10 +266,22 @@ export function addSvgAccessibility(
     graphs: AccessibleGraph[],
     layoutNodes: SatoriNode[],
 ): string {
-    if (graphs.length === 0) return svg
+    const chartIds = new Set<string>()
+    const charts = layoutNodes.filter((node) => textProperty(node.props, 'data-vizmatic-chart-title')).map((node, index) => {
+        const id = textProperty(node.props, 'data-vizmatic-chart-id')
+        if (id && chartIds.has(id)) throw new Error(`Chart SVG id "${id}" must be unique in one exported SVG.`)
+        if (id) chartIds.add(id)
+        return {
+            token: id ? `id-${svgToken(id)}` : `index-${index}`,
+            title: textProperty(node.props, 'data-vizmatic-chart-title'),
+            description: textProperty(node.props, 'data-vizmatic-chart-description'),
+        }
+    })
+    if (graphs.length === 0 && charts.length === 0) return svg
 
-    const title = graphs.map((graph) => graph.title).join('. ')
-    const description = graphs.map((graph) => `${graph.title}. ${graph.description}`).join(' ')
+    const items = [...graphs, ...charts]
+    const title = items.map((item) => item.title).join('. ')
+    const description = items.map((item) => `${item.title}. ${item.description}`).join(' ')
     const hasLinks = graphs.some((graph) =>
         graph.nodes.some((node) => node.href) || graph.edges.some((edge) => edge.href),
     )
@@ -271,9 +307,13 @@ export function addSvgAccessibility(
         }).join('')
         return `<g ${attribute('id', baseId)} role="group" aria-labelledby="${titleId}" aria-describedby="${descriptionId}"><title id="${titleId}">${escapeXml(graph.title)}</title><desc id="${descriptionId}">${escapeXml(graph.description)}</desc>${nodes}${edges}</g>`
     }).join('')
+    const chartMarkup = charts.map((chart) => {
+        const id = `vizmatic-chart-${chart.token}`
+        return `<g ${attribute('id', id)} role="group" aria-labelledby="${id}-title" aria-describedby="${id}-description"><title id="${id}-title">${escapeXml(chart.title)}</title><desc id="${id}-description">${escapeXml(chart.description)}</desc></g>`
+    }).join('')
 
     const metadata = `<title id="${rootTitleId}">${escapeXml(title)}</title><desc id="${rootDescriptionId}">${escapeXml(description)}</desc>`
     return svg.replace(/^<svg\b([^>]*)>/, (_match, attrs: string) =>
         `<svg${attrs} role="${hasLinks ? 'group' : 'img'}" aria-labelledby="${rootTitleId}" aria-describedby="${rootDescriptionId}">${metadata}`,
-    ).replace(/<\/svg>\s*$/, `${groupMarkup}</svg>`)
+    ).replace(/<\/svg>\s*$/, `${groupMarkup}${chartMarkup}</svg>`)
 }

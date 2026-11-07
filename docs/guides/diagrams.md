@@ -52,6 +52,45 @@ export function create(theme: ThemeMode = 'dark') {
 }
 ```
 
+## Database schemas
+
+`EntityRelationshipDiagram` draws entity tables with attribute types, primary and foreign keys, uniqueness, nullability, and crow-foot endpoints. Each endpoint states how many records of that entity can match one record at the opposite end: `one`, `zero-or-one`, `one-or-many`, or `zero-or-many`.
+
+```tsx
+import { EntityRelationshipDiagram, getThemeColors, type ThemeMode } from 'vizmatic'
+
+export const width = 960
+export const height = 420
+
+export function create(theme: ThemeMode = 'dark') {
+    return <EntityRelationshipDiagram c={getThemeColors(theme)} width={960} height={420}
+        title="Customer orders"
+        entities={[
+            { id: 'customers', attributes: [
+                { name: 'id', type: 'uuid', primaryKey: true },
+                { name: 'email', type: 'text', unique: true },
+            ] },
+            { id: 'orders', attributes: [
+                { name: 'id', type: 'uuid', primaryKey: true },
+                { name: 'customer_id', type: 'uuid', foreignKey: true },
+            ] },
+        ]}
+        relationships={[{
+            id: 'customer-orders', label: 'places',
+            from: { entity: 'customers', attribute: 'id', cardinality: 'one' },
+            to: { entity: 'orders', attribute: 'customer_id', cardinality: 'zero-or-many' },
+        }]} />
+}
+```
+
+This relationship gives each order exactly one customer; a customer may have no orders or many orders. For guest orders, mark `customer_id` nullable and use `zero-or-one` at the customer endpoint. Mark each primary-key attribute for a composite key, and pass an ordered attribute array at each relationship endpoint to show a composite relationship. Set `identifying` when the parent key forms part of the child primary key; the relationship then uses a solid line.
+
+The component checks duplicate names, endpoint references, composite arity, nullable primary keys, and canvas dimensions. Tables expand for long names instead of reducing text size. Exported SVGs retain an accessible schema summary, entity constraints, and relationship cardinalities. The [checkout example](../examples.html#example-entity-relationship) includes guest orders and a composite line-item key.
+
+## Accessible chart exports
+
+Charts keep their titles and data summaries in exported SVGs. Use `title` to name the chart and `description` to explain its takeaway or context. The generated summary also retains category values, series, coordinates, or intervals. A labeled sparkline can provide the same metadata; an unlabeled sparkline stays decorative beside its surrounding metric.
+
 ## Density
 
 Every component reads its type, spacing, strokes, and corner radius from one set of tokens. One source can render as a dense engineering figure or as a slide.

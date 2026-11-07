@@ -12,6 +12,7 @@ import {
 import { clamp, textFitStyle } from './layout'
 import { estimateTextWidth } from './dense'
 import { CANVAS_CHART_COMPONENT, CHART_FRAME_COMPONENT } from '../canvas-chart-fit'
+import { chartAccessibilityAttributes, chartDescription, type ChartAccessibilityProps } from '../svg-accessibility'
 
 // ─── Chart helpers — Reusable axes, bars, curves, ranges, and points ────────
 
@@ -41,7 +42,7 @@ export interface PlotArea {
     innerHeight: number
 }
 
-interface ChartFrameProps {
+interface ChartFrameProps extends ChartAccessibilityProps {
     children: React.ReactNode
     c: ThemeColors
     title?: string
@@ -287,10 +288,16 @@ function ChartFrameContent({
     height,
     padding: paddingProp,
     framed = false,
+    id,
+    ariaLabel,
+    description,
 }: ChartFrameProps): React.ReactElement {
     const d = densityOf(c)
     const padding = paddingProp ?? (framed ? d.s(14) : 0)
     return React.createElement('div', {
+        ...chartAccessibilityAttributes({
+            id, ariaLabel: ariaLabel ?? title ?? 'Chart', description: [subtitle, description].filter(Boolean).join(' '),
+        }),
         style: {
             width,
             ...(height ? { height } : {}),
@@ -390,7 +397,7 @@ export interface DonutChartSegment {
     valueLabel?: string
 }
 
-interface DonutChartProps {
+interface DonutChartProps extends ChartAccessibilityProps {
     segments: DonutChartSegment[]
     c: ThemeColors
     title?: string
@@ -407,7 +414,7 @@ interface DonutChartProps {
 }
 
 /** Pie chart values must be finite, non-negative counts. Zero-valued slices are omitted. */
-export interface PieChartProps {
+export interface PieChartProps extends ChartAccessibilityProps {
     segments: DonutChartSegment[]
     c: ThemeColors
     title?: string
@@ -464,6 +471,7 @@ export function PieChart({
     format = 'decimal',
     showLegend = true,
     footer,
+    ...accessibility
 }: PieChartProps): React.ReactElement {
     const total = validateNonNegativeSegments(segments, 'PieChart')
     const positiveSegments = segments.filter((segment) => segment.value > 0)
@@ -531,6 +539,9 @@ export function PieChart({
     }))
 
     return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Pie chart',
+        description: chartDescription(accessibility.description, valueDescriptions(segments, format)),
         c,
         title,
         subtitle,
@@ -583,6 +594,7 @@ export function DonutChart({
     centerValue,
     showLegend = true,
     footer,
+    ...accessibility
 }: DonutChartProps): React.ReactElement {
     const positiveSegments = segments.filter((segment) => segment.value > 0)
     const total = positiveSegments.reduce((sum, segment) => sum + segment.value, 0)
@@ -657,6 +669,9 @@ export function DonutChart({
     )))
 
     return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Donut chart',
+        description: chartDescription(accessibility.description, valueDescriptions(positiveSegments, format)),
         c,
         title,
         subtitle,
@@ -756,7 +771,11 @@ export interface StackedBarSegment {
     valueLabel?: string
 }
 
-interface StackedBarProps {
+function valueDescriptions(data: readonly BarChartDatum[], format: ChartValueFormat = 'decimal'): string[] {
+    return data.map((item) => `${item.label}: ${item.valueLabel ?? formatChartValue(item.value, format)}`)
+}
+
+interface StackedBarProps extends ChartAccessibilityProps {
     segments: StackedBarSegment[]
     c: ThemeColors
     width?: number
@@ -774,11 +793,18 @@ export function StackedBar({
     title,
     subtitle,
     showLegend = true,
+    ...accessibility
 }: StackedBarProps): React.ReactElement {
     const positiveSegments = segments.filter((segment) => segment.value > 0)
     const total = positiveSegments.reduce((sum, segment) => sum + segment.value, 0)
 
     return React.createElement('div', {
+        ...chartAccessibilityAttributes({
+            ...accessibility, ariaLabel: accessibility.ariaLabel ?? title ?? 'Stacked bar',
+            description: chartDescription(
+                [subtitle, accessibility.description].filter(Boolean).join(' '), valueDescriptions(positiveSegments),
+            ),
+        }),
         style: {
             width,
             display: 'flex',
@@ -873,7 +899,7 @@ export function StackedBar({
     )
 }
 
-interface BarChartProps {
+interface BarChartProps extends ChartAccessibilityProps {
     data: BarChartDatum[]
     c: ThemeColors
     title?: string
@@ -903,6 +929,7 @@ export function BarChart({
     showValues = true,
     yAxisLabel,
     footer,
+    ...accessibility
 }: BarChartProps): React.ReactElement {
     const d = densityOf(c)
     const margin: ChartMargins = { top: d.f(16), right: d.g(8), bottom: d.f(26), left: d.f(yAxisLabel ? 62 : 34) }
@@ -928,7 +955,11 @@ export function BarChart({
         return { item, index, x, y, barHeight, valueY, color: chartColor(item.color, c, 0) }
     })
 
-    return ChartFrame({ c, title, subtitle, width, footer, children:
+    return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Bar chart',
+        description: chartDescription(accessibility.description, valueDescriptions(data, format)),
+        c, title, subtitle, width, footer, children:
         React.createElement('div', { style: { position: 'relative' as const, width, height, display: 'flex' } },
             React.createElement('svg', { width, height, viewBox: `0 0 ${width} ${height}` },
                 showGrid && React.createElement('g', {},
@@ -981,7 +1012,7 @@ export function BarChart({
     })
 }
 
-export interface ParetoBarChartProps {
+export interface ParetoBarChartProps extends ChartAccessibilityProps {
     data: BarChartDatum[]
     c: ThemeColors
     title?: string
@@ -1006,6 +1037,7 @@ export function ParetoBarChart({
     showGrid = true,
     showValues = true,
     footer,
+    ...accessibility
 }: ParetoBarChartProps): React.ReactElement {
     let total = 0
     for (const item of data) {
@@ -1056,6 +1088,11 @@ export function ParetoBarChart({
         .join(' ')
 
     return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Pareto bar chart',
+        description: chartDescription(accessibility.description, bars.map(({ item, cumulative }) =>
+            `${item.label}: ${item.valueLabel ?? formatChartValue(item.value, format)}, cumulative ${formatChartValue(cumulative, 'percent')}`,
+        )),
         c,
         title,
         subtitle,
@@ -1169,7 +1206,7 @@ export interface LineChartSeries {
     area?: boolean
 }
 
-interface LineChartProps {
+interface LineChartProps extends ChartAccessibilityProps {
     series: LineChartSeries[]
     c: ThemeColors
     title?: string
@@ -1204,6 +1241,7 @@ export function LineChart({
     directLabels,
     yAxisLabel,
     footer,
+    ...accessibility
 }: LineChartProps): React.ReactElement {
     const d = densityOf(c)
     const direct = directLabels ?? series.length > 1
@@ -1236,6 +1274,11 @@ export function LineChart({
         .join(' ')
 
     return ChartFrame({
+        ...accessibility,
+        ariaLabel: accessibility.ariaLabel ?? title ?? 'Line chart',
+        description: chartDescription(accessibility.description, series.map((item) =>
+            `${item.name}: ${item.points.map((value, index) => `${labels?.[index] ?? `Point ${index + 1}`}: ${formatChartValue(value, format)}`).join(', ')}`,
+        )),
         c,
         title,
         subtitle,

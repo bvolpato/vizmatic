@@ -7,6 +7,7 @@ export interface ComponentCatalogItem {
     description: string
     example: string
     controls: ComponentControl[]
+    searchTerms?: readonly string[]
 }
 
 export interface ComponentCatalogCategory {
@@ -15,6 +16,26 @@ export interface ComponentCatalogCategory {
     description: string
     source: string
     components: ComponentCatalogItem[]
+}
+
+export const diagramCategories = ['diagrams', 'sequence', 'dataflow', 'deployment', 'ml']
+
+const taskTerms: Record<string, readonly string[]> = {
+    GraphDiagram: ['architecture', 'flowchart', 'request flow', 'service map', 'dependencies'],
+    SequenceDiagram: ['request flow', 'request lifecycle', 'api calls', 'interactions', 'lifelines'],
+    DataflowDiagram: ['data pipeline', 'etl', 'lineage', 'stream processing'],
+    DeploymentDiagram: ['architecture', 'infrastructure', 'cloud network', 'workloads', 'service map'],
+    TransformerTopology: ['model architecture', 'machine learning', 'neural network', 'attention'],
+    LayeredNetwork: ['neural network', 'layers', 'machine learning'],
+    TreeDiagram: ['hierarchy', 'organization chart', 'dependencies'],
+    EntityRelationshipDiagram: ['er diagram', 'erd', 'database schema', 'primary key', 'foreign key', 'cardinality', 'tables'],
+    BarChart: ['compare categories', 'ranking', 'counts'],
+    LineChart: ['time series', 'trends', 'metrics over time'],
+    ScatterPlot: ['correlation', 'relationship', 'distribution'],
+    IntervalPlot: ['confidence intervals', 'uncertainty', 'error bars'],
+    ParetoChart: ['trade offs', 'frontier', 'optimization'],
+    DataTable: ['table', 'records', 'rows and columns'],
+    AxisPlot: ['coordinate plane', 'plot', 'geometry', 'vectors'],
 }
 
 const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
@@ -115,6 +136,7 @@ const componentCatalogGroups: (Omit<ComponentCatalogCategory, 'components'> & {
         components: [
             { name: 'LayeredNetwork', description: 'Layered neural network or staged DAG.' },
             { name: 'GraphDiagram', description: 'Auto-laid architecture graph with nested groups, icons, and semantic edges.' },
+            { name: 'EntityRelationshipDiagram', description: 'Database entities, typed attributes, primary and foreign keys, and crow-foot cardinalities.' },
             { name: 'TreeDiagram', description: 'Auto-laid hierarchy, taxonomy, or decision tree.' },
         ],
     },
@@ -254,7 +276,7 @@ export const componentCatalog: ComponentCatalogCategory[] = componentCatalogGrou
     ...category,
     components: category.components.map((component) => {
         const example = catalogExample(component.name)
-        return { ...component, example, controls: getComponentControls(example, component.name) }
+        return { ...component, example, controls: getComponentControls(example, component.name), searchTerms: taskTerms[component.name] }
     }),
 }))
 

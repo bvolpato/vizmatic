@@ -42,11 +42,11 @@ This page states what Vizmatic can do now and what comes next. Vizmatic aims to 
 ### Figures
 
 - C4 semantics: one reusable model with context, container, component, deployment, and dynamic views.
-- UML class and component diagrams, state machines with nested states, and ER diagrams with keys and cardinality.
+- UML class and component diagrams, and state machines with nested states. ER diagrams with keys and cardinality are implemented.
 - Swimlanes and activity diagrams.
 - A layout adapter interface with Dagre as the default and ELK as an option. Per-boundary direction and collapsed groups.
 - Build-time icon packs for GCP and Kubernetes from pinned Apache-2.0 data, as optional modules. User-supplied AWS and Azure adapters until redistribution terms support bundled packs.
-- Structured accessibility for charts and other primitives, as graph diagrams have today.
+- Structured accessibility for more scientific and drawing primitives. Charts and entity-relationship diagrams now preserve their semantic summaries in SVG exports.
 - Wider Mermaid and D2 import, and Structurizr, Kubernetes, and Terraform adapters where semantics map safely.
 
 ## Design constraints

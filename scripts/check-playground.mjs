@@ -575,6 +575,12 @@ try {
         await page.locator(`#component-${name}`).click()
         await ready()
         assert.match(await source(), new RegExp(`<${name}\\b`), `${name} should load and render from the component chooser.`)
+        if (name === 'BarChart') {
+            const chartSvg = (await downloadedBytes(page.locator('#playgroundSvgButton'))).toString('utf8')
+            assert.match(chartSvg, /<title\b[^>]*>[^<]+<\/title>/, 'Browser SVG export should name the chart.')
+            assert.match(chartSvg, /<desc\b[^>]*>[^<]*Mon[^<]*<\/desc>/, 'Browser SVG export should retain labeled data.')
+            assert.match(chartSvg, /aria-describedby=/)
+        }
         if (name === 'PieChart') {
             await selectInstance('PieChart')
             const presentFooter = page.locator('[data-control-prop="footer"]')
@@ -636,6 +642,18 @@ try {
     assert.doesNotMatch(await source(), /\bstyle\s*=/, 'Removing optional JSON style data should restore the source prop state.')
 
     await page.locator('#component-GraphDiagram').click()
+    await ready()
+    await selectInstance('GraphDiagram')
+    const labelFontSize = page.locator('[data-control-prop="labelFontSize"]')
+    assert.equal(await labelFontSize.inputValue(), '14', 'An optional label size should start visibly.')
+    await labelFontSize.fill('0')
+    await page.getByRole('button', { name: 'Add Label Font Size', exact: true }).click()
+    assert.doesNotMatch(await source(), /labelFontSize=/, 'The inspector should reject a label size that hides text.')
+    await labelFontSize.fill('14')
+    await page.getByRole('button', { name: 'Add Label Font Size', exact: true }).click()
+    await ready()
+    assert.match(await source(), /labelFontSize=\{14\}/)
+    await page.getByRole('button', { name: 'Remove Label Font Size', exact: true }).click()
     await ready()
     await page.locator('#explorerCode').evaluate((details) => { details.open = true })
     const graphSource = await source()
@@ -795,6 +813,41 @@ try {
     await landing.waitForFunction(() => document.querySelector('#sourceDialog code')?.textContent?.includes('presentation'))
     await landing.close()
 
+    const catalogContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    try {
+        const catalogPage = await catalogContext.newPage()
+        await catalogPage.goto(`${origin}/components.html`, { waitUntil: 'load' })
+        await catalogPage.waitForFunction(() => document.querySelector('#playgroundStatus')?.dataset.state === 'ready')
+        const chooserNames = () => catalogPage.locator('[data-explore-component]:visible').evaluateAll((buttons) => buttons.map((button) => button.dataset.exploreComponent))
+        await catalogPage.locator('#componentExplorerSearch').fill('request flow')
+        assert.deepEqual(await chooserNames(), ['GraphDiagram', 'SequenceDiagram'], 'Task search should find both supported request-flow views.')
+        await catalogPage.locator('#componentExplorerSearch').fill('')
+        await catalogPage.locator('#componentExplorerFamily').selectOption('diagrams')
+        for (const name of ['GraphDiagram', 'EntityRelationshipDiagram', 'SequenceDiagram', 'DataflowDiagram', 'DeploymentDiagram', 'TransformerTopology']) {
+            assert.ok((await chooserNames()).includes(name), `All diagrams should include ${name}.`)
+        }
+        assert.equal((await chooserNames()).includes('BarChart'), false)
+        const thumbnail = catalogPage.locator('[data-explore-component="GraphDiagram"] img')
+        await thumbnail.scrollIntoViewIfNeeded()
+        await thumbnail.evaluate((img) => img.decode())
+        assert.ok(await thumbnail.evaluate((img) => img.naturalWidth > 0), 'A component should have its own rendered preview.')
+        await catalogPage.locator('#reference').evaluate((details) => { details.open = true })
+        await catalogPage.locator('[data-catalog-filter="diagrams"]').click()
+        for (const name of ['SequenceDiagram', 'DataflowDiagram', 'DeploymentDiagram', 'TransformerTopology']) {
+            assert.equal(await catalogPage.locator(`#reference-component-${name}`).isVisible(), true, `Reference diagram filter should include ${name}.`)
+        }
+        const phonePage = await catalogContext.newPage()
+        await phonePage.setViewportSize({ width: 390, height: 844 })
+        await phonePage.goto(`${origin}/components.html`, { waitUntil: 'networkidle' })
+        await phonePage.bringToFront()
+        await phonePage.waitForFunction(() => document.querySelector('#playgroundStatus')?.dataset.state === 'ready')
+        const previewTop = await phonePage.locator('.explorer-preview').evaluate((preview) => preview.getBoundingClientRect().top)
+        assert.ok(previewTop >= 0 && previewTop < 650, `A phone should show the live preview in its first viewport, got ${previewTop}px.`)
+        assert.equal(await phonePage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false)
+    } finally {
+        await catalogContext.close()
+    }
+
     console.log(JSON.stringify({
         result: 'PASS',
         checks: [
@@ -806,6 +859,7 @@ try {
             'share link and copied source', 'project save/open with canvas, palette, background, and theme source metadata',
             'syntax error recovery', 'animation scrub changes PNG output', 'GIF89a export with custom HSL matte and RGBA theme color',
             '320px responsive layout', 'landing page figure tabs change the image, and only the source button opens the source',
+            'optional label sizes stay visible and reject zero', 'task search, umbrella diagram filters, component thumbnails, and first-viewport phone preview',
         ],
     }))
     await context.close()

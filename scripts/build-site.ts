@@ -1,6 +1,7 @@
 import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { buildPlayground } from './build-playground'
-import { catalogComponentCount, componentCatalog, type ComponentCatalogCategory } from './component-catalog'
+import { buildComponentPreviews } from './build-component-previews'
+import { catalogComponentCount, componentCatalog, diagramCategories, type ComponentCatalogCategory } from './component-catalog'
 import { buildAgentDocs } from './build-agent-docs'
 import { buildLogo } from './build-logo'
 import { buildStage } from './build-stage'
@@ -61,7 +62,7 @@ const sourceIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 
 
 function renderComponentItems(category: ComponentCatalogCategory): string {
     return category.components.map((component) => {
-        const search = (component.name + ' ' + component.description + ' ' + category.label).toLowerCase()
+        const search = [component.name, component.description, category.label, ...(component.searchTerms ?? [])].join(' ').toLowerCase()
         const playgroundUrl = 'playground.html#component-' + component.name
         return [
             '<article class="catalog-item" id="reference-component-' + encodeHtml(component.name) + '" data-catalog-item data-catalog-search="' + encodeHtml(search) + '">',
@@ -79,7 +80,7 @@ function renderComponentItems(category: ComponentCatalogCategory): string {
 }
 
 const explorerTemplate = await readFile('docs/component-explorer.template.html', 'utf8')
-const explorerChoices = componentCatalog.map((category) => `<section class="explorer-choice-group" data-explorer-category="${category.id}"><h4>${encodeHtml(category.label)}</h4>${category.components.map((component) => `<button type="button" id="component-${component.name}" data-explore-component="${component.name}" data-explorer-search="${encodeHtml((component.name + ' ' + component.description + ' ' + category.label).toLowerCase())}" aria-pressed="false" title="${encodeHtml(component.description)}"><span>${component.name}</span><span aria-hidden="true">↗</span></button>`).join('')}</section>`).join('')
+const explorerChoices = componentCatalog.map((category) => `<section class="explorer-choice-group" data-explorer-category="${category.id}"><h4>${encodeHtml(category.label)}</h4>${category.components.map((component) => `<button type="button" id="component-${component.name}" data-explore-component="${component.name}" data-explorer-diagram="${diagramCategories.includes(category.id)}" data-explorer-search="${encodeHtml([component.name, component.description, category.label, ...(component.searchTerms ?? [])].join(' ').toLowerCase())}" aria-pressed="false" title="${encodeHtml(component.description)}"><img data-theme-image src="assets/components/${component.name}_dark.png" alt="" width="160" height="90" loading="lazy" decoding="async"><span>${component.name}</span></button>`).join('')}</section>`).join('')
 const explorerOptions = '<option value="custom" disabled>Custom scene</option>' + componentCatalog.map((category) => `<optgroup label="${encodeHtml(category.label)}">${category.components.map((component) => `<option value="${component.name}">${component.name}</option>`).join('')}</optgroup>`).join('')
 const explorer = explorerTemplate.replace('{{COMPONENT_CHOICES}}', () => explorerChoices).replaceAll('{{COMPONENT_OPTIONS}}', () => explorerOptions)
 
@@ -88,7 +89,7 @@ function renderComponentCatalog(includePreviews = true): string {
         const components = renderComponentItems(category)
         const count = category.components.length
         return [
-            '<section class="catalog-group" id="category-' + encodeHtml(category.id) + '" data-catalog-group="' + encodeHtml(category.id) + '">',
+            '<section class="catalog-group" id="category-' + encodeHtml(category.id) + '" data-catalog-group="' + encodeHtml(category.id) + '" data-catalog-diagram="' + diagramCategories.includes(category.id) + '">',
             '<div class="catalog-group-heading">',
             '<div>',
             '<h3>' + encodeHtml(category.label) + '</h3>',
@@ -116,7 +117,7 @@ function renderCatalogFilters(): string {
     return [
         '<button type="button" data-catalog-filter="all" aria-pressed="true">All</button>',
         ...componentCatalog.map((category) =>
-            `<button type="button" data-catalog-filter="${encodeHtml(category.id)}" aria-pressed="false">${encodeHtml(category.label)}</button>`),
+            `<button type="button" data-catalog-filter="${encodeHtml(category.id)}" aria-pressed="false">${encodeHtml(category.id === 'diagrams' ? 'All diagrams' : category.label)}</button>`),
     ].join('\n')
 }
 
@@ -228,6 +229,7 @@ function renderBenchmarkSummary(results: BenchmarkResults): string {
 }
 
 await buildPlayground()
+await buildComponentPreviews()
 
 const prompt = await readFile(promptPath, 'utf8')
 const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as { version: string }

@@ -103,7 +103,8 @@
           const category = group?.dataset.catalogGroup ?? item.dataset.catalogGroup ?? item.dataset.catalogCategory ?? ''
           const searchText = (item.dataset.catalogSearch ?? item.textContent ?? '').toLocaleLowerCase()
           const categoryMatches = activeFilter === 'all' || category === activeFilter
-          const matches = categoryMatches && (!query || searchText.includes(query))
+            || activeFilter === 'diagrams' && group?.dataset.catalogDiagram === 'true'
+          const matches = categoryMatches && query.split(/\s+/).every((term) => searchText.includes(term))
           item.hidden = !matches
           if (matches) visibleCount += 1
         })

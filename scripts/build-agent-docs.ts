@@ -92,6 +92,7 @@ function buildComponentsJson(
             example: component.example,
             controls: component.controls,
             props: propMetadata.propsByComponent[component.name],
+            ...(component.searchTerms ? { searchTerms: component.searchTerms } : {}),
             playgroundUrl: playgroundUrl(baseUrl, component.example),
         })),
     }))

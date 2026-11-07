@@ -1,6 +1,6 @@
 # Vizmatic components
 
-Package: vizmatic@0.7.0. Catalog: 92 runnable examples across 17 categories.
+Package: vizmatic@0.7.1. Catalog: 93 runnable examples across 17 categories.
 
 Each example is a focused, runnable starting point. The generated Props lists mirror exported TypeScript signatures; `type` is TypeScript text, not a JSON schema, and props may accept values that JSON cannot represent. `required` records signature requiredness. Exhaustive finite choices use `allowedValuesRef`; mixed unions may use `literalValuesRef` for available JSON literal presets while callback or other non-literal variants remain source-only. Shared values are stored in the `propEnums` object in `components.json`. Default values are not inferred.
 
@@ -18,10 +18,13 @@ A word-sized trend line to set beside a number.
 
 Props:
 - `area`: `boolean` (optional; allowed values: `propEnums.values1`): Fill under the line.
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `color`: `string` (optional)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `endDot`: `boolean` (optional; allowed values: `propEnums.values1`): Mark the final value.
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `max`: `number` (optional)
 - `min`: `number` (optional)
 - `strokeWidth`: `number` (optional)
@@ -33,19 +36,27 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Sparkline example" subtitle="Edit this focused Sparkline scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
+  <Column
+    gap={12}
+    align='start'>
+  <TextLabel
+    text='Request rate · last 9 minutes'
+    fontSize={14} />
   <Row
-    gap={14}
+    gap={20}
     justify='start'>
   <MetricStrip
     width={120}
-    metrics={[{ label: 'requests', value: '18.4', unit: 'k/s' }]} />
+    metrics={[{ label: 'current', value: '18.4', unit: 'k/s' }]} />
   <Sparkline
-    values={[12, 14, 13, 17, 16, 21, 24, 22, 26]}
-    width={120}
-    height={28} area
-    tone='blue' />
+    values={[12, 14, 13, 17, 16, 17.2, 19, 18, 18.4]}
+    width={180}
+    height={40} area
+    tone='blue'
+    ariaLabel='Request rate in thousands per second over nine minutes' />
   </Row>
+  </Column>
 </Scene>
 ```
 
@@ -66,7 +77,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="SmallMultiples example" subtitle="Edit this focused SmallMultiples scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <SmallMultiples
     columns={3} sharedScale
     items={[{ label: 'api', values: [42, 44, 41, 48, 52, 49], value: '49', unit: 'ms', status: 'ok', reference: 60 },
@@ -90,12 +101,12 @@ Props:
 width = 960
 height = 480
 
-<Scene title="MetricStrip example" subtitle="Edit this focused MetricStrip scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <MetricStrip
     width={420}
     metrics={[{ label: 'p50', value: '42', unit: 'ms' },
         { label: 'p99', value: '310', unit: 'ms', tone: 'warm', bar: 0.78 },
-        { label: 'error rate', value: '0.04', unit: '%', spark: [3, 2, 4, 2, 1, 1] }]} />
+        { label: 'error rate', value: '0.04', unit: '%', spark: [0.06, 0.05, 0.07, 0.05, 0.03, 0.04] }]} />
 </Scene>
 ```
 
@@ -115,7 +126,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="FactRows example" subtitle="Edit this focused FactRows scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <FactRows
     width={240}
     rows={[{ key: 'region', value: 'us-east-1' },
@@ -142,19 +153,40 @@ Props:
 width = 960
 height = 480
 
-<Scene title="InlineBar example" subtitle="Edit this focused InlineBar scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
-    gap={8}
+    gap={16}
     align='stretch'
-    width={220}>
+    width={300}>
+  <Column
+    gap={6}
+    align='stretch'>
+  <TextLabel
+    text='CPU · 42%'
+    fontSize={14} />
   <InlineBar
     value={0.42} />
+  </Column>
+  <Column
+    gap={6}
+    align='stretch'>
+  <TextLabel
+    text='Memory · 71%'
+    fontSize={14} />
   <InlineBar
     value={0.71}
     tone='blue' />
+  </Column>
+  <Column
+    gap={6}
+    align='stretch'>
+  <TextLabel
+    text='Disk · 93% (warning above 85%)'
+    fontSize={14} />
   <InlineBar
     value={0.93}
     warnAt={0.85} />
+  </Column>
   </Column>
 </Scene>
 ```
@@ -172,18 +204,42 @@ Props:
 width = 960
 height = 480
 
-<Scene title="StatusDot example" subtitle="Edit this focused StatusDot scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
-    gap={12}
+    gap={24}
     justify='start'>
+  <Row
+    gap={8}>
   <StatusDot
     status='ok' />
+  <TextLabel
+    text='Ready'
+    fontSize={14} />
+  </Row>
+  <Row
+    gap={8}>
   <StatusDot
     status='warn' />
+  <TextLabel
+    text='Warning'
+    fontSize={14} />
+  </Row>
+  <Row
+    gap={8}>
   <StatusDot
     status='error' />
+  <TextLabel
+    text='Error'
+    fontSize={14} />
+  </Row>
+  <Row
+    gap={8}>
   <StatusDot
     status='idle' />
+  <TextLabel
+    text='Idle'
+    fontSize={14} />
+  </Row>
   </Row>
 </Scene>
 ```
@@ -201,7 +257,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="TagList example" subtitle="Edit this focused TagList scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <TagList
     tags={['rust', 'us-east-1', 'tier 0', 'on-call: payments']} />
 </Scene>
@@ -221,7 +277,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="DiagramLegend example" subtitle="Edit this focused DiagramLegend scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <DiagramLegend
     width={420}
     title='Relationships'
@@ -257,23 +313,50 @@ Props:
 width = 960
 height = 480
 
-<Scene title="PixelGrid example" subtitle="Edit this focused PixelGrid scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
+  <Row
+    gap={32}
+    align='start'>
   <Column
-    gap={16}
+    gap={14}
     align='center'>
+  <TextLabel
+    text='RGB image'
+    fontSize={18} />
   <PixelGrid
     c={c}
     pixels={[[[255,0,0],
         [0,255,0]],
         [[0,0,255],
         [255,255,255]]]}
-    width={300}
-    height={300}
-    activeCell={{row:0,column:1}}/>
+    width={240}
+    height={240}
+    activeCell={{row:0,column:1}} />
   <TextLabel
-    text='Exact RGB bytes · square pixels · highlighted pixel'
-    fontSize={18}/>
+    text='Selected pixel: (0, 255, 0)'
+    fontSize={14} />
   </Column>
+  <Column
+    gap={14}
+    align='center'>
+  <TextLabel
+    text='Red channel'
+    fontSize={18} />
+  <PixelGrid
+    c={c}
+    pixels={[[[255,0,0],
+        [0,255,0]],
+        [[0,0,255],
+        [255,255,255]]]}
+    channel='red'
+    width={240}
+    height={240}
+    activeCell={{row:0,column:1}} />
+  <TextLabel
+    text='Selected red value: 0 / 255'
+    fontSize={14} />
+  </Column>
+  </Row>
 </Scene>
 ```
 ## Foundations
@@ -385,7 +468,7 @@ Props:
 width = 1040
 height = 640
 
-<Scene title="CanvasItem example" subtitle="Edit this focused CanvasItem scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Board
     width={960}
     height={480}
@@ -405,7 +488,7 @@ height = 640
     x={404}
     y={196}
     width={360}
-    height={148}>
+    height={96}>
   <Panel
     title='Worker pool'
     subtitle='positioned as one canvas item'
@@ -479,13 +562,18 @@ Props:
 width = 960
 height = 480
 
-<Scene title="TitleBar example" subtitle="Edit this focused TitleBar scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
-    gap={16}>
+    width={620}
+    gap={24}
+    align='stretch'>
   <TitleBar
     title='Release overview'
-    subtitle='One clear headline with supporting context' />
+    subtitle='Build complete · review in progress' />
   <ProgressList
+    fontSize={14}
+    labelWidth={72}
+    barHeight={8}
     rows={[{ label: 'Build', value: 1, tone: 'green' },
         { label: 'Review', value: 0.72, tone: 'purple' }]} />
   </Column>
@@ -510,7 +598,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Row example" subtitle="Edit this focused Row scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={12}
     align='stretch'>
@@ -551,22 +639,23 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Column example" subtitle="Edit this focused Column scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
-    gap={10}
+    width={460}
+    gap={14}
     align='stretch'>
   <StatusRow
-    fontSize={13}
+    fontSize={14}
     label='Layout'
     detail='ready'
     status='check' />
   <StatusRow
-    fontSize={13}
+    fontSize={14}
     label='Contrast'
     detail='inspect'
     status='pending' />
   <StatusRow
-    fontSize={13}
+    fontSize={14}
     label='Export'
     detail='PNG + SVG'
     status='info' />
@@ -589,18 +678,20 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Stack example" subtitle="Edit this focused Stack scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Stack
-    gap={10}
-    align='stretch'>
+    gap={12}
+    align='center'>
   <BadgePill
     text='INPUT'
+    fontSize={14}
     tone='blue' />
   <Arrow
     direction='down'
-    length={24} />
+    length={36} />
   <BadgePill
     text='OUTPUT'
+    fontSize={14}
     tone='green' />
   </Stack>
 </Scene>
@@ -638,15 +729,15 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Panel example" subtitle="Edit this focused Panel scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Panel
     title='Sample service health'
-    subtitle='Illustrative state grouped in a titled surface'
+    subtitle='API and background jobs'
     tone='green'
-    width='100%'
-    padding={18}>
+    width={500}
+    padding={20}>
   <StatusList
-    fontSize={13}
+    fontSize={14}
     rows={[{ label: 'API', detail: 'healthy', status: 'check' },
         { label: 'Queue', detail: '12 jobs', status: 'info' }]} />
   </Panel>
@@ -682,7 +773,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Card example" subtitle="Edit this focused Card scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Card
     title='Inference API'
     subtitle='Regional endpoint'
@@ -726,7 +817,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="WindowFrame example" subtitle="Edit this focused WindowFrame scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <WindowFrame
     title='worker.log'
     variant='terminal'
@@ -767,7 +858,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="ToneStrip example" subtitle="Edit this focused ToneStrip scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={14}
     align='center'>
@@ -800,7 +891,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Icon example" subtitle="Edit this focused Icon scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={18}
     align='center'>
@@ -840,7 +931,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="TextLabel example" subtitle="Edit this focused TextLabel scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={8}
     align='start'>
@@ -867,7 +958,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="MathText example" subtitle="Edit this focused MathText scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={10}
     align='start'>
@@ -901,7 +992,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="SvgMathText example" subtitle="Edit this focused SvgMathText scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <div
     style={{ position: 'relative', display: 'flex', width: 420, height: 100 }}>
   <SvgMathText
@@ -928,7 +1019,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Badge example" subtitle="Edit this focused Badge scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={12}
     align='center'>
@@ -967,7 +1058,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="BadgePill example" subtitle="Edit this focused BadgePill scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={10}
     align='center'>
@@ -1009,7 +1100,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="GradientChip example" subtitle="Edit this focused GradientChip scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <GradientChip
     title='Verified output'
     subtitle='dark + light themes'
@@ -1037,7 +1128,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="ValuePill example" subtitle="Edit this focused ValuePill scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={14}>
   <ValuePill
@@ -1076,7 +1167,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="EquationCard example" subtitle="Edit this focused EquationCard scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <EquationCard
     title='Throughput'
     formula='items ÷ seconds'
@@ -1110,7 +1201,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="StepCard example" subtitle="Edit this focused StepCard scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={14}>
   <StepCard
@@ -1161,7 +1252,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="MetricCard example" subtitle="Edit this focused MetricCard scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={14}>
   <MetricCard
@@ -1204,7 +1295,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="CalloutCard example" subtitle="Edit this focused CalloutCard scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <CalloutCard
     title='Recommendation'
     detail='Keep the source editable and verify both color themes before publishing.'
@@ -1232,7 +1323,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="DetailList example" subtitle="Edit this focused DetailList scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <DetailList
     tone='blue'
     items={['TypeScript source', 'Theme aware colors', 'PNG and SVG export']}
@@ -1263,14 +1354,14 @@ Props:
 width = 960
 height = 480
 
-<Scene title="CodeBlock example" subtitle="Edit this focused CodeBlock scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <CodeBlock
-    title='render.tsx'
+    title='Check and render'
     tone='purple'
-    fontSize={13} showLineNumbers
-    lines={[{ text: 'const frame = <Scene />', tone: 'purple' },
-        { text: 'await render(frame)' },
-        { text: 'writeFile(output)', tone: 'green' }]} />
+    fontSize={14} showLineNumbers
+    lines={[{ text: 'vizmatic check scene.tsx', tone: 'purple' },
+        { text: 'vizmatic render scene.tsx' },
+        { text: 'vizmatic --help', tone: 'green' }]} />
 </Scene>
 ```
 
@@ -1292,10 +1383,10 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Comparison example" subtitle="Edit this focused Comparison scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Comparison divider
     gap={10}
-    minHeight={150}
+    minHeight={90}
     sides={[{ title: 'Before', tone: 'warm', lines: ['manual spacing', 'one theme'] },
         { title: 'After', tone: 'green', lines: ['shared layout', 'dark + light'] }]} />
 </Scene>
@@ -1322,7 +1413,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="KeyValueList example" subtitle="Edit this focused KeyValueList scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <KeyValueList
     title='Render settings'
     rows={[{ key: 'format', value: 'PNG + SVG', tone: 'blue' },
@@ -1357,12 +1448,15 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Tile example" subtitle="Edit this focused Tile scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Tile
     title='Search index'
     subtitle='retrieval service'
     eyebrow='READY'
-    icon='⌕'
+    icon={<Icon
+    name='layers'
+    tone='cyan'
+    size={24} />}
     tone='cyan'
     lines={['p95 18 ms', '3 replicas']}
     width={260}
@@ -1388,7 +1482,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="TileGrid example" subtitle="Edit this focused TileGrid scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <TileGrid
     columns={3}
     gap={12}
@@ -1418,7 +1512,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Watermark example" subtitle="Edit this focused Watermark scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     width={680}
     height={300}
@@ -1467,7 +1561,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="StatusRow example" subtitle="Edit this focused StatusRow scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={10}
     width={620}
@@ -1508,7 +1602,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="StatusList example" subtitle="Edit this focused StatusList scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <StatusList
     fontSize={13}
     width={620}
@@ -1538,7 +1632,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Timeline example" subtitle="Edit this focused Timeline scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Timeline
     title='Release timeline'
     subtitle='Key steps from draft to publish'
@@ -1569,7 +1663,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Flow example" subtitle="Edit this focused Flow scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Flow
     gap={12}
     connectorLength={30}
@@ -1592,7 +1686,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Pipeline example" subtitle="Edit this focused Pipeline scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Pipeline
     title='Release pipeline'
     stages={[{ label: 'Build', sublabel: 'TSX', icon: '◇', color: 'secondary' },
@@ -1621,7 +1715,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="ProgressRow example" subtitle="Edit this focused ProgressRow scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     width={620}
     gap={14}
@@ -1657,7 +1751,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="ProgressList example" subtitle="Edit this focused ProgressList scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <ProgressList
     labelWidth={100}
     rows={[{ label: 'Layout', value: 0.96, tone: 'green' },
@@ -1694,7 +1788,7 @@ Props:
 width = 960
 height = 560
 
-<Scene title="LayeredNetwork example" subtitle="Edit this focused LayeredNetwork scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <LayeredNetwork
     width={820}
     height={360}
@@ -1746,7 +1840,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="GraphDiagram example" subtitle="Edit this focused GraphDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <GraphDiagram
     width={820}
     height={360}
@@ -1757,6 +1851,46 @@ height = 480
         { id: 'worker', label: 'Worker', tone: 'green' }]}
     edges={[{ from: 'api', to: 'queue', label: 'enqueue' },
         { from: 'queue', to: 'worker', label: 'consume' }]} />
+</Scene>
+```
+
+### EntityRelationshipDiagram
+
+Database entities, typed attributes, primary and foreign keys, and crow-foot cardinalities.
+
+Props:
+- `c`: `ThemeColors` (required)
+- `density`: `Density` (optional)
+- `description`: `string` (optional)
+- `direction`: `"LR" | "RL" | "TB" | "BT"` (optional; allowed values: `propEnums.values11`)
+- `entities`: `readonly EntityRelationshipEntity[]` (required)
+- `entityWidth`: `number` (optional): Minimum entity table width. Long names expand it.
+- `fontSize`: `number` (optional)
+- `gap`: `number` (optional): Minimum space between connected entity tables.
+- `height`: `number` (optional): Canvas height. A smaller canvas raises an error instead of shrinking the text.
+- `id`: `string` (optional)
+- `padding`: `number` (optional)
+- `relationships`: `readonly EntityRelationship[]` (optional)
+- `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `title`: `string` (optional)
+- `width`: `number` (optional): Canvas width. A smaller canvas raises an error instead of shrinking the text.
+
+```tsx
+width = 960
+height = 480
+
+<Scene padding={22} gap={18}>
+  <EntityRelationshipDiagram
+    title='Customer orders'
+    width={860}
+    height={360}
+    fontSize={14}
+    entities={[{ id: 'customers', tone: 'blue', attributes: [{ name: 'id', type: 'uuid', primaryKey: true },
+        { name: 'email', type: 'text', unique: true }] },
+        { id: 'orders', tone: 'purple', attributes: [{ name: 'id', type: 'uuid', primaryKey: true },
+        { name: 'customer_id', type: 'uuid', foreignKey: true },
+        { name: 'note', type: 'text', nullable: true }] }]}
+    relationships={[{ id: 'customer-orders', label: 'places', from: { entity: 'customers', attribute: 'id', cardinality: 'one' }, to: { entity: 'orders', attribute: 'customer_id', cardinality: 'zero-or-many' } }]} />
 </Scene>
 ```
 
@@ -1783,7 +1917,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="TreeDiagram example" subtitle="Edit this focused TreeDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <TreeDiagram
     width={820}
     height={340}
@@ -1828,7 +1962,7 @@ Props:
 width = 960
 height = 560
 
-<Scene title="SequenceDiagram example" subtitle="Edit this focused SequenceDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <SequenceDiagram
     width={820}
     height={360}
@@ -1882,7 +2016,7 @@ Props:
 width = 1040
 height = 560
 
-<Scene title="DataflowDiagram example" subtitle="Edit this focused DataflowDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <DataflowDiagram
     width={820}
     height={390}
@@ -1944,7 +2078,7 @@ Props:
 width = 1040
 height = 560
 
-<Scene title="DeploymentDiagram example" subtitle="Edit this focused DeploymentDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <DeploymentDiagram
     width={820}
     height={390}
@@ -1952,7 +2086,7 @@ height = 560
     routingClearance={12}
     direction='LR'
     boundaries={[{ id: 'region', label: 'us-east-1', kind: 'region', tone: 'blue' },
-        { id: 'private', label: 'private subnet', kind: 'subnet', parent: 'region', tone: 'purple' }]}
+        { id: 'private', label: 'private', kind: 'subnet', parent: 'region', tone: 'purple' }]}
     nodes={[{ id: 'edge', label: 'Gateway', kind: 'gateway', tone: 'cyan' },
         { id: 'api', label: 'API', kind: 'service', boundary: 'private', tone: 'green' }]}
     connections={[{ id: 'https', from: 'edge', to: 'api', kind: 'cross-boundary', protocol: 'HTTPS', label: 'HTTPS/443' }]} />
@@ -2006,7 +2140,7 @@ Props:
 width = 1040
 height = 560
 
-<Scene title="TransformerTopology example" subtitle="Edit this focused TransformerTopology scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <TransformerTopology
     width={820}
     height={390}
@@ -2033,6 +2167,7 @@ Tables, grids, matrices, and compact distributions.
 Numeric or symbolic matrix with headers.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `cellHeight`: `number` (optional)
 - `cellSize`: `number` (optional)
@@ -2042,12 +2177,14 @@ Props:
 - `colorize`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values14`)
 - `data`: `number[][]` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `fontSize`: `number` (optional)
 - `format`: `"decimal" | "percent" | "integer"` (optional; allowed values: `propEnums.values15`)
 - `highlightCell`: `{ row: number; col: number; }` (optional)
 - `highlightCol`: `number` (optional)
 - `highlightColor`: `string` (optional)
 - `highlightRow`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `labels`: `React.ReactNode[][]` (optional)
 - `rowLabels`: `string[]` (optional)
 - `rowLabelWidth`: `number` (optional)
@@ -2057,7 +2194,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Matrix example" subtitle="Edit this focused Matrix scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Matrix
     title='Attention weights'
     rowLabels={['q₁', 'q₂', 'q₃']}
@@ -2076,6 +2213,7 @@ height = 480
 Color-scaled matrix for intensity and correlation.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `cellHeight`: `number` (optional)
 - `cellSize`: `number` (optional)
@@ -2083,11 +2221,13 @@ Props:
 - `colorDomain`: `readonly [number, number]` (optional)
 - `colorScale`: `"heat" | "strength"` (optional; allowed values: `propEnums.values14`)
 - `data`: `number[][]` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `fontSize`: `number` (optional)
 - `highlightCell`: `{ row: number; col: number; }` (optional)
 - `highlightCol`: `number` (optional)
 - `highlightColor`: `string` (optional)
 - `highlightRow`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `labels`: `React.ReactNode[][]` (optional)
 - `rowLabelWidth`: `number` (optional)
 - `title`: `string` (optional)
@@ -2098,17 +2238,17 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Heatmap example" subtitle="Edit this focused Heatmap scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Heatmap
-    title='Similarity'
+    title='Task coverage · fraction passing'
     xLabels={['api', 'docs', 'sdk']}
     yLabels={['setup', 'auth', 'tests']}
     data={[[0.92, 0.4, 0.2],
         [0.3, 0.86, 0.55],
         [0.18, 0.52, 0.95]]}
-    cellWidth={62}
-    cellHeight={42}
-    rowLabelWidth={48}
+    cellWidth={84}
+    cellHeight={48}
+    rowLabelWidth={56}
     colorScale='strength' />
 </Scene>
 ```
@@ -2123,7 +2263,9 @@ Props:
 - `cellSize`: `number` (optional)
 - `cols`: `number` (required)
 - `crossedOut`: `boolean` (optional; allowed values: `propEnums.values1`)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `gap`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `muted`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `regions`: `TiledMatrixRegion[]` (optional)
 - `rows`: `number` (required)
@@ -2135,7 +2277,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="TiledMatrix example" subtitle="Edit this focused TiledMatrix scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <TiledMatrix
     title='Block sparse attention'
     subtitle='Named regions within one matrix'
@@ -2171,14 +2313,25 @@ Props:
 width = 960
 height = 480
 
-<Scene title="DataTable example" subtitle="Edit this focused DataTable scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
+  <Column
+    width={540}
+    gap={16}
+    align='stretch'>
+  <TextLabel
+    text='Service health · sample five-minute window'
+    fontSize={18} />
   <DataTable
-    cellWidth={94}
-    firstColWidth={120}
-    cellHeight={34}
-    rows={[[ 'Service', 'p95', 'State' ],
-        [ 'API', '82 ms', 'ready' ],
-        [ 'Worker', '140 ms', 'ready' ]]} />
+    cellWidth={160}
+    firstColWidth={180}
+    cellHeight={42}
+    fontSize={14}
+    rows={[[ 'Service', 'p95 latency', 'State' ],
+        [ 'API', '82 ms', 'healthy' ],
+        [ 'Search', '126 ms', 'healthy' ],
+        [ 'Worker', '340 ms', 'degraded' ],
+        [ 'Exports', '210 ms', 'healthy' ]]} />
+  </Column>
 </Scene>
 ```
 
@@ -2202,7 +2355,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Grid example" subtitle="Edit this focused Grid scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Grid
     cellWidth={72}
     cellHeight={42}
@@ -2223,12 +2376,15 @@ height = 480
 Compact categorical bars for dense layouts.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `barWidth`: `number` (optional)
 - `c`: `ThemeColors` (required)
 - `data`: `MiniBarDatum[]` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `fontSize`: `number` (optional)
 - `gap`: `number` (optional)
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `max`: `number` (optional)
 - `minBarHeight`: `number` (optional)
 - `radius`: `number` (optional)
@@ -2238,15 +2394,24 @@ Props:
 width = 960
 height = 480
 
-<Scene title="MiniBarChart example" subtitle="Edit this focused MiniBarChart scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
+  <Column
+    gap={20}
+    align='start'>
+  <TextLabel
+    text='Stage pass rates · 100 runs per stage'
+    fontSize={18} />
   <MiniBarChart
-    height={170}
-    barWidth={48}
-    gap={18} showValues
-    data={[{ label: 'plan', value: 74, tone: 'blue' },
-        { label: 'build', value: 92, tone: 'purple' },
-        { label: 'check', value: 86, tone: 'cyan' },
-        { label: 'ship', value: 98, tone: 'green' }]} />
+    height={190}
+    max={100}
+    barWidth={58}
+    gap={22}
+    fontSize={14} showValues
+    data={[{ label: 'plan', value: 74, valueLabel: '74%', tone: 'blue' },
+        { label: 'build', value: 92, valueLabel: '92%', tone: 'purple' },
+        { label: 'check', value: 86, valueLabel: '86%', tone: 'cyan' },
+        { label: 'ship', value: 98, valueLabel: '98%', tone: 'green' }]} />
+  </Column>
 </Scene>
 ```
 ## Charts
@@ -2262,11 +2427,14 @@ Common comparisons, trends, distributions, and analytical plots.
 Shared chart title, subtitle, legend, and footer.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `framed`: `boolean` (optional; allowed values: `propEnums.values1`): Draw a card around the chart. Off by default, since most charts already sit in a panel.
 - `height`: `string | number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `legend`: `ChartLegendItem[]` (optional)
 - `padding`: `number` (optional)
 - `subtitle`: `string` (optional)
@@ -2277,7 +2445,7 @@ Props:
 width = 960
 height = 600
 
-<Scene title="ChartFrame example" subtitle="Edit this focused ChartFrame scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <ChartFrame
     title='Weekly quality'
     subtitle='A reusable title, legend, and footer'
@@ -2299,12 +2467,15 @@ height = 600
 Part-to-whole composition with center label.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `centerLabel`: `React.ReactNode` (optional)
 - `centerValue`: `React.ReactNode` (optional)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `segments`: `DonutChartSegment[]` (required)
 - `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `size`: `number` (optional)
@@ -2339,10 +2510,13 @@ height = 520
 Part-to-whole composition with a full circular radius.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `segments`: `DonutChartSegment[]` (required)
 - `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `size`: `number` (optional)
@@ -2375,8 +2549,11 @@ height = 570
 Part-to-whole values along one dimension.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `segments`: `StackedBarSegment[]` (required)
 - `showLegend`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
@@ -2404,11 +2581,14 @@ height = 340
 Categorical comparison with labels and values.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `data`: `BarChartDatum[]` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `max`: `number` (optional)
 - `min`: `number` (optional)
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
@@ -2448,11 +2628,14 @@ height = 600
 One or more trends across an ordered axis.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `directLabels`: `boolean` (optional; allowed values: `propEnums.values1`): Name each line at its end instead of in a legend. On when there are several series.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `labels`: `string[]` (optional)
 - `max`: `number` (optional)
 - `min`: `number` (optional)
@@ -2479,6 +2662,7 @@ height = 600
     max={1}
     yAxisLabel='activated'
     format='percent'
+    directLabels={false}
     footer='Sample experiment · guided setup vs. original flow'
     series={[{ name: 'Original flow', points: [0.36, 0.39, 0.42, 0.45, 0.47, 0.5, 0.51], color: 'neutral' },
         { name: 'Guided checklist', points: [0.35, 0.4, 0.48, 0.55, 0.61, 0.68, 0.7], color: 'positive', area: true }]} />
@@ -2490,11 +2674,14 @@ height = 600
 Point distribution across two numeric axes.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `formatX`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `points`: `ScatterPoint[]` (required)
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
@@ -2540,11 +2727,14 @@ height = 620
 Descending category counts with a cumulative percentage line.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `data`: `BarChartDatum[]` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `showValues`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `subtitle`: `string` (optional)
@@ -2576,13 +2766,16 @@ height = 610
 Automatic non-dominated frontier across competing numeric objectives.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `formatX`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `frontierColor`: `string` (optional)
 - `goalLabel`: `string` (optional)
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `points`: `ScatterPoint[]` (required)
 - `showGoal`: `boolean` (optional; allowed values: `propEnums.values1`)
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
@@ -2637,11 +2830,14 @@ height = 620
 Numeric decision map split by configurable policy thresholds.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `formatX`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `formatY`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `points`: `ScatterPoint[]` (required)
 - `regions`: `{ topLeft: QuadrantRegion; topRight: QuadrantRegion; bottomLeft: QuadrantRegion; bottomRight: QuadrantRegion; }` (required)
 - `showGrid`: `boolean` (optional; allowed values: `propEnums.values1`)
@@ -2691,12 +2887,15 @@ height = 620
 Low, midpoint, and high ranges by category.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `axisLabel`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `data`: `IntervalDatum[]` (required)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `footer`: `string` (optional)
 - `format`: `ChartValueFormat` (optional; literal presets: `propEnums.ChartValueFormat` (other non-literal variants remain TSX-only))
 - `height`: `number` (optional)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `max`: `number` (optional)
 - `min`: `number` (optional)
 - `subtitle`: `string` (optional)
@@ -2737,7 +2936,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Legend example" subtitle="Edit this focused Legend scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Legend
     title='Result types'
     items={[{ label: 'Success', color: 'positive' },
@@ -2773,7 +2972,7 @@ Props:
 width = 960
 height = 640
 
-<Scene title="NumberLine example" subtitle="Edit this focused NumberLine scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <NumberLine
     c={c}
     min={-3}
@@ -2807,7 +3006,7 @@ Props:
 width = 960
 height = 640
 
-<Scene title="GeometryDiagram example" subtitle="Edit this focused GeometryDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <GeometryDiagram
     c={c}
     width={620}
@@ -2848,7 +3047,7 @@ Props:
 width = 960
 height = 640
 
-<Scene title="FreeBodyDiagram example" subtitle="Edit this focused FreeBodyDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <FreeBodyDiagram
     c={c}
     width={620}
@@ -2886,7 +3085,7 @@ Props:
 width = 1040
 height = 640
 
-<Scene title="WaveDiagram example" subtitle="Edit this focused WaveDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <WaveDiagram
     c={c}
     width={760}
@@ -2926,7 +3125,7 @@ Props:
 width = 960
 height = 640
 
-<Scene title="MoleculeDiagram example" subtitle="Edit this focused MoleculeDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <MoleculeDiagram
     c={c}
     width={540}
@@ -2956,7 +3155,7 @@ Props:
 width = 960
 height = 640
 
-<Scene title="ReactionEquation example" subtitle="Edit this focused ReactionEquation scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <ReactionEquation
     c={c}
     width={760}
@@ -2989,7 +3188,7 @@ Props:
 width = 960
 height = 640
 
-<Scene title="ReactionEnergyDiagram example" subtitle="Edit this focused ReactionEnergyDiagram scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <ReactionEnergyDiagram
     c={c}
     width={760}
@@ -3031,7 +3230,7 @@ Props:
 width = 1040
 height = 640
 
-<Scene title="AttentionMatrix example" subtitle="Edit this focused AttentionMatrix scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <AttentionMatrix
     c={c}
     width={760}
@@ -3080,7 +3279,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Box example" subtitle="Edit this focused Box scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Row
     gap={14}
     align='center'>
@@ -3118,7 +3317,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Arrow example" subtitle="Edit this focused Arrow scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Arrow
     direction='right'
     label='request'
@@ -3141,7 +3340,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="ArrowMarkerDef example" subtitle="Edit this focused ArrowMarkerDef scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={8}
     align='center'>
@@ -3185,7 +3384,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="FlowArrow example" subtitle="Edit this focused FlowArrow scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <FlowArrow
     direction='right'
     label='verified result'
@@ -3210,7 +3409,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="Connector example" subtitle="Edit this focused Connector scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Connector
     direction='right'
     label='dependency'
@@ -3238,7 +3437,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="VectorArrow example" subtitle="Edit this focused VectorArrow scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={8}
     align='center'>
@@ -3252,7 +3451,8 @@ height = 480
     x2={390}
     y2={38}
     color={c.positiveLight}
-    strokeWidth={5} />
+    strokeWidth={5}
+    arrowSize={5} />
   <SvgPoint
     cx={64}
     cy={140}
@@ -3287,7 +3487,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="VectorSegment example" subtitle="Edit this focused VectorSegment scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={8}
     align='center'>
@@ -3331,7 +3531,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="SvgFrame example" subtitle="Edit this focused SvgFrame scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={8}
     align='center'>
@@ -3374,7 +3574,7 @@ Props:
 width = 960
 height = 480
 
-<Scene title="SvgPoint example" subtitle="Edit this focused SvgPoint scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <Column
     gap={8}
     align='center'>
@@ -3418,12 +3618,16 @@ Props:
 width = 960
 height = 480
 
-<Scene title="DotPoint example" subtitle="Edit this focused DotPoint scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
+  <Column
+    gap={12}
+    align='center'>
   <div
-    style={{ position: 'relative', display: 'flex', width: 460, height: 220 }}>{DotPoint({ x: 230, y: 100, label: 'deploy', color: c.infoLight, size: 14 })}<TextLabel
-    text='Labeled coordinate point'
+    style={{ position: 'relative', display: 'flex', width: 460, height: 100 }}>{DotPoint({ x: 230, y: 60, label: 'deploy', color: c.infoLight, size: 14 })}</div>
+  <TextLabel
+    text='Deployment marker at (230, 60)'
     fontSize={15} />
-  </div>
+  </Column>
 </Scene>
 ```
 
@@ -3444,12 +3648,16 @@ Props:
 width = 960
 height = 480
 
-<Scene title="DashedLine example" subtitle="Edit this focused DashedLine scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
+  <Column
+    gap={12}
+    align='center'>
   <div
-    style={{ position: 'relative', display: 'flex', width: 460, height: 220 }}>{DashedLine({ x1: 36, y1: 110, x2: 424, y2: 110, color: c.warningLight, dotSpacing: 12, dotSize: 3 })}<TextLabel
-    text='Threshold'
+    style={{ position: 'relative', display: 'flex', width: 460, height: 100 }}>{DashedLine({ x1: 36, y1: 50, x2: 424, y2: 50, color: c.warningLight, dotSpacing: 12, dotSize: 3 })}</div>
+  <TextLabel
+    text='Threshold guide · evenly spaced dots'
     fontSize={15} />
-  </div>
+  </Column>
 </Scene>
 ```
 
@@ -3458,14 +3666,17 @@ height = 480
 Coordinate plane for points, vectors, and paths.
 
 Props:
+- `ariaLabel`: `string` (optional)
 - `axisColor`: `string` (optional)
 - `c`: `ThemeColors` (required)
 - `children`: `React.ReactNode` (optional)
+- `description`: `string` (optional): Context to include with the generated data summary.
 - `frameFill`: `string` (optional)
 - `frameRx`: `number` (optional)
 - `frameStroke`: `string` (optional)
 - `gridCount`: `number` (optional)
 - `height`: `number` (required)
+- `id`: `string` (optional): Stable namespace for this chart's exported SVG metadata.
 - `padding`: `number` (optional)
 - `paths`: `AxisPlotPath[]` (optional)
 - `points`: `AxisPlotPoint[]` (optional)
@@ -3485,7 +3696,7 @@ Props:
 width = 960
 height = 560
 
-<Scene title="AxisPlot example" subtitle="Edit this focused AxisPlot scene" padding={22} gap={18}>
+<Scene padding={22} gap={18}>
   <AxisPlot
     width={700}
     height={380}

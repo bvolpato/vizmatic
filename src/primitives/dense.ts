@@ -1,6 +1,7 @@
 import React from 'react'
 import { densityOf, getReadableToneColor, getToneColor, withColorAlpha, type ThemeColors, type ToneName } from '../theme'
 import { compactChildren } from './layout'
+import { chartAccessibilityAttributes, chartDescription, type ChartAccessibilityProps } from '../svg-accessibility'
 
 // ─── Text measurement ───────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ export function StatusDot({ status = 'ok', c, size }: { status?: DiagramStatus; 
 
 // ─── Sparkline ──────────────────────────────────────────────────────────────
 
-interface SparklineProps {
+interface SparklineProps extends ChartAccessibilityProps {
     values: readonly number[]
     c: ThemeColors
     width?: number
@@ -68,7 +69,7 @@ interface SparklineProps {
 
 /** A word-sized line chart for putting a trend next to a number. */
 export function Sparkline({
-    values, c, width, height, tone, color, area = false, endDot = true, min, max, strokeWidth,
+    values, c, width, height, tone, color, area = false, endDot = true, min, max, strokeWidth, ...accessibility
 }: SparklineProps): React.ReactElement {
     const d = densityOf(c)
     const w = width ?? d.f(72)
@@ -83,7 +84,7 @@ export function Sparkline({
     const y = (value: number) => inset + (1 - (value - low) / range) * (h - inset * 2)
     const path = values.map((value, index) => `${index === 0 ? 'M' : 'L'} ${x(index).toFixed(2)} ${y(value).toFixed(2)}`).join(' ')
     const last = values.length - 1
-    return React.createElement('svg', {
+    const chart = React.createElement('svg', {
         width: w, height: h, viewBox: `0 0 ${w} ${h}`, 'aria-hidden': 'true', style: { display: 'flex', flexShrink: 0 },
     },
         ...compactChildren([
@@ -100,6 +101,14 @@ export function Sparkline({
             }),
         ]),
     )
+    if (!accessibility.ariaLabel && !accessibility.description) return chart
+    return React.createElement('div', {
+        ...chartAccessibilityAttributes({
+            ...accessibility, ariaLabel: accessibility.ariaLabel ?? 'Sparkline',
+            description: chartDescription(accessibility.description, values.map((value, index) => `Point ${index + 1}: ${value}`)),
+        }),
+        style: { display: 'flex', width: w, height: h, flexShrink: 0 },
+    }, chart)
 }
 
 // ─── InlineBar ──────────────────────────────────────────────────────────────

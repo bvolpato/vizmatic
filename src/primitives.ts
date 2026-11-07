@@ -35,6 +35,7 @@ export * from './primitives/diagrams'
 export * from './primitives/sequence'
 export * from './primitives/dataflow'
 export * from './primitives/deployment'
+export * from './primitives/entity-relationship'
 export * from './primitives/transformer'
 export * from './primitives/data'
 export {

@@ -18,10 +18,10 @@ import {
 } from '../scripts/component-catalog'
 
 describe('component catalog', () => {
-    it.each(['ChartFrame', 'NumberLine', 'FreeBodyDiagram', 'WaveDiagram'])('renders the copied %s example within its declared canvas in both themes', async (name) => {
+    it.each(componentCatalog.flatMap((category) => category.components.map((component) => component.name)))('renders the copied %s example within its declared canvas in both themes', async (name) => {
         const prepared = preparePlaygroundSource(catalogExample(name))
         const compiled = transform(`${prepared.setup}\nreturn (${prepared.jsx});`, {
-            transforms: ['typescript', 'jsx'], jsxPragma: 'React.createElement',
+            transforms: ['typescript', 'jsx'], jsxPragma: 'React.createElement', production: true,
         }).code
         const report = await checkFrame({
             width: prepared.metadata.width,
@@ -32,8 +32,9 @@ describe('component catalog', () => {
                 const render = Function('React', 'c', ...Object.keys(api), compiled) as (...args: unknown[]) => React.ReactNode
                 return render(React, c, ...Object.values(api))
             },
-        })
+        }, { themes: ['dark', 'light'], failOn: 'warning' })
         expect(report.summary.errors, JSON.stringify(report.themes)).toBe(0)
+        expect(report.summary.warnings, JSON.stringify(report.themes)).toBe(0)
         expect(report.rendered).toBe(true)
     }, 15_000)
 

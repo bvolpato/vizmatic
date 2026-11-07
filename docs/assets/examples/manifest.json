@@ -274,6 +274,14 @@
     ]
   },
   {
+    "name": "entity-relationship",
+    "source": "examples/entity-relationship.tsx",
+    "outputs": [
+      "entity-relationship_dark.png",
+      "entity-relationship_light.png"
+    ]
+  },
+  {
     "name": "eval-dashboard",
     "source": "examples/eval-dashboard.tsx",
     "outputs": [
