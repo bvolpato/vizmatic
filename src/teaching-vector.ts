@@ -187,7 +187,7 @@ export function createTeachingVectorAccumulation<Shape extends CanvasBounds>(pai
                 zero: Math.hypot(to.x - from.x, to.y - from.y) < 1e-9 })
         }
         const endpoint = point(state.sum)
-        const vectorText = (values: readonly number[]) => `(${values.map(format).join(', ')})`
+        const vectorText = (values: readonly number[]) => `(${values.map(value => format(value)).join(', ')})`
         const target = (id: string, draw: () => void) => painter.target ? painter.target(id, draw) : draw()
         const paintedTerms = state.terms.map((term, index) => ({ term, index,
             input: `${term.label}: ${format(term.weight)} × ${vectorText(term.values)}`,
