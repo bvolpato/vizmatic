@@ -143,4 +143,55 @@ describe('token occurrence history and replay', () => {
             }
         }
     })
+
+    it('keeps measured whole-word labels inside moving replay copies at every transfer position', () => {
+        const token = { id: 'answer-occurrence', token: 'slept' }
+        let labelBounds: { width: number } | undefined
+        const painter: CanvasPainter = {
+            measureText(value, size, font) {
+                expect(font).toBe('mono')
+                return value === 'slept' ? 80.2 * size / 28 : 0
+            },
+            rect() {}, circle() {}, opacity(_alpha, draw) { draw() },
+            container(_bounds, draw) { draw() },
+            labelScope(bounds, draw, options) {
+                const previous = labelBounds
+                labelBounds = { width: bounds.width - 2 * (options?.padding ?? 0) }
+                try { draw() } finally { labelBounds = previous }
+            },
+            text(value) {
+                if (value === 'slept') expect(labelBounds!.width).toBeGreaterThanOrEqual(80.2)
+            },
+        }
+        for (const replayProgress of [0.01, 0.1, 0.5, 0.65, 0.8, 0.9, 0.99]) {
+            const state = createTeachingTokenHistory(painter)({ prompt: [token], accepted: [], processed: [token], emitted: [],
+                phase: 'replay', replayProgress, x: 100, y: 100, width: 900, height: 650 })
+            expect(state.moving?.token).toEqual(token)
+            expect(state.accepted).toEqual([])
+            expect(state.emitted).toEqual([])
+        }
+    })
+
+    it('uses the full occurrence width without host metrics and rejects invalid measured widths', () => {
+        const token = { id: 'whole-word', token: 'reconstruction' }
+        let labelBounds: { width: number } | undefined
+        const painter: CanvasPainter = {
+            rect() {}, circle() {}, opacity(_alpha, draw) { draw() }, container(_bounds, draw) { draw() },
+            labelScope(bounds, draw) {
+                const previous = labelBounds
+                labelBounds = bounds
+                try { draw() } finally { labelBounds = previous }
+            },
+            text(value) {
+                if (value === token.token) expect(labelBounds!.width).toBeGreaterThan(600)
+            },
+        }
+        const options = { prompt: [token], accepted: [], processed: [token], emitted: [],
+            phase: 'replay' as const, replayProgress: 0.5, x: 100, y: 100, width: 900, height: 650 }
+        createTeachingTokenHistory(painter)(options)
+        for (const width of [NaN, Infinity, -1]) {
+            expect(() => createTeachingTokenHistory({ ...painter, text() {}, measureText() { return width } })(options))
+                .toThrow('measured text width')
+        }
+    })
 })

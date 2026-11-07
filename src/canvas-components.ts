@@ -19,6 +19,8 @@ export interface CanvasScopeOptions {
 /** Inject checked drawing methods to retain the host renderer's audit metadata. */
 export interface CanvasPainter<Shape = unknown> {
     target?<Result>(id: string, draw: () => Result): Result
+    /** Return text width using the same font and size as text(), without painting. */
+    measureText?(value: string, size: number, font?: string): number
     rect(x: number, y: number, width: number, height: number, fill?: string, stroke?: string, radius?: number): Shape
     text(value: string, x: number, y: number, size: number, color?: string, align?: 'left' | 'center' | 'right', font?: string): unknown
     container(bounds: CanvasBounds, draw: () => void, options?: CanvasScopeOptions): unknown
