@@ -98,6 +98,7 @@ interface CheckArgs {
     motion: boolean
     /** For film files: the canvas y where content starts, for the blank scan. */
     contentTop?: number
+    textMargin?: number
 }
 
 interface VideoArgs extends RenderArgs {
@@ -179,7 +180,7 @@ function usageText() {
     return `Films:
   vizmatic new <name> [--template explainer|equation|architecture|chart|deck] [--force]
   vizmatic preview <file> [--port <n>] [--open]
-  vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--json]
+  vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
                 [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
                 [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--background <color|none>]
@@ -198,6 +199,7 @@ Frames:
   Video requires a film or createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
   A film is a file whose default export comes from film() in vizmatic/stage. The render, check, and video commands detect films.
   A film check looks where the film comes to rest. --motion also looks at every frame, and reports collisions and blank frames between pictures as warnings.
+  --text-margin sets how near text may come to an edge of the frame. The default is 2% of the shorter side, and 0 turns the rule off.
 
 Examples:
   vizmatic new intro --template explainer
@@ -1051,6 +1053,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     let explicitTheme = false
     let motion = false
     let contentTop: number | undefined
+    let textMargin: number | undefined
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index]
@@ -1079,6 +1082,9 @@ function parseCheckArgs(argv: string[]): CheckArgs {
         } else if (arg === '--content-top') {
             contentTop = Number(argv[++index])
             if (!Number.isFinite(contentTop) || contentTop < 0) throw new Error('--content-top needs a canvas y in pixels, such as 200')
+        } else if (arg === '--text-margin') {
+            textMargin = Number(argv[++index])
+            if (!Number.isFinite(textMargin) || textMargin < 0) throw new Error('--text-margin needs a distance in canvas pixels, such as 40. 0 turns the rule off')
         } else if (arg.startsWith('-')) {
             usage()
         } else {
@@ -1087,7 +1093,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, themes, background, json, looks, explicitTheme, motion, contentTop }
+    return { inputs, themes, background, json, looks, explicitTheme, motion, contentTop, textMargin }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
@@ -1813,7 +1819,7 @@ async function checkCommandWithArgs(args: CheckArgs) {
         if (filmFromModule(imported.value)) {
             const looks = args.looks.length > 0 ? args.looks : looksForThemes(args.themes, args.explicitTheme)
             const module = imported.value
-            const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop })
+            const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop, textMargin: args.textMargin })
             filmReports.forEach((filmReport, index) => {
                 reports.push({
                     source,

@@ -157,6 +157,7 @@ s.play(fade(logo, 1, { duration: 0.4 }))
 ## Check codes
 
 - `film.off_canvas`: a mark leaves the frame. Text that is clipped is an error. Other marks are warnings. A mark that spans the whole frame, such as a grid line, is not reported.
+- `film.text_edge`: text is nearer to an edge of the frame than 2% of the shorter side, which is 22 px at 1080p. It is a warning, and only the moments at rest are checked. While the camera is zoomed, only pinned text is checked. `--text-margin <px>` sets the distance, and 0 turns the rule off.
 - `film.text_overlap`: two text blocks share pixels.
 - `film.text_crossed`: a stroke passes through text. A strong stroke is an error. An opaque shape between the stroke and the text prevents this report, so give a label a backing when it must sit on a line.
 - `film.missing_glyph`: no bundled font has a character, so it renders as an empty box. Replace the character, or set it with `tex`.
