@@ -6,7 +6,7 @@ import {
 } from '../src/stage/index'
 import { alignPaths, matchSequence, pathMixer } from '../src/stage/morph'
 import { renderFilmFrame } from '../src/stage/export'
-import { RasterPool } from '../src/stage/raster'
+import { RasterPool, framesToJob } from '../src/stage/raster'
 import { decode } from 'fast-png'
 import { readFile, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -428,6 +428,27 @@ describe('raster', () => {
             expect(onNear[0]!).toBeGreaterThan(offNear[0]! + 4)
         } finally {
             await rm(directory, { recursive: true, force: true })
+        }
+    })
+
+    it('blooms to the last row and column of a frame whose size is not a multiple of the bloom layers', async () => {
+        const compiled = await compileFilm(film({ bloom: 0.6 }, (s) => {
+            s.add(circle(200, { stroke: 'yellow', width: 10 }))
+            s.wait(1)
+        }))
+        const pool = new RasterPool(1)
+        try {
+            const frame = await compiled.frame(0.5)
+            // The page is (11, 12, 16), and light only adds to it, so no pixel is black. At these sizes the
+            // layers of the bloom are a few pixels smaller than the frame, at its bottom or at its right.
+            for (const [width, height] of [[1000, 563], [1283, 722], [2560, 1440]] as const) {
+                const pixels = await pool.run(framesToJob([frame], width, () => [11, 12, 16] as const, height))
+                let black = 0
+                for (let i = 0; i < pixels.length; i += 4) if (pixels[i] === 0 && pixels[i + 1] === 0 && pixels[i + 2] === 0) black++
+                expect([width, height, black]).toEqual([width, height, 0])
+            }
+        } finally {
+            await pool.close()
         }
     })
 
