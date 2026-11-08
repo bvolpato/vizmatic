@@ -116,11 +116,20 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
 
-A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
+A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 
 ```ts
 const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: 'blue' }).at(-300, 0))
 s.play(draw(picture))
+```
+
+A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
+
+```ts
+const row = { width: 420, height: 400, captionLines: 2 }
+const logs = card({ title: 'Logs', figure: pictogram('logs', { size: 140 }), caption: 'one line per event', color: 'yellow', ...row })
+const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }), caption: 'the path of one request through the services', color: 'purple', ...row })
+s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
 ```
 
 3D:

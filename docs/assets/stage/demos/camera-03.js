@@ -1,1 +1,1 @@
-import{Na as a,Sb as e,lb as o}from"../chunk-NX6YZ6ES.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var p=o({fps:30},t=>{t.add(e({unit:200})),t.play(a(t.camera,d=>d.set("rotation",Math.PI/2),{duration:2})),t.wait(.5)});export{p as default};
+import{Na as a,Sb as e,lb as o}from"../chunk-FCNXO6DJ.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var p=o({fps:30},t=>{t.add(e({unit:200})),t.play(a(t.camera,d=>d.set("rotation",Math.PI/2),{duration:2})),t.wait(.5)});export{p as default};
