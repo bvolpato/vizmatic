@@ -5,7 +5,7 @@ import {
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    sphere, streamLines, surface, swap, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
+    sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
@@ -986,6 +986,49 @@ describe('zone', () => {
             const used = s.add(rect(100, 100))
             expect(() => zone([rect(10, 10), used])).toThrow(/node 1 of the content is already on the stage or in a group/)
         }))
+    })
+})
+
+describe('tag', () => {
+    it('starts its pill at the place it is given, with the word in the middle and the note after it', async () => {
+        await compileFilm(film(() => {
+            const short = tag('OK', { note: 'a note' }).at(100, 50), long = tag('RECOMMENDATION').at(100, 150)
+            expect(short.pill.bounds().x).toBeCloseTo(100, 6)
+            expect(long.pill.bounds().x).toBeCloseTo(100, 6)
+            for (const made of [short, long]) {
+                const pill = made.pill.bounds(), word = made.word.bounds()
+                expect(word.x - pill.x).toBeCloseTo(pill.x + pill.width - word.x - word.width, 6)
+                expect(word.x - pill.x).toBeGreaterThan(12)
+                expect(word.y).toBeGreaterThan(pill.y)
+                expect(word.y + word.height).toBeLessThan(pill.y + pill.height)
+            }
+            expect(short.note!.bounds().x).toBeGreaterThan(short.pill.bounds().x + short.pill.bounds().width + 8)
+            expect(long.note).toBeNull()
+        }))
+    })
+
+    it('shows one state at a time, and nothing before the first or after the last', async () => {
+        await compileFilm(film(() => {
+            const track = tagTrack([{ at: 1, word: 'PLAN' }, { at: 3, word: 'MEASURED', note: 'June' }], { until: 5 })
+            const at = (time: number) => track.draw!(time) as ReturnType<typeof tag> | null
+            const word = (time: number) => (at(time)?.word as unknown as { source: string } | undefined)?.source
+            expect(at(0.5)).toBeNull()
+            expect(word(2)).toBe('PLAN')
+            expect(at(2)!.get('opacity')).toBe(1)
+            // Just before the next state the first one is almost gone, and the next one has not started.
+            expect(word(2.95)).toBe('PLAN')
+            expect(at(2.95)!.get('opacity')).toBeLessThan(0.5)
+            expect(word(3.1)).toBe('MEASURED')
+            expect(at(3.1)!.note).not.toBeNull()
+            expect(at(5)).toBeNull()
+        }))
+    })
+
+    it('refuses states that are out of order or too near for the fades', () => {
+        expect(() => tagTrack([], { until: 5 })).toThrow(/at least one state/)
+        expect(() => tagTrack([{ at: 2, word: 'A' }, { at: 1, word: 'B' }], { until: 5 })).toThrow(/state 0 \("A"\) starts at 2 and state 1 \("B"\) starts at 1/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }, { at: 1.2, word: 'B' }], { until: 5 })).toThrow(/needs 0.43 s/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }], { until: 1.1 })).toThrow(/the tag leaves at 1.1/)
     })
 })
 
