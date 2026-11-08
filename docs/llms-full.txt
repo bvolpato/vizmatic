@@ -2707,6 +2707,34 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+## Pictograms
+
+`pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.
+
+```film paired label="A row of pictograms for telemetry, structure, and systems"
+import { draw, fadeIn, film, lagged, pictogram, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const names = ['series', 'forecast', 'logs', 'traces', 'graph', 'dag', 'database', 'model'] as const
+    const pictures = names.map((name, i) => pictogram(name, { size: 150, accent: 'teal' }).at((i - 3.5) * 220, -40))
+    const labels = names.map((name, i) => text(name, { font: 'mono', size: 32, color: 'dim' }).at((i - 3.5) * 220, 110))
+    s.play(lagged(pictures.map((picture) => draw(picture)), { lag: 0.12 }), { duration: 2 })
+    s.play(fadeIn(labels))
+    s.wait(0.8)
+})
+```
+
+`PICTOGRAMS` lists every name:
+
+- Telemetry: `series`, `chart`, `forecast`, `threshold`, `anomaly`, `logs`, `traces`, `bars`, `table`, `matrix`, `event`, `alert`.
+- Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
+- Systems: `service`, `database`, `queue`, `cloud`, `chip`.
+- Models: `model`, `tokens`, `vector`, `agent`, `spark`.
+- Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
+- General: `document`, `code`, `gear`, `clock`, `user`, `search`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
+
+Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.

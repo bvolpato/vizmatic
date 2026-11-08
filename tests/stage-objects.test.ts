@@ -4,10 +4,10 @@ import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
-    neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
+    neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     sphere, streamLines, surface, swap, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
-    type FilmDefinition, type PathOp, type Stage, type Vec, type Vec3,
+    type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
@@ -789,6 +789,40 @@ describe('marks and small objects', () => {
         expect(parseSvgPath('M0 0L10 0').length).toBe(1)
         expect(dynamic(() => null).draw).toBeTruthy()
         expect(line([0, 0], [1, 1]).get('path')).toBeTruthy()
+    })
+})
+
+describe('pictograms', () => {
+    const SIZE = 96
+
+    it('keeps every mark of every picture inside its square', () => {
+        expect(PICTOGRAMS.length).toBeGreaterThan(40)
+        for (const name of PICTOGRAMS) {
+            const picture = pictogram(name, { size: SIZE })
+            expect(picture.children.length, name).toBeGreaterThan(0)
+            for (const mark of picture.children) {
+                const reach = mark.get('stroke') ? mark.get('strokeWidth') / 2 : 0
+                const box = pathBounds(mark.get('path')!)!
+                expect(Math.min(box.x, box.y) - reach, name).toBeGreaterThanOrEqual(-SIZE / 2)
+                expect(Math.max(box.x + box.width, box.y + box.height) + reach, name).toBeLessThanOrEqual(SIZE / 2)
+            }
+        }
+    })
+
+    it('paints the accent in every picture, and leaves the other lines in the color when there are some', () => {
+        const paint = (mark: Node) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))
+        for (const name of PICTOGRAMS) {
+            const plain = new Set(pictogram(name, { color: 'ink' }).children.map(paint))
+            const accented = new Set(pictogram(name, { color: 'ink', accent: 'teal' }).children.map(paint))
+            expect(plain.size, name).toBe(1)
+            expect([...accented].some((value) => !plain.has(value)), name).toBe(true)
+        }
+        expect(new Set(pictogram('forecast', { color: 'ink', accent: 'teal' }).children.map(paint)).size).toBe(2)
+    })
+
+    it('rejects a name it does not know, also when an object has a property of that name', () => {
+        expect(() => pictogram('unicorn' as never)).toThrow(/unknown name "unicorn"/)
+        expect(() => pictogram('toString' as never)).toThrow(/unknown name "toString"/)
     })
 })
 

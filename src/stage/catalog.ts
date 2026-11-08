@@ -70,6 +70,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'connector', group: SYSTEMS, usage: 'connector(a, b, { label }): a routed edge between two nodes' },
     { name: 'legend', group: SYSTEMS, usage: "legend([{ label: 'read', color: 'blue' }])" },
     { name: 'callout', group: SYSTEMS, usage: "callout(node, 'Why this matters'): a note with a leader line" },
+    { name: 'pictogram', group: SYSTEMS, usage: "pictogram('graph', { size: 96, accent: 'teal' }): a small picture of a concept, such as series, forecast, logs, traces, dag, database, model. PICTOGRAMS lists every name" },
     { name: 'graph', group: SYSTEMS, usage: 'graph(nodes, edges): nodes and edges with automatic layout' },
     { name: 'tree', group: SYSTEMS, usage: 'tree(root): a layered tree' },
     { name: 'arrayCells', group: SYSTEMS, usage: 'arrayCells([3, 1, 4]): boxes for arrays and buffers' },
