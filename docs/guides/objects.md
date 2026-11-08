@@ -130,7 +130,7 @@ export default film({ fps: 30 }, (s) => {
 `dotChart(data)` draws one row per item: a label, a dot at its value on a shared axis, and a line for its interval. Use it for scores with their uncertainty. It takes less room than bars, and its axis does not have to start at zero. The rows keep the order of the data, so sort the data to rank it. `hollow: true` draws a ring, to tell a second group apart.
 
 ```film paired label="Five scores with their intervals arrive from the best to the worst"
-import { dotChart, fadeIn, film, lagged } from 'vizmatic/stage'
+import { dotChart, film } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const chart = dotChart([
@@ -139,14 +139,13 @@ export default film({ fps: 30 }, (s) => {
         { label: 'statistics alone', value: 0.57, low: 0.54, high: 0.6, color: 'orange' },
         { label: 'chart image', value: 0.57, low: 0.53, high: 0.6, color: 'pink' },
         { label: 'no data', value: 0.08, low: 0.06, high: 0.1, color: 'dim' },
-    ], { width: 1500, labelSize: 40, domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], axisLabel: 'mean score, higher is better. Lines: 95% intervals' })
-    s.play(fadeIn(chart.axis), { duration: 0.6 })
-    s.play(lagged(chart.rows.map((row) => fadeIn(row, { shift: [-20, 0] })), { lag: 0.25 }), { duration: 2 })
+    ], { width: 1100, labelSize: 40, domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], xLabel: 'mean score, higher is better. Lines: 95% intervals' }).at(150, -40)
+    s.play(chart.enter(), { duration: 2.4 })
     s.wait(0.8)
 })
 ```
 
-`chart.rows` holds one node per item, with its label, its interval and its dot. `chart.x(value)` and `chart.y(row)` give a place on the chart, for a bracket or a note. A value outside the domain, a value outside its interval, and an interval with one end are errors.
+As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels are outside it, at the left, and the ticks are under it. Without a `domain`, the axis covers a round range around the data. `ticks` is a count or a list of values. `chart.rows` holds one node per item, with its label, its interval and its dot, and `chart.p(value, row)` gives a place on the chart for a bracket or a note. A value outside the domain, a value outside its interval, an interval with one end, and a tick outside the domain are errors.
 
 ## Graphs and networks
 

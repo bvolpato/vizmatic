@@ -66,7 +66,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'donut', group: CHARTS, usage: "donut([{ label: 'A', value: 3 }])" },
     { name: 'heatmap', group: CHARTS, usage: 'heatmap(rows): a grid of colored cells' },
     { name: 'sparkline', group: CHARTS, usage: 'sparkline(values): a tiny inline trend' },
-    { name: 'dotChart', group: CHARTS, usage: "dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }], { domain: [0, 1] }): one row per item, a dot on a shared axis, and a line for its interval" },
+    { name: 'dotChart', group: CHARTS, usage: "dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }], { domain: [0, 1] }): one row per item, a dot on a shared axis, and a line for its interval. chart.enter() brings the rows in" },
     { name: 'infoBox', group: SYSTEMS, usage: "infoBox({ title, rows }): a dense box with a title, fields, and live stats" },
     { name: 'connector', group: SYSTEMS, usage: 'connector(a, b, { label }): a routed edge between two nodes' },
     { name: 'legend', group: SYSTEMS, usage: "legend([{ label: 'read', color: 'blue' }])" },
