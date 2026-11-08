@@ -11,6 +11,7 @@ import {
 } from '../src/stage/index'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
+import type { Anim } from '../src/stage/anim'
 import { Suspend } from '../src/stage/stage'
 import { CalloutCard, getThemeColors, Row, StepCard } from '../src/index'
 
@@ -719,6 +720,137 @@ describe('extra verbs', () => {
         expect(pathBounds(mark.get('path') ?? [])).toBeTruthy()
         const widthAt = (t: number) => pathBounds(paths(f, t)[0]!.path)!.width
         expect(widthAt(0.5)).toBeLessThan(widthAt(1))
+    })
+})
+
+describe('animations that bring their own object to the stage', () => {
+    type Made = { nodes: Node[]; anim: Anim }
+    const one = <T extends Node>(node: T, anim: (node: T) => Anim): Made => ({ nodes: [node], anim: anim(node) })
+    /** Every animation that puts its object on the stage when the film did not. Each entry makes new nodes. */
+    const entrances: Record<string, () => Made> = {
+        'barChart.enter': () => one(barChart([{ label: 'a', value: 2 }, { label: 'b', value: 3 }], { width: 200, height: 100 }), (chart) => chart.enter()),
+        'histogram.fillUp': () => one(histogram([1, 2, 2, 3, 3, 3], { bins: 3, range: [0, 4] }), (chart) => chart.fillUp()),
+        'scatter.enter': () => one(scatter([{ x: 0, y: 0 }, { x: 1, y: 1 }]), (chart) => chart.enter()),
+        'lineChart.enter': () => one(lineChart([{ name: 'a', values: [1, 2, 3] }]), (chart) => chart.enter()),
+        'pie.enter': () => one(pie([{ label: 'a', value: 3 }, { label: 'b', value: 1 }], { radius: 100 }), (chart) => chart.enter()),
+        'heatmap.enter': () => one(heatmap([[0, 1], [2, 3]], { cell: 40 }), (chart) => chart.enter()),
+        'dotChart.enter': () => one(dotChart([{ label: 'a', value: 0.5 }], { domain: [0, 1] }), (chart) => chart.enter()),
+        'unitChart.enter': () => one(unitChart([{ count: 6 }], { rows: 2 }), (chart) => chart.enter()),
+        'graph.enter': () => one(graph([{ id: 'a', at: [-100, 0] }, { id: 'b', at: [100, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual' }), (made) => made.enter()),
+        'tree.enter': () => one(tree({ id: 'r', label: 'r', children: [{ id: 'c', label: 'c' }] }), (made) => made.enter()),
+        'arrayCells.enter': () => one(arrayCells([3, 1, 4]), (cells) => cells.enter()),
+        'neuralNet.enter': () => one(neuralNet([2, 2]), (net) => net.enter()),
+        'tokens.enter': () => one(tokens(['a', 'b']), (row) => row.enter()),
+        'infoBox.enter': () => one(infoBox({ title: 'A', rows: [{ label: 'x', value: '1' }] }), (box) => box.enter()),
+        // A connector draws between its two ends, so the ends are in the group with it.
+        'connector.pulse': () => {
+            const a = rect(40, 40).at(-100, 0), b = rect(40, 40).at(100, 0), link = connector(a, b)
+            return { nodes: [a, b, link], anim: link.pulse() }
+        },
+        'callout.enter': () => one(callout([0, 0], 'A note', { side: 'right', width: 200 }), (note) => note.enter()),
+        typewriter: () => one(text('abc', { font: 'mono', size: 30 }), (line) => typewriter(line)),
+        wipe: () => one(text('abc', { font: 'mono', size: 30 }), (line) => wipe(line)),
+        countUp: () => one(counter(7), (readout) => countUp(readout, 9)),
+        spin: () => one(rect(100, 40), (box) => spin(box, 1)),
+        swap: () => {
+            const a = rect(40, 40).at(-100, 0), b = rect(40, 40).at(100, 0)
+            return { nodes: [a, b], anim: swap(a, b) }
+        },
+    }
+    const left = (f: CompiledFilm, time: number) => Math.min(...paths(f, time).flatMap((op) => pathBounds(op.path)?.x ?? []))
+    const marks = () => unitChart([{ count: 6 }], { rows: 2 })
+
+    it.each(Object.keys(entrances))('%s draws nothing of its object before its turn in a sequence', async (name) => {
+        const compiled = await compile((s) => {
+            s.wait(1)
+            // Two parts of one second each: a small rectangle fades in, then the object arrives.
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...entrances[name]!().anim, duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws.
+        for (const time of [1.3, 1.6, 1.99]) expect(compiled.frame(time).ops).toHaveLength(1)
+        expect(compiled.frame(3.4).ops.length).toBeGreaterThan(1)
+    })
+
+    it.each(Object.keys(entrances))('%s keeps its object in a group that is not on the stage, at the place of the group', async (name) => {
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            let nodes!: Node[], outer!: Node
+            const compiled = await compile((s) => {
+                const made = entrances[name]!()
+                nodes = made.nodes
+                outer = group(...nodes).at(shift, 0)
+                s.play(made.anim, { duration: 1 })
+                s.wait(0.5)
+            })
+            for (const node of nodes) expect(node.parent).toBe(outer)
+            lefts.push(left(compiled, 1.4))
+        }
+        // The picture of the group that the film moved is the same picture, 300 to the right.
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+    })
+
+    it('leaves an object that shows alone, and shows a hidden object and a hidden parent at the start of the animation', async () => {
+        let shown!: ReturnType<typeof marks>, hidden!: ReturnType<typeof marks>, inner!: ReturnType<typeof marks>, outer!: Node, root!: Node
+        const compiled = await compile((s) => {
+            root = s.root
+            shown = s.add(marks())
+            hidden = s.add(marks().at(0, 200).hide())
+            inner = marks().at(0, 400)
+            outer = s.add(group(inner).hide())
+            s.wait(1)
+            s.play(shown.enter(), hidden.enter(), inner.enter(), { duration: 1 })
+            s.wait(0.5)
+        })
+        // Before the animations, the film draws the first chart and no other.
+        expect(compiled.frame(0.5).ops).toHaveLength(6)
+        expect(at(0.5, () => [shown, hidden, outer].map((node) => node.get('visible')))).toEqual([true, false, false])
+        expect(at(1, () => [shown, hidden, inner, outer].map((node) => node.get('visible')))).toEqual([true, true, true, true])
+        expect(compiled.frame(2.4).ops).toHaveLength(18)
+        // No object changed its parent, and each one is on the stage once.
+        expect(inner.parent).toBe(outer)
+        expect(root.children.filter((child) => child === shown || child === hidden || child === outer)).toHaveLength(3)
+    })
+
+    it('brings the whole group with the object, once, when the film adds the group later', async () => {
+        let chart!: ReturnType<typeof marks>, outer!: Node, root!: Node
+        const compiled = await compile((s) => {
+            root = s.root
+            chart = marks()
+            outer = group(chart, rect(10, 10).at(0, 300)).at(200, 0)
+            s.wait(1)
+            s.play(chart.enter(), { duration: 1 })
+            s.wait(1)
+            s.add(outer)
+            s.wait(1)
+        })
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The other node of the group shows from the start of the animation, with the group.
+        expect(compiled.frame(1.01).ops).toHaveLength(1)
+        expect(compiled.frame(3.5).ops).toHaveLength(7)
+        expect(chart.parent).toBe(outer)
+        expect(root.children.filter((child) => child === outer || child === chart)).toEqual([outer])
+    })
+
+    it('enters a copy at its own turn, and enters one object twice in one sequence', async () => {
+        let chart!: ReturnType<typeof marks>, copy!: ReturnType<typeof marks>, root!: Node
+        const compiled = await compile((s) => {
+            root = s.root
+            chart = marks()
+            copy = chart.clone().at(0, 200)
+            s.wait(1)
+            s.play(seq(chart.enter(), copy.enter(), chart.enter()), { duration: 3, ease: linear })
+            s.wait(0.5)
+        })
+        const drawn = (time: number) => [chart, copy].map((made) => paths(compiled, time).filter((op) => made.marks.some((mark) => mark === op.node)).length)
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The first second belongs to the chart, and the second one to its copy.
+        expect(drawn(1.99)).toEqual([6, 0])
+        expect(drawn(2.99)).toEqual([6, 6])
+        // In the last second the chart starts again from nothing, column by column, and its copy stays.
+        expect(drawn(3.1)).toEqual([2, 6])
+        expect(drawn(4.4)).toEqual([6, 6])
+        expect(root.children.filter((child) => child === chart || child === copy)).toEqual([chart, copy])
     })
 })
 
