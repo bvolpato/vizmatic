@@ -661,8 +661,9 @@ const LANGUAGES: Record<string, LanguageRule> = {
     // Specification and proof languages. A prime is part of a name or an operator in each of them, so it never starts a string.
     tla: {
         lineComments: ['\\*'], blockComment: ['(*', '*)'], quotes: '"',
-        symbolKeyword: /^\\[A-Za-z]+/,
-        keywords: words('MODULE EXTENDS CONSTANT CONSTANTS VARIABLE VARIABLES ASSUME ASSUMPTION AXIOM THEOREM LEMMA PROOF BY QED LET IN IF THEN ELSE CASE OTHER CHOOSE EXCEPT UNCHANGED ENABLED DOMAIN SUBSET UNION INSTANCE WITH LOCAL RECURSIVE LAMBDA SF_ WF_ TRUE FALSE BOOLEAN STRING SPECIFICATION INVARIANT PROPERTY CONSTRAINT SYMMETRY INIT NEXT CHECK_DEADLOCK'),
+        // An operator word such as `\in`, and the fairness prefix of `WF_vars(Next)`.
+        symbolKeyword: /^(?:\\[A-Za-z]+|[SW]F_)/,
+        keywords: words('MODULE EXTENDS CONSTANT CONSTANTS VARIABLE VARIABLES ASSUME ASSUMPTION AXIOM THEOREM LEMMA PROOF BY QED LET IN IF THEN ELSE CASE OTHER CHOOSE EXCEPT UNCHANGED ENABLED DOMAIN SUBSET UNION INSTANCE WITH LOCAL RECURSIVE LAMBDA TRUE FALSE BOOLEAN STRING SPECIFICATION INVARIANT PROPERTY CONSTRAINT SYMMETRY INIT NEXT CHECK_DEADLOCK'),
     },
     dafny: {
         ...C_STYLE, quotes: '"', charLiterals: true,
