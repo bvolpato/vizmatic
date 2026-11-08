@@ -2699,6 +2699,18 @@ export default film({ fps: 30 }, (s) => {
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
 
+`block.find(fragment)` returns the glyphs of a piece of the code, to color them or to move them. A fragment that is one token, such as `lo`, matches every such token. Any other fragment, such as `lo + hi`, matches as text inside a line, and spaces do not count. Pass a line, counted from 0, as the second argument to search that line only.
+
+```ts
+import { codeBlock, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    const block = s.add(codeBlock('const mid = (lo + hi) / 2', { size: 60 }))
+    for (const glyph of block.find('lo + hi')) glyph.color('red')
+    s.wait(1)
+})
+```
+
 ```film paired label="One line of code morphs into a longer version"
 import { codeBlock, film, morphCode, write } from 'vizmatic/stage'
 
