@@ -165,6 +165,20 @@ s.play(pages.change([3, 4, 5, 40], 'dirty'))
 const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
 ```
 
+The output of a real program: the command, the lines that it printed with their exact characters, and where and when it ran. Do not build it from a box and a `codeBlock` in each film. `find` selects one number by its exact text, to light it when the voice says it. Expand tabs to spaces, and leave lines out with a note line such as `{ text: '[...]', kind: 'note' }`. A terminal shows all its lines unless it starts with `shown: false` or with `enter()`. `print()` brings one block: the lines up to the next command, with the command itself when the film did not type it:
+
+```ts
+const run = terminal([
+    { text: './one-byte', kind: 'command' },
+    'Rss after the write:       4 kB',
+    'minor faults:              1',
+], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08' })
+s.play(run.enter())
+s.play(run.type(0))
+s.play(run.print())
+s.play(recolor(run.find('4 kB'), 'yellow'))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
