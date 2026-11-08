@@ -159,6 +159,14 @@ const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }
 s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
 ```
 
+Values that differ by more than about a hundred times, such as 100 ns beside 10 ms. On a linear axis, all but the largest sit at zero. Give `dotChart` a log axis, and say on screen that the axis is logarithmic. The `xLabel` is the place:
+
+```ts
+const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
+const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read from a spinning disk', value: 10_000_000 }], { scale: 'log', format: time, xLabel: 'time, logarithmic' })
+s.play(chart.enter())
+```
+
 3D:
 
 ```ts

@@ -66,7 +66,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'donut', group: CHARTS, usage: "donut([{ label: 'A', value: 3 }])" },
     { name: 'heatmap', group: CHARTS, usage: 'heatmap(rows): a grid of colored cells' },
     { name: 'sparkline', group: CHARTS, usage: 'sparkline(values): a tiny inline trend' },
-    { name: 'dotChart', group: CHARTS, usage: "dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }], { domain: [0, 1] }): one row per item, a dot on a shared axis, and a line for its interval. chart.enter() brings the rows in" },
+    { name: 'dotChart', group: CHARTS, usage: "dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }], { domain: [0, 1] }): one row per item, a dot on a shared axis, and a line for its interval. chart.enter() brings the rows in. { scale: 'log' } is for values that differ by more than about a hundred times" },
     { name: 'unitChart', group: CHARTS, usage: "unitChart([{ count: 262 }, { count: 39, color: 'green', label: '39 better' }], { rows: 11, mixed: true, plain: true }): one mark for each unit, in groups. chart.enter(), chart.paint() and chart.rearrange({ split: true }) animate it" },
     { name: 'infoBox', group: SYSTEMS, usage: "infoBox({ title, rows }): a dense box with a title, fields, and live stats" },
     { name: 'connector', group: SYSTEMS, usage: 'connector(a, b, { label }): a routed edge between two nodes' },

@@ -1078,6 +1078,174 @@ describe('dot chart', () => {
             expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [1, 0] })).toThrow(/two different ends/)
         }))
     })
+
+    const spread = [{ label: 'small', value: 80 }, { label: 'large', value: 12_000_000 }]
+    // The x of each line of the grid, from left to right. Only these parts of the axis are as tall as the plot.
+    const gridLines = (chart: ReturnType<typeof dotChart>, height: number) => chart.axis.children.filter((node) => node.bounds().height > height * 0.9)
+    const gridAt = (chart: ReturnType<typeof dotChart>, height: number) => gridLines(chart, height).map((node) => node.bounds().x).sort((a, b) => a - b)
+
+    it('gives each power of ten the same room on a log axis', async () => {
+        await compileFilm(film(() => {
+            const items = [{ label: 'small', value: 80 }, { label: 'large', value: 1_200_000 }]
+            const chart = dotChart(items, { scale: 'log', width: 1200, height: 200, domain: [10, 1e7] })
+            expect(chart.domain).toEqual([10, 1e7])
+            expect(chart.p(10, 0)[0]).toBeCloseTo(-600, 6)
+            expect(chart.p(1e7, 0)[0]).toBeCloseTo(600, 6)
+            // Six powers of ten share 1200 px. On a linear axis, 100 would be 0.01 px from 10.
+            const powers = [10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((value) => chart.p(value, 0)[0])
+            powers.slice(1).forEach((x, index) => expect(x - powers[index]!).toBeCloseTo(200, 6))
+            // The middle of the axis is the geometric middle of its two ends, also when no end is a power of ten.
+            expect(chart.p(1e4, 0)[0]).toBeCloseTo(0, 6)
+            const odd = dotChart([{ label: 'a', value: 40 }], { scale: 'log', width: 1200, domain: [2, 800] })
+            expect(odd.p(40, 0)[0]).toBeCloseTo(0, 6)
+            expect(middle(odd.dots[0]!)[0]).toBeCloseTo(0, 6)
+            chart.dots.forEach((mark, row) => expect(middle(mark)[0]).toBeCloseTo(chart.p(items[row]!.value, row)[0], 6))
+            // The rows are placed as on a linear axis.
+            expect(chart.p(100, 1)[1]).toBeCloseTo(50, 6)
+        }))
+    })
+
+    it('takes its default log axis from the powers of ten around the data', async () => {
+        await compileFilm(film(() => {
+            const wide = dotChart(spread, { scale: 'log' })
+            expect(wide.domain).toEqual([10, 100_000_000])
+            expect(words(wide)).toEqual(['10', '100', '1k', '10k', '100k', '1M', '10M', '100M'])
+            // Data inside one power of ten: the two powers around it are the ends, and the only ticks.
+            const narrow = dotChart([{ label: 'a', value: 2 }, { label: 'b', value: 8.5 }], { scale: 'log' })
+            expect(narrow.domain).toEqual([1, 10])
+            expect(words(narrow)).toEqual(['1', '10'])
+            const below = dotChart([{ label: 'a', value: 0.004 }, { label: 'b', value: 0.5 }], { scale: 'log' })
+            expect(below.domain).toEqual([0.001, 1])
+            expect(words(below)).toEqual(['0.001', '0.01', '0.1', '1'])
+            // A value on a power of ten is an end of the axis. One value alone still gets a whole power.
+            expect(dotChart([{ label: 'a', value: 100 }, { label: 'b', value: 1000 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            expect(dotChart([{ label: 'a', value: 100 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            // An interval counts as data.
+            expect(dotChart([{ label: 'a', value: 50, low: 5, high: 500 }], { scale: 'log' }).domain).toEqual([1, 1000])
+            // A value next to a power of ten is inside the axis, though its logarithm rounds to a whole number.
+            expect(dotChart([{ label: 'a', value: 999.9999999999999 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            expect(dotChart([{ label: 'a', value: 5 }, { label: 'b', value: 1000.0000000000001 }], { scale: 'log' }).domain).toEqual([1, 10_000])
+        }))
+    })
+
+    it('names fewer powers of ten when there are more than eight, and keeps the two ends', async () => {
+        await compileFilm(film(() => {
+            const over = (most: number, options = {}) => words(dotChart([{ label: 'a', value: 3 }, { label: 'b', value: most }], { scale: 'log', ...options }))
+            // Eight powers fit. With nine, every second one has a name.
+            expect(over(7e6)).toEqual(['1', '10', '100', '1k', '10k', '100k', '1M', '10M'])
+            expect(over(7e7)).toEqual(['1', '100', '10k', '1M', '100M'])
+            expect(over(7e11)).toEqual(['1', '100', '10k', '1M', '100M', '10G', '1T'])
+            // No step of two reaches both ends of nine powers. A step of three does.
+            expect(over(7e8)).toEqual(['1', '1k', '1M', '1G'])
+            // No step reaches both ends of eleven powers. The last end keeps its name, and 10G, one power
+            // before it, has none.
+            expect(over(7e10)).toEqual(['1', '100', '10k', '1M', '100M', '100G'])
+            // With seventeen, every third one has a name. 1e15 is two powers before the end, so it keeps its name.
+            expect(over(7e16)).toEqual(['1', '1k', '1M', '1G', '1T', '1e15', '1e17'])
+            // A number asks for about that many.
+            expect(over(7e11, { ticks: 4 })).toEqual(['1', '10k', '100M', '1T'])
+            expect(over(7e5, { ticks: 4 })).toEqual(['1', '100', '10k', '1M'])
+            expect(over(7e6, { ticks: 4 })).toEqual(['1', '100', '10k', '10M'])
+            expect(over(7e5, { ticks: 2 })).toEqual(['1', '1M'])
+        }))
+    })
+
+    it('writes the ticks of a log axis in a short form, or with the format of the film', async () => {
+        await compileFilm(film(() => {
+            const powers = [0.001, 0.01, 0.1, 1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]
+            expect(words(dotChart(spread, { scale: 'log', ticks: powers }))).toEqual(['0.001', '0.01', '0.1', '1', '10', '100', '1k', '10k', '100k', '1M', '10M', '100M', '1G'])
+            expect(words(dotChart(spread, { scale: 'log', ticks: [0.05, 2500, 1_500_000, 1e12, 1e-6] }))).toEqual(['0.05', '2.5k', '1.5M', '1T', '1e-6'])
+            expect(words(dotChart(spread, { scale: 'log', ticks: [100, 1e6], format: (value) => `${value / 1000} µs` }))).toEqual(['0.1 µs', '1000 µs'])
+            // A linear axis keeps its own form.
+            expect(words(dotChart(spread, { ticks: [0, 6_000_000, 12_000_000] }))).toEqual(['0', '6,000,000', '12,000,000'])
+        }))
+    })
+
+    it('draws an interval on a log axis from its low end to its high end, with the dot between them', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart([{ label: 'a', value: 100, low: 10, high: 10_000 }], { scale: 'log', width: 900, domain: [1, 1e6] })
+            const interval = chart.intervals[0]!.bounds()
+            // Each power of ten has 150 px. The dot is one power over the low end and two under the high end.
+            expect(interval.x).toBeCloseTo(-300, 6)
+            expect(interval.x + interval.width).toBeCloseTo(150, 6)
+            expect(middle(chart.dots[0]!)[0]).toBeCloseTo(-150, 6)
+        }))
+    })
+
+    it('uses a given domain and given ticks on a log axis as they are', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart(spread, { scale: 'log', width: 1000, height: 200, domain: [50, 20_000_000], ticks: [50, 200, 1000, 20_000_000] })
+            expect(chart.domain).toEqual([50, 20_000_000])
+            expect(words(chart)).toEqual(['50', '200', '1k', '20M'])
+            // Each tick has a line of the grid at its place on the log axis.
+            const places = gridAt(chart, 200)
+            expect(places).toHaveLength(4)
+            ;[50, 200, 1000, 20_000_000].forEach((tick, index) => expect(places[index]).toBeCloseTo(chart.p(tick, 0)[0], 6))
+            expect(places[0]).toBeCloseTo(-500, 6)
+            expect(places[3]).toBeCloseTo(500, 6)
+            // With a domain and no ticks, the ticks are the powers of ten inside the domain.
+            expect(words(dotChart(spread, { scale: 'log', domain: [50, 20_000_000] }))).toEqual(['100', '1k', '10k', '100k', '1M', '10M'])
+            // With ticks and no domain, the axis runs from the first tick to the last, and holds the data.
+            expect(dotChart(spread, { scale: 'log', ticks: [100, 1e4, 1e6] }).domain).toEqual([80, 12_000_000])
+            // A domain with one power of ten inside it gets 1, 2 and 5 times each power.
+            expect(words(dotChart([{ label: 'a', value: 3 }], { scale: 'log', domain: [2, 50] }))).toEqual(['2', '5', '10', '20', '50'])
+            // A domain with none of those inside it gets round values, as a linear axis does.
+            expect(words(dotChart([{ label: 'a', value: 33 }], { scale: 'log', domain: [30, 45] }))).toEqual(['30', '32', '34', '36', '38', '40', '42', '44'])
+            expect(() => dotChart(spread, { scale: 'log', domain: [100, 1e9] })).toThrow(/80 is outside the domain 100 to 1000000000/)
+            expect(() => dotChart(spread, { scale: 'log', domain: [10, 1e9], ticks: [1, 100] })).toThrow(/the tick 1 is outside the domain/)
+        }))
+    })
+
+    it('draws fainter lines inside each power of ten, on a log axis that is short and wide enough', async () => {
+        await compileFilm(film(() => {
+            const one = [{ label: 'a', value: 2 }, { label: 'b', value: 8.5 }]
+            const three = [{ label: 'a', value: 2 }, { label: 'b', value: 850 }]
+            const chart = dotChart(one, { scale: 'log', width: 900, height: 200 })
+            // One power of ten: a line at each of 1 to 10.
+            const places = gridAt(chart, 200)
+            expect(places).toHaveLength(10)
+            places.forEach((x, index) => expect(x).toBeCloseTo(chart.p(index + 1, 0)[0], 6))
+            // The lines at the two ticks are full. The eight between them are fainter.
+            const strength = gridLines(chart, 200).map((node) => node.get('opacity')).sort()
+            expect(strength.slice(8)).toEqual([1, 1])
+            expect(Math.max(...strength.slice(0, 8))).toBeLessThan(0.8)
+            // Three powers of ten on 900 px leave 13.7 px between the lines at 9 and 10 times a power.
+            expect(gridAt(dotChart(three, { scale: 'log', width: 900, height: 200 }), 200)).toHaveLength(28)
+            // On 700 px they would be 10.7 px apart, so only the ticks have a line. The same for four powers.
+            expect(gridAt(dotChart(three, { scale: 'log', width: 700, height: 200 }), 200)).toHaveLength(4)
+            expect(gridAt(dotChart([{ label: 'a', value: 2 }, { label: 'b', value: 8500 }], { scale: 'log', width: 4000, height: 200 }), 200)).toHaveLength(5)
+            // A tick at 2 or 5 times a power keeps its full line, and gets no second one.
+            const marked = dotChart(one, { scale: 'log', width: 900, height: 200, ticks: [1, 2, 5, 10] })
+            expect(gridAt(marked, 200)).toHaveLength(10)
+            expect(gridLines(marked, 200).filter((node) => node.get('opacity') === 1)).toHaveLength(4)
+            // In a domain of 2 to 50, the lines stop at 50: none at 60 to 90.
+            const cut = gridAt(dotChart([{ label: 'a', value: 3 }], { scale: 'log', width: 900, height: 200, domain: [2, 50] }), 200)
+            expect(cut).toHaveLength(13)
+            expect(cut[12]).toBeCloseTo(450, 6)
+            expect(gridAt(dotChart(one, { scale: 'log', width: 900, height: 200, grid: false }), 200)).toHaveLength(0)
+            // A linear axis has lines at its ticks only.
+            expect(gridAt(dotChart(one, { width: 900, height: 200, domain: [1, 10], ticks: [1, 10] }), 200)).toHaveLength(2)
+        }))
+    })
+
+    it('refuses a number that has no place on a log axis, and names it', async () => {
+        await compileFilm(film(() => {
+            expect(() => dotChart([{ label: 'idle', value: 0 }], { scale: 'log' })).toThrow(/the value of item 0 \("idle"\) is 0\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'ok', value: 5 }, { label: 'wide', value: 5, low: -1, high: 10 }], { scale: 'log' })).toThrow(/the low end of item 1 \("wide"\) is -1\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [0, 100] })).toThrow(/the domain starts at 0\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [0, 10] })).toThrow(/the tick 0 is not on a log axis\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [-5, 10] })).toThrow(/the tick -5 is not on a log axis/)
+            // Without a domain, a tick of 0 would be an end of the axis. The error still names the tick.
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', ticks: [0, 10] })).toThrow(/the tick 0 is not on a log axis/)
+            // A tick that is not a number gets the error of a linear axis.
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [NaN, 10] })).toThrow(/the tick NaN is outside the domain 1 to 100/)
+            // The same numbers are fine on a linear axis.
+            expect(dotChart([{ label: 'idle', value: 0 }, { label: 'wide', value: 5, low: -1, high: 10 }], { ticks: [0, 10] }).domain).toEqual([-1, 10])
+            const chart = dotChart([{ label: 'a', value: 5 }], { scale: 'log' })
+            expect(() => chart.p(0, 0)).toThrow(/0 has no place on a log axis/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'logarithmic' as 'log' })).toThrow(/scale is 'linear' or 'log', not "logarithmic"/)
+        }))
+    })
 })
 
 describe('unit chart', () => {

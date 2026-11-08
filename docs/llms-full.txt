@@ -2709,6 +2709,31 @@ export default film({ fps: 30 }, (s) => {
 
 As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels are outside it, at the left, and the ticks are under it. Without a `domain`, the axis covers a round range around the data. `ticks` is a count or a list of values. `chart.rows` holds one node per item, with its label, its interval and its dot, and `chart.p(value, row)` gives a place on the chart for a bracket or a note. A value outside the domain, a value outside its interval, an interval with one end, and a tick outside the domain are errors.
 
+`scale: 'log'` gives each power of ten the same room on the axis. Use it when the values differ by more than about a hundred times. On a linear axis, all of them but the largest sit at zero. On a log axis, a distance shows a ratio and not a difference, so say on screen that the axis is logarithmic. The `xLabel` is the place for that.
+
+```film paired label="Five times, from 100 ns to 10 ms, on a log axis"
+import { dotChart, film } from 'vizmatic/stage'
+
+// About how long one operation takes, in nanoseconds.
+const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
+
+export default film({ fps: 30 }, (s) => {
+    const chart = dotChart([
+        { label: 'system call', value: 100 },
+        { label: 'page fault', value: 1_000 },
+        { label: 'read from a fast drive', value: 20_000, color: 'teal' },
+        { label: 'round trip in a data center', value: 500_000, color: 'purple' },
+        { label: 'read from a spinning disk', value: 10_000_000, color: 'orange' },
+    ], { scale: 'log', width: 1000, labelSize: 40, format: time, xLabel: 'time for one operation, logarithmic' }).at(250, -40)
+    s.play(chart.enter(), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+On a log axis, the default domain is the powers of ten around the data: values from 80 to 12,000,000 give an axis from 10 to 100,000,000. The default ticks are the powers of ten in the domain. When there are more than eight, every second or third power gets a tick, and the two ends keep theirs. A number for `ticks` asks for about that many. A list of `ticks` and a `domain` are used as they are. The default format is short: 1, 10, 100, 1k, 10k, 1M, 1G, and 0.1, 0.01, 0.001 below one. Pass `format` for a unit, as in the example. `chart.p(value, row)` gives the place of a value on the log axis, and `chart.domain` holds the two ends as values.
+
+When the domain has three powers of ten or fewer, the grid also has fainter lines at 2 to 9 times each power. The axis must be wide enough to leave 12 px between the two closest lines. A log axis has no zero. A value, an interval end, a domain end, or a tick that is 0 or less is an error.
+
 `unitChart(groups)` draws one mark for each unit, so the viewer sees a count and does not only read it. Use it for a number of cases, runs, hosts, or files, up to about 2,000. A group has a `count`, a `color`, and a `label`.
 
 ```film paired label="330 runs arrive, take the color of their result, and gather into three blocks"
