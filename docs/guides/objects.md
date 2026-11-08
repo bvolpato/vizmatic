@@ -127,6 +127,51 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+`dotChart(data)` draws one row per item: a label, a dot at its value on a shared axis, and a line for its interval. Use it for scores with their uncertainty. It takes less room than bars, and its axis does not have to start at zero. The rows keep the order of the data, so sort the data to rank it. `hollow: true` draws a ring, to tell a second group apart.
+
+```film paired label="Five scores with their intervals arrive from the best to the worst"
+import { dotChart, film } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const chart = dotChart([
+        { label: 'blocks', value: 0.89, low: 0.87, high: 0.91 },
+        { label: 'tall CSV', value: 0.88, low: 0.86, high: 0.9 },
+        { label: 'statistics alone', value: 0.57, low: 0.54, high: 0.6, color: 'orange' },
+        { label: 'chart image', value: 0.57, low: 0.53, high: 0.6, color: 'pink' },
+        { label: 'no data', value: 0.08, low: 0.06, high: 0.1, color: 'dim' },
+    ], { width: 1100, labelSize: 40, domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], xLabel: 'mean score, higher is better. Lines: 95% intervals' }).at(150, -40)
+    s.play(chart.enter(), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels are outside it, at the left, and the ticks are under it. Without a `domain`, the axis covers a round range around the data. `ticks` is a count or a list of values. `chart.rows` holds one node per item, with its label, its interval and its dot, and `chart.p(value, row)` gives a place on the chart for a bracket or a note. A value outside the domain, a value outside its interval, an interval with one end, and a tick outside the domain are errors.
+
+`unitChart(groups)` draws one mark for each unit, so the viewer sees a count and does not only read it. Use it for a number of cases, runs, hosts, or files, up to about 2,000. A group has a `count`, a `color`, and a `label`.
+
+```film paired label="330 runs arrive, take the color of their result, and gather into three blocks"
+import { film, unitChart } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const chart = unitChart([
+        { count: 262, label: '262: no effect' },
+        { count: 39, color: 'green', label: '39 better' },
+        { count: 29, color: 'red', label: '29 worse' },
+    ], { rows: 11, mixed: true, plain: true, cell: 22, labelSize: 34 })
+    s.play(chart.enter(), { duration: 1.4 })
+    s.play(chart.paint(), { duration: 0.8 })
+    s.wait(0.4)
+    s.play(chart.rearrange({ split: true }), { duration: 1.6 })
+    s.wait(0.8)
+})
+```
+
+The chart has three arrangements. By default the groups follow each other in one grid, so each group is one part of the whole. `mixed: true` puts the marks of all groups at mixed places in that grid, to show a few among many. The same `seed` gives the same places. `split: true` draws each group as its own block, with its label over it. The labels show only while the groups are split. For the other two arrangements, add a `legend()`. `rows` sets the marks in one column, and the chart fills column by column. `columns` sets the marks in one row, and the chart fills row by row. `cell` is the side of one mark, and `gap` the room between two marks.
+
+`chart.enter()` brings the marks in line by line. `plain: true` starts every mark and label in one color, and `chart.paint()` gives each group its color. `chart.rearrange(arrangement)` moves the marks to another arrangement. It keeps the rows or columns and the seed that the new arrangement does not name. `split` and `mixed` turn each other off, and `rows` replaces `columns`. Each group moves over the whole time of the move, so a small group does not wait for a large one.
+
+`.at()` places the middle of the grid, or of the row of blocks. A block is as wide as its marks or its label, so a row of blocks is wider than the grid: check both arrangements. A group with a count of 0 and a label keeps the room of its label, such as "0 failed". `chart.marks` holds every mark, `chart.groups` the marks of each group, and `chart.p(index)` the place of a mark. `shape: 'square'` draws squares. A chart of more than 20,000 marks is an error: let one mark stand for more than one unit, and say so in a label. Above about 2,000 marks, a move reads as a wipe.
+
 ## Graphs and networks
 
 `graph(nodes, edges)` draws a node-link diagram, and `tree(root)` lays out a tree. Edges work with `pulse`, so a signal can run along them.
@@ -198,6 +243,65 @@ export default film({ fps: 30 }, (s) => {
 A caption that is too wide wraps, and a title that is too wide is set in a smaller size, down to 0.6 of `titleSize`. Without a `height`, a card is as tall as its content. Content that cannot fit is an error: a `height` with no room for the figure, a title that is too long, or a caption word that is wider than the card. So a figure never runs into the text. Give the figure to one card only, and before it is on the stage.
 
 `card.frame`, `card.title`, `card.figure`, and `card.caption` are the parts. `card.figureBox` is the space that the figure may use, in the coordinates of the card, where (0, 0) is its middle. `titleSize`, `captionSize`, `padding`, `font`, `color`, `captionColor`, `fill`, `radius`, and `borderWidth` set the look.
+
+## Zones
+
+`zone(content, options)` draws a border around one node or several, with a `title` on the border: a host, a network, a sandbox, a boundary of trust. The zone measures its content when it is built and takes the content as its children. So the zone and what it holds move, fade, and scale as one node, and a zone can hold other zones. `dash: true` draws a dashed border, for a boundary that is a rule and not a wall.
+
+```film paired label="A process inside a jail inside a host, built from the inside out"
+import { draw, fadeIn, film, group, rect, text, zone } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const box = (name: string, color: string) => group(
+        rect(300, 110, { radius: 14, stroke: color, fill: 'surface', width: 3 }),
+        text(name, { size: 38, font: 'text-serif', color }),
+    )
+    const devices = box('devices', 'purple').at(440, 0)
+    const guest = zone([box('guest kernel', 'teal').at(0, -75), box('your code', 'ink').at(0, 75)], { title: 'microVM', color: 'teal', titleSize: 32 })
+    const process = zone([guest, devices], { title: 'VMM process', color: 'purple', titleSize: 32, padding: 48 })
+    const jail = zone(process, { title: 'jail', color: 'yellow', dash: true, titleSize: 32, padding: 52 })
+    const host = s.add(zone(jail, { title: 'host', titleSize: 32, padding: 56, titleAlign: 'center' }).at(0, 0))
+    // Everything is on the stage now. Hide what arrives later, then reveal it from the inside out.
+    const layers = [guest, process, jail, host]
+    for (const node of [devices, ...layers.flatMap((layer) => [layer.frame, layer.title!])]) node.hide()
+    s.play(fadeIn(guest.content, { lag: 0.2 }), { duration: 0.8 })
+    s.play(draw(guest.frame), fadeIn(guest.title!), { duration: 0.7 })
+    s.play(fadeIn(devices), draw(process.frame), fadeIn(process.title!), { duration: 0.7 })
+    s.play(draw(jail.frame), fadeIn(jail.title!), { duration: 0.7 })
+    s.play(draw(host.frame), fadeIn(host.title!), { duration: 0.7 })
+    s.wait(0.8)
+})
+```
+
+Build the content where you want it, then the zone, then add the zone to the stage. The zone stays where its content was built, and `.at(x, y)` places the middle of its border, as for a card. A node of the content that is already on the stage or in a group is an error. After the zone is built, do not add a node of its content to the stage or to another group: that takes the node out of the zone.
+
+The zone is wide enough for its title. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the title, so no line crosses the title. A `fill` is faint by default, because its top edge runs behind the title. `zone.frame`, `zone.title`, `zone.backdrop` (the fill), and `zone.content` are the parts. `zone.box` is the middle line of the border, in the coordinates of the zone.
+
+## Tags
+
+`tag(word, options)` draws a word in a pill, with a `note` beside it. Use it to say what kind of claim is on the screen and where it comes from: measured, plan, judgment, with the source and its date. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x.
+
+`tagTrack(states, { until })` is a tag that changes with time, at one place. Each state has the time when it starts. One state is on screen at a time: a state fades out before the next one fades in. States that are out of order, or too near to each other for the two fades, are an error.
+
+```film paired label="A tag in the corner changes from a plan to a result when the chart arrives"
+import { barChart, fadeIn, fadeOut, film, tagTrack, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    s.add(tagTrack([
+        { at: 0, word: 'PLAN', color: 'blue', note: 'the design of March' },
+        { at: 2.4, word: 'MEASURED', color: 'green', note: 'the run of June, on 926 questions' },
+    ], { until: 5.4, size: 36 }).at(-900, -470))
+    const plan = text('Does the new format cost fewer tokens?', { font: 'text-serif', size: 64 })
+    s.play(fadeIn(plan), { duration: 0.8 })
+    s.wait(1)
+    s.play(fadeOut(plan), { duration: 0.5 })
+    const chart = barChart([{ label: 'old', value: 21 }, { label: 'new', value: 4 }], { width: 900, height: 560 }).at(0, 60)
+    s.play(fadeIn(chart, { shift: [0, 24] }), { duration: 0.8 })
+    s.wait(1.8)
+})
+```
+
+Place a track as any node. It does not know the size of the frame: `.at(-912, -490)` is the top left of a 1920 by 1080 frame. A track is pinned to the screen, so a move or a zoom of the camera does not move it. `tag.pill`, `tag.word`, and `tag.note` are the parts of a tag, and `tag.color(c)` recolors the border and the word.
 
 ## Code and tokens
 

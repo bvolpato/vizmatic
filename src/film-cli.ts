@@ -419,7 +419,7 @@ export async function checkFilmFile(
     file: string,
     load: FilmLoader,
     looks: readonly LookName[],
-    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap'> = {},
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'readingSpeed' | 'stepped'> = {},
 ): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)
@@ -439,7 +439,9 @@ export function printFilmCheck(report: FilmCheckFileReport): void {
     for (const entry of report.diagnostics) {
         const span = entry.time === entry.until ? `${entry.time.toFixed(2)}s` : `${entry.time.toFixed(2)}s to ${entry.until.toFixed(2)}s`
         const repeats = entry.motion && entry.motion.spans > 1 ? `, ${entry.motion.spans} times, ${entry.motion.seconds}s in total` : ''
-        const when = entry.motion ? `${span} (in motion${repeats})` : span
+        // A text that leaves too soon is not a problem of two things that cross while they move, and its
+        // message says how many times it comes.
+        const when = entry.code === 'film.text_brief' ? span : entry.motion ? `${span} (in motion${repeats})` : span
         const { x, y, width, height } = entry.box
         console.log(`  ${entry.severity} ${entry.code} at ${when}: ${entry.message} Box x=${x} y=${y} w=${width} h=${height}. Stage (${entry.stage.x}, ${entry.stage.y}).`)
     }

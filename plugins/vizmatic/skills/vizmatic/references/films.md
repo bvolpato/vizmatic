@@ -123,6 +123,23 @@ const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: '
 s.play(draw(picture))
 ```
 
+A named border around a group of nodes: a host, a network, a sandbox, a boundary of trust. Do not size such a border by hand. `zone` measures its content, and zones nest. Build the content first, then the zone, then add the zone:
+
+```ts
+const guest = zone([kernel, code], { title: 'microVM', color: 'teal' })
+const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true })
+s.add(zone(jail, { title: 'host' }).at(0, 0))
+```
+
+A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
+
+```ts
+s.add(tagTrack([
+    { at: 0, word: 'PLAN', color: 'blue', note: 'the design of March' },
+    { at: 41.5, word: 'MEASURED', color: 'green', note: 'the run of June, on 926 questions' },
+], { until: 96 }).at(-912, -490))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
@@ -179,6 +196,7 @@ s.play(fade(logo, 1, { duration: 0.4 }))
 - `film.text_crossed`: a stroke passes through text. A strong stroke is an error. An opaque shape between the stroke and the text prevents this report, so give a label a backing when it must sit on a line.
 - `film.missing_glyph`: no bundled font has a character, so it renders as an empty box. Replace the character, or set it with `tex`.
 - `film.blank`: nothing is visible for 0.2 seconds or more. Only a motion scan reports it.
+- `film.text_brief`: text leaves before a viewer can read it. A reader takes in 20 characters in one second of the text that is on screen, and a text needs half a second at least. It is a warning, and only a motion scan reports it. A label that changes in place, or rows that scroll through one area, are one finding. Text that is up from the first frame to the last, as in a still or a loop, is not reported. `--reading-speed <n>` sets the characters per second, and 0 turns the rule off. `--stepped` is for a deck, which waits at each chapter. `readingSeconds(text)` gives the time that a plain text needs.
 
 The check looks at moments between animations, because objects may cross while moving. So it misses a crossfade where two sentences overlap, and a blank gap between two pictures. Add `--motion` to inspect every frame:
 

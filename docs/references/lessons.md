@@ -130,8 +130,10 @@ npx vizmatic check lesson.ts --motion --content-top 200 --json
 
 - A finding that appears only while something moves is a warning. It carries a `motion` field with the number of separate stretches and their total length. `time` and `until` bound the longest stretch.
 - `film.blank` reports 0.2 seconds or more with nothing visible. `--content-top` is the canvas y where the content starts. Set it when a heading stays up, because the heading otherwise hides every blank.
+- `film.text_brief` reports text that leaves before a viewer can read it, at 20 characters in one second. A still does not show this defect: at the end of a beat, a still shows every text at full opacity. The usual cause is a text that arrives on the last words of a beat and leaves when the next beat starts. Bring it in at the start of the sentence that it supports, hold the picture longer, or shorten the text. Rows of data that scroll past as texture are one finding, or none when the rows differ only in their numbers. Leave it, and say why. The rule looks at one text at a time: it does not see that eight labels arrive together, that a text is behind a shape, or what a code block shows.
 - The scan compiles every frame and paints none. A film with heavy `dynamic` drawings can take a minute or more.
-- In code, use `checkFilm(film, { motion: true, contentTop: 200 })` from `vizmatic/stage`.
+- In code, use `checkFilm(film, { motion: true, contentTop: 200 })` from `vizmatic/stage`. `readingSpeed` sets the characters per second for `film.text_brief`.
+- `readingSeconds(text)` from `vizmatic/stage` gives the time that the rule asks for a plain text. Use it for the time that a text stays up: `s.wait(readingSeconds(caption))`.
 - An older package rejects `--motion` as an unknown option. Update the package.
 
 The scan cannot see that one block replaces another, so decide each warning yourself. A curve that passes an axis number while it draws is usually fine. Two sentences on the same lines are a defect. An empty result does not prove a film clean:

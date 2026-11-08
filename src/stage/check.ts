@@ -6,7 +6,7 @@ import { pathBounds, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_crowded' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_crowded' | 'film.text_overlap' | 'film.text_crossed' | 'film.text_brief' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -27,6 +27,8 @@ export interface FilmDiagnostic {
     /**
      * Set when a motion scan finds the problem only while something moves. `time` and `until` then
      * bound the longest stretch. `spans` counts the separate stretches, and `seconds` is their total length.
+     * For `film.text_brief`, `time` and `until` bound the first stretch, or a whole row of texts that follow
+     * each other. `spans` counts the stretches or the texts, and `seconds` is the time that they were readable.
      */
     motion?: { spans: number; seconds: number }
 }
@@ -52,9 +54,22 @@ export interface FilmCheckOptions extends CompileOverrides {
     /**
      * Also inspect every frame. A problem that appears only while something moves is a warning, because
      * the check cannot tell a collision from one picture that replaces another. A stretch of 0.2 seconds
-     * or more with nothing visible is reported as `film.blank`.
+     * or more with nothing visible is reported as `film.blank`. Text that leaves before a viewer can read
+     * it is reported as `film.text_brief`.
      */
     motion?: boolean
+    /**
+     * For a motion scan, the characters that a viewer reads in one second. Text that leaves before a
+     * reader at this speed gets to its end is reported as `film.text_brief`. Defaults to 20, the fastest
+     * speed that subtitle guides allow for an adult viewer. 0 turns the rule off.
+     */
+    readingSpeed?: number
+    /**
+     * The film plays one chapter at a time, as a deck does: the player waits for the viewer on the first
+     * frame of each chapter after the start. Text that is up at such a stop has all the time that the
+     * viewer gives it, so `film.text_brief` does not report it.
+     */
+    stepped?: boolean
     /**
      * For a motion scan, the canvas y where the content starts. Marks above it, such as a heading that
      * stays up, do not count as content when the scan looks for blank frames.
@@ -112,6 +127,16 @@ const BLANK_EDGE_SECONDS = 0.5
 // A quick change from one picture to the next dips for a few frames, and reads as a cut.
 const BLANK_MIN_SECONDS = 0.2
 const CROSSING_ERROR_CONTRAST = 2
+// The fastest speed that subtitle guides allow for an adult viewer: 20 characters in one second.
+const READING_SPEED = 20
+// A short label still needs half a second, the time of 10 characters.
+const READING_MIN_SECONDS = 0.5
+// A viewer does not notice a tenth less time, and a report must not depend on the frame rate.
+const READING_TOLERANCE = 0.9
+// A text that gets more words in place may be away for this long on the way, such as a formula that morphs into a longer one.
+const READING_GAP_SECONDS = 2
+// Brief texts that follow each other at one place within this time are one finding, such as rows that scroll.
+const READING_CHAIN_SECONDS = 0.5
 // Faint grid lines may run behind labels. A reader still reads the label.
 const MIN_STROKE_CONTRAST = 1.6
 const OPAQUE = 0.9
@@ -598,6 +623,126 @@ function hasContent(frame: Frame, top: number): boolean {
     })
 }
 
+/** One text in one frame, for the scan that measures how long a text stays up. */
+interface ShownText {
+    source: string
+    words: string
+    alpha: number
+    box: Bounds
+    /** The glyphs that the frame drew. */
+    glyphs: number
+    /** The glyphs that a viewer can read: those that are not still fading in or out. */
+    bright: number
+}
+
+/** The time that one text stays up, as frame numbers, with what a reader took in. */
+interface TextRun {
+    from: number
+    to: number
+    source: string
+    /** The name of the text from frame to frame: its words, with each number as one sign. */
+    words: string
+    /** Where the text was when it showed the most. */
+    box: Bounds
+    /** The readable glyphs and the opacity of the frame that `box` comes from. */
+    best: [number, number]
+    /** Every place that the text was at. */
+    area: Bounds
+    /** The most glyphs that one frame drew. */
+    glyphs: number
+    /** The frames in which a viewer could read some of it. */
+    up: number
+    /** The last of those frames. */
+    lastUp: number
+    /** The characters that a reader has taken in so far. */
+    read: number
+    /** The reader knew every word when the text came: it is what stays of a longer text. */
+    known: boolean
+    /** A viewer could read it on a frame where a stepped film waits. */
+    held: boolean
+}
+
+/**
+ * The seconds that a viewer needs to read a plain text on screen: 20 characters in one second, and half a
+ * second at least. The motion scan of `checkFilm` uses the same limit for `film.text_brief`. Use it for the
+ * time that a text stays up, such as `s.wait(readingSeconds('one forecast drifts, and the law breaks'))`.
+ * For a formula, the scan counts the signs that it draws, which are fewer than the characters of its source.
+ */
+export function readingSeconds(text: string, speed = READING_SPEED): number {
+    if (!(speed > 0)) throw new Error('readingSeconds: speed is a number of characters in one second, more than 0')
+    return Math.max(READING_MIN_SECONDS, text.replace(/\s+/g, ' ').trim().length / speed)
+}
+
+// A word has two letters or more. "12 s", "7.04 e-3" and "x" are a number or a sign, and take no time to read.
+const hasWord = /\p{L}{2}/u
+// One number, with its sign, its separators and its decimals: "1,000", "-0.25", "12.5".
+const aNumber = /[-+−]?\d+(?:[.,]\d+)*/g
+
+const spacesIn = (source: string) => source.match(/ /g)?.length ?? 0
+
+/** The characters of a text, as a subtitle counts them. A formula draws fewer signs than its source has characters. */
+function charactersOf(source: string, glyphs: number): number {
+    return Math.min(source.length, glyphs + spacesIn(source))
+}
+
+/**
+ * The texts that a viewer can see in a frame, by a name that lasts from frame to frame. A dynamic drawing
+ * makes new nodes on every frame, and a counter can make a node for each value, so a text goes by its words,
+ * with each number as one sign: a number that counts up is one text, not a new text on every frame.
+ * Two equal texts at two places are one text. The one that shows the most stands for both.
+ */
+function shownTexts(frame: Frame, names: WeakMap<Node, { source: string; words: string } | null>): Map<string, ShownText> {
+    const blocks = new Map<Node, ShownText>()
+    const canvas: Bounds = { x: 0, y: 0, width: frame.width, height: frame.height }
+    for (const op of frame.ops) {
+        if (op.kind !== 'path' || op.path.length === 0 || !isGlyph(op)) continue
+        const alpha = Math.max(op.fillAlpha, op.strokeAlpha)
+        if (alpha < MIN_ALPHA) continue
+        const block = textBlockOf(op.node!)
+        if (!block) continue
+        let name = names.get(block)
+        if (name === undefined) {
+            const source = sourceOf(block).replace(/\s+/g, ' ').trim()
+            name = hasWord.test(source) ? { source, words: source.replace(aNumber, '#') } : null
+            names.set(block, name)
+        }
+        if (!name) continue
+        const box = pathBounds(op.path)
+        if (!box || !intersects(box, canvas)) continue
+        const bright = alpha >= BLANK_ALPHA ? 1 : 0
+        const seen = blocks.get(block)
+        if (seen) {
+            seen.alpha = Math.max(seen.alpha, alpha)
+            seen.box = union(seen.box, box)
+            seen.glyphs++
+            seen.bright += bright
+        } else {
+            blocks.set(block, { source: name.source, words: name.words, alpha, box, glyphs: 1, bright })
+        }
+    }
+    const shown = new Map<string, ShownText>()
+    for (const text of blocks.values()) {
+        const seen = shown.get(text.words)
+        if (!seen || text.bright > seen.bright || (text.bright === seen.bright && text.glyphs > seen.glyphs)) shown.set(text.words, text)
+    }
+    return shown
+}
+
+/**
+ * The run that a new text is related to, if any: a text that ended a moment before at the same place, where
+ * one of the two starts with the other. A text that is typed out, or a formula that morphs into a longer one,
+ * goes on as one text.
+ */
+function related(closed: readonly TextRun[], text: ShownText, index: number, gap: number): TextRun | null {
+    for (let k = closed.length - 1; k >= 0; k--) {
+        const last = closed[k]!
+        if (last.to < index - 1 - gap) break
+        if (last.words === text.words || !intersects(last.area, text.box)) continue
+        if (text.words.startsWith(last.words) || last.words.startsWith(text.words)) return last
+    }
+    return null
+}
+
 /** A stretch of consecutive frames, as frame numbers, with the finding from its first frame. */
 interface MovingRun {
     from: number
@@ -657,6 +802,15 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         const top = options.contentTop ?? 0
         const moving = new Map<string, MovingRun[]>()
         const blanks: { from: number; to: number }[] = []
+        const speed = options.readingSpeed ?? READING_SPEED
+        if (!(Number.isFinite(speed) && speed >= 0)) throw new Error('checkFilm: readingSpeed is a number of characters in one second. 0 turns the rule off')
+        const open = new Map<string, TextRun>()
+        const closed: TextRun[] = []
+        const names = new WeakMap<Node, { source: string; words: string } | null>()
+        const gapFrames = Math.round(READING_GAP_SECONDS * compiled.fps)
+        // A stepped film waits on the first frame of each chapter after the start, and on its last frame.
+        // The player shows those frames.
+        const stops = new Set(options.stepped ? [...compiled.chapters.filter((chapter) => chapter.time > 0).map((chapter) => Math.round(chapter.time * compiled.fps)), frameCount - 1] : [])
         for (let index = 0; index < frameCount; index++) {
             const time = index * step
             const frame = await frameAt(compiled, time)
@@ -669,6 +823,51 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 const last = runs[runs.length - 1]
                 if (last && last.to === index - 1) last.to = index
                 else runs.push({ from: index, to: index, first: finding })
+            }
+            if (speed > 0) {
+                const shown = shownTexts(frame, names)
+                for (const [words, run] of open) {
+                    if (shown.has(words)) continue
+                    open.delete(words)
+                    closed.push(run)
+                }
+                for (const [words, text] of shown) {
+                    let run = open.get(words)
+                    if (!run) {
+                        const before = related(closed, text, index, gapFrames)
+                        if (before && words.length > before.words.length) {
+                            // The text grew, so it goes on as one text. The reader keeps what it has read,
+                            // and gets no time for the frames between the two.
+                            closed.splice(closed.indexOf(before), 1)
+                            run = before
+                            run.source = text.source
+                            run.words = words
+                            run.known = false
+                        } else {
+                            // What stays of a longer text is a new text. The longer one ended, and is judged
+                            // as it was. The reader knows the words that stay.
+                            const read = before ? Math.min(before.read, charactersOf(text.source, text.glyphs)) : 0
+                            run = { from: index, to: index, source: text.source, words, box: text.box, best: [0, 0], area: text.box, glyphs: 0,
+                                up: 0, lastUp: -1, read, known: read >= charactersOf(text.source, text.glyphs) * READING_TOLERANCE, held: false }
+                        }
+                        open.set(words, run)
+                    }
+                    run.to = index
+                    run.area = union(run.area, text.box)
+                    run.glyphs = Math.max(run.glyphs, text.glyphs)
+                    if (text.bright === 0) continue
+                    run.up++
+                    run.lastUp = index
+                    if (stops.has(index)) run.held = true
+                    if (text.bright > run.best[0] || (text.bright === run.best[0] && text.alpha > run.best[1])) {
+                        run.best = [text.bright, text.alpha]
+                        run.box = text.box
+                    }
+                    // A reader takes in `speed` characters in one second, of those that are on screen, and
+                    // does not go back. So a text that flashes and comes back longer is not read by its flash.
+                    const visible = charactersOf(text.source, text.glyphs) * (text.bright / text.glyphs)
+                    if (visible > run.read) run.read = Math.min(visible, run.read + speed * step)
+                }
             }
             const edge = time < BLANK_EDGE_SECONDS || time > compiled.duration - BLANK_EDGE_SECONDS
             if (!edge && !hasContent(frame, top)) {
@@ -687,6 +886,81 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 until: longest.to * step,
                 stage: { x: 0, y: 0 },
                 motion: { spans: runs.length, seconds: seconds(runs.reduce((sum, run) => sum + run.to - run.from + 1, 0)) },
+            })
+        }
+        interface Brief { run: TextRun; up: number; needs: number; characters: number }
+        const brief: Brief[] = []
+        for (const run of [...closed, ...open.values()].sort((a, b) => a.from - b.from)) {
+            // Text that never leaves its fade, such as a faint mark in the background, is not there to be
+            // read. A stepped film waits where `held` is set. And the reader knew what stays of a longer text.
+            if (run.up === 0 || run.held || run.known) continue
+            // A still, or a film that loops: the text is up from the first frame to the last.
+            if (run.from === 0 && run.lastUp >= frameCount - 1) continue
+            const characters = charactersOf(run.source, run.glyphs)
+            const needs = Math.max(READING_MIN_SECONDS, characters / speed)
+            const up = run.up * step
+            if (up >= needs * READING_TOLERANCE && run.read >= characters * READING_TOLERANCE) continue
+            brief.push({ run, up, needs, characters })
+        }
+        // Brief texts that belong together are one finding: a label that changes in place, or rows that scroll.
+        const chainFrames = Math.round(READING_CHAIN_SECONDS * compiled.fps)
+        const moved = (run: TextRun) => run.area.width > run.box.width * 1.5 || run.area.height > run.box.height * 1.5
+        const chains: { items: Brief[]; area: Bounds; to: number; moving: boolean }[] = []
+        for (const item of brief) {
+            const run = item.run
+            const chain = chains.find((entry) => {
+                // The same words again are the same text, up one more time. That is not a row of texts.
+                if (entry.items.some((other) => other.run.words === run.words)) return false
+                const last = entry.items[entry.items.length - 1]!.run
+                // One text takes the place of another: it starts when the other has left, at the same place.
+                const replaces = run.from > last.lastUp && run.from <= last.lastUp + chainFrames && intersects(last.box, run.box)
+                // Texts move through one area, one after the other.
+                const scrolls = entry.moving && moved(run) && run.from <= entry.to + chainFrames && intersects(entry.area, run.area)
+                return replaces || scrolls
+            })
+            if (chain) {
+                chain.items.push(item)
+                chain.area = union(chain.area, run.area)
+                chain.to = Math.max(chain.to, run.lastUp)
+                chain.moving &&= moved(run)
+            } else {
+                chains.push({ items: [item], area: run.area, to: run.lastUp, moving: moved(run) })
+            }
+        }
+        const quote = (source: string) => JSON.stringify(source.length > 60 ? `${source.slice(0, 57)}...` : source)
+        const two = (value: number) => Math.round(value * 100) / 100
+        // The same words, up too briefly at several times of the film, are one finding too.
+        const repeats = new Map<string, Brief[]>()
+        for (const chain of chains) {
+            const first = chain.items[0]!
+            if (chain.items.length === 1) {
+                const seen = repeats.get(first.run.words)
+                if (seen) seen.push(first)
+                else repeats.set(first.run.words, [first])
+                continue
+            }
+            const names = chain.items.slice(0, 3).map((item) => quote(item.run.source)).join(', ')
+            const more = chain.items.length > 3 ? `, and ${chain.items.length - 3} more` : ''
+            merged.set(`film.text_brief:row:${first.run.from}`, {
+                code: 'film.text_brief', severity: 'warning',
+                message: `${chain.items.length} texts follow each other here, and each leaves before a viewer can read it: ${names}${more}.`,
+                time: first.run.from * step, until: chain.to * step,
+                box: chain.area, stage: { x: 0, y: 0 }, text: first.run.source,
+                motion: { spans: chain.items.length, seconds: two(chain.items.reduce((sum, item) => sum + item.up, 0)) },
+            })
+        }
+        for (const [words, items] of repeats) {
+            const { run, up, needs, characters } = items[0]!
+            const times = items.length > 1 ? ` It comes ${items.length} times, each time too briefly.` : ''
+            const ends = run.lastUp >= frameCount - 1 ? ' The film ends here.' : ''
+            merged.set(`film.text_brief:${words}`, {
+                code: 'film.text_brief', severity: 'warning',
+                message: up < needs * READING_TOLERANCE
+                    ? `Text ${quote(run.source)} is up for ${two(up)} s. A viewer needs about ${two(needs)} s for its ${characters} characters.${times}${ends}`
+                    : `Text ${quote(run.source)} arrives or changes too fast: a viewer reads about ${Math.floor(run.read)} of its ${characters} characters before it leaves.${times}${ends}`,
+                time: run.from * step, until: run.lastUp * step,
+                box: run.box, stage: { x: 0, y: 0 }, text: run.source,
+                motion: { spans: items.length, seconds: two(items.reduce((sum, item) => sum + item.up, 0)) },
             })
         }
         for (const run of blanks) {

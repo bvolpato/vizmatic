@@ -243,8 +243,9 @@ export class Node {
                 if (value instanceof Node) {
                     const part = copies.get(value)
                     if (part) target[key] = part
-                } else if (Array.isArray(value) && value.length > 0 && value.every((item) => item instanceof Node)) {
-                    target[key] = value.map((item: Node) => copies.get(item) ?? item)
+                } else if (Array.isArray(value) && value.some((item) => item instanceof Node) && value.every((item) => item === null || item instanceof Node)) {
+                    // A list may have gaps, such as the intervals of a chart where one item has none.
+                    target[key] = value.map((item: Node | null) => (item ? copies.get(item) ?? item : null))
                 }
             }
         }
