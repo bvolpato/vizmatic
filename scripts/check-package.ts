@@ -9,8 +9,9 @@ interface PackResult {
 }
 
 const limits = {
-    // Adds validated image preparation to the shared renderer and offline assets.
-    size: 5_550_000,
+    // Adds validated image preparation to the shared renderer and offline assets. CI packs about 32 KB larger than a
+    // laptop does, so leave room: this is a tripwire for an accident, like the unpacked size below.
+    size: 5_700_000,
     // Includes image preflight, browser/Node rendering, declarations, and examples. Contact sheets of film stills
     // add the film and text code to the CommonJS export bundle, which holds its own copy of what it imports.
     // A stage object ships in four bundles and three declaration files, so the pictograms cost 48 KB.
