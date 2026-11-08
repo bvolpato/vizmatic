@@ -72,7 +72,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'connector', group: SYSTEMS, usage: 'connector(a, b, { label }): a routed edge between two nodes' },
     { name: 'legend', group: SYSTEMS, usage: "legend([{ label: 'read', color: 'blue' }])" },
     { name: 'callout', group: SYSTEMS, usage: "callout(node, 'Why this matters'): a note with a leader line" },
-    { name: 'pictogram', group: SYSTEMS, usage: "pictogram('graph', { size: 96, accent: 'teal' }): a small picture of a concept, such as series, forecast, logs, traces, dag, database, model, core, thread, syscall. PICTOGRAMS lists every name" },
+    { name: 'pictogram', group: SYSTEMS, usage: "pictogram('graph', { size: 96, accent: 'teal' }): a small picture of a concept, such as series, forecast, logs, traces, dag, database, model, core, thread, syscall, workflow, issue. PICTOGRAMS lists every name" },
     { name: 'card', group: SYSTEMS, usage: "card({ title: 'Logs', figure: pictogram('logs'), caption: 'one line per event', width: 420, height: 360, captionLines: 2 }): a box that centers a figure between a title and a caption" },
     { name: 'zone', group: SYSTEMS, usage: "zone([vmm, guest], { title: 'jail', color: 'yellow', dash: true }): a named border around nodes, for a host, a sandbox, or a boundary of trust. Zones nest" },
     { name: 'tag', group: SYSTEMS, usage: "tag('MEASURED', { note: 'the study of June 2026', color: 'green' }).at(-912, -490): a word in a pill with a note, for the kind of a claim and its source" },

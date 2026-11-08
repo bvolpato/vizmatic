@@ -1002,6 +1002,60 @@ describe('pictograms', () => {
         expect(syscall.filter((part) => !part.accent)).toEqual(line)
     })
 
+    it('puts the accent of a picture in the place of the part that it is about', () => {
+        // For each picture: the number of accent marks, and the box that holds them on the 24-unit grid, as [left, top, right, bottom].
+        const places: [PictogramName, number, [number, number, number, number]][] = [
+            ['issue', 2, [5, 7, 11, 13.2]], // the circle and its dot
+            ['checklist', 2, [3.5, 3, 9, 13.6]], // the two checks
+            ['desktop', 1, [8.5, 6, 15.5, 15.5]], // the pointer
+            ['recording', 1, [8, 8, 16, 16]], // the dot
+            ['approval', 1, [14.5, 5.5, 21.5, 11]], // the check
+            ['proxy', 1, [8, 4, 16, 20]], // the gate
+            ['certificate', 2, [13.5, 10.5, 20.5, 22]], // the seal and its ribbon
+            ['sleep', 1, [12, 8.5, 19.2, 15.6]], // the moon
+            ['shard', 1, [13.4, 2.5, 20.4, 10.4]], // the piece
+            ['worker', 2, [10, 3, 21, 14.5]], // the arrow and its head
+            ['workflow', 1, [2, 6.5, 8, 13]], // the ribbon
+            ['activity', 2, [7, 10.5, 22, 13.5]], // the arrow and its head
+            ['creditCard', 1, [2, 8.2, 22, 12]], // the stripe
+            ['forum', 1, [13.5, 2.5, 21.7, 10.4]], // the badge
+            ['paywall', 2, [4, 9.4, 20, 22]], // the lock and its shackle
+            // The brief of these pictures does not name the accent. The picture says which part carries the meaning.
+            ['pullRequest', 3, [10.5, 3.5, 20.5, 21.5]], // the branch that asks to join, with its arrow head
+            ['repository', 5, [7, 9.3, 16.8, 18]], // the branch mark
+            ['browser', 1, [8, 5, 19.5, 8.2]], // the address line
+            ['server', 2, [4.5, 10.5, 11, 13.5]], // the two lights
+            ['laptop', 1, [1.5, 16.5, 22.5, 20]], // the deck
+            ['signal', 2, [2, 10.5, 13.2, 13.5]], // the arrow to the box
+            ['query', 2, [2, 13.9, 12, 16.9]], // the answer, which is the arrow back
+            ['update', 2, [2, 7.1, 13.2, 10.1]], // the write, which is the arrow to the box
+            ['warehouse', 3, [8, 14, 16, 21]], // the boxes behind the door
+            ['truck', 1, [2, 5, 14, 17]], // the load
+            ['microphone', 1, [8.5, 2.5, 15.5, 14]], // the capsule
+        ]
+        for (const [name, count, [left, top, right, bottom]] of places) {
+            // At a size of 24, one pixel is one unit of the grid, and the middle of the grid is at 0.
+            const plain = new Set(pictogram(name, { size: 24, color: 'ink' }).children.map(paint))
+            const accent = pictogram(name, { size: 24, color: 'ink', accent: 'teal' }).children.filter((mark) => !plain.has(paint(mark)))
+            expect(accent, name).toHaveLength(count)
+            for (const mark of accent) {
+                const box = pathBounds(mark.get('path')!)!
+                expect([box.x + 12 >= left, box.y + 12 >= top, box.x + box.width + 12 <= right, box.y + box.height + 12 <= bottom], name).toEqual([true, true, true, true])
+            }
+        }
+    })
+
+    it('tells signal, query, and update apart by the arrow back from the box: none, dashed, solid', () => {
+        // The arrow back is a line and a head, left of the box and under the middle of the grid. The box starts 1.5 units right of the middle.
+        const back = (name: PictogramName) => pictogram(name, { size: 24 }).children.filter((mark) => {
+            const box = pathBounds(mark.get('path')!)!
+            return box.x + box.width < 1.5 && box.y > 1
+        }).map((mark) => Boolean(mark.get('dash')))
+        expect(back('signal')).toEqual([])
+        expect(back('query')).toEqual([true, false])
+        expect(back('update')).toEqual([false, false])
+    })
+
     it('ends each leg of chip, core, and timer on the edge of the body', () => {
         for (const name of ['chip', 'core', 'timer'] as const) {
             const lines = pictogram(name, { size: SIZE }).children.filter((mark) => mark.get('stroke')).map((mark) => pathBounds(mark.get('path')!)!)

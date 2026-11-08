@@ -98,6 +98,18 @@ function ringBuffer(): Mark[] {
     ]
 }
 
+/** A whole cut in six equal pieces, with one piece pulled out along its middle line. */
+function shard(): Mark[] {
+    const x = 11.8, y = 13.4, radius = 7.2, piece = Math.PI / 3, top = -Math.PI / 2
+    const at = (ox: number, oy: number, r: number, angle: number) => `${+(ox + Math.cos(angle) * r).toFixed(2)} ${+(oy + Math.sin(angle) * r).toFixed(2)}`
+    const px = +(x + Math.cos(top + piece / 2) * 3.8).toFixed(2), py = +(y + Math.sin(top + piece / 2) * 3.8).toFixed(2)
+    return [
+        stroke(`M${x} ${y}L${at(x, y, radius, top + piece)}A${radius} ${radius} 0 1 1 ${at(x, y, radius, top)}Z`),
+        ...[2, 3, 4, 5].map((i) => stroke(`M${x} ${y}L${at(x, y, radius, top + i * piece)}`)),
+        solid(`M${px} ${py}L${at(px, py, 7.4, top)}A7.4 7.4 0 0 1 ${at(px, py, 7.4, top + piece)}Z`, true),
+    ]
+}
+
 const GRAPH: readonly Vec[] = [[4.5, 6.5], [15.5, 4.5], [10.5, 12.5], [19.5, 13.5], [6.5, 19.5], [16, 20]]
 const TREE: readonly Vec[] = [[12, 4.5], [6.5, 12], [17.5, 12], [3.5, 19.5], [9.5, 19.5], [17.5, 19.5]]
 const NET_IN: readonly Vec[] = [[4.5, 7.5], [4.5, 16.5]]
@@ -184,6 +196,16 @@ const ART = {
     key: () => [ring(7.5, 12, 3.8), stroke('M11.3 12H21'), stroke('M17 12V15', true), stroke('M20.2 12V14.2', true)],
     stopwatch: () => [ring(12, 13.5, 7.6), stroke('M10 2.8H14'), stroke('M12 2.8V5.9'), stroke('M12 13.5V9.4', true), stroke('M12 13.5 14.6 15.2', true)],
     bolt: () => [solid('M13.2 2.5 5.5 13.6H11L9.9 21.5 18.5 10H12.6Z', true)],
+    // The gate comes last, so the line that leaves it starts under its edge.
+    proxy: () => [...arrowTo([3.3, 12], [7.7, 12], 0), ...arrowTo([16.3, 12], [21.5, 12], 0), box(8.5, 4.5, 7, 15, 1.8, true)],
+    // The seal sits on the corner of the sheet, so the border stops short of it. The ring comes last, so the ribbon ends under it.
+    certificate: () => [
+        stroke('M11.5 15.5H4.5A2 2 0 0 1 2.5 13.5V5.5A2 2 0 0 1 4.5 3.5H19.5A2 2 0 0 1 21.5 5.5V8.4'), stroke('M6 7.5H14'), stroke('M6 11.5H11.5'),
+        solid('M14.8 16.4V21.4L17 19.6 19.2 21.4V16.4Z', true), ring(17, 14, 3, true),
+    ],
+    // The box of `server` with its lights off, and a moon where the vents are.
+    sleep: () => [box(2.5, 7, 19, 10, 2), disc(6, 12, 1.15), disc(9.4, 12, 1.15), solid('M15.29 8.71A3.3 3.3 0 1 0 18.83 12.69A2.7 2.7 0 0 1 15.29 8.71Z', true)],
+    shard,
     // Hardware
     core: () => [box(6, 6, 12, 12, 2), slab(8.3, 8.4, 3, 7.2, 1), slab(12.7, 8.4, 3, 7.2, 1, true), ...legs(6, [9, 12, 15])],
     timer: () => [box(5, 5, 14, 14, 2.2), ring(12, 12, 4.2, true), stroke('M12 10.1V12L13.6 12.9', true), ...legs(7, [8.5, 12, 15.5])],
@@ -218,6 +240,9 @@ const ART = {
         box(2.5, 5.5, 19, 13, 2.2), ...[7.7, 11].flatMap((y) => [4.4, 7.7, 11, 14.3, 17.6].map((x) => slab(x, y, 2, 2, 0.5, true))),
         slab(4.4, 14.3, 2, 2, 0.5, true), slab(7.7, 14.3, 8.6, 2, 0.5, true), slab(17.6, 14.3, 2, 2, 0.5, true),
     ],
+    server: () => [box(2.5, 7, 19, 10, 2), disc(6, 12, 1.15, true), disc(9.4, 12, 1.15, true), ...[12.6, 15.5, 18.4].map((x) => stroke(`M${x} 10.2V13.8`))],
+    // The deck comes last, so the sides of the screen end under it.
+    laptop: () => [stroke('M5 17.8V7A1.8 1.8 0 0 1 6.8 5.2H17.2A1.8 1.8 0 0 1 19 7V17.8'), slab(2, 17, 20, 2.6, 1.3, true)],
     // Kernel
     thread: () => [
         stroke('M12 2.8C13.3 3.2 15 3.8 15 4.9C15 6.7 9 6.7 9 8.5C9 10.3 15 10.3 15 12.1C15 14.1 12 14.1 12 16.1V19', true),
@@ -243,6 +268,35 @@ const ART = {
         solid('M8.6 2.2H15.4A1 1 0 0 1 15.4 4.2H14.4V6.6L16.9 9.4A1 1 0 0 1 16.2 11H7.8A1 1 0 0 1 7.1 9.4L9.6 6.6V4.2H8.6A1 1 0 0 1 8.6 2.2Z', true),
         stroke('M12 11V16.8', true),
     ],
+    // Workflows
+    // The arrow comes first, so it starts under the edge of the box. It ends on the edge.
+    worker: () => [...arcArrow(15.5, 8.5, 5, Math.PI, Math.PI * 2.5 - 0.16, true), box(3, 8.5, 12.5, 12, 2.2)],
+    workflow: () => [
+        stroke('M8 4.6H17'), stroke('M11.5 9.6H21.5'), stroke('M11.5 14.4H18.5'), stroke('M8 19.4H13'),
+        solid('M2.5 7H7.4V12.4L4.95 10.6 2.5 12.4Z', true),
+    ],
+    activity: () => [box(3, 5, 13, 14, 2.2), ...arrowTo([7.5, 12], [21.5, 12], 0, true)],
+    // signal, query, and update share one box. An arrow to the box is a write. An arrow back is an answer, and it is dashed for a read.
+    // The box comes last, so an arrow back starts under its edge.
+    signal: () => [...arrowTo([2.5, 12], [12.7, 12], 0, true), box(13.5, 4.5, 8, 15, 2)],
+    query: () => [...arrowTo([2.5, 8.6], [12.7, 8.6], 0), dashed('M11.6 15.4H5.4', true), solid('M2.5 15.4 4.7 14.2V16.6Z', true), box(13.5, 4.5, 8, 15, 2)],
+    update: () => [...arrowTo([2.5, 8.6], [12.7, 8.6], 0, true), ...arrowTo([12.7, 15.4], [2.5, 15.4], 0), box(13.5, 4.5, 8, 15, 2)],
+    // Code review
+    issue: () => [box(2.5, 4, 19, 16, 2.2), ring(8, 10.2, 2.6, true), disc(8, 10.2, 0.9, true), stroke('M13.6 10.2H18.6'), stroke('M5.6 16.2H18.6')],
+    pullRequest: () => [
+        ring(6.5, 5.5, 2.4), stroke('M6.5 7.9V16.1'), ring(6.5, 18.5, 2.4),
+        ring(17.5, 18.5, 2.4, true), stroke('M17.5 16.1V8.7A3.2 3.2 0 0 0 14.3 5.5H13.2', true), solid('M10.8 5.5 13.2 4V7Z', true),
+    ],
+    repository: () => [
+        stroke('M3 7A1.8 1.8 0 0 1 4.8 5.2H9.2L11.4 7.8H19.2A1.8 1.8 0 0 1 21 9.6V17.7A1.8 1.8 0 0 1 19.2 19.5H4.8A1.8 1.8 0 0 1 3 17.7Z'),
+        stroke('M9 11.3V16.1', true), stroke('M14.8 11.9C14.8 14.4 9 13.6 9 16.1', true), disc(9, 11.3, 1.5, true), disc(9, 16.1, 1.5, true), disc(14.8, 11.9, 1.5, true),
+    ],
+    // The checks come last: each one is larger than its box.
+    checklist: () => [
+        ...[5.5, 12, 18.5].flatMap((y, i) => [box(3.4, y - 1.8, 3.6, 3.6, 0.9), stroke(`M11 ${y}H${i === 1 ? 18 : 20.5}`)]),
+        stroke('M3.9 5.4 5.3 6.8 8.4 3.3', true), stroke('M3.9 11.9 5.3 13.3 8.4 9.8', true),
+    ],
+    approval: () => [ring(8.4, 8.2, 3.3), curve(8.4, 20.5, 5.9, 6.4, Math.PI, Math.PI * 2), stroke('M14.8 8.4 17 10.6 21.2 5.8', true)],
     // Models
     model: () => [
         ...NET_IN.flatMap((a) => NET_MID.map((b): Mark => ({ path: polyPath([a, b]), paint: 'thin' }))),
@@ -266,6 +320,32 @@ const ART = {
     eye: () => [stroke('M2.5 12C5 7.6 8.3 5.5 12 5.5S19 7.6 21.5 12C19 16.4 15.7 18.5 12 18.5S5 16.4 2.5 12Z'), ring(12, 12, 3, true)],
     message: () => [stroke('M4.5 4.5H19.5A2 2 0 0 1 21.5 6.5V14.5A2 2 0 0 1 19.5 16.5H10.5L6 20.5V16.5H4.5A2 2 0 0 1 2.5 14.5V6.5A2 2 0 0 1 4.5 4.5Z'), stroke('M7 9H17', true), stroke('M7 12.5H13.5', true)],
     shield: () => [stroke('M12 3 20 6V11.5C20 16.4 16.6 19.8 12 21.5C7.4 19.8 4 16.4 4 11.5V6Z'), stroke('M8.4 12 11 14.6 15.8 9.6', true)],
+    browser: () => [box(2.5, 3.5, 19, 17, 2.2), stroke('M2.5 9.6H21.5'), disc(5.9, 6.6, 0.95), slab(8.4, 5.4, 10.6, 2.4, 1.2, true)],
+    desktop: () => [box(3, 4, 18, 13, 2.2), stroke('M12 17V21'), stroke('M8.5 21H15.5'), solid('M9 6.2V14.2L11 12.4 12.4 15.2 13.9 14.5 12.5 11.7H15.2Z', true)],
+    recording: () => [
+        stroke('M3 8V5.5A2.5 2.5 0 0 1 5.5 3H8'), stroke('M16 3H18.5A2.5 2.5 0 0 1 21 5.5V8'), stroke('M21 16V18.5A2.5 2.5 0 0 1 18.5 21H16'), stroke('M8 21H5.5A2.5 2.5 0 0 1 3 18.5V16'),
+        disc(12, 12, 3.6, true),
+    ],
+    // World
+    // The stripe comes first, so the outline stays whole over its ends.
+    creditCard: () => [slab(2.5, 8.6, 19, 3, 0, true), box(2.5, 5.5, 19, 13, 2.2), slab(5.6, 13.6, 3.8, 2.6, 0.6), stroke('M13.4 14.9H18')],
+    warehouse: () => [
+        stroke('M3 19.7V9.4L12 3.6 21 9.4V19.7'), stroke('M6.5 19.7V12H17.5V19.7'),
+        slab(8.6, 17.9, 2.6, 2.6, 0.5, true), slab(12.8, 17.9, 2.6, 2.6, 0.5, true), slab(10.7, 14.3, 2.6, 2.6, 0.5, true),
+    ],
+    // The load comes after the cab, so its line stays whole where the cab meets it. The wheels come last and hide the lines behind them.
+    truck: () => [stroke('M13.5 9H17.6L21.5 12.6V16.5H13.5'), stroke('M2.5 5.5H13.5V16.5H2.5Z', true), disc(6.6, 17.7, 2.3), disc(17.4, 17.7, 2.3)],
+    microphone: () => [box(8.8, 2.8, 6.4, 11, 3.2, true), stroke('M5.5 10.5V11.3A6.5 6.5 0 0 0 18.5 11.3V10.5'), stroke('M12 17.8V21.2'), stroke('M8.5 21.2H15.5')],
+    // The badge sits on the corner of the speech mark, so the outline stops short of it.
+    forum: () => [
+        stroke('M11.8 6.5H4.5A2 2 0 0 0 2.5 8.5V15.5A2 2 0 0 0 4.5 17.5H6V21L10.5 17.5H16.5A2 2 0 0 0 18.5 15.5V12'),
+        solid('M17.6 2.8 18.66 5.34 21.4 5.56 19.31 7.36 19.95 10.04 17.6 8.6 15.25 10.04 15.89 7.36 13.8 5.56 16.54 5.34Z', true),
+    ],
+    // The lock comes last and hides the lower half of the document.
+    paywall: () => [
+        stroke('M5.5 15V2.8H14.7L18.5 6.6V15'), stroke('M14.7 2.8V6.6H18.5'),
+        stroke('M9.3 14.6V12.4A2.7 2.7 0 0 1 14.7 12.4V14.6', true), slab(4.4, 14.6, 15.2, 6.9, 1.8, true),
+    ],
     // General
     document: () => [stroke('M6 3H14.5L19 7.5V21H6Z'), stroke('M14.5 3V7.5H19'), stroke('M9 12.5H16', true), stroke('M9 16.5H16', true)],
     code: () => [stroke('M8.5 7 3.5 12 8.5 17'), stroke('M15.5 7 20.5 12 15.5 17'), stroke('M13.6 5 10.4 19', true)],
