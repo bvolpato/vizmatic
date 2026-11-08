@@ -11,8 +11,9 @@ interface PackResult {
 const limits = {
     // Adds validated image preparation to the shared renderer and offline assets.
     size: 5_550_000,
-    // Includes image preflight, browser/Node rendering, contact sheets of film stills, declarations, and examples.
-    unpackedSize: 14_600_000,
+    // Includes image preflight, browser/Node rendering, declarations, and examples. Contact sheets of film stills
+    // add the film and text code to the CommonJS export bundle, which holds its own copy of what it imports.
+    unpackedSize: 14_650_000,
     // Includes the bundled raster codec license notice and film examples.
     entryCount: 190,
 }
