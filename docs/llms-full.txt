@@ -2794,6 +2794,32 @@ Build the content where you want it, then the zone, then add the zone to the sta
 
 The zone is wide enough for its title. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the title, so no line crosses the title. A `fill` is faint by default, because its top edge runs behind the title. `zone.frame`, `zone.title`, `zone.backdrop` (the fill), and `zone.content` are the parts. `zone.box` is the middle line of the border, in the coordinates of the zone.
 
+## Tags
+
+`tag(word, options)` draws a word in a pill, with a `note` beside it. Use it to say what kind of claim is on the screen and where it comes from: measured, plan, judgment, with the source and its date. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x.
+
+`tagTrack(states, { until })` is a tag that changes with time, at one place. Each state has the time when it starts. One state is on screen at a time: a state fades out before the next one fades in. States that are out of order, or too near to each other for the two fades, are an error.
+
+```film paired label="A tag in the corner changes from a plan to a result when the chart arrives"
+import { barChart, fadeIn, fadeOut, film, tagTrack, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    s.add(tagTrack([
+        { at: 0, word: 'PLAN', color: 'blue', note: 'the design of March' },
+        { at: 2.4, word: 'MEASURED', color: 'green', note: 'the run of June, on 926 questions' },
+    ], { until: 5.4, size: 36 }).at(-900, -470))
+    const plan = text('Does the new format cost fewer tokens?', { font: 'text-serif', size: 64 })
+    s.play(fadeIn(plan), { duration: 0.8 })
+    s.wait(1)
+    s.play(fadeOut(plan), { duration: 0.5 })
+    const chart = barChart([{ label: 'old', value: 21 }, { label: 'new', value: 4 }], { width: 900, height: 560 }).at(0, 60)
+    s.play(fadeIn(chart, { shift: [0, 24] }), { duration: 0.8 })
+    s.wait(1.8)
+})
+```
+
+Place a track as any node. It does not know the size of the frame: `.at(-912, -490)` is the top left of a 1920 by 1080 frame. A track is pinned to the screen, so a move or a zoom of the camera does not move it. `tag.pill`, `tag.word`, and `tag.note` are the parts of a tag, and `tag.color(c)` recolors the border and the word.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.

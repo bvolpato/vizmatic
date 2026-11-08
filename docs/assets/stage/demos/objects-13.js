@@ -1,0 +1,1 @@
+import{Ga as t,Vc as a,Wc as c,lb as r}from"../chunk-VFWMO67C.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var d=r({fps:30},o=>{let e=o.add(a("const area = w * h",{size:70})),i=a("const area = (w * h) / 2",{size:70});o.play(t(e)),o.play(c(e,i)),o.wait(.8)});export{d as default};
