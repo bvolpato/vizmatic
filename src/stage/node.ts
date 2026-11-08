@@ -124,8 +124,15 @@ export class Node {
     /** Emits draw operations directly, for objects with thousands of marks such as 3D meshes. */
     rawOps: ((matrix: Mat, alpha: number, ops: DrawOp[]) => void) | null = null
 
+    /**
+     * True when a class of objects built this node, such as an axes, a chart, or a text. Such an object lays out
+     * its own parts. A plain node or a group lays out nothing. The film check reads it.
+     */
+    readonly composed: boolean
+
     constructor(path?: Path | null) {
         if (path) this.base.path = path
+        this.composed = new.target !== Node
     }
 
     // ── Raw property access ───────────────────────────────────────────────

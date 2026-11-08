@@ -38,6 +38,8 @@ npx vizmatic check intro.ts --look midnight,paper --json
 
 The check looks where the film comes to rest, so it misses a problem that lasts only while something moves. `--motion` also inspects every frame. It reports a problem that appears only in motion as a warning, because it cannot tell a collision from one picture that replaces another. It reports 0.2 seconds or more with nothing visible as `film.blank`. `--content-top <px>` sets the canvas y where the content starts, so that a heading that stays up does not count as content. `--text-margin <px>` sets how near text may come to an edge of the frame before the check reports `film.text_edge`. The default is 2% of the shorter side, and 0 turns the rule off. While the camera is zoomed, the check looks only at pinned text, because a zoom crops the rest on purpose.
 
+The check also reports `film.text_crowded` when text has no room: it is nearer to a line or a shape than 0.4 of the height of its letters, or it is larger than the shape that it sits on. A caption that touches its figure and a label that is wider than its dot are two examples. `--text-gap <part>` sets the distance as a part of the letter height, and 0 turns the rule off. The check judges only text that the film places. An object such as `axes` or `card` places its own labels, and the check leaves those alone.
+
 ```bash
 npx vizmatic check intro.ts --motion --content-top 200
 ```

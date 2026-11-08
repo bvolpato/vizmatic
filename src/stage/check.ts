@@ -6,7 +6,7 @@ import { pathBounds, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_crowded' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -65,6 +65,11 @@ export interface FilmCheckOptions extends CompileOverrides {
      * reported as `film.text_edge`. Defaults to 2% of the shorter side of the frame. 0 turns the rule off.
      */
     textMargin?: number
+    /**
+     * The least distance between text and another mark, as a part of the height of the letters. Text that is
+     * nearer is reported as `film.text_crowded`. Defaults to 0.4. 0 turns the rule off.
+     */
+    textGap?: number
 }
 
 interface TextBlock {
@@ -74,9 +79,19 @@ interface TextBlock {
     glyphs: { box: Bounds; order: number }[]
 }
 
+/** What the rules that have a setting use. 0 turns a rule off. */
+interface Limits {
+    /** Least distance between text and an edge of the frame, in pixels. */
+    margin: number
+    /** Least distance between text and another mark, as a part of the height of the letters. */
+    gap: number
+}
+
 const EDGE_TOLERANCE = 1
 // Text this near to an edge, as a fraction of the shorter side of the frame, reads as a layout mistake.
 const EDGE_MARGIN = 0.02
+// Text nearer to a mark than this part of the height of its letters has no room, and reads as part of the mark.
+const TEXT_GAP = 0.4
 const MIN_ALPHA = 0.08
 const MIN_TEXT_ALPHA = 0.15
 const MIN_OVERLAP = 0.12
@@ -208,6 +223,65 @@ function pinned(node: Node): boolean {
     return false
 }
 
+/** Distance from a point to a segment. */
+function pointSegmentGap(px: number, py: number, x0: number, y0: number, x1: number, y1: number): number {
+    const dx = x1 - x0, dy = y1 - y0
+    const length = dx * dx + dy * dy
+    const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / length))
+    return Math.hypot(px - x0 - dx * t, py - y0 - dy * t)
+}
+
+/** Distance from a segment to a box. 0 when they touch. */
+function segmentBoxGap(x0: number, y0: number, x1: number, y1: number, box: Bounds): number {
+    if (segmentHitsBox(x0, y0, x1, y1, box)) return 0
+    const right = box.x + box.width, bottom = box.y + box.height
+    const toBox = (x: number, y: number) => Math.hypot(Math.max(box.x - x, 0, x - right), Math.max(box.y - y, 0, y - bottom))
+    return Math.min(
+        toBox(x0, y0), toBox(x1, y1),
+        pointSegmentGap(box.x, box.y, x0, y0, x1, y1), pointSegmentGap(right, box.y, x0, y0, x1, y1),
+        pointSegmentGap(box.x, bottom, x0, y0, x1, y1), pointSegmentGap(right, bottom, x0, y0, x1, y1),
+    )
+}
+
+/** Distance from the outline of a path to a box. 0 when the outline enters the box. Infinity when it is farther than `reach`. */
+function outlineGap(path: Path, box: Bounds, reach: number): number {
+    let least = Infinity
+    for (const r of path) {
+        const p = r.p
+        for (let o = 0; o + 7 < p.length; o += 6) {
+            const x0 = p[o]!, y0 = p[o + 1]!, x1 = p[o + 2]!, y1 = p[o + 3]!
+            const x2 = p[o + 4]!, y2 = p[o + 5]!, x3 = p[o + 6]!, y3 = p[o + 7]!
+            // A segment's control hull contains its curve, so most segments reject here.
+            const left = Math.min(x0, x1, x2, x3), right = Math.max(x0, x1, x2, x3)
+            const top = Math.min(y0, y1, y2, y3), bottom = Math.max(y0, y1, y2, y3)
+            if (right < box.x - reach || left > box.x + box.width + reach || bottom < box.y - reach || top > box.y + box.height + reach) continue
+            let lastX = x0, lastY = y0
+            for (let k = 1; k <= CUBIC_STEPS; k++) {
+                const t = k / CUBIC_STEPS, u = 1 - t
+                const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
+                const x = a * x0 + b * x1 + c * x2 + d * x3
+                const y = a * y0 + b * y1 + c * y2 + d * y3
+                least = Math.min(least, segmentBoxGap(lastX, lastY, x, y, box))
+                if (least === 0) return 0
+                lastX = x
+                lastY = y
+            }
+        }
+    }
+    return least <= reach ? least : Infinity
+}
+
+/**
+ * True when a library object placed a text, such as the numbers of an axes or the caption of a card. The object
+ * chose the distance to its marks, so the check does not judge it. A plain group places nothing.
+ */
+function placedByObject(block: Node): boolean {
+    for (let current = block.parent; current; current = current.parent) {
+        if (current.composed) return true
+    }
+    return false
+}
+
 function textBlockOf(node: Node): Node | null {
     return node.data['key'] !== undefined ? node.parent : null
 }
@@ -270,7 +344,8 @@ interface Finding extends Omit<FilmDiagnostic, 'until' | 'stage'> {
     key: string
 }
 
-function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, margin: number): Finding[] {
+function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, limits: Limits): Finding[] {
+    const { margin } = limits
     const findings: Finding[] = []
     const { width, height, ops } = frame
     const background = frame.background ? parseColor(frame.background) : (frame.dark ? [0, 0, 0, 1] as Rgba : [255, 255, 255, 1] as Rgba)
@@ -278,6 +353,8 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, ma
     const blocks = new Map<Node, TextBlock>()
     const fills: { order: number; bounds: Bounds }[] = []
     const strokes: { op: PathOp; order: number; contrast: number }[] = []
+    // What a viewer sees as a shape or a line: the outline that text must keep away from.
+    const outlines: { path: Path; order: number; half: number; bounds: Bounds }[] = []
     const off = new Map<string, Finding>()
     let outsideMarks = 0
 
@@ -346,9 +423,18 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, ma
             entry.glyphs.push({ box: shape, order })
         } else if (!glyph) {
             if (op.fill && op.fillAlpha >= OPAQUE && solid(op.fill)[3] >= OPAQUE && op.path.some((r) => r.closed)) fills.push({ order, bounds: shape })
+            let drawn = false
             if (op.stroke && op.strokeAlpha >= MIN_ALPHA && op.strokePath.length > 0) {
                 const contrast = contrastOver(solid(op.stroke), op.strokeAlpha, background)
-                if (contrast >= MIN_STROKE_CONTRAST) strokes.push({ op, order, contrast })
+                if (contrast >= MIN_STROKE_CONTRAST) {
+                    strokes.push({ op, order, contrast })
+                    const reach = pathBounds(op.strokePath)
+                    if (reach) outlines.push({ path: op.strokePath, order, half: op.strokeWidth / 2, bounds: reach })
+                    drawn = true
+                }
+            }
+            if (!drawn && op.fill && op.fillAlpha >= MIN_ALPHA && contrastOver(solid(op.fill), op.fillAlpha, background) >= MIN_STROKE_CONTRAST) {
+                outlines.push({ path: op.path, order, half: 0, bounds: shape })
             }
         }
     })
@@ -374,6 +460,42 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, ma
                 key: `film.text_edge:${block.source}`,
                 code: 'film.text_edge', severity: 'warning', time, box: block.bounds,
                 message: `Text ${JSON.stringify(block.source)} is ${Math.max(0, Math.floor(gap))} px from the ${edge} edge of the frame. Leave ${Math.ceil(margin)} px or more.`,
+                text: block.source,
+            })
+        }
+    }
+    // Too near to a mark. A mark that enters the text is `film.text_crossed`, or a highlight that is there on purpose.
+    if (limits.gap > 0) {
+        for (const block of list) {
+            if (placedByObject(block.id)) continue
+            const room = Math.max(...block.glyphs.map((glyph) => glyph.box.height)) * limits.gap
+            const first = Math.min(...block.glyphs.map((glyph) => glyph.order))
+            const middleX = block.bounds.x + block.bounds.width / 2, middleY = block.bounds.y + block.bounds.height / 2
+            let least = Infinity, spills = false
+            for (const mark of outlines) {
+                const reach = room + mark.half
+                if (!intersects(pad(mark.bounds, reach), block.bounds)) continue
+                const gap = outlineGap(mark.path, block.bounds, reach)
+                if (gap === Infinity) continue
+                // A backing between the mark and the text gives the text its room.
+                if (mark.order < first && occluded(mark.order, first, block.bounds)) continue
+                if (gap > 0) {
+                    least = Math.min(least, Math.max(0, gap - mark.half))
+                } else if (mark.half === 0 && mark.order < first
+                    && middleX > mark.bounds.x && middleX < mark.bounds.x + mark.bounds.width
+                    && middleY > mark.bounds.y && middleY < mark.bounds.y + mark.bounds.height) {
+                    // The text sits on a filled shape and runs over its edge, such as a label that is wider than its dot.
+                    spills = true
+                }
+            }
+            if (!spills && least >= room) continue
+            const name = JSON.stringify(block.source)
+            findings.push({
+                key: `film.text_crowded:${block.source}`,
+                code: 'film.text_crowded', severity: 'warning', time, box: pad(block.bounds, room),
+                message: spills
+                    ? `Text ${name} is larger than the shape that it sits on.`
+                    : `Text ${name} is ${Math.floor(least + 1e-6)} px from a mark. Leave ${Math.ceil(room)} px or more, which is ${limits.gap} of the height of its letters.`,
                 text: block.source,
             })
         }
@@ -456,8 +578,8 @@ interface MovingRun {
 }
 
 /**
- * Inspect a film for layout defects: marks off the canvas, text against an edge of the frame, text on text,
- * strokes through text, and characters that no font can draw. It looks where the film comes to rest, because objects may
+ * Inspect a film for layout defects: marks off the canvas, text against an edge of the frame, text with no
+ * room beside a mark, text on text, strokes through text, and characters that no font can draw. It looks where the film comes to rest, because objects may
  * cross each other while moving. With `motion`, it also looks at every frame. Runs anywhere, with no rendering.
  */
 export async function checkFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions = {}): Promise<FilmCheckReport> {
@@ -479,11 +601,14 @@ export async function checkFilm(film: FilmDefinition | CompiledFilm, options: Fi
 async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
-    const margin = options.textMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN
+    const limits: Limits = {
+        margin: options.textMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN,
+        gap: options.textGap ?? TEXT_GAP,
+    }
     const merged = new Map<string, FilmDiagnostic>()
     for (const time of times) {
         const frame = await frameAt(compiled, time)
-        for (const { key, ...finding } of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, margin)) {
+        for (const { key, ...finding } of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, limits)) {
             const seen = merged.get(key)
             if (seen) {
                 seen.until = time
@@ -507,8 +632,8 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         for (let index = 0; index < frameCount; index++) {
             const time = index * step
             const frame = await frameAt(compiled, time)
-            // Text may pass the margin on its way in or out, so the edge rule looks only at rest.
-            for (const finding of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, 0)) {
+            // Text may pass an edge or a mark on its way in or out, so these two rules look only at rest.
+            for (const finding of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, { margin: 0, gap: 0 })) {
                 // A problem that also shows at rest is already reported, with its own severity.
                 if (merged.has(finding.key)) continue
                 let runs = moving.get(finding.key)

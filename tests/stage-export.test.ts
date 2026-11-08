@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { decode } from 'fast-png'
-import { film, line, shift, text, to, write } from '../src/stage/index'
+import { axes, dot, film, line, rect, shift, text, to, write } from '../src/stage/index'
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
@@ -292,6 +292,56 @@ describe('film check', () => {
             s.wait(1)
         }))
         expect(bleeding.diagnostics).toMatchObject([{ code: 'film.text_edge' }])
+    })
+
+    it('warns about text with no room beside a mark, and about a label that is larger than its shape', async () => {
+        const check = (gap: number, options = {}) => checkFilm(film((s) => {
+            s.add(rect(300, 60, { fill: 'blue', stroke: null }))
+            s.add(text('caption', { size: 40 }).alignTo([0, 30 + gap], 'top'))
+            s.wait(1)
+        }), options)
+        const near = await check(3)
+        expect(near.ok).toBe(true)
+        expect(near.diagnostics).toMatchObject([{ code: 'film.text_crowded', severity: 'warning', text: 'caption' }])
+        expect(near.diagnostics[0]!.message).toContain('3 px from a mark')
+        expect((await check(40)).diagnostics).toEqual([])
+        expect((await check(40, { textGap: 2 })).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+        expect((await check(3, { textGap: 0 })).diagnostics).toEqual([])
+
+        const label = (radius: number) => checkFilm(film((s) => {
+            s.add(dot(radius, 'blue'))
+            s.add(text('22M', { size: 40 }))
+            s.wait(1)
+        }))
+        expect((await label(22)).diagnostics).toMatchObject([{ code: 'film.text_crowded', text: '22M' }])
+        expect((await label(22)).diagnostics[0]!.message).toContain('larger than the shape')
+        expect((await label(90)).diagnostics).toEqual([])
+    })
+
+    it('does not judge text on a backing, a label that an object places, or text that passes a mark while it moves', async () => {
+        const underlined = (backing: boolean) => checkFilm(film((s) => {
+            s.add(line([-300, 22], [300, 22], { stroke: 'ink', width: 3 }))
+            if (backing) s.add(rect(260, 90, { fill: 'surface', stroke: null }))
+            s.add(text('Label', { size: 40 }))
+            s.wait(1)
+        }))
+        expect((await underlined(false)).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+        expect((await underlined(true)).diagnostics).toEqual([])
+
+        // The numbers of an axes sit a few pixels from its ticks. The axes chose that.
+        const plot = await checkFilm(film((s) => {
+            s.add(axes({ x: [0, 4], y: [0, 4], width: 800, height: 500 }))
+            s.wait(1)
+        }))
+        expect(plot.diagnostics.filter((entry) => entry.code === 'film.text_crowded')).toEqual([])
+
+        const passing = await checkFilm(film({ fps: 12 }, (s) => {
+            s.add(rect(300, 60, { fill: 'blue', stroke: null }))
+            const label = s.add(text('caption', { size: 40 }).alignTo([0, 33], 'top'))
+            s.play(shift(label, 0, 200), { duration: 0.5 })
+            s.wait(0.5)
+        }), { motion: true, times: [0.9] })
+        expect(passing.diagnostics).toEqual([])
     })
 
     it('does not report text that crosses the margin only while it moves', async () => {
