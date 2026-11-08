@@ -5,7 +5,7 @@ import {
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    sphere, streamLines, surface, swap, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
+    sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
@@ -985,6 +985,92 @@ describe('zone', () => {
             expect(() => zone([])).toThrow(/at least one node/)
             const used = s.add(rect(100, 100))
             expect(() => zone([rect(10, 10), used])).toThrow(/node 1 of the content is already on the stage or in a group/)
+        }))
+    })
+})
+
+describe('tag', () => {
+    it('starts its pill at the place it is given, with the word in the middle and the note after it', async () => {
+        await compileFilm(film(() => {
+            const short = tag('OK', { note: 'a note' }).at(100, 50), long = tag('RECOMMENDATION').at(100, 150)
+            expect(short.pill.bounds().x).toBeCloseTo(100, 6)
+            expect(long.pill.bounds().x).toBeCloseTo(100, 6)
+            for (const made of [short, long]) {
+                const pill = made.pill.bounds(), word = made.word.bounds()
+                expect(word.x - pill.x).toBeCloseTo(pill.x + pill.width - word.x - word.width, 6)
+                expect(word.x - pill.x).toBeGreaterThan(12)
+                expect(word.y).toBeGreaterThan(pill.y)
+                expect(word.y + word.height).toBeLessThan(pill.y + pill.height)
+            }
+            expect(short.note!.bounds().x).toBeGreaterThan(short.pill.bounds().x + short.pill.bounds().width + 8)
+            expect(long.note).toBeNull()
+            expect(() => tag(' ')).toThrow(/give it a word/)
+        }))
+    })
+
+    it('recolors its border and its word, and keeps the fill of the pill', async () => {
+        await compileFilm(film(() => {
+            const made = tag('OK', { color: 'blue', note: 'a note' })
+            const fill = made.pill.get('fill'), note = made.note!.children[0]!.get('fill')
+            made.color('green')
+            expect(made.pill.get('fill')).toEqual(fill)
+            expect(made.pill.get('stroke')).not.toEqual(fill)
+            expect(made.word.children[0]!.get('fill')).toEqual(made.pill.get('stroke'))
+            expect(made.note!.children[0]!.get('fill')).toEqual(note)
+        }))
+    })
+
+    it('shows one state at a time with its own options, fades it in, and shows nothing before the first or after the last', async () => {
+        await compileFilm(film(() => {
+            const track = tagTrack([{ at: 1, word: 'PLAN', color: 'blue' }, { at: 3, word: 'MEASURED', note: 'June', size: 40 }], { until: 5, size: 30, fadeIn: 0.2, fadeOut: 0.2 })
+            const at = (time: number) => track.draw!(time) as ReturnType<typeof tag> | null
+            const word = (time: number) => (at(time)?.word as unknown as { source: string } | undefined)?.source
+            expect(at(0.5)).toBeNull()
+            expect(word(2)).toBe('PLAN')
+            expect(at(2)!.get('opacity')).toBe(1)
+            expect(at(1.1)!.get('opacity')).toBeCloseTo(0.5, 6)
+            expect(at(2.9)!.get('opacity')).toBeCloseTo(0.5, 6)
+            expect(word(2.9)).toBe('PLAN')
+            expect(word(3.1)).toBe('MEASURED')
+            expect(at(3.1)!.note).not.toBeNull()
+            expect(at(5)).toBeNull()
+            // The shared size is the default, and a state can set its own.
+            expect(at(2)!.word.data['size']).toBe(30)
+            expect(at(4)!.word.data['size']).toBe(40)
+            expect(at(2)!.pill.get('stroke')).not.toEqual(at(4)!.pill.get('stroke'))
+            expect(track.get('fixed')).toBe(true)
+        }))
+    })
+
+    it('draws at the place of the track, not at a place of its own', async () => {
+        const compiled = await compileFilm(film({ fps: 10 }, (s) => {
+            s.add(tagTrack([{ at: 0, word: 'PLAN' }], { until: 2 }).at(-800, -400))
+            s.wait(2)
+        }))
+        const frame = await compiled.frame(1)
+        const pill = pathBounds((frame.ops[0] as PathOp).path)!
+        // The frame is 1920 by 1080 with the origin in the middle, so the left end of the pill is at x = 160.
+        expect(pill.x).toBeCloseTo(160, 0)
+        expect(pill.y + pill.height / 2).toBeCloseTo(140, 0)
+    })
+
+    it('refuses states that are out of order or too near for the fades, and accepts states that just fit', () => {
+        expect(() => tagTrack([], { until: 5 })).toThrow(/at least one state/)
+        expect(() => tagTrack([{ at: 2, word: 'A' }, { at: 1, word: 'B' }], { until: 5 })).toThrow(/state 0 \("A"\) starts at 2 and state 1 \("B"\) starts at 1/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }, { at: 1.2, word: 'B' }], { until: 5 })).toThrow(/needs 0.43 s/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }, { at: 1.2, word: 'B' }], { until: 5, fadeIn: 0.1, fadeOut: 0.2 })).toThrow(/needs 0.3 s/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }], { until: 1.1 })).toThrow(/the tag leaves at 1.1/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }], {} as never)).toThrow(/until is the time/)
+        expect(() => tagTrack([{ at: 1, word: 'A' }], { until: 5, fadeIn: -1 })).toThrow(/0 or more/)
+    })
+
+    it('accepts states that are exactly the two fades apart, and fades of zero', async () => {
+        await compileFilm(film(() => {
+            const tight = tagTrack([{ at: 1, word: 'A' }, { at: 1.43, word: 'B' }], { until: 5 })
+            expect(tight.draw!(1.2)).not.toBeNull()
+            const sharp = tagTrack([{ at: 1, word: 'A' }], { until: 2, fadeIn: 0, fadeOut: 0 })
+            expect((sharp.draw!(1) as Node).get('opacity')).toBe(1)
+            expect(sharp.draw!(2)).toBeNull()
         }))
     })
 })
