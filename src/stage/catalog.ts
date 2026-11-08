@@ -72,6 +72,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'callout', group: SYSTEMS, usage: "callout(node, 'Why this matters'): a note with a leader line" },
     { name: 'pictogram', group: SYSTEMS, usage: "pictogram('graph', { size: 96, accent: 'teal' }): a small picture of a concept, such as series, forecast, logs, traces, dag, database, model. PICTOGRAMS lists every name" },
     { name: 'card', group: SYSTEMS, usage: "card({ title: 'Logs', figure: pictogram('logs'), caption: 'one line per event', width: 420, height: 360, captionLines: 2 }): a box that centers a figure between a title and a caption" },
+    { name: 'zone', group: SYSTEMS, usage: "zone([vmm, guest], { title: 'jail', color: 'yellow', dash: true }): a named border around nodes, for a host, a sandbox, or a boundary of trust. Zones nest" },
     { name: 'graph', group: SYSTEMS, usage: 'graph(nodes, edges): nodes and edges with automatic layout' },
     { name: 'tree', group: SYSTEMS, usage: 'tree(root): a layered tree' },
     { name: 'arrayCells', group: SYSTEMS, usage: 'arrayCells([3, 1, 4]): boxes for arrays and buffers' },
