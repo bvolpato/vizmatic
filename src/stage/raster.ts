@@ -119,9 +119,11 @@ function bloom(pixels, w, h, amount, background) {
       let r = 0, g = 0, b = 0
       for (const layer of layers) {
         const fx = (x + 0.5) / layer.factor - 0.5, fy = (y + 0.5) / layer.factor - 0.5
-        const x0 = Math.max(0, Math.floor(fx)), y0 = Math.max(0, Math.floor(fy))
+        // A layer drops the columns and rows that do not fill one of its cells, so it can end a few pixels
+        // before the frame does. Those pixels read the last cell.
+        const x0 = Math.min(layer.w - 1, Math.max(0, Math.floor(fx))), y0 = Math.min(layer.h - 1, Math.max(0, Math.floor(fy)))
         const x1 = Math.min(layer.w - 1, x0 + 1), y1 = Math.min(layer.h - 1, y0 + 1)
-        const tx = Math.max(0, fx - x0), ty = Math.max(0, fy - y0)
+        const tx = Math.min(1, Math.max(0, fx - x0)), ty = Math.min(1, Math.max(0, fy - y0))
         const d = layer.data, lw = layer.w
         for (let c = 0; c < 3; c++) {
           const v = (d[(y0 * lw + x0) * 3 + c] * (1 - tx) + d[(y0 * lw + x1) * 3 + c] * tx) * (1 - ty)
