@@ -68,7 +68,7 @@ npx vizmatic film my-film.ts --range 12:18 --quality draft
 
 ## Sound
 
-`--audio` adds a track. The audio is padded or trimmed to the film's length. FFmpeg must include AAC.
+`--audio` adds a track. The audio is padded or trimmed to the film's length. An MP4 gets stereo AAC at 48 kHz and 384 kbit/s, which is what YouTube asks for in an upload. FFmpeg must include AAC.
 
 ```bash
 npx vizmatic film my-film.ts --audio narration.wav
