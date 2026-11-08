@@ -77,6 +77,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'zone', group: SYSTEMS, usage: "zone([vmm, guest], { title: 'jail', color: 'yellow', dash: true }): a named border around nodes, for a host, a sandbox, or a boundary of trust. Zones nest" },
     { name: 'tag', group: SYSTEMS, usage: "tag('MEASURED', { note: 'the study of June 2026', color: 'green' }).at(-912, -490): a word in a pill with a note, for the kind of a claim and its source" },
     { name: 'tagTrack', group: SYSTEMS, usage: "tagTrack([{ at: 0, word: 'PLAN' }, { at: 12, word: 'MEASURED', color: 'green' }], { until: 30 }).at(-912, -490): a tag that changes with time at one place, pinned to the screen" },
+    { name: 'stateGrid', group: SYSTEMS, usage: "stateGrid({ columns: 16, rows: 8, initial: 'absent' }): a grid of cells, each in a named state, for pages of memory, blocks of a disk, or the hosts of a fleet. grid.change(which, 'dirty') sweeps cells to a state, grid.count('dirty') counts them, and grid.legend() makes the key" },
     { name: 'graph', group: SYSTEMS, usage: 'graph(nodes, edges): nodes and edges with automatic layout' },
     { name: 'tree', group: SYSTEMS, usage: 'tree(root): a layered tree' },
     { name: 'arrayCells', group: SYSTEMS, usage: 'arrayCells([3, 1, 4]): boxes for arrays and buffers' },
