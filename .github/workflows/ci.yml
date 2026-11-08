@@ -24,6 +24,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # actionlint comes from a GitHub release on each run. Keep it between runs, so that
+      # an outage of the release downloads does not fail this job.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.github-actionlint
+          key: actionlint-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: actionlint-${{ runner.os }}-
       - run: ./test.sh
 
   playground:
