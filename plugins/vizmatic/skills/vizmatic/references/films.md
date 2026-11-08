@@ -126,9 +126,9 @@ s.play(draw(picture))
 A named border around a group of nodes: a host, a network, a sandbox, a boundary of trust. Do not size such a border by hand. `zone` measures its content, and zones nest. Build the content first, then the zone, then add the zone:
 
 ```ts
-const guest = zone([kernel, code], { label: 'microVM', color: 'teal' })
-const jail = zone([guest, devices], { label: 'jail', color: 'yellow', dash: true })
-s.add(zone(jail, { label: 'host' }).moveTo([0, 0]))
+const guest = zone([kernel, code], { title: 'microVM', color: 'teal' })
+const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true })
+s.add(zone(jail, { title: 'host' }).at(0, 0))
 ```
 
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):

@@ -903,36 +903,58 @@ describe('card', () => {
 })
 
 describe('zone', () => {
-    const inside = (outer: { x: number; y: number; width: number; height: number }, inner: { x: number; y: number; width: number; height: number }, room: number) =>
+    type Box = { x: number; y: number; width: number; height: number }
+    const inside = (outer: Box, inner: Box, room: number) =>
         inner.x - outer.x >= room && inner.y - outer.y >= room
         && outer.x + outer.width - inner.x - inner.width >= room && outer.y + outer.height - inner.y - inner.height >= room
+    /** The border in stage coordinates. `box` is in the coordinates of the zone, and a new zone is not scaled. */
+    const border = (made: ReturnType<typeof zone>): Box => ({ ...made.box, x: made.box.x + made.get('x'), y: made.box.y + made.get('y') })
 
-    it('puts a border around its content with the padding, and around a zone inside it with that label', async () => {
+    it('puts a border around its content where the content was built, and around a zone inside it with that title', async () => {
         await compileFilm(film(() => {
             const a = rect(200, 80).at(300, -100), b = circle(40).at(520, 60)
-            const inner = zone([a, b], { label: 'inner', padding: 30 })
-            expect(inside(inner.box, a.bounds(), 30)).toBe(true)
-            expect(inside(inner.box, b.bounds(), 30)).toBe(true)
-            // The label straddles the top border, so the inner zone is taller than its border.
-            expect(inner.bounds().y).toBeLessThan(inner.box.y)
-            const outer = zone(inner, { label: 'outer', padding: 24 })
-            expect(inside(outer.box, inner.bounds(), 24)).toBe(true)
-            expect(outer.content).toEqual([inner])
+            const before = a.bounds()
+            const inner = zone([a, b], { title: 'inner', padding: 30 })
+            expect(a.bounds().x).toBeCloseTo(before.x, 6)
+            expect(a.bounds().y).toBeCloseTo(before.y, 6)
+            expect(inside(border(inner), a.bounds(), 30)).toBe(true)
+            expect(inside(border(inner), b.bounds(), 30)).toBe(true)
+            // The title straddles the top border, so the zone is taller than its border.
+            expect(inner.bounds().y).toBeLessThan(border(inner).y)
+            const outer = zone(inner, { title: 'outer', padding: 24 })
+            expect(inside(border(outer), inner.bounds(), 24)).toBe(true)
+            // An empty group has no place, so it does not pull the border toward the origin.
+            expect(border(zone([rect(200, 80).at(500, 300), group()], { padding: 32 })).x).toBeCloseTo(368, 6)
         }))
     })
 
-    it('moves its content with it, grows for a long label, and keeps a least size', async () => {
+    it('leaves a gap in the border for the title, and no line crosses the title', async () => {
         await compileFilm(film(() => {
-            const dotAt = circle(20)
-            const made = zone(dotAt, { label: 'a label much longer than a dot', minHeight: 300 })
-            const label = made.caption!.bounds()
-            expect(label.x).toBeGreaterThan(made.box.x + 16)
-            expect(label.x + label.width).toBeLessThan(made.box.x + made.box.width - 16)
+            for (const titleAlign of ['left', 'center', 'right'] as const) {
+                const made = zone(rect(500, 200), { title: 'the title', titleAlign })
+                const title = made.title!.bounds(), top = border(made).y
+                expect(title.y).toBeLessThan(top)
+                expect(title.y + title.height).toBeGreaterThan(top)
+                // The top border is the only part of the frame at that height. Its ends are on both sides of the title.
+                const points = made.frame.get('path')![0]!.p
+                const start = points[0]! + made.get('x'), end = points[points.length - 2]! + made.get('x')
+                expect(end).toBeLessThan(title.x - 4)
+                expect(start).toBeGreaterThan(title.x + title.width + 4)
+            }
+        }))
+    })
+
+    it('places its middle with at, grows for a long title, keeps a least size, and survives a large radius', async () => {
+        await compileFilm(film(() => {
+            const made = zone(circle(20), { title: 'a title much longer than a dot', minHeight: 300 })
+            const title = made.title!.bounds()
+            expect(title.x).toBeGreaterThan(border(made).x + 16)
+            expect(title.x + title.width).toBeLessThan(border(made).x + made.box.width - 16)
             expect(made.box.height).toBe(300)
-            const before = dotAt.bounds()
-            made.shift(120, -40)
-            expect(dotAt.bounds().x).toBeCloseTo(before.x + 120, 6)
-            expect(dotAt.bounds().y).toBeCloseTo(before.y - 40, 6)
+            made.at(400, -200)
+            expect(border(made).x + made.box.width / 2).toBeCloseTo(400, 6)
+            expect(border(made).y + made.box.height / 2).toBeCloseTo(-200, 6)
+            expect(zone(rect(200, 80), { title: 'a', radius: 999 }).box.width).toBeLessThan(400)
         }))
     })
 
@@ -940,7 +962,7 @@ describe('zone', () => {
         await compileFilm(film((s) => {
             expect(() => zone([])).toThrow(/at least one node/)
             const used = s.add(rect(100, 100))
-            expect(() => zone(used)).toThrow(/already on the stage or in a group/)
+            expect(() => zone([rect(10, 10), used])).toThrow(/node 1 of the content is already on the stage or in a group/)
         }))
     })
 })

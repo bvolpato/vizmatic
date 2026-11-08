@@ -200,7 +200,7 @@ A caption that is too wide wraps, and a title that is too wide is set in a small
 
 ## Zones
 
-`zone(content, options)` draws a border around one node or several, with a `label` on the border: a host, a network, a sandbox, a boundary of trust. The zone measures its content when it is built and takes the content as its children. So the zone and what it holds move, fade, and scale as one node, and a zone can hold other zones. `dash: true` draws a dashed border, for a boundary that is a rule and not a wall.
+`zone(content, options)` draws a border around one node or several, with a `title` on the border: a host, a network, a sandbox, a boundary of trust. The zone measures its content when it is built and takes the content as its children. So the zone and what it holds move, fade, and scale as one node, and a zone can hold other zones. `dash: true` draws a dashed border, for a boundary that is a rule and not a wall.
 
 ```film paired label="A process inside a jail inside a host, built from the inside out"
 import { draw, fadeIn, film, group, rect, text, zone } from 'vizmatic/stage'
@@ -211,23 +211,25 @@ export default film({ fps: 30 }, (s) => {
         text(name, { size: 38, font: 'text-serif', color }),
     )
     const devices = box('devices', 'purple').at(440, 0)
-    const guest = zone([box('guest kernel', 'teal').at(0, -75), box('your code', 'ink').at(0, 75)], { label: 'microVM', color: 'teal', labelSize: 32 })
-    const process = zone([guest, devices], { label: 'VMM process', color: 'purple', labelSize: 32, padding: 48 })
-    const jail = zone(process, { label: 'jail', color: 'yellow', dash: true, labelSize: 32, padding: 52 })
-    const host = s.add(zone(jail, { label: 'host', labelSize: 32, padding: 56, labelAlign: 'center' }).moveTo([0, 0]))
+    const guest = zone([box('guest kernel', 'teal').at(0, -75), box('your code', 'ink').at(0, 75)], { title: 'microVM', color: 'teal', titleSize: 32 })
+    const process = zone([guest, devices], { title: 'VMM process', color: 'purple', titleSize: 32, padding: 48 })
+    const jail = zone(process, { title: 'jail', color: 'yellow', dash: true, titleSize: 32, padding: 52 })
+    const host = s.add(zone(jail, { title: 'host', titleSize: 32, padding: 56, titleAlign: 'center' }).at(0, 0))
     // Everything is on the stage now. Hide what arrives later, then reveal it from the inside out.
     const layers = [guest, process, jail, host]
-    for (const node of [devices, ...layers.flatMap((layer) => [layer.frame, layer.caption!])]) node.hide()
+    for (const node of [devices, ...layers.flatMap((layer) => [layer.frame, layer.title!])]) node.hide()
     s.play(fadeIn(guest.content, { lag: 0.2 }), { duration: 0.8 })
-    s.play(draw(guest.frame), fadeIn(guest.caption!), { duration: 0.7 })
-    s.play(fadeIn(devices), draw(process.frame), fadeIn(process.caption!), { duration: 0.7 })
-    s.play(draw(jail.frame), fadeIn(jail.caption!), { duration: 0.7 })
-    s.play(draw(host.frame), fadeIn(host.caption!), { duration: 0.7 })
+    s.play(draw(guest.frame), fadeIn(guest.title!), { duration: 0.7 })
+    s.play(fadeIn(devices), draw(process.frame), fadeIn(process.title!), { duration: 0.7 })
+    s.play(draw(jail.frame), fadeIn(jail.title!), { duration: 0.7 })
+    s.play(draw(host.frame), fadeIn(host.title!), { duration: 0.7 })
     s.wait(0.8)
 })
 ```
 
-Build the content first, then the zone, then add the zone to the stage: a node that is already on the stage or in a group is an error. The zone is wide enough for its label. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the label, so nothing crosses the label, also over a `fill`. `zone.frame`, `zone.caption` (the label), `zone.backdrop` (the fill), and `zone.content` are the parts, and `zone.box` is the border.
+Build the content where you want it, then the zone, then add the zone to the stage. The zone stays where its content was built, and `.at(x, y)` places the middle of its border, as for a card. A node of the content that is already on the stage or in a group is an error. After the zone is built, do not add a node of its content to the stage or to another group: that takes the node out of the zone.
+
+The zone is wide enough for its title. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the title, so no line crosses the title. A `fill` is faint by default, because its top edge runs behind the title. `zone.frame`, `zone.title`, `zone.backdrop` (the fill), and `zone.content` are the parts. `zone.box` is the middle line of the border, in the coordinates of the zone.
 
 ## Code and tokens
 
