@@ -47,7 +47,7 @@ const MAX_PIXEL_BYTES = ${MEMO_PIXEL_BYTES}
 let memo = null
 
 function sameJob(a, b) {
-  return a.width === b.width && a.height === b.height && a.bloom === b.bloom
+  return a.width === b.width && a.height === b.height && a.bloom === b.bloom && a.dither === b.dither
     && a.background.every((channel, i) => channel === b.background[i])
     && a.svgs.length === b.svgs.length && a.svgs.every((svg, i) => svg === b.svgs[i])
 }
@@ -97,7 +97,7 @@ function boxBlur(img, radius) {
 }
 
 // Bloom: bright marks spill soft light. Blurred layers add on top of the sharp image.
-function bloom(pixels, w, h, amount, background) {
+function bloom(pixels, w, h, amount, background, dither) {
   const [br, bg, bb] = background
   const layers = []
   // The spread follows output width, so a small preview and a 4K master look alike.
@@ -131,10 +131,17 @@ function bloom(pixels, w, h, amount, background) {
           else b += v * layer.weight
         }
       }
+      // The spill is a smooth ramp over a few of the 256 levels, so cutting it to whole levels draws
+      // contour lines on a dark page. A fixed pattern of thresholds between 0 and 1 rounds each pixel up
+      // or down in the right share, and the lines become fine grain. A pixel with no spill is a whole
+      // number and stays as it is. The pattern is interleaved gradient noise (Jimenez, 2014): it has no
+      // state, so a frame is the same on every run.
+      const n = dither ? 52.9829189 * ((0.06711056 * x + 0.00583715 * y) % 1) : 0
+      const t = n - Math.floor(n)
       // Screen blend keeps highlights from clipping harshly.
-      pixels[o] = 255 - (255 - pixels[o]) * (255 - Math.min(255, r * amount * 2.4)) / 255
-      pixels[o + 1] = 255 - (255 - pixels[o + 1]) * (255 - Math.min(255, g * amount * 2.4)) / 255
-      pixels[o + 2] = 255 - (255 - pixels[o + 2]) * (255 - Math.min(255, b * amount * 2.4)) / 255
+      pixels[o] = 255 - (255 - pixels[o]) * (255 - Math.min(255, r * amount * 2.4)) / 255 + t
+      pixels[o + 1] = 255 - (255 - pixels[o + 1]) * (255 - Math.min(255, g * amount * 2.4)) / 255 + t
+      pixels[o + 2] = 255 - (255 - pixels[o + 2]) * (255 - Math.min(255, b * amount * 2.4)) / 255 + t
     }
   }
 }
@@ -180,8 +187,8 @@ parentPort.on('message', (job) => {
       out = new Uint8Array(sum.length)
       for (let i = 0; i < sum.length; i++) out[i] = sum[i] / n + 0.5
     }
-    if (job.bloom > 0) bloom(out, job.width, job.height, job.bloom, job.background)
-    if (reusable) memo = { width: job.width, height: job.height, bloom: job.bloom,
+    if (job.bloom > 0) bloom(out, job.width, job.height, job.bloom, job.background, job.dither !== false)
+    if (reusable) memo = { width: job.width, height: job.height, bloom: job.bloom, dither: job.dither,
       background: job.background, svgs: job.svgs, pixels: new Uint8Array(out) }
     parentPort.postMessage({ id: job.id, pixels: out }, [out.buffer])
   } catch (error) {
@@ -197,6 +204,12 @@ export interface RasterJob {
     bloom: number
     /** Background color in 0-255 RGB. Light above it blooms. */
     background: readonly [number, number, number]
+    /**
+     * Round the bloom to whole levels with a fixed pattern of thresholds, so that soft light has fine grain
+     * and no contour lines. On unless false. A GIF turns it off: its palette cannot hold the grain, and the
+     * file grows by a third.
+     */
+    dither?: boolean
 }
 
 interface Pending {
@@ -280,15 +293,16 @@ export function defaultPoolSize(): number {
     return Math.max(1, Math.min(12, cpus().length - 2))
 }
 
-export function framesToJob(frames: readonly Frame[], width: number, parseBackground: (color: string | null) => readonly [number, number, number], height?: number): RasterJob {
+export function framesToJob(frames: readonly Frame[], width: number, parseBackground: (color: string | null) => readonly [number, number, number], height?: number, dither = true): RasterJob {
     const first = frames[0]!
     const scale = width / first.width
-    const job = {
+    const job: RasterJob = {
         svgs: frames.map((frame) => frameToSvg(frame)),
         width,
         height: height ?? Math.round(first.height * scale),
         bloom: first.dark ? first.bloom : 0,
         background: parseBackground(first.background),
+        dither,
     }
     if (frames.every(embeddedResources)) embeddedJobs.set(job, job.svgs.slice())
     return job

@@ -148,6 +148,7 @@ function frameStream(
     readAhead: number,
     subframes = 1,
     shutterSpan = 0,
+    dither = true,
 ): (index: number) => Promise<Uint8Array> {
     const inFlight = new Map<number, Promise<Uint8Array>>()
     const submit = async (index: number): Promise<Uint8Array> => {
@@ -156,7 +157,7 @@ function frameStream(
         for (let sub = 0; sub < subframes; sub++) {
             frames.push(await frameAt(film, base + (sub / subframes) * shutterSpan))
         }
-        return pool.run(framesToJob(frames, size.width, backgroundBytes, size.height))
+        return pool.run(framesToJob(frames, size.width, backgroundBytes, size.height, dither))
     }
     return async (index) => {
         for (let ahead = index; ahead < Math.min(count, index + readAhead); ahead++) {
@@ -283,7 +284,7 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         const sampleCount = Math.min(count, GIF_PALETTE_FRAMES)
         const samples = await Promise.all(Array.from({ length: sampleCount }, async (_, i) => {
             const index = Math.floor((i + 0.5) * count / sampleCount)
-            return pool.run(framesToJob([await frameAt(compiled, from + index / fps)], size.width, backgroundBytes, size.height))
+            return pool.run(framesToJob([await frameAt(compiled, from + index / fps)], size.width, backgroundBytes, size.height, false))
         }))
         const perFrame = Math.max(1, Math.floor(GIF_PALETTE_PIXELS / sampleCount))
         const combined = new Uint8Array(perFrame * sampleCount * 4)
@@ -296,7 +297,8 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         })
         const palette = gifApi.quantize(combined, 256, { format: 'rgb565' })
         const gif = gifApi.GIFEncoder()
-        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead)
+        // A palette of 256 colors cannot hold the grain of a dithered bloom, so the bloom is cut to whole levels.
+        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, 1, 0, false)
         const repeat = options.loop === false ? -1 : 0
         let previous: Uint8Array | null = null
         let pending: { index: Uint8Array; region: { x: number; y: number; width: number; height: number }; delay: number } | null = null

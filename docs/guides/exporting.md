@@ -97,6 +97,8 @@ export async function render(): Promise<void> {
 
 Bloom is part of a look, and export applies it after rasterizing. Pass `bloom` on the film to change it. Set it to `0` for line art that needs exact colors.
 
+Bloom is smooth light over a few of the 256 levels of a channel. Cut to whole levels, it shows contour lines on a dark page. So MP4, WebM and PNG output round it with a fixed dither pattern: the light has fine grain and no lines, a pixel that the light does not reach keeps its exact color, and a frame is the same on every run. A GIF has 256 colors and cannot hold the grain, so its bloom is cut to whole levels. The preview in the browser does not dither.
+
 ## Speed
 
 Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
