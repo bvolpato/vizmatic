@@ -70,7 +70,7 @@ npx vizmatic film intro.ts --frame 3,6.5,12 --width 1280 --out stills
 npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 ```
 
-`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
+`vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_edge`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
 
 The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, and 0.2 seconds or more with nothing visible as `film.blank`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top <px>` sets where the content starts, so that a heading that stays up does not hide a blank.
 
@@ -641,13 +641,13 @@ npx vizmatic preview intro.ts --open
 
 Inspect a film without rendering video. The check samples the timeline and reports marks off the canvas, overlapping text, and lines that cross text. Each finding has a time and a position. Use `--json` to read the report in a script.
 
-A film whose lines run past the frame on purpose, such as a warped grid, sets `bleed: true` in its options. The check then ignores lines and shapes past the edge, and it still reports text that runs off the canvas.
+A film whose lines run past the frame on purpose, such as a warped grid, sets `bleed: true` in its options. The check then ignores lines and shapes past the edge, and it still reports text that runs off the canvas or sits against an edge.
 
 ```bash
 npx vizmatic check intro.ts --look midnight,paper --json
 ```
 
-The check looks where the film comes to rest, so it misses a problem that lasts only while something moves. `--motion` also inspects every frame. It reports a problem that appears only in motion as a warning, because it cannot tell a collision from one picture that replaces another. It reports 0.2 seconds or more with nothing visible as `film.blank`. `--content-top <px>` sets the canvas y where the content starts, so that a heading that stays up does not count as content.
+The check looks where the film comes to rest, so it misses a problem that lasts only while something moves. `--motion` also inspects every frame. It reports a problem that appears only in motion as a warning, because it cannot tell a collision from one picture that replaces another. It reports 0.2 seconds or more with nothing visible as `film.blank`. `--content-top <px>` sets the canvas y where the content starts, so that a heading that stays up does not count as content. `--text-margin <px>` sets how near text may come to an edge of the frame before the check reports `film.text_edge`. The default is 2% of the shorter side, and 0 turns the rule off. While the camera is zoomed, the check looks only at pinned text, because a zoom crops the rest on purpose.
 
 ```bash
 npx vizmatic check intro.ts --motion --content-top 200
@@ -2707,6 +2707,34 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+## Pictograms
+
+`pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.
+
+```film paired label="A row of pictograms for telemetry, structure, and systems"
+import { draw, fadeIn, film, lagged, pictogram, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const names = ['series', 'forecast', 'logs', 'traces', 'graph', 'dag', 'database', 'model'] as const
+    const pictures = names.map((name, i) => pictogram(name, { size: 150, accent: 'teal' }).at((i - 3.5) * 220, -40))
+    const labels = names.map((name, i) => text(name, { font: 'mono', size: 32, color: 'dim' }).at((i - 3.5) * 220, 110))
+    s.play(lagged(pictures.map((picture) => draw(picture)), { lag: 0.12 }), { duration: 2 })
+    s.play(fadeIn(labels))
+    s.wait(0.8)
+})
+```
+
+`PICTOGRAMS` lists every name:
+
+- Telemetry: `series`, `chart`, `forecast`, `threshold`, `anomaly`, `logs`, `traces`, `bars`, `table`, `matrix`, `event`, `alert`.
+- Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
+- Systems: `service`, `database`, `queue`, `cloud`, `chip`.
+- Models: `model`, `tokens`, `vector`, `agent`, `spark`.
+- Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
+- General: `document`, `code`, `gear`, `clock`, `user`, `search`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
+
+Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
@@ -2926,9 +2954,19 @@ export default film({ fps: 30 }, (s) => {
 | `italic` | Use the italic of the family. |
 | `color` | A look token, CSS color, or gradient. |
 | `align` | `'left'`, `'center'`, or `'right'` inside the block. |
+| `anchor` | The point that `.at(x, y)` places: `'left'`, `'center'` (the default), or `'right'`. |
 | `maxWidth` | Wrap to this width. |
 | `leading` | Line height as a multiple of size. |
 | `tracking` | Extra letter space as a fraction of size. |
+
+`.at(x, y)` places the middle of a text block. For a label that starts or ends at a known x, such as a row of a table or the name of an axis, set `anchor`. The y of the point does not depend on the letters, so labels with different anchors on one `y` share a baseline.
+
+```ts
+import { text } from 'vizmatic/stage'
+
+const metric = text('latency', { size: 32, anchor: 'right' }).at(-20, 0)   // ends at x = -20
+const value = text('5.0 ms', { size: 32, anchor: 'left' }).at(20, 0)       // starts at x = 20
+```
 
 Use `'text-serif'` for sentences, labels, and numbers. Its strokes stay visible when a film plays at phone size, and it keeps `1` and `l`, and `O` and `0`, easy to tell apart. It also sits well next to TeX. Use `'serif'` for short titles at a large size. It is narrow and has fine strokes, and it has no Greek letters or math symbols.
 
