@@ -140,6 +140,16 @@ s.add(tagTrack([
 ], { until: 96 }).at(-912, -490))
 ```
 
+A grid of cells that change state: pages of memory, blocks of a disk, the hosts of a fleet. Do not draw the cells by hand. `stateGrid` keeps the state of each cell, sweeps a change across the cells, and counts them. `PAGE_STATES` has the states of memory pages, and `states` takes your own:
+
+```ts
+const pages = s.add(stateGrid({ columns: 16, rows: 8, cell: 56, initial: 'absent' }).at(0, -40))
+s.add(pages.legend(['absent', 'present', 'dirty'], { size: 32 }).at(pages.left[0], 300))
+s.play(pages.change((index) => index < 96, 'present'), { duration: 1.6 })
+s.play(pages.change([3, 4, 5, 40], 'dirty'))
+const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
