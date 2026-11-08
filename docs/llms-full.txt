@@ -3009,6 +3009,87 @@ In `grid.change(which, state)`, `which` is an index, a list of indexes, or a fun
 
 `grid.legend(items)` makes a key: one sample cell and one name for each state, in one row. The key is a node of its own, so add it to the stage and place it. `.at(x, y)` places the left end of the row, and `y` is the middle line of the cells and the names. An item is the name of a state, or a `[state, label]` pair for a display name. Without `items`, the key lists the states that the grid has now, in the order of `states`. `size`, `gap`, and `font` set the look. The key does not wrap, so make two keys for many long names.
 
+## Bit fields
+
+`bitField(fields, options)` draws a word that is split into named fields: a row of boxes, one per field, with the bit numbers over them. Use it for a virtual address and its table indexes, for the flags of a register or of a page table entry, and for the layout of a structure. A field has its `bits`, a `label`, and a `color`. The first field is at the left, and it holds the highest bits.
+
+```film paired label="A virtual address splits into four table indexes and an offset, and one index points at its table"
+import { bitField, connector, draw, fade, fadeIn, film, group, rect, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const address = bitField([
+        { bits: 16, label: 'sign extension', unused: true },
+        { bits: 9, label: 'PGD', color: 'blue' },
+        { bits: 9, label: 'PUD', color: 'teal' },
+        { bits: 9, label: 'PMD', color: 'green' },
+        { bits: 9, label: 'PTE', color: 'orange' },
+        { bits: 12, label: 'offset', color: 'purple' },
+    ], { width: 1600, size: 40 }).at(0, -200)
+    s.play(address.enter(), { duration: 1.6 })
+    // The point is in the coordinates of the object. `toWorld` gives its place on the stage.
+    const from = address.toWorld(...address.p('PTE'))
+    const table = group(
+        rect(420, 240, { radius: 14, stroke: 'orange', fill: 'surface', width: 4 }),
+        text('page table', { size: 44, font: 'text-serif', color: 'orange' }),
+    ).at(from[0], 250)
+    const others = address.fields.filter((field) => field !== address.field('PTE'))
+    s.play(...others.map((field) => fade(field, 0.35)), fadeIn(table, { shift: [0, 24] }), draw(connector(from, table, { color: 'orange', width: 4 })), { duration: 0.9 })
+    s.wait(0.8)
+})
+```
+
+A field with a `value`, such as `'0x1fe'`, shows the value inside its box, in mono, and its label under the box. An empty text, `value: ''`, is a value too: an empty box with its label under it. A label and a value are one line each. `unused: true` is for a field that carries nothing, such as reserved bits: a faint box with a hatch.
+
+`word.setValue('PROT', '1')` changes a value in place, such as a flag that goes from 0 to 1. The text in the box fades out, then the new text fades in, so no moment shows two texts. It works on a field that was built with a `value`, because the layout does not change. The new text follows the same rule as the first one: it is set smaller when it is too wide, and a text that cannot fit is an error. `word.values` then holds the new text. A film may play one such animation twice: the second play changes nothing while its text is in the box.
+
+```ts
+import { bitField, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    // The five low bits of the error code of a page fault on x86. Each one is a flag: bit 3 says that a reserved
+    // bit was set in a page table entry. The fault was on a page that is present, so the lowest bit goes to 1.
+    const code = s.add(bitField([
+        { bits: 1, label: 'INSTR', value: '0', color: 'purple' },
+        { bits: 1, label: 'RSVD', value: '0', color: 'blue' },
+        { bits: 1, label: 'USER', value: '1', color: 'teal' },
+        { bits: 1, label: 'WRITE', value: '1', color: 'orange' },
+        { bits: 1, label: 'PROT', value: '0', color: 'red' },
+    ], { width: 1100, scale: 'even', size: 40 }))
+    s.wait(0.6)
+    s.play(code.setValue('PROT', '1'))
+    s.wait(0.8)
+})
+```
+
+`width` is the width of a full row of boxes, and `.at()` places its middle. The width of a box shows the bits of its field: a field starts at the place of its highest bit. `minWidth` is the least width of a box, so that a field of one bit can hold a name, and the wider fields share the rest. `scale: 'even'` gives every field of a row the same width, for a row of flags. Fields that cannot have the least width are an error. `size` is the size of the labels and the values, `height` the height of the boxes, `color` the color of a field that has none of its own, and `font` the font of the labels.
+
+A text that is too wide for its box is set in a smaller size, down to 0.6 of `size`. A text that still does not fit is an error. The message gives the width of the box and what to change, with one `minWidth` that is enough for every field that is too narrow. So no text leaves its box, and two labels under the boxes never meet. Each text takes its own size, so give a smaller `size` when the labels of a row must have one size.
+
+`numbers: 'bits'` is the default. It writes the high bit of each field over its left end and the low bit over its right end, and one number over a field of one bit. `numbers: 'offsets'` counts up from 0 at the left, for the bytes of a structure: each boundary shows one offset, and the right end shows the total. `numbers: false` writes nothing. When two numbers would meet, one of them is not drawn: the number of a field of one bit goes before a number of a wider field, and the low bit of a field goes before its high bit. Three numbers go last, and only one of them can take the place of another: bit 0, the offset at the start of a row, and the total.
+
+`wrap` is the number of bits, or of bytes, in one row. The fields then fill rows from the top, for the layout of a structure, and a row of that many bits is `width` wide. A field that would cross the end of a row is an error: split the field, or change `wrap`. With `numbers: 'offsets'`, each row starts with its own offset. `rowGap` is the room between two rows. Without it, the rows have the room that the numbers and the labels under the boxes need.
+
+With the proportional scale, a field starts at the place of its bit in every row, so the boundaries of the rows are in line. This holds too when `minWidth` widens a narrow field: the bits under it or over it, in the other rows, are as much wider. A last row with fewer bits is as much shorter, and it starts at the left end of a full row, also when it is the only row. So `.at()` places the middle of a full row, and of all rows from the top to the bottom, and two structures with one `wrap` and one `width` have one scale. With `scale: 'even'`, each row shares the whole `width` among its own fields, so the boundaries of two rows are not in line, and a last row is as long as the others.
+
+The example is `struct io_uring_sqe` of Linux 6.12, from `include/uapi/linux/io_uring.h`. A union is shown by its first member.
+
+```film paired label="The 64 bytes of a structure arrive in four rows of 16 bytes, with the offset of each field over it"
+import { bitField, film } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const entry = bitField([
+        { bits: 1, label: 'opcode', color: 'orange' }, { bits: 1, label: 'flags', color: 'orange' }, { bits: 2, label: 'ioprio' }, { bits: 4, label: 'fd', color: 'teal' }, { bits: 8, label: 'off' },
+        { bits: 8, label: 'addr', color: 'green' }, { bits: 4, label: 'len', color: 'green' }, { bits: 4, label: 'rw_flags' },
+        { bits: 8, label: 'user_data', color: 'purple' }, { bits: 2, label: 'buf_index' }, { bits: 2, label: 'personality' }, { bits: 4, label: 'splice_fd_in' },
+        { bits: 8, label: 'addr3' }, { bits: 8, label: '__pad2', unused: true },
+    ], { width: 1600, wrap: 16, numbers: 'offsets', size: 28 })
+    s.play(entry.enter(), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+`word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
@@ -3040,6 +3121,44 @@ export default film({ fps: 30 }, (s) => {
 The `language` option names the syntax. The languages are `ts`, `python`, `rust`, `go`, `java`, `c`, `sql`, `bash`, and `plain`, and four languages for specifications and proofs: `tla` for TLA+, `dafny`, `lean`, and `smt` for SMT-LIB. In those four, a prime such as the one in `x'` is part of the code and does not start a string. An unknown name uses the TypeScript rules.
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
+
+## Terminal output
+
+`terminal(lines, options)` draws the output of a real program as a terminal shows it: a panel, a bar with a `title` at the left and a dim `note` at the right, and the lines in the mono font. Use it when the viewer must see that a number comes from a real run. The title names the file or the host, and the note says where and when the program ran. A line is a string, which is a line of output, or `{ text, kind, color }`. The kind `'command'` draws the prompt before the text. The kind `'note'` is a dim line that the film adds, such as `[...]` for lines that it left out.
+
+```film paired label="A command is typed, its output prints, and one number of the output lights"
+import { film, recolor, terminal } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const run = terminal([
+        { text: './one-byte', kind: 'command' },
+        'mapped 1 GiB at 0xffff7c000000',
+        'Rss before the write:      0 kB',
+        'Rss after the write:       4 kB',
+        'minor faults:              1',
+    ], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08', size: 44 })
+    s.play(run.enter(), { duration: 0.6 })
+    s.play(run.type(0), { duration: 0.8 })
+    s.play(run.print(), { duration: 1.2 })
+    s.wait(0.6)
+    s.play(recolor(run.find('4 kB'), 'yellow'), { duration: 0.4 })
+    s.wait(1.6)
+})
+```
+
+The text is drawn with the exact characters that you give, and each character has its own column, so the columns of a table stay aligned. The spaces at the start of a line and inside it keep their columns. The spaces at the end of a line are not content: they are not drawn, and they do not count for the width or for `columns`. A tab is an error: expand the tabs to spaces first. A line break inside a line and a control character, such as a part of a color code, are errors too. An empty string is an empty line.
+
+A character that the mono font does not have comes from another font of the library. It stands in the middle of its column, and it is drawn smaller when it is too wide for the column. A glyph that is wider than 1.2 columns is an error that names the character: replace it. A character that no font has is drawn as an empty box, and `vizmatic check` reports it. Box drawing characters join along a line. They do not join from one line to the next, because the lines are 1.5 text sizes apart.
+
+The panel sizes itself. Its width follows `columns`, the number of characters in one line, and its height follows the number of lines. Without `columns`, the panel is as wide as its longest line, or wider when the title and the note need the room. With `columns`, a title and a note that do not fit in the bar are an error, and so is a line that is longer. `clip: true` cuts such a line and ends it with a dim ellipsis. `.at()` places the middle of the panel. `size` is the text size, `prompt` is the text before a command, and `color` is the color of the border and the bar.
+
+A terminal holds 40 lines at most. The frame holds fewer at most sizes: a panel of n lines is `size × (1.5 × n + 2.7)` tall. So a frame of 1080 holds 38 lines at size 18, 25 lines at size 26, and 20 lines at size 32, with no room above or below the panel. The terminal does not know the frame. `vizmatic check` reports the lines of a panel that are off the frame. For a longer output, leave lines out and put a note line in their place.
+
+By default a terminal shows all its lines, for a picture that does not move. A film that types and prints starts empty: give `shown: false`, or play `run.enter()`. `run.enter()` brings the panel and the bar, with no line. `run.type(line)` types a command character by character, after its prompt. A command that is already shown is an error. `run.print()` brings the next block of lines, one after another, each line at once. A block starts at the first line that is not yet shown, and it ends before the next command that is not yet shown. A command at the start of a block arrives whole. So `run.type(0)` then `run.print()` types the command and prints its output. `run.print()` alone shows the command and its output, for a film that does not want the typing, and a second `run.print()` goes on with the next block. `run.print({ from: 1, to: 3 })` prints lines 1, 2 and 3, whatever their kind. `run.showLines()` fades in all the lines that are left, together, for a film that does not want the typing.
+
+The terminal keeps a record of the lines that are shown, so two prints in one `seq` follow each other. `run.enter()` in the same `play` as a `type` or a `print` keeps the lines that they show, in both orders. A terminal that is not on the stage at its first `type` or `print` comes with its panel and no other line. A terminal in a group or a zone that is not on the stage brings that group, and keeps its place in it.
+
+`run.find(text, occurrence)` returns one node that holds the glyphs of a part of a line: color it, `indicate` it, or point a `callout` at it. It matches the exact characters, spaces included, in the commands, the output and the notes. `occurrence` counts the matches from 0, from the first line to the last. A text that is not there is an error, which says so when `clip` cut the text off. `codeBlock.find` is different: it returns the glyphs of every match as a list, and spaces do not count there. The second argument of `run.find` is an occurrence, and the second argument of `codeBlock.find` is a line. `run.p(line)` is the start of a line and `run.p(line, 'right')` is its end, in the coordinates of the panel, so `run.toWorld(...run.p(4, 'right'))` is that point on the stage. `run.frame`, `run.bar`, `run.title`, `run.note`, `run.lines`, and `run.prompts` are the parts.
 
 ## Images
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    bitField,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
@@ -3206,6 +3207,794 @@ describe('lanes', () => {
     })
 })
 
+describe('bit field', () => {
+    const address = [
+        { bits: 16, label: 'sign extension', unused: true },
+        { bits: 9, label: 'PGD', color: 'blue' },
+        { bits: 9, label: 'PUD', color: 'teal' },
+        { bits: 9, label: 'PMD', color: 'green' },
+        { bits: 9, label: 'PTE', color: 'orange' },
+        { bits: 12, label: 'offset', color: 'purple' },
+    ]
+    /** `struct io_uring_sqe` of Linux 6.12, 64 bytes. A union is shown by its first member. */
+    const sqe = [
+        { bits: 1, label: 'opcode' }, { bits: 1, label: 'flags' }, { bits: 2, label: 'ioprio' }, { bits: 4, label: 'fd' }, { bits: 8, label: 'off' },
+        { bits: 8, label: 'addr' }, { bits: 4, label: 'len' }, { bits: 4, label: 'rw_flags' },
+        { bits: 8, label: 'user_data' }, { bits: 2, label: 'buf_index' }, { bits: 2, label: 'personality' }, { bits: 4, label: 'splice_fd_in' },
+        { bits: 8, label: 'addr3' }, { bits: 8, label: '__pad2', unused: true },
+    ]
+    type Box = { x: number; y: number; width: number; height: number }
+    const ends = (box: Box) => [box.x, box.x + box.width] as const
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const source = (node: Node | null) => (node as unknown as { source: string } | null)?.source
+    const shown = (made: ReturnType<typeof bitField>) => made.numbers.map(source)
+    /** The color of a text: the fill of its first glyph. */
+    const ink = (node: Node | null) => node!.children[0]!.get('fill')
+    const inkOf = (color: string) => text('a', { color }).children[0]!.get('fill')
+    /** The texts that a field has shown as its value, in the order that they arrived. */
+    const valuesOf = (made: ReturnType<typeof bitField>, index: number) => made.fields[index]!.children.filter((node) => source(node) !== undefined && node !== made.labels[index] && !made.numbers.includes(node))
+    const size = (node: Node | null) => node!.data['size'] as number
+    /** Two boxes with this much room between them, in x or in y. */
+    const apart = (a: Box, b: Box, room: number) => a.x + a.width + room <= b.x || b.x + b.width + room <= a.x || a.y + a.height + room <= b.y || b.y + b.height + room <= a.y
+    const message = (run: () => unknown) => { try { run() } catch (error) { return (error as Error).message } return '' }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    /** The lines of the hatch of a field: what the field strokes other than its box. */
+    const hatchOf = (made: ReturnType<typeof bitField>, index: number) => made.fields[index]!.children.find((node) => node !== made.boxes[index] && node.get('path') !== null && node.get('stroke') !== null)
+    /** True when a line of a hatch comes nearer than 4 px to a text. */
+    const crosses = (lines: Node, part: Box) => lines.get('path')!.some((ring) => {
+        const [x0, y0] = [ring.p[0]!, ring.p[1]!], [x1, y1] = [ring.p[ring.p.length - 2]!, ring.p[ring.p.length - 1]!]
+        return Array.from({ length: 11 }, (_, step) => [x0 + ((x1 - x0) * step) / 10, y0 + ((y1 - y0) * step) / 10] as const)
+            .some(([x, y]) => x > part.x - 4 && x < ends(part)[1] + 4 && y > part.y - 4 && y < part.y + part.height + 4)
+    })
+
+    it('centers the row of boxes on its place, and gives each box a width for its bits', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400, height: 70 }).at(300, 200)
+            const boxes = made.boxes.map((box) => box.bounds())
+            // The row is 1400 wide and 70 high, and its middle is the place of the object. The first field is at the left.
+            expect(boxes[0]!.x).toBeCloseTo(300 - 700, 6)
+            expect(ends(boxes[5]!)[1]).toBeCloseTo(300 + 700, 6)
+            for (const box of boxes) {
+                expect(box.y).toBeCloseTo(200 - 35, 6)
+                expect(box.height).toBeCloseTo(70, 6)
+            }
+            // The boxes follow each other with one small room between them, so each field is a box of its own.
+            const rooms = boxes.slice(1).map((box, index) => box.x - ends(boxes[index]!)[1])
+            for (const room of rooms) {
+                expect(room).toBeGreaterThan(4)
+                expect(room).toBeCloseTo(rooms[0]!, 6)
+            }
+            // A box and the room after it are in proportion to the bits of the field: 16, 9, 9, 9, 9 and 12 of 64.
+            // So each field starts at the place of its bit.
+            const unit = (1400 + rooms[0]!) / 64
+            expect(boxes.map((box) => (box.width + rooms[0]!) / unit)).toEqual([16, 9, 9, 9, 9, 12].map((bits) => expect.closeTo(bits, 6)))
+            expect(boxes.map((box) => (box.x - boxes[0]!.x) / unit)).toEqual([0, 16, 25, 34, 43, 52].map((bit) => expect.closeTo(bit, 6)))
+            expect(made.total).toBe(64)
+            // The defaults: 1200 wide, and 2.6 of the text size high.
+            const plain = bitField(address, { size: 30 })
+            expect(ends(plain.boxes[5]!.bounds())[1] - plain.boxes[0]!.bounds().x).toBeCloseTo(1200, 6)
+            expect(plain.boxes[0]!.bounds().height).toBeCloseTo(78, 6)
+        }))
+    })
+
+    it('gives every field one width when the scale is even', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400, scale: 'even' })
+            const boxes = made.boxes.map((box) => box.bounds())
+            for (const box of boxes) expect(box.width).toBeCloseTo(boxes[0]!.width, 6)
+            expect(boxes[0]!.x).toBeCloseTo(-700, 6)
+            expect(ends(boxes[5]!)[1]).toBeCloseTo(700, 6)
+            // The numbers still count the bits of each field.
+            expect(made.range('PGD')).toEqual([47, 39])
+        }))
+    })
+
+    it('gives a narrow field the least width, and lets the others share the rest in proportion', async () => {
+        await compileFilm(film(() => {
+            const widths = (made: ReturnType<typeof bitField>) => made.boxes.map((box) => box.bounds().width)
+            const row = (made: ReturnType<typeof bitField>) => ends(made.boxes[made.boxes.length - 1]!.bounds())[1] - made.boxes[0]!.bounds().x
+            // In 1000 px a bit has about 31 px, so the two fields of one bit take 100. The other two share the rest, 1 to 4.
+            const made = bitField([{ bits: 1 }, { bits: 1 }, { bits: 6 }, { bits: 24 }], { width: 1000, minWidth: 100 })
+            const [first, second, third, fourth] = widths(made)
+            const room = made.boxes[1]!.bounds().x - ends(made.boxes[0]!.bounds())[1]
+            expect([first, second]).toEqual([expect.closeTo(100, 6), expect.closeTo(100, 6)])
+            expect(third!).toBeGreaterThan(100)
+            expect((fourth! + room) / (third! + room)).toBeCloseTo(4, 6)
+            expect(row(made)).toBeCloseTo(1000, 6)
+            // A field of 5 bits is wide enough at first. When the four narrow fields take 140 each, it is not, so it takes 140 too.
+            const chain = bitField([{ bits: 1 }, { bits: 1 }, { bits: 1 }, { bits: 1 }, { bits: 5 }, { bits: 23 }], { width: 1000, minWidth: 140 })
+            expect(widths(chain).slice(0, 5)).toEqual(Array(5).fill(expect.closeTo(140, 6)))
+            expect(widths(chain)[5]!).toBeGreaterThan(140)
+            expect(row(chain)).toBeCloseTo(1000, 6)
+            // Fields that cannot have the least width are an error, also with an even scale.
+            expect(() => bitField(address, { width: 400, minWidth: 100 })).toThrow(/a width of 400 has no room for 6 fields of 100 or more. Give a larger width or a smaller minWidth/)
+            expect(() => bitField(address, { width: 400, minWidth: 100, scale: 'even' })).toThrow(/no room for 6 fields of 100 or more/)
+        }))
+    })
+
+    it('numbers the bits from the right, with the high bit over the left end of a field and the low bit over its right end', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400 })
+            expect(shown(made)).toEqual(['63', '48', '47', '39', '38', '30', '29', '21', '20', '12', '11', '0'])
+            expect(made.range(0)).toEqual([63, 48])
+            expect(made.range('PTE')).toEqual([20, 12])
+            expect(made.range('offset')).toEqual([11, 0])
+            made.boxes.forEach((node, index) => {
+                const box = node.bounds()
+                const high = made.numbers[index * 2]!.bounds(), low = made.numbers[index * 2 + 1]!.bounds()
+                // Both numbers are over the box, a little inside its two ends.
+                for (const number of [high, low]) {
+                    expect(number.y + number.height).toBeLessThan(box.y - 4)
+                    expect(number.y + number.height).toBeGreaterThan(box.y - 20)
+                }
+                expect(high.x - box.x).toBeGreaterThan(2)
+                expect(high.x - box.x).toBeLessThan(10)
+                expect(ends(box)[1] - ends(low)[1]).toBeGreaterThan(2)
+                expect(ends(box)[1] - ends(low)[1]).toBeLessThan(10)
+                // A number is a part of its field, so it fades and moves with it.
+                expect(made.fields[index]!.children).toContain(made.numbers[index * 2])
+                expect(made.fields[index]!.children).toContain(made.numbers[index * 2 + 1])
+            })
+            // The numbers are smaller than the labels, and dim, so that the names of the fields stand out.
+            expect(size(made.numbers[0]!)).toBeLessThan(26 * 0.8)
+            for (const number of made.numbers) expect(ink(number)).toEqual(inkOf('dim'))
+            // A field of one bit shows one number, over the middle of its box.
+            const flags = bitField([{ bits: 6, label: 'rest' }, { bits: 1, label: 'W' }, { bits: 1, label: 'P' }], { width: 600 })
+            expect(shown(flags)).toEqual(['7', '2', '1', '0'])
+            expect(middle(flags.numbers[2]!)[0]).toBeCloseTo(middle(flags.boxes[1]!)[0], 6)
+            expect(middle(flags.numbers[3]!)[0]).toBeCloseTo(middle(flags.boxes[2]!)[0], 6)
+            // Without numbers, the object writes none, and a range still counts the bits.
+            const bare = bitField(address, { width: 1400, numbers: false })
+            expect(bare.numbers).toHaveLength(0)
+            expect(bare.range('PGD')).toEqual([47, 39])
+        }))
+    })
+
+    it('counts offsets up from the left, one over each boundary, with the total over the right end', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 4, label: 'fd' }, { bits: 8, label: 'off' }, { bits: 8, label: 'addr' }, { bits: 4, label: 'len' }], { width: 1200, numbers: 'offsets' })
+            expect(shown(made)).toEqual(['0', '4', '12', '20', '24'])
+            expect(made.range('fd')).toEqual([0, 3])
+            expect(made.range('addr')).toEqual([12, 19])
+            expect(made.range(3)).toEqual([20, 23])
+            expect(made.total).toBe(24)
+            const boxes = made.boxes.map((box) => box.bounds())
+            expect(middle(made.numbers[0]!)[0]).toBeCloseTo(boxes[0]!.x, 6)
+            boxes.slice(1).forEach((box, index) => {
+                expect(middle(made.numbers[index + 1]!)[0]).toBeCloseTo((ends(boxes[index]!)[1] + box.x) / 2, 6)
+            })
+            expect(middle(made.numbers[4]!)[0]).toBeCloseTo(ends(boxes[3]!)[1], 6)
+            // The total is a part of the last field.
+            expect(made.fields[3]!.children).toContain(made.numbers[4])
+        }))
+    })
+
+    it('writes the label inside the box, or the value inside and the label under the box', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 8, label: 'type' }, { bits: 8, label: 'length', value: '0x40', color: 'orange' }, { bits: 8, value: '1' }, { bits: 8 }], { width: 1200, color: 'teal' })
+            const boxes = made.boxes.map((box) => box.bounds())
+            const inside = (box: Box, part: Box) => part.x > box.x + 8 && ends(part)[1] < ends(box)[1] - 8 && part.y > box.y + 8 && part.y + part.height < box.y + box.height - 8
+            // Without a value, the label is in the middle of the box.
+            expect(source(made.labels[0]!)).toBe('type')
+            expect(inside(boxes[0]!, made.labels[0]!.bounds())).toBe(true)
+            expect(middle(made.labels[0]!)[0]).toBeCloseTo(middle(made.boxes[0]!)[0], 6)
+            expect(Math.abs(middle(made.labels[0]!)[1] - middle(made.boxes[0]!)[1])).toBeLessThan(4)
+            expect(made.values[0]).toBeNull()
+            // With a value, the value is in the box, in mono, and the label is under the box, on the middle of the field.
+            const value = made.values[1]!, label = made.labels[1]!
+            expect(source(value)).toBe('0x40')
+            expect(inside(boxes[1]!, value.bounds())).toBe(true)
+            expect(middle(value)[0]).toBeCloseTo(middle(made.boxes[1]!)[0], 6)
+            expect(value.bounds().width).toBeCloseTo(text('0x40', { font: 'mono', size: 26 }).bounds().width, 6)
+            expect(source(label)).toBe('length')
+            expect(label.bounds().y).toBeGreaterThan(boxes[1]!.y + boxes[1]!.height + 4)
+            expect(label.bounds().y).toBeLessThan(boxes[1]!.y + boxes[1]!.height + 24)
+            expect(middle(label)[0]).toBeCloseTo(middle(made.boxes[1]!)[0], 6)
+            expect(made.labels[2]).toBeNull()
+            expect(inside(boxes[2]!, made.values[2]!.bounds())).toBe(true)
+            expect([made.labels[3], made.values[3]]).toEqual([null, null])
+            // A field holds its box and its texts. A field with no text holds its box and its two numbers.
+            expect(made.fields[1]!.children).toEqual(expect.arrayContaining([made.boxes[1], value, label]))
+            expect(made.fields[3]!.children).toHaveLength(3)
+            // A field has the color of the object, or its own. The label under a box has the color of its field.
+            const stroke = (color: string) => rect(10, 10, { stroke: color }).get('stroke')
+            expect(made.boxes.map((box) => box.get('stroke'))).toEqual([stroke('teal'), stroke('orange'), stroke('teal'), stroke('teal')])
+            expect(label.children[0]!.get('fill')).toEqual(stroke('orange'))
+            expect(bitField([{ bits: 4 }]).boxes[0]!.get('stroke')).toEqual(stroke('blue'))
+            // The labels take the font of the object, inside a box and under it. A value stays in mono.
+            const mono = bitField([{ bits: 8, label: 'type' }, { bits: 8, label: 'length', value: '0x40' }], { width: 1200, font: 'mono' })
+            expect(made.labels[0]!.bounds().width).toBeCloseTo(text('type', { size: 26 }).bounds().width, 6)
+            expect(mono.labels[0]!.bounds().width).toBeCloseTo(text('type', { font: 'mono', size: 26 }).bounds().width, 6)
+            expect(mono.labels[1]!.bounds().width).toBeCloseTo(text('length', { font: 'mono', size: 26 }).bounds().width, 6)
+            expect(mono.values[1]!.bounds().width).toBeCloseTo(value.bounds().width, 6)
+        }))
+    })
+
+    it('sets a text that is too wide in a smaller size, with room between it and the border', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 1, label: 'a long name' }, { bits: 1, label: 'P' }, { bits: 1, label: 'instruction', value: '0x00000000' }], { width: 420, scale: 'even', numbers: false })
+            // A box is about 136 px wide. The long texts are wider than that at size 26, and the short label is not.
+            for (const part of [made.labels[0], made.values[2], made.labels[2]]) {
+                expect(size(part)).toBeLessThan(26)
+                expect(size(part)).toBeGreaterThanOrEqual(26 * 0.6)
+            }
+            expect(size(made.labels[1])).toBe(26)
+            made.boxes.forEach((node, index) => {
+                const box = node.bounds()
+                for (const part of [made.labels[index], made.values[index]]) {
+                    if (!part) continue
+                    expect(part.bounds().x).toBeGreaterThan(box.x + 8)
+                    expect(ends(part.bounds())[1]).toBeLessThan(ends(box)[1] - 8)
+                }
+            })
+            // The label under the third box is as wide as the text in the box may be, so it cannot meet a label of a neighbor.
+            expect(made.labels[2]!.bounds().width).toBeCloseTo(made.values[2]!.bounds().width, 3)
+            expect(made.labels[2]!.bounds().y).toBeGreaterThan(made.boxes[2]!.bounds().y + made.boxes[2]!.bounds().height)
+        }))
+    })
+
+    it('refuses a text that cannot fit at 0.6 of the size, and says how wide the box is and what to do', async () => {
+        await compileFilm(film(() => {
+            const parts = [{ bits: 1, label: 'present' }, { bits: 31, label: 'frame' }]
+            // Build one object first, so that the fonts are there when the errors are read.
+            bitField(parts, { width: 800, scale: 'even' })
+            const narrow = message(() => bitField(parts, { width: 800 }))
+            expect(narrow).toMatch(/^bitField: the label "present" of field 0 does not fit in its box, which is 19 px wide\. Give a larger width, scale: 'even', a minWidth of \d+ or more, or a shorter text$/)
+            // The least width that the message names is enough, and a little less is not.
+            const least = Number(/a minWidth of (\d+) or more/.exec(narrow)![1])
+            const fixed = bitField(parts, { width: 800, minWidth: least })
+            expect(size(fixed.labels[0])).toBeGreaterThanOrEqual(26 * 0.6)
+            expect(size(fixed.labels[0])).toBeLessThan(26 * 0.65)
+            expect(() => bitField(parts, { width: 800, minWidth: least - 3 })).toThrow(/does not fit in its box/)
+            // With an even scale, the message does not name what the object already does.
+            const even = message(() => bitField([{ bits: 1, label: 'a label that is far too long', value: '1' }, { bits: 1 }], { width: 300, scale: 'even' }))
+            expect(even).toMatch(/^bitField: the label "a label that is far too long" of field 0 does not fit under its box, which is 147 px wide\. Give a larger width, or a shorter text$/)
+            expect(() => bitField([{ bits: 4, value: '0x00000000000000000000' }], { width: 200 })).toThrow(/the value "0x00000000000000000000" of field 0 does not fit in its box, which is 200 px wide/)
+            // Two fields are too narrow. The message names one least width that is enough for both, not the one of the first.
+            const flags = [{ bits: 1, label: 'present' }, { bits: 1, label: 'writable page' }, { bits: 30, label: 'frame' }]
+            const both = Number(/a minWidth of (\d+) or more/.exec(message(() => bitField(flags, { width: 800 })))![1])
+            expect(bitField(flags, { width: 800, minWidth: both }).labels.map(source)).toEqual(['present', 'writable page', 'frame'])
+            expect(() => bitField(flags, { width: 800, minWidth: both - 3 })).toThrow(/the label "writable page" of field 1 does not fit/)
+            // The message names only what helps. Here 21 fields cannot have the least width that the long label
+            // needs, and an even scale gives it a box of 80 px, which is too narrow as well.
+            const crowd = [{ bits: 1, label: 'a label of thirty characters !' }, ...Array.from({ length: 19 }, () => ({ bits: 1 })), { bits: 44, label: 'rest' }]
+            expect(message(() => bitField(crowd, { width: 1800 }))).toMatch(/does not fit in its box, which is 22 px wide\. Give a larger width, or a shorter text$/)
+            // A wide field gains nothing from an even scale, so the message does not name it.
+            expect(message(() => bitField([{ bits: 9, label: 'a name that is much too long for it' }, { bits: 1 }], { width: 300 }))).not.toMatch(/even/)
+        }))
+    })
+
+    it('gives the middle of each edge of a box, by index and by label', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400, height: 80 }).at(100, -50)
+            const box = made.boxes[4]!.bounds()
+            // A point is in the coordinates of the object, so the place of the object is not in it.
+            expect(made.p('PTE')).toEqual(made.p(4))
+            expect(made.p('PTE')).toEqual(made.p('PTE', 'bottom'))
+            expect(made.p('PTE')).toEqual([expect.closeTo(box.x + box.width / 2 - 100, 6), expect.closeTo(40, 6)])
+            expect(made.p(4, 'top')).toEqual([made.p(4)[0], expect.closeTo(-40, 6)])
+            // On the stage, the points are on the two edges of the box.
+            expect(made.toWorld(...made.p('PTE'))).toEqual([expect.closeTo(box.x + box.width / 2, 6), expect.closeTo(box.y + box.height, 6)])
+            expect(made.toWorld(...made.p('PTE', 'top'))).toEqual([expect.closeTo(box.x + box.width / 2, 6), expect.closeTo(box.y, 6)])
+            // The left and the right edge, for a line that leaves the row at one of its ends.
+            const first = made.boxes[0]!.bounds(), last = made.boxes[5]!.bounds()
+            expect(made.toWorld(...made.p(0, 'left'))).toEqual([expect.closeTo(first.x, 6), expect.closeTo(first.y + 40, 6)])
+            expect(made.toWorld(...made.p('offset', 'right'))).toEqual([expect.closeTo(last.x + last.width, 6), expect.closeTo(last.y + 40, 6)])
+            expect(made.p('offset', 'right')).toEqual([expect.closeTo(700, 6), expect.closeTo(0, 6)])
+            expect(made.p(0)[0]).toBeLessThan(made.p('PGD')[0])
+            expect(made.field('PTE')).toBe(made.fields[4])
+            expect(made.field(0)).toBe(made.fields[0])
+            expect(made.field('PTE').children).toContain(made.boxes[4])
+        }))
+    })
+
+    it('keeps every text clear of the other texts and inside its box in rows of many narrow fields', async () => {
+        await compileFilm(film(() => {
+            const flag = (label: string) => ({ bits: 1, label })
+            const entry = [flag('NX'), { bits: 4, label: 'PKEY' }, { bits: 7, label: 'ignored', unused: true }, { bits: 40, label: 'physical frame number' }, { bits: 3, label: 'AVL', unused: true },
+                ...['G', 'PAT', 'D', 'A', 'PCD', 'PWT', 'US', 'RW', 'P'].map(flag)]
+            const rows = [
+                bitField(entry, { width: 1800, minWidth: 84 }),
+                bitField(entry.map((part) => ({ ...part, label: part.label.slice(0, 7), value: '0' })), { width: 1800, scale: 'even' }),
+                bitField(Array.from({ length: 32 }, () => ({ bits: 1 })), { width: 800, numbers: 'offsets' }),
+                bitField(Array.from({ length: 16 }, () => ({ bits: 4 })), { width: 500 }),
+                bitField(Array.from({ length: 16 }, () => ({ bits: 1 })), { width: 420 }),
+            ]
+            for (const made of rows) {
+                const texts = [...made.labels, ...made.values, ...made.numbers].filter((node): node is Node => node !== null).map((node) => node.bounds())
+                texts.forEach((one, index) => {
+                    for (const other of texts.slice(index + 1)) expect(apart(one, other, 4)).toBe(true)
+                })
+                made.boxes.forEach((node, index) => {
+                    const box = node.bounds()
+                    const part = (made.values[index] ?? made.labels[index])?.bounds()
+                    if (!part) return
+                    expect(part.x).toBeGreaterThan(box.x + 8)
+                    expect(ends(part)[1]).toBeLessThan(ends(box)[1] - 8)
+                    expect(part.y).toBeGreaterThan(box.y + 8)
+                    expect(part.y + part.height).toBeLessThan(box.y + box.height - 8)
+                })
+                // A number is over the boxes and not in them.
+                for (const number of made.numbers) expect(number.bounds().y + number.bounds().height).toBeLessThan(made.boxes[0]!.bounds().y)
+            }
+            // No number of the first row had to go: one for each of the ten fields of one bit, and two for each of the other four.
+            expect(rows[0]!.numbers).toHaveLength(18)
+        }))
+    })
+
+    it('drops a number that would meet another: the number of a field of one bit first, and bit 0, the first offset and the total last', async () => {
+        await compileFilm(film(() => {
+            // A box of 26 px has no room for two numbers, so each field shows its high bit. The last field shows bit 0.
+            const nibbles = bitField(Array.from({ length: 16 }, () => ({ bits: 4 })), { width: 500 })
+            expect(shown(nibbles)).toEqual([...Array.from({ length: 15 }, (_, index) => String(63 - index * 4)), '0'])
+            // 64 bits as 20, 3, 2, 1, 30, 1, 2, 3 and 2. The number of the narrow field of one bit, 38, is wider than its
+            // box. It goes, and the high bit of the wide field beside it, 37, stays. The low bits 41, 39 and 5 go
+            // before the high bits of their fields, and the last field shows bit 0 and not bit 1.
+            const mixed = bitField([20, 3, 2, 1, 30, 1, 2, 3, 2].map((bits) => ({ bits })), { width: 1200 })
+            expect(shown(mixed)).toEqual(['63', '44', '43', '40', '37', '8', '7', '6', '4', '2', '0'])
+            // The number of a first field of one bit goes too, when the high bit of the field after it needs the room.
+            expect(shown(bitField([{ bits: 1 }, { bits: 4 }, { bits: 59 }], { width: 1200 }))).toEqual(['62', '59', '58', '0'])
+            // Between two wide fields, the number of the field of one bit goes, and both wide fields keep their numbers.
+            const wide = bitField([{ bits: 100 }, { bits: 1 }, { bits: 127 }], { width: 2000, minWidth: 12 })
+            expect(shown(wide)).toEqual(['227', '128', '126', '0'])
+            // 32 fields, 25 px from one to the next: an offset of two digits has no room beside the next one, so every second one goes.
+            const bytes = bitField(Array.from({ length: 32 }, () => ({ bits: 1 })), { width: 800, numbers: 'offsets' })
+            expect(shown(bytes)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '12', '14', '16', '18', '20', '22', '24', '26', '28', '30', '32'])
+            // The total stays, and the offset before it goes, though that offset came first.
+            const odd = bitField(Array.from({ length: 31 }, () => ({ bits: 1 })), { width: 775, numbers: 'offsets' })
+            expect(shown(odd).slice(-3)).toEqual(['26', '28', '31'])
+            // The offset of a field of one byte goes before the offset of a wide field: 102 stays, and 100 and 101 go.
+            expect(shown(bitField([{ bits: 100 }, { bits: 1 }, { bits: 1 }, { bits: 97 }], { width: 1000, numbers: 'offsets', minWidth: 12 }))).toEqual(['0', '102', '199'])
+            // A last field of one bit keeps its number, bit 0, and the number of the field before it goes.
+            expect(shown(bitField([{ bits: 62 }, { bits: 1 }, { bits: 1 }], { width: 400, minWidth: 6 }))).toEqual(['63', '2', '0'])
+            // Offset 0 stays when the total would meet it.
+            expect(shown(bitField([{ bits: 8 }], { width: 14, numbers: 'offsets' }))).toEqual(['0'])
+            // The total takes the place of the offset 8, and then it meets the offset 4 too. Both go, so no two numbers touch.
+            const displaced = bitField([{ bits: 4 }, { bits: 4 }, { bits: 99992 }], { width: 58.8, scale: 'even', numbers: 'offsets' })
+            expect(shown(displaced)).toEqual(['0', '100000'])
+        }))
+    })
+
+    it('draws a field that carries nothing as a faint box with a hatch that stops around its text', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 8, label: 'reserved', unused: true }, { bits: 8, label: 'type' }, { bits: 8, unused: true, color: 'red' }], { width: 900 })
+            expect(hatchOf(made, 1)).toBeUndefined()
+            const hatch = hatchOf(made, 0)
+            // The box is fainter than the box of a field in use, and it is drawn over the hatch.
+            expect(made.boxes[0]!.get('stroke')).toEqual(rect(10, 10, { stroke: 'faint' }).get('stroke'))
+            expect(made.boxes[0]!.get('fillOpacity')).toBeLessThan(made.boxes[1]!.get('fillOpacity'))
+            expect(made.fields[0]!.children.indexOf(hatch!)).toBeLessThan(made.fields[0]!.children.indexOf(made.boxes[0]!))
+            // The lines are inside the box, at both sides of the label, and no line enters the room of the label.
+            const box = made.boxes[0]!.bounds(), label = made.labels[0]!.bounds(), drawn = hatch!.bounds()
+            expect(drawn.x).toBeGreaterThan(box.x - 1e-6)
+            expect(ends(drawn)[1]).toBeLessThan(ends(box)[1] + 1e-6)
+            expect(drawn.y).toBeGreaterThan(box.y - 1e-6)
+            expect(drawn.y + drawn.height).toBeLessThan(box.y + box.height + 1e-6)
+            expect(drawn.x).toBeLessThan(label.x - 20)
+            expect(ends(drawn)[1]).toBeGreaterThan(ends(label)[1] + 20)
+            const rings = hatch!.get('path')!
+            expect(rings.length).toBeGreaterThan(20)
+            expect(crosses(hatch!, label)).toBe(false)
+            // With a value, the hatch stops around the value in the box. The label is under the box, and it is dim, not faint.
+            const filled = bitField([{ bits: 8, label: 'reserved', value: '0x00', unused: true }, { bits: 8, label: 'type' }], { width: 600 })
+            expect(crosses(hatchOf(filled, 0)!, filled.values[0]!.bounds())).toBe(false)
+            expect(filled.labels[0]!.children[0]!.get('fill')).toEqual(text('a', { color: 'dim' }).children[0]!.get('fill'))
+            expect(filled.values[0]!.children[0]!.get('fill')).toEqual(text('a', { color: 'dim' }).children[0]!.get('fill'))
+            // The text of an unused field is dimmer than the text of a field in use.
+            expect(made.labels[0]!.children[0]!.get('fill')).toEqual(text('a', { color: 'dim' }).children[0]!.get('fill'))
+            expect(made.labels[1]!.children[0]!.get('fill')).toEqual(text('a', { color: 'ink' }).children[0]!.get('fill'))
+            // An unused field with a color of its own keeps the hatch, in that color. With no text, the hatch has no hole.
+            const red = hatchOf(made, 2)!
+            expect(red.get('stroke')).toEqual(rect(10, 10, { stroke: 'red' }).get('stroke'))
+            expect(red.bounds().width).toBeGreaterThan(made.boxes[2]!.bounds().width - 6)
+            expect(red.get('path')!.length).toBeLessThan(rings.length)
+            // The lines of two boxes are parts of one pattern: a line of the second box is a whole number of steps from a line of the first.
+            const sums = (node: Node) => node.get('path')!.map((ring) => ring.p[0]! + ring.p[1]!)
+            const step = sums(red)[1]! - sums(red)[0]!
+            const steps = (sums(red)[0]! - sums(hatch!)[0]!) / step
+            expect(step).toBeGreaterThan(8)
+            expect(steps).toBeCloseTo(Math.round(steps), 6)
+        }))
+    })
+
+    it('enters with nothing on screen at the start, the fields one after another from the left, and all of it at the end', async () => {
+        let made!: ReturnType<typeof bitField>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = bitField(address, { width: 1400 })
+            s.wait(0.5)
+            s.play(made.enter({ lag: 1 }), { duration: 3, ease: linear })
+            s.wait(0.5)
+        }))
+        expect((await compiled.frame(0.2)).ops).toHaveLength(0)
+        expect((await compiled.frame(0.5)).ops).toHaveLength(0)
+        // Six fields with a lag of 1: each has half a second, one after the other.
+        expect(at(0.75, () => made.fields.map(shows))).toEqual([expect.closeTo(0.5, 6), 0, 0, 0, 0, 0])
+        expect(at(2.25, () => made.fields.map(shows))).toEqual([1, 1, 1, expect.closeTo(0.5, 6), 0, 0])
+        expect(at(3.6, () => [made, ...made.fields].map(shows))).toEqual(Array(7).fill(1))
+        // The texts and the numbers are parts of their field, so the first field is on screen with its label and its two numbers.
+        const first = (await compiled.frame(0.9)).ops.filter((op): op is PathOp => op.kind === 'path' && Math.max(op.fillAlpha, op.strokeAlpha) > 0)
+        expect(first.length).toBe(made.fields[0]!.leaves().length)
+        expect((await compiled.frame(3.6)).ops).toHaveLength(made.leaves().length)
+    })
+
+    it('fills rows from the top when it wraps, each row as wide as the width, with the boundaries of the rows in line', async () => {
+        await compileFilm(film(() => {
+            // The 64 bytes of the structure, as four rows of 16: five, three, four and two fields.
+            const made = bitField(sqe, { width: 1600, height: 60, wrap: 16, rowGap: 40, numbers: 'offsets' }).at(100, 50)
+            // The offset of each member is the one that the kernel asserts with BUILD_BUG_SQE_ELEM in io_uring/io_uring.c.
+            expect(made.fields.map((_, index) => made.range(index)[0])).toEqual([0, 1, 2, 4, 8, 16, 24, 28, 32, 40, 42, 44, 48, 56])
+            expect(made.range('addr3')).toEqual([48, 55])
+            expect(made.range('__pad2')).toEqual([56, 63])
+            expect(made.total).toBe(64)
+            const boxes = made.boxes.map((box) => box.bounds())
+            const rows = [boxes.slice(0, 5), boxes.slice(5, 8), boxes.slice(8, 12), boxes.slice(12)]
+            rows.forEach((row, index) => {
+                // Each row is 1600 wide. The rows are 60 high and 40 apart, and the middle of all four is the place of the object.
+                expect(row[0]!.x).toBeCloseTo(100 - 800, 6)
+                expect(ends(row[row.length - 1]!)[1]).toBeCloseTo(100 + 800, 6)
+                for (const box of row) {
+                    expect(box.y).toBeCloseTo(50 - 180 + index * 100, 6)
+                    expect(box.height).toBeCloseTo(60, 6)
+                }
+            })
+            // A field starts at the place of its byte in every row, so the boundaries of the rows are in line.
+            const room = boxes[1]!.x - ends(boxes[0]!)[1]
+            const starts = [0, 1, 2, 4, 8, 0, 8, 12, 0, 8, 10, 12, 0, 8]
+            expect(boxes.map((box) => ((box.x - (100 - 800)) / (1600 + room)) * 16)).toEqual(starts.map((start) => expect.closeTo(start, 6)))
+            for (const index of [6, 9, 13]) expect(boxes[index]!.x).toBeCloseTo(boxes[4]!.x, 6)
+            // Each row starts with its own offset, over its left end. Only the last row shows the total, over its right end.
+            expect(shown(made)).toEqual(['0', '1', '2', '4', '8', '16', '24', '28', '32', '40', '42', '44', '48', '56', '64'])
+            for (const [number, box] of [[5, 5], [8, 8], [12, 12]] as const) {
+                expect(middle(made.numbers[number]!)[0]).toBeCloseTo(100 - 800, 6)
+                expect(made.numbers[number]!.bounds().y + made.numbers[number]!.bounds().height).toBeLessThan(boxes[box]!.y - 4)
+                // The numbers of a row are under the boxes of the row over it.
+                expect(made.numbers[number]!.bounds().y).toBeGreaterThan(boxes[box - 1]!.y + 60 + 4)
+            }
+            expect(middle(made.numbers[14]!)[0]).toBeCloseTo(100 + 800, 6)
+            // A point of a field is on the edge of its box, in any row. It is in the coordinates of the object.
+            expect(made.p('__pad2')).toEqual([expect.closeTo(boxes[13]!.x + boxes[13]!.width / 2 - 100, 6), expect.closeTo(180, 6)])
+            expect(made.p('addr', 'top')).toEqual([expect.closeTo(boxes[5]!.x + boxes[5]!.width / 2 - 100, 6), expect.closeTo(-80, 6)])
+            expect(made.p('user_data', 'left')).toEqual([expect.closeTo(-800, 6), expect.closeTo(50, 6)])
+            expect(made.toWorld(...made.p('splice_fd_in'))).toEqual([expect.closeTo(boxes[11]!.x + boxes[11]!.width / 2, 6), expect.closeTo(boxes[11]!.y + 60, 6)])
+            // The texts of a row are in its boxes.
+            expect(Math.abs(middle(made.labels[9]!)[1] - middle(made.boxes[9]!)[1])).toBeLessThan(4)
+        }))
+    })
+
+    it('keeps the boundaries of the rows in line when narrow fields take the least width', async () => {
+        await compileFilm(film(() => {
+            // At 1200 px a byte has 75 px, less than the least width. The fields of one byte, in the first row, take 110.
+            const made = bitField(sqe, { width: 1200, wrap: 16, numbers: 'offsets', minWidth: 110 })
+            const boxes = made.boxes.map((box) => box.bounds())
+            expect([boxes[0]!.width, boxes[1]!.width]).toEqual([expect.closeTo(110, 6), expect.closeTo(110, 6)])
+            for (const box of boxes) expect(box.width).toBeGreaterThan(110 - 1e-6)
+            // The rows have their columns in common: a field that starts at one byte of its row starts at one x, in every row.
+            const places = new Map<number, number>()
+            boxes.forEach((box, index) => {
+                const start = made.range(index)[0] % 16
+                expect(box.x).toBeCloseTo(places.get(start) ?? box.x, 6)
+                places.set(start, box.x)
+            })
+            expect([...places.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2, 4, 8, 10, 12])
+            // So `addr`, under the two wide fields of one byte, is wider than `off`, which has as many bytes.
+            expect(boxes[5]!.width).toBeGreaterThan(boxes[4]!.width + 60)
+            // Each row is still as wide as the width, and the bytes that need no more room share the rest evenly.
+            for (const first of [0, 5, 8, 12]) expect(boxes[first]!.x).toBeCloseTo(-600, 6)
+            for (const last of [4, 7, 11, 13]) expect(ends(boxes[last]!)[1]).toBeCloseTo(600, 6)
+            expect(boxes[6]!.width).toBeCloseTo(boxes[7]!.width, 6)
+            // A last row with fewer bytes has room in the same columns. Its two fields of one byte take the least width.
+            const short = bitField([{ bits: 8, label: 'a' }, { bits: 8, label: 'b' }, { bits: 1, label: 'cc' }, { bits: 1, label: 'dd' }], { width: 560, wrap: 16, minWidth: 60, numbers: 'offsets' })
+            const [a, , cc, dd] = short.boxes.map((box) => box.bounds())
+            expect([cc!.width, dd!.width]).toEqual([expect.closeTo(60, 6), expect.closeTo(60, 6)])
+            expect(cc!.x).toBeCloseTo(a!.x, 6)
+            expect(ends(dd!)[1]).toBeLessThan(ends(a!)[1])
+            // A field of two bytes over two fields of one byte: the narrow ones take the least width first, so the
+            // wide one is as wide as both, and every field has the least width or more.
+            const stacked = bitField([{ bits: 2, label: 'ab' }, { bits: 14, label: 'rest' }, { bits: 1, label: 'a' }, { bits: 1, label: 'b' }, { bits: 14, label: 'more' }], { width: 800, wrap: 16, minWidth: 100 })
+            const [ab, , one, two] = stacked.boxes.map((box) => box.bounds())
+            expect([one!.width, two!.width]).toEqual([expect.closeTo(100, 6), expect.closeTo(100, 6)])
+            expect(ab!.x).toBeCloseTo(one!.x, 6)
+            expect(ends(ab!)[1]).toBeCloseTo(ends(two!)[1], 6)
+            // When the fields cannot have the least width, the message names the rows and not one row.
+            expect(() => bitField(sqe, { width: 300, wrap: 16, numbers: 'offsets', minWidth: 110 })).toThrow(/a width of 300 has no room for the fields of 110 or more in rows of 16 bytes. Give a larger width or a smaller minWidth/)
+        }))
+    })
+
+    it('gives the rows the room that their numbers and labels need, and a short last row the width of its bits', async () => {
+        await compileFilm(film(() => {
+            const bytes = (count: number, label: string, value?: string) => ({ bits: count, label, ...(value ? { value } : {}) })
+            const top = (node: Node) => node.bounds().y, bottom = (node: Node) => node.bounds().y + node.bounds().height
+            // With no row gap given, the numbers of the second row are clear of the boxes of the first.
+            const plain = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(plain.numbers[2]!)).toBeGreaterThan(bottom(plain.boxes[0]!) + 8)
+            // A last row with half the bytes is half as long, and it starts at the left. A byte has one width in both rows.
+            expect(plain.boxes[2]!.bounds().x).toBeCloseTo(-800, 6)
+            expect(plain.boxes[2]!.bounds().width).toBeCloseTo(plain.boxes[0]!.bounds().width, 6)
+            expect(shown(plain)).toEqual(['0', '8', '16', '24'])
+            // One row with half the bytes of a full row starts at the left end of a full row too. So two structures
+            // with one `wrap` and one `width` have one scale, and `.at()` is the middle of a full row.
+            const single = bitField([bytes(4, 'a'), bytes(4, 'b')], { width: 1600, wrap: 16, numbers: 'offsets' }).at(100, 0)
+            expect(single.boxes[0]!.bounds().x).toBeCloseTo(100 - 800, 6)
+            expect(ends(single.boxes[1]!.bounds())[1]).toBeLessThan(100)
+            expect(single.boxes[0]!.bounds().width).toBeCloseTo(plain.boxes[0]!.bounds().width / 2 - (single.boxes[1]!.bounds().x - ends(single.boxes[0]!.bounds())[1]) / 2, 6)
+            // With labels under the boxes, the rows are farther apart: a label of the first row is clear of the numbers of the second.
+            const named = bitField([bytes(8, 'a', '1'), bytes(8, 'b', '2'), bytes(8, 'c', '3')], { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(named.boxes[2]!) - top(named.boxes[0]!)).toBeGreaterThan(top(plain.boxes[2]!) - top(plain.boxes[0]!) + 26)
+            expect(top(named.numbers[2]!)).toBeGreaterThan(bottom(named.labels[0]!) + 8)
+            expect(top(named.labels[2]!)).toBeGreaterThan(bottom(named.boxes[2]!))
+            // Without numbers and without labels under the boxes, the rows are near each other.
+            const bare = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { width: 1600, wrap: 16, numbers: false })
+            expect(top(bare.boxes[2]!) - bottom(bare.boxes[0]!)).toBeGreaterThan(8)
+            expect(top(bare.boxes[2]!) - bottom(bare.boxes[0]!)).toBeLessThan(top(plain.boxes[2]!) - bottom(plain.boxes[0]!))
+            // Values with no label under them need no room under the boxes: the rows are as near as without values.
+            const unnamed = bitField([{ bits: 8, value: '1' }, { bits: 8, value: '2' }, { bits: 8, value: '3' }], { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(unnamed.boxes[2]!) - top(unnamed.boxes[0]!)).toBeCloseTo(top(plain.boxes[2]!) - top(plain.boxes[0]!), 6)
+            // An empty value puts its label under the box as any value does, so the rows have room for the labels.
+            const empty = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')].map((part) => ({ ...part, value: '' })), { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(empty.boxes[2]!) - top(empty.boxes[0]!)).toBeCloseTo(top(named.boxes[2]!) - top(named.boxes[0]!), 6)
+            // The bits count down through the rows, and with an even scale each row shares its width among its fields.
+            const word = bitField([{ bits: 16 }, { bits: 16 }, { bits: 32 }], { width: 800, wrap: 32 })
+            expect(shown(word)).toEqual(['63', '48', '47', '32', '31', '0'])
+            expect(word.range(2)).toEqual([31, 0])
+            const even = bitField([{ bits: 1 }, { bits: 3 }, { bits: 4 }, { bits: 8 }], { width: 800, wrap: 8, scale: 'even' })
+            expect(even.boxes[1]!.bounds().width).toBeCloseTo(even.boxes[0]!.bounds().width, 6)
+            expect(even.boxes[3]!.bounds().width).toBeCloseTo(800, 6)
+            // An even scale has no width for a bit, so a last row with fewer bits is as wide as the other rows.
+            const short = bitField([{ bits: 4 }, { bits: 4 }, { bits: 4 }], { width: 800, wrap: 8, scale: 'even' })
+            expect(short.boxes[2]!.bounds().width).toBeCloseTo(800, 6)
+            // A row gap with no room for the numbers is an error. The room that the message names is enough.
+            const tight = message(() => bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { wrap: 16, numbers: 'offsets', rowGap: 10 }))
+            expect(tight).toMatch(/^bitField: rowGap is the room between two rows\. The numbers and the labels of these fields need \d+ or more$/)
+            const needed = Number(/need (\d+) or more/.exec(tight)![1])
+            const close = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { wrap: 16, numbers: 'offsets', rowGap: needed })
+            expect(top(close.numbers[2]!)).toBeGreaterThanOrEqual(bottom(close.boxes[0]!))
+            expect(top(close.boxes[2]!) - bottom(close.boxes[0]!)).toBeCloseTo(needed, 6)
+            expect(() => bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { wrap: 16, numbers: 'offsets', rowGap: needed - 2 })).toThrow(/rowGap is the room/)
+            // With one row, no text can meet a box of a next row, so any row gap is right: also 0.
+            expect(bitField([bytes(8, 'a'), bytes(8, 'b')], { rowGap: 0, numbers: 'offsets' }).boxes).toHaveLength(2)
+            expect(bitField([bytes(8, 'a'), bytes(8, 'b')], { wrap: 16, rowGap: 0, numbers: 'offsets' }).boxes).toHaveLength(2)
+            // A field that crosses the end of a row, and a row with no room for its fields, are errors.
+            expect(() => bitField([bytes(8, 'a'), bytes(4, 'b'), bytes(8, 'off')], { wrap: 16, numbers: 'offsets' })).toThrow(/field 2 \("off"\) has 8 bytes and starts at byte 12 of a row of 16, so it crosses the end of the row. Split it into two fields, or change wrap/)
+            expect(() => bitField([{ bits: 20 }], { wrap: 16 })).toThrow(/field 0 has 20 bits and starts at bit 0 of a row of 16/)
+            expect(() => bitField([bytes(8, 'a'), bytes(2, 'b'), bytes(2, 'c'), bytes(2, 'd'), bytes(2, 'e')], { width: 300, wrap: 8, minWidth: 80, scale: 'even' })).toThrow(/a width of 300 has no room for 4 fields of 80 or more in row 1. Give a larger width or a smaller minWidth/)
+        }))
+    })
+
+    it('changes a value in place: the old text fades out, then the new text fades in, and values holds the new text', async () => {
+        let made!: ReturnType<typeof bitField>
+        let first!: Node
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 1, label: 'P', value: '0' }, { bits: 7, label: 'rest', value: '0x00' }], { width: 600, minWidth: 80 }))
+            first = made.values[0]!
+            s.wait(0.5)
+            s.play(made.setValue('P', '1'), { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(seq(made.setValue(1, '0x7f'), made.setValue('rest', '0x01')), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        const next = made.values[0]!
+        expect(next).not.toBe(first)
+        expect(source(next)).toBe('1')
+        // The old text is not drawn after the change: the frame has as many marks as before it.
+        expect((await compiled.frame(1.6)).ops).toHaveLength((await compiled.frame(0.4)).ops.length)
+        expect(made.field('P').children).toContain(next)
+        // The new text is in the middle of the box, as the first one was.
+        expect(at(2, () => middle(next)[0])).toBeCloseTo(at(2, () => middle(made.boxes[0]!)[0]), 6)
+        expect(at(2, () => Math.abs(middle(next)[1] - middle(made.boxes[0]!)[1]))).toBeLessThan(4)
+        // The change runs from 0.5 to 1.5. The old text leaves in the first half, and the new one arrives in the second.
+        expect(at(0.4, () => [shows(first), shows(next)])).toEqual([1, 0])
+        expect(at(0.75, () => [shows(first), shows(next)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(1.25, () => [shows(first), shows(next)])).toEqual([0, expect.closeTo(0.5, 6)])
+        expect(at(1.6, () => [shows(first), shows(next)])).toEqual([0, 1])
+        for (let time = 0.4; time < 1.7; time += 0.05) expect(at(time, () => Math.min(shows(first), shows(next)))).toBe(0)
+        // Two changes in one sequence, from 2 to 3 and from 3 to 4: the second one starts from the text of the first.
+        const texts = made.field('rest').children.filter((node) => source(node)?.startsWith('0x'))
+        expect(texts.map(source)).toEqual(['0x00', '0x7f', '0x01'])
+        expect(made.values[1]).toBe(texts[2])
+        expect(at(2.9, () => texts.map(shows))).toEqual([0, expect.closeTo(0.8, 6), 0])
+        expect(at(3.25, () => texts.map(shows))).toEqual([0, expect.closeTo(0.5, 6), 0])
+        expect(at(3.75, () => texts.map(shows))).toEqual([0, 0, expect.closeTo(0.5, 6)])
+        expect(at(4.3, () => texts.map(shows))).toEqual([0, 0, 1])
+    })
+
+    it('fits a new value as it fits the first one, moves the hole of a hatch with it, and refuses a field with no value', async () => {
+        let made!: ReturnType<typeof bitField>
+        let old!: Box
+        // The object is away from 0, 0, and the lines of a hatch are in the coordinates of the object.
+        const local = (box: Box) => ({ ...box, x: box.x - 300, y: box.y - 200 })
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Two rows of 8 bytes: two fields of 4, and one reserved field of 8.
+            made = s.add(bitField([{ bits: 4, label: 'fd', value: '3' }, { bits: 4, label: 'len' }, { bits: 8, label: 'reserved', value: '0', unused: true }], { width: 300, wrap: 8, numbers: 'offsets' }).at(300, 200))
+            old = local(made.values[2]!.bounds())
+            s.wait(0.5)
+            s.play(made.setValue('fd', '0xffffffff'), made.setValue('reserved', '0x0000'), { duration: 1, ease: linear })
+            s.wait(0.5)
+            // A field with no value has its label in the box, so a value has no room there.
+            expect(() => made.setValue('len', '8')).toThrow(/field 1 \("len"\) was built with no value, so its box has no room for one. Give the field a value when you build the object/)
+            expect(() => made.setValue('size', '8')).toThrow(/no field has the label "size"/)
+            // A text that cannot fit at 0.6 of the size is an error when the film asks for it, and it changes nothing.
+            const shown = made.values[0]
+            expect(() => made.setValue('fd', '0xffffffffffffffff')).toThrow(/the value "0xffffffffffffffff" of field 0 \("fd"\) does not fit in its box, which is 147 px wide\. Give a larger width, or a shorter text$/)
+            // Where the fields can have it, the message names a least width. It is the one for the new text, which is
+            // wider than the text of any field: an object that is built with it and with that text has no error.
+            const roomy = [{ bits: 4, label: 'fd', value: '3' }, { bits: 28, label: 'rest' }]
+            const least = Number(/a minWidth of (\d+) or more/.exec(message(() => bitField(roomy, { width: 800 }).setValue('fd', '0xffffffffffffffff')))![1])
+            expect(least).toBeGreaterThan(150)
+            expect(source(bitField([{ ...roomy[0]!, value: '0xffffffffffffffff' }, roomy[1]!], { width: 800, minWidth: least }).values[0])).toBe('0xffffffffffffffff')
+            expect(() => made.setValue('fd', '1\n2')).toThrow(/the value "1\\n2" of field 0 has a line break. A value is one line/)
+            expect(() => made.setValue('fd', 7 as never)).toThrow(/the new value of field 0 \("fd"\) is 7. A value is a text, such as '1' or ''/)
+            expect(() => (made.setValue as (which: string) => unknown)('fd')).toThrow(/the new value of field 0 \("fd"\) is undefined/)
+            expect(made.values[0]).toBe(shown)
+        }))
+        // The new value of ten characters is wider than the room in the box, so it is smaller, with room at both sides.
+        const value = made.values[0]!, box = at(2, () => made.boxes[0]!.bounds()), drawn = at(2, () => value.bounds())
+        expect(source(value)).toBe('0xffffffff')
+        expect(size(value)).toBeLessThan(26)
+        expect(size(value)).toBeGreaterThanOrEqual(26 * 0.6)
+        expect(drawn.x).toBeGreaterThan(box.x + 8)
+        expect(ends(drawn)[1]).toBeLessThan(ends(box)[1] - 8)
+        // The value of the second row is in the box of the second row.
+        const wide = local(at(2, () => made.values[2]!.bounds())), lower = local(at(2, () => made.boxes[2]!.bounds()))
+        expect(wide.y).toBeGreaterThan(lower.y + 8)
+        expect(wide.y + wide.height).toBeLessThan(lower.y + lower.height - 8)
+        expect(wide.width).toBeGreaterThan(old.width * 3)
+        // The new value of an unused field is dim, as the first one was. The new value of a field in use is not.
+        expect(ink(made.values[2])).toEqual(inkOf('dim'))
+        expect(ink(made.values[0])).toEqual(inkOf('ink'))
+        // The hole in the hatch takes the size of the new text at the middle of the change, while no text shows.
+        const lines = hatchOf(made, 2)!
+        expect(at(0.9, () => crosses(lines, old))).toBe(false)
+        expect(at(0.9, () => crosses(lines, wide))).toBe(true)
+        expect(at(1.1, () => crosses(lines, wide))).toBe(false)
+    })
+
+    it('gives the same picture when a film plays one setValue animation twice', async () => {
+        let made!: ReturnType<typeof bitField>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 1, label: 'P', value: '0' }, { bits: 7, label: 'rest', value: '0x00' }], { width: 600, minWidth: 80 }))
+            const change = made.setValue('P', '1')
+            s.wait(0.5)
+            s.play(change, { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(change, { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(made.setValue('P', '2'), { duration: 1, ease: linear })
+            s.play(change, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const texts = valuesOf(made, 0)
+        expect(texts.map(source)).toEqual(['0', '1', '2'])
+        // The first play runs from 0.5 to 1.5. The second play, from 2 to 3, changes nothing: the box shows 1 all the time.
+        for (const time of [1.6, 2, 2.25, 2.5, 2.75, 3, 3.4]) expect(at(time, () => texts.map(shows))).toEqual([0, 1, 0])
+        // Another change, from 3.5 to 4.5, puts 2 in the box. The first animation, played again, brings 1 back.
+        expect(at(4.4, () => texts.map(shows))).toEqual([0, 0, expect.closeTo(0.8, 6)])
+        expect(at(4.75, () => texts.map(shows))).toEqual([0, 0, expect.closeTo(0.5, 6)])
+        expect(at(5.25, () => texts.map(shows))).toEqual([0, expect.closeTo(0.5, 6), 0])
+        expect(at(5.8, () => texts.map(shows))).toEqual([0, 1, 0])
+        expect(made.values[0]).toBe(texts[1])
+        // Two changes of one field at one time: the later one wins, and the text of the first one does not show under it.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 1, label: 'P', value: '0' }, { bits: 7, label: 'rest', value: '0x00' }], { width: 600, minWidth: 80 }))
+            s.wait(0.5)
+            s.play(made.setValue('P', '1'), made.setValue('P', '2'), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(valuesOf(made, 0).map(source)).toEqual(['0', '1', '2'])
+        expect(at(1.25, () => valuesOf(made, 0).map(shows))).toEqual([0, 0, expect.closeTo(0.5, 6)])
+        expect(at(1.8, () => valuesOf(made, 0).map(shows))).toEqual([0, 0, 1])
+        expect(source(made.values[0])).toBe('2')
+    })
+
+    it('takes an empty text as a value: an empty box with its label under it, which setValue fills', async () => {
+        let made!: ReturnType<typeof bitField>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 4, label: 'fd', value: '' }, { bits: 4, label: 'len' }, { bits: 8, label: 'res', value: '7' }], { width: 600, numbers: 'offsets' }))
+            s.wait(0.5)
+            s.play(made.setValue('fd', '3'), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const boxes = at(0, () => made.boxes.map((box) => box.bounds()))
+        // The field with the empty value has its label under its box, as the field with the value 7 has. The other label is in its box.
+        expect(at(0, () => made.labels[0]!.bounds().y)).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height + 4)
+        expect(at(0, () => made.labels[0]!.get('y'))).toBeCloseTo(at(0, () => made.labels[2]!.get('y')), 6)
+        expect(at(0, () => made.labels[1]!.bounds().y)).toBeLessThan(boxes[1]!.y + boxes[1]!.height)
+        // The box is empty at first, and then it shows the new value.
+        const texts = valuesOf(made, 0)
+        expect(texts.map(source)).toEqual(['', '3'])
+        expect(at(0.4, () => texts[0]!.bounds().width)).toBe(0)
+        expect(at(1.8, () => shows(texts[1]!))).toBe(1)
+        expect(made.values[0]).toBe(texts[1])
+        const drawn = at(1.8, () => texts[1]!.bounds())
+        expect(drawn.x).toBeGreaterThan(boxes[0]!.x + 8)
+        expect(drawn.y).toBeGreaterThan(boxes[0]!.y + 8)
+        expect(drawn.y + drawn.height).toBeLessThan(boxes[0]!.y + boxes[0]!.height - 8)
+        // An empty value takes no room, so the hatch of an unused field has no hole: its lines are those of a field with no text.
+        await compileFilm(film(() => {
+            const empty = bitField([{ bits: 8, label: 'pad', value: '', unused: true }], { width: 400 })
+            const none = bitField([{ bits: 8, unused: true }], { width: 400 })
+            expect(hatchOf(empty, 0)!.get('path')!.length).toBe(hatchOf(none, 0)!.get('path')!.length)
+            expect(crosses(hatchOf(empty, 0)!, { x: -6, y: -6, width: 12, height: 12 })).toBe(true)
+            // A value of one character has a hole.
+            const one = bitField([{ bits: 8, label: 'pad', value: '0', unused: true }], { width: 400 })
+            expect(crosses(hatchOf(one, 0)!, { x: -6, y: -6, width: 12, height: 12 })).toBe(false)
+        }))
+    })
+
+    it('has a duration and a lag of its own when the film gives none', async () => {
+        let made!: ReturnType<typeof bitField>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = bitField([{ bits: 1, label: 'N', value: '1' }, { bits: 1, label: 'Z', value: '0' }, { bits: 1, label: 'C', value: '0' }], { width: 400 })
+            expect(made.enter().duration).toBe(1.4)
+            expect(made.enter({ duration: 3 }).duration).toBe(3)
+            expect(made.setValue('N', '0').duration).toBe(0.6)
+            expect(made.setValue('N', '0', { duration: 2 }).duration).toBe(2)
+            s.wait(0.5)
+            // With no lag given, a field starts 0.35 of its own time after the field before it.
+            s.play(made.enter(), { duration: 1.7, ease: linear })
+            s.wait(0.5)
+        }))
+        // Three fields in 1.7 s: each one takes 1 s, and they start at 0.5, 0.85 and 1.2.
+        expect(at(1, () => made.fields.map(shows))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.15, 6), 0])
+        expect(at(1.7, () => made.fields.map(shows))).toEqual([1, expect.closeTo(0.85, 6), expect.closeTo(0.5, 6)])
+        expect(at(2.3, () => made.fields.map(shows))).toEqual([1, 1, 1])
+    })
+
+    it('gives a copy its own fields, boxes and texts', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 8, label: 'type', value: '7' }, { bits: 8, label: 'rest' }], { width: 600 }), copy = made.clone()
+            expect(copy.field('type')).not.toBe(made.field('type'))
+            expect(copy.field('type').children).toEqual(expect.arrayContaining([copy.boxes[0], copy.values[0], copy.labels[0], copy.numbers[0]]))
+            expect(copy.boxes[0]).not.toBe(made.boxes[0])
+            expect(copy.values[1]).toBeNull()
+            expect(copy.p('rest')).toEqual(made.p('rest'))
+            expect(copy.range('rest')).toEqual([7, 0])
+        }))
+    })
+
+    it('names a wrong field, size or option', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address)
+            expect(() => bitField([])).toThrow(/at least one field/)
+            expect(() => bitField([{ bits: 0 }])).toThrow(/field 0 has 0 bits. A field has a whole number of bits, 1 or more/)
+            expect(() => bitField([{ bits: 4 }, { bits: 1.5, label: 'half' }])).toThrow(/field 1 \("half"\) has 1.5 bits/)
+            expect(() => bitField([{ bits: Number.NaN }])).toThrow(/whole number of bits/)
+            expect(() => bitField(address, { width: 0 })).toThrow(/width is the width of one row of fields, more than 0/)
+            expect(() => bitField(address, { size: 0 })).toThrow(/size is a text size, more than 0/)
+            expect(() => bitField(address, { size: -4 })).toThrow(/size is a text size/)
+            expect(() => bitField(address, { height: 0 })).toThrow(/height is the height of the boxes/)
+            expect(() => bitField(address, { height: 30 })).toThrow(/A text of size 26 needs a height of 39 or more/)
+            expect(() => bitField(address, { scale: 'equal' as never })).toThrow(/scale is 'proportional' or 'even', not "equal"/)
+            expect(() => bitField(address, { numbers: 'bytes' as never })).toThrow(/numbers is 'bits', 'offsets' or false, not "bytes"/)
+            expect(() => bitField(address, { minWidth: -1 })).toThrow(/minWidth is the least width of a field, 0 or more/)
+            expect(() => bitField(Array.from({ length: 64 }, () => ({ bits: 1 })), { width: 100 })).toThrow(/a width of 100 has no room for 64 fields. Give a larger width$/)
+            // A box with no inside is an error too: here a bit has 2 px, less than the room between two boxes.
+            expect(() => bitField([{ bits: 1, label: 'P' }, { bits: 499 }], { width: 1000 })).toThrow(/field 0 \("P"\) is too narrow to draw in a width of 1000. Give a larger width, scale: 'even', or a minWidth$/)
+            expect(() => bitField(Array.from({ length: 64 }, () => ({ bits: 1 })), { width: 500, scale: 'even' })).toThrow(/field 0 is too narrow to draw in a width of 500. Give a larger width$/)
+            expect(() => bitField(address, { wrap: 0 })).toThrow(/wrap is the number of bits in one row, a whole number, 1 or more/)
+            expect(() => bitField(address, { wrap: 2.5 })).toThrow(/wrap is the number of bits in one row/)
+            expect(() => bitField(address, { rowGap: -1 })).toThrow(/rowGap is the room between two rows/)
+            for (const read of [() => made.field('PGE'), () => made.p('PGE'), () => made.range('PGE')]) {
+                expect(read).toThrow(/no field has the label "PGE". The labels are "sign extension", "PGD", "PUD", "PMD", "PTE", "offset"/)
+            }
+            expect(() => made.field(6)).toThrow(/no field 6. The object has 6 fields, and the first is field 0/)
+            expect(() => made.p(-1)).toThrow(/no field -1/)
+            expect(() => made.range(1.5)).toThrow(/no field 1.5/)
+            expect(() => made.p('PTE', 'middle' as never)).toThrow(/the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/)
+            // A label or a value is one line of text. Its lines would start at the left and leave the middle of the box.
+            expect(() => bitField([{ bits: 8, label: 'physical\nframe number' }])).toThrow(/the label "physical\\nframe number" of field 0 has a line break. A label is one line: give a shorter text, or a second field/)
+            expect(() => bitField([{ bits: 8, label: 'a' }, { bits: 8, label: 'b', value: '0x1\n0x2' }])).toThrow(/the value "0x1\\n0x2" of field 1 has a line break. A value is one line/)
+            // A film is not type-checked when it runs, so a number can arrive in place of a text.
+            expect(() => bitField([{ bits: 4, label: 'a', value: 7 as never }])).toThrow(/the value of field 0 is 7. A value is a text, such as "7"/)
+            expect(() => bitField([{ bits: 4, label: 5 as never }])).toThrow(/the label of field 0 is 5. A label is a text, such as "5"/)
+            // Two fields may share a name. A film must then give the index.
+            const twice = bitField([{ bits: 4, label: 'reserved' }, { bits: 4, label: 'type' }, { bits: 4, label: 'reserved' }], { width: 900 })
+            expect(() => twice.p('reserved')).toThrow(/2 fields have the label "reserved". Give the index: 0 or 2/)
+            expect(twice.field('type')).toBe(twice.fields[1])
+            expect(() => bitField([{ bits: 4 }]).field('type')).toThrow(/No field has a label, so give an index/)
+        }))
+    })
+})
+
 describe('terminal', () => {
     const lines = [
         { text: './one-byte', kind: 'command' as const },
@@ -3950,3 +4739,13 @@ describe('terminal', () => {
 })
 
 export type { Vec, Vec3 }
+
+describe('object catalog', () => {
+    it('names only things that the stage exports, so no entry is lost from the list of objects', async () => {
+        const { FILM_OBJECTS } = await import('../src/stage/catalog')
+        const stage = await import('../src/stage/index')
+        // fromComponent lives in the Node-only export module, because it needs the layout engine.
+        const missing = FILM_OBJECTS.filter((entry) => !(entry.name in stage) && entry.name !== 'fromComponent').map((entry) => entry.name)
+        expect(missing).toEqual([])
+    })
+})
