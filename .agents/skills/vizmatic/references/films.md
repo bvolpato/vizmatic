@@ -116,7 +116,7 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
 
-A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
+A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 
 ```ts
 const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: 'blue' }).at(-300, 0))

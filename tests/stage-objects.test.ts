@@ -7,7 +7,7 @@ import {
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     seq, sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
-    type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
+    type FilmDefinition, type Node, type PathOp, type PictogramName, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
@@ -816,6 +816,7 @@ describe('clone', () => {
 
 describe('pictograms', () => {
     const SIZE = 96
+    const paint = (mark: Node) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))
 
     it('keeps every mark of every picture inside its square', () => {
         expect(PICTOGRAMS.length).toBeGreaterThan(40)
@@ -832,7 +833,6 @@ describe('pictograms', () => {
     })
 
     it('paints the accent in every picture, and leaves the other lines in the color when there are some', () => {
-        const paint = (mark: Node) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))
         for (const name of PICTOGRAMS) {
             const plain = new Set(pictogram(name, { color: 'ink' }).children.map(paint))
             const accented = new Set(pictogram(name, { color: 'ink', accent: 'teal' }).children.map(paint))
@@ -840,6 +840,47 @@ describe('pictograms', () => {
             expect([...accented].some((value) => !plain.has(value)), name).toBe(true)
         }
         expect(new Set(pictogram('forecast', { color: 'ink', accent: 'teal' }).children.map(paint)).size).toBe(2)
+    })
+
+    it('puts the accent of ring, core, and syscall on the part that the picture is about', () => {
+        const parts = (name: PictogramName) => {
+            const plain = new Set(pictogram(name, { size: SIZE, color: 'ink' }).children.map(paint))
+            return pictogram(name, { size: SIZE, color: 'ink', accent: 'teal' }).children.map((mark) => {
+                const box = pathBounds(mark.get('path')!)!
+                return { accent: !plain.has(paint(mark)), filled: !mark.get('stroke'), box, reach: Math.hypot(box.x + box.width / 2, box.y + box.height / 2) }
+            })
+        }
+        // ring: the filled slots, which are a fill in the band and the two rims along it. The pointer outside the band, the dividers,
+        // and the rims of the empty slots keep the color.
+        const ring = parts('ring'), fills = ring.filter((part) => part.filled).sort((a, b) => a.reach - b.reach)
+        expect(fills.map((fill) => fill.accent)).toEqual([true, false])
+        expect(ring.filter((part) => part.accent && !part.filled)).toHaveLength(2)
+        expect(ring.filter((part) => !part.accent && !part.filled)).toHaveLength(10)
+        // core: one of the two lanes. The body and the legs keep the color.
+        const core = parts('core')
+        expect(core.filter((part) => part.filled).map((lane) => lane.accent).sort()).toEqual([false, true])
+        expect(core.filter((part) => !part.filled).some((part) => part.accent)).toBe(false)
+        // syscall: the arrow. The line that it crosses keeps the color.
+        const syscall = parts('syscall')
+        const line = syscall.filter((part) => part.box.height < 1e-6 && part.box.width > SIZE / 2)
+        expect(line).toHaveLength(1)
+        expect(syscall.filter((part) => !part.accent)).toEqual(line)
+    })
+
+    it('ends each leg of chip, core, and timer on the edge of the body', () => {
+        for (const name of ['chip', 'core', 'timer'] as const) {
+            const lines = pictogram(name, { size: SIZE }).children.filter((mark) => mark.get('stroke')).map((mark) => pathBounds(mark.get('path')!)!)
+            const body = lines.reduce((largest, box) => (box.width * box.height > largest.width * largest.height ? box : largest))
+            const legs = lines.filter((box) => box.width < 1e-6 || box.height < 1e-6)
+            expect(legs, name).toHaveLength(12)
+            for (const leg of legs) {
+                const upright = leg.width < 1e-6
+                const [from, to] = upright ? [leg.y, leg.y + leg.height] : [leg.x, leg.x + leg.width]
+                const [near, far] = upright ? [body.y, body.y + body.height] : [body.x, body.x + body.width]
+                // A leg stops on the near edge or starts on the far edge. So it touches the body and does not cross it.
+                expect(Math.min(Math.abs(to - near), Math.abs(from - far)), name).toBeLessThan(1e-6)
+            }
+        }
     })
 
     it('rejects a name it does not know, also when an object has a property of that name', () => {
