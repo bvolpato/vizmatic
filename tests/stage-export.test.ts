@@ -10,6 +10,7 @@ import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFil
 import { checkFilm } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
 import { renderRgbaVideo } from '../src/video'
+import { rasterMemoBytes } from '../src/stage/raster'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
 const tempDirs: string[] = []
@@ -39,7 +40,7 @@ describe('render planning', () => {
             expect(plan.workers).toBeGreaterThanOrEqual(1)
             expect(plan.readAhead).toBeGreaterThan(plan.workers)
             // Workers plus finished frames waiting for the encoder must fit the budget.
-            const perWorker = frameBytes * (blur > 1 ? blur + 4 : 3)
+            const perWorker = frameBytes * (blur > 1 ? blur + 4 : 3) + rasterMemoBytes(3840, 2160)
             expect(plan.workers * perWorker + (plan.readAhead - plan.workers) * frameBytes).toBeLessThanOrEqual(budget * 1.05)
         }
     })
