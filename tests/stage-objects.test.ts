@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
@@ -823,6 +823,82 @@ describe('pictograms', () => {
     it('rejects a name it does not know, also when an object has a property of that name', () => {
         expect(() => pictogram('unicorn' as never)).toThrow(/unknown name "unicorn"/)
         expect(() => pictogram('toString' as never)).toThrow(/unknown name "toString"/)
+    })
+})
+
+describe('card', () => {
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+
+    it('scales a large figure into the space between the title and the caption, and leaves a small one alone', async () => {
+        await compileFilm(film(() => {
+            const made = card({ title: 'Logs', figure: rect(900, 600), caption: 'one line per event', width: 400, height: 360 })
+            const area = made.figureBox, drawn = made.figure!.bounds()
+            expect(drawn.height).toBeCloseTo(area.height, 3)
+            expect(drawn.width).toBeLessThan(area.width)
+            expect(drawn.width / drawn.height).toBeCloseTo(900 / 600, 6)
+            expect(middle(made.figure!)[0]).toBeCloseTo(0, 3)
+            expect(middle(made.figure!)[1]).toBeCloseTo(area.y + area.height / 2, 3)
+            const title = made.title!.bounds(), caption = made.caption!.bounds()
+            expect(area.y - (title.y + title.height)).toBeGreaterThan(14)
+            expect(caption.y - (area.y + area.height)).toBeGreaterThan(14)
+            expect(card({ figure: rect(50, 30), width: 400, height: 360 }).figure!.bounds()).toMatchObject({ width: 50, height: 30 })
+        }))
+    })
+
+    it('fits and centers a figure that has no height, or that was built away from the origin', async () => {
+        await compileFilm(film(() => {
+            const flat = card({ figure: line([-450, 0], [450, 0]), width: 400, height: 300 })
+            expect(flat.figure!.bounds().width).toBeCloseTo(flat.figureBox.width, 3)
+            expect(middle(flat.figure!)[0]).toBeCloseTo(0, 3)
+            const far = card({ title: 'Far', figure: circle(40).at(700, -300), width: 400, height: 300 })
+            expect(middle(far.figure!)[0]).toBeCloseTo(0, 3)
+            expect(middle(far.figure!)[1]).toBeCloseTo(far.figureBox.y + far.figureBox.height / 2, 3)
+        }))
+    })
+
+    it('gives the cards of a row one layout, also when one caption has more lines', async () => {
+        await compileFilm(film(() => {
+            const row = { width: 420, height: 400, captionLines: 2 }
+            const a = card({ title: 'DATA', figure: rect(300, 90), caption: 'every type', ...row })
+            const b = card({ title: 'Feedback loop', figure: circle(70), caption: 'the path of one request through the services', ...row })
+            expect(b.caption!.bounds().height).toBeGreaterThan(a.caption!.bounds().height * 1.5)
+            expect(b.title!.get('y')).toBe(a.title!.get('y'))
+            expect(b.figureBox).toEqual(a.figureBox)
+            expect(middle(b.figure!)[1]).toBeCloseTo(middle(a.figure!)[1], 3)
+            // The first line of both captions is at one height. A block is placed by the middle of its lines.
+            const lineHeight = 1.25 * 40 * 0.72
+            expect(b.caption!.get('y') - lineHeight / 2).toBeCloseTo(a.caption!.get('y'), 6)
+        }))
+    })
+
+    it('wraps a long caption, sets a wide title smaller, and grows to hold both', async () => {
+        await compileFilm(film(() => {
+            const made = card({ title: 'A title a bit long', caption: 'a caption that is long enough to wrap onto more lines', figure: rect(100, 100), width: 300 })
+            const frame = made.frame.bounds()
+            expect(frame.width).toBe(300)
+            for (const part of [made.title!, made.caption!, made.figure!]) {
+                const box = part.bounds()
+                expect(box.x).toBeGreaterThan(frame.x + 20)
+                expect(box.x + box.width).toBeLessThan(frame.x + frame.width - 20)
+                expect(box.y).toBeGreaterThan(frame.y + 20)
+                expect(box.y + box.height).toBeLessThan(frame.y + frame.height - 14)
+            }
+            expect(made.caption!.bounds().height).toBeGreaterThan(60)
+            expect(made.figure!.bounds().width).toBeCloseTo(100, 6)
+            expect(made.title!.data['size']).toBeLessThan(40)
+            expect(made.title!.data['size']).toBeGreaterThanOrEqual(24)
+        }))
+    })
+
+    it('refuses content that cannot fit, and a figure that is in use', async () => {
+        await compileFilm(film((s) => {
+            expect(() => card({ title: 'Logs', figure: rect(100, 100), caption: 'one line per event', height: 150 })).toThrow(/no room for the figure/)
+            expect(() => card({ title: 'Logs', caption: 'one line per event', height: 70 })).toThrow(/no room for the title and the caption/)
+            expect(() => card({ title: 'A title that is far too long for a card this narrow', width: 240 })).toThrow(/title .* is too long/)
+            expect(() => card({ caption: 'Pneumonoultramicroscopicsilicovolcanoconiosis', width: 240 })).toThrow(/a word of the caption/)
+            const used = s.add(rect(100, 100))
+            expect(() => card({ figure: used })).toThrow(/already on the stage or in a group/)
+        }))
     })
 })
 
