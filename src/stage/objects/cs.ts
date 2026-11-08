@@ -797,15 +797,18 @@ export class CodeBlock extends Node {
         const tokens = this.tokens.filter((token) => line === undefined || token.line === line)
         const exact = tokens.filter((token) => token.text === fragment)
         if (exact.length > 0) return exact.flatMap((token) => token.glyphs)
-        const needle = fragment.replace(/\s/g, '')
-        if (!needle) return []
+        // Compare one character with one glyph. A string or a comment has a glyph for each space inside it, and those do not count either.
+        const blank = (char: string) => /\s/.test(char)
+        const needle = [...fragment].filter((char) => !blank(char))
+        if (needle.length === 0) return []
         const out: Node[] = []
         for (let row = 0; row < this.lines.length; row++) {
-            const glyphs = tokens.filter((token) => token.line === row).flatMap((token) => token.glyphs)
-            const keys = glyphs.map((glyph) => glyph.data['key'] as string).join('')
-            // A key is one character, so an index in the text is an index in the glyphs.
-            for (let at = keys.indexOf(needle); at >= 0; at = keys.indexOf(needle, at + needle.length)) {
-                out.push(...glyphs.slice(at, at + [...needle].length))
+            const glyphs = tokens.filter((token) => token.line === row).flatMap((token) => token.glyphs).filter((glyph) => !blank(glyph.data['key'] as string))
+            for (let at = 0; at + needle.length <= glyphs.length; at++) {
+                if (!needle.every((char, offset) => glyphs[at + offset]!.data['key'] === char)) continue
+                out.push(...glyphs.slice(at, at + needle.length))
+                // The next match starts after this one.
+                at += needle.length - 1
             }
         }
         return out

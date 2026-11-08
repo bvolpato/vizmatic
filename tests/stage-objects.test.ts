@@ -139,6 +139,10 @@ describe('morphs land exactly on their targets', () => {
         expect(keys(block.find('lo + hi'))).toBe('lo+hi')
         expect(keys(block.find('(lo+hi) / 2', 0))).toBe('(lo+hi)/2')
         expect(block.find('lo + hi', 1)).toEqual([])
+        // A string and a comment hold spaces of their own. They do not count either, and a character outside the basic plane is one glyph.
+        const quoted = codeBlock('print("a b") // 𝔹 or not')
+        expect(keys(quoted.find('("a b")'))).toBe('("ab")')
+        expect(keys(quoted.find('// 𝔹 or'))).toBe('//𝔹or')
         // A fragment does not match across two lines.
         expect(block.find('2 lo')).toEqual([])
         expect(block.find('  ')).toEqual([])
