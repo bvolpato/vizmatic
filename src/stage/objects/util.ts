@@ -9,11 +9,16 @@ import type { Path, Ring, Vec } from '../geometry'
 import type { ColorInput } from '../color'
 import { parseColor, type Rgba } from '../color'
 
-/** Put a node on stage if needed and make sure it and its parents show from time t. */
+/**
+ * Put a node on stage if needed and make sure it and its parents show from time t. The node arrives at t,
+ * which in a sequence is later than the time of the stage. A node in a group that is not on stage brings the
+ * whole group, so it keeps the place that the group gives it.
+ */
 export function reveal(node: Node, t: number, stage: Stage): void {
     if (!node.mounted) {
-        clock.now = t
-        stage.add(node)
+        let top = node
+        while (top.parent && top.parent !== stage.root) top = top.parent
+        stage.mountAt(top, t)
     }
     for (let n: Node | null = node; n && n !== stage.root; n = n.parent) {
         if (!sampleAt(n, 'visible', t)) n.track('visible').step(t, true)

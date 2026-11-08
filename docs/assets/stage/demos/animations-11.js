@@ -1,1 +1,1 @@
-import{Sb as p,Wa as t,lb as i}from"../chunk-V2QVZECD.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var l=i({fps:30},a=>{let r=a.add(p({unit:200}));a.wait(.3),a.play(t(r,[[1,1],[0,1]],{duration:2})),a.wait(.8)});export{l as default};
+import{Sb as p,Wa as t,lb as i}from"../chunk-54POJE7H.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var l=i({fps:30},a=>{let r=a.add(p({unit:200}));a.wait(.3),a.play(t(r,[[1,1],[0,1]],{duration:2})),a.wait(.8)});export{l as default};

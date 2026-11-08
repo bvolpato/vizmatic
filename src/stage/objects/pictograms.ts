@@ -73,6 +73,31 @@ function gear(): Mark[] {
     return [{ path: polyPath(points, true), paint: 'line' }, ring(12, 12, 3, true)]
 }
 
+/** The legs of a square chip, at each place in `at` on its four sides. The body ends `half` units from the middle. */
+function legs(half: number, at: readonly number[]): Mark[] {
+    const near = 12 - half, far = 12 + half
+    return at.flatMap((place) => [stroke(`M${place} 2.8V${near}`), stroke(`M${place} ${far}V21.2`), stroke(`M2.8 ${place}H${near}`), stroke(`M${far} ${place}H21.2`)])
+}
+
+/** A ring buffer: a band of eight slots around a hole. A pointer outside the band marks the tail, where the filled slots end. */
+function ringBuffer(): Mark[] {
+    const inner = 4.6, outer = 8.6, slot = Math.PI / 4, top = -Math.PI / 2, filled = 3
+    // A point at a radius and an angle from the middle, `side` units to the right of that direction.
+    const at = (radius: number, angle: number, side = 0) => {
+        const x = 12 + Math.cos(angle) * radius - Math.sin(angle) * side, y = 12 + Math.sin(angle) * radius + Math.cos(angle) * side
+        return `${+x.toFixed(3)} ${+y.toFixed(3)}`
+    }
+    const end = top + filled * slot, turn = top + Math.PI * 2
+    return [
+        // The two rims are each in two parts, so the filled slots are all in the accent at each weight. The parts meet under a divider.
+        curve(12, 12, outer, outer, end, turn), curve(12, 12, inner, inner, end, turn),
+        solid(`M${at(outer, top)}A${outer} ${outer} 0 0 1 ${at(outer, end)}L${at(inner, end)}A${inner} ${inner} 0 0 0 ${at(inner, top)}Z`, true),
+        curve(12, 12, outer, outer, top, end, true), curve(12, 12, inner, inner, top, end, true),
+        ...Array.from({ length: 8 }, (_, i) => stroke(`M${at(inner, top + i * slot)}L${at(outer, top + i * slot)}`)),
+        solid(`M${at(10.2, end)}L${at(13.2, end, 1.8)}L${at(13.2, end, -1.8)}Z`),
+    ]
+}
+
 const GRAPH: readonly Vec[] = [[4.5, 6.5], [15.5, 4.5], [10.5, 12.5], [19.5, 13.5], [6.5, 19.5], [16, 20]]
 const TREE: readonly Vec[] = [[12, 4.5], [6.5, 12], [17.5, 12], [3.5, 19.5], [9.5, 19.5], [17.5, 19.5]]
 const NET_IN: readonly Vec[] = [[4.5, 7.5], [4.5, 16.5]]
@@ -134,10 +159,7 @@ const ART = {
     ],
     queue: () => [stroke('M2.5 7H21.5'), stroke('M2.5 17H21.5'), slab(4.5, 9.2, 3.6, 5.6, 1), slab(10.2, 9.2, 3.6, 5.6, 1), slab(15.9, 9.2, 3.6, 5.6, 1, true)],
     cloud: () => [stroke('M7 18.5H17.3A4.3 4.3 0 0 0 17.9 10A6.2 6.2 0 0 0 6.2 9.4A4.6 4.6 0 0 0 7 18.5Z', true)],
-    chip: () => [
-        box(6, 6, 12, 12, 2), box(9.5, 9.5, 5, 5, 1, true),
-        ...[9, 12, 15].flatMap((at) => [stroke(`M${at} 2.8V6`), stroke(`M${at} 18V21.2`), stroke(`M2.8 ${at}H6`), stroke(`M18 ${at}H21.2`)]),
-    ],
+    chip: () => [box(6, 6, 12, 12, 2), box(9.5, 9.5, 5, 5, 1, true), ...legs(6, [9, 12, 15])],
     // Machines
     vm: () => [
         { path: rectPath(3, 3, 18, 18, 3.2), paint: 'line', dash: [1.6, 2.4] },
@@ -162,6 +184,65 @@ const ART = {
     key: () => [ring(7.5, 12, 3.8), stroke('M11.3 12H21'), stroke('M17 12V15', true), stroke('M20.2 12V14.2', true)],
     stopwatch: () => [ring(12, 13.5, 7.6), stroke('M10 2.8H14'), stroke('M12 2.8V5.9'), stroke('M12 13.5V9.4', true), stroke('M12 13.5 14.6 15.2', true)],
     bolt: () => [solid('M13.2 2.5 5.5 13.6H11L9.9 21.5 18.5 10H12.6Z', true)],
+    // Hardware
+    core: () => [box(6, 6, 12, 12, 2), slab(8.3, 8.4, 3, 7.2, 1), slab(12.7, 8.4, 3, 7.2, 1, true), ...legs(6, [9, 12, 15])],
+    timer: () => [box(5, 5, 14, 14, 2.2), ring(12, 12, 4.2, true), stroke('M12 10.1V12L13.6 12.9', true), ...legs(7, [8.5, 12, 15.5])],
+    firmware: () => [
+        stroke('M5.1 7.5H18.9A1.6 1.6 0 0 1 20.5 9.1V14.9A1.6 1.6 0 0 1 18.9 16.5H5.1A1.6 1.6 0 0 1 3.5 14.9V13.8A1.8 1.8 0 0 0 3.5 10.2V9.1A1.6 1.6 0 0 1 5.1 7.5Z'),
+        slab(7.8, 10.4, 10.2, 3.2, 0.8, true),
+        ...[6, 9, 12, 15, 18].flatMap((x) => [stroke(`M${x} 4.3V7.5`), stroke(`M${x} 16.5V19.7`)]),
+    ],
+    irqchip: () => [
+        stroke('M2.5 8H4.4'), stroke('M2.5 12H4.4'), stroke('M2.5 16H4.4'), ...arrowTo([10.4, 12], [14.4, 12], 0), box(5.2, 4.5, 4.4, 15, 1.6, true),
+        box(15.2, 9, 6, 6, 1.4), stroke('M16.7 9V7.2'), stroke('M19.7 9V7.2'), stroke('M16.7 15V16.8'), stroke('M19.7 15V16.8'),
+    ],
+    // The bar comes last, so the taps end under it.
+    bus: () => [
+        stroke('M6.5 10.5V7.6'), box(4, 2.8, 5, 4.8, 1.2), stroke('M17.5 10.5V7.6'), box(15, 2.8, 5, 4.8, 1.2),
+        stroke('M12 13.5V16.4'), box(9.5, 16.4, 5, 4.8, 1.2), slab(2.5, 10.5, 19, 3, 1.5, true),
+    ],
+    drive: () => [
+        stroke('M19.8 8.2H5.4V15.8H19.8A1.2 1.2 0 0 0 21 14.6V13.8A1.8 1.8 0 0 1 21 10.2V9.4A1.2 1.2 0 0 0 19.8 8.2Z'),
+        slab(7.8, 10.6, 5.2, 2.8, 0.6, true), slab(14.2, 10.6, 2.8, 2.8, 0.6, true), slab(2.4, 7.4, 3.8, 2.7, 0.5), slab(2.4, 11.3, 3.8, 5.3, 0.5),
+    ],
+    // The shutter comes first, so the outline stays whole where the shutter meets it.
+    floppy: () => [
+        stroke('M7.5 3.4V9.2H15.5V3.4', true), stroke('M12.9 5.6V6.6', true),
+        stroke('M4.6 3H17L21 7V19.4A1.6 1.6 0 0 1 19.4 21H4.6A1.6 1.6 0 0 1 3 19.4V4.6A1.6 1.6 0 0 1 4.6 3Z'), stroke('M7 21V14.2H17V21'),
+    ],
+    serial: () => [
+        stroke('M5.6 6.5H18.4Q21.9 6.5 21 9.6L19.4 15.2Q18.7 17.5 16.3 17.5H7.7Q5.3 17.5 4.6 15.2L3 9.6Q2.1 6.5 5.6 6.5Z'),
+        ...[6, 9, 12, 15, 18].map((x) => disc(x, 10.2, 1, true)), ...[7.5, 10.5, 13.5, 16.5].map((x) => disc(x, 13.9, 1, true)),
+    ],
+    keyboard: () => [
+        box(2.5, 5.5, 19, 13, 2.2), ...[7.7, 11].flatMap((y) => [4.4, 7.7, 11, 14.3, 17.6].map((x) => slab(x, y, 2, 2, 0.5, true))),
+        slab(4.4, 14.3, 2, 2, 0.5, true), slab(7.7, 14.3, 8.6, 2, 0.5, true), slab(17.6, 14.3, 2, 2, 0.5, true),
+    ],
+    // Kernel
+    thread: () => [
+        stroke('M12 2.8C13.3 3.2 15 3.8 15 4.9C15 6.7 9 6.7 9 8.5C9 10.3 15 10.3 15 12.1C15 14.1 12 14.1 12 16.1V19', true),
+        solid('M12 21.6 10.5 19H13.5Z', true),
+    ],
+    interrupt: () => [
+        stroke('M2.5 17.5H8.2'), ...arrowTo([14.8, 17.5], [21.5, 17.5], 0),
+        stroke('M16.2 3.6 10.4 9.6H15.2', true), ...arrowTo([15.2, 9.6], [10.2, 20.4], 0, true),
+    ],
+    syscall: () => [stroke('M2.5 10H21.5'), stroke('M7.5 3.4V15.5A4.5 4.5 0 0 0 16.5 15.5', true), ...arrowTo([16.5, 15.5], [16.5, 2.6], 0, true)],
+    ring: ringBuffer,
+    page: () => [
+        stroke('M3.5 3.5H16L20.5 8V20.5H3.5Z'), stroke('M16 3.5V8H20.5'), ...[6.2, 10.4].map((x) => slab(x, 7.2, 3.2, 2.4, 0.6, true)),
+        ...[11.2, 15.2].flatMap((y) => [6.2, 10.4, 14.6].map((x) => slab(x, y, 3.2, 2.4, 0.6, true))),
+    ],
+    // The arrow and the fill come first, so the lines of the column stay whole over them.
+    pagetable: () => [
+        ...arrowTo([13, 9.75], [21.3, 9.75], 0, true), slab(4, 7.5, 9, 4.5, 0, true),
+        box(4, 3, 9, 18, 1.8), stroke('M4 7.5H13'), stroke('M4 12H13'), stroke('M4 16.5H13'),
+    ],
+    pin: () => [
+        box(3.5, 13.2, 17, 7.8, 2),
+        solid('M8.6 2.2H15.4A1 1 0 0 1 15.4 4.2H14.4V6.6L16.9 9.4A1 1 0 0 1 16.2 11H7.8A1 1 0 0 1 7.1 9.4L9.6 6.6V4.2H8.6A1 1 0 0 1 8.6 2.2Z', true),
+        stroke('M12 11V16.8', true),
+    ],
     // Models
     model: () => [
         ...NET_IN.flatMap((a) => NET_MID.map((b): Mark => ({ path: polyPath([a, b]), paint: 'thin' }))),
@@ -192,6 +273,7 @@ const ART = {
     clock: () => [ring(12, 12, 9), stroke('M12 6.8V12L15.6 14.2', true)],
     user: () => [curve(12, 20.5, 7.6, 7.2, Math.PI, Math.PI * 2), ring(12, 8, 3.7, true)],
     search: () => [ring(10.5, 10.5, 6.6), stroke('M15.3 15.3 21 21', true)],
+    filter: () => [disc(7, 3.7, 1.15), disc(12, 3.7, 1.15), disc(17, 3.7, 1.15), stroke('M3.5 7.6H20.5L14 14V17.4H10V14Z'), disc(12, 20.8, 1.15, true)],
     lock: () => [box(5, 10.5, 14, 10, 2.2), stroke('M8 10.5V7.5A4 4 0 0 1 16 7.5V10.5'), disc(12, 15.5, 1.3, true)],
     deploy: () => [stroke('M4 15V19.8H20V15'), stroke('M12 15.5V4', true), stroke('M7.5 8.5 12 4 16.5 8.5', true)],
     check: () => [stroke('M4.5 12.5 9.5 17.5 19.5 6.5', true)],
