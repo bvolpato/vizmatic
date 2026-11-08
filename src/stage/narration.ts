@@ -4,7 +4,7 @@
  * A phrase that the voice does not say stops the build, so the picture cannot drift
  * from the script without an error.
  */
-import { fade } from './anim'
+import { Value, fade } from './anim'
 import type { Node } from './node'
 import type { Stage } from './stage'
 
@@ -144,9 +144,13 @@ export class SceneClock {
         return this
     }
 
-    /** Fade nodes out just before the scene ends, so the next picture starts on a clean frame. */
-    clear(nodes: readonly Node[], lead = 0.24, duration = 0.26): this {
-        this.stage.at(this.end - lead, () => this.stage.play(...nodes.map((node) => fade(node, 0, { duration }))))
+    /**
+     * Fade nodes out just before the scene ends, so the next picture starts on a clean frame.
+     * A value goes to zero in the same time, for a `dynamic` drawing that takes its opacity from one.
+     */
+    clear(targets: readonly (Node | Value)[], lead = 0.24, duration = 0.26): this {
+        if (targets.length === 0) return this
+        this.stage.at(this.end - lead, () => this.stage.play(...targets.map((target) => (target instanceof Value ? target.to(0, { duration }) : fade(target, 0, { duration })))))
         return this
     }
 }
