@@ -2729,6 +2729,7 @@ export default film({ fps: 30 }, (s) => {
 - Telemetry: `series`, `chart`, `forecast`, `threshold`, `anomaly`, `logs`, `traces`, `bars`, `table`, `matrix`, `event`, `alert`.
 - Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
 - Systems: `service`, `database`, `queue`, `cloud`, `chip`.
+- Machines: `vm`, `process`, `kernel`, `memory`, `disk`, `nic`, `network`, `snapshot`, `clone`, `jail`, `wall`, `key`, `stopwatch`, `bolt`.
 - Models: `model`, `tokens`, `vector`, `agent`, `spark`.
 - Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
 - General: `document`, `code`, `gear`, `clock`, `user`, `search`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
