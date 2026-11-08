@@ -6,7 +6,7 @@ import { pathBounds, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_overlap' | 'film.text_crossed' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -60,6 +60,11 @@ export interface FilmCheckOptions extends CompileOverrides {
      * stays up, do not count as content when the scan looks for blank frames.
      */
     contentTop?: number
+    /**
+     * The least distance between text and an edge of the frame, in canvas pixels. Text that is nearer is
+     * reported as `film.text_edge`. Defaults to 2% of the shorter side of the frame. 0 turns the rule off.
+     */
+    edgeMargin?: number
 }
 
 interface TextBlock {
@@ -70,6 +75,8 @@ interface TextBlock {
 }
 
 const EDGE_TOLERANCE = 1
+// Text this near to an edge, as a fraction of the shorter side of the frame, reads as a layout mistake.
+const EDGE_MARGIN = 0.02
 const MIN_ALPHA = 0.08
 const MIN_TEXT_ALPHA = 0.15
 const MIN_OVERLAP = 0.12
@@ -255,7 +262,7 @@ interface Finding extends Omit<FilmDiagnostic, 'until' | 'stage'> {
     key: string
 }
 
-function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): Finding[] {
+function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, margin: number): Finding[] {
     const findings: Finding[] = []
     const { width, height, ops } = frame
     const background = frame.background ? parseColor(frame.background) : (frame.dark ? [0, 0, 0, 1] as Rgba : [255, 255, 255, 1] as Rgba)
@@ -346,6 +353,22 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean): F
         fills.some((fill) => fill.order > lower && fill.order < upper && contains(fill.bounds, box))
 
     const list = [...blocks.values()]
+    // Near an edge. A zoomed or bleeding frame crops its content on purpose.
+    if (margin > 0 && !zoomed && !bleed) {
+        for (const block of list) {
+            const { x, y, width: w, height: h } = block.bounds
+            const gaps: [string, number][] = [['left', x], ['top', y], ['right', width - x - w], ['bottom', height - y - h]]
+            const [edge, gap] = gaps.reduce((least, entry) => (entry[1] < least[1] ? entry : least))
+            // Text past the edge is already `film.off_canvas`.
+            if (gap < -EDGE_TOLERANCE || gap >= margin) continue
+            findings.push({
+                key: `film.text_edge:${block.source}`,
+                code: 'film.text_edge', severity: 'warning', time, box: block.bounds,
+                message: `Text ${JSON.stringify(block.source)} is ${Math.max(0, Math.round(gap))} px from the ${edge} edge of the frame. The margin is ${Math.round(margin)} px.`,
+                text: block.source,
+            })
+        }
+    }
     for (let i = 0; i < list.length; i++) {
         const a = list[i]!
         for (let j = i + 1; j < list.length; j++) {
@@ -424,8 +447,8 @@ interface MovingRun {
 }
 
 /**
- * Inspect a film for layout defects: marks off the canvas, text on text, strokes
- * through text, and characters that no font can draw. It looks where the film comes to rest, because objects may
+ * Inspect a film for layout defects: marks off the canvas, text against an edge of the frame, text on text,
+ * strokes through text, and characters that no font can draw. It looks where the film comes to rest, because objects may
  * cross each other while moving. With `motion`, it also looks at every frame. Runs anywhere, with no rendering.
  */
 export async function checkFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions = {}): Promise<FilmCheckReport> {
@@ -447,10 +470,11 @@ export async function checkFilm(film: FilmDefinition | CompiledFilm, options: Fi
 async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
+    const margin = options.edgeMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN
     const merged = new Map<string, FilmDiagnostic>()
     for (const time of times) {
         const frame = await frameAt(compiled, time)
-        for (const { key, ...finding } of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed)) {
+        for (const { key, ...finding } of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, margin)) {
             const seen = merged.get(key)
             if (seen) {
                 seen.until = time
@@ -474,7 +498,8 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         for (let index = 0; index < frameCount; index++) {
             const time = index * step
             const frame = await frameAt(compiled, time)
-            for (const finding of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed)) {
+            // Text may pass the margin on its way in or out, so the edge rule looks only at rest.
+            for (const finding of inspect(frame, time, zoomAt(compiled, time) !== 1, compiled.bleed, 0)) {
                 // A problem that also shows at rest is already reported, with its own severity.
                 if (merged.has(finding.key)) continue
                 let runs = moving.get(finding.key)

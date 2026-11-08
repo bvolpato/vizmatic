@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { decode } from 'fast-png'
-import { film, line, text, write } from '../src/stage/index'
+import { film, line, shift, text, write } from '../src/stage/index'
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
@@ -257,6 +257,29 @@ describe('film check', () => {
         }))
         expect(report.ok).toBe(true)
         expect(report.diagnostics).toMatchObject([{ code: 'film.off_canvas', severity: 'warning' }])
+    })
+
+    it('warns about text that sits against an edge of the frame', async () => {
+        const check = (gap: number, options = {}) => checkFilm(film((s) => {
+            s.add(text('Against the edge', { size: 40 }).alignTo([-960 + gap, 300], 'left'))
+            s.wait(1)
+        }), options)
+        const near = await check(6)
+        expect(near.ok).toBe(true)
+        expect(near.diagnostics).toMatchObject([{ code: 'film.text_edge', severity: 'warning', text: 'Against the edge' }])
+        expect(near.diagnostics[0]!.message).toContain('6 px from the left edge')
+        expect((await check(40)).diagnostics).toEqual([])
+        expect((await check(40, { edgeMargin: 60 })).diagnostics).toMatchObject([{ code: 'film.text_edge' }])
+        expect((await check(6, { edgeMargin: 0 })).diagnostics).toEqual([])
+    })
+
+    it('does not report text that crosses the margin only while it moves', async () => {
+        const report = await checkFilm(film({ fps: 12 }, (s) => {
+            const label = s.add(text('Sliding in', { size: 40 }).alignTo([-960 + 4, 0], 'left'))
+            s.play(shift(label, 400, 0), { duration: 0.5 })
+            s.wait(0.5)
+        }), { motion: true, times: [0.9] })
+        expect(report.diagnostics).toEqual([])
     })
 })
 

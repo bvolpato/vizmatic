@@ -419,7 +419,7 @@ export async function checkFilmFile(
     file: string,
     load: FilmLoader,
     looks: readonly LookName[],
-    options: Pick<FilmCheckOptions, 'motion' | 'contentTop'> = {},
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'edgeMargin'> = {},
 ): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)
