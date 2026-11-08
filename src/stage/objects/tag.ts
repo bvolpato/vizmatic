@@ -4,7 +4,7 @@ import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
 
 export interface TagOptions {
-    /** Plain text beside the pill, such as the source of a claim and its date. */
+    /** Plain text beside the pill, such as the source of a claim and its date. It stays on one line. */
     note?: string
     /** The color of the pill and its word. Defaults to dim. */
     color?: ColorInput
@@ -31,19 +31,28 @@ export class Tag extends Node {
 
     constructor(word: string, options: TagOptions = {}) {
         super()
+        if (word.trim() === '') throw new Error('tag: give it a word')
         const size = options.size ?? 26
         const color = options.color ?? 'dim'
         const height = size * 1.8
         this.word = text(word, { font: options.font ?? 'mono', size, color, anchor: 'left' })
-        // The pill is as wide as the advance of the word, with the same room on both sides.
-        const inner = this.word.bounds().width
-        const width = inner + size * 1.4
-        this.pill = rect(width, height, { radius: height / 2, fill: options.fill === undefined ? 'surface' : options.fill, stroke: color, width: Math.max(2, size * 0.095) }).at(width / 2, 0)
+        // The pill is as wide as the ink of the word, with the same room on both sides.
         const ink = this.word.bounds()
+        const width = ink.width + size * 1.4
+        this.pill = rect(width, height, { radius: height / 2, fill: options.fill === undefined ? 'surface' : options.fill, stroke: color, width: Math.max(2, size * 0.095) }).at(width / 2, 0)
         this.word.shift(width / 2 - (ink.x + ink.width / 2), 0)
         this.note = options.note ? text(options.note, { font: options.noteFont, size, color: options.noteColor ?? 'dim', anchor: 'left' }).at(width + size * 0.7, 0) : null
         this.add(this.pill, this.word)
         if (this.note) this.add(this.note)
+    }
+
+    /** Recolor the border of the pill and the word. The fill of the pill and the note keep their colors. */
+    override color(color: ColorInput): this {
+        const fill = this.pill.get('fill')
+        this.pill.color(color)
+        this.pill.set('fill', fill)
+        this.word.color(color)
+        return this
     }
 }
 
@@ -61,9 +70,6 @@ export interface TagState extends TagOptions {
 export interface TagTrackOptions extends TagOptions {
     /** When the last state leaves, in seconds of the film. */
     until: number
-    /** The left end of the pill. Defaults to the top left of a 1920 by 1080 frame: (-912, -490). */
-    x?: number
-    y?: number
     /** Seconds to fade a state in and out. Defaults to 0.25 and 0.18. */
     fadeIn?: number
     fadeOut?: number
@@ -73,29 +79,38 @@ export interface TagTrackOptions extends TagOptions {
  * A tag that changes with time, at one place. It takes the states in order. One state is on screen at a
  * time: a state fades out before the next one fades in. States that start out of order, or less than the
  * two fades apart, are an error, so no moment shows two tags.
+ *
+ * Place it as any node: `tagTrack(states, { until }).at(-912, -490)` is the top left of a 1920 by 1080 frame.
+ * It is pinned, so a move or a zoom of the camera does not move it.
  */
 export function tagTrack(states: readonly TagState[], options: TagTrackOptions): Node {
     const fadeIn = options.fadeIn ?? 0.25, fadeOut = options.fadeOut ?? 0.18
-    const least = fadeIn + fadeOut
+    if (!(fadeIn >= 0 && fadeOut >= 0)) throw new Error('tagTrack: fadeIn and fadeOut are seconds, 0 or more')
     if (states.length === 0) throw new Error('tagTrack: give it at least one state')
+    if (!Number.isFinite(options.until)) throw new Error('tagTrack: until is the time when the last state leaves, in seconds')
+    const least = Math.round((fadeIn + fadeOut) * 1000) / 1000
     states.forEach((state, index) => {
+        if (!Number.isFinite(state.at)) throw new Error(`tagTrack: state ${index} (${JSON.stringify(state.word)}) needs a time in seconds`)
         const end = index + 1 < states.length ? states[index + 1]!.at : options.until
-        if (end - state.at < least) {
+        // A sum such as 1 + 0.43 is not exact, so allow a millionth of a second.
+        if (end - state.at < least - 1e-6) {
             const next = index + 1 < states.length ? `state ${index + 1} (${JSON.stringify(states[index + 1]!.word)}) starts at ${end}` : `the tag leaves at ${end}`
             throw new Error(`tagTrack: state ${index} (${JSON.stringify(state.word)}) starts at ${state.at} and ${next}. A state needs ${least} s to fade in and out`)
         }
     })
-    const x = options.x ?? -912, y = options.y ?? -490
+    // Build each state once, now. A text needs its font, and the film loads fonts while it is built.
+    const { until, fadeIn: _in, fadeOut: _out, ...shared } = options
+    const tags = states.map(({ at: _at, word, ...own }) => tag(word, { ...shared, ...own }))
     const made = dynamic((time) => {
         let index = -1
         for (let k = 0; k < states.length; k++) if (time >= states[k]!.at) index = k
-        if (index < 0 || time >= options.until) return null
-        const state = states[index]!
-        const end = index + 1 < states.length ? states[index + 1]!.at : options.until
-        const alpha = Math.max(0, Math.min(1, (time - state.at) / fadeIn, (end - time) / fadeOut))
-        if (alpha < 0.01) return null
-        const { at: _, word, ...own } = state
-        return tag(word, { ...options, ...own }).at(x, y).opacity(alpha)
+        if (index < 0 || time >= until) return null
+        const start = states[index]!.at
+        const end = index + 1 < states.length ? states[index + 1]!.at : until
+        const rise = fadeIn > 0 ? (time - start) / fadeIn : 1
+        const fall = fadeOut > 0 ? (end - time) / fadeOut : 1
+        const alpha = Math.max(0, Math.min(1, rise, fall))
+        return alpha < 0.01 ? null : tags[index]!.opacity(alpha)
     })
-    return made
+    return made.pin()
 }

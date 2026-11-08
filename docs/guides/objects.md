@@ -245,7 +245,7 @@ export default film({ fps: 30 }, (s) => {
     s.add(tagTrack([
         { at: 0, word: 'PLAN', color: 'blue', note: 'the design of March' },
         { at: 2.4, word: 'MEASURED', color: 'green', note: 'the run of June, on 926 questions' },
-    ], { until: 5.4, size: 36, x: -900, y: -470 }))
+    ], { until: 5.4, size: 36 }).at(-900, -470))
     const plan = text('Does the new format cost fewer tokens?', { font: 'text-serif', size: 64 })
     s.play(fadeIn(plan), { duration: 0.8 })
     s.wait(1)
@@ -256,7 +256,7 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-A tag does not know the size of the frame. The default place of `tagTrack` is the top left of a 1920 by 1080 frame. `tag.pill`, `tag.word`, and `tag.note` are the parts.
+Place a track as any node. It does not know the size of the frame: `.at(-912, -490)` is the top left of a 1920 by 1080 frame. A track is pinned to the screen, so a move or a zoom of the camera does not move it. `tag.pill`, `tag.word`, and `tag.note` are the parts of a tag, and `tag.color(c)` recolors the border and the word.
 
 ## Code and tokens
 
