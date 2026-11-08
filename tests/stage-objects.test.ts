@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
-    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
-    neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
+    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, lanes, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
+    neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, smooth, spin,
     seq, sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
-    type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
+    type FilmDefinition, type LaneEvent, type Node, type PathOp, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
@@ -1398,6 +1398,1025 @@ describe('tag', () => {
             const sharp = tagTrack([{ at: 1, word: 'A' }], { until: 2, fadeIn: 0, fadeOut: 0 })
             expect((sharp.draw!(1) as Node).get('opacity')).toBe(1)
             expect(sharp.draw!(2)).toBeNull()
+        }))
+    })
+})
+
+describe('lanes', () => {
+    const names = [{ name: 'guest', color: 'red' }, { name: 'KVM', color: 'teal' }, { name: 'monitor', color: 'blue' }]
+    const events: LaneEvent[] = [
+        { lane: 'guest', start: 0, end: 30, label: 'runs' },
+        { from: 'guest', to: 'KVM', at: 30, label: 'VM exit' },
+        { lane: 'KVM', start: 30, end: 42 },
+        { from: 'KVM', to: 'monitor', at: 42, label: 'return to user space' },
+        { lane: 'monitor', start: 42, end: 70, label: 'emulates the device' },
+        { from: 'monitor', to: 'KVM', at: 70, label: 'KVM_RUN' },
+        { lane: 'KVM', start: 70, end: 78 },
+        { from: 'KVM', to: 'guest', at: 78, label: 'VM entry' },
+        { lane: 'guest', start: 78, end: 100, label: 'runs', open: true },
+    ]
+    // 10 px for each unit of time, and lanes at -100, 0 and 100, with bars from 20 over a lane to 20 under it.
+    const sized = { width: 1000, barHeight: 40, pitch: 100 }
+    const at = <T,>(time: number, read: () => T): T => { clock.now = time; return read() }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const right = (node: Node) => { const box = node.bounds(); return box.x + box.width }
+    const bottom = (node: Node) => { const box = node.bounds(); return box.y + box.height }
+    const words = (node: Node) => node.children.map((child) => (child as unknown as { source?: string }).source).filter(Boolean)
+
+    it('puts a time on x and a lane on y, each bar from the start of its span to its end, and the names at the left', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(names, events, sized)
+            expect([flow.x(0), flow.x(50), flow.x(100)]).toEqual([-500, 0, 500])
+            expect([flow.y('guest'), flow.y('KVM'), flow.y(2)]).toEqual([-100, 0, 100])
+            expect(flow.domain).toEqual([0, 100])
+            // One node per event, in the order given, and the same nodes by kind.
+            expect(flow.events.map((event) => event.kind)).toEqual(['span', 'handoff', 'span', 'handoff', 'span', 'handoff', 'span', 'handoff', 'span'])
+            expect(flow.spans).toEqual([0, 2, 4, 6, 8].map((index) => flow.events[index]))
+            expect(flow.handoffs).toEqual([1, 3, 5, 7].map((index) => flow.events[index]))
+            expect(flow.marks).toEqual([])
+            const bar = flow.spans[2]!.shape.bounds()
+            expect(bar.x).toBeCloseTo(flow.x(42), 6)
+            expect(bar.x + bar.width).toBeCloseTo(flow.x(70), 6)
+            expect([bar.y, bar.y + bar.height]).toEqual([80, 120])
+            flow.rails.forEach((rail, index) => {
+                const box = rail.bounds()
+                expect([box.x, box.x + box.width, box.y]).toEqual([-500, 500, flow.y(index)])
+            })
+            // The names end at one x, outside the time area, each at the height of its lane.
+            const ends = flow.names.map(right)
+            expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(4)
+            expect(Math.max(...ends)).toBeLessThan(-500 - 8)
+            flow.names.forEach((name, index) => expect(Math.abs(name.bounds().y + name.bounds().height / 2 - flow.y(index))).toBeLessThan(8))
+            expect(flow.names.map((name) => (name as unknown as { source: string }).source)).toEqual(['guest', 'KVM', 'monitor'])
+            // `.at()` places the middle of the time area, not the middle of the object with its names.
+            const moved = lanes(names, events, sized).at(120, -30)
+            const rail = moved.rails[1]!.bounds()
+            expect([rail.x + rail.width / 2, rail.y]).toEqual([120, -30])
+        }))
+    })
+
+    it('gives a span the color of its lane, or its own', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['plain', { name: 'teal', color: 'teal' }], [
+                { lane: 'plain', start: 0, end: 10 }, { lane: 'teal', start: 10, end: 20 }, { lane: 'teal', start: 20, end: 30, color: 'red' },
+            ])
+            const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+            expect(flow.spans.map((span) => span.shape.get('fill'))).toEqual([paint('blue'), paint('teal'), paint('red')])
+            // A handoff is in ink, whatever the colors of its two lanes. A mark takes the color of its lane. Each takes its own color when it has one.
+            const more = lanes(['plain', { name: 'teal', color: 'teal' }], [
+                { from: 'teal', to: 'plain', at: 10 }, { from: 'plain', to: 'teal', at: 20, color: 'orange' }, { lane: 'teal', at: 30 }, { lane: 'teal', at: 40, color: 'red' },
+            ])
+            expect(more.handoffs.map((handoff) => handoff.shape.children[0]!.get('stroke'))).toEqual([paint('ink'), paint('orange')])
+            expect(more.handoffs.map((handoff) => handoff.shape.children[1]!.get('fill'))).toEqual([paint('ink'), paint('orange')])
+            expect(more.marks.map((mark) => mark.shape.get('fill'))).toEqual([paint('teal'), paint('red')])
+        }))
+    })
+
+    it('draws the arrow of a handoff at its time, from the edge of one bar to the edge of the other', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(names, events, sized)
+            const down = flow.handoffs[0]!.shape.bounds()
+            expect(down.x + down.width / 2).toBeCloseTo(flow.x(30), 6)
+            expect([down.y, down.y + down.height]).toEqual([-80, -20])
+            // The head is at the lane that the handoff goes to: under the arrow on the way down, over it on the way up.
+            expect(bottom(flow.handoffs[0]!.shape.children[1]!)).toBe(-20)
+            const up = flow.handoffs[2]!.shape
+            expect([up.bounds().y, bottom(up)]).toEqual([20, 80])
+            expect(up.children[1]!.bounds().y).toBe(20)
+            expect(bottom(up.children[1]!)).toBeLessThan(40)
+        }))
+    })
+
+    it('puts the label of a span inside its bar when it fits, and over the bar when it does not', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a'], [
+                { lane: 'a', start: 0, end: 50, label: 'fits' },
+                { lane: 'a', start: 50, end: 53, label: 'does not fit' },
+                { lane: 'a', start: 96, end: 100, label: 'near the end' },
+            ], { ...sized, size: 26 })
+            const [inside, over, last] = flow.spans.map((span) => ({ bar: span.shape.bounds(), text: span.text!.bounds() }))
+            // Inside: at the start of the bar, with room at both sides, and between its top and its bottom.
+            expect(inside!.text.x).toBeCloseTo(inside!.bar.x + 13, 6)
+            expect(inside!.text.x + inside!.text.width).toBeLessThan(inside!.bar.x + inside!.bar.width - 13)
+            expect(inside!.text.y).toBeGreaterThan(inside!.bar.y)
+            expect(inside!.text.y + inside!.text.height).toBeLessThan(inside!.bar.y + inside!.bar.height)
+            // Over: it starts at the left end of the bar, and does not touch the bar.
+            expect(over!.text.x).toBeCloseTo(over!.bar.x, 6)
+            expect(over!.text.x + over!.text.width).toBeGreaterThan(over!.bar.x + over!.bar.width)
+            expect(over!.text.y + over!.text.height).toBeLessThan(over!.bar.y - 3)
+            // Over a bar at the right end, where it would leave the time area: it ends at the right end of the bar.
+            expect(last!.text.x + last!.text.width).toBeCloseTo(500, 6)
+            // A bar that is too low for the text has its label over it, at any width.
+            const low = lanes(['a'], [{ lane: 'a', start: 0, end: 100, label: 'fits' }], { ...sized, barHeight: 20, size: 26 })
+            expect(bottom(low.spans[0]!.text!)).toBeLessThan(low.spans[0]!.shape.bounds().y)
+            // A bar that is wider than its label by less than the room at both sides: the label is over it.
+            const width = inside!.text.width
+            const tight = lanes(['a'], [{ lane: 'a', start: 0, end: (width + 20) / 10, label: 'fits' }, { lane: 'a', start: 50, end: 50 + (width + 30) / 10, label: 'fits' }], { ...sized, size: 26, domain: [0, 100] })
+            expect(bottom(tight.spans[0]!.text!)).toBeLessThan(tight.spans[0]!.shape.bounds().y)
+            expect(tight.spans[1]!.text!.bounds().y).toBeGreaterThan(tight.spans[1]!.shape.bounds().y)
+        }))
+    })
+
+    it('puts the label of a handoff at the right of its arrow, between the two lanes, and at the left when the right has no room', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a', 'b', 'c'], [
+                { from: 'a', to: 'b', at: 20, label: 'at the right' },
+                { from: 'b', to: 'a', at: 96, label: 'near the end' },
+                { from: 'a', to: 'c', at: 50, label: 'two lanes down' },
+                { from: 'c', to: 'a', at: 75, label: 'up' },
+            ], { ...sized, domain: [0, 100] })
+            const [plain, late, far, up] = flow.handoffs.map((handoff) => ({ arrow: handoff.shape.bounds(), text: handoff.text!.bounds() }))
+            expect(plain!.text.x).toBeGreaterThan(plain!.arrow.x + plain!.arrow.width + 4)
+            expect(plain!.text.x).toBeLessThan(plain!.arrow.x + plain!.arrow.width + 16)
+            // Between the two bars: under the bar of the first lane and over the bar of the second.
+            expect(plain!.text.y).toBeGreaterThan(flow.y('a') + 20)
+            expect(plain!.text.y + plain!.text.height).toBeLessThan(flow.y('b') - 20)
+            expect(Math.abs(plain!.text.y + plain!.text.height / 2 - (flow.y('a') + flow.y('b')) / 2)).toBeLessThan(6)
+            // At the right, this label would leave the time area. It goes to the left of its arrow.
+            expect(late!.text.x + late!.text.width).toBeLessThan(late!.arrow.x - 4)
+            expect(late!.text.x + late!.text.width).toBeGreaterThan(late!.arrow.x - 16)
+            // Over two lanes, the label is beside the lane that the handoff leaves, where no bar of the middle lane is.
+            expect(far!.text.y + far!.text.height).toBeLessThan(flow.y('b') - 20)
+            expect(far!.text.x).toBeGreaterThan(far!.arrow.x + far!.arrow.width)
+            expect(up!.text.y).toBeGreaterThan(flow.y('b') + 20)
+            // With an arrow close at the right, the label goes to the left of its own arrow.
+            const close = lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 50, label: 'enter' }, { from: 'b', to: 'a', at: 52, label: 'leave' }], { ...sized, domain: [0, 100] })
+            expect(right(close.handoffs[0]!.text!)).toBeLessThan(close.handoffs[0]!.shape.bounds().x)
+            expect(close.handoffs[1]!.text!.bounds().x).toBeGreaterThan(right(close.handoffs[1]!.shape))
+        }))
+    })
+
+    it('puts a mark on its lane as a dot with its label over it, and keeps the label in the time area', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a', 'b'], [
+                { lane: 'a', at: 0, label: 'the first instant' },
+                { lane: 'a', at: 50, label: 'middle' },
+                { lane: 'a', at: 100, label: 'the last instant' },
+                { lane: 'b', start: 40, end: 60 },
+                { lane: 'b', at: 50, label: 'on a bar' },
+            ], sized)
+            const [first, middle, last, onBar] = flow.marks.map((mark) => ({ dot: mark.shape.bounds(), text: mark.text!.bounds() }))
+            expect([middle!.dot.x + middle!.dot.width / 2, middle!.dot.y + middle!.dot.height / 2]).toEqual([flow.x(50), flow.y('a')])
+            expect(middle!.text.x + middle!.text.width / 2).toBeCloseTo(flow.x(50), 6)
+            expect(middle!.text.y + middle!.text.height).toBeLessThan(middle!.dot.y)
+            expect(middle!.text.y + middle!.text.height).toBeGreaterThan(middle!.dot.y - 12)
+            expect(first!.text.x).toBeCloseTo(-500, 6)
+            expect(last!.text.x + last!.text.width).toBeCloseTo(500, 6)
+            // A label over a dot that is on a bar is over the bar.
+            expect(onBar!.text.y + onBar!.text.height).toBeLessThan(flow.spans[0]!.shape.bounds().y)
+        }))
+    })
+
+    it('ends an open span with an arrow head when it reaches the end of the domain, and gives it no outline', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a'], [
+                { lane: 'a', start: 0, end: 40 }, { lane: 'a', start: 40, end: 60, open: true }, { lane: 'a', start: 70, end: 100, open: true },
+            ], sized)
+            expect(flow.spans.map((span) => span.shape.get('stroke') !== null)).toEqual([true, false, false])
+            expect(flow.spans.map((span) => span.tip !== null)).toEqual([false, false, true])
+            const tip = flow.spans[2]!.tip!.bounds()
+            expect(tip.x).toBeGreaterThan(500)
+            expect(tip.x + tip.width).toBeLessThan(500 + 24)
+            expect([tip.y, tip.y + tip.height]).toEqual([-20, 20])
+        }))
+    })
+
+    it('draws an axis with the ticks and the format that it is given, and no axis without ticks', async () => {
+        await compileFilm(film(() => {
+            expect(lanes(names, events, sized).axis).toBeNull()
+            const flow = lanes(names, events, { ...sized, ticks: [0, 50, 100], format: (time) => `${time} ms`, axisLabel: 'time since the exit' })
+            expect(words(flow.axis!)).toEqual(['0 ms', '50 ms', '100 ms', 'time since the exit'])
+            const numbers = flow.axis!.children.filter((child) => /ms$/.test((child as unknown as { source?: string }).source ?? ''))
+            numbers.forEach((number, index) => {
+                const box = number.bounds()
+                expect(Math.abs(box.x + box.width / 2 - flow.x(index * 50))).toBeLessThan(3)
+                // Under the bars of the last lane.
+                expect(box.y).toBeGreaterThan(flow.y('monitor') + 20)
+            })
+            // A count gives round ticks inside the domain, written as plain numbers.
+            expect(words(lanes(names, events, { ...sized, ticks: 4 }).axis!)).toEqual(['0', '20', '40', '60', '80', '100'])
+            expect(words(lanes(['a'], [{ lane: 'a', start: 0, end: 1 }], { ticks: [0, 0.25, 0.5, 1] }).axis!)).toEqual(['0.00', '0.25', '0.50', '1.00'])
+            // The cursor goes down to the line of the axis. With no axis, it stops a little under the bars of the last lane.
+            const line = flow.axis!.children[0]!.bounds().y
+            expect(bottom(flow.cursor)).toBeCloseTo(line, 6)
+            expect(line).toBeCloseTo(flow.y('monitor') + 50, 6)
+            const bare = lanes(names, events, sized)
+            expect(bottom(bare.cursor)).toBeLessThan(bare.y('monitor') + 20 + 14)
+            expect(bottom(bare.cursor)).toBeGreaterThan(bare.y('monitor') + 20)
+            // An axis label with no ticks is a line of time that is not to scale: the line and the label, and no tick.
+            const loose = lanes(names, events, { ...sized, axisLabel: 'time, not to scale' })
+            expect(words(loose.axis!)).toEqual(['time, not to scale'])
+            expect(loose.axis!.children).toHaveLength(2)
+            expect(right(loose.axis!.children[0]!) - loose.axis!.children[0]!.bounds().x).toBe(1000)
+        }))
+    })
+
+    it('enters with its names, its lanes and its axis, and shows no event and no cursor', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50, label: 'runs' }, { from: 'a', to: 'b', at: 50, label: 'call' }], { ...sized, domain: [0, 100], ticks: [0, 100] })
+            s.wait(0.5)
+            s.play(flow.enter({ lag: 1 }), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.2).ops).toHaveLength(0)
+        // With a lag of 1, the second lane starts when the first one is done.
+        expect(at(0.75, () => flow.names.map(shows))).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(0.75, () => flow.rails.map((rail) => rail.get('trimTo')))).toEqual([expect.closeTo(0.5, 6), 0])
+        // The axis waits for the first third of the time, then fades in.
+        expect(at(0.75, () => shows(flow.axis!))).toBe(0)
+        expect(at(1.2, () => shows(flow.axis!))).toBeGreaterThan(0)
+        expect(at(1.2, () => shows(flow.axis!))).toBeLessThan(1)
+        expect(at(1.6, () => [...flow.names, ...flow.rails, flow.axis!].map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(1.6, () => flow.rails.map((rail) => rail.get('trimTo')))).toEqual([1, 1])
+        expect(at(1.6, () => [...flow.events, flow.cursor].map(shows))).toEqual([0, 0, 0])
+        // Two names of one letter, two lines, the axis line, and two ticks with one number each.
+        expect(compiled.frame(1.6).ops).toHaveLength(2 + 2 + 1 + 2 + 4)
+        expect(flow.time).toBe(0)
+    })
+
+    it('grows a span with the cursor, so that its right end is at the cursor at every frame of an eased advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.wait(1)
+            s.play(flow.advance(20), { duration: 2 })
+            s.wait(1)
+        }))
+        const bar = flow.spans[0]!.shape
+        // Before the first advance, no event shows and the cursor is hidden.
+        expect(at(0.5, () => [...flow.events, flow.cursor].map(shows))).toEqual(Array(10).fill(0))
+        for (const [time, share] of [[1.5, 0.25], [2.4, 0.7]] as const) {
+            // The default ease is not linear: a quarter of the time is much less than a quarter of the way.
+            const cursor = flow.x(20 * smooth(share))
+            expect(at(time, () => right(bar))).toBeCloseTo(cursor, 6)
+            expect(at(time, () => flow.cursor.get('x'))).toBeCloseTo(cursor, 6)
+            expect(at(time, () => bar.bounds().x)).toBeCloseTo(flow.x(0), 6)
+            expect(at(time, () => [flow.spans[0]!, flow.cursor].map(shows))).toEqual([1, 1])
+        }
+        expect(flow.x(20 * smooth(0.25))).toBeLessThan(flow.x(2))
+        // The cursor stops at the time, inside the span. No other event shows.
+        expect(at(3.5, () => [right(bar), flow.cursor.get('x')])).toEqual([flow.x(20), flow.x(20)])
+        expect(at(3.5, () => flow.events.slice(1).map(shows))).toEqual(Array(8).fill(0))
+        expect(flow.time).toBe(20)
+    })
+
+    it('shows a handoff when the cursor reaches it and not before, and its label when the arrow is drawn', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            // From 0 to 40 at a constant speed in 2 seconds: the cursor reaches the handoff of time 30 at 1.5 s.
+            s.play(flow.advance(40), { duration: 2, ease: linear })
+            s.wait(1)
+        }))
+        const handoff = flow.handoffs[0]!, [shaft, head] = handoff.shape.children as [Node, Node]
+        expect(at(1.45, () => shows(handoff))).toBe(0)
+        expect(at(1.55, () => shows(handoff))).toBe(1)
+        // The arrow draws from the lane that the handoff leaves: the head starts there and leads the shaft.
+        expect(at(1.5, () => shaft.get('trimTo'))).toBe(0)
+        expect(at(1.5, () => head.bounds().y)).toBeCloseTo(-80, 6)
+        expect(at(1.6, () => shaft.get('trimTo'))).toBeGreaterThan(0)
+        expect(at(1.6, () => shaft.get('trimTo'))).toBeLessThan(1)
+        expect(at(1.6, () => shows(handoff.text!))).toBe(0)
+        expect(at(1.75, () => [shaft.get('trimTo'), bottom(head)])).toEqual([1, -20])
+        expect(at(1.75, () => shows(handoff.text!))).toBeLessThan(1)
+        expect(at(2, () => shows(handoff.text!))).toBe(1)
+        // The span of the next lane starts at the same time, and grows with the cursor.
+        expect(at(1.45, () => shows(flow.spans[1]!))).toBe(0)
+        expect(at(1.75, () => [shows(flow.spans[1]!), right(flow.spans[1]!.shape)])).toEqual([1, flow.x(35)])
+        // The handoff of time 42 is after the cursor.
+        expect(at(3, () => shows(flow.handoffs[1]!))).toBe(0)
+    })
+
+    it('stops the cursor early, so that a handoff at the end of an advance is complete when the advance ends', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.play(flow.advance(30), { duration: 2, ease: linear })
+            s.wait(1)
+            s.play(flow.advance(42), { duration: 0.5, ease: linear })
+        }))
+        const handoff = flow.handoffs[0]!
+        // The arrow and its label take half a second. The cursor has the first 1.5 s for its way.
+        expect(at(0.75, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(15), 6)
+        expect(at(1.5, () => [flow.cursor.get('x'), right(flow.spans[0]!.shape)])).toEqual([flow.x(30), flow.x(30)])
+        expect(at(1.45, () => shows(handoff))).toBe(0)
+        expect(at(2, () => [shows(handoff), shows(handoff.text!), handoff.shape.children[0]!.get('trimTo')])).toEqual([1, 1, 1])
+        // A stop at the start of a span shows nothing of it.
+        expect(at(2.5, () => shows(flow.spans[1]!))).toBe(0)
+        // The next advance starts at the time of the first handoff, and does not draw it again.
+        expect(at(3.1, () => [shows(handoff.text!), handoff.shape.children[0]!.get('trimTo')])).toEqual([1, 1])
+        // A short advance keeps 0.6 of its time for the cursor, and the handoff is still complete at its end.
+        expect(at(3.3, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(42), 6)
+        expect(at(3.29, () => shows(flow.handoffs[1]!))).toBe(0)
+        expect(at(3.5, () => [shows(flow.handoffs[1]!), shows(flow.handoffs[1]!.text!)])).toEqual([1, 1])
+    })
+
+    it('brings a label inside a bar when the span starts, and a label over a bar and the outline when the span is complete', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a'], [
+                { lane: 'a', start: 0, end: 50, label: 'inside' },
+                { lane: 'a', start: 50, end: 54, label: 'over the bar' },
+                { lane: 'a', start: 60, end: 100, label: 'goes on', open: true },
+            ], sized))
+            s.play(flow.advance(25), { duration: 2, ease: linear })
+            s.play(flow.advance(52), { duration: 2, ease: linear })
+            s.play(flow.advance(54), { duration: 1, ease: linear })
+            s.play(flow.advance(100), { duration: 2, ease: linear })
+        }))
+        const [inside, over, open] = flow.spans
+        // The label inside is there after 0.3 s, long before the bar is as long as the label.
+        expect(at(0.15, () => shows(inside!.text!))).toBeCloseTo(0.5, 6)
+        expect(at(0.3, () => [shows(inside!.text!), right(inside!.shape)])).toEqual([1, flow.x(3.75)])
+        // A span that grows has no outline. The outline comes when the cursor reaches its end.
+        expect(at(2, () => inside!.shape.get('strokeOpacity'))).toBe(0)
+        expect(at(4, () => inside!.shape.get('strokeOpacity'))).toBe(1)
+        // The second span is not complete at 52: its bar shows, and its label does not.
+        expect(at(4, () => [shows(over!), right(over!.shape), shows(over!.text!), over!.shape.get('strokeOpacity')])).toEqual([1, flow.x(52), 0, 0])
+        expect(at(4.69, () => shows(over!.text!))).toBe(0)
+        expect(at(5, () => [right(over!.shape), shows(over!.text!), over!.shape.get('strokeOpacity')])).toEqual([flow.x(54), 1, 1])
+        // The arrow head of an open span comes when the span reaches the end of the domain.
+        expect(at(6, () => [shows(open!), shows(open!.tip!)])).toEqual([1, 0])
+        expect(at(7, () => [right(open!.shape), shows(open!.tip!)])).toEqual([flow.x(100), 1])
+    })
+
+    it('chains two advances in one sequence, keeps the time of the cursor, and refuses to go back', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            expect(flow.time).toBe(0)
+            const first = flow.advance(30), second = flow.advance(50)
+            // The time moves when an advance is scheduled, not when it is made.
+            expect(flow.time).toBe(0)
+            s.play(seq(first, second), { duration: 2, ease: linear })
+            expect(flow.time).toBe(50)
+            expect(() => flow.advance(49)).toThrow(/cannot advance to 49\. The cursor is at 50, and it does not go back/)
+            expect(() => flow.advance(101)).toThrow(/cannot advance to 101\. The domain is 0 to 100/)
+            expect(() => flow.advance(Number.NaN)).toThrow(/cannot advance to NaN/)
+            // The second of two advances in one sequence is checked when it is scheduled.
+            expect(() => s.play(seq(flow.advance(60), flow.advance(55)))).toThrow(/cannot advance to 55\. The cursor is at 60/)
+            // An advance to the time of the cursor is not a step back.
+            s.play(flow.advance(60), { duration: 0.5 })
+            expect(flow.time).toBe(60)
+        }))
+        // The second advance starts where the first one stops: at 30 after one second, then on to 50.
+        expect(at(1, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(30), 6)
+        expect(at(1.5, () => flow.cursor.get('x'))).toBeGreaterThan(flow.x(35))
+        expect(at(1.5, () => flow.cursor.get('x'))).toBeLessThan(flow.x(50))
+        expect(at(2, () => [flow.cursor.get('x'), right(flow.spans[2]!.shape)])).toEqual([flow.x(50), flow.x(50)])
+        expect(at(2, () => flow.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+    })
+
+    it('shows a handoff exactly when the cursor is at its time or past it, at every frame of an eased advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.play(flow.showAll(), { duration: 4 })
+        }))
+        const seen = new Set<boolean>()
+        for (let frame = 0; frame <= 80; frame++) {
+            const time = frame / 20
+            const cursor = at(time, () => flow.cursor.get('x'))
+            for (const [handoff, when] of [[flow.handoffs[0]!, 30], [flow.handoffs[2]!, 70]] as const) {
+                if (Math.abs(cursor - flow.x(when)) < 0.5) continue
+                expect(at(time, () => shows(handoff) > 0)).toBe(cursor > flow.x(when))
+                seen.add(cursor > flow.x(when))
+            }
+        }
+        expect([...seen].sort()).toEqual([false, true])
+        // The default ease is slow at its two ends: the cursor reaches 30 after more than 0.3 of the time.
+        expect(at(1.3, () => shows(flow.handoffs[0]!))).toBe(0)
+    })
+
+    it('shows a mark when the cursor reaches it, and a mark at the first end of the domain on the first advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a'], [{ lane: 'a', at: 0, label: 'start' }, { lane: 'a', at: 50, label: 'tick' }], { ...sized, domain: [0, 100] }))
+            s.wait(1)
+            s.play(flow.advance(0), { duration: 1 })
+            s.play(flow.advance(100), { duration: 2, ease: linear })
+        }))
+        const [first, second] = flow.marks
+        expect(at(0.9, () => [first!, second!, flow.cursor].map(shows))).toEqual([0, 0, 0])
+        // The dot comes first, then its label. Both are complete after half a second.
+        expect(at(1.02, () => shows(first!.shape))).toBeLessThan(0.2)
+        // The dot grows as it comes: it starts at 0.3 of its size.
+        expect(at(1, () => first!.shape.get('sx'))).toBeCloseTo(0.3, 6)
+        expect(at(1.1, () => first!.shape.get('sx'))).toBeGreaterThan(0.3)
+        expect(at(1.1, () => first!.shape.get('sx'))).toBeLessThan(1)
+        // The cursor fades in over the first 0.3 s of the first advance.
+        expect(at(1.1, () => shows(flow.cursor))).toBeGreaterThan(0)
+        expect(at(1.1, () => shows(flow.cursor))).toBeLessThan(1)
+        expect(at(1.3, () => shows(flow.cursor))).toBe(1)
+        expect(at(1.1, () => shows(first!.shape))).toBeGreaterThan(0)
+        expect(at(1.1, () => shows(first!.text!))).toBe(0)
+        expect(at(1.5, () => [shows(first!), shows(first!.shape), shows(first!.text!), first!.shape.get('sx')])).toEqual([1, 1, 1, 1])
+        expect(at(2, () => [shows(second!), flow.cursor.get('x')])).toEqual([0, flow.x(0)])
+        // The cursor is at 50 after one second of the second advance.
+        expect(at(2.95, () => shows(second!))).toBe(0)
+        expect(at(3.05, () => shows(second!))).toBe(1)
+        expect(at(3.5, () => [shows(second!.shape), shows(second!.text!)])).toEqual([1, 1])
+        // The first mark is not shown again.
+        expect(at(2.1, () => [shows(first!.shape), shows(first!.text!)])).toEqual([1, 1])
+    })
+
+    it('hides the line of a lane behind a bar, as far as the bar goes', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.play(flow.advance(20), { duration: 1 })
+            s.wait(1)
+        }))
+        const ops = compiled.frame(1.5).ops.filter((op): op is PathOp => op.kind === 'path')
+        const line = ops.findIndex((op) => op.node === flow.rails[0]), bar = ops.findIndex((op) => op.node === flow.spans[0]!.shape)
+        expect(line).toBeGreaterThanOrEqual(0)
+        expect(bar).toBeGreaterThan(line)
+        // The bar lets what is under it show through. A shape of the same outline is under it, and nothing shows through that one.
+        expect(ops[bar]!.fillAlpha).toBeLessThan(0.9)
+        const under = ops.slice(line + 1, bar).filter((op) => op.fillAlpha === 1 && pathBounds(op.path)!.width === pathBounds(ops[bar]!.path)!.width)
+        expect(under).toHaveLength(1)
+        expect(pathBounds(under[0]!.path)).toEqual(pathBounds(ops[bar]!.path))
+        expect(pathBounds(ops[bar]!.path)!.width).toBeCloseTo(200, 6)
+    })
+
+    it('shows every event with showAll, at once when the film gives it no time', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.wait(1)
+            s.play(flow.showAll(), { duration: 0 })
+            s.wait(1)
+        }))
+        expect(flow.time).toBe(100)
+        const before = compiled.frame(0.5).ops.length
+        expect(at(0.9, () => flow.events.map(shows))).toEqual(Array(9).fill(0))
+        expect(at(1, () => [...flow.events, ...flow.events.flatMap((event) => (event.text ? [event.text] : [])), flow.spans[4]!.tip!, flow.cursor].map(shows))).toEqual(Array(18).fill(1))
+        expect(at(1, () => flow.cursor.get('x'))).toBe(flow.x(100))
+        expect(at(1, () => flow.spans.map((span) => right(span.shape)))).toEqual([30, 42, 70, 78, 100].map((time) => flow.x(time)))
+        expect(at(1, () => flow.handoffs.map((handoff) => handoff.shape.children[0]!.get('trimTo')))).toEqual([1, 1, 1, 1])
+        expect(compiled.frame(1.5).ops.length).toBeGreaterThan(before + 60)
+    })
+
+    it('keeps the cursor and the lines of the lanes behind the labels, so that the film check finds no line through a text', async () => {
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            // At 50 the cursor is behind the label of the handoff of time 42 and the label inside the bar that grows.
+            const flow = s.add(lanes(names, events, sized).at(60, 0))
+            s.play(flow.advance(50), { duration: 1 })
+            s.wait(1)
+        }))
+        expect(report.diagnostics).toEqual([])
+        // The same stop with marks: the cursor is behind the label of the mark that it stops at.
+        const marked = await checkFilm(film({ fps: 20 }, (s) => {
+            const flow = s.add(lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 60, label: 'runs' }, { lane: 'b', at: 40, label: 'interrupt' }], sized).at(60, 0))
+            s.play(flow.advance(40), { duration: 1 })
+            s.wait(1)
+        }))
+        expect(marked.diagnostics).toEqual([])
+    })
+
+    it('gives a copy its own events, which advance without the first object', async () => {
+        let flow!: ReturnType<typeof lanes>, copy!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(names, events, sized)
+            copy = flow.clone()
+            expect(copy.events[0]).not.toBe(flow.events[0])
+            expect(copy.children).toContain(copy.events[0])
+            expect(copy.spans[0]).toBe(copy.events[0])
+            expect(copy.events[0]!.shape.parent).toBe(copy.events[0])
+            s.add(flow, copy.at(0, 400))
+            s.play(copy.advance(50), { duration: 1 })
+        }))
+        expect([flow.time, copy.time]).toEqual([0, 50])
+        expect(at(1, () => flow.events.map(shows))).toEqual(Array(9).fill(0))
+        expect(at(1, () => copy.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+        // Nothing of the first object is in the picture but its names and its lines: 15 letters and 3 lines.
+        const upper = compiled.frame(1).ops.filter((op): op is PathOp => op.kind === 'path').filter((op) => pathBounds(op.path)!.y < 540 + 150)
+        expect(upper).toHaveLength(18)
+    })
+
+    it('draws a boundary between two lanes that are neighbors, moves the two lanes apart, and puts its label after the right end of the line', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['user', 'kernel', 'drive'], [{ lane: 'user', start: 0, end: 100 }], {
+                ...sized, size: 26, boundaries: [{ between: ['user', 'kernel'], label: 'system call line' }, { between: ['drive', 'kernel'], color: 'purple' }],
+            })
+            // Each boundary adds 1.25 of the text size to the distance of its two lanes. The first lane and the last one stay at the same distance from 0.
+            expect(flow.y('kernel') - flow.y('user')).toBeCloseTo(100 + 26 * 1.25, 6)
+            expect(flow.y('drive') - flow.y('kernel')).toBeCloseTo(100 + 26 * 1.25, 6)
+            expect(flow.y('user')).toBeCloseTo(-flow.y('drive'), 6)
+            expect(lanes(['user', 'kernel', 'drive'], [{ lane: 'user', start: 0, end: 100 }], { ...sized, boundaries: [{ between: ['user', 'kernel'] }] }).y('drive') - flow.y('drive')).toBeCloseTo(-26 * 1.25 / 2, 6)
+            expect(flow.boundaries).toHaveLength(2)
+            const [rule, label] = flow.boundaries[0]!.children
+            const line = rule!.bounds()
+            // The line is along the whole time area, in the middle between the bars of the two lanes.
+            expect([line.x, line.x + line.width]).toEqual([-500, 500])
+            expect(line.y).toBeCloseTo((flow.y('user') + 20 + flow.y('kernel') - 20) / 2, 6)
+            expect(rule!.get('dash')).not.toBeNull()
+            const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+            expect(rule!.get('stroke')).toEqual(paint('yellow'))
+            expect(flow.boundaries[1]!.children[0]!.get('stroke')).toEqual(paint('purple'))
+            // The label has room of its own after the right end of the time area, at the height of the line, as a name has before the left end.
+            expect((label as unknown as { source: string }).source).toBe('system call line')
+            expect(label!.bounds().x).toBeCloseTo(500 + 26 * 0.9, 6)
+            expect(Math.abs(label!.bounds().y + label!.bounds().height / 2 - line.y)).toBeLessThan(6)
+            // A boundary with no label and no count is a line and no more.
+            expect(flow.boundaries[1]!.children).toHaveLength(1)
+            expect(flow.counters).toEqual([null, null])
+        }))
+    })
+
+    it('counts the handoffs that cross a boundary, up to the time of the cursor, and shows the number and a tick for each one', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['user', 'kernel', 'drive'], [
+                { from: 'user', to: 'kernel', at: 10 },
+                { from: 'kernel', to: 'drive', at: 20, dashed: true },
+                // From the last lane to the first: this handoff crosses the two boundaries.
+                { from: 'drive', to: 'user', at: 30 },
+                { from: 'kernel', to: 'user', at: 40, dashed: true },
+            ], { ...sized, domain: [0, 100], boundaries: [{ between: ['user', 'kernel'], label: 'system call line', count: true }, { between: ['drive', 'kernel'], label: 'device' }] }))
+            expect([flow.crossings(0), flow.crossings('system call line'), flow.crossings(1), flow.crossings('device')]).toEqual([0, 0, 0, 0])
+            // At a constant speed, the cursor reaches 10 after 0.75 s and 20 after 1.5 s: it stops early for the arrow of 20.
+            s.play(flow.advance(25), { duration: 2, ease: linear })
+            expect([flow.crossings(0), flow.crossings('device')]).toEqual([1, 1])
+            s.play(flow.showAll(), { duration: 2 })
+            expect([flow.crossings('system call line'), flow.crossings(1)]).toEqual([3, 2])
+            expect(() => flow.crossings('wall')).toThrow(/no boundary "wall"\. The boundaries are 0 \("system call line"\), 1 \("device"\)/)
+            expect(() => flow.crossings(2)).toThrow(/no boundary 2/)
+        }))
+        // The counter is after the label, at the right end. Only the first boundary counts.
+        const counter = flow.counters[0]!, label = flow.boundaries[0]!.children[1]!
+        expect(flow.counters[1]).toBeNull()
+        expect(flow.boundaries[0]!.children[2]).toBe(counter)
+        const shown = (time: number) => at(time, () => counter.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))
+        expect(shown(0)).toEqual(['0'])
+        expect(at(0, () => label.bounds().x)).toBeGreaterThan(500 + 8)
+        expect(at(0, () => right(label))).toBeLessThan(at(0, () => counter.children[0]!.bounds().x) - 8)
+        // The number goes up at the moment the cursor passes the handoff. A dashed handoff over the other boundary does not move it.
+        expect(shown(0.7)).toEqual(['0'])
+        expect(shown(0.8)).toEqual(['1'])
+        expect(shown(1.9)).toEqual(['1'])
+        expect(shown(4)).toEqual(['3'])
+        // The handoff leaves a tick where its arrow passes a line that counts: on the first boundary, and not on the second.
+        const [first, second, third] = flow.handoffs
+        expect([first!.children.length, second!.children.length, third!.children.length]).toEqual([2, 1, 2])
+        const tick = first!.children[1]!
+        expect(at(0, () => [tick.bounds().x + tick.bounds().width / 2, tick.bounds().y + tick.bounds().height / 2])).toEqual([flow.x(10), flow.boundaries[0]!.children[0]!.bounds().y])
+        expect(at(0.8, () => shows(tick))).toBe(0)
+        expect(at(1.1, () => [shows(first!), shows(tick)])).toEqual([1, 1])
+        // A dashed handoff has an arrow of dashes. The others have a solid line.
+        expect(flow.handoffs.map((handoff) => handoff.shape.children[0]!.get('dash') !== null)).toEqual([false, true, false, true])
+    })
+
+    it('hides the cursor behind an arrow of dashes, so that a cursor that stops at the handoff does not fill the gaps', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 50, dashed: true }, { from: 'b', to: 'a', at: 80 }], { ...sized, domain: [0, 100] }))
+            s.play(flow.advance(50), { duration: 1 })
+            s.wait(1)
+            s.play(flow.advance(80), { duration: 1 })
+            s.wait(1)
+        }))
+        const strip = (time: number, handoff: number) => {
+            const ops = compiled.frame(time).ops.filter((op): op is PathOp => op.kind === 'path')
+            const cursor = ops.findIndex((op) => op.node === flow.cursor), shaft = ops.findIndex((op) => op.node === flow.handoffs[handoff]!.shape.children[0])
+            expect(cursor).toBeGreaterThanOrEqual(0)
+            expect(shaft).toBeGreaterThan(cursor)
+            const arrow = flow.handoffs[handoff]!.shape.bounds()
+            // A line that nothing shows through, wider than the arrow, over the cursor and under the arrow, from one end of the arrow to the other.
+            return ops.slice(cursor + 1, shaft).filter((op) => {
+                const box = pathBounds(op.strokePath)
+                return box !== null && op.strokeAlpha === 1 && op.strokeWidth > ops[shaft]!.strokeWidth && Math.abs(box.x - (960 + arrow.x + arrow.width / 2)) < 0.01 && box.y <= 540 + arrow.y && box.y + box.height >= 540 + arrow.y + arrow.height
+            }).length
+        }
+        expect(strip(1.5, 0)).toBe(1)
+        // A solid arrow covers the cursor by itself.
+        expect(strip(3.5, 1)).toBe(0)
+    })
+
+    it('counts in the order of time when the events are in another order, and brings a boundary in with the lane under it', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(['user', 'kernel'], [
+                { from: 'kernel', to: 'user', at: 60 },
+                { from: 'user', to: 'kernel', at: 20 },
+                { from: 'user', to: 'kernel', at: 80 },
+                { from: 'kernel', to: 'user', at: 40 },
+            ], { ...sized, domain: [0, 100], boundaries: [{ between: ['user', 'kernel'], label: 'line', count: true }] })
+            s.play(flow.enter({ lag: 1 }), { duration: 1, ease: linear })
+            s.play(flow.advance(90), { duration: 9, ease: linear })
+        }))
+        const [rule, label, counter] = flow.boundaries[0]!.children
+        // With a lag of 1, the second lane has the second half of the time. The line and its text come with it.
+        expect(at(0.4, () => [rule!.get('trimTo'), shows(label!), shows(counter!)])).toEqual([0, 0, 0])
+        expect(at(0.75, () => [rule!.get('trimTo'), shows(label!), shows(counter!)])).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        expect(at(1, () => [rule!.get('trimTo'), shows(label!), shows(counter!)])).toEqual([1, 1, 1])
+        // The cursor passes one unit of time in a tenth of a second: 20 at 3 s, 40 at 5 s, 60 at 7 s, 80 at 9 s.
+        const shown = (time: number) => at(time, () => counter!.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))
+        expect([2.9, 3.1, 4.9, 5.1, 6.9, 7.1, 8.9, 9.1].map(shown)).toEqual([['0'], ['1'], ['1'], ['2'], ['2'], ['3'], ['3'], ['4']])
+        expect(flow.crossings('line')).toBe(4)
+    })
+
+    it('puts the label of a handoff that crosses a boundary beside the lane that it leaves, and no label on the line', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['user', 'kernel'], [
+                { lane: 'user', start: 0, end: 20 },
+                { from: 'user', to: 'kernel', at: 20, label: 'read' },
+                { lane: 'kernel', start: 20, end: 50, label: 'works' },
+                { from: 'kernel', to: 'user', at: 50, label: 'returns' },
+                { lane: 'kernel', start: 80, end: 82, label: 'over its bar' },
+            ], { ...sized, size: 26, domain: [0, 100], boundaries: [{ between: ['user', 'kernel'], label: 'system call line', count: true }] })
+            const line = flow.boundaries[0]!.children[0]!.bounds().y
+            const [down, up] = flow.handoffs.map((handoff) => handoff.text!.bounds())
+            // On the way down, the label is over the line, under the bars of the upper lane. On the way up, it is under the line.
+            expect(down!.y).toBeGreaterThan(flow.y('user') + 20 + 4)
+            expect(down!.y + down!.height).toBeLessThan(line - 4)
+            expect(up!.y).toBeGreaterThan(line + 4)
+            expect(up!.y + up!.height).toBeLessThan(flow.y('kernel') - 20 - 4)
+            // A label over a bar of the lower lane stays under the line.
+            expect(flow.spans[2]!.text!.bounds().y).toBeGreaterThan(line + 4)
+        }))
+    })
+
+    it('refuses a boundary that is not between two neighbors, and takes a handoff at the last end of the domain beside a boundary with a label', async () => {
+        await compileFilm(film(() => {
+            const span = { lane: 'a', start: 0, end: 10 }
+            expect(() => lanes(['a', 'b', 'c'], [span], { boundaries: [{ between: ['a', 'c'] }] })).toThrow(/boundary 0 is between the lanes "a" and "c", which are not neighbors\. A boundary is a line between two lanes that are next to each other/)
+            expect(() => lanes(['a', 'b'], [span], { boundaries: [{ between: ['a', 'a'] }] })).toThrow(/which are not neighbors/)
+            expect(() => lanes(['a', 'b'], [span], { boundaries: [{ between: ['a', 'x'] }] })).toThrow(/boundary 0 names the lane "x"\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            expect(() => lanes(['a', 'b'], [span], { boundaries: [{ between: ['a', 'b'] }, { between: [1, 0] }] })).toThrow(/boundaries 0 and 1 are between the same two lanes/)
+            expect(() => lanes(['a', 'b'], [span]).crossings(0)).toThrow(/no boundary 0\. The object has no boundary/)
+            // The label and the number of a boundary are outside the time area. So a handoff may be at the last end of the domain, with no room after it.
+            for (const boundary of [{ label: 'line' }, { count: true }, { label: 'line', count: true }, {}]) {
+                const last = lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 100 }, { from: 'a', to: 'b', at: 100, label: 'call' }], { ...sized, boundaries: [{ between: ['a', 'b'], ...boundary }] })
+                expect(last.handoffs[0]!.shape.bounds().x + last.handoffs[0]!.shape.bounds().width / 2).toBeCloseTo(500, 6)
+                for (const word of last.boundaries[0]!.children.slice(1)) expect(word.bounds().x).toBeGreaterThan(500 + 8)
+            }
+            // With too little room, a label would touch the line.
+            expect(() => lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50 }, { from: 'a', to: 'b', at: 50, label: 'lgy' }], { ...sized, size: 26, pitch: 64, domain: [0, 100], boundaries: [{ between: ['a', 'b'] }] })).toThrow(/the label of event 1 \("lgy"\) touches the (bar of event 0|line of boundary 0)/)
+            // A label over a bar of the lower lane, with no bar over it: it would touch the line and nothing else.
+            const lower = (pitch: number) => lanes(['a', 'b'], [{ lane: 'b', start: 50, end: 52, label: 'lgy' }], { ...sized, size: 26, pitch, domain: [0, 100], boundaries: [{ between: ['a', 'b'], label: 'wall' }] })
+            expect(() => lower(64)).toThrow(/the label of event 0 \("lgy"\) touches the line of boundary 0 \("wall"\)\. Use a wider width, a larger pitch/)
+            expect(lower(100).spans[0]!.text!.bounds().y).toBeGreaterThan(lower(100).boundaries[0]!.children[0]!.bounds().y + 3)
+        }))
+    })
+
+    it('draws an idle span as an outline of dashes with a faint fill, with no right end while it grows', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const film_ = film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['thread'], [
+                { lane: 'thread', start: 0, end: 20, label: 'runs' },
+                { lane: 'thread', start: 20, end: 60, label: 'sleeps', idle: true },
+                { lane: 'thread', start: 70, end: 100, idle: true, open: true },
+            ], sized).at(60, 0))
+            // The cursor stops in the idle span, where the label is: the right end of the outline would be a line through the text.
+            s.play(flow.advance(24), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(flow.advance(60), { duration: 1, ease: linear })
+            s.play(flow.showAll(), { duration: 1, ease: linear })
+            s.wait(0.5)
+        })
+        const report = await checkFilm(film_)
+        expect(report.diagnostics).toEqual([])
+        const [solid, idle, open] = flow.spans
+        // A solid span has its own outline. An idle span has a faint fill, and its outline is a second shape, of dashes.
+        expect([solid!.edge, solid!.shape.get('stroke') !== null]).toEqual([null, true])
+        expect(idle!.shape.get('stroke')).toBeNull()
+        expect(at(4, () => idle!.shape.get('fillOpacity'))).toBeLessThan(at(4, () => solid!.shape.get('fillOpacity')) / 2)
+        expect(idle!.edge!.get('dash')).not.toBeNull()
+        // The outline grows with the bar, and it is there from the start of the span.
+        expect(at(1.5, () => [shows(idle!), shows(idle!.edge!), right(idle!.shape), right(idle!.edge!)])).toEqual([1, 1, 60 + flow.x(24), 60 + flow.x(24)])
+        expect(at(1.5, () => idle!.edge!.bounds().x)).toBeCloseTo(60 + flow.x(20), 6)
+        // While the span grows, the outline is its left end, its top and its bottom. Its right end comes when the span is complete.
+        expect(at(1.5, () => idle!.edge!.get('path')!.length)).toBe(3)
+        // The cursor reaches the end of the span at 2.7 s: it stops 0.3 s early for what closes the span.
+        expect(at(2.65, () => idle!.edge!.get('path')!.length)).toBe(3)
+        expect(at(2.75, () => [idle!.edge!.get('path')!.length, right(idle!.edge!)])).toEqual([4, 60 + flow.x(60)])
+        // The bar of an idle span has a square corner at its right end while it grows, where its outline has no end. When the span is complete, the corner is round.
+        const corner = (node: Node, x: number, y: number) => {
+            const points = node.get('path')![0]!.p
+            for (let k = 0; k + 1 < points.length; k += 2) if (Math.abs(points[k]! - x) < 1e-6 && Math.abs(points[k + 1]! - y) < 1e-6) return true
+            return false
+        }
+        expect(at(1.5, () => corner(idle!.shape, flow.x(24), -20))).toBe(true)
+        expect(at(3.5, () => corner(idle!.shape, flow.x(60), -20))).toBe(false)
+        expect(at(3.5, () => corner(solid!.shape, flow.x(20), -20))).toBe(false)
+        // An open idle span never gets a right end. At the end of the domain, it gets an arrow head of dashes.
+        expect(at(4.4, () => [open!.edge!.get('path')!.length, right(open!.edge!), shows(open!.tip!)])).toEqual([3, 60 + flow.x(100), 1])
+        expect(open!.tip!.get('dash')).not.toBeNull()
+        expect(solid!.tip).toBeNull()
+    })
+
+    it('draws the bars, then the boundaries, then the arrows, then the dots, whatever the order of the list', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            // The mark and the handoff are on the bar of the middle lane, and are listed before it.
+            flow = s.add(lanes(['a', 'b', 'c'], [
+                { lane: 'b', at: 30, color: 'yellow' },
+                { from: 'a', to: 'c', at: 60 },
+                { lane: 'b', start: 10, end: 90 },
+            ], { ...sized, domain: [0, 100], boundaries: [{ between: ['a', 'b'] }] }))
+            s.play(flow.showAll(), { duration: 0 })
+            s.wait(1)
+        }))
+        const ops = compiled.frame(0.5).ops.filter((op): op is PathOp => op.kind === 'path')
+        const place = (node: Node) => ops.findIndex((op) => op.node === node)
+        const drawn = [flow.rails[1]!, flow.spans[0]!.shape, flow.boundaries[0]!.children[0]!, flow.handoffs[0]!.shape.children[0]!, flow.marks[0]!.shape].map(place)
+        expect(Math.min(...drawn)).toBeGreaterThanOrEqual(0)
+        expect(drawn).toEqual([...drawn].sort((a, b) => a - b))
+        // The list keeps the order that the film gave.
+        expect(flow.events.map((event) => event.kind)).toEqual(['mark', 'handoff', 'span'])
+    })
+
+    it('gives the labels their places in the order of time, so that the order of the list changes nothing', async () => {
+        await compileFilm(film(() => {
+            const options = { ...sized, domain: [0, 100] as [number, number] }
+            const first = { from: 0, to: 1, at: 40, label: 'aaaaa' }, second = { from: 1, to: 0, at: 50, label: 'bbbb' }, third = { from: 0, to: 1, at: 53 }
+            const outcome = (list: LaneEvent[]) => {
+                try {
+                    return lanes(['a', 'b'], list, options).events.filter((event) => event.text).map((event) => `${(event.text as unknown as { source: string }).source} at ${Math.round(event.text!.bounds().x)}`).sort()
+                } catch (error) {
+                    return (error as Error).message.replace(/event \d+/g, 'event')
+                }
+            }
+            // In the order of time, the first label takes the place at the right of its arrow, and the second label has no place left.
+            expect(outcome([first, second, third])).toBe('lanes: the label of event ("bbbb") touches the arrow of event. Use a wider width, a larger pitch, shorter labels, times that are further apart, or another labelSide')
+            expect(outcome([second, first, third])).toEqual(outcome([first, second, third]))
+            expect(outcome([third, second, first])).toEqual(outcome([first, second, third]))
+            // The film settles it: the first label at the left of its arrow leaves the room between the two arrows to the second.
+            const settled = lanes(['a', 'b'], [{ ...first, labelSide: 'left' }, second, third], options)
+            expect(right(settled.handoffs[0]!.text!)).toBeLessThan(settled.handoffs[0]!.shape.bounds().x)
+            expect(right(settled.handoffs[1]!.text!)).toBeLessThan(settled.handoffs[1]!.shape.bounds().x)
+            expect(settled.handoffs[1]!.text!.bounds().x).toBeGreaterThan(right(settled.handoffs[0]!.shape))
+            // Two orders of a list that has a layout give the same layout.
+            const far = [{ from: 0, to: 1, at: 20, label: 'aaaaa' }, { from: 1, to: 0, at: 60, label: 'bbbb' }]
+            expect(outcome([far[1]!, far[0]!])).toEqual(outcome(far))
+            expect(outcome(far)).toHaveLength(2)
+        }))
+    })
+
+    it('puts a label at the side that the film names: over, under, left or right', async () => {
+        await compileFilm(film(() => {
+            const options = { ...sized, size: 26, domain: [0, 100] as [number, number] }
+            // A short span at the foot of an arrow has no room for a label over it. Under it, and beside it, there is room.
+            const short = (labelSide?: 'left' | 'right' | 'over' | 'under') => lanes(['a', 'b'], [{ from: 0, to: 1, at: 50 }, { lane: 1, start: 50, end: 54, label: 'handles it', labelSide }], options).spans[0]!
+            expect(() => short()).toThrow(/the label of event 1 \("handles it"\) touches the arrow of event 0/)
+            expect(() => short('over')).toThrow(/touches the arrow of event 0/)
+            const under = short('under'), after = short('right'), before = short('left')
+            expect(under.text!.bounds().y).toBeGreaterThan(bottom(under.shape) + 3)
+            expect(under.text!.bounds().x).toBeCloseTo(under.shape.bounds().x, 6)
+            // Beside the bar, the label is on the lane, at the height of the bar.
+            expect(after.text!.bounds().x).toBeGreaterThan(right(after.shape) + 4)
+            expect(after.text!.bounds().x).toBeLessThan(right(after.shape) + 16)
+            expect(Math.abs(after.text!.bounds().y + after.text!.bounds().height / 2 - 50)).toBeLessThan(6)
+            expect(right(before.text!)).toBeLessThan(before.shape.bounds().x - 4)
+            // A label that fits inside its bar goes over the bar when the film says so.
+            const wide = lanes(['a'], [{ lane: 0, start: 0, end: 50, label: 'fits', labelSide: 'over' }], options).spans[0]!
+            expect(bottom(wide.text!)).toBeLessThan(wide.shape.bounds().y)
+            // A handoff: at the left of its arrow with room at the right, and over or under the boundary that it crosses.
+            const cross = (labelSide?: 'left' | 'right' | 'over' | 'under') => lanes(['a', 'b'], [{ from: 0, to: 1, at: 50, label: 'call', labelSide }], { ...options, boundaries: [{ between: [0, 1] }] })
+            const line = cross().boundaries[0]!.children[0]!.bounds().y
+            expect(right(cross('left').handoffs[0]!.text!)).toBeLessThan(cross('left').handoffs[0]!.shape.bounds().x)
+            expect(cross('right').handoffs[0]!.text!.bounds().x).toBeGreaterThan(right(cross('right').handoffs[0]!.shape))
+            expect(bottom(cross().handoffs[0]!.text!)).toBeLessThan(line)
+            expect(bottom(cross('over').handoffs[0]!.text!)).toBeLessThan(line)
+            expect(cross('under').handoffs[0]!.text!.bounds().y).toBeGreaterThan(line)
+            expect(() => lanes(['a', 'b'], [{ from: 0, to: 1, at: 50, label: 'call', labelSide: 'under' }], options)).toThrow(/event 0 \("call"\) has the labelSide 'under'\. The label of a handoff is at the 'left' or at the 'right' of its arrow/)
+            // A mark: under its dot, or beside it.
+            const mark = (labelSide?: 'left' | 'right' | 'over' | 'under') => lanes(['a'], [{ lane: 0, at: 50, label: 'irq', labelSide }], options).marks[0]!
+            expect(bottom(mark().text!)).toBeLessThan(mark().shape.bounds().y)
+            expect(bottom(mark('over').text!)).toBeLessThan(mark('over').shape.bounds().y)
+            expect(mark('under').text!.bounds().y).toBeGreaterThan(bottom(mark('under').shape))
+            expect(mark('right').text!.bounds().x).toBeGreaterThan(right(mark('right').shape) + 4)
+            expect(right(mark('left').text!)).toBeLessThan(mark('left').shape.bounds().x - 4)
+            // A label under the last lane must not touch the axis.
+            expect(() => lanes(['a'], [{ lane: 0, start: 0, end: 50, label: 'fits', labelSide: 'under' }], { ...options, ticks: 2 })).toThrow(/the label of event 0 \("fits"\) touches the axis/)
+            expect(() => lanes(['a'], [{ lane: 0, at: 5, label: 'x', labelSide: 'top' as never }], options)).toThrow(/event 0 has the labelSide "top"\. Use 'left', 'right', 'over' or 'under'/)
+        }))
+    })
+
+    it('paints its patches in the backing color that it is given, and draws none with null', async () => {
+        const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+        const marked: LaneEvent[] = [...events, { lane: 'KVM', at: 50, label: 'tick' }, { from: 'guest', to: 'monitor', at: 90, dashed: true }]
+        const count = async (backing: string | null | undefined, color: string) => {
+            let flow!: ReturnType<typeof lanes>
+            const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+                flow = s.add(lanes(names, marked, { ...sized, ...(backing === undefined ? {} : { backing }) }))
+                s.play(flow.showAll(), { duration: 0 })
+                s.wait(1)
+            }))
+            const ops = compiled.frame(0.5).ops.filter((op): op is PathOp => op.kind === 'path')
+            const same = (value: unknown) => JSON.stringify(value) === JSON.stringify(paint(color))
+            // Filled patches behind the bars and the labels, the strip behind the arrow of dashes, and the rim of the dot.
+            return { fills: ops.filter((op) => op.fillAlpha === 1 && same(op.fill)).length, strips: ops.filter((op) => !op.fill && op.strokeAlpha === 1 && same(op.stroke)).length, rim: flow.marks[0]!.shape.get('stroke') }
+        }
+        // Five bars, and eight labels: seven of the sequence and the label of the mark.
+        expect(await count(undefined, 'bg')).toEqual({ fills: 13, strips: 1, rim: paint('bg') })
+        expect(await count('surface', 'surface')).toEqual({ fills: 13, strips: 1, rim: paint('surface') })
+        expect(await count('surface', 'bg')).toMatchObject({ fills: 0, strips: 0 })
+        expect(await count(null, 'bg')).toEqual({ fills: 0, strips: 0, rim: null })
+    })
+
+    it('draws no cursor with cursor: false, and still shows the events at their times', async () => {
+        let flow!: ReturnType<typeof lanes>, plain!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, { ...sized, cursor: false }))
+            plain = s.add(lanes(names, events, sized).at(0, 400))
+            s.play(flow.advance(30), plain.advance(30), { duration: 1, ease: linear })
+            s.play(flow.advance(50), plain.advance(50), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        for (const time of [0, 0.25, 0.5, 1, 1.5, 2, 2.4]) {
+            expect(at(time, () => shows(flow.cursor))).toBe(0)
+            expect(compiled.frame(time).ops.some((op) => op.kind === 'path' && op.node === flow.cursor)).toBe(false)
+            // All the rest is as with a cursor: the same events show, and the bars are as long.
+            expect(at(time, () => flow.events.map(shows))).toEqual(at(time, () => plain.events.map(shows)))
+            expect(at(time, () => flow.spans.map((span) => right(span.shape)))).toEqual(at(time, () => plain.spans.map((span) => right(span.shape))))
+        }
+        expect(at(2.4, () => shows(plain.cursor))).toBe(1)
+        expect(at(2.4, () => flow.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+        expect(flow.time).toBe(50)
+    })
+
+    it('keeps the cursor and the bars in the range of the advance, and never moves them back, with an ease that passes its end or bounces', async () => {
+        const overshoot = (t: number) => { const x = t - 1; return x * x * (2.70158 * x + 1.70158) + 1 }
+        const bounce = (t: number) => {
+            if (t < 1 / 2.75) return 7.5625 * t * t
+            if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75
+            if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375
+            return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375
+        }
+        const back = (t: number) => Math.sin(t * Math.PI)
+        for (const ease of [overshoot, bounce, back]) {
+            let flow!: ReturnType<typeof lanes>
+            await compileFilm(film({ fps: 20 }, (s) => {
+                flow = s.add(lanes(names, events, sized))
+                s.play(flow.advance(36), { duration: 2, ease })
+                s.play(flow.advance(74), { duration: 2, ease })
+            }))
+            let before = flow.x(0), least = 0
+            for (let frame = 0; frame <= 80; frame++) {
+                const time = frame / 20, end = flow.x(time <= 2 ? 36 : 74)
+                const cursor = at(time, () => flow.cursor.get('x'))
+                expect(cursor).toBeLessThanOrEqual(end + 1e-6)
+                expect(cursor).toBeGreaterThanOrEqual(before - 1e-6)
+                least = Math.min(least, cursor - before)
+                before = cursor
+                // No bar is past the cursor, and a handoff shows only when the cursor is at it or past it.
+                for (const span of flow.spans) if (at(time, () => shows(span) > 0 && span.shape.bounds().width > 0)) expect(at(time, () => right(span.shape))).toBeLessThanOrEqual(cursor + 1e-6)
+                flow.handoffs.forEach((handoff, index) => {
+                    if (at(time, () => shows(handoff)) > 0) expect(cursor).toBeGreaterThanOrEqual(flow.x([30, 42, 70, 78][index]!) - 0.5)
+                })
+            }
+            // The cursor is at the time of each advance when the advance ends.
+            expect(at(2, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(36), 6)
+            expect(at(4, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(74), 6)
+        }
+    })
+
+    it('ends the numbers of all counters at one x, with room for the widest number from the start', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list: LaneEvent[] = []
+            for (let k = 0; k < 12; k++) list.push({ from: k % 2, to: 1 - (k % 2), at: 5 + k * 6 })
+            list.push({ from: 1, to: 2, at: 90 })
+            flow = s.add(lanes(['user space', 'kernel', 'drive'], list, { ...sized, domain: [0, 100], boundaries: [{ between: [0, 1], label: 'system call line', count: true }, { between: [1, 2], label: 'bus', count: true }] }))
+            s.play(flow.showAll(), { duration: 2, ease: linear })
+        }))
+        const [calls, bus] = flow.counters, labels = flow.boundaries.map((boundary) => boundary.children[1]!)
+        // The first counter goes to 12, and the second to 1.
+        expect([calls!.children.length, bus!.children.length]).toEqual([13, 2])
+        const ends = [...calls!.children, ...bus!.children].map((value) => at(0, () => right(value)))
+        expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(1.5)
+        // The two labels start at one x. The widest number, of two digits, has its room after the longest label.
+        expect(at(0, () => labels[0]!.bounds().x)).toBeCloseTo(at(0, () => labels[1]!.bounds().x), 6)
+        const widest = Math.min(...calls!.children.map((value) => at(0, () => value.bounds().x)))
+        expect(widest).toBeGreaterThan(at(0, () => right(labels[0]!)) + 8)
+        expect(at(0, () => calls!.children[12]!.bounds().width)).toBeGreaterThan(at(0, () => calls!.children[1]!.bounds().width) * 1.5)
+        // The label does not move when the number grows.
+        expect(at(2, () => labels[0]!.bounds().x)).toBe(at(0, () => labels[0]!.bounds().x))
+        expect(at(2, () => calls!.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))).toEqual(['12'])
+        // The numbers are after the longest label, whichever boundary has it.
+        await compileFilm(film(() => {
+            const other = lanes(['a', 'b', 'c'], [{ from: 0, to: 2, at: 50 }], { ...sized, domain: [0, 100], boundaries: [{ between: [0, 1], label: 'bus', count: true }, { between: [1, 2], label: 'system call line', count: true }] })
+            const long = other.boundaries[1]!.children[1]!
+            for (const counter of other.counters) expect(counter!.children[0]!.bounds().x).toBeGreaterThan(right(long) + 8)
+        }))
+    })
+
+    it('does not count a handoff at the first end of the domain before the first advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a', 'b'], [{ from: 0, to: 1, at: 0 }, { lane: 1, start: 0, end: 50 }], { ...sized, domain: [0, 100], boundaries: [{ between: [0, 1], count: true }] }))
+            // The cursor is at 0, and so is the handoff. No advance has shown it.
+            expect(flow.crossings(0)).toBe(0)
+            s.wait(1)
+            s.play(flow.advance(0), { duration: 1 })
+            expect(flow.crossings(0)).toBe(1)
+        }))
+        const shown = (time: number) => at(time, () => flow.counters[0]!.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))
+        expect([shown(0.5), shown(1.5)]).toEqual([['0'], ['1']])
+        expect(at(0.5, () => shows(flow.handoffs[0]!))).toBe(0)
+    })
+
+    it('puts itself on the stage with the first advance, and takes 1.6 s for an advance and 4 s for showAll when the film gives no time', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(names, events, sized)
+            expect(flow.advance(10).duration).toBe(1.6)
+            expect(flow.showAll().duration).toBe(4)
+            expect([flow.advance(10, { duration: 3 }).duration, flow.showAll({ duration: 2 }).duration]).toEqual([3, 2])
+            // The object is not on the stage: no `s.add`, and no `enter`.
+            s.wait(0.5)
+            s.play(flow.advance(50))
+            expect(s.time).toBeCloseTo(2.1, 6)
+            s.play(flow.showAll())
+            expect(s.time).toBeCloseTo(6.1, 6)
+        }))
+        expect(compiled.frame(0.25).ops).toHaveLength(0)
+        // From the start of the advance, the names and the lines are there: 15 letters and 3 lines.
+        expect(compiled.frame(0.5).ops.length).toBeGreaterThanOrEqual(18)
+        expect(at(2.1, () => flow.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+        expect(flow.mounted).toBe(true)
+    })
+
+    it('refuses labels that would touch, and names the two events and what to do', async () => {
+        await compileFilm(film(() => {
+            const advice = 'Use a wider width, a larger pitch, shorter labels, times that are further apart, or another labelSide'
+            // Three arrows close together: the label of the middle one has no room at the right or at the left.
+            expect(() => lanes(['a', 'b'], [
+                { from: 'a', to: 'b', at: 40, label: 'the first handoff' },
+                { from: 'b', to: 'a', at: 50, label: 'the second handoff' },
+                { from: 'a', to: 'b', at: 60, label: 'the third handoff' },
+            ], { ...sized, domain: [0, 100] })).toThrow(`lanes: the label of event 1 ("the second handoff") touches the arrow of event 2 ("the third handoff"). ${advice}`)
+            // Two short spans side by side: the second label has no room over its bar.
+            expect(() => lanes(['a'], [
+                { lane: 'a', start: 40, end: 42, label: 'the first span' },
+                { lane: 'a', start: 44, end: 46, label: 'the second span' },
+            ], { ...sized, domain: [0, 100] })).toThrow(`lanes: the label of event 1 ("the second span") touches the label of event 0 ("the first span"). ${advice}`)
+            // A label over a bar at the foot of an arrow.
+            expect(() => lanes(['a', 'b'], [
+                { from: 'a', to: 'b', at: 30 },
+                { lane: 'b', start: 30, end: 34, label: 'handles the exit' },
+            ], { ...sized, domain: [0, 100] })).toThrow(`lanes: the label of event 1 ("handles the exit") touches the arrow of event 0. ${advice}`)
+            // With too little room between two lanes, the label of a handoff touches a bar.
+            expect(() => lanes(['a', 'b'], [
+                { lane: 'a', start: 0, end: 60 },
+                { from: 'a', to: 'b', at: 30, label: 'lgy' },
+            ], { ...sized, pitch: 64 })).toThrow(`lanes: the label of event 1 ("lgy") touches the bar of event 0. ${advice}`)
+            // A label that ends 3 px before an arrow touches it: a label needs a clear distance. With 20 px it has its place.
+            const probe = lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 0, label: 'call' }], { ...sized, domain: [0, 100] })
+            const end = right(probe.handoffs[0]!.text!) + 500, arrow = probe.handoffs[0]!.shape.bounds().width / 2
+            const near = (gap: number) => lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 0, label: 'call' }, { from: 'b', to: 'a', at: (end + gap + arrow) / 10 }], { ...sized, domain: [0, 100] })
+            expect(() => near(3)).toThrow(`lanes: the label of event 0 ("call") touches the arrow of event 1. ${advice}`)
+            expect(near(20).handoffs[0]!.text!.bounds().x).toBeCloseTo(probe.handoffs[0]!.text!.bounds().x, 6)
+            // Wider than the time area: no place holds it.
+            expect(() => lanes(['a'], [{ lane: 'a', at: 5, label: 'a label that is much wider than the whole time area' }], { width: 300, domain: [0, 10] })).toThrow(/the label of event 0 \("a label that is much wider than the whole time area"\) is wider than the room/)
+            // The same events with more room are accepted.
+            expect(lanes(['a', 'b'], [
+                { from: 'a', to: 'b', at: 10, label: 'the first handoff' },
+                { from: 'b', to: 'a', at: 40, label: 'the second handoff' },
+                { from: 'a', to: 'b', at: 70, label: 'the third handoff' },
+            ], { ...sized, domain: [0, 100] }).handoffs).toHaveLength(3)
+        }))
+    })
+
+    it('names a wrong lane, event, domain or size', async () => {
+        await compileFilm(film(() => {
+            const span = { lane: 'a', start: 0, end: 10 }
+            expect(() => lanes([], [])).toThrow(/at least one lane/)
+            expect(() => lanes(['a', 'b', 'a'], [span])).toThrow(/two lanes have the name "a"\. Give each lane its own name/)
+            expect(() => lanes(['a', 'b'], [{ lane: 'c', start: 0, end: 10 }])).toThrow(/event 0 names the lane "c"\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            expect(() => lanes(['a', 'b'], [span, { from: 'a', to: 2, at: 5 }])).toThrow(/event 1 names the lane 2\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 10, end: 10 }])).toThrow(/the span of event 0 starts at 10 and ends at 10\. A span ends after it starts/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 10, end: 4 }])).toThrow(/A span ends after it starts/)
+            expect(() => lanes(['a'], [span, { lane: 'a', at: 120 }], { domain: [0, 100] })).toThrow(/event 1 has the time 120, outside the domain 0 to 100/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: -5, end: 10 }], { domain: [0, 100] })).toThrow(/event 0 has the time -5, outside the domain 0 to 100/)
+            expect(() => lanes(['a', 'b'], [span, { from: 'b', to: 1, at: 5 }])).toThrow(/event 1 is a handoff from the lane "b" to itself\. A handoff goes to another lane/)
+            expect(() => lanes(['a'], [span], { domain: [5, 5] })).toThrow(/the domain needs two different ends, the smaller one first/)
+            expect(() => lanes(['a'], [span], { domain: [10, 0] })).toThrow(/the domain needs two different ends/)
+            expect(() => lanes(['a'], [{ lane: 'a', at: 5 }])).toThrow(/the events give no range of time\. Give it a domain/)
+            expect(() => lanes(['a'], [])).toThrow(/the events give no range of time/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 0, end: Number.NaN }])).toThrow(/event 0 has a time that is not a number/)
+            expect(() => lanes(['a'], [{ lane: 'a' } as never])).toThrow(/event 0 is not a span/)
+            expect(() => lanes(['a'], [span], { width: 0 })).toThrow(/width is the width of the time area/)
+            expect(() => lanes(['a'], [span], { barHeight: -1 })).toThrow(/barHeight is the height of a bar/)
+            expect(() => lanes(['a'], [span], { size: 0 })).toThrow(/size is a text size/)
+            expect(() => lanes(['a'], [span], { barHeight: 44, pitch: 40 })).toThrow(/pitch is the distance from one lane to the next\. Give it 44 or more/)
+            expect(() => lanes(['a'], [span], { ticks: [0, 20] })).toThrow(/the tick 20 is outside the domain 0 to 10/)
+            expect(() => lanes(['a'], [span], { ticks: 0 })).toThrow(/ticks is a count of 1 or more/)
+            expect(() => lanes(['a'], [span], { width: 300, ticks: [0, 1, 2], format: (time) => `${time} seconds` })).toThrow(/the ticks "0 seconds" and "1 seconds" touch\. Use fewer ticks, a shorter format, or a wider width/)
+            expect(() => lanes(['a', 'b'], [span]).y('c')).toThrow(/no lane "c"\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            // A pitch with no room for an arrow between two bars, when a handoff needs one. With no handoff, the same pitch is accepted.
+            expect(() => lanes(['a', 'b'], [span, { from: 'a', to: 'b', at: 5 }], { barHeight: 44, pitch: 50 })).toThrow(/a pitch of 50 leaves 6 px between two bars, and the arrow of a handoff needs 24\. Give a pitch of 68 or more/)
+            expect(lanes(['a', 'b'], [span], { barHeight: 44, pitch: 50 }).spans).toHaveLength(1)
+            expect(lanes(['a', 'b'], [span, { from: 'a', to: 'b', at: 5 }], { barHeight: 44, pitch: 68 }).handoffs).toHaveLength(1)
+            // Two spans that overlap on one lane. Two spans that meet at one time are accepted.
+            expect(() => lanes(['a'], [{ lane: 'a', start: 30, end: 60, label: 'two' }, { lane: 'a', start: 0, end: 50, label: 'one' }])).toThrow(/the spans of event 1 \("one"\) and event 0 \("two"\) overlap on the lane "a": one ends at 50, and the other starts at 30/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 0, end: 100 }, { lane: 'a', start: 30, end: 60 }])).toThrow(/the spans of event 0 and event 1 overlap on the lane "a"/)
+            expect(lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50 }, { lane: 'a', start: 50, end: 60 }, { lane: 'b', start: 30, end: 55 }]).spans).toHaveLength(3)
+            // A domain with no event in it is accepted: the lanes are empty.
+            expect(lanes(['a'], [], { domain: [0, 10] }).events).toEqual([])
         }))
     })
 })

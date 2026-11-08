@@ -77,6 +77,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'zone', group: SYSTEMS, usage: "zone([vmm, guest], { title: 'jail', color: 'yellow', dash: true }): a named border around nodes, for a host, a sandbox, or a boundary of trust. Zones nest" },
     { name: 'tag', group: SYSTEMS, usage: "tag('MEASURED', { note: 'the study of June 2026', color: 'green' }).at(-912, -490): a word in a pill with a note, for the kind of a claim and its source" },
     { name: 'tagTrack', group: SYSTEMS, usage: "tagTrack([{ at: 0, word: 'PLAN' }, { at: 12, word: 'MEASURED', color: 'green' }], { until: 30 }).at(-912, -490): a tag that changes with time at one place, pinned to the screen" },
+    { name: 'lanes', group: SYSTEMS, usage: "lanes(['guest', 'KVM'], [{ lane: 'guest', start: 0, end: 30, label: 'runs' }, { from: 'guest', to: 'KVM', at: 30, label: 'VM exit' }, { lane: 'KVM', start: 30, end: 42 }]): who runs when. One lane per actor, a bar for each span, an arrow for each handoff, a dot for each instant. flow.advance(30) moves the cursor to a time and stops. With ticks, a chart of durations on a time axis. With boundaries, a line between two lanes that counts the handoffs across it" },
     { name: 'graph', group: SYSTEMS, usage: 'graph(nodes, edges): nodes and edges with automatic layout' },
     { name: 'tree', group: SYSTEMS, usage: 'tree(root): a layered tree' },
     { name: 'arrayCells', group: SYSTEMS, usage: 'arrayCells([3, 1, 4]): boxes for arrays and buffers' },
