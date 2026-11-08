@@ -131,6 +131,21 @@ const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true
 s.add(zone(jail, { title: 'host' }).at(0, 0))
 ```
 
+A sequence over time with one lane for each actor, such as a system call, a VM exit, or a request through several services. Do not draw the bars and the arrows by hand. `lanes` places the labels, and stops the build when two labels would touch. `advance` moves the cursor to a time and stops there, so one call fits one sentence of the voice. With `ticks`, one lane is a chart of durations on a time axis. With `boundaries`, a line between two lanes counts the handoffs that cross it, such as `{ between: ['user space', 'kernel'], label: 'system call line', count: true }`, so two objects side by side compare two designs by their crossings. `idle: true` is a span where the lane waits, and `dashed: true` is a handoff whose sender does not wait. When a label has no place, `labelSide` on the event names one. On a panel or in a zone with a fill, set `backing` to the color behind the object, or `backing: null` with `cursor: false`:
+
+```ts
+const flow = s.add(lanes(['user space', 'kernel'], [
+    { lane: 'user space', start: 0, end: 20, label: 'runs' },
+    { from: 'user space', to: 'kernel', at: 20, label: 'read' },
+    { lane: 'kernel', start: 20, end: 60, label: 'waits for the drive' },
+    { from: 'kernel', to: 'user space', at: 60, label: 'returns' },
+    { lane: 'user space', start: 60, end: 100, label: 'runs', open: true },
+]).at(120, 0))
+s.play(flow.advance(20))
+s.play(flow.advance(60))
+s.play(flow.showAll())
+```
+
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
 
 ```ts
