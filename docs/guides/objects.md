@@ -238,9 +238,11 @@ export default film({ fps: 30 }, (s) => {
 - Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
 - Systems: `service`, `database`, `queue`, `cloud`, `chip`.
 - Machines: `vm`, `process`, `kernel`, `memory`, `disk`, `nic`, `network`, `snapshot`, `clone`, `jail`, `wall`, `key`, `stopwatch`, `bolt`.
+- Hardware: `core`, `timer`, `firmware`, `irqchip`, `bus`, `drive`, `floppy`, `serial`, `keyboard`.
+- Kernel: `thread`, `interrupt`, `syscall`, `ring`, `page`, `pagetable`, `pin`.
 - Models: `model`, `tokens`, `vector`, `agent`, `spark`.
 - Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
-- General: `document`, `code`, `gear`, `clock`, `user`, `search`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
+- General: `document`, `code`, `gear`, `clock`, `user`, `search`, `filter`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
 
 Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
 
