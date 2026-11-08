@@ -6,7 +6,7 @@ import * as gifenc from 'gifenc'
 import { renderRgbaVideo, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
-import { RasterPool, defaultPoolSize, framesToJob } from './raster'
+import { RasterPool, defaultPoolSize, framesToJob, rasterMemoBytes } from './raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 import { text } from './text'
 
@@ -128,7 +128,8 @@ export function planRender(width: number, height: number, motionBlur: number, op
     const requested = Math.max(1, Math.floor(options.workers ?? defaultPoolSize()))
     // Measured at 4K: a worker holds about three frames without motion blur. With motion
     // blur it also holds every sub-frame until garbage collection, plus the running sum.
-    const perWorker = frameBytes * (motionBlur > 1 ? motionBlur + 4 : 3)
+    // Include the private retained RGBA result and its bounded serialized key.
+    const perWorker = frameBytes * (motionBlur > 1 ? motionBlur + 4 : 3) + rasterMemoBytes(width, height)
     const workers = Math.max(1, Math.min(requested, Math.floor(budget * 0.75 / perWorker)))
     const extra = Math.floor(budget * 0.25 / frameBytes)
     return { workers, readAhead: Math.max(workers + 1, Math.min(workers * 2, workers + extra)) }

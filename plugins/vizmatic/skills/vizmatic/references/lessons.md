@@ -80,6 +80,7 @@ export default film((s) => {
 - A beat's `hold` is silence after it. Use it to give the viewer time to think.
 - `scene.on(phrase, build, offset)` builds when the phrase starts, and `scene.after` when it ends. `scene.cue(phrase)` returns both times. A cue ignores case and punctuation. If the voice does not say the phrase, the build stops with the name of the scene and the phrase, so a script change cannot leave the picture behind.
 - A word in `timing.json` can hold a spoken form, such as "twenty seven B" for "27B". A cue matches the spoken form.
+- `scene.clear([title, chart, alpha])` fades nodes out just before the scene ends, and brings values to zero in the same time. Pass the value that a `dynamic` drawing takes its opacity from, or that drawing stays on screen into the next scene.
 - `narration` adds a caption for each spoken line and a chapter for each scene that has a `title`. The MP4 carries both.
 - The film lasts until the voice ends. Transcribe each new take before you render, and compare it with the script. A speech engine can say a word in a way that a listener hears as another word.
 

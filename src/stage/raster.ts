@@ -8,10 +8,49 @@ import { cpus } from 'node:os'
 import { Worker } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
 import { frameToSvg, type Frame } from './display'
+import { isImageAsset } from './image'
+import parseCssColor from 'parse-css-color'
+
+const MEMO_KEY_BYTES = 8 * 1024 ** 2
+const MEMO_PIXEL_BYTES = 64 * 1024 ** 2
+
+/** Worst-case retained bytes per worker, separate from its working frame buffers. */
+export function rasterMemoBytes(width: number, height: number): number {
+    const pixels = width * height * 4
+    return pixels <= MEMO_PIXEL_BYTES ? pixels + MEMO_KEY_BYTES : 0
+}
+
+// Only this serializer can admit jobs. A caller-supplied flag or a modified SVG
+// must not cache a file/URL whose bytes could change between identical jobs.
+const embeddedJobs = new WeakMap<RasterJob, readonly string[]>()
+
+function embeddedResources(frame: Frame): boolean {
+    if (typeof frame.width !== 'number' || typeof frame.height !== 'number') return false
+    if (frame.background !== null && (typeof frame.background !== 'string' || !parseCssColor(frame.background))) return false
+    for (const op of frame.ops) {
+        if (op.kind === 'image') {
+            const { asset, src, width, height } = op.image
+            if (!isImageAsset(asset) || src !== asset.src || typeof width !== 'number' || typeof height !== 'number') return false
+        } else {
+            if (!['normal', 'screen', 'multiply', 'overlay'].includes(op.blend)) return false
+            if (!['round', 'butt', 'square'].includes(op.cap) || !['round', 'miter', 'bevel'].includes(op.join)) return false
+        }
+    }
+    return true
+}
 
 export const RASTER_WORKER_SOURCE = String.raw`
 const { parentPort, workerData } = require('node:worker_threads')
 const { Resvg } = require(workerData.resvgPath)
+const MAX_KEY_BYTES = ${MEMO_KEY_BYTES}
+const MAX_PIXEL_BYTES = ${MEMO_PIXEL_BYTES}
+let memo = null
+
+function sameJob(a, b) {
+  return a.width === b.width && a.height === b.height && a.bloom === b.bloom
+    && a.background.every((channel, i) => channel === b.background[i])
+    && a.svgs.length === b.svgs.length && a.svgs.every((svg, i) => svg === b.svgs[i])
+}
 
 function downsample(src, w, h, factor) {
   const dw = Math.max(1, Math.floor(w / factor)), dh = Math.max(1, Math.floor(h / factor))
@@ -114,6 +153,17 @@ function raster(svg, width, height) {
 
 parentPort.on('message', (job) => {
   try {
+    const reusable = job.memoize === true && Number.isInteger(job.width) && job.width > 0
+      && Number.isInteger(job.height) && job.height > 0 && job.width * job.height * 4 <= MAX_PIXEL_BYTES
+      && Array.isArray(job.background) && job.background.length === 3
+      && job.svgs.reduce((bytes, svg) => bytes + svg.length * 2 + 64, 256) <= MAX_KEY_BYTES
+    if (reusable && memo && sameJob(memo, job)) {
+      // The reply is transferred; the retained bytes must never leave this worker.
+      const out = new Uint8Array(memo.pixels)
+      parentPort.postMessage({ id: job.id, pixels: out }, [out.buffer])
+      return
+    }
+    memo = null
     let out
     if (job.svgs.length === 1) {
       out = new Uint8Array(raster(job.svgs[0], job.width, job.height))
@@ -131,6 +181,8 @@ parentPort.on('message', (job) => {
       for (let i = 0; i < sum.length; i++) out[i] = sum[i] / n + 0.5
     }
     if (job.bloom > 0) bloom(out, job.width, job.height, job.bloom, job.background)
+    if (reusable) memo = { width: job.width, height: job.height, bloom: job.bloom,
+      background: job.background, svgs: job.svgs, pixels: new Uint8Array(out) }
     parentPort.postMessage({ id: job.id, pixels: out }, [out.buffer])
   } catch (error) {
     parentPort.postMessage({ id: job.id, error: String(error && error.message || error) })
@@ -199,7 +251,9 @@ export class RasterPool {
         while (this.idle.length > 0 && this.queue.length > 0) {
             const worker = this.idle.pop()!
             const { job, id } = this.queue.shift()!
-            worker.postMessage({ id, ...job })
+            const original = embeddedJobs.get(job)
+            const memoize = !!original && original.length === job.svgs.length && original.every((svg, i) => svg === job.svgs[i])
+            worker.postMessage({ id, ...job, memoize })
         }
     }
 
@@ -229,11 +283,13 @@ export function defaultPoolSize(): number {
 export function framesToJob(frames: readonly Frame[], width: number, parseBackground: (color: string | null) => readonly [number, number, number], height?: number): RasterJob {
     const first = frames[0]!
     const scale = width / first.width
-    return {
+    const job = {
         svgs: frames.map((frame) => frameToSvg(frame)),
         width,
         height: height ?? Math.round(first.height * scale),
         bloom: first.dark ? first.bloom : 0,
         background: parseBackground(first.background),
     }
+    if (frames.every(embeddedResources)) embeddedJobs.set(job, job.svgs.slice())
+    return job
 }

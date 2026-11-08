@@ -72,7 +72,7 @@
 <p>MP4 export needs FFmpeg with <code>libx264</code>. WebM also needs <code>libvpx-vp9</code>. The CLI writes a manifest with sizes and timings beside the files.</p>
 <h2 id="quality">Quality<a class="heading-anchor" href="#quality" aria-label="Link to this section">#</a></h2>
 <table><thead><tr><th scope="col">Quality</th><th scope="col">Use</th><th scope="col">H.264 CRF</th><th scope="col">Motion blur</th></tr></thead><tbody><tr><td><code>draft</code></td><td>Checking timing.</td><td>26</td><td>off</td></tr><tr><td><code>standard</code></td><td>The default.</td><td>18</td><td>off</td></tr><tr><td><code>high</code></td><td>Publishing.</td><td>15</td><td>4 samples</td></tr><tr><td><code>master</code></td><td>Archiving and re-encoding.</td><td>11</td><td>8 samples</td></tr></tbody></table>
-<p>Motion blur averages real sub-frames across the shutter, so it costs one render for each sample. <code>--motion-blur</code> and <code>--shutter</code> set these directly.</p>
+<p>Motion blur evaluates every sampled time and averages real sub-frames across the shutter. <code>--motion-blur</code> and <code>--shutter</code> set these directly.</p>
 <p>MP4 files stay at H.264 level 4.2 at 1080p60, so they play in QuickTime, Quick Look, and on Apple devices. To join another clip to a film without encoding it again, encode the clip with <code>filmEncoderSettings(quality)</code> from <code>vizmatic/stage/export</code>. QuickTime reads one set of decoder settings from the start of a file, and it stops at a clip that uses different ones.</p>
 <h2 id="resolution">Resolution<a class="heading-anchor" href="#resolution" aria-label="Link to this section">#</a></h2>
 <p>A film is authored in stage units, so <code>--width</code> changes only the pixel count. MP4 and WebM need even dimensions, so the export rounds an odd width or height up to the next even number.</p>
@@ -110,6 +110,8 @@
 <p>Bloom is part of a look, and export applies it after rasterizing. Pass <code>bloom</code> on the film to change it. Set it to <code>0</code> for line art that needs exact colors.</p>
 <h2 id="speed">Speed<a class="heading-anchor" href="#speed" aria-label="Link to this section">#</a></h2>
 <p>Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use <code>--workers</code> to change it. See the <a href="../benchmarks.html">benchmarks</a> for measured numbers from the component renderer.</p>
+<p>Each worker can reuse its last completed RGBA result when every SVG sample, dimension, bloom setting, and background value is identical. This applies to generated frames with prepared, embedded image assets. Raw SVG jobs and unresolved image references always rasterize again. Updaters and every shutter sample still run before this comparison.</p>
+<p>The worker retains one private result, capped at 64 MiB of pixels and an 8 MiB serialized-key allowance. Returned buffers are separate copies. Render planning includes this retained memory when choosing workers.</p>
         <nav class="docs-pager" aria-label="Previous and next pages"><a href="presentations.html"><small>Previous</small>Presentations</a><a href="embedding.html"><small>Next</small>Embedding</a></nav>
       </article>
     </main>
