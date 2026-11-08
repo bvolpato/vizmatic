@@ -201,7 +201,7 @@ Frames:
   A film is a file whose default export comes from film() in vizmatic/stage. The render, check, and video commands detect films.
   A film check looks where the film comes to rest. --motion also looks at every frame, and reports collisions and blank frames between pictures as warnings.
   --text-margin sets how near text may come to an edge of the frame. The default is 2% of the shorter side, and 0 turns the rule off.
-  --text-gap sets how near text may come to another mark, as a part of the height of its letters. The default is 0.4, and 0 turns the rule off.
+  --text-gap <part> turns on the rule for crowded text: how near text may come to another mark, as a part of its font size. Try 0.3.
 
 Examples:
   vizmatic new intro --template explainer
@@ -1090,7 +1090,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
             if (!Number.isFinite(textMargin) || textMargin < 0) throw new Error('--text-margin needs a distance in canvas pixels, such as 40. 0 turns the rule off')
         } else if (arg === '--text-gap') {
             textGap = Number(argv[++index])
-            if (!Number.isFinite(textGap) || textGap < 0) throw new Error('--text-gap needs a part of the height of the letters, such as 0.4. 0 turns the rule off')
+            if (!Number.isFinite(textGap) || textGap < 0) throw new Error('--text-gap needs a part of the font size, such as 0.3. 0 turns the rule off')
         } else if (arg.startsWith('-')) {
             usage()
         } else {

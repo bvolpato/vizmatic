@@ -71,6 +71,8 @@ function wrap(content: string, width: number, options: TextOptions): string[] {
  * Cards with one width, one height, and one `captionLines` share one layout whatever they hold.
  */
 export class Card extends Node {
+    static override readonly holdsContent = true
+
     readonly frame: Node
     readonly title: Node | null
     readonly figure: Node | null

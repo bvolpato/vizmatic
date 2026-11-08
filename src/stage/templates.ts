@@ -116,7 +116,7 @@ export default film({ title: 'The checkout read path' }, (s) => {
     }
     s.play(lagged(Object.values(nodes).map((node) => fadeIn(node, { shift: [0, 8] })), { lag: 0.08 }))
 
-    const route = (from: Vec, to: Vec, label: string, offset: Vec = [0, -18]) => {
+    const route = (from: Vec, to: Vec, label: string, offset: Vec = [0, -14]) => {
         const edge = arrow(from, to, { stroke: 'dim', width: 1.75, tip: 11, pad: 4 })
         const tag = text(label, { size: 14, font: 'mono', color: 'dim' }).at((from[0] + to[0]) / 2 + offset[0], (from[1] + to[1]) / 2 + offset[1])
         return { edge, tag }

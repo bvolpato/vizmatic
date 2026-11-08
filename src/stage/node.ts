@@ -125,14 +125,15 @@ export class Node {
     rawOps: ((matrix: Mat, alpha: number, ops: DrawOp[]) => void) | null = null
 
     /**
-     * True when a class of objects built this node, such as an axes, a chart, or a text. Such an object lays out
-     * its own parts. A plain node or a group lays out nothing. The film check reads it.
+     * A class that only holds what its author gives it, such as a card or a zone, sets this to true. Any other
+     * class of objects places its own labels beside its own marks, so its nodes carry `data.ownLayout`, and
+     * the film check does not judge the distance between such a label and a mark of the same object.
      */
-    readonly composed: boolean
+    static readonly holdsContent: boolean = false
 
     constructor(path?: Path | null) {
         if (path) this.base.path = path
-        this.composed = new.target !== Node
+        if (new.target !== Node && !new.target.holdsContent) this.data['ownLayout'] = true
     }
 
     // ── Raw property access ───────────────────────────────────────────────

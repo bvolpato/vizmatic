@@ -66,8 +66,9 @@ export interface FilmCheckOptions extends CompileOverrides {
      */
     textMargin?: number
     /**
-     * The least distance between text and another mark, as a part of the height of the letters. Text that is
-     * nearer is reported as `film.text_crowded`. Defaults to 0.4. 0 turns the rule off.
+     * The least distance between text and another mark, as a part of the font size of the text, such as 0.3.
+     * Text that is nearer is reported as `film.text_crowded`. The rule never asks for more than 2% of the shorter
+     * side of the frame. It is off unless this is set, because a plot may put a curve beside a label on purpose.
      */
     textGap?: number
 }
@@ -77,21 +78,25 @@ interface TextBlock {
     source: string
     bounds: Bounds
     glyphs: { box: Bounds; order: number }[]
+    /** Font size in canvas pixels, or 0 when the text node does not record one. */
+    size: number
 }
 
 /** What the rules that have a setting use. 0 turns a rule off. */
 interface Limits {
     /** Least distance between text and an edge of the frame, in pixels. */
     margin: number
-    /** Least distance between text and another mark, as a part of the height of the letters. */
+    /** Least distance between text and another mark, as a part of the font size. */
     gap: number
 }
 
 const EDGE_TOLERANCE = 1
 // Text this near to an edge, as a fraction of the shorter side of the frame, reads as a layout mistake.
 const EDGE_MARGIN = 0.02
-// Text nearer to a mark than this part of the height of its letters has no room, and reads as part of the mark.
-const TEXT_GAP = 0.4
+// A large title does not need a gap in proportion: this part of the shorter side of the frame is enough for any text.
+const TEXT_GAP_CAP = 0.02
+// A shape this opaque behind a text is its backing, and hides what is under it.
+const PLATE = 0.8
 const MIN_ALPHA = 0.08
 const MIN_TEXT_ALPHA = 0.15
 const MIN_OVERLAP = 0.12
@@ -271,13 +276,17 @@ function outlineGap(path: Path, box: Bounds, reach: number): number {
     return least <= reach ? least : Infinity
 }
 
-/**
- * True when a library object placed a text, such as the numbers of an axes or the caption of a card. The object
- * chose the distance to its marks, so the check does not judge it. A plain group places nothing.
- */
-function placedByObject(block: Node): boolean {
+/** The object that placed a text beside its own marks, such as an axes for its numbers. Null for text that the film placed. */
+function layoutOwner(block: Node): Node | null {
     for (let current = block.parent; current; current = current.parent) {
-        if (current.composed) return true
+        if (current.data['ownLayout']) return current
+    }
+    return null
+}
+
+function within(node: Node | undefined, ancestor: Node): boolean {
+    for (let current: Node | null | undefined = node; current; current = current.parent) {
+        if (current === ancestor) return true
     }
     return false
 }
@@ -354,7 +363,8 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
     const fills: { order: number; bounds: Bounds }[] = []
     const strokes: { op: PathOp; order: number; contrast: number }[] = []
     // What a viewer sees as a shape or a line: the outline that text must keep away from.
-    const outlines: { path: Path; order: number; half: number; bounds: Bounds }[] = []
+    const outlines: { path: Path; order: number; half: number; bounds: Bounds; node: Node | undefined; closed: boolean }[] = []
+    const plates: { order: number; bounds: Bounds }[] = []
     const off = new Map<string, Finding>()
     let outsideMarks = 0
 
@@ -418,23 +428,29 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
 
         if (glyph && block && op.fillAlpha >= MIN_TEXT_ALPHA) {
             let entry = blocks.get(block)
-            if (!entry) blocks.set(block, entry = { id: block, source: sourceOf(block), bounds: shape, glyphs: [] })
+            if (!entry) blocks.set(block, entry = { id: block, source: sourceOf(block), bounds: shape, glyphs: [], size: 0 })
             entry.bounds = union(entry.bounds, shape)
             entry.glyphs.push({ box: shape, order })
+            if (entry.size === 0 && shape.height > 0) {
+                // The node records its font size in its own units. One glyph gives the scale from those units to the canvas.
+                const declared = block.data['size'], own = pathBounds(op.node!.get('path') ?? [])
+                if (typeof declared === 'number' && own && own.height > 0) entry.size = declared * shape.height / own.height
+            }
         } else if (!glyph) {
             if (op.fill && op.fillAlpha >= OPAQUE && solid(op.fill)[3] >= OPAQUE && op.path.some((r) => r.closed)) fills.push({ order, bounds: shape })
+            if (op.fill && op.fillAlpha * solid(op.fill)[3] >= PLATE && op.path.some((r) => r.closed)) plates.push({ order, bounds: shape })
             let drawn = false
             if (op.stroke && op.strokeAlpha >= MIN_ALPHA && op.strokePath.length > 0) {
                 const contrast = contrastOver(solid(op.stroke), op.strokeAlpha, background)
                 if (contrast >= MIN_STROKE_CONTRAST) {
                     strokes.push({ op, order, contrast })
                     const reach = pathBounds(op.strokePath)
-                    if (reach) outlines.push({ path: op.strokePath, order, half: op.strokeWidth / 2, bounds: reach })
+                    if (reach) outlines.push({ path: op.strokePath, order, half: op.strokeWidth / 2, bounds: reach, node: op.node, closed: op.strokePath.every((r) => r.closed) })
                     drawn = true
                 }
             }
             if (!drawn && op.fill && op.fillAlpha >= MIN_ALPHA && contrastOver(solid(op.fill), op.fillAlpha, background) >= MIN_STROKE_CONTRAST) {
-                outlines.push({ path: op.path, order, half: 0, bounds: shape })
+                outlines.push({ path: op.path, order, half: 0, bounds: shape, node: op.node, closed: true })
             }
         }
     })
@@ -464,21 +480,32 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
             })
         }
     }
-    // Too near to a mark. A mark that enters the text is `film.text_crossed`, or a highlight that is there on purpose.
+    // Too near to a mark. A mark that enters a letter is `film.text_crossed`, or a highlight that is there on purpose.
     if (limits.gap > 0) {
         for (const block of list) {
-            if (placedByObject(block.id)) continue
-            const room = Math.max(...block.glyphs.map((glyph) => glyph.box.height)) * limits.gap
+            const size = block.size || Math.max(...block.glyphs.map((glyph) => glyph.box.height)) / 0.7
+            const room = Math.min(size * limits.gap, Math.min(width, height) * TEXT_GAP_CAP)
+            const owner = layoutOwner(block.id)
             const first = Math.min(...block.glyphs.map((glyph) => glyph.order))
             const middleX = block.bounds.x + block.bounds.width / 2, middleY = block.bounds.y + block.bounds.height / 2
             let least = Infinity, spills = false
             for (const mark of outlines) {
                 const reach = room + mark.half
-                if (!intersects(pad(mark.bounds, reach), block.bounds)) continue
-                const gap = outlineGap(mark.path, block.bounds, reach)
+                const near = pad(mark.bounds, reach)
+                if (!intersects(near, block.bounds)) continue
+                // An object places its own labels beside its own marks. A line of the film may pass such a label, as a
+                // curve passes the numbers of an axes. A shape of the film that bounds it, such as a panel, is judged.
+                if (owner && (within(mark.node, owner) || !mark.closed)) continue
+                // The distance is to the letters. The box of a block of two lines has empty corners.
+                let gap = Infinity
+                for (const glyph of block.glyphs) {
+                    if (!intersects(near, glyph.box)) continue
+                    gap = Math.min(gap, outlineGap(mark.path, glyph.box, reach))
+                    if (gap === 0) break
+                }
                 if (gap === Infinity) continue
-                // A backing between the mark and the text gives the text its room.
-                if (mark.order < first && occluded(mark.order, first, block.bounds)) continue
+                // A backing that covers the text and its room hides the mark there.
+                if (mark.order < first && plates.some((plate) => plate.order > mark.order && plate.order < first && contains(plate.bounds, pad(block.bounds, room)))) continue
                 if (gap > 0) {
                     least = Math.min(least, Math.max(0, gap - mark.half))
                 } else if (mark.half === 0 && mark.order < first
@@ -491,11 +518,12 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
             if (!spills && least >= room) continue
             const name = JSON.stringify(block.source)
             findings.push({
-                key: `film.text_crowded:${block.source}`,
+                // Two texts with the same words are two findings, so the key is the node.
+                key: `film.text_crowded:${block.id.mounted ? block.id.id : 'dynamic'}:${block.source}`,
                 code: 'film.text_crowded', severity: 'warning', time, box: pad(block.bounds, room),
                 message: spills
                     ? `Text ${name} is larger than the shape that it sits on.`
-                    : `Text ${name} is ${Math.floor(least + 1e-6)} px from a mark. Leave ${Math.ceil(room)} px or more, which is ${limits.gap} of the height of its letters.`,
+                    : `Text ${name} is ${Math.floor(least + 1e-6)} px from a mark. Leave ${Math.ceil(room)} px or more.`,
                 text: block.source,
             })
         }
@@ -603,7 +631,7 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
     const limits: Limits = {
         margin: options.textMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN,
-        gap: options.textGap ?? TEXT_GAP,
+        gap: options.textGap ?? 0,
     }
     const merged = new Map<string, FilmDiagnostic>()
     for (const time of times) {

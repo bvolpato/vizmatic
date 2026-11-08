@@ -528,6 +528,8 @@ export function legend(items: readonly LegendItem[], options: LegendOptions = {}
         }
         made.add(entry.node)
     })
+    // Each label sits beside its swatch on purpose.
+    made.data['ownLayout'] = true
     return made
 }
 

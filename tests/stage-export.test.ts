@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { decode } from 'fast-png'
-import { axes, dot, film, line, rect, shift, text, to, write } from '../src/stage/index'
+import { card, dot, film, group, labeledDot, line, rect, shift, text, to, write, type Node } from '../src/stage/index'
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
@@ -294,8 +294,8 @@ describe('film check', () => {
         expect(bleeding.diagnostics).toMatchObject([{ code: 'film.text_edge' }])
     })
 
-    it('warns about text with no room beside a mark, and about a label that is larger than its shape', async () => {
-        const check = (gap: number, options = {}) => checkFilm(film((s) => {
+    it('warns about text with no room beside a mark, when the rule is on', async () => {
+        const check = (gap: number, options: { textGap?: number } = { textGap: 0.3 }) => checkFilm(film((s) => {
             s.add(rect(300, 60, { fill: 'blue', stroke: null }))
             s.add(text('caption', { size: 40 }).alignTo([0, 30 + gap], 'top'))
             s.wait(1)
@@ -303,44 +303,89 @@ describe('film check', () => {
         const near = await check(3)
         expect(near.ok).toBe(true)
         expect(near.diagnostics).toMatchObject([{ code: 'film.text_crowded', severity: 'warning', text: 'caption' }])
-        expect(near.diagnostics[0]!.message).toContain('3 px from a mark')
+        // The room is 0.3 of the font size of 40.
+        expect(near.diagnostics[0]!.message).toContain('3 px from a mark. Leave 12 px or more')
         expect((await check(40)).diagnostics).toEqual([])
-        expect((await check(40, { textGap: 2 })).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
-        expect((await check(3, { textGap: 0 })).diagnostics).toEqual([])
+        expect((await check(3, {})).diagnostics).toEqual([])
+        // A large factor asks for no more than 2% of the shorter side of the frame, which is 21.6 px.
+        expect((await check(20, { textGap: 1 })).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+        expect((await check(24, { textGap: 1 })).diagnostics).toEqual([])
 
         const label = (radius: number) => checkFilm(film((s) => {
             s.add(dot(radius, 'blue'))
             s.add(text('22M', { size: 40 }))
             s.wait(1)
-        }))
+        }), { textGap: 0.3 })
         expect((await label(22)).diagnostics).toMatchObject([{ code: 'film.text_crowded', text: '22M' }])
         expect((await label(22)).diagnostics[0]!.message).toContain('larger than the shape')
         expect((await label(90)).diagnostics).toEqual([])
     })
 
-    it('does not judge text on a backing, a label that an object places, or text that passes a mark while it moves', async () => {
-        const underlined = (backing: boolean) => checkFilm(film((s) => {
+    it('measures the room from the font size and to the letters, and reports each text apart', async () => {
+        // Words of one size get one room, whatever letters they have.
+        const words = await checkFilm(film((s) => {
+            for (const [word, x] of [['acme', -300], ['Apply', 300]] as const) {
+                const made = s.add(text(word, { size: 40 }).at(x, 0))
+                const box = made.bounds()
+                s.add(line([box.x, box.y + box.height + 8], [box.x + box.width, box.y + box.height + 8], { stroke: 'ink', width: 2 }))
+            }
+            s.wait(1)
+        }), { textGap: 0.3 })
+        expect(words.diagnostics.map((entry) => entry.text).sort()).toEqual(['Apply', 'acme'])
+        for (const entry of words.diagnostics) expect(entry.message).toContain('Leave 12 px or more')
+
+        // A block of two lines has an empty corner. A line that ends there is far from every letter.
+        const block = (between: boolean) => checkFilm(film((s) => {
+            const made = s.add(text('a long first line of words\nshort', { size: 40 }))
+            const box = made.bounds(), short = made.find('short').map((glyph) => glyph.bounds())
+            const top = Math.min(...short.map((glyph) => glyph.y))
+            // Between the two lines of text: inside the box of the block, and 4 px above the letters of the second line.
+            if (between) s.add(line([box.x, top - 4], [box.x + box.width, top - 4], { stroke: 'ink', width: 2 }))
+            else s.add(line([box.x + box.width + 80, box.y + box.height + 80], [box.x + box.width - 10, box.y + box.height - 6], { stroke: 'ink', width: 2 }))
+            s.wait(1)
+        }), { textGap: 0.3 })
+        expect((await block(false)).diagnostics).toEqual([])
+        expect((await block(true)).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+
+        // The same word at two places is two findings.
+        const twice = await checkFilm(film((s) => {
+            for (const x of [-400, 400]) {
+                s.add(rect(200, 60, { fill: 'blue', stroke: null }).at(x, 0))
+                s.add(text('0', { size: 40 }).at(x, 0).alignTo([x, 33], 'top'))
+            }
+            s.wait(1)
+        }), { textGap: 0.3 })
+        expect(twice.diagnostics).toHaveLength(2)
+    })
+
+    it('leaves alone a label that an object places beside its own mark, and judges text in a group, a card, and on a small backing', async () => {
+        const on = { textGap: 0.3 }
+        const single = (build: () => Node) => checkFilm(film((s) => { s.add(build()); s.wait(1) }), on)
+        // A labeled dot puts its label beside its dot. The control is the same object without its mark of ownership.
+        expect((await single(() => labeledDot('P'))).diagnostics).toEqual([])
+        expect((await single(() => { const made = labeledDot('P'); delete made.data['ownLayout']; return made })).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+        // A group and a card only hold what the film gives them.
+        const pair = () => group(rect(300, 60, { fill: 'blue', stroke: null }), text('caption', { size: 40 }).alignTo([0, 33], 'top'))
+        expect((await single(pair)).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+        expect((await single(() => card({ figure: pair(), width: 500, height: 400 }))).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+
+        // A backing hides a line only when it covers the text and its room.
+        const backed = (width: number, height: number) => checkFilm(film((s) => {
             s.add(line([-300, 22], [300, 22], { stroke: 'ink', width: 3 }))
-            if (backing) s.add(rect(260, 90, { fill: 'surface', stroke: null }))
+            if (width > 0) s.add(rect(width, height, { fill: 'surface', stroke: null }))
             s.add(text('Label', { size: 40 }))
             s.wait(1)
-        }))
-        expect((await underlined(false)).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
-        expect((await underlined(true)).diagnostics).toEqual([])
-
-        // The numbers of an axes sit a few pixels from its ticks. The axes chose that.
-        const plot = await checkFilm(film((s) => {
-            s.add(axes({ x: [0, 4], y: [0, 4], width: 800, height: 500 }))
-            s.wait(1)
-        }))
-        expect(plot.diagnostics.filter((entry) => entry.code === 'film.text_crowded')).toEqual([])
+        }), on)
+        expect((await backed(0, 0)).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
+        expect((await backed(260, 90)).diagnostics).toEqual([])
+        expect((await backed(120, 36)).diagnostics).toMatchObject([{ code: 'film.text_crowded' }])
 
         const passing = await checkFilm(film({ fps: 12 }, (s) => {
             s.add(rect(300, 60, { fill: 'blue', stroke: null }))
             const label = s.add(text('caption', { size: 40 }).alignTo([0, 33], 'top'))
             s.play(shift(label, 0, 200), { duration: 0.5 })
             s.wait(0.5)
-        }), { motion: true, times: [0.9] })
+        }), { ...on, motion: true, times: [0.9] })
         expect(passing.diagnostics).toEqual([])
     })
 

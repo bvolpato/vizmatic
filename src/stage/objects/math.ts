@@ -784,7 +784,10 @@ export function braceLabel(target: Node | readonly Node[], label: string, option
     const dir = direction(side as Side)
     const shifted = 10 + (dir[0] !== 0 ? caption.width / 2 : caption.height / 2)
     caption.shift(dir[0] * shifted, dir[1] * shifted)
-    return new Node().add(mark, caption)
+    const made = new Node().add(mark, caption)
+    // The caption sits beside the brace on purpose.
+    made.data['ownLayout'] = true
+    return made
 }
 
 export interface SurroundOptions {
