@@ -73,7 +73,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'graph', group: SYSTEMS, usage: 'graph(nodes, edges): nodes and edges with automatic layout' },
     { name: 'tree', group: SYSTEMS, usage: 'tree(root): a layered tree' },
     { name: 'arrayCells', group: SYSTEMS, usage: 'arrayCells([3, 1, 4]): boxes for arrays and buffers' },
-    { name: 'codeBlock', group: SYSTEMS, usage: 'codeBlock(source, { language }): highlighted code as glyphs' },
+    { name: 'codeBlock', group: SYSTEMS, usage: "codeBlock(source, { language }): highlighted code as glyphs. block.find('a + b') selects a part" },
     { name: 'morphCode', group: SYSTEMS, usage: 'morphCode(before, after): edit code by moving tokens' },
     { name: 'neuralNet', group: SYSTEMS, usage: 'neuralNet([3, 4, 2]): layers with edges' },
     { name: 'tokens', group: SYSTEMS, usage: "tokens(['The', 'cat']): a row of token chips" },

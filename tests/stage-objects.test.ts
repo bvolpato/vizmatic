@@ -129,6 +129,22 @@ describe('morphs land exactly on their targets', () => {
         expect(Math.abs(crossMid)).toBeLessThan(1e-3)
     })
 
+    it('finds code by token, by a fragment across tokens, and on one line', () => {
+        const block = codeBlock('const mid = (lo + hi) / 2\nlo = mid + 1')
+        const keys = (glyphs: { data: Record<string, unknown> }[]) => glyphs.map((glyph) => glyph.data['key']).join('')
+        // One token matches every token with that text.
+        expect(keys(block.find('lo'))).toBe('lolo')
+        expect(keys(block.find('lo', 1))).toBe('lo')
+        // A fragment that spans tokens matches inside a line, and spaces do not count.
+        expect(keys(block.find('lo + hi'))).toBe('lo+hi')
+        expect(keys(block.find('(lo+hi) / 2', 0))).toBe('(lo+hi)/2')
+        expect(block.find('lo + hi', 1)).toEqual([])
+        // A fragment does not match across two lines.
+        expect(block.find('2 lo')).toEqual([])
+        expect(block.find('  ')).toEqual([])
+        expect(() => block.find('lo', 2)).toThrow('Code has no line 2.')
+    })
+
     it('morphCode pairs tokens that survive an edit', async () => {
         let one!: ReturnType<typeof codeBlock>, two!: ReturnType<typeof codeBlock>
         const f = await compile((s) => {

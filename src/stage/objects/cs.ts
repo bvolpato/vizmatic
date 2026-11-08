@@ -787,9 +787,28 @@ export class CodeBlock extends Node {
         return found
     }
 
-    /** Glyphs of every token whose text matches. */
-    find(fragment: string): Node[] {
-        return this.tokens.filter((token) => token.text === fragment).flatMap((token) => token.glyphs)
+    /**
+     * Glyphs of the code that matches. A fragment that is one token, such as `lo`, matches every such token.
+     * Any other fragment, such as `lo + hi`, matches as text inside a line, and spaces do not count.
+     * Pass a line, counted from 0, to search that line only.
+     */
+    find(fragment: string, line?: number): Node[] {
+        if (line !== undefined && !this.lines[line]) throw new Error(`Code has no line ${line}.`)
+        const tokens = this.tokens.filter((token) => line === undefined || token.line === line)
+        const exact = tokens.filter((token) => token.text === fragment)
+        if (exact.length > 0) return exact.flatMap((token) => token.glyphs)
+        const needle = fragment.replace(/\s/g, '')
+        if (!needle) return []
+        const out: Node[] = []
+        for (let row = 0; row < this.lines.length; row++) {
+            const glyphs = tokens.filter((token) => token.line === row).flatMap((token) => token.glyphs)
+            const keys = glyphs.map((glyph) => glyph.data['key'] as string).join('')
+            // A key is one character, so an index in the text is an index in the glyphs.
+            for (let at = keys.indexOf(needle); at >= 0; at = keys.indexOf(needle, at + needle.length)) {
+                out.push(...glyphs.slice(at, at + [...needle].length))
+            }
+        }
+        return out
     }
 
     /** Dim everything except these lines, and lay a soft bar behind them. */
