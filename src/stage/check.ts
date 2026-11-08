@@ -64,7 +64,7 @@ export interface FilmCheckOptions extends CompileOverrides {
      * The least distance between text and an edge of the frame, in canvas pixels. Text that is nearer is
      * reported as `film.text_edge`. Defaults to 2% of the shorter side of the frame. 0 turns the rule off.
      */
-    edgeMargin?: number
+    textMargin?: number
 }
 
 interface TextBlock {
@@ -196,6 +196,14 @@ function strokeHitsBox(path: Path, box: Bounds): boolean {
                 lastY = y
             }
         }
+    }
+    return false
+}
+
+/** True when a node ignores the camera, so a zoom does not move or crop it. */
+function pinned(node: Node): boolean {
+    for (let current: Node | null = node; current; current = current.parent) {
+        if (current.get('fixed')) return true
     }
     return false
 }
@@ -353,9 +361,10 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, ma
         fills.some((fill) => fill.order > lower && fill.order < upper && contains(fill.bounds, box))
 
     const list = [...blocks.values()]
-    // Near an edge. A zoomed or bleeding frame crops its content on purpose.
-    if (margin > 0 && !zoomed && !bleed) {
+    // Near an edge. A zoom crops what moves with the camera on purpose, so it leaves only pinned text to judge.
+    if (margin > 0) {
         for (const block of list) {
+            if (zoomed && !pinned(block.id)) continue
             const { x, y, width: w, height: h } = block.bounds
             const gaps: [string, number][] = [['left', x], ['top', y], ['right', width - x - w], ['bottom', height - y - h]]
             const [edge, gap] = gaps.reduce((least, entry) => (entry[1] < least[1] ? entry : least))
@@ -364,7 +373,7 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, ma
             findings.push({
                 key: `film.text_edge:${block.source}`,
                 code: 'film.text_edge', severity: 'warning', time, box: block.bounds,
-                message: `Text ${JSON.stringify(block.source)} is ${Math.max(0, Math.round(gap))} px from the ${edge} edge of the frame. The margin is ${Math.round(margin)} px.`,
+                message: `Text ${JSON.stringify(block.source)} is ${Math.max(0, Math.floor(gap))} px from the ${edge} edge of the frame. Leave ${Math.ceil(margin)} px or more.`,
                 text: block.source,
             })
         }
@@ -470,7 +479,7 @@ export async function checkFilm(film: FilmDefinition | CompiledFilm, options: Fi
 async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
-    const margin = options.edgeMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN
+    const margin = options.textMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN
     const merged = new Map<string, FilmDiagnostic>()
     for (const time of times) {
         const frame = await frameAt(compiled, time)

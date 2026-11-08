@@ -5,7 +5,7 @@ import { tmpdir } from 'os'
 import { join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { decode } from 'fast-png'
-import { film, line, shift, text, write } from '../src/stage/index'
+import { film, line, shift, text, to, write } from '../src/stage/index'
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
@@ -269,8 +269,29 @@ describe('film check', () => {
         expect(near.diagnostics).toMatchObject([{ code: 'film.text_edge', severity: 'warning', text: 'Against the edge' }])
         expect(near.diagnostics[0]!.message).toContain('6 px from the left edge')
         expect((await check(40)).diagnostics).toEqual([])
-        expect((await check(40, { edgeMargin: 60 })).diagnostics).toMatchObject([{ code: 'film.text_edge' }])
-        expect((await check(6, { edgeMargin: 0 })).diagnostics).toEqual([])
+        expect((await check(40, { textMargin: 60 })).diagnostics).toMatchObject([{ code: 'film.text_edge' }])
+        expect((await check(6, { textMargin: 0 })).diagnostics).toEqual([])
+        const low = await checkFilm(film((s) => {
+            s.add(text('Near the bottom', { size: 40 }).alignTo([0, 540 - 5], 'bottom'))
+            s.wait(1)
+        }))
+        expect(low.diagnostics[0]!.message).toContain('from the bottom edge')
+    })
+
+    it('checks the edges for pinned text under a zoom, and for all text in a film that bleeds', async () => {
+        const zoomed = (pin: boolean) => checkFilm(film((s) => {
+            const label = s.add(text('Corner tag', { size: 40 }).alignTo([-960 + 4, 0], 'left'))
+            if (pin) label.pin()
+            s.play(to(s.camera, (camera) => camera.set('sx', 1.2).set('sy', 1.2), { duration: 0.2 }))
+            s.wait(0.5)
+        }), { times: [0.6] })
+        expect((await zoomed(true)).diagnostics).toMatchObject([{ code: 'film.text_edge' }])
+        expect((await zoomed(false)).diagnostics.filter((entry) => entry.code === 'film.text_edge')).toEqual([])
+        const bleeding = await checkFilm(film({ bleed: true }, (s) => {
+            s.add(text('Against the edge', { size: 40 }).alignTo([-960 + 6, 300], 'left'))
+            s.wait(1)
+        }))
+        expect(bleeding.diagnostics).toMatchObject([{ code: 'film.text_edge' }])
     })
 
     it('does not report text that crosses the margin only while it moves', async () => {
