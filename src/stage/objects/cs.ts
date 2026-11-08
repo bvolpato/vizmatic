@@ -624,26 +624,95 @@ export interface CodeToken {
     glyphs: Node[]
 }
 
-const KEYWORDS: Record<string, ReadonlySet<string>> = {
-    ts: new Set('const let var function return if else for while do switch case break continue new class extends implements interface type enum import export from default async await yield try catch finally throw typeof instanceof in of this super null undefined true false void as readonly public private protected static get set'.split(' ')),
-    python: new Set('def return if elif else for while in not and or is class import from as with try except finally raise lambda yield pass break continue global nonlocal None True False self async await assert del print'.split(' ')),
-    rust: new Set('fn let mut pub struct enum impl trait use mod match if else for while loop return self Self as in where const static crate super true false ref move async await dyn type'.split(' ')),
-    go: new Set('func var const type struct interface package import return if else for range switch case default break continue go defer select chan map nil true false'.split(' ')),
-    sql: new Set('select from where join left right inner outer on group by order having limit as and or not in is null insert into values update set delete create table with distinct count sum avg min max'.split(' ')),
-    bash: new Set('if then else elif fi for do done while case esac in function return export local echo cd exit set'.split(' ')),
-    plain: new Set(),
+interface LanguageRule {
+    keywords: ReadonlySet<string>
+    /** Markers that start a comment that runs to the end of the line. */
+    lineComments: readonly string[]
+    /** The open and close markers of a comment that can span lines. */
+    blockComment?: readonly [string, string]
+    /** The quote characters that delimit a string. Any other quote is punctuation, such as the prime in `x'`. */
+    quotes: string
+    /** Read `'a'` as a string where `'` alone is not a quote, as in Rust and Dafny. */
+    charLiterals?: boolean
+    /** Keywords match in any case. */
+    insensitive?: boolean
+    /** An identifier, where it differs from letters, digits, `_`, and `$`. */
+    word?: RegExp
+    /** A keyword that starts with a symbol, such as `\in` in TLA+ or `#print` in Lean. */
+    symbolKeyword?: RegExp
+    /** A number form that the common pattern does not cover, such as `#x7fffffff` in SMT-LIB. */
+    number?: RegExp
+    /** The word after an opening parenthesis names a function, as in Lisp. */
+    headIsFunction?: boolean
+}
+
+const words = (list: string): ReadonlySet<string> => new Set(list.split(' '))
+const C_STYLE = { lineComments: ['//'], blockComment: ['/*', '*/'], quotes: '"\'' } as const
+
+const LANGUAGES: Record<string, LanguageRule> = {
+    ts: { ...C_STYLE, quotes: '"\'`', keywords: words('const let var function return if else for while do switch case break continue new class extends implements interface type enum import export from default async await yield try catch finally throw typeof instanceof in of this super null undefined true false void as readonly public private protected static get set') },
+    python: { lineComments: ['#'], quotes: '"\'', keywords: words('def return if elif else for while in not and or is class import from as with try except finally raise lambda yield pass break continue global nonlocal None True False self async await assert del print') },
+    rust: { ...C_STYLE, quotes: '"', charLiterals: true, keywords: words('fn let mut pub struct enum impl trait use mod match if else for while loop return self Self as in where const static crate super true false ref move async await dyn type unsafe') },
+    go: { ...C_STYLE, quotes: '"\'`', keywords: words('func var const type struct interface package import return if else for range switch case default break continue go defer select chan map nil true false') },
+    java: { ...C_STYLE, keywords: words('abstract boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long new null package private protected public record return short static super switch this throw throws true false try var void volatile while') },
+    c: { ...C_STYLE, keywords: words('auto bool break case char const continue default do double else enum extern false float for goto if inline int long register return short signed sizeof static struct switch true typedef union unsigned void volatile while NULL') },
+    sql: { lineComments: ['--'], quotes: '"\'`', insensitive: true, keywords: words('select from where join left right inner outer on group by order having limit as and or not in is null insert into values update set delete create table with distinct count sum avg min max') },
+    bash: { lineComments: ['#'], quotes: '"\'`', keywords: words('if then else elif fi for do done while case esac in function return export local echo cd exit set') },
+    // Specification and proof languages. A prime is part of a name or an operator in each of them, so it never starts a string.
+    tla: {
+        lineComments: ['\\*'], blockComment: ['(*', '*)'], quotes: '"',
+        symbolKeyword: /^\\[A-Za-z]+/,
+        keywords: words('MODULE EXTENDS CONSTANT CONSTANTS VARIABLE VARIABLES ASSUME ASSUMPTION AXIOM THEOREM LEMMA PROOF BY QED LET IN IF THEN ELSE CASE OTHER CHOOSE EXCEPT UNCHANGED ENABLED DOMAIN SUBSET UNION INSTANCE WITH LOCAL RECURSIVE LAMBDA SF_ WF_ TRUE FALSE BOOLEAN STRING SPECIFICATION INVARIANT PROPERTY CONSTRAINT SYMMETRY INIT NEXT CHECK_DEADLOCK'),
+    },
+    dafny: {
+        ...C_STYLE, quotes: '"', charLiterals: true,
+        keywords: words('abstract array assert assume bool break by calc case char class codatatype const constructor datatype decreases else ensures exists export extends false forall fresh function ghost if import in include int invariant iterator lemma map match method modifies module multiset nat new newtype null object old opened predicate print provides reads real refines requires return returns reveals seq set static string then this trait true type var while witness yield'),
+    },
+    lean: {
+        lineComments: ['--'], blockComment: ['/-', '-/'], quotes: '"',
+        word: /^[A-Za-z_][\w!?']*/, symbolKeyword: /^#[a-z_]+/,
+        keywords: words('theorem lemma def example abbrev instance structure inductive class axiom opaque namespace section end open import variable universe where with by fun match let in have show from at do if then else return for mutual private protected partial noncomputable unsafe deriving termination_by decreasing_by macro syntax notation calc sorry intro intros apply exact refine constructor cases induction rcases obtain simp simp_all omega decide rfl rw unfold exists use contradiction trivial assumption'),
+    },
+    smt: {
+        lineComments: [';'], quotes: '"', headIsFunction: true,
+        word: /^[A-Za-z_~!@$%^&*+=<>.?/-][\w~!@$%^&*+=<>.?/-]*/, number: /^(#x[\da-fA-F]+|#b[01]+)/,
+        keywords: words('assert check-sat check-sat-assuming declare-const declare-datatypes declare-fun declare-sort define-const define-fun define-fun-rec define-sort echo exit get-info get-model get-option get-proof get-unsat-core get-value pop push reset set-info set-logic set-option exists forall let match par as _ !'),
+    },
+    plain: { lineComments: [], quotes: '', keywords: new Set() },
+}
+
+const ALIASES: Record<string, string> = {
+    js: 'ts', jsx: 'ts', tsx: 'ts', typescript: 'ts', javascript: 'ts', py: 'python', rs: 'rust', golang: 'go', sh: 'bash', shell: 'bash',
+    'tla+': 'tla', tlaplus: 'tla', dfy: 'dafny', lean4: 'lean', smt2: 'smt', smtlib: 'smt', 'smt-lib': 'smt', cpp: 'c', 'c++': 'c', h: 'c', text: 'plain',
+}
+
+/** The languages that `tokenize` and `codeBlock` color. An unknown name falls back to TypeScript. */
+export const CODE_LANGUAGES: readonly string[] = Object.keys(LANGUAGES)
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+function stringPattern(rule: LanguageRule): RegExp | null {
+    const forms = [...rule.quotes].map((quote) => {
+        const q = escapeRegExp(quote)
+        return `${q}(?:[^${q}\\\\]|\\\\.)*${q}?`
+    })
+    // A character literal is one character, or one escape, in single quotes. A lifetime such as 'a has no closing quote.
+    if (rule.charLiterals) forms.push(`'(?:[^'\\\\]|\\\\.)'`)
+    return forms.length > 0 ? new RegExp(`^(?:${forms.join('|')})`) : null
 }
 
 /** A small tokenizer for film code. It colors the common cases and never blocks on odd input. */
 export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyphs'>[] {
-    const lang = language === 'js' || language === 'tsx' || language === 'jsx' || language === 'typescript' || language === 'javascript' ? 'ts' : language === 'py' ? 'python' : language
-    const keywords = KEYWORDS[lang] ?? KEYWORDS['ts']!
-    const insensitive = lang === 'sql'
-    const hashComment = lang === 'python' || lang === 'bash'
-    const dashComment = lang === 'sql'
+    const name = language.toLowerCase()
+    const rule = LANGUAGES[ALIASES[name] ?? name] ?? LANGUAGES['ts']!
+    const string = stringPattern(rule)
+    const word = rule.word ?? /^[A-Za-z_$][\w$]*/
     const out: Omit<CodeToken, 'glyphs'>[] = []
+    // A block comment can end on a later line.
+    let inBlock = false
     source.split('\n').forEach((row, line) => {
         let i = 0
+        let afterOpen = false
         while (i < row.length) {
             const rest = row.slice(i)
             const push = (value: string, kind: TokenKind) => {
@@ -655,27 +724,46 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 push(space[0], 'space')
                 continue
             }
-            if ((!hashComment && !dashComment && rest.startsWith('//')) || (hashComment && rest[0] === '#') || (dashComment && rest.startsWith('--'))) {
+            if (inBlock) {
+                const close = rest.indexOf(rule.blockComment![1])
+                inBlock = close < 0
+                push(close < 0 ? rest : rest.slice(0, close + rule.blockComment![1].length), 'comment')
+                continue
+            }
+            if (rule.lineComments.some((marker) => rest.startsWith(marker))) {
                 push(rest, 'comment')
                 continue
             }
-            const string = /^("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|`(?:[^`\\]|\\.)*`?)/.exec(rest)
-            if (string) {
-                push(string[0], 'string')
+            if (rule.blockComment && rest.startsWith(rule.blockComment[0])) {
+                const close = rest.indexOf(rule.blockComment[1], rule.blockComment[0].length)
+                inBlock = close < 0
+                push(close < 0 ? rest : rest.slice(0, close + rule.blockComment[1].length), 'comment')
                 continue
             }
-            const number = /^(0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:e[-+]?\d+)?)/.exec(rest)
+            const headed = afterOpen
+            afterOpen = rest[0] === '('
+            const quoted = string?.exec(rest)
+            if (quoted) {
+                push(quoted[0], 'string')
+                continue
+            }
+            const number = rule.number?.exec(rest) ?? /^(0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:e[-+]?\d+)?)/.exec(rest)
             if (number) {
                 push(number[0], 'number')
                 continue
             }
-            const word = /^[A-Za-z_$][\w$]*/.exec(rest)
-            if (word) {
-                const value = word[0]
+            const symbol = rule.symbolKeyword?.exec(rest)
+            if (symbol) {
+                push(symbol[0], 'keyword')
+                continue
+            }
+            const found = word.exec(rest)
+            if (found) {
+                const value = found[0]
                 const after = rest.slice(value.length)
-                const isKeyword = keywords.has(insensitive ? value.toLowerCase() : value)
+                const isKeyword = rule.keywords.has(rule.insensitive ? value.toLowerCase() : value)
                 const kind: TokenKind = isKeyword ? 'keyword'
-                    : /^\s*\(/.test(after) ? 'function'
+                    : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
                         : /^[A-Z]/.test(value) ? 'type'
                             : 'plain'
                 push(value, kind)
@@ -693,6 +781,7 @@ const CODE_COLORS: Record<Exclude<TokenKind, 'space'>, string> = {
 }
 
 export interface CodeBlockOptions {
+    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, or `smt2`. Defaults to TypeScript. */
     language?: string
     size?: number
     /** Line height as a multiple of size. */

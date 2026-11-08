@@ -100,6 +100,13 @@ const title = s.add(text('Zoom in', { size: 48 }).at(0, -460).pin())
 s.play(to(s.camera, (camera) => camera.at(300, 100).set('sx', 2.5)), { duration: 2, ease: smoother })
 ```
 
+Code in a specification or proof language. `codeBlock` knows `tla`, `dafny`, `lean`, and `smt`, where a prime is part of the code and not a quote:
+
+```ts
+const spec = s.add(codeBlock("Expire == /\\ lease' = \"free\"", { language: 'tla', size: 40 }))
+s.play(write(spec))
+```
+
 A signal along an edge. `arrow` keeps its shaft in `edge.data.shaft`:
 
 ```ts
