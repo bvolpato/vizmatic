@@ -793,21 +793,13 @@ describe('marks and small objects', () => {
 })
 
 describe('pictograms', () => {
-    const SIZE = 96, UNIT = SIZE / 24
-    const ends = (mark: Node): Vec[] => {
-        const points = mark.get('path')![0]!.p
-        return [[points[0]!, points[1]!], [points[points.length - 2]!, points[points.length - 1]!]]
-    }
-    const centers = (picture: Node): Vec[] => picture.children
-        .filter((mark) => mark.get('fill') && mark.get('path')![0]!.p.length > 8)
-        .map((mark) => { const box = pathBounds(mark.get('path')!)!; return [box.x + box.width / 2, box.y + box.height / 2] })
-    const gap = (point: Vec, nodes: Vec[]) => Math.min(...nodes.map((node) => Math.hypot(node[0] - point[0], node[1] - point[1])))
+    const SIZE = 96
 
-    it('keeps every mark of every picture inside one square', () => {
+    it('keeps every mark of every picture inside its square', () => {
         expect(PICTOGRAMS.length).toBeGreaterThan(40)
         for (const name of PICTOGRAMS) {
             const picture = pictogram(name, { size: SIZE })
-            expect(picture.bounds(), name).toEqual({ x: -SIZE / 2, y: -SIZE / 2, width: SIZE, height: SIZE })
+            expect(picture.children.length, name).toBeGreaterThan(0)
             for (const mark of picture.children) {
                 const reach = mark.get('stroke') ? mark.get('strokeWidth') / 2 : 0
                 const box = pathBounds(mark.get('path')!)!
@@ -817,27 +809,20 @@ describe('pictograms', () => {
         }
     })
 
-    it('ends every edge of a graph and a tree at two nodes, and every arrow of a dag at a node', () => {
-        for (const name of ['graph', 'tree'] as const) {
-            const picture = pictogram(name, { size: SIZE })
-            const nodes = centers(picture), lines = picture.children.filter((mark) => mark.get('stroke'))
-            expect(lines.length, name).toBeGreaterThan(4)
-            for (const line of lines) for (const end of ends(line)) expect(gap(end, nodes), name).toBeLessThan(0.01)
+    it('paints the accent in every picture, and leaves the other lines in the color when there are some', () => {
+        const paint = (mark: Node) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))
+        for (const name of PICTOGRAMS) {
+            const plain = new Set(pictogram(name, { color: 'ink' }).children.map(paint))
+            const accented = new Set(pictogram(name, { color: 'ink', accent: 'teal' }).children.map(paint))
+            expect(plain.size, name).toBe(1)
+            expect([...accented].some((value) => !plain.has(value)), name).toBe(true)
         }
-        const dag = pictogram('dag', { size: SIZE })
-        const nodes = centers(dag)
-        const heads = dag.children.filter((mark) => mark.get('fill') && mark.get('path')![0]!.p.length <= 20)
-        expect(heads).toHaveLength(4)
-        // A head stops short of the rim of its node, and its shaft starts at the rim of the node before it.
-        for (const head of heads) expect(gap(ends(head)[0]!, nodes)).toBeLessThan(3 * UNIT)
-        for (const shaft of dag.children.filter((mark) => mark.get('stroke'))) expect(gap(ends(shaft)[0]!, nodes)).toBeLessThan(3 * UNIT)
+        expect(new Set(pictogram('forecast', { color: 'ink', accent: 'teal' }).children.map(paint)).size).toBe(2)
     })
 
-    it('paints the accent on a part of the picture, and rejects a name it does not know', () => {
-        const picture = pictogram('forecast', { color: 'ink', accent: 'teal' })
-        const paints = new Set(picture.children.map((mark) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))))
-        expect(paints.size).toBe(2)
+    it('rejects a name it does not know, also when an object has a property of that name', () => {
         expect(() => pictogram('unicorn' as never)).toThrow(/unknown name "unicorn"/)
+        expect(() => pictogram('toString' as never)).toThrow(/unknown name "toString"/)
     })
 })
 

@@ -147,15 +147,15 @@ export default film({ fps: 30 }, (s) => {
 
 ## Pictograms
 
-`pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one stroke weight, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. The bounds of a pictogram are its whole square, so pictures of one `size` line up.
+`pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.
 
 ```film paired label="A row of pictograms for telemetry, structure, and systems"
 import { draw, fadeIn, film, lagged, pictogram, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const names = ['series', 'forecast', 'logs', 'traces', 'graph', 'dag', 'database', 'model'] as const
-    const pictures = names.map((name, i) => s.add(pictogram(name, { size: 150, accent: 'teal' }).at((i - 3.5) * 220, -40)))
-    const labels = names.map((name, i) => s.add(text(name, { font: 'mono', size: 32, color: 'dim' }).at((i - 3.5) * 220, 110)))
+    const pictures = names.map((name, i) => pictogram(name, { size: 150, accent: 'teal' }).at((i - 3.5) * 220, -40))
+    const labels = names.map((name, i) => text(name, { font: 'mono', size: 32, color: 'dim' }).at((i - 3.5) * 220, 110))
     s.play(lagged(pictures.map((picture) => draw(picture)), { lag: 0.12 }), { duration: 2 })
     s.play(fadeIn(labels))
     s.wait(0.8)
