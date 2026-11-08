@@ -127,6 +127,27 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+`dotChart(data)` draws one row per item: a label, a dot at its value on a shared axis, and a line for its interval. Use it for scores with their uncertainty. It takes less room than bars, and its axis does not have to start at zero. The rows keep the order of the data, so sort the data to rank it. `hollow: true` draws a ring, to tell a second group apart.
+
+```film paired label="Five scores with their intervals arrive from the best to the worst"
+import { dotChart, fadeIn, film, lagged } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const chart = dotChart([
+        { label: 'blocks', value: 0.89, low: 0.87, high: 0.91 },
+        { label: 'tall CSV', value: 0.88, low: 0.86, high: 0.9 },
+        { label: 'statistics alone', value: 0.57, low: 0.54, high: 0.6, color: 'orange' },
+        { label: 'chart image', value: 0.57, low: 0.53, high: 0.6, color: 'pink' },
+        { label: 'no data', value: 0.08, low: 0.06, high: 0.1, color: 'dim' },
+    ], { width: 1500, labelSize: 40, domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1], axisLabel: 'mean score, higher is better. Lines: 95% intervals' })
+    s.play(fadeIn(chart.axis), { duration: 0.6 })
+    s.play(lagged(chart.rows.map((row) => fadeIn(row, { shift: [-20, 0] })), { lag: 0.25 }), { duration: 2 })
+    s.wait(0.8)
+})
+```
+
+`chart.rows` holds one node per item, with its label, its interval and its dot. `chart.x(value)` and `chart.y(row)` give a place on the chart, for a bracket or a note. A value outside the domain, a value outside its interval, and an interval with one end are errors.
+
 ## Graphs and networks
 
 `graph(nodes, edges)` draws a node-link diagram, and `tree(root)` lays out a tree. Edges work with `pulse`, so a signal can run along them.

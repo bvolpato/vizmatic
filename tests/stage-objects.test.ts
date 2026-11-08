@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
-    counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
+    counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     sphere, streamLines, surface, swap, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
@@ -985,6 +985,54 @@ describe('zone', () => {
             expect(() => zone([])).toThrow(/at least one node/)
             const used = s.add(rect(100, 100))
             expect(() => zone([rect(10, 10), used])).toThrow(/node 1 of the content is already on the stage or in a group/)
+        }))
+    })
+})
+
+describe('dot chart', () => {
+    const data = [
+        { label: 'blocks', value: 0.89, low: 0.87, high: 0.91 },
+        { label: 'a much longer label', value: 0.57, low: 0.54, high: 0.6 },
+        { label: 'ring', value: 0.25, hollow: true },
+    ]
+
+    it('puts each dot at its value on one axis, with its interval around it and its label before the axis', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart(data, { width: 1000, domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1] })
+            const middle = (node: { bounds(): { x: number; y: number; width: number; height: number } }) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+            // The axis is a straight scale from the first tick to the last.
+            expect(chart.x(0.5)).toBeCloseTo((chart.x(0) + chart.x(1)) / 2, 6)
+            chart.dots.forEach((mark, row) => {
+                expect(middle(mark)[0]).toBeCloseTo(chart.x(data[row]!.value), 6)
+                expect(middle(mark)[1]).toBeCloseTo(chart.y(row), 6)
+            })
+            const interval = chart.intervals[0]!.bounds()
+            expect(interval.x).toBeCloseTo(chart.x(0.87), 6)
+            expect(interval.x + interval.width).toBeCloseTo(chart.x(0.91), 6)
+            expect(chart.intervals[2]).toBeNull()
+            // Labels end at one x, before the axis starts, and the whole chart keeps its width.
+            const ends = chart.labels.map((label) => label.bounds().x + label.bounds().width)
+            expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(6)
+            expect(Math.max(...ends)).toBeLessThan(chart.x(0) - 12)
+            expect(Math.min(...chart.labels.map((label) => label.bounds().x))).toBeGreaterThanOrEqual(-500 - 3)
+            expect(chart.x(1)).toBeCloseTo(500, 6)
+        }))
+    })
+
+    it('writes ticks with the decimals they need', async () => {
+        await compileFilm(film(() => {
+            const words = (chart: ReturnType<typeof dotChart>) => chart.axis.children.map((node) => (node as unknown as { source?: string }).source).filter(Boolean)
+            expect(words(dotChart(data, { domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1] }))).toEqual(['0.00', '0.25', '0.50', '0.75', '1.00'])
+            expect(words(dotChart([{ label: 'a', value: 30 }, { label: 'b', value: 70 }], { ticks: [0, 50, 100] }))).toEqual(['0', '50', '100'])
+        }))
+    })
+
+    it('refuses data that it cannot draw truly', async () => {
+        await compileFilm(film(() => {
+            expect(() => dotChart([])).toThrow(/at least one item/)
+            expect(() => dotChart([{ label: 'a', value: 2 }], { domain: [0, 1] })).toThrow(/2 is outside the domain 0 to 1/)
+            expect(() => dotChart([{ label: 'a', value: 0.5, low: 0.4 }])).toThrow(/one end of an interval/)
+            expect(() => dotChart([{ label: 'a', value: 0.5, low: 0.6, high: 0.7 }])).toThrow(/outside its interval/)
         }))
     })
 })
