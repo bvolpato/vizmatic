@@ -11,6 +11,12 @@ export interface TextOptions {
     color?: ColorInput
     /** Line alignment inside the block. */
     align?: 'left' | 'center' | 'right'
+    /**
+     * The point of the block that `.at(x, y)` places: its left edge, its middle, or its right edge.
+     * The default is the middle. The height of the point does not change, so labels with
+     * different anchors on one `y` share a baseline. The block also scales and rotates about it.
+     */
+    anchor?: 'left' | 'center' | 'right'
     /** Wrap to this width, in stage pixels. */
     maxWidth?: number
     /** Line height as a multiple of size. */
@@ -126,10 +132,11 @@ export function text(content: string, options: TextOptions = {}): TextNode {
             leaf.parent = node
         }
     })
-    // Center the block on the node's origin, so `.at(x, y)` places its middle.
+    // Put the anchor of the block on the node's origin, so `.at(x, y)` places that point: the middle by default.
     const ascent = font.ascent * scale
     const height = (lines.length - 1) * leading
-    node.base.px = blockWidth / 2
+    const anchor = options.anchor ?? 'center'
+    node.base.px = anchor === 'left' ? 0 : anchor === 'right' ? blockWidth : blockWidth / 2
     node.base.py = height / 2 - ascent * 0.36
     node.data['size'] = size
     return node
