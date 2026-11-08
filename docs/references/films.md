@@ -149,6 +149,17 @@ const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }
 s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
 ```
 
+A word split into named fields: a virtual address and its table indexes, the flags of a register, the layout of a structure. Do not build it from boxes and texts in each film. `bitField` gives each box a width for its bits, numbers the bits, and keeps every text inside its box. `minWidth` or `scale: 'even'` gives a field of one bit room for a name, and `unused: true` marks reserved bits. For the layout of a structure, `numbers: 'offsets'` counts its bytes, and `wrap: 16` fills rows of 16 bytes. A field with a `value` shows it in its box, and `word.setValue('fd', '3')` changes it in place. `word.field('table')` is the node of one field, and `word.p('table')` is the point where a line from it starts:
+
+```ts
+const word = s.add(bitField([
+    { bits: 10, label: 'directory', color: 'blue' },
+    { bits: 10, label: 'table', color: 'orange' },
+    { bits: 12, label: 'offset', color: 'purple' },
+], { width: 1400 }).at(0, -200))
+s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
+```
+
 3D:
 
 ```ts

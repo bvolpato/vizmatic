@@ -80,6 +80,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'graph', group: SYSTEMS, usage: 'graph(nodes, edges): nodes and edges with automatic layout' },
     { name: 'tree', group: SYSTEMS, usage: 'tree(root): a layered tree' },
     { name: 'arrayCells', group: SYSTEMS, usage: 'arrayCells([3, 1, 4]): boxes for arrays and buffers' },
+    { name: 'bitField', group: SYSTEMS, usage: "bitField([{ bits: 10, label: 'directory' }, { bits: 10, label: 'table', color: 'orange' }, { bits: 12, label: 'offset' }], { width: 1400 }): a word split into named fields, with the bit numbers over the boxes. word.field('table') is the node of a field, word.p('table') is the point where a line from it starts, and word.enter() brings the fields in. wrap: 16 fills rows, for the layout of a structure, and word.setValue('fd', '3') changes a value in place" },
     { name: 'codeBlock', group: SYSTEMS, usage: "codeBlock(source, { language }): highlighted code as glyphs. block.find('a + b') selects a part" },
     { name: 'morphCode', group: SYSTEMS, usage: 'morphCode(before, after): edit code by moving tokens' },
     { name: 'neuralNet', group: SYSTEMS, usage: 'neuralNet([3, 4, 2]): layers with edges' },
