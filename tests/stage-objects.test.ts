@@ -5,7 +5,7 @@ import {
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
+    seq, sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
@@ -1076,6 +1076,242 @@ describe('dot chart', () => {
             expect(() => dotChart([{ label: 'a', value: 0.5, low: 0.6, high: 0.7 }])).toThrow(/outside its interval/)
             expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [0, 1], ticks: [0, 2] })).toThrow(/the tick 2 is outside the domain/)
             expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [1, 0] })).toThrow(/two different ends/)
+        }))
+    })
+})
+
+describe('unit chart', () => {
+    const groups = [{ count: 20, label: 'no effect' }, { count: 7, color: 'green', label: 'better' }, { count: 3, color: 'red', label: 'worse' }]
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const key = (place: readonly [number, number]) => `${place[0].toFixed(3)},${place[1].toFixed(3)}`
+    const at = <T,>(time: number, read: () => T): T => { clock.now = time; return read() }
+    const xy = (node: Node) => [node.get('x'), node.get('y')]
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+
+    it('draws one mark for each unit, fills by column or by row, and stays centered', async () => {
+        await compileFilm(film(() => {
+            const byColumn = unitChart(groups, { rows: 5, cell: 10, gap: 10 })
+            expect(byColumn.marks).toHaveLength(30)
+            expect(byColumn.groups.map((own) => own.length)).toEqual([20, 7, 3])
+            // 30 marks in columns of 5: six columns, 20 px apart. The first column goes down from the top left.
+            expect(middle(byColumn.marks[0]!)).toEqual([-50, -40])
+            expect(middle(byColumn.marks[4]!)).toEqual([-50, 40])
+            expect(middle(byColumn.marks[5]!)).toEqual([-30, -40])
+            expect(byColumn.p(29)).toEqual([50, 40])
+            // The groups follow each other, so a group is one run of the grid. The labels are not part of the
+            // chart yet: the chart holds its marks and nothing else.
+            expect(byColumn.groups[1]![0]).toBe(byColumn.marks[20])
+            expect(byColumn.children).toHaveLength(30)
+
+            const byRow = unitChart(groups, { columns: 10, cell: 10, gap: 10 })
+            expect(middle(byRow.marks[0]!)).toEqual([-90, -20])
+            expect(middle(byRow.marks[9]!)).toEqual([90, -20])
+            expect(middle(byRow.marks[10]!)).toEqual([-90, 0])
+            // The default gap is 0.6 of the cell.
+            const close = unitChart([{ count: 2 }], { rows: 1, cell: 10 })
+            expect(close.p(1)[0] - close.p(0)[0]).toBe(16)
+        }))
+    })
+
+    it('gives each group its own block when split, with its label over it and no two labels touching', async () => {
+        await compileFilm(film(() => {
+            const chart = unitChart([{ count: 20, label: 'no effect' }, { count: 2, color: 'green', label: 'a label much wider than two marks' }, { count: 3, color: 'red', label: 'worse' }], { rows: 5, split: true, cell: 10, gap: 10 })
+            const boxes = chart.groups.map((own) => own.map((mark) => mark.bounds()))
+            const span = (list: { x: number; width: number }[]) => [Math.min(...list.map((b) => b.x)), Math.max(...list.map((b) => b.x + b.width))] as const
+            const spans = boxes.map(span)
+            // Blocks stand left to right and do not share a column.
+            expect(spans[0]![1]).toBeLessThan(spans[1]![0])
+            expect(spans[1]![1]).toBeLessThan(spans[2]![0])
+            // All blocks start at one top line, and each label is over its block and centered on it.
+            const tops = boxes.map((list) => Math.min(...list.map((b) => b.y)))
+            expect(Math.max(...tops) - Math.min(...tops)).toBeCloseTo(0, 6)
+            chart.labels.forEach((label, index) => {
+                const box = label!.bounds()
+                expect(label!.parent).toBe(chart)
+                expect(box.y + box.height).toBeLessThan(tops[index]!)
+                // A block starts on a whole pixel, and the ink of a word is not exactly centered: allow 2 px.
+                expect(Math.abs(box.x + box.width / 2 - (spans[index]![0] + spans[index]![1]) / 2)).toBeLessThan(2)
+            })
+            const labels = chart.labels.map((label) => label!.bounds())
+            expect(labels[0]!.x + labels[0]!.width).toBeLessThan(labels[1]!.x)
+            expect(labels[1]!.x + labels[1]!.width).toBeLessThan(labels[2]!.x)
+            // The edges of the marks are on whole pixels, so a square is sharp.
+            for (const box of boxes.flat()) expect(box.x).toBe(Math.round(box.x))
+        }))
+    })
+
+    it('gives an empty group no room, or the room of its label', async () => {
+        await compileFilm(film(() => {
+            const two = unitChart([{ count: 10 }, { count: 5 }], { rows: 5, split: true, cell: 10, gap: 10 })
+            for (const where of [0, 1, 2]) {
+                const list = [{ count: 10 }, { count: 5 }]
+                list.splice(where, 0, { count: 0 })
+                const chart = unitChart(list, { rows: 5, split: true, cell: 10, gap: 10 })
+                expect(chart.marks.map((_, index) => chart.p(index))).toEqual(two.marks.map((_, index) => two.p(index)))
+            }
+            // With a label, an empty group keeps a place between its neighbours: "0 failed" over no marks.
+            const named = unitChart([{ count: 10, label: 'passed' }, { count: 0, label: '0 failed' }, { count: 5, label: 'flaky' }], { rows: 5, split: true, cell: 10, gap: 10 })
+            const [passed, failed, flaky] = named.labels.map((label) => label!.bounds())
+            expect(passed!.x + passed!.width).toBeLessThan(failed!.x)
+            expect(failed!.x + failed!.width).toBeLessThan(flaky!.x)
+            expect(named.p(10)[0] - named.p(9)[0]).toBeGreaterThan(two.p(10)[0] - two.p(9)[0] + failed!.width)
+        }))
+    })
+
+    it('mixes the groups over the cells of the same grid, the same way for the same seed', async () => {
+        await compileFilm(film(() => {
+            const plain = unitChart(groups, { rows: 5, cell: 10, gap: 10 })
+            const mixed = unitChart(groups, { rows: 5, cell: 10, gap: 10, mixed: true, seed: 7 })
+            const again = unitChart(groups, { rows: 5, cell: 10, gap: 10, mixed: true, seed: 7 })
+            const other = unitChart(groups, { rows: 5, cell: 10, gap: 10, mixed: true, seed: 8 })
+            const places = (chart: ReturnType<typeof unitChart>) => chart.marks.map((_, index) => key(chart.p(index)))
+            expect([...places(mixed)].sort()).toEqual([...places(plain)].sort())
+            expect(places(mixed)).not.toEqual(places(plain))
+            expect(places(again)).toEqual(places(mixed))
+            expect(places(other)).not.toEqual(places(mixed))
+        }))
+    })
+
+    it('enters line by line, and the label of a block arrives with its first line', async () => {
+        let chart!: ReturnType<typeof unitChart>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            chart = unitChart([{ count: 10, label: 'passed' }, { count: 0, label: '0 failed' }, { count: 10, label: 'flaky' }], { rows: 5, split: true, cell: 10, gap: 10 })
+            s.wait(0.5)
+            s.play(chart.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect((await compiled.frame(0.2)).ops).toHaveLength(0)
+        // Four lines with a lag of 1: each line has a quarter of the time, one after the other.
+        const [first, second, third, last] = [chart.marks[0]!, chart.marks[5]!, chart.marks[10]!, chart.marks[15]!]
+        expect(at(0.9, () => [first, second, third, last].map(shows))).toEqual([expect.closeTo(0.8, 6), 0, 0, 0])
+        expect(at(1.9, () => [first, second, third, last].map(shows))).toEqual([1, 1, expect.closeTo(0.8, 6), 0])
+        // A mark of a line is as far as the first mark of that line.
+        expect(at(0.9, () => shows(chart.marks[4]!))).toBeCloseTo(0.8, 6)
+        // The label of the first block comes at once. The other two come with the third line, where the
+        // last block starts: the empty block has no line of its own.
+        const [passed, failed, flaky] = chart.labels as Node[]
+        expect(at(0.9, () => shows(passed!))).toBeGreaterThan(0)
+        expect(at(1.4, () => [shows(failed!), shows(flaky!)])).toEqual([0, 0])
+        expect(at(1.9, () => shows(failed!))).toBeGreaterThan(0)
+        expect(at(1.9, () => shows(failed!))).toBe(at(1.9, () => shows(flaky!)))
+        expect(at(2.6, () => chart.marks.map(shows).concat(chart.labels.map((label) => shows(label!))))).toEqual(Array(23).fill(1))
+    })
+
+    it('starts plain, paints each group and its label, and moves the marks into blocks', async () => {
+        let chart!: ReturnType<typeof unitChart>
+        let target!: ReturnType<typeof unitChart>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            chart = unitChart(groups, { rows: 5, cell: 10, gap: 10, mixed: true, plain: true, plainColor: 'faint' })
+            target = unitChart(groups, { rows: 5, cell: 10, gap: 10, split: true })
+            s.wait(0.5)
+            s.play(chart.enter(), { duration: 1 })
+            s.play(chart.paint(), { duration: 0.5 })
+            s.play(chart.rearrange({ split: true }), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const green = chart.groups[1]![0]!, grey = chart.groups[0]![0]!
+        const ink = (label: Node) => label.all().find((part) => part.get('fill'))!.get('fill')
+        // Before the paint, a mark of the green group has the color of every other mark. So has its label.
+        expect(at(1.5, () => green.get('fill'))).toEqual(at(1.5, () => grey.get('fill')))
+        expect(at(1.5, () => ink(chart.labels[1]!))).toEqual(at(1.5, () => grey.get('fill')))
+        expect(at(2.0, () => green.get('fill'))).toEqual(target.groups[1]![0]!.get('fill'))
+        expect(at(2.0, () => grey.get('fill'))).toEqual(target.groups[0]![0]!.get('fill'))
+        expect(at(2.0, () => ink(chart.labels[1]!))).toEqual(ink(target.labels[1]!))
+        // While the groups are mixed, the film draws the 30 marks and no label.
+        expect((await compiled.frame(1.9)).ops).toHaveLength(30)
+        // No label leaves, so the marks start at once: a tenth into the move, the first mark of each group is on its way.
+        for (const own of chart.groups) expect(at(2.1, () => xy(own[0]!))).not.toEqual(at(2.0, () => xy(own[0]!)))
+        // After the move, each mark and each label is where a chart that was built split has it.
+        chart.marks.forEach((mark, index) => {
+            expect(at(3.2, () => xy(mark))).toEqual(target.p(index))
+            expect(chart.p(index)).toEqual(target.p(index))
+        })
+        chart.labels.forEach((label, index) => {
+            expect(at(3.2, () => shows(label!))).toBe(1)
+            expect(at(3.2, () => xy(label!))).toEqual(xy(target.labels[index]!))
+        })
+    })
+
+    it('takes the labels away before a move, and moves a label only while it is hidden', async () => {
+        let chart!: ReturnType<typeof unitChart>
+        let still!: ReturnType<typeof unitChart>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            chart = s.add(unitChart(groups, { rows: 5, cell: 10, gap: 10, split: true }))
+            still = s.add(unitChart(groups, { rows: 5, cell: 10, gap: 10, split: true }))
+            s.play(chart.rearrange({ rows: 3 }), { duration: 1, ease: linear })
+            s.play(still.rearrange({ split: true }), { duration: 1, ease: linear })
+        }))
+        // Each group moves over the whole time: its first mark leaves first, and its last mark arrives last.
+        const label = chart.labels[2]!, mark = chart.marks[20]!, last = chart.marks[29]!
+        const start = at(0, () => xy(label)), end = at(1, () => xy(label))
+        expect(end).not.toEqual(start)
+        // For the first fifth of the move, the label fades out and no mark moves.
+        expect(at(0.1, () => shows(label))).toBeCloseTo(0.5, 6)
+        expect(at(0.19, () => xy(mark))).toEqual(at(0, () => xy(mark)))
+        expect(at(0.1, () => xy(label))).toEqual(start)
+        // Then the marks move, and the label waits at its new place with opacity 0.
+        expect(at(0.5, () => shows(label))).toBe(0)
+        expect(at(0.5, () => xy(label))).toEqual(end)
+        expect(at(0.5, () => xy(mark))).not.toEqual(at(0, () => xy(mark)))
+        expect(at(0.7, () => xy(last))).not.toEqual(at(1, () => xy(last)))
+        expect(at(0.76, () => xy(last))).toEqual(at(1, () => xy(last)))
+        expect(at(1, () => shows(label))).toBe(1)
+        // A move to the arrangement that the chart already has changes nothing: the labels do not blink.
+        for (const time of [1.1, 1.5, 1.9]) expect(at(time, () => still.labels.map((item) => shows(item!)))).toEqual([1, 1, 1])
+    })
+
+    it('chains two moves in one sequence, and takes the labels away when the groups join', async () => {
+        let chart!: ReturnType<typeof unitChart>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            chart = s.add(unitChart(groups, { rows: 5, cell: 10, gap: 10, split: true }))
+            s.play(seq(chart.rearrange({ columns: 10 }), chart.rearrange({ mixed: true, seed: 3 })), { duration: 2 })
+        }))
+        // The second move starts from the first: it keeps the 10 columns, and `mixed` turns `split` off.
+        const cells = at(2, () => chart.marks.map((mark) => key(xy(mark) as [number, number]))).sort()
+        const grid = unitChart(groups, { columns: 10, cell: 10, gap: 10 })
+        expect(cells).toEqual(grid.marks.map((_, index) => key(grid.p(index))).sort())
+        expect(at(2, () => key(xy(chart.marks[0]!) as [number, number]))).not.toBe(key(grid.p(0)))
+        expect((await compiled.frame(0)).ops.length).toBeGreaterThan(30)
+        expect((await compiled.frame(2)).ops).toHaveLength(30)
+    })
+
+    it('shows no label when the film fades in the marks of a joined chart one by one', async () => {
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            s.play(fadeIn(unitChart(groups, { rows: 5 }), { lag: 0.1 }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        expect((await compiled.frame(1.4)).ops).toHaveLength(30)
+    })
+
+    it('gives a copy its own marks and labels', async () => {
+        await compileFilm(film(() => {
+            const split = unitChart(groups, { rows: 5, split: true }), copy = split.clone()
+            expect(copy.marks[0]).not.toBe(split.marks[0])
+            expect(copy.children).toContain(copy.groups[1]![0])
+            expect(copy.children).toContain(copy.labels[2])
+            // A label that is not yet part of the chart is copied too, so the copy does not take it from the chart.
+            const joined = unitChart(groups, { rows: 5 }), other = joined.clone()
+            expect(other.labels[0]).not.toBe(joined.labels[0])
+            expect(other.labels[0]!.bounds().width).toBeCloseTo(joined.labels[0]!.bounds().width, 6)
+        }))
+    })
+
+    it('names a wrong count, size or arrangement', async () => {
+        await compileFilm(film(() => {
+            expect(() => unitChart([])).toThrow(/at least one group/)
+            expect(() => unitChart([{ count: 0 }])).toThrow(/at least one mark/)
+            expect(() => unitChart([{ count: 2.5 }])).toThrow(/whole number/)
+            expect(() => unitChart([{ count: -1 }])).toThrow(/whole number/)
+            expect(() => unitChart([{ count: 30000 }])).toThrow(/more than a frame can show/)
+            expect(() => unitChart(groups, { cell: 0 })).toThrow(/cell is the side/)
+            expect(() => unitChart(groups, { gap: Number.NaN })).toThrow(/gap is the room/)
+            expect(() => unitChart(groups, { blockGap: -1 })).toThrow(/blockGap is the room/)
+            expect(() => unitChart(groups, { rows: 5, columns: 6 })).toThrow(/rows or columns/)
+            expect(() => unitChart(groups, { rows: 0 })).toThrow(/1 or more/)
+            expect(() => unitChart(groups, { seed: 0.5 })).toThrow(/seed is a whole number/)
+            expect(() => unitChart(groups, { split: true, mixed: true })).toThrow(/Use one of them/)
+            expect(() => unitChart(groups).rearrange({ columns: 1.5 })).toThrow(/1 or more/)
+            expect(() => unitChart(groups).p(30)).toThrow(/no mark 30/)
         }))
     })
 })

@@ -147,6 +147,31 @@ export default film({ fps: 30 }, (s) => {
 
 As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels are outside it, at the left, and the ticks are under it. Without a `domain`, the axis covers a round range around the data. `ticks` is a count or a list of values. `chart.rows` holds one node per item, with its label, its interval and its dot, and `chart.p(value, row)` gives a place on the chart for a bracket or a note. A value outside the domain, a value outside its interval, an interval with one end, and a tick outside the domain are errors.
 
+`unitChart(groups)` draws one mark for each unit, so the viewer sees a count and does not only read it. Use it for a number of cases, runs, hosts, or files, up to about 2,000. A group has a `count`, a `color`, and a `label`.
+
+```film paired label="330 runs arrive, take the color of their result, and gather into three blocks"
+import { film, unitChart } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const chart = unitChart([
+        { count: 262, label: '262: no effect' },
+        { count: 39, color: 'green', label: '39 better' },
+        { count: 29, color: 'red', label: '29 worse' },
+    ], { rows: 11, mixed: true, plain: true, cell: 22, labelSize: 34 })
+    s.play(chart.enter(), { duration: 1.4 })
+    s.play(chart.paint(), { duration: 0.8 })
+    s.wait(0.4)
+    s.play(chart.rearrange({ split: true }), { duration: 1.6 })
+    s.wait(0.8)
+})
+```
+
+The chart has three arrangements. By default the groups follow each other in one grid, so each group is one part of the whole. `mixed: true` puts the marks of all groups at mixed places in that grid, to show a few among many. The same `seed` gives the same places. `split: true` draws each group as its own block, with its label over it. The labels show only while the groups are split. For the other two arrangements, add a `legend()`. `rows` sets the marks in one column, and the chart fills column by column. `columns` sets the marks in one row, and the chart fills row by row. `cell` is the side of one mark, and `gap` the room between two marks.
+
+`chart.enter()` brings the marks in line by line. `plain: true` starts every mark and label in one color, and `chart.paint()` gives each group its color. `chart.rearrange(arrangement)` moves the marks to another arrangement. It keeps the rows or columns and the seed that the new arrangement does not name. `split` and `mixed` turn each other off, and `rows` replaces `columns`. Each group moves over the whole time of the move, so a small group does not wait for a large one.
+
+`.at()` places the middle of the grid, or of the row of blocks. A block is as wide as its marks or its label, so a row of blocks is wider than the grid: check both arrangements. A group with a count of 0 and a label keeps the room of its label, such as "0 failed". `chart.marks` holds every mark, `chart.groups` the marks of each group, and `chart.p(index)` the place of a mark. `shape: 'square'` draws squares. A chart of more than 20,000 marks is an error: let one mark stand for more than one unit, and say so in a label. Above about 2,000 marks, a move reads as a wipe.
+
 ## Graphs and networks
 
 `graph(nodes, edges)` draws a node-link diagram, and `tree(root)` lays out a tree. Edges work with `pulse`, so a signal can run along them.
