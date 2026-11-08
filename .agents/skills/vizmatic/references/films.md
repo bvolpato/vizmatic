@@ -123,6 +123,14 @@ const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: '
 s.play(draw(picture))
 ```
 
+A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width` and one `height`:
+
+```ts
+const logs = card({ title: 'Logs', figure: pictogram('logs', { size: 140 }), caption: 'one line per event', color: 'yellow', width: 420, height: 380 })
+const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }), caption: 'the path of one request', color: 'purple', width: 420, height: 380 })
+s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
+```
+
 3D:
 
 ```ts

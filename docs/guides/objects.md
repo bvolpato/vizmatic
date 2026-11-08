@@ -173,6 +173,28 @@ export default film({ fps: 30 }, (s) => {
 
 Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
 
+## Cards
+
+`card(options)` draws a box with a `title` at the top, a `figure` in the middle, and a `caption` at the bottom. All three are optional. The title and the caption sit at fixed distances from the border. The figure is centered in the space between them, and a figure that is too large is scaled down to fit. So the cards of a row share one layout whatever they hold: give them one `width` and one `height`.
+
+```film paired label="Three cards with one layout hold three different figures"
+import { card, fadeIn, film, group, lagged, pictogram, sparkline } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const values = Array.from({ length: 48 }, (_, i) => Math.sin(i / 5) + 0.4 * Math.sin(i / 1.7))
+    const cards = [
+        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', width: 500, height: 440 }),
+        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', width: 500, height: 440 }),
+        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', width: 500, height: 440 }),
+    ]
+    s.add(group(...cards).arrange('right', 40).moveTo([0, 0]))
+    s.play(lagged(cards.map((made) => fadeIn(made, { shift: [0, 24] })), { lag: 0.25 }), { duration: 1.6 })
+    s.wait(0.8)
+})
+```
+
+A title that is too wide is set in a smaller size, and a caption that is too wide wraps. Without a `height`, a card is as tall as its content. A `height` that leaves no room for the figure is an error, so a figure never runs into the text. `card.frame`, `card.title`, `card.figure`, and `card.caption` are the parts, and `card.figureBox` is the space that the figure may use.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
@@ -823,6 +823,61 @@ describe('pictograms', () => {
     it('rejects a name it does not know, also when an object has a property of that name', () => {
         expect(() => pictogram('unicorn' as never)).toThrow(/unknown name "unicorn"/)
         expect(() => pictogram('toString' as never)).toThrow(/unknown name "toString"/)
+    })
+})
+
+describe('card', () => {
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+
+    it('scales a large figure into the space between the title and the caption, and leaves a small one alone', async () => {
+        await compileFilm(film(() => {
+            const made = card({ title: 'Logs', figure: rect(900, 600), caption: 'one line per event', width: 400, height: 360 })
+            const area = made.figureBox, drawn = made.figure!.bounds()
+            expect(drawn.height).toBeCloseTo(area.height, 3)
+            expect(drawn.width).toBeLessThan(area.width)
+            expect(drawn.width / drawn.height).toBeCloseTo(900 / 600, 6)
+            expect(middle(made.figure!)[0]).toBeCloseTo(0, 3)
+            expect(middle(made.figure!)[1]).toBeCloseTo(area.y + area.height / 2, 3)
+            const title = made.title!.bounds(), caption = made.caption!.bounds()
+            expect(area.y - (title.y + title.height)).toBeGreaterThan(14)
+            expect(caption.y - (area.y + area.height)).toBeGreaterThan(14)
+            expect(card({ figure: rect(50, 30), width: 400, height: 360 }).figure!.bounds()).toMatchObject({ width: 50, height: 30 })
+        }))
+    })
+
+    it('gives the cards of a row one layout whatever they hold', async () => {
+        await compileFilm(film(() => {
+            const size = { width: 420, height: 380 }
+            const a = card({ title: 'DATA', figure: rect(300, 90), caption: 'every type', ...size })
+            const b = card({ title: 'Feedback loop', figure: circle(70), caption: 'jumpy glyphs', ...size })
+            expect(b.title!.get('y')).toBe(a.title!.get('y'))
+            expect(b.caption!.get('y')).toBe(a.caption!.get('y'))
+            expect(middle(b.figure!)[1]).toBeCloseTo(middle(a.figure!)[1], 3)
+            expect(b.figureBox).toEqual(a.figureBox)
+        }))
+    })
+
+    it('sets a wide title smaller, wraps a long caption, and grows to hold both', async () => {
+        await compileFilm(film(() => {
+            const made = card({ title: 'A title that is far too long for this card', caption: 'a caption that is long enough to wrap onto more lines', figure: rect(100, 100), width: 300 })
+            const frame = made.frame.bounds()
+            expect(frame.width).toBe(300)
+            for (const part of [made.title!, made.caption!, made.figure!]) {
+                const box = part.bounds()
+                expect(box.x).toBeGreaterThan(frame.x + 20)
+                expect(box.x + box.width).toBeLessThan(frame.x + frame.width - 20)
+                expect(box.y).toBeGreaterThan(frame.y + 20)
+                expect(box.y + box.height).toBeLessThan(frame.y + frame.height - 14)
+            }
+            expect(made.caption!.bounds().height).toBeGreaterThan(60)
+            expect(made.figure!.bounds().width).toBeCloseTo(100, 6)
+        }))
+    })
+
+    it('refuses a height that leaves no room for the figure', async () => {
+        await compileFilm(film(() => {
+            expect(() => card({ title: 'Logs', figure: rect(100, 100), caption: 'one line per event', height: 120 })).toThrow(/no room for the figure/)
+        }))
     })
 })
 
