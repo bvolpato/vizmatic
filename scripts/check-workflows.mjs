@@ -4,7 +4,9 @@ import { setTimeout as sleep } from 'node:timers/promises'
 
 // actionlint is downloaded from a GitHub release on each run. That download fails now and then
 // with a gateway error, which is not a finding about the workflows. So try the download again.
-const ATTEMPTS = 4
+// Seconds to wait before each new try. One outage on 2026-11-08 lasted longer than a minute.
+const WAITS = [10, 20, 40, 60, 60]
+const ATTEMPTS = WAITS.length + 1
 const files = readdirSync('.github/workflows').filter((name) => name.endsWith('.yml')).map((name) => `.github/workflows/${name}`)
 
 for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
@@ -16,6 +18,7 @@ for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
         process.stdout.write(output)
         process.exit(result.status ?? 1)
     }
-    console.error(`${output.trim()}\nThe download of actionlint failed (attempt ${attempt} of ${ATTEMPTS}). Trying again in ${attempt * 10} s.`)
-    await sleep(attempt * 10_000)
+    const wait = WAITS[attempt - 1]
+    console.error(`${output.trim()}\nThe download of actionlint failed (attempt ${attempt} of ${ATTEMPTS}). Trying again in ${wait} s.`)
+    await sleep(wait * 1000)
 }
