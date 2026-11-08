@@ -7,7 +7,8 @@ import { renderRgbaVideo, type RgbaVideoOutput, type VideoCodec, type VideoFrame
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
 import { RasterPool, defaultPoolSize, framesToJob } from './raster'
-import { isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
+import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
+import { text } from './text'
 
 export type Quality = 'draft' | 'standard' | 'high' | 'master'
 export type { VideoCodec } from '../video'
@@ -387,6 +388,81 @@ export async function renderFilmFrames(film: FilmDefinition | CompiledFilm, time
             await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
             return path
         }))
+    } finally {
+        await pool.close()
+    }
+}
+
+export interface FilmSheetOptions extends CompileOverrides {
+    /** Width of one tile in pixels. Defaults to 480. */
+    width?: number
+    /** Tiles in a row. Defaults to 3 for up to nine tiles, and 4 for more. */
+    columns?: number
+    workers?: number
+    /** Approximate limit in bytes for frame buffers held at one time. */
+    memoryBudget?: number
+}
+
+export interface FilmSheetOutput {
+    width: number
+    height: number
+    columns: number
+    rows: number
+    /** The time of each tile, in reading order. */
+    times: number[]
+    outputPath: string
+}
+
+/** The time under a tile of a contact sheet, such as 1:02.50. */
+export function sheetStamp(time: number): string {
+    const hundredths = Math.round(time * 100)
+    const minutes = Math.floor(hundredths / 6000)
+    return `${minutes}:${((hundredths - minutes * 6000) / 100).toFixed(2).padStart(5, '0')}`
+}
+
+/**
+ * Render many moments into one PNG: a grid of small frames, each with its time under it.
+ * Use it to read a film that you cannot play. The frames are in reading order.
+ */
+export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times: readonly number[], outputPath: string, options: FilmSheetOptions = {}): Promise<FilmSheetOutput> {
+    if (times.length === 0) throw new Error('A contact sheet needs at least one time.')
+    const compiled = await resolveFilm(film, options)
+    const tile = outputSize(compiled, options.width ?? 480)
+    const requested = options.columns ?? (times.length <= 9 ? 3 : 4)
+    if (!Number.isInteger(requested) || requested < 1) throw new Error(`A contact sheet needs a whole number of columns, at least 1, but received ${requested}.`)
+    const columns = Math.min(times.length, requested)
+    const rows = Math.ceil(times.length / columns)
+    const gap = Math.max(4, Math.round(tile.width * 0.025))
+    // The band under each tile holds its time.
+    const band = Math.max(20, Math.round(tile.width * 0.075))
+    const width = columns * tile.width + (columns + 1) * gap
+    const height = rows * (tile.height + band) + (rows + 1) * gap
+    const corner = (index: number) => ({ x: gap + (index % columns) * (tile.width + gap), y: gap + Math.floor(index / columns) * (tile.height + band + gap) })
+    const plan = planRender(tile.width, tile.height, 1, options)
+    const pool = new RasterPool(plan.workers)
+    try {
+        // Frames are sampled one at a time because the engine's clock is shared.
+        const frames: Frame[] = []
+        for (const time of times) frames.push(await frameAt(compiled, time))
+        const tiles = await Promise.all(frames.map((frame) => pool.run(framesToJob([frame], tile.width, backgroundBytes, tile.height))))
+        // The times are a film frame of their own, so they use the film's look and its fonts.
+        const labels = await defineFilm({ width, height, look: compiled.look, background: 'surface', bloom: 0 }, (stage) => {
+            times.forEach((time, index) => {
+                const at = corner(index)
+                stage.add(text(sheetStamp(time), { font: 'mono', size: band * 0.6, color: 'dim' }).at(at.x + tile.width / 2 - width / 2, at.y + tile.height + band / 2 - height / 2))
+            })
+        }).compile({})
+        const sheet = await pool.run(framesToJob([await frameAt(labels, 0)], width, backgroundBytes, height))
+        tiles.forEach((pixels, index) => {
+            const at = corner(index)
+            for (let row = 0; row < tile.height; row++) {
+                sheet.set(pixels.subarray(row * tile.width * 4, (row + 1) * tile.width * 4), ((at.y + row) * width + at.x) * 4)
+            }
+        })
+        const path = resolve(outputPath)
+        await mkdir(dirname(path), { recursive: true })
+        await writeFile(path, encodePng({ width, height, data: sheet, depth: 8, channels: 4 }))
+        return { width, height, columns, rows, times: [...times], outputPath: path }
     } finally {
         await pool.close()
     }

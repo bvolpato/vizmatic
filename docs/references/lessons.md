@@ -138,6 +138,15 @@ The scan cannot see that one block replaces another, so decide each warning your
 - The check reports text crossed by a stroke. It does not report text on the edge of a filled shape.
 - A frame with one small mark counts as visible, so a nearly empty frame can pass. A blank shorter than 0.2 seconds is not reported. Read the frames at each handover in the delivered movie.
 
+The scan does not replace a look at the picture. Read the whole film as contact sheets, and not a sample of it.
+
+```bash
+npx vizmatic film lesson.ts --every 3 --sheet --out stills
+npx vizmatic film lesson.ts --range 118:126 --every 0.25 --sheet --out stills
+```
+
+The first command gives one tile every 3 seconds, 24 tiles to a sheet. The second reads one change of picture closely.
+
 ## Make it readable
 
 Viewers watch on laptops and phones, so scale for the smaller screen. On a 1920 stage:

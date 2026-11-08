@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process'
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
+import { decode as decodePng } from 'fast-png'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FILM_TEMPLATES } from '../src/stage/templates'
 
@@ -94,6 +95,49 @@ describe('vizmatic film', () => {
         expect(png.readUInt32BE(16)).toBe(320)
         expect(png.readUInt32BE(20)).toBe(180)
     }, 60_000)
+
+    it('joins stills into a contact sheet, with a tile for each time', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'short.ts'), shortFilm)
+        const out = join(directory, 'out')
+        const result = cli(['film', 'short.ts', '--out', out, '--frame', '0.1,0.3,0.5,0.7', '--sheet', '--columns', '2', '--width', '160', '--json'], directory)
+        expect(result.status, result.stderr).toBe(0)
+        expect((await readdir(out)).sort()).toEqual(['film-manifest.json', 'short_sheet.png'])
+        const [output] = JSON.parse(result.stdout).films[0].outputs
+        // Two columns and two rows of 160x90 tiles, a 4 pixel gap around each, and a 20 pixel band for the time under each.
+        expect(output).toMatchObject({ format: 'png', columns: 2, rows: 2, times: [0.1, 0.3, 0.5, 0.7], width: 2 * 160 + 3 * 4, height: 2 * (90 + 20) + 3 * 4 })
+        const png = decodePng(await readFile(join(out, 'short_sheet.png')))
+        expect([png.width, png.height]).toEqual([output.width, output.height])
+        const pixel = (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)]
+        // The gap has the surface color of the look, and a tile starts with the film's background.
+        expect(pixel(1, 1)).not.toEqual(pixel(4 + 2, 4 + 2))
+        // The circle has arrived in the last tile and not in the first: the tiles are different frames, in order.
+        const tile = (index: number) => png.data.subarray(((4 + (index >> 1) * (90 + 20 + 4) + 76) * png.width + 4 + (index & 1) * (160 + 4)) * 4, ((4 + (index >> 1) * (90 + 20 + 4) + 76) * png.width + 4 + (index & 1) * (160 + 4) + 160) * 4)
+        expect(Buffer.from(tile(0)).equals(Buffer.from(tile(3)))).toBe(false)
+        // The band under a tile holds its time, so it is not empty.
+        const band = png.data.subarray(((4 + 90 + 10) * png.width + 4) * 4, ((4 + 90 + 10) * png.width + 4 + 160) * 4)
+        expect(new Set(band).size).toBeGreaterThan(4)
+    }, 60_000)
+
+    it('samples the film with --every, and continues a long list of times on a second sheet', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'short.ts'), shortFilm)
+        const out = join(directory, 'out')
+        // The film is 0.8 seconds long: 0, 0.2, 0.4 and 0.6.
+        const stills = cli(['film', 'short.ts', '--out', out, '--every', '0.2', '--width', '160'], directory)
+        expect(stills.status, stills.stderr).toBe(0)
+        expect((await readdir(out)).sort()).toEqual(['film-manifest.json', 'short_t000.000.png', 'short_t000.200.png', 'short_t000.400.png', 'short_t000.600.png'])
+        // One column gives six tiles to a sheet, so eight times need two sheets.
+        const sheets = cli(['film', 'short.ts', '--out', join(directory, 'sheets'), '--every', '0.1', '--sheet', '--columns', '1', '--width', '160', '--json'], directory)
+        expect(sheets.status, sheets.stderr).toBe(0)
+        expect(JSON.parse(sheets.stdout).films[0].outputs.map((output: { path: string; times: number[] }) => [output.path.split('/').pop(), output.times.length])).toEqual([['short_sheet_1.png', 6], ['short_sheet_2.png', 2]])
+        // With no times, a sheet shows twelve moments spread over the film.
+        const spread = cli(['film', 'short.ts', '--out', join(directory, 'spread'), '--sheet', '--width', '160', '--json'], directory)
+        expect(spread.status, spread.stderr).toBe(0)
+        expect(JSON.parse(spread.stdout).films[0].outputs[0]).toMatchObject({ columns: 4, rows: 3 })
+        expect(cli(['film', 'short.ts', '--frame', '0.1', '--every', '0.2'], directory).stderr).toContain('Use --frame or --every, not both')
+        expect(cli(['film', 'short.ts', '--columns', '2'], directory).stderr).toContain('--columns sets the width of a contact sheet')
+    }, 120_000)
 
     it.skipIf(!hasFfmpeg)('honors --range and rounds odd sizes to even', async () => {
         const directory = await tempDirectory()

@@ -62,6 +62,9 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 | `--shutter <0-1>` | The fraction of a frame the shutter stays open. |
 | `--range a:b` | Render part of the timeline. |
 | `--frame t,t` | Write stills at these times. |
+| `--every <seconds>` | Write stills at this interval, across the film or its `--range`. |
+| `--sheet` | Join the stills into contact sheets, each tile with its time. With no times, a sheet shows 12 moments spread over the film. |
+| `--columns <n>` | Tiles in a row of a contact sheet. |
 | `--poster` | Also write a poster frame. |
 | `--workers <n>` | Rasterizer threads. |
 | `--audio <file>` | Add a sound track. |
