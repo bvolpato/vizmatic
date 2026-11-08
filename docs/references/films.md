@@ -131,6 +131,15 @@ const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true
 s.add(zone(jail, { title: 'host' }).at(0, 0))
 ```
 
+A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
+
+```ts
+s.add(tagTrack([
+    { at: 0, word: 'PLAN', color: 'blue', note: 'the design of March' },
+    { at: 41.5, word: 'MEASURED', color: 'green', note: 'the run of June, on 926 questions' },
+], { until: 96 }).at(-912, -490))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
