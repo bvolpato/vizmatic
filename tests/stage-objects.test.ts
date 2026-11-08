@@ -5,7 +5,7 @@ import {
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    sphere, streamLines, surface, swap, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write,
+    sphere, streamLines, surface, swap, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
@@ -898,6 +898,49 @@ describe('card', () => {
             expect(() => card({ caption: 'Pneumonoultramicroscopicsilicovolcanoconiosis', width: 240 })).toThrow(/a word of the caption/)
             const used = s.add(rect(100, 100))
             expect(() => card({ figure: used })).toThrow(/already on the stage or in a group/)
+        }))
+    })
+})
+
+describe('zone', () => {
+    const inside = (outer: { x: number; y: number; width: number; height: number }, inner: { x: number; y: number; width: number; height: number }, room: number) =>
+        inner.x - outer.x >= room && inner.y - outer.y >= room
+        && outer.x + outer.width - inner.x - inner.width >= room && outer.y + outer.height - inner.y - inner.height >= room
+
+    it('puts a border around its content with the padding, and around a zone inside it with that label', async () => {
+        await compileFilm(film(() => {
+            const a = rect(200, 80).at(300, -100), b = circle(40).at(520, 60)
+            const inner = zone([a, b], { label: 'inner', padding: 30 })
+            expect(inside(inner.box, a.bounds(), 30)).toBe(true)
+            expect(inside(inner.box, b.bounds(), 30)).toBe(true)
+            // The label straddles the top border, so the inner zone is taller than its border.
+            expect(inner.bounds().y).toBeLessThan(inner.box.y)
+            const outer = zone(inner, { label: 'outer', padding: 24 })
+            expect(inside(outer.box, inner.bounds(), 24)).toBe(true)
+            expect(outer.content).toEqual([inner])
+        }))
+    })
+
+    it('moves its content with it, grows for a long label, and keeps a least size', async () => {
+        await compileFilm(film(() => {
+            const dotAt = circle(20)
+            const made = zone(dotAt, { label: 'a label much longer than a dot', minHeight: 300 })
+            const label = made.caption!.bounds()
+            expect(label.x).toBeGreaterThan(made.box.x + 16)
+            expect(label.x + label.width).toBeLessThan(made.box.x + made.box.width - 16)
+            expect(made.box.height).toBe(300)
+            const before = dotAt.bounds()
+            made.shift(120, -40)
+            expect(dotAt.bounds().x).toBeCloseTo(before.x + 120, 6)
+            expect(dotAt.bounds().y).toBeCloseTo(before.y - 40, 6)
+        }))
+    })
+
+    it('refuses no content, and content that is in use', async () => {
+        await compileFilm(film((s) => {
+            expect(() => zone([])).toThrow(/at least one node/)
+            const used = s.add(rect(100, 100))
+            expect(() => zone(used)).toThrow(/already on the stage or in a group/)
         }))
     })
 })

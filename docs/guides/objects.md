@@ -198,6 +198,37 @@ A caption that is too wide wraps, and a title that is too wide is set in a small
 
 `card.frame`, `card.title`, `card.figure`, and `card.caption` are the parts. `card.figureBox` is the space that the figure may use, in the coordinates of the card, where (0, 0) is its middle. `titleSize`, `captionSize`, `padding`, `font`, `color`, `captionColor`, `fill`, `radius`, and `borderWidth` set the look.
 
+## Zones
+
+`zone(content, options)` draws a border around one node or several, with a `label` on the border: a host, a network, a sandbox, a boundary of trust. The zone measures its content when it is built and takes the content as its children. So the zone and what it holds move, fade, and scale as one node, and a zone can hold other zones. `dash: true` draws a dashed border, for a boundary that is a rule and not a wall.
+
+```film paired label="A process inside a jail inside a host, built from the inside out"
+import { draw, fadeIn, film, group, rect, text, zone } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const box = (name: string, color: string) => group(
+        rect(300, 110, { radius: 14, stroke: color, fill: 'surface', width: 3 }),
+        text(name, { size: 38, font: 'text-serif', color }),
+    )
+    const devices = box('devices', 'purple').at(440, 0)
+    const guest = zone([box('guest kernel', 'teal').at(0, -75), box('your code', 'ink').at(0, 75)], { label: 'microVM', color: 'teal', labelSize: 32 })
+    const process = zone([guest, devices], { label: 'VMM process', color: 'purple', labelSize: 32, padding: 48 })
+    const jail = zone(process, { label: 'jail', color: 'yellow', dash: true, labelSize: 32, padding: 52 })
+    const host = s.add(zone(jail, { label: 'host', labelSize: 32, padding: 56, labelAlign: 'center' }).moveTo([0, 0]))
+    // Everything is on the stage now. Hide what arrives later, then reveal it from the inside out.
+    const layers = [guest, process, jail, host]
+    for (const node of [devices, ...layers.flatMap((layer) => [layer.frame, layer.caption!])]) node.hide()
+    s.play(fadeIn(guest.content, { lag: 0.2 }), { duration: 0.8 })
+    s.play(draw(guest.frame), fadeIn(guest.caption!), { duration: 0.7 })
+    s.play(fadeIn(devices), draw(process.frame), fadeIn(process.caption!), { duration: 0.7 })
+    s.play(draw(jail.frame), fadeIn(jail.caption!), { duration: 0.7 })
+    s.play(draw(host.frame), fadeIn(host.caption!), { duration: 0.7 })
+    s.wait(0.8)
+})
+```
+
+Build the content first, then the zone, then add the zone to the stage: a node that is already on the stage or in a group is an error. The zone is wide enough for its label. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the label, so nothing crosses the label, also over a `fill`. `zone.frame`, `zone.caption` (the label), `zone.backdrop` (the fill), and `zone.content` are the parts, and `zone.box` is the border.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
