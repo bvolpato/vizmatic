@@ -138,6 +138,30 @@ const ART = {
         box(6, 6, 12, 12, 2), box(9.5, 9.5, 5, 5, 1, true),
         ...[9, 12, 15].flatMap((at) => [stroke(`M${at} 2.8V6`), stroke(`M${at} 18V21.2`), stroke(`M2.8 ${at}H6`), stroke(`M18 ${at}H21.2`)]),
     ],
+    // Machines
+    vm: () => [
+        { path: rectPath(3, 3, 18, 18, 3.2), paint: 'line', dash: [1.6, 2.4] },
+        box(7, 7.3, 10, 4, 1.2), box(7, 12.7, 10, 4, 1.2), disc(9.3, 9.3, 0.85, true), disc(9.3, 14.7, 0.85, true),
+    ],
+    process: () => [box(3, 4.5, 18, 15, 2.2), stroke('M3 9.2H21'), disc(6.2, 6.9, 0.9, true), disc(9, 6.9, 0.9, true), stroke('M7 13H13'), stroke('M7 16H16')],
+    kernel: () => [stroke('M12 3 19.8 7.5V16.5L12 21 4.2 16.5V7.5Z'), disc(12, 12, 3, true)],
+    memory: () => [
+        box(2.5, 6.5, 19, 9.5, 1.6), ...[5.4, 9.5, 13.6, 17.7].map((x) => slab(x - 1.2, 9, 2.4, 4.4, 0.6, true)),
+        ...[5, 8.5, 12, 15.5, 19].map((x) => stroke(`M${x} 16V18.8`)),
+    ],
+    disk: () => [box(3, 3.5, 18, 17, 2.4), ring(12, 10, 4.2), disc(12, 10, 1.1, true), stroke('M6.5 17H11.5'), disc(17, 17, 1, true)],
+    nic: () => [box(3, 5, 18, 14, 2.2), stroke('M7.5 15V10.5H10V8.5H14V10.5H16.5V15Z', true)],
+    network: () => [ring(12, 12, 9), { path: arcPath(12, 12, 4, 9, 0, Math.PI * 2), paint: 'line' }, stroke('M3 12H21', true)],
+    snapshot: () => [stroke('M5.5 7H8L9.6 4.5H14.4L16 7H18.5A2.5 2.5 0 0 1 21 9.5V17A2.5 2.5 0 0 1 18.5 19.5H5.5A2.5 2.5 0 0 1 3 17V9.5A2.5 2.5 0 0 1 5.5 7Z'), ring(12, 13, 3.6, true)],
+    clone: () => [box(8.5, 3, 12.5, 12.5, 2.4), box(3, 8.5, 12.5, 12.5, 2.4, true)],
+    jail: () => [box(4, 3.5, 16, 17, 2.2), stroke('M8 3.5V20.5', true), stroke('M12 3.5V20.5', true), stroke('M16 3.5V20.5', true)],
+    wall: () => [
+        box(3, 5, 18, 14, 1.4), stroke('M3 9.7H21'), stroke('M3 14.3H21'),
+        ...['M9 5V9.7', 'M15 5V9.7', 'M6 9.7V14.3', 'M12 9.7V14.3', 'M18 9.7V14.3', 'M9 14.3V19', 'M15 14.3V19'].map((d) => stroke(d, true)),
+    ],
+    key: () => [ring(7.5, 12, 3.8), stroke('M11.3 12H21'), stroke('M17 12V15', true), stroke('M20.2 12V14.2', true)],
+    stopwatch: () => [ring(12, 13.5, 7.6), stroke('M10 2.8H14'), stroke('M12 2.8V5.9'), stroke('M12 13.5V9.4', true), stroke('M12 13.5 14.6 15.2', true)],
+    bolt: () => [solid('M13.2 2.5 5.5 13.6H11L9.9 21.5 18.5 10H12.6Z', true)],
     // Models
     model: () => [
         ...NET_IN.flatMap((a) => NET_MID.map((b): Mark => ({ path: polyPath([a, b]), paint: 'thin' }))),
