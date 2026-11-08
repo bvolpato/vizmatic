@@ -1,1 +1,1 @@
-import{_a as e,lb as a,wb as o}from"../chunk-Q2LYLPQT.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var i=a({fps:30},t=>{let r=t.add(o("careful",{font:"text-serif",size:300,color:"red"}));t.wait(.3),t.play(e(r,{angle:.12})),t.wait(.6)});export{i as default};
+import{_a as e,lb as a,wb as o}from"../chunk-2RD5C2IW.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var i=a({fps:30},t=>{let r=t.add(o("careful",{font:"text-serif",size:300,color:"red"}));t.wait(.3),t.play(e(r,{angle:.12})),t.wait(.6)});export{i as default};
