@@ -1,7 +1,7 @@
 import { existsSync } from 'fs'
 import { mkdir, stat, writeFile } from 'fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
-import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, type Quality } from './stage/export'
+import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSheet, renderFilmSvg, renderFilmVideo, type Quality } from './stage/export'
 import { checkFilm, type FilmCheckOptions, type FilmCheckReport } from './stage/check'
 import { LOOKS, type LookName } from './stage/look'
 import { FILM_TEMPLATES } from './stage/templates'
@@ -27,6 +27,12 @@ export interface FilmArgs {
     from?: number
     to?: number
     frames: number[]
+    /** Write stills at this interval, in seconds, across the film or its range. */
+    every?: number
+    /** Join the stills into contact sheets, in place of one file for each. */
+    sheet: boolean
+    /** Tiles in a row of a contact sheet. */
+    columns?: number
     poster: boolean
     formats: FilmFormat[]
     workers?: number
@@ -44,6 +50,10 @@ export interface FilmOutputRecord {
     height: number
     bytes: number
     time?: number
+    /** For a contact sheet: the time of each tile, in reading order. */
+    times?: number[]
+    columns?: number
+    rows?: number
     frameCount?: number
     fps?: number
     duration?: number
@@ -113,7 +123,7 @@ function parseRange(value: string): { from?: number; to?: number } {
 
 export function parseFilmArgs(argv: readonly string[]): FilmArgs {
     const args: FilmArgs = {
-        inputs: [], outDir: 'dist/films', looks: [], quality: 'standard', frames: [], poster: false, formats: [], json: false,
+        inputs: [], outDir: 'dist/films', looks: [], quality: 'standard', frames: [], sheet: false, poster: false, formats: [], json: false,
     }
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i]!
@@ -149,6 +159,9 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
                 }
                 break
             }
+            case '--every': args.every = positiveNumber(requireValue(argv, i++, arg), arg); break
+            case '--sheet': args.sheet = true; break
+            case '--columns': args.columns = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--format': {
                 for (const part of requireValue(argv, i++, arg).split(',')) {
                     const format = part.trim() as FilmFormat
@@ -163,6 +176,8 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
         }
     }
     if (args.inputs.length === 0) throw new Error('vizmatic film needs a film file, such as: vizmatic film ./intro.ts --out dist/films')
+    if (args.every !== undefined && args.frames.length > 0) throw new Error('Use --frame or --every, not both: --frame lists times, and --every samples the film at an interval.')
+    if (args.columns !== undefined && !args.sheet) throw new Error('--columns sets the width of a contact sheet, so it needs --sheet.')
     return args
 }
 
@@ -234,6 +249,28 @@ function frameStamp(time: number): string {
     return `t${time.toFixed(3).padStart(7, '0')}`
 }
 
+/** Rows of one contact sheet. A longer list of times continues on the next sheet. */
+const SHEET_ROWS = 6
+/** Tiles of a contact sheet when no times and no interval are given. */
+const SHEET_DEFAULT_TILES = 12
+
+/** The times of the stills: the ones listed, or samples of the film or its range. */
+function stillTimes(compiled: CompiledFilm, args: FilmArgs): number[] {
+    if (args.frames.length > 0) return args.frames
+    if (args.every === undefined && !args.sheet) return []
+    const from = Math.max(0, args.from ?? 0), to = Math.min(compiled.duration, args.to ?? compiled.duration)
+    if (!(to > from)) throw new Error(`The range ${from}:${to} is empty. The film is ${compiled.duration.toFixed(2)} seconds long.`)
+    const times: number[] = []
+    if (args.every !== undefined) {
+        // The first still is at the start of the range. The last moment of the film is often a fade, so it is not sampled.
+        for (let index = 0; from + index * args.every < to - 1e-9; index++) times.push(Math.round((from + index * args.every) * 1000) / 1000)
+        return times
+    }
+    // A sheet with no times: evenly spaced moments, each in the middle of its share of the film.
+    for (let index = 0; index < SHEET_DEFAULT_TILES; index++) times.push(Math.round((from + (index + 0.5) * (to - from) / SHEET_DEFAULT_TILES) * 1000) / 1000)
+    return times
+}
+
 async function renderOneLook(
     compiled: CompiledFilm,
     name: string,
@@ -254,8 +291,21 @@ async function renderOneLook(
     const movieFormats = args.formats.filter((format): format is 'mp4' | 'webm' | 'gif' => format === 'mp4' || format === 'webm' || format === 'gif')
 
     const stills: { time: number; suffix: string; formats: readonly ('png' | 'svg')[] }[] = []
-    for (const time of args.frames) stills.push({ time, suffix: `_${frameStamp(time)}`, formats: stillFormats.length ? stillFormats : ['png'] })
-    if (args.frames.length === 0 && (args.poster || stillFormats.length > 0)) {
+    const times = stillTimes(compiled, args)
+    if (args.sheet) {
+        const columns = args.columns ?? (times.length <= 9 ? 3 : 4), perSheet = columns * SHEET_ROWS
+        const pages = Math.ceil(times.length / perSheet)
+        for (let page = 0; page < pages; page++) {
+            const suffix = pages > 1 ? `_sheet_${String(page + 1).padStart(String(pages).length, '0')}` : '_sheet'
+            const written = await renderFilmSheet(compiled, times.slice(page * perSheet, (page + 1) * perSheet), join(args.outDir, `${stem}${suffix}.png`), { width: args.width, columns, workers: args.workers })
+            const bytes = (await stat(written.outputPath)).size
+            outputs.push({ format: 'png', path: shown(written.outputPath), look, width: written.width, height: written.height, bytes, times: written.times, columns: written.columns, rows: written.rows })
+            say(`rendered ${shown(written.outputPath)} (${written.times.length} frames from ${written.times[0]!.toFixed(2)}s to ${written.times[written.times.length - 1]!.toFixed(2)}s, ${written.width}x${written.height}, ${formatBytes(bytes)})`)
+        }
+    } else {
+        for (const time of times) stills.push({ time, suffix: `_${frameStamp(time)}`, formats: stillFormats.length ? stillFormats : ['png'] })
+    }
+    if (times.length === 0 && (args.poster || stillFormats.length > 0)) {
         stills.push({ time: await posterTime(compiled), suffix: '', formats: stillFormats.length ? stillFormats : ['png'] })
     } else if (args.poster) {
         stills.push({ time: await posterTime(compiled), suffix: '', formats: ['png'] })
@@ -303,7 +353,7 @@ async function renderOneLook(
 /** Render films for every requested look and format, then write a manifest. */
 export async function runFilmCommand(args: FilmArgs, files: readonly string[], stems: Map<string, string>, load: FilmLoader): Promise<void> {
     if (files.length === 0) throw new Error('No film files were found.')
-    if (args.formats.length === 0 && args.frames.length === 0) args.formats = ['mp4']
+    if (args.formats.length === 0 && args.frames.length === 0 && args.every === undefined && !args.sheet) args.formats = ['mp4']
     const say = (line: string) => {
         if (!args.json) console.log(line)
     }

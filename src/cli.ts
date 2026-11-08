@@ -181,8 +181,9 @@ function usageText() {
   vizmatic preview <file> [--port <n>] [--open]
   vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
-                [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--poster]
-                [--workers <n>] [--audio <file>] [--background <color|none>] [--ffmpeg <path>] [--json]
+                [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
+                [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--background <color|none>]
+                [--ffmpeg <path>] [--json]
   vizmatic looks [--json]
   vizmatic objects [--json]
 
@@ -203,6 +204,7 @@ Examples:
   vizmatic preview intro.ts
   vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
   vizmatic film intro.ts --frame 2.5,7 --width 1280
+  vizmatic film intro.ts --every 5 --sheet --width 480
   vizmatic examples/attention-head.tsx --out dist/frames --theme dark,light
   vizmatic ./frame.tsx --out ./dist/frames --theme dark
   vizmatic ./frame.tsx --out ./dist/frames --theme light --background theme

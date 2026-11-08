@@ -41,6 +41,15 @@ A film is authored in stage units, so `--width` changes only the pixel count. MP
 npx vizmatic film my-film.ts --frame 2.5,7 --width 1280
 ```
 
+`--every` samples the film at an interval, in place of a list of times. `--sheet` joins the stills into one PNG, a contact sheet, with the time under each tile. With `--sheet`, `--width` is the width of one tile and defaults to 480. A sheet has up to 6 rows, and a longer list of times continues on the next sheet.
+
+```bash
+npx vizmatic film my-film.ts --every 5 --sheet --columns 4
+npx vizmatic film my-film.ts --range 30:60 --every 1 --sheet
+```
+
+In code, `renderFilmSheet(film, times, path, { width, columns })` from `vizmatic/stage/export` writes one sheet.
+
 ## SVG
 
 A frame is a list of vector paths, so it exports as standalone SVG with no fonts needed.

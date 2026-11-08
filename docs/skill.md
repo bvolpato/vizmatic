@@ -34,6 +34,10 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
    ```bash
    npx vizmatic film intro.ts --frame 2,5.5,9,12 --width 1280 --out stills
    ```
+   To read a whole film in a few images, add `--sheet`. It joins the stills into contact sheets, with the time under each tile. `--every 5` samples the film every 5 seconds in place of a list of times.
+   ```bash
+   npx vizmatic film intro.ts --every 5 --sheet --out stills
+   ```
 5. Export when the stills are right.
    ```bash
    npx vizmatic film intro.ts --out dist/films --quality high
