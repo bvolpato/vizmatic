@@ -140,6 +140,16 @@ s.add(tagTrack([
 ], { until: 96 }).at(-912, -490))
 ```
 
+A grid of cells that change state: pages of memory, blocks of a disk, the hosts of a fleet. Do not draw the cells by hand. `stateGrid` keeps the state of each cell, sweeps a change across the cells, and counts them. `PAGE_STATES` has the states of memory pages, and `states` takes your own:
+
+```ts
+const pages = s.add(stateGrid({ columns: 16, rows: 8, cell: 56, initial: 'absent' }).at(0, -40))
+s.add(pages.legend(['absent', 'present', 'dirty'], { size: 32 }).at(pages.left[0], 300))
+s.play(pages.change((index) => index < 96, 'present'), { duration: 1.6 })
+s.play(pages.change([3, 4, 5, 40], 'dirty'))
+const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
@@ -147,6 +157,14 @@ const row = { width: 420, height: 400, captionLines: 2 }
 const logs = card({ title: 'Logs', figure: pictogram('logs', { size: 140 }), caption: 'one line per event', color: 'yellow', ...row })
 const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }), caption: 'the path of one request through the services', color: 'purple', ...row })
 s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
+```
+
+Values that differ by more than about a hundred times, such as 100 ns beside 10 ms. On a linear axis, all but the largest sit at zero. Give `dotChart` a log axis, and say on screen that the axis is logarithmic. The `xLabel` is the place:
+
+```ts
+const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
+const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read from a spinning disk', value: 10_000_000 }], { scale: 'log', format: time, xLabel: 'time, logarithmic' })
+s.play(chart.enter())
 ```
 
 3D:

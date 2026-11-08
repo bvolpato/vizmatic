@@ -147,6 +147,31 @@ export default film({ fps: 30 }, (s) => {
 
 As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels are outside it, at the left, and the ticks are under it. Without a `domain`, the axis covers a round range around the data. `ticks` is a count or a list of values. `chart.rows` holds one node per item, with its label, its interval and its dot, and `chart.p(value, row)` gives a place on the chart for a bracket or a note. A value outside the domain, a value outside its interval, an interval with one end, and a tick outside the domain are errors.
 
+`scale: 'log'` gives each power of ten the same room on the axis. Use it when the values differ by more than about a hundred times. On a linear axis, all of them but the largest sit at zero. On a log axis, a distance shows a ratio and not a difference, so say on screen that the axis is logarithmic. The `xLabel` is the place for that.
+
+```film paired label="Five times, from 100 ns to 10 ms, on a log axis"
+import { dotChart, film } from 'vizmatic/stage'
+
+// About how long one operation takes, in nanoseconds.
+const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
+
+export default film({ fps: 30 }, (s) => {
+    const chart = dotChart([
+        { label: 'system call', value: 100 },
+        { label: 'page fault', value: 1_000 },
+        { label: 'read from a fast drive', value: 20_000, color: 'teal' },
+        { label: 'round trip in a data center', value: 500_000, color: 'purple' },
+        { label: 'read from a spinning disk', value: 10_000_000, color: 'orange' },
+    ], { scale: 'log', width: 1000, labelSize: 40, format: time, xLabel: 'time for one operation, logarithmic' }).at(250, -40)
+    s.play(chart.enter(), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+On a log axis, the default domain is the powers of ten around the data: values from 80 to 12,000,000 give an axis from 10 to 100,000,000. The default ticks are the powers of ten in the domain. When there are more than eight, every second or third power gets a tick, and the two ends keep theirs. A number for `ticks` asks for about that many. A list of `ticks` and a `domain` are used as they are. The default format is short: 1, 10, 100, 1k, 10k, 1M, 1G, and 0.1, 0.01, 0.001 below one. Pass `format` for a unit, as in the example. `chart.p(value, row)` gives the place of a value on the log axis, and `chart.domain` holds the two ends as values.
+
+When the domain has three powers of ten or fewer, the grid also has fainter lines at 2 to 9 times each power. The axis must be wide enough to leave 12 px between the two closest lines. A log axis has no zero. A value, an interval end, a domain end, or a tick that is 0 or less is an error.
+
 `unitChart(groups)` draws one mark for each unit, so the viewer sees a count and does not only read it. Use it for a number of cases, runs, hosts, or files, up to about 2,000. A group has a `count`, a `color`, and a `label`.
 
 ```film paired label="330 runs arrive, take the color of their result, and gather into three blocks"
@@ -302,6 +327,34 @@ export default film({ fps: 30 }, (s) => {
 ```
 
 Place a track as any node. It does not know the size of the frame: `.at(-912, -490)` is the top left of a 1920 by 1080 frame. A track is pinned to the screen, so a move or a zoom of the camera does not move it. `tag.pill`, `tag.word`, and `tag.note` are the parts of a tag, and `tag.color(c)` recolors the border and the word.
+
+## State grids
+
+`stateGrid(options)` draws a grid of cells, and each cell is in a named state: the pages of a memory, the blocks of a disk, the bits of a bitmap, the hosts of a fleet. The state sets the look of a cell. `grid.change(which, state)` moves cells to another state, one after another in index order, so the viewer sees a sweep.
+
+```film paired label="Pages arrive, a sweep reads most of them into memory, and some of those get dirty"
+import { fadeIn, film, stateGrid } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const pages = stateGrid({ columns: 24, rows: 10, cell: 56, initial: 'absent' }).at(0, -40)
+    const key = pages.legend([['absent', 'not in memory'], ['present', 'in memory'], ['dirty', 'changed since the last write']], { size: 36, font: 'text-serif' })
+    key.at(pages.left[0], 370)
+    s.play(pages.enter(), fadeIn(key), { duration: 1.2 })
+    s.play(pages.change((index) => index < 168, 'present'), { duration: 1.6 })
+    s.play(pages.change((index, state) => state === 'present' && index % 5 === 2, 'dirty'), { duration: 1.2 })
+    s.wait(0.8)
+})
+```
+
+`columns` and `rows` set the shape, `cell` the side of one cell, and `gap` the room between two cells. `.at()` places the middle of the grid. With a `cell` and a `gap` that are whole numbers, the edges of the cells are on whole pixels. The cells are numbered row by row from the top left, so the cell of a row and a column has the index `row * columns + column`. `initial` gives the first states: one name for every cell, a list with one name per cell, or a function of the index. A grid of more than 5,000 cells is an error: let one cell stand for more than one unit, and say so in a label.
+
+A state has a `color`, a `fill`, and a `dash`. `fill` is the opacity of the fill: 0.7 by default, and 0 draws the outline only. `dash: true` draws a dashed outline, for a thing that is not there. Without `states`, the grid has the states of `PAGE_STATES`, for pages of memory: `absent`, `zero`, `present`, `dirty`, `shared`, `copied`, `file`, and `swapped`. For another subject, give your own record, such as `states: { healthy: { color: 'green' }, draining: { color: 'yellow', fill: 0.3 }, down: { color: 'red', fill: 0, dash: true } }`. Without `initial`, every cell starts in the first state of the record.
+
+In `grid.change(which, state)`, `which` is an index, a list of indexes, or a function of the index and the state of a cell. The grid calls the function when the film plays the change. So in `seq(grid.change([0, 1, 2], 'dirty'), grid.change((_, state) => state === 'dirty', 'copied'))`, the second change finds the cells that the first one made dirty. The fill, its opacity, and the outline fade to the new look, and the dashes switch half way. The whole change takes `duration`. By default, each cell takes three tenths of it, so the cells overlap and the sweep is smooth. `lag` sets the delay between two cells, as a fraction of the time of one cell. A cell that already has the state does not change and takes no time. An unknown state and an index outside the grid are errors where the film makes the change.
+
+`grid.stateOf(index)`, `grid.count(state)`, and `grid.indexes(state)` read the states after the changes that the film has played so far, so a label can show a true count, such as `${grid.count('dirty')} dirty pages`. `grid.enter()` brings the cells in row by row. `grid.cells` holds one node per cell, and `grid.p(index)` gives the middle of a cell in the coordinates of the grid, for an arrow or a note.
+
+`grid.legend(items)` makes a key: one sample cell and one name for each state, in one row. The key is a node of its own, so add it to the stage and place it. `.at(x, y)` places the left end of the row, and `y` is the middle line of the cells and the names. An item is the name of a state, or a `[state, label]` pair for a display name. Without `items`, the key lists the states that the grid has now, in the order of `states`. `size`, `gap`, and `font` set the look. The key does not wrap, so make two keys for many long names.
 
 ## Code and tokens
 

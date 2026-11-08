@@ -3,11 +3,11 @@ import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
-    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
-    neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    seq, sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
+    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
+    neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
+    seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
-    type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
+    type FilmDefinition, type Node, type PathOp, type Rgba, type Stage, type Vec, type Vec3,
 } from '../src/stage/index'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
@@ -1210,6 +1210,174 @@ describe('dot chart', () => {
             expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [1, 0] })).toThrow(/two different ends/)
         }))
     })
+
+    const spread = [{ label: 'small', value: 80 }, { label: 'large', value: 12_000_000 }]
+    // The x of each line of the grid, from left to right. Only these parts of the axis are as tall as the plot.
+    const gridLines = (chart: ReturnType<typeof dotChart>, height: number) => chart.axis.children.filter((node) => node.bounds().height > height * 0.9)
+    const gridAt = (chart: ReturnType<typeof dotChart>, height: number) => gridLines(chart, height).map((node) => node.bounds().x).sort((a, b) => a - b)
+
+    it('gives each power of ten the same room on a log axis', async () => {
+        await compileFilm(film(() => {
+            const items = [{ label: 'small', value: 80 }, { label: 'large', value: 1_200_000 }]
+            const chart = dotChart(items, { scale: 'log', width: 1200, height: 200, domain: [10, 1e7] })
+            expect(chart.domain).toEqual([10, 1e7])
+            expect(chart.p(10, 0)[0]).toBeCloseTo(-600, 6)
+            expect(chart.p(1e7, 0)[0]).toBeCloseTo(600, 6)
+            // Six powers of ten share 1200 px. On a linear axis, 100 would be 0.01 px from 10.
+            const powers = [10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((value) => chart.p(value, 0)[0])
+            powers.slice(1).forEach((x, index) => expect(x - powers[index]!).toBeCloseTo(200, 6))
+            // The middle of the axis is the geometric middle of its two ends, also when no end is a power of ten.
+            expect(chart.p(1e4, 0)[0]).toBeCloseTo(0, 6)
+            const odd = dotChart([{ label: 'a', value: 40 }], { scale: 'log', width: 1200, domain: [2, 800] })
+            expect(odd.p(40, 0)[0]).toBeCloseTo(0, 6)
+            expect(middle(odd.dots[0]!)[0]).toBeCloseTo(0, 6)
+            chart.dots.forEach((mark, row) => expect(middle(mark)[0]).toBeCloseTo(chart.p(items[row]!.value, row)[0], 6))
+            // The rows are placed as on a linear axis.
+            expect(chart.p(100, 1)[1]).toBeCloseTo(50, 6)
+        }))
+    })
+
+    it('takes its default log axis from the powers of ten around the data', async () => {
+        await compileFilm(film(() => {
+            const wide = dotChart(spread, { scale: 'log' })
+            expect(wide.domain).toEqual([10, 100_000_000])
+            expect(words(wide)).toEqual(['10', '100', '1k', '10k', '100k', '1M', '10M', '100M'])
+            // Data inside one power of ten: the two powers around it are the ends, and the only ticks.
+            const narrow = dotChart([{ label: 'a', value: 2 }, { label: 'b', value: 8.5 }], { scale: 'log' })
+            expect(narrow.domain).toEqual([1, 10])
+            expect(words(narrow)).toEqual(['1', '10'])
+            const below = dotChart([{ label: 'a', value: 0.004 }, { label: 'b', value: 0.5 }], { scale: 'log' })
+            expect(below.domain).toEqual([0.001, 1])
+            expect(words(below)).toEqual(['0.001', '0.01', '0.1', '1'])
+            // A value on a power of ten is an end of the axis. One value alone still gets a whole power.
+            expect(dotChart([{ label: 'a', value: 100 }, { label: 'b', value: 1000 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            expect(dotChart([{ label: 'a', value: 100 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            // An interval counts as data.
+            expect(dotChart([{ label: 'a', value: 50, low: 5, high: 500 }], { scale: 'log' }).domain).toEqual([1, 1000])
+            // A value next to a power of ten is inside the axis, though its logarithm rounds to a whole number.
+            expect(dotChart([{ label: 'a', value: 999.9999999999999 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            expect(dotChart([{ label: 'a', value: 5 }, { label: 'b', value: 1000.0000000000001 }], { scale: 'log' }).domain).toEqual([1, 10_000])
+        }))
+    })
+
+    it('names fewer powers of ten when there are more than eight, and keeps the two ends', async () => {
+        await compileFilm(film(() => {
+            const over = (most: number, options = {}) => words(dotChart([{ label: 'a', value: 3 }, { label: 'b', value: most }], { scale: 'log', ...options }))
+            // Eight powers fit. With nine, every second one has a name.
+            expect(over(7e6)).toEqual(['1', '10', '100', '1k', '10k', '100k', '1M', '10M'])
+            expect(over(7e7)).toEqual(['1', '100', '10k', '1M', '100M'])
+            expect(over(7e11)).toEqual(['1', '100', '10k', '1M', '100M', '10G', '1T'])
+            // No step of two reaches both ends of nine powers. A step of three does.
+            expect(over(7e8)).toEqual(['1', '1k', '1M', '1G'])
+            // No step reaches both ends of eleven powers. The last end keeps its name, and 10G, one power
+            // before it, has none.
+            expect(over(7e10)).toEqual(['1', '100', '10k', '1M', '100M', '100G'])
+            // With seventeen, every third one has a name. 1e15 is two powers before the end, so it keeps its name.
+            expect(over(7e16)).toEqual(['1', '1k', '1M', '1G', '1T', '1e15', '1e17'])
+            // A number asks for about that many.
+            expect(over(7e11, { ticks: 4 })).toEqual(['1', '10k', '100M', '1T'])
+            expect(over(7e5, { ticks: 4 })).toEqual(['1', '100', '10k', '1M'])
+            expect(over(7e6, { ticks: 4 })).toEqual(['1', '100', '10k', '10M'])
+            expect(over(7e5, { ticks: 2 })).toEqual(['1', '1M'])
+        }))
+    })
+
+    it('writes the ticks of a log axis in a short form, or with the format of the film', async () => {
+        await compileFilm(film(() => {
+            const powers = [0.001, 0.01, 0.1, 1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]
+            expect(words(dotChart(spread, { scale: 'log', ticks: powers }))).toEqual(['0.001', '0.01', '0.1', '1', '10', '100', '1k', '10k', '100k', '1M', '10M', '100M', '1G'])
+            expect(words(dotChart(spread, { scale: 'log', ticks: [0.05, 2500, 1_500_000, 1e12, 1e-6] }))).toEqual(['0.05', '2.5k', '1.5M', '1T', '1e-6'])
+            expect(words(dotChart(spread, { scale: 'log', ticks: [100, 1e6], format: (value) => `${value / 1000} µs` }))).toEqual(['0.1 µs', '1000 µs'])
+            // A linear axis keeps its own form.
+            expect(words(dotChart(spread, { ticks: [0, 6_000_000, 12_000_000] }))).toEqual(['0', '6,000,000', '12,000,000'])
+        }))
+    })
+
+    it('draws an interval on a log axis from its low end to its high end, with the dot between them', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart([{ label: 'a', value: 100, low: 10, high: 10_000 }], { scale: 'log', width: 900, domain: [1, 1e6] })
+            const interval = chart.intervals[0]!.bounds()
+            // Each power of ten has 150 px. The dot is one power over the low end and two under the high end.
+            expect(interval.x).toBeCloseTo(-300, 6)
+            expect(interval.x + interval.width).toBeCloseTo(150, 6)
+            expect(middle(chart.dots[0]!)[0]).toBeCloseTo(-150, 6)
+        }))
+    })
+
+    it('uses a given domain and given ticks on a log axis as they are', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart(spread, { scale: 'log', width: 1000, height: 200, domain: [50, 20_000_000], ticks: [50, 200, 1000, 20_000_000] })
+            expect(chart.domain).toEqual([50, 20_000_000])
+            expect(words(chart)).toEqual(['50', '200', '1k', '20M'])
+            // Each tick has a line of the grid at its place on the log axis.
+            const places = gridAt(chart, 200)
+            expect(places).toHaveLength(4)
+            ;[50, 200, 1000, 20_000_000].forEach((tick, index) => expect(places[index]).toBeCloseTo(chart.p(tick, 0)[0], 6))
+            expect(places[0]).toBeCloseTo(-500, 6)
+            expect(places[3]).toBeCloseTo(500, 6)
+            // With a domain and no ticks, the ticks are the powers of ten inside the domain.
+            expect(words(dotChart(spread, { scale: 'log', domain: [50, 20_000_000] }))).toEqual(['100', '1k', '10k', '100k', '1M', '10M'])
+            // With ticks and no domain, the axis runs from the first tick to the last, and holds the data.
+            expect(dotChart(spread, { scale: 'log', ticks: [100, 1e4, 1e6] }).domain).toEqual([80, 12_000_000])
+            // A domain with one power of ten inside it gets 1, 2 and 5 times each power.
+            expect(words(dotChart([{ label: 'a', value: 3 }], { scale: 'log', domain: [2, 50] }))).toEqual(['2', '5', '10', '20', '50'])
+            // A domain with none of those inside it gets round values, as a linear axis does.
+            expect(words(dotChart([{ label: 'a', value: 33 }], { scale: 'log', domain: [30, 45] }))).toEqual(['30', '32', '34', '36', '38', '40', '42', '44'])
+            expect(() => dotChart(spread, { scale: 'log', domain: [100, 1e9] })).toThrow(/80 is outside the domain 100 to 1000000000/)
+            expect(() => dotChart(spread, { scale: 'log', domain: [10, 1e9], ticks: [1, 100] })).toThrow(/the tick 1 is outside the domain/)
+        }))
+    })
+
+    it('draws fainter lines inside each power of ten, on a log axis that is short and wide enough', async () => {
+        await compileFilm(film(() => {
+            const one = [{ label: 'a', value: 2 }, { label: 'b', value: 8.5 }]
+            const three = [{ label: 'a', value: 2 }, { label: 'b', value: 850 }]
+            const chart = dotChart(one, { scale: 'log', width: 900, height: 200 })
+            // One power of ten: a line at each of 1 to 10.
+            const places = gridAt(chart, 200)
+            expect(places).toHaveLength(10)
+            places.forEach((x, index) => expect(x).toBeCloseTo(chart.p(index + 1, 0)[0], 6))
+            // The lines at the two ticks are full. The eight between them are fainter.
+            const strength = gridLines(chart, 200).map((node) => node.get('opacity')).sort()
+            expect(strength.slice(8)).toEqual([1, 1])
+            expect(Math.max(...strength.slice(0, 8))).toBeLessThan(0.8)
+            // Three powers of ten on 900 px leave 13.7 px between the lines at 9 and 10 times a power.
+            expect(gridAt(dotChart(three, { scale: 'log', width: 900, height: 200 }), 200)).toHaveLength(28)
+            // On 700 px they would be 10.7 px apart, so only the ticks have a line. The same for four powers.
+            expect(gridAt(dotChart(three, { scale: 'log', width: 700, height: 200 }), 200)).toHaveLength(4)
+            expect(gridAt(dotChart([{ label: 'a', value: 2 }, { label: 'b', value: 8500 }], { scale: 'log', width: 4000, height: 200 }), 200)).toHaveLength(5)
+            // A tick at 2 or 5 times a power keeps its full line, and gets no second one.
+            const marked = dotChart(one, { scale: 'log', width: 900, height: 200, ticks: [1, 2, 5, 10] })
+            expect(gridAt(marked, 200)).toHaveLength(10)
+            expect(gridLines(marked, 200).filter((node) => node.get('opacity') === 1)).toHaveLength(4)
+            // In a domain of 2 to 50, the lines stop at 50: none at 60 to 90.
+            const cut = gridAt(dotChart([{ label: 'a', value: 3 }], { scale: 'log', width: 900, height: 200, domain: [2, 50] }), 200)
+            expect(cut).toHaveLength(13)
+            expect(cut[12]).toBeCloseTo(450, 6)
+            expect(gridAt(dotChart(one, { scale: 'log', width: 900, height: 200, grid: false }), 200)).toHaveLength(0)
+            // A linear axis has lines at its ticks only.
+            expect(gridAt(dotChart(one, { width: 900, height: 200, domain: [1, 10], ticks: [1, 10] }), 200)).toHaveLength(2)
+        }))
+    })
+
+    it('refuses a number that has no place on a log axis, and names it', async () => {
+        await compileFilm(film(() => {
+            expect(() => dotChart([{ label: 'idle', value: 0 }], { scale: 'log' })).toThrow(/the value of item 0 \("idle"\) is 0\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'ok', value: 5 }, { label: 'wide', value: 5, low: -1, high: 10 }], { scale: 'log' })).toThrow(/the low end of item 1 \("wide"\) is -1\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [0, 100] })).toThrow(/the domain starts at 0\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [0, 10] })).toThrow(/the tick 0 is not on a log axis\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [-5, 10] })).toThrow(/the tick -5 is not on a log axis/)
+            // Without a domain, a tick of 0 would be an end of the axis. The error still names the tick.
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', ticks: [0, 10] })).toThrow(/the tick 0 is not on a log axis/)
+            // A tick that is not a number gets the error of a linear axis.
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [NaN, 10] })).toThrow(/the tick NaN is outside the domain 1 to 100/)
+            // The same numbers are fine on a linear axis.
+            expect(dotChart([{ label: 'idle', value: 0 }, { label: 'wide', value: 5, low: -1, high: 10 }], { ticks: [0, 10] }).domain).toEqual([-1, 10])
+            const chart = dotChart([{ label: 'a', value: 5 }], { scale: 'log' })
+            expect(() => chart.p(0, 0)).toThrow(/0 has no place on a log axis/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'logarithmic' as 'log' })).toThrow(/scale is 'linear' or 'log', not "logarithmic"/)
+        }))
+    })
 })
 
 describe('unit chart', () => {
@@ -1530,6 +1698,448 @@ describe('tag', () => {
             const sharp = tagTrack([{ at: 1, word: 'A' }], { until: 2, fadeIn: 0, fadeOut: 0 })
             expect((sharp.draw!(1) as Node).get('opacity')).toBe(1)
             expect(sharp.draw!(2)).toBeNull()
+        }))
+    })
+})
+
+describe('state grid', () => {
+    type Grid = ReturnType<typeof stateGrid>
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] }
+    const look = (cell: Node) => ({ fill: cell.get('fill'), fillOpacity: cell.get('fillOpacity'), stroke: cell.get('stroke'), dashed: cell.get('dash') !== null })
+    /** The look of a state, read from a grid of one cell. Call it while a film is built. */
+    const lookOf = (state: string, options: Partial<Parameters<typeof stateGrid>[0]> = {}) => look(stateGrid({ columns: 1, rows: 1, ...options, initial: state }).cells[0]!)
+    const fills = (grid: Grid) => grid.cells.map((cell) => cell.get('fillOpacity'))
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const words = (key: Node) => key.children.map((entry) => (entry.children[1] as unknown as { source: string }).source)
+    const fleet = { healthy: { color: 'green' }, draining: { color: 'yellow', fill: 0.3 }, down: { color: 'red', fill: 0, dash: true } }
+
+    it('places its middle, puts each cell where p() says, and keeps the edges on whole pixels', async () => {
+        await compileFilm(film(() => {
+            const grid = stateGrid({ columns: 4, rows: 2, cell: 20, gap: 4 }).at(100, 50)
+            expect(grid.cells).toHaveLength(8)
+            expect([grid.columns, grid.rows, grid.size]).toEqual([4, 2, 8])
+            // 4 cells of 20 with 3 gaps of 4 are 92 wide, and 2 rows are 44 tall, around the place of the grid.
+            const box = grid.bounds()
+            expect([box.x, box.y, box.width, box.height]).toEqual([54, 28, 92, 44])
+            // The index is row * columns + column: cell 5 is in the second row, in the second column.
+            expect(grid.p(0)).toEqual([-36, -12])
+            expect(grid.p(5)).toEqual([-12, 12])
+            grid.cells.forEach((cell, index) => expect(middle(cell)).toEqual([100 + grid.p(index)[0], 50 + grid.p(index)[1]]))
+            // A grid that is 35 wide and 9 tall cannot have its middle and its edges on whole pixels. The edges win.
+            const odd = stateGrid({ columns: 3, rows: 1, cell: 9, gap: 4 })
+            for (const cell of odd.cells) {
+                const edges = cell.bounds()
+                expect([edges.x, edges.y]).toEqual([Math.round(edges.x), Math.round(edges.y)])
+            }
+            expect(Math.abs(middle(odd)[0])).toBe(0.5)
+            expect(Math.abs(middle(odd)[1])).toBe(0.5)
+            // The default cell is 28, and the default gap is 0.18 of the cell in whole pixels, 3 at least.
+            const plain = stateGrid({ columns: 2, rows: 1 })
+            expect(plain.cells[0]!.bounds().width).toBe(28)
+            expect(plain.p(1)[0] - plain.p(0)[0]).toBe(33)
+            const small = stateGrid({ columns: 2, rows: 1, cell: 8 })
+            expect(small.p(1)[0] - small.p(0)[0]).toBe(11)
+        }))
+    })
+
+    it('takes the first states from one name, a list, or a function of the index', async () => {
+        await compileFilm(film(() => {
+            const names = ['absent', 'zero', 'present', 'dirty', 'shared', 'copied']
+            expect(stateGrid({ columns: 3, rows: 2, initial: 'dirty' }).count('dirty')).toBe(6)
+            const listed = stateGrid({ columns: 3, rows: 2, initial: names })
+            expect(names.map((_, index) => listed.stateOf(index))).toEqual(names)
+            const computed = stateGrid({ columns: 3, rows: 2, initial: (index) => (index % 2 ? 'file' : 'swapped') })
+            expect(computed.indexes('file')).toEqual([1, 3, 5])
+            expect(computed.count('swapped')).toBe(3)
+            expect(computed.count('present')).toBe(0)
+            // Without `initial`, every cell has the first state of the record.
+            expect(stateGrid({ columns: 2, rows: 1 }).indexes('absent')).toEqual([0, 1])
+            expect(stateGrid({ columns: 2, rows: 1, states: fleet }).indexes('healthy')).toEqual([0, 1])
+        }))
+    })
+
+    it('gives a cell the color of its state for the fill and the outline, with the fill opacity and the dashes of the state', async () => {
+        let purple!: Rgba, faint!: Rgba
+        const compiled = await compile((s) => {
+            purple = parseColor('purple')
+            faint = parseColor('faint')
+            s.add(stateGrid({ columns: 3, rows: 1, initial: ['absent', 'present', 'dirty'] }))
+            s.wait(1)
+        })
+        const [absent, present, dirty] = paths(compiled, 0.5)
+        // A fill of 0 draws the outline only.
+        expect(absent!.fill).toBeNull()
+        expect(absent!.stroke).toEqual(faint)
+        expect(absent!.dash).not.toBeNull()
+        expect(present!.fill).toEqual(purple)
+        expect(present!.stroke).toEqual(purple)
+        expect(present!.fillAlpha).toBeCloseTo(0.7, 6)
+        expect(present!.strokeAlpha).toBe(1)
+        expect(present!.dash).toBeNull()
+        expect(dirty!.fillAlpha).toBeCloseTo(0.8, 6)
+    })
+
+    it('gives the eight states of memory pages their looks', async () => {
+        await compileFilm(film(() => {
+            const pages = {
+                absent: ['faint', 0, true], zero: ['dim', 0.25, false], present: ['purple', 0.7, false], dirty: ['orange', 0.8, false],
+                shared: ['teal', 0.6, false], copied: ['green', 0.8, false], file: ['purple', 0.3, false], swapped: ['red', 0.3, false],
+            } as const
+            expect(Object.keys(PAGE_STATES)).toEqual(Object.keys(pages))
+            const grid = stateGrid({ columns: 8, rows: 1, initial: Object.keys(pages) })
+            Object.values(pages).forEach(([color, fill, dashed], index) => {
+                expect(look(grid.cells[index]!)).toEqual({ fill: parseColor(color), fillOpacity: fill, stroke: parseColor(color), dashed })
+            })
+        }))
+    })
+
+    it('draws an outline that grows with the cell, from 1 to 3 pixels', async () => {
+        await compileFilm(film(() => {
+            const widths = [8, 28, 40, 200].map((cell) => stateGrid({ columns: 1, rows: 1, cell }).cells[0]!.get('strokeWidth'))
+            expect(widths).toEqual([1, expect.closeTo(1.54, 6), expect.closeTo(2.2, 6), 3])
+        }))
+    })
+
+    it('closes the dashes around a cell, with one dash centered on each corner', async () => {
+        await compileFilm(film(() => {
+            for (const side of [12, 28, 90]) {
+                const cell = stateGrid({ columns: 1, rows: 1, cell: side }).cells[0]!
+                const [dash, room] = cell.get('dash')!
+                // Sixteen dashes go around: four for each quarter, so the four corners look the same. The length
+                // of a rounded corner is not exact, so allow a thousandth of the outline.
+                expect(Math.abs(((dash! + room!) * 16) / pathLength(cell.get('path')!) - 1)).toBeLessThan(0.001)
+                expect(dash!).toBeGreaterThan(room!)
+                // The ends of a dash are flat, so a dash is as long as its pattern says.
+                expect(cell.get('cap')).toBe('butt')
+                // The outline starts where the top left corner ends. The middle of that corner is an eighth of a
+                // circle before it, and the middle of a dash is there.
+                const box = cell.bounds(), start = cell.get('path')![0]!.p[0]!
+                const radius = start - box.x
+                expect(radius).toBeCloseTo(side * 0.16, 6)
+                expect(cell.get('dashOffset') - (Math.PI / 4) * radius).toBeCloseTo(dash! / 2, 6)
+            }
+        }))
+    })
+
+    it('changes one cell, a list of cells, or the cells that a function picks', async () => {
+        let grid!: Grid
+        let present!: ReturnType<typeof look>, dirty!: ReturnType<typeof look>, file!: ReturnType<typeof look>, absent!: ReturnType<typeof look>
+        await compile((s) => {
+            [absent, present, dirty, file] = ['absent', 'present', 'dirty', 'file'].map((state) => lookOf(state)) as [typeof absent, typeof absent, typeof absent, typeof absent]
+            grid = s.add(stateGrid({ columns: 4, rows: 2, initial: 'absent' }))
+            s.play(grid.change(5, 'present'), { duration: 1 })
+            // A cell that the list names twice changes once.
+            s.play(grid.change([7, 1, 1, 0], 'dirty'), { duration: 1 })
+            s.play(grid.change((index, state) => state === 'absent' && index < 4, 'file'), { duration: 1 })
+        })
+        expect(grid.indexes('present')).toEqual([5])
+        expect(grid.indexes('dirty')).toEqual([0, 1, 7])
+        expect(grid.indexes('file')).toEqual([2, 3])
+        expect(grid.indexes('absent')).toEqual([4, 6])
+        // The cells have their new looks when each change ends, and not before it starts.
+        expect(at(1, () => look(grid.cells[5]!))).toEqual(present)
+        expect(at(1, () => look(grid.cells[7]!))).toEqual(absent)
+        expect(at(2, () => [0, 1, 7].map((index) => look(grid.cells[index]!)))).toEqual([dirty, dirty, dirty])
+        expect(at(2, () => look(grid.cells[2]!))).toEqual(absent)
+        expect(at(3, () => [2, 3].map((index) => look(grid.cells[index]!)))).toEqual([file, file])
+        expect(at(3, () => [4, 6].map((index) => look(grid.cells[index]!)))).toEqual([absent, absent])
+    })
+
+    it('fades the fill, its opacity and the outline to the new state, and switches the dashes half way', async () => {
+        let grid!: Grid
+        let absent!: ReturnType<typeof look>, present!: ReturnType<typeof look>
+        await compile((s) => {
+            absent = lookOf('absent')
+            present = lookOf('present')
+            grid = s.add(stateGrid({ columns: 1, rows: 1, initial: 'absent' }))
+            s.wait(1)
+            s.play(grid.change(0, 'present'), { duration: 2, ease: linear })
+            s.wait(1)
+        })
+        const cell = grid.cells[0]!
+        const mixed = (share: number) => mixColor(absent.stroke as Rgba, present.stroke as Rgba, share)
+        expect(at(1, () => look(cell))).toEqual(absent)
+        // A quarter of the way: the colors and the opacity are a quarter of the way, and the outline is still dashed.
+        expect(at(1.5, () => look(cell))).toEqual({ fill: mixed(0.25), fillOpacity: expect.closeTo(0.175, 6), stroke: mixed(0.25), dashed: true })
+        expect(at(1.99, () => cell.get('dash'))).not.toBeNull()
+        expect(at(2.01, () => cell.get('dash'))).toBeNull()
+        expect(at(2.5, () => look(cell))).toEqual({ fill: mixed(0.75), fillOpacity: expect.closeTo(0.525, 6), stroke: mixed(0.75), dashed: false })
+        expect(at(3, () => look(cell))).toEqual(present)
+        expect(at(4, () => look(cell))).toEqual(present)
+    })
+
+    it('brings the dashes back when a cell goes to a dashed state', async () => {
+        let grid!: Grid
+        let absent!: ReturnType<typeof look>
+        await compile((s) => {
+            absent = lookOf('absent')
+            grid = s.add(stateGrid({ columns: 1, rows: 1, initial: 'present' }))
+            s.play(grid.change(0, 'absent'), { duration: 1, ease: linear })
+        })
+        expect(at(0.49, () => grid.cells[0]!.get('dash'))).toBeNull()
+        expect(at(0.51, () => grid.cells[0]!.get('dash'))).toEqual(stateGrid({ columns: 1, rows: 1 }).cells[0]!.get('dash'))
+        expect(at(1, () => look(grid.cells[0]!))).toEqual(absent)
+    })
+
+    it('sweeps the cells in index order, whatever the order of the list, over the whole duration', async () => {
+        let grid!: Grid, listed!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 2, rows: 2, initial: 'absent' }))
+            listed = s.add(stateGrid({ columns: 2, rows: 2, initial: 'absent' }))
+            s.wait(1)
+            // With a lag of 1, each cell starts when the cell before it ends: four cells, one second each.
+            s.play(grid.change(() => true, 'present', { lag: 1 }), listed.change([3, 0, 2, 1], 'present', { lag: 1 }), { duration: 4, ease: linear })
+        })
+        for (const made of [grid, listed]) {
+            expect(at(1, () => fills(made))).toEqual([0, 0, 0, 0])
+            expect(at(1.5, () => fills(made))).toEqual([expect.closeTo(0.35, 6), 0, 0, 0])
+            expect(at(3.5, () => fills(made))).toEqual([0.7, 0.7, expect.closeTo(0.35, 6), 0])
+            expect(at(4.5, () => fills(made))).toEqual([0.7, 0.7, 0.7, expect.closeTo(0.35, 6)])
+            expect(at(5, () => fills(made))).toEqual([0.7, 0.7, 0.7, 0.7])
+        }
+    })
+
+    it('gives each cell three tenths of the time of a change by default, at every count', async () => {
+        const grids: Grid[] = []
+        await compile((s) => {
+            for (const columns of [8, 50]) grids.push(s.add(stateGrid({ columns, rows: 1, initial: 'absent' })))
+            s.play(...grids.map((grid) => grid.change(() => true, 'present')), { duration: 10, ease: linear })
+        })
+        for (const grid of grids) {
+            const first = grid.cells[0]!, last = grid.cells[grid.size - 1]!
+            // The first cell changes from 0 to 3 seconds, and the last one from 7 to 10.
+            expect(at(1.5, () => first.get('fillOpacity'))).toBeCloseTo(0.35, 6)
+            expect(at(3, () => first.get('fillOpacity'))).toBeCloseTo(0.7, 6)
+            expect(at(7, () => last.get('fillOpacity'))).toBe(0)
+            expect(at(8.5, () => last.get('fillOpacity'))).toBeCloseTo(0.35, 6)
+            expect(at(10, () => last.get('fillOpacity'))).toBeCloseTo(0.7, 6)
+        }
+    })
+
+    it('takes the duration and the ease of a change and of an entrance from their options', async () => {
+        await compileFilm(film(() => {
+            const grid = stateGrid({ columns: 2, rows: 2 })
+            expect(grid.change(0, 'dirty').duration).toBe(1)
+            expect(grid.change(0, 'dirty', { duration: 3, ease: linear })).toMatchObject({ duration: 3, ease: linear })
+            expect(grid.enter().duration).toBe(1.2)
+            expect(grid.enter({ duration: 2, ease: linear })).toMatchObject({ duration: 2, ease: linear })
+        }))
+    })
+
+    it('gives two cells half of the time each, with no pause between them', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 2, rows: 1, initial: 'absent' }))
+            s.play(grid.change(() => true, 'present'), { duration: 2, ease: linear })
+        })
+        expect(at(0.5, () => fills(grid))).toEqual([expect.closeTo(0.35, 6), 0])
+        expect(at(1, () => fills(grid))).toEqual([expect.closeTo(0.7, 6), 0])
+        expect(at(1.5, () => fills(grid))).toEqual([0.7, expect.closeTo(0.35, 6)])
+    })
+
+    it('counts the states after two changes in one sequence, where the second change sees what the first one left', async () => {
+        let grid!: Grid
+        let dirty!: ReturnType<typeof look>, copied!: ReturnType<typeof look>
+        await compile((s) => {
+            dirty = lookOf('dirty')
+            copied = lookOf('copied')
+            grid = s.add(stateGrid({ columns: 3, rows: 2, initial: 'absent' }))
+            const first = grid.change([0, 1, 2], 'dirty'), second = grid.change((_, state) => state === 'dirty', 'copied')
+            // A change takes effect when the film plays it, not when the film makes it.
+            expect(grid.count('dirty')).toBe(0)
+            s.play(seq(first, second), { duration: 2 })
+        })
+        expect(grid.count('copied')).toBe(3)
+        expect(grid.count('dirty')).toBe(0)
+        expect(grid.count('absent')).toBe(3)
+        expect([0, 1, 2, 3].map((index) => grid.stateOf(index))).toEqual(['copied', 'copied', 'copied', 'absent'])
+        // On the timeline, the three cells are dirty after the first half, and copied at the end.
+        expect(at(1, () => [0, 1, 2].map((index) => look(grid.cells[index]!)))).toEqual([dirty, dirty, dirty])
+        expect(at(2, () => [0, 1, 2].map((index) => look(grid.cells[index]!)))).toEqual([copied, copied, copied])
+    })
+
+    it('leaves a cell that already has the state alone, and gives it no part of the time', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 4, rows: 1, initial: ['present', 'absent', 'present', 'absent'] }))
+            s.play(grid.change([0, 1, 2, 3], 'present', { lag: 1 }), { duration: 2, ease: linear })
+            // A change that finds no cell to change does nothing.
+            s.play(grid.change(() => true, 'present'), { duration: 1 })
+        })
+        // Two cells change, so each has half of the time. With a part for each of the four, cell 1 would start at 0.5.
+        expect(at(0.5, () => fills(grid))).toEqual([0.7, expect.closeTo(0.35, 6), 0.7, 0])
+        expect(at(1.5, () => fills(grid))).toEqual([0.7, 0.7, 0.7, expect.closeTo(0.35, 6)])
+        expect(grid.count('present')).toBe(4)
+        expect(at(2.5, () => fills(grid))).toEqual([0.7, 0.7, 0.7, 0.7])
+    })
+
+    it('takes its own set of states', async () => {
+        let grid!: Grid
+        let down!: ReturnType<typeof look>
+        await compile((s) => {
+            down = lookOf('down', { states: fleet })
+            grid = s.add(stateGrid({ columns: 5, rows: 2, states: fleet, initial: (index) => (index === 3 ? 'draining' : 'healthy') }))
+            // A state without a fill has a fill of 0.7.
+            expect(look(grid.cells[0]!)).toEqual({ fill: parseColor('green'), fillOpacity: 0.7, stroke: parseColor('green'), dashed: false })
+            expect(grid.cells[3]!.get('fillOpacity')).toBe(0.3)
+            s.play(grid.change([3, 4], 'down'), { duration: 1 })
+            // The states of memory pages are not states of this grid.
+            expect(() => grid.change(0, 'present')).toThrow(/no state "present". The states are healthy, draining, down/)
+        })
+        expect([grid.count('healthy'), grid.count('draining'), grid.count('down')]).toEqual([8, 0, 2])
+        expect(at(1, () => look(grid.cells[4]!))).toEqual(down)
+        expect(down).toMatchObject({ fillOpacity: 0, dashed: true })
+    })
+
+    it('makes a legend that starts at its place, with each sample and its name on one middle line and the same room between every pair', async () => {
+        await compileFilm(film(() => {
+            const grid = stateGrid({ columns: 4, rows: 2, initial: 'absent' })
+            const key = grid.legend([['absent', 'not in memory'], 'present', ['dirty', 'DIRTY']], { size: 30, gap: 40 }).at(100, 50)
+            // The legend is a node of its own. The grid still holds its cells and nothing else.
+            expect(key.parent).toBeNull()
+            expect(grid.children).toHaveLength(8)
+            expect(words(key)).toEqual(['not in memory', 'present', 'DIRTY'])
+            const samples = key.children.map((entry) => entry.children[0]!.bounds()), names = key.children.map((entry) => entry.children[1]!.bounds())
+            expect(samples[0]!.x).toBeCloseTo(100, 6)
+            // A sample is a little smaller than the text, with an even side, so its top and bottom are on whole pixels.
+            for (const sample of samples) {
+                expect(sample.y + sample.height / 2).toBeCloseTo(50, 6)
+                expect([sample.width, sample.height]).toEqual([26, 26])
+            }
+            expect(key.children.map((entry) => entry.children[1]!.data['size'])).toEqual([30, 30, 30])
+            // Capitals are as tall as the line is meant for: their middle is the middle line of the samples.
+            expect(Math.abs(names[2]!.y + names[2]!.height / 2 - 50)).toBeLessThan(1)
+            // Every name has a part above the line and a part below it, and no name is far off the line.
+            for (const name of names) expect(Math.abs(name.y + name.height / 2 - 50)).toBeLessThan(30 * 0.15)
+            // The room is measured to the ink of a name: the same after each sample, and the same before the next one.
+            names.forEach((name, index) => {
+                expect(name.x - (samples[index]!.x + samples[index]!.width)).toBeCloseTo(30 * 0.45, 6)
+                if (index + 1 < samples.length) expect(samples[index + 1]!.x - (name.x + name.width)).toBeCloseTo(40, 6)
+            })
+            // The names are dim, so the cells of the grid stay the strongest marks.
+            expect(key.children[1]!.children[1]!.children[0]!.get('fill')).toEqual(parseColor('dim'))
+            // A sample has the look of a cell in that state.
+            const cells = key.children.map((entry) => look(entry.children[0]!))
+            expect(cells).toEqual([lookOf('absent'), lookOf('present'), lookOf('dirty')])
+            // The default size is 26, and the default gap is 1.3 of the size.
+            const plain = grid.legend(['absent', 'present']).children.map((entry) => entry.children.map((part) => part.bounds()))
+            expect(plain[1]![0]!.x - (plain[0]![1]!.x + plain[0]![1]!.width)).toBeCloseTo(26 * 1.3, 6)
+            expect(plain[0]![0]!.width).toBe(22)
+            expect(grid.legend(['absent']).children[0]!.children[1]!.data['size']).toBe(26)
+            // The names take the font of the legend.
+            expect(grid.legend(['absent'], { font: 'mono' }).children[0]!.children[1]!.bounds().width).toBeGreaterThan(plain[0]![1]!.width + 5)
+        }))
+    })
+
+    it('lists the states that the grid has now, in the order of the record, when the legend gets no list', async () => {
+        await compile((s) => {
+            const grid = s.add(stateGrid({ columns: 3, rows: 1, initial: ['dirty', 'absent', 'dirty'] }))
+            expect(words(grid.legend())).toEqual(['absent', 'dirty'])
+            s.play(grid.change(1, 'swapped'), { duration: 1 })
+            expect(words(grid.legend())).toEqual(['dirty', 'swapped'])
+            expect(words(grid.legend(['swapped', 'zero']))).toEqual(['swapped', 'zero'])
+        })
+    })
+
+    it('enters row by row, with nothing on screen at the start and every cell at the end', async () => {
+        let grid!: Grid
+        const compiled = await compile((s) => {
+            grid = stateGrid({ columns: 3, rows: 4, initial: 'present' })
+            s.wait(0.5)
+            s.play(grid.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        })
+        expect(compiled.frame(0.2).ops).toHaveLength(0)
+        // Four rows with a lag of 1: each row has half a second, one after the other. The cells of a row arrive together.
+        const rows = () => [0, 1, 2, 3].map((row) => [0, 1, 2].map((column) => shows(grid.cells[row * 3 + column]!)))
+        const half = expect.closeTo(0.5, 6)
+        expect(at(0.75, rows)).toEqual([[half, half, half], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        expect(at(1.75, rows)).toEqual([[1, 1, 1], [1, 1, 1], [half, half, half], [0, 0, 0]])
+        expect(at(2.6, rows)).toEqual([[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]])
+        expect(compiled.frame(2.6).ops).toHaveLength(12)
+    })
+
+    it('starts a row a quarter of the time of one row after the row before it, by default', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = stateGrid({ columns: 1, rows: 4, initial: 'present' })
+            // Four rows that start a quarter apart take 1.75 times the time of one row: one second for each row.
+            s.play(grid.enter(), { duration: 1.75, ease: linear })
+        })
+        expect(at(0.5, () => grid.cells.map(shows))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.25, 6), 0, 0])
+        expect(at(1.25, () => grid.cells.map(shows))).toEqual([1, 1, expect.closeTo(0.75, 6), expect.closeTo(0.5, 6)])
+    })
+
+    it('enters at its turn in a sequence, and stays in the group that holds it', async () => {
+        let grid!: Grid, outer!: Node
+        const compiled = await compile((s) => {
+            grid = stateGrid({ columns: 2, rows: 2, cell: 20, gap: 4, initial: 'present' })
+            outer = group(grid).at(300, 0)
+            s.wait(1)
+            s.play(seq(fadeIn(rect(50, 50)), grid.enter()), { duration: 2 })
+            s.wait(0.5)
+        })
+        // During the first half, the film draws the rectangle and no cell.
+        expect(compiled.frame(1.5).ops).toHaveLength(1)
+        expect(compiled.frame(3.2).ops).toHaveLength(5)
+        expect(grid.parent).toBe(outer)
+        expect(at(3.2, () => grid.cells[0]!.bounds().x)).toBe(300 - 22)
+    })
+
+    it('shows a grid that the film hid, when it enters', async () => {
+        const compiled = await compile((s) => {
+            const grid = s.add(stateGrid({ columns: 2, rows: 2, initial: 'present' }).hide())
+            s.wait(0.5)
+            s.play(grid.enter(), { duration: 1 })
+            s.wait(0.5)
+        })
+        expect(compiled.frame(0.3).ops).toHaveLength(0)
+        expect(compiled.frame(1.8).ops).toHaveLength(4)
+    })
+
+    it('gives a copy its own cells and its own states', async () => {
+        let grid!: Grid, copy!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 2, rows: 1, initial: 'absent' }))
+            copy = s.add(grid.clone().at(0, 100))
+            expect(copy.cells[0]).not.toBe(grid.cells[0])
+            expect(copy.children).toEqual(copy.cells)
+            s.play(copy.change(0, 'present'), { duration: 1 })
+        })
+        expect(copy.stateOf(0)).toBe('present')
+        expect(grid.stateOf(0)).toBe('absent')
+        expect(at(1, () => [fills(copy), fills(grid)])).toEqual([[0.7, 0], [0, 0]])
+    })
+
+    it('names a wrong size, state, list or index', async () => {
+        await compileFilm(film(() => {
+            expect(() => stateGrid({ columns: 0, rows: 2 })).toThrow(/columns is 0. Give a whole number, 1 or more/)
+            expect(() => stateGrid({ columns: 2, rows: 1.5 })).toThrow(/rows is 1.5. Give a whole number, 1 or more/)
+            expect(() => stateGrid({ columns: 100, rows: 51 })).toThrow(/100 by 51 is 5100 cells, and a grid draws 5000 at most/)
+            expect(stateGrid({ columns: 100, rows: 50 }).size).toBe(5000)
+            expect(() => stateGrid({ columns: 2, rows: 2, cell: 0 })).toThrow(/cell is the side/)
+            expect(() => stateGrid({ columns: 2, rows: 2, gap: -1 })).toThrow(/gap is the room/)
+            expect(() => stateGrid({ columns: 2, rows: 2, states: {} })).toThrow(/at least one state/)
+            expect(() => stateGrid({ columns: 2, rows: 2, states: { on: { color: 'green', fill: 1.5 } } })).toThrow(/the fill of the state "on" is 1.5. A fill is an opacity, 0 to 1/)
+            expect(() => stateGrid({ columns: 2, rows: 2, states: { on: { color: 'green', fill: -0.1 } } })).toThrow(/the fill of the state "on" is -0.1/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: 'missing' })).toThrow(/no state "missing". The states are absent, zero, present, dirty, shared, copied, file, swapped/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: () => 'gone' })).toThrow(/no state "gone"/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: ['absent', 'gone', 'absent', 'absent'] })).toThrow(/no state "gone"/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: ['absent', 'zero'] })).toThrow(/the initial list has a length of 2, and the number of cells is 4/)
+            const grid = stateGrid({ columns: 2, rows: 2 })
+            expect(() => grid.p(4)).toThrow(/no cell 4. The cells of this grid are 0 to 3/)
+            expect(() => grid.stateOf(-1)).toThrow(/no cell -1/)
+            // A change names its mistake when the film makes it, before the film plays it.
+            expect(() => grid.change(1.5, 'dirty')).toThrow(/no cell 1.5/)
+            expect(() => grid.change([0, 9], 'dirty')).toThrow(/no cell 9/)
+            expect(() => grid.change(0, 'drity')).toThrow(/no state "drity"/)
+            expect(() => grid.change(() => true, 'drity')).toThrow(/no state "drity"/)
+            expect(() => grid.count('drity')).toThrow(/no state "drity"/)
+            expect(() => grid.indexes('drity')).toThrow(/no state "drity"/)
+            expect(() => grid.legend(['drity'])).toThrow(/no state "drity"/)
+            expect(() => grid.legend([])).toThrow(/give the legend at least one state/)
+            expect(() => grid.legend(undefined, { size: 0 })).toThrow(/size of the legend/)
+            expect(() => grid.legend(undefined, { gap: -1 })).toThrow(/gap of the legend/)
         }))
     })
 })
