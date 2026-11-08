@@ -72,7 +72,7 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 
 `vizmatic check` samples the moments where the film comes to rest. It reports `film.off_canvas`, `film.text_edge`, `film.text_overlap`, `film.text_crossed`, and `film.missing_glyph`, each with times, a `box` in canvas pixels, and a `stage` center in authoring coordinates. Fix every error, then open the stills and look at them. `vizmatic preview intro.ts` opens a live player with a timeline for a person to review. The [Studio](https://bvolpato.github.io/vizmatic/studio.html) is a visual film editor in the browser for a person who wants to edit by hand.
 
-The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, and 0.2 seconds or more with nothing visible as `film.blank`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top <px>` sets where the content starts, so that a heading that stays up does not hide a blank.
+The check does not look at motion, so a crossfade where two sentences overlap and a blank gap between two pictures both pass it. Add `--motion` to inspect every frame: `npx vizmatic check intro.ts --motion --json`. It reports a problem that appears only in motion as a warning, and 0.2 seconds or more with nothing visible as `film.blank`. Judge each warning, because the check cannot tell a collision from one picture that replaces another. `--content-top <px>` sets where the content starts, so that a heading that stays up does not hide a blank. `--text-gap 0.3` also reports `film.text_crowded`: text that is nearer to a line or a shape than 0.3 of its font size, such as a caption that touches its figure.
 
 `--audio narration.wav` adds sound, padded or trimmed to the film's length, so hold until the voice ends. `s.caption(text, seconds)` writes a WebVTT file beside the video and draws nothing into the picture. MP4 output is H.264 with settings that QuickTime can play. To join a clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`.
 
@@ -648,6 +648,8 @@ npx vizmatic check intro.ts --look midnight,paper --json
 ```
 
 The check looks where the film comes to rest, so it misses a problem that lasts only while something moves. `--motion` also inspects every frame. It reports a problem that appears only in motion as a warning, because it cannot tell a collision from one picture that replaces another. It reports 0.2 seconds or more with nothing visible as `film.blank`. `--content-top <px>` sets the canvas y where the content starts, so that a heading that stays up does not count as content. `--text-margin <px>` sets how near text may come to an edge of the frame before the check reports `film.text_edge`. The default is 2% of the shorter side, and 0 turns the rule off. While the camera is zoomed, the check looks only at pinned text, because a zoom crops the rest on purpose.
+
+`--text-gap <part>` turns on one more rule, `film.text_crowded`, for text that has no room: it is nearer to a line or a shape than that part of its font size, or it is larger than the shape that it sits on. A caption that touches its figure and a label that is wider than its dot are two examples. `0.3` is a good value, and the rule never asks for more than 2% of the shorter side of the frame. It is off by default, because a plot may put a curve beside a label on purpose. The distance is measured to the letters. A label that an object such as `axes` places beside its own marks is not judged against those marks. Text in a `group`, a `card`, or a `zone` is judged.
 
 ```bash
 npx vizmatic check intro.ts --motion --content-top 200
@@ -2729,6 +2731,7 @@ export default film({ fps: 30 }, (s) => {
 - Telemetry: `series`, `chart`, `forecast`, `threshold`, `anomaly`, `logs`, `traces`, `bars`, `table`, `matrix`, `event`, `alert`.
 - Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
 - Systems: `service`, `database`, `queue`, `cloud`, `chip`.
+- Machines: `vm`, `process`, `kernel`, `memory`, `disk`, `nic`, `network`, `snapshot`, `clone`, `jail`, `wall`, `key`, `stopwatch`, `bolt`.
 - Models: `model`, `tokens`, `vector`, `agent`, `spark`.
 - Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
 - General: `document`, `code`, `gear`, `clock`, `user`, `search`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
