@@ -392,7 +392,8 @@ export async function renderRgbaVideo(
     args.push('-pix_fmt', 'yuv420p', ...COLOR_TAGS)
     if (options.audioPath) {
         if (codec === 'vp9') args.push('-c:a', 'libopus', '-b:a', '160k', '-ar', '48000', '-ac', '2')
-        else args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2')
+        // 384 kbit/s is what YouTube asks for in a stereo upload. A site encodes the sound again, so the file keeps more than a viewer needs.
+        else args.push('-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-ac', '2')
     }
     if (codec === 'h264') args.push('-movflags', '+faststart')
     args.push(tempPath)

@@ -147,6 +147,31 @@ export default film({ fps: 30 }, (s) => {
 
 As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels are outside it, at the left, and the ticks are under it. Without a `domain`, the axis covers a round range around the data. `ticks` is a count or a list of values. `chart.rows` holds one node per item, with its label, its interval and its dot, and `chart.p(value, row)` gives a place on the chart for a bracket or a note. A value outside the domain, a value outside its interval, an interval with one end, and a tick outside the domain are errors.
 
+`scale: 'log'` gives each power of ten the same room on the axis. Use it when the values differ by more than about a hundred times. On a linear axis, all of them but the largest sit at zero. On a log axis, a distance shows a ratio and not a difference, so say on screen that the axis is logarithmic. The `xLabel` is the place for that.
+
+```film paired label="Five times, from 100 ns to 10 ms, on a log axis"
+import { dotChart, film } from 'vizmatic/stage'
+
+// About how long one operation takes, in nanoseconds.
+const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
+
+export default film({ fps: 30 }, (s) => {
+    const chart = dotChart([
+        { label: 'system call', value: 100 },
+        { label: 'page fault', value: 1_000 },
+        { label: 'read from a fast drive', value: 20_000, color: 'teal' },
+        { label: 'round trip in a data center', value: 500_000, color: 'purple' },
+        { label: 'read from a spinning disk', value: 10_000_000, color: 'orange' },
+    ], { scale: 'log', width: 1000, labelSize: 40, format: time, xLabel: 'time for one operation, logarithmic' }).at(250, -40)
+    s.play(chart.enter(), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+On a log axis, the default domain is the powers of ten around the data: values from 80 to 12,000,000 give an axis from 10 to 100,000,000. The default ticks are the powers of ten in the domain. When there are more than eight, every second or third power gets a tick, and the two ends keep theirs. A number for `ticks` asks for about that many. A list of `ticks` and a `domain` are used as they are. The default format is short: 1, 10, 100, 1k, 10k, 1M, 1G, and 0.1, 0.01, 0.001 below one. Pass `format` for a unit, as in the example. `chart.p(value, row)` gives the place of a value on the log axis, and `chart.domain` holds the two ends as values.
+
+When the domain has three powers of ten or fewer, the grid also has fainter lines at 2 to 9 times each power. The axis must be wide enough to leave 12 px between the two closest lines. A log axis has no zero. A value, an interval end, a domain end, or a tick that is 0 or less is an error.
+
 `unitChart(groups)` draws one mark for each unit, so the viewer sees a count and does not only read it. Use it for a number of cases, runs, hosts, or files, up to about 2,000. A group has a `count`, a `color`, and a `label`.
 
 ```film paired label="330 runs arrive, take the color of their result, and gather into three blocks"
@@ -190,6 +215,95 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+## Lanes
+
+`lanes(names, events)` shows who runs when. Each actor has one lane, and time runs from left to right. A span is a bar: the lane works from `start` to `end`. A handoff is an arrow from one lane to another at a time. A mark is a dot at one instant on one lane. Use it for a system call, a VM exit, an interrupt, or a request that passes through several services.
+
+```film paired label="A VM exit, step by step: the guest, the kernel, and the monitor"
+import { film, lanes } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const flow = lanes(
+        [{ name: 'guest', color: 'red' }, { name: 'KVM', color: 'teal' }, { name: 'monitor', color: 'blue' }],
+        [
+            { lane: 'guest', start: 0, end: 30, label: 'runs' },
+            { from: 'guest', to: 'KVM', at: 30, label: 'VM exit' },
+            { lane: 'KVM', start: 30, end: 42 },
+            { from: 'KVM', to: 'monitor', at: 42, label: 'to user space' },
+            { lane: 'monitor', start: 42, end: 70, label: 'emulates the device' },
+            { from: 'monitor', to: 'KVM', at: 70, label: 'KVM_RUN' },
+            { lane: 'KVM', start: 70, end: 78 },
+            { from: 'KVM', to: 'guest', at: 78, label: 'VM entry' },
+            { lane: 'guest', start: 78, end: 100, label: 'runs', open: true },
+        ],
+        { width: 1400, size: 36, barHeight: 60 },
+    ).at(110, 0)
+    s.play(flow.enter(), { duration: 0.8 })
+    for (const time of [30, 42, 70, 78, 100]) {
+        s.play(flow.advance(time), { duration: 1.2 })
+        s.wait(0.4)
+    }
+    s.wait(0.8)
+})
+```
+
+`flow.enter()` brings the names and the lines of the lanes, and no event. `flow.advance(to)` moves a cursor from its time to `to`, and stops there. What the cursor passes appears. A span grows with the cursor: at every frame, the right end of a growing bar is at the cursor. A handoff draws its arrow when the cursor reaches it, and a mark shows its dot. A label arrives when its event is complete. A label inside a bar arrives when the bar starts to grow. All of it is over when the animation ends, so a narration can step through the sequence, one `advance` for each sentence. `flow.showAll()` is an advance to the end. `flow.time` is the time of the cursor. An advance to an earlier time is an error: the object has no rewind. The first advance shows the cursor. After that advance, `flow.cursor.hide()` takes it away. With the option `cursor: false`, the object draws no cursor at all, and the events still appear at their times.
+
+The cursor never goes back, and never passes the time of its advance. With an ease that bounces or passes its end, the cursor follows the furthest point that the ease has reached. The object shows an event only through `advance`. A part that the film shows by hand, such as `flow.events[3].show()`, does not move the cursor, the time, or a counter.
+
+A lane is a name, or `{ name, color }`. A span takes the color of its lane unless it has its own. An event names a lane by its name or by its index. A span that grows has no outline, and the outline comes when the span is complete. `open: true` is a span with no end: it never gets the outline, and it ends with an arrow head when it reaches the end of the domain.
+
+A solid span is a lane that runs. `idle: true` is a span where the lane waits: an outline of dashes with a faint fill, for a thread that sleeps while another lane works. `idle` and `open` can combine. On a handoff, `dashed: true` draws an arrow of dashes, for a message whose sender does not wait and runs on.
+
+The object places the labels. The label of a span is inside its bar, at the start, when it fits with room at both sides. Otherwise it is over the bar, from the left end of the bar. The label of a handoff is at the right of its arrow, between the two lanes, or at the left when the right has no room. The label of a mark is over its dot. No label may touch a bar, an arrow, a dot, or another label, and no label may leave the time area. The labels get their places in the order of time, so the order of the list changes nothing. When a label has no such place, `lanes()` throws, and names the two events that meet. Then use a wider `width`, a larger `pitch`, shorter labels, or times that are further apart.
+
+When the object cannot settle a case, the film can: an event takes `labelSide`. For a span, `'over'` and `'under'` are over and under the bar, and `'left'` and `'right'` are beside the bar, on the lane. A short span at the foot of an arrow has no room for a label over it, and `labelSide: 'under'` or `'right'` gives it one. For a handoff, `'left'` and `'right'` are the two sides of its arrow, and `'over'` and `'under'` are the two sides of the boundary that it crosses first. For a mark, the four sides are around its dot. A label with a `labelSide` has that place or none: when the place is taken, `lanes()` throws.
+
+Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
+
+With `ticks`, the object draws a time axis under the lanes, and one lane makes a chart of durations:
+
+```ts
+import { film, lanes } from 'vizmatic/stage'
+
+export default film((s) => {
+    const boot = lanes(['boot'], [
+        { lane: 0, start: 0, end: 8, label: 'VMM', color: 'purple' },
+        { lane: 0, start: 8, end: 20, label: 'load kernel', color: 'teal' },
+        { lane: 0, start: 20, end: 78, label: 'kernel init' },
+        { lane: 0, start: 78, end: 125, label: 'init', color: 'green' },
+    ], { ticks: [0, 25, 50, 75, 100, 125], format: (time) => `${time} ms`, axisLabel: 'time since the start of the VMM' })
+    s.play(boot.enter())
+    s.play(boot.showAll())
+})
+```
+
+`ticks` is a count or a list of values, and `format` writes a tick. Without `ticks`, no axis is drawn, for a sequence that is not to scale. An `axisLabel` without `ticks` draws the line of the axis and the label, and no tick: a line of time with a name and no scale. `domain` sets the times at the two ends. Without it, the domain is the range of the events.
+
+`boundaries` draws a line of dashes between two lanes that are neighbors, such as the line between user space and the kernel. Its `label` is after the right end of the line, outside the time area, as the names of the lanes are before the left end. A handoff crosses each boundary that is between its two lanes. The object knows this from the order of the lanes, so the film does not count. `flow.crossings(boundary)` gives the number of crossings up to the time of the cursor, by the index of the boundary or by its label. With `count: true`, the boundary shows that number after its label, and each handoff leaves a tick where its arrow passes the line. The number goes up when the cursor passes the handoff. A dashed handoff counts as any other.
+
+```ts
+import { film, lanes } from 'vizmatic/stage'
+
+export default film((s) => {
+    const flow = lanes(['user space', 'kernel'], [
+        { lane: 'user space', start: 0, end: 10 },
+        { from: 'user space', to: 'kernel', at: 10, label: 'read' },
+        { lane: 'kernel', start: 10, end: 30, label: 'copies' },
+        { from: 'kernel', to: 'user space', at: 30 },
+        { lane: 'user space', start: 30, end: 50, open: true },
+    ], { width: 1100, boundaries: [{ between: ['user space', 'kernel'], label: 'system call line', count: true }] })
+    s.play(flow.showAll())
+    const crossings = flow.crossings('system call line') // 2
+})
+```
+
+Two such objects side by side compare two designs by their crossings: ten against two. The label and the number of a boundary need room at the right of the object, so a handoff can be at any time, to the last end of the domain. The labels of all boundaries start at one x, and the numbers end at one x. The two lanes of a boundary are further apart, by 1.25 of the text size, for the line. The label of a handoff is then over the line or under it, beside the lane that the handoff leaves. `flow.boundaries` holds one node per boundary, and `flow.counters` the number of each boundary that counts, or null.
+
+`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, and `flow.marks` hold the same events by kind. An event has a `shape` (its bar, its arrow, or its dot), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), and an `edge` (the outline of an idle span, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
+
+The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+
 ## Pictograms
 
 `pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.
@@ -213,9 +327,11 @@ export default film({ fps: 30 }, (s) => {
 - Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
 - Systems: `service`, `database`, `queue`, `cloud`, `chip`.
 - Machines: `vm`, `process`, `kernel`, `memory`, `disk`, `nic`, `network`, `snapshot`, `clone`, `jail`, `wall`, `key`, `stopwatch`, `bolt`.
+- Hardware: `core`, `timer`, `firmware`, `irqchip`, `bus`, `drive`, `floppy`, `serial`, `keyboard`.
+- Kernel: `thread`, `interrupt`, `syscall`, `ring`, `page`, `pagetable`, `pin`.
 - Models: `model`, `tokens`, `vector`, `agent`, `spark`.
 - Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
-- General: `document`, `code`, `gear`, `clock`, `user`, `search`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
+- General: `document`, `code`, `gear`, `clock`, `user`, `search`, `filter`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
 
 Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
 
@@ -302,6 +418,34 @@ export default film({ fps: 30 }, (s) => {
 ```
 
 Place a track as any node. It does not know the size of the frame: `.at(-912, -490)` is the top left of a 1920 by 1080 frame. A track is pinned to the screen, so a move or a zoom of the camera does not move it. `tag.pill`, `tag.word`, and `tag.note` are the parts of a tag, and `tag.color(c)` recolors the border and the word.
+
+## State grids
+
+`stateGrid(options)` draws a grid of cells, and each cell is in a named state: the pages of a memory, the blocks of a disk, the bits of a bitmap, the hosts of a fleet. The state sets the look of a cell. `grid.change(which, state)` moves cells to another state, one after another in index order, so the viewer sees a sweep.
+
+```film paired label="Pages arrive, a sweep reads most of them into memory, and some of those get dirty"
+import { fadeIn, film, stateGrid } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const pages = stateGrid({ columns: 24, rows: 10, cell: 56, initial: 'absent' }).at(0, -40)
+    const key = pages.legend([['absent', 'not in memory'], ['present', 'in memory'], ['dirty', 'changed since the last write']], { size: 36, font: 'text-serif' })
+    key.at(pages.left[0], 370)
+    s.play(pages.enter(), fadeIn(key), { duration: 1.2 })
+    s.play(pages.change((index) => index < 168, 'present'), { duration: 1.6 })
+    s.play(pages.change((index, state) => state === 'present' && index % 5 === 2, 'dirty'), { duration: 1.2 })
+    s.wait(0.8)
+})
+```
+
+`columns` and `rows` set the shape, `cell` the side of one cell, and `gap` the room between two cells. `.at()` places the middle of the grid. With a `cell` and a `gap` that are whole numbers, the edges of the cells are on whole pixels. The cells are numbered row by row from the top left, so the cell of a row and a column has the index `row * columns + column`. `initial` gives the first states: one name for every cell, a list with one name per cell, or a function of the index. A grid of more than 5,000 cells is an error: let one cell stand for more than one unit, and say so in a label.
+
+A state has a `color`, a `fill`, and a `dash`. `fill` is the opacity of the fill: 0.7 by default, and 0 draws the outline only. `dash: true` draws a dashed outline, for a thing that is not there. Without `states`, the grid has the states of `PAGE_STATES`, for pages of memory: `absent`, `zero`, `present`, `dirty`, `shared`, `copied`, `file`, and `swapped`. For another subject, give your own record, such as `states: { healthy: { color: 'green' }, draining: { color: 'yellow', fill: 0.3 }, down: { color: 'red', fill: 0, dash: true } }`. Without `initial`, every cell starts in the first state of the record.
+
+In `grid.change(which, state)`, `which` is an index, a list of indexes, or a function of the index and the state of a cell. The grid calls the function when the film plays the change. So in `seq(grid.change([0, 1, 2], 'dirty'), grid.change((_, state) => state === 'dirty', 'copied'))`, the second change finds the cells that the first one made dirty. The fill, its opacity, and the outline fade to the new look, and the dashes switch half way. The whole change takes `duration`. By default, each cell takes three tenths of it, so the cells overlap and the sweep is smooth. `lag` sets the delay between two cells, as a fraction of the time of one cell. A cell that already has the state does not change and takes no time. An unknown state and an index outside the grid are errors where the film makes the change.
+
+`grid.stateOf(index)`, `grid.count(state)`, and `grid.indexes(state)` read the states after the changes that the film has played so far, so a label can show a true count, such as `${grid.count('dirty')} dirty pages`. `grid.enter()` brings the cells in row by row. `grid.cells` holds one node per cell, and `grid.p(index)` gives the middle of a cell in the coordinates of the grid, for an arrow or a note.
+
+`grid.legend(items)` makes a key: one sample cell and one name for each state, in one row. The key is a node of its own, so add it to the stage and place it. `.at(x, y)` places the left end of the row, and `y` is the middle line of the cells and the names. An item is the name of a state, or a `[state, label]` pair for a display name. Without `items`, the key lists the states that the grid has now, in the order of `states`. `size`, `gap`, and `font` set the look. The key does not wrap, so make two keys for many long names.
 
 ## Bit fields
 
