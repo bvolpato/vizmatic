@@ -1,1 +1,1 @@
-import{Ga as t,lb as e,yb as a}from"../chunk-7VQNE7EI.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var r=e({fps:30},i=>{let o=i.add(a("e^{i\\pi} + 1 = 0",{size:190}));i.play(t(o,{duration:2})),i.wait(1)});export{r as default};
+import{Ga as t,lb as e,yb as a}from"../chunk-Q2LYLPQT.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var r=e({fps:30},i=>{let o=i.add(a("e^{i\\pi} + 1 = 0",{size:190}));i.play(t(o,{duration:2})),i.wait(1)});export{r as default};
