@@ -175,25 +175,28 @@ Use a pictogram when a card or a legend needs a picture of a kind of thing. When
 
 ## Cards
 
-`card(options)` draws a box with a `title` at the top, a `figure` in the middle, and a `caption` at the bottom. All three are optional. The title and the caption sit at fixed distances from the border. The figure is centered in the space between them, and a figure that is too large is scaled down to fit. So the cards of a row share one layout whatever they hold: give them one `width` and one `height`.
+`card(options)` draws a box with a `title` at the top, a `figure` in the middle, and a `caption` at the bottom. All three are optional. The title and the caption sit at fixed distances from the border. The figure is centered in the space between them, and a figure that is too large is scaled down to fit. So the cards of a row share one layout whatever they hold: give them one `width`, one `height`, and one `captionLines`, which is the number of lines of the longest caption.
 
 ```film paired label="Three cards with one layout hold three different figures"
 import { card, fadeIn, film, group, lagged, pictogram, sparkline } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const values = Array.from({ length: 48 }, (_, i) => Math.sin(i / 5) + 0.4 * Math.sin(i / 1.7))
+    const row = { width: 500, height: 460, captionLines: 2, font: 'text-serif' } as const
     const cards = [
-        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', width: 500, height: 440 }),
-        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', width: 500, height: 440 }),
-        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', width: 500, height: 440 }),
+        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', ...row }),
+        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', ...row }),
+        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', ...row }),
     ]
-    s.add(group(...cards).arrange('right', 40).moveTo([0, 0]))
+    group(...cards).arrange('right', 40).moveTo([0, 0])
     s.play(lagged(cards.map((made) => fadeIn(made, { shift: [0, 24] })), { lag: 0.25 }), { duration: 1.6 })
     s.wait(0.8)
 })
 ```
 
-A title that is too wide is set in a smaller size, and a caption that is too wide wraps. Without a `height`, a card is as tall as its content. A `height` that leaves no room for the figure is an error, so a figure never runs into the text. `card.frame`, `card.title`, `card.figure`, and `card.caption` are the parts, and `card.figureBox` is the space that the figure may use.
+A caption that is too wide wraps, and a title that is too wide is set in a smaller size, down to 0.6 of `titleSize`. Without a `height`, a card is as tall as its content. Content that cannot fit is an error: a `height` with no room for the figure, a title that is too long, or a caption word that is wider than the card. So a figure never runs into the text. Give the figure to one card only, and before it is on the stage.
+
+`card.frame`, `card.title`, `card.figure`, and `card.caption` are the parts. `card.figureBox` is the space that the figure may use, in the coordinates of the card, where (0, 0) is its middle. `titleSize`, `captionSize`, `padding`, `font`, `color`, `captionColor`, `fill`, `radius`, and `borderWidth` set the look.
 
 ## Code and tokens
 
