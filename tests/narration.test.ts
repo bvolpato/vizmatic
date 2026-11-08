@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionLines, circle, compileFilm, fadeIn, film, image, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
+import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
 import { captionsToSrt, chapterMetadata } from '../src/video'
 
 const timing: NarrationTiming = {
@@ -58,6 +58,22 @@ describe('narration', () => {
             scene.on('page', () => s.play(fadeIn(circle(50)), { duration: 0.5 }), -0.2)
         }))
         expect(compiled.clips.some((clip) => Math.abs(clip.t0 - 4) < 1e-9 && Math.abs(clip.t1 - 4.5) < 1e-9)).toBe(true)
+    })
+
+    it('clears nodes and values just before a scene ends', async () => {
+        let ring!: ReturnType<typeof circle>, level!: ReturnType<Parameters<Parameters<typeof film>[1]>[0]['value']>
+        const compiled = await compileFilm(film({ fps: 10 }, (s) => {
+            const scene = narration(s, timing, { lead: 2 }).scene('intro')
+            ring = s.add(circle(50))
+            level = s.value(1)
+            // A dynamic drawing takes its opacity from the value, so a fade of nodes alone would leave it on screen.
+            s.add(dynamic(() => (level.value > 0.01 ? circle(20).opacity(level.value) : [])))
+            scene.clear([ring, level], 0.3, 0.2)
+        }))
+        const visible = (time: number) => compiled.frame(time).ops.filter((op) => op.kind === 'path' && Math.max((op as PathOp).fillAlpha, (op as PathOp).strokeAlpha) > 0.01).length
+        // The scene ends at 8 seconds. Both are on screen before the clear starts, and gone when it ends.
+        expect(visible(7.6)).toBe(2)
+        expect(visible(7.95)).toBe(0)
     })
 
     it('adds a chapter for each titled scene and a caption for each spoken line', async () => {

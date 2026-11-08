@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    arrayCells, attentionMatrix, axes, axes3d, barChart, callout, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
@@ -159,6 +159,42 @@ describe('morphs land exactly on their targets', () => {
         })
         expect(tokenize('const x = "s" // note').map((t) => t.kind).filter((k) => k !== 'space')).toEqual(['keyword', 'plain', 'punctuation', 'string', 'comment'])
         expect(paths(f, 1.1).length).toBe(two.chars.length + 1)
+    })
+
+    it('colors specification and proof languages, where a prime is not a quote', () => {
+        const kinds = (source: string, language: string) => tokenize(source, language).filter((t) => t.kind !== 'space').map((t) => [t.text, t.kind])
+        // TLA+: a prime marks the next state, `\in` is an operator word, and `\*` starts a comment.
+        expect(kinds("Expire == /\\ lease' = \"free\" \\* any time", 'tla')).toEqual([
+            ['Expire', 'type'], ['=', 'punctuation'], ['=', 'punctuation'], ['/', 'punctuation'], ['\\', 'punctuation'],
+            ['lease', 'plain'], ["'", 'punctuation'], ['=', 'punctuation'], ['"free"', 'string'], ['\\* any time', 'comment'],
+        ])
+        expect(kinds('\\E c \\in Clients : UNCHANGED vars', 'tla+').filter(([, kind]) => kind === 'keyword').map(([text]) => text)).toEqual(['\\E', '\\in', 'UNCHANGED'])
+        // A fairness prefix is a keyword, and the subscript after it is a name of its own.
+        expect(kinds('WF_vars(Next)', 'tla').slice(0, 2)).toEqual([['WF_', 'keyword'], ['vars', 'function']])
+        // A TLA+ block comment can end on a later line.
+        expect(tokenize('(* a note\nmore *) x', 'tla').filter((t) => t.kind !== 'space').map((t) => [t.kind, t.line])).toEqual([['comment', 0], ['comment', 1], ['plain', 1]])
+        // Dafny: contract words are keywords, and a character literal is a string.
+        expect(kinds("invariant 0 <= lo // c == 'a'", 'dafny').map(([, kind]) => kind)).toEqual(['keyword', 'number', 'punctuation', 'punctuation', 'plain', 'comment'])
+        expect(kinds("var c := 'a';", 'dafny')[4]).toEqual(["'a'", 'string'])
+        // Lean: a prime is part of a name, `--` starts a comment, and a command starts with `#`.
+        expect(kinds("theorem t (h' : a ≤ b) : True := by omega -- done", 'lean').filter(([, kind]) => kind !== 'punctuation')).toEqual([
+            ['theorem', 'keyword'], ['t', 'function'], ["h'", 'plain'], ['a', 'plain'], ['b', 'plain'], ['True', 'type'], ['by', 'keyword'], ['omega', 'keyword'], ['-- done', 'comment'],
+        ])
+        expect(kinds('#print axioms t', 'lean4')[0]).toEqual(['#print', 'keyword'])
+        // SMT-LIB: names hold hyphens, the head of a list is a function, and `#x` starts a number.
+        expect(kinds('(assert (bvsle #x00000000 lo)) ; lower bound', 'smt2')).toEqual([
+            ['(', 'punctuation'], ['assert', 'keyword'], ['(', 'punctuation'], ['bvsle', 'function'], ['#x00000000', 'number'], ['lo', 'plain'], [')', 'punctuation'], [')', 'punctuation'], ['; lower bound', 'comment'],
+        ])
+        expect(kinds('(declare-const lo (_ BitVec 32))', 'smt')[1]).toEqual(['declare-const', 'keyword'])
+    })
+
+    it('keeps a Rust lifetime out of a string, and reads block comments', () => {
+        const kinds = (source: string, language: string) => tokenize(source, language).filter((t) => t.kind !== 'space').map((t) => [t.text, t.kind])
+        expect(kinds("fn f<'a>(x: &'a str) -> char { 'x' }", 'rust').filter(([, kind]) => kind === 'string')).toEqual([["'x'", 'string']])
+        expect(kinds('int mid = (low + high) / 2; /* overflows */', 'java').map(([, kind]) => kind)).toEqual(['keyword', 'plain', 'punctuation', 'punctuation', 'plain', 'punctuation', 'plain', 'punctuation', 'punctuation', 'number', 'punctuation', 'comment'])
+        expect(CODE_LANGUAGES).toEqual(expect.arrayContaining(['ts', 'python', 'rust', 'go', 'java', 'c', 'sql', 'bash', 'tla', 'dafny', 'lean', 'smt', 'plain']))
+        // An unknown language still falls back to TypeScript.
+        expect(kinds('const x = 1', 'unknown')[0]).toEqual(['const', 'keyword'])
     })
 })
 

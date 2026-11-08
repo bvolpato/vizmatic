@@ -25,7 +25,7 @@ MP4 export needs FFmpeg with `libx264`. WebM also needs `libvpx-vp9`. The CLI wr
 | `high` | Publishing. | 15 | 4 samples |
 | `master` | Archiving and re-encoding. | 11 | 8 samples |
 
-Motion blur averages real sub-frames across the shutter, so it costs one render for each sample. `--motion-blur` and `--shutter` set these directly.
+Motion blur evaluates every sampled time and averages real sub-frames across the shutter. `--motion-blur` and `--shutter` set these directly.
 
 MP4 files stay at H.264 level 4.2 at 1080p60, so they play in QuickTime, Quick Look, and on Apple devices. To join another clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`. QuickTime reads one set of decoder settings from the start of a file, and it stops at a clip that uses different ones.
 
@@ -91,3 +91,7 @@ Bloom is part of a look, and export applies it after rasterizing. Pass `bloom` o
 ## Speed
 
 Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
+
+Each worker can reuse its last completed RGBA result when every SVG sample, dimension, bloom setting, and background value is identical. This applies to generated frames with prepared, embedded image assets. Raw SVG jobs and unresolved image references always rasterize again. Updaters and every shutter sample still run before this comparison.
+
+The worker retains one private result, capped at 64 MiB of pixels and an 8 MiB serialized-key allowance. Returned buffers are separate copies. Render planning includes this retained memory when choosing workers.
