@@ -98,7 +98,7 @@ export default film({
     const plate = rect(1920, 208, { fill: 'bg', stroke: null }).at(0, -436).zIndex(4)
     const plateEdge = line([-960, -332], [960, -332], { stroke: 'grid', width: 1.2 }).zIndex(4)
     const title = text('Sine, from what it does at zero.', { font: 'text-serif', size: 60 }).zIndex(5)
-    title.alignTo([-888, 0], 'left').alignTo([0, -522], 'top')
+    title.alignTo([-888, 0], 'left').alignTo([0, -516], 'top')
     const eqAt = (order: number) => {
         const eq = tex(source(order), { size: 42 })
         eq.alignTo([-888, 0], 'left')

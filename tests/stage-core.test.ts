@@ -325,6 +325,34 @@ describe('text and math', () => {
         }))
     })
 
+    it('places the left or the right edge of a text block when it has an anchor', async () => {
+        await compileFilm(film(() => {
+            const middle = text('Balanced', { size: 60 }).at(100, 40)
+            const left = text('Balanced', { size: 60, anchor: 'left' }).at(100, 40)
+            const right = text('Balanced', { size: 60, anchor: 'right' }).at(100, 40)
+            // Bounds are tight to the ink, and the anchor is the edge of the advance width. One side bearing is the difference.
+            expect(left.left[0]).toBeGreaterThan(100 - 1)
+            expect(left.left[0]).toBeLessThan(100 + 6)
+            expect(right.right[0]).toBeLessThan(100 + 1)
+            expect(right.right[0]).toBeGreaterThan(100 - 6)
+            // The block moves by half of its advance width, and nothing else changes.
+            expect(left.center[0] - middle.center[0]).toBeCloseTo(middle.get('px'), 6)
+            expect(middle.center[0] - right.center[0]).toBeCloseTo(middle.get('px'), 6)
+            expect(left.width).toBeCloseTo(middle.width, 6)
+            // The three share a baseline, whatever the anchor is.
+            expect(left.center[1]).toBeCloseTo(middle.center[1], 6)
+            expect(right.center[1]).toBeCloseTo(middle.center[1], 6)
+        }))
+    })
+
+    it('anchors a wrapped block by the width of its longest line', async () => {
+        await compileFilm(film(() => {
+            const block = text('one long line of words\nshort', { size: 40, anchor: 'right', align: 'right' }).at(300, 0)
+            expect(block.right[0]).toBeLessThan(300 + 1)
+            expect(block.right[0]).toBeGreaterThan(300 - 6)
+        }))
+    })
+
     it('finds a term in an equation by TeX fragment', async () => {
         await compileFilm(film(() => {
             const eq = tex('a^2 + b^2 = c^2')

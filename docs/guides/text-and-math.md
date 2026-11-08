@@ -30,9 +30,19 @@ export default film({ fps: 30 }, (s) => {
 | `italic` | Use the italic of the family. |
 | `color` | A look token, CSS color, or gradient. |
 | `align` | `'left'`, `'center'`, or `'right'` inside the block. |
+| `anchor` | The point that `.at(x, y)` places: `'left'`, `'center'` (the default), or `'right'`. |
 | `maxWidth` | Wrap to this width. |
 | `leading` | Line height as a multiple of size. |
 | `tracking` | Extra letter space as a fraction of size. |
+
+`.at(x, y)` places the middle of a text block. For a label that starts or ends at a known x, such as a row of a table or the name of an axis, set `anchor`. The y of the point does not depend on the letters, so labels with different anchors on one `y` share a baseline.
+
+```ts
+import { text } from 'vizmatic/stage'
+
+const metric = text('latency', { size: 32, anchor: 'right' }).at(-20, 0)   // ends at x = -20
+const value = text('5.0 ms', { size: 32, anchor: 'left' }).at(20, 0)       // starts at x = 20
+```
 
 Use `'text-serif'` for sentences, labels, and numbers. Its strokes stay visible when a film plays at phone size, and it keeps `1` and `l`, and `O` and `0`, easy to tell apart. It also sits well next to TeX. Use `'serif'` for short titles at a large size. It is narrow and has fine strokes, and it has no Greek letters or math symbols.
 
