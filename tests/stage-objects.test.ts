@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
-    counter, curve3d, dashedGuides, donut, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
+    counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
     neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, vectorField, vector3d, wipe, write, zone,
@@ -985,6 +985,97 @@ describe('zone', () => {
             expect(() => zone([])).toThrow(/at least one node/)
             const used = s.add(rect(100, 100))
             expect(() => zone([rect(10, 10), used])).toThrow(/node 1 of the content is already on the stage or in a group/)
+        }))
+    })
+})
+
+describe('dot chart', () => {
+    const data = [
+        { label: 'blocks', value: 0.89, low: 0.87, high: 0.91 },
+        { label: 'a much longer label', value: 0.57, low: 0.54, high: 0.6 },
+        { label: 'ring', value: 0.25, hollow: true },
+    ]
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const words = (chart: ReturnType<typeof dotChart>) => chart.axis.children.map((node) => (node as unknown as { source?: string }).source).filter(Boolean)
+
+    it('puts each dot at its value on an axis that need not start at zero, with its interval around it', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart(data, { width: 1000, height: 300, domain: [0.2, 1], ticks: [0.2, 0.6, 1] })
+            // The plot is centered: the two ends of the domain are the two ends of the width.
+            expect(chart.p(0.2, 0)[0]).toBeCloseTo(-500, 6)
+            expect(chart.p(1, 0)[0]).toBeCloseTo(500, 6)
+            expect(chart.p(0.6, 1)[0]).toBeCloseTo(0, 6)
+            expect(chart.p(0.6, 1)[1]).toBeCloseTo(0, 6)
+            chart.dots.forEach((mark, row) => {
+                expect(middle(mark)[0]).toBeCloseTo(chart.p(data[row]!.value, row)[0], 6)
+                expect(middle(mark)[1]).toBeCloseTo(chart.p(0, row)[1], 6)
+            })
+            const interval = chart.intervals[0]!.bounds()
+            expect(interval.x).toBeCloseTo(chart.p(0.87, 0)[0], 6)
+            expect(interval.x + interval.width).toBeCloseTo(chart.p(0.91, 0)[0], 6)
+            // The caps are taller than the dot, so a narrow interval is not hidden by it.
+            expect(interval.height).toBeGreaterThan(chart.dots[0]!.bounds().height * 1.3)
+            expect(chart.intervals[2]).toBeNull()
+            // Labels end at one x, before the axis starts.
+            const ends = chart.labels.map((label) => label.bounds().x + label.bounds().width)
+            expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(6)
+            expect(Math.max(...ends)).toBeLessThan(-500 - 8)
+            // A ring keeps the background inside it. A dot is filled with its color.
+            expect(chart.dots[2]!.get('stroke')).not.toBeNull()
+            expect(chart.dots[2]!.get('fill')).not.toEqual(chart.dots[2]!.get('stroke'))
+            expect(chart.dots[0]!.get('stroke')).toBeNull()
+        }))
+    })
+
+    it('takes its default axis from the data, and its ticks from the domain', async () => {
+        await compileFilm(film(() => {
+            // The range of the data is 0.25 to 0.91. The axis covers a round range around it.
+            const plain = dotChart(data)
+            expect(plain.domain).toEqual([0.2, 1])
+            expect(words(plain)).toEqual(['0.2', '0.4', '0.6', '0.8', '1.0'])
+            // Ticks come from the domain, not from the data, and none is past an end of the axis.
+            const one = dotChart([{ label: 'a', value: 0.5 }], { domain: [0, 1], width: 1000 })
+            expect(words(one)).toEqual(['0.0', '0.2', '0.4', '0.6', '0.8', '1.0'])
+            expect(one.bounds().x + one.bounds().width).toBeLessThan(500 + 30)
+            expect(words(dotChart(data, { domain: [0, 1], ticks: [0, 0.25, 0.5, 0.75, 1] }))).toEqual(['0.00', '0.25', '0.50', '0.75', '1.00'])
+            expect(words(dotChart([{ label: 'a', value: 30 }, { label: 'b', value: 70 }], { ticks: [0, 50, 100] }))).toEqual(['0', '50', '100'])
+        }))
+    })
+
+    it('enters with nothing on screen at the start, and all rows at the end', async () => {
+        let chart!: ReturnType<typeof dotChart>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            chart = dotChart(data, { domain: [0, 1] })
+            s.wait(0.5)
+            s.play(chart.enter(), { duration: 1 })
+            s.wait(0.5)
+        }))
+        const opacity = (time: number, node: Node) => { clock.now = time; return node.get('opacity') * (node.get('visible') ? 1 : 0) }
+        expect((await compiled.frame(0.2)).ops).toHaveLength(0)
+        expect(opacity(0.55, chart.rows[2]!)).toBe(0)
+        for (const row of chart.rows) expect(opacity(1.9, row)).toBe(1)
+        expect(opacity(1.9, chart.axis)).toBe(1)
+    })
+
+    it('copies its intervals with the gaps when it is cloned', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart(data, { domain: [0, 1] }), copy = chart.clone()
+            expect(copy.intervals).not.toBe(chart.intervals)
+            expect(copy.intervals[2]).toBeNull()
+            expect(copy.intervals[0]).not.toBe(chart.intervals[0])
+            expect(copy.rows[0]!.children).toContain(copy.intervals[0])
+        }))
+    })
+
+    it('refuses data that it cannot draw truly', async () => {
+        await compileFilm(film(() => {
+            expect(() => dotChart([])).toThrow(/at least one item/)
+            expect(() => dotChart([{ label: 'a', value: 2 }], { domain: [0, 1] })).toThrow(/2 is outside the domain 0 to 1/)
+            expect(() => dotChart([{ label: 'a', value: NaN }], { domain: [0, 1] })).toThrow(/not a number/)
+            expect(() => dotChart([{ label: 'a', value: 0.5, low: 0.4 }])).toThrow(/one end of an interval/)
+            expect(() => dotChart([{ label: 'a', value: 0.5, low: 0.6, high: 0.7 }])).toThrow(/outside its interval/)
+            expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [0, 1], ticks: [0, 2] })).toThrow(/the tick 2 is outside the domain/)
+            expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [1, 0] })).toThrow(/two different ends/)
         }))
     })
 })
