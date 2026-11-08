@@ -221,8 +221,29 @@ export class Node {
         return this.all().filter((node) => node.get('path') !== null || node.draw !== null || node.get('image') !== null)
     }
 
-    /** A static copy of the current state, off stage. */
+    /**
+     * A static copy of the current state, off stage. An object that keeps its parts in fields, such as the
+     * glyphs of a text or the frame of a card, gets fields that point at the copies of those parts.
+     */
     clone(): this {
+        const copies = new Map<Node, Node>()
+        const copy = this.copyTree(copies)
+        for (const [from, to] of copies) {
+            for (const [key, value] of Object.entries(from)) {
+                if (key === 'parent' || key === 'children') continue
+                const target = to as unknown as Record<string, unknown>
+                if (value instanceof Node) {
+                    const part = copies.get(value)
+                    if (part) target[key] = part
+                } else if (Array.isArray(value) && value.length > 0 && value.every((item) => item instanceof Node)) {
+                    target[key] = value.map((item: Node) => copies.get(item) ?? item)
+                }
+            }
+        }
+        return copy
+    }
+
+    private copyTree(copies: Map<Node, Node>): this {
         const copy = Object.create(Object.getPrototypeOf(this)) as this
         Object.assign(copy, this)
         ;(copy as { id: number }).id = nextId++
@@ -237,10 +258,11 @@ export class Node {
             ;(copy.base as unknown as Record<string, unknown>)[key] = this.get(key)
         }
         copy.children = this.children.map((child) => {
-            const next = child.clone()
+            const next = child.copyTree(copies)
             next.parent = copy
             return next
         })
+        copies.set(this, copy)
         return copy
     }
 

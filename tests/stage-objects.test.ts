@@ -792,6 +792,28 @@ describe('marks and small objects', () => {
     })
 })
 
+describe('clone', () => {
+    it('gives the copy of an object its own parts', async () => {
+        await compileFilm(film(() => {
+            const word = text('ab', { size: 60 })
+            const copy = word.clone()
+            expect(copy.chars).toHaveLength(2)
+            expect(copy.chars[0]).not.toBe(word.chars[0])
+            expect(copy.chars[0]!.parent).toBe(copy)
+            const box = card({ title: 'Logs', figure: rect(80, 80), caption: 'one line per event' })
+            const twin = box.clone()
+            for (const part of ['frame', 'title', 'figure', 'caption'] as const) {
+                expect(twin[part], part).not.toBe(box[part])
+                expect(twin.children).toContain(twin[part])
+            }
+            // A field that points outside the object keeps its target.
+            const outside = rect(10, 10), holder = group(rect(20, 20)) as Node & { friend?: Node }
+            holder.friend = outside
+            expect((holder.clone() as typeof holder).friend).toBe(outside)
+        }))
+    })
+})
+
 describe('pictograms', () => {
     const SIZE = 96
 
