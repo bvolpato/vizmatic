@@ -136,7 +136,7 @@ Durations and `frame.time` are milliseconds, as in typed animation timelines.
 the endpoint is not emitted as an extra frame. The callback can be async and
 must return exactly `width * height * 4` bytes. Each frame is consumed before
 requesting the next. Optional audio is padded or trimmed to the video duration
-and encoded as stereo AAC at 48 kHz. `signal` cancels an export. A failed
+and encoded as stereo AAC at 48 kHz and 384 kbit/s. `signal` cancels an export. A failed
 callback or encoder removes temporary files and preserves an existing output.
 
 Use `defineAnimation` and `sampleAnimation(animation, frame.time)` to drive
