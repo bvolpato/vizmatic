@@ -560,6 +560,44 @@ The `language` option names the syntax. The languages are `ts`, `python`, `rust`
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
 
+## Terminal output
+
+`terminal(lines, options)` draws the output of a real program as a terminal shows it: a panel, a bar with a `title` at the left and a dim `note` at the right, and the lines in the mono font. Use it when the viewer must see that a number comes from a real run. The title names the file or the host, and the note says where and when the program ran. A line is a string, which is a line of output, or `{ text, kind, color }`. The kind `'command'` draws the prompt before the text. The kind `'note'` is a dim line that the film adds, such as `[...]` for lines that it left out.
+
+```film paired label="A command is typed, its output prints, and one number of the output lights"
+import { film, recolor, terminal } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const run = terminal([
+        { text: './one-byte', kind: 'command' },
+        'mapped 1 GiB at 0xffff7c000000',
+        'Rss before the write:      0 kB',
+        'Rss after the write:       4 kB',
+        'minor faults:              1',
+    ], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08', size: 44 })
+    s.play(run.enter(), { duration: 0.6 })
+    s.play(run.type(0), { duration: 0.8 })
+    s.play(run.print(), { duration: 1.2 })
+    s.wait(0.6)
+    s.play(recolor(run.find('4 kB'), 'yellow'), { duration: 0.4 })
+    s.wait(1.6)
+})
+```
+
+The text is drawn with the exact characters that you give, and each character has its own column, so the columns of a table stay aligned. The spaces at the start of a line and inside it keep their columns. The spaces at the end of a line are not content: they are not drawn, and they do not count for the width or for `columns`. A tab is an error: expand the tabs to spaces first. A line break inside a line and a control character, such as a part of a color code, are errors too. An empty string is an empty line.
+
+A character that the mono font does not have comes from another font of the library. It stands in the middle of its column, and it is drawn smaller when it is too wide for the column. A glyph that is wider than 1.2 columns is an error that names the character: replace it. A character that no font has is drawn as an empty box, and `vizmatic check` reports it. Box drawing characters join along a line. They do not join from one line to the next, because the lines are 1.5 text sizes apart.
+
+The panel sizes itself. Its width follows `columns`, the number of characters in one line, and its height follows the number of lines. Without `columns`, the panel is as wide as its longest line, or wider when the title and the note need the room. With `columns`, a title and a note that do not fit in the bar are an error, and so is a line that is longer. `clip: true` cuts such a line and ends it with a dim ellipsis. `.at()` places the middle of the panel. `size` is the text size, `prompt` is the text before a command, and `color` is the color of the border and the bar.
+
+A terminal holds 40 lines at most. The frame holds fewer at most sizes: a panel of n lines is `size × (1.5 × n + 2.7)` tall. So a frame of 1080 holds 38 lines at size 18, 25 lines at size 26, and 20 lines at size 32, with no room above or below the panel. The terminal does not know the frame. `vizmatic check` reports the lines of a panel that are off the frame. For a longer output, leave lines out and put a note line in their place.
+
+By default a terminal shows all its lines, for a picture that does not move. A film that types and prints starts empty: give `shown: false`, or play `run.enter()`. `run.enter()` brings the panel and the bar, with no line. `run.type(line)` types a command character by character, after its prompt. A command that is already shown is an error. `run.print()` brings the next block of lines, one after another, each line at once. A block starts at the first line that is not yet shown, and it ends before the next command that is not yet shown. A command at the start of a block arrives whole. So `run.type(0)` then `run.print()` types the command and prints its output. `run.print()` alone shows the command and its output, for a film that does not want the typing, and a second `run.print()` goes on with the next block. `run.print({ from: 1, to: 3 })` prints lines 1, 2 and 3, whatever their kind. `run.showLines()` fades in all the lines that are left, together, for a film that does not want the typing.
+
+The terminal keeps a record of the lines that are shown, so two prints in one `seq` follow each other. `run.enter()` in the same `play` as a `type` or a `print` keeps the lines that they show, in both orders. A terminal that is not on the stage at its first `type` or `print` comes with its panel and no other line. A terminal in a group or a zone that is not on the stage brings that group, and keeps its place in it.
+
+`run.find(text, occurrence)` returns one node that holds the glyphs of a part of a line: color it, `indicate` it, or point a `callout` at it. It matches the exact characters, spaces included, in the commands, the output and the notes. `occurrence` counts the matches from 0, from the first line to the last. A text that is not there is an error, which says so when `clip` cut the text off. `codeBlock.find` is different: it returns the glyphs of every match as a list, and spaces do not count there. The second argument of `run.find` is an occurrence, and the second argument of `codeBlock.find` is a line. `run.p(line)` is the start of a line and `run.p(line, 'right')` is its end, in the coordinates of the panel, so `run.toWorld(...run.p(4, 'right'))` is that point on the stage. `run.frame`, `run.bar`, `run.title`, `run.note`, `run.lines`, and `run.prompts` are the parts.
+
 ## Images
 
 Prepare an image once, then place it with the existing `image` stage primitive.

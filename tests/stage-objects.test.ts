@@ -6,7 +6,7 @@ import {
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
+    seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     lanes, smooth,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
@@ -3991,6 +3991,749 @@ describe('bit field', () => {
             expect(() => twice.p('reserved')).toThrow(/2 fields have the label "reserved". Give the index: 0 or 2/)
             expect(twice.field('type')).toBe(twice.fields[1])
             expect(() => bitField([{ bits: 4 }]).field('type')).toThrow(/No field has a label, so give an index/)
+        }))
+    })
+})
+
+describe('terminal', () => {
+    const lines = [
+        { text: './one-byte', kind: 'command' as const },
+        'mapped 1 GiB at 0xffff7c000000',
+        'Rss before the write:      0 kB',
+        'Rss after the write:       4 kB',
+        'minor faults:              1',
+    ]
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    /** The characters that a node draws, in the order of drawing. A space draws nothing. */
+    const keys = (node: Node) => node.leaves().map((leaf) => leaf.data['key']).join('')
+    const right = (node: Node) => node.bounds().x + node.bounds().width
+    const bottom = (node: Node) => node.bounds().y + node.bounds().height
+    const inside = (part: Node, whole: Node) => {
+        const a = part.bounds(), b = whole.bounds()
+        expect(a.x).toBeGreaterThanOrEqual(b.x - 1e-6)
+        expect(a.y).toBeGreaterThanOrEqual(b.y - 1e-6)
+        expect(a.x + a.width).toBeLessThanOrEqual(b.x + b.width + 1e-6)
+        expect(a.y + a.height).toBeLessThanOrEqual(b.y + b.height + 1e-6)
+    }
+
+    it('centers the panel on its place, with the bar over the lines, the title at the left and the note at the right', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines, { title: 'Host', note: 'Linux', columns: 40 }).at(100, 50)
+            const frame = run.frame.bounds(), bar = run.bar.bounds()
+            expect(frame.x + frame.width / 2).toBeCloseTo(100, 6)
+            expect(frame.y + frame.height / 2).toBeCloseTo(50, 6)
+            // The bar is at the top of the panel, inside the border, from one side to the other.
+            inside(run.bar, run.frame)
+            expect(bar.y - frame.y).toBeCloseTo(run.frame.get('strokeWidth') / 2, 6)
+            expect(frame.width - bar.width).toBeCloseTo(run.frame.get('strokeWidth'), 6)
+            // The top corners of the bar are round, with the center of the corners of the panel, so the bar
+            // does not go out of the border there. Its bottom corners are square. `cut` is how far from the
+            // left of a shape its outline starts at a height: the radius of a round corner, 0 for a square one.
+            const large = terminal(['x'.repeat(20)], { size: 100 })
+            const cut = (node: Node, height: 'top' | 'bottom') => {
+                const box = pathBounds(node.get('path')!)!
+                const level = height === 'top' ? box.y : box.y + box.height
+                const points = samplePath(node.get('path')!, 2000).filter((point) => Math.abs(point[1] - level) < 1e-6)
+                return Math.min(...points.map((point) => point[0])) - box.x
+            }
+            expect(cut(large.frame, 'top')).toBeGreaterThan(30)
+            expect(Math.abs(cut(large.bar, 'top') - (cut(large.frame, 'top') - large.frame.get('strokeWidth') / 2))).toBeLessThan(3)
+            expect(cut(large.bar, 'bottom')).toBeLessThan(3)
+            for (const line of run.lines) {
+                expect(line.bounds().y).toBeGreaterThan(bar.y + bar.height)
+                inside(line, run.frame)
+            }
+            // The title and the note are in the bar, on one baseline. The title starts where the lines start,
+            // and the note ends where column 40 ends.
+            const title = run.title!.bounds(), note = run.note!.bounds()
+            inside(run.title!, run.bar)
+            inside(run.note!, run.bar)
+            expect(title.y + title.height).toBeCloseTo(note.y + note.height, 0)
+            expect(Math.abs(title.x - run.lines[1]!.bounds().x)).toBeLessThan(3)
+            expect(Math.abs(right(run.note!) - run.toWorld(...terminal(['x'.repeat(40)]).p(0, 'right'))[0])).toBeLessThan(3)
+            expect(title.x + title.width).toBeLessThan(note.x)
+            // The middle of a capital letter of the bar is the middle of the bar.
+            expect(title.y + title.height / 2).toBeCloseTo(bar.y + bar.height / 2, 0)
+            const plain = terminal(lines)
+            expect(plain.title).toBeNull()
+            expect(plain.note).toBeNull()
+        }))
+    })
+
+    it('puts the lines one under the other at one left edge, with the same room on all four sides', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(['HHHHHHHHHH', 'HHHH', '', 'HHHHHHHHHH'], { size: 40 })
+            const boxes = run.lines.map((line) => line.bounds())
+            const frame = run.frame.bounds()
+            expect(boxes[1]!.x).toBeCloseTo(boxes[0]!.x, 6)
+            expect(boxes[3]!.x).toBeCloseTo(boxes[0]!.x, 6)
+            // An empty line draws nothing and keeps its row.
+            const step = boxes[1]!.y - boxes[0]!.y
+            expect(step).toBeGreaterThan(boxes[0]!.height)
+            expect(boxes[3]!.y - boxes[0]!.y).toBeCloseTo(3 * step, 6)
+            // The room around the letters: a capital letter has the same space at its two sides, so the left
+            // and the right are equal, and so are the top, under the bar, and the bottom, under the baseline.
+            const room = { left: boxes[0]!.x - frame.x, right: frame.x + frame.width - right(run.lines[0]!), top: boxes[0]!.y - bottom(run.bar), bottom: frame.y + frame.height - bottom(run.lines[3]!) }
+            expect(room.right).toBeCloseTo(room.left, 6)
+            expect(room.bottom).toBeCloseTo(room.top, 6)
+            // The sides have the space beside a letter more than the top: less than a tenth of the text size.
+            expect(room.left - room.top).toBeGreaterThanOrEqual(0)
+            expect(room.left - room.top).toBeLessThan(4)
+            expect(room.top).toBeGreaterThan(20)
+        }))
+    })
+
+    it('takes its width from the columns and its height from the number of lines', async () => {
+        await compileFilm(film(() => {
+            const glyphs = terminal(['HH']).lines[0]!.children
+            const advance = glyphs[1]!.get('x') - glyphs[0]!.get('x')
+            const width = (columns: number) => terminal(['x'], { columns }).frame.bounds().width
+            expect(width(30) - width(20)).toBeCloseTo(10 * advance, 6)
+            // Without `columns`, the panel is as wide as its longest line. The prompt is part of a command.
+            expect(terminal(['x'.repeat(30), 'x']).frame.bounds().width).toBeCloseTo(width(30), 6)
+            expect(terminal([{ text: 'x'.repeat(28), kind: 'command' }, 'x']).frame.bounds().width).toBeCloseTo(width(30), 6)
+            const tall = terminal(['a', 'b', 'c', 'd', 'e']), short = terminal(['a', 'b'])
+            const step = tall.lines[1]!.get('y') - tall.lines[0]!.get('y')
+            expect(tall.frame.bounds().height - short.frame.bounds().height).toBeCloseTo(3 * step, 6)
+            // The text size scales the panel and its border. The border is never thinner than 1.5, so it shows at a small size.
+            expect(terminal(['x'], { columns: 30, size: 52 }).frame.bounds().width).toBeCloseTo(2 * width(30), 6)
+            expect(terminal(['x'], { size: 100 }).frame.get('strokeWidth')).toBeCloseTo(7.5, 6)
+            expect(terminal(['x'], { size: 10 }).frame.get('strokeWidth')).toBe(1.5)
+        }))
+    })
+
+    it('draws each character in its own column, spaces included', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(['ab', 'a  b', '   c', 'calls    errors'])
+            const xs = (line: number) => run.lines[line]!.children.map((glyph) => glyph.get('x'))
+            const advance = xs(0)[1]! - xs(0)[0]!
+            expect(xs(1).map((x) => x / advance)).toEqual([0, 3])
+            // Spaces at the start of a line keep their columns.
+            expect(xs(2).map((x) => x / advance)).toEqual([3])
+            expect(xs(3)[5]! / advance).toBeCloseTo(9, 6)
+            expect(keys(run.lines[3]!)).toBe('callserrors')
+        }))
+    })
+
+    it('draws the prompt before a command, and none before output', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines, { prompt: '> ' })
+            expect(run.prompts.map((prompt) => prompt !== null)).toEqual([true, false, false, false, false])
+            expect(keys(run.prompts[0]!)).toBe('>')
+            expect(keys(terminal(lines).prompts[0]!)).toBe('$')
+            // The prompt is part of its line, at the left edge. The command starts two columns after it.
+            expect(run.lines[0]!.children).toContain(run.prompts[0])
+            expect(keys(run.lines[0]!)).toBe('>./one-byte')
+            const output = run.lines[1]!.children
+            const advance = output[1]!.get('x') - output[0]!.get('x')
+            const command = run.lines[0]!.children.filter((child) => child !== run.prompts[0])
+            expect(command[0]!.get('x')).toBeCloseTo(2 * advance, 6)
+            expect(right(run.prompts[0]!)).toBeLessThan(command[0]!.bounds().x)
+            expect(Math.abs(run.prompts[0]!.bounds().x - run.lines[1]!.bounds().x)).toBeLessThan(4)
+            // The prompt is dim, and the command is not.
+            expect(run.prompts[0]!.children[0]!.get('fill')).not.toEqual(command[0]!.get('fill'))
+            expect(keys(run.lines[1]!)).toBe('mapped1GiBat0xffff7c000000')
+        }))
+    })
+
+    it('gives a note line and the given color of a line their colors', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(['plain', { text: '[...]', kind: 'note' }, { text: 'FAIL', color: 'red' }, { text: 'red', kind: 'command', color: 'red' }])
+            const fill = (line: number, glyph = 0) => run.lines[line]!.children[glyph]!.get('fill')
+            expect(fill(1)).not.toEqual(fill(0))
+            expect(fill(2)).not.toEqual(fill(0))
+            expect(fill(2)).not.toEqual(fill(1))
+            // The color of a command is the color of its text. The prompt stays dim, as a note is.
+            expect(fill(3, 1)).toEqual(fill(2))
+            expect(run.prompts[3]!.children[0]!.get('fill')).toEqual(fill(1))
+        }))
+    })
+
+    it('finds the glyphs of one occurrence of a text, as one node inside its line', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines).at(200, -100)
+            const first = run.find('kB'), second = run.find('kB', 1)
+            expect(keys(first)).toBe('kB')
+            expect(keys(second)).toBe('kB')
+            inside(first, run.lines[2]!)
+            inside(second, run.lines[3]!)
+            expect(first.bounds().y).toBeLessThan(second.bounds().y)
+            // The matches count from the first line to the last, and a match starts after the one before.
+            inside(run.find('1'), run.lines[1]!)
+            inside(run.find('1', 1), run.lines[4]!)
+            const zeros = [0, 1, 2].map((occurrence) => run.find('00', occurrence).bounds().x)
+            expect(zeros[1]! - zeros[0]!).toBeCloseTo(zeros[2]! - zeros[1]!, 6)
+            expect(zeros[1]!).toBeGreaterThan(zeros[0]! + first.bounds().width * 0.9)
+            expect(() => run.find('00', 3)).toThrow(/the text "00" is there 3 times, so it has no occurrence 3/)
+            // It matches the exact characters, with their spaces. The node holds the glyphs, and a space has none.
+            expect(keys(run.find('write:      0'))).toBe('write:0')
+            expect(() => run.find('write: 0')).toThrow(/no line has the text "write: 0"/)
+            // It finds the text of a command, and not its prompt.
+            inside(run.find('./one-byte'), run.lines[0]!)
+            expect(() => run.find('$')).toThrow(/no line has the text "\$"/)
+        }))
+    })
+
+    it('gives the same node for the same part, and keeps a part inside a larger one', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines)
+            const unit = run.find('kB', 1)
+            expect(run.find('kB', 1)).toBe(unit)
+            // A space at an end of the text has no glyph, so the part is the same with it and without it.
+            expect(run.find(' 1 ')).toBe(run.find('1'))
+            // A larger part takes the smaller one in, and a smaller part is made inside the larger one.
+            const number = run.find('4 kB')
+            expect(unit.parent).toBe(number)
+            expect(run.find('4').parent).toBe(number)
+            expect(run.find('kB', 1)).toBe(unit)
+            // A color on the part colors its glyphs, and no other glyph of the line.
+            const ink = run.lines[3]!.children[0]!.get('fill')
+            number.color('yellow')
+            expect(number.leaves().every((leaf) => leaf.get('fill') !== ink)).toBe(true)
+            expect(run.lines[3]!.leaves().filter((leaf) => leaf.get('fill') !== ink)).toHaveLength(3)
+            // The line still draws its characters from left to right.
+            expect(keys(run.lines[3]!)).toBe('Rssafterthewrite:4kB')
+            const xs = run.lines[3]!.leaves().map((leaf) => leaf.bounds().x)
+            expect([...xs].sort((a, b) => a - b)).toEqual(xs)
+            // Two parts that share characters, where neither holds the other, cannot both be nodes.
+            expect(() => run.find(':       4')).toThrow(/":       4" shares characters with "4 kB"/)
+        }))
+    })
+
+    it('finds a part on a terminal that is on the stage, and does not hide it before that time', async () => {
+        let part!: Node
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            const run = s.add(terminal(lines))
+            s.wait(1)
+            part = run.find('4 kB')
+            part.color('yellow').opacity(0.5)
+            s.wait(1)
+        }))
+        // A change of the part starts at the time of the change, as for every node on the stage.
+        expect(at(0.5, () => shows(part))).toBe(1)
+        expect(at(1.5, () => shows(part))).toBe(0.5)
+        expect(paths(compiled, 0.5)).toHaveLength(paths(compiled, 1.5).length)
+        const fill = (time: number) => at(time, () => part.leaves()[0]!.get('fill'))
+        expect(fill(0.5)).not.toEqual(fill(1.5))
+    })
+
+    it('gives the start and the end of a line in the coordinates of the panel', async () => {
+        await compileFilm(film(() => {
+            const run = terminal([...lines, ''], { columns: 40, size: 40 }).at(300, 200)
+            const [x0, y0] = run.p(2), [x1, y1] = run.p(2, 'right')
+            expect(run.p(2, 'left')).toEqual([x0, y0])
+            expect(y1).toBe(y0)
+            // On the stage, the letters of the line are between the two points, and nearer than a sixth of the text size.
+            const line = run.lines[2]!.bounds()
+            const start = run.toWorld(x0, y0), end = run.toWorld(x1, y1)
+            expect(line.x - start[0]).toBeGreaterThanOrEqual(0)
+            expect(line.x - start[0]).toBeLessThan(40 / 6)
+            expect(end[0] - (line.x + line.width)).toBeGreaterThanOrEqual(0)
+            expect(end[0] - (line.x + line.width)).toBeLessThan(40 / 6)
+            // The height is the middle of a capital letter. The "R" of this line is one.
+            const capital = run.lines[2]!.children[0]!.bounds()
+            expect(start[1]).toBeCloseTo(capital.y + capital.height / 2, 6)
+            // Every line starts at one x, and a command starts at its prompt. The end follows the length.
+            expect(run.p(0)[0]).toBe(x0)
+            expect(run.p(4)[0]).toBe(x0)
+            expect(run.p(4)[1] - run.p(3)[1]).toBeCloseTo(run.p(3)[1] - y0, 6)
+            expect(run.toWorld(...run.p(0, 'right'))[0] - right(run.lines[0]!)).toBeGreaterThanOrEqual(0)
+            expect(run.toWorld(...run.p(0, 'right'))[0] - right(run.lines[0]!)).toBeLessThan(40 / 6)
+            expect(run.p(4, 'right')[0]).toBeLessThan(x1)
+            expect(run.p(5, 'right')).toEqual(run.p(5))
+            expect(() => run.p(6)).toThrow(/no line 6. The terminal has 6 lines/)
+        }))
+    })
+
+    it('enters with its panel and its bar, and no line', async () => {
+        let run!: ReturnType<typeof terminal>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines, { title: 'runs/01.txt', note: 'Linux 7.0' })
+            s.wait(0.5)
+            s.play(run.enter(), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(paths(compiled, 0.2)).toHaveLength(0)
+        const parts = [run.frame, run.bar, run.title!, run.note!]
+        expect(at(1, () => parts.map(shows))).toEqual([0.5, 0.5, 0.5, 0.5].map((value) => expect.closeTo(value, 6)))
+        expect(at(1.8, () => parts.map(shows))).toEqual([1, 1, 1, 1])
+        for (const time of [0.6, 1, 1.8]) expect(at(time, () => run.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+        // The frame draws the panel, the bar, and the letters of the bar: "runs/01.txt" and "Linux7.0".
+        expect(paths(compiled, 1.8)).toHaveLength(2 + 11 + 8)
+    })
+
+    it('types a command character by character after its prompt, and then prints from the next line', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            // Ten characters in eleven steps of 0.1 s, at a steady rate: the prompt has the first step alone.
+            s.play(run.type(0), { duration: 1.1 })
+            s.play(run.print(), { duration: 1 })
+        }))
+        const command = run.lines[0]!.children.filter((child) => child !== run.prompts[0])
+        const typed = (time: number) => at(time, () => (shows(run.lines[0]!) ? command.filter((glyph) => glyph.get('opacity') > 0).map((glyph) => glyph.data['key']).join('') : null))
+        expect(typed(0.45)).toBeNull()
+        expect(typed(0.55)).toBe('')
+        expect(at(0.55, () => shows(run.prompts[0]!))).toBe(1)
+        expect(typed(0.65)).toBe('.')
+        expect(typed(1.05)).toBe('./one')
+        expect(typed(1.45)).toBe('./one-byt')
+        expect(typed(1.55)).toBe('./one-byte')
+        expect(at(1.55, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        // The command is shown, so the print starts with line 1: four lines, a quarter of a second apart.
+        expect(at(1.65, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0])
+        expect(at(2.2, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0])
+        expect(typed(2.7)).toBe('./one-byte')
+    })
+
+    it('prints the lines of a range one after another, in order, each at once', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.print({ from: 0 }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        // Five lines, 0.2 s apart, at a steady rate. A line is not there, or it is there whole.
+        expect(at(0.45, () => run.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+        expect(at(0.55, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(0.75, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0])
+        expect(at(1, () => run.lines.map(shows))).toEqual([1, 1, 1, 0, 0])
+        expect(at(1.25, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0])
+        expect(at(1.4, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        // A command in the range is printed too. It comes whole, with its prompt.
+        expect(at(0.55, () => run.lines[0]!.leaves().every((leaf) => leaf.get('opacity') === 1))).toBe(true)
+    })
+
+    it('prints a range of lines, and a second print in the same sequence goes on from the first', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+            s.play(seq(run.print({ from: 2, to: 3, duration: 1 }), run.print({ duration: 1 })), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        // The first print has one second for lines 2 and 3. The second has one second for the lines that are left, 1 and 4.
+        expect(at(1.25, () => run.lines.map(shows))).toEqual([1, 0, 1, 0, 0])
+        expect(at(1.75, () => run.lines.map(shows))).toEqual([1, 0, 1, 1, 0])
+        expect(at(2.25, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0])
+        expect(at(2.6, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('prints one block when it has no range: up to the next command, with its own command whole when the film did not type it', async () => {
+        const session = [{ text: 'first', kind: 'command' as const }, 'a', 'b', { text: 'second', kind: 'command' as const }, { text: 'third', kind: 'command' as const }, 'c']
+        let run!: ReturnType<typeof terminal>
+        let ranged!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(session)
+            // A print with a range does not stop at a command: from line 1, it brings every line to the last.
+            ranged = terminal(session).at(0, 400)
+            s.play(run.enter(), ranged.print({ from: 1 }), { duration: 0.5 })
+            // No command is typed. The first print brings the first command and its output: three lines.
+            s.play(run.print(), { duration: 0.6 })
+            // The second block is the second command alone: it has no output.
+            s.play(run.print(), { duration: 0.4 })
+            // The third command is typed, so the print after it brings its output only.
+            s.play(run.type(4), { duration: 0.5 })
+            s.play(run.print(), { duration: 0.5 })
+            // Every line is shown now. There is nothing to print, and that is not an error.
+            s.play(run.print(), { duration: 0.5 })
+        }))
+        expect(at(0.55, () => ranged.lines.map(shows))).toEqual([0, 1, 1, 1, 1, 1])
+        expect(at(0.45, () => run.lines.map(shows))).toEqual([0, 0, 0, 0, 0, 0])
+        expect(at(0.55, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0, 0])
+        // The command of the block comes whole, at once, as the output lines do.
+        expect(at(0.55, () => run.lines[0]!.leaves().every((leaf) => leaf.get('opacity') === 1))).toBe(true)
+        expect(at(0.75, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0, 0])
+        // The first print ends before the second command, and the second print before the third.
+        expect(at(1.05, () => run.lines.map(shows))).toEqual([1, 1, 1, 0, 0, 0])
+        expect(at(1.15, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0, 0])
+        expect(at(1.45, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0, 0])
+        expect(at(1.95, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1, 0])
+        expect(at(2.05, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1, 1])
+    })
+
+    it('shows every line that is left, all together, and only once', async () => {
+        let run!: ReturnType<typeof terminal>
+        let fresh!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+            s.play(run.showLines(), { duration: 1, ease: linear })
+            s.wait(0.5)
+            // The lines are shown now, so a second call has nothing to bring. A terminal that is not on
+            // the stage comes with its panel at once, and its lines fade in.
+            fresh = terminal(lines).at(0, 300)
+            s.play(run.showLines(), fresh.showLines(), { duration: 1, ease: linear })
+        }))
+        expect(at(0.95, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.5, () => run.lines.map(shows))).toEqual([1, 0.5, 0.5, 0.5, 0.5].map((value) => expect.closeTo(value, 6)))
+        expect(at(2.1, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(3, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(3, () => [shows(fresh), shows(fresh.frame)])).toEqual([1, 1])
+        expect(at(3, () => fresh.lines.map(shows))).toEqual([0.5, 0.5, 0.5, 0.5, 0.5].map((value) => expect.closeTo(value, 6)))
+    })
+
+    it('keeps a line that types or prints in the same play as the entry, in both orders', async () => {
+        let first!: ReturnType<typeof terminal>
+        let second!: ReturnType<typeof terminal>
+        let printed!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            first = terminal(lines).at(0, -300)
+            second = terminal(lines)
+            printed = terminal(lines).at(0, 300)
+            s.wait(0.5)
+            s.play(first.type(0), first.enter(), second.enter(), second.type(0), printed.print({ from: 0, to: 2 }), printed.enter(), { duration: 1 })
+            s.wait(0.5)
+            // A line that was shown before the entry leaves with it.
+            s.play(first.enter(), { duration: 0.5 })
+        }))
+        const typed = (run: ReturnType<typeof terminal>) => run.lines[0]!.children.filter((child) => child !== run.prompts[0] && child.get('opacity') > 0).length
+        for (const run of [first, second]) {
+            expect(at(1, () => [shows(run.frame), typed(run)])).toEqual([expect.closeTo(0.5, 1), 5])
+            expect(at(1.8, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+            expect(at(1.8, () => typed(run))).toBe(10)
+        }
+        expect(at(1.8, () => printed.lines.map(shows))).toEqual([1, 1, 1, 0, 0])
+        expect(at(2.4, () => first.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+    })
+
+    it('refuses to type a command that is already shown', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const whole = s.add(terminal(lines))
+            expect(() => s.play(whole.type(0))).toThrow(/line 0 is already shown, so type\(\) cannot type it. Start the terminal with \{ shown: false \}, or play enter\(\) before type\(\)/)
+            const run = terminal(lines).at(0, 300)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+            expect(() => s.play(run.type(0))).toThrow(/line 0 is already shown/)
+            // After a new entry the terminal is empty, so the command types again.
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+        }))
+    })
+
+    it('starts with no line when shown is false, so a film can add it in a group and then type and print', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            expect(terminal(lines).lines.map(shows)).toEqual([1, 1, 1, 1, 1])
+            run = terminal(lines, { shown: false })
+            s.add(group(run, text('a label', { size: 28 }).at(0, 200)).at(300, -100))
+            s.wait(0.5)
+            s.play(run.type(0), { duration: 0.5 })
+            s.play(run.print(), { duration: 1 })
+            s.wait(0.5)
+        }))
+        // The panel is there from the start, with no line.
+        expect(at(0.2, () => [shows(run.frame), shows(run.bar), ...run.lines.map(shows)])).toEqual([1, 1, 0, 0, 0, 0, 0])
+        expect(at(0.9, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.05, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0])
+        expect(at(2.2, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('stays in a group that is not on the stage when it enters, types or prints, at the place and the size that the group gives it', async () => {
+        const made: { run: ReturnType<typeof terminal>; holder: Node; label: Node; x: number }[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made.length = 0
+            for (const x of [-600, 0, 600]) {
+                const run = terminal(lines), label = text('a label', { size: 28 }).at(0, 150)
+                const holder = group(run, label).at(x, -200)
+                holder.scale(0.5, [x, -200])
+                made.push({ run, holder, label, x })
+            }
+            s.wait(0.5)
+            s.play(made[0]!.run.enter(), made[1]!.run.type(0), made[2]!.run.print({ from: 1, to: 2 }), { duration: 0.5 })
+            s.wait(0.5)
+        }))
+        const natural = terminal(lines).frame.bounds().width
+        for (const { run, holder, label, x } of made) {
+            expect(run.parent).toBe(holder)
+            const frame = at(1.2, () => run.frame.bounds())
+            expect(frame.x + frame.width / 2).toBeCloseTo(x, 6)
+            expect(frame.width).toBeCloseTo(natural / 2, 6)
+            // The group comes with it, at the time of the animation and not before.
+            expect(at(0.2, () => shows(holder))).toBe(0)
+            expect(at(1.2, () => [shows(holder), shows(label)])).toEqual([1, 1])
+        }
+        expect(at(1.2, () => made[0]!.run.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+        expect(at(1.2, () => made[1]!.run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.2, () => made[2]!.run.lines.map(shows))).toEqual([0, 1, 1, 0, 0])
+    })
+
+    it('is whole when a film adds it, and comes empty when its first animation is a type or a print', async () => {
+        let whole!: ReturnType<typeof terminal>
+        let typed!: ReturnType<typeof terminal>
+        let printed!: ReturnType<typeof terminal>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            whole = s.add(terminal(lines))
+            // All lines of a terminal that the film added are shown, so there is nothing to print.
+            s.play(whole.print(), { duration: 0.5 })
+            s.remove(whole)
+            typed = terminal(lines)
+            printed = terminal(lines).at(0, 300)
+            s.play(typed.type(0), printed.print({ from: 1, to: 2 }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        expect(at(0.1, () => whole.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(0.4, () => whole.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        // The panel of a terminal that was not on the stage comes at once, with no line but those that the animation brings.
+        expect(at(0.55, () => [shows(typed), shows(typed.frame)])).toEqual([1, 1])
+        expect(at(1.8, () => typed.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.8, () => printed.lines.map(shows))).toEqual([0, 1, 1, 0, 0])
+        expect(paths(compiled, 0.55).length).toBeGreaterThan(0)
+    })
+
+    it('cuts a line that is too long with an ellipsis when clip is set, and refuses it without', async () => {
+        await compileFilm(film(() => {
+            const long = 'ffffbc1e0000-ffffbc368000 r-xp 00000000 fe:02 1318290 /usr/lib/libc.so.6'
+            expect(() => terminal(['short', long], { columns: 30 })).toThrow(new RegExp(`line 1 has ${long.length} characters, and \`columns\` is 30. Raise \`columns\`, or set \`clip\``))
+            const run = terminal(['short', long, 'x'.repeat(30)], { columns: 30, clip: true })
+            // 29 characters of the line, then the ellipsis in column 30. The panel keeps its 30 columns.
+            expect(keys(run.lines[1]!)).toBe(`${long.slice(0, 29).replace(/ /g, '')}…`)
+            expect(run.p(1, 'right')).toEqual([run.p(2, 'right')[0], run.p(1)[1]])
+            expect(run.frame.bounds().width).toBeCloseTo(terminal(['short'], { columns: 30 }).frame.bounds().width, 6)
+            inside(run.lines[1]!, run.frame)
+            // A line of exactly 30 characters is whole.
+            expect(keys(run.lines[2]!)).toBe('x'.repeat(30))
+            // The ellipsis is not a character of the program: it has the color of a note, not of the output.
+            const cut = run.lines[1]!.children
+            expect(cut[cut.length - 1]!.get('fill')).not.toEqual(cut[0]!.get('fill'))
+            expect(run.find('…').parent).toBe(run.lines[1])
+            // The prompt of a command counts.
+            expect(() => terminal([{ text: 'x'.repeat(29), kind: 'command' }], { columns: 30 })).toThrow(/line 0 has 31 characters with its prompt, and `columns` is 30/)
+            expect(keys(terminal([{ text: 'x'.repeat(29), kind: 'command' }], { columns: 30, clip: true }).lines[0]!)).toBe(`$${'x'.repeat(27)}…`)
+            // With no room for the prompt and an ellipsis, clip cannot help.
+            expect(() => terminal([{ text: 'ls', kind: 'command' }], { columns: 2, clip: true })).toThrow(/line 0 has 4 characters with its prompt, and `columns` is 2. Raise `columns`$/)
+        }))
+    })
+
+    it('grows for a title and a note that need more room than the lines, and refuses them when the columns are given', async () => {
+        await compileFilm(film(() => {
+            const title = 'data/runs/01-one-byte.txt', note = 'Linux 7.0, arm64, 2026-11-08'
+            const run = terminal(['x'], { title, note })
+            // The two do not meet: there is room for more than two characters of the bar between them.
+            inside(run.title!, run.bar)
+            inside(run.note!, run.bar)
+            const letter = run.title!.bounds().width / title.length
+            expect(run.note!.bounds().x - right(run.title!)).toBeGreaterThan(2 * letter)
+            expect(run.frame.bounds().width).toBeGreaterThan(terminal(['x']).frame.bounds().width * 5)
+            // A panel of 60 columns has the room, and keeps its width.
+            expect(terminal(['x'], { title, note, columns: 60 }).frame.bounds().width).toBeCloseTo(terminal(['x'], { columns: 60 }).frame.bounds().width, 6)
+            expect(() => terminal(['x'], { title, note, columns: 30 })).toThrow(/the title and the note need \d+ columns in the bar, and `columns` is 30. Shorten the title or the note, or raise `columns`/)
+            expect(() => terminal(['x'], { title, columns: 10 })).toThrow(/the title needs \d+ columns in the bar, and `columns` is 10. Shorten the title, or raise `columns`/)
+            expect(() => terminal(['x'], { note, columns: 10 })).toThrow(/the note needs \d+ columns in the bar, and `columns` is 10. Shorten the note, or raise `columns`/)
+        }))
+    })
+
+    it('makes the text of the bar readable on the color of the bar', async () => {
+        await compileFilm(film(() => {
+            const fill = (node: Node) => node.children[0]!.get('fill') as readonly number[]
+            const light = (color: readonly number[]) => color[0]! + color[1]! + color[2]!
+            // On the quiet bar of the dark default look the title is light. On a bright bar it is dark.
+            const quiet = terminal(['x'], { title: 'host', note: 'now' }), bright = terminal(['x'], { title: 'host', note: 'now', color: 'yellow' })
+            expect(light(fill(quiet.title!))).toBeGreaterThan(light(quiet.bar.get('fill') as readonly number[]) + 300)
+            expect(light(fill(bright.title!))).toBeLessThan(light(bright.bar.get('fill') as readonly number[]) - 300)
+            // The note is dimmer than the title: between the title and the bar.
+            expect(light(fill(quiet.note!))).toBeLessThan(light(fill(quiet.title!)))
+            expect(light(fill(quiet.note!))).toBeGreaterThan(light(quiet.bar.get('fill') as readonly number[]) + 150)
+            expect(light(fill(bright.note!))).toBeGreaterThan(light(fill(bright.title!)))
+            // The color is the color of the border and of the bar.
+            expect(bright.frame.get('stroke')).toEqual(bright.bar.get('fill'))
+            expect(bright.frame.get('fill')).toEqual(quiet.frame.get('fill'))
+        }))
+    })
+
+    it('gives a copy its own glyphs and its own record of the lines that are shown', async () => {
+        let copy!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const run = terminal(lines)
+            copy = run.clone().at(0, 300)
+            const part = copy.find('4 kB')
+            expect(part.parent).toBe(copy.lines[3])
+            expect(run.lines[3]!.children).toHaveLength(copy.lines[3]!.children.length + 2)
+            s.add(copy)
+            // The lines of the copy are shown. The entry of the first terminal does not change that.
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(copy.showLines(), { duration: 1, ease: linear })
+        }))
+        expect(at(1, () => copy.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('gives each line its text as a name for the film check, which reports a character that no font can draw', async () => {
+        const report = await checkFilm(film((s) => {
+            s.add(terminal([...lines, 'a\ue000b', '✓ ok'], { size: 40 }).at(700, 0))
+            // The left half of this panel is off the frame, with its prompt.
+            s.add(terminal([{ text: 'ls', kind: 'command' }], { size: 40 }).at(-960, 400))
+            s.wait(1)
+        }))
+        const clipped = report.diagnostics.filter((entry) => entry.code === 'film.off_canvas').map((entry) => entry.text)
+        expect(clipped).toContain('mapped 1 GiB at 0xffff7c000000')
+        expect(clipped).not.toContain('./one-byte')
+        expect(clipped).toContain('$ ')
+        expect(clipped).not.toContain('ls')
+        // The mono font has no check mark, and another font of the library has one. No font has U+E000.
+        expect(report.diagnostics.filter((entry) => entry.code === 'film.missing_glyph').map((entry) => entry.text)).toEqual(['a\ue000b'])
+    })
+
+    it('does not count or draw the spaces at the end of a line, and keeps the other spaces', async () => {
+        await compileFilm(film(() => {
+            // A line of `perf stat` ends in many spaces.
+            const perf = `             10070      context-switches${' '.repeat(54)}`
+            const width = (list: Parameters<typeof terminal>[0], options?: Parameters<typeof terminal>[1]) => terminal(list, options).frame.bounds().width
+            expect(width([perf])).toBeCloseTo(width([perf.trimEnd()]), 6)
+            expect(width(['a   ', 'bb'])).toBeCloseTo(width(['a', 'bb']), 6)
+            // Its text fits 60 columns, so it is not an error, and `clip` does not cut it.
+            expect(perf.length).toBeGreaterThan(60)
+            expect(keys(terminal([perf], { columns: 60 }).lines[0]!)).toBe('10070context-switches')
+            expect(keys(terminal([perf], { columns: 60, clip: true }).lines[0]!)).toBe('10070context-switches')
+            // A line that is too long says how long its text is, without the spaces.
+            expect(() => terminal([`${'x'.repeat(10)}    `], { columns: 5 })).toThrow(/line 0 has 10 characters, and `columns` is 5/)
+            // The end of a line is the end of its text. The spaces at the start and inside keep their columns.
+            const run = terminal(['  a  b   ', '     ', { text: 'ls   ', kind: 'command' }, 'xxxxxxxxxx'])
+            const advance = run.lines[3]!.children[1]!.get('x') - run.lines[3]!.children[0]!.get('x')
+            const columns = (line: number) => (run.p(line, 'right')[0] - run.p(line)[0]) / advance
+            expect(run.lines[0]!.children.map((glyph) => glyph.get('x') / advance)).toEqual([2, 5])
+            expect(columns(0)).toBeCloseTo(6, 6)
+            expect(columns(2)).toBeCloseTo(4, 6)
+            // A line of spaces is an empty line.
+            expect(run.lines[1]!.children).toHaveLength(0)
+            expect(columns(1)).toBe(0)
+            // A command with no text ends after the characters of its prompt.
+            const bare = terminal([{ text: '', kind: 'command' }, 'xx'])
+            expect((bare.p(0, 'right')[0] - bare.p(0)[0]) / advance).toBeCloseTo(1, 6)
+            expect(width([{ text: '', kind: 'command' }])).toBeCloseTo(width(['x']), 6)
+            // The spaces at the end are not there to find, and the error says so.
+            expect(() => terminal([perf]).find('context-switches  ')).toThrow(/no line has the text "context-switches  ".*The spaces at the end of a line are not a part of the line/)
+        }))
+    })
+
+    it('gives a character of another font one column, and refuses a glyph that is too wide for one', async () => {
+        await compileFilm(film(() => {
+            // The mono font has no check mark, no star and no vertical ellipsis. Another font of the library has them.
+            const run = terminal(['x✓x★★x⋮x', 'xxxxxxxx'], { size: 100 })
+            const glyphs = run.lines[0]!.children, plain = run.lines[1]!.children
+            const advance = plain[1]!.get('x') - plain[0]!.get('x')
+            const start = run.toWorld(...run.p(0))[0]
+            for (const column of [1, 3, 4, 6]) {
+                // The ink is in the middle of its column, and inside it.
+                const ink = glyphs[column]!.bounds()
+                expect(ink.x + ink.width / 2 - start).toBeCloseTo((column + 0.5) * advance, 6)
+                expect(ink.x - start).toBeGreaterThan(column * advance)
+                expect(ink.x + ink.width - start).toBeLessThan((column + 1) * advance)
+            }
+            // Two wide glyphs side by side do not touch.
+            expect(glyphs[4]!.bounds().x).toBeGreaterThan(right(glyphs[3]!) + 1)
+            // A glyph that is too wide for a column is drawn smaller, on the baseline of the line. A narrow one keeps its size.
+            const natural = (char: string) => text(char, { font: 'mono', size: 100 }).bounds().width
+            expect(glyphs[1]!.bounds().width).toBeLessThan(natural('✓') * 0.9)
+            expect(Math.abs(bottom(glyphs[1]!) - bottom(glyphs[0]!))).toBeLessThan(2)
+            expect(glyphs[6]!.bounds().width).toBeCloseTo(natural('⋮'), 6)
+            // The glyphs of the mono font keep their places: a box drawing line goes past its column, to join the next.
+            const box = terminal(['──'], { size: 100 }).lines[0]!.children
+            expect(right(box[0]!)).toBeGreaterThan(box[1]!.bounds().x)
+            // A glyph that is wider than 1.2 columns is refused, in a line and in the prompt, from any font.
+            expect(() => terminal(['ok', 'a ⇒ b'])).toThrow(/line 1 has the character "⇒" \(U\+21D2\). Its glyph is 1.5 columns wide, so it would cover the next character. Replace it/)
+            expect(() => terminal([{ text: 'ls', kind: 'command' }], { prompt: '⇒ ' })).toThrow(/the prompt has the character "⇒"/)
+            expect(() => terminal(['a ⟶ b'])).toThrow(/line 0 has the character "⟶" \(U\+27F6\). Its glyph is 1.9 columns wide/)
+        }))
+    })
+
+    it('is as tall as the guide says: a frame of 1080 holds 38 lines at size 18, 25 at 26 and 20 at 32', async () => {
+        await compileFilm(film(() => {
+            const height = (count: number, size: number) => terminal(Array.from({ length: count }, () => 'x'), { size }).frame.bounds().height
+            for (const [size, count] of [[18, 38], [26, 25], [32, 20]] as const) {
+                expect(height(count, size)).toBeLessThanOrEqual(1080)
+                expect(height(count + 1, size)).toBeGreaterThan(1080)
+            }
+            expect(height(10, 20)).toBeCloseTo(20 * (1.5 * 10 + 2.7), 0)
+        }))
+    })
+
+    it('says that clip cut a text off when find does not find it', async () => {
+        await compileFilm(film(() => {
+            const run = terminal([`start ${'x'.repeat(30)} needle`, `kB one kB ${'.'.repeat(30)} kB`, 'kB'], { columns: 30, clip: true })
+            expect(() => run.find('needle')).toThrow(/no line has the text "needle". find\(\) matches the exact characters, spaces included. Line 0 has it in the part that `clip` cut off/)
+            expect(() => run.find('kB', 3)).toThrow(/the text "kB" is there 3 times, so it has no occurrence 3. Occurrences count from 0. Line 1 has it in the part that `clip` cut off/)
+            // A text that no line has, cut or not, gets no such hint.
+            expect(() => run.find('nothing')).toThrow(/no line has the text "nothing". find\(\) matches the exact characters, spaces included$/)
+            expect(() => terminal(['kB', 'kB']).find('kB', 2)).toThrow(/Occurrences count from 0$/)
+        }))
+    })
+
+    it('takes its default times from the text: the characters of a command, and the lines of a print up to 3 s', async () => {
+        await compileFilm(film(() => {
+            const command = (length: number) => terminal([{ text: 'x'.repeat(length), kind: 'command' }])
+            expect(command(20).type(0).duration).toBeCloseTo(1.2, 6)
+            expect(command(2).type(0).duration).toBe(0.4)
+            const steady = command(20).type(0)
+            expect(steady.ease!(0.25)).toBe(0.25)
+            // The options of a call replace the defaults.
+            const eased = command(20).type(0, { duration: 2, ease: (value) => value * value })
+            expect(eased.duration).toBe(2)
+            expect(eased.ease!(0.5)).toBe(0.25)
+            const dump = (count: number) => terminal(Array.from({ length: count }, () => 'x'))
+            expect(dump(10).print().duration).toBeCloseTo(1.2, 6)
+            expect(dump(1).print().duration).toBe(0.3)
+            expect(dump(40).print().duration).toBe(3)
+            expect(dump(40).print({ to: 4 }).duration).toBeCloseTo(0.6, 6)
+            expect(dump(40).print({ duration: 5 }).duration).toBe(5)
+            // With no range, a print brings one block: its time is that of the longest block, a command and five lines here.
+            const first = { text: 'a', kind: 'command' as const }
+            expect(terminal([first, '1', '2', first, '1', '2', '3', '4', '5']).print().duration).toBeCloseTo(0.72, 6)
+            expect(dump(3).enter().duration).toBe(0.6)
+            expect(dump(3).showLines().duration).toBe(0.5)
+        }))
+    })
+
+    it('writes a glyph of a line as write() writes a glyph of a text: the two contours of a letter at one time', async () => {
+        let glyph!: Node
+        let letter!: Node
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            const run = terminal(['o'], { size: 100 }).at(-300, 0)
+            const plain = text('o', { font: 'mono', size: 100 }).at(300, 0)
+            glyph = run.lines[0]!.children[0]!
+            letter = plain.chars[0]!
+            s.add(run)
+            s.play(write(run.lines[0]!), write(plain), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        // A third of the way, the outline of the outer contour and of the inner contour are both under way.
+        const outline = (node: Node) => paths(compiled, 0.3).find((op) => op.node === node)!.strokePath
+        expect(outline(letter)).toHaveLength(2)
+        expect(outline(glyph)).toHaveLength(2)
+    })
+
+    it('names each wrong input, and says what to do', async () => {
+        await compileFilm(film(() => {
+            expect(() => terminal([])).toThrow(/at least one line/)
+            expect(terminal(Array.from({ length: 40 }, () => 'x')).lines).toHaveLength(40)
+            expect(() => terminal(Array.from({ length: 41 }, () => 'x'))).toThrow(/41 lines are more than a frame can show.*Show 40 lines or fewer.*kind: 'note'/)
+            expect(() => terminal(['a\tb'])).toThrow(/line 0 has a tab. Expand each tab to spaces/)
+            expect(() => terminal(['ok', { text: 'a\nb' }])).toThrow(/line 1 has a line break. Give each line as its own item/)
+            expect(() => terminal(['\u001b[31mred'])).toThrow(/line 0 has a control character \(U\+001B\)/)
+            expect(() => terminal(['a\u007fb'])).toThrow(/line 0 has a control character \(U\+007F\)/)
+            expect(() => terminal(['x'], { prompt: '\t$ ' })).toThrow(/the prompt has a tab/)
+            expect(() => terminal(['x'], { title: 'a\nb' })).toThrow(/the title has a line break/)
+            expect(() => terminal(['x'], { note: 'a\tb' })).toThrow(/the note has a tab/)
+            expect(() => terminal(['x'], { size: 0 })).toThrow(/size is a text size, more than 0/)
+            expect(() => terminal(['x'], { columns: 2.5 })).toThrow(/columns is a whole number of characters, 1 or more/)
+            expect(() => terminal(['x'], { columns: 0 })).toThrow(/columns is a whole number of characters, 1 or more/)
+            const run = terminal(lines)
+            expect(() => run.find('')).toThrow(/find\(\) needs a text with a character to draw, and got ""/)
+            expect(() => run.find('   ')).toThrow(/find\(\) needs a text with a character to draw/)
+            expect(() => run.find('kB', 1.5)).toThrow(/occurrence is a whole number, 0 for the first match/)
+            expect(() => run.find('kB', 2)).toThrow(/the text "kB" is there 2 times, so it has no occurrence 2/)
+            expect(() => run.find('4 kB', 1)).toThrow(/the text "4 kB" is there 1 time, so/)
+            expect(() => run.find('page-faults')).toThrow(/no line has the text "page-faults"/)
+            expect(() => run.type(1)).toThrow(/line 1 is output, not a command/)
+            expect(() => run.type(5)).toThrow(/no line 5. The terminal has 5 lines, and the first is line 0/)
+            expect(() => terminal([{ text: '[...]', kind: 'note' }]).type(0)).toThrow(/line 0 is a note, not a command/)
+            expect(() => run.print({ from: 3, to: 1 })).toThrow(/print from 3 to 1. `from` and `to` are lines from 0 to 4/)
+            expect(() => run.print({ to: 5 })).toThrow(/print from 0 to 5/)
+            expect(() => run.print({ from: -1 })).toThrow(/print from -1 to 4/)
+            expect(() => run.print({ from: 0.5 })).toThrow(/print from 0.5 to 4/)
         }))
     })
 })
