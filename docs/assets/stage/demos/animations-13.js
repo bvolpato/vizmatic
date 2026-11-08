@@ -1,1 +1,1 @@
-import{Za as a,lb as e,yb as i}from"../chunk-7VQNE7EI.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var d=e({fps:30},t=>{let c=t.add(i("E = m c^2",{size:190}));t.wait(.3),t.play(a(c.part("c^2"),{scale:1.3})),t.wait(.6)});export{d as default};
+import{Za as a,lb as e,yb as i}from"../chunk-LPLZVXJL.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var d=e({fps:30},t=>{let c=t.add(i("E = m c^2",{size:190}));t.wait(.3),t.play(a(c.part("c^2"),{scale:1.3})),t.wait(.6)});export{d as default};

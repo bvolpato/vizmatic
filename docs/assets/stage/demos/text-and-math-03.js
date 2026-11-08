@@ -1,1 +1,1 @@
-import{Ga as a,lb as r,yb as e}from"../chunk-7VQNE7EI.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var o=r({fps:30},t=>{let i=t.add(e("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",{size:130}));t.play(a(i,{duration:2.4})),t.wait(1)});export{o as default};
+import{Ga as a,lb as r,yb as e}from"../chunk-LPLZVXJL.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var o=r({fps:30},t=>{let i=t.add(e("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",{size:130}));t.play(a(i,{duration:2.4})),t.wait(1)});export{o as default};
