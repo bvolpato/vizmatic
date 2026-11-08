@@ -3996,3 +3996,13 @@ describe('bit field', () => {
 })
 
 export type { Vec, Vec3 }
+
+describe('object catalog', () => {
+    it('names only things that the stage exports, so no entry is lost from the list of objects', async () => {
+        const { FILM_OBJECTS } = await import('../src/stage/catalog')
+        const stage = await import('../src/stage/index')
+        // fromComponent lives in the Node-only export module, because it needs the layout engine.
+        const missing = FILM_OBJECTS.filter((entry) => !(entry.name in stage) && entry.name !== 'fromComponent').map((entry) => entry.name)
+        expect(missing).toEqual([])
+    })
+})
