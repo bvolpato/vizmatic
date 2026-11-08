@@ -1,1 +1,1 @@
-import{Ga as a,lb as r,yb as e}from"../chunk-ZUIPVVKU.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var o=r({fps:30},t=>{let i=t.add(e("x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",{size:130}));t.play(a(i,{duration:2.4})),t.wait(1)});export{o as default};
+import{Sa as o,lb as i,wb as e}from"../chunk-ZMKONTJO.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var r=i({fps:30},t=>{let a=t.add(e("Look at this word.",{font:"text-serif",size:170}));t.wait(.5),t.play(...a.find("this").map(f=>o(f,"yellow"))),t.wait(1)});export{r as default};
