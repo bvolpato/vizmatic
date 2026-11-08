@@ -13,7 +13,9 @@ const limits = {
     size: 5_550_000,
     // Includes image preflight, browser/Node rendering, declarations, and examples. Contact sheets of film stills
     // add the film and text code to the CommonJS export bundle, which holds its own copy of what it imports.
-    unpackedSize: 14_650_000,
+    // A stage object ships in four bundles and three declaration files, so the pictograms cost 48 KB.
+    // The budget is a tripwire for an accident, such as a font that ships two times. It leaves room for features.
+    unpackedSize: 15_000_000,
     // Includes the bundled raster codec license notice and film examples.
     entryCount: 190,
 }
