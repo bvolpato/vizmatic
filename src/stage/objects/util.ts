@@ -67,11 +67,11 @@ export function lerpSame(from: Path, to: Path): (alpha: number) => Path {
     }
 }
 
-/** A math or plain label as a node, unless it already is one. */
+/** A math or plain label as a node, unless it already is one. A plain label with no `font` is in the font of the film. */
 export function labelNode(label: string | Node, options: { size: number; color?: ColorInput; math?: boolean; font?: TextOptions['font']; weight?: TextOptions['weight'] }): Node {
     if (typeof label !== 'string') return label
     if (options.math) return tex(label, { size: options.size, color: options.color ?? 'ink', display: false })
-    return text(label, { size: options.size, color: options.color ?? 'ink', font: options.font ?? 'sans', weight: options.weight ?? 400 })
+    return text(label, { size: options.size, color: options.color ?? 'ink', font: options.font, weight: options.weight ?? 400 })
 }
 
 /** Relative luminance, for choosing readable text over a filled cell. */

@@ -1,6 +1,6 @@
 import { dynamic, Node } from '../node'
 import { apply, invert, rectPath, type Vec } from '../geometry'
-import { text } from '../text'
+import { text, type TextOptions } from '../text'
 import { smooth, linear } from '../ease'
 import { toPaint, type ColorInput } from '../color'
 import { Value, type Anim, type AnimOptions, type Target } from '../anim'
@@ -111,7 +111,8 @@ export interface CounterOptions {
     digits?: number
     size?: number
     color?: ColorInput
-    font?: 'mono' | 'sans' | 'serif'
+    /** Defaults to mono, in every film: a number that changes keeps its width in mono. */
+    font?: TextOptions['font']
     weight?: 400 | 600 | 700
     prefix?: string
     suffix?: string

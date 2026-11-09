@@ -8,7 +8,7 @@ import { Node } from '../node'
 import { parseColor, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimOptions } from '../anim'
 import { clock } from '../track'
-import { text } from '../text'
+import { text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { solidColor, stepsBetween, tweenValue } from '../objects/util'
 import type { DrawOp, PathOp } from '../display'
@@ -958,6 +958,8 @@ export interface Axes3DOptions {
     labels?: boolean | readonly [string, string, string]
     labelSize?: number
     numbers?: boolean
+    /** The font of the numbers. Defaults to the font of the film. The names of the axes are math. */
+    font?: TextOptions['font']
     ticks?: boolean
     /** Pull toward the camera, so axes lying in a surface do not break into dashes. */
     bias?: number
@@ -986,7 +988,7 @@ export class Axes3D extends Object3D {
                 for (const value of stepsBetween(range[0], range[1], this.step)) {
                     if (value === 0) continue
                     const at: Vec3 = [axes[axis]![0] * value, axes[axis]![1] * value, axes[axis]![2] * value]
-                    this.numberNodes.push({ node: text(String(value), { size: 18, color: 'dim' }), at })
+                    this.numberNodes.push({ node: text(String(value), { size: 18, font: options.font, color: 'dim' }), at })
                 }
             })
         }
@@ -1115,15 +1117,25 @@ export function gridPlane3d(options: GridPlaneOptions = {}): GridPlane3D {
     return new GridPlane3D(options)
 }
 
+export interface Label3DOptions {
+    size?: number
+    color?: ColorInput
+    /** A label is math by default. Pass false for plain text. */
+    math?: boolean
+    /** The font of a plain label. Defaults to the font of the film. */
+    font?: TextOptions['font']
+    offset?: Vec
+}
+
 /** A label pinned to a point in space. It always faces the camera. */
 export class Label3D extends Object3D {
     private readonly content: Node
 
-    constructor(content: string | Node, private readonly position: Reactive3, options: { size?: number; color?: ColorInput; math?: boolean; offset?: Vec } = {}) {
+    constructor(content: string | Node, private readonly position: Reactive3, options: Label3DOptions = {}) {
         super()
         this.content = typeof content === 'string'
             ? options.math === false
-                ? text(content, { size: options.size ?? 28, color: options.color ?? 'ink' })
+                ? text(content, { size: options.size ?? 28, font: options.font, color: options.color ?? 'ink' })
                 : tex(content, { size: options.size ?? 32, color: options.color ?? 'ink', display: false })
             : content
         this.offset = options.offset ?? [0, 0]
@@ -1147,6 +1159,6 @@ export class Label3D extends Object3D {
     }
 }
 
-export function label3d(content: string | Node, position: Reactive3, options: { size?: number; color?: ColorInput; math?: boolean; offset?: Vec } = {}): Label3D {
+export function label3d(content: string | Node, position: Reactive3, options: Label3DOptions = {}): Label3D {
     return new Label3D(content, position, options)
 }

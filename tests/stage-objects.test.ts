@@ -15,6 +15,7 @@ import {
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent,
+    decimal, label3d, TextNode, type FontFamily,
 } from '../src/stage/index'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
@@ -7768,6 +7769,418 @@ describe('ring buffer', () => {
             expectAtSlot(made, made.tailPointer!, 1)
             expectAtSlot(made, made.writeMarker!, 2)
         }))
+    })
+})
+
+describe('film font', () => {
+    /** The fonts of the texts that the frames at these times draw, by the words of each text. Each font is the one that the text node reports. */
+    function fontsIn(f: CompiledFilm, ...times: number[]): Map<string, string[]> {
+        const found = new Map<string, Set<string>>()
+        for (const t of times) {
+            for (const op of paths(f, t)) {
+                const block = op.node?.parent
+                if (block instanceof TextNode) found.set(block.source, (found.get(block.source) ?? new Set<string>()).add(block.font))
+            }
+        }
+        return new Map([...found].map(([words, fonts]) => [words, [...fonts].sort()]))
+    }
+
+    const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text x="0" y="30" font-size="20">svg words</text>'
+        + '<g font-family="ui-monospace, Menlo, monospace"><text x="0" y="70" font-size="20">svg code</text></g></svg>'
+
+    /**
+     * One object of each kind that draws a label, with words that no other text has. `own` goes to each
+     * object as its `font`, to the note of the tag, to the edge labels of the graph, and to the plain text.
+     * The objects that set data in mono by default (array cells, tokens, a counter, a decimal) do not get it,
+     * and the quotes do not: they have a font of their own.
+     */
+    function everyObject(s: Stage, own?: FontFamily): void {
+        const font = own
+        s.add(text('plain note', { font }), text('0x7ffd', { font: 'mono' }))
+        s.add(card({ title: 'card title', caption: 'card caption', font }))
+        s.add(zone(rect(120, 60), { title: 'zone title', font }))
+        s.add(tag('TAGWORD', { note: 'tag note', noteFont: font }))
+        s.add(dotChart([{ label: 'dot label', value: 0.5 }], { domain: [0, 1], ticks: [0, 1], format: (value) => `dot tick ${value}`, xLabel: 'dot axis', font }))
+        const flow = s.add(lanes(['lane one', 'lane two'], [
+            { lane: 0, start: 0, end: 40, label: 'lane span' },
+            { from: 0, to: 1, at: 40, label: 'lane handoff' },
+            { from: 1, to: 0, at: 80 },
+        ], { domain: [0, 100], ticks: [0, 100], format: (time) => `lane tick ${time}`, axisLabel: 'lane axis', boundaries: [{ between: [0, 1], label: 'lane wall', count: true }], font }))
+        s.add(bitField([{ bits: 4, label: 'bit under', value: '0xf' }, { bits: 8, label: 'bit inside' }], { font }))
+        s.add(terminal(['a line of output'], { title: 'run title', note: 'run note' }))
+        s.add(stateGrid({ columns: 2, rows: 1 }).legend([['present', 'grid key']], { font }))
+        s.add(barChart([{ label: 'bar label', value: 412 }], { font }))
+        s.add(unitChart([{ count: 4, label: 'unit label' }, { count: 2, color: 'green', label: 'unit other' }], { rows: 2, split: true, font }))
+        s.add(infoBox({ title: 'info title', subtitle: 'info subtitle', badge: 'info badge', rows: [{ label: 'info row', value: 'info value' }], tags: ['info tag'], font }))
+        s.add(callout([0, 0], 'callout body', { title: 'callout title', font }))
+        s.add(legend([{ label: 'key label' }], { font }))
+        s.add(graph([{ id: 'a', label: 'graph node' }, { id: 'b', label: 'graph other' }], [{ from: 'a', to: 'b', label: 'edge label' }], { font, edgeFont: font }))
+        s.add(tree({ label: 'tree root', children: [{ label: 'tree leaf' }] }, { font }))
+        s.add(neuralNet([2, 2], { layerLabels: ['layer in', 'layer out'], font }))
+        s.add(heatmap([[0.1, 0.9]], { values: true, format: (value) => `cell ${value}`, rowLabels: ['heat row'], columnLabels: ['heat column', 'heat other'], font }))
+        s.add(attentionMatrix(['attend row'], ['attend column'], [[1]], { font }))
+        s.add(lineChart([{ name: 'line name', values: [1, 2] }], { xLabel: 'line x', yLabel: 'line y', xFormat: (x) => `line x tick ${x}`, yFormat: (y) => `line y tick ${y}`, font }))
+        s.add(scatter([{ x: 1, y: 1, group: 'scatter group' }, { x: 2, y: 2, group: 'scatter group' }], { xLabel: 'scatter x', yLabel: 'scatter y', font }))
+        s.add(histogram([10, 20, 20, 30], { bins: 3, ticks: 2, font }))
+        s.add(donut([{ label: 'pie label', value: 1 }], { percent: false, centerLabel: 'pie center', font }))
+        s.add(braceLabel(rect(100, 40), 'brace label', { plain: true, font }))
+        s.add(labeledDot('dot name', { plain: true, font }))
+        const view = s.add(scene3d())
+        view.add(axes3d({ x: [0, 9], y: [0, 9], z: [0, 9], step: 9, numbers: true, font }), label3d('space label', [1, 1, 1], { math: false, font }))
+        s.add(fromSvg(SVG, { font }))
+        s.add(connector([0, 0], [300, 0], { label: 'wire label', font }))
+        s.add(arrayCells(['cell value']), tokens([{ text: 'token', sub: 'token sub' }]), counter(1234), decimal(() => 0.25, { prefix: 'm = ' }))
+        // A drawing that is rebuilt on each frame makes its text while the frame is drawn, not in the callback.
+        s.add(dynamic(() => text('made each frame', { font })))
+        const strip = s.add(steps([{ label: 'step label', note: 'step note' }, { label: 'step other' }], { numbered: true, current: 0, font }))
+        const wall = s.add(boundary({ width: 900, label: 'wall label', above: 'wall above', below: 'wall below', tally: ['wall call', 'wall calls'], tallySide: 'over', tickScale: 250, font }))
+        const ring = s.add(ringBuffer(4, { radius: 320, label: 'ring caption', counts: true, numbers: true, font }))
+        s.add(quote('quoted words', { by: 'quote source', width: 600 }))
+        s.add(quotePair({ words: 'pair first' }, { words: 'pair second' }, { width: 1200, versus: 'pair but' }))
+        s.play(flow.enter(), ring.enter(), wall.enter(), strip.enter(), { duration: 0.1 })
+        s.play(flow.showAll(), ring.push({ label: 'ringed' }), { duration: 0.2 })
+        // The label of a crossing is on screen while its mark crosses: from 0.3 to 0.7.
+        s.play(wall.cross(wall.x(0.2), { direction: 'round', label: 'wall mark' }), { duration: 0.4 })
+        s.play(wall.addCrossings(9999), { duration: 0.2 })
+        s.wait(0.5)
+    }
+    const CROSSING = 0.5, END = 1.35
+
+    // Labels, titles, notes, captions and the numbers of an axis. "2" is the count of a boundary of the lanes,
+    // "20" is a tick of the histogram, "9" is a number of the 3D axes, "," is in the tally of the boundary,
+    // and "3" is the number of a slot of the ring.
+    const LABELS = [
+        'plain note', 'card title', 'card caption', 'zone title', 'tag note', 'dot label', 'dot tick 0', 'dot axis',
+        'lane one', 'lane span', 'lane handoff', 'lane tick 100', 'lane axis', 'lane wall', '2', 'bit under', 'bit inside', 'grid key',
+        'bar label', 'unit label', 'info title', 'info row', 'callout title', 'callout body', 'key label', 'graph node', 'tree leaf',
+        'layer in', 'heat row', 'heat column', 'attend row', 'attend column', 'line name', 'line x', 'line y', 'line x tick 1', 'line y tick 1',
+        'scatter group', 'scatter x', 'scatter y', '20', 'pie label', 'brace label', 'dot name', '9', 'space label', 'svg words', 'made each frame',
+        '1 step label', 'step note', 'wall label', 'wall above', 'wall below', 'wall calls', ',', 'wall mark', 'each tick: about 250',
+        'ring caption', 'ringed', 'head 0', 'tail 1', '3',
+    ]
+    // Code, values, addresses and ids. "11" is a bit number of the bit field, "412" is the value over a bar, and "1,234" is the counter.
+    const MONO = [
+        '0x7ffd', 'TAGWORD', 'run title', 'run note', '0xf', '11', '412', 'info subtitle', 'info badge', 'info value', 'info tag',
+        'cell value', 'token', 'token sub', '1,234', 'm = 0.25', 'cell 0.1',
+    ]
+    // The label on a line: of a connector, and of an edge of a graph. It was mono before films had a font.
+    const ON_LINES = ['wire label', 'edge label']
+    // A quote sets its words and its source line in the serif text font, by its own rule.
+    const QUOTED = ['“quoted words”', 'quote source', '“pair first”', 'pair but']
+    /** The font of each of the words, as pairs, so that a failure names the text. */
+    const pairs = (fonts: Map<string, string[]>, words: readonly string[]) => words.map((text) => [text, fonts.get(text)?.join(' and ')])
+    const all = (words: readonly string[], font: string) => words.map((text) => [text, font])
+    const every = async (options: { font?: FontFamily }, own?: FontFamily) => fontsIn(await compile((s) => everyObject(s, own), options), CROSSING, END)
+
+    it('sets the labels of every kind of object in the font of the film, and keeps code and values in mono', async () => {
+        const fonts = await every({ font: 'text-serif' })
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'text-serif'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'text-serif'))
+        expect(pairs(fonts, QUOTED)).toEqual(all(QUOTED, 'text-serif'))
+        // The middle of a donut is a display title, in the display serif. Text that an SVG sets in a monospace family is code.
+        expect(pairs(fonts, ['pie center', 'svg code'])).toEqual([['pie center', 'serif'], ['svg code', 'mono']])
+        // The rule of the film: no text is in the sans font.
+        expect([...fonts].filter(([, own]) => own.includes('sans'))).toEqual([])
+    })
+
+    it('keeps the font that an object or a text names, also when it is the library default', async () => {
+        const fonts = await every({ font: 'text-serif' }, 'sans')
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'sans'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'sans'))
+        // The font of an object is the font of its labels: the code of an SVG stays mono, and a quote that got no font keeps its own.
+        expect(pairs(fonts, ['svg code', ...QUOTED])).toEqual([['svg code', 'mono'], ...all(QUOTED, 'text-serif')])
+    })
+
+    it('keeps a film with no font as it was: sans labels, mono on the lines, and all the text of an SVG in sans', async () => {
+        const none = await compile((s) => everyObject(s)), serif = await compile((s) => everyObject(s), { font: 'text-serif' })
+        const fonts = fontsIn(none, CROSSING, END)
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'sans'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'mono'))
+        expect(pairs(fonts, ['svg code', ...QUOTED])).toEqual([['svg code', 'sans'], ...all(QUOTED, 'text-serif')])
+        expect(none.stage.font).toBeNull()
+        expect(serif.stage.font).toBe('text-serif')
+        expect(svgAt(serif, END)).not.toBe(svgAt(none, END))
+    })
+
+    it('takes sans as a font that the film names: the labels on the lines follow it, and a quote keeps the serif text font', async () => {
+        const fonts = await every({ font: 'sans' })
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'sans'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'sans'))
+        expect(pairs(fonts, ['svg code', ...QUOTED])).toEqual([['svg code', 'mono'], ...all(QUOTED, 'text-serif')])
+    })
+
+    it('gives the label of a connector and of a graph edge their own font in a film with none', async () => {
+        const fonts = await every({}, 'text-serif')
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'text-serif'))
+        expect(pairs(fonts, ['svg words', 'svg code'])).toEqual([['svg words', 'text-serif'], ['svg code', 'mono']])
+    })
+
+    it('lays out an object with the measures of the font of the film', async () => {
+        const words = 'one line for each event sent'
+        const build = async (font?: FontFamily) => {
+            let made!: ReturnType<typeof card>
+            const wide = { sans: 0, serif: 0 }
+            await compile(() => {
+                made = card({ title: 'Logs', caption: words })
+                // The caption of a card with these defaults has a size of 28.8, and 364 px for a line.
+                wide.sans = text(words, { size: 28.8, font: 'sans' }).bounds().width
+                wide.serif = text(words, { size: 28.8, font: 'text-serif' }).bounds().width
+            }, font ? { font } : {})
+            return { made, wide }
+        }
+        const serif = await build('text-serif'), plain = await build()
+        expect(plain.wide.sans).toBeGreaterThan(364)
+        expect(serif.wide.serif).toBeLessThan(364)
+        // In the serif text font the caption fits in one line, and it is as wide as that text. In sans it takes two lines.
+        expect(serif.made.caption!.bounds().width).toBeCloseTo(serif.wide.serif, 6)
+        expect(plain.made.caption!.bounds().width).toBeLessThan(plain.wide.sans - 40)
+        expect(plain.made.frame.bounds().height - serif.made.frame.bounds().height).toBeCloseTo(1.25 * 28.8, 6)
+    })
+
+    it('sets weight 600 of the serif text font in its semibold, so a title differs from its body in a serif film', async () => {
+        let regular = 0, semibold = 0, title = 0, body = 0, count = 0, plainCount = 0
+        await compile(() => {
+            regular = text('Why it is fast', { size: 40, font: 'text-serif' }).bounds().width
+            semibold = text('Why it is fast', { size: 40, font: 'text-serif', weight: 600 }).bounds().width
+            const note = callout([0, 0], 'Why it is fast', { title: 'Why it is fast', size: 40, width: 2000 })
+            title = note.titleNode!.bounds().width
+            // The body of a callout is 0.94 of the size of its title.
+            body = note.body.bounds().width / 0.94
+            const flow = lanes(['one', 'two'], [{ from: 0, to: 1, at: 5 }], { domain: [0, 10], size: 40, boundaries: [{ between: [0, 1], count: true }] })
+            count = flow.counters[0]!.children[1]!.bounds().width
+            plainCount = text('1', { size: 40, font: 'text-serif' }).bounds().width
+        }, { font: 'text-serif' })
+        // The strokes of the semibold are heavier, so its letters are wider.
+        expect(semibold).toBeGreaterThan(regular * 1.01)
+        expect(title).toBeCloseTo(semibold, 6)
+        expect(body).toBeCloseTo(regular, 6)
+        expect(count).toBeGreaterThan(plainCount * 1.01)
+    })
+
+    it('keeps the font of one film away from another film in the same process', async () => {
+        const made: Record<string, TextNode> = {}
+        const build = (name: string) => (s: Stage) => {
+            made[name] = s.add(text(`${name} text`))
+            s.add(dynamic(() => text(`${name} drawn`)))
+            s.wait(1)
+        }
+        const serif = await compile(build('serif'), { font: 'text-serif' })
+        const plain = await compile(build('plain'))
+        expect(clock.font).toBeNull()
+        expect(made['serif']!.font).toBe('text-serif')
+        expect(made['plain']!.font).toBe('sans')
+        // The frames of the two films in mixed order: a drawing that is rebuilt on each frame makes its text then.
+        for (const [f, name, font] of [[serif, 'serif', 'text-serif'], [plain, 'plain', 'sans'], [serif, 'serif', 'text-serif']] as const) {
+            expect(fontsIn(f, 0.5).get(`${name} drawn`)).toEqual([font])
+            expect(clock.font).toBeNull()
+        }
+    })
+
+    /** The font of each text of a film, in the order of the film. */
+    const fontsOf = (f: CompiledFilm) => f.stage.root.all().flatMap((node) => (node instanceof TextNode ? [`${node.source}: ${node.font}`] : []))
+    const turn = () => Promise.resolve()
+    const timer = (ms: number) => () => new Promise<void>((resolve) => setTimeout(resolve, ms))
+    /**
+     * A film of two texts. With `wait`, its callback awaits between them. With `call`, the callback makes that
+     * call on its stage after the await, before it makes the second text.
+     */
+    const twoTexts = (name: string, font: FontFamily | undefined, wait?: () => Promise<void>, call?: (s: Stage) => void) => film(font ? { fps: 10, font } : { fps: 10 }, wait
+        ? async (s) => {
+            s.add(text(`${name} one`).at(0, -100))
+            await wait()
+            call?.(s)
+            s.add(text(`${name} two`).at(0, 100))
+            s.wait(1)
+        }
+        : (s) => {
+            s.add(text(`${name} one`).at(0, -100))
+            s.add(text(`${name} two`).at(0, 100))
+            s.wait(1)
+        })
+    /** What is left after the films: the mode and the font of the clock, and the font of a text that is made outside a film. */
+    const after = () => [clock.mode, clock.font, text('made outside').font]
+
+    it('gives two films that compile at the same time their own fonts and the picture that each has alone, when one callback awaits or none', async () => {
+        const waits: [string, (() => Promise<void>) | undefined, (() => Promise<void>) | undefined][] = [
+            ['no await', undefined, undefined], ['the plain film awaits a ready value', undefined, turn], ['the plain film awaits a timer', undefined, timer(10)],
+            ['the serif film awaits a ready value', turn, undefined], ['the serif film awaits a timer', timer(10), undefined],
+        ]
+        for (const [name, serifWait, plainWait] of waits) {
+            const serif = () => twoTexts('serif', 'text-serif', serifWait), plain = () => twoTexts('plain', undefined, plainWait)
+            const alone = [(await compileFilm(serif())).svg(0.5), (await compileFilm(plain())).svg(0.5)]
+            for (const first of ['serif', 'plain']) {
+                const both = await Promise.all(first === 'serif' ? [compileFilm(serif()), compileFilm(plain())] : [compileFilm(plain()), compileFilm(serif())])
+                const [a, b] = first === 'serif' ? both : [both[1]!, both[0]!]
+                const label = `${name}, the ${first} film starts first`
+                expect([label, fontsOf(a!), fontsOf(b!)]).toEqual([label, ['serif one: text-serif', 'serif two: text-serif'], ['plain one: sans', 'plain two: sans']])
+                expect([label, a!.svg(0.5) === alone[0], b!.svg(0.5) === alone[1]]).toEqual([label, true, true])
+                expect([label, ...after()]).toEqual([label, 'free', null, 'sans'])
+            }
+        }
+    })
+
+    it('does not wait for a callback that is not async, also when it returns a value', async () => {
+        // An arrow function with no braces returns its node. The film is still done when the callback returns.
+        const short = film({ font: 'text-serif' }, (s) => s.add(text('short one')) as unknown as void)
+        const [a, b] = await Promise.all([compileFilm(twoTexts('plain', undefined, turn)), compileFilm(short)])
+        expect([fontsOf(a), fontsOf(b)]).toEqual([['plain one: sans', 'plain two: sans'], ['short one: text-serif']])
+        expect(after()).toEqual(['free', null, 'sans'])
+    })
+
+    it('gives two films whose callbacks both await their own fonts, when each calls its stage after its await, whatever the call', async () => {
+        // Each call that a callback can make on its stage takes the clock for its film.
+        const calls: Record<string, (s: Stage) => void> = {
+            add: (s) => s.add(group()), mountAt: (s) => s.mountAt(group(), 0), remove: (s) => s.remove(), play: (s) => s.play(), wait: (s) => s.wait(0),
+            at: (s) => s.at(0, () => {}), chapter: (s) => s.chapter('two'), caption: (s) => s.caption('two', 0.1), value: (s) => s.value(), update: (s) => s.update(group(), () => {}),
+        }
+        for (const [name, call] of Object.entries(calls)) {
+            // The film that starts first also goes on first, so the clock has the font of the other film when it does.
+            for (const first of ['serif', 'plain']) {
+                const serif = twoTexts('serif', 'text-serif', timer(first === 'serif' ? 5 : 20), call), plain = twoTexts('plain', undefined, timer(first === 'serif' ? 20 : 5), call)
+                const both = await Promise.all(first === 'serif' ? [compileFilm(serif), compileFilm(plain)] : [compileFilm(plain), compileFilm(serif)])
+                const [a, b] = first === 'serif' ? both : [both[1]!, both[0]!]
+                const label = `s.${name}(), the ${first} film starts first`
+                expect([label, fontsOf(a!), fontsOf(b!)]).toEqual([label, ['serif one: text-serif', 'serif two: text-serif'], ['plain one: sans', 'plain two: sans']])
+                expect([label, ...after()]).toEqual([label, 'free', null, 'sans'])
+            }
+        }
+    })
+
+    it('puts the clock back after any mix of films, and gives the film that goes on last its own font', async () => {
+        // Here each callback makes its second text after its await, before any call to its stage. The film that
+        // goes on first can then get the font of the other film: the guide says so. The film that goes on last
+        // is alone by then, and the clock is as it was after all of them.
+        for (const [serifMs, plainMs] of [[5, 20], [20, 5]]) {
+            for (const first of ['serif', 'plain']) {
+                const serif = twoTexts('serif', 'text-serif', timer(serifMs!)), plain = twoTexts('plain', undefined, timer(plainMs!)), mono = twoTexts('mono', 'mono')
+                const made = await Promise.all(first === 'serif' ? [compileFilm(serif), compileFilm(plain), compileFilm(mono)] : [compileFilm(plain), compileFilm(mono), compileFilm(serif)])
+                const label = `the serif film waits ${serifMs} ms and the plain film ${plainMs} ms, the ${first} film starts first`
+                const last = serifMs! > plainMs! ? fontsOf(made[first === 'serif' ? 0 : 2]!) : fontsOf(made[first === 'serif' ? 1 : 0]!)
+                expect([label, last]).toEqual([label, serifMs! > plainMs! ? ['serif one: text-serif', 'serif two: text-serif'] : ['plain one: sans', 'plain two: sans']])
+                expect([label, fontsOf(made[first === 'serif' ? 2 : 1]!)]).toEqual([label, ['mono one: mono', 'mono two: mono']])
+                expect([label, ...after()]).toEqual([label, 'free', null, 'sans'])
+            }
+        }
+    })
+
+    it('gives a film that is compiled inside the callback of another film its own font, then goes on with the first', async () => {
+        const made: TextNode[] = []
+        await compile(async (s) => {
+            made.push(s.add(text('before')))
+            await compile((inner) => {
+                made.push(inner.add(text('inside')))
+            })
+            made.push(s.add(text('after')))
+        }, { font: 'text-serif' })
+        expect(made.map((node) => [node.source, node.font])).toEqual([['before', 'text-serif'], ['inside', 'sans'], ['after', 'text-serif']])
+        expect(after()).toEqual(['free', null, 'sans'])
+    })
+
+    it('reaches a scene in its own function, and the part of a callback after an await', async () => {
+        const made: TextNode[] = []
+        const scene = (s: Stage) => {
+            made.push(s.add(text('in a scene')))
+        }
+        await compile(async (s) => {
+            scene(s)
+            await Promise.resolve()
+            made.push(s.add(text('after an await')))
+        }, { font: 'serif' })
+        expect(made.map((node) => node.font)).toEqual(['serif', 'serif'])
+    })
+
+    it('gives a text that an updater makes on a frame the font of the film', async () => {
+        const seen: string[] = []
+        const f = await compile((s) => {
+            s.update(s.add(group()), () => {
+                seen.push(text('from an updater').font)
+            })
+            s.wait(1)
+        }, { font: 'text-serif' })
+        seen.length = 0
+        f.frame(0.5)
+        expect(seen).toEqual(['text-serif'])
+        expect(clock.font).toBeNull()
+    })
+
+    it('keeps the new value of an info box in mono', async () => {
+        let box!: ReturnType<typeof infoBox>
+        await compile((s) => {
+            box = s.add(infoBox({ title: 'checkout', rows: [{ label: 'rate', value: 'old value' }] }))
+            s.play(box.setValue(0, 'new value'))
+        }, { font: 'text-serif' })
+        const value = box.rowValues[0] as TextNode
+        expect([value.source, value.font]).toEqual(['new value', 'mono'])
+    })
+
+    it('puts the library font back when a callback or a frame throws, and leaves a text from outside a callback in it', async () => {
+        await expect(compile((s) => {
+            s.add(text('made'))
+            throw new Error('the scene broke')
+        }, { font: 'text-serif' })).rejects.toThrow('the scene broke')
+        expect(after()).toEqual(['free', null, 'sans'])
+        await expect(compile(async (s) => {
+            s.add(text('made'))
+            await Promise.resolve()
+            throw new Error('the scene broke later')
+        }, { font: 'text-serif' })).rejects.toThrow('the scene broke later')
+        expect(after()).toEqual(['free', null, 'sans'])
+
+        let broken = false
+        const f = await compile((s) => {
+            s.add(dynamic(() => {
+                if (broken) throw new Error('the drawing broke')
+                return text('drawn')
+            }))
+            s.wait(1)
+        }, { font: 'text-serif' })
+        broken = true
+        expect(() => f.frame(0.5)).toThrow('the drawing broke')
+        expect(after()).toEqual(['free', null, 'sans'])
+
+        // A text measures its glyphs when it is made. This one is made before the film starts, so the film cannot change it.
+        const outside = text('made outside')
+        await compile((s) => {
+            s.add(outside)
+        }, { font: 'text-serif' })
+        expect(outside.font).toBe('sans')
+        // The stage of a film that is done does not take the clock when a tool calls it.
+        f.stage.add(group())
+        f.stage.wait(1)
+        expect(after()).toEqual(['free', null, 'sans'])
+    })
+
+    it('refuses a font that the library does not have, and names the fonts that it has', async () => {
+        await expect(compile(() => {}, { font: 'comic' })).rejects.toThrow(`film: font is 'sans', 'serif', 'text-serif', 'mono' or 'noto', not "comic"`)
+        expect(clock.font).toBeNull()
+    })
+
+    it('says what is wrong and what to do when a text is made before its font is loaded, outside a callback', () => {
+        // A text at the top of a film file throws this. A tool that does not know it prints it as a string.
+        const thrown = new Suspend(Promise.resolve())
+        expect(String(thrown)).toMatch(/not loaded yet.*inside the callback of film\(\), not at the top of a file/s)
+        expect(String(thrown)).toMatch(/two copies of vizmatic.*package\.json with "type": "module"/s)
+        expect(thrown.message).toBe(String(thrown))
+    })
+
+    it('gives the film check nothing new to report when a film only adds the font', async () => {
+        // The labels have characters that the serif fonts do not have, so they come from the fonts behind them.
+        const scene = (s: Stage) => {
+            s.add(card({ title: 'the CPU', caption: 'one core → one thread', width: 400 }).at(-640, -260))
+            s.add(zone(text('a write ≤ 4 kB', { size: 40 }), { title: 'guest memory', dash: true }).at(-60, -300))
+            s.add(tag('MEASURED', { note: 'run 03, Linux 7.0' }).at(300, -400))
+            s.add(dotChart([{ label: 'page cache', value: 0.8, low: 0.7, high: 0.9 }, { label: 'huge pages', value: 0.3 }], { width: 700, domain: [0, 1], labelSize: 28, xLabel: 'share of faults' }).at(120, -40))
+            s.add(bitField([{ bits: 9, label: 'directory', value: '0x1ff' }, { bits: 9, label: 'table' }, { bits: 12, label: 'offset in the page' }], { width: 1400 }).at(0, 320))
+            s.wait(2)
+        }
+        for (const font of [undefined, 'text-serif', 'serif'] as const) {
+            const report = await checkFilm(film(font ? { font } : {}, scene), { motion: true })
+            expect([font, report.diagnostics.map((found) => `${found.code}: ${found.message}`)]).toEqual([font, []])
+        }
     })
 })
 

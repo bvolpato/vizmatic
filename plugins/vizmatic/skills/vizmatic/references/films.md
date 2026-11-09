@@ -5,6 +5,7 @@
 - The stage is 1920 by 1080. (0, 0) is the center and y points down. `film({ aspect: '9:16' })` changes the shape.
 - The build function runs once and may run again while fonts or math load. Keep it free of side effects and randomness that is not seeded.
 - Use `font: 'text-serif'` for sentences, labels, and numbers. Use `font: 'serif'` only for short titles at a large size, because its fine strokes fade at phone size.
+- Set the font once for the whole film: `film({ font: 'text-serif' }, (s) => { ... })`. Every `text()` with no `font` has it, and so has each label, title, caption and axis number that an object draws. Code, values, addresses and ids stay in mono, and `tex` stays in the math font. A text or an object with its own `font` keeps it. Make each node inside the callback: the fonts load while the callback runs, so a text at the top of a film file fails when the file loads.
 - `s.add(node)` puts a node on stage now. `s.play(...)` writes animation and moves time forward. `s.wait(seconds)` holds.
 - Reveal verbs such as `write`, `draw`, and `fadeIn` also add the node, so `s.add` is optional before them.
 - Setters such as `.at`, `.fill`, and `.scale` apply at the current time. On a node that is not on stage, they set its initial state.

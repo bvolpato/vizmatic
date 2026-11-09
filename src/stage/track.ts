@@ -1,4 +1,8 @@
 import type { Ease } from './ease'
+import type { FontFamily } from './font'
+
+/** The font of a text that names none, outside a film and in a film that names no font. */
+export const LIBRARY_FONT: FontFamily = 'sans'
 
 /**
  * The clock every read and write goes through.
@@ -13,6 +17,13 @@ export const clock = {
     frame: 0,
     /** While set, writes to mounted nodes collect here instead of creating keys. */
     capture: null as null | Set<Overlayable>,
+    /**
+     * The font that the film names for its texts, or null: outside a film, and in a film that names none.
+     * A text measures its glyphs when it is made, so the font must be known then. The font of a film lives on
+     * its stage. The stage puts it here when the callback of the film starts, at each call that the callback
+     * makes on the stage, and while one of its frames is drawn.
+     */
+    font: null as FontFamily | null,
 }
 
 export interface Overlayable {

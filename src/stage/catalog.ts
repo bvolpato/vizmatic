@@ -18,7 +18,7 @@ const THREE = '3D'
 const BRIDGE = 'Bring in existing work'
 
 export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
-    { name: 'text', group: TEXT, usage: "text('Hello', { font: 'serif', size: 72, color: 'ink' }): vector glyphs you can write and morph" },
+    { name: 'text', group: TEXT, usage: "text('Hello', { font: 'serif', size: 72, color: 'ink' }): vector glyphs you can write and morph. With no font, it takes the font of the film: film({ font: 'text-serif' }, (s) => { ... }) sets it for every text and every label of an object that names none" },
     { name: 'tex', group: TEXT, usage: "tex('e^{i\\\\pi} + 1 = 0', { size: 64 }): typeset math. eq.part('x^2') selects a term" },
     { name: 'decimal', group: TEXT, usage: "decimal(() => v.value, { digits: 2, prefix: 'm = ' }): a live number readout" },
     { name: 'quote', group: TEXT, usage: "quote('the agent loop lives in Temporal rather than on the VM itself', { by: 'Cursor', when: '2026-06-02', width: 900, color: 'orange', mark: 'lives in Temporal' }): the exact words of a source between quotation marks, with a rule at the left and a line under them that says who, when, and where. mark colors a part of the words, said.find('Temporal') gives its glyphs, and said.enter() brings the words in line by line" },

@@ -1,7 +1,7 @@
 import { polyPath, rectPath, circlePath, parseSvgPath, smoothPath, tangentAt, pointAt, pathLength, trimPath, type Path, type Vec } from '../geometry'
 import { Node } from '../node'
 import { line } from '../shapes'
-import { text } from '../text'
+import { filmFont, text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { fontFor, glyphPath } from '../font'
 import { ramp, toPaint, type ColorInput } from '../color'
@@ -68,6 +68,10 @@ export interface GraphOptions {
     seed?: number
     /** Fill nodes softly with their color instead of leaving them hollow. */
     fillOpacity?: number
+    /** The font of the node labels. Defaults to the font of the film. */
+    font?: TextOptions['font']
+    /** The font of the edge labels. Defaults to the font that the film names, and to mono in a film that names none. */
+    edgeFont?: TextOptions['font']
 }
 
 export class GraphNode extends Node {
@@ -189,7 +193,7 @@ export class Graph extends Node {
             if (spec.label) {
                 view.caption = spec.math
                     ? tex(spec.label, { size: labelSize, color: 'ink', display: false })
-                    : text(spec.label, { size: labelSize, color: 'ink' })
+                    : text(spec.label, { size: labelSize, font: options.font, color: 'ink' })
                 view.add(view.caption.at(0, 0))
             }
             view.named(spec.id)
@@ -200,6 +204,7 @@ export class Graph extends Node {
         const directed = options.directed ?? true
         const edgeColor = options.edgeColor ?? 'dim'
         const edgeLabelSize = options.edgeLabelSize ?? 20
+        const edgeFont = options.edgeFont ?? filmFont() ?? 'mono'
         for (const spec of edges) {
             const from = this.nodes.get(spec.from), to = this.nodes.get(spec.to)
             if (!from || !to) throw new Error(`Graph edge ${spec.from} -> ${spec.to} refers to a node that does not exist.`)
@@ -222,7 +227,7 @@ export class Graph extends Node {
             }
             if (spec.label) {
                 const [mx, my] = pointAt(path, 0.5)
-                const caption = text(spec.label, { size: edgeLabelSize, color: 'ink', font: 'mono' }).at(mx, my)
+                const caption = text(spec.label, { size: edgeLabelSize, color: 'ink', font: edgeFont }).at(mx, my)
                 const pad = edgeLabelSize * 0.34
                 const plate = new Node(rectPath(mx - caption.width / 2 - pad, my - edgeLabelSize * 0.68, caption.width + pad * 2, edgeLabelSize * 1.36, 4)).fill('bg')
                 view.caption = new Node().add(plate, caption)
@@ -421,7 +426,7 @@ export interface TreeSpec {
     math?: boolean
 }
 
-export interface TreeOptions extends Pick<GraphOptions, 'radius' | 'labelSize' | 'nodeColor' | 'edgeColor' | 'fillOpacity'> {
+export interface TreeOptions extends Pick<GraphOptions, 'radius' | 'labelSize' | 'nodeColor' | 'edgeColor' | 'fillOpacity' | 'font'> {
     levelGap?: number
     siblingGap?: number
     direction?: 'down' | 'right'
@@ -462,7 +467,7 @@ export class TreeGraph extends Graph {
         const xs = specs.map((spec) => spec.at![0]), ys = specs.map((spec) => spec.at![1])
         const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
         for (const spec of specs) (spec as { at?: Vec }).at = [spec.at![0] - cx, spec.at![1] - cy]
-        super(specs, links, { layout: 'manual', radius: options.radius ?? 28, labelSize: options.labelSize ?? 24, nodeColor: options.nodeColor, edgeColor: options.edgeColor, fillOpacity: options.fillOpacity, directed: false })
+        super(specs, links, { layout: 'manual', radius: options.radius ?? 28, labelSize: options.labelSize ?? 24, nodeColor: options.nodeColor, edgeColor: options.edgeColor, fillOpacity: options.fillOpacity, font: options.font, directed: false })
         for (const [id, depth] of depthOf) this.depths.set(id, depth)
     }
 
@@ -503,7 +508,8 @@ export interface ArrayCellsOptions {
     color?: ColorInput
     indices?: boolean
     indexSize?: number
-    font?: 'mono' | 'sans'
+    /** The font of the values. Defaults to mono. The indexes are in mono. */
+    font?: TextOptions['font']
 }
 
 /** A row of boxes. `swap(i, j)` lifts two items over each other, and `.cell(i)` follows them. */
@@ -1007,6 +1013,8 @@ export interface NeuralNetOptions {
     labelSize?: number
     /** Seed for the default activations. */
     seed?: number
+    /** The font of the layer labels. Defaults to the font of the film. */
+    font?: TextOptions['font']
 }
 
 /** Layers of neurons joined by hairline weights. `forward()` runs a signal through it. */
@@ -1056,7 +1064,7 @@ export class NeuralNet extends Node {
             const name = options.layerLabels?.[l]
             if (name) {
                 const size = options.labelSize ?? 22
-                const caption = text(name, { size, color: 'dim' }).at(x, height / 2 + size * 1.5)
+                const caption = text(name, { size, font: options.font, color: 'dim' }).at(x, height / 2 + size * 1.5)
                 this.captions.push(caption)
                 this.add(caption)
             }
@@ -1180,7 +1188,8 @@ export interface TokensOptions {
     color?: ColorInput
     /** Ramp of colors across the row. */
     colors?: readonly ColorInput[]
-    font?: 'mono' | 'sans'
+    /** The font of the tokens. Defaults to mono. The line under a chip is in mono. */
+    font?: TextOptions['font']
     subSize?: number
     radius?: number
 }
@@ -1285,6 +1294,8 @@ export interface AttentionMatrixOptions {
     values?: boolean
     labelSize?: number
     gap?: number
+    /** The font of the token labels. Defaults to the font of the film. */
+    font?: TextOptions['font']
 }
 
 /**
@@ -1302,6 +1313,7 @@ export function attentionMatrix(rows: readonly string[], columns: readonly strin
         columnLabels: columns,
         labelSize: options.labelSize ?? 18,
         columnLabelAngle: -Math.PI / 4,
+        font: options.font,
     })
 }
 
