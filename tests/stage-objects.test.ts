@@ -11,6 +11,7 @@ import {
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
     lanes, smooth, eventLog, LogRowNode, LOG_STATES,
+    pipeline, PipelineItemNode, beside, boxOf, fitted,
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
     dateLine,
@@ -12508,6 +12509,717 @@ describe('named box', () => {
 })
 
 export type { Vec, Vec3 }
+
+describe('pipeline', () => {
+    type Flow = ReturnType<typeof pipeline>
+    const GATES = ['parse', 'schema', 'source', 'authority']
+    // A width of 1000 at size 20: the arrow head has 18, so each of four stages has 245.5, and a capsule is 34 high.
+    const sized = { width: 1000, size: 20 }
+    const PITCH = 245.5
+    const words = (node: Node | null) => (node as unknown as { source: string } | null)?.source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const LOOKS = ['open', 'visited', 'passed', 'stopped']
+    /** What the mark of a stage shows at a time: the part that a viewer sees the most. */
+    const lookOf = (flow: Flow, stage: number | string, time: number, lane = 0) => at(time, () => {
+        const parts = flow.mark(stage, lane).children.map(shows)
+        return LOOKS[parts.indexOf(Math.max(...parts))]
+    })
+    /** The badges of an item that a viewer can see at a time. */
+    const badges = (item: PipelineItemNode, time: number, least = 0.99) => at(time, () => item.content.children.filter((part) => part !== item.idText && typeof words(part) === 'string' && shows(part) > least).map(words))
+    /** The line of the count of a stage at a time. */
+    const counted = (flow: Flow, stage: number, time: number) => at(time, () => flow.counters[stage]!.children.filter((part) => shows(part) > 0.99).map(words))
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] as const }
+
+    it('is as wide as its width, with the names at even steps over the path, and measures as its frame for the layout', async () => {
+        await compileFilm(film(() => {
+            const flow = pipeline(GATES, sized).at(100, 50)
+            expect(flow.names.map(words)).toEqual(GATES)
+            // A name starts where the id of an item starts: 0.55 of the text size after the start of its stage.
+            flow.names.forEach((name, index) => expect(name.get('x')).toBeCloseTo(-500 + index * PITCH + 11, 6))
+            // The marks of the first lane are on one line, at the middle of the round end of an item that is there.
+            GATES.forEach((_, index) => expect(flow.mark(index).get('x')).toBeCloseTo(-500 + index * PITCH + 17, 6))
+            expect(new Set(GATES.map((_, index) => flow.mark(index).get('y'))).size).toBe(1)
+            // The frame: the width, and the names over one lane. The line of the lane ends at the right edge, with its arrow head.
+            const box = boxOf(flow)
+            expect([box.left, box.right, box.top, box.bottom]).toEqual([-400, 600, 16.5, 83.5])
+            const ink = flow.bounds()
+            expect(ink.x).toBeGreaterThanOrEqual(box.left)
+            expect(ink.x + ink.width).toBeCloseTo(box.right, 6)
+            expect(ink.y).toBeGreaterThanOrEqual(box.top)
+            expect(ink.y + ink.height).toBeLessThanOrEqual(box.bottom)
+            // The line of the lane has a gap at each mark, so no line goes through a ring, a check or a cross.
+            const pieces = flow.rails[0]!.children.slice(0, 4)
+            GATES.forEach((_, index) => {
+                const mark = edges(flow.mark(index))
+                expect(edges(pieces[index]!)[0]).toBeGreaterThan(mark[2] + 2)
+                if (index > 0) expect(edges(pieces[index - 1]!)[2]).toBeLessThan(mark[0] - 2)
+            })
+            // Counts, more lanes and a tray make the frame taller, and never wider.
+            const tall = boxOf(pipeline(GATES, { ...sized, counts: true, lanes: 3, tray: 'refused' }))
+            expect([tall.left, tall.right, tall.height]).toEqual([-500, 500, 259])
+            // So the layout can build it for a region: all of it is as wide as the region.
+            const made = fitted(830, (width) => pipeline(GATES, { width, size: 20, tray: 'refused' }))
+            expect(boxOf(made).width).toBeCloseTo(830, 6)
+            // The default text is 28 px, over the 26 px that a lesson asks for.
+            expect(pipeline(GATES).names[0]!.data['size']).toBe(28)
+            expect(boxOf(pipeline(GATES)).width).toBe(1600)
+        }))
+    })
+
+    it('brings an item to the first stage in a free lane, with its id and its badge, and tells where it is', async () => {
+        let flow!: Flow
+        const f = await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, gates: true }))
+            expect(flow.ids).toEqual([])
+            s.wait(1)
+            s.play(flow.put({ id: 'call 17', badge: 'hold B7' }), { duration: 1 })
+            expect(flow.ids).toEqual(['call 17'])
+            expect(flow.stateOf('call 17')).toEqual({ id: 'call 17', stage: 0, name: 'parse', lane: 0, state: 'waiting', where: 'path', badge: 'hold B7' })
+            expect([flow.count(), flow.count('parse'), flow.count('schema'), flow.reached('parse')]).toEqual([1, 1, 0, 1])
+            expect(flow.items).toEqual([flow.item('call 17')])
+            s.wait(1)
+        })
+        const item = flow.item('call 17')
+        expect(item).toBeInstanceOf(PipelineItemNode)
+        expect(words(item.idText)).toBe('call 17')
+        // Nothing of the item shows before its time.
+        expect(at(0.5, () => shows(item))).toBe(0)
+        // On its way in, the capsule is whole before a text shows on it: the line of the lane does not show through a text.
+        at(1.1, () => {
+            expect(item.capsule.get('fillOpacity')).toBeGreaterThan(0)
+            expect(shows(item.content)).toBe(0)
+        })
+        at(1.5, () => {
+            expect(item.capsule.get('fillOpacity')).toBe(1)
+            expect(shows(item.content)).toBeGreaterThan(0)
+            expect(shows(item.content)).toBeLessThan(1)
+            expect(item.get('x')).toBeLessThan(-500)
+        })
+        // At rest: its left end is at the start of the first stage, on the line of the first lane, and it hides the mark there.
+        at(2.5, () => {
+            expect(item.get('x')).toBeCloseTo(-500, 6)
+            expect(item.get('y')).toBeCloseTo(flow.mark(0).get('y'), 6)
+            expect(shows(item.content)).toBe(1)
+            expect(badges(item, 2.5)).toEqual(['hold B7'])
+            const [left, top, right, bottom] = edges(item.capsule), mark = edges(flow.mark(0))
+            expect(left).toBeLessThan(mark[0])
+            expect(right).toBeGreaterThan(mark[2])
+            expect(top).toBeLessThan(mark[1])
+            expect(bottom).toBeGreaterThan(mark[3])
+            // The id is in the color of the item, and the border too.
+            expect(item.capsule.get('stroke')).toEqual(paint('blue'))
+            expect(item.idText.children[0]!.get('fill')).toEqual(paint('blue'))
+        })
+        expectPure(f, [0, 1.1, 1.5, 2.5])
+    })
+
+    it('brings the names, the line of the path and the tray with enter(), stage by stage, and no lane that has no item', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = pipeline(GATES, { ...sized, lanes: 2, tray: 'refused', counts: true })
+            // The animation brings the object to the stage: the film did not add it.
+            s.play(flow.enter(), { duration: 2 })
+            s.wait(1)
+        })
+        const name = (index: number, time: number) => at(time, () => shows(flow.names[index]!))
+        // The first stage is there before the last one starts.
+        expect([name(0, 0), name(3, 0)]).toEqual([0, 0])
+        expect(name(0, 1)).toBe(1)
+        expect(name(3, 1)).toBe(0)
+        expect(GATES.map((_, index) => name(index, 2))).toEqual([1, 1, 1, 1])
+        at(1, () => {
+            expect(flow.rails[0]!.children[0]!.get('trimTo')).toBe(1)
+            expect(flow.rails[0]!.children[3]!.get('trimTo')).toBe(0)
+            expect(shows(flow.mark(3))).toBe(0)
+            expect(shows(flow.counters[3]!)).toBe(0)
+            expect(shows(flow.tray!)).toBe(0)
+        })
+        at(2, () => {
+            expect(flow.rails[0]!.children.map((piece) => piece.get('trimTo'))).toEqual([1, 1, 1, 1, 1])
+            expect(shows(flow.mark(3))).toBe(1)
+            expect(shows(flow.counters[3]!)).toBe(1)
+            expect(shows(flow.tray!)).toBe(1)
+            // The second lane has no item yet, so it does not show.
+            expect(flow.laneNodes.map(shows)).toEqual([1, 0])
+        })
+    })
+
+    it('moves an item to the next stage and leaves a mark behind: a dot at a stage, a check at a gate', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline([{ name: 'model', gate: false }, 'parse', 'schema'], { ...sized, gates: true }))
+            s.play(flow.put({ id: 'a', badge: 'v1' }), { duration: 1 })
+            s.play(flow.move('a'), { duration: 1, ease: linear })
+            expect(flow.stateOf('a')).toMatchObject({ stage: 1, name: 'parse', state: 'waiting', badge: 'v1' })
+            expect([flow.trailOf('model'), flow.trailOf('parse')]).toEqual(['visited', 'open'])
+            s.play(flow.move('a'), { duration: 1, ease: linear })
+            expect([flow.trailOf('model'), flow.trailOf('parse'), flow.trailOf('schema')]).toEqual(['visited', 'passed', 'open'])
+            expect([flow.count('model'), flow.count('parse'), flow.count('schema')]).toEqual([0, 0, 1])
+            // The last stage has no next one.
+            expect(() => s.play(flow.move('a'))).toThrow(/item "a" is at the last stage, "schema"\. exit\(\) takes it off the path/)
+        })
+        const item = flow.item('a'), pitch = (1000 - 18) / 3
+        // With a linear ease, the item is half way at half of the time, and it keeps its badge.
+        expect(at(1, () => item.get('x'))).toBeCloseTo(-500, 6)
+        expect(at(1.5, () => item.get('x'))).toBeCloseTo(-500 + pitch / 2, 6)
+        expect(at(2, () => item.get('x'))).toBeCloseTo(-500 + pitch, 6)
+        expect(at(3, () => item.get('x'))).toBeCloseTo(-500 + pitch * 2, 6)
+        expect(badges(item, 2.5)).toEqual(['v1'])
+        // The mark of a stage changes when the item leaves it.
+        expect([lookOf(flow, 'model', 0.9), lookOf(flow, 'model', 2), lookOf(flow, 'parse', 2), lookOf(flow, 'parse', 3), lookOf(flow, 'schema', 3)]).toEqual(['open', 'visited', 'open', 'passed', 'open'])
+    })
+
+    it('takes an item through each stage of a long move, and takes the marks away when the item goes back for a second run', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, gates: true, counts: true }))
+            s.play(flow.put({ id: 'Q5' }), { duration: 1 })
+            s.play(flow.move('Q5', 'authority'), { duration: 3, ease: linear })
+            expect(GATES.map((gate) => flow.trailOf(gate))).toEqual(['passed', 'passed', 'passed', 'open'])
+            expect(GATES.map((gate) => flow.reached(gate))).toEqual([1, 1, 1, 1])
+            s.play(flow.stop('Q5', 'stale'), { duration: 1 })
+            // A stopped item can go back. The stop and its reason go with the run.
+            s.play(flow.move('Q5', 0), { duration: 1 })
+            expect(flow.stateOf('Q5')).toMatchObject({ stage: 0, state: 'waiting', badge: undefined })
+            expect(GATES.map((gate) => flow.trailOf(gate))).toEqual(['open', 'open', 'open', 'open'])
+            s.play(flow.move('Q5', 'schema'), { duration: 1 })
+            // The item counts one time at a stage, also in its second run.
+            expect(GATES.map((gate) => flow.reached(gate))).toEqual([1, 1, 1, 1])
+        })
+        // The item is at 'schema' at one third of the move, and at 'source' at two thirds. The mark and the count of a stage follow.
+        expect([lookOf(flow, 'schema', 1.9), lookOf(flow, 'schema', 2.4), lookOf(flow, 'source', 2.9), lookOf(flow, 'source', 3.4)]).toEqual(['open', 'passed', 'open', 'passed'])
+        expect([counted(flow, 1, 1.9), counted(flow, 1, 2.1), counted(flow, 2, 2.9), counted(flow, 2, 3.1), counted(flow, 3, 3.5), counted(flow, 3, 3.6)]).toEqual([['0'], ['1'], ['0'], ['1'], ['0'], ['1']])
+        // After the move back, no mark says that the item passed.
+        expect(GATES.map((gate) => lookOf(flow, gate, 6))).toEqual(['open', 'open', 'open', 'open'])
+        expect(GATES.map((_, index) => counted(flow, index, 7))).toEqual([['1'], ['1'], ['1'], ['1']])
+        expect(badges(flow.item('Q5'), 6, 0.01)).toEqual([])
+    })
+
+    it('changes the badge in place: the id does not move, the capsule takes the new width, and no moment shows two texts', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { width: 1600, size: 20 }))
+            s.play(flow.put({ id: 'R-104', badge: 'id set' }), { duration: 1 })
+            s.play(flow.setBadge('R-104', 'tenant A, slot 3 of 5'), { duration: 1 })
+            expect(flow.stateOf('R-104').badge).toBe('tenant A, slot 3 of 5')
+            s.play(flow.setBadge('R-104', null), { duration: 1 })
+            expect(flow.stateOf('R-104').badge).toBeUndefined()
+            expect(flow.item('R-104').badge).toBeNull()
+        })
+        const item = flow.item('R-104')
+        const idAt = (time: number) => at(time, () => edges(item.idText))
+        const wide = (time: number) => at(time, () => item.capsule.bounds().width)
+        expect(idAt(2)).toEqual(idAt(1))
+        expect(idAt(1.5)).toEqual(idAt(1))
+        expect(idAt(3)).toEqual(idAt(1))
+        expect(wide(2)).toBeGreaterThan(wide(1) + 100)
+        expect(wide(3)).toBeLessThan(wide(1))
+        // The capsule holds its text at each end, with the same room at the right.
+        for (const time of [1, 2]) {
+            const room = at(time, () => edges(item.capsule)[2] - edges(item.badge ?? item.content.children.filter((part) => shows(part) > 0.99).pop()!)[2])
+            expect(room).toBeGreaterThan(8)
+            expect(room).toBeLessThan(14)
+        }
+        expect([badges(item, 1), badges(item, 2), badges(item, 3)]).toEqual([['id set'], ['tenant A, slot 3 of 5'], []])
+        for (let time = 1; time <= 3; time += 0.05) expect(badges(item, time, 0.001).length, `at ${time}`).toBeLessThanOrEqual(1)
+    })
+
+    it('gives an item the verdict of its stage: a check for a pass, and a cross, a red border and the reason for a stop', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, gates: true }))
+            s.play(flow.put({ id: 'c', color: 'orange' }), { duration: 1 })
+            s.play(flow.pass('c', 'parsed'), { duration: 1 })
+            expect(flow.stateOf('c')).toMatchObject({ state: 'passed', badge: 'parsed' })
+            s.play(flow.move('c'), { duration: 1 })
+            // The verdict stays at the stage that gave it. The text goes with the item.
+            expect(flow.stateOf('c')).toMatchObject({ stage: 1, state: 'waiting', badge: 'parsed' })
+            s.play(flow.stop('c', 'no grant'), { duration: 1 })
+            expect(flow.stateOf('c')).toMatchObject({ stage: 1, state: 'stopped', badge: 'no grant' })
+            expect(flow.find((item) => item.state === 'stopped')).toEqual(['c'])
+            // A stopped item does not move on, and the message names the ways out.
+            expect(() => s.play(flow.move('c'))).toThrow(/item "c" is stopped at "schema", so it does not move on\. Let it through first with pass\("c"\), send it to the tray with eject\("c"\), or move it back/)
+            // A pass ends the stop, and the reason goes with it.
+            s.play(flow.pass('c'), { duration: 1 })
+            expect(flow.stateOf('c')).toMatchObject({ state: 'passed', badge: undefined })
+            s.play(flow.move('c'), { duration: 1 })
+            expect(flow.trailOf('schema')).toBe('passed')
+        })
+        const item = flow.item('c')
+        const signs = (time: number) => at(time, () => [shows(item.check), shows(item.cross), item.capsule.get('stroke')])
+        expect(signs(1)).toEqual([0, 0, paint('orange')])
+        expect(signs(2)).toEqual([1, 0, paint('orange')])
+        expect(signs(3)).toEqual([0, 0, paint('orange')])
+        expect(signs(4)).toEqual([0, 1, paint('red')])
+        expect(signs(5)).toEqual([1, 0, paint('orange')])
+        expect([badges(item, 2), badges(item, 3), badges(item, 4), badges(item, 5)]).toEqual([['parsed'], ['parsed'], ['no grant'], []])
+        // The id keeps the color of the item while the border is red: color is not the only sign of a stop.
+        expect(at(4, () => item.idText.children[0]!.get('fill'))).toEqual(paint('orange'))
+        // The item runs into its stage and comes back: it is a little further on early in the stop, and at its place at the end.
+        expect(at(3.2, () => item.get('x'))).toBeGreaterThan(-500 + PITCH + 3)
+        expect(at(4, () => item.get('x'))).toBeCloseTo(-500 + PITCH, 6)
+    })
+
+    it('sends a stopped item to the tray with its reason, and frees its lane for the next item', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, gates: true, tray: 'refused' }).at(40, 20))
+            s.play(flow.put({ id: 'a' }), { duration: 1 })
+            s.play(flow.stop('a', 'bad JSON'), { duration: 1 })
+            s.play(flow.eject('a'), { duration: 1 })
+            expect(flow.stateOf('a')).toEqual({ id: 'a', stage: 0, name: 'parse', lane: null, state: 'stopped', where: 'tray', badge: 'bad JSON' })
+            expect([flow.count(), flow.ids, flow.find((item) => item.where === 'tray')]).toEqual([0, ['a'], ['a']])
+            // The cross stays at the stage, on the lane, where the item was stopped.
+            expect(flow.trailOf('parse')).toBe('stopped')
+            // An item in the tray takes no other change.
+            expect(() => s.play(flow.setBadge('a', 'late'))).toThrow(/item "a" is in the tray, and an item in the tray takes no change/)
+            expect(() => s.play(flow.move('a'))).toThrow(/item "a" is in the tray/)
+            // A function picks the items of the path only.
+            s.play(flow.move(() => true), { duration: 1 })
+            expect(flow.stateOf('a').stage).toBe(0)
+            // The next item takes the lane, and the marks of the lane start again.
+            s.play(flow.put({ id: 'b' }), { duration: 1 })
+            expect(flow.stateOf('b').lane).toBe(0)
+            expect(flow.trailOf('parse')).toBe('open')
+            s.play(flow.move('b'), { duration: 1 })
+            s.play(flow.stop('b', 'no id'), { duration: 1 })
+            s.play(flow.eject('b'), { duration: 1 })
+            expect(flow.find((item) => item.where === 'tray')).toEqual(['a', 'b'])
+        })
+        const a = flow.item('a'), b = flow.item('b'), tray = flow.region({ tray: true })
+        // On its way, an item is behind the items of the lanes that it passes, so they stay readable.
+        expect([at(1.5, () => a.get('z')), at(2.5, () => a.get('z')), at(3, () => a.get('z'))]).toEqual([0, -1, 0])
+        at(8, () => {
+            for (const item of [a, b]) {
+                const [left, top, right, bottom] = edges(item.capsule)
+                expect(left).toBeGreaterThan(tray.left)
+                expect(right).toBeLessThan(tray.right)
+                expect(top).toBeGreaterThan(tray.top)
+                expect(bottom).toBeLessThan(tray.bottom)
+                expect((top + bottom) / 2).toBeCloseTo(tray.cy, 6)
+                expect(shows(item.cross)).toBe(1)
+            }
+            // The items stand after the name of the tray, in the order in which they came, with room between them.
+            expect(edges(a.capsule)[0]).toBeGreaterThan(edges(flow.trayName!)[2] + 10)
+            expect(edges(b.capsule)[0] - edges(a.capsule)[2]).toBeCloseTo(10, 0)
+        })
+        expect([badges(a, 8), badges(b, 8)]).toEqual([['bad JSON'], ['no id']])
+        expect([lookOf(flow, 'parse', 1.9), lookOf(flow, 'parse', 3), lookOf(flow, 'parse', 5), lookOf(flow, 'schema', 8)]).toEqual(['open', 'stopped', 'open', 'stopped'])
+        expect(words(flow.trayName)).toBe('refused')
+    })
+
+    it('stops when the tray has no room for an item, when the pipeline has no tray, and says what to do', async () => {
+        await compile((s) => {
+            const none = s.add(pipeline(GATES, sized))
+            s.play(none.put({ id: 'a' }))
+            expect(() => none.eject('a')).toThrow(/the pipeline has no tray\. Give it one with the option `tray`, such as tray: 'rejected'/)
+            expect(() => none.region({ tray: true })).toThrow(/the pipeline has no tray/)
+            const small = s.add(pipeline(['in', 'out'], { width: 420, size: 20, tray: 'refused', lanes: 4 }))
+            s.play(small.put([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }, { id: 'r4' }]))
+            s.play(small.stop(['r1', 'r2', 'r3', 'r4'], 'no schema'))
+            // The tray takes the items that fit in its one row, and the next one is an error that counts them.
+            let held = 0
+            expect(() => {
+                for (const id of ['r1', 'r2', 'r3', 'r4']) {
+                    s.play(small.eject(id))
+                    held++
+                }
+            }).toThrow(/the tray has no room for item "r\d"\. It holds \d items?, and \d+ px are left for an item of \d+ px\. Use shorter reasons, a wider `width`, or send fewer items to the tray/)
+            expect(held).toBeGreaterThan(0)
+            expect(held).toBeLessThan(4)
+            expect(small.find((item) => item.where === 'tray').length).toBe(held)
+            expect(small.count()).toBe(4 - held)
+            expect(() => pipeline(['a', 'b'], { width: 300, size: 20, tray: 'a very long name of a tray for refused rows' })).toThrow(/the name of the tray \("a very long name of a tray for refused rows"\) is \d+ px wide, and it leaves no room for an item in a width of 300\. Use a shorter name, or a wider `width`/)
+        })
+    })
+
+    it('takes an item away with exit(), and gives its lane and its id to the next item when the exit is over', async () => {
+        let flow!: Flow, first!: PipelineItemNode, second!: PipelineItemNode
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, gates: true }))
+            s.play(flow.put({ id: 'a' }), { duration: 1 })
+            s.play(flow.move('a'), { duration: 1 })
+            first = flow.item('a')
+            s.play(flow.exit('a'), { duration: 1 })
+            expect([flow.ids, flow.count()]).toEqual([[], 0])
+            expect(() => flow.stateOf('a')).toThrow(/no item "a"\. The pipeline has no item yet: put\(\) brings one/)
+            // An item that is done goes on, so the gate where it waited shows a check.
+            expect(flow.trailOf('schema')).toBe('passed')
+            // The same id can come again: it is a new item, at the first stage.
+            s.play(flow.put({ id: 'a' }), { duration: 1 })
+            second = flow.item('a')
+            expect(second).not.toBe(first)
+            expect(flow.stateOf('a')).toMatchObject({ stage: 0, lane: 0 })
+            expect([flow.trailOf('parse'), flow.trailOf('schema')]).toEqual(['open', 'open'])
+            // An item that takes the lane before the exit is over would be on the item that leaves.
+            expect(() => s.play(flow.exit('a'), flow.put({ id: 'b' }))).toThrow(/put\("b"\) starts at 4 s, and lane 0 is free from 4\.6 s, when exit\("a"\) is over\. Start it then or later, or give the pipeline more `lanes`/)
+        })
+        expect(at(2, () => shows(first))).toBe(1)
+        // Its texts go before its capsule: no line shows through a text that is half there.
+        at(2.7, () => {
+            expect(shows(first.content)).toBeLessThan(0.5)
+            expect(first.capsule.get('fillOpacity')).toBe(1)
+            expect(first.get('x')).toBeGreaterThan(-500 + PITCH)
+        })
+        expect(at(3, () => shows(first))).toBe(0)
+        expect(at(3.5, () => shows(first))).toBe(0)
+        expect(at(4, () => shows(second))).toBe(1)
+    })
+
+    it('gives each item its own lane, shows a lane from its first item, and stops when no lane is free', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, lanes: 3 }))
+            s.wait(1)
+            s.play(flow.put([{ id: 'a' }, { id: 'b', lane: 2 }]), { duration: 1 })
+            expect([flow.stateOf('a').lane, flow.stateOf('b').lane]).toEqual([0, 2])
+            expect(() => s.play(flow.put({ id: 'c', lane: 2 }))).toThrow(/lane 2 holds item "b"\. Give item "c" another lane, or leave `lane` out for the first free one/)
+            s.play(flow.put({ id: 'c' }), { duration: 1 })
+            expect(flow.stateOf('c').lane).toBe(1)
+            expect(() => s.play(flow.put({ id: 'd' }))).toThrow(/no lane is free for item "d"\. The pipeline has 3 lanes, with "a", "c", "b"\. Give it more with the option `lanes`, or take an item off the path first with eject\(\) or exit\(\)/)
+            expect(() => flow.put({ id: 'd', lane: 3 })).toThrow(/no lane 3\. The pipeline has 3 lanes, from 0 to 2/)
+            expect(() => flow.put({ id: 'a' }) && s.play(flow.put({ id: 'a' }))).toThrow(/the pipeline has an item "a" already/)
+            // Items of different lanes move together.
+            s.play(flow.move(['a', 'b', 'c']), { duration: 1 })
+            expect(flow.count('schema')).toBe(3)
+        })
+        const ys = ['a', 'c', 'b'].map((id) => at(4, () => flow.item(id).get('y')))
+        expect(ys[1]! - ys[0]!).toBeCloseTo(34 + 15, 6)
+        expect(ys[2]! - ys[1]!).toBeCloseTo(34 + 15, 6)
+        expect(['a', 'c', 'b'].map((id) => at(4, () => flow.item(id).get('x')))).toEqual([-500 + PITCH, -500 + PITCH, -500 + PITCH])
+        // The line of the first lane is there from the start. The line of another lane comes with its first item.
+        expect(flow.laneNodes.map((lane) => at(0.5, () => shows(lane)))).toEqual([1, 0, 0])
+        expect(flow.laneNodes.map((lane) => at(2, () => shows(lane)))).toEqual([1, 0, 1])
+        expect(flow.laneNodes.map((lane) => at(3, () => shows(lane)))).toEqual([1, 1, 1])
+        expect(flow.mark('schema', 2).get('y')).toBeCloseTo(ys[2]!, 6)
+    })
+
+    it('counts under each name the items that reached the stage, at the time when each one arrives', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, lanes: 3, counts: (count) => `${count} rows` }))
+            s.play(flow.put([{ id: 'T1' }, { id: 'T2' }, { id: 'T3' }], { lag: 1 }), { duration: 3 })
+            expect(flow.reached('parse')).toBe(3)
+            s.play(flow.stop('T2', 'no text'), { duration: 1 })
+            // The second change sees what the first one left: the function runs when the move is scheduled.
+            s.play(flow.move((item) => item.state !== 'stopped'), { duration: 1 })
+            expect([flow.reached('parse'), flow.reached('schema'), flow.count('parse'), flow.count('schema')]).toEqual([3, 2, 1, 2])
+            expect(flow.find((item) => item.name === 'schema')).toEqual(['T1', 'T3'])
+        })
+        // Each item counts when it is half there: at 0.5, 1.5 and 2.5 s.
+        expect([0.4, 0.6, 1.4, 1.6, 2.4, 2.6].map((time) => counted(flow, 0, time))).toEqual([['0 rows'], ['1 rows'], ['1 rows'], ['2 rows'], ['2 rows'], ['3 rows']])
+        expect([4, 4.8, 4.9, 5].map((time) => counted(flow, 1, time))).toEqual([['0 rows'], ['0 rows'], ['2 rows'], ['2 rows']])
+        expect(counted(flow, 2, 5)).toEqual(['0 rows'])
+        // The count line is in the dim color, under the name, at the size of the names.
+        expect(flow.counters[0]!.get('x')).toBe(flow.names[0]!.get('x'))
+        expect(flow.counters[0]!.get('y')).toBeGreaterThan(flow.names[0]!.get('y'))
+        // Without the option, the pipeline has no count line.
+        expect(pipeline(GATES, sized).counters).toEqual([])
+    })
+
+    it('stops when a count line is not a text or is too wide for its stage', async () => {
+        await compileFilm(film(() => {
+            expect(() => pipeline(GATES, { ...sized, counts: (() => 7) as unknown as (count: number) => string })).toThrow(/the count line for 0 is 7\. `counts` returns a text/)
+            expect(() => pipeline(GATES, { ...sized, counts: (count) => `${count} rows that reached this stage of the path` })).toThrow(/the count line "0 rows that reached this stage of the path" is \d+ px wide, and a stage has room for \d+ px\. Write a shorter line in `counts`, or use a wider `width`/)
+            expect(() => pipeline(GATES, { ...sized, counts: 'yes' as unknown as boolean })).toThrow(/counts is true, or a function/)
+        }))
+    })
+
+    it('takes an id, a list of ids or a function for the items of a change, and brings a list one after another with a lag', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, lanes: 3 }))
+            s.play(flow.put([{ id: 1 }, { id: 2 }, { id: 3 }]), { duration: 1 })
+            s.play(flow.move([1, 2, 3], { lag: 1 }), { duration: 3, ease: linear })
+            // A number and its text are one id.
+            expect(flow.stateOf('2').id).toBe(2)
+            expect(() => s.play(flow.move([1, 1]))).toThrow(/names item 1 two times/)
+            expect(() => s.play(flow.move(4))).toThrow(/move\(4\): no item 4\. The items are 1, 2, 3/)
+            expect(() => s.play(flow.pass('x'))).toThrow(/pass\("x"\): no item "x"\. The items are 1, 2, 3/)
+            expect(() => flow.find('stopped' as unknown as () => boolean)).toThrow(/find takes a function of an item/)
+            // A function that picks no item changes nothing.
+            s.play(flow.stop((item) => item.stage === 3, 'never'))
+            expect(flow.find((item) => item.state === 'stopped')).toEqual([])
+        })
+        // Each of the three moves has one second, one after another.
+        const xs = (time: number) => [1, 2, 3].map((id) => at(time, () => Math.round((flow.item(id).get('x') + 500) * 1000) / 1000))
+        expect(xs(1.5)).toEqual([PITCH / 2, 0, 0])
+        expect(xs(2.5)).toEqual([PITCH, PITCH / 2, 0])
+        expect(xs(4)).toEqual([PITCH, PITCH, PITCH])
+    })
+
+    it('stops when two changes of one item overlap, with the advice that fits, and lets two items change together', async () => {
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put([{ id: 'a' }, { id: 'b' }]), { duration: 1 })
+            expect(() => s.play(flow.move('a'), flow.setBadge('a', 'x'))).toThrow(/setBadge\("a"\) plays from 1 s to 1\.5 s, and move\("a"\) plays from 1 s to 1\.8 s\. An item takes one change at a time: a change starts when the change before it is over\. Play the two in a `seq`/)
+        })
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put([{ id: 'a' }, { id: 'b' }]), { duration: 1 })
+            expect(() => s.play(flow.move('a', { duration: 1 }), delay(flow.setBadge('a', 'x'), 0.4))).toThrow(/move\("a"\) plays from 1 s to 2 s\. .* Give move\("a"\) a `duration` of 0\.4 or less, or play the two in a `seq`/)
+        })
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put([{ id: 'a' }, { id: 'b' }]), { duration: 1 })
+            s.play(flow.move('a'), { duration: 1 })
+            expect(() => s.at(0.5, () => s.play(flow.setBadge('a', 'x')))).toThrow(/The pipeline takes the changes of an item in the order of time, and the film calls move\("a"\) first\. Call setBadge\("a"\) before it/)
+        })
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put([{ id: 'a' }, { id: 'b' }]), { duration: 1 })
+            // In a sequence, each change has its share of the time. Two items change at one time.
+            s.play(seq(flow.move('a'), flow.setBadge('a', 'x')), flow.stop('b', 'late'), { duration: 2 })
+            expect(flow.stateOf('a')).toMatchObject({ stage: 1, badge: 'x' })
+            expect(flow.stateOf('b').state).toBe('stopped')
+            expect(() => s.play(flow.move('a'), { duration: Number.NaN })).toThrow(/plays from 3 to NaN\. Give the play a duration that is a number, 0 or more/)
+            expect(() => flow.move('a', { duration: -1 })).toThrow(/the duration of move\("a"\) is -1\. Give a number, 0 or more/)
+        })
+        expect(badges(flow.item('a'), 3)).toEqual(['x'])
+    })
+
+    it('stops when a stage, a name or an option is wrong, and the width of the message is enough', async () => {
+        await compileFilm(film(() => {
+            expect(() => pipeline(['alone'])).toThrow(/give it two stages or more/)
+            expect(() => pipeline(['a', 'a'])).toThrow(/two stages have the name "a"\. Give each stage its own name/)
+            expect(() => pipeline(['a', ''])).toThrow(/the name of stage 1 is empty\. Give a text of one line/)
+            expect(() => pipeline(['a', 'two\nlines'])).toThrow(/the name of stage 1 \("two\\nlines"\) has a line break/)
+            expect(() => pipeline(['a', 'b'], { lanes: 0 })).toThrow(/lanes is 0\. It is the number of items that the path holds at one time/)
+            expect(() => pipeline(['a', 'b'], { width: 0 })).toThrow(/width is the width of the object, more than 0/)
+            expect(() => pipeline(['a', 'b'], { size: -1 })).toThrow(/size is a text size, more than 0/)
+            expect(() => pipeline(['a', 'b'], { color: 'no such color' })).toThrow(/color is "no such color", which is not a color/)
+            expect(() => pipeline(['a', 'b'], { tray: ' ' })).toThrow(/the name of the tray is empty/)
+            // A name that is too wide: the message gives the least width, and that width works.
+            const long = ['authorization of the caller', 'schema', 'execute']
+            let least = 0
+            try {
+                pipeline(long, { width: 600, size: 20 })
+            } catch (error) {
+                const found = /the name "authorization of the caller" is (\d+) px wide at size 20, and a stage of 194 px has room for (\d+) px\. Use a shorter name, a width of (\d+) or more, or fewer stages/.exec((error as Error).message)
+                expect(found, (error as Error).message).not.toBeNull()
+                least = Number(found![3])
+            }
+            expect(least).toBeGreaterThan(600)
+            expect(() => pipeline(long, { width: least, size: 20 })).not.toThrow()
+            expect(() => pipeline(long, { width: least - 3, size: 20 })).toThrow(/is \d+ px wide/)
+            const flow = pipeline(GATES, sized)
+            expect(() => flow.p('nowhere')).toThrow(/p: no stage "nowhere"\. The stages are 0 \("parse"\), 1 \("schema"\), 2 \("source"\), 3 \("authority"\)/)
+            expect(() => flow.move('a', 4)).toThrow(/move: no stage 4/)
+            expect(() => flow.put({ id: 'a', at: 'nowhere' })).toThrow(/item "a": no stage "nowhere"/)
+            expect(() => flow.put({ id: 'a', color: 'no such color' })).toThrow(/the color of item "a" is "no such color", which is not a color/)
+            expect(() => flow.put({ id: {} as unknown as string })).toThrow(/the id of an item is \[object Object\]\. An id is a text or a number/)
+            expect(() => flow.put({ id: 'a', badge: 'two\nlines' })).toThrow(/the badge of item "a" \("two\\nlines"\) has a line break/)
+            expect(() => flow.setBadge('a', '')).toThrow(/the badge is empty/)
+            expect(() => flow.region({ stage: 0, side: 'left' } as never)).toThrow(/region has no part "side"\. Its parts are: stage, lane, tray/)
+        }))
+    })
+
+    it('stops when an item with its text is wider than the room of a stage, where the film names it, and the width of the message is enough', async () => {
+        const reason = 'the book id is a number and not a text'
+        let least = 0
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            // An item that is too wide from the start is an error of put(), before any time passes.
+            expect(() => flow.put({ id: 'call 17', badge: reason })).toThrow(/Item "call 17" with the text "the book id is a number and not a text" is \d+ px wide at size 20, and a stage has room for 235 px/)
+            expect(() => flow.put({ id: 'a very long id of a tool call that no stage holds' })).toThrow(/Item "a very long id of a tool call that no stage holds" is \d+ px wide at size 20, and a stage has room for 235 px\. Use a shorter id/)
+            s.play(flow.put({ id: 'call 17' }))
+            // A text that comes later is checked where the film writes the change.
+            for (const change of [() => flow.setBadge('call 17', reason), () => flow.pass('call 17', reason), () => flow.stop('call 17', reason)]) {
+                expect(change).toThrow(/Use a shorter text, a width of \d+ or more, a smaller `size`, or fewer stages/)
+            }
+            try {
+                flow.stop('call 17', reason)
+            } catch (error) {
+                least = Number(/a width of (\d+) or more/.exec((error as Error).message)![1])
+            }
+            // An item that comes in the same sequence is checked when the change is scheduled.
+            expect(() => s.play(seq(flow.put({ id: 'call 18' }), flow.stop('call 18', reason)))).toThrow(/Item "call 18" with the text/)
+        })
+        expect(least).toBeGreaterThan(1000)
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { width: least, size: 20 }))
+            s.play(flow.put({ id: 'call 17' }))
+            s.play(flow.stop('call 17', reason))
+            // The capsule ends with clear room before the mark of the next stage.
+            const item = flow.item('call 17')
+            expect(flow.mark('schema').bounds().x - (item.capsule.bounds().x + item.capsule.bounds().width)).toBeGreaterThan(10)
+            expect(() => pipeline(GATES, { width: least - 8, size: 20 }).put({ id: 'call 17' })).not.toThrow()
+        })
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { width: least - 8, size: 20 }))
+            s.play(flow.put({ id: 'call 17' }))
+            expect(() => flow.stop('call 17', reason)).toThrow(/is \d+ px wide/)
+        })
+    })
+
+    it('gives a point over and under a stage, and the box of a stage, a lane and the tray, for a note or an arrow', async () => {
+        await compileFilm(film(() => {
+            const flow = pipeline(GATES, { ...sized, lanes: 2, tray: 'refused' }).at(100, 50)
+            const box = boxOf(flow)
+            // The points are in the coordinates of the object: on its top and its bottom edge, at the x of the marks of the stage.
+            expect(flow.p('schema')).toEqual([-500 + PITCH + 17, -box.height / 2])
+            expect(flow.p(1, 'top')).toEqual(flow.p('schema'))
+            expect(flow.p('schema', 'bottom')).toEqual([-500 + PITCH + 17, box.height / 2])
+            expect(flow.toWorld(...flow.p('schema'))).toEqual([100 - 500 + PITCH + 17, box.top])
+            expect(() => flow.p('schema', 'left' as never)).toThrow(/the edge of p\(\) is 'top' or 'bottom', not "left"/)
+            // The regions are in stage pixels: where the object is now.
+            const lanes = flow.region(), stage = flow.region({ stage: 'schema' }), lane = flow.region({ lane: 1 }), one = flow.region({ stage: 2, lane: 0 }), tray = flow.region({ tray: true })
+            expect([lanes.left, lanes.right]).toEqual([box.left, box.right])
+            expect([stage.left, stage.right, stage.top, stage.bottom]).toEqual([box.left + PITCH, box.left + PITCH * 2, lanes.top, lanes.bottom])
+            expect([lane.left, lane.right, lane.height]).toEqual([box.left, box.right, 34])
+            expect(lane.bottom).toBe(lanes.bottom)
+            expect([one.left, one.top, one.height]).toEqual([box.left + PITCH * 2, lanes.top, 34])
+            expect(lane.cy).toBeCloseTo(flow.toWorld(0, flow.mark(0, 1).get('y'))[1], 6)
+            expect([tray.left, tray.right, tray.bottom]).toEqual([box.left, box.right, box.bottom])
+            expect(tray.top).toBeGreaterThan(lanes.bottom)
+            expect(() => flow.region({ tray: true, lane: 0 })).toThrow(/region takes `tray`, or `stage` and `lane`, not both/)
+            expect(() => flow.region({ lane: 2 })).toThrow(/region: no lane 2\. The pipeline has 2 lanes, from 0 to 1/)
+            // A note beside a part of the object would lie on the object, and the layout says how to put it beside the whole.
+            expect(() => beside(text('over budget', { size: 20 }), flow.names[2]!, 'under')).toThrow(/would lie on the pipeline that the other thing is a part of/)
+            // A note of the film goes beside the whole object, at the x of one item or of one stage.
+            const note = beside(text('over budget', { size: 20 }), flow, 'under', 'normal', flow.region({ stage: 'source' }))
+            expect(boxOf(note).top).toBeGreaterThan(box.bottom)
+            expect(boxOf(note).cx).toBeCloseTo(flow.region({ stage: 'source' }).cx, 6)
+        }))
+    })
+
+    it('makes one item two with fork(), and two items one with join()', async () => {
+        let flow!: Flow, part!: PipelineItemNode
+        await compile((s) => {
+            flow = s.add(pipeline(['model', 'gate', 'user'], { ...sized, lanes: 2 }))
+            s.play(flow.put({ id: 'R2' }), { duration: 1 })
+            s.play(flow.move('R2'), { duration: 1 })
+            s.play(flow.fork('R2', { id: 'R2.act', color: 'orange' }), { duration: 1 })
+            part = flow.item('R2.act')
+            expect(flow.stateOf('R2.act')).toMatchObject({ stage: 1, name: 'gate', lane: 1, state: 'waiting' })
+            expect([flow.ids, flow.count('gate'), flow.reached('gate')]).toEqual([['R2', 'R2.act'], 2, 2])
+            expect(() => flow.fork('R2', { id: 'x', at: 'user' })).toThrow(/the new item starts at the stage of the item that it comes from\. Leave `at` out/)
+            expect(() => s.play(flow.fork('R2', { id: 'R2.more' }))).toThrow(/no lane is free for item "R2\.more"/)
+            expect(() => flow.join('R2', 'R2')).toThrow(/an item joins another item\. Give two ids/)
+            s.play(flow.move(['R2', 'R2.act']), { duration: 1 })
+            s.play(flow.join('R2.act', 'R2'), { duration: 1 })
+            expect([flow.ids, flow.count('user')]).toEqual([['R2'], 1])
+            // The lane of the item that joined is free again.
+            s.play(flow.put({ id: 'R3' }), { duration: 1 })
+            expect(flow.stateOf('R3').lane).toBe(1)
+        })
+        const whole = flow.item('R2'), pitch = (1000 - 18) / 3
+        // The new item starts at the place of the item that it comes from, under it, and goes to its own lane.
+        at(2.01, () => {
+            expect(part.get('x')).toBeCloseTo(whole.get('x'), 0)
+            expect(part.get('y')).toBeCloseTo(whole.get('y'), 0)
+            expect(part.get('z')).toBeLessThan(whole.get('z'))
+            expect(shows(part.content)).toBe(0)
+        })
+        // Its text shows when it is clear of that item: half way, it has none yet.
+        expect(at(2.5, () => shows(part.content))).toBe(0)
+        expect(at(2.9, () => shows(part.content))).toBeGreaterThan(0)
+        at(3, () => {
+            expect(part.get('x')).toBeCloseTo(-500 + pitch, 6)
+            expect(part.get('y') - whole.get('y')).toBeCloseTo(49, 6)
+            expect(shows(part.content)).toBe(1)
+        })
+        // The item that joins ends at the item that it joins, behind it, with no text on it. Its text is gone
+        // before it leaves its lane.
+        expect(at(4.35, () => shows(part.content))).toBe(0)
+        expect(at(4.35, () => part.get('y') - whole.get('y'))).toBeGreaterThan(30)
+        at(4.99, () => {
+            expect(part.get('y')).toBeCloseTo(whole.get('y'), 0)
+            expect(part.get('z')).toBeLessThan(whole.get('z'))
+            expect(shows(part.content)).toBe(0)
+        })
+        expect(at(5, () => shows(part))).toBe(0)
+        expect(at(5, () => shows(whole))).toBe(1)
+    })
+
+    it('gives a copy its own items and its own bookkeeping, so a change of the copy does not change the pipeline', async () => {
+        let flow!: Flow, copy!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, gates: true, counts: true, lanes: 2, tray: 'refused' }).at(0, -200))
+            s.play(flow.put([{ id: 'a', badge: 'v1' }, { id: 'b' }]), { duration: 1 })
+            s.play(flow.move('a'), { duration: 1 })
+            s.play(flow.stop('b', 'bad'), { duration: 1 })
+            s.play(flow.eject('b'), { duration: 1 })
+            copy = flow.clone().at(0, 200)
+            s.add(copy)
+            expect(copy.ids).toEqual(['a', 'b'])
+            expect(copy.stateOf('a')).toEqual(flow.stateOf('a'))
+            expect(copy.stateOf('b')).toEqual(flow.stateOf('b'))
+            expect(copy.item('a')).not.toBe(flow.item('a'))
+            expect(GATES.map((gate) => copy.reached(gate))).toEqual([2, 1, 0, 0])
+            expect([copy.trailOf('parse'), copy.trailOf('parse', 1)]).toEqual(['passed', 'stopped'])
+            // The copy takes its own changes. Its lane 1 is free, as the lane of the pipeline is.
+            s.play(copy.move('a'), copy.put({ id: 'c' }), { duration: 1 })
+            expect([copy.stateOf('a').stage, flow.stateOf('a').stage]).toEqual([2, 1])
+            expect([copy.ids, flow.ids]).toEqual([['a', 'b', 'c'], ['a', 'b']])
+            expect([copy.reached('source'), flow.reached('source'), copy.reached('parse'), flow.reached('parse')]).toEqual([1, 0, 3, 2])
+            // The lanes and the marks of the pipeline are its own: the item of the copy took none of them.
+            expect([flow.trailOf('schema'), copy.trailOf('schema')]).toEqual(['open', 'passed'])
+            s.play(flow.put({ id: 'd' }), { duration: 1 })
+            expect(flow.stateOf('d').lane).toBe(1)
+            // An item of the copy that reached a stage before the copy was made does not count there again.
+            s.play(copy.move('a', 0), { duration: 1 })
+            s.play(copy.move('a', 'source'), { duration: 1 })
+            expect(GATES.map((gate) => copy.reached(gate))).toEqual([3, 1, 1, 0])
+            // Each tray has its own places: the second item of each one is at the same place.
+            s.play(copy.stop('c', 'late'), flow.stop('d', 'late'), { duration: 1 })
+            s.play(copy.eject('c'), { duration: 1 })
+            s.play(flow.eject('d'), { duration: 1 })
+        })
+        expect(at(11, () => copy.item('c').get('x'))).toBeCloseTo(at(11, () => flow.item('d').get('x')), 6)
+        expect(at(11, () => copy.item('c').get('x'))).toBeGreaterThan(at(11, () => copy.item('b').get('x')) + 30)
+        // The item of the pipeline stays, and the item of the copy moves. Each count line shows its own count.
+        expect([at(4, () => flow.item('a').get('x')), at(5, () => flow.item('a').get('x'))]).toEqual([-500 + PITCH, -500 + PITCH])
+        expect([at(4, () => copy.item('a').get('x')), at(5, () => copy.item('a').get('x'))]).toEqual([-500 + PITCH, -500 + PITCH * 2])
+        expect([counted(copy, 0, 4.1), counted(copy, 0, 5), counted(flow, 0, 5), counted(copy, 2, 4.1), counted(copy, 2, 5), counted(flow, 2, 5)]).toEqual([['2'], ['3'], ['2'], ['0'], ['1'], ['0']])
+        expect([lookOf(copy, 'schema', 5), lookOf(flow, 'schema', 5), lookOf(copy, 'parse', 4.02, 1), lookOf(copy, 'parse', 5, 1)]).toEqual(['passed', 'open', 'stopped', 'open'])
+        expect(badges(copy.item('a'), 5)).toEqual(['v1'])
+        expect(at(5, () => shows(copy.item('b').cross))).toBe(1)
+    })
+
+    it('takes the font of the film for its names and its items, and its own font for the ids and the badges', async () => {
+        const fontOf = (node: Node | null) => (node as TextNode).font
+        await compileFilm(film({ font: 'text-serif' }, (s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, counts: true, tray: 'refused' }))
+            const mono = s.add(pipeline(GATES, { ...sized, itemFont: 'mono', font: 'sans' }))
+            s.play(flow.put({ id: 'a', badge: 'v1' }), mono.put({ id: 'a', badge: 'v1' }))
+            expect([fontOf(flow.names[0]!), fontOf(flow.trayName), fontOf(flow.counters[0]!.children[0]!), fontOf(flow.item('a').idText), fontOf(flow.item('a').badge)]).toEqual(['text-serif', 'text-serif', 'text-serif', 'text-serif', 'text-serif'])
+            expect([fontOf(mono.names[0]!), fontOf(mono.item('a').idText), fontOf(mono.item('a').badge)]).toEqual(['sans', 'mono', 'mono'])
+        }))
+    })
+
+    it('gives the film check nothing to report on its own layout, at rest and in motion, with a text gap of 0.7', async () => {
+        const made = film({ fps: 20 }, (s) => {
+            const flow = s.add(pipeline([{ name: 'model', gate: false }, 'complete', 'schema', 'authorization'], { width: 1700, gates: true, counts: (count) => `${count} calls`, tray: 'refused' }))
+            s.play(flow.enter())
+            s.play(flow.put({ id: 'call 17', badge: 'hold B7' }))
+            s.play(flow.move('call 17'))
+            s.play(flow.pass('call 17', 'complete'))
+            s.wait(0.6)
+            s.play(flow.move('call 17'))
+            s.play(flow.stop('call 17', 'id is a number'))
+            s.wait(0.8)
+            s.play(flow.eject('call 17'))
+            s.play(flow.put({ id: 'call 18', color: 'orange' }))
+            s.play(flow.move('call 18', 'authorization'), { duration: 1.5 })
+            s.play(flow.setBadge('call 18', 'grant: Lena'))
+            s.wait(0.8)
+            s.play(flow.exit('call 18'))
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(made, { motion: true, textGap })).diagnostics, `gap ${textGap}`).toEqual([])
+    })
+})
 
 describe('object catalog', () => {
     it('names only things that the stage exports, so no entry is lost from the list of objects', async () => {

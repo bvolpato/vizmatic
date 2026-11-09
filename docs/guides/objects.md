@@ -304,6 +304,115 @@ Two such objects side by side compare two designs by their crossings: ten agains
 
 The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
 
+## Pipelines
+
+`pipeline(stages, options)` draws a path of named stages, and items that go through them. An item has an identity: a request, a tool call, a row of a data set. It is a capsule with its id, and it keeps that id while it moves and changes. Use it when a film follows one thing through checks or steps: a tool call through the gates of a host, a request through a serving path, rows through the filters of a data set. For a list of steps with no item, use `steps`. For actors over time, use `lanes`.
+
+```film paired label="A tool call passes the four gates of the host and takes a stamp at each, and a call with a wrong argument stops at the schema gate"
+import { film, pipeline } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const flow = pipeline(['complete', 'schema', 'authorization', 'execute'], { width: 1800, size: 34, gates: true, lanes: 2 })
+    s.play(flow.enter(), { duration: 1 })
+    // Call 17 has all its arguments, a text id, and a grant. It takes one stamp at each gate.
+    s.play(flow.put({ id: 'call 17', badge: 'hold B7' }))
+    s.wait(0.6)
+    for (const stamp of ['complete', 'schema ok', 'grant: Lena', 'held B7']) {
+        s.play(flow.pass('call 17', stamp), { duration: 0.5 })
+        s.wait(0.4)
+        if (stamp !== 'held B7') s.play(flow.move('call 17'), { duration: 0.7 })
+    }
+    // Call 18 gives the book id as a number. The schema gate stops it, and the call does not reach the tool.
+    s.play(flow.put({ id: 'call 18', badge: 'hold 4412', color: 'orange' }))
+    s.play(flow.move('call 18'), { duration: 0.7 })
+    s.play(flow.stop('call 18', 'id is a number'))
+    s.wait(1.4)
+})
+```
+
+A stage is a name, or `{ name, gate }`. A gate checks an item, and lets it through or stops it. Its mark on the path is a diamond, and the mark of a plain stage is a ring. `gates: true` makes every stage a gate, apart from a stage with `gate: false`. The names are over the path, at even steps, and each one is one line.
+
+An item is `{ id, badge, color }`. The `id` is the text on the capsule, in the color of the item, and an id is on the pipeline one time. The `badge` is a short text after the id: the value that the item carries, or the stamp that it took. `flow.put(item)` brings an item to the first stage, or to the stage that `at` names. `flow.put(list, { lag })` brings several, one after another.
+
+`flow.move(which)` takes an item to the next stage, and `flow.move(which, 'schema')` takes it to a stage by its name or its index. An item that leaves a stage leaves a mark there: a dot at a plain stage, and a check at a gate. So the path behind an item shows what happened to it. A move over several stages goes through each stage between them, and leaves its mark there too. A move back to an earlier stage takes the marks from that stage on away, for a second run of the same item.
+
+`flow.setBadge(which, text)` changes the badge in place: the old text fades out, the capsule takes its new width, and the new text fades in. The id does not move. `null` takes the badge away. `flow.pass(which, text)` is the verdict of a stage that lets an item through: the item shows a check, and takes the text as its badge when the call gives one. `flow.stop(which, reason)` is the other verdict: the item shows a cross, its border goes red, and the reason is its badge. A stop has two signs beside the color: the cross and the words. The check or the cross stays at the stage when the item leaves, and the badge goes with the item. An item that is stopped does not move on. `flow.pass(which)` ends the stop, and the reason goes with it.
+
+`which` is an id, a list of ids, or a function of an item, as in `flow.move((item) => item.state !== 'stopped')`. The pipeline calls the function when the film plays the change, so a second change in one sequence sees what the first one left. A function picks items on the path only. With `lag`, the items of one call change one after another.
+
+Each item has its own lane, and `lanes` is the number of items that the path holds at one time. The first lane is the path itself. Each other lane shows from its first item, with its own line and its own marks. So at the end of a film, each lane shows where its item passed and where it was stopped. An item takes the first free lane, or the lane that `lane` names. A path with no free lane is an error that names the items that hold the lanes. The object has the height of all its lanes from the start, so a film that brings many items at once plays `put` together with `enter`: then no empty room shows between the path and the tray.
+
+```film paired label="Rows of a data set go through three gates: each gate stops the rows that break its rule, the counts follow, and the stopped rows go to the tray with their reasons"
+import { film, pipeline } from 'vizmatic/stage'
+
+// Five support tickets, and the first gate that refuses each one.
+const TICKETS = [
+    { id: 'T1' },
+    { id: 'T2', gate: 'not empty', reason: 'no text' },
+    { id: 'T3', gate: 'parses', reason: 'bad JSON' },
+    { id: 'T4' },
+    { id: 'T5', gate: 'not a copy', reason: 'copy of T1' },
+]
+const GATES = ['parses', 'not empty', 'not a copy']
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const flow = pipeline([...GATES, { name: 'training set', gate: false }], {
+        width: 1800, size: 32, gates: true, lanes: TICKETS.length, tray: 'quarantine', counts: (count) => `${count} rows`, color: 'teal',
+    })
+    // The rows come with the path: each lane shows from its first item.
+    s.play(flow.enter(), flow.put(TICKETS.map((ticket) => ({ id: ticket.id })), { lag: 0.3 }), { duration: 1.6 })
+    s.wait(0.8)
+    for (const gate of GATES) {
+        // The gate stops the rows that break its rule. They go to the tray, and the other rows go on together.
+        const refused = TICKETS.filter((ticket) => ticket.gate === gate)
+        s.play(...refused.map((ticket) => flow.stop(ticket.id, ticket.reason)), { duration: 0.6 })
+        s.wait(0.7)
+        s.play(flow.eject(refused.map((ticket) => ticket.id)), { duration: 0.8 })
+        s.play(flow.move((row) => row.name === gate), { duration: 0.8 })
+    }
+    s.wait(1.2)
+})
+```
+
+`counts: true` writes under each name how many items reached the stage so far. A function writes the line, such as ``(count) => `${count} rows` ``. The count of a stage goes up when an item arrives there, and an item counts one time at a stage, also in a second run. So the counts of a row of gates are a funnel: 5, 4, 3. `flow.reached(stage)` is that number, and `flow.count(stage)` is the number of items that are at the stage now.
+
+`tray` is the name of a tray under the path, such as `'rejected'` or `'503'`. `flow.eject(which)` sends an item there as it is, with its cross and its reason. The items of the tray stand in one row, from the left, in the order in which they came. An item in the tray takes no other change. Its lane is free for the next item, and the marks of the lane stay until that item comes. On its way to the tray, an item goes behind the items of the lanes under it, so they stay readable. The motion scan of `vizmatic check` can report `film.text_crossed` for a frame or two there: that is this passing, and not a defect of the film. A tray with no room for an item is an error: use shorter reasons, or a wider `width`. `flow.exit(which)` takes an item away with no tray: the item goes a short way on and fades. Its lane and its id are free when the exit is over.
+
+```ts
+import { beside, fadeIn, film, pipeline, text } from 'vizmatic/stage'
+
+export default film({ font: 'text-serif' }, (s) => {
+    // One lane, and two requests one after another. The ids and the badges are in mono.
+    const rail = s.add(pipeline(['gateway', 'auth', 'quota', { name: 'admission', gate: true }, 'model worker'], { width: 1800, tray: '503', itemFont: 'mono' }))
+    s.play(rail.put({ id: 'R-104', badge: 'id set' }))
+    for (const field of ['tenant A', 'slot 3/5', '40 ms', '412 tok']) {
+        s.play(rail.move('R-104'))
+        s.play(rail.setBadge('R-104', field))
+    }
+    // R-104 is done. R-105 takes its lane, and the marks of the lane start again.
+    s.play(rail.exit('R-104'))
+    s.play(rail.put({ id: 'R-105', color: 'purple' }))
+    s.play(rail.move('R-105', 'admission'), { duration: 1.6 })
+    s.play(rail.stop('R-105', '310 ms'))
+    // A note of the film on one item: under the whole object, at the x of the item.
+    const limit = beside(text('the budget for the first token is 250 ms', { size: 28, color: 'dim' }), rail, 'under', 'normal', rail.item('R-105'))
+    s.play(fadeIn(limit))
+    s.wait(2)
+    s.play(rail.eject('R-105'))
+    const state = rail.stateOf('R-105') // { id: 'R-105', stage: 3, name: 'admission', lane: null, state: 'stopped', where: 'tray', badge: '310 ms' }
+})
+```
+
+An item takes one change at a time. Two changes of one item whose times overlap are an error that names the two calls and their times, and says what to do: play the two in a `seq`, or give the first one a shorter `duration`. Changes of two items play together, so `s.play(flow.move('a'), flow.stop('b', 'late'))` is right. An `exit` or an `eject` frees a lane when it is over, so the `put` of the next item into that lane starts then or later.
+
+`flow.fork(id, item)` makes one item two: the new item comes out of the item `id`, at the same stage, and takes a free lane. Use it for a request that goes on as two parts, such as the text of an answer and the action that it asks for. `flow.join(id, into)` makes two items one: the item `id` goes to the item `into` and ends there. Both parts go through the same stages. For branches with stages of their own, use `graph`.
+
+The state can be read at any point of the film, after the changes that the film has played so far. `flow.stateOf(id)` gives the stage, the lane, the `state` (`'waiting'`, `'passed'` or `'stopped'`), `where` (`'path'` or `'tray'`) and the badge of an item. `flow.find(test)` gives the ids that a function picks, `flow.ids` gives all ids, and `flow.trailOf(stage, lane)` says what the mark of a stage shows: `'open'`, `'visited'`, `'passed'` or `'stopped'`.
+
+The default text size is 28, for the names, the counts, the ids and the badges. A lesson of the course asks for 26 px or more at 1080p, so do not go under `size: 26`. A capsule is 1.7 of `size` high, two lanes are 2.45 of `size` apart, and the marks are about half of `size` wide. `width` is the width of the whole object: the stages share it, less the room of the arrow head at the end. No text is made smaller to fit. A name, a count line, or an item with its badge that is too wide for the room of one stage is an error where the film writes it. The message gives the room in pixels and the least `width` that works. With seven stages in a width of 1800, a stage has room for about 12 characters of id and badge together, so keep the badges of a long path short, or put a long reason in a note beside the item.
+
+`.at()` places the middle of the object, and the object measures as its frame for the layout, with all its lanes and its tray, whatever its items do. So `fitted(region, (width) => pipeline(stages, { width }))` builds it for a region. `flow.p(stage, 'top')` and `flow.p(stage, 'bottom')` are points over and under a stage, in the coordinates of the object, for the end of an arrow. `flow.region({ stage, lane })` is the box of a stage, of a lane, or of the place of one item, and `flow.region({ tray: true })` is the box of the tray, in stage pixels. `flow.item(id)` is the node of an item, and `flow.mark(stage, lane)` is the node of a mark: give one to `beside` as the part, or to `spotlight`. `flow.enter()` brings the names, the line of the path, the marks and the tray, stage by stage. `flow.names`, `flow.counters`, `flow.rails`, `flow.laneNodes`, `flow.tray`, `flow.trayName` and `flow.items` are the parts. An item has a `capsule`, an `idText`, a `check`, a `cross` and a `badge`. `font` sets the font of the names, the counts and the name of the tray, and `itemFont` the font of the ids and the badges. Both default to the font of the film. `color` is the color of an item that has none of its own.
+
 ## Ring buffers
 
 `ringBuffer(slots, options)` draws a ring of slots with a head pointer and a tail pointer. It is the picture of a bounded queue: the two rings of io_uring, a virtqueue, or the descriptor ring of a network card. Slot 0 is at the top, and the slots follow clockwise. `ring.push(entry)` is the producer: the slot at the tail fills, then the tail pointer moves one slot on. `ring.pop()` is the consumer: the entry at the head empties, then the head pointer moves one slot on.
