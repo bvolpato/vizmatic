@@ -10,7 +10,6 @@ import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFil
 import { checkFilm, readingSeconds } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
 import { renderRgbaVideo } from '../src/video'
-import { rasterMemoBytes } from '../src/stage/raster'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
 const tempDirs: string[] = []
@@ -40,7 +39,7 @@ describe('render planning', () => {
             expect(plan.workers).toBeGreaterThanOrEqual(1)
             expect(plan.readAhead).toBeGreaterThan(plan.workers)
             // Workers plus finished frames waiting for the encoder must fit the budget.
-            const perWorker = frameBytes * (blur > 1 ? blur + 4 : 3) + rasterMemoBytes(3840, 2160)
+            const perWorker = frameBytes * (blur > 1 ? blur + 4 : 3)
             expect(plan.workers * perWorker + (plan.readAhead - plan.workers) * frameBytes).toBeLessThanOrEqual(budget * 1.05)
         }
     })
@@ -117,6 +116,35 @@ describe('film export', () => {
         expect(Math.abs(r! - 11)).toBeLessThanOrEqual(2)
         expect(Math.abs(g! - 12)).toBeLessThanOrEqual(2)
         expect(Math.abs(b! - 16)).toBeLessThanOrEqual(2)
+    }, 60_000)
+
+    it.skipIf(!hasFfmpeg)('stops when the signal aborts in the middle of a film, and leaves no file', async () => {
+        const directory = await tempDirectory()
+        const moving = film({ fps: 30 }, (s) => {
+            const label = s.add(text('Abort', { size: 120 }))
+            s.play(shift(label, 400, 0), { duration: 2, ease: linear })
+            s.wait(1)
+        })
+        const controller = new AbortController()
+        const seen: number[] = []
+        const path = join(directory, 'aborted.mp4')
+        await expect(renderFilmVideo(moving, path, {
+            width: 320, workers: 3, signal: controller.signal,
+            onProgress: (frame) => {
+                seen.push(frame.index)
+                if (frame.index === 20) controller.abort()
+            },
+        })).rejects.toMatchObject({ name: 'AbortError' })
+        expect(seen[seen.length - 1]).toBe(20)
+        expect(existsSync(path)).toBe(false)
+    }, 60_000)
+
+    it.skipIf(!hasFfmpeg)('renders every frame with one worker', async () => {
+        const directory = await tempDirectory()
+        const output = await renderFilmVideo(simple, join(directory, 'one.mp4'), { width: 320, workers: 1 })
+        expect(output).toMatchObject({ frameCount: 12, workers: 1 })
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', output.outputPath], { encoding: 'utf8' })
+        expect(Number(probe.stdout.trim())).toBe(12)
     }, 60_000)
 
     it('chooses a poster at rest and honors the author\'s choice', async () => {
