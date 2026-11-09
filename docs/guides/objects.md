@@ -326,11 +326,14 @@ export default film({ fps: 30 }, (s) => {
 - Telemetry: `series`, `chart`, `forecast`, `threshold`, `anomaly`, `logs`, `traces`, `bars`, `table`, `matrix`, `event`, `alert`.
 - Structure: `graph`, `dag`, `tree`, `layers`, `pipeline`, `branch`.
 - Systems: `service`, `database`, `queue`, `cloud`, `chip`.
-- Machines: `vm`, `process`, `kernel`, `memory`, `disk`, `nic`, `network`, `snapshot`, `clone`, `jail`, `wall`, `key`, `stopwatch`, `bolt`.
-- Hardware: `core`, `timer`, `firmware`, `irqchip`, `bus`, `drive`, `floppy`, `serial`, `keyboard`.
+- Machines: `vm`, `process`, `kernel`, `memory`, `disk`, `nic`, `network`, `snapshot`, `clone`, `jail`, `wall`, `key`, `stopwatch`, `bolt`, `proxy`, `certificate`, `sleep`, `shard`.
+- Hardware: `core`, `timer`, `firmware`, `irqchip`, `bus`, `drive`, `floppy`, `serial`, `keyboard`, `server`, `laptop`.
 - Kernel: `thread`, `interrupt`, `syscall`, `ring`, `page`, `pagetable`, `pin`.
+- Workflows: `worker`, `workflow`, `activity`, `signal`, `query`, `update`.
+- Code review: `issue`, `pullRequest`, `repository`, `checklist`, `approval`.
 - Models: `model`, `tokens`, `vector`, `agent`, `spark`.
-- Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`.
+- Work: `dashboard`, `terminal`, `container`, `experiment`, `target`, `loop`, `eye`, `message`, `shield`, `browser`, `desktop`, `recording`.
+- World: `creditCard`, `warehouse`, `truck`, `microphone`, `forum`, `paywall`.
 - General: `document`, `code`, `gear`, `clock`, `user`, `search`, `filter`, `lock`, `deploy`, `check`, `cross`, `warning`, `question`.
 
 Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
@@ -392,6 +395,99 @@ export default film({ fps: 30 }, (s) => {
 Build the content where you want it, then the zone, then add the zone to the stage. The zone stays where its content was built, and `.at(x, y)` places the middle of its border, as for a card. A node of the content that is already on the stage or in a group is an error. After the zone is built, do not add a node of its content to the stage or to another group: that takes the node out of the zone.
 
 The zone is wide enough for its title. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the title, so no line crosses the title. A `fill` is faint by default, because its top edge runs behind the title. `zone.frame`, `zone.title`, `zone.backdrop` (the fill), and `zone.content` are the parts. `zone.box` is the middle line of the border, in the coordinates of the zone.
+
+## Steps
+
+`steps(list, options)` draws a row of named steps with one of them lit: the chapters of an argument, the stages of a process, or a list of options that the film goes through one by one. The lit step has a bright border, and its label is in ink. The steps before it are dim. The steps after it are weaker, and a viewer can still read them. `strip.go(index)` moves the light, and the states of the other steps follow.
+
+```film paired label="A strip of four steps lights one step after another, and a note under each step gives its price"
+import { film, steps } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const strip = steps([
+        { label: 'batching', note: 'price: none' },
+        { label: 'SQPOLL', note: 'price: a CPU' },
+        { label: 'register', note: 'price: pinned memory' },
+        { label: 'I/O polling', note: 'price: a CPU' },
+    ], { width: 1700, numbered: true, size: 40, font: 'text-serif' }).at(0, -60)
+    s.play(strip.enter(), { duration: 1.2 })
+    for (const index of [0, 1, 2, 3]) {
+        s.play(strip.go(index))
+        s.wait(0.9)
+    }
+    s.wait(0.6)
+})
+```
+
+A step is a label, or `{ label, note }`. A label is one line, and a line break in a label is an error. The note is a short text under the box, such as the price of the step. It has one line, or two with a line break. A note has the state of its step: it is in ink under the lit step, in dim under a done step, and as weak as the label under a step that is ahead. `numbered: true` writes the number of each step before its label.
+
+`current` is the index of the step that is lit at the start. Without it, or with `current: null`, no step is lit, and every step is dim and readable: the look for a frame that shows the whole list. `strip.go(null)` puts the light off again. `strip.current` is the index of the lit step after the moves that the film has played so far, and `strip.stateOf(index)` is `'current'`, `'done'`, or `'ahead'`. An index that the strip does not have, or that is not a number, is an error where the film writes the move. A `go` on a strip that is not on the stage brings the strip: it shows at the start of the move, in the state before the move.
+
+`width` is the width of the whole row. The boxes share it: they have one width, with `gap` between them. `.at()` places the middle of the row of boxes, and the notes are under it. `height` is the height of a box, `size` the text size of the labels, `noteSize` the size of the notes, and `color` the border of the lit step. A `height` with no room for a letter with a tail is an error, and the message gives the smallest height that works. A `color` that is not a color is an error when the strip is made. A label that is too wide for its box makes all the labels smaller, so the strip keeps one text size. They go down to 0.7 of `size`. A label that still does not fit is an error, and the message gives the width of a box and the least `width` that is enough. The notes follow the same rule, with their own size.
+
+`direction: 'column'` puts the steps one under the other, for a list at the left of a frame. Then `width` is the width of each box, and the labels are at the left of their boxes. With `numbered`, the numbers are a column of their own: they end at one x, so the names start at one x, also from step 9 to step 10. Each note is between its box and the next one, and every box is further from the next by the room of the longest note. In a row, each label is in the middle of its box, with its number.
+
+```ts
+import { connector, film, rect, steps } from 'vizmatic/stage'
+
+export default film((s) => {
+    const list = s.add(steps(['slow first request', 'huge page spikes', 'the host runs out', 'one lock'], { direction: 'column', width: 420, numbered: true, current: 2 }).at(-690, 0))
+    const picture = s.add(rect(900, 560, { radius: 16, stroke: 'dim', fill: 'surface' }).at(380, 0))
+    // The point is in the coordinates of the object. `toWorld` gives its place on the stage.
+    s.add(connector(list.toWorld(...list.p(2)), picture, { color: 'dim' }))
+    s.wait(2)
+})
+```
+
+`strip.p(index, edge)` is the middle of an edge of the box of a step, for a line to the picture of the step. The edge is `'top'`, `'bottom'`, `'left'`, or `'right'`. Without it, the point is at the bottom in a row, and at the right side in a column. The bottom point of a step that has a note is under the note, 0.3 of the note size under the tails of its letters, so the line does not touch the note. The points are in the coordinates of the object, and `strip.toWorld(x, y)` gives the place on the stage. `strip.enter()` brings the steps in from the first to the last. `strip.boxes`, `strip.labels`, and `strip.notes` are the parts, and `strip.items` holds one node per step, with its box, its label, and its note.
+
+## Boundaries
+
+`boundary(options)` draws an open line between two sides, such as user space and the kernel, and counts what crosses it. Use it when a film compares designs by their number of crossings: 10,000 system calls, then 313, then 1. A `zone` is a closed border around a group. A boundary is a line that marks cross.
+
+```film paired label="Three interfaces side by side: 10,000 system calls, 313, and 1"
+import { boundary, film, lagged } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const shared = { width: 560, size: 30, above: 'user space', below: 'kernel', tally: ['system call', 'system calls'], tallySide: 'over', tickScale: 250 } as const
+    const reads = boundary({ ...shared, label: 'read()' }).at(-620, 0)
+    const batches = boundary({ ...shared, label: 'batches of 32', color: 'teal' }).at(0, 0)
+    const polling = boundary({ ...shared, label: 'polling', color: 'green' }).at(620, 0)
+    s.play(lagged([reads, batches, polling].map((line) => line.enter()), { lag: 0.4 }), { duration: 1.6 })
+    s.play(reads.cross(reads.x(0), { direction: 'round', label: 'read()' }), { duration: 1.4 })
+    s.play(reads.addCrossings(9999), { duration: 2 })
+    s.play(batches.cross(batches.x(0), { direction: 'round', label: '32 at a time' }), { duration: 1.4 })
+    s.play(batches.addCrossings(312), { duration: 1 })
+    s.play(polling.cross(polling.x(0.5), { direction: 'round' }), { duration: 1.4 })
+    s.wait(1)
+})
+```
+
+`.at()` places the middle of the line, and `width` is its length. The `label` names the line, over its left end. `above` and `below` name the two sides, next to the line. `tally` shows the count: `true` for the number alone, a word, or a pair with the word for one and the word for more, such as `['system call', 'system calls']`. `tallySize` sets the text size of the tally, and `tallyColor` the color of its number. `weight` is the width of the stroke, so a wall that is harder to cross can be heavier, and `dash: true` draws a dashed line. No text touches the line.
+
+`line.cross(x)` sends a mark through the line. Where the mark passes, the line lights for a moment and a tick stays. The tally goes up at the moment the mark is on the line. `x` is a place in the coordinates of the line, and `line.x(part)` gives one: 0 is the first place after the names, and 1 is the last place before the tally. A part outside 0 to 1 is an error, and so is an `x` that is not on the line. The `direction` is `'down'`, `'up'`, or `'round'`. A round trip goes down and comes back, as a system call does, and counts once. `reach` is how far from the line the mark starts and ends: 2.7 text sizes by default, which is 70 at size 26. `color` sets the mark and its tick. `counts` is how much the tally goes up, for one mark that carries a batch. `label` is a short text beside the place where the mark starts. It stays there and fades with the mark, so give a crossing with a long text a longer `duration`. It goes on the right of the mark, or on the left when the right has no room, and a text with no room on either side is an error.
+
+`crossThrough([calls, wall], x, options)` sends one mark through several lines, one under the other, such as a system call line and the wall of a virtual machine. Give the lines in the order that the mark meets them, and `x` as a place on the first line. Each line lights, keeps a tick, and counts at the moment the mark is on it.
+
+### Ticks that agree with the tally
+
+A tick is one crossing. `line.addCrossings(count)` runs the tally up with no mark, for a number that is too large to draw, and puts one tick on the line for each of those crossings while the number runs. The ticks go from the left into the places that have no tick, at one spacing of 6 or a little more, and wider on a heavy line. The number runs through whole values and ends exact, and its digits keep their places. The word for one shows where the tally stays at 1 for the time that a viewer needs to read it: half a second, or one second for 20 characters. A tally that only passes 1 keeps the word for more: a number that runs, or the first of several fast crossings. When the count is larger than the number of places on the line, the line is full, and a note under the right end of the line says what one tick stands for, such as "each tick: about 40". So a full line says "many", and the note says how many.
+
+The tick of a crossing with a mark stays where the mark crossed. So for a large number, draw a few crossings and give the rest to `addCrossings`: hundreds of drawn crossings make a band as long as the film spreads them, which says nothing about their number.
+
+To compare lines, or the rounds of one line, give them one `tickScale`: the number of crossings that one tick stands for. A line then has one tick for each `tickScale` crossings, rounded up, whatever way the count grew. With a scale of 250, 10,000 crossings are 40 ticks, 313 are 2, and 1 is 1. Without a scale, each count that is larger than the line fills the line, so 10,000 and 313 look the same but for the note. A crossing with a mark leaves a tick only when the count needs one more. The note shows on each line where a tick stands for more than one crossing. A count that needs more ticks than the line has places is an error that gives the least scale. A line holds 400 ticks, and one more is an error that names `addCrossings`.
+
+`line.clear()` fades the ticks and the note and takes the tally back to 0, for the next round of a comparison. Crossings chain in one `lagged` or `seq`, and `line.count` is the tally after the changes that are scheduled so far.
+
+### How wide a line must be
+
+With `tallySide: 'end'`, the default, the tally is over the right end of the line, next to it, and crossings stay between the names and the tally. The line needs the width of its widest name, the width of the word of its tally, and about 8 text sizes, before it has room for a crossing. With `tallySide: 'over'`, the tally is on a row of its own, over the place where a mark starts, and crossings have the line up to its right end. The line then needs its widest name and about 3 text sizes. With the names "user space" and "kernel" at size 26, a line of 560 keeps 77 for crossings with the tally at the end, and 355 with the tally over. Use `'over'` for lines side by side. A line with no room for a crossing is an error. Under a tally that is over, a mark may not start higher than the default `reach`.
+
+`tallyDigits` is the number of digits that the tally has room for, 6 by default. `x(1)` stays clear of the widest tally, and a count with more digits is an error that says which `tallyDigits` to give.
+
+The bounds of a line hold the way of a mark with the default `reach`, on both sides. With the tally over, the note is under the way of a mark, and the bounds hold it too. So a `zone` or a `card` around a line has room for its crossings. A copy of a line has its own tally and its own ticks, also when `clone()` is called on a group or a zone that holds the line.
+
+`line.line`, `line.labelNode`, `line.sides`, `line.tallyNode`, `line.ticks`, and `line.noteNode` are the parts. The tally is one node: an emphasis such as `indicate(line.tallyNode)` tints the digits and the word. The animation that `cross()` returns has the `mark`. `line.enter()` draws the line from the left, then brings the names, the tally, and the ticks.
 
 ## Tags
 
@@ -629,6 +725,44 @@ export default film({ fps: 30 }, (s) => {
 The `language` option names the syntax. The languages are `ts`, `python`, `rust`, `go`, `java`, `c`, `sql`, `bash`, and `plain`, and four languages for specifications and proofs: `tla` for TLA+, `dafny`, `lean`, and `smt` for SMT-LIB. In those four, a prime such as the one in `x'` is part of the code and does not start a string. An unknown name uses the TypeScript rules.
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
+
+## Terminal output
+
+`terminal(lines, options)` draws the output of a real program as a terminal shows it: a panel, a bar with a `title` at the left and a dim `note` at the right, and the lines in the mono font. Use it when the viewer must see that a number comes from a real run. The title names the file or the host, and the note says where and when the program ran. A line is a string, which is a line of output, or `{ text, kind, color }`. The kind `'command'` draws the prompt before the text. The kind `'note'` is a dim line that the film adds, such as `[...]` for lines that it left out.
+
+```film paired label="A command is typed, its output prints, and one number of the output lights"
+import { film, recolor, terminal } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const run = terminal([
+        { text: './one-byte', kind: 'command' },
+        'mapped 1 GiB at 0xffff7c000000',
+        'Rss before the write:      0 kB',
+        'Rss after the write:       4 kB',
+        'minor faults:              1',
+    ], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08', size: 44 })
+    s.play(run.enter(), { duration: 0.6 })
+    s.play(run.type(0), { duration: 0.8 })
+    s.play(run.print(), { duration: 1.2 })
+    s.wait(0.6)
+    s.play(recolor(run.find('4 kB'), 'yellow'), { duration: 0.4 })
+    s.wait(1.6)
+})
+```
+
+The text is drawn with the exact characters that you give, and each character has its own column, so the columns of a table stay aligned. The spaces at the start of a line and inside it keep their columns. The spaces at the end of a line are not content: they are not drawn, and they do not count for the width or for `columns`. A tab is an error: expand the tabs to spaces first. A line break inside a line and a control character, such as a part of a color code, are errors too. An empty string is an empty line.
+
+A character that the mono font does not have comes from another font of the library. It stands in the middle of its column, and it is drawn smaller when it is too wide for the column. A glyph that is wider than 1.2 columns is an error that names the character: replace it. A character that no font has is drawn as an empty box, and `vizmatic check` reports it. Box drawing characters join along a line. They do not join from one line to the next, because the lines are 1.5 text sizes apart.
+
+The panel sizes itself. Its width follows `columns`, the number of characters in one line, and its height follows the number of lines. Without `columns`, the panel is as wide as its longest line, or wider when the title and the note need the room. With `columns`, a title and a note that do not fit in the bar are an error, and so is a line that is longer. `clip: true` cuts such a line and ends it with a dim ellipsis. `.at()` places the middle of the panel. `size` is the text size, `prompt` is the text before a command, and `color` is the color of the border and the bar.
+
+A terminal holds 40 lines at most. The frame holds fewer at most sizes: a panel of n lines is `size × (1.5 × n + 2.7)` tall. So a frame of 1080 holds 38 lines at size 18, 25 lines at size 26, and 20 lines at size 32, with no room above or below the panel. The terminal does not know the frame. `vizmatic check` reports the lines of a panel that are off the frame. For a longer output, leave lines out and put a note line in their place.
+
+By default a terminal shows all its lines, for a picture that does not move. A film that types and prints starts empty: give `shown: false`, or play `run.enter()`. `run.enter()` brings the panel and the bar, with no line. `run.type(line)` types a command character by character, after its prompt. A command that is already shown is an error. `run.print()` brings the next block of lines, one after another, each line at once. A block starts at the first line that is not yet shown, and it ends before the next command that is not yet shown. A command at the start of a block arrives whole. So `run.type(0)` then `run.print()` types the command and prints its output. `run.print()` alone shows the command and its output, for a film that does not want the typing, and a second `run.print()` goes on with the next block. `run.print({ from: 1, to: 3 })` prints lines 1, 2 and 3, whatever their kind. `run.showLines()` fades in all the lines that are left, together, for a film that does not want the typing.
+
+The terminal keeps a record of the lines that are shown, so two prints in one `seq` follow each other. `run.enter()` in the same `play` as a `type` or a `print` keeps the lines that they show, in both orders. A terminal that is not on the stage at its first `type` or `print` comes with its panel and no other line. A terminal in a group or a zone that is not on the stage brings that group, and keeps its place in it.
+
+`run.find(text, occurrence)` returns one node that holds the glyphs of a part of a line: color it, `indicate` it, or point a `callout` at it. It matches the exact characters, spaces included, in the commands, the output and the notes. `occurrence` counts the matches from 0, from the first line to the last. A text that is not there is an error, which says so when `clip` cut the text off. `codeBlock.find` is different: it returns the glyphs of every match as a list, and spaces do not count there. The second argument of `run.find` is an occurrence, and the second argument of `codeBlock.find` is a line. `run.p(line)` is the start of a line and `run.p(line, 'right')` is its end, in the coordinates of the panel, so `run.toWorld(...run.p(4, 'right'))` is that point on the stage. `run.frame`, `run.bar`, `run.title`, `run.note`, `run.lines`, and `run.prompts` are the parts.
 
 ## Images
 

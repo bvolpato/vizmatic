@@ -116,7 +116,7 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
 
-A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
+A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `server`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `workflow`, `signal`, `issue`, `pullRequest`, `browser`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 
 ```ts
 const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: 'blue' }).at(-300, 0))
@@ -129,6 +129,13 @@ A named border around a group of nodes: a host, a network, a sandbox, a boundary
 const guest = zone([kernel, code], { title: 'microVM', color: 'teal' })
 const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true })
 s.add(zone(jail, { title: 'host' }).at(0, 0))
+```
+
+A row of steps with one of them lit: the chapters of an argument, the stages of a process, a list of options that the film takes one by one. Do not build it from boxes and three colors in each film. `steps` gives the boxes one width, keeps one text size for all labels, and stops the build when a label cannot fit. `go(index)` moves the light: the steps before it are dim, and the steps after it are fainter. A step can have a `note` under its box, `direction: 'column'` makes a list at the left of a frame, and `strip.p(index)` is the point where a line to the picture of the step starts:
+
+```ts
+const strip = s.add(steps(['batching', 'SQPOLL', 'register', 'I/O polling'], { width: 1800, numbered: true, current: 0 }).at(0, -400))
+s.play(strip.go(1))
 ```
 
 A sequence over time with one lane for each actor, such as a system call, a VM exit, or a request through several services. Do not draw the bars and the arrows by hand. `lanes` places the labels, and stops the build when two labels would touch. `advance` moves the cursor to a time and stops there, so one call fits one sentence of the voice. With `ticks`, one lane is a chart of durations on a time axis. With `boundaries`, a line between two lanes counts the handoffs that cross it, such as `{ between: ['user space', 'kernel'], label: 'system call line', count: true }`, so two objects side by side compare two designs by their crossings. `idle: true` is a span where the lane waits, and `dashed: true` is a handoff whose sender does not wait. When a label has no place, `labelSide` on the event names one. On a panel or in a zone with a fill, set `backing` to the color behind the object, or `backing: null` with `cursor: false`:
@@ -144,6 +151,16 @@ const flow = s.add(lanes(['user space', 'kernel'], [
 s.play(flow.advance(20))
 s.play(flow.advance(60))
 s.play(flow.showAll())
+```
+
+A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
+
+```ts
+const line = s.add(boundary({ label: 'system call line', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] }))
+s.play(line.enter())
+s.play(lagged([0.2, 0.5, 0.8].map((part) => line.cross(line.x(part), { direction: 'round' })), { lag: 0.4 }))
+s.play(line.addCrossings(9997), { duration: 2 })
+s.play(line.clear())
 ```
 
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
@@ -175,6 +192,20 @@ s.play(pages.change([3, 4, 5, 40], 'dirty'))
 const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
 ```
 
+The output of a real program: the command, the lines that it printed with their exact characters, and where and when it ran. Do not build it from a box and a `codeBlock` in each film. `find` selects one number by its exact text, to light it when the voice says it. Expand tabs to spaces, and leave lines out with a note line such as `{ text: '[...]', kind: 'note' }`. A terminal shows all its lines unless it starts with `shown: false` or with `enter()`. `print()` brings one block: the lines up to the next command, with the command itself when the film did not type it:
+
+```ts
+const run = terminal([
+    { text: './one-byte', kind: 'command' },
+    'Rss after the write:       4 kB',
+    'minor faults:              1',
+], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08' })
+s.play(run.enter())
+s.play(run.type(0))
+s.play(run.print())
+s.play(recolor(run.find('4 kB'), 'yellow'))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
@@ -190,6 +221,7 @@ Values that differ by more than about a hundred times, such as 100 ns beside 10 
 const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
 const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read from a spinning disk', value: 10_000_000 }], { scale: 'log', format: time, xLabel: 'time, logarithmic' })
 s.play(chart.enter())
+```
 
 A word split into named fields: a virtual address and its table indexes, the flags of a register, the layout of a structure. Do not build it from boxes and texts in each film. `bitField` gives each box a width for its bits, numbers the bits, and keeps every text inside its box. `minWidth` or `scale: 'even'` gives a field of one bit room for a name, and `unused: true` marks reserved bits. For the layout of a structure, `numbers: 'offsets'` counts its bytes, and `wrap: 16` fills rows of 16 bytes. A field with a `value` shows it in its box, and `word.setValue('fd', '3')` changes it in place. `word.field('table')` is the node of one field, and `word.p('table')` is the point where a line from it starts:
 
