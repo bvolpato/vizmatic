@@ -328,6 +328,20 @@ s.play(sq.pop())                                    // the consumer reads at the
 
 For the submission queue of io_uring, use `tailFollows: 'publish'`: the program stores the tail once for several entries, and a tail that counts up at each write teaches the opposite. The bounds of a ring hold the outside name at every slot, so place a ring by its bounds. `ring.length === 0` is an empty ring and `ring.length === ring.size` is a full ring: both pointers are then at one slot, and a text for the state is the work of the film. A `push()` on a full ring, a `pop()` on an empty ring, and a `pop()` of a pending entry are errors. For several pushes at once, pass them to `lagged`.
 
+Requests that wait for a server: a queue in front of the seats of a batch, the workers of a pool, a gate with a budget. Do not move chips by hand. `requestQueue` keeps each request as one item with its id, moves it from its line into a free slot on a way that meets no other item, and counts what waits, runs, is done and is rejected. `work` gives an item a bar and a number of units that are left, `lines` adds a second line or a priority, and `pool` adds fixed blocks, such as KV pages, that an item takes while it runs:
+
+```ts
+const queue = s.add(requestQueue([{ id: 'A', work: 2 }, { id: 'B', work: 4 }, { id: 'C', work: 6 }, { id: 'D', work: 4 }], { slots: 3, deadline: 250, names: { slots: 'GPU batch' } }))
+s.play(queue.admit(queue.next(3)))       // the heads of the line go to the free slots, one after another
+s.play(queue.run(2))                     // each bar grows, and each number of units that are left counts down
+s.play(queue.finish(), queue.admit())    // A leaves and D takes its seat, in one play: name the finish first
+s.play(queue.arrive({ id: 'E', work: 2 }))
+s.play(queue.wait('E', 310))             // the wait of E runs as a number, and turns red at the deadline
+s.play(queue.reject((item) => item.late, '503'))
+```
+
+A line serves its head first, and the slots take one `admit` at a time: give one `admit` a list, and do not play two. `finish` with no argument takes the items that have no work left. `queue.stateOf(id)`, `queue.count('waiting')`, `queue.next()`, `queue.freeSlots` and `queue.freeBlocks` read the state after the animations that the film has played, so a film can say why a request waits before it plays the next step. An `admit` with no free slot or too few free blocks is an error. A line with more items than places draws the first ones and three dots. For a ring with a head and a tail that wrap, use `ringBuffer`.
+
 3D:
 
 ```ts

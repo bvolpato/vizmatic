@@ -12876,6 +12876,829 @@ describe('named box', () => {
     })
 })
 
+// The request queue has its own import, so that its tests stay one block.
+import { boxOf, fitted, requestQueue, zone as queueZone } from '../src/stage/index'
+
+describe('request queue', () => {
+    type Queue = ReturnType<typeof requestQueue>
+    type Rect = { x: number; y: number; width: number; height: number }
+    const words = (node: Node | null) => (node as unknown as { source?: string } | null)?.source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    /** The middle of an item at a time, in the coordinates of the queue. */
+    const where = (made: Queue, id: string | number, time: number) => at(time, () => [made.item(id).parent!.get('x'), made.item(id).parent!.get('y')] as const)
+    const seen = (made: Queue, id: string | number, time: number) => at(time, () => shows(made.item(id)))
+    /** The parts of an item: its border, its bar, its id, the number of its work, and what is under it. */
+    const parts = (made: Queue, id: string | number) => { const [body, bar, name, number, under] = made.item(id).children; return { body: body!, bar: bar!, name: name!, number: number!, under: under! } }
+    /** The border of an item at a time, on the stage. */
+    const box = (made: Queue, id: string | number, time: number): Rect => at(time, () => parts(made, id).body.bounds())
+    const apart = (a: Rect, b: Rect, room = 0) => a.x + a.width + room <= b.x || b.x + b.width + room <= a.x || a.y + a.height + room <= b.y || b.y + b.height + room <= a.y
+    /** The texts that a holder draws at a time: a count, the number of an item, or what is under it. A text that does not show is left out. */
+    const said = (holder: Node, time: number): string[] => {
+        const drawn = at(time, () => holder.draw!(time))
+        const list = (drawn === null ? [] : Array.isArray(drawn) ? drawn : [drawn]) as Node[]
+        return list.filter((node) => node.get('opacity') > 0.01).map((node) => words(node) ?? node.children.map(words).filter(Boolean).join(' '))
+    }
+    const paintOf = (color: string) => rect(1, 1, { fill: color }).get('fill')
+    const abc = () => [{ id: 'A', work: 2 }, { id: 'B', work: 4 }, { id: 'C', work: 6 }]
+    /** The sizes of a queue with the default text size: an item is 120 by 50, and the next place is 133 further. */
+    const W = 120, H = 50, PITCH = 133
+
+    it('is as wide as its width, with the lines at the left and the slots in one column at the right', async () => {
+        await compileFilm(film(() => {
+            const made = requestQueue(abc(), { slots: 3, width: 1400 }).at(100, 40)
+            // The layout measures the whole object: the room where items arrive and leave is a part of it.
+            const whole = boxOf(made)
+            expect([whole.left, whole.right]).toEqual([-600, 800])
+            expect(whole.cy).toBeCloseTo(40, 6)
+            expect(made.bounds().width).toBeCloseTo(1400, 6)
+            expect([made.slots, made.itemWidth]).toEqual([3, W])
+            // The places of the line are one row, one pitch apart, with the head next to the slots.
+            const places = Array.from({ length: made.places }, (_, place) => made.p({ line: 0, place }))
+            expect(made.places).toBeGreaterThanOrEqual(3)
+            places.forEach(([x, y], place) => {
+                expect(x).toBeCloseTo(places[0]![0] - place * PITCH, 6)
+                expect(y).toBeCloseTo(places[0]![1], 6)
+            })
+            // The slots are one column, and the line is at the height of the middle slot.
+            const seats = [0, 1, 2].map((slot) => made.p({ slot }))
+            expect(new Set(seats.map(([x]) => x)).size).toBe(1)
+            expect(seats[1]![1]).toBeCloseTo(places[0]![1], 6)
+            expect(seats[2]![1] - seats[1]![1]).toBeCloseTo(seats[1]![1] - seats[0]![1], 6)
+            expect(seats[1]![1] - seats[0]![1]).toBeGreaterThan(H)
+            // An item leaves its line by one place, and comes into its slot by one place: the room between
+            // the head and the slots is more than two items wide.
+            expect(seats[0]![0] - places[0]![0]).toBeGreaterThanOrEqual(2 * PITCH)
+            // The room that an item needs to leave a slot is inside the object.
+            expect(seats[0]![0] + W / 2 + PITCH).toBeLessThanOrEqual(700 + 1e-6)
+            // The first place is clear of the left edge by the room of one item, where an item arrives.
+            expect(places[made.places - 1]![0] - W / 2 - PITCH).toBeGreaterThanOrEqual(-700 - 1e-6)
+            // With two lines or more, a line is at the height of a slot, or in the middle between two slots.
+            const two = requestQueue([], { slots: 3, lines: ['a', 'b'] })
+            expect([two.p({ line: 0, place: 0 })[1], two.p({ line: 1, place: 0 })[1]]).toEqual([two.p({ slot: 0 })[1], two.p({ slot: 2 })[1]])
+            const three = requestQueue([], { slots: 2, lines: ['a', 'b', 'c'] })
+            expect(three.p({ line: 1, place: 0 })[1]).toBeCloseTo((three.p({ slot: 0 })[1] + three.p({ slot: 1 })[1]) / 2, 6)
+            expect(three.p({ slot: 1 })[1] - three.p({ slot: 0 })[1]).toBeCloseTo((three.p({ line: 1, place: 0 })[1] - three.p({ line: 0, place: 0 })[1]) / 2, 6)
+            // The room that the places do not fill is at the far end of the lines: the head is as near to the slots at any width.
+            const odd = requestQueue(abc(), { slots: 3, width: 1450 })
+            expect(odd.places).toBe(made.places)
+            expect(odd.p({ slot: 0 })[0] - odd.p({ line: 0, place: 0 })[0]).toBeCloseTo(seats[0]![0] - places[0]![0], 6)
+            expect(odd.p({ line: 0, place: 0 })[0] + 725).toBeCloseTo(places[0]![0] + 700 + 50, 6)
+            // A wider object has more places, and the same room at the slots.
+            const wide = requestQueue(abc(), { slots: 3, width: 1800 })
+            expect(wide.places).toBe(made.places + 3)
+            expect(1800 / 2 - wide.p({ slot: 0 })[0]).toBeCloseTo(1400 / 2 - seats[0]![0], 6)
+        }))
+    })
+
+    it('gets the width of a region from fitted, and gives a region of each part on the stage', async () => {
+        await compileFilm(film(() => {
+            const made = fitted(900, (width) => requestQueue(abc(), { slots: 2, width, pool: 4 })).at(-200, 100)
+            expect(boxOf(made).width).toBeCloseTo(900, 6)
+            const slot = made.region({ slot: 1 }), [x, y] = made.p({ slot: 1 })
+            expect([slot.cx, slot.cy]).toEqual([x - 200, y + 100])
+            expect([slot.width, slot.height]).toEqual([W, H])
+            const line = made.region({ line: 0 })
+            expect(line.width).toBeCloseTo(made.places * PITCH - 13, 6)
+            expect(line.right).toBeCloseTo(made.p({ line: 0, place: 0 }, 'right')[0] - 200, 6)
+            expect(made.region('slots').height).toBeCloseTo(made.p({ slot: 1 }, 'bottom')[1] - made.p({ slot: 0 }, 'top')[1], 6)
+            // The pool is under the slots, and starts at their left edge.
+            const pool = made.region('pool')
+            expect(pool.left).toBeCloseTo(slot.left, 6)
+            expect(pool.top).toBeGreaterThan(slot.bottom)
+            expect(made.region({ block: 3 }).right).toBeCloseTo(pool.right, 6)
+            const all = made.region()
+            expect([all.left, all.right]).toEqual([-650, 250])
+            // The edges of a part.
+            expect(made.p({ slot: 0 }, 'left')[0]).toBeCloseTo(made.p({ slot: 0 })[0] - W / 2, 6)
+            expect(made.p({ slot: 0 }, 'top')[1]).toBeCloseTo(made.p({ slot: 0 })[1] - H / 2, 6)
+        }))
+    })
+
+    it('starts with the first items in their lines in order, and the running ones in the first slots', async () => {
+        let made!: Queue
+        const f = await compile((s) => {
+            made = s.add(requestQueue([{ id: 'R1', running: true }, ...abc(), { id: 'R2', running: true }], { slots: 3, names: { slots: 'GPU batch' } }))
+            s.wait(1)
+        })
+        expect(made.ids).toEqual(['R1', 'A', 'B', 'C', 'R2'])
+        expect(made.find((item) => item.state === 'running')).toEqual(['R1', 'R2'])
+        expect([made.stateOf('R1').slot, made.stateOf('R2').slot, made.freeSlots]).toEqual([0, 1, 1])
+        expect(['A', 'B', 'C'].map((id) => made.stateOf(id).place)).toEqual([0, 1, 2])
+        expect([made.count('waiting'), made.count('running'), made.count('done'), made.count('rejected')]).toEqual([3, 2, 0, 0])
+        expect(made.stateOf('B')).toEqual({ id: 'B', state: 'waiting', line: 0, place: 1, slot: null, work: 4, left: 4, blocks: 0, wait: 0, late: false, status: undefined })
+        // Each item is at the middle of its place or of its slot, and shows.
+        for (const [id, part] of [['A', { line: 0, place: 0 }], ['B', { line: 0, place: 1 }], ['C', { line: 0, place: 2 }], ['R1', { slot: 0 }], ['R2', { slot: 1 }]] as const) {
+            expect(where(made, id, 0.5)).toEqual(made.p(part))
+            expect(seen(made, id, 0.5)).toBe(1)
+        }
+        // The counts say the same, and a count of 0 draws nothing.
+        expect(said(made.captions[0]!, 0.5)).toEqual(['waiting 3'])
+        expect(said(made.slotsCaption, 0.5)).toEqual(['GPU batch 2 / 3'])
+        expect(said(made.doneTally!, 0.5)).toEqual([])
+        expect(said(made.rejectedTally!, 0.5)).toEqual([])
+        // An item with work shows the units that are left. An item with none has no number, and its id is in the middle.
+        expect(said(parts(made, 'B').number, 0.5)).toEqual(['4'])
+        expect(parts(made, 'R1').number.draw).toBeNull()
+        at(0.5, () => {
+            const id = parts(made, 'R1').name.bounds(), border = parts(made, 'R1').body.bounds()
+            expect(id.x + id.width / 2).toBeCloseTo(border.x + border.width / 2, 0)
+            // The outline of a slot shows while the slot is free.
+            expect(made.seats.map((seat) => seat.children[0]!.get('opacity'))).toEqual([0, 0, 1])
+        })
+        expectPure(f, [0, 0.5, 1])
+    })
+
+    it('brings an item to the end of its line, from one place behind, and counts it when it is half there', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.arrive({ id: 'B', work: 3 }), { duration: 2, ease: linear })
+            expect(made.ids).toEqual(['A', 'B'])
+            expect(made.stateOf('B')).toMatchObject({ state: 'waiting', place: 1, left: 3 })
+            expect(made.count('waiting')).toBe(2)
+        })
+        const [x, y] = made.p({ line: 0, place: 1 })
+        expect(seen(made, 'B', 0.99)).toBe(0)
+        expect(where(made, 'B', 1.5)).toEqual([x - PITCH * 0.75, y])
+        // The item is all there at the middle of its way, so the line of its waiting line does not show through it.
+        expect(seen(made, 'B', 1.5)).toBeCloseTo(0.5, 6)
+        expect(seen(made, 'B', 2)).toBeCloseTo(1, 6)
+        expect(where(made, 'B', 2)).toEqual([x - PITCH * 0.5, y])
+        expect(where(made, 'B', 3)).toEqual([x, y])
+        expect([1.9, 2.1].map((time) => said(made.captions[0]!, time))).toEqual([['waiting 1'], ['waiting 2']])
+        // The item that was there does not move.
+        expect([1, 2, 3].map((time) => where(made, 'A', time))).toEqual(Array(3).fill(made.p({ line: 0, place: 0 })))
+    })
+
+    it('brings the items of a list one after another, and no item is nearer to the item before it than one place', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([], { slots: 1 }))
+            s.play(made.arrive([{ id: 1 }, { id: 2 }, { id: 3 }], { lag: 0.5 }), { duration: 2 })
+            s.wait(0.5)
+            // Two calls in one play: the second item is faster, and it still stays behind the first one.
+            s.play(made.arrive({ id: 4 }, { duration: 1.5, ease: linear }), made.arrive({ id: 5 }, { duration: 1.5, ease: (share: number) => Math.sqrt(share) }))
+        })
+        expect(made.ids).toEqual([1, 2, 3, 4, 5])
+        expect([1, 2, 3, 4, 5].map((id) => made.stateOf(id).place)).toEqual([0, 1, 2, 3, 4])
+        // Each item of the list has half of the time, and starts a quarter later than the one before it.
+        expect([0.01, 0.5, 0.99].map((time) => seen(made, 2, time) > 0)).toEqual([false, false, true])
+        expect(where(made, 3, 2)).toEqual(made.p({ line: 0, place: 2 }))
+        for (let time = 0; time <= 4.01; time += 0.05) {
+            // An item has no place before it arrives, so the rule is for an item that shows.
+            for (const id of [2, 3, 4, 5]) if (seen(made, id, time) > 0) expect(where(made, id - 1, time)[0] - where(made, id, time)[0]).toBeGreaterThanOrEqual(PITCH - 1e-6)
+        }
+        // Item 5 alone would be ahead: at a quarter of its time, its own ease has it half way.
+        expect(where(made, 5, 2.5 + 1.5 / 4)[0]).toBeCloseTo(made.p({ line: 0, place: 4 })[0] - PITCH * 0.75, 6)
+        expect(where(made, 5, 4)).toEqual(made.p({ line: 0, place: 4 }))
+    })
+
+    it('moves the head of the line into the first free slot, on a way that is clear of the other items', async () => {
+        let made!: Queue
+        const f = await compile((s) => {
+            made = s.add(requestQueue([{ id: 'R1', running: true }, ...abc()], { slots: 3 }))
+            s.wait(1)
+            s.play(made.admit(), { duration: 2, ease: linear })
+            expect(made.stateOf('A')).toMatchObject({ state: 'running', place: null, slot: 1 })
+            expect(['B', 'C'].map((id) => made.stateOf(id).place)).toEqual([0, 1])
+            expect([made.count('waiting'), made.count('running'), made.freeSlots]).toEqual([2, 2, 1])
+            s.wait(1)
+            s.play(made.admit('B'), { duration: 2, ease: linear })
+            expect(made.stateOf('B').slot).toBe(2)
+        })
+        const head = made.p({ line: 0, place: 0 }), seat = made.p({ slot: 2 })
+        expect(where(made, 'A', 1)).toEqual(head)
+        expect(where(made, 'A', 3)).toEqual(made.p({ slot: 1 }))
+        expect(where(made, 'B', 6)).toEqual(seat)
+        // The line closes up with the item that leaves: half way, each item is half a place on.
+        expect(where(made, 'B', 2)[0]).toBeCloseTo(head[0] - PITCH / 2, 6)
+        expect(where(made, 'C', 2)[0]).toBeCloseTo(head[0] - PITCH * 1.5, 6)
+        expect(where(made, 'C', 3)).toEqual(made.p({ line: 0, place: 1 }))
+        // B goes to a slot at another height. It changes its height only between the lines and the slots:
+        // near its line it is at the height of the line, and near the slots at the height of its slot.
+        let across = 0
+        for (let time = 4; time <= 6.001; time += 0.02) {
+            const [x, y] = where(made, 'B', time)
+            if (x < head[0] + PITCH - 1e-6) expect(y).toBeCloseTo(head[1], 6)
+            else if (x > seat[0] - PITCH + 1e-6) expect(y).toBeCloseTo(seat[1], 6)
+            else across += 1
+            // It never meets an item in a slot, or the item that is now the head.
+            for (const other of ['R1', 'A', 'C']) expect(apart(box(made, 'B', time), box(made, other, time))).toBe(true)
+        }
+        expect(across).toBeGreaterThan(5)
+        // The counts change when the item is half way, and the outline of the slot goes when the item comes into it.
+        expect([1.9, 2.1].map((time) => [said(made.captions[0]!, time), said(made.slotsCaption, time)])).toEqual([[['waiting 3'], ['running 1 / 3']], [['waiting 2'], ['running 2 / 3']]])
+        expect([1, 2, 3].map((time) => at(time, () => made.seats[1]!.children[0]!.get('opacity')))).toEqual([1, 1, 0])
+        expectPure(f, [0.5, 2, 2.9, 5, 6])
+    })
+
+    it('admits the items of a list one after another, and refuses two admissions at one time', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue(abc(), { slots: 3 }))
+            expect(made.next(2)).toEqual(['A', 'B'])
+            s.play(made.admit(made.next(made.freeSlots)), { duration: 3, ease: linear })
+            expect(made.find((item) => item.state === 'running')).toEqual(['A', 'B', 'C'])
+            expect(made.next()).toEqual([])
+        })
+        // Each item has a third of the time: B does not leave the line before A is in its slot.
+        expect(where(made, 'A', 1)).toEqual(made.p({ slot: 0 }))
+        expect(where(made, 'B', 1)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(where(made, 'B', 2)).toEqual(made.p({ slot: 1 }))
+        expect(where(made, 'C', 2)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(where(made, 'C', 3)).toEqual(made.p({ slot: 2 }))
+        for (let time = 0; time <= 3; time += 0.05) {
+            expect(apart(box(made, 'A', time), box(made, 'B', time))).toBe(true)
+            expect(apart(box(made, 'B', time), box(made, 'C', time))).toBe(true)
+        }
+        const two = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue(abc(), { slots: 3 })), s))
+        await expect(two((q, s) => s.play(q.admit(), q.admit()))).rejects.toThrow('requestQueue: admit() starts at 0 s, and admit() ends at 0.9 s. The slots take one item at a time, so that no two items cross. Give one `admit` all the items, as a list')
+        await expect(two((q, s) => s.play(q.admit('B')))).rejects.toThrow('requestQueue: admit("B"): "B" is at place 1 of the line "waiting", behind "A". A line serves its head first. Admit "A" first, or reject the items before "B"')
+        await expect(two((q, s) => s.play(q.admit(['A', 'A'])))).rejects.toThrow('admit names an item two times')
+        await expect(two((q, s) => s.play(q.admit('Z')))).rejects.toThrow('requestQueue: admit("Z"): no item has the id "Z". The queue has "A", "B", "C". When an `arrive` in the same play brings the item, name the `arrive` before this call')
+        await expect(compile((s) => { const q = s.add(requestQueue(abc())); s.play(q.admit()); s.play(q.admit()) })).rejects.toThrow('requestQueue: admit(): no slot is free for "B": 1 of 1 run. `finish` an item first')
+        await expect(compile((s) => { s.play(s.add(requestQueue([])).admit()) })).rejects.toThrow('requestQueue: admit(): no item waits. `arrive` an item first')
+        await expect(compile((s) => { s.play(s.add(requestQueue([{ id: 'R', running: true }], { slots: 2 })).admit('R')) })).rejects.toThrow('requestQueue: admit("R"): "R" is running. `admit` takes an item that waits')
+        // An item that arrives in the same sequence can be admitted: the queue reads its state when the call is scheduled.
+        await compile((s) => {
+            const q = s.add(requestQueue([]))
+            s.play(seq(q.arrive({ id: 'N' }), q.admit('N')))
+            expect(q.stateOf('N').state).toBe('running')
+        })
+    })
+
+    it('lets the items in the slots work: the bar grows, the number counts down, and no item does more than its work', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 2, running: true }, { id: 'B', work: 4, running: true }, { id: 'N', running: true }, { id: 'W', work: 3 }], { slots: 3 }))
+            s.wait(1)
+            s.play(made.run(2), { duration: 2 })
+            expect(['A', 'B', 'N', 'W'].map((id) => made.stateOf(id).left)).toEqual([0, 2, undefined, 3])
+            s.play(made.run(3), { duration: 1 })
+            expect(['A', 'B'].map((id) => made.stateOf(id).left)).toEqual([0, 0])
+        })
+        const width = (id: string, time: number) => at(time, () => (parts(made, id).bar.get('path')!.length === 0 ? 0 : parts(made, id).bar.bounds().width))
+        // Work goes at one speed, with no ease: after a quarter of the time, a quarter of the units are done.
+        expect([1, 1.5, 2, 3].map((time) => width('A', time))).toEqual([0, W / 4, W / 2, W])
+        expect([1, 2, 3, 3.5, 4].map((time) => width('B', time))).toEqual([0, W / 4, W / 2, W * 0.75, W])
+        expect([1, 1.9, 2.1, 3].map((time) => said(parts(made, 'A').number, time))).toEqual([['2'], ['2'], ['1'], ['0']])
+        expect([3, 3.4, 3.6, 4].map((time) => said(parts(made, 'B').number, time))).toEqual([['2'], ['2'], ['1'], ['0']])
+        // The bar starts at the left edge of the item, and has its height.
+        at(2, () => {
+            const bar = parts(made, 'B').bar.bounds(), border = parts(made, 'B').body.bounds()
+            expect([bar.x, bar.y, bar.height]).toEqual([border.x, border.y, border.height])
+        })
+        // An item with no work, and an item that waits, do not change.
+        expect([width('N', 4), width('W', 4)]).toEqual([0, 0])
+        expect(said(parts(made, 'W').number, 4)).toEqual(['3'])
+        await expect(compile((s) => { s.play(s.add(requestQueue([])).run(0)) })).rejects.toThrow('requestQueue: run takes the units of work, a whole number, 1 or more. It got 0')
+    })
+
+    it('drains the slots of the items that have done their work: each one goes out at the right and fades', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 1, running: true }, { id: 'B', work: 4, running: true }, { id: 'N', running: true }], { slots: 3 }))
+            s.play(made.run(1), { duration: 1 })
+            s.play(made.finish(), { duration: 2, ease: linear })
+            expect(made.stateOf('A')).toMatchObject({ state: 'done', slot: null })
+            expect(made.find((item) => item.state === 'running')).toEqual(['B', 'N'])
+            expect([made.count('done'), made.freeSlots]).toEqual([1, 1])
+            s.wait(1)
+            // An item with no work leaves when the film names it. A function picks among the items in the slots.
+            s.play(made.finish((item) => item.work === undefined), { duration: 1 })
+            expect(made.stateOf('N').state).toBe('done')
+        })
+        const [x, y] = made.p({ slot: 0 })
+        expect(where(made, 'A', 1)).toEqual([x, y])
+        expect(where(made, 'A', 2)).toEqual([x + PITCH / 2, y])
+        expect(where(made, 'A', 3)).toEqual([x + PITCH, y])
+        // The item is all there until it is half out of its slot, and gone at the end.
+        expect([1, 1.8, 2.4, 3].map((time) => seen(made, 'A', time))).toEqual([1, 1, expect.closeTo(0.5, 6), 0])
+        // The outline of the slot comes back at the end, when the id of the item is clear of it. The count follows at the middle.
+        expect([1, 1.8, 2.4, 2.85, 3].map((time) => at(time, () => made.seats[0]!.children[0]!.get('opacity')))).toEqual([0, 0, 0, expect.closeTo(0.5, 6), 1])
+        expect([1.9, 2.1].map((time) => [said(made.slotsCaption, time), said(made.doneTally!, time)])).toEqual([[['running 3 / 3'], []], [['running 2 / 3'], ['done 1']]])
+        expect(said(made.doneTally!, 5)).toEqual(['done 2'])
+        // The item stays inside the object on its way out.
+        at(2.9, () => expect(box(made, 'A', 2.9).x + W).toBeLessThanOrEqual(made.bounds().x + made.bounds().width + 1e-6))
+        const one = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A', work: 2, running: true }, { id: 'W' }])), s))
+        await expect(one((q, s) => s.play(q.finish()))).rejects.toThrow('requestQueue: finish(): no item in a slot has done its work. `run` first, or name the item')
+        await expect(one((q, s) => s.play(q.finish('A')))).rejects.toThrow('requestQueue: finish("A"): "A" has 2 of 2 units of work left. Call run(2) first')
+        await expect(one((q, s) => s.play(q.finish('W')))).rejects.toThrow('requestQueue: finish("W"): "W" is waiting. This call takes an item that is running')
+    })
+
+    it('refills a slot in one play: the new item comes in behind the one that leaves, and never meets it', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 1, running: true }, { id: 'D', work: 3 }, { id: 'E' }], { slots: 1 }))
+            s.play(made.run(1), { duration: 1 })
+            // The new item is faster than the one that leaves, and it still waits for it.
+            s.play(made.finish(), made.admit(undefined, { ease: (share: number) => Math.sqrt(share) }), { duration: 2 })
+            expect(made.stateOf('D')).toMatchObject({ state: 'running', slot: 0 })
+            expect([made.count('running'), made.count('done'), made.freeSlots]).toEqual([1, 1, 0])
+        })
+        expect(where(made, 'D', 3)).toEqual(made.p({ slot: 0 }))
+        expect(seen(made, 'A', 3)).toBe(0)
+        for (let time = 1; time <= 3.001; time += 0.02) {
+            if (seen(made, 'A', time) > 0) expect(apart(box(made, 'A', time), box(made, 'D', time))).toBe(true)
+            // The line closes up no faster than its head leaves.
+            expect(where(made, 'D', time)[0] - where(made, 'E', time)[0]).toBeGreaterThanOrEqual(PITCH - 1e-6)
+            // The outline of the slot does not come back between the two items.
+            expect(at(time, () => made.seats[0]!.children[0]!.get('opacity'))).toBe(0)
+        }
+        // Alone, the ease of D has it at 0.71 of its way after half of the time. Behind A, it is half way, as A is.
+        const alone = await (async () => { let q!: Queue; await compile((s) => { q = s.add(requestQueue([{ id: 'D' }])); s.wait(1); s.play(q.admit(undefined, { ease: (share: number) => Math.sqrt(share) }), { duration: 2 }) }); return where(q, 'D', 2)[0] })()
+        expect(where(made, 'D', 2)[0]).toBeLessThan(alone - 20)
+        // The count of the slots stays at 1: one item leaves and one comes in.
+        expect([1.5, 2.5, 3].map((time) => said(made.slotsCaption, time))).toEqual(Array(3).fill(['running 1 / 1']))
+        const full = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A', running: true }, { id: 'D' }])), s))
+        await expect(full((q, s) => s.play(q.admit(), q.finish('A')))).rejects.toThrow('no slot is free for "D": 1 of 1 run. `finish` an item first. When a `finish` in the same play frees the slot, name the `finish` before the `admit`')
+        await expect(full((q, s) => s.play(par(q.finish('A', { duration: 2 }), q.admit(undefined, { duration: 1 }))))).rejects.toThrow('requestQueue: admit(): "D" is in slot 0 at 1 s, and the item before it leaves that slot until 2 s. Give the `finish` a duration that ends at 1 s or sooner')
+    })
+
+    it('sends a waiting item away with its status: it gets dashes, a cross and the status, it fades, and then the line closes up', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'D' }, { id: 'R', running: true }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.reject('B', '503'), { duration: 10, ease: linear })
+            expect(made.stateOf('B')).toMatchObject({ state: 'rejected', place: null, status: '503' })
+            expect(['A', 'C', 'D'].map((id) => made.stateOf(id).place)).toEqual([0, 1, 2])
+            expect([made.count('waiting'), made.count('rejected')]).toEqual([3, 1])
+            // A function picks among the items that wait, when the call is scheduled.
+            s.play(made.reject((item) => item.place === 2, 'timeout'), { duration: 1 })
+            expect(made.stateOf('D').status).toBe('timeout')
+            expect(made.find((item) => item.state === 'rejected')).toEqual(['B', 'D'])
+        })
+        const place = (index: number) => made.p({ line: 0, place: index })
+        const edge = (time: number) => at(time, () => [parts(made, 'B').body.get('stroke'), parts(made, 'B').body.get('dash') !== null])
+        // The status arrives in the first fifth of the time, under the item, after a cross.
+        expect(edge(1)).toEqual([paintOf('blue'), false])
+        expect(edge(3)).toEqual([paintOf('red'), true])
+        expect(said(parts(made, 'B').under, 1)).toEqual([])
+        expect(said(parts(made, 'B').under, 3)).toEqual(['503'])
+        at(3, () => {
+            const status = (parts(made, 'B').under.draw!(3) as Node[])[0]!
+            expect(status.children).toHaveLength(2)
+            expect(status.children[0]!.get('stroke')).toEqual(paintOf('red'))
+        })
+        // The item stays in its place while the viewer reads the status, and fades from 0.6 to 0.8 of the time.
+        expect([3, 7, 8, 9].map((time) => seen(made, 'B', time))).toEqual([1, 1, expect.closeTo(0.5, 6), 0])
+        expect([1, 8, 9].map((time) => where(made, 'B', time))).toEqual(Array(3).fill(place(1)))
+        // The line closes up in the last fifth, when the item is gone: no item moves into a place that still shows another.
+        expect([1, 9].map((time) => where(made, 'C', time))).toEqual([place(2), place(2)])
+        expect(where(made, 'C', 10)[0]).toBeCloseTo(place(2)[0] + PITCH / 2, 6)
+        expect(where(made, 'C', 11)).toEqual(place(1))
+        expect(where(made, 'D', 11)).toEqual(place(2))
+        expect([1, 11].map((time) => where(made, 'A', time))).toEqual([place(0), place(0)])
+        expect([7.9, 8.1].map((time) => [said(made.captions[0]!, time), said(made.rejectedTally!, time)])).toEqual([[['waiting 4'], []], [['waiting 3'], ['rejected 1']]])
+        const some = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'R', running: true }])), s))
+        await expect(some((q, s) => s.play(q.reject('R', '503')))).rejects.toThrow('requestQueue: reject("R", "503"): "R" is running. This call takes an item that is waiting: an item in a slot leaves with `finish`')
+        await expect(some((q, s) => s.play(q.reject('A', '503'), q.reject('B', '503')))).rejects.toThrow('requestQueue: reject("B", "503") starts at 0 s, and the line "waiting" closes up after reject("A", "503") until 1.4 s. A line takes one change of its order at a time')
+        await expect(some((q) => q.reject('A', 'the queue is full now'))).rejects.toThrow('requestQueue: the status "the queue is full now" is')
+        await expect(some((q) => q.reject('A', ''))).rejects.toThrow('requestQueue: the status of reject is empty')
+        // An item with a wait: its number goes before its status comes, so no two texts show at one place.
+        let timed!: Queue
+        await compile((s) => {
+            timed = s.add(requestQueue([{ id: 'A' }]))
+            s.play(timed.wait('A', 7), { duration: 1 })
+            s.play(timed.reject('A', '503'), { duration: 10, ease: linear })
+        })
+        expect([1, 1.5, 2.5, 3].map((time) => said(parts(timed, 'A').under, time))).toEqual([['7'], ['7'], ['503'], ['503']])
+        expect([1.5, 2.5].map((time) => at(time, () => (parts(timed, 'A').under.draw!(time) as Node[])[0]!.get('opacity')))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        // One call takes several items, and the items behind them close up by as many places.
+        await some((q, s) => {
+            s.play(q.reject(['A', 'B'], '429'))
+            expect(q.stateOf('C').place).toBe(0)
+            expect(where(q, 'C', 1.4)).toEqual(q.p({ line: 0, place: 0 }))
+        })
+    })
+
+    it('runs the wait of an item as a number under it, and marks the item as late at the deadline', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'R', running: true }], { slots: 2, deadline: 250, format: (ms) => `${Math.round(ms)} ms` }))
+            s.wait(1)
+            s.play(made.wait('B', 200), { duration: 2 })
+            expect(made.stateOf('B')).toMatchObject({ wait: 200, late: false })
+            s.play(made.wait('B', 300), { duration: 2 })
+            expect(made.stateOf('B')).toMatchObject({ wait: 300, late: true })
+            expect(made.find((item) => item.late)).toEqual(['B'])
+            s.wait(1)
+            s.play(made.admit(['A']), { duration: 1 })
+            s.play(made.wait('B', 320), { duration: 1 })
+        })
+        const under = (time: number) => said(parts(made, 'B').under, time)
+        const edge = (time: number) => at(time, () => [parts(made, 'B').body.get('stroke'), parts(made, 'B').body.get('dash') !== null])
+        // No number before the first wait. Then it runs at one speed.
+        expect([0.9, 1, 1.5, 2, 3, 4, 5].map(under)).toEqual([[], ['0 ms'], ['50 ms'], ['100 ms'], ['200 ms'], ['250 ms'], ['300 ms']])
+        // At the deadline the number is red, and the border of the item is red with dashes.
+        const color = (time: number) => at(time, () => ((parts(made, 'B').under.draw!(time) as Node[])[0]!.children[0]!.get('fill')))
+        // An item is late from the moment that its wait is the deadline: at 4 s it is 250 ms.
+        expect([3.9, 4, 4.1].map(color)).toEqual([paintOf('dim'), paintOf('red'), paintOf('red')])
+        expect([3.9, 4, 4.1].map(edge)).toEqual([[paintOf('blue'), false], [paintOf('red'), true], [paintOf('red'), true]])
+        // The number is under its item, and follows it when the line closes up.
+        at(7, () => {
+            const number = (parts(made, 'B').under.draw!(7) as Node[])[0]!
+            expect(parts(made, 'B').under.get('y')).toBeGreaterThan(H / 2)
+            expect(Math.abs(number.get('x'))).toBeLessThan(1e-6)
+        })
+        expect(where(made, 'B', 7)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(under(8)).toEqual(['320 ms'])
+        // An item that goes to a slot loses its number in the first part of its way, and is no longer late.
+        let served!: Queue
+        await compile((s) => {
+            served = s.add(requestQueue([{ id: 'A' }], { deadline: 100 }))
+            s.play(served.wait('A', 150), { duration: 1 })
+            s.play(served.admit(), { duration: 2, ease: linear })
+        })
+        expect([1, 1.3, 1.7, 3].map((time) => said(parts(served, 'A').under, time))).toEqual([['150'], ['150'], [], []])
+        expect([1, 1.01].map((time) => at(time, () => parts(served, 'A').body.get('dash') !== null))).toEqual([true, false])
+        const one = (build: (made: Queue, s: Stage) => void, options = {}) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'R', running: true }], options)), s))
+        await one((q, s) => {
+            s.play(q.wait('A', 99))
+            expect(q.stateOf('A').late).toBe(false)
+            s.play(q.wait('A', 100))
+            expect(q.stateOf('A').late).toBe(true)
+        }, { deadline: 100 })
+        await expect(one((q, s) => { s.play(q.wait('A', 100)); s.play(q.wait('A', 50)) })).rejects.toThrow('requestQueue: wait("A", 50): the wait of "A" is 100, and a wait does not go back. Give a value of 100 or more')
+        await expect(one((q, s) => s.play(q.wait('R', 100)))).rejects.toThrow('"R" is running. This call takes an item that is waiting')
+        await expect(one((q) => q.wait('A', 100), { format: (wait: number) => `${wait} milliseconds of wait` })).rejects.toThrow('requestQueue: the wait "100 milliseconds of wait" is')
+        await expect(one((q) => q.wait('A', Number.NaN))).rejects.toThrow('requestQueue: wait takes the wait to reach, a number, 0 or more. It got NaN')
+    })
+
+    it('serves the first line first, and gives each item the color of its line', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'L1', line: 'batch' }, { id: 'H1', line: 'interactive' }, { id: 'L2', line: 1, color: 'purple' }], { slots: 3, lines: [{ name: 'interactive', color: 'orange' }, 'batch'], color: 'teal' }))
+            expect(made.next(3)).toEqual(['H1', 'L1', 'L2'])
+            expect([made.count('waiting', 'interactive'), made.count('waiting', 1)]).toEqual([1, 2])
+            s.play(made.arrive({ id: 'H2', line: 'interactive' }), { duration: 1 })
+            s.play(made.admit(), { duration: 1 })
+            expect(made.stateOf('H1').state).toBe('running')
+            // An item of the second line goes when the film names it: it is the head of its own line.
+            s.play(made.admit('L1'), { duration: 1 })
+            expect(made.find((item) => item.state === 'running')).toEqual(['L1', 'H1'])
+            expect(made.next()).toEqual(['H2'])
+        })
+        const stroke = (id: string) => at(0, () => parts(made, id).body.get('stroke'))
+        expect(['H1', 'L1', 'L2'].map(stroke)).toEqual([paintOf('orange'), paintOf('teal'), paintOf('purple')])
+        // The lines are one under the other, each with its name and its count over its head.
+        const high = made.p({ line: 'interactive', place: 0 }), low = made.p({ line: 'batch', place: 0 })
+        expect(high[0]).toBe(low[0])
+        expect(low[1] - high[1]).toBeGreaterThan(H * 2)
+        expect(where(made, 'L2', 0)).toEqual(made.p({ line: 1, place: 1 }))
+        expect([said(made.captions[0]!, 0.9), said(made.captions[1]!, 0.9)]).toEqual([['interactive 2'], ['batch 2']])
+        at(0, () => expect(made.captions[1]!.get('y')).toBeLessThan(low[1] - H / 2))
+        expect(where(made, 'L1', 3)).toEqual(made.p({ slot: 1 }))
+        await expect(compile(() => { requestQueue([{ id: 'A', line: 'x' }]) })).rejects.toThrow('requestQueue: no line "x". The lines are 0 ("waiting")')
+    })
+
+    it('draws as many items as a line has places, and three dots for the others', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue(Array.from({ length: 6 }, (_, index) => ({ id: index + 1 })), { slots: 1, width: 1000 }))
+            expect(made.places).toBe(3)
+            s.wait(1)
+            s.play(made.arrive({ id: 7 }), { duration: 1 })
+            s.play(made.admit(), { duration: 2, ease: linear })
+            expect(made.stateOf(4).place).toBe(2)
+            s.play(made.finish(1), made.admit(), { duration: 1 })
+            s.play(made.reject([3, 4, 5], '429'), { duration: 1 })
+        })
+        const dots = (time: number) => at(time, () => shows(made.more[0]!.children[0]!))
+        // The count is of all the items, and the picture shows the first three.
+        expect(said(made.captions[0]!, 0.5)).toEqual(['waiting 6'])
+        expect([1, 2, 3, 4, 5, 6].map((id) => seen(made, id, 0.5))).toEqual([1, 1, 1, 0, 0, 0])
+        expect(dots(0.5)).toBe(1)
+        // An item with no place is not a part of the bounds: the object keeps its width.
+        at(0.5, () => expect(made.bounds().width).toBeCloseTo(1000, 6))
+        expect(seen(made, 7, 2)).toBe(0)
+        expect(said(made.captions[0]!, 2)).toEqual(['waiting 7'])
+        // When the head leaves, the next item comes into the last place. It shows on the second half of its
+        // way, when it is clear of the dots.
+        const last = made.p({ line: 0, place: 2 })
+        expect([2, 3, 3.5, 4].map((time) => seen(made, 4, time))).toEqual([0, 0, expect.closeTo(0.5, 6), 1])
+        expect(where(made, 4, 4)).toEqual(last)
+        at(3.5, () => expect(box(made, 4, 3.5).x).toBeGreaterThan(made.more[0]!.bounds().x + made.more[0]!.bounds().width))
+        // The dots go when every item that waits has a place: after the three rejections, 6 and 7 are left.
+        expect([4, 5, 6.1].map(dots)).toEqual([1, 1, 0])
+        expect([6, 7].map((id) => where(made, id, 6))).toEqual([made.p({ line: 0, place: 0 }), made.p({ line: 0, place: 1 })])
+        expect([6, 7].map((id) => seen(made, id, 6))).toEqual([1, 1])
+    })
+
+    it('gives the blocks of the pool to an item that runs, takes them back when it finishes, and gives them to the next one', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', blocks: 3, running: true }, { id: 'B', blocks: 2, color: 'orange' }, { id: 'C', blocks: 4, color: 'green' }], { slots: 2, pool: { blocks: 6, name: 'KV pages', columns: 3 } }))
+            expect([made.freeBlocks, made.stateOf('A').blocks, made.stateOf('B').blocks]).toEqual([3, 3, 2])
+            s.wait(1)
+            s.play(made.admit(), { duration: 2 })
+            expect(made.freeBlocks).toBe(1)
+            s.play(made.take('B', 1), { duration: 1 })
+            expect([made.freeBlocks, made.stateOf('B').blocks]).toEqual([0, 3])
+            s.wait(1)
+            // A is the item that leaves: its three blocks are free again, and C takes them and one more... which the pool does not have.
+            expect(() => s.play(made.finish('A'), made.admit())).toThrow('requestQueue: admit(): "C" needs 4 blocks, and the pool has 3 free of 6. `finish` an item first, to get its blocks back')
+        })
+        const look = (block: number, time: number) => at(time, () => [made.blocks[block]!.get('fill'), made.blocks[block]!.get('fillOpacity'), made.blocks[block]!.get('dash') !== null] as const)
+        // The first free blocks, by index: A has 0 to 2, B takes 3 and 4 as it comes into its slot, and then 5.
+        expect([0, 1, 2].map((block) => look(block, 0))).toEqual(Array(3).fill([paintOf('blue'), 0.7, false]))
+        expect([3, 4, 5].map((block) => look(block, 1)[2])).toEqual([true, true, true])
+        expect(look(3, 1)[1]).toBe(0)
+        expect([3, 4].map((block) => look(block, 3))).toEqual(Array(2).fill([paintOf('orange'), 0.7, false]))
+        expect(look(5, 3)[2]).toBe(true)
+        expect(look(5, 4)).toEqual([paintOf('orange'), 0.7, false])
+        // The blocks fill in the last part of the way of the item, one after another.
+        expect([1.5, 2].map((time) => look(3, time)[1])).toEqual([0, 0])
+        expect(look(3, 2.7)[1]).toBeGreaterThan(look(4, 2.7)[1])
+        expect([0.5, 3, 4].map((time) => said(made.poolCaption!, time))).toEqual([['KV pages 3 / 6'], ['KV pages 5 / 6'], ['KV pages 6 / 6']])
+        // The blocks are one grid, row by row, under the slots.
+        const cells = made.blocks.map((cell) => at(0, () => [cell.get('x'), cell.get('y')]))
+        expect(cells[3]![0]).toBe(cells[0]![0])
+        expect(cells[3]![1]).toBeGreaterThan(cells[0]![1])
+        expect(cells[1]![1]).toBe(cells[0]![1])
+        expect(cells[0]).toEqual(made.p({ block: 0 }))
+    })
+
+    it('uses a block again when its owner is gone, in one play with the item that leaves', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', blocks: 2, running: true }, { id: 'D', blocks: 2, color: 'orange' }], { slots: 1, pool: 2 }))
+            s.wait(1)
+            s.play(made.finish('A'), made.admit(), { duration: 2 })
+            expect([made.freeBlocks, made.stateOf('D').blocks, made.stateOf('A').blocks]).toEqual([0, 2, 0])
+        })
+        const look = (block: number, time: number) => at(time, () => [made.blocks[block]!.get('fill'), made.blocks[block]!.get('fillOpacity')] as const)
+        expect([0, 1].map((block) => look(block, 1))).toEqual(Array(2).fill([paintOf('blue'), 0.7]))
+        expect([0, 1].map((block) => look(block, 3))).toEqual(Array(2).fill([paintOf('orange'), 0.7]))
+        // No block shows a look that is not on the way from the first owner to the second: the fill never goes over 0.7.
+        for (let time = 1; time <= 3; time += 0.05) for (const block of [0, 1]) expect(look(block, time)[1]).toBeLessThanOrEqual(0.7 + 1e-9)
+        expect(said(made.poolCaption!, 3)).toEqual(['blocks 2 / 2'])
+        const pool = (build: (made: Queue, s: Stage) => void, options: Parameters<typeof requestQueue>[1] = { pool: 4 }) => compile((s) => build(s.add(requestQueue([{ id: 'A', running: true }, { id: 'W' }], options)), s))
+        await expect(pool((q, s) => s.play(q.take('A', 5)))).rejects.toThrow('requestQueue: take("A", 5): "A" needs 5 blocks, and the pool has 4 free of 4. Raise `pool`')
+        await expect(pool((q, s) => s.play(q.take('W', 1)))).rejects.toThrow('requestQueue: take("W", 1): "W" is waiting. An item holds blocks while it is in a slot')
+        await expect(pool((q) => q.take('A', 1), {})).rejects.toThrow('requestQueue: take: the queue has no pool')
+        await expect(compile(() => { requestQueue([{ id: 'A', blocks: 2 }]) })).rejects.toThrow('requestQueue: "A" has blocks, and the queue has no pool')
+        await expect(compile(() => { requestQueue([{ id: 'A', running: true, blocks: 3 }, { id: 'B', running: true, blocks: 3 }], { slots: 2, pool: 4 }) })).rejects.toThrow('requestQueue: the first items: "B" runs at the start, and it needs 3 blocks, and the pool has 1 free of 4. Raise `pool`')
+    })
+
+    it('lets an item arrive while its line closes up, behind the items that move', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 2 }))
+            s.wait(1)
+            // The new item is in a hurry: its own ease would put it in its place before B has left it.
+            s.play(made.admit(undefined, { ease: linear }), made.arrive({ id: 'C' }, { ease: (share: number) => Math.sqrt(share) }), { duration: 2 })
+            expect(['B', 'C'].map((id) => made.stateOf(id).place)).toEqual([0, 1])
+        })
+        expect(where(made, 'C', 3)).toEqual(made.p({ line: 0, place: 1 }))
+        for (let time = 1; time <= 3.001; time += 0.02) expect(where(made, 'B', time)[0] - where(made, 'C', time)[0]).toBeGreaterThanOrEqual(PITCH - 1e-6)
+        const two = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 2 })), s))
+        await expect(two((q, s) => s.play(par(q.admit(undefined, { duration: 2 }), q.arrive({ id: 'C' }, { duration: 0.5 }))))).rejects.toThrow('requestQueue: arrive("C"): "C" is in its place at 0.5 s, and admit() moves in the line "waiting" until 2 s. An item takes its place behind the items before it. Give this arrival a duration that ends at 2 s or later')
+        await expect(compile((s) => { const q = s.add(requestQueue([])); s.play(q.arrive({ id: 'C' }), q.admit('C')) })).rejects.toThrow('requestQueue: admit("C") starts at 0 s, and arrive("C") moves "C" until 0.6 s. An item takes one change at a time')
+        await expect(two((q, s) => s.play(q.arrive({ id: 'A' })))).rejects.toThrow('requestQueue: arrive("A"): the queue has an item with the id "A"')
+        // The queue takes its changes in the order of time. A change that the film calls later and that starts sooner is an error that says so.
+        await expect(two((q, s) => s.play(par(delay(q.admit(), 1), q.arrive({ id: 'C' }))))).rejects.toThrow('requestQueue: arrive("C") starts at 0 s, and the film called admit() before it, which starts at 1 s. The queue takes its changes in the order of time: each one starts from the state that the one before it left. Call arrive("C") before admit()')
+        await two((q, s) => {
+            s.play(par(q.arrive({ id: 'C' }), delay(q.admit(), 1)))
+            expect(q.stateOf('A').state).toBe('running')
+        })
+        await expect(two((q) => q.arrive({ id: 'N', running: true }))).rejects.toThrow('requestQueue: arrive: "N" has `running`')
+        await expect(two((q) => q.arrive({ id: 'request-1234567890' }))).rejects.toThrow('requestQueue: the id "request-1234567890" is 287 px wide at size 28, and an item is 120 px wide, with 92 px for its id. An id can be 0.6 of the size at the least. Use a shorter id, or an `itemWidth` of 201 or more')
+    })
+
+    it('draws the line of a waiting line with a gap under each item, and an arrow head at the side of the slots', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.reject('B', '503'), { duration: 10, ease: linear })
+            s.play(made.admit(), { duration: 2, ease: linear })
+        })
+        const rings = (time: number) => at(time, () => (made.rails[0]!.draw!(time) as Node).get('path')!.map((ring) => pathBounds([ring])!))
+        /** The pieces of the line at a time, each from its left end to its right end, on the stage. */
+        const pieces = (time: number) => rings(time).filter((ring) => ring.height < 0.5).map((ring) => [ring.x, ring.x + ring.width] as const)
+        const drawn = (time: number, x: number) => pieces(time).some(([from, to]) => from <= x && x <= to)
+        const [a, y] = made.p({ line: 0, place: 0 }), b = made.p({ line: 0, place: 1 })[0]
+        // The line starts at the left edge of the object, is at the height of the items, and has no piece under an item.
+        expect(Math.min(...pieces(0.5).map(([from]) => from))).toBeCloseTo(-800, 6)
+        expect(rings(0.5).filter((ring) => ring.height < 0.5).every((ring) => Math.abs(ring.y - y) < 1e-6)).toBe(true)
+        expect([a, b, b - 59, b + 59, a - 59, a + 59].map((x) => drawn(0.5, x))).toEqual(Array(6).fill(false))
+        expect([b - 61, (a + b) / 2, a + 61].map((x) => drawn(0.5, x))).toEqual([true, true, true])
+        // The arrow head is after the head of the line, and points at the slots.
+        const head = rings(0.5).find((ring) => ring.height > 0.5)!
+        expect(head.x).toBeGreaterThan(a + W / 2)
+        expect(head.x + head.width).toBeLessThan(made.p({ slot: 0 }, 'left')[0] - W)
+        expect(head.y + head.height / 2).toBeCloseTo(y, 6)
+        expect(Math.max(...pieces(0.5).map(([, to]) => to))).toBeCloseTo(head.x + head.width, 6)
+        // An item that fades still has its gap, so the line does not show through it. The line is whole when the item is gone.
+        expect([8, 8.9].map((time) => drawn(time, b))).toEqual([false, false])
+        expect(drawn(9.5, b)).toBe(true)
+        // An item that leaves its line for a slot takes its gap with it, while it is at the height of the line.
+        expect([11, 11.2].map((time) => drawn(time, where(made, 'A', time)[0]))).toEqual([false, false])
+        expect(drawn(13, a)).toBe(true)
+    })
+
+    it('keeps its own bookkeeping in a copy, at rest in the state of the queue', async () => {
+        await compile((s) => {
+            const made = s.add(requestQueue([{ id: 'A', work: 2, blocks: 1 }, { id: 'B' }], { slots: 2, pool: 2, deadline: 10 }))
+            s.play(made.admit(), { duration: 1 })
+            s.play(made.run(1), made.wait('B', 20), { duration: 1 })
+            const copy = made.clone()
+            expect(copy.ids).toEqual(['A', 'B'])
+            expect(copy.stateOf('A')).toEqual(made.stateOf('A'))
+            expect(copy.stateOf('B')).toMatchObject({ wait: 20, late: true, place: 0 })
+            expect(copy.item('A')).not.toBe(made.item('A'))
+            // The copy is at rest: each item is where the queue has it, with its bar, its number and its wait.
+            const outer = copy.item('A').parent!
+            expect([outer.get('x'), outer.get('y')]).toEqual(copy.p({ slot: 0 }))
+            expect(copy.item('A').children[1]!.bounds().width).toBeCloseTo(W / 2, 6)
+            expect(said(copy.item('A').children[3]!, 0)).toEqual(['1'])
+            expect(said(copy.item('B').children[4]!, 0)).toEqual(['20'])
+            expect(said(copy.poolCaption!, 0)).toEqual(['blocks 1 / 2'])
+            expect(said(copy.slotsCaption, 0)).toEqual(['running 1 / 2'])
+            // A change of the copy does not change the queue, and the reverse.
+            s.add(copy)
+            s.play(copy.admit(), copy.arrive({ id: 'N' }), { duration: 1 })
+            expect([copy.count('running'), made.count('running'), copy.ids.length, made.ids.length, made.chips.length]).toEqual([2, 1, 3, 2, 2])
+            s.play(made.run(1), { duration: 1 })
+            expect([made.stateOf('A').left, copy.stateOf('A').left]).toEqual([0, 1])
+            // A copy of a queue with no item has its own lists.
+            const empty = requestQueue([])
+            const twin = empty.clone()
+            s.play(twin.arrive({ id: 'X' }))
+            expect([empty.chips.length, twin.chips.length, empty.ids]).toEqual([0, 1, []])
+        })
+    })
+
+    it('comes to the stage with its first animation, and follows a group that moves it', async () => {
+        let made!: Queue, grouped!: Queue
+        const f = await compile((s) => {
+            made = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
+            s.wait(1)
+            s.play(made.admit(), { duration: 1 })
+            grouped = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
+            const holder = s.add(group(grouped).at(100, 200))
+            holder.scale(0.5, [100, 200])
+            s.play(grouped.arrive({ id: 'B' }), { duration: 1 })
+            const region = grouped.region({ slot: 0 }), [x, y] = grouped.p({ slot: 0 })
+            expect([region.cx, region.cy]).toEqual([100 + x / 2, 200 + y / 2])
+            expect(region.width).toBeCloseTo(W / 2, 6)
+            // A queue in a zone keeps its size: the zone is around the whole object.
+            const framed = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
+            const around = queueZone([framed], { title: 'server' })
+            expect(around.bounds().width).toBeGreaterThanOrEqual(900)
+        })
+        expect(at(0.5, () => made.mounted && made.get('visible'))).toBe(false)
+        expect(at(1.5, () => made.get('visible'))).toBe(true)
+        // The item of the queue in the group is at half of its place from the middle of the group.
+        at(3, () => {
+            const border = parts(grouped, 'B').body.bounds(), [x, y] = grouped.p({ line: 0, place: 1 })
+            expect([border.x + border.width / 2, border.y + border.height / 2]).toEqual([100 + x / 2, 200 + y / 2])
+            expect(border.width).toBeCloseTo(W / 2, 6)
+        })
+        expectPure(f, [0.5, 1.5, 2.5, 3])
+    })
+
+    it('ends an animation of no length in the state that it names', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 1 }, { id: 'B' }, { id: 'C' }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.admit(), made.arrive({ id: 'D' }), { duration: 0 })
+            s.play(made.run(1), { duration: 0 })
+            s.play(made.finish(), { duration: 0 })
+            s.play(made.reject('B', '503'), made.wait('C', 5), { duration: 0 })
+            s.wait(1)
+        })
+        expect(['A', 'B', 'C', 'D'].map((id) => made.stateOf(id).state)).toEqual(['done', 'rejected', 'waiting', 'waiting'])
+        expect(where(made, 'A', 0.5)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(['A', 'B', 'C', 'D'].map((id) => seen(made, id, 1.5))).toEqual([0, 0, 1, 1])
+        expect(['C', 'D'].map((id) => where(made, id, 1.5))).toEqual([made.p({ line: 0, place: 0 }), made.p({ line: 0, place: 1 })])
+        expect([said(made.captions[0]!, 1.5), said(made.slotsCaption, 1.5), said(made.doneTally!, 1.5), said(made.rejectedTally!, 1.5), said(parts(made, 'C').under, 1.5)]).toEqual([['waiting 2'], ['running 0 / 1'], ['done 1'], ['rejected 1'], ['5']])
+        await expect(compile((s) => { const q = s.add(requestQueue([{ id: 'A' }])); s.play(q.admit(undefined, { duration: Number.NaN })) })).rejects.toThrow('requestQueue: the duration of admit() is NaN. Give a number, 0 or more')
+        await expect(compile((s) => { const q = s.add(requestQueue([{ id: 'A' }])); s.play(q.admit(), { duration: Number.NaN }) })).rejects.toThrow('requestQueue: admit() plays from 0 to NaN')
+    })
+
+    it('never goes back with an ease that does, and enters with its lines, its slots and its items', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 1 })
+            s.play(made.enter(), { duration: 1, ease: linear })
+            // An ease that goes there and back: the item stays in its slot, where the queue has it.
+            s.play(made.admit(), { duration: 2, ease: (share: number) => Math.sin(share * Math.PI) })
+            s.wait(1)
+        })
+        // The ease is at its end at 2 s, and back at 0.7 of the way at 2.5 s. The item is in its slot from 2 s on.
+        expect([2, 2.5, 3].map((time) => where(made, 'A', time))).toEqual(Array(3).fill(made.p({ slot: 0 })))
+        expect([2, 2.5, 3].map((time) => where(made, 'B', time))).toEqual(Array(3).fill(made.p({ line: 0, place: 0 })))
+        // The line of the waiting line comes first, and the items come last.
+        expect([0, 0.3, 0.6].map((time) => at(time, () => made.rails[0]!.get('opacity')))).toEqual([0, 0.5, 1])
+        expect([0.01, 0.4, 0.7, 1].map((time) => seen(made, 'A', time))).toEqual([0, 0, expect.closeTo(0.5, 6), 1])
+        expect([0.01, 1].map((time) => at(time, () => shows(made.captions[0]!)))).toEqual([0, 1])
+        expect([0, 1].map((time) => at(time, () => shows(made.seats[0]!)))).toEqual([0, 1])
+    })
+
+    it('sets its texts at 26 px or more, in the font of the film, and sets an id that is too wide smaller', async () => {
+        let made!: Queue, plain!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'R-1041', work: 12 }, { id: 'B' }], { slots: 1, deadline: 5, idFont: 'mono' }))
+            plain = requestQueue([{ id: 'A', work: 1 }], { counts: false, names: { slots: 'workers', done: null }, itemWidth: 96 })
+            s.play(made.wait('B', 9), made.reject('B', '503'), { duration: 2 })
+        }, { font: 'text-serif' })
+        const sizes = (holder: Node, time: number) => (at(time, () => holder.draw!(time)) as Node | Node[])
+        const texts = (node: Node): TextNode[] => node.all().filter((part): part is TextNode => part instanceof TextNode)
+        at(0.5, () => {
+            const drawn = [made.captions[0]!, made.slotsCaption, parts(made, 'R-1041').number, parts(made, 'B').under].flatMap((holder) => [sizes(holder, 0.5)].flat().flatMap(texts))
+            expect(drawn.length).toBeGreaterThanOrEqual(4)
+            for (const node of drawn) {
+                expect(node.size).toBeGreaterThanOrEqual(26)
+                expect(node.font).toBe('text-serif')
+            }
+            const id = parts(made, 'R-1041').name as TextNode
+            expect([id.size, id.font]).toEqual([28, 'mono'])
+            // The first items set the width of an item: the longest id, its number, and the room at the two sides.
+            expect(made.itemWidth).toBeGreaterThan(W)
+            // The number ends at the place of its holder: a drawing has no parent, so its own bounds start from 0.
+            const border = parts(made, 'R-1041').body.bounds(), ink = id.bounds(), end = parts(made, 'R-1041').number.toWorld(0, 0)[0]
+            const start = end - (sizes(parts(made, 'R-1041').number, 0.5) as Node).bounds().width
+            expect(ink.x - border.x).toBeGreaterThanOrEqual(12)
+            expect(start - (ink.x + ink.width)).toBeGreaterThanOrEqual(8)
+            expect(border.x + border.width - end).toBeGreaterThanOrEqual(12)
+        })
+        // Without counts, a name stands alone, and a count that the film turned off is not a part of the object.
+        expect([said(plain.captions[0]!, 0), said(plain.slotsCaption, 0), plain.doneTally, plain.rejectedTally]).toEqual([['waiting'], ['workers'], null, null])
+        expect(plain.itemWidth).toBe(96)
+        // An id that is too wide for the item is set smaller, down to 0.6 of the size.
+        await compile((s) => {
+            const narrow = s.add(requestQueue([], { itemWidth: 110 }))
+            s.play(narrow.arrive({ id: 'R-10412' }))
+            const id = narrow.item('R-10412').children[2] as TextNode
+            expect(id.size).toBeLessThan(28)
+            expect(id.size).toBeGreaterThanOrEqual(28 * 0.6)
+            expect(id.bounds().width).toBeLessThanOrEqual(110 - 28)
+        })
+        // The check of a film finds no crowded text in the layout of the object itself: with 0.3 and 0.7, with the
+        // most room that the rule asks for, and at each frame of each animation.
+        const busy = film({ font: 'text-serif' }, (s) => {
+            const made = s.add(requestQueue([
+                { id: 'A gjpqy', work: 12, blocks: 1, running: true }, { id: 'B', work: 4, line: 'batch' }, { id: 'C', line: 'batch' },
+                ...Array.from({ length: 9 }, (_, index) => ({ id: `i${index}` })),
+            ], { slots: 2, pool: 4, lines: ['interactive', 'batch'], deadline: 5, format: (ms) => `${Math.round(ms)} ms`, width: 1500 }))
+            expect(made.data['object']).toBe('request queue')
+            // An item that arrives later is a part of the object too: its id, its wait and its status.
+            s.play(made.arrive({ id: 'N', work: 3, line: 'batch' }), { duration: 1 })
+            s.play(made.wait(['B', 'N'], 9), { duration: 1 })
+            s.play(made.run(12), made.reject(['B', 'N'], 'timeout'), { duration: 4 })
+            s.play(made.finish(), made.admit(), { duration: 1 })
+            s.wait(1)
+        })
+        for (const textGap of [0.3, 0.7, 3]) {
+            // At 1.5 s the waits run, at 3.5 s the statuses show, and at 8 s the two counts of the items that left show.
+            const still = await checkFilm(busy, { textGap, times: [0.5, 1.5, 2, 3.5, 5, 8] })
+            expect(still.diagnostics.map((finding) => `${finding.code}: ${finding.message}`), `at ${textGap}`).toEqual([])
+        }
+        const moving = await checkFilm(busy, { textGap: 0.7, motion: true })
+        expect(moving.diagnostics.map((finding) => `${finding.code}: ${finding.message}`)).toEqual([])
+    })
+
+    it('refuses a size, a width, a line or an item that it cannot draw, and says what to give', async () => {
+        const bad = (build: () => unknown) => compile(() => { build() })
+        await expect(bad(() => requestQueue([], { slots: 0 }))).rejects.toThrow('requestQueue: slots is 0. A queue has 1 to 12 slots, a whole number')
+        await expect(bad(() => requestQueue([], { slots: 13 }))).rejects.toThrow('A queue has 1 to 12 slots')
+        await expect(bad(() => requestQueue([], { width: 300 }))).rejects.toThrow('requestQueue: a width of 300 has no room for a place in the lines: the slots, the way to them and one place take 712 px. Give a width of 712 or more')
+        await compile(() => { expect(requestQueue([], { width: 712 }).places).toBe(1) })
+        await expect(bad(() => requestQueue([], { lines: [] }))).rejects.toThrow('requestQueue: lines has 0 lines. A queue has 1 to 4 waiting lines')
+        await expect(bad(() => requestQueue([], { lines: ['a', 'a'] }))).rejects.toThrow('requestQueue: two lines have the name "a"')
+        await expect(bad(() => requestQueue([], { lines: ['a line with a name that is far too long for the room over the places of one line'], width: 900 }))).rejects.toThrow('px wide, and the lines are')
+        await expect(bad(() => requestQueue([], { color: 'nope' }))).rejects.toThrow('requestQueue: color is "nope", which is not a color')
+        await expect(bad(() => requestQueue([{ id: 'A' }, { id: 'A' }]))).rejects.toThrow('requestQueue: two items have the id "A". Give each item its own id')
+        // The queue knows an id by its text.
+        await expect(bad(() => requestQueue([{ id: 7 }, { id: '7' }]))).rejects.toThrow('two items have the id "7"')
+        await expect(bad(() => requestQueue([{ id: '' }]))).rejects.toThrow('requestQueue: an id is "". An id is a text of one line or a number')
+        await expect(bad(() => requestQueue([{ id: 'A', work: 1.5 }]))).rejects.toThrow('requestQueue: the work of "A" is 1.5. It is a number of units, a whole number, 1 or more')
+        await expect(bad(() => requestQueue([{ id: 'A', running: true }, { id: 'B', running: true }]))).rejects.toThrow('requestQueue: "B" is the item number 2 that runs at the start, and the queue has 1 slot. Raise `slots`, or leave out `running`')
+        await expect(bad(() => requestQueue([], { pool: 0 }))).rejects.toThrow('requestQueue: the pool has 0 blocks. A pool has 1 to 256 blocks')
+        await expect(bad(() => requestQueue([], { deadline: 0 }))).rejects.toThrow('requestQueue: deadline is 0. It is the wait from which an item is late, more than 0')
+        await expect(bad(() => requestQueue([], { itemWidth: 10 }))).rejects.toThrow('requestQueue: itemWidth is 10. It is the width of an item, 56 or more at this text size')
+        await expect(bad(() => requestQueue({} as never))).rejects.toThrow('requestQueue: the first argument is the list of the items that are there at the start')
+        await expect(bad(() => requestQueue([]).p({ slot: 4 }))).rejects.toThrow('requestQueue: p: no slot 4. The queue has one slot, slot 0')
+        await expect(bad(() => requestQueue([]).p('gate' as never))).rejects.toThrow("requestQueue: p: the part is \"gate\". A part is { line }, { line, place }, { slot }, { block }, 'slots' or 'pool'")
+        await expect(bad(() => requestQueue([]).region('pool'))).rejects.toThrow('requestQueue: region: the queue has no pool')
+        await expect(bad(() => requestQueue([{ id: 'A' }]).stateOf('B'))).rejects.toThrow('requestQueue: stateOf: no item has the id "B". The queue has "A"')
+        await expect(bad(() => requestQueue([]).count('late' as never))).rejects.toThrow("requestQueue: no state \"late\". The states are 'waiting', 'running', 'done' and 'rejected'")
+    })
+})
+
 export type { Vec, Vec3 }
 
 describe('object catalog', () => {
