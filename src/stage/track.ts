@@ -24,7 +24,32 @@ export const clock = {
      * makes on the stage, and while one of its frames is drawn.
      */
     font: null as FontFamily | null,
+    /** The time of the frame that is drawn now, in render mode. A value that is read at another time is not this frame's. */
+    at: 0,
+    /**
+     * While a frame is drawn: the frame is proven to stay as it is for every later time before this one.
+     * It starts at Infinity. Each read of a track lowers it to the next change of that track, and each part
+     * of the frame that uses the time itself lowers it by `changesAt` or `changesNow`. The export does not
+     * draw a frame again before this time.
+     */
+    steady: Infinity,
 }
+
+/** Say that the frame in progress can change at `time`, and not before, as far as the caller knows. */
+export function changesAt(time: number): void {
+    if (time < clock.steady) clock.steady = time
+}
+
+/** Say that the frame in progress changes with the time now, or that the caller cannot tell when it changes. */
+export function changesNow(): void {
+    clock.steady = -Infinity
+}
+
+/**
+ * The name of the property of a frame that holds its steady time. A symbol of the registry, so that an export
+ * with its own copy of the engine reads the frames of the copy that drew them.
+ */
+export const STEADY = Symbol.for('vizmatic.frame.steady')
 
 export interface Overlayable {
     overlay: Map<string, unknown> | null
@@ -37,6 +62,12 @@ export interface Key<T> {
     to: T
     /** Value at eased progress. Absent for a step key. */
     at: ((alpha: number) => T) | null
+    /**
+     * For a key whose value rests during parts of its span, as a key that holds several moves: the time
+     * before which the value stays as it is at `time`, or -Infinity while the value is on its way. A key
+     * without it is on its way for its whole span.
+     */
+    until?: (time: number) => number
 }
 
 /** One property over time. Keys sort by start time, and a later key wins from its start. */
@@ -56,9 +87,17 @@ export class Track<T> {
                 hi = mid - 1
             }
         }
+        // A frame that reads this value stays the same until the next key starts. A read at another time
+        // than the time of the frame says nothing about the frame, so then the frame has no steady time.
+        if (t !== clock.at) clock.steady = -Infinity
+        else if (index + 1 < keys.length && keys[index + 1]!.t0 < clock.steady) clock.steady = keys[index + 1]!.t0
         if (index < 0) return this.initial
         const key = keys[index]!
         if (t >= key.t1 || !key.at) return key.to
+        // The value is on its way, unless the key says that it rests now. Its end can be a change too.
+        const rests = key.until ? Math.min(key.until(t), key.t1) : -Infinity
+        if (!(rests > t)) clock.steady = -Infinity
+        else if (rests < clock.steady) clock.steady = rests
         const span = key.t1 - key.t0
         const raw = span > 0 ? (t - key.t0) / span : 1
         return key.at(key.ease ? key.ease(raw) : raw)

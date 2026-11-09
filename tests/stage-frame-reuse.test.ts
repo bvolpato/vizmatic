@@ -164,14 +164,20 @@ describe('a frame that is equal to the frame before', () => {
         }
     })
 
-    it.skipIf(process.platform === 'win32')('rasterizes again each frame that shows an image from a file, because the file can change', async () => {
+    it.skipIf(process.platform === 'win32').each([
+        ['which the export draws each time', false, 12],
+        ['which the film proves steady, so the export draws it once', true, 1],
+    ])('rasterizes again each frame that shows an image from a file, because the file can change: a frame %s', async (_name, steady, drawn) => {
         const filename = join(directory, 'changing.png')
         const png = (rgba: number[]) => encode({ width: 1, height: 1, channels: 4, depth: 8, data: Uint8Array.from(rgba) })
         const frame: Frame = { width: 4, height: 4, background: null, bloom: 0, dark: false, ops: [{
             kind: 'image', image: { src: filename, width: 4, height: 4 }, matrix: [1, 0, 0, 1, 0, 0], alpha: 1,
         }] }
+        // A film says with this property that its frame stays the same for ever. The file can still change.
+        if (steady) Object.defineProperty(frame, Symbol.for('vizmatic.frame.steady'), { value: Infinity })
+        let draws = 0
         // A stand-in for a compiled film whose every frame is the same draw list, with the image not embedded.
-        const still = { width: 4, height: 4, fps: 10, duration: 1.2, title: '', chapters: [], captions: [], frame: () => frame } as unknown as CompiledFilm
+        const still = { width: 4, height: 4, fps: 10, duration: 1.2, title: '', chapters: [], captions: [], frame: () => { draws++; return frame } } as unknown as CompiledFilm
         // A stand-in for FFmpeg: it copies its input to its last argument, which is the output path.
         const encoder = join(directory, 'copy-input.sh')
         await writeFile(encoder, '#!/bin/sh\nfor last; do :; done\nexec cat > "$last"\n', { mode: 0o755 })
@@ -185,5 +191,6 @@ describe('a frame that is equal to the frame before', () => {
         expect(Array.from(frames.subarray(0, 4))).toEqual([255, 0, 0, 255])
         expect(Array.from(frames.subarray(frames.length - 4))).toEqual([0, 0, 255, 255])
         expect(await calls()).toBe(12)
+        expect(draws).toBe(drawn)
     })
 })

@@ -101,7 +101,9 @@ Bloom is part of a look, and export applies it after rasterizing. Pass `bloom` o
 
 Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
 
-A movie or GIF export compares each frame with the frame before it, on the main thread. A frame that is equal takes the pixels of that frame, and no worker rasterizes it. Two frames are equal when every SVG sample, the dimensions, the bloom setting, and the background value are identical. This applies to generated frames with prepared, embedded image assets. A frame with an unresolved image reference always rasterizes again, because the file can change between two frames. Updaters and every shutter sample still run before this comparison.
+A movie or GIF export compares each frame with the frame before it, on the main thread. A frame that is equal takes the pixels of that frame, and no worker rasterizes it. Two frames are equal when every SVG sample, the dimensions, the bloom setting, and the background value are identical. This applies to generated frames with prepared, embedded image assets. A frame with an unresolved image reference always rasterizes again, because the file can change between two frames.
+
+The export does not draw a frame that the film proves equal to the frame before it. The proof comes from the timeline: when a frame is drawn, each value that it reads says when it changes next, and the frame stays the same until the first of those times. An updater gets the time, and so does a `dynamic` drawing whose function has a parameter. Neither can say when its picture changes, so the export draws every frame while one of them shows, and compares it as above. A `dynamic` drawing with no parameter reads values of the timeline only, so it has the proof. With motion blur, each shutter sample of a frame needs the proof.
 
 With motion blur, shutter samples next to each other with the same SVG share one raster inside a frame. This applies to every frame, with any image, because one frame is one render.
 
@@ -115,4 +117,4 @@ To measure an export, run the benchmark on a short range of a film:
 pnpm benchmark:export examples/films/lorenz.ts --from 5 --to 15 --quality standard --workers 6,12 --repeat 3
 ```
 
-It prints the frames per second, the count of frames that a worker computed, the count of frames that took the pixels of the frame before, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.
+It prints the frames per second, the count of frames that a worker computed, the count of frames that the export drew and found equal to the frame before, the count of frames that it did not draw, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.

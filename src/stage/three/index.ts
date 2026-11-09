@@ -4,10 +4,10 @@
  * browser and the video exporter produce the same picture. Camera angles and
  * every object's opacity and reveal live on the timeline like anything else.
  */
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, reportsTime } from '../node'
 import { parseColor, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimOptions } from '../anim'
-import { clock } from '../track'
+import { changesAt, changesNow, clock } from '../track'
 import { text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { solidColor, stepsBetween, tweenValue } from '../objects/util'
@@ -249,14 +249,15 @@ export class Scene3D extends Node {
         this.focusZ = new Value(options.focus?.[2] ?? 0)
         this.orthographic = options.perspective === false
         this.rawOps = (matrix, alpha, ops) => this.render(matrix, alpha, ops)
-        this.draw = (time) => {
+        // The labels use the time for the view only, and `view` reports the spins.
+        this.draw = reportsTime((time) => {
             const view = this.view(this.worldless, 1, time)
             const labels = this.children.flatMap((child) => child instanceof Object3D && child.get('visible') ? child.labelsNow(view) : [])
             // The scene puts each label at the place of its point on the screen, which changes with the camera.
             // So the film check does not judge a label against the marks of the scene.
             ownLabels(this, { name: '3D scene', labels, plot: true })
             return labels
-        }
+        })
     }
 
     private readonly worldless: Mat = [1, 0, 0, 1, 0, 0]
@@ -267,6 +268,9 @@ export class Scene3D extends Node {
         let theta = this.theta.value
         for (const spin of this.spins) {
             if (time > spin.from) theta += (Math.min(time, spin.to) - spin.from) * spin.rate
+            // A spin turns the view from its start to its end.
+            if (time <= spin.from) changesAt(spin.from)
+            else if (time < spin.to) changesNow()
         }
         const sinP = Math.sin(phi), cosP = Math.cos(phi), sinT = Math.sin(theta), cosT = Math.cos(theta)
         view.rx = -sinT
@@ -526,6 +530,8 @@ export class Surface3D extends Object3D {
         const { options, nu, nv, normals, shadingNormals, faceColors, screenX, screenY, screenZ, valid } = this
         const alpha = this.objectAlpha(view) * (options.opacity ?? 1) * this.get('fillOpacity')
         if (alpha <= 0.002) return
+        // A surface with `animate` takes its shape from the time.
+        if (options.animate) changesNow()
         if (options.animate ? this.computedFor !== time : this.computedFor === -Infinity) {
             this.compute(options.animate ? time : 0)
             this.computedFor = time
@@ -897,6 +903,9 @@ export class Trail3D extends Object3D {
     }
 
     emit(view: View3D, time: number): void {
+        // A trace grows from its start to its end. After its end it reads fixed times only.
+        if (time <= this.from) changesAt(this.from)
+        else if (time < this.to) changesNow()
         if (time <= this.from) return
         const alpha = this.objectAlpha(view) * (this.style.opacity ?? 1)
         const rate = this.style.rate ?? 30

@@ -3,7 +3,7 @@ import {
     type Bounds, type Mat, type Path, type Vec,
 } from './geometry'
 import { isGradient, mixColor, mixPaint, toPaint, type ColorInput, type Paint, type Rgba } from './color'
-import { clock, Track, type Key } from './track'
+import { changesNow, clock, Track, type Key } from './track'
 import type { Ease } from './ease'
 import { pathMixer } from './morph'
 import type { DrawOp } from './display'
@@ -312,7 +312,7 @@ export class Node {
         const image = this.get('image')
         if (image) result = unionBounds(result, boundsOfRect(m, image.width, image.height))
         if (this.draw) {
-            const built = this.draw(clock.now)
+            const built = drawNow(this)
             const list = built === null ? [] : Array.isArray(built) ? built as Node[] : [built as Node]
             for (const child of list) result = unionBounds(result, child.boundsFrom(m))
         }
@@ -589,6 +589,48 @@ export function objectName<T extends Node>(node: T, name: string): T {
 /** A group. Children keep their own transforms inside it. */
 export function group(...children: Node[]): Node {
     return new Node().add(...children)
+}
+
+type Draw = NonNullable<Node['draw']>
+
+/** The drawings that say by themselves when their picture changes, with `changesAt` and `changesNow`. */
+const ownTime = new WeakSet<Draw>()
+
+/**
+ * Mark a drawing of the library that takes the time and reports each use of it: it calls `changesNow`
+ * while its picture moves with the time, and `changesAt` with the time of its next change.
+ */
+export function reportsTime<T extends Draw>(draw: T): T {
+    ownTime.add(draw)
+    return draw
+}
+
+const takesTimeOf = new WeakMap<Draw, boolean>()
+
+/**
+ * True when a drawing can see the time that the engine passes to it. A function with no parameter cannot,
+ * when it also has no `arguments` and no `eval` in its text. A function whose text is not its own, such as
+ * a bound function, counts as one that can.
+ */
+function takesTime(draw: Draw): boolean {
+    let takes = takesTimeOf.get(draw)
+    if (takes === undefined) {
+        const text = Function.prototype.toString.call(draw)
+        const noParameter = /^(?:async\s+)?(?:function\s*[\w$]*\s*\(\s*\)|\(\s*\)\s*=>|[\w$]+\s*\(\s*\)\s*\{)/.test(text)
+        takes = draw.length > 0 || !noParameter || /\barguments\b|\beval\b|\[native code\]/.test(text)
+        takesTimeOf.set(draw, takes)
+    }
+    return takes
+}
+
+/**
+ * Run the drawing of a node for the frame in progress. A drawing that takes the time cannot say when its
+ * picture changes, so the frame has no steady time then, unless the drawing reports the time by itself.
+ */
+export function drawNow(node: Node): Node | readonly Node[] | null {
+    const draw = node.draw!
+    if (!ownTime.has(draw) && takesTime(draw)) changesNow()
+    return node.draw!(clock.now)
 }
 
 /** A node that rebuilds its contents on every frame from timeline values. */

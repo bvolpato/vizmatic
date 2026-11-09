@@ -1,8 +1,8 @@
-import { Node, ownLabels, type PropName } from '../node'
+import { Node, ownLabels, reportsTime, type PropName } from '../node'
 import { arcPath, polyPath, ring as contour, type Path, type Vec } from '../geometry'
 import { toPaint, type ColorInput } from '../color'
 import { text, type TextOptions } from '../text'
-import { clock, type Key } from '../track'
+import { changesAt, changesNow, clock, type Key } from '../track'
 import type { Ease } from '../ease'
 import type { Anim, AnimOptions } from '../anim'
 import { reveal, sampleAt, staggered, stepAt } from './util'
@@ -145,6 +145,21 @@ function travelled(moves: readonly Move[], time: number): { whole: number; part:
         else if (time > move.t0 + 1e-9) part += move.ease((time - move.t0) / (move.t1 - move.t0))
     }
     return { whole, part }
+}
+
+/**
+ * The time before which a pointer stays where it is at `time`: the start of its next move, or -Infinity
+ * while a move runs. `travelled` allows a billionth of a second at each end of a move. Here a move runs
+ * for all of its span, so this never calls a pointer at rest when `travelled` moves it.
+ */
+function restsUntil(moves: readonly Move[], time: number): number {
+    let next = Infinity
+    for (const move of moves) {
+        if (time >= move.t1) continue
+        if (time > move.t0) return -Infinity
+        next = Math.min(next, move.t0)
+    }
+    return next
 }
 
 /** The share of its time after which an ease is half way. */
@@ -567,9 +582,10 @@ export class RingBuffer extends Node {
         // The name is drawn again for each frame: the text changes with the count, and its place with the
         // angle. It finds its ring through its parents, so the name of a copy follows the copy.
         const name = new Node()
-        name.draw = function (this: Node, time: number): Node {
+        // The name uses the time for the moves of its pointer only, and `nameNow` reports them.
+        name.draw = reportsTime(function (this: Node, time: number): Node {
             return (this.parent!.parent as RingBuffer).nameNow(kind, time)
-        }
+        })
         return made.add(name)
     }
 
@@ -630,6 +646,10 @@ export class RingBuffer extends Node {
     private nameNow(kind: Kind, time: number): Node {
         const motion = this.motion[kind]
         const { whole, part } = travelled(motion.moves, time)
+        // The name changes while a move runs, and rests between two moves.
+        const rests = restsUntil(motion.moves, time)
+        if (rests > time) changesAt(rests)
+        else changesNow()
         // The count is the number of whole slots that the pointer has passed. So it changes when the pointer
         // arrives at a slot, also while moves that share time carry it past several slots.
         const ink = motion.names[this.showCounts ? Math.min(motion.names.length - 1, Math.floor(whole + part + 1e-9)) : 0]!
@@ -719,7 +739,7 @@ export class RingBuffer extends Node {
                 const key: Key<number> = { t0, t1, ease: null, to: 0, at: (progress) => {
                     const { whole, part } = travelled(motion.moves, key.t0 + progress * (key.t1 - key.t0))
                     return this.tip(kind, motion.start + whole, part)[index]!
-                } }
+                }, until: (time) => restsUntil(motion.moves, time) }
                 owner(index).track(prop).add(key)
                 return key
             })

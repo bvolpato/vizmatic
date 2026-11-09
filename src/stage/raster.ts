@@ -405,8 +405,10 @@ export interface ExportStats {
     workers: number
     /** Frames that a worker rasterized. */
     computed: number
-    /** Frames that took the pixels of the frame before. No worker saw them. */
+    /** Frames that the export drew and found equal to the frame before. They took its pixels, and no worker saw them. */
     reused: number
+    /** Frames that the export did not draw: the film proved them equal to the frame before. */
+    skipped: number
     /** Main thread: `film.frame()`, `frameToSvg`, the comparison with the frame before, and the message to a worker. */
     mainMs: number
     /** Worker threads, added over all workers: resvg, the average of the sub-frames of motion blur, and the bloom. */
@@ -457,7 +459,7 @@ export class RasterPool {
     private failure: Error | null = null
     /** Counts and times of the jobs of this pool. The export adds its own waits. */
     readonly stats: ExportStats = {
-        workers: 0, computed: 0, reused: 0, mainMs: 0,
+        workers: 0, computed: 0, reused: 0, skipped: 0, mainMs: 0,
         rasterMs: 0, averageMs: 0, bloomMs: 0, frameWaitMs: 0, encoderWaitMs: 0, encoderFinishMs: 0,
     }
 
