@@ -164,7 +164,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'delay', group: TIMING, usage: 'delay(anim, 0.5)' },
     { name: 'retime', group: TIMING, usage: 'retime(anim, { duration: 2, ease: smoother })' },
     { name: 'call', group: TIMING, usage: 'call(() => ...): run code at a moment on the timeline' },
-    { name: 'indicate', group: EMPHASIS, usage: "indicate(node, { color: 'yellow', scale: 1.14 }): swell and return" },
+    { name: 'indicate', group: EMPHASIS, usage: "indicate([ring, number], { color: 'yellow', scale: 1.14 }): swell and tint for a moment, then return. A fill and what is on it never take the tint together: on a dark panel the border and the text light up, and on a light panel the panel lights up under its dark text. Pass a shape with what is on it. fill: true tints every paint" },
     { name: 'circumscribe', group: EMPHASIS, usage: 'circumscribe(node): trace a line around it' },
     { name: 'flash', group: EMPHASIS, usage: 'flash([x, y]): a radial burst' },
     { name: 'ripple', group: EMPHASIS, usage: 'ripple([x, y]): an expanding ring' },
