@@ -2958,6 +2958,51 @@ Build the content where you want it, then the zone, then add the zone to the sta
 
 The zone is wide enough for its title. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the title, so no line crosses the title. A `fill` is faint by default, because its top edge runs behind the title. `zone.frame`, `zone.title`, `zone.backdrop` (the fill), and `zone.content` are the parts. `zone.box` is the middle line of the border, in the coordinates of the zone.
 
+## Steps
+
+`steps(list, options)` draws a row of named steps with one of them lit: the chapters of an argument, the stages of a process, or a list of options that the film goes through one by one. The lit step has a bright border, and its label is in ink. The steps before it are dim. The steps after it are weaker, and a viewer can still read them. `strip.go(index)` moves the light, and the states of the other steps follow.
+
+```film paired label="A strip of four steps lights one step after another, and a note under each step gives its price"
+import { film, steps } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const strip = steps([
+        { label: 'batching', note: 'price: none' },
+        { label: 'SQPOLL', note: 'price: a CPU' },
+        { label: 'register', note: 'price: pinned memory' },
+        { label: 'I/O polling', note: 'price: a CPU' },
+    ], { width: 1700, numbered: true, size: 40, font: 'text-serif' }).at(0, -60)
+    s.play(strip.enter(), { duration: 1.2 })
+    for (const index of [0, 1, 2, 3]) {
+        s.play(strip.go(index))
+        s.wait(0.9)
+    }
+    s.wait(0.6)
+})
+```
+
+A step is a label, or `{ label, note }`. A label is one line, and a line break in a label is an error. The note is a short text under the box, such as the price of the step. It has one line, or two with a line break. A note has the state of its step: it is in ink under the lit step, in dim under a done step, and as weak as the label under a step that is ahead. `numbered: true` writes the number of each step before its label.
+
+`current` is the index of the step that is lit at the start. Without it, or with `current: null`, no step is lit, and every step is dim and readable: the look for a frame that shows the whole list. `strip.go(null)` puts the light off again. `strip.current` is the index of the lit step after the moves that the film has played so far, and `strip.stateOf(index)` is `'current'`, `'done'`, or `'ahead'`. An index that the strip does not have, or that is not a number, is an error where the film writes the move. A `go` on a strip that is not on the stage brings the strip: it shows at the start of the move, in the state before the move.
+
+`width` is the width of the whole row. The boxes share it: they have one width, with `gap` between them. `.at()` places the middle of the row of boxes, and the notes are under it. `height` is the height of a box, `size` the text size of the labels, `noteSize` the size of the notes, and `color` the border of the lit step. A `height` with no room for a letter with a tail is an error, and the message gives the smallest height that works. A `color` that is not a color is an error when the strip is made. A label that is too wide for its box makes all the labels smaller, so the strip keeps one text size. They go down to 0.7 of `size`. A label that still does not fit is an error, and the message gives the width of a box and the least `width` that is enough. The notes follow the same rule, with their own size.
+
+`direction: 'column'` puts the steps one under the other, for a list at the left of a frame. Then `width` is the width of each box, and the labels are at the left of their boxes. With `numbered`, the numbers are a column of their own: they end at one x, so the names start at one x, also from step 9 to step 10. Each note is between its box and the next one, and every box is further from the next by the room of the longest note. In a row, each label is in the middle of its box, with its number.
+
+```ts
+import { connector, film, rect, steps } from 'vizmatic/stage'
+
+export default film((s) => {
+    const list = s.add(steps(['slow first request', 'huge page spikes', 'the host runs out', 'one lock'], { direction: 'column', width: 420, numbered: true, current: 2 }).at(-690, 0))
+    const picture = s.add(rect(900, 560, { radius: 16, stroke: 'dim', fill: 'surface' }).at(380, 0))
+    // The point is in the coordinates of the object. `toWorld` gives its place on the stage.
+    s.add(connector(list.toWorld(...list.p(2)), picture, { color: 'dim' }))
+    s.wait(2)
+})
+```
+
+`strip.p(index, edge)` is the middle of an edge of the box of a step, for a line to the picture of the step. The edge is `'top'`, `'bottom'`, `'left'`, or `'right'`. Without it, the point is at the bottom in a row, and at the right side in a column. The bottom point of a step that has a note is under the note, 0.3 of the note size under the tails of its letters, so the line does not touch the note. The points are in the coordinates of the object, and `strip.toWorld(x, y)` gives the place on the stage. `strip.enter()` brings the steps in from the first to the last. `strip.boxes`, `strip.labels`, and `strip.notes` are the parts, and `strip.items` holds one node per step, with its box, its label, and its note.
+
 ## Tags
 
 `tag(word, options)` draws a word in a pill, with a `note` beside it. Use it to say what kind of claim is on the screen and where it comes from: measured, plan, judgment, with the source and its date. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x.
