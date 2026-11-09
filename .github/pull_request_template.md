@@ -5,5 +5,5 @@
 ## Checks
 
 - [ ] `pnpm verify`
-- [ ] Generated docs/examples are committed when visuals or site code change
+- [ ] Rendered examples (`docs/assets/examples`) are committed when an example changes. The website is not committed
 - [ ] Browser checked when UI changes affect `docs/`

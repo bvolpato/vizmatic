@@ -10,6 +10,8 @@ import { applyComponentControls, type ComponentControl } from '../src/component-
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const htmlPath = join(root, 'docs', 'index.html')
+// The website is not committed. In a new checkout the pages do not exist until a build writes them.
+await access(htmlPath).catch(() => fail('docs/index.html does not exist. The website is not committed: run `pnpm build && pnpm site:build` first.'))
 const html = await readFile(htmlPath, 'utf8')
 const templateHtml = await readFile(join(root, 'docs', 'index.template.html'), 'utf8')
 const componentsHtml = await readFile(join(root, 'docs', 'components.html'), 'utf8')
@@ -347,14 +349,16 @@ const portableFiles = await listFiles(portableSkillDir)
 const pluginFiles = await listFiles(pluginSkillDir)
 const portableRelative = portableFiles.map((path) => relative(portableSkillDir, path)).sort()
 const pluginRelative = pluginFiles.map((path) => relative(pluginSkillDir, path)).sort()
+// The plugin folder is the one source of the skill. `pnpm sync:skill` writes the other folder from it.
+const syncSkill = 'Edit plugins/vizmatic/skills/vizmatic only, then run `pnpm sync:skill`.'
 if (portableRelative.join('\n') !== pluginRelative.join('\n')) {
-    fail('.agents/skills/vizmatic must mirror plugin skill files')
+    fail(`.agents/skills/vizmatic must mirror plugin skill files. ${syncSkill}`)
 }
 for (const rel of pluginRelative) {
     const pluginFile = await readFile(join(pluginSkillDir, rel), 'utf8')
     const portableFile = await readFile(join(portableSkillDir, rel), 'utf8')
     if (pluginFile !== portableFile) {
-        fail(`.agents/skills/vizmatic/${rel} must match plugin skill source`)
+        fail(`.agents/skills/vizmatic/${rel} must match plugin skill source. ${syncSkill}`)
     }
 }
 

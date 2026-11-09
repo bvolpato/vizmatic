@@ -1,1 +1,0 @@
-import{$b as l,Zb as t,_b as a,lb as p}from"../chunk-PTMRGHLC.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var d=p({fps:30},o=>{let e=o.add(t({unit:170,x:[-5,5],y:[-4,4]}));o.wait(.2),o.play(a(e,(i,r)=>{let[m,n]=l.pow([i,r],2);return[m/2.2,n/2.2]},{duration:2.6})),o.wait(.6)});export{d as default};
