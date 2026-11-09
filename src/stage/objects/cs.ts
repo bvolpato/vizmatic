@@ -1,5 +1,5 @@
 import { polyPath, rectPath, circlePath, parseSvgPath, smoothPath, tangentAt, pointAt, pathLength, trimPath, type Path, type Vec } from '../geometry'
-import { Node } from '../node'
+import { Node, ownLabels, objectName } from '../node'
 import { line } from '../shapes'
 import { filmFont, text, type TextOptions } from '../text'
 import { tex } from '../tex'
@@ -237,6 +237,7 @@ export class Graph extends Node {
             this.edgeLayer.add(view)
         }
         this.add(this.edgeLayer, this.nodeLayer)
+        ownLabels(this, { name: 'graph' })
     }
 
     node(id: string): GraphNode {
@@ -469,6 +470,7 @@ export class TreeGraph extends Graph {
         for (const spec of specs) (spec as { at?: Vec }).at = [spec.at![0] - cx, spec.at![1] - cy]
         super(specs, links, { layout: 'manual', radius: options.radius ?? 28, labelSize: options.labelSize ?? 24, nodeColor: options.nodeColor, edgeColor: options.edgeColor, fillOpacity: options.fillOpacity, font: options.font, directed: false })
         for (const [id, depth] of depthOf) this.depths.set(id, depth)
+        objectName(this, 'tree')
     }
 
     /** Grow from the root, one level at a time. */
@@ -551,6 +553,7 @@ export class ArrayCells extends Node {
             this.items.push(item)
             this.add(item)
         })
+        ownLabels(this, { name: 'row of array cells' })
     }
 
     /** The item currently at an index. */
@@ -846,6 +849,9 @@ export class CodeBlock extends Node {
         this.add(this.bar)
         for (let i = 0; i < rows.length; i++) {
             const line = new Node()
+            // The film check reads the font size and the words of a text here. `text()` records the size in the same way.
+            line.data['size'] = size
+            line.data['source'] = rows[i]!.trim()
             this.lines.push(line)
             this.body.add(line)
             if (options.lineNumbers) {
@@ -874,6 +880,7 @@ export class CodeBlock extends Node {
             })
         }
         this.add(this.body)
+        ownLabels(this, { name: 'code block' })
     }
 
     /** One line of code, as a node. Lines count from 0. */
@@ -959,6 +966,7 @@ function makeGlyph(font: ReturnType<typeof fontFor>, char: string, size: number,
     leaf.base.fill = toPaint(color)
     leaf.base.trimEach = true
     leaf.data['key'] = char
+    leaf.data['base'] = 0
     return leaf.at(x, baseline)
 }
 
@@ -1086,6 +1094,7 @@ export class NeuralNet extends Node {
             this.links.push(rows)
         }
         this.add(this.edgeLayer, this.neuronLayer)
+        ownLabels(this, { name: 'neural net' })
     }
 
     layer(index: number): Node[] {
@@ -1234,6 +1243,7 @@ export class TokenRow extends Node {
             this.chips.push(entry.node)
             this.add(entry.node)
         }
+        ownLabels(this, { name: 'row of tokens' })
     }
 
     token(index: number): Node {

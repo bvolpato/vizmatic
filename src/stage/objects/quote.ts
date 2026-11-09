@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { rectPath } from '../geometry'
 import { text, type TextNode, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -299,6 +299,8 @@ export class Quote extends Node {
         this.rule = new Node(rectPath(0, 0, sides.rule, foot, sides.rule / 2)).fill(color)
         this.add(this.rule, this.words)
         if (this.source) this.add(this.source)
+        // The quote places its words and its source beside its rule. The film check does not judge that room.
+        ownLabels(this, { name: 'quote' })
     }
 
     /**
@@ -452,6 +454,8 @@ export class QuotePair extends Node {
         this.add(left)
         if (this.versus) this.add(this.versus)
         this.add(right)
+        // The pair places its word between the first quote and the rule of the second one.
+        ownLabels(this, { name: 'pair of quotes', labels: [this.versus] })
     }
 
     /** The first quote arrives, then the word, then the second quote. */

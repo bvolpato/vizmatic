@@ -131,6 +131,11 @@ export class Node {
     draw: ((time: number) => Node | readonly Node[] | null) | null = null
     /** Emits draw operations directly, for objects with thousands of marks such as 3D meshes. */
     rawOps: ((matrix: Mat, alpha: number, ops: DrawOp[]) => void) | null = null
+    /**
+     * The node whose `draw` built this node for the frame that is on screen. A node that `draw` returns has no
+     * parent, so this is the way from a mark of a dynamic drawing up to the object that made it.
+     */
+    drawer: Node | null = null
 
     constructor(path?: Path | null) {
         if (path) this.base.path = path
@@ -236,6 +241,8 @@ export class Node {
     clone(): this {
         const copies = new Map<Node, Node>()
         const copy = this.copyTree(copies)
+        // A copy of one label of an object is text of the film. A copy of the whole object keeps the marks of its labels.
+        delete copy.data['ownLabel']
         for (const [from, to] of copies) {
             for (const [key, value] of Object.entries(from)) {
                 if (key === 'parent' || key === 'children') continue
@@ -257,6 +264,7 @@ export class Node {
         Object.assign(copy, this)
         ;(copy as { id: number }).id = nextId++
         copy.parent = null
+        copy.drawer = null
         copy.mounted = false
         copy.tracks = null
         copy.overlay = null
@@ -544,6 +552,38 @@ export function mountTree(node: Node, time: number): void {
         track.initial = false
         if (wasVisible) track.step(time, true)
     }
+}
+
+/**
+ * Say that an object places its own labels beside its own marks, such as an axes with its numbers. The film
+ * check then does not judge the distance between one of these labels and a mark of the same object, because
+ * a film cannot move the two apart. The object gets `data.ownLayout`, and each label gets `data.ownLabel`.
+ *
+ * Call it when the object is built. Without `labels`, each text and each dynamic drawing that is in the object
+ * now is a label of the object. An object that also holds nodes of a film, such as a card with its figure,
+ * names its labels. Text that a film adds later has no mark, so the check judges it as any other text.
+ *
+ * `plot` is for an object that a film draws data on. A line of the film may then pass a label of the object,
+ * as a curve passes the numbers of an axis. `name` is the name of the object in a message of the check: see
+ * `objectName`.
+ */
+export function ownLabels<T extends Node>(owner: T, options: { name?: string; labels?: readonly (Node | null)[]; plot?: boolean } = {}): T {
+    if (options.name) objectName(owner, options.name)
+    // A plot stays a plot when a method of the object marks one more label.
+    if (options.plot || !owner.data['ownLayout']) owner.data['ownLayout'] = options.plot ? 'plot' : true
+    const labels = options.labels ?? owner.all().filter((node) => node.draw !== null || node.children.some((child) => child.data['key'] !== undefined))
+    for (const label of labels) if (label) label.data['ownLabel'] = true
+    return owner
+}
+
+/**
+ * Give an object of the library the name that the film check prints for its marks: `a line of a connector`. The
+ * name is a string in `data.object`. The check does not read the name of a class, because a minified build
+ * changes that name to one letter.
+ */
+export function objectName<T extends Node>(node: T, name: string): T {
+    node.data['object'] = name
+    return node
 }
 
 /** A group. Children keep their own transforms inside it. */

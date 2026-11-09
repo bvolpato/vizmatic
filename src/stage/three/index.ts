@@ -4,7 +4,7 @@
  * browser and the video exporter produce the same picture. Camera angles and
  * every object's opacity and reveal live on the timeline like anything else.
  */
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { parseColor, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimOptions } from '../anim'
 import { clock } from '../track'
@@ -251,7 +251,11 @@ export class Scene3D extends Node {
         this.rawOps = (matrix, alpha, ops) => this.render(matrix, alpha, ops)
         this.draw = (time) => {
             const view = this.view(this.worldless, 1, time)
-            return this.children.flatMap((child) => child instanceof Object3D && child.get('visible') ? child.labelsNow(view) : [])
+            const labels = this.children.flatMap((child) => child instanceof Object3D && child.get('visible') ? child.labelsNow(view) : [])
+            // The scene puts each label at the place of its point on the screen, which changes with the camera.
+            // So the film check does not judge a label against the marks of the scene.
+            ownLabels(this, { name: '3D scene', labels, plot: true })
+            return labels
         }
     }
 

@@ -1,5 +1,5 @@
 import { parseSvgPath, pathBounds, transformPath, type Path } from '../geometry'
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text } from '../text'
 import { fallbackGlyph, fontFor, glyphPath } from '../font'
@@ -56,10 +56,14 @@ const FIT = 0.92
 // A glyph with ink wider than this many columns cannot go into one column and stay readable.
 const WIDEST = 1.2
 
-/** A node that holds glyphs. The film check names a text by the `source` of that node, as it does for `text()`. */
+/**
+ * A node that holds glyphs. The film check names a text by the `source` of that node, and reads its font size
+ * in `data.size`, as it does for `text()`.
+ */
 class Glyphs extends Node {
-    constructor(readonly source: string) {
+    constructor(readonly source: string, size: number) {
         super()
+        this.data['size'] = size
     }
 }
 
@@ -71,15 +75,15 @@ class Row extends Glyphs {
      * `length` is the number of columns from the start of the line to its last character, with the prompt.
      * `whole` is the text before `clip` cut it, or null for a line that is not cut.
      */
-    constructor(readonly chars: readonly string[], readonly kind: Kind, readonly length: number, readonly whole: readonly string[] | null) {
-        super(chars.join(''))
+    constructor(readonly chars: readonly string[], readonly kind: Kind, readonly length: number, readonly whole: readonly string[] | null, size: number) {
+        super(chars.join(''), size)
     }
 }
 
 /** The glyphs that `find()` selected, as one node inside their line. `from` and `to` are places in `chars`. */
 class Span extends Glyphs {
-    constructor(source: string, readonly from: number, readonly to: number) {
-        super(source)
+    constructor(source: string, readonly from: number, readonly to: number, size: number) {
+        super(source, size)
     }
 }
 
@@ -233,6 +237,7 @@ export class Terminal extends Node {
             leaf.base.fill = toPaint(paint)
             leaf.base.trimEach = true
             leaf.data['key'] = char
+            leaf.data['base'] = 0
             // Glyph 0 draws the empty box of the font. The film check reports it.
             if (made.missing) leaf.data['missingGlyph'] = true
             return leaf
@@ -248,10 +253,10 @@ export class Terminal extends Node {
                 }
                 chars = [...chars.slice(0, room), ELLIPSIS]
             }
-            const row = new Row(chars, line.kind, cut ? columns : line.length, cut ? line.chars : null).at(left, this.baseline + index * this.rowHeight)
+            const row = new Row(chars, line.kind, cut ? columns : line.length, cut ? line.chars : null, size).at(left, this.baseline + index * this.rowHeight)
             let before: Node | null = null
             if (line.kind === 'command') {
-                before = new Glyphs(prompt.join(''))
+                before = new Glyphs(prompt.join(''), size)
                 prompt.forEach((char, column) => {
                     const leaf = glyph(char, column, 'dim', 'the prompt')
                     if (leaf) before!.add(leaf)
@@ -272,6 +277,8 @@ export class Terminal extends Node {
             this.add(row)
         })
         this.since = given.map(() => (shown ? -Infinity : null))
+        // The terminal places its lines, its title and its note in its panel. The film check does not judge that room.
+        ownLabels(this, { name: 'terminal' })
     }
 
     /**
@@ -470,7 +477,7 @@ export class Terminal extends Node {
         let holder = row.cells[from]!.parent!
         while (holder instanceof Span && (holder.from > from || holder.to < to)) holder = holder.parent!
         if (holder instanceof Span && holder.from === from && holder.to === to) return holder
-        const made = new Span(row.chars.slice(from, to).join(''), from, to)
+        const made = new Span(row.chars.slice(from, to).join(''), from, to, row.data['size'] as number)
         const inside: Node[] = []
         for (const child of holder.children) {
             const start = child instanceof Span ? child.from : row.cells.indexOf(child)

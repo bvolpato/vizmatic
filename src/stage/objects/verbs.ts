@@ -37,6 +37,8 @@ export function typewriter(target: Target, options: TypewriterOptions = {}): Ani
                 const first = leaves[0]!.bounds()
                 const height = first.height * 1.35 || 24
                 cursor = new Node(rectPath(0, -height / 2, Math.max(3, height * 0.1), height)).fill(options.cursorColor ?? 'ink')
+                // The cursor stands beside the last letter on purpose, so the film check does not judge the text against it.
+                cursor.data['decoration'] = true
                 ctx.stage.add(cursor)
                 ctx.stage.marks.set(cursor, list(target)[0]!)
             }
@@ -210,6 +212,8 @@ export interface HighlightOptions extends AnimOptions {
  */
 export function highlightSweep(target: Node | readonly Node[], options: HighlightOptions = {}): Anim & { mark: Node } {
     const mark = new Node([])
+    // A film puts this mark behind a text on purpose, so the film check does not judge the text against it.
+    mark.data['decoration'] = true
     const nodes = list(target)
     return {
         mark,

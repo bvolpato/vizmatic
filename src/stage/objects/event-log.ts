@@ -1,4 +1,4 @@
-import { Node, type NodeProps, type PropName } from '../node'
+import { Node, ownLabels, type NodeProps, type PropName } from '../node'
 import { toPaint, type ColorInput, type Paint } from '../color'
 import { circle, dot, line, polyline, rect, svgPath } from '../shapes'
 import { filmFont, text, type TextOptions } from '../text'
@@ -543,6 +543,9 @@ export class EventLog extends Node {
         this.under = this.counter(this.later, (count) => (count > 0 ? `${count} later` : null))
         this.body.add(this.outline, this.earlier, this.later)
         this.add(this.body)
+        // The list places its title, its footer, the two counts, and each row in its panel, between its rules, and in
+        // its focus outline. The film check does not judge that room. A row gets the same mark when it is made.
+        ownLabels(this, { name: 'event log', labels: [this.title, this.footer, this.earlier, this.later] })
 
         this.whole(given, true)
         for (const entry of given) this.lines.push(this.admit(entry))
@@ -1339,6 +1342,7 @@ export class EventLog extends Node {
         // A line is hidden until the window has a place for it. On the stage, a node that is added shows from the time of the call.
         node.base.visible = false
         if (!row.shown) node.content.base.visible = false
+        ownLabels(this, { labels: [node] })
         this.body.add(node)
         const made: Line = { node, recs, name: row.name, detail: row.detail, time: row.time, family: row.family, state: row.state, shown: row.shown, opens: true, slot: null, rests: 0, shownAt: row.shown ? -Infinity : Infinity, sides: [] }
         this.every.push(made)
