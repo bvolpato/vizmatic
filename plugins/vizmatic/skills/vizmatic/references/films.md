@@ -316,6 +316,21 @@ const word = s.add(bitField([
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
 
+A sentence as tokens, the bytes of a word, the cells of a prompt: the text as a language model reads it. Do not build it from chips and texts in each film, and do not draw it again in each scene. `tokens` keeps one strip on screen and changes it. `mark` gives tokens a state (`kept`, `masked`, `generated`, `cached`, `dropped`, each with a sign that is not a color, and `states` takes your own), `append` adds a token at the end and can fly it in from a point, `split` cuts a token into pieces and `merge` joins tokens into one while each letter keeps its place, `shiftRow` moves a row of values by one cell for inputs against targets, `window` slides one outline, and `span` draws or moves a bracket over a run of tokens. `rows` are the values under the cells (ids, positions, probabilities), `setValue` changes one, and `links` joins the tokens of two strips. Give `size: 32` or more: the default of 22 is for a small figure, and the values and the labels are 0.82 of `size`. Give `even: true` to a strip whose values change cells, and `width` to a strip that grows, so that it has its room from the start:
+
+```ts
+const words = ['<s>', 'user', 'Sit', '!', 'bot', 'Good', 'dog', '</s>']
+const chat = tokens(words, { size: 44, even: true, label: 'input', rows: { target: words }, spans: [{ from: 4, to: 7, label: 'assistant turn', color: 'green' }] }).at(0, -150)
+s.play(chat.enter())
+s.play(chat.shiftRow('target', -1))                  // each target is the next token
+s.play(chat.mark([0, 1, 2, 3], 'masked'))            // the loss does not count these positions
+const answer = s.add(tokens(['The', ' cat'], { size: 44, width: 900 }).at(0, 250))
+s.play(answer.append({ text: ' sat', state: 'generated' }, { from: candidate }))   // the token flies from the bar that won
+s.play(answer.merge(0, 1))                           // "The" and " cat" become one token
+```
+
+A change reads its indexes when the film plays it, after the changes before it in the same play. So merge several pairs from the right, or one after another: `strip.find(test)` gives the indexes now. `strip.p(index)` is the point under the rows of a token and `strip.p(index, 'top')` the point over its brackets, for a line, and `strip.region({ from, to })` is the box of a run of cells for `beside`. These places do not follow a token that moves later. `indicate(strip.column(index))` lights a token with its values. A strip with `maxWidth` wraps, and it takes states only.
+
 A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
 
 ```ts
