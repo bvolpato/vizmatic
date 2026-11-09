@@ -153,6 +153,16 @@ s.play(flow.advance(60))
 s.play(flow.showAll())
 ```
 
+A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
+
+```ts
+const line = s.add(boundary({ label: 'system call line', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] }))
+s.play(line.enter())
+s.play(lagged([0.2, 0.5, 0.8].map((part) => line.cross(line.x(part), { direction: 'round' })), { lag: 0.4 }))
+s.play(line.addCrossings(9997), { duration: 2 })
+s.play(line.clear())
+```
+
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
 
 ```ts
