@@ -55,7 +55,7 @@ npx skills add bvolpato/vizmatic --skill vizmatic -g -y
 ## Why the source suits an agent
 
 - A film is one function, with no framework state to hold in mind.
-- Layout helpers such as `nextTo`, `alignTo`, and `arrange` replace hand-tuned coordinates.
+- Layout with no typed coordinate: `row`, `column`, `grid`, `place`, and `beside` measure the nodes and place them.
 - Color names come from the look, so an agent does not choose hex values.
 - `checkFilm` is also a function, so a test can fail when a label leaves the frame.
 

@@ -128,9 +128,9 @@ More about the film:
 This is a complete film in one file, which passes `vizmatic check --motion` with no finding. The timing is written by hand here. In a film folder, the build measures it.
 
 ```ts
-import { fadeIn, narrated, sceneKit, type SceneClock, type Stage } from 'vizmatic/stage'
+import { narrated, place, sceneKit, type SceneClock, type Stage } from 'vizmatic/stage'
 
-const { heading, label, source, claimTag } = sceneKit()
+const { area, heading, display, source, claimTag } = sceneKit()
 const word = (text: string, start: number) => ({ text, start, end: start + 0.3 })
 const timing = {
     intro: 2, lead: 2.6, gap: 0.4, tail: 0.5,
@@ -145,9 +145,9 @@ function question(s: Stage, c: SceneClock) {
     s.add(heading('The slow page'), source('An invented number'))
     // The kind of the claim that is on the screen, at the right end of the source line.
     claimTag(c, { word: 'ILLUSTRATION' })
-    // A change of the picture on a spoken phrase.
-    const time = label('800 ms', 0, 0, { size: 120, color: 'red' })
-    c.on('a long time', () => s.play(fadeIn(time, { duration: 0.4 })))
+    // A change of the picture on a spoken phrase. The layout places the text, and the clock times the fade.
+    const time = place(display('800 ms', { color: 'red' }), area)
+    c.show('a long time', time)
 }
 
 export default narrated({ title: 'A slow page', timing, scenes: { question } })
@@ -166,11 +166,13 @@ export function question(s: Stage, c: SceneClock) {
     // 1. The first picture: what the scene adds here fades in as the scene before it leaves.
     const slow = slowRequest()
     s.add(heading('The slow page'), slow.name)
-    // 2. A change on a spoken phrase.
-    c.on('eight hundred milliseconds', () => s.play(grow(slow.bar, { from: [BAR.left, BAR.slowY] })))
+    // 2. A change on a spoken phrase: the bar grows from its left end, and its time fades in.
+    c.show('eight hundred milliseconds', [grow(slow.bar, { from: boxOf(slow.bar).point('left') }), slow.time])
     // 3. Nothing for the end: every node of the scene fades out when the scene ends.
 }
 ```
+
+A scene types no place and no time. The [layout](layout.html) places each node: the kit of the template cuts `area` into three bands, and `place(column([name, row([bar, time])]), band, 'left')` puts a request in one. `c.show`, `c.hide` and `c.swap` start 0.1 seconds before their phrase and fade for 0.3 seconds.
 
 - **The opening.** The film calls the scene one gap and 0.05 seconds before its first word, when the scene before it is gone. The first scene opens when the title card is gone. What the scene adds with `s.add` at that moment is its first picture, and it fades in over a quarter of a second. So the voice never plays over an empty frame, and two headings never share one place. Do not fade the first picture in yourself: the default fade of `fadeIn` is 0.8 seconds, which leaves the frame empty for too long, and the motion check reports it as `film.blank`.
 - **The end.** Every node that the scene put on the stage leaves in the last quarter of a second of the scene: the nodes of the opening, and the nodes that came on a word. The picture of the last scene stays to the end of the film. `c.clear([nodes])` is still there, for a node that must leave earlier and for a value that a `dynamic` drawing takes its opacity from.
@@ -194,7 +196,10 @@ export function answer(s: Stage, c: SceneClock) {
 
 | Call | What it does |
 |---|---|
-| `c.on('a spoken phrase', build, offset, beat)` | Runs `build` when the voice starts the phrase. `offset` moves it, in seconds. `beat` searches one beat only. |
+| `c.show('a spoken phrase', nodes)` | Fades nodes in, 0.1 seconds before the phrase, in 0.3 seconds. A node, a block of the layout, an animation, or a list. `{ stagger: true }` brings a list one item after another, and all of it before the scene starts to leave. |
+| `c.hide('a spoken phrase', nodes)` | Fades out nodes that are on the screen, with the same lead and the same fade. |
+| `c.swap('a spoken phrase', out, in)` | The old nodes fade out, and the new ones start to fade in 0.2 seconds later. |
+| `c.on('a spoken phrase', build, offset, beat)` | Runs `build` when the voice starts the phrase, for a play of the scene's own. `offset` moves it, in seconds. `beat` searches one beat only. |
 | `c.after('a spoken phrase', build)` | Runs `build` when the voice finishes the phrase. |
 | `c.onBeat(2, build)` | Runs `build` when beat 2 starts. |
 | `c.at(1.5, build)` | Runs `build` at a time from the first word of the scene. |
@@ -205,7 +210,9 @@ export function answer(s: Stage, c: SceneClock) {
 | `c.clear([title, alpha])` | Fades nodes out just before the scene ends, and brings values to zero in the same time. |
 | `film.intro`, `film.gap`, `film.tail`, `film.end` | The time of the title card, the silence between scenes, the picture after the last gap, and the last moment of the film. |
 
-- A cue ignores case and punctuation. A phrase that the voice does not say stops the build, with the name of the scene and the phrase.
+- A cue ignores case and punctuation. A phrase that the voice does not say stops the build, with the name of the scene and the phrase. So does a phrase that the voice says two times in the scene: the message names the beats. Use a longer phrase, or name the beat: the last argument of `on` and `after`, and the option `beat` of `show`, `hide` and `swap`.
+- The cue of `show`, `hide` and `swap` is a phrase, or the index of a beat for the start of that beat: `c.swap(1, firstList, secondList)`. Their options are `{ beat, lead, fade, stagger, skipShown }`, for the one cue that differs.
+- A node shows one time. `c.show` brings a node that is not on the screen, so a node of `s.add`, of another cue or of a second list stops the build. `{ skipShown: true }` leaves such a node as it is and brings the rest of a block. It sees only what the scene did in the lines above the call. The fade of a node ends before its scene starts to leave, 0.24 seconds before the end of the scene, or the build stops.
 - A cue is in the words that the voice says. When `pronounce` turns "800" into "eight hundred", the cue is `c.on('eight hundred', ...)`. `npx vizmatic narrated beats . --words question` prints the spoken words of a scene with their times.
 
 ## The kit
@@ -215,28 +222,30 @@ export function answer(s: Stage, c: SceneClock) {
 ```typescript
 import { sceneKit } from 'vizmatic/stage'
 
-export const { area, heading, source, label, left, right, chip, claimTag } = sceneKit({ size: 44 })
+export const { area, heading, source, label, note, display, chip, claimTag } = sceneKit({ size: 44 })
 
 /** One color has one job through the film. */
 export const COLOR = { slow: 'red', fast: 'green', note: 'dim' } as const
 ```
 
-One number sets every size. `size` is the size of a label, and its default is 36. The heading is 1.44 of it, a block of text and the name of a box 0.89, a chip 0.78, and the source line and the claim tag 0.72. So a film for a phone raises `size`, and nothing stays small beside the labels. The other options are the edges of `area`, the place of `heading` and `source`, and the look of every `chip`. The kit follows the font that the film names in `narrated({ font })`, so the font is set in one place. A film can give one part its own size, such as `heading: { size: 70 }`, and each helper takes the options of the object that it makes, for the one place that differs.
+One number sets every size. `size` is the size of a label, and its default is 36. A display line is 1.78 of it, the heading 1.44, a block of text and the name of a box 0.89, a chip 0.78, and a note, the source line and the claim tag 0.72. So a film for a phone raises `size`, and nothing stays small beside the labels. The other options are the edges of `area`, the place of `heading` and `source`, and the look of every `chip`. The kit follows the font that the film names in `narrated({ font })`, so the font is set in one place. A film can give one part its own size, such as `heading: { size: 70 }`, and each helper takes the options of the object that it makes, for the one place that differs.
 
 | Helper | What it makes |
 |---|---|
-| `area` | The area that the content of a scene may fill, between the heading and the source line: `left`, `right`, `top`, `bottom`, `cx`, `cy`, `width`, `height`. |
+| `area` | The area that the content of a scene may fill, between the heading and the source line: `left`, `right`, `top`, `bottom`, `cx`, `cy`, `width`, `height`. It is a region of the [layout](layout.html): `area.columns([2, 1])`, `area.rows(3)`, `area.beside(picture, 'right')`. |
 | `heading('One microVM')` | The heading of a scene, at its place in the frame. |
 | `source('Firecracker docs, 2026')` | The source line of a scene, small and dim, under the area, from its left edge. |
 | `claimTag(c, { word, note })` | A tag for the kind of the claim that is on screen, such as MEASURED, at the right end of the source line. |
-| `label(text, x, y)`, `left(...)`, `right(...)` | A label with its middle, its left edge, or its right edge at x. The three share a baseline on one y. |
-| `para(text, x, y, width)` | A block of text that wraps at a width. |
+| `label(text)`, `para(text, width)` | A label, and a block of text that wraps at a width, with no place: the layout places them. |
+| `note(text)`, `display(text)` | A small dim note in the size of the source line, and the one large line of a picture, with no place. |
+| `label(text, x, y)`, `left(...)`, `right(...)` | A label with its middle, its left edge, or its right edge at x, for a film that types its places. The three share a baseline on one y. |
+| `para(text, x, y, width)` | A block of text with its left edge at x and its middle at y. |
 | `textWidth(text, size)`, `fitSize(text, width, size)` | The width of a line, and the largest size at which a line fits a width. |
 | `chip(text)`, `chipRow(items)` | A short label in a box that fits it, and a row of them. |
 | `namedBox(name, { width, height })` | A box of a given size, with a name that is set smaller when it is too wide. |
 | `card({ title, figure, caption })` | The card of the library, in the font of the film. |
 
-A text helper takes the place of its text. An object such as a chip is placed with `.at(x, y)`, as every object of the library is. For a name of the code, give a label the mono font: `label('kvm_run', 0, 200, { font: 'mono', color: 'dim' })`.
+Make a text with no x and no y, and let the layout place it: `place(column([label('requests'), chip('virtio')]), area, 'top left')`. A text helper also takes the place of its text, and an object such as a chip takes `.at(x, y)`, as every object of the library does. For a name of the code, give a label the mono font: `label('kvm_run', { font: 'mono', color: 'dim' })`.
 
 `textWidth`, `fitSize`, `chip`, `chipRow`, `namedBox` and `card` are the functions of the library with the same names. The kit gives them the font and the look of the film as defaults, and runs the same code. Take them from the kit in a film: one line of text can be 379 pixels wide in the text font and 428 pixels wide in the default font of `text()`, so a measure in another font than the text is drawn in is wrong. Outside a kit, `textWidth` and `fitSize` need the font: `fitSize(name, 220, 40, { font: 'text-serif' })`.
 

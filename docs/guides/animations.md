@@ -271,12 +271,14 @@ export default film({ fps: 30 }, (s) => {
 `spotlight` dims the rest of the stage, so that the viewer looks at one node. The targets keep their look. A second `spotlight` moves the light, and `spotlight(null)` turns it off. Use it in place of a list of fades: a film that fades the other nodes by hand forgets one, and that node stays bright or stays dim.
 
 ```film paired label="A light moves across four boxes while the heading stays bright, then every box comes back"
-import { film, group, rect, spotlight, text } from 'vizmatic/stage'
+import { beside, film, group, rect, row, spotlight, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const heading = s.add(text('Four steps of a request', { font: 'text-serif', size: 90 }).at(0, -330))
     const steps = ['parse', 'plan', 'run', 'reply'].map((name) => group(rect(360, 240, { radius: 16, stroke: 'blue', width: 6 }), text(name, { font: 'text-serif', size: 80 })))
-    s.add(group(...steps).arrange('right', 60).moveTo([0, 60]))
+    // A row measures the boxes, and it goes under the heading.
+    beside(row(steps, { gap: 60 }), heading, 'under', 'loose')
+    for (const step of steps) s.add(step)
     s.wait(0.5)
     for (const step of steps) {
         s.play(spotlight(step, { keep: [heading] }))

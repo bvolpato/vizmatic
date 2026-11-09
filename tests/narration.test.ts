@@ -52,6 +52,30 @@ describe('narration', () => {
         }))).rejects.toThrow('no scene "outro". The scenes are: intro, model')
     })
 
+    it('stops the build when the voice says the phrase two times, and takes a longer phrase or the beat', async () => {
+        // The voice says "we" two times in one beat, and "the" in two beats.
+        const word = (text: string, start: number) => ({ text, start, end: start + 0.2 })
+        const said: NarrationTiming = { scenes: [{ id: 'intro', beats: [
+            { say: 'We page when we see the alert.', duration: 3, words: [word('We', 0.1), word('page', 0.4), word('when', 0.7), word('we', 1.0), word('see', 1.3), word('the', 1.6), word('alert.', 1.9)] },
+            { say: 'The model decides.', duration: 2, words: [word('The', 0.1), word('model', 0.4), word('decides.', 0.9)] },
+        ] }] }
+        const built: number[] = []
+        await compileFilm(film({ fps: 10 }, (s) => {
+            const scene = narration(s, said, { lead: 1 }).scene('intro')
+            // A longer phrase with more words after it starts at the same word, so the cue keeps its time.
+            expect(() => scene.on('we', () => {})).toThrow('narration: scene "intro": the voice says "we" 2 times: in beat 0 at 1.1 s and in beat 0 at 2 s. Use a longer phrase: "we page" for the one at 1.1 s; "we see" for the one at 2 s')
+            expect(() => scene.after('the', () => {})).toThrow('the voice says "the" 2 times: in beat 0 at 2.6 s and in beat 1 at 4.1 s. Use a longer phrase: "the alert" for the one at 2.6 s; "the model" for the one at 4.1 s. Or name the beat: the option `beat` of show, hide and swap, and the last argument of on and after')
+            expect(() => scene.cue('we', 0)).toThrow('the voice says "we" 2 times: in beat 0 at 1.1 s and in beat 0 at 2 s. Use a longer phrase: "we page" for the one at 1.1 s; "we see" for the one at 2 s')
+            expect(scene.cue('we see').start).toBeCloseTo(scene.cue('when we').start + 0.3, 6)
+            // Each way that the message names works.
+            scene.on('we see', () => built.push(s.time))
+            scene.on('the', () => built.push(s.time), 0, 1)
+            expect(scene.cue('the', 0).start).toBeCloseTo(2.6, 6)
+        }))
+        expect(built[0]).toBeCloseTo(2, 6)
+        expect(built[1]).toBeCloseTo(4.1, 6)
+    })
+
     it('builds on a phrase at the time the voice reaches it', async () => {
         const compiled = await compileFilm(film({ fps: 10 }, (s) => {
             const scene = narration(s, timing, { lead: 2 }).scene('intro')

@@ -10,6 +10,7 @@ import { matchSequence } from '../morph'
 import { Heatmap } from './charts'
 import { Suspend } from '../stage'
 import { reveal, sampleAt, seededRandom, staggered, stepAt } from './util'
+import { oneObject } from '../layout'
 
 // ── Graph ───────────────────────────────────────────────────────────────────
 
@@ -979,6 +980,8 @@ export function codeBlock(source: string, options: CodeBlockOptions = {}): CodeB
  * unchanged code slides to its new place and only real edits fade.
  */
 export function morphCode(from: CodeBlock, to: CodeBlock, options: AnimOptions = {}): Anim {
+    oneObject('morphCode', from, 'the first argument', CodeBlock, 'a block of code, such as codeBlock(source)')
+    oneObject('morphCode', to, 'the second argument', CodeBlock, 'a block of code, such as codeBlock(source)')
     const visible = (block: CodeBlock) => block.tokens.filter((token) => token.kind !== 'space' && token.glyphs.length > 0)
     const a = visible(from), b = visible(to)
     const pairs = matchSequence(a.map((token) => token.text), b.map((token) => token.text))

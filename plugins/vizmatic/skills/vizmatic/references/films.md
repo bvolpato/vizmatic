@@ -10,9 +10,35 @@
 - Reveal verbs such as `write`, `draw`, and `fadeIn` also add the node, so `s.add` is optional before them.
 - Setters such as `.at`, `.fill`, and `.scale` apply at the current time. On a node that is not on stage, they set its initial state.
 - `s.play(a, b)` runs together. Pass `{ duration, ease }` last to set both. Inside one animation, use `par`, `seq`, and `lagged`.
-- Node setters place the origin. `.moveTo([x, y])` moves the center of the bounds. `.nextTo(other, 'right', 24)` places by bounds, and `.alignTo(other, 'left')` lines up an edge.
+- Do not type an x or a y for a node. Lay the picture out: see "Layout" below. Node setters still place the origin, and `.moveTo([x, y])` moves the center of the bounds, for the one mark that follows a number of the data.
 - `morph(a, b)` hides `a` and leaves `b` on stage. Later code refers to `b`.
 - Reparenting is not on the timeline. Do not wrap nodes that are already on stage in `group()`. Pass an array to the verb: `fadeOut([a, b])`.
+
+## Layout
+
+Lay a picture out before you type a coordinate. Cut the area into regions, let a container measure the nodes, and place by relation. A typed x or y is right only for a mark at a value of the data.
+
+```ts
+const { area, heading, label, note, chip } = sceneKit()                    // or `const area = sceneArea()` with no kit
+const [left, right] = area.columns([2, 1])                                 // also rows(3), inset('normal'), beside(picture, 'under')
+const rows = devices.map((d) => [pictogram(d.art, { size: 44 }), row([label(d.name), d.tag && chip(d.tag)])])
+const list = column([label('The guest sees four devices'), grid(rows.flat(), { columns: 2, gap: 'tight', even: true }), note('paper, 2020')], { gap: 'wide' })
+place(list, right, 'top left')                                             // an item that does not fit stops the build, and says what works
+beside(note('one process'), picture, 'under', 'tight')                     // beside a node, a block, a region or a point
+beside(note('this one waits'), log, 'right', 'wide', log.row(3))           // a note on a part: beside the whole object, at the height of the part
+const flow = place(fitted(left, (width) => lanes(names, events, { width })), left, 'top')
+const wire = line(boxOf(disk).point('bottom'), boxOf(file).point('top'))   // make a line after its two ends have their places
+```
+
+- `row`, `column` and `grid` take nodes, blocks, and lists of nodes that move as one. They nest. They return a block and leave each node its own, so each node still fades by itself. `null` and `false` items are skipped. A block stands for its nodes in `s.add(block)`, `fadeIn(block)`, `to(block, ...)` and `c.show(cue, block)`. A node is in a layout one time.
+- A gap is `'tight'` (12), `'normal'` (24), `'wide'` (48), `'loose'` (72), `'none'`, or a number. From `tight` to `loose`, a gap beside a text is at least 0.3 of the text size, the room that `check --text-gap 0.3` asks for. It is the same for every text of one font and one size, so rows are even. `'none'` and a number are exact.
+- A text measures as its line box, 1.2 text sizes for each line. In a row, texts of any size stand on one base line. Make texts with no place: `label('requests')`, `para(words, width)`, `note('our run')`, `display('160 times faster')`.
+- A part of an object gives a region: `flow.region({ lane: 'monitor', from: 0, to: 4 })`, `flow.region({ between: ['guest', 'KVM'] })`. To put a thing on an object on purpose, give the box of the part: `boxOf(card.caption)`.
+- Each call gives a right picture, or an error that says what to do. Read the message: it names the changes that work.
+- To move a block during a film, place it again inside `to`: `to(block, () => place(block, lower, 'top'))`.
+- `group(a, b).arrange()` stays for the films that have it. Do not use it in a new film: it centers every item, it measures the ink, and one part that fades in shows the whole group.
+
+The [layout guide](https://bvolpato.github.io/vizmatic/docs/layout.html) has the table of the pieces and three examples.
 
 ## Timing
 
@@ -37,7 +63,7 @@ s.play(morphMatching(eq0, eq1), seq(fadeOut(oldNote), fadeIn(newNote)), { durati
 
 An MP4 carries the film's title, its chapters as markers on the player's timeline, and its captions as a track that the viewer can switch on. The same captions are also written as a WebVTT file beside the video. No second pass with FFmpeg is needed.
 
-For a film that follows a recorded voice, use `narrated({ title, timing, scenes })`. It draws the title card from the title. It calls each scene when its picture opens, fades in what the scene adds there with `s.add`, and fades out every node of the scene at its end, so a scene types no time for that. It gives each scene the clock of its part of the voice, and `c.on('a spoken phrase', build)` runs `build` when the voice reaches that phrase. `c.keep(node)` holds a node for the next scene, which takes its own copy with `c.take(node)`. A phrase that the voice does not say stops the build, and so does a scene that the script or the film does not have. It also adds the captions and one chapter for each titled scene. `narration(s, timing)` is the layer under it, for a film that needs another order of work.
+For a film that follows a recorded voice, use `narrated({ title, timing, scenes })`. It draws the title card from the title. It calls each scene when its picture opens, fades in what the scene adds there with `s.add`, and fades out every node of the scene at its end, so a scene types no time for that. It gives each scene the clock of its part of the voice. `c.show('a spoken phrase', nodes)` fades nodes in 0.1 seconds before the phrase, in 0.3 seconds, and `c.hide` and `c.swap(cue, out, in)` have the same defaults, so a scene types no time for them. `{ stagger: true }` brings a list one item after another, and an animation in the list plays as it is: `c.show('one host', [draw(frame), title])`. A node shows one time: `c.show` brings a node that is not on the screen, and `{ skipShown: true }` brings the rest of a block whose title is in the first picture. It sees only the lines above the call, so call `s.add` first. `c.on('a spoken phrase', build)` runs `build` when the voice reaches that phrase, for a play of the scene's own. `c.keep(node)` holds a node for the next scene, which takes its own copy with `c.take(node)`. A phrase that the voice does not say stops the build, and so does a phrase that it says two times in the scene (use a longer phrase, or the beat), and a scene that the script or the film does not have. It also adds the captions and one chapter for each titled scene. `narration(s, timing)` is the layer under it, for a film that needs another order of work.
 
 `npx vizmatic new <name> --template narrated` writes the folder of such a film. One command then brings it up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie. It runs only the steps that have work to do, and says why. Without `--draft`, it makes the delivered movie. The [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) covers the folder, the script, the clock, the build, the checks, and the review. `references/lessons.md` has the rules for a film that teaches.
 
@@ -209,11 +235,13 @@ s.wait(readingSeconds(said.reading))
 The labels and the frame that the scenes of one film share. Do not copy label helpers from film to film. `sceneKit` makes them in one font, with the heading, the source line, and the area for content at their places in the frame. Its one `size` sets every size: the heading, the source line, the claim tag, the chips and the names of the boxes follow it. `claimTag(c, { word: 'MEASURED', note: 'our run' })` puts a tag for the kind of the claim at the right end of the source line:
 
 ```ts
-const { area, heading, source, label, left, right, chip, claimTag } = sceneKit({ size: 40 })
+const { area, heading, source, label, note, display, chip, claimTag } = sceneKit({ size: 40 })
 const title = heading('One microVM')
-const note = source('Firecracker docs/design.md, 2026')
-const name = left('guest kernel', area.left, 120, { color: 'teal' })
+const from = source('Firecracker docs/design.md, 2026')
+const name = place(label('guest kernel', { color: 'teal' }), area, 'top left')
 ```
+
+`heading` and `source` have their places in the frame. Every other text has none: `label`, `para(words, width)`, `note` for a small dim remark and `display` for the one large line of a picture. The layout places them.
 
 A name in a box, and a short label in a box. Do not size the text by hand. `namedBox` sets a name smaller when it is too wide for its box, and `group` gives twin boxes one text size. `chip` takes its width from its label. `chipRow` wraps a list of chips only with `maxWidth`. A tag, a chip and a row of chips have one rule: `.at` places the left end, and `anchor: 'center'` or `'right'` places the middle or the right end. For the stages of a process with one of them lit, use `steps` and not a row of chips or of named boxes:
 
@@ -262,10 +290,11 @@ s.play(log.mark(5, 'answered'))
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
-const row = { width: 420, height: 400, captionLines: 2 }
-const logs = card({ title: 'Logs', figure: pictogram('logs', { size: 140 }), caption: 'one line per event', color: 'yellow', ...row })
-const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }), caption: 'the path of one request through the services', color: 'purple', ...row })
-s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
+const shared = { width: 420, height: 400, captionLines: 2 }
+const logs = card({ title: 'Logs', figure: pictogram('logs', { size: 140 }), caption: 'one line per event', color: 'yellow', ...shared })
+const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }), caption: 'the path of one request through the services', color: 'purple', ...shared })
+row([logs, traces], { gap: 32 })
+s.add(logs, traces)
 ```
 
 Values that differ by more than about a hundred times, such as 100 ns beside 10 ms. On a linear axis, all but the largest sit at zero. Give `dotChart` a log axis, and say on screen that the axis is logarithmic. The `xLabel` is the place:
