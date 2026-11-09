@@ -76,7 +76,7 @@ describe('the steps of vizmatic narrated', () => {
             'uv run tools/narration/mix.py .',
             'uv run tools/narration/beats.py .',
             'vizmatic check toto.ts --look midnight --text-margin 30 --motion',
-            'vizmatic film toto.ts --name Toto-Forecasting --quality high --out dist --look midnight --format mp4 --workers 6 --audio narration.wav',
+            'vizmatic film toto.ts --name Toto-Forecasting --quality standard --out dist --look midnight --format mp4 --workers 6 --audio narration.wav',
             'uv run tools/narration/record.py . dist/Toto-Forecasting.mp4',
         ])
         // Before the first voice, every step has work to do.
@@ -138,6 +138,8 @@ describe('the steps of vizmatic narrated', () => {
         expect(words(plan(['build', '.'], { render: { workers: 10, draftWorkers: 3 } }))[4]).toContain('--workers 10')
         // A draft at another quality keeps the name of a draft.
         expect(words(plan(['build', '.', '--draft', '--quality', 'high']))[4]).toContain('--name film-draft --quality high')
+        // The delivered movie at another quality keeps its name: the copy for an upload replaces it.
+        expect(words(plan(['build', '.', '--quality', 'high']))[4]).toContain('--name film --quality high')
     })
 
     it('makes a movie of some scenes as a draft only: the delivered movie always holds every scene', () => {
@@ -178,7 +180,7 @@ describe('the steps of vizmatic narrated', () => {
             'uv run tools/narration/mix.py .',
             'uv run tools/narration/beats.py .',
             'vizmatic check film.ts --look paper --motion',
-            'vizmatic film film.ts --name film --quality high --out dist --look paper --format mp4 --workers 6 --audio narration.wav',
+            'vizmatic film film.ts --name film --quality standard --out dist --look paper --format mp4 --workers 6 --audio narration.wav',
             'uv run tools/narration/record.py . dist/film.mp4',
         ])
         expect(steps[0]).toMatchObject({ command: 'uv', args: ['run', 'proofs/run.py'] })

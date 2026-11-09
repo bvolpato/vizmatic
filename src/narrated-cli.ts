@@ -229,7 +229,7 @@ function buildTarget(request: NarratedRequest, film: NarratedParticulars): Build
     const unknown = known.length > 0 ? wanted.filter((id) => !known.includes(id)) : []
     if (unknown.length > 0) throw new Error(`--scene names the scene ${unknown.map((id) => JSON.stringify(id)).join(', ')}, and the film has no scene with that id. Its scenes are: ${known.join(', ')}`)
     const scenes = known.length > 0 ? known.filter((id) => wanted.includes(id)) : wanted
-    return { draft, quality: asked ?? (draft ? 'draft' : 'high'), scenes, name: movieName(film, draft, scenes) }
+    return { draft, quality: asked ?? (draft ? 'draft' : 'standard'), scenes, name: movieName(film, draft, scenes) }
 }
 
 /** The part of the film that a draft of some scenes shows: from just before its first scene opens to the start of the scene after its last one. */

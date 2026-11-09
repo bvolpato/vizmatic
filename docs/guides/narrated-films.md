@@ -304,8 +304,11 @@ One command brings a film up to date, from the script to the movie:
 ```bash
 npx vizmatic narrated build . --draft                  # dist/<name>-draft.mp4, fast, to look at
 npx vizmatic narrated build . --draft --scene answer   # dist/<name>-draft-answer.mp4: one scene alone, faster
-npx vizmatic narrated build .                          # dist/<name>.mp4, at high quality: the delivered movie
+npx vizmatic narrated build .                          # dist/<name>.mp4: the delivered movie, at standard quality
+npx vizmatic narrated build . --quality high           # the same movie for an upload: with motion blur, and slower
 ```
+
+The delivered movie has the `standard` quality: the full size and frame rate, and a picture that looks the same as `high` in a film of fades and short moves. `high` adds motion blur and compresses less, and takes up to twice the time. Use it, or `master`, for the copy that goes to a video site.
 
 The build runs these steps in the folder, in this order. It skips a step that has no work to do, says why, and stops at the first step that fails.
 

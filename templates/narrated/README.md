@@ -40,7 +40,8 @@ One command brings the film up to date, from the script to the movie. It makes t
 ```bash
 npx vizmatic narrated build . --draft                  # dist/A-Cache-in-Two-Scenes-draft.mp4, to look at
 npx vizmatic narrated build . --draft --scene answer   # one scene alone, faster
-npx vizmatic narrated build .                          # dist/A-Cache-in-Two-Scenes.mp4, at high quality: the delivered movie
+npx vizmatic narrated build .                          # dist/A-Cache-in-Two-Scenes.mp4: the delivered movie
+npx vizmatic narrated build . --quality high           # the same movie for an upload: with motion blur, and slower
 ```
 
 In `dist/`, a draft writes only files with "draft" in their name, so it never replaces the delivered movie. It also brings `timing.json` and `narration.wav` up to date. The single steps are `voice`, `mix`, `check`, `stills`, `sheet`, `beats`, `transcribe`, `sync`, `lag`, `probe` and `resound`. `npx vizmatic narrated` lists them.
