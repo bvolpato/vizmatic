@@ -42,6 +42,11 @@ export interface RgbaVideoOptions {
     preset?: string
     /** Encoder tuning for H.264, such as "animation" for flat color and line art. */
     tune?: string
+    /**
+     * More settings for the H.264 encoder, as x264 writes them: `name=value` pairs with a colon between them,
+     * such as "aq-strength=1.0:trellis=0". They come after the preset and the tune, so they replace a value of those.
+     */
+    x264Params?: string
     crf?: number
     threads?: number
     /** Title in the file's metadata. MP4 only. */
@@ -422,6 +427,9 @@ export async function renderRgbaVideo(
     if (options.tune !== undefined && (typeof options.tune !== 'string' || options.tune.length === 0)) {
         throw new Error('tune must be a non-empty string when provided')
     }
+    if (options.x264Params !== undefined && (typeof options.x264Params !== 'string' || options.x264Params.length === 0)) {
+        throw new Error('x264Params must be a non-empty string when provided')
+    }
     if (options.audioOffset !== undefined && (!Number.isFinite(options.audioOffset) || options.audioOffset < 0)) {
         throw new Error('audioOffset must be a non-negative finite number of seconds')
     }
@@ -493,7 +501,9 @@ export async function renderRgbaVideo(
         // Slow presets and the animation tune raise the reference frames, which raises the H.264
         // level. At 1080p60, more than 4 needs level 5, above the level 4.2 that Apple documents.
         if (options.tune === 'animation' || /slow|placebo/.test(preset)) args.push('-refs', '4')
-        args.push('-crf', String(crf), '-threads:v', String(threads))
+        args.push('-crf', String(crf))
+        if (options.x264Params) args.push('-x264-params', options.x264Params)
+        args.push('-threads:v', String(threads))
     }
     args.push('-pix_fmt', 'yuv420p', ...COLOR_TAGS)
     if (options.audioPath) {

@@ -112,7 +112,8 @@ npx vizmatic film intro.ts --out dist/films --look midnight,paper --quality high
 | `--out <dir>` | The output folder. |
 | `--look a,b` | Render in these looks. |
 | `--format mp4,webm,gif,png,svg` | The output formats. |
-| `--quality draft\|standard\|high\|master` | Encoder quality and motion blur. |
+| `--quality draft\|standard\|high\|master` | Encoder quality, motion blur, and the dither of the bloom. |
+| `--dither`, `--no-dither` | Turn the dither of the bloom on or off. Without them, a movie has it at `high` and `master`, and a PNG has it. |
 | `--fps <n>` | Frame rate. |
 | `--width <n>` | Output width in pixels. |
 | `--motion-blur <n>` | Sub-frames per frame. |
@@ -142,7 +143,7 @@ npx vizmatic narrated stills my-film --scene answer
 
 | Step | Meaning |
 |---|---|
-| `build` | The one command of a film. It brings the voice, the sound mix, the beat list, the layout check with motion, and the movie up to date, runs only the steps that have work to do, and says why it runs or skips each one. `--draft` writes `<name>-draft.mp4` and no file of the delivered movie. `--draft --scene <id,...>` makes a draft of those scenes alone. `--quality` and `--workers` set the render. A finding of the check stops the build, unless you pass `--allow-findings`. |
+| `build` | The one command of a film. It brings the voice, the sound mix, the beat list, the layout check with motion, and the movie up to date, runs only the steps that have work to do, and says why it runs or skips each one. `--draft` writes `<name>-draft.mp4` and no file of the delivered movie. `--draft --scene <id,...>` makes a draft of those scenes alone. `--quality`, `--workers`, `--dither` and `--no-dither` set the render. A finding of the check stops the build, unless you pass `--allow-findings`. |
 | `voice`, `mix` | The voice of the script, made on this machine, and the sound mix. |
 | `draft` | A timing with estimated times and no sound. It never replaces a measured timing. |
 | `check` | The layout check, with `--motion`, `--json`, `--content-top`, `--text-margin`, `--reading-speed` and `--stepped`. |

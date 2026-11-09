@@ -190,7 +190,7 @@ function usageText() {
   vizmatic preview <file> [--port <n>] [--open]
   vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--text-gap <part>] [--reading-speed <n>] [--stepped] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
-                [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
+                [--dither|--no-dither] [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
                 [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--name <output name>] [--background <color|none>]
                 [--ffmpeg <path>] [--json]
   vizmatic looks [--json]
