@@ -2,10 +2,10 @@ import { Node } from '../node'
 import { parseSvgPath, polyPath, rectPath, type Bounds, type Path } from '../geometry'
 import { arrow, dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
-import { smooth, type Ease } from '../ease'
+import { smooth } from '../ease'
 import type { ColorInput } from '../color'
 import type { Anim, AnimContext, AnimOptions } from '../anim'
-import { formatNumber, niceTicks, reveal, staggered, stepAt } from './util'
+import { formatNumber, forwardOnly, niceTicks, reaches, reveal, staggered, stepAt } from './util'
 
 /** The name of a lane, or its index. */
 export type LaneRef = string | number
@@ -152,40 +152,6 @@ const FAINT = 0.14
 const FADE = 0.3
 /** Seconds for an arrow or a dot to arrive with its label. */
 const REVEAL = 0.5
-
-/** The first share of the time at which an ease is at a share of the way. An ease may pass the end and come back. */
-function reaches(ease: Ease, share: number): number {
-    if (share <= 0) return 0
-    const steps = 256
-    for (let k = 1; k <= steps; k++) {
-        if (ease(k / steps) < share) continue
-        let low = (k - 1) / steps, high = k / steps
-        for (let pass = 0; pass < 24; pass++) {
-            const middle = (low + high) / 2
-            if (ease(middle) >= share) high = middle
-            else low = middle
-        }
-        return high
-    }
-    return 1
-}
-
-/**
- * An ease that never goes back and never passes its end: at each share of the time, the furthest share of
- * the way that the ease has reached. The cursor shows events and cannot hide them again, so an ease that
- * bounces or passes its end must not move the cursor back, or past the time of the advance.
- */
-function forwardOnly(ease: Ease): Ease {
-    const steps = 256
-    const most = new Float64Array(steps + 1)
-    let top = 0
-    for (let k = 0; k <= steps; k++) {
-        top = Math.max(top, Math.min(1, ease(k / steps)))
-        most[k] = top
-    }
-    // An ease that only rises keeps its own value at every time, not a value between two samples.
-    return (share) => (share <= 0 ? 0 : Math.max(most[Math.min(steps, Math.floor(share * steps))]!, Math.min(1, ease(Math.min(1, share)))))
-}
 
 /** A bar from `x0` to `x1`. A flat bar has a right end with no round corners, for a span that goes on. */
 function barPath(x0: number, x1: number, top: number, height: number, radius: number, flat: boolean): Path {
