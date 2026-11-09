@@ -10,6 +10,7 @@
 
 The stage engine reads static TrueType fonts, so it cannot use the variable fonts directly.
 Optical size 24 keeps the fine strokes visible when a 1080p film plays at phone size.
+The semibold is weight 600 of the roman font. `weight: 600` uses it, as the title of an `infoBox` does.
 Overlaps are removed because `write()` traces each contour, and an overlap would show as a line.
 
 Run: uv run scripts/build-stage-fonts.py SourceSerif4.ttf SourceSerif4-Italic.ttf
@@ -25,13 +26,13 @@ from fontTools.ttLib import TTFont
 from fontTools.varLib.instancer import OverlapMode, instantiateVariableFont
 
 OUT = Path(__file__).resolve().parent.parent / "assets" / "fonts"
-AXES = {"opsz": 24, "wght": 400}
+OPTICAL_SIZE = 24
 
 
-def cut(source: str, name: str) -> None:
+def cut(source: str, name: str, weight: int = 400) -> None:
     font = instantiateVariableFont(
         TTFont(source, recalcTimestamp=False),
-        AXES,
+        {"opsz": OPTICAL_SIZE, "wght": weight},
         overlap=OverlapMode.REMOVE_AND_IGNORE_ERRORS,
     )
     font.save(OUT / f"{name}.ttf")
@@ -43,4 +44,5 @@ parser.add_argument("roman", help="SourceSerif4[opsz,wght].ttf")
 parser.add_argument("italic", help="SourceSerif4-Italic[opsz,wght].ttf")
 args = parser.parse_args()
 cut(args.roman, "SourceSerif4-24pt-Regular")
+cut(args.roman, "SourceSerif4-24pt-SemiBold", weight=600)
 cut(args.italic, "SourceSerif4-24pt-Italic")

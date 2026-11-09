@@ -3,6 +3,7 @@ import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLen
 import { dynamic, Node, type Side, direction } from '../node'
 import { arrow, brace, dot, line, rect, type ShapeStyle } from '../shapes'
 import { tex, TexNode } from '../tex'
+import type { TextOptions } from '../text'
 import { ramp, sampleStops, toPaint, type ColorInput, type Rgba } from '../color'
 import { clock } from '../track'
 import { morphMatching, warp, type Anim, type AnimOptions } from '../anim'
@@ -762,6 +763,8 @@ export interface BraceLabelOptions {
     color?: ColorInput
     /** Set for plain text labels. Labels are math by default. */
     plain?: boolean
+    /** The font of a plain label. Defaults to the font of the film. */
+    font?: TextOptions['font']
     depth?: number
 }
 
@@ -779,7 +782,7 @@ export function braceLabel(target: Node | readonly Node[], label: string, option
                 : [[right + gap, bottom], [right + gap, top]]
     const mark = brace(from, to, { stroke: color, depth: options.depth })
     const tip = mark.data['tip'] as Vec
-    const caption = labelNode(label, { size, color, math: !options.plain })
+    const caption = labelNode(label, { size, color, math: !options.plain, font: options.font })
     caption.moveTo(tip)
     const dir = direction(side as Side)
     const shifted = 10 + (dir[0] !== 0 ? caption.width / 2 : caption.height / 2)
@@ -813,6 +816,8 @@ export interface LabeledDotOptions {
     gap?: number
     size?: number
     plain?: boolean
+    /** The font of a plain label. Defaults to the font of the film. */
+    font?: TextOptions['font']
     labelColor?: ColorInput
 }
 
@@ -825,7 +830,7 @@ export class LabeledDot extends Node {
         super()
         const color = options.color ?? 'yellow'
         this.mark = dot(options.radius ?? 9, color)
-        this.caption = labelNode(label, { size: options.size ?? 30, color: options.labelColor ?? color, math: !options.plain })
+        this.caption = labelNode(label, { size: options.size ?? 30, color: options.labelColor ?? color, math: !options.plain, font: options.font })
         this.add(this.mark, this.caption)
         this.caption.nextTo(this.mark, options.side ?? [0.72, -0.72], options.gap ?? 8)
     }

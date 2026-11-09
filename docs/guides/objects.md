@@ -898,6 +898,44 @@ The terminal keeps a record of the lines that are shown, so two prints in one `s
 
 `run.find(text, occurrence)` returns one node that holds the glyphs of a part of a line: color it, `indicate` it, or point a `callout` at it. It matches the exact characters, spaces included, in the commands, the output and the notes. `occurrence` counts the matches from 0, from the first line to the last. A text that is not there is an error, which says so when `clip` cut the text off. `codeBlock.find` is different: it returns the glyphs of every match as a list, and spaces do not count there. The second argument of `run.find` is an occurrence, and the second argument of `codeBlock.find` is a line. `run.p(line)` is the start of a line and `run.p(line, 'right')` is its end, in the coordinates of the panel, so `run.toWorld(...run.p(4, 'right'))` is that point on the stage. `run.frame`, `run.bar`, `run.title`, `run.note`, `run.lines`, and `run.prompts` are the parts.
 
+## One font for a film
+
+`film({ font })` sets the font of every text of the film that names no font. Set it once, and no object needs its own `font`.
+
+```film paired label="A card, a bar chart and a note in the serif text font, with the values in mono"
+import { barChart, card, film, pictogram, text } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    s.add(card({ title: 'the CPU', figure: pictogram('core', { size: 170 }), caption: 'one core, one thread', width: 560, titleSize: 60 }).at(-520, -30))
+    s.add(barChart([{ label: 'minor faults', value: 412 }, { label: 'major faults', value: 37 }], { width: 640, height: 400, labelSize: 40 }).at(380, -110))
+    s.add(text('the page faults of one run', { size: 44, color: 'dim' }).at(380, 250))
+    s.add(text('perf stat -e faults', { size: 40, font: 'mono', color: 'dim' }).at(380, 330))
+    s.wait(2)
+})
+```
+
+The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`, `'mono'`, or `'noto'`. A film with no `font` looks as it did before: a text with no font is sans.
+
+| Text | Font |
+|---|---|
+| A `text()` with no `font`. | The font of the film. |
+| A label, a title, a note, a caption, the name of a lane or a row, a key, and the numbers on an axis of a chart, of `lanes`, and of `axes3d`. | The font of the film. |
+| A `text()` or an object with its own `font`. | That font. |
+| Code, a value, an address, and an id: `codeBlock`, `terminal`, `arrayCells`, `tokens`, `counter`, `decimal`, the values and the bit numbers of a `bitField`, the value over a bar, the values in a `heatmap`, the subtitle, the values, the badge and the tags of an `infoBox`, and the word of a `tag`. | Mono. |
+| The label of a `connector`, and the label of an edge of a `graph`. | The font that the film names. Mono in a film with no `font`, as before. |
+| The text of an SVG from `fromSvg`. | The font that the film names, and mono for text that the SVG sets in a monospace family. Sans in a film with no `font`, as before. |
+| The words and the source line of a `quote`. | The serif text font, in every film. |
+| `tex`, and each label that is math: the numbers and the labels of `axes` and `numberLine`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
+| The center label of a `donut`. | The display serif. |
+
+Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
+
+The layout follows the font. A text measures its glyphs when it is made, so a card wraps its caption and a zone opens its border for the title with the widths of the font of the film. `'sans'` and `'text-serif'` have a semibold for `weight: 600`, so the title of an `infoBox` or of a `callout` is heavier than its body in both. `'serif'`, `'mono'` and `'noto'` have one weight, and such a title is regular there.
+
+The film sets its font while its callback runs and while a frame is drawn. So a scene in its own function has it, and so has a `dynamic` drawing. Make each node inside the callback. The film loads its fonts while the callback runs, so a text at the top of a film file fails when the file loads, and the error says to move it into the callback. A text that is made outside a callback when its font is loaded, such as in a second film of one run, is in sans. A figure from `fromComponent` keeps the fonts of its component.
+
+Two films can compile at the same time, as the film elements of one page do, and each has its own font. One case is not safe: the callbacks of both films await, and one of them makes a text after its `await` and before its next call to the stage. That text can have the font of the other film. Compile such films one after the other, or call the stage first, for example `s.wait(0)`.
+
 ## Images
 
 Prepare an image once, then place it with the existing `image` stage primitive.

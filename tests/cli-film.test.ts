@@ -158,6 +158,22 @@ describe('vizmatic film', () => {
         expect(cli(['film', 'plain.ts', '--out', 'o'], directory).stderr).toContain('must export a film as its default export')
     }, 60_000)
 
+    it('says to move a text into the callback when a film file makes it at its top', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'top.ts'), `import { film, text } from 'vizmatic/stage'
+const title = text('made at the top of the file')
+export default film((s) => {
+    s.add(title)
+    s.wait(1)
+})
+`)
+        const result = cli(['film', 'top.ts', '--frame', '0.5', '--out', 'o'], directory)
+        expect(result.status).toBe(1)
+        // The font is not loaded when the file loads, so the text throws what the compiler waits for inside a callback.
+        expect(result.stderr).toContain('Make each text, equation and graph inside the callback of film(), not at the top of a file')
+        expect(result.stderr).not.toContain('[object Object]')
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg)('routes films through the render and video commands', async () => {
         const directory = await tempDirectory()
         await writeFile(join(directory, 'short.ts'), shortFilm)

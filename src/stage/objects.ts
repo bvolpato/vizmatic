@@ -2,7 +2,7 @@ import { curveThrough, linePath, type Path, type Vec } from './geometry'
 import { Node, group } from './node'
 import { arrow, dot, line, type ShapeStyle } from './shapes'
 import { tex } from './tex'
-import { text } from './text'
+import { text, type TextOptions } from './text'
 import type { ColorInput } from './color'
 
 export interface AxesOptions {
@@ -266,7 +266,8 @@ export interface DecimalOptions {
     digits?: number
     size?: number
     color?: ColorInput
-    font?: 'sans' | 'mono' | 'serif'
+    /** Defaults to mono, in every film: a number that changes keeps its width in mono. */
+    font?: TextOptions['font']
     prefix?: string
     suffix?: string
 }

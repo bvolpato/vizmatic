@@ -22,7 +22,9 @@ const paper = theme('vizmatic-paper', 'light', { text: '#23211b', comment: '#6c6
 
 /** Highlight code for the site in both themes. The result carries a `--shiki-*` color per token. */
 export async function highlight(code: string, lang: string, preAttributes = ''): Promise<string> {
-    const html = await codeToHtml(code, { lang, themes: { light: paper, dark: ink }, defaultColor: false })
+    // No time limit for a line: with the default limit, a busy machine gives up on a long line and colors the
+    // rest of the block in another way, so two builds of one source differ.
+    const html = await codeToHtml(code, { lang, themes: { light: paper, dark: ink }, defaultColor: false, tokenizeTimeLimit: 0 })
     return html.replace(/^<pre[^>]*>/, `<pre class="shiki" data-shiki="${lang}" tabindex="0"${preAttributes ? ` ${preAttributes}` : ''}>`)
 }
 

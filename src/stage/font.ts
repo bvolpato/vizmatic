@@ -539,7 +539,7 @@ type BundledFamily = FontFamily | 'math'
 const FILES: Record<BundledFamily, Partial<Record<string, string>>> = {
     sans: { '400': 'Inter-Regular.ttf', '600': 'Inter-SemiBold.ttf', '700': 'Inter-Bold.ttf' },
     serif: { '400': 'InstrumentSerif-Regular.ttf', 'italic': 'InstrumentSerif-Italic.ttf' },
-    'text-serif': { '400': 'SourceSerif4-24pt-Regular.ttf', 'italic': 'SourceSerif4-24pt-Italic.ttf' },
+    'text-serif': { '400': 'SourceSerif4-24pt-Regular.ttf', '600': 'SourceSerif4-24pt-SemiBold.ttf', 'italic': 'SourceSerif4-24pt-Italic.ttf' },
     mono: { '400': 'JetBrainsMono-Regular.ttf' },
     noto: { '400': 'NotoSans-Regular.ttf' },
     math: { '400': 'NotoSansMath-Regular.ttf' },

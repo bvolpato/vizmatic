@@ -1,7 +1,7 @@
 import { arcPath, polyPath, rectPath, ring, smoothPath, type Path, type Vec } from '../geometry'
 import { dynamic, Node } from '../node'
 import { dot, line } from '../shapes'
-import { text } from '../text'
+import { text, type TextOptions } from '../text'
 import { sampleStops, type ColorInput, type Rgba } from '../color'
 import { type Anim, type AnimOptions, Value } from '../anim'
 import { formatNumber, luminance, niceTicks, reveal, solidColor, staggered, stepAt, tweenValue } from './util'
@@ -14,9 +14,12 @@ export interface ChartOptions {
     /** Text size for direct labels and ticks. */
     labelSize?: number
     color?: ColorInput
+    /** The font of the labels and the ticks. Defaults to the font of the film. A value that the chart prints is in mono. */
+    font?: TextOptions['font']
 }
 
-function small(content: string, size: number, color: ColorInput = 'dim', font: 'sans' | 'mono' = 'sans'): Node {
+/** A label or a tick. With no `font`, it is in the font of the film. */
+function small(content: string, size: number, color: ColorInput = 'dim', font?: TextOptions['font']): Node {
     return text(content, { size, color, font })
 }
 
@@ -84,7 +87,7 @@ export class BarChart extends Node {
             // Slightly translucent: large solid areas bloom too hard and read as blocks of light.
             const bar = new Node(this.barPath(i, datum.value)).fill(color, 0.84)
             this.bars.push(bar)
-            const label = small(datum.label, labelSize)
+            const label = small(datum.label, labelSize, 'dim', options.font)
             this.labels.push(label)
             const [px, py] = this.place(i, 0, 'mid')
             if (this.horizontal) label.at(px - 12 - label.width / 2, py)
@@ -274,7 +277,7 @@ export class Histogram extends Node {
         for (const tick of ticks) {
             const x = this.xAt(tick)
             this.axis.add(line([x, h / 2], [x, h / 2 + 6], { stroke: 'faint', width: 1.5 }))
-            this.axis.add(small(formatNumber(tick, step), labelSize).at(x, h / 2 + 12 + labelSize * 0.6))
+            this.axis.add(small(formatNumber(tick, step), labelSize, 'dim', options.font).at(x, h / 2 + 12 + labelSize * 0.6))
         }
         const palette = (options.colors ?? ['blue']).map((c) => solidColor(c))
         const stops = palette.map((c, i) => [palette.length === 1 ? 0 : i / (palette.length - 1), c] as const)
@@ -362,31 +365,32 @@ function xyPoint(frame: XYFrame, x: number, y: number): [number, number] {
     ]
 }
 
-function xyAxes(frame: XYFrame, options: { labelSize: number; color?: ColorInput; xLabel?: string; yLabel?: string; gridY?: boolean; xTicks?: number; yTicks?: number; xFormat?: (x: number) => string; yFormat?: (y: number) => string }): Node {
+function xyAxes(frame: XYFrame, options: { labelSize: number; color?: ColorInput; font?: TextOptions['font']; xLabel?: string; yLabel?: string; gridY?: boolean; xTicks?: number; yTicks?: number; xFormat?: (x: number) => string; yFormat?: (y: number) => string }): Node {
     const axis = new Node()
     const size = options.labelSize
     const color = options.color ?? 'faint'
+    const font = options.font
     const { w, h } = frame
     const x = niceTicks(frame.xRange[0], frame.xRange[1], options.xTicks ?? 6)
     const y = niceTicks(frame.yRange[0], frame.yRange[1], options.yTicks ?? 5)
     for (const value of y.ticks) {
         const [, py] = xyPoint(frame, frame.xRange[0], value)
         if (options.gridY !== false) axis.add(line([-w / 2, py], [w / 2, py], { stroke: 'grid', width: 1.25 }))
-        const label = small(options.yFormat ? options.yFormat(value) : formatNumber(value, y.step), size)
+        const label = small(options.yFormat ? options.yFormat(value) : formatNumber(value, y.step), size, 'dim', font)
         axis.add(label.at(-w / 2 - 12 - label.width / 2, py))
     }
     axis.add(line([-w / 2, h / 2], [w / 2, h / 2], { stroke: color, width: 1.5 }))
     for (const value of x.ticks) {
         const [px] = xyPoint(frame, value, frame.yRange[0])
         axis.add(line([px, h / 2], [px, h / 2 + 6], { stroke: color, width: 1.5 }))
-        axis.add(small(options.xFormat ? options.xFormat(value) : formatNumber(value, x.step), size).at(px, h / 2 + 12 + size * 0.6))
+        axis.add(small(options.xFormat ? options.xFormat(value) : formatNumber(value, x.step), size, 'dim', font).at(px, h / 2 + 12 + size * 0.6))
     }
     if (options.xLabel) {
-        const label = small(options.xLabel, size, 'ink')
+        const label = small(options.xLabel, size, 'ink', font)
         axis.add(label.at(w / 2 - label.width / 2, h / 2 + 18 + size * 1.6))
     }
     if (options.yLabel) {
-        const label = small(options.yLabel, size, 'ink')
+        const label = small(options.yLabel, size, 'ink', font)
         axis.add(label.at(-w / 2 + label.width / 2, -h / 2 - 12 - size / 2))
     }
     return axis
@@ -427,7 +431,7 @@ export class Scatter extends Node {
         const yRange = options.y ?? [Math.min(...ys) - pad(Math.min(...ys), Math.max(...ys)), Math.max(...ys) + pad(Math.min(...ys), Math.max(...ys))]
         this.frame = { xRange, yRange, w: options.width ?? 900, h: options.height ?? 520 }
         const labelSize = options.labelSize ?? 18
-        this.axis = xyAxes(this.frame, { labelSize, color: options.color, xLabel: options.xLabel, yLabel: options.yLabel })
+        this.axis = xyAxes(this.frame, { labelSize, color: options.color, font: options.font, xLabel: options.xLabel, yLabel: options.yLabel })
         const groups = new Map<string, { color: ColorInput; sumX: number; top: number; count: number }>()
         const dots = points.map((point) => {
             let color = point.color
@@ -450,7 +454,7 @@ export class Scatter extends Node {
         this.add(this.axis, ...dots)
         if (options.groupLabels ?? true) {
             for (const [name, entry] of groups) {
-                const label = small(name, labelSize + 2, entry.color)
+                const label = small(name, labelSize + 2, entry.color, options.font)
                 // Above the cluster, so the label never sits on top of its own points.
                 const [px, py] = xyPoint(this.frame, entry.sumX / entry.count, entry.top)
                 label.at(px, py - labelSize * 1.2)
@@ -556,7 +560,7 @@ export class LineChart extends Node {
         const w = options.width ?? 900, h = options.height ?? 480
         this.frame = { xRange, yRange, w, h }
         const labelSize = options.labelSize ?? 18
-        this.axis = xyAxes(this.frame, { labelSize, color: options.color, xLabel: options.xLabel, yLabel: options.yLabel, xFormat: options.xFormat, yFormat: options.yFormat, xTicks: options.xTicks, yTicks: options.yTicks })
+        this.axis = xyAxes(this.frame, { labelSize, color: options.color, font: options.font, xLabel: options.xLabel, yLabel: options.yLabel, xFormat: options.xFormat, yFormat: options.yFormat, xTicks: options.xTicks, yTicks: options.yTicks })
         this.add(this.axis)
         const ends: { label: Node; y: number }[] = []
         series.forEach((entry, i) => {
@@ -576,7 +580,7 @@ export class LineChart extends Node {
             this.add(stroke)
             if (entry.name) {
                 this.byName.set(entry.name, stroke)
-                const label = small(entry.name, labelSize + 1, color)
+                const label = small(entry.name, labelSize + 1, color, options.font)
                 const last = points[points.length - 1]!
                 ends.push({ label, y: last[1] })
                 label.at(last[0] + 12 + label.width / 2, last[1])
@@ -664,6 +668,8 @@ export interface PieOptions {
     labels?: boolean
     centerLabel?: string
     centerSize?: number
+    /** The font of the labels. Defaults to the font of the film. The center label is in the display serif. */
+    font?: TextOptions['font']
 }
 
 function wedgePath(a0: number, a1: number, inner: number, outer: number): Path {
@@ -724,7 +730,7 @@ export class PieChart extends Node {
                 const leader = new Node(polyPath([[cos * r0, sin * r0], [elbowX, elbowY], [endX, elbowY]])).stroke('faint', 1.25)
                 const percent = options.percent ?? true
                 const body = percent ? `${datum.label}  ${Math.round(this.shares[i]! * 100)}%` : datum.label
-                const label = small(body, size, 'ink')
+                const label = small(body, size, 'ink', options.font)
                 label.at(endX + (cos >= 0 ? 8 + label.width / 2 : -8 - label.width / 2), elbowY)
                 this.leaders.push(leader)
                 this.labels.push(label)
@@ -827,6 +833,8 @@ export interface HeatmapOptions {
     /** Tilt column labels so long names fit, in radians. */
     columnLabelAngle?: number
     radius?: number
+    /** The font of the row and the column labels. Defaults to the font of the film. The values in the cells are in mono. */
+    font?: TextOptions['font']
 }
 
 export class Heatmap extends Node {
@@ -875,14 +883,14 @@ export class Heatmap extends Node {
             this.numbers.push(numbers)
         })
         options.rowLabels?.forEach((name, i) => {
-            const label = small(name, labelSize)
+            const label = small(name, labelSize, 'dim', options.font)
             const y = -totalH / 2 + i * (h + gap) + h / 2
             label.at(-totalW / 2 - 10 - label.width / 2, y)
             this.rowLabels.push(label)
             this.add(label)
         })
         options.columnLabels?.forEach((name, j) => {
-            const label = small(name, labelSize)
+            const label = small(name, labelSize, 'dim', options.font)
             const x = -totalW / 2 + j * (w + gap) + w / 2
             const angle = options.columnLabelAngle ?? 0
             if (angle !== 0) {
