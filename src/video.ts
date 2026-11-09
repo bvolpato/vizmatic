@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { connect, createServer, type Socket } from 'net'
@@ -354,6 +354,34 @@ async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefi
     }
 }
 
+/** The answer for each FFmpeg program, so that a process asks one time. */
+const movieTimescale = new Map<string, Promise<boolean>>()
+
+/**
+ * Says if this FFmpeg can set the time scale of an MP4.
+ *
+ * The chapter track of an MP4 counts in the time scale of the movie. FFmpeg 7 and later take for that scale the least
+ * common multiple of the scales of the tracks: millions of units in a second for a picture, sound at 48 kHz and
+ * captions. A chapter of some minutes then does not fit in 32 bits. FFmpeg drops it, writes a warning, and exits with 0.
+ * One millisecond is the scale that FFmpeg wrote up to version 6, and it holds a chapter of any length.
+ * An FFmpeg with no such option, which is 4.3 and older, writes one millisecond always.
+ */
+function hasMovieTimescale(ffmpegPath: string): Promise<boolean> {
+    let answer = movieTimescale.get(ffmpegPath)
+    if (!answer) {
+        answer = new Promise<boolean>((done) => {
+            // No time limit: on a busy machine a limit would end the question early, and the movie would then
+            // lose the option and a long chapter with no message. The input is closed, so a program that reads it ends.
+            const child = execFile(ffmpegPath, ['-hide_banner', '-h', 'muxer=mp4'], { maxBuffer: 1 << 20 }, (error, stdout) => {
+                done(!error && String(stdout).includes('movie_timescale'))
+            })
+            child.stdin?.end()
+        })
+        movieTimescale.set(ffmpegPath, answer)
+    }
+    return answer
+}
+
 /**
  * Encodes caller-rendered RGBA frames as H.264 MP4 or VP9 WebM, tagged BT.709.
  * Frames are requested and written one at a time, so the caller controls
@@ -473,7 +501,10 @@ export async function renderRgbaVideo(
         // 384 kbit/s is what YouTube asks for in a stereo upload. A site encodes the sound again, so the file keeps more than a viewer needs.
         else args.push('-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-ac', '2')
     }
-    if (codec === 'h264') args.push('-movflags', '+faststart')
+    if (codec === 'h264') {
+        args.push('-movflags', '+faststart')
+        if (metadataInput >= 0 && await hasMovieTimescale(ffmpegPath)) args.push('-movie_timescale', '1000')
+    }
     args.push(tempPath)
 
     let stderr = ''
