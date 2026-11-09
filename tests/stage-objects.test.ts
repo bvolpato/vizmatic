@@ -11,10 +11,13 @@ import {
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     lanes, smooth,
+    appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, par, pulse, ripple, spotlight,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent,
 } from '../src/stage/index'
+import { encode } from 'fast-png'
+import { Resvg } from '@resvg/resvg-js'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
 import type { Anim } from '../src/stage/anim'
@@ -6879,6 +6882,1016 @@ describe('boundary', () => {
     })
 })
 
+describe('spotlight', () => {
+    // The films here have the midnight look. These are its background and the blue of the boxes.
+    const BACK = parseColor('#0b0c10'), BLUE = parseColor('#5cc4f0')
+    const box = (x: number, y = 0) => rect(120, 120, { fill: 'blue', stroke: null }).at(x, y)
+    const round = (value: number) => Math.round(value * 1e4) / 1e4
+    const mark = (f: CompiledFilm, time: number, node: Node) => paths(f, time).find((op) => op.node === node)
+    /** A color between the background and another color: the look of a paint at a `dim`. */
+    const toward = (color: Rgba, dim: number, back: Rgba = BACK) => [0, 1, 2].map((i) => round(back[i]! + (color[i]! - back[i]!) * dim))
+    const rgb = (color: unknown) => (color as Rgba).slice(0, 3).map(round)
+    /**
+     * How much of its own color the film draws each box with at a time: 1 is its blue, 0 is the color of the
+     * background, and null is a box that the frame does not draw.
+     */
+    const lit = (f: CompiledFilm, time: number, ...nodes: Node[]) => nodes.map((node) => {
+        const fill = mark(f, time, node)?.fill as Rgba | undefined
+        return fill ? round((fill[0] - BACK[0]) / (BLUE[0] - BACK[0])) : null
+    })
+    /** The alpha that the film draws each box with, which a light must leave as it is. */
+    const alphas = (f: CompiledFilm, time: number, ...nodes: Node[]) => nodes.map((node) => round(mark(f, time, node)?.fillAlpha ?? 0))
+    const dims = (time: number, ...nodes: Node[]) => at(time, () => nodes.map((node) => node.get('dim')))
+
+    it('dims a sibling and a node of another group, and keeps the target, what is in it, and its ancestors, before, in the middle and after', async () => {
+        let ancestor!: Node, target!: Node, part!: Node, sibling!: Node, cousin!: Node, far!: Node, other!: Node
+        const f = await compile((s) => {
+            // The target and its ancestor draw a shape of their own, so that the frame shows what each one keeps.
+            part = box(0)
+            target = box(-300).add(part)
+            sibling = box(-100)
+            ancestor = box(-500).opacity(0.8).add(target, sibling)
+            // One more level: the group of the ancestor is an ancestor too, and its other child dims.
+            cousin = box(-500, 300)
+            s.add(group(ancestor, cousin))
+            other = box(400)
+            far = s.add(group(other))
+            s.wait(1)
+            s.play(spotlight(target, { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        const all = [ancestor, target, part, sibling, cousin, other] as const
+        expect(lit(f, 0.5, ...all)).toEqual([1, 1, 1, 1, 1, 1])
+        expect(lit(f, 1.5, ...all)).toEqual([1, 1, 1, 0.65, 0.65, 0.65])
+        expect(lit(f, 2.5, ...all)).toEqual([1, 1, 1, 0.3, 0.3, 0.3])
+        // The light wrote no opacity, and no alpha changed: each node has the opacity that the film gave it.
+        for (const time of [0.5, 1.5, 2.5]) expect(alphas(f, time, ...all)).toEqual([0.8, 0.8, 0.8, 0.8, 1, 1])
+        expect(at(2.5, () => [...all, far].map((node) => node.get('opacity')))).toEqual([0.8, 1, 1, 1, 1, 1, 1])
+        // One `dim` on the other group dims what is in it.
+        expect(dims(2.5, ancestor, target, part, sibling, cousin, far, other)).toEqual([1, 1, 1, 0.3, 0.3, 0.3, 1])
+    })
+
+    it('takes each paint of a dim node toward the background and leaves every alpha: a fill, a stroke, a glow, and each stop of a gradient', async () => {
+        const YELLOW = parseColor('#ffd75e'), RED = parseColor('#ff6b6b'), CLEAR: Rgba = [255, 107, 107, 0.4]
+        let solid!: Node, shaded!: Node
+        const f = await compile((s) => {
+            const lit = s.add(box(-500))
+            solid = s.add(rect(120, 120, { fill: 'blue', stroke: 'yellow', width: 6 }).at(-200, 0).opacity(0.5).glow(12, 'red'))
+            solid.set('fillOpacity', 0.8)
+            shaded = s.add(rect(120, 120, { stroke: null }).at(100, 0).fill(linearGradient([-60, 0], [60, 0], ['blue', CLEAR])))
+            s.play(spotlight(lit, { dim: 0.25, duration: 1 }))
+        })
+        const before = mark(f, 0, solid)!, after = mark(f, 1, solid)!
+        expect([rgb(before.fill), rgb(before.stroke), rgb(before.glowColor)]).toEqual([rgb(BLUE), rgb(YELLOW), rgb(RED)])
+        expect([rgb(after.fill), rgb(after.stroke), rgb(after.glowColor)]).toEqual([toward(BLUE, 0.25), toward(YELLOW, 0.25), toward(RED, 0.25)])
+        // The opacity of the node, 0.5, times the opacity of its fill, 0.8. The light is not in it.
+        expect([after.fillAlpha, after.strokeAlpha]).toEqual([before.fillAlpha, before.strokeAlpha])
+        expect([after.fillAlpha, after.strokeAlpha]).toEqual([0.4, 0.5])
+        const stops = (mark(f, 1, shaded)!.fill as unknown as { stops: [number, Rgba][] }).stops
+        expect(stops.map(([, color]) => rgb(color))).toEqual([toward(BLUE, 0.25), toward(CLEAR, 0.25)])
+        // A stop keeps its own alpha too.
+        expect(stops.map(([, color]) => color[3])).toEqual([1, 0.4])
+    })
+
+    it('keeps a dim node opaque, so a dim label still hides the line behind it and the film check finds no line through a text', async () => {
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            const node = (name: string, x: number) => s.add(group(rect(260, 140, { radius: 14, stroke: 'blue', width: 5 }), text(name, { size: 44 })).at(x, -150))
+            const [client, server, cache] = [node('client', -600), node('server', 0), node('cache', 600)]
+            // The label of a connector sits on its line, on a plate in the background color.
+            s.add(connector(client, server, { label: 'request', labelSize: 30, color: 'ink', width: 4, route: 'straight' }))
+            s.add(connector(server, cache, { label: 'lookup', labelSize: 30, color: 'yellow', width: 4, route: 'straight' }))
+            s.wait(0.5)
+            s.play(spotlight(cache))
+            s.wait(1)
+            s.play(spotlight(null))
+            s.wait(0.5)
+        }), { motion: true })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('goes toward the background of the film, which can be its own color, and toward the background of the look for a film with none', async () => {
+        const backs: Record<string, Rgba> = {}
+        let rest!: Node
+        const build = (s: Stage) => {
+            const target = s.add(box(-300))
+            rest = s.add(box(0))
+            s.play(spotlight(target, { dim: 0, duration: 0 }))
+            s.wait(1)
+        }
+        // The token comes after a film in another look: it must be the `surface` of paper, not of the film before.
+        for (const [name, options] of [['a color', { background: '#804020' }], ['none', { background: null }], ['a token', { look: 'paper', background: 'surface' }], ['paper', { look: 'paper' }]] as const) {
+            const f = await compile(build, options)
+            backs[name] = mark(f, 0.5, rest)!.fill as Rgba
+            // At a dim of 0 the node has the color of the background, and it is still drawn, with its alpha.
+            expect(mark(f, 0.5, rest)!.fillAlpha, name).toBe(1)
+        }
+        // A background that the compile call gives, as `--background` of the command line does.
+        const given = await compileFilm(film(build), { background: '#203040' })
+        expect(rgb(mark(given, 0.5, rest)!.fill)).toEqual([32, 48, 64])
+        expect(rgb(backs['a color'])).toEqual([128, 64, 32])
+        expect(rgb(backs['none'])).toEqual(rgb(BACK))
+        expect(rgb(backs['a token'])).toEqual(rgb(parseColor('#efe9db')))
+        expect(rgb(backs['paper'])).toEqual(rgb(parseColor('#f7f3ea')))
+    })
+
+    it('takes the rest to the dim that the film names, lights a list of targets, and is less dim by default on a light look', async () => {
+        let a!: Node, b!: Node, c!: Node
+        const f = await compile((s) => {
+            ;[a, b, c] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(spotlight([a, c], { dim: 0.25, duration: 1 }))
+            s.wait(1)
+            // A duration of 0 changes the light at once.
+            s.play(spotlight(b, { dim: 0, duration: 0 }))
+            s.wait(1)
+        })
+        expect(lit(f, 1.999, a, b, c)).toEqual([1, 0.25, 1])
+        expect(lit(f, 2, a, b, c)).toEqual([0, 1, 0])
+        // With no duration, the light takes half a second.
+        expect(spotlight(a).duration).toBe(0.5)
+        // The default leaves ink text at a contrast of about 2.4 on the dark looks, and 0.4 does the same on paper.
+        for (const [look, dim] of [['midnight', 0.3], ['blueprint', 0.3], ['paper', 0.4]] as const) {
+            let rest!: Node
+            await compile((s) => {
+                const target = s.add(box(-300))
+                rest = s.add(box(0))
+                s.play(spotlight(target, { duration: 1 }))
+            }, { look })
+            expect(dims(1, rest), look).toEqual([dim])
+        }
+    })
+
+    it('follows the ease that the film gives', async () => {
+        let rest!: Node
+        const f = await compile((s) => {
+            const target = s.add(box(-300))
+            rest = s.add(box(0))
+            s.play(spotlight(target, { duration: 1, ease: (t) => t * t }))
+        })
+        // At half of the time, this ease is at a quarter of the way from 1 to 0.3.
+        expect(lit(f, 0.5, rest)).toEqual([0.825])
+    })
+
+    it('dims only inside `within`, leaves the light of another node as it is, and turns the light off there alone', async () => {
+        let left!: Node[], right!: Node[], leftChart!: Node, rightChart!: Node, alone!: Node
+        const f = await compile((s) => {
+            left = [box(-500), box(-350), box(-200)]
+            right = [box(200), box(350)]
+            leftChart = s.add(group(...left))
+            rightChart = s.add(group(...right))
+            alone = s.add(box(0, 300))
+            s.play(spotlight(left[1]!, { within: leftChart, duration: 1 }))
+            // A second light, in the other chart, with its own dim. The first one stays as it is.
+            s.play(spotlight(right[0]!, { within: rightChart, dim: 0.5, duration: 1 }))
+            s.play(spotlight(null, { within: leftChart, duration: 1 }))
+            // A light on the whole stage takes the place of every light. Then the light of the right chart off: the chart itself is still dim.
+            s.play(spotlight(alone, { duration: 1 }))
+            s.play(spotlight(null, { within: rightChart, duration: 1 }))
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        const all = (time: number) => lit(f, time, ...left, ...right, alone)
+        expect(all(1)).toEqual([0.3, 1, 0.3, 1, 1, 1])
+        expect(all(2)).toEqual([0.3, 1, 0.3, 1, 0.5, 1])
+        expect(all(3)).toEqual([1, 1, 1, 1, 0.5, 1])
+        expect(all(4)).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 1])
+        expect(dims(5, ...right, rightChart)).toEqual([1, 1, 0.3])
+        expect(all(5)).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 1])
+        expect(all(6)).toEqual([1, 1, 1, 1, 1, 1])
+    })
+
+    it('lets a light in a node decide there again, after a light of the whole stage dimmed parts of that node', async () => {
+        let bars!: Node[], other!: Node
+        const f = await compile((s) => {
+            bars = [box(-450), box(-300), box(-150)]
+            const chart = s.add(group(...bars))
+            other = s.add(box(300))
+            // The light of the stage is on one bar, so the chart holds it and does not dim as a whole.
+            s.play(spotlight(bars[0]!, { duration: 1 }))
+            s.play(spotlight(bars[2]!, { within: chart, duration: 1 }))
+        })
+        expect(lit(f, 1, ...bars, other)).toEqual([1, 0.3, 0.3, 0.3])
+        // Inside the chart the later light decides. Outside it, the light of the stage still does.
+        expect(lit(f, 2, ...bars, other)).toEqual([0.3, 0.3, 1, 0.3])
+    })
+
+    it('keeps the nodes in `keep` and the pinned nodes bright, with what is in them, and dims what is beside them', async () => {
+        let target!: Node, rest!: Node, heading!: Node, source!: Node, pinned!: Node, inPinned!: Node, deepPinned!: Node, beside!: Node, kept!: Node, notKept!: Node
+        const f = await compile((s) => {
+            target = s.add(box(-300))
+            rest = s.add(box(0))
+            heading = s.add(box(0, -300))
+            source = box(0, 300)
+            const footer = s.add(group(source))
+            inPinned = box(0)
+            pinned = s.add(box(600, -300).add(inPinned).pin())
+            // A pinned node in a group: the group cannot dim as a whole, and its other child dims.
+            deepPinned = box(600, 300).pin()
+            beside = box(450, 300)
+            s.add(group(deepPinned, beside))
+            // The same for a node in `keep` that is one child of a group.
+            kept = box(-600, 300)
+            notKept = box(-450, 300)
+            s.add(group(kept, notKept))
+            s.play(spotlight(target, { keep: [heading, footer, kept], duration: 1 }))
+            // `keep` belongs to one call. The next call names one node, with no list, and the others dim.
+            s.play(spotlight(target, { keep: heading, duration: 1 }))
+        })
+        expect(lit(f, 1, target, rest, heading, source, pinned, inPinned, deepPinned, beside, kept, notKept)).toEqual([1, 0.3, 1, 1, 1, 1, 1, 0.3, 1, 0.3])
+        expect(lit(f, 2, target, rest, heading, source, pinned, deepPinned, kept)).toEqual([1, 0.3, 1, 0.3, 1, 1, 0.3])
+    })
+
+    it('lights the name and the readout of a bar with the bar, also in a copy of the chart', async () => {
+        const make = () => barChart([{ label: 'parse', value: 3 }, { label: 'plan', value: 7 }, { label: 'run', value: 12 }], { width: 400, height: 240 })
+        let chart!: ReturnType<typeof make>, copy!: ReturnType<typeof make>
+        await compile((s) => {
+            chart = s.add(make().at(-400, 0))
+            copy = s.add(chart.clone().at(400, 0))
+            s.play(spotlight([chart.bar(1), copy.bar(2)], { duration: 1 }))
+        })
+        for (const [made, index] of [[chart, 1], [copy, 2]] as const) {
+            const shown = (nodes: readonly Node[]) => dims(1, ...nodes).map((dim) => dim === 1)
+            expect(shown(made.bars)).toEqual([0, 1, 2].map((i) => i === index))
+            expect(shown(made.labels)).toEqual([0, 1, 2].map((i) => i === index))
+            expect(shown(made.readouts)).toEqual([0, 1, 2].map((i) => i === index))
+            // The base line belongs to no bar, and the chart holds the bar.
+            expect(dims(1, made.baseline, made)).toEqual([0.3, 1])
+        }
+    })
+
+    it('moves the light from one target to another, and gives every node its first look when the light goes off', async () => {
+        let items!: Node[]
+        const first = [1, 0.9, 0.6, 1]
+        const f = await compile((s) => {
+            items = first.map((opacity, index) => s.add(box(-450 + index * 300).opacity(opacity)))
+            s.wait(1)
+            s.play(spotlight(items[0]!, { duration: 1, ease: linear }))
+            s.play(spotlight(items[1]!, { duration: 1, ease: linear }))
+            s.play(spotlight(items[2]!, { duration: 1, ease: linear }))
+            s.play(spotlight(null, { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        expect(lit(f, 0.5, ...items)).toEqual([1, 1, 1, 1])
+        expect(lit(f, 2, ...items)).toEqual([1, 0.3, 0.3, 0.3])
+        // In the middle of the move, the old target is on its way down and the new one on its way up.
+        expect(lit(f, 2.5, ...items)).toEqual([0.65, 0.65, 0.3, 0.3])
+        expect(lit(f, 3, ...items)).toEqual([0.3, 1, 0.3, 0.3])
+        expect(lit(f, 4, ...items)).toEqual([0.3, 0.3, 1, 0.3])
+        expect(lit(f, 4.5, ...items)).toEqual([0.65, 0.65, 1, 0.65])
+        expect(lit(f, 5.5, ...items)).toEqual([1, 1, 1, 1])
+        expect(dims(5.5, ...items)).toEqual([1, 1, 1, 1])
+        for (const time of [0.5, 2.5, 4, 5.5]) expect(alphas(f, time, ...items)).toEqual(first)
+    })
+
+    it('keeps a dim node exactly as dim as it is while the light moves between a group and one of its parts', async () => {
+        let parts!: Node[], solo!: Node, whole!: Node
+        const f = await compile((s) => {
+            parts = [box(-450), box(-300), box(-150)]
+            whole = s.add(group(...parts))
+            solo = s.add(box(300))
+            // The first light dims two parts of the group, each by itself.
+            s.play(spotlight(parts[0]!, { duration: 1 }))
+            // The light leaves the group, which dims as a whole. Its two dim parts must not get dimmer.
+            s.play(spotlight(solo, { duration: 1 }))
+            // The light comes back to another part, and the group comes back. The parts that stay dim must not get brighter.
+            s.play(spotlight(parts[1]!, { duration: 1 }))
+            // A light with another dim takes the rest there in one direction.
+            s.play(spotlight(solo, { dim: 0.5, duration: 1, ease: linear }))
+            // The light on the whole group brings back the parts that were dim by themselves.
+            s.play(spotlight(whole, { duration: 1 }))
+        })
+        const during = [0.1, 0.25, 0.5, 0.75, 0.9]
+        for (const part of during) {
+            expect(lit(f, 1 + part, parts[1]!, parts[2]!), `the group dims, at ${part}`).toEqual([0.3, 0.3])
+            expect(lit(f, 2 + part, parts[0]!, parts[2]!), `the group comes back, at ${part}`).toEqual([0.3, 0.3])
+            expect(lit(f, 3 + part, parts[0]!, parts[2]!), `the dim changes, at ${part}`).toEqual([round(0.3 + 0.2 * part), round(0.3 + 0.2 * part)])
+        }
+        expect(lit(f, 2, ...parts, solo)).toEqual([0.3, 0.3, 0.3, 1])
+        expect(lit(f, 3, ...parts, solo)).toEqual([0.3, 1, 0.3, 0.3])
+        expect(lit(f, 4, ...parts, solo)).toEqual([0.5, 0.5, 0.5, 1])
+        expect(lit(f, 5, ...parts, solo)).toEqual([1, 1, 1, 0.3])
+    })
+
+    it('leaves the opacity of a node to the film: a fade under the light is still there when the light goes off', async () => {
+        let target!: Node, dimmed!: Node, gone!: Node
+        const f = await compile((s) => {
+            ;[target, dimmed, gone] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(spotlight(target, { duration: 1 }))
+            s.play(fade(target, 0.8), fade(dimmed, 0.5), fadeOut(gone), { duration: 1 })
+            // A dim node that the film takes away and brings back under the same light is still dim.
+            s.play(fadeIn(gone), { duration: 1 })
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(alphas(f, 2, target, dimmed, gone)).toEqual([0.8, 0.5, 0])
+        expect(lit(f, 2, target, dimmed)).toEqual([1, 0.3])
+        expect([alphas(f, 3, target, dimmed, gone), lit(f, 3, target, dimmed, gone)]).toEqual([[0.8, 0.5, 1], [1, 0.3, 0.3]])
+        expect([alphas(f, 4, target, dimmed, gone), lit(f, 4, target, dimmed, gone)]).toEqual([[0.8, 0.5, 1], [1, 1, 1]])
+    })
+
+    it('does not dim a node that comes to the stage while the light is on, and dims it when the light moves', async () => {
+        let target!: Node, added!: Node, faded!: Node, hidden!: Node, clear!: Node, group_!: Node, joined!: Node
+        const f = await compile((s) => {
+            target = s.add(box(-600))
+            group_ = s.add(group(box(-450)))
+            // These two are on the stage, and nobody can see them when the light starts.
+            hidden = s.add(box(-150).hide())
+            clear = s.add(box(0).opacity(0))
+            s.play(spotlight(target, { duration: 1 }))
+            added = s.add(box(150))
+            faded = box(300)
+            hidden.show()
+            // A node that joins a dim group is dim with its group.
+            joined = box(-450, 200)
+            group_.add(joined)
+            s.play(fadeIn(faded), fade(clear, 1), { duration: 1 })
+            s.play(spotlight(added, { duration: 1 }))
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(lit(f, 2, target, added, faded, hidden, clear, joined)).toEqual([1, 1, 1, 1, 1, 0.3])
+        expect(lit(f, 3, target, added, faded, hidden, clear, joined)).toEqual([0.3, 1, 0.3, 0.3, 0.3, 0.3])
+        expect(lit(f, 4, target, added, faded, hidden, clear, joined)).toEqual([1, 1, 1, 1, 1, 1])
+    })
+
+    it('does not dim a node whose group is hidden, or at opacity 0, when the light starts', async () => {
+        for (const how of ['hidden', 'clear'] as const) {
+            let target!: Node, inner!: Node, tucked!: Node
+            const f = await compile((s) => {
+                target = s.add(box(-300))
+                inner = box(0)
+                tucked = box(150)
+                // The group holds a node in `keep`, so the light looks at its children one by one. Nobody can see them yet.
+                const holder = s.add(group(inner, tucked))
+                if (how === 'hidden') holder.hide()
+                else holder.opacity(0)
+                s.play(spotlight(target, { keep: [inner], duration: 1 }))
+                if (how === 'hidden') holder.show()
+                else holder.opacity(1)
+                s.wait(1)
+            })
+            expect(lit(f, 1.5, target, inner, tucked), how).toEqual([1, 1, 1])
+        }
+    })
+
+    it('forgets a node that is hidden when the light moves: it comes back with its own look', async () => {
+        let a!: Node, b!: Node, c!: Node
+        const f = await compile((s) => {
+            ;[a, b, c] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(spotlight(a, { duration: 1 }))
+            // b is dim, and the film hides it. The next light starts with b away, so it does not act on b.
+            b.hide()
+            s.play(spotlight(c, { duration: 1 }))
+            b.show()
+            s.wait(1)
+            // The same after the light goes off: a was dim, and it is hidden when the next light starts.
+            s.play(spotlight(null, { duration: 1 }))
+            a.hide()
+            s.play(spotlight(c, { duration: 1 }))
+            a.show()
+            s.wait(1)
+        })
+        expect(lit(f, 2.5, a, b, c)).toEqual([0.3, 1, 1])
+        expect(lit(f, 5.5, a, b, c)).toEqual([1, 0.3, 1])
+    })
+
+    describe('a node that enters at the very time that a light starts arrives with its own look', () => {
+        const entrances: Record<string, (node: Node, from: Node) => Anim> = {
+            fadeIn: (node) => fadeIn(node), write: (node) => write(node), draw: (node) => draw(node), grow: (node) => grow(node),
+            appear: (node) => appear(node), morph: (node, from) => morph(from, node),
+        }
+        const cases = Object.keys(entrances).flatMap((verb) => [0, 2].map((start) => [verb, start] as const))
+
+        it.each(cases)('%s at %d s, whichever of the two the film names first', async (verb, start) => {
+            const pictures: string[][] = []
+            for (const lightFirst of [true, false]) {
+                let target!: Node, rest!: Node, entering!: Node
+                const f = await compile((s) => {
+                    ;[target, rest] = [s.add(box(-300)), s.add(box(0))]
+                    // A morph starts from a node that is there. The light is on it too, so it is not a part of the rest.
+                    const from = s.add(box(300, 300))
+                    entering = box(300)
+                    s.wait(start)
+                    const anims = [spotlight([target, from], { duration: 1 }), { ...entrances[verb]!(entering, from), duration: 1 }]
+                    s.play(...(lightFirst ? anims : anims.reverse()))
+                    s.wait(1)
+                })
+                expect(lit(f, start + 1.5, target, rest, entering), lightFirst ? 'the light first' : 'the light last').toEqual([1, 0.3, 1])
+                expect(dims(start + 1.5, entering)).toEqual([1])
+                pictures.push([0, 0.3, 0.6, 1, 1.5].map((time) => svgAt(f, start + time)))
+            }
+            // The two orders give one film, frame for frame.
+            expect(pictures[1]).toEqual(pictures[0])
+        })
+
+        it('the same for the other children of a group that a verb brings with a light on one child, at 0 s and later', async () => {
+            for (const start of [0, 2]) {
+                let rest!: Node, child!: Node, sibling!: Node
+                const f = await compile((s) => {
+                    rest = s.add(box(-300))
+                    s.wait(start)
+                    ;[child, sibling] = [box(0), box(300)]
+                    s.play(appear(group(child, sibling)), spotlight(child, { duration: 1 }))
+                })
+                expect(lit(f, start + 1, rest, child, sibling), `at ${start} s`).toEqual([0.3, 1, 1])
+            }
+        })
+
+        it('the same for a node that the film adds at that time, and not for the nodes that the film starts with', async () => {
+            let target!: Node, early!: Node, late!: Node
+            const f = await compile((s) => {
+                ;[target, early] = [s.add(box(-300)), s.add(box(0))]
+                s.play(spotlight(target, { duration: 1 }))
+                s.wait(1)
+                // The light is off, and the next one starts at the time of this `s.add`.
+                s.play(spotlight(null, { duration: 0 }))
+                s.wait(1)
+                late = s.add(box(300))
+                s.play(spotlight(target, { duration: 1 }))
+            })
+            // At time 0 there is no time before: the nodes that the film starts with are there.
+            expect(lit(f, 1, target, early)).toEqual([1, 0.3])
+            expect(lit(f, 4, target, early, late)).toEqual([1, 0.3, 1])
+        })
+    })
+
+    describe('follows the time of the film, not the order of its code', () => {
+        it('gives one film for lights that the code names in any order', async () => {
+            const cues: [number, (nodes: Node[]) => Anim][] = [
+                [0, (nodes) => spotlight(nodes[0]!, { duration: 0.5 })],
+                [2, (nodes) => spotlight(nodes[1]!, { duration: 0.5 })],
+                [3, (nodes) => spotlight([nodes[1]!, nodes[2]!], { dim: 0.5, duration: 0.5 })],
+                [5.5, () => spotlight(null, { duration: 0.5 })],
+            ]
+            const times = [0.25, 1, 2.25, 2.75, 3.25, 4, 5.75, 6.5]
+            const make = async (order: number[]) => {
+                let nodes!: Node[]
+                const f = await compile((s) => {
+                    nodes = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+                    for (const index of order) s.at(cues[index]![0], () => s.play(cues[index]![1](nodes)))
+                    s.wait(7)
+                })
+                return times.map((time) => lit(f, time, ...nodes))
+            }
+            const inOrder = await make([0, 1, 2, 3])
+            expect(inOrder[1]).toEqual([1, 0.3, 0.3])
+            expect(inOrder[3]).toEqual([0.3, 1, 0.3])
+            expect(inOrder[5]).toEqual([0.5, 1, 1])
+            expect(inOrder[7]).toEqual([1, 1, 1])
+            for (const order of [[3, 2, 1, 0], [0, 3, 1, 2], [2, 0, 3, 1]]) expect(await make(order), `the cues in the order ${order.join(' ')}`).toEqual(inOrder)
+        })
+
+        it('dims a node that is on the stage before the light, when the code brings it after the light', async () => {
+            let a!: Node, b!: Node, c!: Node, d!: Node
+            const f = await compile((s) => {
+                ;[a, b] = [s.add(box(-450)), s.add(box(-150))]
+                s.at(3, () => s.play(spotlight(a, { duration: 0.5 })))
+                // The code names these after the light. On the timeline, c enters before the light and d after it.
+                c = box(150)
+                s.at(1, () => s.play(fadeIn(c, { duration: 0.5 })))
+                d = box(450)
+                s.at(4, () => s.play(fadeIn(d, { duration: 0.5 })))
+                s.wait(5)
+            })
+            expect(lit(f, 2, a, b, c)).toEqual([1, 1, 1])
+            expect(lit(f, 5, a, b, c, d)).toEqual([1, 0.3, 0.3, 1])
+        })
+
+        it('takes two times that differ in the last digit as one time: 0.1 + 0.2 and 0.3', async () => {
+            const a = 0.1 + 0.2, b = 0.3
+            expect(a).not.toBe(b)
+            for (const [enters, light] of [[a, b], [b, a]] as const) {
+                // A target that enters at the time of its light, and a node that enters then and is not a target.
+                let rest!: Node, target!: Node, other!: Node
+                const f = await compile((s) => {
+                    rest = s.add(box(-300))
+                    target = box(0)
+                    other = box(300)
+                    s.at(enters, () => s.play(fadeIn(target, { duration: 0.2 }), fadeIn(other, { duration: 0.2 })))
+                    s.at(light, () => s.play(spotlight(target, { duration: 0.2 })))
+                    s.wait(2)
+                })
+                expect(lit(f, 1.5, rest, target, other), `the node enters at ${enters}, and the light starts at ${light}`).toEqual([0.3, 1, 1])
+            }
+            // Two lights of the stage at these two times are two lights at one time.
+            const twice = compile((s) => {
+                const nodes = [s.add(box(-300)), s.add(box(0))]
+                s.at(a, () => s.play(spotlight(nodes[0]!)))
+                s.at(b, () => s.play(spotlight(nodes[1]!)))
+                s.wait(2)
+            })
+            await expect(twice).rejects.toThrow(/two lights start at 0.3 s on the stage/)
+            // A light of the stage and a light in a node, at these two times, in the two orders: the one of the stage is first.
+            for (const [stage, inner] of [[a, b], [b, a]] as const) {
+                let parts!: Node[], other!: Node
+                const f = await compile((s) => {
+                    parts = [box(-300), box(0)]
+                    const holder = s.add(group(...parts))
+                    other = s.add(box(300))
+                    s.at(inner, () => s.play(spotlight(parts[1]!, { within: holder, dim: 0.5, duration: 0.2 })))
+                    s.at(stage, () => s.play(spotlight(holder, { duration: 0.2 })))
+                    s.wait(2)
+                })
+                expect(lit(f, 1.5, ...parts, other), `the light of the stage at ${stage}`).toEqual([0.5, 1, 0.3])
+            }
+        })
+
+        it('refuses two lights that start at one time in one place, because they have no order', async () => {
+            const twice = (within: boolean) => compile((s) => {
+                const parts = [box(-300), box(0)]
+                const holder = s.add(group(...parts))
+                const options = within ? { within: holder } : {}
+                s.wait(2)
+                s.play(spotlight(parts[0]!, options), spotlight(parts[1]!, options))
+            })
+            await expect(twice(false)).rejects.toThrow(/two lights start at 2 s on the stage, and only one can decide what is dim. Give one light all the targets, or start one of them later/)
+            await expect(twice(true)).rejects.toThrow(/two lights start at 2 s in the same node/)
+            // A light of the stage and a light in a node can start together: the one of the stage is first.
+            let parts!: Node[], other!: Node
+            const f = await compile((s) => {
+                parts = [box(-300), box(0)]
+                const holder = s.add(group(...parts))
+                other = s.add(box(300))
+                s.play(spotlight(parts[1]!, { within: holder, dim: 0.5, duration: 1 }), spotlight(holder, { duration: 1 }))
+            })
+            expect(lit(f, 1, ...parts, other)).toEqual([0.5, 1, 0.3])
+        })
+    })
+
+    it('chains two spotlights in one seq, and runs in a par with a fade of its target', async () => {
+        let a!: Node, b!: Node, c!: Node
+        const f = await compile((s) => {
+            ;[a, b, c] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(seq(spotlight(a), spotlight(b)), { duration: 2, ease: linear })
+            s.play(par(spotlight(c, { duration: 1 }), fade(c, 0.6, { duration: 1 })), { ease: linear })
+        })
+        // The second light starts from what the first one left.
+        expect(lit(f, 1, a, b, c)).toEqual([1, 0.3, 0.3])
+        expect(lit(f, 1.5, a, b, c)).toEqual([0.65, 0.65, 0.3])
+        expect(lit(f, 2, a, b, c)).toEqual([0.3, 1, 0.3])
+        // The light and the fade write two values of the target, so both arrive.
+        expect([lit(f, 2.5, a, b, c), alphas(f, 2.5, c)]).toEqual([[0.3, 0.65, 0.65], [0.8]])
+        expect([lit(f, 3, a, b, c), alphas(f, 3, c)]).toEqual([[0.3, 0.3, 1], [0.6]])
+    })
+
+    it('gives a copy of a dim node its own look, with the light on and after it, also for a dim node in the copy', async () => {
+        let target!: Node, dimmed!: Node, copy!: Node, held!: Node, heldCopy!: Node, twinPart!: Node
+        const f = await compile((s) => {
+            target = box(-450)
+            const part = box(-450, 200)
+            // The family holds the target, so the light dims its other child by itself.
+            const family = s.add(group(target, part))
+            dimmed = s.add(box(-150).opacity(0.9))
+            held = box(150)
+            const holder = s.add(group(held))
+            s.play(spotlight(target, { duration: 1 }))
+            copy = s.add(dimmed.clone().at(-150, 300))
+            heldCopy = s.add(holder.clone().shift(0, 300)).children[0]!
+            // In this copy the dim node is below the top.
+            twinPart = s.add(family.clone().shift(900, 0)).children[1]!
+            s.wait(1)
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(lit(f, 2, dimmed, copy, held, heldCopy, twinPart)).toEqual([0.3, 1, 0.3, 1, 1])
+        expect(alphas(f, 2, dimmed, copy)).toEqual([0.9, 0.9])
+        expect(lit(f, 3, dimmed, copy, held, heldCopy, twinPart)).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('draws with the least dim of a branch, for a shape, a drawing that is rebuilt, a picture, and the marks that a node makes itself', async () => {
+        const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAEUlEQVR4nGP4z8DwH4YZkDkAm34L9XKwuTwAAAAASUVORK5CYII='
+        let twice!: Node, under!: Node, built!: Node, own!: Node
+        const f = await compile((s) => {
+            // Opacities multiply, and dims do not: the least of 0.4 and 0.6, and the least of 0.9 and 0.6.
+            twice = box(-450).set('dim', 0.4)
+            under = box(-300).set('dim', 0.9)
+            s.add(group(twice, under).opacity(0.5).set('dim', 0.6))
+            built = box(0)
+            const drawing = s.add(dynamic(() => built).set('dim', 0.5))
+            s.add(image(PNG, { width: 60 }).at(300, 0).opacity(0.8).set('dim', 0.25))
+            own = s.add(group().set('dim', 0.5))
+            own.rawOps = (_matrix, alpha, ops) => {
+                ops.push({ kind: 'path', path: circlePath(0, 0, 10), strokePath: [], fill: BLUE, fillAlpha: alpha, stroke: null, strokeAlpha: 0, strokeWidth: 0,
+                    cap: 'round', join: 'round', dash: null, dashOffset: 0, glow: 0, glowColor: null, blend: 'normal', node: own })
+            }
+            s.wait(1)
+            // `dim` is a number, so a change of it passes through the values between.
+            s.play(to(drawing, (node) => node.set('dim', 1)), { duration: 1, ease: linear })
+        })
+        expect(lit(f, 0.5, twice, under, built, own)).toEqual([0.4, 0.6, 0.5, 0.5])
+        expect(alphas(f, 0.5, twice, under, built, own)).toEqual([0.5, 0.5, 1, 1])
+        expect(lit(f, 1.5, built)).toEqual([0.75])
+        // A picture keeps its alpha, and the draw list has no mark over it: the painter mixes its pixels.
+        const ops = f.frame(0.5).ops, pictures = ops.filter((op) => op.kind === 'image')
+        expect(pictures.map((op) => [op.alpha, op.dim, rgb(op.backdrop)])).toEqual([[0.8, 0.25, rgb(BACK)]])
+        expect(ops.filter((op) => op.kind === 'path' && op.node === pictures[0]!.node)).toEqual([])
+    })
+
+    it('paints the same colors and alphas on the canvas as in the SVG, for a dim shape and a dim picture', async () => {
+        const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAEUlEQVR4nGP4z8DwH4YZkDkAm34L9XKwuTwAAAAASUVORK5CYII='
+        const f = await compile((s) => {
+            const target = s.add(box(-300))
+            s.add(rect(120, 120, { fill: 'blue', stroke: 'yellow', width: 6 }).opacity(0.5))
+            s.add(image(PNG, { width: 60 }).at(300, 0).opacity(0.8))
+            s.play(spotlight(target, { duration: 0 }))
+            s.wait(1)
+        })
+        const frame = f.frame(0.5)
+        // A context that keeps the color and the alpha of each mark that a painter draws.
+        const recorder = (painted: string[]) => {
+            const state: Record<string, unknown> = { globalAlpha: 1, globalCompositeOperation: 'source-over' }
+            const record = (kind: string, color: () => unknown) => () => { painted.push(`${kind} ${String(color())} ${round(state['globalAlpha'] as number)} ${String(state['globalCompositeOperation'] ?? '')}`.trim()) }
+            const calls: Record<string, () => void> = {
+                fill: record('fill', () => state['fillStyle']), stroke: record('stroke', () => state['strokeStyle']),
+                drawImage: record('image', () => ''), fillRect: record('rect', () => state['fillStyle']),
+            }
+            return new Proxy(state, { get: (target, name: string) => calls[name] ?? (name in target ? target[name] : () => undefined) })
+        }
+        const painted: string[] = [], copy: string[] = []
+        const scope = globalThis as { Path2D?: unknown; OffscreenCanvas?: unknown }, saved = [scope.Path2D, scope.OffscreenCanvas]
+        scope.Path2D = class { moveTo() {} lineTo() {} bezierCurveTo() {} closePath() {} }
+        scope.OffscreenCanvas = class { getContext() { return recorder(copy) } }
+        try {
+            paintFrame(recorder(painted) as never, frame, 1, () => ({}) as never)
+        } finally {
+            ;[scope.Path2D, scope.OffscreenCanvas] = saved
+        }
+        // The same marks from the SVG text, in order. The first `rect` of the canvas is its background.
+        const svg = frameToSvg(frame)
+        const drawn = [...svg.matchAll(/<(path|g)\b[^>]*>/g)].flatMap(([tag, kind]) => {
+            if (kind === 'g') return [`image  ${tag!.match(/ opacity="([^"]*)"/)?.[1] ?? 1} source-over`]
+            const part = (name: string) => {
+                const color = tag!.match(new RegExp(` ${name}="(rgb[^"]*)"`))?.[1]
+                return color ? [`${name} ${color} ${tag!.match(new RegExp(` ${name}-opacity="([^"]*)"`))?.[1] ?? 1} source-over`] : []
+            }
+            return [...part('fill'), ...part('stroke')]
+        })
+        expect(painted.slice(1)).toEqual(drawn)
+        // The lit box, the dim box with its fill and its stroke, and the picture.
+        expect(painted.slice(1)).toHaveLength(4)
+        expect(painted[2]).toBe(`fill rgb(${toward(BLUE, 0.3).map(Math.round).join(',')}) 0.5 source-over`)
+        // The picture dims by its own pixels, with one rule in both painters: each color is 0.3 of the pixel and 0.7 of
+        // the background, and the alpha of the pixel stays. The canvas paints the background over a copy, where the copy has ink.
+        expect(copy).toEqual(['image  1 source-over', `rect rgb(${rgb(BACK).join(',')}) 0.7 source-atop`])
+        const matrix = svg.match(/<filter id="d0" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="([^"]*)"\/>/)![1]!.split(' ').map(Number)
+        const offsets = rgb(BACK).map((channel) => round(0.7 * channel / 255))
+        expect(matrix.map(round)).toEqual([0.3, 0, 0, 0, offsets[0], 0, 0.3, 0, 0, offsets[1], 0, 0, 0.3, 0, offsets[2], 0, 0, 0, 1, 0])
+        expect(svg).toMatch(/<g transform="[^"]*" opacity="0.8" filter="url\(#d0\)">/)
+    })
+
+    it('makes the dim copy of a picture once for the frames of a still light, and again when the dim changes', async () => {
+        const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAEUlEQVR4nGP4z8DwH4YZkDkAm34L9XKwuTwAAAAASUVORK5CYII='
+        const f = await compile((s) => {
+            const target = s.add(box(-300))
+            s.add(image(PNG, { width: 60 }).at(300, 0))
+            s.play(spotlight(target, { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        const pen = new Proxy({} as Record<string, unknown>, { get: (target, name: string) => (name in target ? target[name] : () => undefined) })
+        const scope = globalThis as { Path2D?: unknown; OffscreenCanvas?: unknown }, saved = [scope.Path2D, scope.OffscreenCanvas]
+        let copies = 0
+        scope.Path2D = class { moveTo() {} lineTo() {} bezierCurveTo() {} closePath() {} }
+        scope.OffscreenCanvas = class { constructor() { copies++ } getContext() { return pen } }
+        try {
+            // One source for every frame, as the player has: the copy belongs to it.
+            const source = {} as never
+            for (const time of [1.2, 1.5, 1.8]) paintFrame(pen as never, f.frame(time), 1, () => source)
+            expect(copies).toBe(1)
+            // While the light changes, each frame has another dim.
+            for (const time of [0.25, 0.5]) paintFrame(pen as never, f.frame(time), 1, () => source)
+            expect(copies).toBe(3)
+        } finally {
+            ;[scope.Path2D, scope.OffscreenCanvas] = saved
+        }
+    })
+
+    it('keeps the clear parts of a dim picture clear: the card behind it shows there with its own color', async () => {
+        // Four pixels in a row: two of opaque red, and two that are clear.
+        const data = encode({ width: 4, height: 1, depth: 8, channels: 4, data: new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0]) })
+        const png = 'data:image/png;base64,' + Buffer.from(data).toString('base64')
+        const f = await compile((s) => {
+            // The card is green and is a target, so it stays as it is behind the dim picture.
+            const cardBehind = s.add(rect(64, 64, { fill: '#00ff00', stroke: null }))
+            s.add(image(png, { width: 64, height: 64 }))
+            s.play(spotlight(cardBehind, { dim: 0.25, duration: 0 }))
+            s.wait(1)
+        }, { width: 64, height: 64, background: '#000000', bloom: 0 })
+        const pixels = new Resvg(f.svg(0.5), { font: { loadSystemFonts: false } }).render().pixels
+        const pixel = (x: number, y: number) => Array.from(pixels.subarray((y * 64 + x) * 4, (y * 64 + x) * 4 + 3))
+        // Left, the red ink at a quarter of its color, toward the black background. Right, the green card and no box.
+        const [red, green, blue] = pixel(16, 32)
+        expect([Math.round(red! / 255 * 100) / 100, green, blue]).toEqual([0.25, 0, 0])
+        expect(pixel(48, 32)).toEqual([0, 255, 0])
+    })
+
+    describe('a morph', () => {
+        const shapes = (f: CompiledFilm, time: number, known: Node[]) => paths(f, time).filter((op) => !known.includes(op.node!)).map((op) => round(((op.fill as Rgba)[0] - BACK[0]) / (BLUE[0] - BACK[0])))
+
+        it('keeps its own look from its source to its result, with no jump, when the light is on its source', async () => {
+            let other!: Node, source!: Node, result!: Node
+            const f = await compile((s) => {
+                ;[other, source] = [s.add(box(-300)), s.add(box(0))]
+                result = box(300)
+                s.play(spotlight(source, { duration: 0.5 }))
+                s.wait(0.5)
+                s.play(morph(source, result), { duration: 1, ease: linear })
+                s.wait(0.5)
+                // The light goes off while the next morph is under way. Nothing in the morph is dim, so nothing jumps.
+                s.play(morph(result, box(300, 300)), spotlight(null), { duration: 1, ease: linear })
+            })
+            expect(lit(f, 0.9, other, source)).toEqual([0.3, 1])
+            // The shape that travels, at the start, in the middle and at the end, and the result after it.
+            for (const time of [1, 1.001, 1.5, 1.999]) expect(shapes(f, time, [other, source, result]), `at ${time}`).toEqual([1])
+            expect(lit(f, 2.2, other, result)).toEqual([0.3, 1])
+            for (const time of [2.5, 2.501, 3, 3.499, 3.5]) expect(shapes(f, time, [other, source, result]), `at ${time}`).toEqual([1])
+        })
+
+        it('is refused when a light dims its source, also when the code names the light after the morph', async () => {
+            const dimSource = (order: 'time' | 'code') => compile((s) => {
+                const lit_ = s.add(box(-300)), source = s.add(box(0)), result = box(300)
+                const light = () => s.play(spotlight(lit_, { duration: 0.5 })), change = () => s.play(morph(source, result), { duration: 1 })
+                if (order === 'time') { s.at(1, light); s.at(2, change) } else { s.at(2, change); s.at(1, light) }
+                s.wait(4)
+            })
+            for (const order of ['time', 'code'] as const) {
+                await expect(dimSource(order), order).rejects.toThrow(/the light at 1 s dims a node while it morphs, from 2 s to 3 s. A dim morph would jump in brightness. Make the node that the morph starts from a target or a keep of that light, or turn the light off before the morph/)
+            }
+            // The same morph with its source in `keep` is a film.
+            const kept = await compile((s) => {
+                const lit_ = s.add(box(-300)), source = s.add(box(0))
+                s.play(spotlight(lit_, { keep: source, duration: 0.5 }))
+                s.play(morph(source, box(300)), { duration: 1 })
+            })
+            expect(kept.duration).toBe(1.5)
+        })
+
+        it('is refused when a light starts while it is under way and dims its shapes, or when it ends in a dim group', async () => {
+            const during = compile((s) => {
+                const source = s.add(box(0)), other = s.add(box(-300))
+                // The first light is on the source too, so the morph starts bright. The error names the light that dims it.
+                s.play(spotlight([source, other], { duration: 0.2 }))
+                s.wait(0.8)
+                s.play(morph(source, box(300)), { duration: 1 })
+                s.at(1.5, () => s.play(spotlight(other, { duration: 0.3 })))
+            })
+            await expect(during).rejects.toThrow(/the light at 1.5 s dims a node while it morphs, from 1 s to 2 s/)
+            const intoDim = compile((s) => {
+                const lit_ = s.add(box(-300)), result = box(300).hide()
+                s.add(group(box(300, 200), result))
+                s.play(spotlight(lit_, { duration: 0.5 }))
+                s.play(morph(lit_, result), { duration: 1 })
+            })
+            await expect(intoDim).rejects.toThrow(/the light at 0 s dims a node while it morphs, from 0.5 s to 1.5 s/)
+        })
+
+        it('does not make the lights settle again: 60 morphs under 60 lights on 2,000 nodes compile in the time of the lights alone', async () => {
+            const build = (morphs: boolean) => async () => {
+                const started = performance.now()
+                await compile((s) => {
+                    const nodes = Array.from({ length: 2000 }, (_, i) => s.add(rect(10, 10, { fill: 'blue', stroke: null }).at(-900 + (i % 100) * 18, -400 + Math.floor(i / 100) * 18)))
+                    for (let i = 0; i < 60; i++) {
+                        // The light is also on the node that morphs next, because a morph cannot be dim.
+                        s.play(spotlight([nodes[i * 7]!, nodes[1000 + i]!], { duration: 0.2 }))
+                        if (morphs) s.play(morph(nodes[1000 + i]!, rect(10, 10, { fill: 'red', stroke: null }).at(-900 + i * 18, 450)), { duration: 0.2 })
+                        else s.wait(0.2)
+                    }
+                })
+                return performance.now() - started
+            }
+            const alone = Math.min(await build(false)(), await build(false)()), withMorphs = Math.min(await build(true)(), await build(true)())
+            // When each morph made every light settle again, this film took more than ten times the film with no morph.
+            // The limit is wide: three times the lights alone, and half a second for a loaded machine.
+            expect(withMorphs).toBeLessThan(alone * 3 + 500)
+        })
+    })
+
+    it('keeps the lights of a film on its stage, so a second film compiles and does not change the first', async () => {
+        let rest!: Node
+        const build = (s: Stage) => {
+            const target = s.add(box(-300))
+            rest = s.add(box(0))
+            s.play(spotlight(target, { duration: 1 }))
+            s.wait(3)
+        }
+        const first = await compile(build), firstRest = rest
+        // With one list for every stage, this film would get the light of the first, and its target is not here.
+        await compile((s) => {
+            build(s)
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(lit(first, 3.5, firstRest)).toEqual([0.3])
+    })
+
+    it('leaves dim text as text for the film check, which has no new finding and still reports a dim text on another text', async () => {
+        for (const dim of [undefined, 0.1]) {
+            const page = film({ fps: 20 }, (s) => {
+                s.wait(0.5)
+                const lines = ['The first sentence of a page of text.', 'The second sentence, which the light is on.'].map((line, index) => s.add(text(line, { font: 'text-serif', size: 44 }).at(0, -60 + index * 120)))
+                // The first sentence is bright for half a second, which is too short to read it. It stays up, dim.
+                s.wait(0.5)
+                s.play(spotlight(lines[1]!, dim === undefined ? {} : { dim }))
+                s.wait(3)
+            })
+            // A dim text keeps its alpha, and the check has no rule for the contrast of a text.
+            expect((await checkFilm(page, { motion: true })).diagnostics, `dim ${dim}`).toEqual([])
+        }
+        const crossed = await checkFilm(film({ fps: 20 }, (s) => {
+            s.add(text('one text', { size: 60 }))
+            const over = s.add(text('one more', { size: 60 }).at(20, 10))
+            s.play(spotlight(over))
+            s.wait(1)
+        }))
+        expect(crossed.diagnostics.map((entry) => entry.code)).toEqual(['film.text_overlap'])
+    })
+
+    it('stops the build for a light that would show nothing, and says what to do', async () => {
+        const failure = (build: (s: Stage, a: Node, b: Node) => void, start = 3) => compile((s) => {
+            const a = s.add(box(-300)), b = s.add(box(0))
+            s.wait(start)
+            build(s, a, b)
+            s.wait(1)
+        })
+        // A target that the film never added, one that it adds later, and one that is hidden: at 3 s, and at 0 s.
+        await expect(failure((s) => s.play(spotlight(box(300))))).rejects.toThrow(/the target of the light at 3 s is not on the stage. So the light would show nothing. Show the node before the light, or bring it at the time that the light starts/)
+        await expect(failure((s, a) => { const late = box(300); s.play(spotlight([a, late])); s.play(fadeIn(late)) })).rejects.toThrow(/target 2 of 2 of the light at 3 s does not show at that time: it is hidden, or it comes to the stage later/)
+        for (const start of [3, 0]) {
+            await expect(failure((s) => s.play(spotlight(s.add(box(300).hide()))), start), `at ${start}`).rejects.toThrow(new RegExp(`the target of the light at ${start} s does not show at that time`))
+            await expect(failure((s, a) => { a.hide(); s.play(spotlight(a)) }, start), `at ${start}`).rejects.toThrow(new RegExp(`the target of the light at ${start} s does not show at that time`))
+        }
+        // A target that left just before the light is hidden too, and so is the source of a morph that is over.
+        await expect(failure((s, a) => { s.play(fadeOut(a)); s.play(spotlight(a)) })).rejects.toThrow(/the target of the light at 3.6 s does not show at that time/)
+        await expect(failure((s, a) => { s.play(morph(a, box(300)), { duration: 1 }); s.play(spotlight(a)) })).rejects.toThrow(/the target of the light at 4 s does not show at that time/)
+        await expect(failure((s) => s.play(spotlight(s.camera)))).rejects.toThrow(/a target is the camera, which is not a part of the picture. Give it a node that the film draws/)
+        await expect(failure((s) => s.play(spotlight(s.root)))).rejects.toThrow(/a target is the root of the stage, which holds every node, so nothing would dim/)
+        // A light in a node that another light dimmed as a whole, and in a node whose group is dim.
+        const inDim = (order: 'time' | 'code', deep: boolean) => compile((s) => {
+            const bars = [box(-450), box(-300)]
+            const chart = group(...bars)
+            s.add(deep ? group(chart, box(-450, 300)) : chart)
+            const other = s.add(box(300))
+            const stage = () => s.play(spotlight(other, { duration: 1 })), inner = () => s.play(spotlight(bars[1]!, { within: chart, duration: 1 }))
+            if (order === 'time') { s.at(1, stage); s.at(2, inner) } else { s.at(2, inner); s.at(1, stage) }
+            s.wait(4)
+        })
+        for (const order of ['time', 'code'] as const) for (const deep of [false, true]) {
+            await expect(inDim(order, deep), `${order}, ${deep ? 'in a dim group' : 'dim itself'}`).rejects.toThrow(/the node for within is dim at 2 s, because another light is on something else then. So the light in it would show nothing. Make that node a target of the other light, or turn the other light off first/)
+        }
+    })
+
+    it('takes as a target a node that enters with the light, a part of a thing that enters with it, and the source of a morph that starts with it', async () => {
+        const film_ = (build: (s: Stage) => Node[], start: number) => {
+            let nodes!: Node[], rest!: Node
+            return compile((s) => {
+                rest = s.add(box(-600))
+                s.wait(start)
+                nodes = build(s)
+                s.wait(1)
+            }).then((f) => [lit(f, f.duration, rest), nodes.map((node) => at(f.duration, () => node.get('dim')))])
+        }
+        for (const start of [0, 2]) {
+            const entrances: Record<string, (s: Stage) => Node[]> = {
+                'fadeIn and the light, in the two orders': (s) => {
+                    const first = box(-300), second = box(-150)
+                    s.play(spotlight([first, second], { duration: 0.5 }), fadeIn(first, { duration: 0.5 }))
+                    s.at(s.time - 0.5, () => s.play(fadeIn(second, { duration: 0.5 })))
+                    return [first, second]
+                },
+                // `write` keeps each glyph hidden until its turn, so the last glyphs are hidden when the light starts.
+                'one term of an equation that write brings': (s) => { const eq = tex('a^2 + b^2 = c^2', { size: 90 }); s.play(write(eq), spotlight(eq.part('c^2'))); return eq.part('c^2') },
+                'the last child of a group that fades in child by child': (s) => { const rows = [0, 1, 2].map((i) => box(-300 + i * 150, 200)); s.play(fadeIn(group(...rows), { lag: 0.5 }), spotlight(rows[2]!)); return [rows[2]!] },
+                'one bar of a chart that enters': (s) => { const chart = barChart([{ label: 'a', value: 3 }, { label: 'b', value: 7 }], { width: 400, height: 240 }); s.play(chart.enter(), spotlight(chart.bar(1))); return [chart.bar(1)] },
+                'the source of a morph': (s) => { const source = s.add(box(0)); s.wait(start === 0 ? 0 : 0.5); s.play(spotlight(source, { duration: 0.5 }), morph(source, box(300), { duration: 0.5 })); return [source] },
+            }
+            for (const [name, build] of Object.entries(entrances)) {
+                const [rest, dims_] = await film_(build, start)
+                expect([rest, [...new Set(dims_)]], `${name}, at ${start} s`).toEqual([[0.3], [1]])
+            }
+        }
+    })
+
+    it('refuses a target that is not a node, an empty list, a dim that is not a number from 0 to 1, a duration under 0, and a target outside `within`', async () => {
+        await compileFilm(film(() => {
+            const a = box(0), inner = box(100), outer = group(inner)
+            expect(() => spotlight([])).toThrow(/list of targets is empty.*or null to turn the light off/)
+            expect(() => spotlight(undefined as never)).toThrow(/a target is undefined, not a node/)
+            expect(() => spotlight([a, [inner][1]!])).toThrow(/a target is undefined, not a node/)
+            expect(() => spotlight(a, { keep: [null as never] })).toThrow(/a node in keep is null, not a node/)
+            expect(() => spotlight(a, { keep: 'heading' as never })).toThrow(/a node in keep is string, not a node/)
+            expect(() => spotlight(inner, { within: 'chart' as never })).toThrow(/the node for within is string, not a node/)
+            for (const dim of [-0.1, 1.5, NaN, Infinity]) expect(() => spotlight(a, { dim })).toThrow(new RegExp(`dim is ${dim}. It is the part of its color that the rest keeps, a number from 0 to 1`))
+            expect(() => spotlight(a, { dim: '0.3' as never })).toThrow(/dim is "0.3"/)
+            for (const duration of [-1, NaN, Infinity]) expect(() => spotlight(a, { duration })).toThrow(new RegExp(`duration is ${duration}. It is the time that the light takes to change, in seconds, 0 or more`))
+            expect(() => spotlight(a, { within: outer })).toThrow(/a target is not inside the node for within/)
+            expect(() => spotlight(outer, { within: outer })).toThrow(/a target is not inside the node for within/)
+            // The ends of the range, a target in `within`, the light off in `within`, and one node for `keep` are all valid.
+            for (const dim of [0, 1]) expect(spotlight(a, { dim }).label).toBe('spotlight')
+            expect(spotlight(inner, { within: outer }).label).toBe('spotlight')
+            expect(spotlight(null, { within: outer }).label).toBe('spotlight')
+            expect(spotlight(a, { keep: inner, duration: 0 }).label).toBe('spotlight')
+            // Two nodes as two arguments: the second one would be lost as the options.
+            expect(() => spotlight(a, inner as never)).toThrow(/the second argument is a node, and it must be the options. To light more than one node, give them as one list: spotlight\(\[a, b\]\)/)
+            expect(() => spotlight(a, [inner] as never)).toThrow(/the second argument is a node/)
+        }))
+    })
+
+    describe('changes nothing in a film with no light', () => {
+        const shown = (f: CompiledFilm, time: number, node: Node) => f.frame(time).ops.some((op) => op.node === node)
+
+        it('keeps the timeline of a node that a verb brings at 0 s: a group that takes the node in later still hides it before', async () => {
+            let brought!: Node, added!: Node
+            const f = await compile((s) => {
+                const holder = s.add(group())
+                brought = box(0)
+                s.play(fadeIn(brought, { duration: 0.4 }))
+                added = s.add(box(200))
+                s.wait(1.1)
+                // At 1.5 s a group on the stage takes the two nodes in. The stage mounts them again then, as it did before.
+                holder.add(brought, added)
+                s.wait(1)
+            })
+            expect(brought.tracks?.get('dim')).toBeUndefined()
+            expect([shown(f, 0.2, brought), shown(f, 1, brought), shown(f, 2, brought)]).toEqual([false, false, true])
+            expect([shown(f, 0.2, added), shown(f, 1, added), shown(f, 2, added)]).toEqual([false, true, true])
+        })
+
+        it('keeps a node hidden that the film removes before it mounts the node at 0 s', async () => {
+            let removed!: Node, after!: Node, alone!: Node
+            const f = await compile((s) => {
+                removed = box(-300)
+                s.remove(removed)
+                s.mountAt(removed, 0)
+                after = box(0)
+                s.mountAt(after, 0)
+                s.remove(after)
+                alone = box(300)
+                s.mountAt(alone, 0)
+                s.wait(1)
+            })
+            expect([removed, after, alone].map((node) => shown(f, 0.5, node))).toEqual([false, false, true])
+            // A mount at 0 s writes no key: the node shows from the start by its own `visible`.
+            expect(alone.tracks?.get('visible')).toBeUndefined()
+        })
+    })
+
+    describe('a mark that a verb adds for a node is as bright as that node, at 0 s and later', () => {
+        const YELLOW = parseColor('#ffd75e')
+        const verbs: Record<string, (a: Node, wire: Node, word: Node) => Anim> = {
+            circumscribe: (a) => circumscribe(a, { duration: 1 }),
+            flash: (a) => flash(a, { duration: 1 }),
+            ripple: (a) => ripple(a, { color: 'yellow', duration: 1 }),
+            pulse: (_a, wire) => pulse(wire, { duration: 1 }),
+            highlightSweep: (_a, _wire, word) => highlightSweep(word, { duration: 1 }),
+            typewriter: (_a, _wire, word) => typewriter(word, { cursor: true, cursorColor: 'yellow', duration: 1 }),
+        }
+        const cases = Object.keys(verbs).flatMap((verb) => [0, 2].map((start) => [verb, start] as const))
+
+        it.each(cases)('%s at %d s: bright with a light on its node, and as dim as its node with the light on another node', async (verb, start) => {
+            for (const lit_ of [true, false]) {
+                let known!: Set<Node | undefined>
+                const f = await compile((s) => {
+                    const a = s.add(box(-300)), b = s.add(box(300))
+                    const wire = s.add(line([-200, 200], [200, 200], { stroke: 'blue', width: 4 }))
+                    const word = s.add(text('word', { size: 60 }).at(0, -250))
+                    known = new Set([a, b, wire, ...word.all()])
+                    s.wait(start)
+                    s.play(spotlight(lit_ ? [a, wire, word] : b, { duration: 0.2 }), verbs[verb]!(a, wire, word))
+                })
+                // Each mark is yellow. Read its red channel as a part of the way from the background to yellow.
+                const marks = paths(f, start + 0.5).filter((op) => !known.has(op.node))
+                const parts = [...new Set(marks.map((op) => round((((op.stroke ?? op.fill) as Rgba)[0] - BACK[0]) / (YELLOW[0] - BACK[0]))))]
+                expect(marks.length).toBeGreaterThan(0)
+                expect(parts, lit_ ? 'the light is on its node' : 'the light is on another node').toEqual([lit_ ? 1 : 0.3])
+            }
+        })
+
+        it('leaves a mark at a point, which belongs to no node, with its own look', async () => {
+            for (const start of [0, 2]) {
+                let known!: Set<Node | undefined>
+                const f = await compile((s) => {
+                    const a = s.add(box(-300)), b = s.add(box(300))
+                    known = new Set([a, b])
+                    s.wait(start)
+                    s.play(spotlight(a, { duration: 0.2 }), flash([0, 0], { duration: 1 }), ripple([0, 200], { color: 'yellow', duration: 1 }))
+                })
+                const marks = paths(f, start + 0.5).filter((op) => !known.has(op.node))
+                expect([...new Set(marks.map((op) => round((((op.stroke ?? op.fill) as Rgba)[0] - BACK[0]) / (YELLOW[0] - BACK[0]))))], `at ${start} s`).toEqual([1])
+            }
+        })
+    })
+
+    it('lights the label of a span of `lanes` with its bar, and the row of a dot chart with its dot', async () => {
+        const flow = () => lanes(['guest', 'monitor'], [{ lane: 'guest', start: 0, end: 30, label: 'runs' }, { lane: 'monitor', start: 30, end: 70, label: 'emulates the device' }], { width: 900 })
+        const dots = () => dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }, { label: 'tall CSV', value: 0.57, low: 0.54, high: 0.6 }], { width: 500, domain: [0, 1] })
+        let made!: ReturnType<typeof flow>, chart!: ReturnType<typeof dots>
+        await compile((s) => {
+            made = s.add(flow().at(0, -200))
+            chart = s.add(dots().at(0, 250))
+            s.play(made.showAll(), { duration: 0.5 })
+            // The bar of the second span, and the dot of the first row. The chart is two levels over the dot: its row is between.
+            s.play(spotlight(made.spans[1]!.shape, { within: made, duration: 0.5 }), spotlight(chart.dots[0]!, { within: chart, duration: 0.5 }))
+        })
+        const bright = (...nodes: (Node | null)[]) => dims(1, ...nodes.map((node) => node!)).map((dim) => dim === 1)
+        expect(bright(made.spans[1]!.shape, made.spans[1]!.text, made.spans[0]!, made.names[1]!)).toEqual([true, true, false, false])
+        expect(chart.dots[0]!.parent).not.toBe(chart)
+        expect(bright(chart.dots[0]!, chart.labels[0]!, chart.intervals[0]!, chart.rows[1]!, chart.axis)).toEqual([true, true, true, false, false])
+    })
+})
+
 export type { Vec, Vec3 }
 
 describe('object catalog', () => {
@@ -6888,5 +7901,16 @@ describe('object catalog', () => {
         // fromComponent lives in the Node-only export module, because it needs the layout engine.
         const missing = FILM_OBJECTS.filter((entry) => !(entry.name in stage) && entry.name !== 'fromComponent').map((entry) => entry.name)
         expect(missing).toEqual([])
+    })
+
+    it('names every verb that the stage exports, so a new verb is not left out of the list', async () => {
+        const { FILM_OBJECTS } = await import('../src/stage/catalog')
+        const named = new Set(FILM_OBJECTS.map((entry) => entry.name))
+        // The two modules of verbs. A class is not a verb, and `toPaint` is a helper for colors that `anim` passes on.
+        const verbs = { ...await import('../src/stage/anim'), ...await import('../src/stage/objects/verbs') } as Record<string, unknown>
+        const isVerb = ([name, value]: [string, unknown]) => typeof value === 'function' && !/^class\b/.test(Function.prototype.toString.call(value)) && name !== 'toPaint'
+        const missing = Object.entries(verbs).filter(isVerb).map(([name]) => name).filter((name) => !named.has(name))
+        expect(missing).toEqual([])
+        expect(named.has('spotlight')).toBe(true)
     })
 })

@@ -22,6 +22,14 @@ export interface NodeProps {
     px: number
     py: number
     opacity: number
+    /**
+     * The part of its color that a node keeps while a light is on something else: at 1 the node has its own
+     * look, and at 0 its paints are the background color of the film. `spotlight` owns it, so a film that
+     * fades a node and a light that dims it do not write the same value. It does not change the alpha, so a
+     * dim node still hides what is behind it. It does not add up along a branch: a node draws with the
+     * least `dim` of itself and its ancestors.
+     */
+    dim: number
     visible: boolean
     z: number
     path: Path | null
@@ -60,7 +68,7 @@ export type PropName = keyof NodeProps
 // assigning over a frozen inherited property throws.
 export const DEFAULT_PROPS: Readonly<NodeProps> = {
     x: 0, y: 0, rotation: 0, sx: 1, sy: 1, px: 0, py: 0,
-    opacity: 1, visible: true, z: 0,
+    opacity: 1, dim: 1, visible: true, z: 0,
     path: null, fill: null, fillOpacity: 1, stroke: null, strokeOpacity: 1, strokeWidth: 3,
     cap: 'round', join: 'round', dash: null, dashOffset: 0,
     trimFrom: 0, trimTo: 1, trimEach: false,
@@ -68,7 +76,7 @@ export const DEFAULT_PROPS: Readonly<NodeProps> = {
 }
 
 const NUMERIC: ReadonlySet<PropName> = new Set<PropName>([
-    'x', 'y', 'rotation', 'sx', 'sy', 'px', 'py', 'opacity', 'z', 'fillOpacity', 'strokeOpacity',
+    'x', 'y', 'rotation', 'sx', 'sy', 'px', 'py', 'opacity', 'dim', 'z', 'fillOpacity', 'strokeOpacity',
     'strokeWidth', 'dashOffset', 'trimFrom', 'trimTo', 'glow',
 ])
 
@@ -501,6 +509,14 @@ export class Node {
     named(label: string): this {
         this.label = label
         return this
+    }
+
+    /**
+     * The labels that belong to one part of this object, such as the name and the readout of a bar. A light
+     * on the part keeps them bright. An object that has such labels says so here.
+     */
+    labelsOf(_part: Node): readonly Node[] {
+        return []
     }
 }
 

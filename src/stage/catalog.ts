@@ -150,4 +150,5 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'pulse', group: EMPHASIS, usage: 'pulse(line): a lit segment travels along a line' },
     { name: 'shake', group: EMPHASIS, usage: 'shake(node): a small oscillation' },
     { name: 'highlightSweep', group: EMPHASIS, usage: 'highlightSweep(node): a marker stroke across text' },
+    { name: 'spotlight', group: EMPHASIS, usage: "spotlight(row, { dim: 0.3, keep: [heading] }): the rest of the stage dims, and the row keeps its look. A second spotlight moves the light, and spotlight(null) turns it off. { within: chart } dims only inside one node" },
 ]
