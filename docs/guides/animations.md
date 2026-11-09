@@ -137,6 +137,8 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+A verb that scales or turns the node about a point plays with `along` in one `s.play`, in any order: `s.play(grow(mark), along(mark, road))` and `s.play(along(mark, road), grow(mark))` are the same film. Such verbs are `grow`, `fadeIn` with a `scale`, `scaleBy`, `rotate`, `spin`, `shake`, and `indicate`. For a message that travels between two nodes, [`connector.send`](objects.md#messages-on-a-line) does both.
+
 ### morph
 
 `morph` turns one shape into another. Afterwards the target is on stage and the source is hidden, so later code always refers to the node you can see.

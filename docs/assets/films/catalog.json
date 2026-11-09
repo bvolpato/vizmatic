@@ -120,6 +120,16 @@
     "look": "midnight"
   },
   {
+    "id": "paxos",
+    "title": "Paxos: two majorities share an acceptor",
+    "summary": "Real single-decree Paxos with lost and late messages: a proposer that hears of two accepted proposals takes the value of the higher number, and 400 random runs never choose two values.",
+    "topic": "Distributed systems",
+    "duration": 55.6,
+    "posterTime": 33.2,
+    "featured": true,
+    "look": "midnight"
+  },
+  {
     "id": "deck-example",
     "title": "Why we rebuilt the renderer",
     "summary": "A six-chapter talk that plays in stepped mode, with a live timeline and measured results.",

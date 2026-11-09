@@ -75,6 +75,7 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 |---|---|
 | `attention.ts` | Compute every number on screen from small real inputs. |
 | `cache-miss.ts` | Run a small queueing model, and draw the system from its results. |
+| `paxos.ts` | Play a protocol through a schedule of delays and losses, and send each message of the trace along a `connector` with `send`. |
 | `gradient-descent.ts` | Drive motion from real iterates, and compare two runs. |
 | `linear-maps.ts` | Bend a grid with `applyMatrix`, and follow what it does to area. |
 | `complex-maps.ts` | Move a grid through a family of maps, and direct the camera. |
@@ -153,6 +154,15 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 ```
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
+
+A message between two parts of a protocol: a request, an answer, a packet. Do not move the mark along the line by hand. `link.send(mark)` grows the mark in beside the first node, carries it at one speed, and takes it into the node at the end. `reverse: true` is an answer. `lost: 0.6` stops it at that part of the way, and `refused: true` stops it before the node, each with a cross that stays for `hold` seconds. `duration` is the time on the way, so a slow message has a long one. For the trace of a simulation, play each message at its time with `s.at`:
+
+```ts
+const link = s.add(connector(client, server, { route: 'straight', tip: false }))
+s.play(link.send(chip('request', { anchor: 'center' }), { duration: 1.2 }))
+s.play(link.send(chip('answer', { anchor: 'center' }), { duration: 1.2, reverse: true }))
+s.play(link.send(chip('request', { anchor: 'center' }), { duration: 0.8, lost: 0.6 }))
+```
 
 A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `server`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `workflow`, `signal`, `issue`, `pullRequest`, `browser`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 

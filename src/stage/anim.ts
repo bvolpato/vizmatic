@@ -395,21 +395,29 @@ function applyChanges(node: Node, values: Map<string, unknown>, ctx: AnimContext
     // A changed pivot moves first with no visible effect. Then the pivot point
     // travels in a straight line while rotation and scale happen around it.
     const px = props.get('px') as number | undefined, py = props.get('py') as number | undefined
+    // The place of the node at the start, when the change moves its pivot: the place of the new pivot.
+    let start: { x: number; y: number } | null = null
     if (px !== undefined || py !== undefined) {
         const nextPx = px ?? node.get('px'), nextPy = py ?? node.get('py')
         const m: Mat = compose(node.get('x'), node.get('y'), node.get('rotation'), node.get('sx'), node.get('sy'), node.get('px'), node.get('py'))
         const [startX, startY] = apply(m, nextPx, nextPy)
         stepAt(node, 'px', nextPx, t0)
         stepAt(node, 'py', nextPy, t0)
-        stepAt(node, 'x', startX, t0)
-        stepAt(node, 'y', startY, t0)
+        // The place of the new pivot keeps the node where it is. It does not take the place of a motion of the same play.
+        node.track('x').stepUnder(t0, startX)
+        node.track('y').stepUnder(t0, startY)
+        start = { x: startX, y: startY }
         props.delete('px')
         props.delete('py')
     }
     clock.now = t0
     for (const [prop, value] of props) {
-        const from = node.get(prop)
-        if (from === value) continue
+        // With a new pivot, the node starts at the place of that pivot, and the change gives the same place when
+        // it does not move the node. The track cannot give that start: a motion of the same play, such as `along`,
+        // may be in effect at this time, and a motion from here to here would take its place.
+        const place = start && (prop === 'x' || prop === 'y') ? start[prop] : null
+        const from = place ?? node.get(prop)
+        if (from === value || (place !== null && Math.abs(place - (value as number)) < 1e-9)) continue
         if (restore) restoreValues.set(prop, from)
         node.tween(prop, value, t0, t1, ease)
     }

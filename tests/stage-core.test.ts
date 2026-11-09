@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-    applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, lagged,
-    line, linePath, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
-    plane, pointAt, rect, rotate, scaleBy, seq, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type PathOp,
+    along, applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, grow, indicate, lagged,
+    line, linePath, linear, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
+    plane, pointAt, rect, rotate, scaleBy, seq, shake, spin, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type Anim, type PathOp,
 } from '../src/stage/index'
+import { Track } from '../src/stage/track'
 import { alignPaths, matchSequence, pathMixer } from '../src/stage/morph'
 import { renderFilmFrame } from '../src/stage/export'
 import { RasterPool, framesToJob } from '../src/stage/raster'
@@ -160,6 +161,61 @@ describe('timeline', () => {
             expect(b.x + b.width / 2 - compiled.width / 2).toBeCloseTo(compiledCenter[0], 1)
             expect(b.y + b.height / 2 - compiled.height / 2).toBeCloseTo(compiledCenter[1], 1)
         }
+    })
+
+    // A verb that scales or turns a node about a point sets the pivot of the node, and that writes the place of the
+    // node at the start of the verb. The write must not take the place of a motion that starts at the same time.
+    const aboutAPoint: [string, (node: Node) => Anim][] = [
+        ['grow', (node) => grow(node, { duration: 0.3 })],
+        ['fadeIn with a scale', (node) => fadeIn(node, { duration: 0.3, scale: 0.5 })],
+        ['fadeOut with a scale', (node) => fadeOut(node, { duration: 1.8, scale: 0.5 })],
+        ['shake', (node) => shake(node, { duration: 0.6 })],
+        ['indicate', (node) => indicate(node, { duration: 0.6 })],
+        ['scaleBy', (node) => scaleBy(node, 2, { duration: 0.6 })],
+        ['rotate', (node) => rotate(node, 1, { duration: 0.6 })],
+        ['spin', (node) => spin(node, 2, { duration: 0.6 })],
+    ]
+    it.each(aboutAPoint)('moves a node along its track while %s plays, whatever the order of the two in the play', async (_name, verb) => {
+        const way = linePath([-600, 0], [600, 0])
+        // A mark with its middle at its origin, and one with its middle away from its origin.
+        for (const shape of [() => circle(30, { fill: 'teal' }), () => group(rect(80, 40, { fill: 'teal' }).at(120, 60))]) {
+            const made: Awaited<ReturnType<typeof compileFilm>>[] = []
+            for (const travelFirst of [true, false]) {
+                made.push(await compileFilm(film({ fps: 30 }, (s) => {
+                    const node = shape()
+                    const travel = along(node, way, { duration: 2, ease: linear })
+                    s.play(...(travelFirst ? [travel, verb(node)] : [verb(node), travel]))
+                })))
+            }
+            const middle = (index: number, t: number) => {
+                const b = pathBounds(paths(made[index]!, t)[0]!.path)!
+                return [b.x + b.width / 2 - made[index]!.width / 2, b.y + b.height / 2 - made[index]!.height / 2]
+            }
+            for (const t of [0.1, 0.45, 1, 1.5]) {
+                // The middle of the mark is on the track, at the part of the way that the time gives.
+                expect(middle(0, t)[0]).toBeCloseTo(-600 + 600 * t, 3)
+                expect(middle(0, t)[1]).toBeCloseTo(0, 3)
+                expect(made[0]!.svg(t)).toBe(made[1]!.svg(t))
+            }
+        }
+    })
+
+    it('keeps a motion in effect over the step that a change of pivot writes at its start, in either order', () => {
+        const motion = { t0: 1, t1: 3, ease: null, to: 20, at: (alpha: number) => 20 * alpha }
+        const stepLast = new Track(0), stepFirst = new Track(0)
+        stepLast.add(motion)
+        stepLast.stepUnder(1, 5)
+        stepFirst.stepUnder(1, 5)
+        stepFirst.add(motion)
+        for (const track of [stepLast, stepFirst]) expect([0.5, 1, 2, 3, 4].map((t) => track.sample(t))).toEqual([0, 0, 10, 20, 20])
+        // With no motion at its time, it is a step as any other, and the later of two steps wins.
+        const steps = new Track(0)
+        steps.step(1, 5)
+        steps.stepUnder(1, 7)
+        expect([0.5, 1, 2].map((t) => steps.sample(t))).toEqual([0, 7, 7])
+        // A plain step still takes the place of a motion that starts at its time: a film can stop a motion that way.
+        stepLast.step(1, -1)
+        expect(stepLast.sample(2)).toBe(-1)
     })
 
     it('leaves the target on stage after a morph and hides the source', async () => {
