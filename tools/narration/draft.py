@@ -40,7 +40,7 @@ def draft_take(beat, speed):
                 words.append({"text": word, "start": round(now, 3), "end": round(now + length, 3)})
             now += length
         now += PAUSE
-    return {"say": beat["say"], "text": beat["text"], "duration": round(max(0.3, now - PAUSE), 3), "hold": beat["hold"], "words": words}
+    return {"say": beat["say"], "text": beat["text"], "duration": round(max(0.3, now - PAUSE), 3), "hold": beat["hold"], "words": words, **({"cues": beat["cues"]} if "cues" in beat else {})}
 
 
 def measured_timing(root):

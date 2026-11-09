@@ -316,4 +316,37 @@ export default film({ title: 'Tight' }, (s) => {
         expect(bad.status).not.toBe(0)
         expect(bad.stderr + bad.stdout).toContain('--text-gap needs a part of the font size')
     }, 60_000)
+
+    it('reports small text only with --text-size, and empty space only with --empty-space', async () => {
+        const directory = await tempDirectory()
+        // A small caption at the top left of the frame, for 6 seconds.
+        await writeFile(join(directory, 'corner.ts'), `import { film, text } from 'vizmatic/stage'
+export default film({ title: 'Corner' }, (s) => {
+    s.add(text('caption', { size: 20 }).at(-700, -420))
+    s.wait(6)
+})
+`)
+        const codes = (...options: string[]) => (JSON.parse(cli(['check', 'corner.ts', ...options, '--json'], directory).stdout).files[0].diagnostics as { code: string; message: string }[]).map((entry) => `${entry.code}: ${entry.message}`)
+        expect(codes()).toEqual([])
+        expect(codes('--text-size', '26')).toEqual(['film.text_small: Text "caption" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+        expect(codes('--text-size', '20')).toEqual([])
+        expect(codes('--empty-space', '0.5')).toEqual(['film.empty_space: For 5 s, 81% of the frame stays empty in one piece: the right 81% of the width. The limit is 50%. Make the picture larger, or use that part for what the picture explains.'])
+        expect(codes('--empty-space', '0.9')).toEqual([])
+        expect(codes('--text-size', '26', '--empty-space', '0.5').map((line) => line.split(':')[0])).toEqual(['film.text_small', 'film.empty_space'])
+        // The two findings are warnings: the check passes, and the report in words names each one.
+        const words = cli(['check', 'corner.ts', '--text-size', '26', '--empty-space', '0.5'], directory)
+        expect(words.status).toBe(0)
+        expect(words.stdout + words.stderr).toContain('film.text_small')
+        expect(words.stdout + words.stderr).toContain('film.empty_space')
+        for (const [option, value, message] of [
+            ['--text-size', 'big', '--text-size needs the least size of text in pixels of a frame that is 1080 high, such as 26'],
+            ['--text-size', '-3', '--text-size needs the least size of text in pixels'],
+            ['--empty-space', '50', '--empty-space needs the largest part of the frame that may stay empty in one piece, from 0 to 1, such as 0.5'],
+            ['--empty-space', 'half', '--empty-space needs the largest part of the frame'],
+        ] as const) {
+            const bad = cli(['check', 'corner.ts', option, value], directory)
+            expect(bad.status, option).not.toBe(0)
+            expect(bad.stderr + bad.stdout).toContain(message)
+        }
+    }, 120_000)
 })

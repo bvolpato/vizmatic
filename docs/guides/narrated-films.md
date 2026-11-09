@@ -87,6 +87,45 @@ my-film/
 - `timeline` has four times in seconds: `intro` for the title card, `pause` for the silence between the title card and the first word, `gap` for the silence between two scenes, and `tail` for the picture after the last word.
 - `pronounce` replaces a word before the voice speaks it. Use it for numbers and names that the voice reads wrong. The captions keep the text that you wrote.
 
+### Cues that the script declares
+
+A beat can name the moments of its voice that change the picture. Each one is a cue: an id, the phrase that it stands for, and data that the film may read.
+
+```json
+{
+  "say": "Then the cache answers in 5 milliseconds: one hundred and sixty times faster.",
+  "hold": 1.5,
+  "cues": [
+    { "id": "cache", "phrase": "the cache answers" },
+    { "id": "result", "phrase": "one hundred and sixty times", "data": { "color": "green" } }
+  ]
+}
+```
+
+- `id` is the name that a scene types, with letters, digits, hyphens and underscores. An id names one cue of its scene.
+- `phrase` is words of the beat, one after another, in the form that the voice says. The beat says them one time.
+- `data` is optional, and the library does not read it. `c.cue('result').data` gives it to the scene.
+
+A scene names the id where it can name a phrase: `c.show('result', time)`, and the same for `c.hide`, `c.swap`, `c.on`, `c.after` and `c.cue`. `c.cues` lists the cues of the scene, each with its beat. The build carries the cues from `script.json` to `timing.json`, and a change of a cue is a change of the script.
+
+Each declared cue must drive something. At the end of the build, the cues that no scene named are one error, by scene:
+
+```text
+narration: 2 cues that the script declares drive nothing in the film: scene "answer": cache, result. Use each one in its scene, such as c.show('cache', nodes), or remove it from the script
+```
+
+A draft of some scenes counts the cues of those scenes only. A string that is the id of a cue of the scene is that cue, also when the voice says the same word somewhere else. A scene can still type a phrase beside the declared cues, and a film with no declared cue works as before.
+
+Which to choose:
+
+| | A phrase in the scene | A cue in the script |
+|---|---|---|
+| Write | `c.show('one hundred and sixty times', time)` | `c.show('result', time)`, and the cue in `script.json` |
+| Good for | A short film that one person writes: the script and the scenes change together. | A course, where a person reviews the script apart from the film. |
+| The script shows | The words of the voice. | The words, and each moment at which the picture changes. |
+| A new wording of the sentence | Changes the scene too. | Changes the phrase of the cue in the script. The scene stays. |
+| A moment that the film forgot | Nothing reports it. | The build stops and names the cue. |
+
 Finish the script before you animate. A change of the script after the scenes exist repeats the work on the scenes.
 
 The build writes `timing.json` from the script, with a fingerprint of what the voice was made from: each text, its spoken form, the holds, the times, the voice and its speed. When you change one of them, the build makes the voice of the beats that changed. A single step that reads the timing stops, names the beats that changed, and gives the command to run. So a script and a voice cannot drift apart in silence.
@@ -122,6 +161,7 @@ More about the film:
 - A scene of the script that the film does not define stops the build. A scene of the film that the script does not have stops it too.
 - An error inside a scene has the name of the scene in front of it.
 - The film lasts one gap and the tail past the last word.
+- The film is as long as its narration, and no longer. A play that ends after its scene stops the build. The message names the scene and the play, and says by how much: `narrated: scene "question": the play of fadeIn that starts at 2.9 seconds ends at 22.9, and the scene ends at 5 seconds, with the hold of its last beat. That is 17.9 seconds too late, so the film would run past its narration.` Give the play a shorter duration, start it on an earlier cue, or give the last beat of the scene a longer `hold` in the script. The last scene may hold its picture for the gap and the tail.
 - The film file always holds every scene. For a movie of some scenes, build a draft with `--scene`.
 - The other options are the options of `film()`, such as `bloom` and `bleed`.
 
@@ -156,6 +196,86 @@ export default narrated({ title: 'A slow page', timing, scenes: { question } })
 In `timing.json`, `lead` is the time of the first word: the title card and the pause after it. The script has `pause`, and the timing has `lead`.
 
 `film()` and `narration()` are still there. Use them when a film needs another order of work, such as two voices or a scene with no voice.
+
+### The shape of a timing
+
+`narrated()` takes any object of this shape. The voice step writes it as `timing.json`. Another tool can write it from its own sound, such as a course that has its own voice service: this is the contract.
+
+```json
+{
+  "intro": 0,
+  "lead": 0.4,
+  "gap": 0,
+  "tail": 0.3,
+  "scenes": [
+    {
+      "id": "question",
+      "title": "The slow page",
+      "start": 0.4,
+      "beats": [
+        {
+          "say": "A page takes 800 milliseconds.",
+          "duration": 2.4,
+          "hold": 0.45,
+          "words": [
+            { "text": "A", "start": 0, "end": 0.2 },
+            { "text": "page", "start": 0.2, "end": 0.6 },
+            { "text": "takes", "start": 0.6, "end": 0.9 },
+            { "text": "eight", "start": 0.9, "end": 1.2 },
+            { "text": "hundred", "start": 1.2, "end": 1.6 },
+            { "text": "milliseconds.", "start": 1.6, "end": 2.3 }
+          ],
+          "cues": [{ "id": "cost", "phrase": "eight hundred milliseconds" }]
+        }
+      ]
+    },
+    {
+      "id": "answer",
+      "title": "The answer",
+      "start": 3.95,
+      "beats": [
+        {
+          "say": "The cache answers.",
+          "duration": 1.2,
+          "hold": 0.45,
+          "words": [
+            { "text": "The", "start": 0, "end": 0.2 },
+            { "text": "cache", "start": 0.2, "end": 0.6 },
+            { "text": "answers.", "start": 0.6, "end": 1.1 }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+All times are seconds.
+
+| Key | What it is |
+|---|---|
+| `intro` | The time of the title card. Optional, 0 by default. A film with `intro: false` shows no card. |
+| `lead` | The time of the first word of the film, for a first scene with no `start`. Optional, 0.6 by default. |
+| `gap` | The silence between two scenes, for a scene with no `start`. The film also ends one gap and one tail after the last hold. Optional, 0.4 by default. |
+| `tail` | The picture after that last gap. Optional, 0 by default. |
+| `scenes[].id` | The name of the scene. The film has one function with this name. |
+| `scenes[].title` | The chapter title. Optional: a scene with none starts no chapter. |
+| `scenes[].start` | The film time of the first word of the scene. Optional. Without it, the scene starts one gap after the scene before it. |
+| `beats[].say` | The text of the beat. The captions show it. |
+| `beats[].duration` | The length of the voice of the beat, more than 0. |
+| `beats[].hold` | The silence after the beat. Optional, 0 by default. |
+| `beats[].words` | Each word that the voice says, with its `start` and its `end` from the start of the beat. A cue needs them. |
+| `beats[].cues` | The cues that the script declares for the beat. Optional. |
+
+What the film makes of it:
+
+- A beat starts when the hold of the beat before it ends. A scene ends when the hold of its last beat ends.
+- A scene with a `start` cannot start before the scene before it ends. The time between the two is the lead of the scene: the picture of the scene opens when the scene before it is gone, so it is up before the first word.
+- The hold of the last beat of a scene is the time of the scene after its last word. The picture leaves in the last quarter of a second of it. In the example, the question ends at 3.25, and the answer has its picture from then to its first word at 3.95.
+- `c.keep` and `c.take` change the two copies 0.3 seconds before the first word of the next scene, with or without a `start`.
+- The film ends one gap and one tail after the last hold. With `gap: 0`, the tail is the time after the last hold.
+
+The words are in the form that the voice says: "eight", "hundred", and not "800". A tool with no measured words can estimate them, as the draft step does. The sound steps of this command line read more keys, which they write themselves: `wav` and `text` of a beat, and `voice`, `speed` and `fingerprint` of the file. A film with its own sound needs none of them. The steps of `vizmatic narrated` check the file before they read it, and they ask for a `hold` in each beat.
 
 ## A scene
 
@@ -197,13 +317,15 @@ export function answer(s: Stage, c: SceneClock) {
 | Call | What it does |
 |---|---|
 | `c.show('a spoken phrase', nodes)` | Fades nodes in, 0.1 seconds before the phrase, in 0.3 seconds. A node, a block of the layout, an animation, or a list. `{ stagger: true }` brings a list one item after another, and all of it before the scene starts to leave. |
+| `c.show('a spoken phrase', nodes, { after: true })` | Fades nodes in when the voice has said the phrase: a result. `c.hide` and `c.swap` take the same option. |
 | `c.hide('a spoken phrase', nodes)` | Fades out nodes that are on the screen, with the same lead and the same fade. |
 | `c.swap('a spoken phrase', out, in)` | The old nodes fade out, and the new ones start to fade in 0.2 seconds later. |
 | `c.on('a spoken phrase', build, offset, beat)` | Runs `build` when the voice starts the phrase, for a play of the scene's own. `offset` moves it, in seconds. `beat` searches one beat only. |
 | `c.after('a spoken phrase', build)` | Runs `build` when the voice finishes the phrase. |
 | `c.onBeat(2, build)` | Runs `build` when beat 2 starts. |
 | `c.at(1.5, build)` | Runs `build` at a time from the first word of the scene. |
-| `c.cue('a spoken phrase')` | Returns the start and the end of the phrase, in film seconds. |
+| `c.cue('a spoken phrase')` | Returns the start and the end of the phrase, in film seconds. For a cue that the script declares, it also returns its `id`, its `phrase`, its `beat` and its `data`. |
+| `c.cues` | The cues that the script declares for the scene, each with its `beat`. |
 | `c.beats` | The beats of the scene, each with `start`, `end` and `until`. |
 | `c.start`, `c.end`, `c.next` | The first word, the last word, and the time at which the next scene starts. |
 | `c.keep(nodes)`, `c.take(nodes)` | Hands a picture to the next scene with no fade. |
@@ -211,9 +333,26 @@ export function answer(s: Stage, c: SceneClock) {
 | `film.intro`, `film.gap`, `film.tail`, `film.end` | The time of the title card, the silence between scenes, the picture after the last gap, and the last moment of the film. |
 
 - A cue ignores case and punctuation. A phrase that the voice does not say stops the build, with the name of the scene and the phrase. So does a phrase that the voice says two times in the scene: the message names the beats. Use a longer phrase, or name the beat: the last argument of `on` and `after`, and the option `beat` of `show`, `hide` and `swap`.
-- The cue of `show`, `hide` and `swap` is a phrase, or the index of a beat for the start of that beat: `c.swap(1, firstList, secondList)`. Their options are `{ beat, lead, fade, stagger, skipShown }`, for the one cue that differs.
+- The cue of `show`, `hide` and `swap` is a phrase, the id of a cue that the script declares, or the index of a beat for the start of that beat: `c.swap(1, firstList, secondList)`. Their options are `{ beat, lead, fade, stagger, skipShown, after }`, for the one cue that differs.
 - A node shows one time. `c.show` brings a node that is not on the screen, so a node of `s.add`, of another cue or of a second list stops the build. `{ skipShown: true }` leaves such a node as it is and brings the rest of a block. It sees only what the scene did in the lines above the call. The fade of a node ends before its scene starts to leave, 0.24 seconds before the end of the scene, or the build stops.
 - A cue is in the words that the voice says. When `pronounce` turns "800" into "eight hundred", the cue is `c.on('eight hundred', ...)`. `npx vizmatic narrated beats . --words question` prints the spoken words of a scene with their times.
+- A cue is letters and digits, in any script: `c.cue('café')`, `c.cue('東京')` and `c.cue('3.5 stars')` work. A cue with no letter and no digit, such as `'%'`, stops the build: write the words that the voice says for the symbol, such as `'percent'`.
+
+### A name before its phrase, a result after it
+
+`c.show` starts before its phrase. That is right for a thing that the voice names: the viewer looks at it while the voice says its name. A result is different. A number that the voice computes must come when the voice has said it, or the picture gives the answer away. `{ after: true }` is for a result.
+
+| | A thing that the voice names | A result that the voice reaches |
+|---|---|---|
+| The call | `c.show('the cache', box)` | `c.show('one hundred and sixty times', number, { after: true })` |
+| The change starts | 0.1 seconds before the first word of the phrase | When the voice has said the last word of the phrase |
+| The node is fully there | 0.2 seconds after the phrase starts | 0.3 seconds after the phrase ends |
+| With the index of a beat, `c.show(1, ...)` | At the start of the voice of the beat | At the end of the voice of the beat, before its hold |
+| `lead` | Counts back from the start of the phrase. 0.1 by default. | Counts back from the end of the phrase. 0 by default. |
+
+`c.hide` and `c.swap` take the same option: `c.swap('the answer', question, answer, { after: true })` changes the picture when the voice has said "the answer". `c.after('a phrase', build)` is the same moment for a play of your own.
+
+A result at the last words of a scene needs time after them. The fade takes 0.3 seconds, and the picture starts to leave 0.24 seconds before the scene ends. So that beat needs a `hold` of 0.6 seconds at the least, and a viewer needs about 1.5 seconds to read a result. The build stops when the fade does not fit, and says so.
 
 ## The kit
 
@@ -406,6 +545,7 @@ A full render of a long film takes many minutes, and the command line cannot con
 2. **The layout.** `npx vizmatic narrated check .` reports marks off the frame, text on text, text near the edge of the frame, and lines across text, at the moments where the film comes to rest.
 3. **The motion.** `npx vizmatic narrated check . --motion` also looks at every frame. It reports two sentences that share pixels while one replaces the other, and 0.2 seconds or more with nothing on screen.
 4. **The reading time.** The same scan reports `film.text_brief`: a text that is up for less time than a viewer needs to read it, at 20 characters in one second. Add `--json` and read each one.
+5. **Small text and empty space.** Two rules are off until the film asks for them, in the `check` list of `film.json`: `"check": ["--text-size", "26", "--empty-space", "0.5"]`. `film.text_small` reports text under 26 px on a frame that is 1080 high. `film.empty_space` reports more than a half of the frame that stays empty in one piece for 4 seconds or more. A build stops on their findings as on every finding. The [command line guide](cli.html) has what each rule counts.
 
 A still cannot show how long a text stays up. A still at the end of a beat shows every text at full opacity, and the next beat can clear a text one second later. A scan of five delivered films found this defect in each of them: one film showed the result of a demonstration for half a second.
 

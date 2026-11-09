@@ -72,7 +72,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'dotChart', group: CHARTS, usage: "dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }], { domain: [0, 1] }): one row per item, a dot on a shared axis, and a line for its interval. chart.enter() brings the rows in. { scale: 'log' } is for values that differ by more than about a hundred times" },
     { name: 'unitChart', group: CHARTS, usage: "unitChart([{ count: 262 }, { count: 39, color: 'green', label: '39 better' }], { rows: 11, mixed: true, plain: true }): one mark for each unit, in groups. chart.enter(), chart.paint() and chart.rearrange({ split: true }) animate it" },
     { name: 'infoBox', group: SYSTEMS, usage: "infoBox({ title, rows }): a dense box with a title, fields, and live stats" },
-    { name: 'connector', group: SYSTEMS, usage: 'connector(a, b, { label }): a routed edge between two nodes' },
+    { name: 'connector', group: SYSTEMS, usage: 'connector(a, b, { label }): a routed edge between two ends. An end is a node, a block of the layout, or a point' },
     { name: 'legend', group: SYSTEMS, usage: "legend([{ label: 'read', color: 'blue' }])" },
     { name: 'callout', group: SYSTEMS, usage: "callout(node, 'Why this matters'): a note with a leader line" },
     { name: 'pictogram', group: SYSTEMS, usage: "pictogram('graph', { size: 96, accent: 'teal' }): a small picture of a concept, such as series, forecast, logs, traces, dag, database, model, core, thread, syscall, workflow, issue. PICTOGRAMS lists every name" },

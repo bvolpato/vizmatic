@@ -126,9 +126,12 @@ class Timeline:
 
 def place(measured):
     """Lay the takes on the timeline of the film, with the numbers that `narration()` uses in the film:
-    the lead, then each take and its hold, and one gap after each scene."""
+    the lead, then each take and its hold, and one gap after each scene. A scene with a start of its own,
+    which a tool that lays out its own sound writes, starts there."""
     now, beats, scenes = measured["lead"], [], {}
     for scene in measured["scenes"]:
+        if "start" in scene:
+            now = scene["start"]
         scenes[scene["id"]] = now
         for index, take in enumerate(scene["beats"]):
             start = now

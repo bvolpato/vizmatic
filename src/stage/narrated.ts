@@ -13,7 +13,11 @@ import { film, type FilmDefinition, type FilmOptions, type Stage } from './stage
 import { text } from './text'
 import { fittedSize } from './text-fit'
 
-/** The content of `timing.json`, as the voice step of `vizmatic narrated` writes it. */
+/**
+ * The timing of a narrated film: the content of `timing.json`, as the voice step of `vizmatic narrated`
+ * writes it, or an object of the same shape that another tool makes from its own sound. The guide of
+ * narrated films has the shape as a contract.
+ */
 export interface TimingFile extends NarrationTiming {
     /** Seconds of the title card, before the story starts. `lead`, the time of the first word, holds them and the pause after them. */
     intro?: number
@@ -180,6 +184,21 @@ function checkArrivals(id: string, nodes: readonly Node[], leaves: number): void
     }
 }
 
+/**
+ * Stop when a play of a scene ends after the scene: the film would run past its narration. A scene has the
+ * time of its voice and of its holds, and the last scene also has the gap and the tail of the film.
+ */
+function checkPlays(id: string, plays: readonly Stage['clips'][number][], limit: number, last: boolean): void {
+    // `c.clear` fades a node until 0.02 seconds after the end of its scene, as the shell does. That is not late.
+    const most = limit + (last ? 0 : CLOSE_FADE - CLOSE_LEAD) + 1e-3
+    const late = plays.reduce<Stage['clips'][number] | undefined>((worst, clip) => (clip.t1 > (worst?.t1 ?? most) ? clip : worst), undefined)
+    if (!late) return
+    const seconds = (time: number) => Math.round(time * 100) / 100
+    const name = [...new Set(late.labels)].join(' and ') || 'animation'
+    const ends = last ? `the film ends at ${seconds(limit)} seconds, one gap and the tail after its last word` : `the scene ends at ${seconds(limit)} seconds, with the hold of its last beat`
+    throw new Error(`narrated: scene "${id}": the play of ${name} that starts at ${seconds(late.t0)} seconds ends at ${seconds(late.t1)}, and ${ends}. That is ${seconds(late.t1 - limit)} seconds too late, so the film would run past its narration. Give the play a shorter duration, start it on an earlier cue, or give the last beat of the scene a longer hold in the script`)
+}
+
 type Box = ReturnType<Node['bounds']>
 
 /** A node for a message: its name, its text, or its place and its size. */
@@ -293,13 +312,17 @@ export function narrated(options: NarratedOptions): FilmDefinition {
         for (const id of building) {
             const scene = voice.scene(id)
             // What is on the screen before this scene is gone at this time: the title card, or the scene before.
-            const cleared = id === first ? (card ? introSeconds : 0) : scene.start - voice.gap
+            // The clock knows when the scene before ended, also in a timing that gives each scene its own start.
+            const cleared = id === first ? (card ? introSeconds : 0) : scene.window.from
             const opens = Math.max(0, cleared - OPEN_BEFORE)
             // When the picture of this scene starts to leave. The last picture stays while the sound fades.
             const leaves = id === last ? clock.end - LAST_LEAVE : scene.end - CLOSE_LEAD
             // `c.show` and `c.swap` bring a node between these two times.
             scene.window = { from: opens, to: leaves }
+            const firstPlay = s.clips.length
             const nodes = named(`scene "${id}"`, () => addedBy(s, opens, () => scenes[id]!(s, scene, clock)))
+            // The plays of the scene, without the fades of the shell, which come after this line.
+            const plays = s.clips.slice(firstPlay)
             fadeInOpening(s, nodes.filter((node) => !scene.taken.has(node)), opens, OPEN_FADE)
             // The scene before this one is built too when its end is one gap before the start of this one.
             if (before && Math.abs(before.next - scene.start) < 1e-6) checkHandover(s, before, scene)
@@ -307,6 +330,8 @@ export function narrated(options: NarratedOptions): FilmDefinition {
             const leaving = nodes.filter((node) => !scene.kept.has(node))
             // A node of the scene leaves with the scene, so it does not arrive after the scene starts to leave.
             checkArrivals(id, leaving, leaves)
+            // A play of the scene ends with the scene. The last picture has the gap and the tail of the film too.
+            checkPlays(id, plays, id === last ? clock.end : scene.end, id === last)
             if (id !== last) {
                 fadeOutBy(s, leaving, leaves + CLOSE_FADE, CLOSE_FADE)
                 continue
@@ -316,5 +341,9 @@ export function narrated(options: NarratedOptions): FilmDefinition {
         }
         // The sound runs past the last word while the pad fades, and the film must not end before the sound.
         s.at(clock.end, () => {})
+        // A wait or a caption of a scene makes a film longer too, with no play to name.
+        if (s.duration > clock.end + 1e-3) {
+            throw new Error(`narrated: the film is ${Math.round(s.duration * 100) / 100} seconds long, and its narration ends at ${Math.round(clock.end * 100) / 100} seconds, one gap and the tail after the last word. A scene waits or holds a caption past that time: remove the wait, or give a beat a longer hold in the script`)
+        }
     })
 }

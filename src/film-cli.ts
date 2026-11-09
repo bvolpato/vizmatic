@@ -442,7 +442,7 @@ export async function checkFilmFile(
     file: string,
     load: FilmLoader,
     looks: readonly LookName[],
-    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'readingSpeed' | 'stepped'> = {},
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'textSize' | 'emptySpace' | 'readingSpeed' | 'stepped'> = {},
 ): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)
