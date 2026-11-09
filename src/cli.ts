@@ -899,7 +899,10 @@ async function importBareFrame(filePath: string, source?: string): Promise<Frame
 async function importRewrittenFrame(filePath: string, source: string): Promise<FrameModule> {
     const extension = extname(filePath)
     const stem = basename(filePath, extension)
-    const tempPath = join(dirname(filePath), `.${stem}.vizmatic-${randomUUID()}${extension}`)
+    // The copy imports the engine by its file URL, which only an ES module can do. Beside a package.json with no
+    // "type": "module", a .ts file is CommonJS, and its require() of that URL fails with "Cannot find module" for
+    // a file that exists. A .mts file is an ES module in every folder.
+    const tempPath = join(dirname(filePath), `.${stem}.vizmatic-${randomUUID()}${extension === '.ts' ? '.mts' : extension}`)
     await writeFile(tempPath, rewriteFrameModuleImports(source))
 
     try {

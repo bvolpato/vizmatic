@@ -351,7 +351,27 @@ export default narrated({ timing, scenes: { one: scene('The first heading'), two
         expect(result.stderr).not.toContain('[object Object]')
         expect(result.stderr).toContain('Two copies of vizmatic/stage built this film')
         expect(result.stderr).toContain('Add "type": "module" to the package.json beside the film')
-    }, 60_000)
+        // On each version of Node the message is the advice, and never "Cannot find module" for a file that exists.
+        expect(result.stderr).not.toContain('Cannot find module')
+        // A second file that does not import the engine: the film renders in the same folder, on each version of Node.
+        await writeFile(join(directory, 'data.ts'), `export const SIZE = 80\nexport const word = (): string => 'hello'\n`)
+        await writeFile(join(directory, 'two.ts'), `import { fadeIn, film, text } from 'vizmatic/stage'\nimport { SIZE, word } from './data'\nexport default film({ title: 'two' }, (s) => { s.play(fadeIn(text(word(), { size: SIZE }))); s.wait(1) })\n`)
+        const two = spawnSync(process.execPath, [resolve('dist/cli.js'), 'film', 'two.ts', '--frame', '0.5', '--width', '160', '--out', 'out'], { cwd: directory, encoding: 'utf8' })
+        expect(two.status, two.stderr).toBe(0)
+        expect((await readdir(join(directory, 'out'))).filter((name) => name.endsWith('.png'))).toEqual(['two_t000.500.png'])
+        // The copy of the film that the command line loads is gone after the run.
+        expect((await readdir(directory)).filter((name) => name.includes('.vizmatic-'))).toEqual([])
+    }, 120_000)
+
+    it('gives the advice, and not "Cannot find module", when a film was loaded as CommonJS and asked for the engine by its URL', async () => {
+        const { loadFilmDefinition } = await import('../src/film-cli')
+        // What require() says of a file URL, on a version of Node that loads the film file as CommonJS.
+        const refused = Object.assign(new Error("Cannot find module 'file:///opt/vizmatic/dist/stage.js'\nRequire stack:\n- /films/.intro.vizmatic-1.tsx"), { code: 'MODULE_NOT_FOUND' })
+        await expect(loadFilmDefinition(resolve('intro.tsx'), () => Promise.reject(refused))).rejects.toThrow('intro.tsx was loaded as CommonJS, because the package.json beside it has no "type": "module". A film is an ES module. Add "type": "module" to the package.json beside the film.')
+        // A module that is truly missing keeps its own message.
+        const missing = new Error("Cannot find module './scenes/hook'")
+        await expect(loadFilmDefinition(resolve('intro.ts'), () => Promise.reject(missing))).rejects.toBe(missing)
+    })
 })
 
 describe.skipIf(!hasUv)('the narrated template', () => {

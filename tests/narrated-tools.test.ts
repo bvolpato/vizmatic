@@ -91,9 +91,9 @@ async function twoTakes(folder: string, film: unknown = { output: 'Tiny-Film', m
 /**
  * A tiny movie with a title, two chapters, two captions and a tone at 48 kHz, as dist/Tiny-Film.mp4. Its
  * length and the start of its second chapter are those of TIMING: 8.5 seconds, and the close at 4. FFmpeg
- * breaks the chapter track of an MP4 that it encodes with captions and a chapter of more than 44 seconds. So
- * the movie is encoded first, and gets its chapters in a second pass that hands the video over at one tick
- * per frame, as the film renderer writes its movies.
+ * 7 and later break the chapter track of an MP4 with captions and a chapter of more than 44 seconds, because
+ * the chapter track counts in a time scale of 48,000,000. So the movie gets its chapters in a second pass
+ * that sets the time scale of the movie to one millisecond, which every FFmpeg from version 5 has.
  */
 async function tinyMovie(folder: string, seconds = 8.5, split = 4, name = 'Tiny-Film', picture = 'testsrc'): Promise<string> {
     await mkdir(join(folder, 'dist'), { recursive: true })
@@ -103,7 +103,7 @@ async function tinyMovie(folder: string, seconds = 8.5, split = 4, name = 'Tiny-
     const encoded = join(folder, `encoded-${name}.mp4`), movie = join(folder, 'dist', `${name}.mp4`)
     ffmpeg('-f', 'lavfi', '-i', `${picture}=size=320x180:rate=30:duration=${seconds}`, '-f', 'lavfi', '-i', `sine=frequency=440:duration=${seconds}:sample_rate=48000`, '-i', join(folder, 'captions.srt'),
         '-map', '0:v', '-map', '1:a', '-map', '2:s', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-c:s', 'mov_text', encoded)
-    ffmpeg('-i', encoded, '-f', 'ffmetadata', '-i', join(folder, 'chapters.txt'), '-map', '0', '-map_metadata', '1', '-map_chapters', '1', '-c', 'copy', '-bsf:v', 'setts=time_base=1/30:prescale=1:pts=PTS:dts=DTS', movie)
+    ffmpeg('-i', encoded, '-f', 'ffmetadata', '-i', join(folder, 'chapters.txt'), '-map', '0', '-map_metadata', '1', '-map_chapters', '1', '-c', 'copy', '-movie_timescale', '1000', movie)
     await rm(encoded)
     return movie
 }
@@ -1028,6 +1028,22 @@ describe.skipIf(!ready)('narration tools', () => {
         const track = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'd:0', '-show_entries', 'stream=nb_frames', '-of', 'csv=p=0', movie], { encoding: 'utf8' }).stdout.trim()
         expect(track).toBe('2')
     }, 240_000)
+
+    it('sets the time scale of the movie to one millisecond, with an option that an old FFmpeg does not have and does not need', async () => {
+        const folder = await filmFolder()
+        const option = (path?: string) => {
+            const result = bare(['-c', 'import json, resound; print(json.dumps(resound.millisecond_scale()))'], path ? { PATH: path } : {})
+            expect(result.status, result.stderr).toBe(0)
+            return JSON.parse(result.stdout) as string[]
+        }
+        // The FFmpeg of this machine has the option. Without it, FFmpeg 7 and later break a chapter of more than 44 seconds.
+        expect(option()).toEqual(['-movie_timescale', '1000'])
+        // An FFmpeg whose MP4 muxer lists no such option: version 4, which writes one millisecond always.
+        const bin = join(folder, 'bin')
+        await mkdir(bin)
+        await writeFile(join(bin, 'ffmpeg'), '#!/bin/bash\necho "Muxer mp4 [MP4 (MPEG-4 Part 14)]:"\necho "  -movflags          <flags>      E.......... MOV muxer flags (default 0)"\n', { mode: 0o755 })
+        expect(option(`${bin}:${process.env['PATH']}`)).toEqual([])
+    }, 60_000)
 
     it('checks the new movie against the old one before the rename: its streams, its length, its chapters and its picture', () => {
         const movie = (change: Record<string, unknown> = {}) => ({

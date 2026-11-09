@@ -98,23 +98,29 @@ def defects(before, after, picture_before, picture_after, chapter_track):
     return found
 
 
+def millisecond_scale():
+    """The option that sets the time scale of the movie header to one millisecond.
+
+    The chapter track of an MP4 counts in that scale. FFmpeg 7 and later take for it the least common
+    multiple of the time scales of the tracks: 48,000,000 for a film with a picture, sound at 48 kHz and
+    captions. A chapter longer than 44 seconds then does not fit in 32 bits, and the chapter track breaks.
+    One millisecond is the scale that FFmpeg wrote up to version 6, and it holds a chapter of any length.
+    An FFmpeg that has no such option, which is version 4, writes one millisecond always."""
+    listed = subprocess.run(["ffmpeg", "-hide_banner", "-h", "muxer=mp4"], capture_output=True, text=True).stdout
+    return ["-movie_timescale", "1000"] if "movie_timescale" in listed else []
+
+
 def remux(movie, sound, info, made):
-    """Write the movie again with the new sound, into `made`."""
-    video = next(stream for stream in info["streams"] if stream["codec_type"] == "video")
-    frames, per = video["r_frame_rate"].split("/")
+    """Write the movie again with the new sound, into `made`. The picture is copied as it is."""
     notes = temporary(movie, ".resound.txt")
     try:
         notes.write_text(metadata(info))
-        # FFmpeg derives the time scale of the chapter track from the time bases of the streams. With the time
-        # base of a copied MP4 video stream (1/15360), a chapter longer than 44 seconds overflows and the chapter
-        # track breaks. The setts filter hands the video over at one tick per frame, as the first render did.
-        # The frame times do not change.
         subprocess.run([
             "ffmpeg", "-y", "-loglevel", "warning", "-i", str(movie), "-i", str(sound), "-f", "ffmetadata", "-i", str(notes),
             "-map", "0:v:0", "-map", "1:a:0", "-map", "0:s?", "-map_metadata", "2", "-map_chapters", "2",
             "-af", f"asetpts=PTS-STARTPTS,apad,atrim=duration={info['format']['duration']}",
-            "-c:v", "copy", "-bsf:v", f"setts=time_base={per}/{frames}:prescale=1:pts=PTS:dts=DTS", "-c:s", "copy",
-            "-c:a", "aac", "-b:a", "384k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-f", "mp4", str(made),
+            "-c:v", "copy", "-c:s", "copy",
+            "-c:a", "aac", "-b:a", "384k", "-ar", "48000", "-ac", "2", *millisecond_scale(), "-movflags", "+faststart", "-f", "mp4", str(made),
         ], check=True)
     finally:
         notes.unlink(missing_ok=True)

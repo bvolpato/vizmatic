@@ -202,9 +202,17 @@ export function filmFromModule(mod: unknown): FilmDefinition | undefined {
 
 /** Load a module and return its film, with a clear message for the common mistakes. */
 export async function loadFilmDefinition(file: string, load: FilmLoader): Promise<FilmDefinition> {
-    const candidate = filmFromModule(await load(file))
-    if (candidate) return candidate
     const shown = relative(process.cwd(), file)
+    const loaded = await load(file).catch((error: unknown) => {
+        // Only require() refuses a file URL, and only a CommonJS file calls it. So this error does not mean that a
+        // file is missing: the film was loaded as CommonJS, and the cause is the package.json beside it.
+        if (error instanceof Error && /Cannot find module 'file:\/\//.test(error.message)) {
+            throw new Error(`${shown} was loaded as CommonJS, because the package.json beside it has no "type": "module". A film is an ES module. Add "type": "module" to the package.json beside the film.`)
+        }
+        throw error
+    })
+    const candidate = filmFromModule(loaded)
+    if (candidate) return candidate
     throw new Error(`${shown} must export a film as its default export: export default film({ title: 'Intro' }, (s) => { ... })`)
 }
 
