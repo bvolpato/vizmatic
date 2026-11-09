@@ -176,6 +176,32 @@ const strip = s.add(steps(['batching', 'SQPOLL', 'register', 'I/O polling'], { w
 s.play(strip.go(1))
 ```
 
+A tree that a search builds: a tree of continuations with a probability on each edge, a decision tree, a search over reasoning steps. Do not place boxes and lines by hand, and do not show the tree whole. A node with a `value` is a box with a name and a number, `edge` or `weight` is the label of the edge from its parent, and `score: 'product'` or `'sum'` writes the running score of each path in its node. `shown: 0` starts with the root, and `grow(ids)` brings one node at a time. `path(id)` lights the way from the root, and a second `path` moves the light. `prune(id)` turns a branch off, with dashes. `keep(ids)` is one step of a beam search: it lights the kept paths and prunes the rest of `t.frontier`. `width` fills a region:
+
+```ts
+const words = s.add(tree({ id: 'the', label: 'The dog', children: [
+    { id: 'ran', label: 'ran', weight: 0.6, children: [{ id: 'home', label: 'home', weight: 0.35 }, { id: 'away', label: 'away', weight: 0.33 }] },
+    { id: 'slept', label: 'slept', weight: 0.4, children: [{ id: 'soundly', label: 'soundly', weight: 0.9 }, { id: 'late', label: 'late', weight: 0.1 }] },
+] }, { width: 1700, score: 'product', shown: 0 }))
+s.play(words.grow(['ran', 'slept']))
+s.play(words.grow(['home', 'away', 'soundly', 'late']))
+s.play(words.keep(['soundly', 'home']))
+s.play(words.path('soundly', { color: 'green' }))
+```
+
+A graph whose nodes change: the plan of an agent, a state machine, a computation graph. Do not recolor nodes by hand, and do not draw a dot that runs on a typed path. `setState(id, state)` gives a node one of `idle`, `active`, `done`, `failed` and `off`, each with its own sign. With `token`, the graph is a state machine: `go(id)` moves the token along an edge, `refuse(id)` shows a step that the machine does not take, and a `go` with no edge stops the build. A node with a `value` is a box with a name and a number, and a `note` is a second text under it. `send(from, to, { value })` sends a light along an edge, with the arrow or against it, and the node at the end takes the text: one call for each step of a forward or a backward pass. With `shown`, `grow(ids)` builds the graph node by node. `width` and `height` fit the default layout to a region, so a film types no place for a node. Give `edgeLabelSize: 26` for a video:
+
+```ts
+const breaker = s.add(graph([{ id: 'closed', label: 'closed', width: 200 }, { id: 'open', label: 'open', width: 200, color: 'red' }, { id: 'half', label: 'half-open', width: 200, color: 'orange' }], [
+    { from: 'closed', to: 'open', label: '2 failures' }, { from: 'open', to: 'half', label: '10 s' }, { from: 'half', to: 'closed', label: 'probe passes' },
+], { width: 1600, token: 'closed', edgeLabelSize: 26 }))
+s.play(seq(breaker.go('open'), breaker.refuse('closed'), breaker.go('half'), breaker.go('closed')))
+
+const net = s.add(graph([{ id: 'w', label: 'w', value: '3', note: '' }, { id: 'y', label: 'w · x', value: '', note: '', width: 150 }], [{ from: 'w', to: 'y', label: '× 2' }], { width: 900, noteColor: 'pink' }))
+s.play(net.send('w', 'y', { value: '6' }))
+s.play(net.send('y', 'w', { note: 'grad 2', color: 'pink' }))
+```
+
 A sequence over time with one lane for each actor, such as a system call, a VM exit, or a request through several services. Do not draw the bars and the arrows by hand. `lanes` places the labels, and stops the build when two labels would touch. `advance` moves the cursor to a time and stops there, so one call fits one sentence of the voice. With `ticks`, one lane is a chart of durations on a time axis. With `boundaries`, a line between two lanes counts the handoffs that cross it, such as `{ between: ['user space', 'kernel'], label: 'system call line', count: true }`, so two objects side by side compare two designs by their crossings. `idle: true` is a span where the lane waits, and `dashed: true` is a handoff whose sender does not wait. When a label has no place, `labelSide` on the event names one. On a panel or in a zone with a fill, set `backing` to the color behind the object, or `backing: null` with `cursor: false`:
 
 ```ts

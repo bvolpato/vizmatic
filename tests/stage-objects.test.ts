@@ -18,6 +18,7 @@ import {
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
+    boxOf, fitted, pointAt,
 } from '../src/stage/index'
 import { encode } from 'fast-png'
 import { Resvg } from '@resvg/resvg-js'
@@ -311,6 +312,682 @@ describe('graph and tree layout', () => {
         expect(end.height).toBeGreaterThan(100)
         expect(f.duration).toBeCloseTo(1)
     })
+})
+
+describe('graph and tree that change', () => {
+    type G = ReturnType<typeof graph>
+    type T = ReturnType<typeof tree>
+    const rgb = (paint: unknown) => (paint as Rgba).slice(0, 3)
+    const color = (name: string) => parseColor(name).slice(0, 3)
+    const fails = async (build: (s: Stage) => void): Promise<string> => {
+        try {
+            await compile(build)
+        } catch (error) {
+            return (error as Error).message
+        }
+        return 'no error'
+    }
+    /** Three nodes in a row with an arrow from a to b and from b to c. */
+    const chain = (options: Parameters<typeof graph>[2] = {}) => graph(
+        [{ id: 'a', label: 'a', at: [-300, 0] }, { id: 'b', label: 'b', at: [0, 0] }, { id: 'c', label: 'c', at: [300, 0] }],
+        [{ from: 'a', to: 'b' }, { from: 'b', to: 'c' }], { layout: 'manual', ...options })
+    /** The words after "The dog", with the weights of the lesson on decoding. */
+    const words = (options: Parameters<typeof tree>[1] = {}) => tree({ id: 'the', label: 'The dog', children: [
+        { id: 'ran', label: 'ran', weight: 0.6, children: [{ id: 'home', label: 'home', weight: 0.35 }, { id: 'away', label: 'away', weight: 0.33 }] },
+        { id: 'slept', label: 'slept', weight: 0.4, children: [{ id: 'soundly', label: 'soundly', weight: 0.9 }, { id: 'late', label: 'late', weight: 0.1 }] },
+    ] }, { score: 'product', ...options })
+    /** The node that a light of `send` or of `path` added to an edge: the last line that is not the shaft. */
+    const lightOf = (edge: ReturnType<G['edge']>) => edge.children.filter((child) => child !== edge.shaft && child !== edge.tip && child !== edge.caption).at(-1)!
+
+    it('builds no new part in a graph and a tree that use no new option, so their frames stay as they were', async () => {
+        let g!: G, t!: T
+        await compile((s) => {
+            g = s.add(graph([{ id: 'a', label: 'a' }, { id: 'b', label: 'b', width: 120 }], [{ from: 'a', to: 'b', label: 'x' }]))
+            t = s.add(tree({ id: 'r', label: 'r', children: [{ id: 'c', label: 'c' }] }))
+        })
+        expect(g.node('a').children).toEqual([g.node('a').shape, g.node('a').caption])
+        expect(g.edge('a', 'b').children).toEqual([g.edge('a', 'b').shaft, g.edge('a', 'b').tip, g.edge('a', 'b').caption])
+        expect(g.children).toEqual([g.edgeLayer, g.nodeLayer])
+        expect(t.node('c').children).toEqual([t.node('c').shape, t.node('c').caption])
+        expect(t.edge('r', 'c').children).toEqual([t.edge('r', 'c').shaft])
+        expect(t.node('c').round).toBe(true)
+        expect(g.current).toBeNull()
+        expect(g.stateOf('a')).toBe('idle')
+    })
+
+    it('setState gives a node the color of its state and a second sign: a wide border, a check, a cross, or dashes', async () => {
+        let g!: G
+        await compile((s) => {
+            g = s.add(chain())
+            s.play(g.setState('a', 'active'), g.setState('b', 'done'), g.setState('c', 'off'), { duration: 1 })
+            s.play(g.setState('b', 'failed'), g.setState('c', 'idle'), { duration: 1 })
+        })
+        expect([g.stateOf('a'), g.stateOf('b'), g.stateOf('c')]).toEqual(['active', 'failed', 'idle'])
+        const a = g.node('a'), b = g.node('b'), c = g.node('c')
+        // Before the play, each node has the look that it was built with.
+        expect(at(0, () => [rgb(a.shape.get('stroke')), a.shape.get('strokeWidth'), a.badge])).toEqual([color('blue'), 2.5, null])
+        at(1, () => {
+            expect([rgb(a.shape.get('stroke')), a.shape.get('strokeWidth')]).toEqual([color('yellow'), 5])
+            expect([rgb(b.shape.get('stroke')), b.shape.get('strokeWidth'), b.badge!.get('visible'), b.badge!.get('opacity')]).toEqual([color('green'), 2.5, true, 1])
+            expect(c.shape.get('dash')).not.toBeNull()
+            expect(rgb(c.caption!.leaves()[0]!.get('fill'))).toEqual(color('dim'))
+        })
+        // The mark of a badge is a check for done and a cross for failed: two lines, not one.
+        const sign = b.badge!.children[1]!
+        expect(at(1, () => sign.get('path')!.length)).toBe(1)
+        expect(at(2, () => sign.get('path')!.length)).toBe(2)
+        at(2, () => {
+            expect(rgb(b.shape.get('stroke'))).toEqual(color('red'))
+            // Idle gives the node the look that it was built with: its own color, a line with no dashes, text in ink.
+            expect([rgb(c.shape.get('stroke')), c.shape.get('dash'), rgb(c.caption!.leaves()[0]!.get('fill'))]).toEqual([color('blue'), null, color('ink')])
+        })
+        // The badge is at the top right corner of the node, outside its label.
+        const label = at(2, () => b.caption!.bounds()), badge = at(2, () => b.badge!.bounds())
+        expect(badge.x).toBeGreaterThan(label.x + label.width)
+        expect(badge.y + badge.height / 2).toBeLessThan(at(2, () => b.bounds().y + b.bounds().height / 2))
+    })
+
+    it('a state in the spec of a node is its look from the first frame, with its sign', async () => {
+        let g!: G
+        const f = await compile((s) => {
+            g = s.add(graph([{ id: 'a', label: 'a', state: 'done', at: [0, 0] }, { id: 'b', label: 'b', state: 'off', at: [200, 0] }], [], { layout: 'manual' }))
+            s.wait(0.5)
+        })
+        expect(g.stateOf('a')).toBe('done')
+        expect(at(0, () => [rgb(g.node('a').shape.get('stroke')), g.node('a').badge!.get('opacity'), g.node('b').shape.get('dash') !== null])).toEqual([color('green'), 1, true])
+        expect(f.duration).toBeCloseTo(0.5)
+        expect(await fails((s) => { s.add(graph([{ id: 'a', state: 'ready' as 'done' }], [])) })).toMatch(/the state of the node "a" is "ready". The states are idle, active, done, failed, off/)
+    })
+
+    it('setState in a sequence chains, and two changes of one node at one time are an error that names both', async () => {
+        let g!: G
+        await compile((s) => {
+            g = s.add(chain())
+            s.play(seq(g.setState('a', 'active'), g.setState('a', 'done')), { duration: 2 })
+        })
+        expect(at(1, () => g.node('a').shape.get('strokeWidth'))).toBe(5)
+        expect(at(2, () => [g.node('a').shape.get('strokeWidth'), g.node('a').badge!.get('opacity')])).toEqual([2.5, 1])
+        expect(g.stateOf('a')).toBe('done')
+        const message = await fails((s) => {
+            const made = s.add(chain())
+            s.play(made.setState('a', 'active'), made.setState('a', 'done'))
+        })
+        expect(message).toMatch(/graph: setState\("a", "done"\) plays from 0 s to 0.5 s, and setState\("a", "active"\) plays from 0 s to 0.5 s. Both change the look of the node "a"/)
+        expect(message).toMatch(/Play the two in a `seq`/)
+        expect(await fails((s) => { s.play(s.add(chain()).setState('a', 'ready' as 'done')) })).toMatch(/setState: no state "ready". The states are idle, active, done, failed, off/)
+        expect(await fails((s) => { s.play(s.add(chain()).setState('z', 'done')) })).toMatch(/graph: setState: no node "z". The nodes are "a", "b", "c"/)
+    })
+
+    it('a node with a value is a box that holds its label over its value, and a note is under the box', async () => {
+        let g!: G
+        await compile((s) => {
+            g = s.add(graph([{ id: 'w', label: 'weight', value: '3.25', note: 'grad 4' }, { id: 'x', label: 'x', value: '2' }], [{ from: 'w', to: 'x' }]))
+        })
+        const w = g.node('w')
+        expect(w.round).toBe(false)
+        const box = w.shape.bounds(), label = w.caption!.bounds(), value = w.value!.bounds(), note = w.note!.bounds()
+        for (const part of [label, value]) {
+            expect(part.x).toBeGreaterThan(box.x)
+            expect(part.x + part.width).toBeLessThan(box.x + box.width)
+            expect(part.y).toBeGreaterThan(box.y)
+            expect(part.y + part.height).toBeLessThan(box.y + box.height)
+        }
+        expect(label.y + label.height).toBeLessThan(value.y)
+        expect(note.y).toBeGreaterThan(box.y + box.height)
+        // The texts are centered on the box.
+        expect(value.x + value.width / 2).toBeCloseTo(box.x + box.width / 2, 0)
+        expect(note.x + note.width / 2).toBeCloseTo(box.x + box.width / 2, 0)
+        expect([g.valueOf('w'), g.noteOf('w'), g.noteOf('x')]).toEqual(['3.25', 'grad 4', null])
+        // The bottom point of a node with a note is under the note.
+        expect(g.p('w')[1]).toBeGreaterThan(g.p('x')[1])
+        expect(g.toWorld(...g.p('w'))[1]).toBeGreaterThanOrEqual(note.y + note.height)
+        expect(g.p('x', 'left')).toEqual([g.node('x').get('x') - g.node('x').halfWidth, g.node('x').get('y')])
+        expect(await fails((s) => { s.add(graph([{ id: 'a', label: 'a', value: 'a long value for a box', width: 100 }], [])) })).toMatch(/graph: the texts of the node "a" are \d+ px wide, and its box is 100 px wide.*Give the node a width of \d+ or more, or shorter texts/)
+        expect(await fails((s) => { s.add(graph([{ id: 'a', value: 3 as unknown as string }], [])) })).toMatch(/the value of the node "a" is 3. A value is a text, such as "3"/)
+    })
+
+    it('setValue and setNote change a text in place, and no moment shows two texts', async () => {
+        let g!: G, old!: Node
+        const f = await compile((s) => {
+            g = s.add(graph([{ id: 'w', label: 'weight', value: '3', note: '', width: 160 }], []))
+            old = g.node('w').value!
+            s.play(seq(g.setValue('w', '2.6'), g.setValue('w', '2.2')), g.setNote('w', 'grad 4'), { duration: 2 })
+        })
+        expect([g.valueOf('w'), g.noteOf('w')]).toEqual(['2.2', 'grad 4'])
+        const last = g.node('w').value!
+        expect((last as TextNode).source).toBe('2.2')
+        const shows = (node: Node, time: number) => at(time, () => node.get('visible') && node.get('opacity') > 0.001)
+        for (const time of [0.05, 0.3, 0.5, 0.7, 0.95, 1.2, 1.5, 1.8, 2]) {
+            const texts = g.node('w').children.filter((child) => child instanceof TextNode && ['3', '2.6', '2.2'].includes(child.source))
+            expect(texts.filter((node) => shows(node, time)).length).toBeLessThanOrEqual(1)
+        }
+        expect(shows(old, 0.1)).toBe(true)
+        expect(shows(old, 2)).toBe(false)
+        expect(shows(last, 2)).toBe(true)
+        // The new value is at the place of the old one.
+        expect(at(2, () => last.bounds().y)).toBeCloseTo(at(0, () => old.bounds().y), 0)
+        // The patch under the note has the size of the new note, so a line passes behind the text.
+        const plate = g.node('w').notePlate!, note = at(2, () => g.node('w').note!.bounds())
+        expect(at(0, () => plate.get('path')!.length)).toBe(0)
+        expect(at(2, () => plate.bounds().width)).toBeGreaterThan(note.width)
+        expect(f.duration).toBeCloseTo(2)
+        // Two changes of one value at one time: the node ends on the last one, and the text of the first does not show under it.
+        let twice!: G
+        await compile((s) => {
+            twice = s.add(graph([{ id: 'w', label: 'weight', value: '3', width: 160 }], []))
+            s.play(twice.setValue('w', '4'), twice.setValue('w', '5'), { duration: 1 })
+        })
+        expect(twice.valueOf('w')).toBe('5')
+        const left = twice.node('w').children.filter((child): child is TextNode => child instanceof TextNode && ['3', '4', '5'].includes(child.source))
+        for (const time of [0.2, 0.5, 0.8, 1]) expect(left.filter((node) => shows(node, time)).map((node) => node.source).filter((source) => source !== (time < 0.5 ? '3' : '5'))).toEqual([])
+        expect(left.filter((node) => shows(node, 1)).map((node) => node.source)).toEqual(['5'])
+        expect(await fails((s) => { s.play(s.add(chain()).setValue('a', '1')) })).toMatch(/graph: setValue: the node "a" was built with no value, so it has no room for one. Give the node a value when you build the graph, such as value: ''/)
+        const wide = await fails((s) => { s.play(s.add(graph([{ id: 'a', label: 'a', value: '' }], [])).setValue('a', '1,234,567')) })
+        expect(wide).toMatch(/setValue: the value "1,234,567" of the node "a" is \d+ px wide, and its box has \d+ px for a text. Give the node a width of (\d+) or more/)
+        const least = Number(/a width of (\d+) or more/.exec(wide)![1])
+        expect(await fails((s) => { s.play(s.add(graph([{ id: 'a', label: 'a', value: '', width: least }], [])).setValue('a', '1,234,567')) })).toBe('no error')
+        expect(await fails((s) => { s.play(s.add(graph([{ id: 'a', label: 'a', value: '' }], [])).setNote('a', 'x')) })).toMatch(/setNote: the node "a" was built with no note/)
+    })
+
+    it('send runs a light in the direction that the call names, and the node at the end takes its value when the light arrives', async () => {
+        let g!: G
+        await compile((s) => {
+            g = s.add(graph([{ id: 'a', label: 'a', value: '1', note: '', at: [-300, 0] }, { id: 'b', label: 'b', value: '', note: '', at: [300, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual' }))
+            s.play(g.send('a', 'b', { value: '2' }), { duration: 1 })
+            s.play(g.send('b', 'a', { note: 'grad 2', color: 'pink' }), { duration: 1 })
+        })
+        const edge = g.edge('a', 'b'), path = edge.shaft.get('path')!
+        const [forward, back] = edge.children.filter((child) => child !== edge.shaft && child !== edge.tip)
+        const middle = (light: Node, time: number) => at(time, () => pointAt(path, (light.get('trimFrom') + light.get('trimTo')) / 2)[0])
+        // Forward: the light starts near a, at the left, and goes right.
+        expect(middle(forward!, 0.15)).toBeLessThan(-100)
+        expect(middle(forward!, 0.6)).toBeGreaterThan(100)
+        // Back: on the same edge, the light starts near b and goes left.
+        expect(middle(back!, 1.15)).toBeGreaterThan(100)
+        expect(middle(back!, 1.6)).toBeLessThan(-100)
+        expect(rgb(at(1.3, () => back!.get('stroke')))).toEqual(color('pink'))
+        // A light shows only while it runs.
+        expect([at(0.5, () => forward!.get('visible')), at(1.01, () => forward!.get('visible')), at(0.5, () => back!.get('visible'))]).toEqual([true, false, false])
+        expect([g.valueOf('b'), g.noteOf('a'), g.noteOf('b')]).toEqual(['2', 'grad 2', ''])
+        // The value changes when the light arrives, not when it starts.
+        const value = g.node('b').value!
+        expect(at(0.65, () => value.get('visible') && value.get('opacity') > 0)).toBeFalsy()
+        expect(at(1, () => [value.get('visible'), value.get('opacity')])).toEqual([true, 1])
+        expect(lightOf(edge)).toBe(back)
+        // In a default layout, the edge between two nodes with notes is a level line: the notes lift both nodes by the same room.
+        let level!: G
+        await compile((s) => {
+            level = s.add(graph([{ id: 'a', label: 'a', value: '1', note: 'one' }, { id: 'b', label: 'b', value: '2', note: 'two' }], [{ from: 'a', to: 'b', label: 'times 2' }]))
+            s.play(level.send('a', 'b'))
+        })
+        const line = level.edge('a', 'b')
+        expect(pathBounds(line.shaft.get('path')!)!.height).toBeLessThan(0.01)
+        expect(line.shaft.bounds().y).toBeCloseTo(level.node('a').shape.bounds().y + level.node('a').shape.bounds().height / 2, 3)
+        // The light is a part of the edge, under its label: it passes behind the label, as the line does.
+        const light = line.children.find((child) => child !== line.shaft && child !== line.tip && child !== line.caption)!
+        expect(line.children.indexOf(light)).toBeLessThan(line.children.indexOf(line.caption!))
+        expect(line.children.indexOf(light)).toBeGreaterThan(line.children.indexOf(line.shaft))
+        expect(await fails((s) => { s.play(s.add(chain()).send('a', 'c')) })).toMatch(/graph: send: no edge joins "a" and "c". The edges of "a" join it to "b"/)
+    })
+
+    it('go moves the token along an edge, and current is the new node', async () => {
+        let g!: G
+        const f = await compile((s) => {
+            g = s.add(chain({ token: 'a' }))
+            s.wait(0.5)
+            s.play(seq(g.go('b'), g.go('c')), { duration: 2 })
+        })
+        expect(g.current).toBe('c')
+        const ring = (id: string, time: number) => at(time, () => g.node(id).ring!.get('opacity'))
+        expect([ring('a', 0), ring('b', 0), ring('c', 0)]).toEqual([1, 0, 0])
+        expect([ring('a', 1.5), ring('b', 1.5), ring('c', 1.5)]).toEqual([0, 1, 0])
+        expect([ring('a', f.duration), ring('b', f.duration), ring('c', f.duration)]).toEqual([0, 0, 1])
+        // The dot is on the edge while it moves, between the two nodes, and it does not show at rest.
+        const dot = g.children.at(-1)!
+        const [x, y, opacity] = at(1, () => [dot.get('x'), dot.get('y'), dot.get('opacity')])
+        expect(x).toBeGreaterThan(-300 + 30)
+        expect(x).toBeLessThan(-30)
+        expect(y).toBeCloseTo(0, 6)
+        expect(opacity).toBe(1)
+        expect([at(0.25, () => dot.get('opacity')), at(1.5, () => dot.get('opacity')), at(f.duration, () => dot.get('opacity'))]).toEqual([0, 0, 0])
+        // The second move starts where the first one ended.
+        expect(at(2, () => dot.get('x'))).toBeGreaterThan(30)
+    })
+
+    it('go follows the arrows: a step with no edge is an error that names the steps that work', async () => {
+        const back = await fails((s) => {
+            const g = s.add(chain({ token: 'b' }))
+            s.play(g.go('a'))
+        })
+        expect(back).toMatch(/graph: go: no edge goes from "b", where the token is, to "a". From "b", the token can go to "c". For a step that the machine refuses, play refuse\("a"\)/)
+        // A line with no arrow takes the token both ways.
+        let g!: G
+        await compile((s) => {
+            g = s.add(chain({ token: 'b', directed: false }))
+            s.play(g.go('a'))
+        })
+        expect(g.current).toBe('a')
+        expect(await fails((s) => { s.play(s.add(chain()).go('b')) })).toMatch(/graph: go: this graph has no token. Give the option token the id of the node where the token starts/)
+        expect(await fails((s) => { s.add(chain({ token: 'z' })) })).toMatch(/graph: token: no node "z". The nodes are "a", "b", "c"/)
+        const twice = await fails((s) => {
+            const made = s.add(chain({ token: 'a' }))
+            s.play(made.go('b'), made.go('c'))
+        })
+        expect(twice).toMatch(/graph: go\("c"\) plays from 0 s to 0.9 s, and go\("b"\) plays from 0 s to 0.9 s. The token makes one move at a time. Play the two in a `seq`/)
+    })
+
+    it('a tree takes a token, which goes down an edge and up again', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(words({ token: 'the' }))
+            s.play(seq(t.go('ran'), t.go('home'), t.go('ran')), { duration: 3 })
+        })
+        expect(t.current).toBe('ran')
+        expect(at(3, () => [t.node('ran').ring!.get('opacity'), t.node('home').ring!.get('opacity'), t.node('the').ring!.get('opacity')])).toEqual([1, 0, 0])
+        expect(await fails((s) => { s.play(s.add(words({ token: 'the' })).go('home')) })).toMatch(/tree: go: no edge goes from "the", where the token is, to "home". From "the", the token can go to "ran", "slept"/)
+    })
+
+    it('refuse sends the token a part of the way and back, with a red ring, and current does not change', async () => {
+        let g!: G
+        await compile((s) => {
+            g = s.add(chain({ token: 'a' }))
+            s.play(g.refuse('b'), { duration: 1 })
+            // No edge joins a and c: the token tries the straight line.
+            s.play(g.refuse('c'), { duration: 1 })
+        })
+        expect(g.current).toBe('a')
+        const ring = g.node('a').ring!, dot = g.children.at(-1)!
+        expect(at(2, () => ring.get('opacity'))).toBe(1)
+        expect(rgb(at(0.6, () => ring.get('stroke')))).toEqual(color('red'))
+        expect(rgb(at(1, () => ring.get('stroke')))).toEqual(color('yellow'))
+        const start = at(0.11, () => dot.get('x')), far = at(0.5, () => dot.get('x')), end = at(0.9, () => dot.get('x'))
+        expect(far).toBeGreaterThan(start + 40)
+        // The dot turns before the middle of the edge, and comes back to where it started.
+        expect(far).toBeLessThan(-150)
+        expect(end).toBeCloseTo(start, 0)
+        expect(at(1.5, () => dot.get('x'))).toBeGreaterThan(start + 40)
+        expect(await fails((s) => { s.play(s.add(chain({ token: 'a' })).refuse('a')) })).toMatch(/refuse: the token is at "a". Name the node that the machine does not let it go to/)
+        // The dot turns before the label of the edge, so that it does not stop on the text.
+        let named!: G
+        await compile((s) => {
+            named = s.add(graph([{ id: 'a', label: 'a', at: [-200, 0] }, { id: 'b', label: 'b', at: [200, 0] }], [{ from: 'a', to: 'b', label: 'slow', labelAt: 0.34 }], { layout: 'manual', token: 'a' }))
+            s.play(named.refuse('b'), { duration: 1 })
+        })
+        const plate = named.edge('a', 'b').caption!.children[0]!.bounds(), token = named.children.at(-1)!
+        const reach = Math.max(...[0.3, 0.4, 0.5, 0.6, 0.7].map((time) => at(time, () => token.bounds().x + token.bounds().width)))
+        expect(reach).toBeLessThan(plate.x)
+        expect(reach).toBeGreaterThan(named.node('a').shape.bounds().x + named.node('a').shape.bounds().width)
+    })
+
+    it('shown keeps nodes and their edges off the stage, and grow brings a node after the edge that leads to it', async () => {
+        let g!: G
+        const f = await compile((s) => {
+            g = s.add(chain({ shown: ['a'] }))
+            s.wait(0.5)
+            s.play(g.grow('b'), { duration: 1 })
+            s.play(g.grow(['a', 'c']), { duration: 1 })
+        })
+        expect([g.isShown('a'), g.isShown('b'), g.isShown('c')]).toEqual([true, true, true])
+        const b = g.node('b'), ab = g.edge('a', 'b'), bc = g.edge('b', 'c')
+        expect(at(0.4, () => [g.node('a').get('visible'), b.get('visible'), ab.get('visible'), bc.get('visible')])).toEqual([true, false, false, false])
+        // The edge from a draws first, and b pops in at its end.
+        expect(at(0.8, () => ab.shaft.get('trimTo'))).toBeGreaterThan(0.3)
+        expect(at(0.8, () => b.get('sx'))).toBeLessThan(0.01)
+        expect(at(1.5, () => [b.get('visible'), b.get('sx'), ab.get('visible'), ab.shaft.get('trimTo')])).toEqual([true, 1, true, 1])
+        expect(at(1.4, () => [g.node('c').get('visible'), bc.get('visible')])).toEqual([false, false])
+        expect(at(f.duration, () => [g.node('c').get('visible'), g.node('c').get('sx'), bc.get('visible'), bc.shaft.get('trimTo')])).toEqual([true, 1, true, 1])
+        // A node that shows already takes no part of the time and does not arrive again: c has the whole second, so its edge draws from the start of it.
+        const drawn = at(1.7, () => (bc.get('visible') ? bc.shaft.get('trimTo') : -1))
+        expect(drawn).toBeGreaterThan(0.05)
+        expect(drawn).toBeLessThan(1)
+        expect(at(1.6, () => g.node('a').get('sx'))).toBe(1)
+        expect(await fails((s) => { s.add(chain({ shown: ['z'] })) })).toMatch(/graph: shown: no node "z"/)
+        expect(await fails((s) => { s.play(s.add(chain()).grow('z')) })).toMatch(/graph: grow: no node "z"/)
+        // The token cannot start on a node that waits, and it cannot take an edge that waits.
+        expect(await fails((s) => { s.add(chain({ shown: ['a'], token: 'b' })) })).toMatch(/the token starts at the node "b", which does not show at the start/)
+        expect(await fails((s) => { s.play(s.add(chain({ shown: ['a'], token: 'a' })).go('b')) })).toMatch(/no edge goes from "a".*No edge leaves "a"/)
+    })
+
+    it('enter of a graph with nodes that wait leaves them for their grow, at full size', async () => {
+        let g!: G, t!: T
+        await compile((s) => {
+            g = s.add(chain({ shown: ['a'] }))
+            t = s.add(words({ shown: 0 }))
+            s.play(g.enter(), t.enter(), { duration: 1 })
+            s.play(g.grow('b'), t.grow('ran'), { duration: 0.5 })
+        })
+        expect(at(0.95, () => [g.node('b').get('visible'), t.node('ran').get('visible')])).toEqual([false, false])
+        expect(at(1.5, () => [g.node('b').get('sx'), t.node('ran').get('sx'), t.node('ran').get('visible')])).toEqual([1, 1, true])
+        expect(at(1, () => t.node('the').get('sx'))).toBe(1)
+        // A node that waits takes no turn: with b off the stage, c is the second of two nodes, not the third of three.
+        let two!: G, three!: G
+        await compile((s) => {
+            two = s.add(chain({ shown: ['a', 'c'] }))
+            three = s.add(chain())
+            s.play(two.enter(), three.enter(), { duration: 1 })
+        })
+        expect(at(0.14, () => two.node('c').get('sx'))).toBeGreaterThan(0.001)
+        expect(at(0.14, () => three.node('c').get('sx'))).toBeCloseTo(0.001, 6)
+    })
+
+    it('a width and a height spread the default layout of a graph to that size, and a size with no room is an error with the size that works', async () => {
+        const nodes = [{ id: 'a', label: 'plan', width: 160 }, { id: 'b', label: 'act', width: 160 }, { id: 'c', label: 'observe', width: 160 }, { id: 'd', label: 'answer', width: 160 }]
+        const links = [{ from: 'a', to: 'b', label: 'tool call' }, { from: 'b', to: 'c' }, { from: 'a', to: 'd' }]
+        const size = (g: G) => {
+            const boxes = [...g.nodes.values()].map((node) => node.shape.bounds())
+            return [Math.max(...boxes.map((b) => b.x + b.width)) - Math.min(...boxes.map((b) => b.x)), Math.max(...boxes.map((b) => b.y + b.height)) - Math.min(...boxes.map((b) => b.y))]
+        }
+        let plain!: G, wide!: G, both!: G, fit!: G
+        await compile((s) => {
+            plain = s.add(graph(nodes, links))
+            wide = s.add(graph(nodes, links, { width: 1400 }))
+            both = s.add(graph(nodes, links, { width: 1000, height: 500 }))
+            fit = s.add(fitted(1200, (width) => graph(nodes, links, { width })))
+        })
+        expect(size(wide)[0]).toBeCloseTo(1400, 3)
+        expect(size(wide)[1]).toBeCloseTo(size(plain)[1], 3)
+        expect(size(both)[0]).toBeCloseTo(1000, 3)
+        expect(size(both)[1]).toBeCloseTo(500, 3)
+        expect(boxOf(fit).width).toBeCloseTo(1200, 0)
+        // The order of the layout stays: the nodes keep their order from left to right.
+        const order = (g: G) => ['a', 'b', 'c', 'd'].sort((p, q) => g.node(p).get('x') - g.node(q).get('x') || g.node(p).get('y') - g.node(q).get('y'))
+        expect(order(wide)).toEqual(order(plain))
+        // The graph is centered on its place, also when its first node is wider than its last one.
+        const left = Math.min(...[...wide.nodes.values()].map((node) => node.shape.bounds().x))
+        expect(left).toBeCloseTo(-700, 3)
+        let uneven!: G
+        await compile((s) => {
+            uneven = s.add(graph([{ id: 'a', label: 'a wide first node', width: 400 }, { id: 'b', label: 'b', width: 80 }], [{ from: 'a', to: 'b' }], { width: 1000 }))
+        })
+        expect([uneven.node('a').shape.bounds().x, uneven.node('b').shape.bounds().x + 80].map((x) => Math.round(x * 1000) / 1000)).toEqual([-500, 500])
+        const narrow = await fails((s) => { s.add(graph(nodes, links, { width: 620 })) })
+        expect(narrow).toMatch(/graph: a width of 620 leaves no room between the nodes "a" and "b". Give a width of (\d+) or more, shorter labels, or fewer nodes side by side/)
+        const least = Number(/a width of (\d+) or more/.exec(narrow)![1])
+        expect(await fails((s) => { s.add(graph(nodes, links, { width: least })) })).toBe('no error')
+        expect(await fails((s) => { s.add(graph(nodes, links, { width: least - 2 })) })).toMatch(/leaves no room/)
+        expect(await fails((s) => { s.add(graph(nodes, links, { width: 100 })) })).toMatch(/graph: a width of 100 is less than the width of the largest node, which is 160/)
+    })
+
+    it('a tree with a value has boxes of one size, with text sizes that a viewer reads', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(words())
+        })
+        const sizes = [...t.nodes.values()].map((node) => [node.halfWidth, node.halfHeight, node.round])
+        expect(new Set(sizes.map((size) => size.join())).size).toBe(1)
+        expect(sizes[0]![2]).toBe(false)
+        for (const node of t.nodes.values()) {
+            const box = node.shape.bounds()
+            for (const part of [node.caption!.bounds(), node.value!.bounds()]) {
+                expect(part.x).toBeGreaterThan(box.x)
+                expect(part.x + part.width).toBeLessThan(box.x + box.width)
+                expect(part.y).toBeGreaterThan(box.y)
+                expect(part.y + part.height).toBeLessThan(box.y + box.height)
+            }
+        }
+        expect([(t.node('ran').caption as TextNode).size, (t.node('ran').value as TextNode).size, (t.edge('the', 'ran').caption!.children[1] as TextNode).size]).toEqual([28, 26, 26])
+        // A tree of circles keeps the sizes that it had.
+        let circles!: T
+        await compile((s) => {
+            circles = s.add(tree({ id: 'r', label: 'r', children: [{ id: 'c', label: 'c' }] }))
+        })
+        expect([(circles.node('r').caption as TextNode).size, circles.node('r').halfWidth]).toEqual([24, 28])
+        expect(await fails((s) => { s.add(words({ shape: 'circle' })) })).toMatch(/tree: a circle has no room for a value. Give shape: 'box'/)
+        const narrow = await fails((s) => { s.add(words({ nodeWidth: 90 })) })
+        expect(narrow).toMatch(/tree: a nodeWidth of 90 has no room for the texts of the node "[^"]+", which are \d+ px wide. Give a nodeWidth of (\d+) or more/)
+        expect(await fails((s) => { s.add(words({ nodeWidth: Number(/nodeWidth of (\d+) or more/.exec(narrow)![1]) })) })).toBe('no error')
+    })
+
+    it('the score of a tree is the product or the sum of the weights on the way, and each node shows it', async () => {
+        let t!: T, sum!: T
+        await compile((s) => {
+            t = s.add(words({ format: (value) => value.toFixed(3) }))
+            sum = s.add(words({ score: 'sum' }))
+        })
+        expect(t.score('the')).toBe(1)
+        expect(t.score('soundly')).toBeCloseTo(0.36, 12)
+        expect(t.score('home')).toBeCloseTo(0.21, 12)
+        expect([t.valueOf('the'), t.valueOf('soundly'), t.valueOf('home')]).toEqual(['1.000', '0.360', '0.210'])
+        expect((t.node('soundly').value as TextNode).source).toBe('0.360')
+        expect((t.edge('slept', 'soundly').caption!.children[1] as TextNode).source).toBe('0.900')
+        expect([sum.score('the'), sum.valueOf('the'), sum.valueOf('soundly')]).toEqual([0, '0', '1.30'])
+        expect(await fails((s) => { s.add(tree({ id: 'r', label: 'r', children: [{ id: 'a', label: 'a' }] }, { score: 'product' })) })).toMatch(/tree: with score: 'product', each node under the root has a weight, and the node "a" has none. Give it a weight, such as weight: 0.5/)
+        expect(await fails((s) => { s.add(tree({ id: 'r', label: 'r', children: [{ id: 'a', label: 'a' }] })).score('a') })).toMatch(/tree: score: this tree has no score. Give the option score: 'product' or 'sum'/)
+    })
+
+    it('the label of an edge of a tree is on its line, nearer to the child, and labels that meet are an error', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(tree({ id: 'r', label: 'root', value: '8', children: [{ id: 'a', label: 'left', value: '5', edge: 'at most 3.35' }, { id: 'b', label: 'right', value: '3', edge: 'more' }] }, { width: 1000 }))
+        })
+        const plate = t.edge('r', 'a').caption!.children[0]!.bounds(), parent = t.node('r').shape.bounds(), child = t.node('a').shape.bounds()
+        const [cx, cy] = [plate.x + plate.width / 2, plate.y + plate.height / 2]
+        // On the line from the middle of the bottom of the parent to the middle of the top of the child.
+        const from = [parent.x + parent.width / 2, parent.y + parent.height], to = [child.x + child.width / 2, child.y]
+        const share = (cy - from[1]!) / (to[1]! - from[1]!)
+        expect(cx).toBeCloseTo(from[0]! + (to[0]! - from[0]!) * share, -1)
+        expect(share).toBeGreaterThan(0.5)
+        expect(share).toBeLessThan(0.7)
+        // Clear of both boxes.
+        expect(plate.y).toBeGreaterThan(parent.y + parent.height)
+        expect(plate.y + plate.height).toBeLessThan(child.y)
+        expect((t.edge('r', 'a').caption!.children[1] as TextNode).source).toBe('at most 3.35')
+        const close = await fails((s) => { s.add(tree({ id: 'r', label: 'r', value: '', children: [{ id: 'a', label: 'a', value: '', edge: 'a long condition' }, { id: 'b', label: 'b', value: '', edge: 'another long one' }] })) })
+        expect(close).toMatch(/tree: the labels of the edges to "a" and "b" meet. Give a larger siblingGap or width \(the siblingGap is \d+ now\), shorter labels, or a smaller edgeLabelSize/)
+        const low = await fails((s) => { s.add(tree({ id: 'r', label: 'r', value: '', children: [{ id: 'a', label: 'a', value: '', edge: 'yes' }] }, { levelGap: 110 })) })
+        expect(low).toMatch(/tree: the label of the edge to "a" has no room between the levels: it meets the node "(r|a)". Give a larger levelGap \(the levelGap is 110 now\)/)
+    })
+
+    it('a tree grows one node at a time, each after its parent', async () => {
+        let t!: T
+        const f = await compile((s) => {
+            t = s.add(words({ shown: 0 }))
+            s.wait(0.5)
+            s.play(t.grow(['ran', 'slept']), { duration: 1 })
+            s.play(t.grow(['home']), { duration: 0.5 })
+        })
+        expect(['the', 'ran', 'slept', 'home', 'away'].map((id) => t.isShown(id))).toEqual([true, true, true, true, false])
+        expect(at(0.4, () => ['the', 'ran', 'slept'].map((id) => t.node(id).get('visible')))).toEqual([true, false, false])
+        // One node after another: ran is there before slept.
+        expect(at(1, () => [t.node('ran').get('sx') > 0.5, t.node('slept').get('sx') < 0.5])).toEqual([true, true])
+        expect(at(f.duration, () => ['ran', 'slept', 'home', 'away'].map((id) => t.node(id).get('visible')))).toEqual([true, true, true, false])
+        expect(at(f.duration, () => [t.edge('ran', 'home').get('visible'), t.edge('ran', 'home').shaft.get('trimTo'), t.edge('ran', 'away').get('visible')])).toEqual([true, 1, false])
+        // While the line of an edge draws, the patch of its label is there and its words are not: no line crosses the words.
+        const label = t.edge('the', 'ran').caption!
+        expect(at(0.7, () => [label.get('opacity'), label.children[0]!.get('opacity'), label.children[1]!.get('opacity'), t.edge('the', 'ran').shaft.get('trimTo') > 0.2])).toEqual([1, 1, 0, true])
+        expect(at(f.duration, () => label.children[1]!.get('opacity'))).toBe(1)
+        expect(await fails((s) => { s.play(s.add(words({ shown: 0 })).grow('home')) })).toMatch(/tree: grow: the parent of "home" is "ran", which does not show yet. Grow "ran" first, or name it before "home" in the same call/)
+        expect(await fails((s) => { s.play(s.add(words({ shown: 0 })).grow(['ran', 'home'])) })).toBe('no error')
+        // A list of ids shows each node with the nodes over it.
+        let some!: T
+        await compile((s) => {
+            some = s.add(words({ shown: ['home'] }))
+        })
+        expect(['the', 'ran', 'home', 'away', 'slept'].map((id) => some.isShown(id))).toEqual([true, true, true, false, false])
+        expect(await fails((s) => { s.add(words({ shown: 1.5 })) })).toMatch(/tree: shown is 1.5. Give a depth, where 0 is the root alone, or a list of ids/)
+    })
+
+    it('path lights the way from the root, a second path moves the light, and add keeps both', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(words())
+            s.play(t.path('home'), { duration: 1 })
+            s.play(t.path('soundly', { color: 'green' }), { duration: 1 })
+            s.play(t.path('home', { add: true }), { duration: 1 })
+            s.play(t.path(null), { duration: 1 })
+        })
+        const width = (from: string, to: string, time: number) => at(time, () => t.edge(from, to).shaft.get('strokeWidth'))
+        const stroke = (from: string, to: string, time: number) => rgb(at(time, () => t.edge(from, to).shaft.get('stroke')))
+        const border = (id: string, time: number) => at(time, () => t.node(id).shape.get('strokeWidth'))
+        // The first path: the edges of the way are wider and in the color of the light, and its nodes are active.
+        expect([width('the', 'ran', 1), width('ran', 'home', 1), width('the', 'slept', 1), width('ran', 'away', 1)]).toEqual([4.4, 4.4, 2.2, 2.2])
+        expect(stroke('ran', 'home', 1)).toEqual(color('yellow'))
+        expect([border('the', 1), border('ran', 1), border('home', 1), border('away', 1)]).toEqual([5, 5, 5, 2.5])
+        // The light runs from the root down: the first edge is lit before the second.
+        expect([width('the', 'ran', 0.62), width('ran', 'home', 0.62)]).toEqual([4.4, 2.2])
+        // The second path moves the light: the old way is plain again, and the new one has the new color.
+        expect([width('the', 'ran', 2), width('ran', 'home', 2), width('the', 'slept', 2), width('slept', 'soundly', 2)]).toEqual([2.2, 2.2, 4.4, 4.4])
+        expect(stroke('ran', 'home', 2)).toEqual(color('dim'))
+        expect(stroke('slept', 'soundly', 2)).toEqual(color('green'))
+        expect([border('ran', 2), border('home', 2), border('soundly', 2)]).toEqual([2.5, 2.5, 5])
+        expect(rgb(at(2, () => t.node('the').shape.get('stroke')))).toEqual(color('green'))
+        // With add, both ways are lit, each in its color.
+        expect([width('ran', 'home', 3), width('slept', 'soundly', 3)]).toEqual([4.4, 4.4])
+        expect([stroke('ran', 'home', 3), stroke('slept', 'soundly', 3)]).toEqual([color('yellow'), color('green')])
+        // The root is on both ways. It was lit first, in green, and it keeps that color.
+        expect(rgb(at(3, () => t.node('the').shape.get('stroke')))).toEqual(color('green'))
+        // Null turns the light off.
+        expect([width('ran', 'home', 4), width('slept', 'soundly', 4), border('the', 4)]).toEqual([2.2, 2.2, 2.5])
+        expect(t.litPath).toEqual([])
+        expect(t.stateOf('the')).toBe('idle')
+    })
+
+    it('path reads the tree when it plays: a node that waits or a pruned branch is an error, and a done node keeps its state', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(words())
+            s.play(t.setState('soundly', 'done'))
+            s.play(t.path('soundly'))
+        })
+        expect(t.litPath).toEqual(['the', 'slept', 'soundly'])
+        expect([t.stateOf('the'), t.stateOf('slept'), t.stateOf('soundly')]).toEqual(['active', 'active', 'done'])
+        expect(await fails((s) => { s.play(s.add(words({ shown: 1 })).path('home')) })).toMatch(/tree: path: the node "home" does not show yet. Grow it first/)
+        expect(await fails((s) => {
+            const made = s.add(words())
+            s.play(made.prune('ran'))
+            s.play(made.path('home'))
+        })).toMatch(/tree: path: the node "home" is off. A light does not go through a pruned branch/)
+        // A grow and a path of the same node in one sequence work: the path reads the tree when it plays.
+        expect(await fails((s) => {
+            const made = s.add(words({ shown: 0 }))
+            s.play(seq(made.grow(['ran', 'home']), made.path('home')))
+        })).toBe('no error')
+        expect(await fails((s) => {
+            const made = s.add(words())
+            s.play(made.path('home'), made.setState('home', 'done'))
+        })).toMatch(/tree: setState\("home", "done"\) plays from 0 s to 0.5 s, and path\("home"\) plays from 0 s to 1.2 s. Both change the look of the node "home"/)
+    })
+
+    it('prune turns a branch off, with the nodes that wait, and a pruned branch does not grow', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(words({ shown: ['ran', 'slept', 'home'] }))
+            s.play(t.path('home'), { duration: 0.5 })
+            s.play(t.prune('ran'), { duration: 1 })
+        })
+        expect(['the', 'ran', 'home', 'away', 'slept'].map((id) => t.stateOf(id))).toEqual(['active', 'off', 'off', 'off', 'idle'])
+        expect(t.litPath).toEqual(['the'])
+        at(1.5, () => {
+            for (const id of ['ran', 'home']) {
+                expect(t.node(id).shape.get('dash')).not.toBeNull()
+                expect(rgb(t.node(id).shape.get('stroke'))).toEqual(color('faint'))
+                expect(rgb(t.node(id).value!.leaves()[0]!.get('fill'))).toEqual(color('dim'))
+            }
+            // The edges of the branch are lines of dashes, at their first width, and the label of an edge is dim.
+            expect([t.edge('the', 'ran').shaft.get('dash') !== null, t.edge('the', 'ran').shaft.get('strokeWidth'), t.edge('ran', 'home').shaft.get('dash') !== null]).toEqual([true, 2.2, true])
+            expect(rgb(t.edge('the', 'ran').caption!.children[1]!.leaves()[0]!.get('fill'))).toEqual(color('dim'))
+            expect(t.edge('the', 'slept').shaft.get('dash')).toBeNull()
+        })
+        // From the top down: the top of the branch changes before the node under it.
+        expect(at(0.9, () => t.node('ran').shape.get('fillOpacity'))).toBeLessThan(at(0.9, () => t.node('home').shape.get('fillOpacity')))
+        expect(await fails((s) => {
+            const made = s.add(words({ shown: 1 }))
+            s.play(made.prune('ran'))
+            s.play(made.grow('home'))
+        })).toMatch(/tree: grow: "home" is in the branch of "ran", which is pruned. A branch that is off does not grow/)
+        expect(await fails((s) => { s.play(s.add(words()).prune('the')) })).toMatch(/tree: prune: "the" is the root/)
+        expect(await fails((s) => {
+            const made = s.add(words())
+            s.play(made.prune('ran'))
+            s.play(made.setState('home', 'done'))
+        })).toMatch(/tree: setState: "home" is in a pruned branch, and a pruned branch stays off/)
+    })
+
+    it('keep is one step of a beam search: it lights the kept paths and prunes the rest of the frontier', async () => {
+        let t!: T
+        const frontiers: string[][] = []
+        await compile((s) => {
+            t = s.add(words({ shown: 0 }))
+            frontiers.push(t.frontier)
+            s.play(t.grow(['ran', 'slept']))
+            frontiers.push(t.frontier)
+            s.play(t.keep(['ran', 'slept']))
+            s.play(t.grow(['home', 'away', 'soundly', 'late']))
+            frontiers.push(t.frontier)
+            // The best two of the four: both children of "ran" lose, so "ran" has no open node under it, and is pruned too.
+            s.play(t.keep(['soundly', 'late']))
+            frontiers.push(t.frontier)
+        })
+        expect(frontiers).toEqual([['the'], ['ran', 'slept'], ['home', 'away', 'soundly', 'late'], ['soundly', 'late']])
+        expect(['the', 'ran', 'home', 'away', 'slept', 'soundly', 'late'].map((id) => t.stateOf(id))).toEqual(['active', 'off', 'off', 'off', 'active', 'active', 'active'])
+        expect(t.litPath).toEqual(['the', 'slept', 'soundly', 'late'])
+        const end = 0.7 * 1.5 + 1 + 0.7 * 2.5 + 1
+        at(end, () => {
+            expect(t.edge('slept', 'soundly').shaft.get('strokeWidth')).toBe(4.4)
+            expect(t.edge('the', 'ran').shaft.get('strokeWidth')).toBe(2.2)
+            expect(t.edge('the', 'ran').shaft.get('dash')).not.toBeNull()
+            expect(t.node('ran').shape.get('strokeWidth')).toBe(2.5)
+        })
+        const wrong = await fails((s) => {
+            const made = s.add(words({ shown: 1 }))
+            s.play(made.keep('home'))
+        })
+        expect(wrong).toMatch(/tree: keep: no node "home"|tree: keep: "home" is not in the frontier. The frontier is "ran", "slept"/)
+        expect(await fails((s) => { s.play(s.add(words()).keep('ran')) })).toMatch(/tree: keep: "ran" is not in the frontier. The frontier is "home", "away", "soundly", "late": the open nodes that show and have no child that shows/)
+    })
+
+    it('keep leaves a done leaf and the way to it as they are', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(words())
+            s.play(t.setState('home', 'done'))
+            s.play(t.keep('soundly'))
+        })
+        // "away" and "late" are pruned. "ran" still has the done leaf "home" under it, so it stays.
+        expect(['ran', 'home', 'away', 'slept', 'soundly', 'late'].map((id) => t.stateOf(id))).toEqual(['idle', 'done', 'off', 'active', 'active', 'off'])
+        expect(t.frontier).toEqual(['soundly'])
+    })
+
+    it('a width sets the room between the leaves of a tree, and a width with no room is an error with the width that works', async () => {
+        const size = (t: T) => {
+            const boxes = [...t.nodes.values()].map((node) => node.shape.bounds())
+            return Math.max(...boxes.map((b) => b.x + b.width)) - Math.min(...boxes.map((b) => b.x))
+        }
+        let wide!: T, side!: T, fit!: T
+        await compile((s) => {
+            wide = s.add(words({ width: 1500 }))
+            side = s.add(words({ width: 1300, direction: 'right' }))
+            fit = s.add(fitted(1250, (width) => words({ width })))
+        })
+        expect(size(wide)).toBeCloseTo(1500, 3)
+        expect(size(side)).toBeCloseTo(1300, 3)
+        expect(boxOf(fit).width).toBeCloseTo(1250, 0)
+        // To the right, the levels share the width: three levels, at equal steps.
+        expect(side.node('ran').get('x') - side.node('the').get('x')).toBeCloseTo(side.node('home').get('x') - side.node('ran').get('x'), 6)
+        const narrow = await fails((s) => { s.add(words({ width: 500 })) })
+        expect(narrow).toMatch(/tree: a width of 500 gives each of the 4 leaves \d+ px, and a node needs \d+. Give a width of (\d+) or more, shorter texts, a smaller labelSize, or fewer leaves/)
+        const least = Number(/a width of (\d+) or more/.exec(narrow)![1])
+        expect(await fails((s) => { s.add(words({ width: least })) })).toBe('no error')
+        expect(await fails((s) => { s.add(words({ width: least - 3 })) })).toMatch(/gives each of the 4 leaves/)
+        expect(await fails((s) => { s.add(words({ width: 1500, siblingGap: 200 })) })).toMatch(/tree: width and siblingGap both set the room between the leaves. Give one of the two/)
+    })
+
+    it('renders the same frame in any order, and the film check finds nothing in the labels that the objects place', async () => {
+        const build = (s: Stage) => {
+            const t = s.add(words({ shown: 0, width: 1500, levelGap: 220 }).at(0, -200))
+            const g = s.add(graph([{ id: 'w', label: 'w', value: '3', note: '' }, { id: 'y', label: 'w · x', value: '', note: '', width: 150 }, { id: 'z', label: 'loss', value: '', width: 150, state: 'done' }],
+                [{ from: 'w', to: 'y', label: '× 2' }, { from: 'y', to: 'z' }], { width: 1300, token: 'w', edgeLabelSize: 26 }).at(0, 330))
+            s.play(t.grow(['ran', 'slept', 'home', 'away', 'soundly', 'late']), g.send('w', 'y', { value: '6' }), { duration: 1.5 })
+            s.play(t.keep(['soundly', 'home']), seq(g.go('y'), g.refuse('w')), g.send('y', 'w', { note: 'grad 2', color: 'pink' }), { duration: 1.5 })
+            s.play(t.path('soundly', { color: 'green' }), g.setState('y', 'failed'), g.setValue('y', '7'), { duration: 1 })
+            s.wait(0.5)
+        }
+        const f = await compile(build)
+        expectPure(f, [0, 0.4, 1.1, 1.5, 1.9, 2.6, 3, 3.4, 4, f.duration])
+        // A gap of 0.7 of the text size asks for more room than 0.3 does, so one scan covers both.
+        const report = await checkFilm(film(build) as FilmDefinition, { textGap: 0.7, motion: true })
+        expect(report.diagnostics.map((finding) => `${finding.code}: ${finding.message}`)).toEqual([])
+    }, 60_000)
 })
 
 describe('array cells', () => {
@@ -1119,6 +1796,12 @@ describe('animations that bring their own object to the stage', () => {
         'unitChart.enter': () => one(unitChart([{ count: 6 }], { rows: 2 }), (chart) => chart.enter()),
         'graph.enter': () => one(graph([{ id: 'a', at: [-100, 0] }, { id: 'b', at: [100, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual' }), (made) => made.enter()),
         'tree.enter': () => one(tree({ id: 'r', label: 'r', children: [{ id: 'c', label: 'c' }] }), (made) => made.enter()),
+        'graph.setState': () => one(graph([{ id: 'a', at: [-100, 0] }, { id: 'b', at: [100, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual' }), (made) => made.setState('a', 'done')),
+        'graph.send': () => one(graph([{ id: 'a', value: '1', at: [-100, 0] }, { id: 'b', value: '', at: [100, 0] }], [{ from: 'a', to: 'b', label: 'x' }], { layout: 'manual' }), (made) => made.send('b', 'a', { value: '2' })),
+        'graph.go': () => one(graph([{ id: 'a', at: [-100, 0] }, { id: 'b', at: [100, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual', token: 'a' }), (made) => made.go('b')),
+        'graph.grow': () => one(graph([{ id: 'a', at: [-100, 0] }, { id: 'b', at: [100, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual', shown: ['a'] }), (made) => made.grow('b')),
+        'tree.path': () => one(tree({ id: 'r', label: 'r', value: '1', children: [{ id: 'c', label: 'c', value: '2', edge: 'yes' }] }), (made) => made.path('c')),
+        'tree.keep': () => one(tree({ id: 'r', label: 'r', children: [{ id: 'c', label: 'c' }, { id: 'd', label: 'd' }] }), (made) => made.keep('c')),
         'arrayCells.enter': () => one(arrayCells([3, 1, 4]), (cells) => cells.enter()),
         'neuralNet.enter': () => one(neuralNet([2, 2]), (net) => net.enter()),
         'tokens.enter': () => one(tokens(['a', 'b']), (row) => row.enter()),
