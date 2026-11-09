@@ -567,6 +567,8 @@ function bake(leaf: Node): Baked {
 /** A temporary shape that exists only while a morph plays. */
 function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: number; ease: Ease; appear?: number; hide?: number }): Node {
     const node = new Node()
+    // A ghost is on its way from one picture to the next, and it can be a letter. The film check does not take it as a mark beside a text.
+    node.data['decoration'] = true
     node.base.visible = false
     node.base.path = from.path
     node.base.cap = from.cap
@@ -726,6 +728,8 @@ export function circumscribe(target: Node, options: AnimOptions & { color?: Colo
             const outline = new Node(rectPath(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, options.radius ?? 12))
                 .stroke(options.color ?? 'yellow', options.width ?? 3)
                 .glow(8)
+            // A film puts this line around a text on purpose, so the film check does not judge the text against it.
+            outline.data['decoration'] = true
             ctx.stage.add(outline)
             ctx.stage.marks.set(outline, target)
             const t0 = ctx.t0, t1 = ctx.t1, mid = t0 + (t1 - t0) * 0.55

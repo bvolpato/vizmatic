@@ -1,5 +1,5 @@
 import { arcPath, polyPath, rectPath, ring, smoothPath, type Path, type Vec } from '../geometry'
-import { dynamic, Node } from '../node'
+import { dynamic, Node, ownLabels } from '../node'
 import { dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { sampleStops, type ColorInput, type Rgba } from '../color'
@@ -104,6 +104,7 @@ export class BarChart extends Node {
             }
         })
         this.add(...this.bars, this.baseline, ...this.labels, ...this.readouts)
+        ownLabels(this, { name: 'bar chart', plot: true })
     }
 
     private lengthOf(value: number): number {
@@ -303,6 +304,7 @@ export class Histogram extends Node {
             return out
         })
         this.add(bars, this.axis)
+        ownLabels(this, { name: 'histogram', plot: true })
     }
 
     private xAt(value: number): number {
@@ -462,6 +464,7 @@ export class Scatter extends Node {
                 this.add(label)
             }
         }
+        ownLabels(this, { name: 'scatter chart', plot: true })
     }
 
     p(x: number, y: number): [number, number] {
@@ -601,6 +604,7 @@ export class LineChart extends Node {
             }
         }
         for (const end of ends) end.label.at(end.label.get('x'), end.y)
+        ownLabels(this, { name: 'line chart', plot: true })
     }
 
     p(x: number, y: number): [number, number] {
@@ -742,6 +746,7 @@ export class PieChart extends Node {
             ;(this as { centerText: Node | null }).centerText = center
             this.add(center)
         }
+        ownLabels(this, { name: 'pie chart' })
     }
 
     private angles(shares: readonly number[], sweep = 1): [number, number][] {
@@ -904,6 +909,7 @@ export class Heatmap extends Node {
             this.columnLabels.push(label)
             this.add(label)
         })
+        ownLabels(this, { name: 'heatmap' })
     }
 
     colorFor(value: number): Rgba {

@@ -1,4 +1,4 @@
-import { Node, type PropName } from '../node'
+import { Node, ownLabels, type PropName } from '../node'
 import { arcPath, polyPath, ring as contour, type Path, type Vec } from '../geometry'
 import { toPaint, type ColorInput } from '../color'
 import { text, type TextOptions } from '../text'
@@ -354,6 +354,8 @@ export class RingBuffer extends Node {
         const capital = measured(text('H', { size, font: this.font }))
         this.caption = options.label ? text(options.label, { size, font: this.font, color: this.slotColor }).at(0, this.captionTop + capital.h / 2 - capital.dy) : null
         if (this.caption) this.add(this.caption)
+        // The ring places its numbers, the names of its pointers, and its caption beside its slots. The film check does not judge that room.
+        ownLabels(this, { name: 'ring buffer' })
     }
 
     /** The running index of the consumer: the number of entries that were read. Its slot is `head % size`. */
@@ -431,6 +433,7 @@ export class RingBuffer extends Node {
                     // With no fill under it, the label has the color of the entry. On a fill, it has the color of the background.
                     const [x, y] = this.p(slot), ink = this.labelled(entry.label, entry.pending ? paint : 'bg', entry.pending === true)
                     clock.now = from
+                    ownLabels(this, { labels: [ink.node] })
                     cell.add(ink.node.at(x - ink.dx, y - ink.dy))
                 }
                 cell.tween('opacity', 1, from, filled, ctx.ease)

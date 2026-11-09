@@ -1,4 +1,4 @@
-import { Node, dynamic } from '../node'
+import { Node, dynamic, objectName, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -56,6 +56,7 @@ export class Tag extends Node {
             const length = ink ? ink.x + ink.width : width
             for (const part of this.children) part.shift(options.anchor === 'right' ? -length : -length / 2, 0)
         }
+        ownLabels(this, { name: 'tag' })
     }
 
     /** Recolor the border of the pill and the word. The fill of the pill and the note keep their colors. */
@@ -124,5 +125,5 @@ export function tagTrack(states: readonly TagState[], options: TagTrackOptions):
         const alpha = Math.max(0, Math.min(1, rise, fall))
         return alpha < 0.01 ? null : tags[index]!.opacity(alpha)
     })
-    return made.pin()
+    return objectName(made.pin(), 'tag track')
 }

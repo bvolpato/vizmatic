@@ -1,5 +1,5 @@
 import { invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
-import { Node, type Edge } from '../node'
+import { Node, ownLabels, type Edge, objectName } from '../node'
 import { filmFont, text, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
 import { toPaint, type ColorInput } from '../color'
@@ -164,6 +164,7 @@ export class InfoBox extends Node {
                 x += w + size * 0.34
             }
         }
+        ownLabels(this, { name: 'info box' })
     }
 
     /** Stage point on one side of the box. `at` moves along the side, from -1 to 1. */
@@ -213,6 +214,7 @@ export class InfoBox extends Node {
             label: 'infoBox.setValue',
             schedule: (ctx) => {
                 this.add(next)
+                ownLabels(this, { labels: [next] })
                 this.rowValues[row] = next
                 anim.schedule(ctx)
             },
@@ -252,7 +254,7 @@ export function sparkline(values: readonly number[], options: SparklineOptions =
     }
     made.add(new Node(values.length > 2 ? smoothPath(points) : polyPath(points)).stroke(color, options.weight ?? 1.5))
     if (options.dotted) made.add(dot((options.weight ?? 1.5) * 1.5, color).at(points[points.length - 1]!))
-    return made
+    return objectName(made, 'sparkline')
 }
 
 // ── Connector ───────────────────────────────────────────────────────────────
@@ -365,6 +367,11 @@ export class Connector extends Node {
         this.base.stroke = toPaint(options.color ?? 'dim')
         this.base.strokeWidth = options.width ?? 1.6
         this.draw = (time) => this.build(time)
+        // The label sits on the line, on a plate. `build` makes it later.
+        ownLabels(this, { name: 'connector', labels: [] })
+        // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
+        this.data['attached'] = [from, to].filter((end) => end instanceof Node)
+        this.data['line'] = true
     }
 
     private anchors(): [Anchor, Anchor] {
@@ -448,7 +455,10 @@ export class Connector extends Node {
         }
         if (options.label && progress > 0.5) {
             const size = options.labelSize ?? 12
-            this.caption ??= text(options.label, { size, font: this.labelFont, color: options.labelColor ?? 'dim' })
+            if (!this.caption) {
+                this.caption = text(options.label, { size, font: this.labelFont, color: options.labelColor ?? 'dim' })
+                ownLabels(this, { labels: [this.caption] })
+            }
             const textWidth = advanceWidth(this.caption)
             const pad = size * 0.35
             this.plate ??= new Node(rectPath(-textWidth / 2 - pad, -size * 0.72, textWidth + pad * 2, size * 1.44, 2)).fill(options.labelBackground ?? 'bg')
@@ -537,7 +547,7 @@ export function legend(items: readonly LegendItem[], options: LegendOptions = {}
         }
         made.add(entry.node)
     })
-    return made
+    return ownLabels(made, { name: 'legend' })
 }
 
 // ── Callout ─────────────────────────────────────────────────────────────────
@@ -613,6 +623,9 @@ export class Callout extends Node {
         this.leader = new Node(polyPath([anchor, elbow, reach])).stroke(color, 1.25)
         this.marker = dot(3, color).at(anchor)
         this.add(this.leader, this.marker)
+        ownLabels(this, { name: 'callout' })
+        // The leader ends at the target on purpose, so the film check does not judge the text of the target against it.
+        if (target instanceof Node) this.data['attached'] = [target]
     }
 
     /** The marker lands, the leader runs out, and the text settles at the end of it. */

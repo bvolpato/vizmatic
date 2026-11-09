@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextNode, type TextOptions } from '../text'
 import { mixColor, parseColor, toPaint, type ColorInput } from '../color'
@@ -208,6 +208,8 @@ export class Steps extends Node {
             this.items.push(item)
             this.add(item)
         })
+        // The strip places each label in its box and each note under its box. The film check does not judge that room.
+        ownLabels(this, { name: 'strip of steps' })
     }
 
     /** The index of the lit step after the changes that are scheduled so far, or null when no step is lit. */

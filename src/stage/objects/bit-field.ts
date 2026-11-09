@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { linePath, type Bounds, type Path, type Ring } from '../geometry'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -349,6 +349,8 @@ export class BitField extends Node {
             this.numbers.push(node)
             this.fields[field]!.add(node)
         }
+        // The object places each label, value and number at its own boxes. The film check does not judge that room.
+        ownLabels(this, { name: 'bit field' })
     }
 
     /** The node of a field, by its index or by its label. Index 0 is the first field, at the left of the first row. */
@@ -409,6 +411,7 @@ export class BitField extends Node {
         this.checked(index, 'value', value)
         // Build the new text now. A text that cannot fit is then an error at the line of the film that names it.
         const next = this.fit(index, value, 'value', false, { font: 'mono', color: this.inks[index] })
+        ownLabels(this, { labels: [next] })
         // The hole in the lines of an unused field takes the size of the new text. Measure the text before it
         // is a part of the object, while its bounds are in the coordinates of the object.
         const lines = this.hatches[index]
