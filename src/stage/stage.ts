@@ -1,4 +1,4 @@
-import { setColorTokens } from './color'
+import { parseColor, setColorTokens, type Rgba } from './color'
 import { smooth, type Ease } from './ease'
 import { buildOps, frameToSvg, type Frame } from './display'
 import { resolveLook, type Look, type LookName } from './look'
@@ -6,6 +6,7 @@ import { Node, mountTree, type StageImage } from './node'
 import { isImageAsset, resolveLegacyImage, validateStageImage, ImageAssetError, type ImageAsset } from './image'
 import { clock } from './track'
 import { Value, type Anim } from './anim'
+import { settleLights, type Light, type MorphRecord } from './light'
 
 export type Aspect = '16:9' | '9:16' | '1:1' | '4:3' | '21:9'
 
@@ -53,6 +54,16 @@ export interface PlayOptions {
     label?: string
 }
 
+/** The background of a film as a color. A look token is valid, and a value that is not a color gives the `bg` of the look. */
+function backdropOf(background: string, look: Look): Rgba {
+    const colors = look.colors as Record<string, string>
+    try {
+        return parseColor(colors[background] ?? background)
+    } catch {
+        return parseColor(colors['bg']!)
+    }
+}
+
 const ASPECTS: Record<Aspect, [number, number]> = {
     '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:3': [1440, 1080], '21:9': [2520, 1080],
 }
@@ -77,6 +88,22 @@ export class Stage {
     readonly clips: Clip[] = []
     readonly captions: Caption[] = []
     readonly updaters: Updater[] = []
+    /** The lights that `spotlight` added. `settleLights` turns them into the `dim` of each node, in time order. */
+    readonly lights: Light[] = []
+    /**
+     * Three records for the lights, of facts that the timeline does not hold. Only a film with a light reads
+     * them, so they change nothing in a film with none.
+     * `arrivals` is the time at which a verb brought a node to the stage: a node that arrives at the very
+     * time of a light enters with it, and at time 0 the timeline cannot tell it from a node of `s.add`.
+     * `marks` is the node that a mark of a verb belongs to, such as the line of `circumscribe` and its
+     * target: the mark is as bright as that node.
+     * `morphs` is each morph with its nodes: a light must not dim a node while it changes its shape.
+     */
+    readonly arrivals = new WeakMap<Node, number>()
+    readonly marks = new Map<Node, Node>()
+    readonly morphs: MorphRecord[] = []
+    /** The color that a dim node goes toward: the background of the film, or of its look when the film has none. */
+    readonly backdrop: Rgba
     time = 0
     private ending = 0
 
@@ -86,6 +113,7 @@ export class Stage {
         this.height = options.height ?? h
         this.fps = options.fps ?? 60
         this.look = resolveLook(options.look)
+        this.backdrop = backdropOf(options.background ?? this.look.background, this.look)
         this.root.mounted = true
         this.camera.mounted = true
     }
@@ -127,6 +155,8 @@ export class Stage {
         node.parent = this.root
         this.root.children.push(node)
         mountTree(node, time)
+        // At time 0 the timeline does not say that a verb brought this node, so keep the time for the lights.
+        this.arrivals.set(node, time)
     }
 
     remove(...nodes: Node[]): void {
@@ -348,7 +378,7 @@ export class CompiledFilm {
             const camera = stage.camera
             const ops = buildOps(stage.root, {
                 x: camera.get('x'), y: camera.get('y'), zoom: camera.get('sx'), rotation: camera.get('rotation'),
-            }, stage.width, stage.height)
+            }, stage.width, stage.height, stage.backdrop, stage.lights.length > 0 ? stage.marks : null)
             const preparedOps = ops.map(op => {
                 if (op.kind !== 'image') return op
                 const asset = op.image.asset ?? this.imageAssets.get(op.image.src)
@@ -372,7 +402,11 @@ export class CompiledFilm {
 
 /** Run the build function, waiting for fonts and math when it asks for them, and return a seekable film. */
 export async function compileFilm(definition: FilmDefinition, overrides: CompileOverrides = {}): Promise<CompiledFilm> {
-    const options: FilmOptions = { ...definition.options, ...(overrides.look ? { look: overrides.look } : {}), ...(overrides.fps ? { fps: overrides.fps } : {}) }
+    const options: FilmOptions = {
+        ...definition.options, ...(overrides.look ? { look: overrides.look } : {}), ...(overrides.fps ? { fps: overrides.fps } : {}),
+        // The stage needs the background too: a light dims a node toward it.
+        ...(overrides.background !== undefined ? { background: overrides.background } : {}),
+    }
     for (let attempt = 0; attempt < 64; attempt++) {
         const stage = new Stage(options)
         setColorTokens(stage.look.colors)
@@ -381,6 +415,8 @@ export async function compileFilm(definition: FilmDefinition, overrides: Compile
         clock.now = 0
         try {
             await definition.build(stage)
+            // The timeline is complete, so each light can ask what was on the stage at its start.
+            settleLights(stage)
             clock.mode = saved.mode
             clock.now = saved.now
             const compiled = new CompiledFilm(stage, options, overrides)

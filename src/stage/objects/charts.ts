@@ -140,6 +140,12 @@ export class BarChart extends Node {
         return this.bars[i]!
     }
 
+    /** The name and the readout of a bar belong to it, so a light on the bar keeps them bright. */
+    override labelsOf(part: Node): readonly Node[] {
+        const index = this.bars.indexOf(part)
+        return index < 0 ? [] : [this.labels[index], this.readouts[index]].filter((node): node is Node => node !== undefined)
+    }
+
     /** Baseline and labels appear, then bars rise one after another while readouts count up. */
     enter(options: AnimOptions = {}): Anim {
         const lag = options.lag ?? 0.12

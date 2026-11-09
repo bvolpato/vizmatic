@@ -100,6 +100,15 @@ const title = s.add(text('Zoom in', { size: 48 }).at(0, -460).pin())
 s.play(to(s.camera, (camera) => camera.at(300, 100).set('sx', 2.5)), { duration: 2, ease: smoother })
 ```
 
+One node in the light while the voice talks about it. Do not fade the other nodes by hand: the list of the nodes on screen gets long, and a node that the list forgets stays bright or stays dim. `spotlight` dims every other node that shows, a second `spotlight` moves the light, and `spotlight(null)` turns it off. `keep` lists what stays bright with the target, such as a heading and a source line. Give it to each call. Pinned nodes stay bright without it. `within: chart` dims only inside one node. A dim node keeps its opacity and its colors go toward the background, so it still hides what is behind it, and a `fade` under the light is still there when the light goes off. The lights follow the time of the film, so `s.at` can name them in any order. A light on `chart.bar(2)` keeps the name and the readout of that bar bright, and `dotChart` and `lanes` do the same for a dot and for the shape of an event. A light cannot dim a node while it morphs, so make the source of a morph a target or a `keep`. A node that comes to the stage with the light, or later, is not dimmed:
+
+```ts
+const keep = [heading, source]
+s.play(spotlight(row3, { keep }))
+s.play(spotlight([row5, total], { keep, dim: 0.25 }))
+s.play(spotlight(null))
+```
+
 Code in a specification or proof language. `codeBlock` knows `tla`, `dafny`, `lean`, and `smt`, where a prime is part of the code and not a quote:
 
 ```ts

@@ -612,6 +612,11 @@ export class Lanes extends Node {
         this.add(this.cursor, ground, ...this.spans, ...this.boundaries, ...this.handoffs, ...this.marks, ...this.names)
     }
 
+    /** The label of an event belongs to its bar, its arrow, or its dot, so a light on that shape keeps the label bright. */
+    override labelsOf(part: Node): readonly Node[] {
+        return this.events.find((event) => event.shape === part)?.children ?? []
+    }
+
     /** The time of the cursor after the changes that are scheduled so far. It starts at the first end of the domain. */
     get time(): number {
         return this.cursorTime
