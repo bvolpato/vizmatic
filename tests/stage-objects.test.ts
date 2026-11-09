@@ -11,7 +11,8 @@ import {
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     lanes, smooth,
-    appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, par, pulse, ripple, spotlight,
+    delay, par, retime, ringBuffer,
+    appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent,
@@ -6878,6 +6879,897 @@ describe('boundary', () => {
             const wide = s.add(boundary({ width: 3000, tally: true }))
             s.play(wide.addCrossings(100000))
             expect(wide.ticks).toHaveLength(400)
+        }))
+    })
+})
+
+describe('ring buffer', () => {
+    type Made = ReturnType<typeof ringBuffer>
+    type Box = { x: number; y: number; width: number; height: number }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const xy = (node: Node) => [node.get('x'), node.get('y')] as const
+    const far = (place: readonly [number, number]) => Math.hypot(place[0], place[1])
+    const corners = (box: Box) => [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height], [box.x + box.width, box.y + box.height]] as const
+    const apart = (a: Box, b: Box, room = 0) => a.x + a.width + room <= b.x || b.x + b.width + room <= a.x || a.y + a.height + room <= b.y || b.y + b.height + room <= a.y
+    const middle = (box: Box) => [box.x + box.width / 2, box.y + box.height / 2] as const
+    const inside = (inner: Box, outer: Box) => Math.min(inner.x - outer.x, inner.y - outer.y, outer.x + outer.width - inner.x - inner.width, outer.y + outer.height - inner.y - inner.height)
+    const paintOf = (color: string) => rect(1, 1, { fill: color }).get('fill')
+    /** The labels of an entry that show now. */
+    const words = (entry: Node) => entry.children.filter((child) => child.get('visible')).map((child) => (child as unknown as { source?: string }).source).filter((source) => source !== undefined)
+    /** The two parts of a pointer: its arrow head, and the node that draws its name. The place of a pointer is its tip. */
+    const parts = (pointer: Node) => ({ arrow: pointer.children[0]!, name: pointer.children[1]! })
+    /** The text that is the name of a pointer now. */
+    const nameText = (pointer: Node) => pointer.children[1]!.draw!(clock.now) as Node
+    const nameOf = (pointer: Node) => (nameText(pointer) as unknown as { source: string }).source
+    /** Two points are in one direction from the center of the ring. */
+    const expectSameWay = (a: readonly [number, number], b: readonly [number, number], digits = 9) => {
+        expect(a[0] / far(a)).toBeCloseTo(b[0] / far(b), digits)
+        expect(a[1] / far(a)).toBeCloseTo(b[1] / far(b), digits)
+    }
+    /** A pointer is at a slot when its tip is in the direction of the middle of that slot, from the center of the ring. */
+    const expectAtSlot = (made: Made, pointer: Node, slot: number) => expectSameWay(xy(pointer), made.p(slot))
+    /** How far around the ring a pointer is, in slots from slot 0. */
+    const turn = (made: Made, pointer: Node) => { const [x, y] = xy(pointer); return ((Math.atan2(y, x) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2)) / ((Math.PI * 2) / made.size) }
+
+    it('puts slot 0 at the top and the slots clockwise, around the place of the ring', async () => {
+        await compileFilm(film(() => {
+            const made = ringBuffer(8, { radius: 200, thickness: 60 }).at(300, 100)
+            expect(made.size).toBe(8)
+            expect(made.slots).toHaveLength(8)
+            expect(made.entries).toHaveLength(8)
+            // The middle of the band is 170 from the center: slot 0 at the top, then the right, the bottom and the left.
+            const quarter = [[0, -170], [170, 0], [0, 170], [-170, 0]]
+            ;[0, 2, 4, 6].forEach((slot, index) => {
+                expect(made.p(slot)[0]).toBeCloseTo(quarter[index]![0]!, 6)
+                expect(made.p(slot)[1]).toBeCloseTo(quarter[index]![1]!, 6)
+            })
+            expect(made.p(1)[0]).toBeCloseTo(170 * Math.SQRT1_2, 6)
+            expect(made.p(1)[1]).toBeCloseTo(-170 * Math.SQRT1_2, 6)
+            // The slot wraps, in both directions.
+            expect(made.p(8)).toEqual(made.p(0))
+            expect(made.p(19)).toEqual(made.p(3))
+            expect(made.p(-1)).toEqual(made.p(7))
+            // Each outline is around the middle of its slot, and the band is centered on the place of the ring.
+            const boxes = made.slots.map((slot) => slot.bounds())
+            boxes.forEach((box, slot) => {
+                const [x, y] = made.p(slot)
+                expect(apart(box, { x: 300 + x, y: 100 + y, width: 0, height: 0 })).toBe(false)
+            })
+            expect(Math.min(...boxes.map((box) => box.x))).toBeCloseTo(100, 0)
+            expect(Math.max(...boxes.map((box) => box.x + box.width))).toBeCloseTo(500, 0)
+            expect(Math.min(...boxes.map((box) => box.y))).toBeCloseTo(-100, 0)
+            expect(Math.max(...boxes.map((box) => box.y + box.height))).toBeCloseTo(300, 0)
+            // Every slot starts empty.
+            expect(made.entries.map(shows)).toEqual(Array(8).fill(0))
+            expect([made.head, made.tail, made.length, made.pending]).toEqual([0, 0, 0, 0])
+            // The fill of an entry is smaller than its slot on every side, so two entries side by side read as two.
+            // The outline of a pending entry is inside the edge of the fill, so the entry keeps its size when it fills.
+            for (const slot of [0, 2]) {
+                const [fill, edge] = made.entries[slot]!.children.map((part) => part.bounds())
+                expect(inside(fill!, boxes[slot]!)).toBeGreaterThan(2)
+                expect(inside(edge!, fill!)).toBeGreaterThanOrEqual(made.entries[slot]!.children[1]!.get('strokeWidth') / 2 - 0.01)
+            }
+            // The default radius is 170, and a slot is 0.32 of the radius thick.
+            const plain = ringBuffer(8)
+            expect([plain.radius, plain.thickness]).toEqual([170, 170 * 0.32])
+            expect(plain.p(0)[1]).toBeCloseTo(-(170 - 170 * 0.16), 6)
+        }))
+    })
+
+    it('draws thinner outlines and keeps less room around a fill when the slots are narrow', async () => {
+        await compileFilm(film(() => {
+            // 64 slots on the default ring are 11.35 wide at the inner edge: 2 * 115.6 * sin(pi / 64).
+            const chord = 2 * (170 - 170 * 0.32) * Math.sin(Math.PI / 64)
+            const narrow = ringBuffer(64), wide = ringBuffer(8)
+            // The outline is a fifth of that width. On 8 slots it is 0.0175 of the radius.
+            expect(narrow.slots[0]!.get('strokeWidth')).toBeCloseTo(chord * 0.2, 6)
+            expect(wide.slots[0]!.get('strokeWidth')).toBeCloseTo(170 * 0.0175, 6)
+            // The fill is 0.22 of that width inside the slot. On 8 slots it is 3 inside the ink of the outline.
+            const room = (made: Made) => { const fill = made.entries[0]!.children[0]!.bounds(), slot = made.slots[0]!.bounds(); return fill.y - slot.y }
+            expect(room(narrow)).toBeCloseTo(chord * 0.22, 2)
+            expect(room(wide)).toBeCloseTo(170 * 0.0175 / 2 + 3, 2)
+            // The outline of a pending entry is dashed, and thinner than the outline of a slot.
+            const dashed = wide.entries[0]!.children[1]!
+            expect(dashed.get('dash')).not.toBeNull()
+            expect(dashed.get('strokeWidth')).toBeCloseTo(170 * 0.0175 * 0.6, 6)
+        }))
+    })
+
+    it('fills the slot at the tail and empties the slot at the head, then moves that pointer one slot on, along the band', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            s.wait(1)
+            s.play(made.push(), { duration: 2, ease: linear })
+            expect([made.head, made.tail, made.length]).toEqual([0, 1, 1])
+            s.wait(1)
+            s.play(made.pop(), { duration: 2, ease: linear })
+            expect([made.head, made.tail, made.length]).toEqual([1, 1, 0])
+        }))
+        const entry = made.entries[0]!, tail = made.tailPointer!, head = made.headPointer!
+        // The push is from 1 to 3. The slot fills in the first 0.45 of it, and the tail does not move yet.
+        expect(at(1, () => shows(entry))).toBe(0)
+        expect(at(1.45, () => shows(entry))).toBeCloseTo(0.5, 6)
+        expect(at(1.9, () => shows(entry))).toBeCloseTo(1, 6)
+        expect(at(1.9, () => [entry.children[0]!.get('fillOpacity'), entry.children[1]!.get('strokeOpacity')])).toEqual([1, 0])
+        at(1.9, () => expectAtSlot(made, tail, 0))
+        // Then the tail moves. Half way it is between the two slots, and as far from the center as at rest:
+        // a straight line between the two slots would pass nearer to the center.
+        at(2.45, () => expectAtSlot(made, tail, 0.5))
+        expect(at(2.45, () => far(xy(tail)))).toBeCloseTo(at(1, () => far(xy(tail))), 6)
+        at(3, () => expectAtSlot(made, tail, 1))
+        at(3, () => expectAtSlot(made, head, 0))
+        expect(at(3.5, () => shows(entry))).toBe(1)
+        // The pop is from 4 to 6: the entry at the head empties, then the head moves.
+        expect(at(4.45, () => shows(entry))).toBeCloseTo(0.5, 6)
+        expect(at(4.9, () => shows(entry))).toBeCloseTo(0, 6)
+        at(4.9, () => expectAtSlot(made, head, 0))
+        at(5.45, () => expectAtSlot(made, head, 0.5))
+        expect(at(5.45, () => far(xy(head)))).toBeCloseTo(at(4, () => far(xy(head))), 6)
+        at(6, () => expectAtSlot(made, head, 1))
+        at(6, () => expectAtSlot(made, tail, 1))
+        expect(at(6, () => shows(entry))).toBe(0)
+        // Without `counts`, a name is the name alone, before and after a move.
+        expect([0, 6].map((time) => at(time, () => [nameOf(head), nameOf(tail)]))).toEqual([['head', 'tail'], ['head', 'tail']])
+    })
+
+    it('counts on past the last slot: after 9 pushes on 8 slots the tail is 9, at slot 1', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            for (let k = 0; k < 8; k++) s.play(made.push(), { duration: 0.5 })
+            expect([made.head, made.tail, made.length]).toEqual([0, 8, 8])
+            // The ring is full. In one sequence, the push finds the room that the two pops before it make.
+            s.play(seq(made.pop(), made.pop(), made.push()), { duration: 1.5 })
+            expect([made.head, made.tail, made.length]).toEqual([2, 9, 7])
+        }))
+        const tail = made.tailPointer!, head = made.headPointer!
+        // After one turn, the tail is exactly where it started.
+        expect(at(4, () => xy(tail))).toEqual(at(0, () => xy(tail)))
+        expect(at(4, () => made.entries.map(shows))).toEqual(Array(8).fill(1))
+        at(5.5, () => expectAtSlot(made, tail, 1))
+        at(5.5, () => expectAtSlot(made, head, 2))
+        expect(at(5.5, () => xy(tail))).toEqual(at(0.5, () => xy(tail)))
+        // The ninth entry is in slot 0, and slot 1 is empty: its entry was read.
+        expect(at(5.5, () => made.entries.map(shows))).toEqual([1, 0, 1, 1, 1, 1, 1, 1])
+    })
+
+    it('lets the entry that is read leave before the new entry of its slot arrives, when a pop and a push share one play', async () => {
+        let made!: Made, pending!: Made
+        let blue: unknown, green: unknown
+        await compileFilm(film({ fps: 20 }, (s) => {
+            blue = paintOf('blue')
+            green = paintOf('green')
+            made = s.add(ringBuffer(4, { radius: 200, thickness: 60 }))
+            pending = s.add(ringBuffer(2, { radius: 200, thickness: 60 }))
+            s.play(seq(made.push(), made.push(), made.push(), made.push()), seq(pending.push({ pending: true, label: 'A' }), pending.push({ pending: true })), { duration: 1 })
+            // Both rings are full, so the push takes the slot that the pop reads, in the same second.
+            s.play(made.pop(), made.push({ color: 'green' }), pending.publish(), pending.pop(), pending.push({ pending: true }), { duration: 1, ease: linear })
+            expect([made.head, made.tail, made.length]).toEqual([1, 5, 4])
+            expect([pending.length, pending.pending]).toEqual([2, 1])
+        }))
+        // The slot changes in the first 0.45 s: the old entry fades out in the first half of it, with its
+        // own color, and the new one fades in in the second half.
+        const cell = made.entries[0]!, fill = cell.children[0]!
+        expect(at(1, () => [shows(cell), fill.get('fill')])).toEqual([1, blue])
+        expect(at(1.1125, () => [shows(cell), fill.get('fill')])).toEqual([expect.closeTo(0.5, 6), blue])
+        expect(at(1.3375, () => [shows(cell), fill.get('fill')])).toEqual([expect.closeTo(0.5, 6), green])
+        expect(at(1.45, () => shows(cell))).toBeCloseTo(1, 6)
+        expect(at(2, () => [shows(cell), fill.get('fill')])).toEqual([1, green])
+        // A publish in the same play is of the old entry. It does not take the outline of the new pending
+        // entry away, or fill it: the new entry shows as an outline, and has no label of the old one.
+        const [inner, dashed] = pending.entries[0]!.children
+        for (const time of [1.5, 2, 3]) expect(at(time, () => [shows(pending.entries[0]!), inner!.get('fillOpacity'), dashed!.get('strokeOpacity')])).toEqual([1, 0, 1])
+        expect(at(2, () => words(pending.entries[0]!))).toEqual([])
+        // The other entry was published, and is full.
+        expect(at(2, () => [pending.entries[1]!.children[0]!.get('fillOpacity'), pending.entries[1]!.children[1]!.get('strokeOpacity')])).toEqual([1, 0])
+    })
+
+    it('fills eight slots in order from eight pushes in one lagged, and moves the tail on without a jump', async () => {
+        let made!: Made, batch!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(16, { radius: 200, thickness: 60, counts: true }))
+            batch = s.add(ringBuffer(16, { radius: 200, thickness: 60 }))
+            // With a lag of 0.25, each push has 1 s, and starts 0.25 s after the push before it.
+            s.play(lagged(Array.from({ length: 8 }, () => made.push()), { lag: 0.25 }), batch.push(), batch.push(), batch.push(), { duration: 2.75, ease: linear })
+            expect([made.tail, made.length, batch.tail]).toEqual([8, 8, 3])
+        }))
+        // Slot k fills from 0.25 k, in 0.45 s. So the slots fill in the order of the pushes.
+        for (let slot = 0; slot < 8; slot++) {
+            expect(at(0.25 * slot, () => shows(made.entries[slot]!))).toBe(0)
+            expect(at(0.25 * slot + 0.225, () => shows(made.entries[slot]!))).toBeCloseTo(0.5, 6)
+            expect(at(0.25 * slot + 0.45, () => shows(made.entries[slot]!))).toBeCloseTo(1, 6)
+        }
+        expect(at(2.75, () => made.entries.map(shows))).toEqual([...Array(8).fill(1), ...Array(8).fill(0)])
+        // The moves of the tail share time, and they add up: the tail goes from slot 0 to slot 8 and never jumps.
+        const tail = made.tailPointer!
+        let last = at(0.4, () => turn(made, tail))
+        for (let time = 0.41; time < 2.749; time += 0.01) {
+            const now = at(time, () => turn(made, tail))
+            expect(now - last).toBeGreaterThanOrEqual(-1e-9)
+            expect(now - last).toBeLessThan(0.1)
+            last = now
+        }
+        expect(at(0.4, () => turn(made, tail))).toBeCloseTo(0, 6)
+        at(2.75, () => expectAtSlot(made, tail, 8))
+        // The count beside the name is the number of whole slots that the tail has passed, also between two rests.
+        expect([0.6, 0.9, 1.25, 2.75].map((time) => at(time, () => nameOf(tail)))).toEqual(['tail 0', 'tail 1', 'tail 2', 'tail 8'])
+        for (const time of [0.6, 0.9, 1.25, 1.7, 2.3]) expect(at(time, () => nameOf(tail))).toBe(`tail ${Math.floor(at(time, () => turn(made, tail)))}`)
+        // Three pushes at one moment: the tail goes over three slots in the time of one move, from 1.2375 to 2.75.
+        at(1.2375, () => expectAtSlot(batch, batch.tailPointer!, 0))
+        at((1.2375 + 2.75) / 2, () => expectAtSlot(batch, batch.tailPointer!, 1.5))
+        at(2.75, () => expectAtSlot(batch, batch.tailPointer!, 3))
+        expect(at(1.2375, () => batch.entries.map(shows).slice(0, 4))).toEqual([expect.closeTo(1, 6), expect.closeTo(1, 6), expect.closeTo(1, 6), 0])
+    })
+
+    it('keeps the name with its arrow head when two moves of one pointer overlap, whichever of them starts first', async () => {
+        let slow!: Made, late!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            slow = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            late = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            s.play(seq(late.push(), late.push()), { duration: 0.5 })
+            // The first push takes 2 s and the second 0.9 s, so the move of the second one starts first.
+            // The same holds for the pop that waits 0.6 s and the pop after it.
+            s.play(slow.push({}, { duration: 2 }), slow.push(), par(delay(late.pop(), 0.6), late.pop()), { ease: linear })
+        }))
+        for (const [made, pointer] of [[slow, slow.tailPointer!], [late, late.headPointer!]] as const) {
+            let last = at(0.5, () => turn(made, pointer))
+            for (let time = 0.5; time <= 2.5001; time += 0.02) {
+                at(time, () => {
+                    // The name is on the line from the center through the tip, at every frame.
+                    expectSameWay(middle(parts(pointer).name.bounds()), xy(pointer), 6)
+                    const now = turn(made, pointer)
+                    expect(now - last).toBeGreaterThanOrEqual(-1e-9)
+                    expect(now - last).toBeLessThan(0.08)
+                    last = now
+                })
+            }
+            at(2.5, () => expectAtSlot(made, pointer, 2))
+            expect(at(2.5, () => nameOf(pointer))).toMatch(/ 2$/)
+        }
+        // The second push moves the tail from 0.905 to 1.4, before the move of the first push starts.
+        at(1.1525, () => expectAtSlot(slow, slow.tailPointer!, 0.5))
+    })
+
+    it('keeps the color and the label of an entry until it is read, and gives the slot to the next entry', async () => {
+        let made!: Made
+        let orange: unknown, green: unknown, ground: unknown
+        await compileFilm(film({ fps: 20 }, (s) => {
+            orange = paintOf('orange')
+            green = paintOf('green')
+            ground = paintOf('bg')
+            made = s.add(ringBuffer(4, { radius: 200, thickness: 60 }))
+            s.play(made.push({ color: 'orange', label: 'A' }), { duration: 1 })
+            s.play(made.push(), { duration: 1 })
+            s.play(made.pop(), { duration: 1, ease: linear })
+            s.play(seq(made.push(), made.push(), made.push({ color: 'green', label: 'E' })), { duration: 1 })
+        }))
+        const fill = (slot: number) => made.entries[slot]!.children[0]!.get('fill')
+        expect(at(1.5, () => fill(0))).toEqual(orange)
+        // An entry with no color has the color of the ring.
+        expect(at(2, () => fill(1))).toEqual(made.slots[0]!.get('stroke'))
+        expect(at(2, () => words(made.entries[1]!))).toEqual([])
+        // The label is in the middle of its slot, in the color of the background.
+        const label = made.entries[0]!.children[2]!
+        expect(at(1.5, () => words(made.entries[0]!))).toEqual(['A'])
+        expect(at(1.5, () => middle(label.bounds()))[0]).toBeCloseTo(made.p(0)[0], 6)
+        expect(at(1.5, () => middle(label.bounds()))[1]).toBeCloseTo(made.p(0)[1], 6)
+        expect(at(1.5, () => label.children[0]!.get('fill'))).toEqual(ground)
+        // While the entry is read, it still has its color.
+        expect(at(2.2, () => shows(made.entries[0]!))).toBeGreaterThan(0)
+        expect(at(2.2, () => fill(0))).toEqual(orange)
+        // The fifth entry takes slot 0: its color and its label, and no label of the first entry.
+        expect(at(4, () => fill(0))).toEqual(green)
+        expect(at(4, () => words(made.entries[0]!))).toEqual(['E'])
+        expect(at(4, () => shows(made.entries[0]!))).toBe(1)
+    })
+
+    it('draws a pending entry as a dashed outline with no fill, fills it at publish(), and refuses to read it before', async () => {
+        let made!: Made
+        let orange: Rgba, ground: Rgba
+        await compileFilm(film({ fps: 20 }, (s) => {
+            orange = paintOf('orange') as Rgba
+            ground = paintOf('bg') as Rgba
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            s.play(made.push({ pending: true, color: 'orange', label: 'A' }), { duration: 1 })
+            s.play(made.push({ pending: true }), made.push(), { duration: 1 })
+            // The tail moves for a pending entry too. The entry at the head is pending, so the consumer cannot read it.
+            expect([made.tail, made.length, made.pending]).toEqual([3, 3, 2])
+            const pop = made.pop()
+            expect(() => s.play(pop)).toThrow(/the entry at the head is pending, so the consumer cannot see it. publish\(\) before pop\(\)/)
+            expect(made.head).toBe(0)
+            // With a lag of 1, the two pending entries fill one after the other, the older one first.
+            s.play(made.publish({ lag: 1 }), { duration: 1, ease: linear })
+            expect(made.pending).toBe(0)
+            // With nothing pending, publish() changes nothing. Then the consumer can read.
+            s.play(made.publish(), { duration: 0.5 })
+            s.play(made.pop(), { duration: 0.5 })
+            expect([made.head, made.length]).toEqual([1, 2])
+        }))
+        const [fill, edge, label] = made.entries[0]!.children
+        const filled = (slot: number) => made.entries[slot]!.children[0]!.get('fillOpacity')
+        const outlined = (slot: number) => made.entries[slot]!.children[1]!.get('strokeOpacity')
+        // Pending: the entry shows, with a dashed outline in its color and no fill. Its label has its color too.
+        expect(at(1, () => [shows(made.entries[0]!), filled(0)])).toEqual([1, 0])
+        expect(at(1, () => [edge!.get('stroke'), edge!.get('strokeOpacity'), fill!.get('fill')])).toEqual([orange!, 1, orange!])
+        expect(edge!.get('dash')).not.toBeNull()
+        expect(at(1, () => label!.children[0]!.get('fill'))).toEqual(orange!)
+        at(1, () => expectAtSlot(made, made.tailPointer!, 1))
+        // An entry that is not pending is filled from its push, and shows no outline.
+        expect(at(2, () => [0, 1, 2].map(filled))).toEqual([0, 0, 1])
+        expect(at(2, () => [0, 1, 2].map(outlined))).toEqual([1, 1, 0])
+        // publish() is from 2 to 3: slot 0 fills in the first half, and slot 1 in the second.
+        expect(at(2.25, () => [filled(0), filled(1)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(2.75, () => [filled(0), filled(1)])).toEqual([1, expect.closeTo(0.5, 6)])
+        expect(at(3, () => [0, 1, 2].map(filled))).toEqual([1, 1, 1])
+        // The outline stays until its entry is full, then the fill replaces it.
+        expect(at(2.4, () => outlined(0))).toBe(1)
+        expect(at(3, () => [0, 1].map(outlined))).toEqual([0, 0])
+        // The label stays readable through the change. It has the color of the entry, then at once the
+        // color of the background. At each moment it is at least 0.45 as far from what is under it as at the ends.
+        const surface = made.slots[0]!.get('fill') as Rgba
+        const distance = (a: Rgba, b: Rgba) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+        for (let time = 2; time <= 2.5001; time += 0.01) {
+            const [ink, share] = at(time, () => [label!.children[0]!.get('fill') as Rgba, filled(0)] as const)
+            expect(distance(ink, mixColor(surface, orange!, share))).toBeGreaterThan(0.45 * distance(orange!, surface))
+        }
+        expect(at(2.2, () => label!.children[0]!.get('fill'))).toEqual(orange!)
+        expect(at(2.3, () => label!.children[0]!.get('fill'))).toEqual(ground!)
+        expect(at(4, () => shows(made.entries[0]!))).toBe(0)
+    })
+
+    it('publishes from the oldest entry when the pending entries wrap, and does not let a late publish fill a new entry', async () => {
+        let wrapped!: Made, late!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            wrapped = s.add(ringBuffer(4, { radius: 200, thickness: 60 }))
+            late = s.add(ringBuffer(2, { radius: 200, thickness: 60 }))
+            // Three entries written and read, then two pending ones: in slot 3, and past the last slot in slot 0.
+            s.play(seq(wrapped.push(), wrapped.push(), wrapped.push(), wrapped.pop(), wrapped.pop(), wrapped.pop(), wrapped.push({ pending: true }), wrapped.push({ pending: true })), seq(late.push({ pending: true }), late.push({ pending: true })), { duration: 1 })
+            // From 1 to 2, with a lag of 1: the older entry, in slot 3, fills first.
+            s.play(wrapped.publish({ lag: 1 }), { duration: 1, ease: linear })
+            // From 2 to 4 the publish of the second ring fills slot 0, then slot 1 from 3. In the first
+            // second, the two entries are read and two new pending ones are written.
+            s.play(late.publish({ lag: 1, duration: 2 }), retime(seq(late.pop(), late.pop(), late.push({ pending: true }), late.push({ pending: true })), { duration: 1 }), { ease: linear })
+        }))
+        const state = (ring: Made, slot: number) => [ring.entries[slot]!.children[0]!.get('fillOpacity'), ring.entries[slot]!.children[1]!.get('strokeOpacity')]
+        expect(at(1.25, () => [state(wrapped, 3)[0], state(wrapped, 0)[0]])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(1.75, () => [state(wrapped, 3)[0], state(wrapped, 0)[0]])).toEqual([1, expect.closeTo(0.5, 6)])
+        // The new entry of slot 1 is written before 3, when the publish of the old entry of that slot would
+        // start. It stays an outline with no fill, during that time and after it.
+        expect(late.pending).toBe(2)
+        for (const time of [3.2, 3.6, 4, 5]) expect(at(time, () => [shows(late.entries[1]!), ...state(late, 1)])).toEqual([1, 0, 1])
+        for (const time of [3.2, 4, 5]) expect(at(time, () => [shows(late.entries[0]!), ...state(late, 0)])).toEqual([1, 0, 1])
+    })
+
+    it('keeps a pending label as far from its outline as a label is from the edge of a fill', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, labelSize: 20 }))
+            s.play(seq(made.push(), made.push(), made.push({ label: 'writev', pending: true }), made.push(), made.push(), made.push(), made.push({ label: 'writev' })), { duration: 1 })
+        }))
+        // Slots 2 and 6 are at the right and the left, where the band is 60 wide and the label is across it.
+        const room = (slot: number) => at(1, () => {
+            const [fill, edge, label] = made.entries[slot]!.children.map((part) => part.bounds())
+            const ink = edge!.x + made.entries[slot]!.children[1]!.get('strokeWidth') / 2
+            return { pending: Math.min(label!.x - ink, 2 * middle(edge!)[0] - ink - label!.x - label!.width), filled: label!.x - fill!.x, size: made.entries[slot]!.children[2]!.data['size'] }
+        })
+        // The pending label is 4 or more from the ink of its outline, as the filled label is from the edge
+        // of its fill. So the pending label is the smaller of the two, by the outline on each side.
+        expect(room(2).pending).toBeGreaterThan(4)
+        expect(room(6).filled).toBeGreaterThan(4)
+        expect(room(2).pending).toBeCloseTo(room(6).filled, 0)
+        expect(room(2).size as number).toBeLessThan(room(6).size as number)
+    })
+
+    it('gives each pointer its color, or the color of the ring, and keeps the slots and the caption in the color of the ring', async () => {
+        let made!: Made
+        const colors: Record<string, unknown> = {}
+        await compileFilm(film({ fps: 20 }, (s) => {
+            for (const name of ['teal', 'orange', 'purple', 'blue', 'red']) colors[name] = paintOf(name)
+            made = s.add(ringBuffer(8, { color: 'teal', headColor: 'orange', tailColor: 'purple', label: 'submission queue', counts: true }))
+            const plain = ringBuffer(8)
+            expect(plain.headPointer!.children[0]!.get('fill')).toEqual(colors['blue'])
+            expect(plain.tailPointer!.children[0]!.get('fill')).toEqual(colors['blue'])
+            expect(nameText(plain.tailPointer!).children[0]!.get('fill')).toEqual(colors['blue'])
+            s.play(made.push(), { duration: 1 })
+            // The film can recolor a pointer as one node. The name follows the arrow head.
+            made.headPointer!.color('red')
+            s.wait(1)
+        }))
+        const ink = (pointer: Node) => [pointer.children[0]!.get('fill'), nameText(pointer).children[0]!.get('fill')]
+        expect(at(0, () => ink(made.headPointer!))).toEqual([colors['orange'], colors['orange']])
+        expect(at(0, () => ink(made.tailPointer!))).toEqual([colors['purple'], colors['purple']])
+        // The name with the next count has the color of its pointer too.
+        expect(at(1, () => nameOf(made.tailPointer!))).toBe('tail 1')
+        expect(at(1, () => ink(made.tailPointer!))).toEqual([colors['purple'], colors['purple']])
+        expect(at(2, () => ink(made.headPointer!))).toEqual([colors['red'], colors['red']])
+        expect(made.slots[0]!.get('stroke')).toEqual(colors['teal'])
+        expect(made.caption!.children[0]!.get('fill')).toEqual(colors['teal'])
+        expect(at(1, () => made.entries[0]!.children[0]!.get('fill'))).toEqual(colors['teal'])
+    })
+
+    it('grows a scaled pointer about its tip, which stays on the band at every move', async () => {
+        let made!: Made, plain!: Made, bare!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            plain = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            bare = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            // A scale moves the pivot of a node to the middle of its bounds. A scale of 1 must change nothing.
+            s.play(to(made, (ring) => ring.scale(1)), to(made.tailPointer!, (pointer) => pointer.scale(1.5)), to(made.headPointer!, (pointer) => pointer.scale(1.5)), { duration: 0.5 })
+            for (const ring of [made, plain]) s.play(seq(ring.push(), ring.push(), ring.push(), ring.push(), ring.pop(), ring.pop()), { duration: 3 })
+            // With no counts, a pointer has one text for its name. A film that measures the ring inside to(),
+            // after the pointer moved, must not hold that text in place.
+            s.play(seq(bare.push(), bare.push()), { duration: 0.5 })
+            s.play(to(bare, (ring) => ring.scale(1)), { duration: 0.25 })
+            s.play(seq(bare.push(), bare.push()), { duration: 0.5 })
+        }))
+        for (const [time, slot] of [[7, 2], [7.25, 2], [7.75, 4]] as const) {
+            at(time, () => expectSameWay(middle(parts(bare.tailPointer!).name.bounds()), bare.p(slot), 6))
+        }
+        const size = (box: Box) => Math.hypot(box.width, box.height)
+        // Every half second a move ends, in the scaled ring until 3.5 and in the plain one from 3.5.
+        for (let step = 0; step <= 6; step++) {
+            const tailSlot = Math.min(step, 4), headSlot = Math.max(0, step - 4)
+            for (const [pointer, other, slot, outside] of [[made.tailPointer!, plain.tailPointer!, tailSlot, false], [made.headPointer!, plain.headPointer!, headSlot, true]] as const) {
+                const scaled = at(0.5 + step * 0.5, () => ({ tip: xy(pointer), arrow: parts(pointer).arrow.bounds(), name: parts(pointer).name.bounds() }))
+                const normal = at(3.5 + step * 0.5, () => ({ tip: xy(other), arrow: parts(other).arrow.bounds(), name: parts(other).name.bounds() }))
+                // The tip is where the tip of a pointer that was not scaled is: on the band, at the slot.
+                expect(scaled.tip).toEqual(normal.tip)
+                expectSameWay(scaled.tip, made.p(slot))
+                // The arrow head and the name are 1.5 times as large, and on their side of the band.
+                expect(size(scaled.arrow)).toBeCloseTo(size(normal.arrow) * 1.5, 6)
+                expect(size(scaled.name)).toBeCloseTo(size(normal.name) * 1.5, 6)
+                for (const corner of [...corners(scaled.arrow), ...corners(scaled.name)]) {
+                    if (outside) expect(far(corner)).toBeGreaterThan(200)
+                    else expect(far(corner)).toBeLessThan(140)
+                }
+                // The name is beyond the arrow head, on the line through the tip, 1.5 times as far from it.
+                expectSameWay(middle(scaled.name), scaled.tip, 6)
+                expect(Math.abs(far(middle(scaled.name)) - far(scaled.tip))).toBeCloseTo(Math.abs(far(middle(normal.name)) - far(normal.tip)) * 1.5, 6)
+            }
+        }
+    })
+
+    it('puts one pointer outside the band and one inside, so the two do not meet at one slot', async () => {
+        let made!: Made, swapped!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            swapped = s.add(ringBuffer(8, { radius: 200, thickness: 60, outside: 'tail' }))
+            // Three entries written and read: an empty ring with both pointers at slot 3.
+            for (const ring of [made, swapped]) s.play(seq(ring.push(), ring.push(), ring.push(), ring.pop(), ring.pop(), ring.pop()), { duration: 1 })
+            // Eight more entries: a full ring, with both pointers at slot 3 again.
+            for (const ring of [made, swapped]) s.play(seq(...Array.from({ length: 8 }, () => ring.push())), { duration: 1 })
+        }))
+        for (const [ring, outer, inner] of [[made, made.headPointer!, made.tailPointer!], [swapped, swapped.tailPointer!, swapped.headPointer!]] as const) {
+            for (const time of [0, 1, 2, 3, 4]) {
+                at(time, () => {
+                    // Each pointer touches the band: the outside one at the outer edge, the inside one at the inner edge.
+                    expect(far(xy(outer)) - 200).toBeGreaterThan(0)
+                    expect(far(xy(outer)) - 200).toBeLessThan(3)
+                    expect(140 - far(xy(inner))).toBeGreaterThan(0)
+                    expect(140 - far(xy(inner))).toBeLessThan(3)
+                    for (const corner of corners(parts(outer).arrow.bounds())) expect(far(corner)).toBeGreaterThan(200)
+                    for (const corner of corners(parts(inner).arrow.bounds())) expect(far(corner)).toBeLessThan(140)
+                    expect(apart(outer.bounds(), inner.bounds(), 30)).toBe(true)
+                })
+            }
+            at(2, () => expectAtSlot(ring, outer, 3))
+            at(2, () => expectAtSlot(ring, inner, 3))
+            // Empty at 2, and full at 4: the length tells the two apart, and the pointers do not.
+            expect(ring.length).toBe(ring.size)
+            expect(at(4, () => xy(outer))).toEqual(at(2, () => xy(outer)))
+        }
+    })
+
+    it('rests each pointer at the middle of its slot, with its name upright and clear of the band, the arrow heads, the caption and the other name', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(16, { radius: 200, thickness: 60, label: 'submission queue', captionGap: 96, counts: true, head: 'consumer head', tail: 'producer tail' }))
+            for (let k = 0; k < 17; k++) {
+                s.play(made.push(), { duration: 0.25 })
+                s.play(made.pop(), { duration: 0.25 })
+            }
+        }))
+        const head = made.headPointer!, tail = made.tailPointer!
+        // Every quarter second a move ends. The tail is then at the same slot as the head, or one slot on.
+        for (let step = 0; step <= 34; step++) {
+            at(step * 0.25, () => {
+                const headSlot = Math.floor(step / 2), tailSlot = Math.ceil(step / 2)
+                expectAtSlot(made, head, headSlot)
+                expectAtSlot(made, tail, tailSlot)
+                const outside = parts(head), inner = parts(tail)
+                const outer = outside.name.bounds(), within = inner.name.bounds(), caption = made.caption!.bounds()
+                expect([nameText(head).get('rotation'), nameText(tail).get('rotation'), outside.name.get('rotation'), head.get('rotation')]).toEqual([0, 0, 0, 0])
+                // No corner of a name is in the band. The inside name is long, so near the top it moves toward the center to fit.
+                for (const corner of corners(outer)) expect(far(corner)).toBeGreaterThan(200 + 6)
+                for (const corner of corners(within)) expect(far(corner)).toBeLessThan(140 - 6)
+                expect(apart(outer, within, 6)).toBe(true)
+                expect(apart(outer, caption, 6)).toBe(true)
+                expect(apart(within, caption, 6)).toBe(true)
+                // The name is beyond its arrow head, on the line from the center through its slot.
+                expect(far(middle(outer))).toBeGreaterThan(far(middle(outside.arrow.bounds())))
+                expect(far(middle(within))).toBeLessThan(far(middle(inner.arrow.bounds())))
+                expectSameWay(middle(outer), made.p(headSlot), 6)
+                expectSameWay(middle(within), made.p(tailSlot), 6)
+                // Slots 0, 4, 8 and 12 of 16 are at the top, the right, the bottom and the left. An arrow head
+                // is upright there, so its bounds are its shape, and the name must be clear of them.
+                if (headSlot % 4 === 0) expect(apart(outer, outside.arrow.bounds(), 6)).toBe(true)
+                if (tailSlot % 4 === 0) expect(apart(within, inner.arrow.bounds(), 6)).toBe(true)
+            })
+        }
+        // The caption is under the ring, and centered on it.
+        const caption = at(0, () => made.caption!.bounds())
+        expect(caption.y).toBeGreaterThan(200)
+        expect(Math.abs(middle(caption)[0])).toBeLessThan(2)
+    })
+
+    it('puts the caption at a distance that follows from the radius, the size and the numbers alone, or at captionGap', async () => {
+        await compileFilm(film(() => {
+            const line = (slots: number, options: Parameters<typeof ringBuffer>[1]) => ringBuffer(slots, { label: 'a queue', ...options }).caption!.get('y')
+            const plain = line(8, {})
+            // The names, the counts, the side of a pointer, a pointer that is not there, the number of slots
+            // and the thickness do not move the caption. So the captions of two such rings are on one line.
+            for (const options of [{ outside: 'tail' }, { counts: true }, { head: 'kernel', counts: true }, { head: 'consumer', tail: 'producer' }, { head: null }, { thickness: 30 }, { tailFollows: 'publish' }] as const) expect(line(8, options)).toBe(plain)
+            expect(line(16, {})).toBe(plain)
+            // With numbers the caption is lower, and at one place for 8 and for 16 slots, which have numbers of two digits.
+            const numbered = line(8, { numbers: true })
+            expect(numbered).toBeGreaterThan(plain + 20)
+            expect(line(16, { numbers: true })).toBe(numbered)
+            expect(line(16, { numbers: true, counts: true, head: 'kernel' })).toBe(numbered)
+            // A larger text or a larger ring moves it.
+            expect(line(8, { size: 32 })).toBeGreaterThan(plain + 10)
+            expect(line(8, { radius: 230 })).toBeGreaterThan(plain + 50)
+            // captionGap is the distance from the band to the top of the capital letters of the caption.
+            const made = ringBuffer(8, { radius: 200, label: 'ABC', captionGap: 100 })
+            expect(made.caption!.bounds().y).toBeCloseTo(300, 0)
+            expect(line(8, { numbers: true, captionGap: 100 })).toBe(line(16, { captionGap: 100 }))
+            // A name that can reach the caption is an error, which gives a distance that has the room.
+            const long = { head: 'the head of the consumer', counts: true }
+            let need = 0
+            try { ringBuffer(8, { label: 'a queue', ...long }) } catch (error) { need = Number(/can reach the caption under the ring.*"88" stands for it. Set captionGap to (\d+) or more/.exec((error as Error).message)?.[1]) }
+            expect(need).toBeGreaterThan(80)
+            expect(ringBuffer(8, { label: 'a queue', ...long, captionGap: need }).caption).not.toBeNull()
+            expect(() => ringBuffer(8, { label: 'a queue', ...long, captionGap: need - 8 })).toThrow(/can reach the caption/)
+            expect(() => ringBuffer(8, { label: 'a queue', captionGap: -1 })).toThrow(/captionGap is the distance/)
+            // With no caption, a long name is no error. The names and the caption have the text size of the ring.
+            expect(ringBuffer(8, long).caption).toBeNull()
+            const small = ringBuffer(8, { label: 'a queue', size: 16 })
+            expect([small.caption!.data['size'], nameText(small.headPointer!).data['size'], nameText(small.tailPointer!).data['size']]).toEqual([16, 16, 16])
+        }))
+    })
+
+    it('has bounds that hold the outside name at every slot, so a zone around a ring has room for it', async () => {
+        let made!: Made, around!: ReturnType<typeof zone>
+        let first!: Box
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = ringBuffer(8, { radius: 200, thickness: 60, counts: true, label: 'submission queue' })
+            first = made.bounds()
+            around = s.add(zone(made, { title: 'shared memory' }))
+            for (let k = 0; k < 8; k++) s.play(seq(made.push(), made.pop()), { duration: 0.5 })
+        }))
+        // At the start the name is at the top. The bounds reach as far to the sides as to the top.
+        expect(first.x).toBeCloseTo(-(first.x + first.width), 6)
+        expect(first.width).toBeGreaterThan(400 + 2 * 60)
+        let right = 0
+        for (let time = 0; time <= 4.0001; time += 0.05) {
+            const name = at(time, () => parts(made.headPointer!).name.bounds())
+            expect(inside(name, first)).toBeGreaterThanOrEqual(-0.01)
+            expect(inside(name, at(time, () => around.frame.bounds()))).toBeGreaterThan(8)
+            right = Math.max(right, name.x + name.width)
+        }
+        // The bounds have the room of a count of two digits, and no more: one digit of slack at the side.
+        expect(first.x + first.width - right).toBeLessThan(26 * 0.7)
+        // A ring with no pointer outside has the bounds of its band.
+        expect(ringBuffer(8, { radius: 200, head: null }).bounds().width).toBeCloseTo(400, 0)
+    })
+
+    it('shows the running count beside each name, not the slot, and changes it when the pointer arrives', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            for (let k = 0; k < 8; k++) s.play(made.push(), { duration: 0.5 })
+            s.play(made.pop(), { duration: 0.5 })
+            s.play(made.push(), { duration: 1, ease: linear })
+        }))
+        const head = made.headPointer!, tail = made.tailPointer!
+        expect(at(0, () => [nameOf(head), nameOf(tail)])).toEqual(['head 0', 'tail 0'])
+        expect(at(4, () => [nameOf(head), nameOf(tail)])).toEqual(['head 0', 'tail 8'])
+        expect(at(4.5, () => nameOf(head))).toBe('head 1')
+        // The ninth push is from 4.5 to 5.5. The count changes at the end of the move, not before.
+        expect(at(5.4, () => nameOf(tail))).toBe('tail 8')
+        expect(at(5.5, () => nameOf(tail))).toBe('tail 9')
+        at(5.5, () => expectAtSlot(made, tail, 1))
+    })
+
+    it('keeps the tail behind the pending entries until publish() with tailFollows, and marks where the producer writes', async () => {
+        let made!: Made, plain!: Made
+        let blue: unknown
+        await compileFilm(film({ fps: 20 }, (s) => {
+            blue = paintOf('blue')
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true, tailFollows: 'publish', tailColor: 'blue', color: 'dim', outside: 'tail' }))
+            plain = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            s.play(made.push(), plain.push({ pending: true }), { duration: 1 })
+            // Three pending entries: the producer writes, and the consumer does not see them yet.
+            s.play(seq(made.push({ pending: true }), made.push({ pending: true }), made.push({ pending: true })), { duration: 1 })
+            expect([made.tail, made.length, made.pending]).toEqual([4, 4, 3])
+            s.play(made.publish(), { duration: 1, ease: linear })
+            expect(made.pending).toBe(0)
+            // With a lag, the tail goes over each entry in the time in which that entry fills.
+            s.play(seq(made.push({ pending: true }), made.push({ pending: true }), made.push({ pending: true })), { duration: 2 })
+            s.play(made.publish({ lag: 0.5 }), { duration: 1, ease: linear })
+        }))
+        const tail = made.tailPointer!, marker = made.writeMarker!
+        // The default is 'push': the tail moves for a pending entry, and there is no mark of the writer.
+        expect(plain.writeMarker).toBeNull()
+        at(1, () => expectAtSlot(plain, plain.tailPointer!, 1))
+        // The mark is an arrow head with no name, in the color of the tail, dim, on the side of the tail.
+        expect(marker.children).toHaveLength(1)
+        expect([marker.children[0]!.get('fill'), marker.get('opacity')]).toEqual([blue, 0.5])
+        expect(at(0, () => far(xy(marker)))).toBeGreaterThan(200)
+        // An entry that is not pending moves both: the tail and the mark are at one place.
+        expect(at(1, () => xy(marker))).toEqual(at(1, () => xy(tail)))
+        expect(at(1, () => nameOf(tail))).toBe('tail 1')
+        // Pending entries move the mark alone. The tail and its count stay.
+        at(2, () => expectAtSlot(made, marker, 4))
+        at(2, () => expectAtSlot(made, tail, 1))
+        expect(at(2, () => nameOf(tail))).toBe('tail 1')
+        // publish() is from 2 to 3. The tail goes over the three entries, and counts as it passes each slot.
+        at(2.5, () => expectAtSlot(made, tail, 2.5))
+        expect(at(2.5, () => nameOf(tail))).toBe('tail 2')
+        at(3, () => expectAtSlot(made, tail, 4))
+        expect(at(3, () => [nameOf(tail), xy(marker)])).toEqual(['tail 4', at(3, () => xy(tail))])
+        // Three entries published with a lag of 0.5, from 5 to 6: each fills in 0.5 s, and starts 0.25 s
+        // after the one before it. The tail is half over an entry when that entry is half full.
+        at(5.25, () => expectAtSlot(made, tail, 4.5))
+        expect(at(5.25, () => made.entries[4]!.children[0]!.get('fillOpacity'))).toBeCloseTo(0.5, 6)
+        at(5.5, () => expectAtSlot(made, tail, 5.5))
+        at(5.75, () => expectAtSlot(made, tail, 6.5))
+        at(6, () => expectAtSlot(made, tail, 7))
+        expect(made.tail).toBe(7)
+    })
+
+    it('draws no pointer for a name that is null, and the slot then changes over the whole time', async () => {
+        let noHead!: Made, noTail!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            noHead = s.add(ringBuffer(8, { head: null, tailFollows: 'publish' }))
+            noTail = s.add(ringBuffer(8, { tail: null, tailFollows: 'publish' }))
+            s.play(noHead.push(), noTail.push(), { duration: 1, ease: linear })
+            s.play(noHead.pop(), noTail.pop(), { duration: 1, ease: linear })
+        }))
+        expect(noHead.headPointer).toBeNull()
+        expect(noHead.tailPointer).not.toBeNull()
+        expect(noTail.tailPointer).toBeNull()
+        expect(noTail.headPointer).not.toBeNull()
+        // With no tail pointer, there is no mark of the writer.
+        expect([noHead.writeMarker === null, noTail.writeMarker === null]).toEqual([false, true])
+        // With a tail pointer the slot is full at 0.45 of the push. With none, it fills until the end.
+        expect(at(0.45, () => shows(noHead.entries[0]!))).toBeCloseTo(1, 6)
+        expect(at(0.45, () => shows(noTail.entries[0]!))).toBeCloseTo(0.45, 6)
+        expect(at(1.45, () => shows(noHead.entries[0]!))).toBeCloseTo(0.55, 6)
+        expect(at(1.45, () => shows(noTail.entries[0]!))).toBeCloseTo(0, 6)
+        expect([noHead.head, noHead.tail, noTail.head, noTail.tail]).toEqual([1, 1, 1, 1])
+    })
+
+    it('writes the number of each slot beside it, beyond the arrow head of the outside pointer, and apart from the name', async () => {
+        await compileFilm(film(() => {
+            const made = ringBuffer(8, { radius: 200, thickness: 60, numbers: true, counts: true })
+            expect(made.numbers.map((number) => (number as unknown as { source: string }).source)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7'])
+            // A number is 0.7 of the text size, and dim.
+            expect(made.numbers.map((number) => number.data['size'])).toEqual(Array(8).fill(26 * 0.7))
+            expect(made.numbers[3]!.children[0]!.get('fill')).toEqual(paintOf('dim'))
+            const arrow = parts(made.headPointer!).arrow.bounds(), name = parts(made.headPointer!).name.bounds()
+            made.numbers.forEach((number, slot) => {
+                const box = number.bounds()
+                // The number is outside the band, in the direction of its slot.
+                expectSameWay(middle(box), made.p(slot), 6)
+                for (const corner of corners(box)) expect(far(corner)).toBeGreaterThan(200 + 6)
+            })
+            // At slot 0, from the band upward: the arrow head, the number, then the name. The name is three
+            // gaps from the number, so that "head 0" and the number of the slot do not read as one phrase.
+            const zero = made.numbers[0]!.bounds()
+            expect(zero.y + zero.height).toBeLessThan(arrow.y - 4)
+            expect(zero.y - name.y - name.height).toBeGreaterThanOrEqual(26 * 0.3 * 3 - 0.01)
+            expect(zero.y - name.y - name.height).toBeLessThan(26 * 0.3 * 3 + 6)
+            // With no numbers, the name is one gap from the arrow head.
+            const bare = ringBuffer(8, { radius: 200, thickness: 60, counts: true })
+            const [tip, word] = [parts(bare.headPointer!).arrow.bounds(), parts(bare.headPointer!).name.bounds()]
+            expect(tip.y - word.y - word.height).toBeCloseTo(26 * 0.3, 1)
+            // With no pointer outside, the numbers are nearer to the band.
+            const alone = ringBuffer(8, { radius: 200, thickness: 60, numbers: true, head: null })
+            expect(alone.numbers[0]!.bounds().y).toBeGreaterThan(zero.y + 8)
+            expect(ringBuffer(8).numbers).toEqual([])
+        }))
+    })
+
+    it('enters with the band first, slot after slot, then the pointers and the caption', async () => {
+        let made!: Made, plain!: Made
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = ringBuffer(8, { label: 'submission queue', numbers: true })
+            plain = ringBuffer(8, { label: 'a dim caption' })
+            // The film made the caption dim. enter() brings it back to that, not to 1.
+            plain.caption!.opacity(0.4)
+            s.play(seq(made.push(), made.push()), { duration: 0 })
+            s.wait(0.5)
+            s.play(made.enter({ lag: 1 }), plain.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect((await compiled.frame(0.2)).ops).toHaveLength(0)
+        expect((await compiled.frame(0.5)).ops).toHaveLength(0)
+        const drawn = (ring: Made, slot: number) => ring.slots[slot]!.get('trimTo')
+        const late = [made.headPointer!, made.tailPointer!, made.caption!]
+        // The band has 0.7 of the time, from 0.5 to 1.9. With a lag of 1, each of the 8 slots has 0.175 s.
+        expect(at(0.5 + 0.175 / 2, () => [drawn(made, 0), drawn(made, 1), drawn(made, 7)])).toEqual([expect.closeTo(0.5, 6), 0, 0])
+        expect(at(1.7, () => [drawn(made, 0), drawn(made, 5), drawn(made, 7)])).toEqual([1, 1, 0])
+        expect(at(1.7, () => late.map(shows))).toEqual([0, 0, 0])
+        // The default lag is 0.5: a slot has 1.4 / 4.5 s, and starts when the slot before it is half drawn.
+        const each = 1.4 / 4.5
+        expect(at(0.5 + each / 2, () => [drawn(plain, 0), drawn(plain, 1)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(0.5 + each, () => [drawn(plain, 0), drawn(plain, 1), drawn(plain, 2)])).toEqual([1, expect.closeTo(0.5, 6), 0])
+        // The fill of a slot comes in the second half of its time, and is whole at the end.
+        const fillOf = (slot: number) => made.slots[slot]!.get('fillOpacity')
+        expect(at(0.5, () => fillOf(0))).toBe(0)
+        expect(at(0.5 + 0.175 / 2, () => fillOf(0))).toBe(0)
+        expect(at(0.5 + 0.175 * 0.75, () => fillOf(0))).toBeCloseTo(0.5, 6)
+        expect(at(2.6, () => made.slots.map((_, slot) => fillOf(slot)))).toEqual(Array(8).fill(1))
+        // An entry that is in the ring and the number of a slot arrive with that slot.
+        expect(at(0.5 + 0.175 / 2, () => [shows(made.numbers[0]!), shows(made.numbers[1]!)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(0.5 + 0.175, () => shows(made.entries[0]!))).toBeCloseTo(1, 6)
+        expect(at(0.5 + 0.175, () => shows(made.entries[1]!))).toBe(0)
+        // The pointers and the caption come last, from 0.65 of the time.
+        expect(at(2.15, () => late.map(shows))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        expect(at(2.6, () => [...late, ...made.numbers, ...made.entries].map(shows))).toEqual([1, 1, 1, ...Array(8).fill(1), 1, 1, 0, 0, 0, 0, 0, 0])
+        expect(at(2.6, () => made.slots.map((_, slot) => drawn(made, slot)))).toEqual(Array(8).fill(1))
+        expect([2.15, 2.6].map((time) => at(time, () => shows(plain.caption!)))).toEqual([expect.closeTo(0.2, 6), 0.4])
+        // enter() puts the ring on the stage: the film draws the 8 slots, the 2 entries, the 2 arrow heads and the texts.
+        expect((await compiled.frame(2.6)).ops.length).toBeGreaterThan(8 + 2 + 2)
+        // The setup pushes took no time, and the tail is at slot 2 from the start.
+        at(0, () => expectAtSlot(made, made.tailPointer!, 2))
+    })
+
+    it('sets a label that is too wide smaller, inside its slot, and keeps a short label at its size', async () => {
+        let made!: Made, plain!: Made, small!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, labelSize: 20 }))
+            plain = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            small = s.add(ringBuffer(8, { radius: 200, thickness: 60, size: 12 }))
+            s.play(seq(made.push({ label: 'A' }), made.push({ label: 'B' }), made.push({ label: 'writev' })), plain.push({ label: 'A' }), small.push({ label: 'A' }), { duration: 1 })
+        }))
+        const [short, , long] = [0, 1, 2].map((slot) => made.entries[slot]!.children[2]!)
+        expect(short!.data['size']).toBe(20)
+        expect(long!.data['size'] as number).toBeLessThan(20)
+        expect(long!.data['size'] as number).toBeGreaterThanOrEqual(12)
+        // Slot 2 is at the right, so the band is 60 wide there, from 140 to 200. The label is inside the fill.
+        const box = at(1, () => long!.bounds())
+        expect(box.x).toBeGreaterThan(140 + 6)
+        expect(box.x + box.width).toBeLessThan(200 - 6)
+        expect(middle(box)[1]).toBeCloseTo(0, 6)
+        // The default size is 0.28 of the thickness, and the size of the names at the most.
+        expect(plain.entries[0]!.children[2]!.data['size']).toBeCloseTo(16.8, 6)
+        expect(small.entries[0]!.children[2]!.data['size']).toBe(12)
+    })
+
+    it('says what fits when a label does not: a label size, a number of slots, a radius', async () => {
+        await compileFilm(film((s) => {
+            // 'read' does not fit in a slot of a ring of 32. More thickness makes a slot narrower, so the
+            // message does not name it.
+            let message = ''
+            try { ringBuffer(32).push({ label: 'read' }) } catch (error) { message = (error as Error).message }
+            expect(message).toMatch(/the label "read" does not fit in a slot. At [\d.]+ px, its smallest size, it is \d+ px wide, and a slot has room for \d+ px. It fits with labelSize: \d+, or with \d+ slots, or with radius: \d+, or as a shorter label/)
+            expect(message).not.toMatch(/thickness/)
+            const [labelSize, slots, radius] = [/labelSize: (\d+)/, /with (\d+) slots/, /radius: (\d+)/].map((part) => Number(part.exec(message)![1]))
+            // Each way works, and is the first that does: one more slot, or 10 less of radius, does not fit.
+            const tried = (count: number, options: Parameters<typeof ringBuffer>[1]) => () => ringBuffer(count, options).push({ label: 'read' })
+            expect(tried(32, { labelSize: labelSize! })).not.toThrow()
+            expect(tried(slots!, {})).not.toThrow()
+            expect(tried(32, { radius: radius! })).not.toThrow()
+            expect(tried(slots! + 1, {})).toThrow(/does not fit in a slot/)
+            expect(tried(32, { radius: radius! - 10 })).toThrow(/does not fit in a slot/)
+            // The label size of the message is the largest at which the label keeps its size: one more, and it is set smaller.
+            const drawn = (size: number) => {
+                const made = s.add(ringBuffer(32, { labelSize: size }))
+                s.play(made.push({ label: 'read' }), { duration: 0 })
+                return made.entries[0]!.children[2]!.data['size'] as number
+            }
+            expect(drawn(labelSize!)).toBe(labelSize!)
+            expect(drawn(labelSize! + 1)).toBeLessThan(labelSize! + 1)
+            // A ring that the film gave a thickness keeps it in the advice. Where no number of slots helps, the message leaves it out.
+            expect(() => ringBuffer(8, { radius: 200, thickness: 60 }).push({ label: 'submission' })).toThrow(/It fits with labelSize: \d+, or as a shorter label/)
+        }))
+    })
+
+    it('names what is wrong: the number of slots, a full or an empty ring, a name that has no room', async () => {
+        await compileFilm(film((s) => {
+            expect(() => ringBuffer(1)).toThrow(/a ring has 2 to 64 slots, a whole number. It got 1/)
+            expect(() => ringBuffer(65)).toThrow(/2 to 64 slots/)
+            expect(() => ringBuffer(2.5)).toThrow(/2 to 64 slots/)
+            expect(ringBuffer(2).size).toBe(2)
+            expect(ringBuffer(64).size).toBe(64)
+            expect(() => ringBuffer(8, { radius: 0 })).toThrow(/radius is the outer radius/)
+            expect(() => ringBuffer(8, { radius: 100, thickness: 100 })).toThrow(/thickness is the radial size of a slot, more than 0 and less than the radius of 100/)
+            expect(() => ringBuffer(8, { thickness: 0 })).toThrow(/thickness is the radial size/)
+            expect(() => ringBuffer(8, { size: 0 })).toThrow(/size is a text size/)
+            expect(() => ringBuffer(8, { labelSize: -1 })).toThrow(/labelSize is a text size/)
+            expect(() => ringBuffer(8).p(Number.NaN)).toThrow(/names no slot/)
+
+            // The fill state is known when a change is scheduled, so that is where a full or an empty ring is found.
+            const made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            const pop = made.pop()
+            expect(() => s.play(pop)).toThrow(/the ring is empty. push\(\) before the next pop\(\)/)
+            s.play(seq(...Array.from({ length: 8 }, () => made.push())), { duration: 1 })
+            const push = made.push()
+            expect(() => s.play(push)).toThrow(/the ring is full, 8 of 8 slots. pop\(\) before the next push\(\)/)
+            expect([made.head, made.tail]).toEqual([0, 8])
+
+            // A label is checked when the film calls push(), full ring or not.
+            expect(() => made.push({ label: 'submission' })).toThrow(/the label "submission" does not fit in a slot/)
+            expect(() => made.push({ color: 'no such color' })).toThrow(/Unknown color/)
+
+            // The inside name must fit inside the ring: its diagonal, across the inside, less one arrow head.
+            // On this ring that is 2 * (140 - 1.75 - 7.8) - 16.12. The message gives a radius that has the room.
+            const name = 'the tail of the producer and more'
+            const ink = text(name, { size: 26 }).bounds()
+            let message = ''
+            try { ringBuffer(8, { radius: 200, thickness: 60, tail: name }) } catch (error) { message = (error as Error).message }
+            const [, wide, room, radius] = /the name "the tail of the producer and more" is (\d+) px wide, and the inside of the ring has room for (\d+) px. Raise radius to (\d+), or put this pointer outside with outside: 'tail'/.exec(message)!.map(Number)
+            expect(wide).toBe(Math.ceil(ink.width))
+            expect(room).toBe(Math.floor(Math.sqrt((2 * (140 - 1.75 - 26 * 0.3) - 26 * 0.62) ** 2 - ink.height ** 2)))
+            expect(ringBuffer(8, { radius: radius!, thickness: 60, tail: name }).tailPointer).not.toBeNull()
+            expect(() => ringBuffer(8, { radius: radius! - 10, thickness: 60, tail: name })).toThrow(/has room for/)
+            expect(() => ringBuffer(8, { head: name, outside: 'tail' })).toThrow(/put this pointer outside with outside: 'head'/)
+            expect(ringBuffer(8, { tail: name, outside: 'tail' }).tailPointer).not.toBeNull()
+
+            // 64 numbers do not fit around the default ring. They fit around a larger one.
+            expect(() => ringBuffer(64, { numbers: true })).toThrow(/the numbers of 64 slots touch each other around a ring of radius 170. Raise radius/)
+            expect(ringBuffer(64, { numbers: true, radius: 340 }).numbers).toHaveLength(64)
+        }))
+    })
+
+    it('asks for the room of a count of two digits at the start, and checks a third digit when a pointer reaches it', async () => {
+        await compileFilm(film((s) => {
+            // Without counts the name fits. With counts it must fit with two digits, from the start.
+            const options = { thickness: 30, tail: 'the writer' } as const
+            const fails = (radius: number) => { try { ringBuffer(8, { ...options, radius, counts: true }); return false } catch { return true } }
+            let tight = 100
+            while (tight < 300 && fails(tight)) tight += 2
+            expect(tight).toBeGreaterThan(104)
+            expect(tight).toBeLessThan(300)
+            expect(ringBuffer(8, { ...options, radius: tight - 2 }).tailPointer).not.toBeNull()
+            expect(() => ringBuffer(8, { ...options, radius: tight - 2, counts: true })).toThrow(/the name "the writer 88" is \d+ px wide, and the inside of the ring has room for \d+ px. With counts, a name needs the room of a count of two digits, and "88" stands for it. Raise radius to \d+, or put this pointer outside/)
+            // At the first radius with room for two digits, 99 pushes pass. The hundredth has no room.
+            const made = s.add(ringBuffer(8, { ...options, radius: tight, counts: true }))
+            for (let k = 0; k < 99; k++) s.play(seq(made.push(), made.pop()), { duration: 0 })
+            expect(made.tail).toBe(99)
+            const push = made.push()
+            expect(() => s.play(push)).toThrow(/the name "the writer 100" is \d+ px wide, and the inside of the ring has room for \d+ px. Raise radius to \d+/)
+        }))
+    })
+
+    it('gives a copy its own entries and pointers, at rest in the state of the ring', async () => {
+        await compileFilm(film((s) => {
+            const made = s.add(ringBuffer(8, { counts: true, label: 'submission queue', tailFollows: 'publish' }))
+            s.play(seq(made.push({ label: 'A' }), made.push({ pending: true })), { duration: 0.5 })
+            const copy = made.clone()
+            expect(copy.entries[0]).not.toBe(made.entries[0])
+            expect(copy.children).toContain(copy.entries[0])
+            expect(copy.children).toContain(copy.tailPointer)
+            expect(copy.children).toContain(copy.writeMarker)
+            expect(copy.tailPointer).not.toBe(made.tailPointer)
+            expect(copy.caption).not.toBe(made.caption)
+            expect([copy.head, copy.tail, copy.length, copy.pending]).toEqual([0, 2, 2, 1])
+            expect(copy.entries.map(shows)).toEqual([1, 1, 0, 0, 0, 0, 0, 0])
+            // The tail of the copy is where the tail of the ring is: behind the pending entry. So is its mark of the writer.
+            expect(nameOf(copy.tailPointer!)).toBe('tail 1')
+            expect(xy(copy.tailPointer!)).toEqual(xy(made.tailPointer!))
+            expect(xy(copy.writeMarker!)).toEqual(xy(made.writeMarker!))
+            // A change of the copy is not a change of the ring: its count, its pending entry, its pointer, its name.
+            s.play(copy.publish(), { duration: 0.5 })
+            s.play(copy.push(), { duration: 0.5 })
+            expect([copy.tail, made.tail, copy.pending, made.pending]).toEqual([3, 2, 0, 1])
+            expect(shows(made.entries[2]!)).toBe(0)
+            expect([nameOf(copy.tailPointer!), nameOf(made.tailPointer!)]).toEqual(['tail 3', 'tail 1'])
+            expectAtSlot(copy, copy.tailPointer!, 3)
+            expectAtSlot(made, made.tailPointer!, 1)
+            expectAtSlot(made, made.writeMarker!, 2)
         }))
     })
 })

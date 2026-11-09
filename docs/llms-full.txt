@@ -424,7 +424,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Emphasis
 
-These leave a node as they found it.
+These leave a node as they found it. `spotlight` is the exception: its light stays on until the film turns it off.
 
 ### indicate
 
@@ -491,6 +491,65 @@ export default film({ fps: 30 }, (s) => {
     s.wait(0.2)
 })
 ```
+
+### spotlight
+
+`spotlight` dims the rest of the stage, so that the viewer looks at one node. The targets keep their look. A second `spotlight` moves the light, and `spotlight(null)` turns it off. Use it in place of a list of fades: a film that fades the other nodes by hand forgets one, and that node stays bright or stays dim.
+
+```film paired label="A light moves across four boxes while the heading stays bright, then every box comes back"
+import { film, group, rect, spotlight, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const heading = s.add(text('Four steps of a request', { font: 'text-serif', size: 90 }).at(0, -330))
+    const steps = ['parse', 'plan', 'run', 'reply'].map((name) => group(rect(360, 240, { radius: 16, stroke: 'blue', width: 6 }), text(name, { font: 'text-serif', size: 80 })))
+    s.add(group(...steps).arrange('right', 60).moveTo([0, 60]))
+    s.wait(0.5)
+    for (const step of steps) {
+        s.play(spotlight(step, { keep: [heading] }))
+        s.wait(0.7)
+    }
+    s.play(spotlight(null))
+    s.wait(0.6)
+})
+```
+
+The target is one node, a list of nodes, or `null`. A part of a text is a target too: `spotlight(eq.part('c^2'))` lights one term, and the other glyphs of the equation dim. The light takes half a second unless you give a `duration`. The options are `dim`, `within`, and `keep`:
+
+- `dim` is the part of its color that the rest keeps, from 0 to 1. The default is 0.3 on a dark look and 0.4 on a light look. Both leave dim ink text at a contrast of about 2.4 to 1, which a viewer can still read. On paper, 0.3 leaves it at 1.9.
+- `within: chart` dims only inside one node, such as one chart or one group. The rest of the stage does not change, so two charts can each have a light. `spotlight(null, { within: chart })` turns off the light of that node, and `spotlight(null)` turns off every light.
+- `keep: heading` or `keep: [heading, source]` names nodes that stay bright with the targets: a heading, a source line, a claim tag, a backdrop. `keep` belongs to one call, so give it to each `spotlight`. Pinned nodes (`.pin()`) stay bright without it.
+
+**What dims.** The rest is every node that shows before the light starts and still shows at that time, and that is not a target, not in a target, and not an ancestor of a target. An ancestor keeps its look, and its other children dim. A node at opacity 0 does not show.
+
+Three objects know which labels belong to a part, and a light on the part keeps them bright. In a `barChart`, a bar has its name and its readout: `spotlight(chart.bar(2))` dims the other bars, their labels, and the base line. In a `dotChart`, a dot or an interval has its row. In `lanes`, the bar, the arrow or the dot of an event has its label. For another object, name the labels as targets too: `spotlight([cell, label])`.
+
+A node that enters at the very time that a light starts is not a part of the rest. It arrives with its own look, as a node that enters later does. That is one rule for `fadeIn`, `write`, `draw`, `grow`, `appear`, `morph`, and `s.add`, and the order of the arguments of `s.play` does not change it: `s.play(write(note), spotlight(row))` and `s.play(spotlight(row), write(note))` are the same film. The next `spotlight` dims such a node with the rest. Three cases to know:
+
+- At time 0, the nodes that the film put there with `s.add` are a part of the rest. A film has no time before 0.
+- A node that comes into a dim group is dim with its group.
+- A dim node that the film hides and shows again under the same light is still dim. A node that is hidden when a light starts is not a part of its rest, so it comes back with its own look.
+
+A mark that a verb adds for a node is as bright as that node, at any time: the line of `circumscribe`, the rays of `flash`, the ring of `ripple`, the segment of `pulse`, the stroke of `highlightSweep`, and the cursor of `typewriter`. A `flash` or a `ripple` at a point belongs to no node, and has its own look.
+
+**How a dim node looks.** The light does not write the `opacity` of a node. It writes a value of its own, `dim`, and a dim node keeps its opacity: each of its colors goes toward the background color of the film. That is its fill, its stroke, the color of its text, each stop of a gradient, and its glow. So a dim node still hides what is behind it. A dim label on a line does not show the line, and two dim shapes that overlap do not blend. A picture has no one color to change, so each of its pixels goes toward the background color and keeps its alpha: the clear parts of a logo stay clear. A node in a dim group is as dim as the group, not dimmer.
+
+The background color is the `background` of the film, or the one of its look. If the film draws its own backdrop, such as a gradient or a picture, set `background` to the main color of that backdrop, because dim nodes go toward it.
+
+The film can fade a node while the light is on, and the two do not undo each other. `spotlight(null)` gives every node the look that the film gave it: a node that the film fades to 0.5 under the light is at 0.5 when the light goes off.
+
+**Lights follow time.** A light does not change the stage when the film names it. It joins the lights of the film, and what is dim at a time comes from that list in time order, when the film is complete. So a narrated film can name its lights, and bring its nodes, in any order with `s.at`, and the result is the same. At a time, the light that started last decides. A light of the whole stage takes the place of every light before it. A light with `within` decides inside its node and leaves the rest of the stage to the lights before it.
+
+A light that would show nothing, or that would make a frame jump, stops the build, and the error says what to do:
+
+- A target that is not on the stage, or is hidden, when the light starts. A node that enters at that time is a target, and so is a part of it, such as one term of an equation that `write` brings. For a morph that starts at that time, light the node that the morph starts from.
+- The camera or the root of the stage as a target, and two nodes as two arguments: `spotlight([a, b])` takes one list.
+- A light with `within` in a node that another light dimmed, or in a node whose group it dimmed. Make that node a target of the other light, or turn the other light off first.
+- Two lights that start at the same time in the same place. They have no order, so give one light all the targets. Two times that differ by less than a millionth of a second are the same time.
+- A light that dims a node while it morphs. The shape that travels is a new node with its own look, so a dim source would jump to bright, and a result in a dim group would jump to dim. Make the source of the morph a target or a `keep` of the light, or turn the light off before the morph. The result of a morph has its own look, and the next `spotlight` decides for it.
+
+The light has one limit. A `scene3d` draws its own objects, so the light does not act on one object in it: the scene is bright or dim as a whole.
+
+The film check reads dim text as text, and a light gives it no new finding: a dim label keeps its plate, so no line crosses it. The check has no rule for the contrast of a text, so it counts a dim text as readable at any `dim`. Keep the default, or more, for text that a viewer must still read.
 
 ## Composition
 
@@ -2865,6 +2924,56 @@ Two such objects side by side compare two designs by their crossings: ten agains
 `.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, and `flow.marks` hold the same events by kind. An event has a `shape` (its bar, its arrow, or its dot), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), and an `edge` (the outline of an idle span, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
 
 The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+
+## Ring buffers
+
+`ringBuffer(slots, options)` draws a ring of slots with a head pointer and a tail pointer. It is the picture of a bounded queue: the two rings of io_uring, a virtqueue, or the descriptor ring of a network card. Slot 0 is at the top, and the slots follow clockwise. `ring.push(entry)` is the producer: the slot at the tail fills, then the tail pointer moves one slot on. `ring.pop()` is the consumer: the entry at the head empties, then the head pointer moves one slot on.
+
+```film paired label="A producer writes three entries at the tail, and a consumer reads two at the head"
+import { film, ringBuffer, seq } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const sq = ringBuffer(8, { radius: 300, label: 'submission queue', counts: true, size: 40 }).at(0, -50)
+    s.play(sq.enter(), { duration: 1.4 })
+    s.play(seq(sq.push({ label: 'read' }), sq.push({ label: 'write', color: 'orange' }), sq.push({ label: 'recv' })), { duration: 2.7 })
+    s.play(seq(sq.pop(), sq.pop()), { duration: 1.8 })
+    s.wait(0.8)
+})
+```
+
+`ring.head` and `ring.tail` are running counts that never wrap. The slot of a count is the count modulo `ring.size`, and `ring.length` is `tail - head`. With `counts: true`, each pointer shows its count beside its name: after 9 pushes on 8 slots, the tail reads 9 and is at slot 1. `numbers: true` writes the number of each slot beside it. With both, a name keeps three gaps from the numbers, so that "head 9" and the number of its slot do not read as one phrase.
+
+`ring.length === 0` is an empty ring, and `ring.length === ring.size` is a full ring. In both states the two pointers are at one slot, so only the entries tell the two apart. The ring writes no text for these states: a film that names them reads `ring.length`. A `push()` on a full ring is an error, and so is a `pop()` on an empty ring.
+
+One pointer is outside the ring and one is inside, so the two do not meet when both are at one slot. `outside` selects the pointer that is outside, and `head` and `tail` set the two names. A name of null draws no pointer. The names stay upright. The inside name must fit inside the ring at every slot. With `counts`, it must fit with a count of two digits from the start, and a count of three digits is checked when a pointer reaches it. An error gives the room, and a `radius` that has it.
+
+`headColor` and `tailColor` set the color of the arrow head and the name of a pointer, for example the color of the side that writes that index. Without them, a pointer has the `color` of the ring, as the slots and the caption have. `ring.headPointer` and `ring.tailPointer` are nodes: fade, scale, or recolor a pointer as one node. A pointer grows about its tip, which stays on the band. The ring moves the pointers, so do not move them.
+
+An entry has a `color` and a short `label`, which is upright in its slot. A label that is too wide is set smaller, down to 0.6 of `labelSize`. A label that is still too wide is an error, which gives a `labelSize`, a number of slots, and a `radius` that fit. More `thickness` does not help in a ring of many slots, where it makes a slot narrower. To keep all labels at one size, set `labelSize` to the size that fits the longest label. For labels of one or two letters, a larger `labelSize` reads better. An entry with no color has the `color` of the ring.
+
+`push({ pending: true })` writes an entry and does not publish it: the entry is a dashed outline in its color, with no fill. `ring.publish()` fills every pending entry, and `ring.pending` is the number of pending entries. A `pop()` of a pending entry is an error, because the consumer cannot see it: publish first.
+
+`tailFollows` says what the tail pointer stands for. With `'push'`, the default, the tail moves at each push, also for a pending entry: it is the index that the producer keeps for itself. With `'publish'`, the tail and its count stay behind the pending entries until `publish()`, and a dim arrow head with no name, `ring.writeMarker`, shows where the producer writes. A film about io_uring wants `'publish'` for the submission queue. The program fills several entries, then stores the tail once, and the kernel sees nothing before that store. With `'push'`, the tail counts up at each write, and a viewer learns that the kernel sees each one.
+
+```film paired label="The program writes three requests, then one store of the tail publishes them to the kernel"
+import { film, lagged, ringBuffer } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const sq = ringBuffer(8, { radius: 300, label: 'submission queue', color: 'dim', tailColor: 'blue', headColor: 'orange', tailFollows: 'publish', counts: true, size: 40 }).at(0, -50)
+    s.play(sq.enter(), { duration: 1.2 })
+    s.play(lagged(['read', 'write', 'recv'].map((label) => sq.push({ label, color: 'blue', pending: true })), { lag: 0.5 }), { duration: 2.4 })
+    s.wait(0.6)
+    s.play(sq.publish(), { duration: 1 })
+    s.play(sq.pop(), { duration: 1 })
+    s.wait(0.8)
+})
+```
+
+To write several entries at once, pass the pushes to `lagged`, to `par`, or to one `s.play`. The slots fill in the order of the pushes. The moves of a pointer add up, so it goes over the slots without a jump, and its name stays with it. A `pop()` and a `push()` of one slot in one play is the case of a full ring: the entry that is read fades out first, then the new entry fades in.
+
+`.at()` places the center of the ring, and `label` is a caption under it. The distance of the caption follows from `radius`, `size`, and `numbers`, and from no other option: it is the room of an arrow head and a name of 5 em under the band. So two rings that share these three have their captions on one line, whatever their names, counts and slots. For two rings that differ, or for a longer outside name, set `captionGap`: the distance from the band to the top of the caption. An outside name that can reach the caption is an error that gives the `captionGap` to set.
+
+The bounds of a ring hold the outside name at every slot, with a count of two digits. So a `zone` or a `card` around a ring has room for the name wherever the pointer goes, and `nextTo` keeps two rings apart. `ring.p(slot)` gives the middle of a slot in the coordinates of the ring, to fly an entry in from another place. The slot wraps, so `ring.p(ring.tail)` is the slot that the next `push()` fills. `ring.enter()` draws the band slot by slot, then brings the pointers and the caption. `ring.slots`, `ring.entries`, `ring.numbers`, `ring.headPointer`, `ring.tailPointer`, `ring.writeMarker`, and `ring.caption` are the parts. A ring has 2 to 64 slots.
 
 ## Pictograms
 

@@ -1,1 +1,1 @@
-import{Sb as r,Va as n,lb as p}from"../chunk-OKWL5TR3.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=p({fps:30},a=>{let d=a.add(r({unit:180}));a.play(n(d,(t,i)=>[t+Math.sin(i/170)*120,i+Math.sin(t/170)*120],{duration:2.4})),a.wait(.8)});export{f as default};
+import{Sb as r,Va as n,lb as p}from"../chunk-DFYPBJRB.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=p({fps:30},a=>{let d=a.add(r({unit:180}));a.play(n(d,(t,i)=>[t+Math.sin(i/170)*120,i+Math.sin(t/170)*120],{duration:2.4})),a.wait(.8)});export{f as default};
