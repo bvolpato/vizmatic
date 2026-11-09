@@ -2866,6 +2866,56 @@ Two such objects side by side compare two designs by their crossings: ten agains
 
 The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
 
+## Ring buffers
+
+`ringBuffer(slots, options)` draws a ring of slots with a head pointer and a tail pointer. It is the picture of a bounded queue: the two rings of io_uring, a virtqueue, or the descriptor ring of a network card. Slot 0 is at the top, and the slots follow clockwise. `ring.push(entry)` is the producer: the slot at the tail fills, then the tail pointer moves one slot on. `ring.pop()` is the consumer: the entry at the head empties, then the head pointer moves one slot on.
+
+```film paired label="A producer writes three entries at the tail, and a consumer reads two at the head"
+import { film, ringBuffer, seq } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const sq = ringBuffer(8, { radius: 300, label: 'submission queue', counts: true, size: 40 }).at(0, -50)
+    s.play(sq.enter(), { duration: 1.4 })
+    s.play(seq(sq.push({ label: 'read' }), sq.push({ label: 'write', color: 'orange' }), sq.push({ label: 'recv' })), { duration: 2.7 })
+    s.play(seq(sq.pop(), sq.pop()), { duration: 1.8 })
+    s.wait(0.8)
+})
+```
+
+`ring.head` and `ring.tail` are running counts that never wrap. The slot of a count is the count modulo `ring.size`, and `ring.length` is `tail - head`. With `counts: true`, each pointer shows its count beside its name: after 9 pushes on 8 slots, the tail reads 9 and is at slot 1. `numbers: true` writes the number of each slot beside it. With both, a name keeps three gaps from the numbers, so that "head 9" and the number of its slot do not read as one phrase.
+
+`ring.length === 0` is an empty ring, and `ring.length === ring.size` is a full ring. In both states the two pointers are at one slot, so only the entries tell the two apart. The ring writes no text for these states: a film that names them reads `ring.length`. A `push()` on a full ring is an error, and so is a `pop()` on an empty ring.
+
+One pointer is outside the ring and one is inside, so the two do not meet when both are at one slot. `outside` selects the pointer that is outside, and `head` and `tail` set the two names. A name of null draws no pointer. The names stay upright. The inside name must fit inside the ring at every slot. With `counts`, it must fit with a count of two digits from the start, and a count of three digits is checked when a pointer reaches it. An error gives the room, and a `radius` that has it.
+
+`headColor` and `tailColor` set the color of the arrow head and the name of a pointer, for example the color of the side that writes that index. Without them, a pointer has the `color` of the ring, as the slots and the caption have. `ring.headPointer` and `ring.tailPointer` are nodes: fade, scale, or recolor a pointer as one node. A pointer grows about its tip, which stays on the band. The ring moves the pointers, so do not move them.
+
+An entry has a `color` and a short `label`, which is upright in its slot. A label that is too wide is set smaller, down to 0.6 of `labelSize`. A label that is still too wide is an error, which gives a `labelSize`, a number of slots, and a `radius` that fit. More `thickness` does not help in a ring of many slots, where it makes a slot narrower. To keep all labels at one size, set `labelSize` to the size that fits the longest label. For labels of one or two letters, a larger `labelSize` reads better. An entry with no color has the `color` of the ring.
+
+`push({ pending: true })` writes an entry and does not publish it: the entry is a dashed outline in its color, with no fill. `ring.publish()` fills every pending entry, and `ring.pending` is the number of pending entries. A `pop()` of a pending entry is an error, because the consumer cannot see it: publish first.
+
+`tailFollows` says what the tail pointer stands for. With `'push'`, the default, the tail moves at each push, also for a pending entry: it is the index that the producer keeps for itself. With `'publish'`, the tail and its count stay behind the pending entries until `publish()`, and a dim arrow head with no name, `ring.writeMarker`, shows where the producer writes. A film about io_uring wants `'publish'` for the submission queue. The program fills several entries, then stores the tail once, and the kernel sees nothing before that store. With `'push'`, the tail counts up at each write, and a viewer learns that the kernel sees each one.
+
+```film paired label="The program writes three requests, then one store of the tail publishes them to the kernel"
+import { film, lagged, ringBuffer } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const sq = ringBuffer(8, { radius: 300, label: 'submission queue', color: 'dim', tailColor: 'blue', headColor: 'orange', tailFollows: 'publish', counts: true, size: 40 }).at(0, -50)
+    s.play(sq.enter(), { duration: 1.2 })
+    s.play(lagged(['read', 'write', 'recv'].map((label) => sq.push({ label, color: 'blue', pending: true })), { lag: 0.5 }), { duration: 2.4 })
+    s.wait(0.6)
+    s.play(sq.publish(), { duration: 1 })
+    s.play(sq.pop(), { duration: 1 })
+    s.wait(0.8)
+})
+```
+
+To write several entries at once, pass the pushes to `lagged`, to `par`, or to one `s.play`. The slots fill in the order of the pushes. The moves of a pointer add up, so it goes over the slots without a jump, and its name stays with it. A `pop()` and a `push()` of one slot in one play is the case of a full ring: the entry that is read fades out first, then the new entry fades in.
+
+`.at()` places the center of the ring, and `label` is a caption under it. The distance of the caption follows from `radius`, `size`, and `numbers`, and from no other option: it is the room of an arrow head and a name of 5 em under the band. So two rings that share these three have their captions on one line, whatever their names, counts and slots. For two rings that differ, or for a longer outside name, set `captionGap`: the distance from the band to the top of the caption. An outside name that can reach the caption is an error that gives the `captionGap` to set.
+
+The bounds of a ring hold the outside name at every slot, with a count of two digits. So a `zone` or a `card` around a ring has room for the name wherever the pointer goes, and `nextTo` keeps two rings apart. `ring.p(slot)` gives the middle of a slot in the coordinates of the ring, to fly an entry in from another place. The slot wraps, so `ring.p(ring.tail)` is the slot that the next `push()` fills. `ring.enter()` draws the band slot by slot, then brings the pointers and the caption. `ring.slots`, `ring.entries`, `ring.numbers`, `ring.headPointer`, `ring.tailPointer`, `ring.writeMarker`, and `ring.caption` are the parts. A ring has 2 to 64 slots.
+
 ## Pictograms
 
 `pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.

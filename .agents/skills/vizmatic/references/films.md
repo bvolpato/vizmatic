@@ -234,6 +234,18 @@ const word = s.add(bitField([
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
 
+A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
+
+```ts
+const sq = ringBuffer(8, { label: 'submission queue', counts: true, tailColor: 'blue', headColor: 'orange', tailFollows: 'publish' }).at(-430, 0)
+s.play(sq.enter())
+s.play(sq.push({ label: 'read', pending: true }))   // the producer writes, and the tail stays: the consumer sees nothing
+s.play(sq.publish())                                // one store of the tail: the consumer can now see the entry
+s.play(sq.pop())                                    // the consumer reads at the head
+```
+
+For the submission queue of io_uring, use `tailFollows: 'publish'`: the program stores the tail once for several entries, and a tail that counts up at each write teaches the opposite. The bounds of a ring hold the outside name at every slot, so place a ring by its bounds. `ring.length === 0` is an empty ring and `ring.length === ring.size` is a full ring: both pointers are then at one slot, and a text for the state is the work of the film. A `push()` on a full ring, a `pop()` on an empty ring, and a `pop()` of a pending entry are errors. For several pushes at once, pass them to `lagged`.
+
 3D:
 
 ```ts
