@@ -128,6 +128,7 @@
     "render:examples": "pnpm build && tsx scripts/render-examples.ts && pnpm site:build",
     "render:video": "pnpm build && tsx scripts/render-video-example.ts",
     "benchmark:quality": "pnpm build && tsx scripts/benchmark-quality.ts && pnpm site:build",
+    "benchmark:export": "tsx scripts/bench-export.ts",
     "check:examples": "tsx scripts/check-examples.ts",
     "render:films": "tsx scripts/render-films.ts",
     "check:films": "tsx src/cli.ts check examples/films",
