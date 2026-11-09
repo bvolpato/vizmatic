@@ -24,6 +24,12 @@ export const clock = {
      * makes on the stage, and while one of its frames is drawn.
      */
     font: null as FontFamily | null,
+    /**
+     * The stage of the film whose callback runs now, or null outside a film. The stage puts itself here where
+     * it puts its font. The layout reads the frame from it, and adds a check for the end of the build: a node
+     * that it put off the frame stops the build.
+     */
+    canvas: null as { readonly width: number; readonly height: number; readonly checks: (() => void)[] } | null,
 }
 
 export interface Overlayable {

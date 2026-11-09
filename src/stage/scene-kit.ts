@@ -8,10 +8,13 @@
  * One number sets every size: the heading, the source line, the claim tag, the chips and the names of the
  * boxes follow `size`, so a film for a phone raises one number.
  *
- * A text helper takes the place of its text, because `left` and `right` differ only in the edge that x
- * names. An object such as a chip is placed with `.at(x, y)`, as every object of the library is.
+ * A scene types no place: it makes each text with no x and no y, and the layout places it, such as
+ * `place(column([label('requests'), chip('virtio')]), area, 'top left')`. See `row`, `column`, `grid`, `place`
+ * and `beside`. A text helper also takes the place of its text, as `left('requests', area.left, 80)`, and
+ * an object such as a chip takes `.at(x, y)`, for a film that types its places.
  */
 import type { FontFamily } from './font'
+import { Box } from './layout'
 import type { SceneClock } from './narration'
 import type { Node } from './node'
 import { card, type Card, type CardOptions } from './objects/card'
@@ -21,18 +24,12 @@ import { tag, tagTrack, type TagState } from './objects/tag'
 import { filmFont, text, type TextNode, type TextOptions } from './text'
 import { advanceWidth, fittedSize, type TextMeasureOptions } from './text-fit'
 
-/** The area that the content of a scene may fill, between the heading and the source line. */
-export interface SceneArea {
-    readonly left: number
-    readonly right: number
-    readonly top: number
-    readonly bottom: number
-    /** The middle of the area. */
-    readonly cx: number
-    readonly cy: number
-    readonly width: number
-    readonly height: number
-}
+/**
+ * The area that the content of a scene may fill, between the heading and the source line. It is a `Box`: it has
+ * `left`, `right`, `top`, `bottom`, `cx`, `cy`, `width` and `height`, and it cuts into regions with `columns`,
+ * `rows`, `inset` and `beside`.
+ */
+export type SceneArea = Box
 
 export interface SceneKitOptions {
     /**
@@ -41,8 +38,9 @@ export interface SceneKitOptions {
      */
     font?: FontFamily
     /**
-     * Font size of `label`, `left` and `right`. Defaults to 36. The other sizes follow it: the heading is 1.44 of
-     * it, a block of text and the name of a box 0.89, a chip 0.78, and the source line and the claim tag 0.72.
+     * Font size of `label`, `left` and `right`. Defaults to 36. The other sizes follow it: a display line is 1.78
+     * of it, the heading 1.44, a block of text and the name of a box 0.89, a chip 0.78, and a note, the source
+     * line and the claim tag 0.72.
      */
     size?: number
     /** Font size of `para`, when it is not 0.89 of `size`. */
@@ -85,14 +83,28 @@ export interface SceneKit {
     readonly font: FontFamily
     /** The area that the content of a scene may fill. */
     readonly area: SceneArea
-    /** A label with its middle at (x, y): `label('p99 latency', 0, -120, { color: 'blue' })`. */
+    /**
+     * A label for the layout to place: `label('p99 latency', { color: 'blue' })`. With a place, its middle is at
+     * (x, y): `label('p99 latency', 0, -120)`.
+     */
+    label(content: string, options?: TextOptions): TextNode
     label(content: string, x: number, y: number, options?: TextOptions): TextNode
-    /** A label with its left edge at x: `left('requests', area.left, 80)`. */
+    /** A label with its left edge at x: `left('requests', area.left, 80)`. With no place, it is a label that scales from its left edge. */
+    left(content: string, options?: TextOptions): TextNode
     left(content: string, x: number, y: number, options?: TextOptions): TextNode
-    /** A label with its right edge at x: `right('128 GPUs', plot.left - 20, 40)`. */
+    /** A label with its right edge at x: `right('128 GPUs', plot.left - 20, 40)`. With no place, it is a label that scales from its right edge. */
+    right(content: string, options?: TextOptions): TextNode
     right(content: string, x: number, y: number, options?: TextOptions): TextNode
-    /** A block of text that wraps at `width`, with its left edge at x and its middle at y: `para(quote, area.left, 0, 640)`. */
+    /**
+     * A block of text that wraps at `width`, for the layout to place: `para(quote, side.width)`. With a place, its
+     * left edge is at x and its middle at y: `para(quote, area.left, 0, 640)`.
+     */
+    para(content: string, width: number, options?: TextOptions): TextNode
     para(content: string, x: number, y: number, width: number, options?: TextOptions): TextNode
+    /** A note for the layout to place, small and dim, in the size of the source line: `note('our run of June')`. */
+    note(content: string, options?: TextOptions): TextNode
+    /** The one large line of a picture, for the layout to place: `display('160 times faster', { color: 'green' })`. */
+    display(content: string, options?: TextOptions): TextNode
     /** The heading of a scene, at its place in the frame: `heading('One microVM')`. */
     heading(content: string, options?: TextOptions): TextNode
     /** The source line of a scene, small and dim, under the area: `source('Firecracker docs/design.md, 2026')`. */
@@ -109,7 +121,7 @@ export interface SceneKit {
     textWidth(content: string, size: number, options?: TextMeasureOptions): number
     /** The largest size, not over `size`, at which a line of text fits `width`: `fitSize(name, box.width - 40, 36)`. */
     fitSize(content: string, width: number, size: number, options?: TextMeasureOptions): number
-    /** A short label in a box that fits it, with its left end at x: `chip('virtio', { stroke: 'green' }).at(120, 40)`. */
+    /** A short label in a box that fits it: `chip('virtio', { stroke: 'green' })`. The layout places it, or `.at(120, 40)` puts its left end at x. */
     chip(content: string, options?: ChipOptions): Chip
     /** Chips in a row. It wraps only with `maxWidth`, and `.at` places its left end: `chipRow(['KVM', 'seccomp'], { maxWidth: 600 }).at(area.left, 300)`. */
     chipRow(items: readonly ChipRowItem[], options?: ChipRowOptions): ChipRow
@@ -119,17 +131,22 @@ export interface SceneKit {
     card(options: CardOptions): Card
 }
 
-// Each size of the kit, as a part of the size of a label. With the default of 36, they are 52, 32, 32, 28 and 26.
-const SCALE = { heading: 52 / 36, para: 32 / 36, box: 32 / 36, chip: 28 / 36, source: 26 / 36 }
+// Each size of the kit, as a part of the size of a label. With the default of 36, they are 64, 52, 32, 32, 28 and 26.
+const SCALE = { display: 64 / 36, heading: 52 / 36, para: 32 / 36, box: 32 / 36, chip: 28 / 36, source: 26 / 36 }
 // A tag with no end of its own leaves when the scene fades it, so its last state has no last moment: 30 years.
 const NEVER = 1e9
 // What a state of a claim tag can hold. A field with another name is a mistake that must not pass in silence.
 const STATE_FIELDS = ['at', 'word', 'note', 'color', 'noteColor', 'size', 'font', 'noteFont', 'fill', 'anchor']
 
-function sceneArea(edges: SceneKitOptions['area'] = {}): SceneArea {
+/**
+ * The area for the content of a scene, as a region of the layout: `sceneArea().columns([2, 1])`. It is the
+ * `area` of a kit, for a film that has none. The defaults fit a stage of 1920 by 1080, under a heading and
+ * over a source line: x from -900 to 900, and y from -400 to 440. Give the edges that differ.
+ */
+export function sceneArea(edges: SceneKitOptions['area'] = {}): Box {
     const left = edges.left ?? -900, right = edges.right ?? 900, top = edges.top ?? -400, bottom = edges.bottom ?? 440
     if (!(right > left && bottom > top)) throw new Error(`sceneKit: the area must have its right edge after its left edge and its bottom under its top, and it is x ${left} to ${right}, y ${top} to ${bottom}`)
-    return { left, right, top, bottom, cx: (left + right) / 2, cy: (top + bottom) / 2, width: right - left, height: bottom - top }
+    return new Box(left, top, right, bottom)
 }
 
 /** The states of a claim tag, checked. A wrong field is an error that names the scene, the state and the field. */
@@ -168,9 +185,24 @@ export function sceneKit(options: SceneKitOptions = {}): SceneKit {
     // The look of the chips of the film: its font and its size first, so that the film can choose others for its chips.
     const chipLook = (): ChipOptions => ({ font: fontOf(), size: scaled(SCALE.chip), ...options.chip })
 
-    const label: SceneKit['label'] = (content, x, y, own) => text(content, { ...plain(size), ...own }).at(x, y)
-    const left: SceneKit['left'] = (content, x, y, own) => label(content, x, y, { anchor: 'left', ...own })
-    const right: SceneKit['right'] = (content, x, y, own) => label(content, x, y, { anchor: 'right', ...own })
+    // A text helper takes a place, or none: without x and y, the layout places the text.
+    type Rest = [options?: TextOptions] | [x: number, y: number, options?: TextOptions]
+    const placed = (base: TextOptions) => (content: string, ...rest: Rest): TextNode => {
+        if (typeof rest[0] !== 'number') return text(content, { ...base, ...rest[0] })
+        if (typeof rest[1] !== 'number') throw new Error(`sceneKit: the text ${JSON.stringify(content)} has an x and no y. Give both, or none: the layout then places the text`)
+        return text(content, { ...base, ...rest[2] }).at(rest[0], rest[1])
+    }
+    const label = (content: string, ...rest: Rest) => placed(plain(size))(content, ...rest)
+    const left = (content: string, ...rest: Rest) => placed({ ...plain(size), anchor: 'left' })(content, ...rest)
+    const right = (content: string, ...rest: Rest) => placed({ ...plain(size), anchor: 'right' })(content, ...rest)
+    const para = (content: string, ...rest: [width: number, options?: TextOptions] | [x: number, y: number, width: number, options?: TextOptions]): TextNode => {
+        const block = (width: number, own?: TextOptions): TextNode => {
+            if (!(Number.isFinite(width) && width > 0)) throw new Error(`sceneKit: para wraps at a width, more than 0, and it is ${width}. Give the width of its region, such as side.width`)
+            return text(content, { ...plain(options.paraSize ?? scaled(SCALE.para)), anchor: 'left', align: 'left', maxWidth: width, leading: 1.3, ...own })
+        }
+        if (typeof rest[1] !== 'number') return block(rest[0], rest[1])
+        return block(rest[2] as number, rest[3]).at(rest[0], rest[1])
+    }
 
     return {
         get font() { return fontOf() },
@@ -178,7 +210,9 @@ export function sceneKit(options: SceneKitOptions = {}): SceneKit {
         label,
         left,
         right,
-        para: (content, x, y, width, own) => text(content, { ...plain(options.paraSize ?? scaled(SCALE.para)), anchor: 'left', align: 'left', maxWidth: width, leading: 1.3, ...own }).at(x, y),
+        para,
+        note: (content, own) => text(content, { ...plain(foot.size), color: 'dim', anchor: 'left', ...own }),
+        display: (content, own) => text(content, { ...plain(scaled(SCALE.display)), ...own }),
         heading: (content, own) => (head.align === 'center' ? label(content, area.cx, head.y, { size: head.size, ...own }) : left(content, area.left, head.y, { size: head.size, ...own })),
         source: (content, own) => left(content, area.left, foot.y, { size: foot.size, color: 'dim', ...own }),
         claimTag(clock, given, own = {}) {

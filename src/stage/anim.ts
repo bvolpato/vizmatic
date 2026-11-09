@@ -6,6 +6,7 @@ import {
 import { isGradient, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from './color'
 import { clock, Track } from './track'
 import { Node, type NodeProps, type PropName } from './node'
+import { Block, nodeOrPoint, nodesFor, oneNode } from './layout'
 import { matchSequence, pathMixer } from './morph'
 import type { Stage } from './stage'
 
@@ -31,10 +32,18 @@ export interface AnimOptions {
     lag?: number
 }
 
-export type Target = Node | readonly Node[]
+/** What an animation acts on: a node, a block of the layout, or a list of them. A block stands for its nodes. */
+export type Target = Node | Block | readonly (Node | Block)[]
 
-function list(target: Target): Node[] {
-    return Array.isArray(target) ? [...target] as Node[] : [target as Node]
+function list(target: Target, what = 'an animation'): Node[] {
+    return nodesFor(what, target)
+}
+
+/** The middle of the bounds of nodes that are one target, as a stage point. */
+function middleOf(nodes: readonly Node[]): Vec {
+    const boxes = nodes.map((node) => node.bounds())
+    const left = Math.min(...boxes.map((b) => b.x)), right = Math.max(...boxes.map((b) => b.x + b.width)), top = Math.min(...boxes.map((b) => b.y)), bottom = Math.max(...boxes.map((b) => b.y + b.height))
+    return [(left + right) / 2, (top + bottom) / 2]
 }
 
 function run(anim: Anim, t0: number, t1: number, parent: AnimContext): void {
@@ -354,11 +363,14 @@ export function vanish(target: Target): Anim {
  *
  *   s.play(to(dot, (d) => d.moveTo(axes.p(2, 4)).color('yellow').scale(1.5)))
  */
-export function to<T extends Node>(node: T, change: (node: T) => unknown, options: AnimOptions & { restore?: boolean } = {}): Anim {
+export function to<T extends Node | Block>(node: T, change: (node: T) => unknown, options: AnimOptions & { restore?: boolean } = {}): Anim {
+    // A block of the layout is its nodes: `to(block, () => place(block, region))` moves each one.
+    const nodes = nodesFor('to', node, 'the first argument')
+    if (typeof change !== 'function') throw new Error('to: the second argument is the change, a function such as (node) => node.shift(100, 0)')
     return {
         label: 'to', duration: options.duration ?? 1, ease: options.ease,
         schedule(ctx) {
-            ensureVisible(node, ctx.t0, ctx.stage)
+            for (const each of nodes) ensureVisible(each, ctx.t0, ctx.stage)
             const touched = new Set<{ overlay: Map<string, unknown> | null }>()
             clock.capture = touched
             try {
@@ -404,32 +416,62 @@ function applyChanges(node: Node, values: Map<string, unknown>, ctx: AnimContext
     for (const [prop, value] of restoreValues) stepAt(node, prop, value, t1)
 }
 
-export function moveTo(node: Node, target: Vec | Node, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.moveTo(target), options), label: 'moveTo' }
+/** A change of each node of a target, as one animation. A block of the layout stands for its nodes. */
+function toEach(what: string, target: Node | Block, change: (node: Node, all: readonly Node[]) => unknown, options: AnimOptions): Anim {
+    const nodes = nodesFor(what, target, 'the first argument')
+    return { ...to(target, () => { for (const node of nodes) change(node, nodes) }, options), label: what === 'scaleBy' ? 'scale' : what }
 }
 
-export function shift(node: Node, dx: number, dy: number, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.shift(dx, dy), options), label: 'shift' }
+/** Move a node so that its middle is on a stage point, or on the middle of another node. A block moves as one. */
+export function moveTo(node: Node | Block, target: Vec | Node | Block, options: AnimOptions = {}): Anim {
+    const nodes = nodesFor('moveTo', node, 'the first argument')
+    if (!(target instanceof Block)) nodeOrPoint('moveTo', target, 'the place')
+    if (node instanceof Node && !(target instanceof Block)) return { ...to(node, (n) => n.moveTo(target), options), label: 'moveTo' }
+    return {
+        ...to(node, () => {
+            // One distance for all the nodes, so that a block keeps its shape.
+            const [x, y] = target instanceof Block ? middleOf(target.nodes) : target instanceof Node ? target.center : target
+            const [cx, cy] = middleOf(nodes)
+            for (const each of nodes) each.moveTo([each.center[0] + x - cx, each.center[1] + y - cy])
+        }, options),
+        label: 'moveTo',
+    }
 }
 
-export function scaleBy(node: Node, factor: number | Vec, options: AnimOptions & { about?: Vec } = {}): Anim {
-    return { ...to(node, (n) => n.scale(factor, options.about), options), label: 'scale' }
+export function shift(node: Node | Block, dx: number, dy: number, options: AnimOptions = {}): Anim {
+    return toEach('shift', node, (n) => n.shift(dx, dy), options)
 }
 
-export function rotate(node: Node, radians: number, options: AnimOptions & { about?: Vec } = {}): Anim {
-    return { ...to(node, (n) => n.rotate(radians, options.about), options), label: 'rotate' }
+/** Scale a node about its middle, or about a stage point. A block scales as one, about its middle. */
+export function scaleBy(node: Node | Block, factor: number | Vec, options: AnimOptions & { about?: Vec } = {}): Anim {
+    let about: Vec | undefined
+    return toEach('scaleBy', node, (n, all) => {
+        if (n === all[0]) about = options.about ?? (all.length > 1 ? middleOf(all) : undefined)
+        n.scale(factor, about)
+    }, options)
 }
 
-export function recolor(node: Node, color: ColorInput, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.color(color), options), label: 'recolor' }
+/** Turn a node about its middle, or about a stage point. A block turns as one, about its middle. */
+export function rotate(node: Node | Block, radians: number, options: AnimOptions & { about?: Vec } = {}): Anim {
+    let about: Vec | undefined
+    return toEach('rotate', node, (n, all) => {
+        if (n === all[0]) about = options.about ?? (all.length > 1 ? middleOf(all) : undefined)
+        n.rotate(radians, about)
+    }, options)
 }
 
-export function fade(node: Node, opacity: number, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.opacity(opacity), { duration: 0.6, ...options }), label: 'fade' }
+export function recolor(node: Node | Block, color: ColorInput, options: AnimOptions = {}): Anim {
+    return toEach('recolor', node, (n) => n.color(color), options)
+}
+
+export function fade(node: Node | Block, opacity: number, options: AnimOptions = {}): Anim {
+    return toEach('fade', node, (n) => n.opacity(opacity), { duration: 0.6, ...options })
 }
 
 /** Follow a path, or the shape of a node, from start to end. */
 export function along(node: Node, track: Path | Node, options: AnimOptions & { orient?: boolean } = {}): Anim {
+    oneNode('along', node, 'the first argument')
+    if (track instanceof Block) oneNode('along', track, 'the track')
     return {
         label: 'along', duration: options.duration ?? 2, ease: options.ease,
         schedule(ctx) {
@@ -659,6 +701,8 @@ function finishMorph(a: readonly Node[], b: readonly Node[], ghosts: readonly No
  * to their new places. The rest fade out or in where they stand.
  */
 export function morphMatching(from: Node, to: Node, options: AnimOptions & { key?: (leaf: Node) => unknown; fadeShift?: Vec } = {}): Anim {
+    oneNode('morphMatching', from, 'the first argument')
+    oneNode('morphMatching', to, 'the second argument')
     return {
         label: 'morphMatching', duration: options.duration ?? 1.4, ease: options.ease,
         schedule(ctx) {
@@ -703,6 +747,7 @@ export function indicate(target: Target, options: AnimOptions & { color?: ColorI
 
 /** Shake gently to draw the eye. */
 export function shake(node: Node, options: AnimOptions & { angle?: number; cycles?: number } = {}): Anim {
+    oneNode('shake', node, 'the first argument')
     return {
         label: 'shake', duration: options.duration ?? 0.8,
         ease: wiggleEase(options.cycles ?? 3),
@@ -720,6 +765,7 @@ export function shake(node: Node, options: AnimOptions & { angle?: number; cycle
 
 /** Trace a line around a node for emphasis, then let it run off. */
 export function circumscribe(target: Node, options: AnimOptions & { color?: ColorInput; pad?: number; radius?: number; width?: number } = {}): Anim {
+    oneNode('circumscribe', target, 'the first argument')
     return {
         label: 'circumscribe', duration: options.duration ?? 1.3, ease: options.ease ?? linear,
         schedule(ctx) {
@@ -752,6 +798,7 @@ function markOf(ctx: AnimContext, mark: Node, target: Vec | Node): void {
 
 /** Radial burst at a point, for a moment of arrival. */
 export function flash(point: Vec | Node, options: AnimOptions & { color?: ColorInput; radius?: number; rays?: number } = {}): Anim {
+    nodeOrPoint('flash', point, 'the first argument')
     return {
         label: 'flash', duration: options.duration ?? 0.7, ease: options.ease ?? smooth,
         schedule(ctx) {
@@ -777,6 +824,7 @@ export function flash(point: Vec | Node, options: AnimOptions & { color?: ColorI
 
 /** Expanding ring that fades out, for a pulse from a point. */
 export function ripple(point: Vec | Node, options: AnimOptions & { color?: ColorInput; radius?: number; width?: number } = {}): Anim {
+    nodeOrPoint('ripple', point, 'the first argument')
     return {
         label: 'ripple', duration: options.duration ?? 1, ease: options.ease ?? smooth,
         schedule(ctx) {
@@ -799,6 +847,7 @@ export function ripple(point: Vec | Node, options: AnimOptions & { color?: Color
  * on a wire. The source line stays in place underneath.
  */
 export function pulse(line: Node, options: AnimOptions & { color?: ColorInput; length?: number; width?: number; glow?: number } = {}): Anim {
+    oneNode('pulse', line, 'the first argument')
     return {
         label: 'pulse', duration: options.duration ?? 1.1, ease: options.ease ?? smooth,
         schedule(ctx) {

@@ -5,11 +5,12 @@ import { smooth, linear } from '../ease'
 import { toPaint, type ColorInput } from '../color'
 import { Value, type Anim, type AnimOptions, type Target } from '../anim'
 import { addLight, inside } from '../light'
+import { Block, nodesFor, oneNode } from '../layout'
 import { clock } from '../track'
 import { reveal, stepAt, tweenValue } from './util'
 
-function list(target: Target): Node[] {
-    return Array.isArray(target) ? [...target] as Node[] : [target as Node]
+function list(target: Target, what = 'an animation'): Node[] {
+    return nodesFor(what, target)
 }
 
 function glyphsOf(target: Target): Node[] {
@@ -147,6 +148,8 @@ export function counter(initial = 0, options: CounterOptions = {}): Counter {
 
 /** Count a Counter or Value to a target. */
 export function countUp(target: Counter | Value, to: number, options: AnimOptions = {}): Anim {
+    const given: unknown = target
+    if (!(given instanceof Counter || given instanceof Value)) throw new Error(`countUp: the first argument is ${given instanceof Block ? 'a block of the layout' : given instanceof Node ? 'a node of another kind' : String(given)}. Give a counter, such as counter(0), or a value of the stage`)
     const value = target instanceof Counter ? target.value : target
     return {
         label: 'countUp', duration: options.duration ?? 1.2, ease: options.ease,
@@ -159,6 +162,7 @@ export function countUp(target: Counter | Value, to: number, options: AnimOption
 
 /** Steady rotation for as long as it plays: radians per second, around the center or a point. */
 export function spin(node: Node, rate: number, options: AnimOptions & { about?: Vec } = {}): Anim {
+    oneNode('spin', node, 'the first argument')
     return {
         label: 'spin', duration: options.duration ?? 2, ease: options.ease ?? linear,
         schedule(ctx) {
@@ -174,6 +178,8 @@ export function spin(node: Node, rate: number, options: AnimOptions & { about?: 
 
 /** Two nodes trade places along opposite arcs. */
 export function swap(a: Node, b: Node, options: AnimOptions & { lift?: number } = {}): Anim {
+    oneNode('swap', a, 'the first argument')
+    oneNode('swap', b, 'the second argument')
     return {
         label: 'swap', duration: options.duration ?? 0.9, ease: options.ease,
         schedule(ctx) {
@@ -210,7 +216,7 @@ export interface HighlightOptions extends AnimOptions {
  * A marker stroke sweeps across a target and stays behind it. `.mark` is the
  * node, so it can be faded out later.
  */
-export function highlightSweep(target: Node | readonly Node[], options: HighlightOptions = {}): Anim & { mark: Node } {
+export function highlightSweep(target: Target, options: HighlightOptions = {}): Anim & { mark: Node } {
     const mark = new Node([])
     // A film puts this mark behind a text on purpose, so the film check does not judge the text against it.
     mark.data['decoration'] = true
@@ -263,7 +269,7 @@ export interface SpotlightOptions extends AnimOptions {
     /** Dim only inside this node, such as one chart or one group. The rest of the stage does not change. */
     within?: Node
     /** One node or more that stay bright with the targets, such as a heading, a source line, or a backdrop. */
-    keep?: Node | readonly Node[]
+    keep?: Target
 }
 
 /** A film can read a node from a list at an index that is not there, such as `rows[7]` of six rows. Say so. */
@@ -288,11 +294,13 @@ function mustBeNodes(nodes: readonly unknown[], what: string): void {
  * The verb only adds a light to the list of the stage. What is dim at a time comes from that list in time
  * order, when the film is complete. So a film can name its lights, and bring its nodes, in any order.
  */
-export function spotlight(target: Node | readonly Node[] | null, options: SpotlightOptions = {}): Anim {
+export function spotlight(target: Target | null, options: SpotlightOptions = {}): Anim {
     // A film that writes spotlight(a, b) means a light on two nodes, and the second one would be lost as an option.
-    if (options instanceof Node || Array.isArray(options)) throw new Error('spotlight: the second argument is a node, and it must be the options. To light more than one node, give them as one list: spotlight([a, b])')
-    const targets = target === null ? null : list(target)
-    const keep = options.keep === undefined ? [] : list(options.keep)
+    if (options instanceof Node || options instanceof Block || Array.isArray(options)) throw new Error('spotlight: the second argument is a node, and it must be the options. To light more than one node, give them as one list: spotlight([a, b])')
+    // A block of the layout stands for its nodes. Each other value has the message of `mustBeNodes`.
+    const each = (value: unknown): unknown[] => (Array.isArray(value) ? value : [value]).flatMap((item) => (item instanceof Block ? item.nodes : [item]))
+    const targets = target === null ? null : each(target) as Node[]
+    const keep = options.keep === undefined ? [] : each(options.keep) as Node[]
     const within = options.within
     if (targets?.length === 0) throw new Error('spotlight: the list of targets is empty. Give it a node to light, or null to turn the light off')
     mustBeNodes(targets ?? [], 'a target')

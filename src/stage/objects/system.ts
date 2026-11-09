@@ -6,6 +6,7 @@ import { toPaint, type ColorInput } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
 import type { Ease } from '../ease'
 import { reveal, staggered, stepAt } from './util'
+import { nodeOrPoint } from '../layout'
 
 /** Left, right, or center a single line of text on a stage position. Its baseline never shifts. */
 function place(node: Node, x: number, y: number, align: 'left' | 'right' | 'center' = 'left'): Node {
@@ -360,6 +361,8 @@ export class Connector extends Node {
     constructor(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}) {
         // An empty path lets the standard draw and write verbs animate trimTo here.
         super([])
+        nodeOrPoint('connector', from, 'the first end')
+        nodeOrPoint('connector', to, 'the second end')
         this.fromEnd = from
         this.toEnd = to
         this.options = options
@@ -583,6 +586,7 @@ export class Callout extends Node {
 
     constructor(target: Node | Vec, body: string, options: CalloutOptions = {}) {
         super()
+        nodeOrPoint('callout', target, 'the target')
         const size = options.size ?? 15
         const color = options.color ?? 'yellow'
         const side = options.side ?? 'right'

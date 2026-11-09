@@ -240,6 +240,8 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): 
  * `spotlight` gives nodes a `dim` under 1.
  */
 export function buildOps(root: Node, camera: CameraState, width: number, height: number, backdrop: Rgba = [0, 0, 0, 1], marks: ReadonlyMap<Node, Node> | null = null): DrawOp[] {
+    // The root is one node, such as the root of a stage. A block of the layout and a list are not.
+    if (typeof (root as { localMatrix?: unknown } | null)?.localMatrix !== 'function') throw new Error('buildOps: the root is not a node. Give one node, such as the root of a stage, or a group of the nodes: group(block)')
     const screen: Mat = [1, 0, 0, 1, width / 2, height / 2]
     const view = mul(screen, compose(0, 0, -camera.rotation, camera.zoom, camera.zoom, camera.x, camera.y))
     const ops: DrawOp[] = []
