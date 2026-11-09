@@ -314,7 +314,7 @@ The object places the labels. The label of a span is inside its bar, at the star
 
 When the object cannot settle a case, the film can: an event takes `labelSide`. For a span, `'over'` and `'under'` are over and under the bar, and `'left'` and `'right'` are beside the bar, on the lane. A short span at the foot of an arrow has no room for a label over it, and `labelSide: 'under'` or `'right'` gives it one. For a handoff, `'left'` and `'right'` are the two sides of its arrow, and `'over'` and `'under'` are the two sides of the boundary that it crosses first. For a mark, the four sides are around its dot. A label with a `labelSide` has that place or none: when the place is taken, `lanes()` throws.
 
-Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
+Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A span that is a part of another span is a child span, with `inside`: see "Child spans" below. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
 
 With `ticks`, the object draws a time axis under the lanes, and one lane makes a chart of durations:
 
@@ -355,9 +355,169 @@ export default film((s) => {
 
 Two such objects side by side compare two designs by their crossings: ten against two. The label and the number of a boundary need room at the right of the object, so a handoff can be at any time, to the last end of the domain. The labels of all boundaries start at one x, and the numbers end at one x. The two lanes of a boundary are further apart, by 1.25 of the text size, for the line. The label of a handoff is then over the line or under it, beside the lane that the handoff leaves. `flow.boundaries` holds one node per boundary, and `flow.counters` the number of each boundary that counts, or null.
 
-`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, and `flow.marks` hold the same events by kind. An event has a `shape` (its bar, its arrow, or its dot), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), and an `edge` (the outline of an idle span, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
+`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, `flow.marks`, `flow.links`, and `flow.brackets` hold the same events by kind. An event has a `shape` (its bar, its arrow, its dot, or the line of its bracket), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), an `edge` (the outline of an idle span or the hatch of a down span, or null), a `sign` (the sign of its outcome, or null), and an `eventId` (its `id`, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
 
-The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the brackets, then the boundaries, then the deadlines, then the arrows, then the links, then the signs of the outcomes, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+
+### A deadline, and the time that is left
+
+`deadline` draws a line of dashes at one time, over all lanes: the time that a request must beat. Its `label` is over the top of the line. With `drain: true`, a bar over the lanes shows the time that is left. The bar ends at the line, and its other end is at the cursor at every frame, so the bar drains while the cursor moves. A `label` that is a function gets the time that is left and returns the text, so the text counts down.
+
+```film paired label="A request with a deadline of 20 s: two attempts fail, and a third one does not fit the time that is left"
+import { beside, fadeIn, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const flow = lanes(
+        [{ name: 'caller', color: 'blue' }, { name: 'provider', color: 'teal' }],
+        [
+            { lane: 'caller', start: 0, end: 20, idle: true, label: 'waits for the answer', outcome: 'failed' },
+            { from: 'caller', to: 'provider', at: 0.5, label: 'request T-17' },
+            { lane: 'provider', start: 0.5, end: 6.5, label: 'attempt 1', outcome: 'failed', id: 'first' },
+            { from: 'provider', to: 'provider', at: [6.5, 8.5], label: 'retry' },
+            { lane: 'provider', start: 8.5, end: 14.5, label: 'attempt 2', outcome: 'failed', id: 'second' },
+            { from: 'provider', to: 'provider', at: [14.5, 16.5], label: 'retry' },
+            { lane: 'provider', start: 16.5, end: 22.5, idle: true, label: 'attempt 3' },
+            { bracket: [20, 22.5], lane: 'provider', labelSide: 'under', label: '2.5 s late', color: 'red' },
+        ],
+        {
+            width: 1400, size: 32, barHeight: 56, pitch: 220, domain: [0, 24],
+            ticks: [0, 4, 8, 12, 16, 20, 24], format: (time) => `${time} s`,
+            deadline: { at: 20, drain: true, label: (left) => (left > 0 ? `${left.toFixed(1)} s left` : 'deadline') },
+        },
+    ).at(90, 60)
+    s.play(flow.enter(), { duration: 1 })
+    s.play(flow.advance('first'), { duration: 2.4 })
+    s.wait(0.8)
+    s.play(flow.advance('second'), { duration: 3 })
+    // The time that is left at the cursor, under the attempt that the cursor stopped at.
+    const note = beside(text(`${flow.remaining()} s left, and an attempt takes 6 s`, { size: 32, color: 'yellow' }), flow, 'under', 'normal', flow.region({ event: 'second' }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(1.5)
+    s.play(flow.showAll(), { duration: 3 })
+    s.wait(2)
+})
+```
+
+`flow.remaining()` is the time that is left to the deadline at the time of the cursor. After the deadline it is less than 0, and so is the value that a `label` function gets. `drain: { from: 4 }` starts the clock of the bar at a time that is not the first end of the domain. `deadline` also takes a list, such as a timeout and a later limit. Then `flow.remaining(1)` or `flow.remaining('give up')` names one deadline, by its index or by its label. The texts of all deadlines are on one line, and the line of a deadline is red unless it has a `color`. Without a `domain`, the domain holds the deadlines. A deadline comes in with `flow.enter()`. `flow.deadlines` holds one node per deadline: its line, then the two bars when it drains, then its text.
+
+The line starts over the room that a label takes over the first lane. No label of an event is on the line: a label takes a place that is clear of the line, and when it has none, `lanes()` throws. With a bar that drains, the cursor goes up to the bar. A line with no `drain` serves any time that matters, such as a cutoff or a kill time. The object does not mark work that is late. To show a third attempt that does not fit, the film above draws it as an `idle` span, which is a plan and not work, and puts a bracket over the part after the line.
+
+### Outcomes, and a lane that is down
+
+An event that does not end well takes `outcome`. `'failed'` is an error or a timeout, and its sign is a cross on a red disc. `'cancelled'` is a stop on purpose, and its sign is a square on an orange disc. The shape says the outcome, so the sign reads without its color. A span has the sign on its end, and the sign arrives when the cursor reaches that end. A mark with an outcome is the sign, in place of the dot. A handoff with an outcome is a message that is lost: its line stops in the room beside the lane that it leaves, short of a boundary, and ends with the sign. It crosses no boundary, so no counter counts it. An `idle` span with `outcome: 'failed'` is a wait that runs out. An `open` span has no end, so it takes no outcome.
+
+`down: true` is a span where the lane is not there: an outage, a GPU that is lost, a worker in quarantine. It is a hatched block with a faint fill, in red unless it has a `color`. The hatch says the state without the color. Its label is over the block, because the hatch would cross a text inside it. A lane that is down does no work, so a down span and a work span that overlap are an error, and a down span takes no `outcome` and no `inside`. With `open`, the lane stays down to the end.
+
+### Links and brackets
+
+A link is an arrow from a time on one lane to another time on a lane: `{ from: 'R3', to: 'R1', at: [50, 40] }`. `at` has two times, the time on `from` and the time on `to`. Use it for a retry, for a cache hit that points at the write that made the entry, or for one record on two clocks. The arrow can point back in time. The link shows when the cursor reaches the later of its two times. Between two lanes it is a straight line. On one lane it is an arc over the bars, with its label over the arc. An end of a link is on the edge of the bar that the lane has at that time. With no bar there, it is near the line of the lane, where a dot would be. No control passes with a link, so it crosses no boundary. `dashed: true` draws it with dashes.
+
+A bracket names a window of time: `{ bracket: [0, 280], label: 'time to first token: 280 ms' }`. It is over its `lane`, or under it with `labelSide: 'under'`. Without a lane, it is over the first lane or under the last one. It starts when the cursor leaves its first time, its line grows with the cursor, and it gets its second end and its name when the cursor reaches its last time. A name that is wider than its bracket stays at the middle. Beside a line at one end of the bracket, such as a deadline, the name starts a little after that end. Two brackets at one side of a lane may meet at one time, as the gaps between tokens do. Two that overlap are an error: put one of them at the other side, or on another lane.
+
+```film paired label="A GPU fails. The process and its requests end with their signs, the reply is lost, one request runs again on the other GPU, and the first GPU stays out"
+import { beside, fadeIn, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const fleet = lanes(
+        [{ name: 'router', color: 'dim' }, { name: 'GPU-0', color: 'blue' }, { name: 'GPU-1', color: 'teal' }],
+        [
+            { lane: 'GPU-0', start: 0, end: 22, id: 'process', label: 'process 4117', outcome: 'failed' },
+            { lane: 'GPU-0', start: 2, end: 22, inside: 'process', label: 'R1', outcome: 'cancelled' },
+            { lane: 'GPU-0', start: 8, end: 22, inside: 'process', label: 'R2', outcome: 'failed' },
+            { from: 'GPU-0', to: 'router', at: 22, label: 'reply', outcome: 'failed' },
+            { lane: 'GPU-0', start: 22, end: 50, down: true, label: 'quarantine' },
+            { lane: 'GPU-0', start: 50, end: 60, open: true, label: 'readmitted' },
+            { lane: 'GPU-1', start: 4, end: 18, label: 'R3' },
+            { from: 'GPU-0', to: 'GPU-1', at: [22, 27], id: 'retry', label: 'R2 again' },
+            { lane: 'GPU-1', start: 27, end: 41, label: 'R2' },
+            { lane: 'GPU-1', start: 44, end: 56, label: 'R4' },
+            { bracket: [22, 50], lane: 'GPU-1', labelSide: 'under', label: 'GPU-0 out for 28 min' },
+        ],
+        { width: 1400, size: 30, barHeight: 52, pitch: 190, ticks: [0, 10, 20, 30, 40, 50, 60], format: (time) => `${time} min`, domain: [0, 60] },
+    ).at(110, 0)
+    s.play(fleet.enter(), { duration: 1 })
+    // The cursor stops where the process fails, and a note names the cause over that time.
+    s.play(fleet.advance('process'), { duration: 2.6 })
+    const note = beside(text('a CUDA error: the process is not safe', { size: 30, color: 'yellow' }), fleet, 'above', 'normal', fleet.region({ lane: 'GPU-0', at: 22 }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(1.8)
+    s.play(fleet.advance('retry'), { duration: 1.6 })
+    s.wait(1)
+    s.play(fleet.showAll(), { duration: 3.2 })
+    s.wait(2)
+})
+```
+
+One lane for each clock makes a timeline of two clocks: the time of an event, and the time when its record became readable. A link joins the two marks of one record, a deadline with no bar is the cutoff, and a bracket is the window:
+
+```ts
+import { film, lanes } from 'vizmatic/stage'
+
+export default film((s) => {
+    const clocks = lanes(['event time', 'readable at'], [
+        { lane: 'event time', at: 8, label: 'H1', labelSide: 'right' },
+        { lane: 'readable at', at: 8.2, label: 'H1', labelSide: 'under' },
+        { from: 'event time', to: 'readable at', at: [8, 8.2] },
+        { lane: 'event time', at: 8.5, label: 'H2', labelSide: 'right' },
+        { lane: 'readable at', at: 10.5, label: 'H2', labelSide: 'under' },
+        { from: 'event time', to: 'readable at', at: [8.5, 10.5], label: 'arrives 2 h late' },
+        { bracket: [8, 9], lane: 'event time', label: 'window 08:00 to 09:00' },
+    ], { width: 1300, pitch: 200, domain: [7.5, 11], ticks: [8, 9, 10, 11], format: (time) => `${time}:00`, deadline: { at: 9, label: 'predict now' } })
+    s.play(clocks.enter())
+    // At the cutoff, H2 happened and is not readable yet.
+    s.play(clocks.advance(9))
+    s.play(clocks.showAll())
+})
+```
+
+### Child spans: the trace of a request
+
+A span with `inside` is a child of the span with that `id`, on the same lane: retrieval inside an answer, a tool call inside a turn. A child has a row of its own under its parent, as high as the parent and close under it, so the lane reads as the trace of a request. A child of a child is one more row down. Two children that overlap in time take two rows. The lanes under a lane with children move down by its rows.
+
+```film paired label="The trace of request 205: retrieval, generation and a tool call inside the answer. The cursor stops at the first token"
+import { beside, fadeIn, fadeOut, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const trace = lanes(
+        [{ name: 'request 205', color: 'blue' }, { name: 'model API', color: 'purple' }],
+        [
+            { lane: 'request 205', start: 0, end: 430, id: 'answer', label: 'answer' },
+            { lane: 'request 205', start: 0, end: 90, inside: 'answer', id: 'retrieval', label: 'retrieval', color: 'teal' },
+            { lane: 'request 205', start: 90, end: 380, inside: 'answer', id: 'generation', label: 'generation', color: 'purple' },
+            { lane: 'request 205', start: 150, end: 230, inside: 'generation', id: 'tool', label: 'tool call', color: 'orange' },
+            { lane: 'request 205', at: 280, inside: 'generation', id: 'first-token', label: 'first token' },
+            { lane: 'request 205', start: 380, end: 430, inside: 'answer', label: 'gate', color: 'green' },
+            { from: 'request 205', to: 'model API', at: 90, label: 'prompt' },
+            { lane: 'model API', start: 90, end: 380, label: 'streams 120 tokens' },
+            { bracket: [0, 280], label: 'time to first token: 280 ms' },
+        ],
+        { width: 1400, size: 30, barHeight: 52, ticks: [0, 100, 200, 300, 400], format: (time) => `${time} ms`, domain: [0, 440] },
+    ).at(120, 20)
+    s.play(trace.enter(), { duration: 1 })
+    s.play(trace.advance('retrieval'), { duration: 1.6 })
+    s.wait(0.6)
+    s.play(trace.advance('tool'), { duration: 2 })
+    s.wait(0.6)
+    // The cursor stops at the first token, and a note points at it.
+    s.play(trace.advance('first-token'), { duration: 1.4 })
+    const note = beside(text('the user sees nothing before this', { size: 30, color: 'yellow' }), trace, 'above', 'normal', trace.region({ event: 'first-token' }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(2)
+    s.play(fadeOut(note), { duration: 0.4 })
+    s.play(trace.showAll(), { duration: 2.2 })
+    s.wait(2)
+})
+```
+
+A child is in the time of its parent and on the lane of its parent: a child that is outside either one is an error, and so is an `inside` that names no span. The label of a child is in its bar, or beside its bar in its row, because its parent is over it. A mark with `inside` is on the bar of that span, and its label can be on that bar, beside the dot. A handoff between a lane with children and a lane under it meets the lowest bar that the lane has at that time, so its arrow passes through no child. `flow.y(lane)` is the middle of the first row of a lane, and `flow.region({ lane })` holds all its rows.
+
+### Stop at an event, and point at it
+
+An event takes an `id`. `flow.advance('first-token')` moves the cursor to the time of that event and stops there: the end of a span or a bracket, the time of a mark or a handoff, the later time of a link. So one `advance` shows one event complete, and the cursor waits at it while the voice talks. `flow.region({ event: id })` is the box of the event on the stage, for a note: `beside(note, flow, 'above', 'normal', flow.region({ event: 'first-token' }))` puts the note over the whole object, at the x of the event. `flow.p(id)` is the middle of the top of the event, in the coordinates of the object, for the end of an arrow from a note. It takes `'bottom'`, `'left'`, or `'right'` for another edge, and `flow.toWorld(...flow.p(id))` is that point on the stage. Both give the place of the complete event, also before the cursor reaches it.
+
+`flow.find(id)` is the node of an event, so `spotlight(flow.find('retrieval').shape)` lights one bar with its label. `flow.timeOf(id)` is the time where `advance(id)` stops, and `flow.timeOf(id, 'start')` is the start of a span or a bracket. `flow.stateOf(id)` says where the event is at the time of the cursor: `'ahead'`, `'running'` for a span or a bracket that the cursor is in, and `'done'`. An event with an outcome is `'failed'` or `'cancelled'` in place of `'done'`. `find`, `timeOf`, `stateOf`, `region`, and `p` also take the index of the event in the list in place of an id. A number is a time for `advance`. Two events with one id are an error, and so is an id that no event has. The message lists the ids.
+
+Every text of the object has the size `size`, 26 by default: the names of the lanes, the labels, the ticks, the text of a deadline, and the name of a bracket. The sign of an outcome is as wide as `size`.
 
 ## Ring buffers
 
