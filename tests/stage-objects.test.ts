@@ -665,6 +665,43 @@ describe('fromComponent', () => {
 })
 
 describe('extra verbs', () => {
+    it('keeps a part on a fill readable in indicate: the tint goes to the fill or to the part, never to both', async () => {
+        const paint = (color: string) => line([0, 0], [1, 0], { stroke: color }).get('stroke')
+        const colors = (f: CompiledFilm, time: number) => paths(f, time).map((op) => [op.stroke ?? null, op.fill ?? null])
+        // The emphasis is at its peak at 0.5, and back at 1.
+        const build = (shape: () => Node, label: string, labelColor: string, options: { fill?: boolean } = {}) => compileFilm(film({ fps: 20 }, (s) => {
+            const both = s.add(group(shape(), text(label, { size: 48, color: labelColor })))
+            s.play(indicate(both, { color: 'yellow', ...options }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        // A ring on a dark panel: the shape is the first path, and the glyph of the number is the second.
+        const ring = () => circle(50, { stroke: 'ink', fill: 'surface', width: 4 })
+        const dark = await build(ring, '2', 'ink')
+        expect(colors(dark, 0)).toEqual([[paint('ink'), paint('surface')], [null, paint('ink')]])
+        // Yellow on the dark panel has more contrast than the light number on a yellow disc: the panel keeps its color.
+        expect(colors(dark, 0.5)).toEqual([[paint('yellow'), paint('surface')], [null, paint('yellow')]])
+        expect(colors(dark, 1.2)).toEqual(colors(dark, 0))
+        // A light badge under a dark number: the dark number on a yellow disc has more contrast, so the number keeps its color.
+        const badge = await build(() => circle(50, { stroke: null, fill: 'blue' }), '3', 'bg')
+        expect(colors(badge, 0.5)).toEqual([[null, paint('yellow')], [null, paint('bg')]])
+        expect(colors(badge, 1.2)).toEqual(colors(badge, 0))
+        // With `fill: true`, every paint takes the tint, so the number is the color of its ring.
+        const filled = await build(ring, '2', 'ink', { fill: true })
+        expect(colors(filled, 0.5)).toEqual([[paint('yellow'), paint('yellow')], [null, paint('yellow')]])
+        // A shape with nothing on it takes the tint in full, as before.
+        const alone = await compileFilm(film({ fps: 20 }, (s) => {
+            const bar = s.add(rect(300, 56, { stroke: 'teal', fill: 'teal', width: 2 }))
+            s.play(indicate(bar, { color: 'yellow' }), { duration: 1 })
+        }))
+        expect(colors(alone, 0.5)).toEqual([[paint('yellow'), paint('yellow')]])
+        // The ring and its number as a list of two targets, not one group: the same result.
+        const listed = await compileFilm(film({ fps: 20 }, (s) => {
+            const shape = s.add(ring()), number = s.add(text('2', { size: 48 }))
+            s.play(indicate([shape, number], { color: 'yellow' }), { duration: 1 })
+        }))
+        expect(colors(listed, 0.5)).toEqual([[paint('yellow'), paint('surface')], [null, paint('yellow')]])
+    })
+
     it('typewriter reveals one glyph at a time', async () => {
         const f = await compile((s) => {
             const line = s.add(text('abcd', { font: 'mono', size: 30 }))

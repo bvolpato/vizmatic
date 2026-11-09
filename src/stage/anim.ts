@@ -3,7 +3,7 @@ import {
     apply, compose, matScale, pointAt, subdivideEach, tangentAt, transformPath, warpPath, circlePath, linePath, rectPath,
     type Mat, type Path, type Vec,
 } from './geometry'
-import { isGradient, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from './color'
+import { contrast, isGradient, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from './color'
 import { clock, Track } from './track'
 import { Node, type NodeProps, type PropName } from './node'
 import { matchSequence, pathMixer } from './morph'
@@ -691,14 +691,73 @@ export function morphMatching(from: Node, to: Node, options: AnimOptions & { key
 
 // ── Emphasis ────────────────────────────────────────────────────────────────
 
-/** Swell and tint for a moment, then return. */
-export function indicate(target: Target, options: AnimOptions & { color?: ColorInput; scale?: number } = {}): Anim {
+/**
+ * Swell and tint for a moment, then return.
+ *
+ * A part that is drawn on a fill stays readable. Such a fill is a backing: the disc of a numbered ring, the panel of a
+ * box, a solid badge under its number. A backing and its content never take the tint together, because one color for
+ * both hides the content. The tint goes to the one of the two that leaves more contrast between them: the border and
+ * the number of a ring on a dark panel, or the disc of a light badge under a dark number. So pass a shape together
+ * with what is on it, as one group or a list. A shape with nothing on it takes the tint in full.
+ * `fill: true` tints every paint, also a backing and its content.
+ */
+export function indicate(target: Target, options: AnimOptions & { color?: ColorInput; scale?: number; fill?: boolean } = {}): Anim {
     const nodes = list(target)
+    const color = options.color ?? 'yellow'
+    // The parts of all the targets, in the order that they are drawn: a number can be on a ring that is another target.
+    const parts = nodes.flatMap((node) => node.all()).filter((part) => part.get('stroke') || part.get('fill'))
+    const kept = options.fill ? { fills: new Set<Node>(), parts: new Set<Node>() } : keptBy(parts, toPaint(color))
     const anims = nodes.map((node) => retime(to(node, (n) => {
         n.scale(options.scale ?? 1.14)
-        n.color(options.color ?? 'yellow')
+        tint(n, color, kept)
     }, { restore: true }), { ease: options.ease ?? thereAndBack }))
     return { ...par(...anims), label: 'indicate', duration: options.duration ?? 0.9 }
+}
+
+/** What a tint leaves alone: the fills of some backings, and the whole of the parts that are on the other backings. */
+interface Kept { fills: Set<Node>; parts: Set<Node> }
+
+/**
+ * For each fill that a later, smaller part sits on (the middle of that part is inside the fill), choose what keeps its
+ * color: the fill, or the parts on it. The choice is the one with more contrast between the two after the tint.
+ */
+function keptBy(parts: readonly Node[], tintPaint: Paint): Kept {
+    const kept: Kept = { fills: new Set(), parts: new Set() }
+    const boxes = parts.map((part) => part.bounds())
+    const solid = (paint: Paint | null | undefined): Rgba | null => paint && !isGradient(paint) ? paint as Rgba : null
+    const tintColor = solid(tintPaint)
+    parts.forEach((part, i) => {
+        const fill = part.get('fill')
+        if (!fill) return
+        const box = boxes[i]!
+        const on = parts.filter((_, j) => {
+            if (j <= i) return false
+            const other = boxes[j]!
+            const x = other.x + other.width / 2, y = other.y + other.height / 2
+            return other.width * other.height < box.width * box.height * 0.9 && x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height
+        })
+        if (on.length === 0) return
+        const backing = solid(fill)
+        const inks = on.map((other) => solid(other.get('fill')) ?? solid(other.get('stroke')))
+        // With a gradient somewhere, there is no one contrast to compare: the fill stays, which never hides its content.
+        if (!tintColor || !backing || inks.some((ink) => !ink)) { kept.fills.add(part); return }
+        const tintedContent = contrast(tintColor, backing)
+        const tintedBacking = Math.min(...inks.map((ink) => contrast(ink!, tintColor)))
+        if (tintedBacking > tintedContent) for (const other of on) kept.parts.add(other)
+        else kept.fills.add(part)
+    })
+    return kept
+}
+
+/** Recolor each line and each fill of a node and its parts, but for what `kept` names. */
+function tint(target: Node, color: ColorInput, kept: Kept): void {
+    const paint = toPaint(color)
+    for (const node of target.all()) {
+        if (kept.parts.has(node)) continue
+        if (node.get('stroke')) node.set('stroke', paint)
+        if (node.get('fill') && !kept.fills.has(node)) node.set('fill', paint)
+        if (node.get('glowColor') && !isGradient(paint)) node.set('glowColor', paint as Rgba)
+    }
 }
 
 /** Shake gently to draw the eye. */

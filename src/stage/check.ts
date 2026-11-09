@@ -1,4 +1,4 @@
-import { isGradient, parseColor, sampleStops, type Paint, type Rgba } from './color'
+import { isGradient, luminance, parseColor, sampleStops, type Paint, type Rgba } from './color'
 import type { DrawOp, Frame, PathOp } from './display'
 import { imageOpBounds } from './display'
 import { imageHasVisiblePixels, ImageAssetError } from './image'
@@ -208,14 +208,6 @@ const OPAQUE = 0.9
 
 function solid(paint: Paint): Rgba {
     return isGradient(paint) ? sampleStops(paint.stops, 0.5) : paint as Rgba
-}
-
-function luminance(color: Rgba): number {
-    const channel = (value: number) => {
-        const x = value / 255
-        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
-    }
-    return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
 }
 
 /** The color that a viewer sees where a translucent mark is over a background. */

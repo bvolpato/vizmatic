@@ -213,6 +213,8 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+A part that is drawn on a fill stays readable. Such a fill is a backing: the disc of a numbered ring, the panel of a box, a solid badge under its number. A backing and its content never take the tint together, because one color for both hides the content. The tint goes to the one of the two that leaves more contrast between them: the border and the number of a ring on a dark panel, or the disc of a light badge under a dark number. So pass a shape together with what is on it, as one group or a list: `indicate([ring, number])`. A shape with nothing on it, such as a dot or a bar, takes the tint in full. `fill: true` tints every paint, also a backing and its content.
+
 ### shake
 
 ```film paired label="A warning word shakes"
