@@ -155,6 +155,16 @@ s.add(tagTrack([
 ], { until: 96 }).at(-912, -490))
 ```
 
+The exact words of a source, with who said them and when. Do not build a quote from a text, a line, and a second text in each film. `quote` wraps the words at `width`, adds the quotation marks, and puts the source line under the words. `mark` sets a part of the words in the color of the rule, and `said.find(part)` gives its glyphs, to color them when the voice says them. A part is whole words, at all its places in the words. Where the film leaves words out, write `[...]` and set `cut: true`: the object adds none. Hold a quote for one second for each 20 characters of its words and its source line together. For a panel behind a quote, put the quote in a `zone` with a fill. `quotePair` puts two sources that disagree side by side, with a word such as "but" between them:
+
+```ts
+const said = quote('the agent loop lives in Temporal rather than on the VM itself', {
+    by: 'Cursor', when: '2026-06-02', width: 1100, size: 44, color: 'orange', mark: 'lives in Temporal',
+}).at(-550, -120)
+s.play(said.enter())
+s.wait(readingSeconds(said.reading))
+```
+
 A grid of cells that change state: pages of memory, blocks of a disk, the hosts of a fleet. Do not draw the cells by hand. `stateGrid` keeps the state of each cell, sweeps a change across the cells, and counts them. `PAGE_STATES` has the states of memory pages, and `states` takes your own:
 
 ```ts

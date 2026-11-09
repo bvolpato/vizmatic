@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
     bitField,
+    quote, quotePair, readingSeconds,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
@@ -1742,6 +1743,497 @@ describe('tag', () => {
             const sharp = tagTrack([{ at: 1, word: 'A' }], { until: 2, fadeIn: 0, fadeOut: 0 })
             expect((sharp.draw!(1) as Node).get('opacity')).toBe(1)
             expect(sharp.draw!(2)).toBeNull()
+        }))
+    })
+})
+
+describe('quote', () => {
+    const WORDS = 'the agent loop lives in Temporal rather than on the VM itself'
+    type Quote = ReturnType<typeof quote>
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const right = (node: Node) => { const box = node.bounds(); return box.x + box.width }
+    const bottom = (node: Node) => { const box = node.bounds(); return box.y + box.height }
+    const keys = (glyphs: readonly Node[]) => glyphs.map((glyph) => glyph.data['key']).join('')
+    /** The letters of the words that have a color, in order. */
+    const colored = (made: Quote, color: string) => keys(made.words.chars.filter((glyph) => JSON.stringify(glyph.get('fill')) === JSON.stringify(paint(color))))
+
+    it('starts at the place it is given: the rule from the top to the bottom, the words after the rule, and the source line under the words', async () => {
+        await compileFilm(film(() => {
+            const said = quote(WORDS, { by: 'Cursor', when: '2026-06-02', where: 'a post', width: 600, size: 40 }).at(100, 50)
+            const rule = said.rule.bounds(), words = said.words.bounds(), source = said.source!.bounds()
+            // `.at()` places the top end of the rule. Nothing of the object is over the rule, under it, or at its left.
+            expect([rule.x, rule.y, rule.width]).toEqual([100, 50, 6])
+            const all = said.bounds()
+            expect([all.x, all.y]).toEqual([100, 50])
+            expect(all.y + all.height).toBeCloseTo(bottom(said.rule), 6)
+            expect(said.height).toBeCloseTo(rule.height, 6)
+            // The words and the source line start at one x, after the rule and the room at its right.
+            expect(words.x).toBeGreaterThan(rule.x + rule.width + 20)
+            expect(Math.abs(words.x - source.x)).toBeLessThan(4)
+            expect(source.y).toBeGreaterThan(words.y + words.height + 12)
+            // The words are between their quotation marks, and the first line stands on `baseline`.
+            expect(said.words.source).toBe(`“${WORDS}”`)
+            expect(said.baseline).toBeCloseTo(30, 0)
+            expect(bottom(said.find('T')[0]!)).toBeCloseTo(50 + said.baseline, 0)
+            // The speaker, the date, and the place, in that order. Each one is optional.
+            expect(said.source!.source).toBe('Cursor, 2026-06-02, a post')
+            expect(quote(WORDS, { where: 'a post', by: 'Cursor' }).source!.source).toBe('Cursor, a post')
+            expect(quote(WORDS, { when: '2026', by: ' ' }).source!.source).toBe('2026')
+            // The source line is smaller than the words, and not under 24 unless the words are.
+            expect([40, 24, 18].map((size) => quote(WORDS, { by: 'Cursor', size }).source!.data['size'])).toEqual([31, 24, 18])
+            expect(quote(WORDS, { by: 'Cursor', sourceSize: 36 }).source!.data['size']).toBe(36)
+            // The source line is in the font of the words: the serif text font, or the font that the film gives.
+            const letter = (font: 'sans' | 'text-serif') => text('C', { font, size: 25 }).chars[0]!.get('path')
+            expect(quote(WORDS, { by: 'Cursor' }).source!.chars[0]!.get('path')).toEqual(letter('text-serif'))
+            expect(quote(WORDS, { by: 'Cursor', font: 'sans' }).source!.chars[0]!.get('path')).toEqual(letter('sans'))
+            expect(letter('sans')).not.toEqual(letter('text-serif'))
+            // Space around the words does not count.
+            expect(quote('  yes \n').words.source).toBe('\u201cyes\u201d')
+            // With none of them, the object has no source line, and the rule ends under the words.
+            const bare = quote(WORDS, { width: 600, size: 40 }).at(100, 50)
+            expect(bare.source).toBeNull()
+            expect(bare.children).toEqual([bare.rule, bare.words])
+            expect(bottom(bare.rule)).toBeGreaterThan(bottom(bare.words) - 0.01)
+            expect(bottom(bare.rule)).toBeLessThan(bottom(bare.words) + 12)
+            expect(bottom(said.rule) - bottom(bare.rule)).toBeGreaterThan(40)
+            // A quote with more words starts at the same corner, and its first line is on the same line.
+            const long = quote(`${WORDS}, and ${WORDS}`, { width: 600, size: 40 }).at(100, 50)
+            expect([long.rule.bounds().x, long.rule.bounds().y]).toEqual([100, 50])
+            expect(long.words.chars[0]!.bounds()).toEqual(bare.words.chars[0]!.bounds())
+            expect(long.height).toBeGreaterThan(bare.height + 100)
+            // The two places that a film needs. Beside a picture with its middle at y 200: the middle of the quote at that y.
+            const beside = quote(WORDS, { by: 'Cursor', width: 600, size: 40 })
+            beside.at(40, 200 - beside.height / 2)
+            expect([beside.left[0], beside.center[1]]).toEqual([40, expect.closeTo(200, 6)])
+            // Centered on a point: `moveTo` puts the middle of the rule and the words there.
+            const centered = quote(WORDS, { by: 'Cursor', width: 600, size: 40 }).moveTo([300, 200])
+            expect(centered.center).toEqual([expect.closeTo(300, 6), expect.closeTo(200, 6)])
+            expect(centered.rule.bounds().x).toBeCloseTo(300 - centered.width / 2, 6)
+            // `lineEnd` is the x of the end of the ink of a line, in the coordinates of the object.
+            const broken = quote('first\nfinal line', { size: 40 }).at(100, 50)
+            expect(broken.lineEnd()).toBeCloseTo(right(broken.find('first')[4]!) - 100, 6)
+            expect(broken.lineEnd(1)).toBeCloseTo(right(broken.words.chars.at(-1)!) - 100, 6)
+            expect(broken.lineEnd(1)).toBeGreaterThan(broken.lineEnd(0) + 40)
+            expect(() => broken.lineEnd(2)).toThrow(/quote: no line 2\. The words have 2 lines/)
+        }))
+    })
+
+    it('wraps the words at its width, keeps a break that the film wrote, and is as high as its lines', async () => {
+        await compileFilm(film(() => {
+            // One line, two lines, and four lines. A line is 1.3 of the size: 52 px.
+            const widths = [1400, 600, 380]
+            const made = widths.map((width) => quote(WORDS, { width, size: 40 }))
+            made.forEach((one, index) => expect(right(one.words)).toBeLessThanOrEqual(widths[index]!))
+            // A line has the room of its ink, and an italic f leans over the place after it. So no letter passes the width, at any width.
+            for (let width = 240; width <= 440; width++) expect(right(quote('half of the staff left off the shelf', { width, size: 40 }))).toBeLessThanOrEqual(width)
+            // At 303, the advance of "staff" has room on the first line, and its last letter has not: the word goes to the next line.
+            const starts = (width: number) => { const one = quote('half of the staff left off', { width, size: 40 }); return one.find('staff')[0]!.bounds().y - one.find('half')[1]!.bounds().y }
+            expect(starts(303)).toBeGreaterThan(40)
+            expect(starts(304)).toBeLessThan(5)
+            expect(made[1]!.height - made[0]!.height).toBeCloseTo(52, 6)
+            expect(made[2]!.height - made[0]!.height).toBeCloseTo(52 * 3, 6)
+            // The words have the width less the 30 px of the rule and the room after it: one pixel less, and the line breaks.
+            const need = Math.ceil(text(`\u201c${WORDS}\u201d`, { font: 'text-serif', size: 40, italic: true }).get('px') * 2)
+            expect(quote(WORDS, { width: need + 30, size: 40 }).height).toBeCloseTo(made[0]!.height, 6)
+            expect(quote(WORDS, { width: need + 29, size: 40 }).height - made[0]!.height).toBeCloseTo(52, 6)
+            // The default width is 900, and the default size is 32, where the rule and the room after it take 23 px.
+            expect(() => quote('a'.repeat(200))).toThrow(/at size 32, and a width of 900 leaves 877 px for the words/)
+            // `leading` sets the height of a line.
+            expect(quote(WORDS, { width: 600, size: 40, leading: 2 }).height - made[0]!.height).toBeCloseTo(80, 6)
+            // A break in the words starts a line, at any width. The second line starts at the left edge of the words.
+            const broken = quote('first\nfinal', { width: 1400, size: 40 })
+            expect(broken.height - made[0]!.height).toBeCloseTo(52, 6)
+            const [first, final] = [broken.find('first')[0]!.bounds(), broken.find('final')[0]!.bounds()]
+            expect(final.y - first.y).toBeCloseTo(52, 6)
+            expect(final.x).toBeLessThan(first.x)
+            // A source line that is wider than the object wraps too, and the rule goes down with it.
+            const cited = quote('yes', { by: 'a speaker with a name of many words', where: 'a document with a title of many words', width: 380, size: 40 })
+            expect(right(cited.source!)).toBeLessThanOrEqual(381)
+            expect(cited.source!.bounds().height).toBeGreaterThan(60)
+            expect(bottom(cited.rule)).toBeGreaterThan(bottom(cited.source!) - 0.01)
+        }))
+    })
+
+    it('keeps a part that cannot break inside its width, or refuses it: words that no-break spaces join, and a web address in the source line', async () => {
+        await compileFilm(film(() => {
+            // A no-break space joins two words, so "4 of 10" stays on one line. The line breaks at a plain space.
+            const joined = quote('requests were slower in 4\u00a0of\u00a010 runs', { width: 460, size: 40 })
+            expect(right(joined)).toBeLessThanOrEqual(460)
+            expect(joined.find('4')[0]!.bounds().y - joined.find('in')[0]!.bounds().y).toBeGreaterThan(40)
+            expect(joined.find('10')[0]!.bounds().y).toBeCloseTo(joined.find('4')[0]!.bounds().y, 0)
+            // With plain spaces at the same width, the first line ends after the "4".
+            const plain = quote('requests were slower in 4 of 10 runs', { width: 460, size: 40 })
+            expect(plain.find('4')[0]!.bounds().y - plain.find('in')[0]!.bounds().y).toBeLessThan(5)
+            expect(plain.find('10')[0]!.bounds().y - plain.find('4')[0]!.bounds().y).toBeGreaterThan(40)
+            // Joined words that are wider than the object are an error, and the width that it names is enough.
+            const stuck = (width: number) => () => quote('4\u00a0of\u00a010\u00a0requests\u00a0were\u00a0slower', { width, size: 40 })
+            expect(stuck(420)).toThrow(/quote: no line can break in "“4\u00a0of\u00a010\u00a0requests\u00a0were\u00a0slower”", because no-break spaces join its words\. It is 489 px wide at size 40, and a width of 420 leaves 390 px for the words\. Give a width of 519 or more, a smaller size, or a plain space where a line may break/)
+            expect(stuck(518)).toThrow(/no line can break/)
+            expect(stuck(519)).not.toThrow()
+
+            // A web address has no space. A line of the source also breaks after a "/", so the address stays inside the width.
+            const cited = quote('yes', { where: 'https://example.com/load-test/2026-06-11', width: 420, size: 40 })
+            expect(right(cited.source!)).toBeLessThanOrEqual(420)
+            // "https://example.com/" has 20 characters, and the next line starts at the left edge.
+            const [first, next] = [cited.source!.chars[0]!, cited.source!.chars[20]!]
+            expect(next.data['key']).toBe('l')
+            expect(next.bounds().y - first.bounds().y).toBeCloseTo(1.25 * 31, 0)
+            expect(Math.abs(next.bounds().x - first.bounds().x)).toBeLessThan(3)
+            expect(bottom(cited.rule)).toBeGreaterThan(bottom(cited.source!) - 0.01)
+            // The film check reads the line as the film gave it.
+            expect(cited.source!.source).toBe('https://example.com/load-test/2026-06-11')
+            // A part of the source line with no space and no "/" that is wider than the object is an error. It names the option, and the width that is enough.
+            const address = 'https://cursor.com/blog/what-we-have-learned-building-cloud-agents'
+            expect(() => quote('yes', { by: 'Cursor', where: address, width: 578, size: 36 })).toThrow(/quote: the part "what-we-have-learned-building-cloud-agents" of `where` is 552 px wide at size 28, and a width of 578 leaves 551 px for the source line\. A line of the source breaks at a space and after a "\/"\. Give a shorter `where`, or a width of 579 or more/)
+            expect(() => quote('yes', { by: 'Cursor', where: address, width: 579, size: 36 })).not.toThrow()
+            expect(() => quote('yes', { by: 'Supercalifragilisticexpialidocious', when: '2026', width: 200, size: 40 })).toThrow(/the part "Supercalifragilisticexpialidocious" of `by` is 457 px wide at size 31, and a width of 200 leaves 170 px for the source line\..* Give a shorter `by`, or a width of 487 or more/)
+
+            // In a pair, the source line of the first quote stays in the half of that quote.
+            const pair = quotePair({ words: 'the agent loop lives in Temporal', by: 'Cursor', where: address }, { words: 'the harness runs inside the sandbox', by: 'a lab' }, { width: 1500, size: 36 })
+            expect(right(pair.quotes[0])).toBeLessThanOrEqual((1500 - 108) / 2)
+            // An error of a pair names the quote, and the width of the pair.
+            expect(() => quotePair({ words: 'yes', where: address }, { words: 'no' }, { width: 700, size: 36 })).toThrow(/quotePair: the part "what-we-have-learned-building-cloud-agents" of `where` of quote 0 is 552 px wide at size 28, and a width of 700 with a gap of 108 leaves 269 px for the source line of each quote\. A line of the source breaks at a space and after a "\/"\. Give a shorter `where`, a width of 1266 or more, or a smaller gap/)
+            expect(() => quotePair({ words: 'yes', where: address }, { words: 'no' }, { width: 1266, size: 36 })).not.toThrow()
+            expect(() => quotePair({ words: 'yes' }, { words: 'requests\u00a0were\u00a0slower\u00a0with\u00a0the\u00a0cache' }, { width: 700, size: 36 })).toThrow(/quotePair: no line can break in "“requests\u00a0were\u00a0slower\u00a0with\u00a0the\u00a0cache”" of quote 1, because no-break spaces join its words\. It is 553 px wide at size 36, and a width of 700 with a gap of 108 leaves 269 px for the words of each quote\. Give a width of 1267 or more, a smaller gap, a smaller size, or a plain space where a line may break/)
+        }))
+    })
+
+    it('sets each marked part in the color of the rule or in a color of its own, over a line end too, and each [...] of a cut quote in dim', async () => {
+        await compileFilm(film(() => {
+            const said = quote(WORDS, { mark: 'lives in Temporal', color: 'orange', width: 600, size: 40 })
+            expect(said.rule.get('fill')).toEqual(paint('orange'))
+            expect(colored(said, 'orange')).toBe('livesinTemporal')
+            expect(colored(said, 'ink')).toBe('“theagentloopratherthanontheVMitself”')
+            // The first line ends after "Temporal", so this mark is on two lines.
+            const over = quote(WORDS, { mark: 'Temporal rather', color: 'orange', width: 600, size: 40 })
+            expect(colored(over, 'orange')).toBe('Temporalrather')
+            expect(over.find('rather')[0]!.bounds().y - over.find('Temporal')[0]!.bounds().y).toBeGreaterThan(40)
+            // Several marks, in a color that is not the color of the rule.
+            const two = quote(WORDS, { mark: ['agent loop', 'VM'], markColor: 'yellow', color: 'teal' })
+            expect(two.rule.get('fill')).toEqual(paint('teal'))
+            expect(colored(two, 'yellow')).toBe('agentloopVM')
+            expect(colored(two, 'teal')).toBe('')
+            // A mark starts and ends at the borders of words: "not" is the word, and not the first letters of "nothing" and "notes".
+            expect(colored(quote('it is not safe, and nothing in the notes says another thing', { mark: 'not', color: 'orange' }), 'orange')).toBe('not')
+            // A part that is in the words more than once is marked at all its places. A comma, a period, and a quotation mark are borders.
+            expect(colored(quote('the loop and the lock, the last', { mark: 'the', color: 'orange' }), 'orange')).toBe('thethethe')
+            expect(colored(quote('it is safe, and version 5.1 is "safe"', { mark: ['safe', '5.1'], color: 'orange' }), 'orange')).toBe('safe5.1safe')
+            // The default color is blue.
+            const plain = quote(WORDS, { mark: 'VM' })
+            expect(plain.rule.get('fill')).toEqual(paint('blue'))
+            expect(colored(plain, 'blue')).toBe('VM')
+            // A cut quote shows each [...] in dim. Without `cut`, the same signs are words as the others are.
+            const cut = 'an emulator [...] and a virtualizer [...]'
+            expect(colored(quote(cut, { cut: true }), 'dim')).toBe('[...][...]')
+            expect(colored(quote(cut), 'dim')).toBe('')
+            expect(quote(cut, { cut: true }).words.source).toBe(`“${cut}”`)
+            // The source line is in dim.
+            const cited = quote(WORDS, { by: 'Cursor' })
+            expect(cited.source!.chars[0]!.get('fill')).toEqual(paint('dim'))
+            // The words are in the italic of the serif text font, or upright with `italic: false`.
+            const letter = (italic: boolean) => text('g', { font: 'text-serif', size: 32, italic }).chars[0]!.get('path')
+            expect(quote(WORDS).find('g')[0]!.get('path')).toEqual(letter(true))
+            expect(quote(WORDS, { italic: false }).find('g')[0]!.get('path')).toEqual(letter(false))
+            expect(letter(true)).not.toEqual(letter(false))
+        }))
+    })
+
+    it('finds the glyphs of a part of the words at every place, with spaces that do not count, in a copy too', async () => {
+        await compileFilm(film(() => {
+            const said = quote('the loop and the lock', { width: 300, size: 40 })
+            expect(keys(said.find('the'))).toBe('thethe')
+            // The first glyph is the opening quotation mark.
+            expect(said.find('the loop')).toEqual(said.words.chars.slice(1, 8))
+            expect(said.find('theloop')).toEqual(said.find('the  loop'))
+            expect(said.find('the lo')).toHaveLength(10)
+            expect(said.find('look')).toEqual([])
+            expect(said.find(' ')).toEqual([])
+            // The places at the borders of words come first: the word "not" and the word "thing", and not the letters in "nothing".
+            const short = quote('it is not safe, and nothing in the notes says another thing')
+            expect(short.find('not')).toEqual(short.words.chars.slice(5, 8))
+            expect(short.find('thing')).toEqual(short.words.chars.slice(-6, -1))
+            // A part that is only inside longer words gives those places: "noth" is in "nothing" and in "another".
+            expect(keys(short.find('noth'))).toBe('nothnoth')
+            expect(keys(short.find('nothi'))).toBe('nothi')
+            // A match starts after the one before it, so no glyph comes two times.
+            const run = quote('aaaaa').find('aa')
+            expect(run).toHaveLength(4)
+            expect(new Set(run).size).toBe(4)
+            // A copy has its own glyphs, and its own lines for `enter()`.
+            const copy = said.clone()
+            expect(keys(copy.find('lock'))).toBe('lock')
+            expect(copy.find('lock')[0]).not.toBe(said.find('lock')[0])
+            expect(copy.find('lock')[0]!.parent).toBe(copy.words)
+        }))
+    })
+
+    it('enters with the rule first, then the words line by line, then the source line', async () => {
+        let said!: Quote, bare!: Quote
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            said = quote(WORDS, { by: 'Cursor', width: 600, size: 40 }).at(-300, -200)
+            bare = quote(WORDS, { width: 600, size: 40 }).at(-300, 100)
+            s.wait(1)
+            s.play(said.enter({ lag: 1 }), bare.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The first line has 28 glyphs: the quotation mark and "the agent loop lives in Temporal".
+        const lines = (one: Quote) => [one.words.chars.slice(0, 28), one.words.chars.slice(28)].map((line) => [...new Set(line.map(shows))])
+        const state = (time: number) => at(time, () => [said.rule.get('sy'), ...lines(said), shows(said.source!)])
+        // The rule grows over the first 0.7 s. The two lines have 0.65 s each, from 1.3 s, and the source line the last 0.6 s.
+        expect(state(1.2)).toEqual([expect.closeTo(0.2 / 0.7, 6), [0], [0], 0])
+        expect(state(1.35)).toEqual([expect.closeTo(0.5, 6), [expect.closeTo(0.05 / 0.65, 6)], [0], 0])
+        expect(state(1.625)).toEqual([expect.closeTo(0.625 / 0.7, 6), [expect.closeTo(0.5, 6)], [0], 0])
+        expect(state(2.275)).toEqual([1, [1], [expect.closeTo(0.5, 6)], 0])
+        expect(state(2.7)).toEqual([1, [1], [1], expect.closeTo(0.5, 6)])
+        expect(state(3.2)).toEqual([1, [1], [1], 1])
+        // The rule grows down from its top end, which stays in place.
+        expect(at(1.35, () => said.rule.bounds())).toEqual({ x: -300, y: -200, width: 6, height: expect.closeTo(at(3.2, () => said.rule.bounds().height) / 2, 6) })
+        // Without a source line, the words have the time to the end: 0.85 s for each line.
+        expect(at(2.575, () => lines(bare))).toEqual([[1], [expect.closeTo(0.5, 6)]])
+        expect(at(3, () => lines(bare))).toEqual([[1], [1]])
+    })
+
+    it('draws nothing before its turn in a sequence, and keeps the place of a group that is not on the stage', async () => {
+        const compiled = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...quote('a b', { by: 'c' }).enter(), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws. At the end: the rule, four glyphs of the words, and the source.
+        for (const time of [1.3, 1.99]) expect(compiled.frame(time).ops).toHaveLength(1)
+        expect(compiled.frame(3.4).ops).toHaveLength(7)
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            let said!: Quote, outer!: Node
+            const moved = await compile((s) => {
+                said = quote('a b', { by: 'c' })
+                outer = group(said).at(shift, 0)
+                s.play(said.enter(), { duration: 1 })
+                s.wait(0.5)
+            })
+            expect(said.parent).toBe(outer)
+            lefts.push(Math.min(...paths(moved, 1.4).flatMap((op) => pathBounds(op.path)?.x ?? [])))
+        }
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+    })
+
+    it('is one text for the film check, which asks for the time to read all of its words', async () => {
+        const report = await checkFilm(film({ fps: 10 }, (s) => {
+            s.wait(0.5)
+            const said = s.add(quote(WORDS, { width: 600 }))
+            s.wait(1)
+            said.hide()
+            s.wait(1.5)
+        }), { motion: true })
+        const brief = report.diagnostics.filter((finding) => finding.code === 'film.text_brief')
+        // 63 characters at 20 in one second.
+        expect(brief.map((finding) => finding.text)).toEqual([`“${WORDS}”`])
+        expect(brief[0]!.message).toMatch(/needs about 3\.15 s for its 63 characters/)
+        // The source line is a text of its own for the check, with its own time: 26 characters.
+        const source = 'Cursor, 2026-06-02, a post'
+        let reading = ''
+        const cited = await checkFilm(film({ fps: 10 }, (s) => {
+            s.wait(0.5)
+            const said = s.add(quote(WORDS, { by: 'Cursor', when: '2026-06-02', where: 'a post', width: 600 }))
+            reading = said.reading
+            s.wait(1)
+            said.hide()
+            s.wait(1.5)
+        }), { motion: true })
+        const texts = cited.diagnostics.filter((finding) => finding.code === 'film.text_brief').map((finding) => [finding.text, /needs about [\d.]+ s for its \d+ characters/.exec(finding.message)?.[0]])
+        expect(texts).toEqual([[`“${WORDS}”`, 'needs about 3.15 s for its 63 characters'], [source, 'needs about 1.3 s for its 26 characters']])
+        // A viewer reads both. So a quote stays up for the time of its words and its source line together: `reading` is the two as one text.
+        expect(reading).toBe(`“${WORDS}” ${source}`)
+        expect(readingSeconds(reading)).toBeCloseTo(3.15 + 0.05 + 1.3, 6)
+        await compileFilm(film(() => expect(quote('yes').reading).toBe('“yes”')))
+    })
+
+    it('stands in a zone as a panel: the plate has the padding at each side of the quote, and the quote enters inside it', async () => {
+        let said!: Quote, panel!: ReturnType<typeof zone>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            said = quote(WORDS, { by: 'Cursor', width: 600, size: 40 })
+            panel = zone(said, { color: 'grid', fill: 'surface', fillOpacity: 1, padding: 40 }).at(100, 50)
+            s.wait(1)
+            s.play(fadeIn(panel), said.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        // The plate is the quote, from its rule to the end of its ink, with 40 px at each side. `.at()` of a zone places its middle.
+        const inner = said.bounds(), plate = panel.backdrop!.bounds()
+        expect([inner.x - plate.x, inner.y - plate.y, right(panel.backdrop!) - right(said), bottom(panel.backdrop!) - bottom(said)]).toEqual([40, 40, 40, 40].map((room) => expect.closeTo(room, 6)))
+        expect(panel.center).toEqual([expect.closeTo(100, 6), expect.closeTo(50, 6)])
+        // Nothing before the entrance. Then the plate fades in while the rule grows, and the source line comes last.
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        expect(at(1.35, () => [shows(panel), said.rule.get('sy'), shows(said.source!)])).toEqual([expect.closeTo(0.175, 6), expect.closeTo(0.5, 6), 0])
+        expect(at(3.2, () => [shows(panel), said.rule.get('sy'), ...new Set(said.words.chars.map(shows)), shows(said.source!)])).toEqual([1, 1, 1, 1])
+    })
+
+    it('puts two quotes side by side with one width and one top line, and a word between them with the same room at both sides', async () => {
+        await compileFilm(film(() => {
+            const pair = quotePair(
+                { words: WORDS, by: 'Cursor', color: 'orange' },
+                { words: 'the harness runs inside the sandbox', by: 'a lab', when: '2026', color: 'red', mark: 'sandbox' },
+                { width: 1300, gap: 300, versus: 'but', size: 40 },
+            ).at(-650, -100)
+            const [first, second] = pair.quotes
+            // Each quote is (1300 - 300) / 2 wide, so the second rule is 800 after the first one, at the same top.
+            expect([first.rule.bounds().x, first.rule.bounds().y]).toEqual([-650, -100])
+            expect([second.rule.bounds().x, second.rule.bounds().y]).toEqual([150, -100])
+            expect(first.baseline).toBe(second.baseline)
+            // Each one has the lines of a quote of that width, and its own color, mark, and source.
+            const alone = quote(WORDS, { by: 'Cursor', width: 500, size: 40 })
+            expect([first.words.bounds().width, first.height]).toEqual([expect.closeTo(alone.words.bounds().width, 6), expect.closeTo(alone.height, 6)])
+            expect(right(second.words)).toBeLessThanOrEqual(651)
+            expect([first.rule.get('fill'), second.rule.get('fill')]).toEqual([paint('orange'), paint('red')])
+            expect(colored(second, 'red')).toBe('sandbox')
+            expect(second.source!.source).toBe('a lab, 2026')
+            // The word is in dim, in the font of the quotes, on the base line of the first lines.
+            const word = pair.versus!.bounds()
+            const letter = (font: 'sans' | 'text-serif') => text('b', { font, size: 40 }).chars[0]!.get('path')
+            expect(pair.versus!.source).toBe('but')
+            expect([pair.versus!.data['size'], pair.versus!.chars[0]!.get('fill'), pair.versus!.chars[0]!.get('path')]).toEqual([40, paint('dim'), letter('text-serif')])
+            expect(quotePair({ words: 'yes' }, { words: 'no' }, { versus: 'but', size: 40, font: 'sans' }).versus!.chars[0]!.get('path')).toEqual(letter('sans'))
+            // A round letter goes a little under the base line.
+            expect(Math.abs(word.y + word.height - (-100 + first.baseline))).toBeLessThan(1)
+            // It has the same room at both sides: from the end of the ink of the first line of the first quote, and to the rule of the second quote.
+            const rooms = (one: ReturnType<typeof quotePair>) => { const box = one.versus!.bounds(), start = one.quotes[0].rule.bounds().x; return [box.x - (start + one.quotes[0].lineEnd()), one.quotes[1].rule.bounds().x - (box.x + box.width)] }
+            expect(rooms(pair)[0]).toBeCloseTo(rooms(pair)[1]!, 6)
+            expect(rooms(pair)[0]).toBeGreaterThan(text('H', { font: 'text-serif', size: 40 }).bounds().height)
+            // Beside a short first quote, the middle of the gap is far from the first quote and near the second one. The word is not there: it is at the left of the gap, which starts 500 after the first rule.
+            const short = quotePair({ words: 'yes' }, { words: 'no' }, { width: 1300, gap: 300, versus: 'but', size: 40 })
+            expect(rooms(short)[0]).toBeCloseTo(rooms(short)[1]!, 6)
+            expect(right(short.versus!)).toBeLessThan(500)
+            expect(pair.children).toEqual([first, pair.versus, second])
+            // With two sizes, the word has the smaller one, and stands on the first base line of the quote with that size. Nothing of the pair is over its top line.
+            for (const sizes of [[32, 56], [56, 32]] as const) {
+                const mixed = quotePair({ words: 'the cache makes every request faster', size: sizes[0] }, { words: 'with the cache, 4 of 10 requests were slower', size: sizes[1] }, { versus: 'but' }).at(-850, -160)
+                const smaller = mixed.quotes[sizes[0] === 32 ? 0 : 1]
+                expect(mixed.versus!.data['size']).toBe(32)
+                expect(mixed.bounds().y).toBe(-160)
+                expect(mixed.versus!.bounds().y).toBeGreaterThanOrEqual(-160)
+                expect(Math.abs(bottom(mixed.versus!) - (-160 + smaller.baseline))).toBeLessThan(1)
+                expect(rooms(mixed)[0]).toBeCloseTo(rooms(mixed)[1]!, 6)
+                // The default gap is 3 times the larger size: 168. Each quote has half of the rest.
+                expect(mixed.quotes[1].rule.bounds().x).toBeCloseTo(-850 + (1700 - 168) / 2 + 168, 6)
+            }
+            // Without a word, the pair has its two quotes only. The default gap is 3 times the size, in a width of 1700.
+            const plain = quotePair({ words: 'yes' }, { words: 'no', size: 20 })
+            expect(plain.versus).toBeNull()
+            expect(plain.quotes[1].rule.bounds().x).toBe(802 + 96)
+            // A quote of the pair can have its own size. An option of the pair is for both.
+            expect(plain.quotes.map((one) => one.words.data['size'])).toEqual([32, 20])
+            expect(quotePair({ words: 'yes', color: 'red' }, { words: 'no' }, { size: 50, color: 'green' }).quotes.map((one) => [one.words.data['size'], one.rule.get('fill')])).toEqual([[50, paint('red')], [50, paint('green')]])
+        }))
+    })
+
+    it('enters a pair with the first quote, then the word, then the second quote, which draws nothing before its turn', async () => {
+        let pair!: ReturnType<typeof quotePair>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            pair = quotePair({ words: 'yes', by: 'A' }, { words: 'no', by: 'B' }, { width: 1300, gap: 300, versus: 'but', size: 40 }).at(-650, -100)
+            s.wait(1)
+            s.play(pair.enter(), { duration: 5, ease: linear })
+            s.wait(0.5)
+        }))
+        const [first, second] = pair.quotes
+        const drawn = (time: number, one: Node) => paths(compiled, time).filter((op) => one.all().includes(op.node!)).length
+        const arrived = (one: Quote) => [one.rule.get('sy'), ...new Set(one.words.chars.map(shows)), shows(one.source!)]
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The first quote has the time to 3.3 s, the word comes from 3.1 s to 3.9 s, and the second quote has the time from 3.7 s.
+        expect(drawn(1.5, first)).toBeGreaterThan(0)
+        expect([drawn(1.5, pair.versus!), drawn(1.5, second)]).toEqual([0, 0])
+        expect(at(3.3, () => arrived(first))).toEqual([1, 1, expect.closeTo(1, 6)])
+        expect(at(3.5, () => shows(pair.versus!))).toBeCloseTo(0.5, 6)
+        expect(drawn(3.65, second)).toBe(0)
+        expect(at(3.75, () => second.rule.get('sy'))).toBeGreaterThan(0)
+        expect(at(3.75, () => second.rule.get('sy'))).toBeLessThan(0.2)
+        expect(at(3.75, () => shows(second.source!))).toBe(0)
+        expect(at(6, () => [shows(second), ...arrived(second)])).toEqual([1, 1, 1, 1])
+        // 2 rules, 5 and 4 glyphs of the words, 3 glyphs of the word between, and 2 of the sources.
+        expect(compiled.frame(6.4).ops).toHaveLength(16)
+    })
+
+    it('draws a double mark inside the words as a single curved mark, and finds a part as the film wrote it', async () => {
+        await compileFilm(film(() => {
+            const drawn = (words: string) => keys(quote(words).words.chars)
+            // The object puts the double marks around the words. A double mark inside them opens at the start of a word, and closes at any other place.
+            expect(drawn('"x"')).toBe('“‘x’”')
+            expect(drawn('he said "it is safe" and left')).toBe('“hesaid‘itissafe’andleft”')
+            expect(drawn('they call it "safe"')).toBe('“theycallit‘safe’”')
+            expect(drawn('a “curved” one ("x")')).toBe('“a‘curved’one(‘x’)”')
+            // After a digit, with no quotation open, a straight mark is the sign for inches, and it stays. An apostrophe stays too.
+            expect(drawn('it\'s a 5" disk')).toBe('“it\'sa5"disk”')
+            expect(drawn('"a 5" one')).toBe('“‘a5’one”')
+            // The film check reads what is on the screen.
+            expect(quote('he said "it is safe"').words.source).toBe('“he said ‘it is safe’”')
+            // `find` and `mark` take the words as the film wrote them, with the straight marks.
+            const said = quote('he said "it is safe" and left', { mark: '"it is safe"', color: 'orange' })
+            expect(colored(said, 'orange')).toBe('‘itissafe’')
+            expect(keys(said.find('"it'))).toBe('‘it')
+            expect(said.find('‘it')).toEqual([])
+        }))
+    })
+
+    it('takes 1.4 s to enter and 2.6 s for a pair by default, with half the time of a line between two lines, and a pair gives its lag to its quotes', async () => {
+        expect([quote('yes').enter().duration, quote('yes').enter({ duration: 3 }).duration]).toEqual([1.4, 3])
+        expect([quotePair({ words: 'yes' }, { words: 'no' }).enter().duration, quotePair({ words: 'yes' }, { words: 'no' }).enter({ duration: 4 }).duration]).toEqual([2.6, 4])
+        let said!: Quote, pair!: ReturnType<typeof quotePair>, slow!: ReturnType<typeof quotePair>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Two lines of six glyphs each, and no source line.
+            said = quote('first\nfinal', { size: 40 }).at(-800, -400)
+            pair = quotePair({ words: 'first\nfinal' }, { words: 'no' }, { size: 40 }).at(-800, -100)
+            slow = quotePair({ words: 'first\nfinal' }, { words: 'no' }, { size: 40 }).at(-800, 200)
+            s.wait(1)
+            s.play(said.enter(), pair.enter(), slow.enter({ lag: 1 }), { duration: 3, ease: linear })
+        }))
+        const lines = (one: Quote) => [one.words.chars.slice(0, 6), one.words.chars.slice(6)].map((line) => [...new Set(line.map(shows))])
+        // The words have the time from 1.45 s to 4 s. With a lag of 0.5, a line takes 1.7 s, and the second one starts 0.85 s after the first one.
+        expect(at(1.45 + 0.85, () => lines(said))).toEqual([[expect.closeTo(0.5, 6)], [0]])
+        expect(at(1.45 + 1.7, () => lines(said))).toEqual([[expect.closeTo(1, 6)], [expect.closeTo(0.5, 6)]])
+        // The first quote of a pair has the time from 1 s to 2.38 s, and its words from 1.207 s: 0.782 s for a line.
+        expect(at(1.207 + 0.782, () => lines(pair.quotes[0]))).toEqual([[expect.closeTo(1, 6)], [expect.closeTo(0.5, 6)]])
+        // With a lag of 1, the second line starts when the first one ends: 0.5865 s for a line.
+        expect(at(1.207 + 0.5865, () => lines(slow.quotes[0]))).toEqual([[expect.closeTo(1, 6)], [expect.closeTo(0, 6)]])
+        expect(at(1.207 + 0.5865 * 1.5, () => lines(slow.quotes[0]))).toEqual([[1], [expect.closeTo(0.5, 6)]])
+    })
+
+    it('refuses empty words, a width that cannot hold the longest word, a mark that is not in the words, a cut with no sign of it, and a time that is not a number', async () => {
+        await compileFilm(film(() => {
+            expect(() => quote(' ')).toThrow(/quote: give it the words of the source/)
+            // The longest word needs 156 px, and the rule with its room takes 30.
+            expect(() => quote(WORDS, { width: 185, size: 40 })).toThrow(/the word "Temporal" is 156 px wide at size 40, and a width of 185 leaves 155 px for the words\. Give a width of 186 or more, or a smaller size/)
+            expect(() => quote(WORDS, { width: 186, size: 40 })).not.toThrow()
+            expect(() => quote(WORDS, { width: 20 })).toThrow(/width is the width of the object\. Give more than 23/)
+            expect(() => quote(WORDS, { mark: 'temporal' })).toThrow(/the mark "temporal" is not in the words/)
+            expect(() => quote(WORDS, { mark: ['VM', 'the cloud'] })).toThrow(/the mark "the cloud" is not in the words/)
+            expect(() => quote(WORDS, { mark: '' })).toThrow(/the mark "" is not in the words/)
+            expect(() => quote(WORDS, { cut: true })).toThrow(/cut is true, and the words have no \[\.\.\.\]\. Write \[\.\.\.\] at each place/)
+            expect(() => quote(WORDS, { size: 0 })).toThrow(/size is the text size of the words/)
+            expect(() => quote(WORDS, { leading: 0 })).toThrow(/leading is the line height/)
+            expect(() => quote(WORDS, { by: 'A', sourceSize: -1 })).toThrow(/sourceSize is the text size of the source line/)
+            // A pair names the quote and the width of the pair, which is the width that the film gave.
+            expect(() => quotePair({ words: WORDS }, { words: ' ' })).toThrow(/quotePair: quote 1: give it the words of the source/)
+            expect(() => quotePair({ words: 'no' }, { words: WORDS }, { width: 431, gap: 60, size: 40 })).toThrow(/the word "Temporal" of quote 1 is 156 px wide at size 40, and a width of 431 with a gap of 60 leaves 155 px for the words of each quote\. Give a width of 432 or more, a smaller gap, or a smaller size/)
+            expect(() => quotePair({ words: 'no' }, { words: WORDS }, { width: 432, gap: 60, size: 40 })).not.toThrow()
+            expect(() => quotePair({ words: 'yes' }, { words: 'no' }, { width: 40, gap: 60 })).toThrow(/a width of 40 leaves no room for two quotes with a gap of 60/)
+            expect(() => quotePair({ words: 'yes' }, { words: 'no' }, { gap: -1 })).toThrow(/gap is the room between the two quotes/)
+            // The word between has the height of its letters as room at each side, at the least. A larger gap adds a quarter of what it grows to each side.
+            const narrow = (gap: number) => () => quotePair({ words: WORDS }, { words: 'no' }, { width: 1100, gap, versus: 'against', size: 40 })
+            expect(narrow(40)).toThrow(/quotePair: the word "against" has 21 px at each side, between the first line of quote 0 and the rule of quote 1\. It needs 27 px, the height of its letters\. Give a gap of 63 or more, or a shorter word/)
+            expect(narrow(62)).toThrow(/has 26 px at each side/)
+            expect(narrow(63)).not.toThrow()
+            // A mark that is in the words, and only inside longer words.
+            expect(() => quote('it is not safe, and nothing', { mark: 'noth' })).toThrow(/quote: the mark "noth" is not in the words as whole words: it is a part of "nothing"\. A mark starts and ends at the borders of words/)
+            expect(() => quote('it is not safe', { mark: 'ot sa' })).toThrow(/the mark "ot sa" is not in the words as whole words: it is a part of "not safe"\./)
+            // A lag or a duration that is not a number would leave the words hidden, with no error.
+            const said = quote(WORDS), pair = quotePair({ words: 'yes' }, { words: 'no' })
+            expect(() => said.enter({ lag: NaN })).toThrow(/quote: lag is NaN\. It is the part of the time of one line that passes before the next line starts: a number, 0 or more/)
+            expect(() => said.enter({ duration: NaN })).toThrow(/quote: duration is NaN\. It is a number of seconds, 0 or more/)
+            expect(() => said.enter({ lag: -1 })).toThrow(/quote: lag is -1\./)
+            expect(() => said.enter({ duration: '2' as never })).toThrow(/quote: duration is "2"\./)
+            expect(() => pair.enter({ lag: NaN })).toThrow(/quotePair: lag is NaN\./)
+            expect(() => pair.enter({ duration: Infinity })).toThrow(/quotePair: duration is Infinity\./)
+            expect(() => said.enter({ lag: 0, duration: 0 })).not.toThrow()
         }))
     })
 })
