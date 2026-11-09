@@ -282,6 +282,11 @@ export class DotChart extends Node {
         })
     }
 
+    /** The label, the dot and the interval of one row belong together, so a light on one of them keeps the row bright. */
+    override labelsOf(part: Node): readonly Node[] {
+        return this.rows.find((row) => row.children.includes(part))?.children ?? []
+    }
+
     /**
      * The place of a value in a row, in the coordinates of the chart. Row 0 is the first item. On a log axis,
      * the value must be more than 0.

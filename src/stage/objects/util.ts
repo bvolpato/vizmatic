@@ -53,6 +53,41 @@ export function staggered(count: number, lag: number, t0: number, t1: number): [
     })
 }
 
+/** The first share of the time at which an ease is at a share of the way. An ease may pass the end and come back. */
+export function reaches(ease: Ease, share: number): number {
+    if (share <= 0) return 0
+    const steps = 256
+    for (let k = 1; k <= steps; k++) {
+        if (ease(k / steps) < share) continue
+        let low = (k - 1) / steps, high = k / steps
+        for (let pass = 0; pass < 24; pass++) {
+            const middle = (low + high) / 2
+            if (ease(middle) >= share) high = middle
+            else low = middle
+        }
+        return high
+    }
+    return 1
+}
+
+/**
+ * An ease that never goes back and never passes its end: at each share of the time, the furthest share of
+ * the way that the ease has reached. The cursor of `lanes` and of `dateLine` shows events and cannot hide
+ * them again, so an ease that bounces or passes its end must not move the cursor back, or past the end of
+ * the advance.
+ */
+export function forwardOnly(ease: Ease): Ease {
+    const steps = 256
+    const most = new Float64Array(steps + 1)
+    let top = 0
+    for (let k = 0; k <= steps; k++) {
+        top = Math.max(top, Math.min(1, ease(k / steps)))
+        most[k] = top
+    }
+    // An ease that only rises keeps its own value at every time, not a value between two samples.
+    return (share) => (share <= 0 ? 0 : Math.max(most[Math.min(steps, Math.floor(share * steps))]!, Math.min(1, ease(Math.min(1, share)))))
+}
+
 /** Direct straight-line interpolation between two paths with the same structure. */
 export function lerpSame(from: Path, to: Path): (alpha: number) => Path {
     return (alpha) => {

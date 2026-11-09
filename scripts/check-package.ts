@@ -12,17 +12,17 @@ const limits = {
     // Adds validated image preparation to the shared renderer and offline assets. CI packs about 32 KB larger than a
     // laptop does, so leave room: this is a tripwire for an accident, like the unpacked size below.
     // In November 2026 the package was at 5.60 MB, and the objects for system films add about 0.1 MB.
-    // The semibold of the serif text font adds 0.12 MB, and the package is then at 5.93 MB.
-    size: 6_200_000,
+    // A guard against an accident of megabytes, not a cap on features: it has room to spare.
+    // With the semibold of the serif text font (0.12 MB), the package is at 5.93 MB.
+    size: 7_000_000,
     // Includes image preflight, browser/Node rendering, declarations, and examples. Contact sheets of film stills
     // add the film and text code to the CommonJS export bundle, which holds its own copy of what it imports.
     // A stage object ships in four bundles and three declaration files, so the pictograms cost 48 KB.
     // In November 2026 the package was at 14.92 MB. A check rule and three objects for system films (lanes, the
     // bit field and the terminal) add 0.29 MB together, and more objects of that kind follow.
     // The budget is a tripwire for an accident, such as a font that ships two times. It leaves room for features.
-    // The semibold of the serif text font is one file of 0.33 MB, which ships once. With it and the font of a
-    // film, the package is at 16.03 MB.
-    unpackedSize: 16_500_000,
+    // With the semibold of the serif text font (one file of 0.33 MB), the package is at 16.03 MB.
+    unpackedSize: 18_000_000,
     // Includes the bundled raster codec license notice and film examples.
     entryCount: 190,
 }

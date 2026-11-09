@@ -101,6 +101,15 @@ const title = s.add(text('Zoom in', { size: 48 }).at(0, -460).pin())
 s.play(to(s.camera, (camera) => camera.at(300, 100).set('sx', 2.5)), { duration: 2, ease: smoother })
 ```
 
+One node in the light while the voice talks about it. Do not fade the other nodes by hand: the list of the nodes on screen gets long, and a node that the list forgets stays bright or stays dim. `spotlight` dims every other node that shows, a second `spotlight` moves the light, and `spotlight(null)` turns it off. `keep` lists what stays bright with the target, such as a heading and a source line. Give it to each call. Pinned nodes stay bright without it. `within: chart` dims only inside one node. A dim node keeps its opacity and its colors go toward the background, so it still hides what is behind it, and a `fade` under the light is still there when the light goes off. The lights follow the time of the film, so `s.at` can name them in any order. A light on `chart.bar(2)` keeps the name and the readout of that bar bright, and `dotChart` and `lanes` do the same for a dot and for the shape of an event. A light cannot dim a node while it morphs, so make the source of a morph a target or a `keep`. A node that comes to the stage with the light, or later, is not dimmed:
+
+```ts
+const keep = [heading, source]
+s.play(spotlight(row3, { keep }))
+s.play(spotlight([row5, total], { keep, dim: 0.25 }))
+s.play(spotlight(null))
+```
+
 Code in a specification or proof language. `codeBlock` knows `tla`, `dafny`, `lean`, and `smt`, where a prime is part of the code and not a quote:
 
 ```ts
@@ -162,6 +171,18 @@ s.play(line.enter())
 s.play(lagged([0.2, 0.5, 0.8].map((part) => line.cross(line.x(part), { direction: 'round' })), { lag: 0.4 }))
 s.play(line.addCrossings(9997), { duration: 2 })
 s.play(line.clear())
+```
+
+A line of time with events at their dates: the history of a project, the releases of a kernel, who said what and when. Do not draw the line, the ticks and the stems by hand. `dateLine` puts each event at its date, writes the years, the months, or the days by the span of the line so that two texts never touch, and places the labels over the line and under it so that no two meet. It stops the build when a label has no place. `advance(date)` moves the cursor to a date and stops there, as in `lanes`, and what it passes appears. An event with no label is a mark only, as a dot, a star, or a ring. Marks that are near take rows over the line, also the marks of two events with labels a few days apart, and `record.light(index)` gives the event of the scene the accent color and a ring. An error of a layout ends with the changes that work for that line. For events with labels that are crowded in time, `scale: 'order'` puts them at equal steps and says "not to scale", and then `at` can be a version such as `'5.1'`. The bounds of the object hold the labels from the start, also while they are hidden, and `record.extent` is that room:
+
+```ts
+const record = s.add(dateLine([
+    { at: 2020, label: 'the first paper' },
+    { at: '2025-06-10', label: 'the newsletter', color: 'orange' },
+    { at: '2026-03-24', label: 'the technical report', color: 'orange', note: 'names the system' },
+], { width: 1600, from: 2020, to: 2027 }).at(0, 240))
+s.play(record.advance(2021))
+s.play(record.showAll())
 ```
 
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
