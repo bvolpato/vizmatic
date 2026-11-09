@@ -3,8 +3,10 @@ import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough,
     bitField,
-    counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, fadeOut, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
-    heatmap, highlightSweep, histogram, indicate, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
+    counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
+    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
+    steps,
+    fadeOut, indicate,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     lanes, smooth,
@@ -1215,6 +1217,478 @@ describe('zone', () => {
             expect(() => zone([])).toThrow(/at least one node/)
             const used = s.add(rect(100, 100))
             expect(() => zone([rect(10, 10), used])).toThrow(/node 1 of the content is already on the stage or in a group/)
+        }))
+    })
+})
+
+describe('steps', () => {
+    const NAMES = ['batching', 'SQPOLL', 'register', 'I/O polling']
+    type Strip = ReturnType<typeof steps>
+    // Four boxes of 235 in a row of 1000, with 20 between them.
+    const sized = { width: 1000, gap: 20, height: 60, size: 30 }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] }
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const sourceOf = (node: Node | null) => (node as unknown as { source: string } | null)?.source
+    /** The colors of each step: the border of its box, its label, and its note. */
+    const looks = (strip: Strip) => strip.boxes.map((box, index) => [box.get('stroke'), strip.labels[index]!.chars[0]!.get('fill'), strip.notes[index]?.chars[0]!.get('fill')])
+    /** The text of a step that is ahead: faint with 0.4 of dim in it. */
+    const aheadText = () => mixColor(parseColor('faint'), parseColor('dim'), 0.4)
+    const look = (state: 'current' | 'done' | 'ahead', color = 'ink', noted = false) => {
+        if (state === 'ahead') return [paint('grid'), aheadText(), noted ? aheadText() : undefined]
+        const [stroke, words] = state === 'current' ? [color, 'ink'] : ['gridStrong', 'dim']
+        return [paint(stroke), paint(words), noted ? paint(words) : undefined]
+    }
+
+    it('puts one box per step in a row of its width, with one width and one gap, and each label in the middle of its box', async () => {
+        await compileFilm(film(() => {
+            const strip = steps(NAMES, { ...sized, numbered: true, current: 1 }).at(100, 50)
+            // `.at()` places the middle of the row of boxes. The row is 1000 wide: from -400 to 600.
+            expect(strip.boxes.map(edges)).toEqual([[-400, 20, -165, 80], [-145, 20, 90, 80], [110, 20, 345, 80], [365, 20, 600, 80]])
+            expect(strip.labels.map(sourceOf)).toEqual(['1 batching', '2 SQPOLL', '3 register', '4 I/O polling'])
+            strip.labels.forEach((label, index) => {
+                const [x, y] = middle(label), [boxX, boxY] = middle(strip.boxes[index]!)
+                expect(Math.abs(x - boxX)).toBeLessThan(2)
+                // A word with a tail, such as "polling", has its middle a little under the middle of its capital letters.
+                expect(Math.abs(y - boxY)).toBeLessThan(6)
+                expect(label.data['size']).toBe(30)
+            })
+            // One node per step holds its box and its label, and the object holds these nodes in order.
+            expect(strip.items.map((item) => item.children)).toEqual(strip.boxes.map((box, index) => [box, strip.labels[index]]))
+            expect(strip.children).toEqual(strip.items)
+            expect(strip.notes).toEqual([null, null, null, null])
+            // Without `numbered`, a label is the name of its step.
+            expect(steps(NAMES, sized).labels.map(sourceOf)).toEqual(NAMES)
+            // The defaults: a row of 1600, a text size of 28, a box of 62, and 17 between two boxes.
+            const plain = steps(['a', 'b'])
+            expect(plain.boxes.map(edges)).toEqual([[-800, -31, -8.5, 31], [8.5, -31, 800, 31]])
+            expect(plain.labels[0]!.data['size']).toBe(28)
+            // One step takes the whole width.
+            expect(edges(steps(['alone'], sized).boxes[0]!)).toEqual([-500, -30, 500, 30])
+        }))
+    })
+
+    it('puts the note of a step under its box, and gives the points of the edges of a box for a line to a picture', async () => {
+        await compileFilm(film(() => {
+            const strip = steps([{ label: 'a', note: 'price: none' }, 'b', { label: 'c', note: 'price: a CPU' }, { label: 'd', note: ' ' }], { ...sized, current: 0 })
+            expect(strip.notes.map(sourceOf)).toEqual(['price: none', undefined, 'price: a CPU', undefined])
+            expect(strip.notes[1]).toBeNull()
+            expect(strip.items.map((item) => item.children.length)).toEqual([3, 2, 3, 2])
+            for (const index of [0, 2]) {
+                const note = strip.notes[index]!.bounds(), box = strip.boxes[index]!.bounds()
+                // Under the box, with room, in the middle, and smaller than the label: 0.9 of the size.
+                expect(note.y).toBeGreaterThan(box.y + box.height + 8)
+                expect(note.y).toBeLessThan(box.y + box.height + 20)
+                expect(Math.abs(note.x + note.width / 2 - (box.x + box.width / 2))).toBeLessThan(2)
+                expect(strip.notes[index]!.data['size']).toBe(27)
+                // The bottom point of a step with a note is under its note, so a line from it does not touch the note.
+                const [x, y] = strip.p(index)
+                expect(x).toBe(box.x + box.width / 2)
+                expect(y).toBeGreaterThan(note.y + note.height + 8)
+                expect(y).toBeLessThan(note.y + note.height + 10)
+            }
+            // The points are in the coordinates of the object: the middle of an edge of the box.
+            expect(strip.p(1)).toEqual([-127.5, 30])
+            expect(strip.p(1, 'bottom')).toEqual([-127.5, 30])
+            expect(strip.p(1, 'top')).toEqual([-127.5, -30])
+            expect(strip.p(0, 'top')).toEqual([-382.5, -30])
+            expect(strip.p(1, 'left')).toEqual([-245, 0])
+            expect(strip.p(1, 'right')).toEqual([-10, 0])
+            // They do not move with the object: `toWorld` gives the place on the stage.
+            const moved = steps(NAMES, sized).at(100, 50)
+            expect(moved.p(1)).toEqual([-127.5, 30])
+            expect(moved.toWorld(...moved.p(1))).toEqual([-27.5, 80])
+            expect(steps(NAMES, { ...sized, noteSize: 20 }).notes).toEqual([null, null, null, null])
+            expect(steps([{ label: 'a', note: 'b' }], { ...sized, noteSize: 20 }).notes[0]!.data['size']).toBe(20)
+        }))
+    })
+
+    it('gives a bottom point with clear room under the tails of a note, 0.3 of the note size, in the default font and in the serif text font', async () => {
+        await compileFilm(film(() => {
+            for (const font of [undefined, 'text-serif'] as const) {
+                for (const size of [28, 40]) {
+                    const strip = steps([{ label: 'register', note: 'gjpqy tails' }, { label: 'b', note: 'two\nlines gjpqy' }, 'c'], { width: 900, size, font })
+                    const noteSize = Math.round(size * 0.9)
+                    for (const index of [0, 1]) {
+                        const note = strip.notes[index]!.bounds()
+                        const under = strip.p(index)[1] - (note.y + note.height)
+                        expect(under).toBeGreaterThanOrEqual(noteSize * 0.3 - 1e-6)
+                        expect(under).toBeLessThan(noteSize * 0.3 + 1)
+                    }
+                    // A step with no note has its bottom point on its box.
+                    expect(strip.p(2)[1]).toBe(Math.round(size * 2.2) / 2)
+                }
+            }
+        }))
+    })
+
+    it('gives a note one line or two, each line in the middle under the box, and gives a column the room of its longest note', async () => {
+        await compileFilm(film(() => {
+            const strip = steps([{ label: 'a', note: 'first line\nsecond' }, { label: 'b', note: 'one' }], { ...sized, width: 600, current: 0 })
+            expect(strip.notes.map(sourceOf)).toEqual(['first line\nsecond', 'one'])
+            const [two, one] = strip.notes.map((note) => note!.bounds())
+            // The two notes start at one height under their boxes. The second line is one line of 1.25 of the note size lower.
+            expect(two!.y).toBeLessThan(one!.y + 8)
+            expect(two!.y).toBeGreaterThan(30 + 8)
+            const [upper, lower] = [strip.notes[0]!.chars[0]!.bounds(), strip.notes[0]!.chars[9]!.bounds()]
+            expect(lower.y - upper.y).toBeGreaterThan(27)
+            expect(two!.height).toBeGreaterThan(one!.height + 27)
+            // Each line is in the middle under its box: the first line has 9 letters, and the shorter second line starts further right.
+            const span = (glyphs: Node[]) => { const boxes = glyphs.map((glyph) => glyph.bounds()); return [Math.min(...boxes.map((box) => box.x)), Math.max(...boxes.map((box) => box.x + box.width))] as const }
+            const lines = [span(strip.notes[0]!.chars.slice(0, 9)), span(strip.notes[0]!.chars.slice(9))]
+            for (const [from, to] of lines) expect(Math.abs((from + to) / 2 - middle(strip.boxes[0]!)[0])).toBeLessThan(2)
+            expect(lines[1]![0]).toBeGreaterThan(lines[0]![0] + 3)
+            // The bottom point of each step is under its own note.
+            expect(strip.p(0)[1] - strip.p(1)[1]).toBeCloseTo(1.25 * 27, 6)
+            // A space around a line does not count, and a third line is an error.
+            expect(sourceOf(steps([{ label: 'a', note: ' first \n second ' }], sized).notes[0]!)).toBe('first\nsecond')
+            expect(() => steps(['a', { label: 'b', note: 'x\ny\nz' }])).toThrow(/steps: the note of step 1 has 3 lines\. A note has two lines at the most/)
+            // In a column, the lines start at one x, and every box is the room of the longest note further from the next.
+            const list = steps([{ label: 'a', note: 'first line\nfinal' }, { label: 'b', note: 'one' }, 'c'], { direction: 'column', width: 300, gap: 20, height: 60, size: 30 })
+            const boxes = list.boxes.map(edges), notes = list.notes.map((note) => note && edges(note))
+            // Both lines start with the same letter, so they start at the same pixel.
+            expect(list.notes[0]!.chars[9]!.bounds().x).toBeCloseTo(list.notes[0]!.chars[0]!.bounds().x, 6)
+            expect(list.notes[0]!.chars[9]!.bounds().y).toBeGreaterThan(list.notes[0]!.chars[0]!.bounds().y + 27)
+            expect(boxes[1]![1]! - boxes[0]![3]!).toBeCloseTo(boxes[2]![1]! - boxes[1]![3]!, 6)
+            // The room of the longest note ends at its bottom point, 0.3 of the note size or more under its letters. The next box is the gap under it.
+            expect(boxes[1]![1]! - list.p(0, 'bottom')[1]).toBeCloseTo(20, 6)
+            expect(list.p(0, 'bottom')[1] - notes[0]![3]!).toBeGreaterThanOrEqual(27 * 0.3 - 1e-6)
+            expect(list.p(1, 'bottom')[1]).toBeLessThan(list.p(1, 'top')[1] + 60 + 27 * 2)
+        }))
+    })
+
+    it('lights the current step, keeps the steps before it in dim, and gives the steps after it a weaker text that is still readable', async () => {
+        await compileFilm(film(() => {
+            const strip = steps(NAMES, { ...sized, current: 1 })
+            expect(looks(strip)).toEqual([look('done'), look('current'), look('ahead'), look('ahead')])
+            expect(NAMES.map((_, index) => strip.stateOf(index))).toEqual(['done', 'current', 'ahead', 'ahead'])
+            expect(strip.current).toBe(1)
+            // The border of the lit box is wider than the others.
+            const weights = strip.boxes.map((box) => box.get('strokeWidth'))
+            expect(weights[1]).toBeGreaterThan(weights[0]! + 0.5)
+            expect([weights[2], weights[3]]).toEqual([weights[0], weights[0]])
+            // Every box has the fill of a surface, so the border and the text say the state.
+            expect(strip.boxes.map((box) => box.get('fill'))).toEqual(NAMES.map(() => paint('surface')))
+            // `color` is the border of the lit step. Its label stays in ink.
+            expect(looks(steps(NAMES, { ...sized, current: 3, color: 'orange' }))).toEqual([look('done'), look('done'), look('done'), look('current', 'orange')])
+            expect(looks(steps(NAMES, { ...sized, current: 0 }))).toEqual([look('current'), look('ahead'), look('ahead'), look('ahead')])
+            // With no lit step, which is the default, every step is readable.
+            for (const none of [steps(NAMES, sized), steps(NAMES, { ...sized, current: null })]) {
+                expect(none.current).toBeNull()
+                expect(looks(none)).toEqual(NAMES.map(() => look('done')))
+                expect(none.stateOf(3)).toBe('done')
+            }
+            // A note has the state of its step: in ink under the lit step, in dim under a done one, and as weak as its label under a step ahead.
+            const noted = steps(NAMES.map((label) => ({ label, note: 'a note' })), { ...sized, current: 1 })
+            expect(looks(noted).map((one) => one[2])).toEqual([paint('dim'), paint('ink'), aheadText(), aheadText()])
+            expect(looks(noted)).toEqual([look('done', 'ink', true), look('current', 'ink', true), look('ahead', 'ink', true), look('ahead', 'ink', true)])
+        }))
+    })
+
+    it('keeps the text of a step ahead at a contrast of 3 or more on its box in the dark look and in the light one, with a done step clearly stronger', async () => {
+        const channel = (value: number) => { const x = value / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4 }
+        const light = (color: Rgba) => 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+        const contrast = (a: Rgba, b: Rgba) => { const [high, low] = [light(a), light(b)].sort((x, y) => y - x); return (high! + 0.05) / (low! + 0.05) }
+        const seen: Record<string, number[]> = {}
+        for (const name of ['midnight', 'paper'] as const) {
+            await compileFilm(film({ look: name }, () => {
+                const strip = steps(['a', 'b', 'c'].map((label) => ({ label, note: 'a note' })), { ...sized, current: 1 })
+                const fill = (node: Node) => node.get('fill') as Rgba
+                const surface = fill(strip.boxes[0]!), ground = parseColor('bg')
+                // The label of the step ahead and of the done step on their boxes, and the note of the step ahead on the background.
+                seen[name] = [contrast(fill(strip.labels[2]!.chars[0]!), surface), contrast(fill(strip.labels[0]!.chars[0]!), surface), contrast(fill(strip.notes[2]!.chars[0]!), ground)]
+            }))
+        }
+        expect(seen['midnight']).toEqual([expect.closeTo(4.23, 2), expect.closeTo(7.45, 2), expect.closeTo(4.62, 2)])
+        expect(seen['paper']).toEqual([expect.closeTo(3.21, 2), expect.closeTo(5.68, 2), expect.closeTo(3.51, 2)])
+        for (const [ahead, done, note] of Object.values(seen)) {
+            expect(ahead).toBeGreaterThanOrEqual(3)
+            expect(note).toBeGreaterThanOrEqual(3)
+            expect(done! / ahead!).toBeGreaterThan(1.5)
+        }
+    })
+
+    it('moves the light with go, and the states of the other steps follow, one move after another in a sequence', async () => {
+        let strip!: Strip, copy!: Strip, still!: Strip, plain!: Strip
+        const seen: (number | null)[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            strip = s.add(steps(NAMES.map((label) => ({ label, note: 'a note' })), { ...sized, current: 0 }))
+            copy = s.add(strip.clone().at(0, 200))
+            still = s.add(steps(NAMES, { ...sized, current: 2 }).at(0, 400))
+            // A strip with no note, and one with a note on one step only.
+            plain = s.add(steps(['a', { label: 'b', note: 'a note' }, 'c', 'd'], { ...sized, current: 0 }).at(0, -200))
+            s.wait(1)
+            // The check of the index is at the call. The light moves when the animation is scheduled.
+            const moves = seq(strip.go(1), strip.go(3))
+            seen.push(strip.current)
+            s.play(moves, still.go(2), plain.go(2), { duration: 2, ease: linear })
+            seen.push(strip.current)
+            s.wait(1)
+            s.play(strip.go(null), copy.go(2), { duration: 1, ease: linear })
+            seen.push(strip.current, copy.current)
+            s.wait(0.5)
+        }))
+        expect(seen).toEqual([0, 3, null, 2])
+        const at1 = (state: 'current' | 'done' | 'ahead') => look(state, 'ink', true)
+        expect(at(0.9, () => looks(strip))).toEqual([at1('current'), at1('ahead'), at1('ahead'), at1('ahead')])
+        // The first move takes the first second, and the second move starts from its end.
+        expect(at(2, () => looks(strip))).toEqual([at1('done'), at1('current'), at1('ahead'), at1('ahead')])
+        expect(at(3, () => looks(strip))).toEqual([at1('done'), at1('done'), at1('done'), at1('current')])
+        // The wide border goes with the light. Half way, a border is between its two weights.
+        const weight = (time: number, index: number) => at(time, () => strip.boxes[index]!.get('strokeWidth'))
+        const [lit, rest] = [weight(0.9, 0), weight(0.9, 1)]
+        expect(lit).toBeGreaterThan(rest + 0.5)
+        expect(NAMES.map((_, index) => weight(2, index))).toEqual([rest, lit, rest, rest])
+        expect(NAMES.map((_, index) => weight(3, index))).toEqual([rest, rest, rest, lit])
+        expect(NAMES.map((_, index) => weight(5.4, index))).toEqual([rest, rest, rest, rest])
+        expect([weight(1.5, 0), weight(1.5, 1)]).toEqual([expect.closeTo((lit + rest) / 2, 6), expect.closeTo((lit + rest) / 2, 6)])
+        expect(at(1.5, () => looks(strip).slice(2))).toEqual([at1('ahead'), at1('ahead')])
+        expect(at(1.5, () => looks(strip)[0])).not.toEqual(at1('current'))
+        expect(at(1.5, () => looks(strip)[0])).not.toEqual(at1('done'))
+        // With null the light goes off, and every step is readable.
+        expect(at(5.4, () => looks(strip))).toEqual(NAMES.map(() => at1('done')))
+        // A copy has its own boxes and its own light: it keeps the first step lit until its own move.
+        expect(at(3.9, () => looks(copy))).toEqual([at1('current'), at1('ahead'), at1('ahead'), at1('ahead')])
+        expect(at(5.4, () => looks(copy))).toEqual([at1('done'), at1('done'), at1('current'), at1('ahead')])
+        expect(copy.boxes[0]).not.toBe(strip.boxes[0])
+        // A move to the lit step changes nothing.
+        for (const time of [0.5, 1.5, 2.5, 5.4]) expect(at(time, () => looks(still))).toEqual([look('done'), look('done'), look('current'), look('ahead')])
+        // The steps of a strip change with a note or with none: the first, the third and the last have no note here.
+        expect(at(0.9, () => looks(plain))).toEqual([look('current'), at1('ahead'), look('ahead'), look('ahead')])
+        expect(at(3, () => looks(plain))).toEqual([look('done'), at1('done'), look('current'), look('ahead')])
+        // A move takes 0.4 s, and an entrance 1.2 s, when the film gives no duration.
+        expect([plain.go(1).duration, plain.enter().duration, plain.go(1, { duration: 2 }).duration]).toEqual([0.4, 1.2, 2])
+    })
+
+    it('brings a strip that is not on the stage with go, in the state before the move, and draws nothing of it before its turn', async () => {
+        let strip!: Strip
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            strip = steps(NAMES, { ...sized, current: 0 })
+            s.wait(1)
+            s.play(strip.go(2), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // Four boxes, and the 32 letters of the four names.
+        expect(compiled.frame(1).ops).toHaveLength(4 + 32)
+        expect(at(1, () => looks(strip))).toEqual([look('current'), look('ahead'), look('ahead'), look('ahead')])
+        expect(at(2, () => looks(strip))).toEqual([look('done'), look('done'), look('current'), look('ahead')])
+        const turn = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...steps(['a', 'b'], { ...sized, current: 0 }).go(1), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws. Then: two boxes and two letters more.
+        for (const time of [1.3, 1.99]) expect(turn.frame(time).ops).toHaveLength(1)
+        expect(turn.frame(2.5).ops).toHaveLength(5)
+    })
+
+    it('makes all labels smaller when one is too wide for its box, down to 0.7 of the size, and then refuses with the width that is enough', async () => {
+        await compileFilm(film(() => {
+            const names = ['a label that is too long for its box', 'b']
+            // The long label is 460 px wide at size 30. A box has 22.5 px at each side of its label.
+            expect(steps(names, { ...sized, width: 1100 }).labels.map((label) => label.data['size'])).toEqual([30, 30])
+            const smaller = steps(names, { ...sized, width: 1000 })
+            const [size, other] = smaller.labels.map((label) => label.data['size'] as number)
+            expect(size).toBeCloseTo(30 * (490 - 45) / 459.9609375, 6)
+            expect(other).toBe(size)
+            const [left, , right] = edges(smaller.labels[0]!), [boxLeft, , boxRight] = edges(smaller.boxes[0]!)
+            expect(left).toBeGreaterThan(boxLeft + 22)
+            expect(right).toBeLessThan(boxRight - 22)
+            // 754 gives a box of 367, where the label is in at 0.7 of the size. One pixel less is too narrow.
+            expect(steps(names, { ...sized, width: 754 }).labels[0]!.data['size']).toBeCloseTo(21, 1)
+            expect(() => steps(names, { ...sized, width: 753 })).toThrow(/the label "a label that is too long for its box" is 460 px wide at size 30, and a box is 366 px wide, with 321 px for its label\. A label can be 0\.7 of the size at the least\. Use a shorter label, or a width of 754 or more, or fewer steps/)
+            // A note has the width of its box less 15 px, so the notes of two steps that are neighbors do not read as one.
+            const noted = [{ label: 'a', note: 'a note that is too long for its box' }, { label: 'b', note: 'short' }]
+            const notes = steps(noted, { ...sized, width: 700 })
+            expect(new Set(notes.notes.map((note) => note!.data['size'])).size).toBe(1)
+            expect(notes.notes[0]!.data['size']).toBeLessThan(27)
+            expect(edges(notes.notes[0]!)[0]).toBeGreaterThan(edges(notes.boxes[0]!)[0]! + 6)
+            expect(edges(notes.notes[0]!)[2]).toBeLessThan(edges(notes.boxes[0]!)[2]! - 6)
+            expect(steps(noted, { ...sized, width: 624 }).notes[0]!.data['size']).toBeCloseTo(27 * 0.7, 1)
+            expect(() => steps(noted, { ...sized, width: 623 })).toThrow(/the note "a note that is too long for its box" is 410 px wide at size 27, and a box is 301 px wide, with 286 px for its note\. A note can be 0\.7 of the size at the least\. Use a shorter note, or a width of 624 or more, or fewer steps/)
+            // The longer line of a note of two lines is the one that counts.
+            expect(steps([{ label: 'a', note: 'short\na note that is too long for its box' }, 'b'], { ...sized, width: 624 }).notes[0]!.data['size']).toBeCloseTo(27 * 0.7, 1)
+            // In a column, the width is the width of a box, and the message says so.
+            expect(() => steps(names, { direction: 'column', width: 366, size: 30 })).toThrow(/a box is 366 px wide, with 321 px for its label\. A label can be 0\.7 of the size at the least\. Use a shorter label, or a width of 367 or more$/)
+            expect(() => steps(names, { direction: 'column', width: 367, size: 30 })).not.toThrow()
+            // A note of a column starts where the labels start, 22.5 px inside the box, and ends inside the box.
+            const list = steps(noted, { direction: 'column', width: 310, size: 30 })
+            expect(list.notes[0]!.data['size']).toBeCloseTo(27 * 0.7, 1)
+            expect(edges(list.notes[0]!)[2]).toBeLessThanOrEqual(edges(list.boxes[0]!)[2]!)
+            expect(() => steps(noted, { direction: 'column', width: 309, size: 30 })).toThrow(/a box is 309 px wide, with 286 px for its note\. A note can be 0\.7 of the size at the least\. Use a shorter note, or a width of 310 or more$/)
+        }))
+    })
+
+    it('puts the steps one under the other in a column, with the numbers in a column of their own and each note under its box', async () => {
+        await compileFilm(film(() => {
+            const list = steps([{ label: 'plan', note: 'a week' }, 'build', 'measure'], { direction: 'column', width: 300, gap: 20, height: 60, size: 30, numbered: true, current: 1 }).at(100, 50)
+            // The width is the width of each box. A note is between its box and the next one, so the boxes are 20 and the room of a note apart.
+            const boxes = list.boxes.map(edges)
+            expect(boxes.map((box) => [box[0], box[2]])).toEqual([[-50, 250], [-50, 250], [-50, 250]])
+            expect(boxes.map((box) => box[3]! - box[1]!)).toEqual([expect.closeTo(60, 6), 60, expect.closeTo(60, 6)])
+            expect(boxes[1]![1]! - boxes[0]![3]!).toBeCloseTo(boxes[2]![1]! - boxes[1]![3]!, 6)
+            expect(boxes[1]![1]! - boxes[0]![3]!).toBeGreaterThan(20 + 27)
+            // `.at()` places the middle of the column of boxes.
+            expect([(boxes[0]![1]! + boxes[2]![3]!) / 2, boxes[1]![1]]).toEqual([expect.closeTo(50, 6), 20])
+            // The labels are at the left of their boxes, 22.5 px inside, and at the height of the middle of their boxes.
+            const starts = list.labels.map((label) => label.bounds().x)
+            expect(Math.min(...starts)).toBeGreaterThan(-50 + 20)
+            expect(Math.max(...starts)).toBeLessThan(-50 + 32)
+            list.labels.forEach((label, index) => expect(Math.abs(middle(label)[1] - middle(list.boxes[index]!)[1])).toBeLessThan(6))
+            // The note starts where the labels start, under its box and over the next one.
+            const note = list.notes[0]!.bounds()
+            expect(Math.abs(note.x - (-50 + 22.5))).toBeLessThan(3)
+            expect(note.y).toBeGreaterThan(boxes[0]![3]! + 8)
+            expect(note.y + note.height).toBeLessThan(boxes[1]![1]! - 8)
+            // Without an edge, the point is at the right side of the box, for a picture at the right of the column.
+            expect(list.p(1)).toEqual([150, 0])
+            expect(list.p(1, 'bottom')).toEqual([0, 30])
+            expect(list.toWorld(...list.p(0, 'bottom'))[1]).toBeGreaterThan(note.y + note.height)
+            expect(looks(list).map((one) => one.slice(0, 2))).toEqual([look('done').slice(0, 2), look('current').slice(0, 2), look('ahead').slice(0, 2)])
+            // Without notes, the boxes are the gap apart. The default width of a column is 360.
+            const plain = steps(['a', 'b'], { direction: 'column', gap: 20, height: 60 })
+            expect(plain.boxes.map(edges)).toEqual([[-180, -70, 180, -10], [-180, 10, 180, 70]])
+            // Eleven numbered steps: the numbers end at one x and the names start at one x, from "9" to "10" too.
+            const many = steps(Array.from({ length: 11 }, (_, index) => `step ${index + 1}`), { direction: 'column', width: 300, numbered: true, size: 30, height: 60, current: 9 })
+            const digits = (index: number) => String(index + 1).length
+            const names = many.labels.map((label, index) => label.chars[digits(index)]!.bounds().x)
+            expect(Math.max(...names) - Math.min(...names)).toBeLessThan(1e-6)
+            const ends = many.labels.map((label, index) => { const last = label.chars[digits(index) - 1]!.bounds(); return last.x + last.width })
+            // "1" and "11" end with the same digit, so they end at the same pixel. Two other digits differ by the room at their sides.
+            expect(ends[10]).toBeCloseTo(ends[0]!, 6)
+            expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(1.5)
+            expect(names[0]! - Math.max(...ends)).toBeGreaterThan(6)
+            expect(many.labels.map(sourceOf).slice(8)).toEqual(['9 step 9', '10 step 10', '11 step 11'])
+            // The room of the widest number counts when the labels must be smaller: the long label of step 1 starts
+            // after that room, and still ends 22.5 px inside its box.
+            const long = steps(['a label that is too long for its box', ...Array.from({ length: 10 }, () => 'b')], { direction: 'column', width: 440, numbered: true, size: 30, height: 60 })
+            expect(long.labels[0]!.data['size']).toBeLessThan(30)
+            expect(long.labels[0]!.data['size']).toBeGreaterThan(21)
+            expect(new Set(long.labels.map((label) => label.data['size'])).size).toBe(1)
+            expect(edges(long.labels[0]!)[2]).toBeLessThanOrEqual(edges(long.boxes[0]!)[2]! - 22.5 + 0.01)
+            expect(edges(long.labels[0]!)[2]).toBeGreaterThan(edges(long.boxes[0]!)[2]! - 22.5 - 3)
+            // Without numbers, the labels start at one x.
+            const bare = steps(['step a', 'step b'], { direction: 'column', width: 300 })
+            expect(bare.labels[1]!.bounds().x).toBeCloseTo(bare.labels[0]!.bounds().x, 6)
+        }))
+    })
+
+    it('enters from the first step to the last, each one with the look of its state, and draws nothing before its turn', async () => {
+        let strip!: Strip, usual!: Strip
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            strip = steps(NAMES, { ...sized, current: 1 })
+            usual = steps(NAMES, sized).at(0, 200)
+            s.wait(1)
+            s.play(strip.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+            // Without a lag from the film, each step starts when the one before it is half way.
+            s.play(usual.enter(), { duration: 2.5, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // Four steps with a lag of 1: each one has a quarter of the time, one after the other.
+        const state = (time: number) => at(time, () => strip.items.map(shows))
+        expect(state(1.25)).toEqual([expect.closeTo(0.5, 6), 0, 0, 0])
+        expect(state(2.25)).toEqual([1, 1, expect.closeTo(0.5, 6), 0])
+        expect(state(3.2)).toEqual([1, 1, 1, 1])
+        expect(at(3.2, () => looks(strip))).toEqual([look('done'), look('current'), look('ahead'), look('ahead')])
+        // The entrance without a lag starts at 3.5 s: each step takes 1 s, and starts 0.5 s after the one before it.
+        expect(at(4.25, () => usual.items.map(shows))).toEqual([expect.closeTo(0.75, 6), expect.closeTo(0.25, 6), 0, 0])
+        expect(at(5.25, () => usual.items.map(shows))).toEqual([1, 1, expect.closeTo(0.75, 6), expect.closeTo(0.25, 6)])
+        const turn = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...steps(['a', 'b'], sized).enter(), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws. At the end: two boxes and two letters more.
+        for (const time of [1.3, 1.99]) expect(turn.frame(time).ops).toHaveLength(1)
+        expect(turn.frame(3.4).ops).toHaveLength(5)
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            const moved = await compile((s) => {
+                const made = steps(['a', 'b'], sized)
+                group(made).at(shift, 0)
+                s.play(made.enter(), { duration: 1 })
+                s.wait(0.5)
+            })
+            lefts.push(Math.min(...paths(moved, 1.4).flatMap((op) => pathBounds(op.path)?.x ?? [])))
+        }
+        // The strip of a group that the film moved is the same picture, 300 to the right.
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+    })
+
+    it('sets its labels and its notes in the font that the film gives', async () => {
+        await compileFilm(film(() => {
+            const letter = (words: string, size: number, font?: 'text-serif') => text(words, { size, font }).chars[0]!.get('path')
+            const serif = steps([{ label: 'batching', note: 'price' }], { ...sized, font: 'text-serif' })
+            expect(serif.labels[0]!.chars[0]!.get('path')).toEqual(letter('batching', 30, 'text-serif'))
+            expect(serif.notes[0]!.chars[0]!.get('path')).toEqual(letter('price', 27, 'text-serif'))
+            // Without a font, the texts have the font of `text()`, as the texts of a card or a zone have.
+            const usual = steps([{ label: 'batching', note: 'price' }], sized)
+            expect(usual.labels[0]!.chars[0]!.get('path')).toEqual(letter('batching', 30))
+            expect(usual.notes[0]!.chars[0]!.get('path')).toEqual(letter('price', 27))
+            expect(letter('batching', 30, 'text-serif')).not.toEqual(letter('batching', 30))
+        }))
+    })
+
+    it('refuses a label of two lines and a height with no room for a label, with the smallest height that works', async () => {
+        await compileFilm(film(() => {
+            expect(() => steps(['two\nlines', 'b'])).toThrow(/steps: the label of step 0 \("two\\nlines"\) has a line break\. A label is one line\. Give the step a note for a second line/)
+            expect(() => steps(['a', { label: 'b\r\nc' }])).toThrow(/the label of step 1 .* has a line break/)
+            // A line break at an end of a label is space, and does not count.
+            expect(sourceOf(steps(['plan\n']).labels[0]!)).toBe('plan')
+            // The box holds the highest and the lowest letters of the font, with the wide border of the lit step.
+            expect(() => steps(NAMES, { ...sized, height: 43 })).toThrow(/steps: a height of 43 has no room for a label of size 30: a letter with a tail would touch the border\. Give a height of 44 or more/)
+            expect(() => steps(NAMES, { ...sized, height: 45, font: 'text-serif' })).toThrow(/Give a height of 46 or more/)
+            expect(() => steps(NAMES, { height: 20 })).toThrow(/a height of 20 has no room for a label of size 28.*Give a height of 41 or more/)
+            expect(() => steps(NAMES, { height: 0 })).toThrow(/a height of 0 has no room for a label/)
+            expect(() => steps(NAMES, { height: Number.NaN })).toThrow(/a height of NaN has no room for a label/)
+            for (const [font, height] of [[undefined, 44], ['text-serif', 46]] as const) {
+                const tight = steps(['Typing', 'gjpqy (Á)'], { width: 600, size: 30, height, font, current: 1 })
+                tight.labels.forEach((label, index) => {
+                    const [, top, , bottom] = edges(label), [, boxTop, , boxBottom] = edges(tight.boxes[index]!)
+                    // The letters are inside the border of the lit box, which is 3.3 px wide.
+                    expect(top).toBeGreaterThan(boxTop! + 1.65)
+                    expect(bottom).toBeLessThan(boxBottom! - 1.65)
+                })
+            }
+        }))
+    })
+
+    it('refuses a list with no step, a step with no label, a width with no room for a label, a color that is none, and a step that the strip does not have', async () => {
+        await compileFilm(film(() => {
+            expect(() => steps([])).toThrow(/give it at least one step/)
+            expect(() => steps(['a', { label: ' ' }])).toThrow(/step 1 has no label/)
+            expect(() => steps(NAMES, { direction: 'stack' as never })).toThrow(/direction is 'row' or 'column', not "stack"/)
+            expect(() => steps(NAMES, { size: 0 })).toThrow(/size is the text size of the labels/)
+            expect(() => steps(NAMES, { noteSize: -1 })).toThrow(/noteSize is the text size of the notes/)
+            expect(() => steps(NAMES, { gap: -1 })).toThrow(/gap is the room between two boxes/)
+            // Three boxes in 100 px, with 17 between them, are 22 px wide. A label needs more than 21 px at each side.
+            expect(() => steps(['a', 'b', 'c'], { width: 100 })).toThrow(/a width of 100 gives each of the 3 boxes 22 px, with no room for a label\. Give a width of more than 160, a smaller gap, or fewer steps/)
+            expect(() => steps(['a', 'b', 'c'], { direction: 'column', width: 30, size: 30 })).toThrow(/a width of 30 gives the boxes 30 px, with no room for a label\. Give a width of more than 45$/)
+            // A color that is none is an error when the strip is made, with a lit step or with none.
+            expect(() => steps(NAMES, { color: 'nope' })).toThrow(/steps: color is "nope", which is not a color\. Use a color of the look, such as 'orange', or a CSS color/)
+            expect(() => steps(NAMES, { color: 'nope', current: 0 })).toThrow(/steps: color is "nope", which is not a color/)
+            expect(() => steps(NAMES, { color: '#ff8800', current: 0 })).not.toThrow()
+            const known = 'The steps are 0 \\("a"\\), 1 \\("b"\\), 2 \\("c"\\)'
+            expect(() => steps(['a', 'b', 'c'], { current: 3 })).toThrow(new RegExp(`no step 3\\. ${known}\\. Use null for no lit step`))
+            expect(() => steps(['a', 'b', 'c'], { current: -1 })).toThrow(/no step -1/)
+            expect(() => steps(['a', 'b', 'c'], { current: Number.NaN })).toThrow(/NaN is not a number/)
+            const strip = steps(['a', 'b', 'c'], { numbered: true })
+            // A wrong index is an error where the film writes the move, before anything plays.
+            expect(() => strip.go(3)).toThrow(/no step 3\. The steps are 0 \("1 a"\), 1 \("2 b"\), 2 \("3 c"\)/)
+            expect(() => strip.go(1.5)).toThrow(/no step 1\.5/)
+            expect(() => strip.go(Infinity)).toThrow(/no step Infinity/)
+            // An index that is not a number says so, and does not print "null".
+            expect(() => strip.go(Number.NaN)).toThrow(/steps: the index of a step is a whole number, and NaN is not a number\. The steps are 0 \("1 a"\), 1 \("2 b"\), 2 \("3 c"\)\. Use null for no lit step/)
+            expect(() => strip.go(undefined as never)).toThrow(/undefined is not a number/)
+            expect(() => strip.go('1' as never)).toThrow(/"1" is not a number/)
+            expect(() => strip.p(3)).toThrow(/no step 3/)
+            expect(() => strip.p(Number.NaN)).toThrow(/NaN is not a number/)
+            expect(() => strip.stateOf(-1)).toThrow(/no step -1/)
+            expect(() => strip.p(0, 'middle' as never)).toThrow(/edge is 'top', 'bottom', 'left' or 'right', not "middle"/)
         }))
     })
 })

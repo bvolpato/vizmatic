@@ -131,6 +131,13 @@ const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true
 s.add(zone(jail, { title: 'host' }).at(0, 0))
 ```
 
+A row of steps with one of them lit: the chapters of an argument, the stages of a process, a list of options that the film takes one by one. Do not build it from boxes and three colors in each film. `steps` gives the boxes one width, keeps one text size for all labels, and stops the build when a label cannot fit. `go(index)` moves the light: the steps before it are dim, and the steps after it are fainter. A step can have a `note` under its box, `direction: 'column'` makes a list at the left of a frame, and `strip.p(index)` is the point where a line to the picture of the step starts:
+
+```ts
+const strip = s.add(steps(['batching', 'SQPOLL', 'register', 'I/O polling'], { width: 1800, numbered: true, current: 0 }).at(0, -400))
+s.play(strip.go(1))
+```
+
 A sequence over time with one lane for each actor, such as a system call, a VM exit, or a request through several services. Do not draw the bars and the arrows by hand. `lanes` places the labels, and stops the build when two labels would touch. `advance` moves the cursor to a time and stops there, so one call fits one sentence of the voice. With `ticks`, one lane is a chart of durations on a time axis. With `boundaries`, a line between two lanes counts the handoffs that cross it, such as `{ between: ['user space', 'kernel'], label: 'system call line', count: true }`, so two objects side by side compare two designs by their crossings. `idle: true` is a span where the lane waits, and `dashed: true` is a handoff whose sender does not wait. When a label has no place, `labelSide` on the event names one. On a panel or in a zone with a fill, set `backing` to the color behind the object, or `backing: null` with `cursor: false`:
 
 ```ts
