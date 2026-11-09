@@ -55,7 +55,7 @@ npx vizmatic check intro.ts             # finds clipped text, overlaps, and stro
 npx vizmatic film intro.ts --out dist   # 1080p60 MP4
 ```
 
-`npx vizmatic new intro --template architecture` starts from a working film. The templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`.
+`npx vizmatic new intro --template architecture` starts from a working film. The templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`. `--template narrated` writes a folder for a film that follows a recorded voice, and one command, `npx vizmatic narrated build <folder> --draft`, makes the voice on your machine, the sound mix, the layout check, and the movie. See the [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html).
 
 ## What makes it different
 

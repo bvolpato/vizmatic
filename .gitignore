@@ -65,3 +65,6 @@ coverage/
 /docs/assets/logo.svg
 /docs/assets/site/og.png
 /docs/assets/sources/
+
+# Python writes these beside the narration tools when one of them runs.
+__pycache__/

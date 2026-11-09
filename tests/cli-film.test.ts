@@ -189,7 +189,8 @@ export default film((s) => {
 describe('vizmatic new, looks, and objects', () => {
     it('scaffolds every template into a film that passes its own check', async () => {
         const directory = await tempDirectory()
-        for (const template of FILM_TEMPLATES) {
+        // A template that is a folder has its own tests, in narrated-cli.test.ts.
+        for (const template of FILM_TEMPLATES.filter((entry) => entry.source !== undefined)) {
             const created = cli(['new', template.name, '--template', template.name], directory)
             expect(created.status, created.stderr).toBe(0)
             const check = cli(['check', `${template.name}.ts`, '--json'], directory)

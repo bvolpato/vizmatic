@@ -1,0 +1,26 @@
+{
+  "timeline": { "intro": 2.4, "pause": 0.6, "gap": 0.4, "tail": 0.5 },
+  "scenes": [
+    {
+      "id": "question",
+      "title": "The slow page",
+      "beats": [
+        { "say": "A page takes 800 milliseconds to build from the database." },
+        { "say": "Most requests ask for the same page. So why build it again?", "hold": 1.5 }
+      ]
+    },
+    {
+      "id": "answer",
+      "title": "Keep the answer",
+      "beats": [
+        { "say": "A cache keeps the page. The next request takes 5 milliseconds." },
+        { "say": "That is 160 times faster, for every request after the first.", "hold": 1.2 }
+      ]
+    }
+  ],
+  "pronounce": {
+    "800": "eight hundred",
+    "160": "one hundred and sixty",
+    "5": "five"
+  }
+}
