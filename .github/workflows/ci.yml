@@ -36,6 +36,7 @@ jobs:
   # The narration tools are Python scripts that uv runs, and they read and write movies with FFmpeg. Their
   # tests skip on a machine without the two, and the verify job has neither. So this job installs both and
   # runs those tests: without it, a change that breaks a tool or the build of a narrated film would pass.
+  # The tests of the movie export need FFmpeg too, so they run here, on the FFmpeg that Ubuntu installs.
   narration:
     name: narration tools (Node 22)
     runs-on: ubuntu-latest
@@ -54,8 +55,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # The command line loads a film as a project does: from the built package.
       - run: pnpm build
-      - name: Test the tools, the one command of a film, and the film shell
-        run: pnpm exec vitest run tests/narrated-tools.test.ts tests/narrated-cli.test.ts tests/narrated.test.ts
+      - name: Test the tools, the one command of a film, the film shell, and the movie export
+        run: pnpm exec vitest run tests/narrated-tools.test.ts tests/narrated-cli.test.ts tests/narrated.test.ts tests/video.test.ts
 
   playground:
     name: playground browser (Node 22)

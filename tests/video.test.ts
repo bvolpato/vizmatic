@@ -144,6 +144,31 @@ describe('RGBA video export', () => {
         }
     }, 30_000)
 
+    it.skipIf(!hasFfmpeg || !hasFfprobe)('keeps a chapter of some minutes in a movie with captions and sound', async () => {
+        const directory = await tempDirectory()
+        const outputPath = join(directory, 'long.mp4')
+        const audioPath = join(directory, 'tone.wav')
+        // Sound at 48 kHz and a caption track, as a narrated film has: the two raise the time scale that FFmpeg 7 and later pick.
+        const tone = spawnSync('ffmpeg', [
+            '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.05:sample_rate=48000',
+            '-c:a', 'pcm_s16le', audioPath,
+        ], { encoding: 'utf8' })
+        expect(tone.status, tone.stderr).toBe(0)
+        const pixels = new Uint8Array(64 * 48 * 4).fill(255)
+        await renderRgbaVideo(() => pixels, {
+            width: 64, height: 48, duration: 420_000, fps: 2, outputPath, audioPath,
+            title: 'Long',
+            chapters: [{ title: 'One', time: 0 }, { title: 'Two', time: 400 }],
+            captions: [{ t0: 1, t1: 3, text: 'a caption' }],
+        })
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-show_chapters', '-of', 'json', outputPath], { encoding: 'utf8' })
+        expect(probe.status, probe.stderr).toBe(0)
+        const chapters = (JSON.parse(probe.stdout) as { chapters: Array<{ start_time: string; end_time: string; tags: { title: string } }> }).chapters
+        expect(chapters.map((chapter) => [chapter.tags.title, Math.round(Number(chapter.start_time)), Math.round(Number(chapter.end_time))]))
+            .toEqual([['One', 0, 400], ['Two', 400, 420]])
+    }, 120_000)
+
     it.skipIf(process.platform === 'win32')('hands every byte of every frame to the encoder, in order', async () => {
         const directory = await tempDirectory()
         // A stand-in for FFmpeg: it copies its input to its last argument, which is the output path.
