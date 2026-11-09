@@ -7,6 +7,7 @@ import { renderRgbaVideo, type RgbaVideoOutput, type VideoCodec, type VideoFrame
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
 import { RasterPool, defaultPoolSize, framesToJob, rasterMemoBytes } from './raster'
+import { CanvasRenderer, type FrameRenderer } from './canvas-raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 import { text } from './text'
 
@@ -90,6 +91,59 @@ function backgroundBytes(color: string | null): readonly [number, number, number
     return [rgba[0], rgba[1], rgba[2]]
 }
 
+/** Today's renderer: each frame as SVG text, rasterized by resvg on worker threads, with the bloom in JavaScript. */
+class SvgRenderer implements FrameRenderer {
+    readonly label = 'svg (resvg)'
+    readonly stats = { frames: 0, svgMs: 0 }
+    private readonly pool: RasterPool
+
+    constructor(workers: number) {
+        this.pool = new RasterPool(workers)
+    }
+
+    get size(): number {
+        return this.pool.size
+    }
+
+    render(frames: readonly Frame[], width: number, height: number): Promise<Uint8Array> {
+        const t0 = performance.now()
+        const job = framesToJob(frames, width, backgroundBytes, height)
+        this.stats.frames++
+        this.stats.svgMs += performance.now() - t0
+        return this.pool.run(job)
+    }
+
+    close(): Promise<void> {
+        return this.pool.close()
+    }
+}
+
+/** True when the environment asks for the canvas renderer. It is a prototype, so the default stays the SVG renderer. */
+export function canvasRendererRequested(): boolean {
+    const value = (process.env.VIZMATIC_RENDERER ?? '').trim().toLowerCase()
+    if (value === '' || value === 'svg') return false
+    if (value === 'canvas') return true
+    throw new Error(`VIZMATIC_RENDERER must be "canvas" or "svg", but it is ${JSON.stringify(process.env.VIZMATIC_RENDERER)}.`)
+}
+
+/**
+ * Open the renderer of the films. `workers` is the number of frames that the SVG renderer may work on at
+ * one time. The canvas renderer has its own count, because a frame in flight costs it less memory.
+ */
+function openRenderer(workers: number, inFlight?: number): FrameRenderer {
+    return canvasRendererRequested() ? new CanvasRenderer(inFlight ?? workers) : new SvgRenderer(workers)
+}
+
+/**
+ * How many frames the canvas renderer may hold in flight within the memory budget. Each one holds its
+ * pixels, the surface that a thread of the library draws on, and at most one more surface for a sub-frame.
+ */
+function canvasInFlight(width: number, height: number, options: { workers?: number; memoryBudget?: number }): number {
+    const budget = options.memoryBudget ?? Math.min(2 * 1024 ** 3, totalmem() * 0.25)
+    const fits = Math.max(1, Math.floor(budget * 0.75 / (width * height * 4 * 3)))
+    return Math.max(1, Math.min(fits, Math.floor(options.workers ?? fits)))
+}
+
 /** Output size for an image. Height follows the film's proportions. */
 function outputSize(film: CompiledFilm, requested?: number): { width: number; height: number } {
     const width = requested ?? film.width
@@ -141,22 +195,27 @@ export function planRender(width: number, height: number, motionBlur: number, op
  */
 function frameStream(
     film: CompiledFilm,
-    pool: RasterPool,
+    renderer: FrameRenderer,
     timeOf: (index: number) => number,
     size: { width: number; height: number },
     count: number,
     readAhead: number,
     subframes = 1,
     shutterSpan = 0,
+    times?: RenderTimes,
 ): (index: number) => Promise<Uint8Array> {
     const inFlight = new Map<number, Promise<Uint8Array>>()
     const submit = async (index: number): Promise<Uint8Array> => {
         const base = timeOf(index)
         const frames: Frame[] = []
         for (let sub = 0; sub < subframes; sub++) {
-            frames.push(await frameAt(film, base + (sub / subframes) * shutterSpan))
+            const t0 = performance.now()
+            const sampled = frameAt(film, base + (sub / subframes) * shutterSpan)
+            if (times) times.sampleMs += performance.now() - t0
+            frames.push(await sampled)
         }
-        return pool.run(framesToJob(frames, size.width, backgroundBytes, size.height))
+        // The stream only reads the pixels, so a frame that repeats may come back as the same array.
+        return renderer.render(frames, size.width, size.height, { reuse: true })
     }
     return async (index) => {
         for (let ahead = index; ahead < Math.min(count, index + readAhead); ahead++) {
@@ -166,10 +225,34 @@ function frameStream(
             job.catch(() => {})
             inFlight.set(ahead, job)
         }
+        const t0 = performance.now()
         const pixels = await inFlight.get(index)!
+        if (times) times.waitMs += performance.now() - t0
         inFlight.delete(index)
         return pixels
     }
+}
+
+/** Where a render spends its time, in milliseconds. `VIZMATIC_RENDER_STATS=1` prints it after a movie. */
+interface RenderTimes {
+    /** The film computes its draw lists. This runs on the main thread. */
+    sampleMs: number
+    /** The main thread waits for the pixels of the next frame. */
+    waitMs: number
+    /** The main thread waits for FFmpeg to take a frame. */
+    pipeMs: number
+}
+
+function reportTimes(renderer: FrameRenderer, times: RenderTimes, frames: number, wallMs: number): void {
+    if (!process.env.VIZMATIC_RENDER_STATS) return
+    const round = (value: number) => Math.round(value * 10) / 10
+    const stats = Object.fromEntries(Object.entries(renderer.stats ?? {}).map(([name, value]) => [name, round(value)]))
+    process.stderr.write(`render stats ${JSON.stringify({
+        renderer: renderer.label, inFlight: renderer.size, frames, wallMs: round(wallMs), fps: round(frames * 1000 / wallMs),
+        sampleMs: round(times.sampleMs), waitForPixelsMs: round(times.waitMs), waitForEncoderMs: round(times.pipeMs), ...stats,
+        // The largest memory of this process, with its worker threads. Node reports kilobytes.
+        peakRssMb: Math.round(process.resourceUsage().maxRSS / 1024),
+    })}\n`)
 }
 
 /** Encode a film to H.264 MP4 or VP9 WebM. Frames rasterize in parallel and encode in order. */
@@ -199,11 +282,20 @@ export async function renderFilmVideo(
     const codec = options.codec ?? 'h264'
     const { from, to } = timeRange(compiled, options)
     const plan = planRender(size.width, size.height, motionBlur, options)
-    const pool = new RasterPool(plan.workers)
+    const renderer = openRenderer(plan.workers, canvasInFlight(size.width, size.height, options))
     try {
         const count = Math.max(1, Math.round((to - from) * fps))
-        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps)
-        const output = await renderRgbaVideo((info) => next(info.index), {
+        const times: RenderTimes = { sampleMs: 0, waitMs: 0, pipeMs: 0 }
+        const next = frameStream(compiled, renderer, (index) => from + index / fps, size, count, readAheadOf(renderer, plan), motionBlur, shutter / fps, times)
+        const started = performance.now()
+        let handed = 0
+        const output = await renderRgbaVideo(async (info) => {
+            // The time between two requests is the time that FFmpeg took to accept the frame before.
+            if (handed > 0) times.pipeMs += performance.now() - handed
+            const pixels = await next(info.index)
+            handed = performance.now()
+            return pixels
+        }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
             codec,
             crf: codec === 'vp9' ? quality.vp9Crf : quality.crf,
@@ -221,10 +313,19 @@ export async function renderFilmVideo(
             signal: options.signal,
             onProgress: options.onProgress,
         })
-        return { ...output, title: compiled.title, workers: pool.size, motionBlur, codec }
+        reportTimes(renderer, times, output.frameCount, performance.now() - started)
+        return { ...output, title: compiled.title, workers: renderer.size, motionBlur, codec }
     } finally {
-        await pool.close()
+        await renderer.close()
     }
+}
+
+/**
+ * How many frames the stream starts before the encoder asks for them. The SVG renderer has a queue
+ * in front of its workers. The canvas renderer has none: each frame that it starts is in flight.
+ */
+function readAheadOf(renderer: FrameRenderer, plan: RenderPlan): number {
+    return renderer instanceof CanvasRenderer ? renderer.size : plan.readAhead
 }
 
 /** Chapters for a render that starts at `from`. The chapter already running at that moment starts the video. */
@@ -277,13 +378,13 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
     const count = Math.max(1, Math.round((to - from) * fps))
     const delay = 1000 / fps
     const plan = planRender(size.width, size.height, 1, options)
-    const pool = new RasterPool(plan.workers)
+    const renderer = openRenderer(plan.workers, canvasInFlight(size.width, size.height, options))
     try {
         // Build one palette from frames across the film, so colors do not flicker between frames.
         const sampleCount = Math.min(count, GIF_PALETTE_FRAMES)
         const samples = await Promise.all(Array.from({ length: sampleCount }, async (_, i) => {
             const index = Math.floor((i + 0.5) * count / sampleCount)
-            return pool.run(framesToJob([await frameAt(compiled, from + index / fps)], size.width, backgroundBytes, size.height))
+            return renderer.render([await frameAt(compiled, from + index / fps)], size.width, size.height)
         }))
         const perFrame = Math.max(1, Math.floor(GIF_PALETTE_PIXELS / sampleCount))
         const combined = new Uint8Array(perFrame * sampleCount * 4)
@@ -296,7 +397,7 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         })
         const palette = gifApi.quantize(combined, 256, { format: 'rgb565' })
         const gif = gifApi.GIFEncoder()
-        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead)
+        const next = frameStream(compiled, renderer, (index) => from + index / fps, size, count, readAheadOf(renderer, plan))
         const repeat = options.loop === false ? -1 : 0
         let previous: Uint8Array | null = null
         let pending: { index: Uint8Array; region: { x: number; y: number; width: number; height: number }; delay: number } | null = null
@@ -329,8 +430,9 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         for (let i = 0; i < count; i++) {
             options.signal?.throwIfAborted()
             const pixels = await next(i)
+            // A renderer that knows that a frame repeats gives the same array again, and no scan is needed.
             const region: { x: number; y: number; width: number; height: number } | null = previous
-                ? changedRegion(previous, pixels, size.width, size.height)
+                ? (previous === pixels ? null : changedRegion(previous, pixels, size.width, size.height))
                 : { x: 0, y: 0, width: size.width, height: size.height }
             if (!region) {
                 // Nothing changed, so the previous frame simply holds longer.
@@ -351,7 +453,7 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         await writeFile(path, gif.bytesView())
         return { width: size.width, height: size.height, frameCount: count, duration: count * delay, fps, bytes: (await stat(path)).size, outputPath: path, title: compiled.title }
     } finally {
-        await pool.close()
+        await renderer.close()
     }
 }
 
@@ -359,16 +461,16 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
 export async function renderFilmFrame(film: FilmDefinition | CompiledFilm, time: number, outputPath: string, options: FilmRenderOptions = {}): Promise<{ width: number; height: number; outputPath: string }> {
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
-    const pool = new RasterPool(1)
+    const renderer = openRenderer(1)
     try {
         const frame = await frameAt(compiled, time)
-        const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height))
+        const pixels = await renderer.render([frame], width, height)
         const path = resolve(outputPath)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
         return { width, height, outputPath: path }
     } finally {
-        await pool.close()
+        await renderer.close()
     }
 }
 
@@ -377,20 +479,20 @@ export async function renderFilmFrames(film: FilmDefinition | CompiledFilm, time
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
     const plan = planRender(width, height, 1, options)
-    const pool = new RasterPool(plan.workers)
+    const renderer = openRenderer(plan.workers)
     try {
         await mkdir(dirname(resolve(outputPrefix)), { recursive: true })
         // Frames are sampled one at a time because the engine's clock is shared.
         const frames: Frame[] = []
         for (const time of times) frames.push(await frameAt(compiled, time))
         return await Promise.all(frames.map(async (frame, index) => {
-            const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height))
+            const pixels = await renderer.render([frame], width, height)
             const path = resolve(`${outputPrefix}${String(index).padStart(3, '0')}.png`)
             await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
             return path
         }))
     } finally {
-        await pool.close()
+        await renderer.close()
     }
 }
 
@@ -440,12 +542,12 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
     const height = rows * (tile.height + band) + (rows + 1) * gap
     const corner = (index: number) => ({ x: gap + (index % columns) * (tile.width + gap), y: gap + Math.floor(index / columns) * (tile.height + band + gap) })
     const plan = planRender(tile.width, tile.height, 1, options)
-    const pool = new RasterPool(plan.workers)
+    const renderer = openRenderer(plan.workers)
     try {
         // Frames are sampled one at a time because the engine's clock is shared.
         const frames: Frame[] = []
         for (const time of times) frames.push(await frameAt(compiled, time))
-        const tiles = await Promise.all(frames.map((frame) => pool.run(framesToJob([frame], tile.width, backgroundBytes, tile.height))))
+        const tiles = await Promise.all(frames.map((frame) => renderer.render([frame], tile.width, tile.height)))
         // The times are a film frame of their own, so they use the film's look and its fonts.
         const labels = await defineFilm({ width, height, look: compiled.look, background: 'surface', bloom: 0 }, (stage) => {
             times.forEach((time, index) => {
@@ -453,7 +555,7 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
                 stage.add(text(sheetStamp(time), { font: 'mono', size: band * 0.6, color: 'dim' }).at(at.x + tile.width / 2 - width / 2, at.y + tile.height + band / 2 - height / 2))
             })
         }).compile({})
-        const sheet = await pool.run(framesToJob([await frameAt(labels, 0)], width, backgroundBytes, height))
+        const sheet = await renderer.render([await frameAt(labels, 0)], width, height)
         tiles.forEach((pixels, index) => {
             const at = corner(index)
             for (let row = 0; row < tile.height; row++) {
@@ -465,7 +567,7 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
         await writeFile(path, encodePng({ width, height, data: sheet, depth: 8, channels: 4 }))
         return { width, height, columns, rows, times: [...times], outputPath: path }
     } finally {
-        await pool.close()
+        await renderer.close()
     }
 }
 

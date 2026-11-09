@@ -312,10 +312,20 @@ export type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContex
 
 const path2dCache = new WeakMap<Path & object, Path2D>()
 
+let pathClass: typeof Path2D | undefined
+
+/**
+ * Give the painter the `Path2D` class of a canvas library. A browser has this class as a global.
+ * Node has none, so the Node export gives the class that belongs to its canvas.
+ */
+export function usePath2D(path2d: typeof Path2D): void {
+    pathClass = path2d
+}
+
 function ringsToPath2D(path: Path): Path2D {
     let cached = path2dCache.get(path as Path & object)
     if (cached) return cached
-    cached = new Path2D()
+    cached = new (pathClass ?? Path2D)()
     for (const r of path as readonly Ring[]) {
         const p = r.p
         if (p.length < 2) continue
