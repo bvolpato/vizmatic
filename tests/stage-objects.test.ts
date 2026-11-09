@@ -18,6 +18,7 @@ import {
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
+    passage, boxOf, fitted, shift, type Value,
 } from '../src/stage/index'
 import { encode } from 'fast-png'
 import { Resvg } from '@resvg/resvg-js'
@@ -208,6 +209,37 @@ describe('morphs land exactly on their targets', () => {
         expect(CODE_LANGUAGES).toEqual(expect.arrayContaining(['ts', 'python', 'rust', 'go', 'java', 'c', 'sql', 'bash', 'tla', 'dafny', 'lean', 'smt', 'plain']))
         // An unknown language still falls back to TypeScript.
         expect(kinds('const x = 1', 'unknown')[0]).toEqual(['const', 'keyword'])
+    })
+
+    it('colors the keys of JSON and YAML apart from their values', async () => {
+        const kinds = (source: string, language: string) => tokenize(source, language).filter((t) => t.kind !== 'space').map((t) => [t.text, t.kind])
+        // JSON: a string before a colon is a key, and true, false and null are keywords.
+        expect(kinds('{"name": "get_weather", "days": 3, "metric": true, "note": null}', 'json')).toEqual([
+            ['{', 'punctuation'], ['"name"', 'key'], [':', 'punctuation'], ['"get_weather"', 'string'], [',', 'punctuation'],
+            ['"days"', 'key'], [':', 'punctuation'], ['3', 'number'], [',', 'punctuation'],
+            ['"metric"', 'key'], [':', 'punctuation'], ['true', 'keyword'], [',', 'punctuation'],
+            ['"note"', 'key'], [':', 'punctuation'], ['null', 'keyword'], ['}', 'punctuation'],
+        ])
+        // YAML: a colon ends a key when a space or the end of the line follows it, and `#` starts a comment.
+        expect(kinds('image: nginx:1.27 # the server', 'yaml')).toEqual([['image', 'key'], [':', 'punctuation'], ['nginx', 'plain'], [':', 'punctuation'], ['1.27', 'number'], ['# the server', 'comment']])
+        // A key can be a word that is a keyword as a value. A value with a capital is not a type, and a quoted value with a colon is one string.
+        expect(kinds('- on: push\n  enabled: Yes\n  kind: Deployment\n  label: "a: b"\n  steps:', 'yml')).toEqual([
+            ['-', 'punctuation'], ['on', 'key'], [':', 'punctuation'], ['push', 'plain'],
+            ['enabled', 'key'], [':', 'punctuation'], ['Yes', 'keyword'],
+            ['kind', 'key'], [':', 'punctuation'], ['Deployment', 'plain'],
+            ['label', 'key'], [':', 'punctuation'], ['"a: b"', 'string'],
+            ['steps', 'key'], [':', 'punctuation'],
+        ])
+        expect(CODE_LANGUAGES).toEqual(expect.arrayContaining(['json', 'yaml']))
+        // In another language, a string before a colon stays a string.
+        expect(kinds('{ "a": 1 }', 'ts')[1]).toEqual(['"a"', 'string'])
+        // A code block draws a key in the color of keys, which a film can change.
+        await compileFilm(film(() => {
+            const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+            const block = codeBlock('{"city": "Paris"}', { language: 'json' })
+            expect([block.find('"city"')[0]!.get('fill'), block.find('"Paris"')[0]!.get('fill')]).toEqual([paint('blue'), paint('green')])
+            expect(codeBlock('city: Paris', { language: 'yaml', colors: { key: 'teal' } }).find('city')[0]!.get('fill')).toEqual(paint('teal'))
+        }))
     })
 })
 
@@ -13235,6 +13267,686 @@ describe('named box', () => {
             expect(namedBox('guest', { width: 300, height: 120, fill: 'red', fillOpacity: 0.12 }).frame.get('fillOpacity')).toBe(0.12)
             expect(namedBox('guest', { width: 300, height: 120, fill: null }).frame.get('fill')).toBeNull()
         }))
+    })
+})
+
+describe('passage', () => {
+    const POLICY = 'Refunds are accepted within 14 days of delivery. A request after that date goes to a human agent, who answers within 48 hours.'
+    const RUNBOOK = 'If the error rate stays above 2% after a deploy, roll back within 15 minutes. Then page the incident commander. Write the deploy ID in the incident channel.'
+    const V1 = 'Refunds are accepted within 30 days of delivery. A request after that date is refused. Gift cards are not refundable.'
+    const V2 = 'Refunds are accepted within 15 days of delivery. A request after that date goes to a human agent. Gift cards are not refundable.'
+    type Page = ReturnType<typeof passage>
+    type Box = { x: number; y: number; right: number; bottom: number }
+    // A line of 32 px text is 1.6 of the size.
+    const PITCH = 51.2
+    const paint = (color: string) => JSON.stringify(rect(1, 1, { fill: color, stroke: null }).get('fill'))
+    const right = (node: Node) => { const box = node.bounds(); return box.x + box.width }
+    const bottom = (node: Node) => { const box = node.bounds(); return box.y + box.height }
+    const keys = (glyphs: readonly Node[]) => glyphs.map((glyph) => glyph.data['key']).join('')
+    /** The box around the ink of some glyphs. */
+    const around = (glyphs: readonly Node[]): Box => {
+        const boxes = glyphs.map((glyph) => glyph.bounds())
+        return { x: Math.min(...boxes.map((b) => b.x)), y: Math.min(...boxes.map((b) => b.y)), right: Math.max(...boxes.map((b) => b.x + b.width)), bottom: Math.max(...boxes.map((b) => b.y + b.height)) }
+    }
+    /** The box of a mark of a frame, in the coordinates of the stage: the middle of the frame of 1920 by 1080 is the point 0, 0. */
+    const boxed = (op: PathOp): Box => { const b = pathBounds(op.path)!; return { x: b.x - 960, y: b.y - 540, right: b.x + b.width - 960, bottom: b.y + b.height - 540 } }
+    /** The shapes of a frame that are filled in one color and are not glyphs, as boxes. */
+    const filled = (f: CompiledFilm, time: number, color: string) => paths(f, time).filter((op) => op.node?.data['key'] === undefined && op.fill !== null && JSON.stringify(op.fill) === paint(color) && op.fillAlpha > 0.02).map(boxed)
+    /** The lines of a frame in one color. */
+    const lined = (f: CompiledFilm, time: number, color: string) => paths(f, time).filter((op) => op.stroke !== null && JSON.stringify(op.stroke) === paint(color) && op.strokeAlpha > 0.02)
+    const covers = (box: Box, words: Box) => box.x <= words.x + 0.01 && box.right >= words.right - 0.01 && box.y <= words.y + 0.01 && box.bottom >= words.bottom - 0.01
+
+    it('starts at the corner that it is given, wraps its words at its width, and measures as its width and its height', async () => {
+        await compileFilm(film(() => {
+            const page = passage(POLICY, { width: 600 }).at(100, 50)
+            const frame = page.frame!.bounds()
+            expect([frame.x, frame.y, frame.width]).toEqual([100, 50, 600])
+            // The words are inside the frame, with room at both sides.
+            expect(page.words.bounds().x).toBeGreaterThan(116)
+            expect(right(page.words)).toBeLessThan(684)
+            expect(page.words.source).toBe(POLICY)
+            // The layout measures the object as its frame.
+            const box = boxOf(page)
+            expect([box.left, box.top, box.width, box.height]).toEqual([100, 50, 600, expect.closeTo(frame.height, 6)])
+            // A narrower passage has more lines, and each line adds its height.
+            const wide = passage(POLICY, { width: 1200 }), narrow = passage(POLICY, { width: 500 })
+            expect(narrow.lineCount).toBeGreaterThan(wide.lineCount)
+            expect(narrow.frame!.bounds().height - wide.frame!.bounds().height).toBeCloseTo((narrow.lineCount - wide.lineCount) * PITCH, 6)
+            // With no frame the object is as wide too, and no letter passes its width, at any width.
+            for (let width = 300; width <= 700; width += 7) {
+                const bare = passage(POLICY, { width, panel: false })
+                expect(bare.frame).toBeNull()
+                expect(bare.words.bounds().x).toBeGreaterThanOrEqual(0)
+                expect(right(bare.words)).toBeLessThanOrEqual(width)
+                expect(boxOf(bare).width).toBe(width)
+            }
+            // A break that the film wrote starts a line, and an empty line adds half a line.
+            const broken = passage('first line\nsecond line\n\nthird line', { width: 900 })
+            expect([broken.lineCount, broken.text]).toEqual([3, 'first line\nsecond line\n\nthird line'])
+            const tops = [0, 4, 8].map((letter) => broken.find('line')[letter]!.bounds().y)
+            expect([tops[1]! - tops[0]!, tops[2]! - tops[1]!]).toEqual([expect.closeTo(PITCH, 6), expect.closeTo(PITCH * 1.5, 6)])
+            // Tabs and spaces in a row are one space.
+            expect(passage('a \t  b').text).toBe('a b')
+            // With no width, the text is on one line and the object is as wide as that line needs, up to 900.
+            const short = passage('Refunds arrive within 14 days.')
+            expect(short.lineCount).toBe(1)
+            expect(boxOf(short).width).toBeLessThan(560)
+            expect(boxOf(short).width - right(short.words)).toBeLessThan(28)
+            expect(boxOf(passage(`${POLICY} ${POLICY}`)).width).toBe(900)
+            // The layout builds a passage that is as wide as a region.
+            expect(boxOf(fitted(700, (width) => passage(POLICY, { width }))).width).toBeCloseTo(700, 6)
+            // `lines` keeps room in the frame for lines that come later.
+            const roomy = passage('one line', { width: 400, lines: 3 })
+            expect(roomy.lineCount).toBe(1)
+            expect(roomy.frame!.bounds().height - passage('one line', { width: 400 }).frame!.bounds().height).toBeCloseTo(2 * PITCH, 6)
+            // The title is over the words, at 26 px for words of 32 px, and the frame is higher by its room.
+            const titled = passage(POLICY, { width: 600, title: 'policy.md' })
+            expect([titled.title!.source, titled.title!.data['size']]).toEqual(['policy.md', 26])
+            // The title is 0.8 of the size of the words, and not under 26 px unless the words are.
+            expect([40, 26, 20].map((size) => passage(POLICY, { width: 600, size, title: 'policy.md' }).title!.data['size'])).toEqual([32, 26, 20])
+            expect(passage(POLICY, { width: 600, title: 'policy.md', titleSize: 30 }).title!.data['size']).toBe(30)
+            expect(bottom(titled.title!)).toBeLessThan(titled.words.bounds().y)
+            expect(titled.frame!.bounds().height - passage(POLICY, { width: 600 }).frame!.bounds().height).toBeCloseTo(39, 6)
+            expect(passage(POLICY, { width: 600 }).title).toBeNull()
+            // The words are in the font of the film, or in the font that the film names.
+            const letter = (font: 'sans' | 'text-serif') => text('R', { font, size: 32 }).chars[0]!.get('path')
+            expect(passage(POLICY).words.chars[0]!.get('path')).toEqual(letter('sans'))
+            expect(passage(POLICY, { font: 'text-serif' }).words.chars[0]!.get('path')).toEqual(letter('text-serif'))
+
+            expect(() => passage('  ')).toThrow(/passage: give it the text/)
+            expect(() => passage(POLICY, { leading: 1 })).toThrow(/leading is the height of a line as a multiple of size\. The band of a span is 1\.\d+ of the size high, so give 1\.\d+ or more/)
+            // A word that is wider than the passage is an error, and the width that it names is enough.
+            const long = 'incomprehensibilities'
+            let enough = 0
+            try {
+                passage(long, { width: 200 })
+            } catch (error) {
+                enough = Number(/Give a width of (\d+) or more, or a smaller size/.exec((error as Error).message)?.[1])
+            }
+            expect(enough).toBeGreaterThan(200)
+            expect(() => passage(long, { width: enough - 1 })).toThrow(/the word "incomprehensibilities" is \d+ px wide at size 32, and a width of \d+ leaves \d+ px for the text/)
+            expect(passage(long, { width: enough }).lineCount).toBe(1)
+            expect(() => passage(POLICY, { width: 300, title: 'a title that is much wider than the passage' })).toThrow(/the title "a title that is much wider than the passage" is \d+ px wide, and a width of 300 leaves \d+ px for it\. Give a shorter title, or a width of \d+ or more/)
+            expect(() => passage(POLICY, { lines: 0 })).toThrow(/lines is the least number of lines of the frame, a whole number, 1 or more, not 0/)
+            expect(() => passage(POLICY, { width: 10 })).toThrow(/width is the width of the object\. Give more than \d+/)
+        }))
+    })
+
+    it('finds a part by its words at the borders of words, and says why it cannot find one', async () => {
+        await compileFilm(film(() => {
+            const page = passage(`${POLICY}\nGift cards have no limit of days.`, { width: 700 })
+            expect(keys(page.find('within 14 days'))).toBe('within14days')
+            // A part that is only inside longer words: `find` gives those places, and a part of a verb must be whole words.
+            expect(keys(page.find('day'))).toBe('dayday')
+            expect(page.find('never')).toEqual([])
+            expect(page.measure('within 14 days')).toEqual({ words: 3, characters: 14 })
+            // A part may run over the end of a sentence and of a line.
+            expect(page.measure('delivery. A request')).toEqual({ words: 3, characters: 19 })
+            expect(page.measure('48 hours.\nGift cards').words).toBe(4)
+            expect(() => page.measure('day')).toThrow(/measure: "day" is in the text only as a part of "days"\. A part starts and ends at the borders of words/)
+            expect(() => page.measure('never')).toThrow(/measure: the words "never" are not in the text\. A part is words of the text, letter for letter\. The text starts with "Refunds are accepted within 14 days o\.\.\."/)
+            // Words that are at two places name no part. More words, or the number of the place, do.
+            expect(() => page.measure('days')).toThrow(/the words "days" are at 2 places of the text\. Give more of the words around the place, or \{ words: "days", occurrence: 0 \} for the first place/)
+            expect(page.measure({ words: 'days', occurrence: 1 })).toEqual({ words: 1, characters: 4 })
+            expect(page.p({ words: 'days', occurrence: 1 })[1]).toBeGreaterThan(page.p({ words: 'days', occurrence: 0 })[1] + PITCH - 1)
+            expect(() => page.measure({ words: 'days', occurrence: 2 })).toThrow(/the words "days" are at 2 places of the text, and the first is occurrence 0\. There is no occurrence 2/)
+            expect(() => page.measure(7 as never)).toThrow(/measure: a part of the text is its words, \{ words, occurrence \}, \{ chunk: 0 \}, or the node of a span, not 7/)
+        }))
+    })
+
+    it('marks a part with a kind: a band behind its words, the sign of the kind, and a state that a film reads', async () => {
+        let page!: Page
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(POLICY, { width: 700 }).at(-350, -200))
+            expect([page.spans, page.count()]).toEqual([[], 0])
+            s.wait(1)
+            s.play(page.mark('within 14 days', 'supported'), { duration: 1, ease: linear })
+            expect(page.spans).toEqual([{ words: 'within 14 days', kind: 'supported' }])
+            expect([page.kindOf('within 14 days'), page.kindOf('14 days'), page.count(), page.count('supported'), page.count('claim')]).toEqual(['supported', null, 1, 1, 0])
+            expect([page.span('within 14 days').words, page.span('within 14 days').kind, page.span('within 14 days').passage]).toEqual(['within 14 days', 'supported', page])
+            s.wait(1)
+            // The span takes another kind: the same span, with another color and another sign.
+            s.play(page.mark('within 14 days', 'contradicted'), { duration: 1 })
+            expect(page.spans).toEqual([{ words: 'within 14 days', kind: 'contradicted' }])
+            // Without a kind, a part takes the first kind. The spans are in the order of the text.
+            s.play(page.mark('are accepted', 'claim'), page.mark('Refunds'), { duration: 0.5 })
+            expect(page.spans.map((span) => `${span.words}: ${span.kind}`)).toEqual(['Refunds: mark', 'are accepted: claim', 'within 14 days: contradicted'])
+            s.wait(0.5)
+            s.play(page.mark('within 14 days', null), { duration: 0.5 })
+            expect([page.count(), page.kindOf('within 14 days')]).toEqual([2, null])
+            s.wait(0.5)
+            expect(() => page.mark('Refunds', 'true')).toThrow(/passage: no kind "true"\. The kinds are mark, claim, supported, unsupported, contradicted, external, removed, added/)
+            expect(() => page.count('true')).toThrow(/no kind "true"/)
+            expect(() => page.span('of delivery')).toThrow(/span: no span is at "of delivery"\. The spans are "Refunds", "are accepted"\. Mark the words first, with mark\(\)/)
+            expect(() => page.mark('Refunds', 'claim', { duration: -1 })).toThrow(/the duration of mark\(\) is -1\. It is a number, 0 or more/)
+        }))
+        const words = around(page.find('within 14 days')), next = page.find('of delivery')[0]!.bounds()
+        expect(filled(compiled, 0.9, 'green')).toEqual([])
+        // At rest: a green band behind the words, which ends before the next word, and a green line under the tails of the letters.
+        const green = filled(compiled, 2.5, 'green')
+        const band = green.find((box) => box.bottom - box.y > 30)!, line = green.find((box) => box.bottom - box.y < 6)!
+        expect(green).toHaveLength(2)
+        expect(covers(band, words)).toBe(true)
+        expect(band.right).toBeLessThan(next.x)
+        expect([line.x, line.right]).toEqual([expect.closeTo(words.x, 6), expect.closeTo(words.right, 6)])
+        expect(line.y).toBeGreaterThan(words.bottom)
+        expect(line.bottom).toBeLessThan(band.bottom)
+        // The band and the line grow from the first word.
+        const growing = filled(compiled, 1.5, 'green')
+        expect(growing.map((box) => [box.x, (box.right - box.x) / (band.right - band.x)])).toEqual([[expect.closeTo(band.x, 6), expect.closeTo(0.5, 1)], [expect.closeTo(line.x, 6), expect.closeTo(0.5, 1)]])
+        // The new kind: the band is red, the line has given way to a wave, and nothing is green.
+        expect(filled(compiled, 4.2, 'green')).toEqual([])
+        const red = filled(compiled, 4.2, 'red')
+        expect(red).toHaveLength(2)
+        expect(red.some((box) => Math.abs(box.x - band.x) < 0.01 && Math.abs(box.right - band.right) < 0.01 && box.bottom - box.y > 30)).toBe(true)
+        const wave = red.find((box) => box.bottom - box.y < 30)!
+        expect(wave.bottom - wave.y).toBeGreaterThan(line.bottom - line.y + 2)
+        expect(wave.y).toBeGreaterThan(words.bottom)
+        // A claim has a frame around its band, which shows when the band is around the words. A plain mark has none.
+        const claim = around(page.find('are accepted'))
+        expect(lined(compiled, 4.9, 'purple').some((op) => covers(boxed(op), claim) && op.strokeAlpha === 1)).toBe(true)
+        // The line of the frame does not show while the end of the band grows over the letters.
+        expect(lined(compiled, 4.2, 'purple')).toEqual([])
+        expect(filled(compiled, 4.2, 'purple')).toHaveLength(1)
+        expect(lined(compiled, 4.9, 'blue')).toEqual([])
+        expect(filled(compiled, 4.9, 'blue').some((box) => covers(box, around(page.find('Refunds'))))).toBe(true)
+        // Taken away: nothing of the span is drawn.
+        expect(filled(compiled, 5.9, 'red')).toEqual([])
+        expectPure(compiled, [0.5, 1.5, 2.5, 3.5, 4.2, 4.9, 5.9])
+    })
+
+    it('gives each kind its own sign, refuses kinds that differ by their color only, and keeps a word in one span', async () => {
+        let page!: Page, old!: Node[]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage('An old value and a new value. This line came from outside.', { width: 900 }).at(-450, -100))
+            old = page.find('old value')
+            s.play(page.mark('old value', 'removed'), page.mark('new value', 'added'), page.mark('This line came from outside.', 'external'), { duration: 0.5 })
+            s.wait(0.5)
+            // A film may play one mark twice: the second play changes nothing.
+            const again = page.mark('new value', 'added')
+            s.play(again, { duration: 0.5 })
+            s.wait(0.5)
+            // The kinds of a film of its own: each kind has a sign, and the first kind is the default.
+            const own = s.add(passage(POLICY, { width: 700, kinds: { rule: { color: 'teal', sign: 'underline' }, fact: { color: 'blue' } } }).at(-350, 100))
+            s.play(own.mark('within 14 days'), { duration: 0.2 })
+            expect(own.spans).toEqual([{ words: 'within 14 days', kind: 'rule' }])
+            expect(() => own.mark('Refunds', 'supported')).toThrow(/no kind "supported"\. The kinds are rule, fact/)
+        }))
+        const ops = paths(compiled, 0.9), words = around(old)
+        // Words that are gone are dim, and a bar goes through the middle of their letters, over them.
+        expect(at(0.9, () => old.every((glyph) => JSON.stringify(glyph.get('fill')) === paint('dim')))).toBe(true)
+        expect(at(0.9, () => JSON.stringify(page.find('new value')[0]!.get('fill')))).toBe(paint('ink'))
+        const bar = ops.findIndex((op) => op.node?.data['key'] === undefined && op.fill !== null && boxed(op).bottom - boxed(op).y < 6 && boxed(op).x <= words.x && boxed(op).right >= words.right)
+        const through = boxed(ops[bar]!)
+        expect((through.y + through.bottom) / 2).toBeGreaterThan(words.y + (words.bottom - words.y) * 0.25)
+        expect((through.y + through.bottom) / 2).toBeLessThan(words.bottom - (words.bottom - words.y) * 0.25)
+        expect(bar).toBeGreaterThan(ops.findIndex((op) => op.node === old[0]))
+        // New words have two lines under them: one shape of two parts.
+        const teal = paths(compiled, 0.9).filter((op) => op.fill !== null && JSON.stringify(op.fill) === paint('teal') && op.path.length === 2)
+        expect(teal).toHaveLength(1)
+        // A band that ends before a period does not reach the period, and it goes past the ink of its last letter.
+        const fresh = around(page.find('new value')), period = page.find('value.').at(-1)!.bounds().x
+        const behind = filled(compiled, 0.9, 'teal').find((box) => box.bottom - box.y > 30)!
+        expect(behind.right).toBeGreaterThan(fresh.right)
+        expect(behind.right).toBeLessThan(period)
+        // Text from outside has diagonal lines over its band: many strips, each one inside the band.
+        const orange = paths(compiled, 0.9).filter((op) => op.fill !== null && JSON.stringify(op.fill) === paint('orange'))
+        const strips = orange.find((op) => op.path.length > 20)!, band = boxed(orange.find((op) => op.path.length === 1)!)
+        expect(covers(band, boxed(strips))).toBe(true)
+        expect(compiled.frame(1.9).ops).toHaveLength(compiled.frame(0.9).ops.length)
+
+        expect(() => passage(POLICY, { kinds: { rule: { color: 'teal' }, fact: { color: 'blue' } } })).toThrow(/the kinds "rule" and "fact" have the sign 'band' both, so only their color tells them apart\. Give each kind its own sign\. The signs that are free: 'box', 'underline', 'double', 'dashed', 'wavy', 'hatch', 'strike'/)
+        expect(() => passage(POLICY, { kinds: { rule: { color: 'teal', sign: 'zigzag' as never } } })).toThrow(/the sign of the kind "rule" is "zigzag"\. A sign is 'band', 'box'/)
+        expect(() => passage(POLICY, { kinds: {} })).toThrow(/kinds is a record of the kinds of a span/)
+        // A word is in one span, and only a span can be taken away.
+        await expect(compile((s) => {
+            const made = s.add(passage(POLICY))
+            s.play(made.mark('within 14 days'))
+            s.play(made.mark('14 days of delivery', 'claim'))
+        })).rejects.toThrow(/mark: the words "14 days of delivery" share words with the span "within 14 days"\. A word is in one span\. Mark words that the other span does not hold, or take it away first with mark\("within 14 days", null\)/)
+        await expect(compile((s) => {
+            s.play(passage(POLICY).mark('Refunds', null))
+        })).rejects.toThrow(/mark: no span is at "Refunds", so there is none to take away/)
+    })
+
+    it('cuts the text into chunks: windows of words with an overlap, sentences, paragraphs, or the words of each chunk', async () => {
+        let page!: Page
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(RUNBOOK, { width: 1100 }).at(-550, -200))
+            expect(page.chunks).toEqual([])
+            expect(() => page.chunk(0)).toThrow(/chunk: the passage is not cut, so it has no chunk\. Play cut\(\) first/)
+            // The windows cut a fact in two: "15" ends one chunk, and "minutes." starts the next.
+            s.play(page.cut({ size: 7 }), { duration: 1 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2%', 'after a deploy, roll back within 15', 'minutes. Then page the incident commander. Write', 'the deploy ID in the incident channel.'])
+            s.wait(1)
+            // A new cut takes the place of the old one.
+            s.play(page.cut({ size: 7, overlap: 2 }), { duration: 1 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2%', 'above 2% after a deploy, roll back', 'roll back within 15 minutes. Then page', 'Then page the incident commander. Write the', 'Write the deploy ID in the incident', 'the incident channel.'])
+            expect([page.chunk(2).words, page.chunk(2).kind]).toEqual(['roll back within 15 minutes. Then page', null])
+            // The node of a chunk is around its words, and a part can be named by its chunk.
+            const second = page.chunk(1).bounds()
+            expect(covers({ x: second.x, y: second.y, right: second.x + second.width, bottom: second.y + second.height }, around(page.find('above 2% after a deploy, roll back')))).toBe(true)
+            expect(page.measure({ chunk: 5 })).toEqual({ words: 3, characters: 21 })
+            expect(() => page.chunk(6)).toThrow(/chunk: no chunk 6\. The passage has 6 chunks, and the first is chunk 0/)
+            s.wait(1)
+            s.play(page.cut({ by: 'sentence' }), { duration: 1 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2% after a deploy, roll back within 15 minutes.', 'Then page the incident commander.', 'Write the deploy ID in the incident channel.'])
+            s.wait(1)
+            s.play(page.cut(['If the error rate stays above 2%', 'above 2% after a deploy, roll back within 15 minutes.']), { duration: 0.5 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2%', 'above 2% after a deploy, roll back within 15 minutes.'])
+            s.play(page.cut(null), { duration: 0.5 })
+            expect(page.chunks).toEqual([])
+            s.wait(0.5)
+            const two = s.add(passage('One. Two!\nThree? Four.', { width: 600 }).at(-300, 200))
+            s.play(two.cut({ by: 'paragraph' }), { duration: 0.2 })
+            expect(two.chunks).toEqual(['One. Two!', 'Three? Four.'])
+            s.play(two.cut({ by: 'sentence' }), { duration: 0.2 })
+            expect(two.chunks).toEqual(['One.', 'Two!', 'Three?', 'Four.'])
+
+            expect(() => page.cut({ size: 4, overlap: 3 })).toThrow(/cut: overlap is the number of words that two chunks share, a whole number from 0 to half of size \(2\), not 3/)
+            expect(() => page.cut({ size: 0 })).toThrow(/cut: size is the number of words of a chunk, a whole number, 1 or more, not 0/)
+            expect(() => page.cut(['Then page', 'If the error'])).toThrow(/cut: chunk 1 \("If the error"\) starts before chunk 0 or with it\. Give the chunks in the order of the text/)
+            expect(() => page.cut(['If the error rate', 'the error'])).toThrow(/cut: chunk 1 \("the error"\) is inside chunk 0\. A chunk ends after the one before it/)
+            expect(() => page.cut(['If the error rate', 'error rate stays', 'rate stays above'])).toThrow(/cut: chunks 0, 1 and 2 share the word "rate"\. A word is in two chunks at the most: give a smaller overlap/)
+            expect(() => page.cut([])).toThrow(/cut: the list of chunks is empty/)
+            expect(() => page.cut({ by: 'word' as never })).toThrow(/cut: by is 'sentence' or 'paragraph', not "word"/)
+            expect(() => page.cut('sentence' as never)).toThrow(/cut takes \{ size, overlap \}, \{ by: 'sentence' \} or \{ by: 'paragraph' \}, the words of each chunk, or null, not "sentence"/)
+            expect(() => page.cut({ size: 7 }, { colors: ['blue'] as never })).toThrow(/the colors of cut\(\) are two colors/)
+        }))
+        // The chunks are bands of two colors in turn, as high as a line. Two chunks on one line have a gap between them.
+        const [purple, orange] = [filled(compiled, 1.5, 'purple'), filled(compiled, 1.5, 'orange')]
+        const first = purple.find((box) => covers(box, around(page.find('If the error rate stays above 2%'))))!, second = orange.find((box) => box.x > first.right)!
+        expect(first.bottom - first.y).toBeCloseTo(PITCH, 6)
+        expect(second.x - first.right).toBeGreaterThan(4)
+        expect(second.x).toBeLessThan(page.find('after')[0]!.bounds().x)
+        // Over the words that two chunks share, the first chunk has the upper half of the line and the next one the lower half.
+        const shared = around(page.find('above 2%')), own = around(page.find('If the error rate stays'))
+        const upper = filled(compiled, 3.5, 'purple').find((box) => covers({ ...box, bottom: shared.bottom }, shared) && box.right < shared.right + 8)!
+        const lower = filled(compiled, 3.5, 'orange').find((box) => covers({ ...box, y: shared.y }, shared) && box.right < shared.right + 8)!
+        expect([upper.bottom - upper.y, lower.bottom - lower.y, lower.y - upper.y]).toEqual([expect.closeTo(PITCH / 2, 6), expect.closeTo(PITCH / 2, 6), expect.closeTo(PITCH / 2, 6)])
+        // The words of one chunk only have the whole line, in the color of the chunk, and they join the half with no gap.
+        const whole = filled(compiled, 3.5, 'purple').find((box) => covers(box, own))!
+        expect(whole.bottom - whole.y).toBeCloseTo(PITCH, 6)
+        expect(upper.x - whole.right).toBeCloseTo(0, 6)
+        expect(filled(compiled, 3.5, 'orange').some((box) => box.x < own.right && box.y < own.bottom && box.bottom > own.y)).toBe(false)
+        // The old chunks are gone when the new ones are there, and all are gone after cut(null).
+        expect(filled(compiled, 1.5, 'purple')).toHaveLength(2)
+        expect(filled(compiled, 5.5, 'purple').length + filled(compiled, 5.5, 'orange').length).toBeLessThanOrEqual(5)
+        expect([...filled(compiled, 7.2, 'purple'), ...filled(compiled, 7.2, 'orange')]).toEqual([])
+    })
+
+    it('moves one selection, and a counter runs to its size', async () => {
+        let page!: Page, words!: Value, late!: Value
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(POLICY, { width: 700, tokens: (text) => Math.ceil(text.length / 4) }).at(-350, -200))
+            words = page.counter('words')
+            expect(page.selection).toBeNull()
+            expect(page.measure()).toEqual({ words: 23, characters: POLICY.length, tokens: Math.ceil(POLICY.length / 4) })
+            s.wait(1)
+            s.play(page.select('within 14 days'), { duration: 1, ease: linear })
+            expect(page.selection).toEqual({ words: 3, characters: 14, tokens: 4 })
+            // A counter that is made later starts at the size of the selection.
+            late = page.counter('characters')
+            expect([late.value, page.counter('words')]).toEqual([14, words])
+            s.wait(1)
+            s.play(page.select('Refunds are accepted within 14 days of delivery.'), { duration: 1, ease: linear })
+            expect(page.selection).toEqual({ words: 8, characters: 48, tokens: 12 })
+            s.wait(1)
+            s.play(page.select(null), { duration: 1, ease: linear })
+            expect(page.selection).toBeNull()
+            s.wait(1)
+            expect(() => page.counter('lines' as never)).toThrow(/a counter counts 'words', 'characters' or 'tokens', not "lines"/)
+            // A passage has no tokenizer of its own.
+            expect(() => passage(POLICY).counter('tokens')).toThrow(/counter\('tokens'\) needs the tokens function of the passage\. Give passage\(text, \{ tokens \}\) the tokenizer of the film, or an estimate/)
+            expect(passage(POLICY).measure('within 14 days')).toEqual({ words: 3, characters: 14 })
+            expect(() => passage(POLICY, { tokens: () => Number.NaN }).measure()).toThrow(/the tokens function returned NaN for "Refunds are accepted/)
+        }))
+        expect([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5].map((time) => at(time, () => words.value))).toEqual([0, 1.5, 3, 5.5, 8, 4, 0].map((value) => expect.closeTo(value, 6)))
+        expect([2.5, 3.5, 4.5, 6.5].map((time) => at(time, () => late.value))).toEqual([14, 31, 48, 0].map((value) => expect.closeTo(value, 6)))
+        // The selection is one frame around its words. Its line does not show while its ends move over letters.
+        const frame = lined(compiled, 2.5, 'yellow')
+        expect(frame).toHaveLength(1)
+        expect(covers(boxed(frame[0]!), around(page.find('within 14 days')))).toBe(true)
+        expect(boxed(frame[0]!).right).toBeLessThan(page.find('of delivery')[0]!.bounds().x)
+        expect(lined(compiled, 3.5, 'yellow')).toEqual([])
+        expect(filled(compiled, 3.5, 'yellow').length).toBeGreaterThan(0)
+        const wide = lined(compiled, 4.5, 'yellow').map(boxed)
+        expect(covers({ x: Math.min(...wide.map((box) => box.x)), y: Math.min(...wide.map((box) => box.y)), right: Math.max(...wide.map((box) => box.right)), bottom: Math.max(...wide.map((box) => box.bottom)) }, around(page.find('Refunds are accepted within 14 days of delivery.')))).toBe(true)
+        expect([...lined(compiled, 6.5, 'yellow'), ...filled(compiled, 6.5, 'yellow')]).toEqual([])
+    })
+
+    it('lifts a part out as a passage of its own, from the place of its words to the place that the film gave it', async () => {
+        let page!: Page, part!: Page
+        const definition = film({ fps: 20 }, (s) => {
+            page = s.add(passage(POLICY, { width: 700, size: 40 }).at(-800, -300))
+            part = page.slip('within 14 days of delivery', { title: 'evidence' }).at(200, 100)
+            // The slip has the words, the size and the font of the page, and the options that the film gives it.
+            expect([part.text, part.title!.source, part.lineCount, part.words.data['size']]).toEqual(['within 14 days of delivery', 'evidence', 1, 40])
+            s.wait(1)
+            s.play(page.lift(part), { duration: 1, ease: linear })
+            s.wait(1)
+            expect(page.text).toBe(POLICY)
+            // A slip is as wide as its words need, and as wide as the page at the most. A chunk is a part too.
+            s.play(page.cut({ by: 'sentence' }), { duration: 0.2 })
+            expect(boxOf(page.slip({ chunk: 1 })).width).toBe(700)
+            expect(page.slip({ chunk: 0 }).text).toBe('Refunds are accepted within 14 days of delivery.')
+            expect(() => page.lift(passage('within 14 days'))).toThrow(/lift takes a slip of this passage\. Make one with slip\(\)/)
+            expect(() => page.lift(passage(POLICY).slip('within 14 days'))).toThrow(/lift takes a slip of this passage/)
+            expect(() => page.slip('never')).toThrow(/slip: the words "never" are not in the text/)
+        })
+        const compiled = await compileFilm(definition)
+        const source = page.find('within 14 days of delivery'), landed = part.find('within 14 days of delivery')
+        const same = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.width - b.width) < 0.01
+        /** The marks of a frame that are at the place of a glyph: [glyphs, shapes that are no glyph]. */
+        const here = (time: number, glyph: Node) => {
+            const box = at(time, () => glyph.bounds())
+            const found = paths(compiled, time).filter((op) => op.fillAlpha > 0.5 && same({ x: boxed(op).x, y: boxed(op).y, width: boxed(op).right - boxed(op).x, height: 0 }, box))
+            return [found.filter((op) => op.node?.data['key'] !== undefined).length, found.filter((op) => op.node?.data['key'] === undefined).length]
+        }
+        // Before the lift, the slip is not on the stage.
+        expect(at(0.5, () => part.get('visible'))).toBe(false)
+        // The lift starts with a copy of each letter at the place of the letter in the page. A copy is a shape and not text.
+        expect(source.map((glyph) => here(1, glyph))).toEqual(source.map(() => [1, 1]))
+        expect(landed.map((glyph) => here(1, glyph))).toEqual(landed.map(() => [0, 0]))
+        // Half way, a copy is between the two places.
+        const [from, to] = [source[0]!.bounds(), landed[0]!.bounds()]
+        expect(paths(compiled, 1.4).some((op) => op.node?.data['key'] === undefined && Math.abs(boxed(op).x - (from.x + to.x) / 2) < 1 && Math.abs(boxed(op).y - (from.y + to.y) / 2) < 1)).toBe(true)
+        // At the end, the words of the slip are text at their places in the slip, and the copies are gone. The page has its words.
+        expect(landed.map((glyph) => here(2.5, glyph))).toEqual(landed.map(() => [1, 0]))
+        expect(source.map((glyph) => here(2.5, glyph))).toEqual(source.map(() => [1, 0]))
+        expect(at(2.5, () => [part.frame!.get('opacity'), part.title!.get('opacity')])).toEqual([1, 1])
+        // No frame of the lift has text on text.
+        expect((await checkFilm(definition, { motion: true })).diagnostics.filter((finding) => finding.code === 'film.text_overlap')).toEqual([])
+    })
+
+    it('ties a part to the span of another passage with a line that crosses no word, and follows the two', async () => {
+        let answer!: Page, source!: Page, tie!: ReturnType<Page['link']>
+        const definition = film({ fps: 20 }, (s) => {
+            answer = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 700, title: 'answer' }).at(-800, -300))
+            source = s.add(passage('Opening hours: Monday to Saturday.\nClosed on Sunday.', { width: 600, title: 'source' }).at(100, -200))
+            s.play(answer.mark('The shop is closed on Sunday.', 'claim'), source.mark('Closed on Sunday.'), { duration: 0.5 })
+            tie = answer.link('The shop is closed on Sunday.', source.span('Closed on Sunday.'), { color: 'green' })
+            s.play(tie.enter(), { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(shift(source, 0, 120), { duration: 1 })
+            s.wait(0.5)
+            expect(tie.broken).toBe(false)
+            s.play(tie.break(), { duration: 0.5 })
+            expect(tie.broken).toBe(true)
+            s.wait(2)
+        })
+        const compiled = await compileFilm(definition)
+        const [claim, under, evidence] = at(1.9, () => [around(answer.find('The shop is closed on Sunday.')), around(answer.find('Refunds arrive')), around(source.find('Closed on Sunday.'))])
+        const route = at(1.9, () => tie.routeNow()!)
+        expect(route).toHaveLength(6)
+        // The line starts under the last letter of the claim, and goes down into the room between the two lines of the answer.
+        expect([route[0]![0], route[1]![0]]).toEqual([expect.closeTo(claim.right, 6), expect.closeTo(claim.right, 6)])
+        expect(route[0]![1]).toBeGreaterThan(claim.bottom)
+        expect(route[1]![1]).toBeGreaterThan(route[0]![1])
+        expect(route[1]![1]).toBeLessThan(under.y - 4)
+        // It runs level to the middle of the room between the two passages, which is at x 0, and goes down there.
+        expect(route[2]).toEqual([expect.closeTo(0, 6), expect.closeTo(route[1]![1], 6)])
+        expect(route[3]![0]).toBeCloseTo(0, 6)
+        // It comes in level under the line of the span, and ends under the first letter of the span.
+        expect([route[4]![0], route[5]![0], route[4]![1]]).toEqual([expect.closeTo(evidence.x, 6), expect.closeTo(evidence.x, 6), expect.closeTo(route[3]![1], 6)])
+        expect(route[5]![1]).toBeGreaterThan(evidence.bottom)
+        expect(route[4]![1]).toBeGreaterThan(route[5]![1])
+        // The line is drawn from the claim: half of it at half of the time.
+        const drawn = (time: number) => lined(compiled, time, 'green').filter((op) => op.fill === null && pathLength(op.path) > 100).reduce((sum, op) => sum + pathLength(op.path), 0)
+        expect(drawn(1) / drawn(1.9)).toBeCloseTo(0.5, 1)
+        // It follows the source: the end goes down with it, and the start stays.
+        const moved = at(3.2, () => tie.routeNow()!)
+        expect([moved[0], moved[5]![0], moved[5]![1] - route[5]![1]]).toEqual([route[0], route[5]![0], expect.closeTo(120, 6)])
+        // A tie that does not hold: the line is two pieces of dashes in red, with a cross between them, in the room between the two passages.
+        expect(lined(compiled, 3.2, 'red')).toEqual([])
+        const broken = lined(compiled, 4.5, 'red')
+        expect([broken.filter((op) => op.dash !== null).length, broken.filter((op) => op.dash === null).length]).toEqual([2, 2])
+        for (const arm of broken.filter((op) => op.dash === null).map(boxed)) expect((arm.x + arm.right) / 2).toBeCloseTo(0, 6)
+        expect(lined(compiled, 4.5, 'green')).toEqual([])
+        // The film check has no finding for the line and the words, with a small room and with a large one.
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(definition, { textGap, motion: true })).diagnostics.filter((finding) => finding.code !== 'film.text_brief')).toEqual([])
+    })
+
+    it('ties a part to any node, takes the nearest end of a part on two lines, and follows a part whose words change', async () => {
+        let page!: Page, tie!: ReturnType<Page['link']>, end!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 1000 }).at(-800, -300))
+            end = page.find('Sunday.').at(-1)!
+            const box = s.add(rect(200, 100).at(600, 300))
+            // The line stops half a text size before a node that is no span, at the middle of its side.
+            const plain = page.link('Refunds arrive immediately.', box)
+            expect(plain.routeNow()!.at(-1)).toEqual([expect.closeTo(500 - 16, 6), expect.closeTo(300, 6)])
+            expect(plain.routeNow()![2]![0]).toBeCloseTo(350, 6)
+            // `shift` moves the part that goes up or down.
+            expect(page.link('Refunds arrive immediately.', box, { shift: 40 }).routeNow()![2]![0]).toBeCloseTo(390, 6)
+            // A target under the passage: the line goes around the two by the right side, or by the left one.
+            const low = s.add(rect(300, 80).at(-500, 200))
+            expect(page.link('Refunds arrive immediately.', low).routeNow()![2]![0]).toBeCloseTo(200 + 32 * 0.9, 6)
+            expect(page.link('Refunds arrive immediately.', low, { side: 'left' }).routeNow()![2]![0]).toBeCloseTo(-800 - 32 * 0.9, 6)
+            // A part on two lines has an end on each. The line takes the end that is nearest to its side.
+            const [lastOfFirst, firstOfSecond] = [around(page.find('Sunday.')), around(page.find('Refunds'))]
+            expect(page.leader('Sunday.\nRefunds', 'right')[0]).toEqual([expect.closeTo(lastOfFirst.right + 800, 6), expect.any(Number)])
+            expect(page.leader('Sunday.\nRefunds', 'left')[0]).toEqual([expect.closeTo(firstOfSecond.x + 800, 6), expect.any(Number)])
+            expect(page.leader('Sunday.\nRefunds', 'left')[0][1] - page.leader('Sunday.\nRefunds', 'right')[0][1]).toBeCloseTo(PITCH, 6)
+
+            expect(() => page.link('Refunds arrive immediately.', [0, 0] as never)).toThrow(/link: the target is 0,0\. Give a node: the span of another passage \(source\.span\('the words'\)\), a slip, or any node of the film/)
+            expect(() => page.link('never', box)).toThrow(/link: the words "never" are not in the text/)
+            expect(() => page.link('Refunds arrive immediately.', box, { side: 'up' as never })).toThrow(/the side of a link is 'left' or 'right', not "up"/)
+
+            // A span keeps its link when a diff gives it new words: the line starts under the last of them, at each time.
+            s.play(page.mark('The shop is closed on Sunday.', 'claim'), { duration: 0.5 })
+            tie = s.add(page.link('The shop is closed on Sunday.', box))
+            s.wait(0.5)
+            s.play(page.diff('The shop is closed on Sunday and on Monday.\nRefunds arrive immediately.'), { duration: 1 })
+            s.wait(1)
+            s.play(page.accept(), { duration: 1 })
+            s.wait(1)
+        }))
+        const starts = [0.8, 2.5, 4.5].map((time) => at(time, () => tie.routeNow()![0]![0]))
+        expect(starts[0]).toBeCloseTo(at(0.8, () => right(end)), 6)
+        expect(starts[1]).toBeCloseTo(at(2.5, () => right(page.find('Monday.').at(-1)!)), 6)
+        expect(starts[2]).toBeCloseTo(at(4.5, () => right(page.find('Monday.').at(-1)!)), 6)
+        expect(starts[1]).toBeGreaterThan(starts[0]! + 100)
+        expect(starts[2]).toBeLessThan(starts[1]! - 50)
+    })
+
+    it('changes the text to its next version: the old words are struck, the new words arrive beside them, and accept closes the text up', async () => {
+        let page!: Page, plain!: Page, slides!: Node, jumps!: Node
+        const struck: Node[] = []
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(V1, { width: 700 }).at(-350, -200))
+            plain = passage(V2, { width: 700 }).at(-350, -200)
+            s.play(page.mark('within 30 days'), { duration: 0.5 })
+            struck.push(...page.find('30'), ...page.find('is refused.'))
+            // In this change, "of" stays on its line, and "refundable." goes to the next line.
+            slides = page.find('of delivery')[0]!
+            jumps = page.find('refundable.')[0]!
+            s.wait(0.5)
+            // The same text is no change.
+            s.play(page.diff(V1), { duration: 0.2 })
+            expect(page.changes).toBe(0)
+            s.wait(0.8)
+            s.play(page.diff(V2), { duration: 1 })
+            expect([page.text, page.changes, page.words.source]).toEqual([V2, 2, V2])
+            // The span keeps its words: the word that replaces one of them is a part of it. The old word is no part of the text.
+            expect(page.spans).toEqual([{ words: 'within 15 days', kind: 'mark' }])
+            expect([page.kindOf('within 15 days'), page.find('30'), page.measure().words]).toEqual(['mark', [], 23])
+            // A second change waits for accept(), and so does a cut.
+            expect(() => page.diff(V1)).toThrow(/diff: the passage shows a change that waits\. Play accept\(\) first: it takes the old words away, and the text is then one version/)
+            expect(() => page.cut({ size: 5 })).toThrow(/cut: the passage shows a change that waits\. Play accept\(\) first/)
+            s.wait(1)
+            s.play(page.accept(), { duration: 1 })
+            expect([page.text, page.changes]).toEqual([V2, 0])
+            expect(page.spans).toEqual([{ words: 'within 15 days', kind: 'mark' }])
+            s.wait(1)
+            // With nothing to take, accept() changes nothing.
+            s.play(page.accept(), { duration: 0.5 })
+        }))
+        // Both versions show: the old words are dim, with a bar through them and over them, and the new word is beside the old one on its line.
+        const old = at(3.5, () => around(struck.slice(0, 2))), fresh = at(3.5, () => around(page.find('15')))
+        expect(at(3.5, () => struck.every((glyph) => glyph.get('visible') && glyph.get('opacity') === 1 && JSON.stringify(glyph.get('fill')) === paint('dim')))).toBe(true)
+        expect(fresh.x).toBeGreaterThan(old.right)
+        expect(fresh.x - old.right).toBeLessThan(16)
+        expect(fresh.y).toBeCloseTo(old.y, 0)
+        const ops = paths(compiled, 3.5)
+        const bar = ops.findIndex((op) => op.node?.data['key'] === undefined && op.fill !== null && JSON.stringify(op.fill) === paint('dim') && boxed(op).bottom - boxed(op).y < 6 && boxed(op).x <= old.x && boxed(op).right >= old.right)
+        expect((boxed(ops[bar]!).y + boxed(ops[bar]!).bottom) / 2).toBeGreaterThan(old.y + 4)
+        expect((boxed(ops[bar]!).y + boxed(ops[bar]!).bottom) / 2).toBeLessThan(old.bottom - 4)
+        expect(bar).toBeGreaterThan(ops.findIndex((op) => op.node === struck[0]))
+        // The words move from 2.2 s to 2.7 s. A word that stays on its line slides to its place.
+        const place = (glyph: Node) => [glyph.get('x'), glyph.get('y')]
+        const [slid, jumped] = [[at(1.9, () => place(slides)), at(3.5, () => place(slides))], [at(1.9, () => place(jumps)), at(3.5, () => place(jumps))]]
+        expect([slid[1]![1], slid[1]![0]! > slid[0]![0]! + 10, jumped[1]![1]! > jumped[0]![1]! + 40]).toEqual([slid[0]![1], true, true])
+        expect(at(2.45, () => [slides.get('opacity'), slides.get('x')])).toEqual([1, expect.closeTo((slid[0]![0]! + slid[1]![0]!) / 2, 0)])
+        // A word that goes to another line fades out where it is and comes back at its place: it does not fly across the lines.
+        expect(at(2.3, () => [place(jumps), jumps.get('opacity') < 1])).toEqual([jumped[0], true])
+        expect(at(2.45, () => jumps.get('opacity'))).toBe(0)
+        expect(at(2.6, () => [place(jumps), jumps.get('opacity') < 1])).toEqual([jumped[1], true])
+        expect(at(2.8, () => jumps.get('opacity'))).toBe(1)
+        // A new word is at its place when it starts to show, at 2.6 s: it does not fly in.
+        expect(at(2.61, () => [place(page.find('15')[0]!), page.find('15')[0]!.get('opacity') > 0])).toEqual([at(3.5, () => place(page.find('15')[0]!)), true])
+        expect(at(2.55, () => page.find('15')[0]!.get('opacity'))).toBe(0)
+        // The new words have two lines under them.
+        expect(paths(compiled, 3.5).filter((op) => op.fill !== null && JSON.stringify(op.fill) === paint('teal') && op.path.length === 2).length).toBeGreaterThanOrEqual(2)
+        // The band of the span holds the old word and the new one.
+        expect(filled(compiled, 3.5, 'blue').some((box) => covers(box, { ...old, right: fresh.right }))).toBe(true)
+        // After accept, the old words do not show, and each letter is where a new passage of the next version has it. So is the frame.
+        const placed = (made: Page) => made.words.chars.map((glyph) => [glyph.data['key'], Math.round(glyph.get('x') * 100), Math.round(glyph.get('y') * 100), glyph.get('visible'), glyph.get('opacity')])
+        expect(at(5.5, () => placed(page))).toEqual(placed(plain))
+        expect(at(5.5, () => struck.some((glyph) => glyph.get('visible')))).toBe(false)
+        expect(at(5.5, () => page.frame!.bounds().height)).toBeCloseTo(plain.frame!.bounds().height, 6)
+        expect(filled(compiled, 5.5, 'teal')).toEqual([])
+        expect(filled(compiled, 5.5, 'blue').some((box) => covers(box, at(5.5, () => around(page.find('within 15 days')))))).toBe(true)
+        expect(compiled.frame(6.4).ops).toHaveLength(compiled.frame(5.5).ops.length)
+        expectPure(compiled, [0.9, 2.4, 3.5, 4.6, 5.5])
+    })
+
+    it('keeps the breaks of the next version, takes words away, and refuses a change that has no right picture', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const placed = (made: Page) => made.words.chars.map((glyph) => [glyph.data['key'], Math.round(glyph.get('x') * 100), Math.round(glyph.get('y') * 100)])
+            // Words go, a line break goes, and one comes. After accept, the text is laid out as the next version.
+            for (const [before, after] of [['one two three four', 'one four'], ['old start of it\nsecond line', 'new start of it second line'], ['a b c d', 'a b\n\nnew c d'], ['first. second. third.', 'second. third.\nfourth.']] as const) {
+                const made = s.add(passage(before, { width: 420 }))
+                s.play(seq(made.diff(after), made.accept()), { duration: 0.4 })
+                expect([made.text, made.changes]).toEqual([after, 0])
+                expect(placed(made)).toEqual(placed(passage(after, { width: 420 })))
+                s.remove(made)
+            }
+            // A new word stands beside the old word that it replaces, also where the old word started a line.
+            const beside = s.add(passage('a b\nc d', { width: 420 }))
+            const old = beside.find('c')[0]!
+            s.play(beside.diff('a b\nx d'), { duration: 0.2 })
+            expect(beside.lineCount).toBe(2)
+            expect(beside.find('x')[0]!.bounds().x).toBeGreaterThan(right(old))
+            expect(beside.find('x')[0]!.bounds().y).toBeCloseTo(old.bounds().y, 0)
+            // When the old word leaves, the new word starts the line, as in the next version.
+            s.play(beside.accept(), { duration: 0.2 })
+            expect(placed(beside)).toEqual(placed(passage('a b\nx d', { width: 420 })))
+            s.remove(beside)
+            // Words that go with no word in their place are one change, and a span with no word left goes with them.
+            const gone = s.add(passage('one two three four', { width: 420 }))
+            s.play(gone.mark('two three', 'claim'), { duration: 0.1 })
+            s.play(gone.diff('one four'), { duration: 0.2 })
+            expect([gone.changes, gone.count()]).toEqual([1, 1])
+            s.play(gone.accept(), { duration: 0.2 })
+            expect([gone.text, gone.count()]).toEqual(['one four', 0])
+
+            expect(() => gone.diff(' ')).toThrow(/diff takes the text of the next version/)
+            expect(() => passage('alpha beta', { width: 300 }).diff('alpha incomprehensibilities-and-more')).toThrow(/diff: the word "incomprehensibilities-and-more" of the next version is \d+ px wide at size 32, and a width of 300 leaves \d+ px for the text\. Give the passage a width of \d+ or more, or a smaller size/)
+            const cut = s.add(passage(POLICY))
+            s.play(cut.cut({ size: 5 }), { duration: 0.1 })
+            expect(() => cut.diff(V2)).toThrow(/diff: the passage is cut into chunks, and a chunk is a part of one version\. Take the chunks away first with cut\(null\), and cut the next version again/)
+        }))
+        // A frame with `lines` does not grow: a change that needs more lines says how many.
+        await expect(compile((s) => {
+            s.play(passage('alpha beta gamma', { lines: 1 }).diff('alpha beta gamma delta epsilon zeta eta theta'))
+        })).rejects.toThrow(/diff: the two versions take \d lines side by side, and the passage has lines: 1\. Give lines: \d or more, or a larger width/)
+        // The words move in one change at a time, and no band arrives while they move.
+        await expect(compile((s) => {
+            const made = s.add(passage(V1, { width: 700 }))
+            s.play(made.diff(V2), made.accept(), { duration: 1 })
+        })).rejects.toThrow(/accept\(\) plays from 0 s to 1 s, and diff\(\) plays from 0 s to 1 s\. The words move in one change at a time\. Play the two in a `seq`, or start accept\(\) at 1 s or later/)
+        await expect(compile((s) => {
+            const made = s.add(passage(V1, { width: 700 }))
+            s.play(made.diff(V2), made.mark('Gift cards'), { duration: 1 })
+        })).rejects.toThrow(/mark\(\) plays from 0 s to 1 s, while diff\(\) moves the words from 0 s to 1 s\. Play mark\(\) after it, or the two in a `seq`/)
+    })
+
+    it('gives the places of its parts: a region, a point on a band, and the way of a line out of the passage', async () => {
+        await compileFilm(film(() => {
+            const page = passage(POLICY, { width: 700 }).at(100, 50)
+            const words = around(page.find('within 14 days')), box = page.region('within 14 days')
+            expect(covers({ x: box.left, y: box.top, right: box.right, bottom: box.bottom }, words)).toBe(true)
+            expect(box.width).toBeLessThan(words.right - words.x + 8)
+            expect(box.right).toBeLessThan(page.find('of delivery')[0]!.bounds().x)
+            // The points on the band, in the coordinates of the object.
+            expect(page.toWorld(...page.p('within 14 days'))).toEqual([expect.closeTo(box.cx, 6), expect.closeTo(box.bottom, 6)])
+            expect(page.toWorld(...page.p('within 14 days', 'top'))).toEqual([expect.closeTo(box.cx, 6), expect.closeTo(box.top, 6)])
+            expect(page.toWorld(...page.p('within 14 days', 'left'))).toEqual([expect.closeTo(box.left, 6), expect.closeTo(box.cy, 6)])
+            expect(page.toWorld(...page.p('within 14 days', 'right'))).toEqual([expect.closeTo(box.right, 6), expect.closeTo(box.cy, 6)])
+            expect(() => page.p('within 14 days', 'middle' as never)).toThrow(/the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/)
+            // Without a part: the room of the text. A line is the row of its band.
+            const all = page.region(), first = page.region({ line: 0 }), second = page.region({ line: 1 })
+            expect([all.left, all.right]).toEqual([expect.closeTo(122.4, 6), expect.closeTo(777.6, 6)])
+            expect(all.height).toBeCloseTo(page.lineCount * PITCH, 6)
+            expect([second.left, second.width, second.top - first.top]).toEqual([expect.closeTo(all.left, 6), expect.closeTo(all.width, 6), expect.closeTo(PITCH, 6)])
+            expect(second.top).toBeGreaterThan(first.bottom)
+            expect(() => page.region({ line: 9 })).toThrow(/region: no line 9\. The text has \d lines, and the first is line 0/)
+            // The way out: from under the end of the words, down into the room between two lines, and level to the side.
+            const [start, turn, edge] = page.leader('within 14 days').map((point) => page.toWorld(...point))
+            expect(start).toEqual([expect.closeTo(words.right, 6), expect.closeTo(box.bottom, 6)])
+            expect(turn).toEqual([expect.closeTo(words.right, 6), expect.closeTo((box.bottom + second.top) / 2, 6)])
+            expect(edge).toEqual([expect.closeTo(800, 6), expect.closeTo(turn![1], 6)])
+            const left = page.leader('within 14 days', 'left').map((point) => page.toWorld(...point))
+            expect([left[0]![0], left[2]![0]]).toEqual([expect.closeTo(words.x, 6), expect.closeTo(100, 6)])
+            expect(() => page.leader('within 14 days', 'up' as never)).toThrow(/the side of leader\(\) is 'left' or 'right', not "up"/)
+        }))
+    })
+
+    it('enters with its frame and its title, and then its words in the order of the text', async () => {
+        let page!: Page
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = passage(POLICY, { width: 700, title: 'policy.md' })
+            s.wait(1)
+            s.play(page.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+            expect(() => page.enter({ lag: 'slow' as never })).toThrow(/the lag of enter\(\) is "slow"\. It is a number, 0 or more/)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        const [first, middle, last] = [page.words.chars[0]!, page.find('date')[0]!, page.words.chars.at(-1)!]
+        expect(at(1.4, () => [page.frame!.get('opacity'), page.title!.get('opacity')])).toEqual([expect.closeTo(0.4 / 0.7, 6), expect.closeTo(0.4 / 0.7, 6)])
+        expect(at(1.4, () => [first, middle, last].map((glyph) => glyph.get('opacity')))).toEqual([expect.closeTo(0.67, 1), 0, 0])
+        expect(at(2.2, () => [first, last].map((glyph) => glyph.get('opacity')))).toEqual([1, 0])
+        expect(at(2.2, () => middle.get('opacity'))).toBeGreaterThan(0)
+        expect(at(3.2, () => page.words.chars.every((glyph) => glyph.get('opacity') === 1))).toBe(true)
+    })
+
+    it('takes the font of the film for its words, its title and a slip, and a font of its own when it names one', async () => {
+        await compile(() => {
+            const letter = (font: 'sans' | 'text-serif' | 'mono', size: number) => text('R', { font, size }).chars[0]!.get('path')
+            const page = passage(POLICY, { width: 700, title: 'Rules' })
+            expect([page.words.chars[0]!.get('path'), page.title!.chars[0]!.get('path'), page.words.font]).toEqual([letter('text-serif', 32), letter('text-serif', 26), 'text-serif'])
+            expect(page.slip('Refunds are accepted').words.chars[0]!.get('path')).toEqual(letter('text-serif', 32))
+            const own = passage(POLICY, { width: 700, font: 'mono' })
+            expect([own.words.chars[0]!.get('path'), own.slip('Refunds are accepted').words.chars[0]!.get('path')]).toEqual([letter('mono', 32), letter('mono', 32)])
+            expect(letter('text-serif', 32)).not.toEqual(letter('sans', 32))
+        }, { font: 'text-serif' })
+    })
+
+    it('passes the film check with its own layout, at a small text gap and at a large one', async () => {
+        const definition = film({ fps: 20 }, (s) => {
+            const kinds = s.add(passage('A plain mark, then a claim of the answer. One part is supported, one part is unsupported, and one is contradicted. This line came from outside. An old value and a new value.', { width: 880, title: 'answer.md' }).at(-900, -400))
+            s.play(kinds.mark('plain mark', 'mark'), kinds.mark('a claim of the answer', 'claim'), kinds.mark('is supported', 'supported'), kinds.mark('is unsupported', 'unsupported'), kinds.mark('is contradicted', 'contradicted'),
+                kinds.mark('This line came from outside.', 'external'), kinds.mark('old value', 'removed'), kinds.mark('new value', 'added'), { duration: 0.6 })
+            const cut = s.add(passage(RUNBOOK, { width: 800, size: 26 }).at(60, -400))
+            s.play(cut.cut({ size: 7, overlap: 2 }), cut.mark('within 15 minutes', 'supported'), { duration: 1 })
+            s.play(cut.select('Then page the incident commander.'), { duration: 0.6 })
+            const bare = s.add(passage('Refunds arrive within 14 days.', { panel: false, size: 48 }).at(-900, 200))
+            s.play(bare.mark('within 14 days', 'claim'), { duration: 0.6 })
+            s.wait(2)
+        })
+        // With 0.3 and 0.7, and with the most room that the rule asks for: 2% of the shorter side of the frame.
+        for (const textGap of [0.3, 0.7, 3]) expect((await checkFilm(definition, { textGap, motion: true })).diagnostics.filter((finding) => finding.code !== 'film.text_brief')).toEqual([])
     })
 })
 

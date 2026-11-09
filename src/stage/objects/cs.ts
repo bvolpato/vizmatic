@@ -625,7 +625,7 @@ export function arrayCells(values: readonly (string | number)[], options: ArrayC
 
 // ── Code ────────────────────────────────────────────────────────────────────
 
-export type TokenKind = 'keyword' | 'string' | 'number' | 'comment' | 'function' | 'type' | 'punctuation' | 'plain' | 'space'
+export type TokenKind = 'keyword' | 'string' | 'number' | 'comment' | 'function' | 'type' | 'key' | 'punctuation' | 'plain' | 'space'
 
 export interface CodeToken {
     text: string
@@ -654,6 +654,11 @@ interface LanguageRule {
     number?: RegExp
     /** The word after an opening parenthesis names a function, as in Lisp. */
     headIsFunction?: boolean
+    /**
+     * For a data format: what follows a key, such as the colon of `"name": 1`. A string or a word with this
+     * after it is a key. Every other word is a keyword or plain: no word names a function or a type.
+     */
+    keyBefore?: RegExp
 }
 
 const words = (list: string): ReadonlySet<string> => new Set(list.split(' '))
@@ -689,12 +694,17 @@ const LANGUAGES: Record<string, LanguageRule> = {
         word: /^[A-Za-z_~!@$%^&*+=<>.?/-][\w~!@$%^&*+=<>.?/-]*/, number: /^(#x[\da-fA-F]+|#b[01]+)/,
         keywords: words('assert check-sat check-sat-assuming declare-const declare-datatypes declare-fun declare-sort define-const define-fun define-fun-rec define-sort echo exit get-info get-model get-option get-proof get-unsat-core get-value pop push reset set-info set-logic set-option exists forall let match par as _ !'),
     },
+    // Data formats. A key has its own color, so a reader tells the names from the values.
+    json: { lineComments: [], quotes: '"', keyBefore: /^\s*:/, keywords: words('true false null') },
+    // In YAML, a colon ends a key when a space or the end of the line follows it: `image: nginx:1.27` has one key.
+    yaml: { lineComments: ['#'], quotes: '"\'', insensitive: true, keyBefore: /^\s*:(?:\s|$)/, word: /^[A-Za-z_][\w.-]*/, keywords: words('true false null yes no on off') },
     plain: { lineComments: [], quotes: '', keywords: new Set() },
 }
 
 const ALIASES: Record<string, string> = {
     js: 'ts', jsx: 'ts', tsx: 'ts', typescript: 'ts', javascript: 'ts', py: 'python', rs: 'rust', golang: 'go', sh: 'bash', shell: 'bash',
     'tla+': 'tla', tlaplus: 'tla', dfy: 'dafny', lean4: 'lean', smt2: 'smt', smtlib: 'smt', 'smt-lib': 'smt', cpp: 'c', 'c++': 'c', h: 'c', text: 'plain',
+    yml: 'yaml', jsonl: 'json',
 }
 
 /** The languages that `tokenize` and `codeBlock` color. An unknown name falls back to TypeScript. */
@@ -755,7 +765,7 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
             afterOpen = rest[0] === '('
             const quoted = string?.exec(rest)
             if (quoted) {
-                push(quoted[0], 'string')
+                push(quoted[0], rule.keyBefore?.test(rest.slice(quoted[0].length)) ? 'key' : 'string')
                 continue
             }
             const number = rule.number?.exec(rest) ?? /^(0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:e[-+]?\d+)?)/.exec(rest)
@@ -773,10 +783,12 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 const value = found[0]
                 const after = rest.slice(value.length)
                 const isKeyword = rule.keywords.has(rule.insensitive ? value.toLowerCase() : value)
-                const kind: TokenKind = isKeyword ? 'keyword'
-                    : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
-                        : /^[A-Z]/.test(value) ? 'type'
-                            : 'plain'
+                // In a data format, a word before the mark of a key is a key, also when it is `true` or `on`.
+                const kind: TokenKind = rule.keyBefore ? (rule.keyBefore.test(after) ? 'key' : isKeyword ? 'keyword' : 'plain')
+                    : isKeyword ? 'keyword'
+                        : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
+                            : /^[A-Z]/.test(value) ? 'type'
+                                : 'plain'
                 push(value, kind)
                 continue
             }
@@ -788,11 +800,11 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
 
 const CODE_COLORS: Record<Exclude<TokenKind, 'space'>, string> = {
     keyword: 'purple', string: 'green', number: 'orange', comment: 'faint',
-    function: 'blue', type: 'teal', punctuation: 'dim', plain: 'ink',
+    function: 'blue', type: 'teal', key: 'blue', punctuation: 'dim', plain: 'ink',
 }
 
 export interface CodeBlockOptions {
-    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, or `smt2`. Defaults to TypeScript. */
+    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, `smt2`, or `yml`. Defaults to TypeScript. */
     language?: string
     size?: number
     /** Line height as a multiple of size. */
