@@ -997,6 +997,119 @@ export default film({ fps: 30 }, (s) => {
 
 `word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
 
+## Layer stacks
+
+`layerStack(layers, options)` draws a model as a stack of named layers on one stream, with the data flowing up: the block diagram of a transformer, of a vision model, or of a residual network. A block on the stream changes the data. A branch is beside the stream: it reads the stream, and an add puts its result back. So the stream is the line that every layer adds to. Use it when a lesson needs its machine on the screen, and a viewer must see where in the model each step happens.
+
+```film paired label="A token goes up one decoder block: each branch reads the stream, and its add puts the result back"
+import { film, layerStack } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const model = layerStack([
+        { label: 'embed', color: 'purple', shape: '4 numbers' },
+        { repeat: 'N', label: 'block', layers: [
+            { branch: [{ label: 'norm', id: 'norm 1', color: 'yellow' }, { label: 'attention', color: 'orange' }] },
+            { branch: [{ label: 'norm', id: 'norm 2', color: 'yellow' }, { label: 'feed forward', color: 'blue' }] },
+        ] },
+        { label: 'unembed', color: 'green', shape: '6 scores' },
+    ], { shape: 'token "the"', size: 30 })
+    s.play(model.enter(), { duration: 1.6 })
+    s.play(model.feed([0.6, -0.2, 0.1, 0.4]))
+    s.play(model.pass('embed', [0.3, 0.7, -0.5, 0.1]))
+    s.play(model.light('attention'))
+    s.play(model.pass('attention', [0.5, 0.2, -0.1, 0.8]), { duration: 3 })
+    s.play(model.light('feed forward'))
+    s.play(model.pass('feed forward', [0.9, 0.1, -0.6, 0.6]), { duration: 3 })
+    s.play(model.light(null), model.pass('unembed', [-0.4, 0.2, 0.9, 0.1]))
+    s.wait(0.8)
+})
+```
+
+The layers are a list from the foot of the stream up. A layer is one of three things. A block is a label, or `{ label, id, color, state, shape }`: it is on the stream, and the data passes through it. A branch is `{ branch: [blocks] }`: its blocks are beside the stream, from the lowest one. A line leaves the stream under the first block, goes through the blocks, and ends at an add on the stream over the last block. That is a residual connection, and `{ branch: ['norm', 'attention'] }` is a pre-norm attention layer. A group is `{ layers, repeat, label }`: a frame around its layers, for a block that repeats. `repeat` is a count, 2 or more, or a name such as `'N'`, and the frame then says "× 12" or "block × N" on its top line. A group holds blocks and branches, and no other group.
+
+A branch can go around a block on the stream: `{ branch: ['A', 'B'], around: 'W' }`. The stream then passes through `W`, and the branch adds to what `W` writes. That is LoRA beside a frozen weight, or a shortcut with a projection in a residual network. `shown: false` gives a branch its place from the start and does not draw it, and `stack.show('A')` brings it in later: the line leaves the stream, the blocks arrive, and the add lands on the stream.
+
+A block has an `id`, which is its label unless the film gives another. The film names a block by its id or by its index. The blocks count from the foot of the stream up. A branch counts from its first block, and the block that a branch goes around comes before the blocks of that branch. Two blocks can have one label, such as "norm". A name that two blocks have is an error that lists their indexes, so give one of them an id, or name it by its index.
+
+`stack.feed(values)` puts a vector at the foot of the stream: a row of cells, one for each value. A cell is teal for a value over 0 and orange for a value under 0, and it is stronger for a larger value, up to 1. `stack.pass('attention', values)` sends the vector up through the layer of a block, and it leaves that layer with the new values. In a block on the stream, the vector goes behind the block and comes out changed, and the block lights for a moment. At a branch, the vector stays on the stream, and a copy of it goes through the blocks of the branch. The copy comes back with what the branch adds, which is the new values less the old ones, and stops at the add. Then the add takes the copy, and the vector goes through the add and takes the sum. So a viewer sees that a layer adds to the stream and does not replace it.
+
+Name any block of a branch to pass the branch. A pass to a later block goes through each layer before it, and gives each one its share of the time. Without values, the vector keeps its values. A pass takes 1 s for a block and 2.6 s for a branch unless the film gives a `duration`. The vector does not go back: `feed` starts again at the foot, and the vector that is on the stream leaves first. The vector does one thing at a time, so a `feed` and a `pass` whose times overlap are an error that names the two calls: play them in a `seq`. `stack.passed` is the number of layers that the vector passed, `stack.values` its values, and `stack.shape` the shape beside it. All of these follow the changes that the film has played so far.
+
+`cells` is the number of cells, 4 by default. With `digits`, each cell shows its value with that many decimals, and a cell is as wide as a value under 10 needs:
+
+```ts
+import { barChart, film, layerStack } from 'vizmatic/stage'
+
+export default film((s) => {
+    const model = s.add(layerStack([
+        { label: 'token + position', color: 'purple', shape: '4 numbers' },
+        { branch: [{ label: 'masked attention', color: 'orange' }] },
+        { branch: [{ label: 'MLP', color: 'blue' }] },
+        { label: 'scores', color: 'green', shape: '4 scores' },
+    ], { digits: 1, shape: '"Birds"' }).at(-420, 0))
+    const scores = [2.1, 1.4, 0.2, 0.6]
+    const bars = barChart(['fly', 'sing', 'swim', 'sleep'].map((label, index) => ({ label, value: scores[index]! })), { width: 620, height: 400, labelSize: 34 }).at(480, 0)
+    s.play(model.feed([0, 0, 0, 0]))
+    s.play(model.pass('token + position', [0.5, -1.2, 0.3, 0.9]))
+    // The copy comes back with 0.4, 0.7, 0.0 and 0.5, and the add makes 0.9, -0.5, 0.3 and 1.4 of them.
+    s.play(model.pass('masked attention', [0.9, -0.5, 0.3, 1.4]), { duration: 3.4 })
+    s.play(model.pass('MLP', [1.6, -0.5, -0.4, 1.4]), { duration: 3.4 })
+    s.play(model.pass('scores', scores))
+    s.play(model.light('scores'), bars.enter())
+})
+```
+
+The copy shows the numbers that the branch adds while it stops at the add, so give a branch three seconds or more when the viewer must read them. The numbers of the vector fade before the vector goes behind a block, and come back when it is clear of the block, so the edge of a block never cuts a number. A value that is too wide for its cell is an error that names the value. A `shape` is a short text for the data on the stream, such as `'(T, 768)'`. The option `shape` is the shape at the foot of the stream, and the `shape` of a block is the shape after that block. The shape is beside the vector, at the left of the blocks, and goes up with it. It changes when the vector passes a block that has one, so a projector that keeps 576 tokens and makes each one wider changes "576 x 1024" to "576 x 4096". Only a block on the stream has a shape, because the add of a branch keeps the shape of the stream.
+
+`stack.light('attention')` lights the block that a scene is about: a thick border and a stronger fill. One block is lit at a time, `stack.light(null)` puts the light off, and `stack.current` is the index of the lit block. `stack.mark(which, state)` moves blocks to another state. `which` is a block, a list of blocks, or a function of a block, which the stack calls when the film plays the change. Without `states`, a block is `live` or `frozen`, from `STACK_STATES`. A frozen block is dim and has a lock at its right end, so color is not the only sign of the state. `stack.replace('norm', 'RMSNorm')` puts another block in the place of a block: the label fades out and the new one fades in. The block keeps its id, its place and its state, and `{ label, color }` gives it a new color too.
+
+```ts
+import { beside, fadeIn, film, layerStack, text } from 'vizmatic/stage'
+
+export default film((s) => {
+    const model = s.add(layerStack([
+        { label: 'patch embed', color: 'purple', shape: '576 x 1024' },
+        { label: 'vision encoder', color: 'purple' },
+        { label: 'projector', color: 'orange', shape: '576 x 4096' },
+        { branch: [{ label: 'LoRA', color: 'orange' }], around: 'LLM', shown: false },
+        { label: 'answer head', color: 'green' },
+    ], { shape: '576 patches' }))
+    // A note beside the whole stack, at the height of one block.
+    const note = beside(text('the only part that trains', { size: 30, color: 'orange' }), model, 'right', 'wide', model.block('projector'))
+    s.play(model.mark(['patch embed', 'vision encoder', 'LLM'], 'frozen'))
+    s.play(model.feed([0.4, -0.3, 0.8, 0.1]))
+    s.play(model.pass('projector', [-0.2, 0.9, 0.3, -0.6]), model.light('projector'), fadeIn(note), { duration: 2.4 })
+    // The branch arrives beside the frozen model, and adds to what the model writes.
+    s.play(model.show('LoRA'))
+    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3]), { duration: 3 })
+})
+```
+
+For another subject, give your own states: `states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } }` makes the layers of a container image. A state has a `color`, which a block takes in place of its own, `dim` for a block that does not run, `dash` for a border of dashes, and a `mark` at the right end of the block: `'lock'`, `'check'`, `'cross'` or `'dot'`. A block with no state starts in the first state of the record. `stack.stateOf(ref)`, `stack.labelOf(ref)` and `stack.find((block) => block.state === 'frozen')` read the blocks after the changes that the film has played so far. A stack of that kind has no vector, so it can take a small `gap`, such as 14.
+
+`stack.open('attention', inside)` joins a block to a close-up of its inside: two lines go from the block to a frame around `inside`, and `inside` fades in. `inside` is a node of the film, a block of the layout, or a list: another stack, a grid of numbers, a formula. The film places it at the right or at the left of the stack first. One block is open at a time: `open` of another block closes the first one, and `stack.close()` closes the open block and fades its close-up out. The lines are for the places that the stack and the close-up have when `open` plays, and they do not follow a later move. A close-up over the stack or under it is an error, and so is a side where the lines would cross a part of the stack: a block on the stream that has a branch beside it opens to the left, and a block of a branch opens to the right.
+
+```ts
+import { film, heatmap, layerStack, place, sceneArea } from 'vizmatic/stage'
+
+export default film((s) => {
+    const [left, right] = sceneArea().columns(2)
+    const model = s.add(place(layerStack(['embed', { branch: ['norm', { label: 'attention', color: 'orange' }] }, 'unembed']), left!))
+    const weights = place(heatmap([[0.2, 0.3, 0.5]], { cell: 150, values: true, valueSize: 40, labelSize: 34, rowLabels: ['the'], columnLabels: ['function', 'returns', 'the'], colors: ['surface', 'orange'], domain: [0, 1] }), right!)
+    s.play(model.light('attention'), model.open('attention', weights))
+    s.wait(2)
+    s.play(model.close(), model.light(null))
+})
+```
+
+`width` is the width of the whole object: the blocks, the frames of the groups, and the room of the shapes at the left. The layout measures that same box, also before the vector, a shape or a branch shows, so `place(stack, region)` and `fitted(region, (width) => layerStack(layers, { width }))` work with no other number. Without `width`, the stack is as wide as its labels need. A label is never set smaller: a `width` with no room for a label is an error that names the label and the least width. `.at()` places the middle of that box. In a stack with a branch, the stream is at the left, in a free way that is as wide as the vector, and the blocks of the branches are at the right. A block on the stream is as wide as both. In a stack with no branch, the blocks are around the stream.
+
+`size` is the size of every text of the stack: the labels, the shapes, the label of a group, and the numbers. It is 28 by default, which is over the 26 px that a film of 1920 by 1080 needs. Each measure follows it. `blockHeight` is the height of a block, 1.9 of `size` by default, and `gap` is the room on the stream between two layers, where the vector rests. The default gap holds the vector with room around it. A `feed` on a stack whose `gap` is lower than the vector is an error that gives the least gap. A decoder with two branches of two blocks is about 800 px high at the default size, so give a tall model `size: 26`, or put the layers that the lesson does not name in one block. `color` is the color of a block that has none, `font` the font of every text, and `backing` the color behind the blocks, which hides the stream and the vector there. It is the background of the look by default. On a panel of another color, give the color of the panel.
+
+`stack.block(ref)` is the node of a block, for `beside`, a `connector`, or a `spotlight`. `stack.p(ref, edge)` is the middle of an edge of a block, `'right'` by default, and `stack.foot` and `stack.head` are the two ends of the stream: a row of tokens goes under the foot, and the bars of the output go over the head. These points are in the coordinates of the object, and `stack.toWorld(x, y)` gives the place on the stage. `stack.region()` is the box of the object in stage pixels, and `stack.region(ref)` the box of one block. `stack.enter()` builds the stack from the foot up: the stream grows, and each part arrives when the stream reaches its height. `stack.blocks`, `stack.boxes`, `stack.labels`, `stack.stream`, `stack.taps`, `stack.adds`, `stack.reads`, `stack.writes`, `stack.chains`, `stack.frames`, `stack.vector`, `stack.copy`, `stack.tag` and `stack.zoom` are the parts. `stack.count` is the number of blocks, `stack.ids` their ids, and `stack.depth` the number of layers.
+
+`neuralNet` draws neurons and the weights between them, and its motion is an activation. `steps` lights one box of a row, and nothing joins its boxes. A layer stack knows the order of its layers and what each one does to the stream, so it can send one vector through them and keep its values.
+
 ## Code and tokens
 
 `codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
