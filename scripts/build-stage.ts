@@ -8,7 +8,7 @@ const out = 'docs/assets/stage'
 export const STAGE_FONTS = [
     'Inter-Regular.ttf', 'Inter-SemiBold.ttf', 'Inter-Bold.ttf', 'JetBrainsMono-Regular.ttf',
     'InstrumentSerif-Regular.ttf', 'InstrumentSerif-Italic.ttf',
-    'SourceSerif4-24pt-Regular.ttf', 'SourceSerif4-24pt-Italic.ttf',
+    'SourceSerif4-24pt-Regular.ttf', 'SourceSerif4-24pt-SemiBold.ttf', 'SourceSerif4-24pt-Italic.ttf',
     'NotoSans-Regular.ttf', 'NotoSansMath-Regular.ttf',
 ]
 

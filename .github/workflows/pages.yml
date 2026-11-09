@@ -1,10 +1,17 @@
 name: Pages
 
+# The public site shows the last release. A merge to main does not deploy.
+# The Release workflow starts this workflow for the tag that it published. A person can also start
+# it by hand, for example for a fix of the docs between two releases:
+#   gh workflow run pages.yml -f ref=main
+# Always start it on main, which is the default. The github-pages environment accepts a
+# deployment from main only. The input selects the ref that the run builds.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
   workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or branch to build and deploy, such as v0.9.0 or main."
+        required: true
 
 permissions:
   actions: read
@@ -12,13 +19,13 @@ permissions:
   id-token: write
   pages: write
 
+# One deploy at a time. A run that has started goes to its end, and the newest request runs after it.
 concurrency:
-  group: pages-${{ github.event.workflow_run.head_sha || github.sha }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -26,7 +33,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ inputs.ref }}
+      - id: commit
+        name: Record the commit of that ref
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7.1.0
         with:
@@ -40,9 +50,13 @@ jobs:
           pnpm render:video
       - name: Render the film catalog
         run: pnpm render:films --workers 4 --no-posters
+      # The website is not committed. This step renders the examples, then runs `pnpm site:build`,
+      # which writes each page and bundle into docs/.
       - run: pnpm render:examples
       - run: pnpm docs:check --require-video
-      - name: Ensure generated site is committed
+      # The rendered examples, the film posters, and some data files in docs/ are still committed.
+      # This step fails when the build of this run changed one of them.
+      - name: Ensure committed output is up to date
         run: git diff --exit-code -- docs examples/README.md
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
@@ -52,7 +66,7 @@ jobs:
         name: Create Pages deployment
         env:
           GH_TOKEN: ${{ github.token }}
-          PAGES_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          PAGES_SHA: ${{ steps.commit.outputs.sha }}
         run: |
           set -euo pipefail
 

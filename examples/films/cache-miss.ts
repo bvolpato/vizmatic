@@ -379,8 +379,9 @@ export default film({
         return items
     })
 
-    const peakA = label(`no protection: ${stampede.peak.toFixed(0)} ms peak, ${missCount} queries`, CH.x + CH.w - 6, CH.y + 18, { size: 19, font: 'mono', color: 'red', align: 'right' })
-    const peakB = label(`single flight: ${coalesced.peak.toFixed(0)} ms peak, ${coalesced.queries} query`, CH.x + CH.w - 6, CH.y + 46, { size: 19, font: 'mono', color: 'teal', align: 'right' })
+    // The two lines are between the grid lines of 600 ms and 500 ms, with room from each.
+    const peakA = label(`no protection: ${stampede.peak.toFixed(0)} ms peak, ${missCount} queries`, CH.x + CH.w - 6, CH.y + 17, { size: 19, font: 'mono', color: 'red', align: 'right' })
+    const peakB = label(`single flight: ${coalesced.peak.toFixed(0)} ms peak, ${coalesced.queries} query`, CH.x + CH.w - 6, CH.y + 40, { size: 19, font: 'mono', color: 'teal', align: 'right' })
 
     // ── Header and footer ───────────────────────────────────────────────────
 

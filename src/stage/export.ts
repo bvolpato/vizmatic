@@ -6,7 +6,7 @@ import * as gifenc from 'gifenc'
 import { renderRgbaVideo, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
-import { RasterPool, defaultPoolSize, framesToJob, rasterMemoBytes } from './raster'
+import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type RasterJob } from './raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 import { text } from './text'
 
@@ -128,16 +128,25 @@ export function planRender(width: number, height: number, motionBlur: number, op
     const requested = Math.max(1, Math.floor(options.workers ?? defaultPoolSize()))
     // Measured at 4K: a worker holds about three frames without motion blur. With motion
     // blur it also holds every sub-frame until garbage collection, plus the running sum.
-    // Include the private retained RGBA result and its bounded serialized key.
-    const perWorker = frameBytes * (motionBlur > 1 ? motionBlur + 4 : 3) + rasterMemoBytes(width, height)
+    const perWorker = frameBytes * (motionBlur > 1 ? motionBlur + 4 : 3)
     const workers = Math.max(1, Math.min(requested, Math.floor(budget * 0.75 / perWorker)))
     const extra = Math.floor(budget * 0.25 / frameBytes)
     return { workers, readAhead: Math.max(workers + 1, Math.min(workers * 2, workers + extra)) }
 }
 
+/** A job and the pixels that it gives. */
+interface Rendered {
+    job: RasterJob
+    pixels: Promise<Uint8Array>
+}
+
 /**
  * Rasterize frames in parallel and hand them out in order, holding only a bounded
  * number at a time. Call `next(i)` with i increasing from 0.
+ *
+ * A frame that is equal to the frame before takes its pixels, and no worker sees it. The two frames
+ * share one buffer, so the caller must not write to the pixels. For the comparison, the stream keeps
+ * the SVG text of the last job, and the pixels of the last frame until the stream ends.
  */
 function frameStream(
     film: CompiledFilm,
@@ -151,13 +160,36 @@ function frameStream(
     dither = true,
 ): (index: number) => Promise<Uint8Array> {
     const inFlight = new Map<number, Promise<Uint8Array>>()
-    const submit = async (index: number): Promise<Uint8Array> => {
-        const base = timeOf(index)
-        const frames: Frame[] = []
-        for (let sub = 0; sub < subframes; sub++) {
-            frames.push(await frameAt(film, base + (sub / subframes) * shutterSpan))
-        }
-        return pool.run(framesToJob(frames, size.width, backgroundBytes, size.height, dither))
+    const stats = pool.stats
+    // The job of the frame before. Jobs are compared in the order of the frames.
+    let before: Promise<Rendered | null> = Promise.resolve(null)
+    const submit = (index: number): Promise<Uint8Array> => {
+        const previous = before
+        const rendered = (async (): Promise<Rendered> => {
+            const base = timeOf(index)
+            const frames: Frame[] = []
+            for (let sub = 0; sub < subframes; sub++) {
+                const started = performance.now()
+                const frame = frameAt(film, base + (sub / subframes) * shutterSpan)
+                stats.mainMs += performance.now() - started
+                frames.push(await frame)
+            }
+            let started = performance.now()
+            const job = framesToJob(frames, size.width, backgroundBytes, size.height, dither)
+            stats.mainMs += performance.now() - started
+            // A frame before that failed has nothing to share. Its own index reports the failure.
+            const last = await previous.catch(() => null)
+            started = performance.now()
+            const same = last !== null && sameRasterJob(last.job, job)
+            stats.mainMs += performance.now() - started
+            if (same) {
+                stats.reused++
+                return last!
+            }
+            return { job, pixels: pool.run(job) }
+        })()
+        before = rendered
+        return rendered.then((entry) => entry.pixels)
     }
     return async (index) => {
         for (let ahead = index; ahead < Math.min(count, index + readAhead); ahead++) {
@@ -204,7 +236,17 @@ export async function renderFilmVideo(
     try {
         const count = Math.max(1, Math.round((to - from) * fps))
         const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps)
-        const output = await renderRgbaVideo((info) => next(info.index), {
+        const stats = pool.stats
+        // When the export loop took the last frame. From then, it waits for the encoder.
+        let handed = 0
+        const output = await renderRgbaVideo(async (info) => {
+            const asked = performance.now()
+            if (handed > 0) stats.encoderWaitMs += asked - handed
+            const pixels = await next(info.index)
+            handed = performance.now()
+            stats.frameWaitMs += handed - asked
+            return pixels
+        }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
             codec,
             crf: codec === 'vp9' ? quality.vp9Crf : quality.crf,
@@ -222,6 +264,8 @@ export async function renderFilmVideo(
             signal: options.signal,
             onProgress: options.onProgress,
         })
+        stats.encoderFinishMs = performance.now() - handed
+        reportExportStats(stats)
         return { ...output, title: compiled.title, workers: pool.size, motionBlur, codec }
     } finally {
         await pool.close()
@@ -297,7 +341,6 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         })
         const palette = gifApi.quantize(combined, 256, { format: 'rgb565' })
         const gif = gifApi.GIFEncoder()
-        // A palette of 256 colors cannot hold the grain of a dithered bloom, so the bloom is cut to whole levels.
         const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, 1, 0, false)
         const repeat = options.loop === false ? -1 : 0
         let previous: Uint8Array | null = null
@@ -331,9 +374,10 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         for (let i = 0; i < count; i++) {
             options.signal?.throwIfAborted()
             const pixels = await next(i)
-            const region: { x: number; y: number; width: number; height: number } | null = previous
-                ? changedRegion(previous, pixels, size.width, size.height)
-                : { x: 0, y: 0, width: size.width, height: size.height }
+            // A frame that is equal to the frame before arrives as the same buffer.
+            const region: { x: number; y: number; width: number; height: number } | null = !previous
+                ? { x: 0, y: 0, width: size.width, height: size.height }
+                : previous === pixels ? null : changedRegion(previous, pixels, size.width, size.height)
             if (!region) {
                 // Nothing changed, so the previous frame simply holds longer.
                 if (pending) pending.delay += delay

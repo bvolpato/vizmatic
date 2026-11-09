@@ -158,6 +158,22 @@ describe('vizmatic film', () => {
         expect(cli(['film', 'plain.ts', '--out', 'o'], directory).stderr).toContain('must export a film as its default export')
     }, 60_000)
 
+    it('says to move a text into the callback when a film file makes it at its top', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'top.ts'), `import { film, text } from 'vizmatic/stage'
+const title = text('made at the top of the file')
+export default film((s) => {
+    s.add(title)
+    s.wait(1)
+})
+`)
+        const result = cli(['film', 'top.ts', '--frame', '0.5', '--out', 'o'], directory)
+        expect(result.status).toBe(1)
+        // The font is not loaded when the file loads, so the text throws what the compiler waits for inside a callback.
+        expect(result.stderr).toContain('Make each text, equation and graph inside the callback of film(), not at the top of a file')
+        expect(result.stderr).not.toContain('[object Object]')
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg)('routes films through the render and video commands', async () => {
         const directory = await tempDirectory()
         await writeFile(join(directory, 'short.ts'), shortFilm)
@@ -173,7 +189,8 @@ describe('vizmatic film', () => {
 describe('vizmatic new, looks, and objects', () => {
     it('scaffolds every template into a film that passes its own check', async () => {
         const directory = await tempDirectory()
-        for (const template of FILM_TEMPLATES) {
+        // A template that is a folder has its own tests, in narrated-cli.test.ts.
+        for (const template of FILM_TEMPLATES.filter((entry) => entry.source !== undefined)) {
             const created = cli(['new', template.name, '--template', template.name], directory)
             expect(created.status, created.stderr).toBe(0)
             const check = cli(['check', `${template.name}.ts`, '--json'], directory)
@@ -240,5 +257,28 @@ export default film({ title: 'Crossfade', fps: 30 }, (s) => {
         expect(file.film.frames).toBe(90)
         expect(file.diagnostics).toHaveLength(1)
         expect(file.diagnostics[0]).toMatchObject({ code: 'film.text_overlap', severity: 'warning', motion: { spans: 1 } })
+    }, 60_000)
+
+    it('reports text with no room beside a mark only when --text-gap is set', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'tight.ts'), `import { film, rect, text } from 'vizmatic/stage'
+export default film({ title: 'Tight' }, (s) => {
+    s.add(rect(300, 60, { fill: 'blue', stroke: null }))
+    s.add(text('caption', { size: 40 }).alignTo([0, 33], 'top'))
+    s.wait(1)
+})
+`)
+        const plain = cli(['check', 'tight.ts', '--json'], directory)
+        expect(JSON.parse(plain.stdout).files[0].diagnostics).toEqual([])
+        const result = cli(['check', 'tight.ts', '--text-gap', '0.3', '--json'], directory)
+        expect(result.status).toBe(0)
+        expect(JSON.parse(result.stdout).files[0].diagnostics).toMatchObject([
+            { code: 'film.text_crowded', severity: 'warning', text: 'caption', message: 'Text "caption" is 3 px from a filled shape above it. Leave 12 px or more.' },
+        ])
+        // The value is the part of the font size. 0.05 of 40 is 2 px, which the caption has.
+        expect(JSON.parse(cli(['check', 'tight.ts', '--text-gap', '0.05', '--json'], directory).stdout).files[0].diagnostics).toEqual([])
+        const bad = cli(['check', 'tight.ts', '--text-gap', 'near'], directory)
+        expect(bad.status).not.toBe(0)
+        expect(bad.stderr + bad.stdout).toContain('--text-gap needs a part of the font size')
     }, 60_000)
 })

@@ -156,6 +156,25 @@ export function mixPaint(a: Paint, b: Paint, t: number): Paint {
     return mixColor(solidA, solidB, t)
 }
 
+function toward(backdrop: Rgba, color: Rgba, dim: number): Rgba {
+    return [
+        backdrop[0] + (color[0] - backdrop[0]) * dim,
+        backdrop[1] + (color[1] - backdrop[1]) * dim,
+        backdrop[2] + (color[2] - backdrop[2]) * dim,
+        color[3],
+    ]
+}
+
+/**
+ * Take a paint toward a backdrop color: at `dim` 1 the paint is as it is, and at 0 it is the backdrop.
+ * The alpha stays, so a dim shape still hides what is behind it. On a plain background, the result is
+ * the color that the paint would show at an opacity of `dim`.
+ */
+export function dimPaint(paint: Paint, dim: number, backdrop: Rgba): Paint {
+    if (!isGradient(paint)) return toward(backdrop, paint as Rgba, dim)
+    return { ...paint, stops: paint.stops.map(([at, color]) => [at, toward(backdrop, color, dim)] as const) }
+}
+
 export function sampleStops(stops: readonly (readonly [number, Rgba])[], at: number): Rgba {
     if (stops.length === 0) return TRANSPARENT
     if (at <= stops[0]![0]) return stops[0]![1]

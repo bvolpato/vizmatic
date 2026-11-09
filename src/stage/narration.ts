@@ -5,7 +5,7 @@
  * from the script without an error.
  */
 import { Value, fade } from './anim'
-import type { Node } from './node'
+import { Node } from './node'
 import type { Stage } from './stage'
 
 /** One spoken word, timed in seconds from the start of its beat. */
@@ -89,15 +89,31 @@ export function captionLines(text: string, length = 74): string[] {
     return lines
 }
 
+/** Seconds before the first word of a scene at which a picture changes hands. See `SceneClock.keep`. */
+export const HANDOVER = 0.3
+// `clear` ends this long after the last word of a scene, with its default times.
+const CLEAR_OVERRUN = 0.02
+
 /** The clock of one scene. Every time is in film seconds. */
 export class SceneClock {
+    /** When the next scene starts: the last word of this scene plus the gap. After the last scene, no scene starts then, and the film ends one tail later. */
+    readonly next: number
+    /** The nodes that `keep` holds for the next scene. `narrated()` reads them: it does not fade them at the end of the scene. */
+    readonly kept = new Set<Node>()
+    /** The nodes that `take` got from the scene before. `narrated()` reads them: it does not fade them in. */
+    readonly taken = new Set<Node>()
+
     constructor(
-        private readonly stage: Stage,
+        /** The stage of the film. A helper that takes the clock, such as the claim tag of a kit, adds its node there. */
+        readonly stage: Stage,
         readonly id: string,
         readonly start: number,
         readonly end: number,
         readonly beats: readonly PlacedBeat[],
-    ) {}
+        next: number = end,
+    ) {
+        this.next = next
+    }
 
     /** When the voice says a phrase. Pass a beat index to search one beat only. Throws if the phrase is not spoken. */
     cue(phrase: string, beat?: number): { start: number; end: number } {
@@ -153,6 +169,39 @@ export class SceneClock {
         this.stage.at(this.end - lead, () => this.stage.play(...targets.map((target) => (target instanceof Value ? target.to(0, { duration }) : fade(target, 0, { duration })))))
         return this
     }
+
+    /**
+     * Hold a picture on screen for the next scene, with no fade between them: `c.keep(machine)`, or a list.
+     * Both scenes show the picture at one place, and each scene builds its own copy. The next scene calls
+     * `take` on its copy. The two copies change places 0.3 seconds before the first word of the next scene,
+     * so they must look the same then: this scene first undoes what it changed on its copy. In a film
+     * without `narrated()`, also leave the nodes out of `clear`.
+     */
+    keep(nodes: Node | readonly Node[]): this {
+        const gap = Math.round((this.next - this.end) * 1000) / 1000
+        // In a shorter gap the copies would change places while the rest of this scene still fades.
+        if (gap < HANDOVER + CLEAR_OVERRUN) {
+            throw new Error(`narration: scene "${this.id}": keep needs a gap of ${HANDOVER + CLEAR_OVERRUN} seconds or more between scenes, and the gap is ${gap}. Raise the gap, or let the picture fade with the scene`)
+        }
+        const list = nodes instanceof Node ? [nodes] : nodes
+        for (const node of list) this.kept.add(node)
+        this.stage.at(Math.max(0, this.next - HANDOVER), () => this.stage.remove(...list))
+        return this
+    }
+
+    /**
+     * Take a picture from the scene before this one, such as `c.take(machine, () => machine.color('dim'))`.
+     * The nodes arrive at the moment that the copy of the last scene goes, and `setup` runs on them then.
+     */
+    take(nodes: Node | readonly Node[], setup?: () => void): this {
+        const list = nodes instanceof Node ? [nodes] : nodes
+        for (const node of list) this.taken.add(node)
+        this.stage.at(Math.max(0, this.start - HANDOVER), () => {
+            for (const node of list) this.stage.add(node)
+            setup?.()
+        })
+        return this
+    }
 }
 
 /** The timeline of a whole narration. */
@@ -182,7 +231,7 @@ export class Narration {
                 beats.push({ start: now, end: now + beat.duration, until: now + beat.duration + hold, text: beat.say, words: beat.words ?? [] })
                 now += beat.duration + hold
             }
-            scenes.push(new SceneClock(stage, scene.id, start, now, beats))
+            scenes.push(new SceneClock(stage, scene.id, start, now, beats, now + this.gap))
             if (options.chapters !== false && scene.title) stage.chapters.push({ title: scene.title, time: scenes.length === 1 ? 0 : start })
             if (options.captions !== false) {
                 for (const beat of beats) {

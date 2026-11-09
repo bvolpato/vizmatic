@@ -1,4 +1,4 @@
-import { Node, dynamic } from '../node'
+import { Node, dynamic, objectName, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -18,11 +18,17 @@ export interface TagOptions {
     noteFont?: TextOptions['font']
     /** The fill of the pill. Pass null for none. Defaults to the surface color. */
     fill?: ColorInput | null
+    /**
+     * The point that `.at(x, y)` places: the left end of the pill, the middle of the pill and its note, or the
+     * right end of the note. Defaults to left, as for a chip and a row of chips.
+     */
+    anchor?: 'left' | 'center' | 'right'
 }
 
 /**
  * A word in a pill, with a note beside it: the kind of claim that is on the screen, and where it comes
  * from. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x.
+ * With `anchor: 'right'`, it places the right end, for a tag at the right edge of the frame.
  */
 export class Tag extends Node {
     readonly pill: Node
@@ -44,6 +50,13 @@ export class Tag extends Node {
         this.note = options.note ? text(options.note, { font: options.noteFont, size, color: options.noteColor ?? 'dim', anchor: 'left' }).at(width + size * 0.7, 0) : null
         this.add(this.pill, this.word)
         if (this.note) this.add(this.note)
+        if (options.anchor === 'center' || options.anchor === 'right') {
+            // The right end is the end of the ink of the note, or the border of the pill without a note.
+            const ink = this.note?.bounds()
+            const length = ink ? ink.x + ink.width : width
+            for (const part of this.children) part.shift(options.anchor === 'right' ? -length : -length / 2, 0)
+        }
+        ownLabels(this, { name: 'tag' })
     }
 
     /** Recolor the border of the pill and the word. The fill of the pill and the note keep their colors. */
@@ -112,5 +125,5 @@ export function tagTrack(states: readonly TagState[], options: TagTrackOptions):
         const alpha = Math.max(0, Math.min(1, rise, fall))
         return alpha < 0.01 ? null : tags[index]!.opacity(alpha)
     })
-    return made.pin()
+    return objectName(made.pin(), 'tag track')
 }

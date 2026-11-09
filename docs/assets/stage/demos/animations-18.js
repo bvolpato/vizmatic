@@ -1,1 +1,0 @@
-import{Ba as o,Ia as e,Mb as d,lb as r}from"../chunk-MLYB3J4Y.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var n=r({fps:30},a=>{let f=Array.from({length:13},(t,l)=>d(30,"teal").at(-720+l*120,Math.sin(l*.8)*180));a.play(o(f.map(t=>e(t,{scale:.1})),{lag:.25}),{duration:2}),a.wait(.8)});export{n as default};

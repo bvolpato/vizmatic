@@ -1,6 +1,7 @@
 import { existsSync } from 'fs'
-import { mkdir, stat, writeFile } from 'fs/promises'
+import { cp, mkdir, rename, stat, writeFile } from 'fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSheet, renderFilmSvg, renderFilmVideo, type Quality } from './stage/export'
 import { checkFilm, type FilmCheckOptions, type FilmCheckReport } from './stage/check'
 import { LOOKS, type LookName } from './stage/look'
@@ -36,6 +37,8 @@ export interface FilmArgs {
     poster: boolean
     formats: FilmFormat[]
     workers?: number
+    /** The name of the output files and of the manifest, in place of the name of the film file. For one film only. */
+    name?: string
     audioPath?: string
     ffmpegPath?: string
     background?: string | null
@@ -136,6 +139,12 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
             case '--shutter': args.shutter = positiveNumber(requireValue(argv, i++, arg), arg); break
             case '--workers': args.workers = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--audio': args.audioPath = requireValue(argv, i++, arg); break
+            case '--name': {
+                const value = requireValue(argv, i++, arg)
+                if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) throw new Error(`--name is the name of the output files, with letters, digits, dots, hyphens and underscores and no folder, but received ${JSON.stringify(value)}`)
+                args.name = value
+                break
+            }
             case '--ffmpeg': args.ffmpegPath = requireValue(argv, i++, arg); break
             case '--background': {
                 const value = requireValue(argv, i++, arg)
@@ -178,6 +187,7 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
     if (args.inputs.length === 0) throw new Error('vizmatic film needs a film file, such as: vizmatic film ./intro.ts --out dist/films')
     if (args.every !== undefined && args.frames.length > 0) throw new Error('Use --frame or --every, not both: --frame lists times, and --every samples the film at an interval.')
     if (args.columns !== undefined && !args.sheet) throw new Error('--columns sets the width of a contact sheet, so it needs --sheet.')
+    if (args.name !== undefined && args.inputs.length !== 1) throw new Error('--name names the output of one film, so it needs one film file.')
     return args
 }
 
@@ -192,9 +202,17 @@ export function filmFromModule(mod: unknown): FilmDefinition | undefined {
 
 /** Load a module and return its film, with a clear message for the common mistakes. */
 export async function loadFilmDefinition(file: string, load: FilmLoader): Promise<FilmDefinition> {
-    const candidate = filmFromModule(await load(file))
-    if (candidate) return candidate
     const shown = relative(process.cwd(), file)
+    const loaded = await load(file).catch((error: unknown) => {
+        // Only require() refuses a file URL, and only a CommonJS file calls it. So this error does not mean that a
+        // file is missing: the film was loaded as CommonJS, and the cause is the package.json beside it.
+        if (error instanceof Error && /Cannot find module 'file:\/\//.test(error.message)) {
+            throw new Error(`${shown} was loaded as CommonJS, because the package.json beside it has no "type": "module". A film is an ES module. Add "type": "module" to the package.json beside the film.`)
+        }
+        throw error
+    })
+    const candidate = filmFromModule(loaded)
+    if (candidate) return candidate
     throw new Error(`${shown} must export a film as its default export: export default film({ title: 'Intro' }, (s) => { ... })`)
 }
 
@@ -367,7 +385,7 @@ export async function runFilmCommand(args: FilmArgs, files: readonly string[], s
         await mkdir(args.outDir, { recursive: true })
         for (const file of files) {
             const definition = await loadFilmDefinition(file, load)
-            const name = stems.get(file) ?? basename(file, extname(file))
+            const name = args.name ?? stems.get(file) ?? basename(file, extname(file))
             const looks: (LookName | undefined)[] = args.looks.length > 0 ? args.looks : [undefined]
             const outputs: FilmOutputRecord[] = []
             let first: CompiledFilm | undefined
@@ -401,7 +419,8 @@ export async function runFilmCommand(args: FilmArgs, files: readonly string[], s
         }
         const report = { schemaVersion: 1, command: 'film', ok: true, elapsedSeconds: Math.round((performance.now() - started) / 10) / 100, films: manifest }
         const text = `${JSON.stringify(report, null, 2)}\n`
-        await writeFile(join(args.outDir, 'film-manifest.json'), text)
+        // With a name for its files, a run writes its manifest under that name too, so it replaces no file of another run.
+        await writeFile(join(args.outDir, args.name ? `${args.name}.manifest.json` : 'film-manifest.json'), text)
         if (args.json) process.stdout.write(text)
     } finally {
         process.removeListener('SIGINT', abort)
@@ -419,7 +438,7 @@ export async function checkFilmFile(
     file: string,
     load: FilmLoader,
     looks: readonly LookName[],
-    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin'> = {},
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'readingSpeed' | 'stepped'> = {},
 ): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)
@@ -439,7 +458,9 @@ export function printFilmCheck(report: FilmCheckFileReport): void {
     for (const entry of report.diagnostics) {
         const span = entry.time === entry.until ? `${entry.time.toFixed(2)}s` : `${entry.time.toFixed(2)}s to ${entry.until.toFixed(2)}s`
         const repeats = entry.motion && entry.motion.spans > 1 ? `, ${entry.motion.spans} times, ${entry.motion.seconds}s in total` : ''
-        const when = entry.motion ? `${span} (in motion${repeats})` : span
+        // A text that leaves too soon is not a problem of two things that cross while they move, and its
+        // message says how many times it comes.
+        const when = entry.code === 'film.text_brief' ? span : entry.motion ? `${span} (in motion${repeats})` : span
         const { x, y, width, height } = entry.box
         console.log(`  ${entry.severity} ${entry.code} at ${when}: ${entry.message} Box x=${x} y=${y} w=${width} h=${height}. Stage (${entry.stage.x}, ${entry.stage.y}).`)
     }
@@ -463,10 +484,14 @@ export async function runNewCommand(argv: readonly string[]): Promise<void> {
     const template = FILM_TEMPLATES.find((entry) => entry.name === templateName)
     if (!template) throw new Error(`Unknown template ${JSON.stringify(templateName)}. Use one of: ${FILM_TEMPLATES.map((entry) => entry.name).join(', ')}.`)
     if (!target) throw new Error(`vizmatic new needs a name, such as: vizmatic new intro --template ${template.name}`)
+    if (template.folder) {
+        await writeFolderTemplate(template.folder, template.name, target, force)
+        return
+    }
     const path = resolve(extname(target) ? target : `${target}.ts`)
     if (existsSync(path) && !force) throw new Error(`${relative(process.cwd(), path)} already exists. Pass --force to replace it.`)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, template.source)
+    await writeFile(path, template.source!)
     const shown = relative(process.cwd(), path)
     console.log(`created ${shown} from the ${template.name} template
 
@@ -474,6 +499,24 @@ Next:
   vizmatic preview ${shown}
   vizmatic check ${shown}
   vizmatic film ${shown} --out dist/films`)
+}
+
+/** Copy a template of many files from the package into a new folder. */
+async function writeFolderTemplate(folder: string, name: string, target: string, force: boolean): Promise<void> {
+    const path = resolve(target)
+    if (existsSync(path) && !force) throw new Error(`${relative(process.cwd(), path)} already exists. Pass --force to replace its files.`)
+    // The templates sit beside dist/ in the package, and beside src/ in the repository.
+    await cp(fileURLToPath(new URL(`../templates/${folder}/`, import.meta.url)), path, { recursive: true })
+    // npm leaves a file named .gitignore out of a package, so the template has it under another name.
+    await rename(join(path, 'gitignore'), join(path, '.gitignore'))
+    const shown = relative(process.cwd(), path)
+    console.log(`created ${shown}/ from the ${name} template
+
+Next, one command makes the voice, the sound mix, the layout check and a draft movie:
+  vizmatic narrated build ${shown} --draft
+
+Change the script and the scenes, and run it again: it runs only the steps that have work to do.
+The film must find the vizmatic package: create the folder inside a project that has it installed.`)
 }
 
 const LOOK_NOTES: Record<LookName, string> = {

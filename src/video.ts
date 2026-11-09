@@ -1,6 +1,7 @@
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
+import { connect, createServer, type Socket } from 'net'
 import { basename, dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
@@ -231,7 +232,12 @@ function abortError(): Error {
 
 function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
     if (!signal) return promise
-    if (signal.aborted) return Promise.reject(abortError())
+    if (signal.aborted) {
+        // The caller gets the abort. The operation can still fail later, when the encoder stops, and
+        // nothing else waits for it. A rejection that nothing handles ends Node.
+        promise.catch(() => {})
+        return Promise.reject(abortError())
+    }
 
     return new Promise((resolvePromise, rejectPromise) => {
         const cleanup = () => signal.removeEventListener('abort', onAbort)
@@ -276,6 +282,104 @@ async function stopEncoder(child: ReturnType<typeof spawn>, exited: Promise<unkn
         child.kill('SIGKILL')
         await exited
     }
+}
+
+const LOOPBACK = '127.0.0.1'
+
+/**
+ * A pair of connected TCP sockets on the loopback address, to carry the frames to FFmpeg on macOS.
+ *
+ * The pipe that Node gives a child process is a local socket pair. On macOS its buffers hold 8 KB, and a
+ * 1080p frame is 8 MB, so one frame takes about a thousand turns of write and read. A TCP socket on the
+ * loopback address has much larger buffers. FFmpeg gets one end of the pair as its standard input, and it
+ * reads `pipe:0` as before, so the bytes that it reads are the same.
+ *
+ * Returns undefined when the pair cannot be made, or when the environment variable `VIZMATIC_FFMPEG_PIPE`
+ * is `1`. The caller then uses the pipe.
+ */
+async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefined> {
+    // Only macOS takes this path. The gain is measured there, and not on other systems.
+    if (process.platform !== 'darwin' || process.env.VIZMATIC_FFMPEG_PIPE === '1') return undefined
+    // The server keeps our end half open. So when FFmpeg stops early, our end stays up until a write fails,
+    // as with a pipe.
+    const server = createServer({ allowHalfOpen: true })
+    // Every socket of this function. A failure destroys them all.
+    const sockets: Socket[] = []
+    let timer: NodeJS.Timeout | undefined
+    try {
+        return await new Promise<{ ours: Socket; theirs: Socket }>((resolvePair, rejectPair) => {
+            // A firewall rule can drop the connection without an error.
+            timer = setTimeout(() => rejectPair(new Error('The loopback connection timed out.')), 2_000)
+            let ours: Socket | undefined
+            let theirs: Socket | undefined
+            let connected = false
+            const finish = () => {
+                if (!ours || !theirs || !connected) return
+                // Another local process can connect to the port first. The pair is the connection that comes
+                // from the address and the port of our own client, on the loopback address.
+                const pair = theirs.localAddress === LOOPBACK && ours.remoteAddress === theirs.localAddress && ours.remotePort === theirs.localPort
+                if (pair) resolvePair({ ours, theirs })
+                else rejectPair(new Error('The loopback connection came from another process.'))
+            }
+            server.once('error', rejectPair)
+            server.once('connection', (socket) => {
+                // One connection is enough, so the port closes at the first one. The system then refuses
+                // each later connection, and none stays open.
+                server.close()
+                sockets.push(socket)
+                ours = socket
+                finish()
+            })
+            server.listen(0, LOOPBACK, () => {
+                const address = server.address()
+                if (!address || typeof address === 'string') {
+                    rejectPair(new Error('The loopback server has no port.'))
+                    return
+                }
+                theirs = connect(address.port, LOOPBACK)
+                sockets.push(theirs)
+                theirs.once('error', rejectPair)
+                theirs.once('connect', () => {
+                    connected = true
+                    finish()
+                })
+            })
+        })
+    } catch {
+        for (const socket of sockets) socket.destroy()
+        return undefined
+    } finally {
+        if (timer) clearTimeout(timer)
+        server.close()
+    }
+}
+
+/** The answer for each FFmpeg program, so that a process asks one time. */
+const movieTimescale = new Map<string, Promise<boolean>>()
+
+/**
+ * Says if this FFmpeg can set the time scale of an MP4.
+ *
+ * The chapter track of an MP4 counts in the time scale of the movie. FFmpeg 7 and later take for that scale the least
+ * common multiple of the scales of the tracks: millions of units in a second for a picture, sound at 48 kHz and
+ * captions. A chapter of some minutes then does not fit in 32 bits. FFmpeg drops it, writes a warning, and exits with 0.
+ * One millisecond is the scale that FFmpeg wrote up to version 6, and it holds a chapter of any length.
+ * An FFmpeg with no such option, which is 4.3 and older, writes one millisecond always.
+ */
+function hasMovieTimescale(ffmpegPath: string): Promise<boolean> {
+    let answer = movieTimescale.get(ffmpegPath)
+    if (!answer) {
+        answer = new Promise<boolean>((done) => {
+            // No time limit: on a busy machine a limit would end the question early, and the movie would then
+            // lose the option and a long chapter with no message. The input is closed, so a program that reads it ends.
+            const child = execFile(ffmpegPath, ['-hide_banner', '-h', 'muxer=mp4'], { maxBuffer: 1 << 20 }, (error, stdout) => {
+                done(!error && String(stdout).includes('movie_timescale'))
+            })
+            child.stdin?.end()
+        })
+        movieTimescale.set(ffmpegPath, answer)
+    }
+    return answer
 }
 
 /**
@@ -341,7 +445,9 @@ export async function renderRgbaVideo(
     }
     const seconds = formatSeconds(schedule.duration)
     const args = [
-        '-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+        // If the encoder gets no frame, it must fail. Without this flag, it writes a movie with no frames
+        // and reports success.
+        '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-abort_on', 'empty_output',
         '-f', 'rawvideo', '-pixel_format', 'rgba', '-video_size', `${width}x${height}`,
         '-framerate', String(fps), '-i', 'pipe:0',
     ]
@@ -392,26 +498,36 @@ export async function renderRgbaVideo(
     args.push('-pix_fmt', 'yuv420p', ...COLOR_TAGS)
     if (options.audioPath) {
         if (codec === 'vp9') args.push('-c:a', 'libopus', '-b:a', '160k', '-ar', '48000', '-ac', '2')
-        else args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2')
+        // 384 kbit/s is what YouTube asks for in a stereo upload. A site encodes the sound again, so the file keeps more than a viewer needs.
+        else args.push('-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-ac', '2')
     }
-    if (codec === 'h264') args.push('-movflags', '+faststart')
+    if (codec === 'h264') {
+        args.push('-movflags', '+faststart')
+        if (metadataInput >= 0 && await hasMovieTimescale(ffmpegPath)) args.push('-movie_timescale', '1000')
+    }
     args.push(tempPath)
 
     let stderr = ''
     let inputError: Error | undefined
     let child: ReturnType<typeof spawn>
+    const pair = await loopbackPair()
     try {
-        child = spawn(ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] })
+        child = spawn(ffmpegPath, args, { stdio: [pair ? pair.theirs : 'pipe', 'ignore', 'pipe'] })
     } catch (error) {
+        pair?.ours.destroy()
+        pair?.theirs.destroy()
         await rm(tempPath, { force: true })
         for (const path of sidecars) await rm(path, { force: true })
         throw error
     }
+    // The child has its own copy of its end. This copy must close, so that the child alone reads the frames.
+    pair?.theirs.destroy()
+    const frameInput = pair ? pair.ours : child.stdin
     child.stderr?.on('data', (chunk: Buffer | string) => {
         stderr += chunk.toString()
         if (stderr.length > MAX_STDERR_CHARS) stderr = stderr.slice(-MAX_STDERR_CHARS)
     })
-    child.stdin?.on('error', (error) => { inputError = error })
+    frameInput?.on('error', (error) => { inputError = error })
     let exitResult: EncoderExit | undefined
     const exited = new Promise<EncoderExit>((resolvePromise) => {
         child.once('error', (error) => {
@@ -464,7 +580,7 @@ export async function renderRgbaVideo(
     }
 
     try {
-        const input = child.stdin
+        const input = frameInput
         if (!input) throw new Error('FFmpeg did not provide a frame input stream')
 
         for (let index = 0; index < schedule.count; index++) {
@@ -506,11 +622,14 @@ export async function renderRgbaVideo(
         }
     } catch (error) {
         await stopEncoder(child, exited)
-        if (inputError && error instanceof Error && (error.message === 'write EPIPE' || (error as NodeJS.ErrnoException).code === 'EPIPE')) {
+        // An encoder that stops early closes its input. A pipe reports that as EPIPE, and a socket can report a reset.
+        const code = (error as NodeJS.ErrnoException | undefined)?.code
+        if (inputError && error instanceof Error && (error.message === 'write EPIPE' || code === 'EPIPE' || code === 'ECONNRESET')) {
             throw describeExit(null, null, stderr || inputError.message)
         }
         throw error
     } finally {
+        pair?.ours.destroy()
         await rm(tempPath, { force: true })
         for (const path of sidecars) await rm(path, { force: true })
     }

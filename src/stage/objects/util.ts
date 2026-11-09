@@ -9,11 +9,16 @@ import type { Path, Ring, Vec } from '../geometry'
 import type { ColorInput } from '../color'
 import { parseColor, type Rgba } from '../color'
 
-/** Put a node on stage if needed and make sure it and its parents show from time t. */
+/**
+ * Put a node on stage if needed and make sure it and its parents show from time t. The node arrives at t,
+ * which in a sequence is later than the time of the stage. A node in a group that is not on stage brings the
+ * whole group, so it keeps the place that the group gives it.
+ */
 export function reveal(node: Node, t: number, stage: Stage): void {
     if (!node.mounted) {
-        clock.now = t
-        stage.add(node)
+        let top = node
+        while (top.parent && top.parent !== stage.root) top = top.parent
+        stage.mountAt(top, t)
     }
     for (let n: Node | null = node; n && n !== stage.root; n = n.parent) {
         if (!sampleAt(n, 'visible', t)) n.track('visible').step(t, true)
@@ -48,6 +53,41 @@ export function staggered(count: number, lag: number, t0: number, t1: number): [
     })
 }
 
+/** The first share of the time at which an ease is at a share of the way. An ease may pass the end and come back. */
+export function reaches(ease: Ease, share: number): number {
+    if (share <= 0) return 0
+    const steps = 256
+    for (let k = 1; k <= steps; k++) {
+        if (ease(k / steps) < share) continue
+        let low = (k - 1) / steps, high = k / steps
+        for (let pass = 0; pass < 24; pass++) {
+            const middle = (low + high) / 2
+            if (ease(middle) >= share) high = middle
+            else low = middle
+        }
+        return high
+    }
+    return 1
+}
+
+/**
+ * An ease that never goes back and never passes its end: at each share of the time, the furthest share of
+ * the way that the ease has reached. The cursor of `lanes` and of `dateLine` shows events and cannot hide
+ * them again, so an ease that bounces or passes its end must not move the cursor back, or past the end of
+ * the advance.
+ */
+export function forwardOnly(ease: Ease): Ease {
+    const steps = 256
+    const most = new Float64Array(steps + 1)
+    let top = 0
+    for (let k = 0; k <= steps; k++) {
+        top = Math.max(top, Math.min(1, ease(k / steps)))
+        most[k] = top
+    }
+    // An ease that only rises keeps its own value at every time, not a value between two samples.
+    return (share) => (share <= 0 ? 0 : Math.max(most[Math.min(steps, Math.floor(share * steps))]!, Math.min(1, ease(Math.min(1, share)))))
+}
+
 /** Direct straight-line interpolation between two paths with the same structure. */
 export function lerpSame(from: Path, to: Path): (alpha: number) => Path {
     return (alpha) => {
@@ -62,11 +102,11 @@ export function lerpSame(from: Path, to: Path): (alpha: number) => Path {
     }
 }
 
-/** A math or plain label as a node, unless it already is one. */
+/** A math or plain label as a node, unless it already is one. A plain label with no `font` is in the font of the film. */
 export function labelNode(label: string | Node, options: { size: number; color?: ColorInput; math?: boolean; font?: TextOptions['font']; weight?: TextOptions['weight'] }): Node {
     if (typeof label !== 'string') return label
     if (options.math) return tex(label, { size: options.size, color: options.color ?? 'ink', display: false })
-    return text(label, { size: options.size, color: options.color ?? 'ink', font: options.font ?? 'sans', weight: options.weight ?? 400 })
+    return text(label, { size: options.size, color: options.color ?? 'ink', font: options.font, weight: options.weight ?? 400 })
 }
 
 /** Relative luminance, for choosing readable text over a filled cell. */
@@ -85,7 +125,10 @@ export function solidColor(input: ColorInput): Rgba {
     return stops[0]![1]
 }
 
-/** Small seeded generator (mulberry32), for layouts and jitter that repeat exactly. */
+/**
+ * Small seeded generator (mulberry32), for layouts and jitter that repeat exactly: `const random = seededRandom(7)`,
+ * then each `random()` is a number from 0 up to 1. A film is built more than once, so it must not use `Math.random`.
+ */
 export function seededRandom(seed: number): () => number {
     let state = seed >>> 0
     return () => {

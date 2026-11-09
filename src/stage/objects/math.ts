@@ -1,8 +1,9 @@
 import { Axes, NumberPlane, type PlaneOptions } from '../objects'
 import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, ring, type Path, type Ring, type Vec } from '../geometry'
-import { dynamic, Node, type Side, direction } from '../node'
+import { dynamic, Node, ownLabels, type Side, direction, objectName } from '../node'
 import { arrow, brace, dot, line, rect, type ShapeStyle } from '../shapes'
 import { tex, TexNode } from '../tex'
+import type { TextOptions } from '../text'
 import { ramp, sampleStops, toPaint, type ColorInput, type Rgba } from '../color'
 import { clock } from '../track'
 import { morphMatching, warp, type Anim, type AnimOptions } from '../anim'
@@ -55,6 +56,7 @@ export class NumberLine extends Node {
             }
         }
         this.add(this.line, this.ticks, this.numbers)
+        ownLabels(this, { name: 'number line', plot: true })
     }
 
     /** Value to local stage coordinates. */
@@ -80,6 +82,7 @@ export class NumberLine extends Node {
         }
         const node = typeof value === 'function' ? dynamic(build) : new Node().add(...build())
         this.add(node)
+        ownLabels(this, { labels: [node] })
         return node
     }
 
@@ -128,6 +131,7 @@ export class ComplexPlane extends NumberPlane {
             this.numbers.add(imaginary.at(-size * 0.9, -k * this.unit))
         }
         this.add(this.numbers)
+        ownLabels(this, { name: 'complex plane', plot: true })
     }
 
     /** Complex number to local stage coordinates. */
@@ -228,6 +232,9 @@ export class VectorField extends Node {
 
     constructor(readonly f: FieldFn, options: VectorFieldOptions = {}) {
         super()
+        objectName(this, 'vector field')
+        // Each arrow is a filled shape, and a field is lines on a plot: they may pass the numbers of an axis.
+        this.data['line'] = true
         const unit = this.unit = options.unit ?? 120
         const [x0, x1] = options.x ?? [-8, 8]
         const [y0, y1] = options.y ?? [-4.5, 4.5]
@@ -331,6 +338,7 @@ export class StreamLines extends Node {
 
     constructor(f: FieldFn, options: StreamLinesOptions = {}) {
         super()
+        objectName(this, 'field of stream lines')
         const unit = options.unit ?? 120
         const [x0, x1] = options.x ?? [-8.5, 8.5]
         const [y0, y1] = options.y ?? [-5, 5]
@@ -455,7 +463,7 @@ export function riemann(axes: Axes, f: (x: number) => number, options: RiemannOp
         made.add(leaf)
     }
     axes.add(made)
-    return made
+    return objectName(made, 'Riemann sum')
 }
 
 export interface AreaOptions {
@@ -489,7 +497,7 @@ export function areaUnder(axes: Axes, f: (x: number) => number, options: AreaOpt
         })
         : new Node(areaPath(axes, f, from, to, samples)).fill(color, opacity)
     axes.add(node)
-    return node
+    return objectName(node, 'area under a curve')
 }
 
 function slopeAt(axes: Axes, f: (x: number) => number, x: number): { point: Vec; ux: number; uy: number } {
@@ -523,7 +531,7 @@ export function tangentLine(axes: Axes, f: (x: number) => number, x: Reactive, s
     }
     const node = typeof x === 'function' ? dynamic(build) : new Node().add(...build())
     axes.add(node)
-    return node
+    return objectName(node, 'tangent line')
 }
 
 export interface SecantOptions extends ShapeStyle {
@@ -555,7 +563,7 @@ export function secantLine(axes: Axes, f: (x: number) => number, a: Reactive, b:
     }
     const node = typeof a === 'function' || typeof b === 'function' ? dynamic(build) : new Node().add(...build())
     axes.add(node)
-    return node
+    return objectName(node, 'secant line')
 }
 
 /** Dashed drop lines from a point on the axes. Pass functions to follow a moving point. */
@@ -569,7 +577,7 @@ export function dashedGuides(axes: Axes, x: Reactive, y: Reactive, style: ShapeS
     }
     const node = typeof x === 'function' || typeof y === 'function' ? dynamic(build) : new Node().add(...build())
     axes.add(node)
-    return node
+    return objectName(node, 'pair of guides')
 }
 
 // ── Geometry marks ──────────────────────────────────────────────────────────
@@ -611,7 +619,8 @@ export function angleMark(vertex: Vec, from: Vec, to: Vec, options: AngleOptions
         const distance = radius + size * 0.72
         node.add(tex(options.label, { size, color, display: false }).at(vertex[0] + Math.cos(mid) * distance, vertex[1] + Math.sin(mid) * distance))
     }
-    return node
+    // The film draws the two rays, and the label stands between them: a line of the film may pass it, as on a plot.
+    return ownLabels(node, { name: 'angle mark', plot: true })
 }
 
 /** The small square that marks a right angle. */
@@ -623,11 +632,11 @@ export function rightAngle(vertex: Vec, a: Vec, b: Vec, options: { size?: number
         return [dx / l, dy / l]
     }
     const [ax, ay] = unit(a), [bx, by] = unit(b)
-    return new Node(polyPath([
+    return objectName(new Node(polyPath([
         [vertex[0] + ax * size, vertex[1] + ay * size],
         [vertex[0] + (ax + bx) * size, vertex[1] + (ay + by) * size],
         [vertex[0] + bx * size, vertex[1] + by * size],
-    ])).stroke(options.color ?? 'ink', options.width ?? 2.5)
+    ])).stroke(options.color ?? 'ink', options.width ?? 2.5), 'right angle mark')
 }
 
 // ── Matrices ────────────────────────────────────────────────────────────────
@@ -658,6 +667,7 @@ export class MatrixNode extends Node {
 
     constructor(rows: readonly (readonly (string | number)[])[], options: MatrixOptions = {}) {
         super()
+        objectName(this, 'matrix')
         this.options = options
         const size = options.size ?? 52
         const color = options.color ?? 'ink'
@@ -762,6 +772,8 @@ export interface BraceLabelOptions {
     color?: ColorInput
     /** Set for plain text labels. Labels are math by default. */
     plain?: boolean
+    /** The font of a plain label. Defaults to the font of the film. */
+    font?: TextOptions['font']
     depth?: number
 }
 
@@ -779,12 +791,15 @@ export function braceLabel(target: Node | readonly Node[], label: string, option
                 : [[right + gap, bottom], [right + gap, top]]
     const mark = brace(from, to, { stroke: color, depth: options.depth })
     const tip = mark.data['tip'] as Vec
-    const caption = labelNode(label, { size, color, math: !options.plain })
+    const caption = labelNode(label, { size, color, math: !options.plain, font: options.font })
     caption.moveTo(tip)
     const dir = direction(side as Side)
     const shifted = 10 + (dir[0] !== 0 ? caption.width / 2 : caption.height / 2)
     caption.shift(dir[0] * shifted, dir[1] * shifted)
-    return new Node().add(mark, caption)
+    const made = ownLabels(new Node().add(mark, caption), { name: 'brace label' })
+    // The brace stands beside its target on purpose, so the film check does not judge the text of the target against it.
+    made.data['attached'] = Array.isArray(target) ? [...target] : [target]
+    return made
 }
 
 export interface SurroundOptions {
@@ -803,6 +818,8 @@ export function surroundingBox(target: Node | readonly Node[], options: Surround
     const pad = options.pad ?? 12
     const box = rect(b.width + pad * 2, b.height + pad * 2, { radius: options.radius ?? 8, stroke: options.color ?? 'yellow', width: options.width ?? 2.5, glow: options.glow })
     if (options.fill) box.fill(options.fill, options.fillOpacity ?? 0.14)
+    // A film puts this box around a text on purpose, so the film check does not judge the text against it.
+    box.data['decoration'] = true
     return box.at(b.x + b.width / 2, b.y + b.height / 2)
 }
 
@@ -813,6 +830,8 @@ export interface LabeledDotOptions {
     gap?: number
     size?: number
     plain?: boolean
+    /** The font of a plain label. Defaults to the font of the film. */
+    font?: TextOptions['font']
     labelColor?: ColorInput
 }
 
@@ -825,9 +844,10 @@ export class LabeledDot extends Node {
         super()
         const color = options.color ?? 'yellow'
         this.mark = dot(options.radius ?? 9, color)
-        this.caption = labelNode(label, { size: options.size ?? 30, color: options.labelColor ?? color, math: !options.plain })
+        this.caption = labelNode(label, { size: options.size ?? 30, color: options.labelColor ?? color, math: !options.plain, font: options.font })
         this.add(this.mark, this.caption)
         this.caption.nextTo(this.mark, options.side ?? [0.72, -0.72], options.gap ?? 8)
+        ownLabels(this, { name: 'labeled dot' })
     }
 }
 
@@ -872,7 +892,7 @@ export function traced(point: () => Vec, from: number, to: number, options: Trac
         if (clock.mode === 'render') cache.set(index, value)
         return value
     }
-    return dynamic((time) => {
+    return objectName(dynamic((time) => {
         if (time <= from) return null
         const end = Math.min(time, to)
         const start = options.tail !== undefined ? Math.max(from, end - options.tail) : from
@@ -898,7 +918,7 @@ export function traced(point: () => Vec, from: number, to: number, options: Trac
             out.push(node)
         }
         return out
-    })
+    }), 'traced path')
 }
 
 // ── Fourier ─────────────────────────────────────────────────────────────────
@@ -973,6 +993,7 @@ export class Epicycles extends Node {
 
     constructor(terms: readonly FourierTerm[], options: EpicyclesOptions) {
         super()
+        objectName(this, 'set of epicycles')
         // Slow terms first: the eye reads the big circles as the skeleton.
         this.terms = [...terms].sort((a, b) => (a.freq === 0 ? -1 : b.freq === 0 ? 1 : 0) || b.amp - a.amp)
         const samples = options.samples ?? 1024

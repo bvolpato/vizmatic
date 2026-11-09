@@ -68,7 +68,7 @@ npx vizmatic film my-film.ts --range 12:18 --quality draft
 
 ## Sound
 
-`--audio` adds a track. The audio is padded or trimmed to the film's length. FFmpeg must include AAC.
+`--audio` adds a track. The audio is padded or trimmed to the film's length. An MP4 gets stereo AAC at 48 kHz and 384 kbit/s, which is what YouTube asks for in an upload. FFmpeg must include AAC.
 
 ```bash
 npx vizmatic film my-film.ts --audio narration.wav
@@ -103,6 +103,18 @@ Bloom is smooth light over a few of the 256 levels of a channel. Cut to whole le
 
 Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
 
-Each worker can reuse its last completed RGBA result when every SVG sample, dimension, bloom setting, and background value is identical. This applies to generated frames with prepared, embedded image assets. Raw SVG jobs and unresolved image references always rasterize again. Updaters and every shutter sample still run before this comparison.
+A movie or GIF export compares each frame with the frame before it, on the main thread. A frame that is equal takes the pixels of that frame, and no worker rasterizes it. Two frames are equal when every SVG sample, the dimensions, the bloom and dither settings, and the background value are identical. This applies to generated frames with prepared, embedded image assets. A frame with an unresolved image reference always rasterizes again, because the file can change between two frames. Updaters and every shutter sample still run before this comparison.
 
-The worker retains one private result, capped at 64 MiB of pixels and an 8 MiB serialized-key allowance. Returned buffers are separate copies. Render planning includes this retained memory when choosing workers.
+With motion blur, shutter samples next to each other with the same SVG share one raster inside a frame. This applies to every frame, with any image, because one frame is one render.
+
+For the comparison, the export keeps the SVG text of one frame and the pixels of one frame in memory. Equal frames share one pixel buffer. A film whose frames alternate between two pictures gets no reuse, because each frame differs from the frame before it.
+
+On macOS, the frames go to FFmpeg through a TCP socket on the loopback address `127.0.0.1`, because the pipe of a child process has 8 KB buffers there. If the export cannot open the socket in 2 seconds, it uses the pipe. Set the environment variable `VIZMATIC_FFMPEG_PIPE=1` to use the pipe at once, for example on a machine whose firewall drops loopback connections.
+
+To measure an export, run the benchmark on a short range of a film:
+
+```bash
+pnpm benchmark:export examples/films/lorenz.ts --from 5 --to 15 --quality standard --workers 6,12 --repeat 3
+```
+
+It prints the frames per second, the count of frames that a worker computed, the count of frames that took the pixels of the frame before, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.

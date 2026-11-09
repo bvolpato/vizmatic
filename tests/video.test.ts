@@ -144,6 +144,72 @@ describe('RGBA video export', () => {
         }
     }, 30_000)
 
+    it.skipIf(!hasFfmpeg || !hasFfprobe)('keeps a chapter of some minutes in a movie with captions and sound', async () => {
+        const directory = await tempDirectory()
+        const outputPath = join(directory, 'long.mp4')
+        const audioPath = join(directory, 'tone.wav')
+        // Sound at 48 kHz and a caption track, as a narrated film has: the two raise the time scale that FFmpeg 7 and later pick.
+        const tone = spawnSync('ffmpeg', [
+            '-hide_banner', '-loglevel', 'error', '-y',
+            '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.05:sample_rate=48000',
+            '-c:a', 'pcm_s16le', audioPath,
+        ], { encoding: 'utf8' })
+        expect(tone.status, tone.stderr).toBe(0)
+        const pixels = new Uint8Array(64 * 48 * 4).fill(255)
+        await renderRgbaVideo(() => pixels, {
+            width: 64, height: 48, duration: 420_000, fps: 2, outputPath, audioPath,
+            title: 'Long',
+            chapters: [{ title: 'One', time: 0 }, { title: 'Two', time: 400 }],
+            captions: [{ t0: 1, t1: 3, text: 'a caption' }],
+        })
+        const probe = spawnSync('ffprobe', ['-v', 'error', '-show_chapters', '-of', 'json', outputPath], { encoding: 'utf8' })
+        expect(probe.status, probe.stderr).toBe(0)
+        const chapters = (JSON.parse(probe.stdout) as { chapters: Array<{ start_time: string; end_time: string; tags: { title: string } }> }).chapters
+        expect(chapters.map((chapter) => [chapter.tags.title, Math.round(Number(chapter.start_time)), Math.round(Number(chapter.end_time))]))
+            .toEqual([['One', 0, 400], ['Two', 400, 420]])
+    }, 120_000)
+
+    it.skipIf(process.platform === 'win32')('hands every byte of every frame to the encoder, in order', async () => {
+        const directory = await tempDirectory()
+        // A stand-in for FFmpeg: it copies its input to its last argument, which is the output path.
+        const encoder = join(directory, 'copy-input.sh')
+        await writeFile(encoder, '#!/bin/sh\nfor last; do :; done\nexec cat > "$last"\n', { mode: 0o755 })
+        // Each frame is larger than the buffers between the two programs, and no two frames are equal.
+        const width = 640, height = 360
+        const frames = Array.from({ length: 6 }, (_, index) => {
+            const frame = new Uint8Array(width * height * 4)
+            let state = index + 1
+            for (let i = 0; i < frame.length; i++) {
+                state = (Math.imul(state, 1103515245) + 12345) & 0x7fffffff
+                frame[i] = state >> 16
+            }
+            return frame
+        })
+        const output = await renderRgbaVideo(({ index }) => frames[index]!, {
+            width, height, duration: 600, fps: 10, outputPath: join(directory, 'frames.raw'), ffmpegPath: encoder,
+        })
+        expect(output.frameCount).toBe(6)
+        expect(Buffer.compare(await readFile(output.outputPath), Buffer.concat(frames))).toBe(0)
+    }, 30_000)
+
+    it.skipIf(process.platform === 'win32').each([
+        ['reads a part of the frames', 'head -c 100000 > /dev/null\n'],
+        ['reads nothing', ''],
+    ])('reports an encoder that stops when it %s', async (_name, read) => {
+        const directory = await tempDirectory()
+        const encoder = join(directory, 'stop-early.sh')
+        await writeFile(encoder, `#!/bin/sh\n${read}echo "stopped early" >&2\nexit 4\n`, { mode: 0o755 })
+        // A frame much larger than the buffers, so that the encoder stops in the middle of a write.
+        // Several times: the error that the write reports depends on when the encoder closes its input.
+        const frame = new Uint8Array(1920 * 1080 * 4)
+        for (let attempt = 0; attempt < 5; attempt++) {
+            await expect(renderRgbaVideo(() => frame, {
+                width: 1920, height: 1080, duration: 2_000, fps: 10, outputPath: join(directory, 'never.mp4'), ffmpegPath: encoder,
+            })).rejects.toThrow(/FFmpeg failed.*stopped early/s)
+        }
+        expect(await readdir(directory)).toEqual(['stop-early.sh'])
+    }, 30_000)
+
     it.skipIf(!hasFfmpeg)('preserves an existing output when frame rendering fails', async () => {
         const directory = await tempDirectory()
         const outputPath = join(directory, 'lesson.mp4')
@@ -163,6 +229,40 @@ describe('RGBA video export', () => {
         expect(await readFile(outputPath, 'utf8')).toBe('previous output')
         expect(await readdir(directory)).toEqual(['lesson.mp4'])
     }, 30_000)
+
+    it.skipIf(!hasFfmpeg)('ends with the abort error, and leaves no rejection without a handler, when the abort comes before the first frame', async () => {
+        const directory = await tempDirectory()
+        // Node ends the process on a rejection that nothing handles.
+        const unhandled: unknown[] = []
+        const note = (reason: unknown) => { unhandled.push(reason) }
+        process.on('unhandledRejection', note)
+        try {
+            for (const delay of [0, 1, 2, 5, 20]) {
+                for (let run = 0; run < 20; run++) {
+                    const controller = new AbortController()
+                    const timer = setTimeout(() => controller.abort(), delay)
+                    await expect(renderRgbaVideo(() => new Promise<Uint8Array>(() => {}), {
+                        width: 32, height: 24, duration: 1_000, outputPath: join(directory, 'aborted.mp4'), signal: controller.signal,
+                    })).rejects.toMatchObject({ name: 'AbortError' })
+                    clearTimeout(timer)
+                }
+            }
+            // An abort from inside the frame callback: the signal is aborted before the export waits for the frame.
+            for (let run = 0; run < 5; run++) {
+                const controller = new AbortController()
+                await expect(renderRgbaVideo(() => {
+                    controller.abort()
+                    return new Promise<Uint8Array>(() => {})
+                }, { width: 32, height: 24, duration: 1_000, outputPath: join(directory, 'aborted.mp4'), signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' })
+            }
+            // Node reports such a rejection after the work of the current turn of the loop.
+            await new Promise((resolvePromise) => setTimeout(resolvePromise, 200))
+            expect(unhandled).toEqual([])
+        } finally {
+            process.off('unhandledRejection', note)
+        }
+        expect(await readdir(directory)).toEqual([])
+    }, 180_000)
 
     it.skipIf(!hasFfmpeg)('stops FFmpeg and removes its temporary file on abort', async () => {
         const directory = await tempDirectory()

@@ -567,6 +567,8 @@ function bake(leaf: Node): Baked {
 /** A temporary shape that exists only while a morph plays. */
 function ghost(stage: Stage, from: Baked, to: Baked, ctx: { t0: number; t1: number; ease: Ease; appear?: number; hide?: number }): Node {
     const node = new Node()
+    // A ghost is on its way from one picture to the next, and it can be a letter. The film check does not take it as a mark beside a text.
+    node.data['decoration'] = true
     node.base.visible = false
     node.base.path = from.path
     node.base.cap = from.cap
@@ -626,12 +628,12 @@ export function morph(from: Target, to: Target, options: AnimOptions & { lag?: n
             const pairs = pairCounts(fromLeaves, toLeaves)
             const lag = options.lag ?? 0
             const each = (ctx.t1 - ctx.t0) / (1 + Math.max(0, pairs.length - 1) * lag)
-            pairs.forEach(([x, y], i) => {
+            const ghosts = pairs.map(([x, y], i) => {
                 const start = ctx.t0 + i * lag * each
                 // A piece that finishes early stays until the target appears at the end.
-                ghost(ctx.stage, x, y, { t0: start, t1: start + each, ease: ctx.ease, appear: ctx.t0, hide: ctx.t1 })
+                return ghost(ctx.stage, x, y, { t0: start, t1: start + each, ease: ctx.ease, appear: ctx.t0, hide: ctx.t1 })
             })
-            finishMorph(a, b, ctx)
+            finishMorph(a, b, ghosts, ctx)
         },
     }
 }
@@ -644,9 +646,11 @@ function prepareTargets(targets: readonly Node[], ctx: AnimContext): void {
     }
 }
 
-function finishMorph(a: readonly Node[], b: readonly Node[], ctx: AnimContext): void {
+function finishMorph(a: readonly Node[], b: readonly Node[], ghosts: readonly Node[], ctx: AnimContext): void {
     for (const node of a) hideAt(node, ctx.t0)
     for (const node of b) node.track('visible').step(ctx.t1, true)
+    // For the lights of the film, which must not dim a node while it changes its shape.
+    ctx.stage.morphs.push({ start: ctx.t0, end: ctx.t1, from: a, to: b, ghosts })
     clock.now = ctx.t0
 }
 
@@ -664,23 +668,23 @@ export function morphMatching(from: Node, to: Node, options: AnimOptions & { key
             const fromBaked = fromLeaves.map(bake), toBaked = toLeaves.map(bake)
             const pairs = matchSequence(fromLeaves.map(keyOf), toLeaves.map(keyOf))
             const usedFrom = new Set(pairs.map(([i]) => i)), usedTo = new Set(pairs.map(([, j]) => j))
-            for (const [i, j] of pairs) ghost(ctx.stage, fromBaked[i]!, toBaked[j]!, ctx)
+            const ghosts = pairs.map(([i, j]) => ghost(ctx.stage, fromBaked[i]!, toBaked[j]!, ctx))
             const span = ctx.t1 - ctx.t0
             const offset = options.fadeShift ?? [0, 0]
             const shifted = (bakedPath: Path, dx: number, dy: number) => transformPath(bakedPath, [1, 0, 0, 1, dx, dy])
             fromBaked.forEach((baked, i) => {
                 if (usedFrom.has(i)) return
-                ghost(ctx.stage, baked, {
+                ghosts.push(ghost(ctx.stage, baked, {
                     ...baked, path: shifted(baked.path, offset[0], offset[1]), fillOpacity: 0, strokeOpacity: 0,
-                }, { t0: ctx.t0, t1: ctx.t0 + span * 0.55, ease: ctx.ease })
+                }, { t0: ctx.t0, t1: ctx.t0 + span * 0.55, ease: ctx.ease }))
             })
             toBaked.forEach((baked, j) => {
                 if (usedTo.has(j)) return
-                ghost(ctx.stage, {
+                ghosts.push(ghost(ctx.stage, {
                     ...baked, path: shifted(baked.path, -offset[0], -offset[1]), fillOpacity: 0, strokeOpacity: 0,
-                }, baked, { t0: ctx.t0 + span * 0.35, t1: ctx.t1, ease: ctx.ease })
+                }, baked, { t0: ctx.t0 + span * 0.35, t1: ctx.t1, ease: ctx.ease }))
             })
-            finishMorph([from], [to], ctx)
+            finishMorph([from], [to], ghosts, ctx)
         },
     }
 }
@@ -724,7 +728,10 @@ export function circumscribe(target: Node, options: AnimOptions & { color?: Colo
             const outline = new Node(rectPath(b.x - pad, b.y - pad, b.width + pad * 2, b.height + pad * 2, options.radius ?? 12))
                 .stroke(options.color ?? 'yellow', options.width ?? 3)
                 .glow(8)
+            // A film puts this line around a text on purpose, so the film check does not judge the text against it.
+            outline.data['decoration'] = true
             ctx.stage.add(outline)
+            ctx.stage.marks.set(outline, target)
             const t0 = ctx.t0, t1 = ctx.t1, mid = t0 + (t1 - t0) * 0.55
             stepAt(outline, 'trimTo', 0, t0)
             outline.tween('trimTo', 1, t0, mid, smooth)
@@ -732,6 +739,15 @@ export function circumscribe(target: Node, options: AnimOptions & { color?: Colo
             hideAt(outline, t1)
         },
     }
+}
+
+/**
+ * Tell the lights of the film what a mark of a verb is for. A mark for a node is as bright as that node. A
+ * mark at a point belongs to no node: it arrives now, with its own look.
+ */
+function markOf(ctx: AnimContext, mark: Node, target: Vec | Node): void {
+    if (target instanceof Node) ctx.stage.marks.set(mark, target)
+    else ctx.stage.arrivals.set(mark, ctx.t0)
 }
 
 /** Radial burst at a point, for a moment of arrival. */
@@ -749,6 +765,7 @@ export function flash(point: Vec | Node, options: AnimOptions & { color?: ColorI
                     .stroke(options.color ?? 'yellow', 2.5)
                     .glow(5)
                 ctx.stage.add(ray)
+                markOf(ctx, ray, point)
                 stepAt(ray, 'trimTo', 0, ctx.t0)
                 ray.tween('trimTo', 1, ctx.t0, ctx.t0 + (ctx.t1 - ctx.t0) * 0.6, ctx.ease)
                 ray.tween('trimFrom', 1, ctx.t0 + (ctx.t1 - ctx.t0) * 0.25, ctx.t1, ctx.ease)
@@ -766,6 +783,7 @@ export function ripple(point: Vec | Node, options: AnimOptions & { color?: Color
             const center: Vec = point instanceof Node ? point.center : point
             const ring = new Node(circlePath(0, 0, options.radius ?? 90)).stroke(options.color ?? 'blue', options.width ?? 3).at(center)
             ctx.stage.add(ring)
+            markOf(ctx, ring, point)
             stepAt(ring, 'sx', 0.05, ctx.t0)
             stepAt(ring, 'sy', 0.05, ctx.t0)
             ring.tween('sx', 1, ctx.t0, ctx.t1, ctx.ease)
@@ -790,6 +808,7 @@ export function pulse(line: Node, options: AnimOptions & { color?: ColorInput; l
                 .stroke(options.color ?? 'yellow', options.width ?? (line.get('strokeWidth') + 1.5))
                 .glow(options.glow ?? 10)
             ctx.stage.add(lit)
+            ctx.stage.marks.set(lit, line)
             const length = options.length ?? 0.18
             stepAt(lit, 'trimFrom', 0, ctx.t0)
             stepAt(lit, 'trimTo', 0, ctx.t0)

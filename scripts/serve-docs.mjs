@@ -101,4 +101,9 @@ function listen(nextPort, remainingAttempts) {
     })
 }
 
+// The website is not committed. A new checkout has no pages until a build writes them.
+if (!(await stat(join(root, 'index.html')).catch(() => null))?.isFile()) {
+    console.error(`No index.html in ${root}. To build the website, run: pnpm build && pnpm site:build`)
+}
+
 listen(port, 20)

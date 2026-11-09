@@ -1,1 +1,0 @@
-import{Sa as p,lb as r,yb as o}from"../chunk-MLYB3J4Y.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var i=r({fps:30},a=>{let e=a.add(o("a^2 + b^2 = c^2",{size:170}));a.wait(.4),a.play(...e.part("a^2").map(t=>p(t,"teal"))),a.play(...e.part("b^2").map(t=>p(t,"orange"))),a.wait(.8)});export{i as default};
