@@ -1,1 +1,0 @@
-import{Na as e,Sb as d,lb as i,wb as a}from"../chunk-DS42DGBH.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var f=i({fps:30},t=>{t.add(d({unit:160})),t.add(a("This title is pinned.",{font:"text-serif",size:120}).at(0,-380).pin()),t.play(e(t.camera,o=>o.at(700,300).set("sx",1.6),{duration:2})),t.wait(.5)});export{f as default};

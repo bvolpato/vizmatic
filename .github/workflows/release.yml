@@ -12,6 +12,8 @@ on:
         default: ""
 
 permissions:
+  # The last step starts the Pages workflow.
+  actions: write
   contents: write
   id-token: write
 
@@ -42,7 +44,9 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           test "${RELEASE_TAG}" = "v${VERSION}"
       - run: pnpm verify
-      - name: Ensure generated files are committed
+      # The website is built here but not committed: .gitignore names each of its files. This step
+      # fails when committed output changed, or when the build wrote a file with no rule.
+      - name: Ensure the build leaves a clean tree
         run: test -z "$(git status --porcelain)"
       - name: Validate npm token
         env:
@@ -103,3 +107,14 @@ jobs:
           else
             gh release create "$CURRENT_TAG" --generate-notes --notes-file release-notes.md --verify-tag
           fi
+      # The public site shows the last release. This step comes last, so a failed publish starts
+      # no deploy, and the site never describes a version that nobody can install.
+      # The Pages workflow builds the site from this tag. It runs on main, because the
+      # github-pages environment accepts a deployment from main only.
+      - name: Start the deploy of the site for this tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main -f ref="$RELEASE_TAG"
+          echo "Started the Pages workflow for $RELEASE_TAG. See https://github.com/$GITHUB_REPOSITORY/actions/workflows/pages.yml"

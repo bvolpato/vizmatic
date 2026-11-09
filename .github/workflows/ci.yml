@@ -43,8 +43,17 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # The website is not committed, and it deploys only at a release. So each pull request
+      # must prove here that a clean checkout builds it. The install runs `pnpm build`.
       - run: pnpm install --frozen-lockfile
       - run: pnpm site:build
+      # Each file that the two builds write must have a rule in .gitignore, and no committed
+      # file may change. The status lists each file that breaks this.
+      - name: Check that the build leaves a clean tree
+        run: |
+          git status --porcelain --untracked-files=all
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - run: pnpm docs:check
       - run: pnpm exec playwright install --with-deps chromium
       - name: Check image pixels in Chromium and Node
         run: pnpm exec vitest run tests/stage-image.test.ts

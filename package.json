@@ -139,6 +139,7 @@
     "workflows:check": "node scripts/check-workflows.mjs",
     "site:serve": "node scripts/serve-docs.mjs docs 4173",
     "sync:plugin-versions": "node scripts/sync-plugin-versions.mjs",
+    "sync:skill": "node scripts/sync-skill.mjs",
     "security:audit": "pnpm audit --audit-level low",
     "deps:check": "pnpm security:audit && pnpm assets:check && publint && tsx scripts/check-package.ts && node scripts/check-consumer.mjs",
     "verify": "pnpm lint && pnpm test && pnpm render:examples && pnpm check:examples && pnpm docs:check && pnpm deps:check",
