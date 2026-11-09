@@ -21,6 +21,8 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'text', group: TEXT, usage: "text('Hello', { font: 'serif', size: 72, color: 'ink' }): vector glyphs you can write and morph" },
     { name: 'tex', group: TEXT, usage: "tex('e^{i\\\\pi} + 1 = 0', { size: 64 }): typeset math. eq.part('x^2') selects a term" },
     { name: 'decimal', group: TEXT, usage: "decimal(() => v.value, { digits: 2, prefix: 'm = ' }): a live number readout" },
+    { name: 'quote', group: TEXT, usage: "quote('the agent loop lives in Temporal rather than on the VM itself', { by: 'Cursor', when: '2026-06-02', width: 900, color: 'orange', mark: 'lives in Temporal' }): the exact words of a source between quotation marks, with a rule at the left and a line under them that says who, when, and where. mark colors a part of the words, said.find('Temporal') gives its glyphs, and said.enter() brings the words in line by line" },
+    { name: 'quotePair', group: TEXT, usage: "quotePair({ words: 'it is a security issue', by: 'the researchers' }, { words: 'a limit of the monitors', by: 'the maintainer', color: 'green' }, { width: 1700, versus: 'but' }): two quotes side by side at one top line and with one width, for two sources that disagree" },
     { name: 'dot', group: SHAPES, usage: "dot(9, 'yellow').at(x, y): a filled point" },
     { name: 'line', group: SHAPES, usage: "line([x0, y0], [x1, y1], { stroke: 'blue', width: 3 })" },
     { name: 'arrow', group: SHAPES, usage: "arrow(from, to, { stroke: 'ink', bend: 40, pad: 8 }): a shaft and a clean tip" },

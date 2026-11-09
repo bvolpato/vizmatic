@@ -3077,6 +3077,76 @@ export default film({ fps: 30 }, (s) => {
 
 Place a track as any node. It does not know the size of the frame: `.at(-912, -490)` is the top left of a 1920 by 1080 frame. A track is pinned to the screen, so a move or a zoom of the camera does not move it. `tag.pill`, `tag.word`, and `tag.note` are the parts of a tag, and `tag.color(c)` recolors the border and the word.
 
+## Quotes
+
+`quote(words, options)` draws the exact words of a source between quotation marks, with a rule at their left. One line under the words says who said them, when, and where. Use it for a sentence of a paper, of a documentation page, or of a company about itself. Do not write the quotation marks around the words: the object adds them.
+
+```film paired label="A sentence of a source arrives line by line, and then one phrase takes the color of the rule"
+import { film, quote, recolor } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const said = quote('the agent loop lives in Temporal rather than on the VM itself', {
+        by: 'Cursor', when: '2026-06-02', where: 'What we’ve learned building cloud agents',
+        width: 1400, size: 60, color: 'orange',
+    }).at(-700, -150)
+    s.play(said.enter(), { duration: 1.6 })
+    s.wait(0.6)
+    // The glyphs of the phrase that the voice says now.
+    s.play(...said.find('lives in Temporal').map((glyph) => recolor(glyph, 'orange')), { duration: 0.4 })
+    s.wait(2.4)
+})
+```
+
+`by`, `when`, and `where` make the source line, in that order, with a comma between them. Each one is optional, and the object writes each one as the film gives it. With none of them, the object has no source line. A source line that is wider than the object wraps at a space, and after a `/` of a web address. A part of it with no space and no `/` that is wider than the object is an error. The message names the option, such as `where`: give a shorter text there.
+
+`width` is the width of the object, from the left edge of the rule to the place where the words wrap. No letter passes it. A line has the room of its ink, and an italic f leans past its own place, so such a line can break one word earlier. A line breaks at a space. A no-break space (`\u00a0`) keeps two words on one line, as in `'4\u00a0of\u00a010'`. A line break in the words starts a new line. `size` is the text size of the words, `sourceSize` the size of the source line, and `leading` the height of a line as a multiple of `size`. The words are in the italic of the serif text font, and `italic: false` sets them upright. `font` sets the font of the words and of the source line.
+
+`.at(x, y)` places the top end of the rule, so quotes of different lengths start at one corner. The object is as high as its lines need: read `said.height` to place what comes under it. A film needs two more places. Beside a picture with its middle at the height `cy`, `said.at(x, cy - said.height / 2)` puts the middle of the quote at that height. For a quote that is centered on a point, `said.moveTo([cx, cy])` puts the middle of the rule and the words there.
+
+`color` is the color of the rule. `mark` names one part of the words, or a list of parts, and the object sets them in the color of the rule, or in `markColor`. A part is matched letter for letter. Spaces do not count, and a part may run over the end of a line. A part starts and ends at the borders of words: `mark: 'not'` is the word "not", and not the first letters of "nothing". A part that is in the words more than once is marked at all its places. For one place only, give a longer part, such as `'is not safe'`. To color a part at the moment when the voice says it, leave `mark` out and use `said.find(part)`, as in the example. It gives the glyphs of the part at all its places, with the same rule for the borders of words. For a part that is only inside longer words, `find` gives those places, and `mark` is an error.
+
+A double quotation mark inside the words is a quotation inside the quotation. The object draws it as a single curved mark, the open one at the start of a word and the closed one at any other place: `quote('he said "it is safe"')` shows “he said ‘it is safe’”. After a digit, a straight mark is the sign for inches, and it stays. `mark` and `find` take the words as the film wrote them, with the double marks.
+
+The words are the words of the source. When the film leaves words out, write `[...]` at each such place and set `cut: true`. The object adds no `[...]` by itself, because it cannot know where the missing words were. With `cut`, each `[...]` is in dim, so the viewer sees that it is not a word of the source. A quote with `cut` and no `[...]` is an error.
+
+`said.enter()` brings the quote in: the rule grows down from the top, the words arrive line by line, and then the source line. `said.words`, `said.source`, and `said.rule` are the parts. `said.baseline` is the y of the base line of the first line, and `said.lineEnd(n)` is the x where the ink of line `n` ends. Both are in the coordinates of the object, for a label beside the quote. Empty words, a `mark` that is not in the words, a `width` that cannot hold the longest word, and a `lag` or a `duration` that is not a number are errors. The message for the width names the word and the least width. Words that no-break spaces join count as one word.
+
+A viewer reads about 20 characters in one second, and reads the words and the source line. So a quote stays up for the time of both together: a quote of 100 characters with a source line of 20 characters must stay up for 6 seconds. `said.reading` is the words and the source line as one text, and `readingSeconds(said.reading)` gives that time. The film check reads the words as one text and the source line as a second text, each with its own time. `vizmatic check --motion` reports each one that leaves before its time, as `film.text_brief`. So a quote can pass the check and still leave before the viewer has read the source line.
+
+For a panel behind a quote, put the quote in a `zone` with a fill. The plate is the quote with `padding` at each side, and `.at()` of a zone places its middle:
+
+```ts
+import { fadeIn, film, quote, zone } from 'vizmatic/stage'
+
+export default film((s) => {
+    const said = quote('the write is durable when the log is on two disks', { by: 'the design document', width: 700, size: 36, color: 'teal' })
+    const panel = zone(said, { color: 'gridStrong', fill: 'surface', fillOpacity: 1, padding: 40 }).at(0, 0)
+    // The plate fades in while the quote arrives inside it.
+    s.play(fadeIn(panel), said.enter())
+    s.wait(4)
+})
+```
+
+`quotePair(first, second, options)` puts two quotes side by side, for two sources that disagree. Each quote is its `words` and its own options. The two have one width and one top line: `width` is the width of the pair, `gap` the room between the two quotes, and each quote has half of the rest. An option of the pair, such as `size`, is for both quotes, and a quote can have its own. Without `gap`, the gap is 3 times the size, or 3 times the larger of two sizes.
+
+`versus` is a word between the two quotes, such as "but". It has the same room at both sides: from the end of the first line of the first quote, and to the rule of the second quote. So beside a short first quote, the word is not in the middle of the gap, where it would read as a part of the second quote. With two sizes, the word has the smaller one, and it stands on the first base line of the quote with that size. Nothing of a pair is over its top line. The room at each side of the word is the height of its letters at the least. A `gap` that leaves less is an error, and the message gives the gap that is enough.
+
+`pair.enter()` brings the first quote, then the word, then the second quote. `pair.quotes` holds the two quotes, and `pair.versus` the word.
+
+```ts
+import { film, quotePair } from 'vizmatic/stage'
+
+export default film((s) => {
+    const pair = quotePair(
+        { words: 'the cache makes every request faster', by: 'the design document', when: '2026-03-02', color: 'blue' },
+        { words: 'with the cache, 4 of 10 requests were slower', by: 'the load test', when: '2026-06-11', color: 'red', mark: '4 of 10' },
+        { width: 1700, gap: 240, versus: 'but', size: 44 },
+    ).at(-850, -120)
+    s.play(pair.enter())
+    s.wait(4)
+})
+```
+
 ## State grids
 
 `stateGrid(options)` draws a grid of cells, and each cell is in a named state: the pages of a memory, the blocks of a disk, the bits of a bitmap, the hosts of a fleet. The state sets the look of a cell. `grid.change(which, state)` moves cells to another state, one after another in index order, so the viewer sees a sweep.
