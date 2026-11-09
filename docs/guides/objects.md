@@ -354,6 +354,90 @@ To write several entries at once, pass the pushes to `lagged`, to `par`, or to o
 
 The bounds of a ring hold the outside name at every slot, with a count of two digits. So a `zone` or a `card` around a ring has room for the name wherever the pointer goes, and `nextTo` keeps two rings apart. `ring.p(slot)` gives the middle of a slot in the coordinates of the ring, to fly an entry in from another place. The slot wraps, so `ring.p(ring.tail)` is the slot that the next `push()` fills. `ring.enter()` draws the band slot by slot, then brings the pointers and the caption. `ring.slots`, `ring.entries`, `ring.numbers`, `ring.headPointer`, `ring.tailPointer`, `ring.writeMarker`, and `ring.caption` are the parts. A ring has 2 to 64 slots.
 
+## Date lines
+
+`dateLine(events, options)` draws a line of time with events at their dates: the history of a project, the releases of a kernel, or the documents of a source in the order in which they came. An event has its date in `at`, a `label`, and a `color`. Each event is a mark on the line, with a stem to its label. An event with no label is a mark only.
+
+```film paired label="Three documents appear on a line of seven years as the cursor passes their dates"
+import { dateLine, film } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const record = dateLine([
+        { at: 2020, label: 'the first paper' },
+        { at: '2025-06-10', label: 'the newsletter', color: 'orange' },
+        { at: '2026-03-24', label: 'the technical report', color: 'orange', note: 'names the system' },
+    ], { width: 1700, from: 2020, to: 2027, size: 40, font: 'text-serif' })
+    s.play(record.enter(), { duration: 1 })
+    s.play(record.advance(2022), { duration: 1 })
+    s.wait(0.6)
+    s.play(record.showAll(), { duration: 2 })
+    s.wait(1.2)
+})
+```
+
+`at` is a date as `'YYYY'`, `'YYYY-MM'`, or `'YYYY-MM-DD'`, or a number of years such as 2020 or 2023.25. A year is its first day, and a month is its first day. `from` and `to` are the dates at the two ends of the line, and they take the same dates, such as `from: '2025-06'`. `width` is the length of the line, and `.at()` places its middle. The first and the last date are a little inside the two ends, by the radius of a mark, so a mark at an end stays inside the width. A date that the object cannot read, an event outside `from` and `to`, and a `from` that is not before `to` are errors. An error prints the dates as the film wrote them.
+
+The line has a tick for each year, for each month, or for each day: `unit` is `'year'`, `'month'`, or `'day'`. Without `unit`, the span of the line decides. The span goes from `from` to `to`, or from the first event to the last one. A span of 45 days or less has a tick for each day, a span of less than 2 years has a tick for each month, and a longer span has a tick for each year. One date alone has the year around it. Without `from` and `to`, the line holds the whole years, months, or days around the events.
+
+A tick has a text under it, in the middle: the number of the year, the short name of the month, or the number of the day. On a line of months, each January has the number of its year in place of its name, and the first tick says the year too, as "Jun 2025". On a line of days, the first day of a month has the name of the month, and the first tick says the month and the year too, as "May 5, 2025". So every line says its year. A text under a tick at an end of the line passes that end by half of its width.
+
+When the texts have no room, the line writes fewer of them. For years, it writes every second, fifth, or tenth year, and so on with 1, 2, or 5 times a power of ten, at round years. For months, it writes every second, third, or sixth month, counted from January. For days, it writes every second, seventh, or fourteenth day, counted from the first day of each month. Two texts are 0.6 of their size apart, or more. A tick with no text is a small tick. Ticks that would be nearer than 0.3 of the text size have no room, so the line draws the ticks of its texts only: 200 years on 400 px have 5 ticks. When the names of the months or the numbers of the days have no room at any of these steps, the line takes the next larger unit. With a `unit` from the film, that is an error. A line that holds no start of the `unit` of the film is an error too.
+
+The object places the labels. They go over the line and under it by turns, in date order, so the order of the list changes nothing. A label is in the middle over the end of its stem. When events are near to each other, a label goes to the other side, or beside its stem, or to a higher place: `levels` is the number of heights at each side, 3 by default. No two labels meet, no stem passes through a label, and every label is inside the width of the line. `side: 'over'` or `side: 'under'` on an event keeps its label at that side. An event with a side has fewer places, so it takes its place first, and a label near it can leave its turn. The object uses as few heights as the labels need, so more `levels` never make a line fail. `note` is a second line under the label, in dim. A label and a note are one line each, and a line break in one of them is an error. A number is written as its text, and another value that is not a text is an error.
+
+A stem over the line starts at its mark. A stem under the line starts under the row of the texts, at the x of its mark, and goes down to its label. So no stem passes through a text under the line, or beside one. This is the rule for an event at a tick, over the text of a tick, and between two ticks.
+
+`mark` is the mark of an event: `'dot'`, `'star'`, or `'ring'`. An event with no label is a mark only, with no stem. Use it for a line with many events, such as the documents of a record. A mark has a clear room around it, 0.18 of the text size, and no other mark is in that room. A mark that would be in the room of an earlier mark goes to a row over the line, and the line has as many rows as its marks need: four marks of one day take four rows. `rows` is the most rows, 10 by default, which holds 60 marks at random dates on 860 px. The bounds of the object hold the rows. A tick of the line in the clear room of a mark leaves while the event shows, with `advance`, with `event.show()`, or with a fade. So no mark stands on a tick or beside one.
+
+An event with a label can be near another one too. Events with labels at one date have one place on the line. When two events with labels are a few days apart, the mark of the later one goes one row up, and its label goes over the line, from its mark. The label of the earlier one goes under the line. So a line of seven years builds with two posts of one week.
+
+`record.light(index)` gives one event the look of the lit event: the accent color on its mark, its stem, and its label, and a ring around its mark. The event that had this look takes its own color back. Use it for the event that the narration is about. The ring says which event is lit also when an event has the accent color as its own color. `record.light(null)` leaves no event lit, and `record.lit` is the index of the lit event, or null. `accent` is that color, orange by default.
+
+When a line has no layout, `dateLine()` throws. The message says what has no place, and it ends with "What works for this line" and the changes that give this line a layout, such as `levels: 4`, `side: 'under' for event 2`, `no label for event 1`, `rows: 11`, `width: 2400`, or `scale: 'order'`. The object builds the line with each change before it names it, so each one works. It names three at the most.
+
+```ts
+import { dateLine, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    const record = s.add(dateLine([
+        { at: '2025-06-09' }, { at: '2025-06-10', mark: 'star' }, { at: '2025-10-29' }, { at: '2026-03-06' }, { at: '2026-03-06' },
+        { at: '2026-03-24', mark: 'star' }, { at: '2026-06-02' }, { at: '2026-11-06', mark: 'ring' },
+    ], { width: 1700 }))
+    s.play(record.enter())
+    s.play(record.showAll(), { duration: 1.5 })
+    record.cursor.hide()
+    // The document of this scene, and then the next one.
+    s.play(record.light(5))
+    s.wait(2)
+    s.play(record.light(6))
+    s.wait(2)
+})
+```
+
+`record.enter()` brings the line, its ticks and its numbers, and no event. `record.advance(date)` moves a cursor along the line from its date to `date`, and stops there. Each event that the cursor passes appears: its mark and its stem, then its label. All of it is over when the animation ends, so a narration can go through the dates, one `advance` for each sentence. `record.showAll()` is an advance to the end of the line. This is the contract of `lanes.advance`. The cursor does not go back. An event at the first end of the line appears with the first advance. The cursor is a small pointer under the line. It moves in a room of its own, under the marks and their clear room and over the texts under the line, so it touches no mark, no tick, no stem, and no text at any date. The first advance shows it, `record.cursor.hide()` takes it away, and `cursor: false` draws none. `record.date` is the date of the cursor, as a number of years.
+
+The events are hidden until the cursor passes them. The bounds of the object hold the room of every event from the start, so a `zone` or a group around a line has the same size before the events show and after. `record.extent` is that room, as `left`, `right`, `top`, and `bottom` in the coordinates of the object. Use it to place what is over the object or under it.
+
+`scale: 'order'` is for events that are crowded in time, such as three posts in two weeks and one more a year later. The events are then at equal steps in date order. Each date is under its tick, as the film wrote it, and the line says "not to scale" at its end. With this scale, `at` can also be a version, such as `'5.1'`, and the versions go in their order: 5.10 is after 5.3. Give every event a date, or give every event a version. An event is known by its `at` as the film wrote it. Events with one text have one place, and `'5.1'` and `'5.1.0'` are two places. Write a version as a text: as a number, `5.10` is 5.1. The line has a place for the dates of its events and for no other, so `record.advance('5.6')` and `record.x('5.6')` take one of them, and `from` and `to` do not apply.
+
+```ts
+import { dateLine, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    const releases = s.add(dateLine([
+        { at: '5.1', label: 'eight operations' },
+        { at: '5.6', label: 'open, close, statx' },
+        { at: '5.19', label: 'passthrough commands' },
+        { at: '6.0', label: 'a block device in user space', color: 'orange' },
+    ], { width: 1600, scale: 'order' }))
+    s.play(releases.advance('5.6'))
+    s.play(releases.showAll())
+    s.wait(2)
+})
+```
+
+`record.events` holds one node per event, in the order of the list, with its `mark`, its `stem`, its `text`, its `note`, and its `halo`, the ring of the lit event. The stem and the text are null for an event with no label. `record.axis` is the line with its ticks and their texts, `record.cursor` is the cursor, and `record.unit` is the unit of the ticks. `record.x(date)` gives the x of a date, and `record.p(index)` the place of the mark of an event. Both are in the coordinates of the object, as `extent` is: the middle of the line is at (0, 0). `record.toWorld(...record.p(index))` gives the place on the stage, for a brace or a line to a picture. `size` is the text size of the labels. The notes and the texts under the line are a little smaller. `font` is the font of every text of the object.
+
 ## Pictograms
 
 `pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.

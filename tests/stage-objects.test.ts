@@ -13,6 +13,7 @@ import {
     lanes, smooth,
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
+    dateLine,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent,
@@ -4227,6 +4228,894 @@ describe('lanes', () => {
             expect(lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50 }, { lane: 'a', start: 50, end: 60 }, { lane: 'b', start: 30, end: 55 }]).spans).toHaveLength(3)
             // A domain with no event in it is accepted: the lanes are empty.
             expect(lanes(['a'], [], { domain: [0, 10] }).events).toEqual([])
+        }))
+    })
+})
+
+describe('date line', () => {
+    type Line = ReturnType<typeof dateLine>
+    const RECORD = [
+        { at: '2025-06-10', label: 'the newsletter', color: 'orange' },
+        { at: '2026-03-24', label: 'the technical report', note: 'names Anyrun' },
+        { at: 2020, label: 'the paper' },
+    ]
+    const CROWD = [
+        { at: '2025-06-03', label: 'the first post' }, { at: '2025-06-10', label: 'the newsletter' }, { at: '2025-06-16', label: 'the second post', note: 'two weeks later' },
+        { at: '2025-09-01', label: 'the conference talk' }, { at: '2025-12-12', label: 'the documentation' }, { at: '2026-03-24', label: 'the technical report', note: 'names Anyrun' },
+        { at: '2026-03-30', label: 'the reply' },
+    ]
+    // Ten years on 1000 px. At size 20 a dot has a radius of 5.4, and the first and the last date are that far inside the ends of the line.
+    const sized = { width: 1000, from: 2020, to: 2030, size: 20 }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] as const }
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    /** The texts under the line, from left to right. */
+    const numbers = (line: Line) => line.axis.children.filter((child) => typeof (child as unknown as { source?: unknown }).source === 'string')
+    const written = (line: Line) => numbers(line).map((node) => (node as unknown as { source: string }).source)
+    /** The room of the label of an event with its note: left, top, right, bottom. */
+    const room = (event: Line['events'][number]) => {
+        const boxes = [event.text!, ...(event.note ? [event.note] : [])].map(edges)
+        return [Math.min(...boxes.map((box) => box[0])), Math.min(...boxes.map((box) => box[1])), Math.max(...boxes.map((box) => box[2])), Math.max(...boxes.map((box) => box[3]))] as const
+    }
+    const sideOf = (event: Line['events'][number]) => (event.text!.bounds().y < 0 ? 'over' : 'under')
+    const stemOf = (event: Line['events'][number]) => edges(event.stem!)
+    const labelOf = (event: Line['events'][number]) => edges(event.text!)
+    type Events = Parameters<typeof dateLine>[0]
+    type Options = NonNullable<Parameters<typeof dateLine>[1]>
+    /** Random numbers from 0 to 1 that are the same in each run. */
+    const randomOf = (seed: number) => {
+        let state = (seed * 2654435761) >>> 0
+        return () => {
+            state = (state + 0x6d2b79f5) >>> 0
+            let t = state
+            t = Math.imul(t ^ (t >>> 15), t | 1)
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+        }
+    }
+    /**
+     * Builds a line that must fail, and reads the changes that its error names after "What works for this
+     * line". `lines` builds the line with each of these changes, so a test can see that the advice is true.
+     */
+    const follow = (events: Events, options: Options = {}) => {
+        let message = ''
+        try {
+            dateLine(events, options)
+        } catch (error) {
+            if (!(error instanceof Error)) throw error
+            message = error.message
+        }
+        const ways = /What works for this line: (.+)$/.exec(message)?.[1]?.split(/, or |, | or /) ?? []
+        const changed = (index: number, change: (event: Events[number]) => Events[number]) => events.map((event, at) => (at === index ? change(event) : event))
+        const lines = ways.map((way) => {
+            const number = /^(width|levels|rows): (\d+)$/.exec(way)
+            if (number) return () => dateLine(events, { ...options, [number[1]!]: Number(number[2]) })
+            const unit = /^unit: '(year|month|day)'$/.exec(way)
+            if (unit) return () => dateLine(events, { ...options, unit: unit[1] as 'year' })
+            if (way === 'no unit') return () => dateLine(events, { ...options, unit: undefined })
+            if (way.startsWith("scale: 'order'")) return () => dateLine(events, { ...options, scale: 'order', from: undefined, to: undefined, unit: undefined })
+            const end = /^(from|to): (.+)$/.exec(way)
+            if (end) return () => dateLine(events, { ...options, [end[1]!]: JSON.parse(end[2]!) as string | number })
+            const bare = /^no (side|label) for event (\d+)$/.exec(way)
+            if (bare) return () => dateLine(changed(Number(bare[2]), (event) => (bare[1] === 'side' ? { ...event, side: undefined } : { at: event.at, mark: event.mark, color: event.color })), options)
+            const side = /^side: '(over|under)' for event (\d+)$/.exec(way)
+            if (side) return () => dateLine(changed(Number(side[2]), (event) => ({ ...event, side: side[1] as 'over' })), options)
+            const date = /^at: (.+) for event (\d+)$/.exec(way)
+            if (date) return () => dateLine(changed(Number(date[2]), (event) => ({ ...event, at: JSON.parse(date[1]!) as string | number })), options)
+            throw new Error(`the test does not know the advice "${way}"`)
+        })
+        return { message, ways, lines }
+    }
+
+    it('puts each event at its date on a line of its width, and reads a year, a month, or a day', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine(RECORD, sized).at(100, 50)
+            // `.at()` places the middle of the line.
+            expect(edges(line.axis.children[0]!)).toEqual([-400, 50, 600, 50])
+            expect([2020, 2025, 2030].map((year) => line.x(year))).toEqual([expect.closeTo(-494.6, 6), expect.closeTo(0, 6), expect.closeTo(494.6, 6)])
+            expect(line.domain).toEqual([2020, 2030])
+            // A year is its first day, and a month is its first day. 2 July is the middle of a leap year: 183 of 366 days.
+            const perYear = 989.2 / 10
+            expect(line.x('2025')).toBeCloseTo(0, 6)
+            expect(line.x('2024-07-02')).toBeCloseTo(-0.5 * perYear, 6)
+            expect(line.x('2025-07')).toBeCloseTo((181 / 365) * perYear, 6)
+            expect(line.x('2025-07-02')).toBeCloseTo((182 / 365) * perYear, 6)
+            expect(line.x(2023.25)).toBeCloseTo(-1.75 * perYear, 6)
+            // One node per event, in the order of the list. `p` is the place of its dot, in the coordinates of the object.
+            expect(line.events.map((event) => event.text!.source)).toEqual(['the newsletter', 'the technical report', 'the paper'])
+            expect(line.events.map((event) => event.note?.source)).toEqual([undefined, 'names Anyrun', undefined])
+            expect(dateLine([{ at: 2021, label: 'a', note: ' ' }]).events[0]!.note).toBeNull()
+            line.events.forEach((event, index) => {
+                const [x, y] = line.p(index)
+                expect([x, y]).toEqual([expect.closeTo(line.x(RECORD[index]!.at), 6), 0])
+                expect(middle(event.mark)).toEqual([expect.closeTo(100 + x, 6), expect.closeTo(50, 6)])
+                expect(event.children).toEqual([event.stem, event.halo, event.mark, event.text, ...(event.note ? [event.note] : [])])
+            })
+            expect(line.p(2)[0]).toBeCloseTo(-494.6, 6)
+            // An event has its color on its dot, its stem and its label, or ink. A note is in dim.
+            expect(line.events.map((event) => [event.mark.get('fill'), event.stem!.get('stroke'), event.text!.chars[0]!.get('fill')])).toEqual([
+                [paint('orange'), paint('orange'), paint('orange')], [paint('ink'), paint('ink'), paint('ink')], [paint('ink'), paint('ink'), paint('ink')],
+            ])
+            expect(line.events[1]!.note!.chars[0]!.get('fill')).toEqual(paint('dim'))
+            // Without `from` and `to`, the line holds the whole years around the events. It is 1600 wide.
+            expect(dateLine([{ at: '2020-05-01', label: 'a' }, { at: '2026-03-24', label: 'b' }]).domain).toEqual([2020, 2027])
+            expect(dateLine([{ at: 2021, label: 'a' }, { at: 2023, label: 'b' }]).domain).toEqual([2021, 2023])
+            expect(dateLine([{ at: 2021, label: 'a' }]).domain).toEqual([2021, 2022])
+            expect(edges(dateLine([{ at: 2021, label: 'a' }]).axis.children[0]!)).toEqual([-800, 0, 800, 0])
+            // `from` and `to` take the same dates as an event.
+            expect(dateLine([{ at: 2021, label: 'a' }], { from: '2020-07-02', to: '2022' }).domain).toEqual([2020.5, 2022])
+            // A leap year is every fourth year, but for a year of a hundred that is not a year of four hundred: 1900 has no 29 February.
+            expect(() => dateLine([{ at: '1900-02-29', label: 'a' }])).toThrow(/has the date "1900-02-29"/)
+            expect(dateLine([{ at: '2000-02-29', label: 'a' }]).x('2000-03')).toBeGreaterThan(dateLine([{ at: '2000-02-29', label: 'a' }]).p(0)[0])
+            // `font` reaches every text of the object: the label, the note, the numbers, and the words "not to scale".
+            const glyph = (font: 'sans' | 'text-serif', letter: string, size: number, italic = false) => text(letter, { font, size, italic }).chars[0]!.get('path')
+            for (const font of ['sans', 'text-serif'] as const) {
+                const made = dateLine([{ at: '5.1', label: 'a', note: 'b' }], { scale: 'order', size: 20, ...(font === 'sans' ? {} : { font }) })
+                const parts = numbers(made) as unknown as { chars: Node[] }[]
+                expect([made.events[0]!.text!.chars[0]!.get('path'), made.events[0]!.note!.chars[0]!.get('path'), parts[0]!.chars[0]!.get('path'), parts[1]!.chars[0]!.get('path')])
+                    .toEqual([glyph(font, 'a', 20), glyph(font, 'b', 17), glyph(font, '5', 18), glyph(font, 'n', 18, true)])
+            }
+            expect(glyph('sans', 'a', 20)).not.toEqual(glyph('text-serif', 'a', 20))
+        }))
+    })
+
+    it('writes a number in the middle under a tick for each year, or for every second, fifth or tenth one and so on, so that two numbers never touch', async () => {
+        await compileFilm(film(() => {
+            const event = [{ at: 2022, label: 'a' }]
+            const years = dateLine(event, sized)
+            expect(years.unit).toBe('year')
+            expect(written(years)).toEqual(['2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'])
+            // The line, a tick for each year, and the numbers.
+            expect(years.axis.children).toHaveLength(1 + 11 + 11)
+            // A number is in the middle under its tick, in dim. The first and the last one too, so half of each passes the end of the line.
+            const boxes = numbers(years).map(edges)
+            boxes.forEach((box, index) => expect((box[0] + box[2]) / 2).toBeCloseTo(years.x(2020 + index), 6))
+            expect(boxes[0]![0]).toBeLessThan(-510)
+            expect(boxes[10]![2]).toBeGreaterThan(510)
+            // `extent` and the bounds of the object hold these halves.
+            expect([years.extent.left, years.extent.right]).toEqual([expect.closeTo(boxes[0]![0], 6), expect.closeTo(boxes[10]![2], 6)])
+            expect([edges(years)[0], edges(years)[2]]).toEqual([expect.closeTo(boxes[0]![0], 6), expect.closeTo(boxes[10]![2], 6)])
+            expect(boxes.every((box) => box[1] > 18 && box[3] < 34)).toBe(true)
+            expect(numbers(years).map((node) => (node as unknown as { chars: Node[] }).chars[0]!.get('fill'))).toEqual(boxes.map(() => paint('dim')))
+            // On a narrow line, a number for every second year, and still a tick for each year.
+            const narrow = dateLine(event, { ...sized, width: 300 })
+            expect(written(narrow)).toEqual(['2020', '2022', '2024', '2026', '2028', '2030'])
+            expect(narrow.axis.children).toHaveLength(1 + 11 + 6)
+            // The tick of a year with a number is longer than the tick of a year with none.
+            const tickAt = (year: number) => narrow.axis.children.slice(1).find((child) => child.bounds().width === 0 && Math.abs(child.bounds().x - narrow.x(year)) < 0.01)!.bounds().height
+            expect([tickAt(2024), tickAt(2030)]).toEqual([12, 12])
+            expect(tickAt(2025)).toBeLessThan(8)
+            // A year that is narrower than 0.3 of the text size has no small tick: 200 years on 400 px have the 5 ticks of the numbers.
+            const dense = dateLine([{ at: 2000, label: 'a' }], { width: 400, from: 1900, to: 2100, size: 20 })
+            expect(written(dense)).toEqual(['1900', '1950', '2000', '2050', '2100'])
+            expect(dense.axis.children).toHaveLength(1 + 5 + 5)
+            // The numbers are at round years, and the first year of the line has none when it is not round.
+            expect(written(dateLine([{ at: 2000, label: 'a' }], { width: 600, from: 1974, to: 2018, size: 20 }))).toEqual(['1975', '1980', '1985', '1990', '1995', '2000', '2005', '2010', '2015'])
+            expect(written(dateLine(event, { width: 1000, from: 2020.5, to: 2023.2, size: 20 }))).toEqual(['2021', '2022', '2023'])
+            // A short line that holds no round year counts from its first year.
+            expect(written(dateLine(event, { width: 60, from: 2021, to: 2024, size: 20 }))).toEqual(['2021'])
+            // The step is 1, 2 or 5 times a power of ten, for any span: 12,000 years have a number for every 2,000.
+            expect(written(dateLine([{ at: 0, label: 'a' }], { width: 900, from: -10000, to: 2000 }))).toEqual(['-10000', '-8000', '-6000', '-4000', '-2000', '0', '2000'])
+            // At every width, two numbers are 10 px apart or more, and each one is in the middle under its tick.
+            for (let width = 100; width <= 1600; width += 50) {
+                for (const [from, to] of [[2020, 2030], [1974, 2018], [1900, 2100], [2021, 2024], [-10000, 2000], [-500000, 2000]] as const) {
+                    const line = dateLine([{ at: from, label: 'a' }], { width, from, to, size: 20 })
+                    const made = numbers(line).map(edges)
+                    expect(made.length).toBeGreaterThan(0)
+                    made.forEach((box, index) => {
+                        expect((box[0] + box[2]) / 2).toBeCloseTo(line.x(Number(written(line)[index])), 6)
+                        if (index > 0) expect(box[0] - made[index - 1]![2]).toBeGreaterThanOrEqual(10)
+                    })
+                }
+            }
+        }))
+    })
+
+    it('has a tick for each month or for each day on a short line, with the name of the month or the number of the day, and the year or the month at the first tick', async () => {
+        await compileFilm(film(() => {
+            const span = (from: string, to: string, options: Parameters<typeof dateLine>[1] = {}) => dateLine([{ at: from }, { at: to }], options)
+            // 17 months: a tick for each month. The line holds the whole months around the events.
+            const months = span('2025-06-09', '2026-11-06', { width: 1720 })
+            expect(months.unit).toBe('month')
+            expect(months.domain).toEqual([expect.closeTo(2025 + 151 / 365, 9), expect.closeTo(2026 + 334 / 365, 9)])
+            // The first tick says the year too, and each January has the number of its year in place of its name.
+            expect(written(months)).toEqual(['Jun 2025', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '2026', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+            expect(months.axis.children).toHaveLength(1 + 19 + 19)
+            numbers(months).map(edges).forEach((box, index) => expect((box[0] + box[2]) / 2).toBeCloseTo(months.x(index < 7 ? `2025-${String(index + 6).padStart(2, '0')}` : `2026-${String(index - 6).padStart(2, '0')}`), 6))
+            // With less room: a name for every second month, then for every third and every sixth one, counted from January. Each month keeps its tick.
+            const half = span('2025-06-09', '2026-11-06', { width: 860 })
+            expect(written(half)).toEqual(['Jun 2025', 'Sep', 'Nov', '2026', 'Mar', 'May', 'Jul', 'Sep', 'Nov'])
+            expect(half.axis.children).toHaveLength(1 + 19 + 9)
+            expect(written(span('2025-06-09', '2026-11-06', { width: 430 }))).toEqual(['Jun 2025', 'Oct', '2026', 'Apr', 'Jul', 'Oct'])
+            expect(written(span('2025-06-09', '2026-11-06', { width: 200 }))).toEqual(['Jul', '2026', 'Jul'])
+            // Six days: a tick for each day with its number. The first tick says the month and the year too.
+            const days = dateLine(['05', '06', '07', '08', '09', '10'].map((day) => ({ at: `2025-05-${day}` })))
+            expect(days.unit).toBe('day')
+            expect(days.domain).toEqual([expect.closeTo(2025 + 124 / 365, 9), expect.closeTo(2025 + 129 / 365, 9)])
+            expect(written(days)).toEqual(['May 5, 2025', '6', '7', '8', '9', '10'])
+            // A line of days that starts at the first day of a month, and a line of months that starts in January.
+            expect(written(span('2025-05-01', '2025-05-06'))).toEqual(['May 2025', '2', '3', '4', '5', '6'])
+            expect(written(span('2025-01-10', '2025-05-02'))).toEqual(['2025', 'Feb', 'Mar', 'Apr', 'May', 'Jun'])
+            // The first day of a month has the name of the month. With less room: every second, seventh or fourteenth day, counted from that first day.
+            expect(written(span('2025-05-20', '2025-06-29'))).toEqual(['May 20, 2025', '23', '25', '27', '29', 'Jun', '3', '5', '7', '9', '11', '13', '15', '17', '19', '21', '23', '25', '27', '29'])
+            expect(written(span('2025-05-20', '2025-06-29', { width: 700 }))).toEqual(['May 20, 2025', 'Jun', '8', '15', '22'])
+            // A text that would touch the text of the first tick has none: here the 15 of January.
+            expect(written(span('2025-01-10', '2025-05-02', { unit: 'day' }))).toEqual(['Jan 10, 2025', '22', 'Feb', '8', '15', '22', 'Mar', '8', '15', '22', 'Apr', '8', '15', '22', 'May'])
+            // Each of these 113 days has a tick, at 14 px for a day. At 6 px for a day, which is less than 0.3 of the text size, the line has the ticks of its texts only.
+            expect(span('2025-01-10', '2025-05-02', { unit: 'day' }).axis.children).toHaveLength(1 + 113 + 15)
+            const fewer = span('2025-01-10', '2025-05-02', { unit: 'day', width: 700 })
+            expect(written(fewer)).toEqual(['Jan 10, 2025', 'Feb', '15', 'Mar', '15', 'Apr', '15', 'May'])
+            expect(fewer.axis.children).toHaveLength(1 + 8 + 8)
+            // Without `unit`, the span decides: days up to 45 days, months under 2 years, and years from 2 years. One date has the year around it.
+            expect([span('2025-05-20', '2025-07-04').unit, span('2025-05-20', '2025-07-05').unit]).toEqual(['day', 'month'])
+            expect([span('2025-02-20', '2027-02-19').unit, span('2025-02-20', '2027-02-20').unit]).toEqual(['month', 'year'])
+            expect([dateLine([{ at: '2025-05-03' }]).unit, dateLine([{ at: '2025-05-03' }]).domain]).toEqual(['year', [2025, 2026]])
+            // `from` and `to` are the span when the film gives them, and they take a date as a text.
+            const given = dateLine([{ at: '2025-07-03' }], { from: '2025-06', to: '2025-09-15' })
+            expect([given.unit, written(given)]).toEqual(['month', ['Jun 2025', 'Jul', 'Aug', 'Sep']])
+            expect(written(dateLine([{ at: '2025-05-03' }], { from: 2025, to: 2026 }))).toEqual(['2025', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '2026'])
+            // The unit of the film wins over the span.
+            const forced = span('2025-06-09', '2026-11-06', { unit: 'year' })
+            expect([forced.unit, forced.domain, written(forced)]).toEqual(['year', [2025, 2027], ['2025', '2026', '2027']])
+            // When the texts of the unit of the span have no room, the line has the ticks of the next unit.
+            expect([span('2025-05-20', '2025-06-29', { width: 120 }).unit, written(span('2025-05-20', '2025-06-29', { width: 120 }))]).toEqual(['month', ['May 2025', 'Jul']])
+            // A unit of the film that has no room, or no tick on the line, is an error.
+            const noRoom = follow([{ at: 2000 }, { at: 2030 }], { unit: 'month' })
+            expect(noRoom.message).toBe("dateLine: the line from 2000 to 2030 has no room for a tick for each month at a width of 1600: their texts touch, also at every sixth month. What works for this line: no unit, unit: 'year', or width: 4800")
+            const noYear = follow([{ at: 2025.3 }], { from: 2025.2, to: 2025.6, unit: 'year' })
+            expect(noYear.message).toBe("dateLine: the line from 2025.2 to 2025.6 holds the start of no year, so it has no tick. What works for this line: no unit, or unit: 'month'")
+            for (const line of [...noRoom.lines, ...noYear.lines]) expect(line).not.toThrow()
+            expect(() => dateLine([{ at: 2000 }, { at: 2002 }], { unit: 'day', width: 900 })).toThrow(/has no room for a tick for each day at a width of 900: their texts touch, also at every fourteenth day\. What works for this line: no unit, or unit: 'month'/)
+            expect(written(dateLine([{ at: 2025.3 }], { from: 2025.2, to: 2025.6 }))).toEqual(['Apr 2025', 'May', 'Jun', 'Jul', 'Aug'])
+            expect(() => dateLine([{ at: 2021 }], { unit: 'week' as never })).toThrow(/unit is 'year', 'month' or 'day', not "week"/)
+            expect(() => dateLine([{ at: 2021 }], { unit: 'day', scale: 'order' })).toThrow(/unit is the tick of a line with scale 'time'\. With 'order', each event has its own tick/)
+        }))
+    })
+
+    it('puts the labels over the line and under it by turns in date order, each one at the end of a stem from its dot, with its note under it', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine(RECORD, sized)
+            // In date order: the paper is over the line, the newsletter under it, and the report over it.
+            expect(line.events.map(sideOf)).toEqual(['under', 'over', 'over'])
+            // The order of the list changes nothing: the dates decide.
+            const turned = dateLine([RECORD[2]!, RECORD[0]!, RECORD[1]!], sized)
+            expect([turned.events[1]!, turned.events[2]!, turned.events[0]!].map(labelOf)).toEqual(line.events.map(labelOf))
+            const [news, report, paper] = line.events as [Line['events'][number], Line['events'][number], Line['events'][number]]
+            // A label is in the middle over the end of its stem. A label at an end of the line starts at that end, and its stem is under it.
+            expect(Math.abs(middle(news.text!)[0] - line.p(0)[0])).toBeLessThan(1.5)
+            expect(Math.abs(middle(report.text!)[0] - line.p(1)[0])).toBeLessThan(1.5)
+            expect(labelOf(paper)[0]).toBeCloseTo(-500, 6)
+            expect(labelOf(paper)[2]).toBeGreaterThan(line.p(2)[0])
+            // The stem goes from the line to a little short of the label.
+            const [, overTop, , overBottom] = stemOf(report)
+            expect(overBottom).toBe(0)
+            expect(overTop).toBeLessThan(-20)
+            expect(overTop - room(report)[3]).toBeGreaterThan(1)
+            expect(overTop - room(report)[3]).toBeLessThan(8)
+            expect(stemOf(report)[0]).toBeCloseTo(line.p(1)[0], 6)
+            // Under the line, the label is under the numbers, and the stem ends short of it.
+            const [, underTop, , underBottom] = stemOf(news)
+            expect(underTop).toBeGreaterThan(Math.max(...numbers(line).map((node) => edges(node)[3])) + 2)
+            expect(room(news)[1]).toBeGreaterThan(Math.max(...numbers(line).map((node) => edges(node)[3])) + 10)
+            expect(room(news)[1] - underBottom).toBeGreaterThan(1)
+            expect(room(news)[1] - underBottom).toBeLessThan(8)
+            // The note is under its label, in the middle, and smaller.
+            const note = edges(report.note!), words = labelOf(report)
+            expect(note[1]).toBeGreaterThan(words[3] + 2)
+            expect(note[1]).toBeLessThan(words[3] + 10)
+            expect(Math.abs((note[0] + note[2]) / 2 - (words[0] + words[2]) / 2)).toBeLessThan(1.5)
+            expect([report.text!.data['size'], report.note!.data['size']]).toEqual([20, 17])
+        }))
+    })
+
+    it('starts a stem under the line under the row of the texts, at the x of its mark, so that it touches no text', async () => {
+        await compileFilm(film(() => {
+            const rowOf = (made: Line) => { const boxes = numbers(made).map(edges); return [Math.min(...boxes.map((box) => box[1])), Math.max(...boxes.map((box) => box[3]))] as const }
+            // The second event of each line is under the line, in its turn: at a tick, over the text of a tick and not at the tick, beside a text, and between two texts.
+            for (const at of [2022, 2022.1, 2022.3, 2022.5]) {
+                const line = dateLine([{ at: 2020, label: 'a' }, { at, label: 'b' }], sized)
+                const event = line.events[1]!, stem = stemOf(event), [, bottom] = rowOf(line)
+                expect(sideOf(event)).toBe('under')
+                // The stem is at the x of the mark. It starts under the row of the texts, and ends short of its label.
+                expect(stem[0]).toBeCloseTo(line.p(1)[0], 6)
+                expect(stem[1] - bottom).toBeGreaterThan(2)
+                expect(stem[3]).toBeGreaterThan(stem[1] + 4)
+                expect(room(event)[1] - stem[3]).toBeGreaterThan(1)
+                // So it passes through no text and beside none: every text under the line ends over it.
+                for (const box of numbers(line).map(edges)) expect(stem[1] - box[3]).toBeGreaterThan(2)
+                expect(room(event)[1] - bottom).toBeGreaterThan(10)
+            }
+            // A stem over the line starts at its mark.
+            expect(stemOf(dateLine([{ at: 2020.4, label: 'a' }], sized).events[0]!)[3]).toBe(0)
+            // The row of the texts ends under the tails of their letters, as the y of "May".
+            const days = dateLine([{ at: '2025-05-05', label: 'a' }, { at: '2025-05-06', label: 'b' }])
+            expect(sideOf(days.events[1]!)).toBe('under')
+            expect(rowOf(days)[1]).toBeGreaterThan(edges(numbers(days)[1]!)[3] + 3)
+            expect(stemOf(days.events[1]!)[1] - rowOf(days)[1]).toBeGreaterThan(2)
+        }))
+    })
+
+    it('has the room of all its events as its bounds from the start, so a zone holds the labels that are still hidden', async () => {
+        let line!: Line, around!: ReturnType<typeof zone>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            line = dateLine(RECORD, sized)
+            // `extent` is the room of the line with all its labels, in the coordinates of the object.
+            expect(line.extent.top).toBeCloseTo(Math.min(...line.events.map((event) => room(event)[1])), 0)
+            expect(line.extent.bottom).toBeGreaterThanOrEqual(Math.max(...line.events.map((event) => room(event)[3])) - 0.5)
+            expect(line.extent.bottom).toBeLessThan(Math.max(...line.events.map((event) => room(event)[3])) + 8)
+            expect(line.extent.left).toBeLessThanOrEqual(-500)
+            expect(line.extent.right).toBeGreaterThanOrEqual(500)
+            // The events are hidden, and the bounds of the object are this room.
+            expect(line.events.map((event) => event.get('visible'))).toEqual([false, false, false])
+            const whole = [line.extent.left, line.extent.top, line.extent.right, line.extent.bottom].map((value) => expect.closeTo(value, 6))
+            expect(edges(line)).toEqual(whole)
+            // `.at()` still places the middle of the line.
+            line.at(100, 50)
+            expect(edges(line.axis.children[0]!)).toEqual([-400, 50, 600, 50])
+            line.at(0, 0)
+            around = zone(line, { padding: 30 })
+            s.add(around)
+            s.play(line.showAll(), { duration: 1 })
+        }))
+        // The border of the zone is 30 px from the room of the labels, before the events show and after.
+        for (const time of [0, 1.5]) {
+            at(time, () => {
+                const border = edges(around.frame), inside = edges(line)
+                expect([inside[0] - border[0], inside[1] - border[1], border[2] - inside[2], border[3] - inside[3]]).toEqual([30, 30, 30, 30].map((value) => expect.closeTo(value, 6)))
+                for (const event of line.events) {
+                    const own = room(event)
+                    expect([own[0] >= border[0] + 30 - 0.5, own[1] >= border[1] + 30 - 0.5, own[2] <= border[2] - 30 + 0.5, own[3] <= border[3] - 30 + 0.5]).toEqual([true, true, true, true])
+                }
+            })
+        }
+        expect(at(1.5, () => line.events.map((event) => event.get('visible')))).toEqual([true, true, true])
+    })
+
+    it('finds a place for every label of a crowd: no two labels meet, no stem passes through a label, and all of them are inside the line', async () => {
+        await compileFilm(film(() => {
+            const same = [{ at: 2021, label: 'first of the year' }, { at: 2021, label: 'second of the year' }, { at: 2021, label: 'third' }, { at: 2021, label: 'fourth' }, { at: 2023, label: 'alone' }]
+            // Three long labels at one side: the second one goes up, and the third one must not sit on the stem of the second.
+            const tall = [{ at: 2021, label: 'a first label that is long and wide' }, { at: 2023.3, label: 'a second label, long too' }, { at: 2023.9, label: 'the third label is long' }].map((event) => ({ ...event, side: 'over' as const }))
+            // Three events at the last end of the line: a label beside its stem has room at the left only.
+            const late = ['a long label one', 'a long label two', 'a long label three'].map((label) => ({ at: 2029.9, label }))
+            const lines = [
+                dateLine(CROWD, { width: 1800, from: 2025, to: 2027 }), dateLine(same, { width: 700, from: 2020, to: 2024, size: 22 }),
+                dateLine(tall, { width: 800, from: 2020, to: 2025, size: 20 }), dateLine(late, sized),
+            ]
+            for (const line of lines) {
+                const half = line.axis.children[0]!.bounds().width / 2
+                const rooms = line.events.map(room)
+                rooms.forEach((own, index) => {
+                    expect(own[0]).toBeGreaterThanOrEqual(-half - 0.5)
+                    expect(own[2]).toBeLessThanOrEqual(half + 0.5)
+                    rooms.forEach((other, at) => {
+                        if (at <= index) return
+                        // Two labels have room between them: beside each other, or one over the other.
+                        const beside = Math.max(other[0] - own[2], own[0] - other[2]), over = Math.max(other[1] - own[3], own[1] - other[3])
+                        expect(Math.max(beside, over)).toBeGreaterThan(2)
+                    })
+                    line.events.forEach((other, at) => {
+                        if (at === index) return
+                        const [x, top, , bottom] = stemOf(other)
+                        const passes = x > own[0] - 2 && x < own[2] + 2 && top < own[3] && bottom > own[1]
+                        expect(passes).toBe(false)
+                    })
+                })
+            }
+            // Three events in two weeks: their labels are at more than one place around their dots, and the labels of one row are 18 px apart or more.
+            const [first, news, second] = lines[0]!.events
+            expect(new Set([first, news, second].map((event) => `${sideOf(event!)} ${Math.round(labelOf(event!)[0])}`)).size).toBe(3)
+            // Four events of one date use more than one height, and their stems are on one line.
+            const year = lines[1]!.events.slice(0, 4)
+            expect(new Set(year.map((event) => Math.round(labelOf(event)[1]))).size).toBeGreaterThan(1)
+            expect(new Set(year.map((event) => Math.round(stemOf(event)[0]))).size).toBe(1)
+            // A label beside its stem: the far end of the stem is at the height of the label, not short of it.
+            const flag = year.find((event) => labelOf(event)[0] > stemOf(event)[0] + 2)!
+            const far = sideOf(flag) === 'over' ? stemOf(flag)[1] : stemOf(flag)[3]
+            expect(far).toBeGreaterThan(labelOf(flag)[1])
+            expect(far).toBeLessThan(labelOf(flag)[3])
+        }))
+    })
+
+    it('keeps the side that an event asks for, and ends each error of a layout with the changes that work for that line', async () => {
+        await compileFilm(film(() => {
+            const under = dateLine(RECORD.map((event) => ({ ...event, side: 'under' as const })), sized)
+            expect(under.events.map(sideOf)).toEqual(['under', 'under', 'under'])
+            const over = dateLine(RECORD.map((event) => ({ ...event, side: 'over' as const })), sized)
+            expect(over.events.map(sideOf)).toEqual(['over', 'over', 'over'])
+            // An event with a side has fewer places, so it takes its place first. The newsletter is near it, and goes to the other side.
+            expect(dateLine([RECORD[0]!, { ...RECORD[1]!, side: 'under' as const }, RECORD[2]!], sized).events.map(sideOf)).toEqual(['over', 'under', 'over'])
+            expect(dateLine([RECORD[0]!, RECORD[1]!, { ...RECORD[2]!, side: 'under' as const }], sized).events.map(sideOf)).toEqual(['under', 'over', 'under'])
+
+            // An error of a layout ends with the changes that work for its line. The object builds the line with each one, so each one is true.
+            const same = ['first of the year', 'second of the year', 'third', 'fourth', 'fifth', 'sixth', 'seventh'].map((label) => ({ at: 2021, label }))
+            const tight = { width: 700, from: 2020, to: 2024, size: 22 }
+            const cases: [Events, Options, string][] = [
+                // Seven events of one date have no room at one height, and four have room at two.
+                [same, { ...tight, levels: 1 }, 'the label of event 2 ("third") has no place. It meets the label of event 0 ("first of the year") at every height. What works for this line: levels: 4'],
+                [same.slice(0, 4), { ...tight, levels: 1 }, 'the label of event 2 ("third") has no place. It meets the label of event 0 ("first of the year") at every height. What works for this line: levels: 2'],
+                [[{ at: 2021, label: 'a label that is much wider than the line of this object' }], { width: 300 }, 'the label of event 0 ("a label that is much wider than the line of this object") is 637 px wide, and the line is 300. What works for this line: width: 638, or no label for event 0'],
+                // A side that has no place: only the side helps, so the advice is the side. The label of a mark in a row goes over the line.
+                [[{ at: 2021 }, { at: 2021, label: 'a', side: 'under' }], {}, "the label of event 1 (\"a\") has no place under the line. Its mark is in a row over the line, where a label goes over the line. What works for this line: no side for event 1, side: 'over' for event 1, or no label for event 1"],
+                [[{ at: '2025-06-10', label: 'a', side: 'over' }, { at: '2025-06-12', label: 'b' }], { from: 2020, to: 2027, width: 1180 }, "the label of event 0 (\"a\") has no place over the line. The mark of event 1 (\"b\") is in its way. What works for this line: no side for event 0, side: 'under' for event 0, or at: \"2025-06-12\" for event 0"],
+                // Three events with labels in a few days: the mark in the middle row has a mark under it and a mark over it.
+                [[{ at: '2025-06-10', label: 'a' }, { at: '2025-06-12', label: 'b' }, { at: '2025-06-14', label: 'c' }], { from: 2020, to: 2027, width: 1180 }, "the label of event 1 (\"b\") has no place. The mark of event 2 (\"c\") is in its way. What works for this line: at: \"2025-06-14\" for event 1, no label for event 1, or scale: 'order' without the ends and the unit of the line"],
+                [Array.from({ length: 4 }, () => ({ at: 2021 })), { rows: 3 }, 'the marks near event 3 (at 2021) need 4 rows, and `rows` is 3. What works for this line: rows: 4'],
+                [[{ at: '2025-06-03', label: 'a' }, { at: '2025-06-04', label: 'b' }], { scale: 'order', width: 300 }, 'the dates "2025-06-03" and "2025-06-04" touch under the line. What works for this line: width: 450'],
+                [[{ at: 2021, label: 'a' }], { scale: 'order', width: 100 }, 'a width of 100 has no room for the events before the words "not to scale". What works for this line: width: 217'],
+                [[{ at: 2021, label: 'a' }], { width: 40 }, 'a width of 40 has no room for the events. What works for this line: width: 68'],
+                [[{ at: 2019, label: 'a' }], { from: 2020, to: 2027 }, 'event 0 ("a") is at 2019, outside the line from 2020 to 2027. What works for this line: from: 2019'],
+                [[{ at: '2028-07', label: 'late' }], { from: 2020, to: 2027 }, 'event 0 ("late") is at "2028-07", outside the line from 2020 to 2027. What works for this line: to: "2028-07"'],
+            ]
+            for (const [events, options, message] of cases) {
+                const failed = follow(events, options)
+                expect(failed.message).toBe(`dateLine: ${message}`)
+                expect(failed.lines.length).toBeGreaterThan(0)
+                for (const line of failed.lines) expect(line).not.toThrow()
+            }
+            // More heights give more labels a place, and a line that builds has no error.
+            expect(() => dateLine(same.slice(0, 2), { ...tight, levels: 1 })).not.toThrow()
+            expect(() => dateLine(same.slice(0, 4), { ...tight, levels: 3 })).not.toThrow()
+            // When no change of one option works, the error says so.
+            expect(() => dateLine(Array.from({ length: 12 }, (_, index) => ({ at: 2021, label: `event ${index}` })), { ...tight, levels: 1 })).toThrow(/has no place\. It meets the label of event \d+ \("event \d+"\) at every height\. No one change of an option gives this line a layout\. Use fewer events, or two lines$/)
+        }))
+    })
+
+    it('puts the events at equal steps in date order with scale order, writes each date as the film gave it, and says that the line is not to scale', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine([{ at: '5.10', label: 'ten' }, { at: '5.1', label: 'one' }, { at: '6.0', label: 'six' }, { at: '5.3', label: 'three' }, { at: '5.3', label: 'three again' }], { width: 1000, scale: 'order', size: 20 })
+            // Four versions in their order: 5.10 is after 5.3. The words at the end of the line take their room.
+            expect(written(line)).toEqual(['5.1', '5.3', '5.10', '6.0', 'not to scale'])
+            const xs = ['5.1', '5.3', '5.10', '6.0'].map((version) => line.x(version))
+            const step = xs[1]! - xs[0]!
+            expect(step).toBeGreaterThan(200)
+            expect([xs[2]! - xs[1]!, xs[3]! - xs[2]!, xs[0]! + 500]).toEqual([expect.closeTo(step, 6), expect.closeTo(step, 6), expect.closeTo(step / 2, 6)])
+            // Two events of one date have one place.
+            expect([0, 1, 2, 3, 4].map((index) => line.p(index)[0])).toEqual([xs[2], xs[0], xs[3], xs[1], xs[1]])
+            // Each date is under its tick, in ink. "not to scale" ends at the end of the line, after the last date.
+            const boxes = numbers(line).map(edges)
+            boxes.slice(0, 4).forEach((box, index) => expect(Math.abs((box[0] + box[2]) / 2 - xs[index]!)).toBeLessThan(1.5))
+            expect((numbers(line)[0] as unknown as { chars: Node[] }).chars[0]!.get('fill')).toEqual(paint('ink'))
+            expect(boxes[4]![2]).toBeCloseTo(500, 6)
+            expect(boxes[4]![0]).toBeGreaterThan(xs[3]! + step / 2)
+            // The words are in the row of the dates.
+            expect(Math.abs((boxes[4]![1] + boxes[4]![3]) / 2 - (boxes[0]![1] + boxes[0]![3]) / 2)).toBeLessThan(3)
+            // An event is known by its date as the film wrote it. "5.1" and "5.1.0" are two texts, so they have two places, in the order of the list.
+            const texts = dateLine([{ at: '5.1', label: 'a' }, { at: '5.1.0', label: 'b' }, { at: '5.1', label: 'c' }, { at: '6', label: 'd' }], { scale: 'order' })
+            expect(written(texts)).toEqual(['5.1', '5.1.0', '6', 'not to scale'])
+            expect([texts.p(0)[0], texts.p(1)[0], texts.p(2)[0]]).toEqual([texts.x('5.1'), texts.x('5.1.0'), texts.x('5.1')])
+            expect(texts.x('5.1.0')).toBeGreaterThan(texts.x('5.1') + 100)
+            expect(line.domain).toEqual([-0.5, 3.5])
+            // With dates, the steps are equal too, whatever the time between the dates. A date is written as the film gave it.
+            const dates = dateLine([{ at: '2026-03-24', label: 'c' }, { at: 2020, label: 'a' }, { at: '2025-06', label: 'b' }], { width: 1000, scale: 'order', size: 20 })
+            expect(written(dates)).toEqual(['2020', '2025-06', '2026-03-24', 'not to scale'])
+            expect(dates.x('2025-06') - dates.x(2020)).toBeCloseTo(dates.x('2026-03-24') - dates.x('2025-06'), 6)
+            // A line with scale time says nothing of its scale.
+            expect(written(dateLine(RECORD, sized))).not.toContain('not to scale')
+            // The line has a place for the dates of its events, and for no other.
+            expect(() => line.x('5.2')).toThrow(/the line has no place for "5\.2"\. With scale 'order', it has the dates of its events: "5\.1", "5\.3", "5\.10", "6\.0"/)
+            expect(() => line.advance('7.0')).toThrow(/the line cannot advance to "7\.0"/)
+            expect(() => dateLine([{ at: '5.1', label: 'a' }, { at: '2025-06-10', label: 'b' }], { scale: 'order' })).toThrow(/event 1 \("b"\) has the date "2025-06-10"\. With scale 'order', give every event a date .*, or give every event a version such as '5\.1'/)
+            expect(() => dateLine([{ at: 'v5', label: 'a' }, { at: '5.1', label: 'b' }], { scale: 'order' })).toThrow(/event 0 \("a"\) has the date "v5"/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { scale: 'order', from: 2020 })).toThrow(/from and to are the ends of a line with scale 'time'/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { scale: 'order', width: 100 })).toThrow(/a width of 100 has no room for the events before the words "not to scale"/)
+            // A version is not a date on a line with scale time.
+            expect(() => dateLine([{ at: '5.1', label: 'a' }])).toThrow(/event 0 \("a"\) has the date "5\.1"\. A date is 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD', or a number of years/)
+        }))
+    })
+
+    it('moves its cursor to a date and stops there, and each event appears when the cursor passes it', async () => {
+        let line!: Line, bare!: Line, stops!: Line
+        const dates: number[] = []
+        const events = [{ at: 2020, label: 'a' }, { at: 2022, label: 'b', note: 'n' }, { at: 2024, label: 'c' }, { at: 2030, label: 'd' }]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            line = s.add(dateLine(events, sized))
+            bare = s.add(dateLine(events, { ...sized, cursor: false }).at(0, 300))
+            // This one is not on the stage: its first advance brings it.
+            stops = dateLine(events, sized).at(0, -300)
+            dates.push(line.date)
+            s.wait(1)
+            s.play(line.advance(2025), bare.advance(2025), stops.advance(2022), { duration: 2, ease: linear })
+            dates.push(line.date)
+            s.wait(1)
+            s.play(seq(line.advance('2026'), line.advance(2028)), stops.advance(2024), { duration: 2, ease: linear })
+            dates.push(line.date)
+            s.play(line.showAll(), { duration: 2, ease: linear })
+            dates.push(line.date)
+            s.wait(0.5)
+        }))
+        expect(dates).toEqual([2020, 2025, 2028, 2030])
+        const [a, b, c, d] = line.events as [Line['events'][number], Line['events'][number], Line['events'][number], Line['events'][number]]
+        const cursor = (time: number) => at(time, () => (line.cursor.get('visible') ? line.cursor.get('x') : null))
+        // A fade that ends at the time of the reading is 1 but for the last digits.
+        const one = expect.closeTo(1, 6)
+        // Before the first advance, the film draws the two lines with their ticks and numbers, and no event or cursor:
+        // a line, 11 ticks, and 11 numbers of 4 digits each. The third line comes with its first advance.
+        expect(compiled.frame(0.5).ops).toHaveLength(2 * 56)
+        expect(compiled.frame(1.05).ops.length).toBeGreaterThan(3 * 56)
+        // An event at the date where the cursor stops shows once: the next advance leaves it as it is.
+        const [first, stopped] = stops.events
+        expect(at(3.9, () => [shows(first!.text!), shows(stopped!.text!), stopped!.mark.get('opacity'), stopped!.stem!.get('trimTo')])).toEqual([1, 1, 1, 1])
+        for (const time of [4.02, 4.3]) expect(at(time, () => [shows(first!.text!), first!.mark.get('opacity'), shows(stopped!.text!), stopped!.mark.get('opacity'), stopped!.stem!.get('trimTo')])).toEqual([1, 1, 1, 1, 1])
+        expect(at(0.5, () => [a, b, c, d].map(shows))).toEqual([0, 0, 0, 0])
+        expect(cursor(0.5)).toBeNull()
+        // The last event of this advance needs 0.5 s after the cursor reaches it, so the cursor arrives 0.125 s
+        // before the end. It reaches 2022 at 1.75 s and 2024 at 2.5 s, and stops at 2025.
+        expect([cursor(1), cursor(1.9375), cursor(2.875), cursor(3), cursor(3.9)]).toEqual([expect.closeTo(line.x(2020), 6), expect.closeTo(line.x(2022.5), 6), expect.closeTo(line.x(2025), 6), expect.closeTo(line.x(2025), 6), expect.closeTo(line.x(2025), 6)])
+        // The first advance shows the cursor, in 0.3 s.
+        expect([1, 1.15, 1.3].map((time) => at(time, () => line.cursor.get('opacity')))).toEqual([0, expect.closeTo(0.5, 6), 1])
+        // An event at the first end of the line appears with the first advance.
+        expect(at(1.01, () => a.get('visible'))).toBe(true)
+        expect(at(1.74, () => [b, c, d].map(shows))).toEqual([0, 0, 0])
+        // The dot and the stem come first, and the stem draws from the line. Then the label and the note.
+        expect(at(1.875, () => [b.get('visible'), b.mark.get('opacity'), b.stem!.get('trimTo'), shows(b.text!), shows(b.note!)])).toEqual([true, expect.closeTo(0.5, 2), expect.closeTo(0.5, 2), 0, 0])
+        expect(at(2.25, () => [b.mark.get('opacity'), b.mark.get('sx'), b.stem!.get('trimTo'), shows(b.text!), shows(b.note!)])).toEqual([1, 1, 1, one, one])
+        expect(at(2.49, () => c.get('visible'))).toBe(false)
+        // All of it is over when the animation ends.
+        expect(at(3, () => [shows(c), c.mark.get('opacity'), shows(c.text!)])).toEqual([1, 1, one])
+        expect(at(3.9, () => shows(d))).toBe(0)
+        // The second advance of a sequence starts where the first one stops.
+        expect([cursor(4.5), cursor(5), cursor(5.5), cursor(6)]).toEqual([expect.closeTo(line.x(2025.5), 6), expect.closeTo(line.x(2026), 6), expect.closeTo(line.x(2027), 6), expect.closeTo(line.x(2028), 6)])
+        // `showAll` goes to the end of the line, where the last event is. The cursor arrives 0.5 s before the end.
+        expect(at(7.4, () => shows(d))).toBe(0)
+        expect([cursor(7.5), cursor(8)]).toEqual([expect.closeTo(line.x(2030), 6), expect.closeTo(line.x(2030), 6)])
+        expect(at(8, () => [shows(d), d.mark.get('opacity'), shows(d.text!)])).toEqual([1, 1, one])
+        // Without a cursor, the events appear at the same times.
+        expect(at(3, () => bare.cursor.get('visible'))).toBe(false)
+        expect(at(2.25, () => bare.events.map((event) => (event.get('visible') ? shows(event.text!) : 0)))).toEqual([1, one, 0, 0])
+        // The cursor does not go back, and it stays on the line.
+        expect(() => line.advance(2029)).toThrow(/cannot advance to 2029\. The cursor is past it, and it does not go back/)
+        expect(() => bare.advance(2031)).toThrow(/cannot advance to 2031\. The line goes from 2020 to 2030/)
+        expect(() => bare.advance('tomorrow')).toThrow(/the line cannot advance to "tomorrow"\. A date is/)
+        expect(() => bare.advance(2024)).toThrow(/The cursor is past it/)
+        // The check is made again when the move is scheduled: the second advance of this sequence would go back.
+        await expect(compile((s) => {
+            const made = s.add(dateLine(events, sized))
+            s.play(seq(made.advance(2028), made.advance(2026)))
+        })).rejects.toThrow(/cannot advance to 2026\. The cursor is past it, and it does not go back/)
+    })
+
+    it('enters with its line, its ticks and its numbers from the first end, and with no event', async () => {
+        let line!: Line
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            line = dateLine(RECORD, sized)
+            s.wait(1)
+            s.play(line.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The line draws over the first 1.4 s. A number arrives when the line reaches it, in 0.6 s.
+        const rule = line.axis.children[0]!
+        expect([1, 1.7, 2.4, 3].map((time) => at(time, () => rule.get('trimTo')))).toEqual([0, expect.closeTo(0.5, 6), 1, 1])
+        const [first, , , , , sixth] = numbers(line), last = numbers(line)[10]!
+        expect(at(1.3, () => [first, sixth, last].map(shows))).toEqual([expect.closeTo(0.5, 1), 0, 0])
+        expect(at(1.9, () => [first, sixth, last].map(shows))).toEqual([1, expect.closeTo(1 / 3, 1), 0])
+        expect(at(3, () => numbers(line).map(shows))).toEqual(numbers(line).map(() => 1))
+        expect(at(3.4, () => [...line.events.map((event) => event.get('visible')), line.cursor.get('visible')])).toEqual([false, false, false, false])
+        expect(compiled.frame(3.4).ops).toHaveLength(56)
+        const turn = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...dateLine(RECORD, sized).enter(), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws.
+        for (const time of [1.3, 1.99]) expect(turn.frame(time).ops).toHaveLength(1)
+        expect(turn.frame(3.4).ops).toHaveLength(57)
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            const moved = await compile((s) => {
+                const made = dateLine(RECORD, sized)
+                group(made).at(shift, 0)
+                s.play(made.enter(), { duration: 1 })
+                s.wait(0.5)
+            })
+            lefts.push(Math.min(...paths(moved, 1.4).flatMap((op) => pathBounds(op.path)?.x ?? [])))
+        }
+        // The line of a group that the film moved is the same picture, 300 to the right.
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+        // A copy enters with its own ticks, and shows its own events.
+        let copy!: Line
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const made = dateLine(RECORD, sized)
+            copy = made.clone()
+            s.play(copy.enter(), { duration: 1 })
+            s.play(copy.showAll(), { duration: 1 })
+            expect(made.mounted).toBe(false)
+            expect(copy.events[0]).not.toBe(made.events[0])
+        }))
+        expect(at(2, () => copy.events.map(shows))).toEqual([1, 1, 1])
+    })
+
+    it('draws an event with no label as a mark only, as a dot, a star or a ring, and gives a mark that would touch another one a row over the line', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine([{ at: '2025-06-09' }, { at: '2025-06-10', mark: 'star' }, { at: '2025-10-29', mark: 'ring', color: 'teal' }, { at: '2026-03-06' }, { at: '2026-03-06' }, { at: '2026-03-06' }], { width: 1720 })
+            // An event with no label has no stem and no text: its node holds its mark, and the ring that shows when the event is lit.
+            expect(line.events.map((event) => [event.stem, event.text, event.note, event.children])).toEqual(line.events.map((event) => [null, null, null, [event.halo, event.mark]]))
+            // At size 26, a dot is 14 px wide. A star is 1.8 times a dot from point to point. A ring is a dot with a line around the color of the background.
+            const [first, star, ring] = line.events as [Line['events'][number], Line['events'][number], Line['events'][number]]
+            expect([first.mark.bounds().width, star.mark.bounds().height, ring.mark.bounds().width + ring.mark.get('strokeWidth')]).toEqual([expect.closeTo(14.04, 6), expect.closeTo(7.02 * 1.8 * (1 + Math.cos(Math.PI / 5)), 6), expect.closeTo(14.04, 6)])
+            expect([first.mark.get('fill'), star.mark.get('fill'), ring.mark.get('fill'), ring.mark.get('stroke')]).toEqual([paint('ink'), paint('ink'), paint('bg'), paint('teal')])
+            // The star is one day after the first dot, which is 3 px: it goes to the second row. Three marks of one day take the line and two rows.
+            const pitch = -line.p(1)[1]
+            expect(pitch).toBeGreaterThan(2 * 7.02 * 1.8)
+            expect(line.events.map((_, index) => line.p(index)[1])).toEqual([0, -pitch, 0, 0, -pitch, -2 * pitch].map((y) => expect.closeTo(y, 6)))
+            line.events.forEach((event, index) => expect(middle(event.mark)[0]).toBeCloseTo(line.p(index)[0], 6))
+            expect(line.p(3)[0]).toBe(line.p(5)[0])
+            // The rows are in `extent`, with the ring of a lit event around the highest mark.
+            expect(line.extent.top).toBeCloseTo(-2 * pitch - 7.02 - 26 * 0.07, 6)
+
+            // A mark has a clear room of 0.18 of the text size around it: 4.7 px at size 26. In the record of a film, at its width and at half of it, no mark is in the room of another one.
+            const record = ['2025-06-09', '2025-06-10*', '2025-10-29', '2026-02-24', '2026-02-27', '2026-03-06', '2026-03-06', '2026-03-24*', '2026-03-25', '2026-04-17', '2026-04-29', '2026-05-13', '2026-05-27',
+                '2026-06-02', '2026-06-24', '2026-07-06', '2026-07-30', '2026-08-13', '2026-08-19', '2026-08-28', '2026-09-02', '2026-11-06', '2026-11-06']
+                .map((date) => (date.endsWith('*') ? { at: date.slice(0, -1), mark: 'star' as const } : { at: date }))
+            for (const width of [1720, 860]) {
+                const made = dateLine(record, { width })
+                const circles = made.events.map((_, index) => ({ at: made.p(index), radius: record[index]!.mark ? 7.02 * 1.8 : 7.02 }))
+                circles.forEach((one, index) => circles.slice(index + 1).forEach((other) => expect(Math.hypot(one.at[0] - other.at[0], one.at[1] - other.at[1])).toBeGreaterThanOrEqual(one.radius + other.radius + 26 * 0.18 - 1e-6)))
+                expect(new Set(circles.map((one) => Math.round(one.at[1]))).size).toBe(width === 1720 ? 2 : 4)
+            }
+            // Two marks that are 13.9 px apart at size 20 are in the room of each other, and two marks that are 14.8 px apart are not.
+            expect(dateLine([{ at: 2022 }, { at: 2022.14 }], sized).p(1)[1]).toBeLessThan(-10)
+            expect(dateLine([{ at: 2022 }, { at: 2022.15 }], sized).p(1)[1]).toBe(0)
+            // The ends of the line keep the radius of the largest mark, so a star at an end is inside the width.
+            const ends = dateLine([{ at: 2020, mark: 'star' }, { at: 2030, mark: 'star' }], sized)
+            expect([edges(ends.events[0]!.mark)[0], edges(ends.events[1]!.mark)[2]]).toEqual([expect.closeTo(-500 + 9.72 * (1 - Math.cos(Math.PI / 10)), 6), expect.closeTo(500 - 9.72 * (1 - Math.cos(Math.PI / 10)), 6)])
+
+            // The rows grow as the marks need. Four marks of one day take four rows, and the bounds hold them.
+            const four = dateLine(Array.from({ length: 4 }, () => ({ at: 2021 })))
+            expect(four.events.map((_, index) => four.p(index)[1] / four.p(1)[1])).toEqual([0, 1, 2, 3].map((row) => expect.closeTo(row, 6)))
+            expect(edges(four)[1]).toBeCloseTo(four.p(3)[1] - 7.02 - 26 * 0.07, 6)
+            // 60 marks at random dates on 860 px build with the rows that the object has when the film gives no number.
+            for (let seed = 1; seed <= 25; seed++) {
+                const random = randomOf(seed)
+                expect(() => dateLine(Array.from({ length: 60 }, () => ({ at: 2025.42 + random() * 1.5 })), { width: 860, from: 2025.42, to: 2026.92 })).not.toThrow()
+            }
+            // `rows` is the most rows. With fewer rows than the marks need, the error names the number that is enough.
+            expect(() => dateLine(Array.from({ length: 11 }, () => ({ at: 2021 })))).toThrow(/the marks near event 10 \(at 2021\) need 11 rows, and `rows` is 10\. What works for this line: rows: 11$/)
+            expect(() => dateLine(Array.from({ length: 11 }, () => ({ at: 2021 })), { rows: 11 })).not.toThrow()
+            expect(() => dateLine([{ at: 2021 }], { rows: 0 })).toThrow(/rows is the most rows of marks, a whole number of 1 or more/)
+
+            // Two events with labels that are near each other are no error. The later mark goes one row up, and its label goes over the line, from its mark. The label of the earlier one goes under the line.
+            const posts = dateLine([{ at: 2020, label: 'the Firecracker paper' }, { at: '2025-06-10', label: 'the newsletter' }, { at: '2025-06-16', label: 'the second post' }, { at: '2026-03-24', label: 'the technical report', note: 'names Anyrun' }], { width: 1180, from: 2020, to: 2027, font: 'text-serif' })
+            expect([posts.p(1)[1], posts.p(2)[1]]).toEqual([0, expect.closeTo(-(2 * 7.02 + 26 * 0.18 + 1.56), 1)])
+            expect(posts.events.map(sideOf)).toEqual(['over', 'under', 'over', 'over'])
+            expect(stemOf(posts.events[2]!)[3]).toBeCloseTo(posts.p(2)[1], 6)
+            expect(room(posts.events[2]!)[3]).toBeLessThan(posts.p(2)[1] - 7.02)
+            // Events with labels at one date have one place, on the line.
+            const twins = dateLine([{ at: 2021, label: 'a' }, { at: 2021, label: 'b' }, { at: 2021, label: 'c' }], sized)
+            expect(twins.events.map((_, index) => twins.p(index))).toEqual([twins.p(0), twins.p(0), twins.p(0)])
+            expect(twins.p(0)[1]).toBe(0)
+            // A label over the line counts its height from its mark. For a mark in a row, the stem is as long as for a mark on the line: 1.5 of the text size, less the room before the label.
+            const raised = dateLine([{ at: 2021 }, { at: 2021, label: 'a' }], sized)
+            expect([raised.p(1)[1] < -10, sideOf(raised.events[1]!)]).toEqual([true, 'over'])
+            expect(stemOf(raised.events[1]!)[3] - stemOf(raised.events[1]!)[1]).toBeCloseTo(stemOf(dateLine([{ at: 2021, label: 'a' }], sized).events[0]!)[3] - stemOf(dateLine([{ at: 2021, label: 'a' }], sized).events[0]!)[1], 6)
+            // A mark with no label at the date of an event with a label goes over it, and the label goes under the line, away from that mark.
+            const mixed = dateLine([{ at: 2021, label: 'a' }, { at: 2021 }], sized)
+            expect([mixed.p(0)[1], mixed.p(1)[1] < -10, sideOf(mixed.events[0]!)]).toEqual([0, true, 'under'])
+            // A label or a note that is a number is written as its text, and a value that is no text is an error.
+            const counted = dateLine([{ at: 2021, label: 7, note: 5 }], sized)
+            expect([counted.events[0]!.text!.source, counted.events[0]!.note!.source]).toEqual(['7', '5'])
+            expect(() => dateLine([{ at: 2021, label: 'a', note: true as never }])).toThrow(/the note of event 0 is true\. A note is a text, or a number that the line writes as its text/)
+            expect(() => dateLine([{ at: 2021, label: { a: 1 } as never }])).toThrow(/the label of event 0 is \{"a":1\}\. A label is a text, or a number that the line writes as its text/)
+        }))
+    })
+
+    it('takes away a tick that is in the clear room of a mark while the event shows, by any way that the film shows it', async () => {
+        let line!: Line, shown!: Line
+        const tickOf = (made: Line, date: string | number) => made.axis.children.slice(1).find((child) => child.bounds().width === 0 && Math.abs(child.bounds().x - made.x(date)) < 0.01)!
+        await compileFilm(film({ fps: 20 }, (s) => {
+            line = s.add(dateLine([{ at: '2025-06-09' }, { at: '2025-07-02' }, { at: '2025-08-15' }, { at: '2025-09-01', label: 'a' }], { width: 1720, from: '2025-06', to: '2026-12' }))
+            // At size 20 a dot has a radius of 5.4, its clear room is 3.6, and half a tick is 1: a tick is in the room of a mark up to 10 px from its middle.
+            const near = dateLine([{ at: 2022.09 }, { at: 2024.11 }, { at: 2026 }, { at: 2026 }, { at: 2028, label: 'a' }], sized)
+            const ticks = () => [2022, 2024, 2026, 2028].map((year) => tickOf(near, year).get('visible'))
+            expect(ticks()).toEqual([true, true, true, true])
+            // 8.9 px from the tick of 2022: the mark is 2.5 px beside the tick, in its clear room. `show()` takes the tick away, and `hide()` brings it back.
+            near.events[0]!.show()
+            expect(ticks()).toEqual([false, true, true, true])
+            near.events[0]!.hide()
+            expect(ticks()).toEqual([true, true, true, true])
+            // 10.9 px from the tick of 2024: the tick stays.
+            near.events[1]!.show()
+            expect(ticks()).toEqual([true, true, true, true])
+            // Two marks at the tick of 2026: the one in the row over the line is clear of the tick, and the one on the line is not.
+            expect([near.p(2)[1], near.p(3)[1] < -10]).toEqual([0, true])
+            near.events[3]!.show()
+            expect(ticks()).toEqual([true, true, true, true])
+            near.events[2]!.show()
+            expect(ticks()).toEqual([true, true, false, true])
+            // The mark of an event with a label takes its tick away too.
+            near.events[4]!.show()
+            expect(ticks()).toEqual([true, true, false, false])
+            // On the stage, the tick leaves at the time when the event shows: with `show()`, and with a fade.
+            shown = s.add(dateLine([{ at: 2022 }, { at: 2024 }, { at: 2026 }], sized).at(0, 300))
+            s.wait(1)
+            shown.events[0]!.show()
+            s.play(line.advance('2025-07-20'), fadeIn(shown.events[1]!), { duration: 1, ease: linear })
+            s.play(line.showAll(), { duration: 1, ease: linear })
+        }))
+        // The cursor reaches 2 July at 1.5 s. Its mark is 3 px after the tick of July. The mark of 9 June is 25 px from the tick of June.
+        const ticks = (time: number) => at(time, () => ['2025-06', '2025-07', '2025-08', '2025-09'].map((date) => tickOf(line, date).get('visible')))
+        expect(ticks(0.5)).toEqual([true, true, true, true])
+        expect(ticks(1.45)).toEqual([true, true, true, true])
+        expect(ticks(1.55)).toEqual([true, false, true, true])
+        // The event of 1 September has a label, and its mark is at the tick.
+        expect(ticks(3.5)).toEqual([true, false, true, false])
+        expect(at(3.5, () => line.events.map((event) => event.get('visible')))).toEqual([true, true, true, true])
+        const years = (time: number) => at(time, () => [2022, 2024, 2026].map((year) => tickOf(shown, year).get('visible')))
+        expect(years(0.5)).toEqual([true, true, true])
+        expect(years(1.5)).toEqual([false, false, true])
+        // A copy has its own ticks.
+        const copy = shown.clone()
+        copy.events[2]!.show()
+        expect([tickOf(copy, 2026).get('visible'), at(3.5, () => tickOf(shown, 2026).get('visible'))]).toEqual([false, true])
+    })
+
+    it('gives one event the look of the lit event with light: the accent color, and a ring around its mark', async () => {
+        let lights!: Line, early!: Line, same!: Line
+        const lit: (number | null)[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            lights = s.add(dateLine([{ at: 2021, label: 'a', note: 'n', color: 'teal' }, { at: 2023 }, { at: 2025, mark: 'ring' }], { ...sized, accent: 'red' }).at(0, 300))
+            // The color of these two events is the accent color.
+            same = s.add(dateLine([{ at: 2021, color: 'red' }, { at: 2023, color: 'red' }], { ...sized, accent: 'red' }))
+            early = s.add(dateLine([{ at: 2021 }, { at: 2023, label: 'b' }], sized).at(0, -300))
+            s.wait(1)
+            // An event that is lit while it is hidden stays hidden.
+            s.play(lights.showAll(), same.showAll(), early.light(1), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+            s.play(lights.light(0), same.light(0), early.showAll(), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+            s.play(lights.light(2), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+            s.play(lights.light(2), { duration: 1, ease: linear })
+            s.play(lights.light(null), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+        }))
+        // `lit` is the index after the changes that the film has played.
+        expect(lit).toEqual([null, 0, 2, null])
+        const [first, , ring] = lights.events as [Line['events'][number], Line['events'][number], Line['events'][number]]
+        const looks = (time: number) => at(time, () => [first.mark.get('fill'), first.stem!.get('stroke'), first.text!.chars[0]!.get('fill'), first.note!.chars[0]!.get('fill'), first.halo.get('opacity'), ring.mark.get('stroke'), ring.mark.get('fill'), ring.halo.get('opacity')])
+        const [teal, red, ink, dim, bg] = ['teal', 'red', 'ink', 'dim', 'bg'].map(paint)
+        expect(looks(2)).toEqual([teal, teal, teal, dim, 0, ink, bg, 0])
+        // The mark, the stem and the label take the accent color, and the ring around the mark shows. The note stays in dim.
+        expect(looks(3)).toEqual([red, red, red, dim, 1, ink, bg, 0])
+        expect(looks(2.5)[0]).not.toEqual(teal)
+        expect(looks(2.5)[0]).not.toEqual(red)
+        expect(looks(2.5)[4]).toBeCloseTo(0.5, 6)
+        // The next event takes the look from the one before. A ring has the accent on its line.
+        expect(looks(4)).toEqual([teal, teal, teal, dim, 0, red, bg, 1])
+        // The same event again changes nothing, and null leaves no event lit.
+        expect(looks(4.5)).toEqual(looks(4))
+        expect(looks(6)).toEqual([teal, teal, teal, dim, 0, ink, bg, 0])
+        // The ring is in the accent color, around the mark and inside its clear room: 5.4 + 1.4 px at size 20, with a line of 1.5.
+        expect([first.halo.get('stroke'), first.halo.bounds().width, first.halo.get('strokeWidth')]).toEqual([red, expect.closeTo(2 * (5.4 + 1.4), 6), 1.5])
+        expect(middle(first.halo)).toEqual(middle(first.mark).map((value) => expect.closeTo(value, 6)))
+        // An event whose own color is the accent color looks lit by its ring only: the lit look differs from every look that is not lit.
+        expect(at(3, () => same.events.map((event) => [event.mark.get('fill'), event.halo.get('opacity')]))).toEqual([[red, 1], [red, 0]])
+        // An event that was lit while it was hidden appears lit.
+        const late = early.events[1]!
+        expect(at(1.9, () => [late.get('visible'), late.halo.get('opacity')])).toEqual([false, expect.closeTo(0.9, 6)])
+        expect(at(3, () => [late.get('visible'), late.mark.get('fill'), late.text!.chars[0]!.get('fill'), late.halo.get('opacity')])).toEqual([true, paint('orange'), paint('orange'), 1])
+        // The accent is orange when the film gives none, and the animations take these times when the film gives none.
+        let durations: number[] = []
+        await compileFilm(film(() => {
+            const plain = dateLine([{ at: 2021 }], sized)
+            durations = [plain.enter().duration, plain.advance(2022).duration, plain.showAll().duration, plain.light(null).duration]
+            expect(() => plain.light(1)).toThrow(/cannot light event 1\. The line has the events 0 to 0\. Use null for no lit event/)
+            expect(() => plain.light(0.5)).toThrow(/cannot light event 0\.5/)
+        }))
+        expect(durations).toEqual([1, 1.6, 3, 0.4])
+    })
+
+    it('keeps its cursor in a room of its own under the line, where it touches no mark, no tick, no stem and no text, and never moves it back or past the date with an ease that bounces', async () => {
+        await compileFilm(film(() => {
+            const record = ['2025-06-09', '2025-06-10*', '2025-10-29', '2026-03-06', '2026-03-06', '2026-03-24*', '2026-03-25', '2026-11-06'].map((date) => (date.endsWith('*') ? { at: date.slice(0, -1), mark: 'star' as const } : { at: date }))
+            const lines = [
+                dateLine(RECORD, sized), dateLine(CROWD, { width: 1800, from: 2025, to: 2027 }), dateLine([{ at: '5.1', label: 'one' }, { at: '5.19', label: 'the fix', mark: 'ring' }], { scale: 'order', width: 900 }),
+                dateLine([...record, { at: '2026-07-01', label: 'a', mark: 'star' }, { at: '2026-07-02', label: 'b' }], { width: 1720 }), dateLine([{ at: '2025-05-05', label: 'a' }, { at: '2025-05-10', label: 'b', note: 'n' }], { size: 40 }),
+            ]
+            /** The room of the ink of a node: its bounds, and half of its line. */
+            const ink = (node: Node) => { const box = edges(node), half = node.get('stroke') ? node.get('strokeWidth') / 2 : 0; return [box[0] - half, box[1] - half, box[2] + half, box[3] + half] as const }
+            for (const line of lines) {
+                // The cursor is a pointer under the line. It moves along the line only, so its height is the room that it needs: nothing else is in it, at any date.
+                const [left, top, right, bottom] = edges(line.cursor)
+                expect(top).toBeGreaterThan(0)
+                expect([bottom - top, right - left]).toEqual([expect.closeTo((right - left) * (0.32 / 0.42), 6), expect.closeTo(right - left, 6)])
+                const outside = (box: readonly [number, number, number, number]) => box[3] < top - 1 || box[1] > bottom + 1
+                // The marks, the ring of a lit event, the stems, the labels and the notes.
+                for (const event of line.events) {
+                    for (const part of [event.mark, event.halo, event.stem]) if (part) expect(outside(ink(part))).toBe(true)
+                    for (const words of [event.text, event.note]) if (words) expect(outside(edges(words))).toBe(true)
+                }
+                // The line and its ticks are over it, and the texts under the line are under it.
+                for (const part of line.axis.children) {
+                    const isText = typeof (part as unknown as { source?: unknown }).source === 'string'
+                    expect(isText ? edges(part)[1] > bottom + 1 : ink(part)[3] < top - 1).toBe(true)
+                }
+            }
+        }))
+        // An ease that passes its end and comes back, and an ease that starts backward.
+        const eases = [(t: number) => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2, (t: number) => 2.70158 * t ** 3 - 1.70158 * t ** 2]
+        for (const ease of eases) {
+            let line!: Line
+            await compileFilm(film({ fps: 20 }, (s) => {
+                line = s.add(dateLine([{ at: 2021, label: 'a' }, { at: 2029, label: 'b' }], sized))
+                s.play(line.advance(2022), { duration: 0.5, ease: linear })
+                s.play(line.advance(2026), { duration: 2, ease })
+            }))
+            const xs = Array.from({ length: 41 }, (_, step) => at(0.5 + step * 0.05, () => line.cursor.get('x')))
+            xs.forEach((x, index) => {
+                expect(x).toBeGreaterThanOrEqual(line.x(2022) - 1e-6)
+                expect(x).toBeLessThanOrEqual(line.x(2026) + 1e-6)
+                if (index > 0) expect(x).toBeGreaterThanOrEqual(xs[index - 1]! - 1e-6)
+            })
+            expect(xs[40]).toBeCloseTo(line.x(2026), 6)
+        }
+    })
+
+    it('uses as few heights as the labels need, so more levels never make a line fail', async () => {
+        await compileFilm(film(() => {
+            const places = (line: Line) => line.events.map(labelOf)
+            // A long label over the line, six labels under it, and one more over it. The last one needs the first one at another height.
+            const crowd = [
+                { at: '2020-01', label: 'the Firecracker paper at NSDI, by Agache and others', side: 'over' as const },
+                ...['2020-03', '2020-05', '2020-07', '2020-09', '2020-11', '2021-01'].map((at, index) => ({ at, label: `v0.2${index}`, side: 'under' as const })),
+                { at: '2021-09', label: 'Lambda adopts it', side: 'over' as const },
+            ]
+            const made = (levels: number) => dateLine(crowd, { width: 1800, from: 2020, to: 2027, levels })
+            expect(() => made(2)).toThrow(/has no place/)
+            const three = places(made(3))
+            for (const levels of [4, 5, 6, 7, 8]) expect(places(made(levels))).toEqual(three)
+            // 24 events with long labels on 1500 px: the search goes back many times, and finds their places with 3 heights. So 4 levels give the same places.
+            const words = ['the paper', 'a first public release', 'the newsletter', 'the technical report on the whole system', 'v2', 'a talk', 'the second post of the series', 'documentation', 'the reply', 'an incident in production', 'GA', 'the fix', 'open source', 'the acquisition is announced']
+            const notes = [undefined, 'names Anyrun', undefined, undefined, 'two weeks later', undefined, 'by Agache and others at NSDI', undefined]
+            const dense = Array.from({ length: 24 }, (_, index) => {
+                const years = 2000 + (30 * (index + 0.5)) / 24, year = Math.floor(years), month = 1 + Math.floor((years - year) * 12)
+                return { at: `${year}-${String(month).padStart(2, '0')}-${String(1 + ((index * 7) % 27)).padStart(2, '0')}`, label: words[index % words.length]!, note: notes[index % notes.length] }
+            })
+            const heights = (line: Line) => new Set(line.events.map((event) => Math.round(labelOf(event)[1]))).size
+            const tight = dateLine(dense, { width: 1500, levels: 3 })
+            expect(heights(tight)).toBeGreaterThan(4)
+            expect(places(dateLine(dense, { width: 1500, levels: 4 }))).toEqual(places(tight))
+            expect(() => dateLine(dense, { width: 1500, levels: 2 })).toThrow(/has no place/)
+        }))
+    })
+
+    it('refuses a date that it cannot read, a date outside the line, and a line that ends before it starts', async () => {
+        await compileFilm(film(() => {
+            const format = /A date is 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD', or a number of years/
+            expect(() => dateLine([])).toThrow(/give it at least one event/)
+            expect(() => dateLine([{ at: 2021, label: ' ' }])).toThrow(/event 0 has an empty label\. Give it a label, or leave `label` out for a mark with no label/)
+            // A label and a note are one line each. The note is the second line.
+            expect(() => dateLine([{ at: 2021, label: 'two\nlines' }])).toThrow(/the label of event 0 \("two\\nlines"\) has a line break\. A label is one line\. Use `note` for a second line/)
+            expect(() => dateLine([{ at: 2021, label: 'a', note: 'two\nlines' }])).toThrow(/the note of event 0 \("a"\) has a line break\. A note is one line/)
+            expect(() => dateLine([{ at: 2021, note: 'n' }])).toThrow(/event 0 \(at 2021\) has a note and no label\. A note is the second line of a label/)
+            expect(() => dateLine([{ at: 2021, mark: 'square' as never }])).toThrow(/event 0 \(at 2021\) has the mark "square"\. Use 'dot', 'star' or 'ring'/)
+            expect(() => dateLine([{ at: 2021 }], { accent: 'nope' })).toThrow(/accent is "nope", which is not a color/)
+            expect(() => dateLine([{ at: '2025-13-01', label: 'a' }])).toThrow(/event 0 \("a"\) has the date "2025-13-01"\. A date is/)
+            // 2025 is not a leap year, and 2024 is.
+            expect(() => dateLine([{ at: '2025-02-29', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: '2024-02-29', label: 'a' }])).not.toThrow()
+            expect(() => dateLine([{ at: '2025-04-31', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: '2025-6-1', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: 'June 2025', label: 'a' }])).toThrow(/has the date "June 2025"/)
+            expect(() => dateLine([{ at: NaN, label: 'a' }])).toThrow(/has the date NaN/)
+            expect(() => dateLine([{ at: 2027, label: 'a' }, { at: 2020, label: 'b' }], { from: 2020, to: 2027 })).not.toThrow()
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { from: 2027, to: 2020 })).toThrow(/the line goes from 2027 to 2020\. Give a `from` that is before `to`/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { from: 2021, to: 2021 })).toThrow(/the line goes from 2021 to 2021/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { from: 'soon' })).toThrow(/from is "soon"\. A date is/)
+            // An error prints the ends of the line as the film wrote them, and as dates when the film gave none.
+            expect(() => dateLine([{ at: '2025-05-03', label: 'a' }, { at: '2025-05-08', label: 'b' }]).advance('2025-06')).toThrow(/cannot advance to "2025-06"\. The line goes from 2025-05-03 to 2025-05-08/)
+            expect(() => dateLine([{ at: '2025-05-03', label: 'a' }], { from: '2025-05', to: '2025-05-02' })).toThrow(/event 0 \("a"\) is at "2025-05-03", outside the line from "2025-05" to "2025-05-02"\. What works for this line: to: "2025-05-03"/)
+            expect(() => dateLine([{ at: '2025-05-03T10:00', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: 2021, label: 'a', side: 'left' as never }])).toThrow(/event 0 \("a"\) has the side "left"\. Use 'over' or 'under'/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { scale: 'log' as never })).toThrow(/scale is 'time' or 'order', not "log"/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { levels: 0 })).toThrow(/levels is the number of heights/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { size: 0 })).toThrow(/size is the text size of the labels/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { width: 0 })).toThrow(/width is the length of the line/)
+            const line = dateLine(RECORD, sized)
+            expect(() => line.x('x')).toThrow(/the line has no place for "x"\. A date is/)
+            expect(() => line.p(3)).toThrow(/no event 3\. The line has 3 events/)
         }))
     })
 })

@@ -172,6 +172,18 @@ s.play(line.addCrossings(9997), { duration: 2 })
 s.play(line.clear())
 ```
 
+A line of time with events at their dates: the history of a project, the releases of a kernel, who said what and when. Do not draw the line, the ticks and the stems by hand. `dateLine` puts each event at its date, writes the years, the months, or the days by the span of the line so that two texts never touch, and places the labels over the line and under it so that no two meet. It stops the build when a label has no place. `advance(date)` moves the cursor to a date and stops there, as in `lanes`, and what it passes appears. An event with no label is a mark only, as a dot, a star, or a ring. Marks that are near take rows over the line, also the marks of two events with labels a few days apart, and `record.light(index)` gives the event of the scene the accent color and a ring. An error of a layout ends with the changes that work for that line. For events with labels that are crowded in time, `scale: 'order'` puts them at equal steps and says "not to scale", and then `at` can be a version such as `'5.1'`. The bounds of the object hold the labels from the start, also while they are hidden, and `record.extent` is that room:
+
+```ts
+const record = s.add(dateLine([
+    { at: 2020, label: 'the first paper' },
+    { at: '2025-06-10', label: 'the newsletter', color: 'orange' },
+    { at: '2026-03-24', label: 'the technical report', color: 'orange', note: 'names the system' },
+], { width: 1600, from: 2020, to: 2027 }).at(0, 240))
+s.play(record.advance(2021))
+s.play(record.showAll())
+```
+
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
 
 ```ts
