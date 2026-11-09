@@ -818,18 +818,6 @@ Without `states`, a row has one of the states of `LOG_STATES`, for a history tha
 
 `log.enter()` brings the panel, the title, and the footer, and then the rows of the window as one. `log.frame`, `log.title`, `log.footer`, `log.rules` (the two lines under the title and over the footer), `log.earlier` and `log.later` (the two lines with a count), and `log.outline` are the parts. `size` is the text size, and `leading` is the height of a row as a part of it. By default, a row is as tall as the outline of the focus needs: the ink of the text, and 0.3 of the text size of clear room between that ink and the outline, at its two sides. That is about 1.9 of `size`, or 1.75 with the details in mono. A list with `focusLook: 'band'`, or with no focus, can take lower rows, such as `leading: 1.5`: the band has no line. With the outline, a `leading` under what the outline needs is an error at the first `focus`, and the error names the least value. `log.pitch` is the distance from one row to the next, so a `codeBlock` beside the list lines up with `leading: log.pitch / size`. `font` is the font of the title, the footer, and the details, and `detailFont` sets the font of the details alone: use `detailFont: 'mono'` for a detail that is data, such as a line of output. `titleSize` sets the text size of the title and the footer, which is 0.85 of `size` by default. The ids, the names, and the times are in mono.
 
-A film that was written for the first version of the list changes these things:
-
-- A row is about 1.9 of `size` tall, and it was 1.5. Twelve rows at size 26 take 587 px, and they took 468. For the old height, set `leading: 1.5` with `focusLook: 'band'`, or with no focus. With the outline, lower `visible` or `size`.
-- Two of `append`, `fold`, `unfold`, and `scrollTo` whose times overlap are an error. Follow the advice of the error: one `append` with a `lag`, a `seq`, or a shorter `duration`.
-- `log.mark(id, state)` in a closed fold changes that record only, and it changed the whole fold. For the whole fold, use `log.mark(log.find(test), state)` or a function. `log.find` gives each id of a fold, and it gave the first.
-- `log.unfold` needs a fold that was made with `rows`. A fold with `ids` and no `rows` does not open.
-- Details with room for less than 8 characters are an error, and they were cut or dropped. Raise `width`, or set `nameWidth`, as the error says.
-- The states of `LOG_STATES` draw a check, a ring, and a cross at the left of the row, and all drew a dot.
-- The parts of a line are in `row.parts`. `row.children` holds one node, `row.content`, and it held the parts.
-- `log.enter()` brings the rows as one, and it brought them one after another.
-- A style that the film gave to `log.outline` for a band, such as `log.outline.stroke(null).fill('ink', 0.1)`, becomes `focusLook: 'band'`.
-
 ## Bit fields
 
 `bitField(fields, options)` draws a word that is split into named fields: a row of boxes, one per field, with the bit numbers over them. Use it for a virtual address and its table indexes, for the flags of a register or of a page table entry, and for the layout of a structure. A field has its `bits`, a `label`, and a `color`. The first field is at the left, and it holds the highest bits.
