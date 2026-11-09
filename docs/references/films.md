@@ -116,7 +116,7 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
 
-A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
+A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `server`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `workflow`, `signal`, `issue`, `pullRequest`, `browser`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 
 ```ts
 const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: 'blue' }).at(-300, 0))
@@ -172,6 +172,20 @@ s.play(pages.change([3, 4, 5, 40], 'dirty'))
 const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
 ```
 
+The output of a real program: the command, the lines that it printed with their exact characters, and where and when it ran. Do not build it from a box and a `codeBlock` in each film. `find` selects one number by its exact text, to light it when the voice says it. Expand tabs to spaces, and leave lines out with a note line such as `{ text: '[...]', kind: 'note' }`. A terminal shows all its lines unless it starts with `shown: false` or with `enter()`. `print()` brings one block: the lines up to the next command, with the command itself when the film did not type it:
+
+```ts
+const run = terminal([
+    { text: './one-byte', kind: 'command' },
+    'Rss after the write:       4 kB',
+    'minor faults:              1',
+], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08' })
+s.play(run.enter())
+s.play(run.type(0))
+s.play(run.print())
+s.play(recolor(run.find('4 kB'), 'yellow'))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
@@ -187,6 +201,7 @@ Values that differ by more than about a hundred times, such as 100 ns beside 10 
 const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
 const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read from a spinning disk', value: 10_000_000 }], { scale: 'log', format: time, xLabel: 'time, logarithmic' })
 s.play(chart.enter())
+```
 
 A word split into named fields: a virtual address and its table indexes, the flags of a register, the layout of a structure. Do not build it from boxes and texts in each film. `bitField` gives each box a width for its bits, numbers the bits, and keeps every text inside its box. `minWidth` or `scale: 'even'` gives a field of one bit room for a name, and `unused: true` marks reserved bits. For the layout of a structure, `numbers: 'offsets'` counts its bytes, and `wrap: 16` fills rows of 16 bytes. A field with a `value` shows it in its box, and `word.setValue('fd', '3')` changes it in place. `word.field('table')` is the node of one field, and `word.p('table')` is the point where a line from it starts:
 
