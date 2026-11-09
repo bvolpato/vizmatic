@@ -125,7 +125,10 @@ export function solidColor(input: ColorInput): Rgba {
     return stops[0]![1]
 }
 
-/** Small seeded generator (mulberry32), for layouts and jitter that repeat exactly. */
+/**
+ * Small seeded generator (mulberry32), for layouts and jitter that repeat exactly: `const random = seededRandom(7)`,
+ * then each `random()` is a number from 0 up to 1. A film is built more than once, so it must not use `Math.random`.
+ */
 export function seededRandom(seed: number): () => number {
     let state = seed >>> 0
     return () => {

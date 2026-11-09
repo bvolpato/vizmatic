@@ -496,6 +496,10 @@ function end(build: Build): void {
     clock.font = builds[builds.length - 1]!.stage.font
 }
 
+const TWO_ENGINES = 'Two copies of vizmatic/stage built this film, so a part of it is on another timeline. '
+    + 'The usual cause is a film of several files in a folder with no "type": "module" in its package.json: '
+    + 'one file then loads the package as CommonJS and another as an ES module. Add "type": "module" to the package.json beside the film.'
+
 /** Run the build function, waiting for fonts and math when it asks for them, and return a seekable film. */
 export async function compileFilm(definition: FilmDefinition, overrides: CompileOverrides = {}): Promise<CompiledFilm> {
     const options: FilmOptions = {
@@ -527,6 +531,9 @@ export async function compileFilm(definition: FilmDefinition, overrides: Compile
                 await error.promise
                 continue
             }
+            // A wait for an asset that this engine does not know as its own comes from a second copy of the
+            // engine. That copy has its own timeline, so the part of the film that it built cannot be right.
+            if (isSuspend(error)) throw new Error(TWO_ENGINES)
             throw error
         }
     }

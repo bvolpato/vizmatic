@@ -2,7 +2,10 @@
 export interface FilmTemplate {
     readonly name: string
     readonly description: string
-    readonly source: string
+    /** The film, for a template of one file. */
+    readonly source?: string
+    /** For a template of many files: its folder under templates/ in the package. Its film file is film.ts. */
+    readonly folder?: string
 }
 
 const explainer = `import { axes, colorAlong, dot, draw, dynamic, fadeIn, film, line, tex, text, to, write } from 'vizmatic/stage'
@@ -220,4 +223,5 @@ export const FILM_TEMPLATES: readonly FilmTemplate[] = [
     { name: 'architecture', description: 'Services with live detail, and packets traveling along the edges.', source: architecture },
     { name: 'chart', description: 'Bars that grow in order, with the takeaway as the title.', source: chart },
     { name: 'deck', description: 'A stepped presentation with one chapter per slide.', source: deck },
+    { name: 'narrated', description: 'A folder for a film that follows a recorded voice: a script, two scenes, and the build.', folder: 'narrated' },
 ]

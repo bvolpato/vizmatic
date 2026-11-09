@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough, chip, chipRow,
     bitField,
     quote, quotePair, readingSeconds,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
     steps,
     fadeOut, indicate,
-    neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
+    neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
+    seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
     lanes, smooth, eventLog, LogRowNode, LOG_STATES,
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
@@ -12239,6 +12239,270 @@ describe('event log', () => {
             // A refused change leaves the list as it was.
             expect(log.count).toBe(7)
             expect(log.rows).toHaveLength(5)
+        }))
+    })
+})
+
+describe('chip', () => {
+    it('fits its box to its label, with the same room at both sides and the label in the middle', async () => {
+        await compileFilm(film(() => {
+            for (const content of ['i', 'virtio', 'a long label with a jumpy g and a q']) {
+                const made = chip(content, { size: 30 }).at(200, 100)
+                const frame = made.frame.bounds(), ink = made.text.bounds()
+                expect(frame.width).toBeCloseTo(Math.round(textWidth(content, 30, { font: 'sans' }) + 30 * 1.7), 6)
+                expect(frame.height).toBe(Math.round(30 * 2.3))
+                // The box starts at the place that the chip is given, as a tag and a row of chips do.
+                expect(made.box).toEqual({ x: 0, y: -frame.height / 2, width: frame.width, height: frame.height })
+                expect(frame.x).toBeCloseTo(200, 6)
+                // The ink of the label is inside the border, with more than half a font size at each side.
+                expect(ink.x - frame.x).toBeGreaterThan(15)
+                expect(frame.x + frame.width - ink.x - ink.width).toBeGreaterThan(15)
+                expect(Math.abs((ink.x - frame.x) - (frame.x + frame.width - ink.x - ink.width))).toBeLessThan(3)
+                expect(ink.y).toBeGreaterThan(frame.y)
+                expect(ink.y + ink.height).toBeLessThan(frame.y + frame.height)
+            }
+        }))
+    })
+
+    it('places its left end, and with an anchor its middle or its right end, as a tag and a row of chips do', async () => {
+        await compileFilm(film(() => {
+            const left = chip('virtio').at(100, 0), middle = chip('virtio', { anchor: 'center' }).at(100, 0), right = chip('virtio', { anchor: 'right' }).at(100, 0)
+            const width = middle.box.width
+            expect(left.frame.bounds().x).toBeCloseTo(100, 6)
+            expect(chip('virtio', { anchor: 'left' }).at(100, 0).frame.bounds().x).toBeCloseTo(100, 6)
+            expect(middle.frame.bounds().x).toBeCloseTo(100 - width / 2, 6)
+            expect(right.frame.bounds().x + width).toBeCloseTo(100, 6)
+            expect(left.box.x).toBe(0)
+            expect(middle.box.x).toBe(-width / 2)
+            expect(right.box.x).toBe(-width)
+            // The three objects that take their width from their text have one rule: a tag and a row start at x too.
+            const pill = tag('virtio').at(100, 0), row = chipRow(['virtio', 'KVM']).at(100, 0)
+            expect(pill.pill.bounds().x).toBeCloseTo(100, 6)
+            expect(row.chips[0]!.frame.bounds().x).toBeCloseTo(100, 6)
+            // With the anchor at the right, each of the three ends at x.
+            const ends = (node: { bounds(): { x: number; width: number } }) => node.bounds().x + node.bounds().width
+            expect(ends(tag('virtio', { anchor: 'right' }).at(100, 0).pill)).toBeCloseTo(100, 6)
+            expect(ends(tag('virtio', { anchor: 'right', note: 'a note' }).at(100, 0))).toBeCloseTo(100, 0)
+            expect(ends(chipRow(['virtio', 'KVM'], { anchor: 'right' }).at(100, 0).chips[1]!.frame)).toBeCloseTo(100, 6)
+            // With the anchor in the middle, the middle of each is at x.
+            const middleOf = (node: { bounds(): { x: number; width: number } }) => node.bounds().x + node.bounds().width / 2
+            expect(middleOf(tag('virtio', { anchor: 'center' }).at(100, 0).pill)).toBeCloseTo(100, 6)
+            const centered = chipRow(['virtio', 'KVM', 'a longer chip'], { anchor: 'center', maxWidth: 260 }).at(100, 0)
+            expect(centered.box.x).toBe(-centered.box.width / 2)
+            // Each line of a row with its middle at x has its own middle there.
+            const tops = [...new Set(centered.chips.map((made) => made.frame.bounds().y))]
+            expect(tops.length).toBeGreaterThan(1)
+            for (const top of tops) {
+                const line = centered.chips.filter((made) => made.frame.bounds().y === top).map((made) => made.frame.bounds())
+                expect((line[0]!.x + line[line.length - 1]!.x + line[line.length - 1]!.width) / 2).toBeCloseTo(100, 6)
+            }
+            // The label moves with the box.
+            expect(left.text.bounds().x - left.frame.bounds().x).toBeCloseTo(middle.text.bounds().x - middle.frame.bounds().x, 6)
+        }))
+    })
+
+    it('takes a least width, a height in font sizes, and round ends', async () => {
+        await compileFilm(film(() => {
+            expect(chip('ok', { minWidth: 260 }).box.width).toBe(260)
+            expect(chip('a label that is wider than the least width', { minWidth: 100 }).box.width).toBeGreaterThan(100)
+            expect(chip('ok', { size: 30, height: 2.6 }).box.height).toBe(78)
+            // A pill has the same box as a chip with corners. Only the path of its border differs.
+            const round = chip('ok', { round: true }), square = chip('ok')
+            expect(round.box).toEqual(square.box)
+            expect(pathToD(round.frame.get('path')!)).not.toBe(pathToD(square.frame.get('path')!))
+            expect(() => chip('  ')).toThrow('chip: give it a label')
+            expect(() => chip('ok', { height: 1.2 })).toThrow('a height of 1.2 font sizes leaves no room around the label. Use 1.4 or more')
+        }))
+    })
+
+    it('takes the room at the sides of its label, in font sizes', async () => {
+        await compileFilm(film(() => {
+            const label = textWidth('VISION', 50, { font: 'text-serif' })
+            // The default is 1.7 font sizes for the two sides together. A pill with round ends reads well with 1.5.
+            expect(chip('VISION', { size: 50, font: 'text-serif' }).box.width).toBe(Math.round(label + 50 * 1.7))
+            expect(chip('VISION', { size: 50, font: 'text-serif', room: 1.5 }).box.width).toBe(Math.round(label + 50 * 1.5))
+            expect(() => chip('VISION', { room: 0.5 })).toThrow('a room of 0.5 font sizes at the sides leaves the label on the border. Use 1 or more')
+        }))
+    })
+
+    it('draws its label in the font that it is given, and sizes its box for that font', async () => {
+        await compileFilm(film(() => {
+            const content = 'one process for each microVM'
+            const serif = chip(content, { font: 'text-serif', size: 30 }), sans = chip(content, { size: 30 })
+            // The ink of the label is as wide as the same text in the same font. The two fonts differ by many pixels.
+            expect(serif.text.bounds().width).toBeCloseTo(text(content, { font: 'text-serif', size: 30 }).bounds().width, 6)
+            expect(sans.text.bounds().width).toBeCloseTo(text(content, { size: 30 }).bounds().width, 6)
+            expect(Math.abs(serif.text.bounds().width - sans.text.bounds().width)).toBeGreaterThan(10)
+            expect(serif.box.width).toBe(Math.round(textWidth(content, 30, { font: 'text-serif' }) + 30 * 1.7))
+        }))
+    })
+})
+
+describe('chip row', () => {
+    const names = ['KVM', 'seccomp', 'cgroups', 'namespaces', 'virtio', 'a jailer', 'rate limiters']
+
+    it('lays the chips out from its left end, one gap apart, in the order given', async () => {
+        await compileFilm(film(() => {
+            const row = chipRow(names, { gap: 20 }).at(-300, 40)
+            expect(row.chips.map((made) => (made.text as unknown as { source: string }).source)).toEqual(names)
+            expect(row.chips[0]!.frame.bounds().x).toBeCloseTo(-300, 6)
+            row.chips.slice(1).forEach((made, index) => {
+                const before = row.chips[index]!.frame.bounds()
+                expect(made.frame.bounds().x).toBeCloseTo(before.x + before.width + 20, 6)
+                expect(made.frame.bounds().y).toBeCloseTo(before.y, 6)
+            })
+            const last = row.chips[row.chips.length - 1]!.frame.bounds()
+            expect(row.box.width).toBeCloseTo(last.x + last.width + 300, 6)
+            expect(row.box).toMatchObject({ x: 0, y: -row.chips[0]!.box.height / 2, height: row.chips[0]!.box.height })
+        }))
+    })
+
+    it('starts a new line when the next chip would pass its width, and its box covers every line', async () => {
+        await compileFilm(film(() => {
+            const row = chipRow(names, { maxWidth: 420, lineGap: 10 }).at(0, 0)
+            const tops = [...new Set(row.chips.map((made) => made.frame.bounds().y))]
+            expect(tops.length).toBeGreaterThan(1)
+            const height = row.chips[0]!.box.height
+            tops.forEach((top, line) => expect(top).toBeCloseTo(-height / 2 + line * (height + 10), 6))
+            for (const made of row.chips) {
+                const frame = made.frame.bounds()
+                expect(frame.x).toBeGreaterThanOrEqual(0)
+                expect(frame.x + frame.width).toBeLessThanOrEqual(420)
+            }
+            // Each line starts at the left end.
+            for (const top of tops) expect(Math.min(...row.chips.filter((made) => made.frame.bounds().y === top).map((made) => made.frame.bounds().x))).toBeCloseTo(0, 6)
+            expect(row.box.height).toBeCloseTo(tops.length * height + (tops.length - 1) * 10, 6)
+            expect(row.box.width).toBeLessThanOrEqual(420)
+            // One line more fits when the row is wider.
+            expect(new Set(chipRow(names, { maxWidth: 900 }).chips.map((made) => made.frame.bounds().y)).size).toBeLessThan(tops.length)
+        }))
+    })
+
+    it('keeps a chip that ends exactly at the width on its line, and wraps only with a width', async () => {
+        await compileFilm(film(() => {
+            const one = chipRow(names, { gap: 20 })
+            // Without a width, the row is one line, however long it is.
+            expect(new Set(one.chips.map((made) => made.frame.bounds().y)).size).toBe(1)
+            const two = one.chips[0]!.box.width + 20 + one.chips[1]!.box.width
+            const exact = chipRow(names.slice(0, 2), { gap: 20, maxWidth: two })
+            expect(exact.chips[1]!.frame.bounds().y).toBe(exact.chips[0]!.frame.bounds().y)
+            expect(chipRow(names.slice(0, 2), { gap: 20, maxWidth: two - 1 }).chips[1]!.frame.bounds().y).toBeGreaterThan(exact.chips[0]!.frame.bounds().y)
+        }))
+    })
+
+    it('keeps the chips and the lines apart by default, by gaps that follow the font size', async () => {
+        await compileFilm(film(() => {
+            for (const size of [28, 56]) {
+                const row = chipRow(names, { size, maxWidth: size * 20 })
+                const first = row.chips[0]!.frame.bounds(), second = row.chips[1]!.frame.bounds()
+                expect(second.x - (first.x + first.width)).toBe(Math.round(size * 0.5))
+                const below = row.chips.find((made) => made.frame.bounds().y > first.y)!.frame.bounds()
+                expect(below.y - (first.y + first.height)).toBe(Math.round(size * 0.43))
+            }
+        }))
+    })
+
+    it('gives one chip its own colors, and refuses a chip that is wider than the row', async () => {
+        await compileFilm(film(() => {
+            const row = chipRow(['KVM', { text: 'virtio', color: 'green', stroke: 'green' }], { stroke: 'grid' })
+            expect(row.chips[1]!.frame.get('stroke')).not.toEqual(row.chips[0]!.frame.get('stroke'))
+            expect(row.chips[1]!.text.children[0]!.get('fill')).toEqual(row.chips[1]!.frame.get('stroke'))
+            expect(() => chipRow(['a chip that is much wider than the row that holds it'], { maxWidth: 200 })).toThrow(/the chip "a chip that is much wider than the row that holds it" is \d+ wide, and the row is 200 wide/)
+            expect(() => chipRow([])).toThrow('chipRow: give it at least one chip')
+        }))
+    })
+})
+
+describe('named box', () => {
+    it('keeps a name that fits at its size, in the middle of a box of the size given', async () => {
+        await compileFilm(film(() => {
+            const made = namedBox('guest', { width: 300, height: 120, size: 32 }).at(50, 80)
+            const frame = made.frame.bounds(), name = made.name.bounds()
+            expect(frame).toMatchObject({ x: -100, y: 20, width: 300, height: 120 })
+            expect(name.height).toBeCloseTo(text('guest', { size: 32 }).bounds().height, 6)
+            expect(Math.abs(name.x + name.width / 2 - 50)).toBeLessThan(2)
+            expect(name.y).toBeGreaterThan(frame.y)
+            expect(name.y + name.height).toBeLessThan(frame.y + frame.height)
+            expect(made.sub).toBeNull()
+        }))
+    })
+
+    it('sets a name smaller when it is too wide, so that it stays inside the border with room at both sides', async () => {
+        await compileFilm(film(() => {
+            const made = namedBox('virtual machine monitor', { width: 300, height: 120, size: 32 })
+            const frame = made.frame.bounds(), name = made.name.bounds()
+            expect(name.height).toBeLessThan(text('virtual machine monitor', { size: 32 }).bounds().height)
+            // The room at each side is the height of a capital letter of the size that the film asked for.
+            expect(name.x - frame.x).toBeGreaterThan(20)
+            expect(frame.x + frame.width - name.x - name.width).toBeGreaterThan(20)
+        }))
+    })
+
+    it('fits the name in the font of the box', async () => {
+        await compileFilm(film(() => {
+            // This name fits a width of 330 in the text font, and not in the default font, which is wider.
+            const name = 'one process for each VM'
+            const serif = namedBox(name, { width: 330, height: 120, size: 26, font: 'text-serif' }), sans = namedBox(name, { width: 330, height: 120, size: 26 })
+            expect(serif.name.bounds().height).toBeCloseTo(text(name, { font: 'text-serif', size: 26 }).bounds().height, 6)
+            expect(sans.name.bounds().height).toBeLessThan(text(name, { size: 26 }).bounds().height)
+        }))
+    })
+
+    it('gives the boxes of one group one text size, so that twin boxes do not differ', async () => {
+        await compileFilm(film(() => {
+            const names = ['frontend', 'virtual machine monitor'], look = { width: 300, height: 120, size: 32 }
+            const height = (made: { name: { bounds(): { height: number } } }, sample: string) => made.name.bounds().height / text(sample, { size: 32 }).bounds().height
+            // Alone, the short name keeps its size and the long name is set smaller.
+            const alone = names.map((name) => namedBox(name, look))
+            expect(height(alone[0]!, names[0]!)).toBeCloseTo(1, 6)
+            expect(height(alone[1]!, names[1]!)).toBeLessThan(0.8)
+            // In a group, both have the size of the long name.
+            const twins = names.map((name) => namedBox(name, { ...look, group: names }))
+            expect(height(twins[0]!, names[0]!)).toBeCloseTo(height(alone[1]!, names[1]!), 6)
+            expect(height(twins[1]!, names[1]!)).toBeCloseTo(height(alone[1]!, names[1]!), 6)
+            // A name of the group that cannot fit stops every box of the group, and the error names it.
+            expect(() => namedBox('frontend', { ...look, group: ['frontend', 'a name that is much wider than its box can hold'] })).toThrow(/"a name that is much wider than its box can hold" needs a size of \d+ to fit a box of 300 by 120/)
+        }))
+    })
+
+    it('stops when a name or a second line would be too small to read', async () => {
+        await compileFilm(film(() => {
+            expect(() => namedBox('a name that is much wider than its box can hold', { width: 300, height: 120 }))
+                .toThrow(/"a name that is much wider than its box can hold" needs a size of \d+ to fit a box of 300 by 120, and the size is 32. Shorten the text, or make the box larger/)
+            expect(() => namedBox('guest', { width: 300, height: 120, sub: 'a second line that is much wider than the box can hold at a size to read' })).toThrow(/"a second line that is much wider.*" needs a size of \d+ .* and the size is 23/)
+            expect(() => namedBox('guest', { width: 40, height: 120 })).toThrow('a width of 40 leaves no room for the name "guest" at size 32')
+            expect(() => namedBox(' ', { width: 300, height: 120 })).toThrow('namedBox: give it a name')
+            expect(() => namedBox('guest', { width: 300, height: 0 })).toThrow('the box "guest" needs a width and a height over 0')
+        }))
+    })
+
+    it('puts a second line under the name, and shrinks both in a low box so that they stay inside', async () => {
+        await compileFilm(film(() => {
+            // The boxes are away from the origin, so a part that is not a child of its box would stay behind.
+            const roomy = namedBox('host kernel', { width: 300, height: 120, sub: 'Linux 6.1' }).at(500, 300)
+            const low = namedBox('host kernel', { width: 300, height: 60, sub: 'Linux 6.1' }).at(-500, -300)
+            for (const made of [roomy, low]) {
+                const frame = made.frame.bounds(), name = made.name.bounds(), sub = made.sub!.bounds()
+                expect(name.y).toBeGreaterThan(frame.y)
+                expect(sub.y + sub.height).toBeLessThan(frame.y + frame.height)
+                // The second line starts under the letters of the name.
+                expect(sub.y).toBeGreaterThan(name.y + name.height * 0.6)
+                expect(sub.height).toBeLessThan(name.height)
+                expect(Math.abs(sub.x + sub.width / 2 - (frame.x + frame.width / 2))).toBeLessThan(2)
+            }
+            expect(low.name.bounds().height).toBeLessThan(roomy.name.bounds().height)
+            expect(low.sub!.bounds().height).toBeLessThan(roomy.sub!.bounds().height)
+        }))
+    })
+
+    it('takes the color of the border for the name, a color for the name alone, and a light fill', async () => {
+        await compileFilm(film(() => {
+            const plain = namedBox('guest', { width: 300, height: 120, color: 'red' })
+            expect(plain.name.children[0]!.get('fill')).toEqual(plain.frame.get('stroke'))
+            const own = namedBox('guest', { width: 300, height: 120, color: 'red', nameColor: 'ink' })
+            expect(own.name.children[0]!.get('fill')).not.toEqual(own.frame.get('stroke'))
+            expect(namedBox('guest', { width: 300, height: 120, fill: 'red', fillOpacity: 0.12 }).frame.get('fillOpacity')).toBe(0.12)
+            expect(namedBox('guest', { width: 300, height: 120, fill: null }).frame.get('fill')).toBeNull()
         }))
     })
 })

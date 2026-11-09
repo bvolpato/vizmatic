@@ -33,6 +33,30 @@ jobs:
           restore-keys: actionlint-${{ runner.os }}-
       - run: ./test.sh
 
+  # The narration tools are Python scripts that uv runs, and they read and write movies with FFmpeg. Their
+  # tests skip on a machine without the two, and the verify job has neither. So this job installs both and
+  # runs those tests: without it, a change that breaks a tool or the build of a narrated film would pass.
+  narration:
+    name: narration tools (Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v7
+      - name: Install FFmpeg, which the tools read and write movies with
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - run: pnpm install --frozen-lockfile
+      # The command line loads a film as a project does: from the built package.
+      - run: pnpm build
+      - name: Test the tools, the one command of a film, and the film shell
+        run: pnpm exec vitest run tests/narrated-tools.test.ts tests/narrated-cli.test.ts tests/narrated.test.ts
+
   playground:
     name: playground browser (Node 22)
     runs-on: ubuntu-latest

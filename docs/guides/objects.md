@@ -625,7 +625,7 @@ The bounds of a line hold the way of a mark with the default `reach`, on both si
 
 ## Tags
 
-`tag(word, options)` draws a word in a pill, with a `note` beside it. Use it to say what kind of claim is on the screen and where it comes from: measured, plan, judgment, with the source and its date. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x.
+`tag(word, options)` draws a word in a pill, with a `note` beside it. Use it to say what kind of claim is on the screen and where it comes from: measured, plan, judgment, with the source and its date. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x. `anchor: 'right'` places the right end of the tag, for a tag at the right edge of the frame, and `anchor: 'center'` its middle.
 
 `tagTrack(states, { until })` is a tag that changes with time, at one place. Each state has the time when it starts. One state is on screen at a time: a state fades out before the next one fades in. States that are out of order, or too near to each other for the two fades, are an error.
 
@@ -718,6 +718,37 @@ export default film((s) => {
     s.wait(4)
 })
 ```
+
+## Chips and named boxes
+
+`chip(label, options)` draws a short label in a box that fits it: a name, a state, a unit. The box takes its width from the label, with room on every side, so a chip is never smaller than its text. `.at(x, y)` places the left end of the box, as for a tag and a row of chips: the three take their width from their text, and they have one rule. `anchor: 'center'` places the middle of the box, and `anchor: 'right'` its right end. `minWidth` gives the chips of a column one width, `round` makes a pill, `room` sets the room at the sides of the label, and `dash` is for a thing that is absent or only planned.
+
+`chipRow(items, options)` lays chips out in a row. The row starts a new line at `maxWidth`, and without `maxWidth` it is one line, however long. `.at(x, y)` places the left end of the first line, and not its middle. With `anchor: 'center'`, each line has its middle at x, and with `anchor: 'right'`, each line ends at x. An item is a label, or `{ text, color, stroke }` for one chip with its own colors.
+
+`namedBox(name, { width, height })` draws a box of a given size with a name in its middle: a component, an actor, a file. A name that is too wide is set smaller, so a name is never larger than its box. `sub` is a second, smaller line under the name. Boxes of one size that stand side by side take `group`, the names of all of them: each box then gets the size at which the longest name fits, so twin boxes do not have names of two sizes. For the stages of a process with one of them lit, use [`steps`](#steps): it gives the boxes one width and moves the light.
+
+```film paired label="Two named boxes, and a row of chips that wraps under them"
+import { chipRow, fadeIn, film, lagged, namedBox } from 'vizmatic/stage'
+
+// The film names its font once, and each name and each chip has it.
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const look = { width: 620, height: 170, size: 56 } as const
+    const monitor = namedBox('virtual machine monitor', { ...look, color: 'blue', fill: 'blue', fillOpacity: 0.12, sub: 'one process for each microVM' }).at(-350, -170)
+    const kernel = namedBox('host kernel', { ...look, color: 'teal', sub: 'Linux 6.1' }).at(350, -170)
+    const walls = s.add(chipRow(['KVM', 'seccomp', 'cgroups', 'namespaces', { text: 'virtio', color: 'green', stroke: 'green' }, 'a jailer', 'rate limiters', 'snapshots'], { maxWidth: 1320, size: 44 }).at(-660, 80))
+    // The row is on the stage, so each chip waits hidden for its turn.
+    for (const made of walls.chips) made.hide()
+    s.play(fadeIn(monitor), fadeIn(kernel), { duration: 0.7 })
+    s.play(lagged(walls.chips.map((made) => fadeIn(made, { shift: [0, 16] })), { lag: 0.3 }), { duration: 1.6 })
+    s.wait(1.2)
+})
+```
+
+A name or a second line that would need less than 0.6 of its size is an error, because nobody can read it: shorten the text, or make the box larger. A chip that is wider than its row is an error too. `fitSize(text, width, size, { font })` gives the size at which a line fits a width, for a label in a shape of your own, `textWidth(text, size, { font })` gives its width, and `capHeight(size)` is the room to keep between a text and a line. The two measures need the font, because a width in another font than the text is drawn in is a wrong width.
+
+`chip.frame` and `chip.text` are the parts of a chip, and `chip.box` is its border in the coordinates of the chip. `row.chips` has each chip of a row, and `row.box` is the area of all its lines. `namedBox.frame`, `namedBox.name`, and `namedBox.sub` are the parts of a named box.
+
+A film with many scenes makes these in one font, at sizes that follow the one size of the film, with `sceneKit()`: the `chip`, `chipRow`, `namedBox`, `fitSize` and `textWidth` of a kit are these functions with the font of the film. [Narrated films](narrated-films.md) describes it.
 
 ## State grids
 

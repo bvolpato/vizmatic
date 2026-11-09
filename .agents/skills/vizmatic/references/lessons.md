@@ -20,12 +20,14 @@ Apply these in order: accuracy, completeness, clarity, brevity. Length follows t
 Compute every number in the film, and check it, so that the screen cannot disagree with the math. `examples/films/attention.ts` and `examples/films/cache-miss.ts` compute everything they show.
 
 ```ts
-import assert from 'node:assert/strict'
+import { assertEqual, text } from 'vizmatic/stage'
 
 const shares = softmax(scores)
-assert(Math.abs(shares[0] + shares[1] - 1) < 1e-9)
+assertEqual(Math.abs(shares[0] + shares[1] - 1) < 1e-9, true, 'the two shares add up to 1')
 const label = text(shares[0].toFixed(3), { font: 'text-serif', size: 44 })
 ```
+
+`assertEqual` stops the build when a value is not the value that the film counts on. It is a part of the library, so the film also runs in `vizmatic preview`, which runs in a browser. The `assert` of Node does not.
 
 - The voice and the screen use the same values, the same order, and the same rounding.
 - A title must stay true for as long as it is visible. A title that was true when it arrived can become false when the picture moves on. Sampling frames misses this. List every text block with the times it is visible, and read each one against the picture and the voice.
@@ -58,6 +60,8 @@ For some mechanisms, Vizmatic computes the intermediate states for you, so that 
 
 ## Follow a voice
 
+For a whole narrated film, start from the template: `npx vizmatic new <name> --template narrated`. It writes a folder with a script and two scenes. One command brings the film up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie, and it runs only the steps that have work to do. Without `--draft`, it makes the delivered movie. `narrated({ title, timing, scenes })` is the entry file: it draws the title card, calls each scene when its picture opens, fades in what the scene adds there, and fades the scene out at its end. `sceneKit()` makes the labels and the frame that the scenes share. Read the [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) first: it has the folder, the script format, the clock, the kit, the checks before a full render, and the review method. The rest of this section is the layer under it.
+
 Measure the speech first. Record each beat of the script as one take, and save its length and the time of each word. Most speech engines report word times, and a transcription tool can measure them from any recording. Then `narration` places the scenes, and each change runs when the voice reaches a phrase.
 
 ```ts
@@ -81,6 +85,7 @@ export default film((s) => {
 - `scene.on(phrase, build, offset)` builds when the phrase starts, and `scene.after` when it ends. `scene.cue(phrase)` returns both times. A cue ignores case and punctuation. If the voice does not say the phrase, the build stops with the name of the scene and the phrase, so a script change cannot leave the picture behind.
 - A word in `timing.json` can hold a spoken form, such as "twenty seven B" for "27B". A cue matches the spoken form.
 - `scene.clear([title, chart, alpha])` fades nodes out just before the scene ends, and brings values to zero in the same time. Pass the value that a `dynamic` drawing takes its opacity from, or that drawing stays on screen into the next scene.
+- `scene.keep(machine)` and `scene.take(machine)` hand a picture from one scene to the next with no fade, when both scenes show it at one place. Each scene builds its own copy. Without `narrated()`, the scene that ends also keeps its copy out of `clear`.
 - `narration` adds a caption for each spoken line and a chapter for each scene that has a `title`. The MP4 carries both.
 - The film lasts until the voice ends. Transcribe each new take before you render, and compare it with the script. A speech engine can say a word in a way that a listener hears as another word.
 
@@ -141,7 +146,7 @@ The scan cannot see that one block replaces another, so decide each warning your
 - The check reports text crossed by a stroke. It reports text on the edge of a filled shape, and text with no room beside a mark, only with `--text-gap 0.3`. Without `--motion`, that rule looks only at the moments of rest, so a film that never comes to rest needs both options.
 - A frame with one small mark counts as visible, so a nearly empty frame can pass. A blank shorter than 0.2 seconds is not reported. Read the frames at each handover in the delivered movie.
 
-The scan does not replace a look at the picture. Read the whole film as contact sheets, and not a sample of it.
+The scan does not replace a look at the picture. A contact sheet shows a frame at about a quarter of its size, so it is good for the pace of a film and it hides layout defects. Read one full-size still for each beat, one at a time: `npx vizmatic narrated stills <folder>` writes them for a narrated film, and the [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) lists the defects to look for. Then read the whole film as contact sheets, and not a sample of it.
 
 ```bash
 npx vizmatic film lesson.ts --every 3 --sheet --out stills

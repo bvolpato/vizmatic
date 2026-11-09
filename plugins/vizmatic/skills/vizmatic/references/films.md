@@ -33,11 +33,13 @@ s.play(morphMatching(eq0, eq1), seq(fadeOut(oldNote), fadeIn(newNote)), { durati
 
 ## Sound and captions
 
-`--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture. `references/lessons.md` covers narrated films.
+`--audio narration.wav` adds a sound track. It is padded or trimmed to the film's length, so a film that ends early cuts off the voice. Hold to the end with `s.wait(Math.max(0, voiceLength - s.time))`. `s.caption(text, seconds)` adds a caption and draws nothing into the picture.
 
 An MP4 carries the film's title, its chapters as markers on the player's timeline, and its captions as a track that the viewer can switch on. The same captions are also written as a WebVTT file beside the video. No second pass with FFmpeg is needed.
 
-For a film that follows a recorded voice, use `narration(s, timing)`. It places each scene from the measured length of the speech, and `scene.on('a spoken phrase', build)` runs `build` when the voice reaches that phrase. A phrase that the voice does not say stops the build. It also adds the captions and one chapter for each titled scene.
+For a film that follows a recorded voice, use `narrated({ title, timing, scenes })`. It draws the title card from the title. It calls each scene when its picture opens, fades in what the scene adds there with `s.add`, and fades out every node of the scene at its end, so a scene types no time for that. It gives each scene the clock of its part of the voice, and `c.on('a spoken phrase', build)` runs `build` when the voice reaches that phrase. `c.keep(node)` holds a node for the next scene, which takes its own copy with `c.take(node)`. A phrase that the voice does not say stops the build, and so does a scene that the script or the film does not have. It also adds the captions and one chapter for each titled scene. `narration(s, timing)` is the layer under it, for a film that needs another order of work.
+
+`npx vizmatic new <name> --template narrated` writes the folder of such a film. One command then brings it up to date, from the script to the movie: `npx vizmatic narrated build <folder> --draft` makes the voice on this machine, the sound mix, the layout check, and a draft movie. It runs only the steps that have work to do, and says why. Without `--draft`, it makes the delivered movie. The [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) covers the folder, the script, the clock, the build, the checks, and the review. `references/lessons.md` has the rules for a film that teaches.
 
 ## Worked films
 
@@ -202,6 +204,23 @@ const said = quote('the agent loop lives in Temporal rather than on the VM itsel
 }).at(-550, -120)
 s.play(said.enter())
 s.wait(readingSeconds(said.reading))
+```
+
+The labels and the frame that the scenes of one film share. Do not copy label helpers from film to film. `sceneKit` makes them in one font, with the heading, the source line, and the area for content at their places in the frame. Its one `size` sets every size: the heading, the source line, the claim tag, the chips and the names of the boxes follow it. `claimTag(c, { word: 'MEASURED', note: 'our run' })` puts a tag for the kind of the claim at the right end of the source line:
+
+```ts
+const { area, heading, source, label, left, right, chip, claimTag } = sceneKit({ size: 40 })
+const title = heading('One microVM')
+const note = source('Firecracker docs/design.md, 2026')
+const name = left('guest kernel', area.left, 120, { color: 'teal' })
+```
+
+A name in a box, and a short label in a box. Do not size the text by hand. `namedBox` sets a name smaller when it is too wide for its box, and `group` gives twin boxes one text size. `chip` takes its width from its label. `chipRow` wraps a list of chips only with `maxWidth`. A tag, a chip and a row of chips have one rule: `.at` places the left end, and `anchor: 'center'` or `'right'` places the middle or the right end. For the stages of a process with one of them lit, use `steps` and not a row of chips or of named boxes:
+
+```ts
+const names = ['host kernel', 'virtual machine monitor']
+const boxes = names.map((name, i) => namedBox(name, { width: 320, height: 96, color: 'teal', group: names }).at(-180 + i * 360, -80))
+const walls = s.add(chipRow(['KVM', 'seccomp', 'cgroups', 'namespaces'], { maxWidth: 600 }).at(-300, 80))
 ```
 
 A grid of cells that change state: pages of memory, blocks of a disk, the hosts of a fleet. Do not draw the cells by hand. `stateGrid` keeps the state of each cell, sweeps a change across the cells, and counts them. `PAGE_STATES` has the states of memory pages, and `states` takes your own:

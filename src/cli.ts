@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { inspect } from 'util'
 import { existsSync } from 'fs'
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises'
 import { randomUUID } from 'crypto'
@@ -38,6 +39,7 @@ import {
     checkFilmFile, filmFromModule, isLookName, parseFilmArgs, printFilmCheck, runFilmCommand, runLooksCommand,
     runNewCommand, runObjectsCommand, type FilmCheckFileReport,
 } from './film-cli'
+import { runNarratedCommand } from './narrated-cli'
 import type { LookName } from './stage/look'
 
 interface FrameModule {
@@ -183,12 +185,13 @@ const framesNeedingGlobalReact = new WeakSet<object>()
 
 function usageText() {
     return `Films:
-  vizmatic new <name> [--template explainer|equation|architecture|chart|deck] [--force]
+  vizmatic new <name> [--template explainer|equation|architecture|chart|deck|narrated] [--force]
+  vizmatic narrated <build|voice|mix|check|stills|sheet|beats|transcribe|sync|lag|probe|resound|draft> <folder> [options of the step] [--dry-run]
   vizmatic preview <file> [--port <n>] [--open]
   vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--text-gap <part>] [--reading-speed <n>] [--stepped] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
                 [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
-                [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--background <color|none>]
+                [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--name <output name>] [--background <color|none>]
                 [--ffmpeg <path>] [--json]
   vizmatic looks [--json]
   vizmatic objects [--json]
@@ -202,7 +205,8 @@ Frames:
 
   Browser animation metadata renders at t=0 in static output; GIF output still requires createAnimation(theme) or createScenes(theme).
   Video requires a film or createAnimation(theme) and FFmpeg on PATH; it writes H.264 MP4 with optional AAC audio at 1-120 fps.
-  A film is a file whose default export comes from film() in vizmatic/stage. The render, check, and video commands detect films.
+  A film is a file whose default export comes from film() or narrated() in vizmatic/stage. The render, check, and video commands detect films.
+  A narrated film is a folder with a script, scenes, and film.json. "vizmatic narrated" alone lists its steps.
   A film check looks where the film comes to rest. --motion also looks at every frame, and reports collisions and blank frames between pictures as warnings.
   --text-margin sets how near text may come to an edge of the frame. The default is 2% of the shorter side, and 0 turns the rule off.
   --text-gap <part> turns on the rule for crowded text: how near text may come to another mark, as a part of its font size. Try 0.3.
@@ -895,7 +899,10 @@ async function importBareFrame(filePath: string, source?: string): Promise<Frame
 async function importRewrittenFrame(filePath: string, source: string): Promise<FrameModule> {
     const extension = extname(filePath)
     const stem = basename(filePath, extension)
-    const tempPath = join(dirname(filePath), `.${stem}.vizmatic-${randomUUID()}${extension}`)
+    // The copy imports the engine by its file URL, which only an ES module can do. Beside a package.json with no
+    // "type": "module", a .ts file is CommonJS, and its require() of that URL fails with "Cannot find module" for
+    // a file that exists. A .mts file is an ES module in every folder.
+    const tempPath = join(dirname(filePath), `.${stem}.vizmatic-${randomUUID()}${extension === '.ts' ? '.mts' : extension}`)
     await writeFile(tempPath, rewriteFrameModuleImports(source))
 
     try {
@@ -1829,7 +1836,7 @@ async function checkCommandWithArgs(args: CheckArgs) {
             diagnostics.push({
                 code: 'frame.load_error',
                 severity: 'error',
-                message: imported.error instanceof Error ? imported.error.message : String(imported.error),
+                message: describeThrown(imported.error),
             })
             reports.push({ source, ok: false, diagnostics, themes: [] })
             continue
@@ -2095,7 +2102,7 @@ async function filmCommand(argv: string[]) {
     const named = new Set(args.inputs.map((input) => resolve(input)))
     const files: string[] = []
     for (const file of found) {
-        if (named.has(file) || /\bfilm\s*\(/.test(await readFile(file, 'utf8'))) files.push(file)
+        if (named.has(file) || /\b(film|narrated)\s*\(/.test(await readFile(file, 'utf8'))) files.push(file)
     }
     await runFilmCommand(args, files, outputStems(files), importFrame)
 }
@@ -2130,6 +2137,16 @@ async function previewCommand(argv: string[]) {
     })
 }
 
+/** The message of what was thrown. A value that is not an Error is shown with its content, never as "[object Object]". */
+function describeThrown(error: unknown): string {
+    if (error instanceof Error) return error.message
+    if (typeof error === 'object' && error !== null) {
+        const message = (error as { message?: unknown }).message
+        return typeof message === 'string' && message ? message : `A value that is not an error was thrown: ${inspect(error, { depth: 2, breakLength: 120 })}`
+    }
+    return String(error)
+}
+
 async function main() {
     const args = process.argv.slice(2)
     const [command, ...rest] = args
@@ -2149,6 +2166,8 @@ async function main() {
         await previewCommand(rest)
     } else if (command === 'new') {
         await runNewCommand(rest)
+    } else if (command === 'narrated') {
+        await runNarratedCommand(rest)
     } else if (command === 'looks') {
         runLooksCommand(rest)
     } else if (command === 'objects') {
@@ -2166,7 +2185,7 @@ main().catch((error) => {
     if (process.env.VIZMATIC_DEBUG === '1' && error instanceof Error) {
         console.error(error.stack ?? error.message)
     } else {
-        console.error(error instanceof Error ? error.message : String(error))
+        console.error(describeThrown(error))
     }
     process.exit(error instanceof Error && error.name === 'AbortError' ? 130 : 1)
 })

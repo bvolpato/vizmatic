@@ -23,8 +23,9 @@ const limits = {
     // The budget is a tripwire for an accident, such as a font that ships two times. It leaves room for features.
     // With the semibold of the serif text font (one file of 0.33 MB), the package is at 16.03 MB.
     unpackedSize: 18_000_000,
-    // Includes the bundled raster codec license notice and film examples.
-    entryCount: 190,
+    // Includes the bundled raster codec license notice and film examples. The narration tools (15 files) and the
+    // narrated film template (13 files) are 28 files: with them the package holds 209 files.
+    entryCount: 220,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.
