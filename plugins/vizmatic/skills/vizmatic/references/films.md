@@ -228,6 +228,18 @@ s.play(run.print())
 s.play(recolor(run.find('4 kB'), 'yellow'))
 ```
 
+A list of records that grows, such as the event history of a workflow, the steps of an agent, or the life of a sandbox. Do not build it from a terminal or from texts by hand. `eventLog` keeps the columns in line, scrolls a full window with a count of the records above, and gives each row a state with its own mark, a place for a connector (`log.p(id)`), and one outline that `focus` moves. A row with `ids` is a fold that stands for several records, and `unfold` opens it into its `rows`. `scrollTo(id)` brings an early row back into the window, and `show(which)` brings in a row that had its place from the start (`shown: false`). Play one change of the rows at a time: two of `append`, `fold`, `unfold`, and `scrollTo` whose times overlap are an error, and `mark`, `focus`, and `show` play with any of them. Append two or three rows per second at most, and fold what repeats in a long history:
+
+```ts
+const log = s.add(eventLog([
+    { id: 1, name: 'WorkflowExecutionStarted', detail: 'order' },
+    { ids: [2, 3, 4], name: 'workflow task', detail: 'worker 71293' },
+], { title: 'event history', footer: (count) => `${count} events`, visible: 12 }))
+s.play(log.append({ id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard', state: 'new' }), log.focus(5))
+s.play(log.mark((row) => row.state === 'new', 'stored'))
+s.play(log.mark(5, 'answered'))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
