@@ -217,7 +217,134 @@ describe('fast bloom', () => {
         }
     })
 
-    it('dithers a whole span even when its brightest spill is less than one level', () => {
+    it('leaves a frame with no light as it is', () => {
+        const w = 640, h = 360, pixels = new Uint8Array(w * h * 4)
+        for (let i = 0; i < pixels.length; i += 4) pixels.set([page[0], page[1], page[2], 255], i)
+        const before = pixels.slice()
+        fast(pixels, w, h, 0.6, page, false)
+        expect(Buffer.compare(before, pixels)).toBe(0)
+    })
+})
+
+/** The threshold of a pixel, as the worker makes it: a byte of interleaved gradient noise, in the middle of its step. */
+function threshold(x: number, y: number): number {
+    const place = 0.06711056 * x + 0.00583715 * y, grain = 52.9829189 * (place - Math.floor(place))
+    return (Math.floor((grain - Math.floor(grain)) * 256) + 0.5) / 256
+}
+
+/** The blend of the first version with its fraction: the same function, on numbers in place of bytes. */
+function values(pixels: Uint8Array, w: number, h: number, amount: number, background: readonly number[]): Float64Array {
+    const kept = Float64Array.from(pixels)
+    first(kept as unknown as Uint8Array, w, h, amount, background)
+    return kept
+}
+
+/** The three results for one frame: the plain bytes and the values of the first version, and the dithered bytes. */
+function results(pixels: Uint8Array, w: number, h: number, amount: number, background: readonly number[]) {
+    const plain = pixels.slice(), dithered = pixels.slice()
+    first(plain, w, h, amount, background)
+    fast(dithered, w, h, amount, background, true)
+    return { plain, dithered, value: values(pixels, w, h, amount, background) }
+}
+
+/** A frame of a film with no page: nothing under alpha 0, and marks with some alpha. */
+function clearMarks(w: number, h: number): Uint8Array {
+    const rand = random(w * 15485863 + h), pixels = new Uint8Array(w * h * 4)
+    for (let n = 0; n < 12; n++) {
+        const left = Math.floor(rand() * w), top = Math.floor(rand() * h)
+        const right = Math.min(w, left + 1 + Math.floor(rand() * w / 8)), bottom = Math.min(h, top + 1 + Math.floor(rand() * h / 8))
+        const color = [rand() * 256, rand() * 256, rand() * 256, 100 + rand() * 156]
+        for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) pixels.set(color, (y * w + x) * 4)
+    }
+    return pixels
+}
+
+describe('dithered bloom', () => {
+    it.each([[640, 360], [1283, 722], [1920, 1080]] as const)('writes each value plus the threshold of its pixel, cut to a byte, at %i by %i', (w, h) => {
+        for (const [pixels, amount, background] of [[marks(w, h), 0.14, page], [noise(w, h), 0.6, page], [marks(w, h), 1.7, [0, 0, 0]]] as const) {
+            const { plain, dithered, value } = results(pixels, w, h, amount, background)
+            // Count what breaks a rule. A count for each rule keeps the test fast, and names the rule that fails.
+            let notTheRule = 0, farFromPlain = 0, movedWithNoLight = 0, alphaChanged = 0
+            const lifted = [0, 0, 0]
+            for (let i = 0; i < pixels.length; i++) {
+                const channel = i % 4, pixel = i >> 2
+                if (channel === 3) { if (dithered[i] !== pixels[i]) alphaChanged++; continue }
+                // A pixel with alpha 0 gets no threshold. The noise frame has some.
+                const add = pixels[pixel * 4 + 3] === 0 ? 0 : threshold(pixel % w, Math.floor(pixel / w))
+                if (dithered[i] !== Math.floor(value[i]! + add)) notTheRule++
+                // The byte is the plain byte or one level above it.
+                const step = dithered[i]! - plain[i]!
+                if (step !== 0 && step !== 1) farFromPlain++
+                if (step === 1) lifted[channel]!++
+                // A value that the light does not reach is the whole number of the byte, and the byte stays.
+                if (value[i] === pixels[i] && dithered[i] !== pixels[i]) movedWithNoLight++
+            }
+            expect({ w, amount, notTheRule, farFromPlain, movedWithNoLight, alphaChanged }).toEqual({ w, amount, notTheRule: 0, farFromPlain: 0, movedWithNoLight: 0, alphaChanged: 0 })
+            // Each of the three channels has grain.
+            for (const count of lifted) expect(count).toBeGreaterThan(w * h / 100)
+        }
+    }, 240_000)
+
+    it('keeps the mean of the light in every block of 32 pixels, where the plain write is most of a level too dark', () => {
+        for (const [w, h, amount] of [[640, 360, 0.14], [1283, 722, 0.6]] as const) {
+            const { plain, dithered, value } = results(marks(w, h), w, h, amount, page)
+            let worst = 0, worstPlain = 0
+            for (let top = 0; top + 32 <= h; top += 32) for (let left = 0; left + 32 <= w; left += 32) for (let channel = 0; channel < 3; channel++) {
+                let off = 0, offPlain = 0
+                for (let y = top; y < top + 32; y++) for (let x = left; x < left + 32; x++) {
+                    const i = (y * w + x) * 4 + channel
+                    off += dithered[i]! - value[i]!
+                    offPlain += plain[i]! - value[i]!
+                }
+                worst = Math.max(worst, Math.abs(off) / 1024)
+                worstPlain = Math.max(worstPlain, Math.abs(offPlain) / 1024)
+            }
+            expect(worst).toBeLessThan(0.06)
+            expect(worstPlain).toBeGreaterThan(0.5)
+        }
+    }, 60_000)
+
+    it('dithers the three channels with one threshold, so gray light stays gray', () => {
+        const w = 640, h = 360, pixels = new Uint8Array(w * h * 4)
+        for (let i = 0; i < pixels.length; i += 4) pixels.set([0, 0, 0, 255], i)
+        for (let y = 150; y < 210; y++) for (let x = 280; x < 360; x++) pixels.set([200, 200, 200, 255], (y * w + x) * 4)
+        const { plain, dithered } = results(pixels, w, h, 0.3, [0, 0, 0])
+        let colored = 0, lifted = 0
+        for (let i = 0; i < dithered.length; i += 4) {
+            if (dithered[i] !== dithered[i + 1] || dithered[i] !== dithered[i + 2]) colored++
+            if (dithered[i] !== plain[i]) lifted++
+        }
+        expect(colored).toBe(0)
+        expect(lifted).toBeGreaterThan(1000)
+    })
+
+    it('writes no grain under alpha 0, in a film with no page', () => {
+        const w = 640, h = 360, pixels = clearMarks(w, h)
+        const { plain, dithered } = results(pixels, w, h, 0.6, [0, 0, 0])
+        let clearWithLight = 0, clearWithGrain = 0, drawnWithGrain = 0
+        for (let i = 0; i < pixels.length; i += 4) for (let channel = 0; channel < 3; channel++) {
+            const changed = dithered[i + channel] !== plain[i + channel]
+            if (pixels[i + 3] !== 0) { if (changed) drawnWithGrain++; continue }
+            if (plain[i + channel] !== pixels[i + channel]) clearWithLight++
+            if (changed) clearWithGrain++
+        }
+        // The light reaches pixels with alpha 0, and they get the plain write. The drawn pixels have grain.
+        expect(clearWithLight).toBeGreaterThan(1000)
+        expect(clearWithGrain).toBe(0)
+        expect(drawnWithGrain).toBeGreaterThan(1000)
+    })
+
+    it('gives the same bytes on a second run, and after a frame of another size', () => {
+        const w = 640, h = 360, source = marks(w, h)
+        const run = () => { const pixels = source.slice(); fast(pixels, w, h, 0.14, page, true); return pixels }
+        const once = run()
+        expect(Buffer.compare(once, run())).toBe(0)
+        // The worker keeps the thresholds of its last frame size. Another size makes it build them again.
+        fast(marks(97, 57), 97, 57, 0.14, page, true)
+        expect(Buffer.compare(once, run())).toBe(0)
+    })
+
+    it('dithers a span whose brightest light is under one level', () => {
         const w = 32, h = 16, pixels = new Uint8Array(w * h * 4)
         for (let i = 0; i < pixels.length; i += 4) pixels.set([1, 1, 1, 255], i)
         const plain = pixels.slice()

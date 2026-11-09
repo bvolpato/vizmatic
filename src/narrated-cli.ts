@@ -60,7 +60,7 @@ const DRY_RUN = { '--dry-run': '' }
 const MOVIE = { '--draft': '', ...DRY_RUN }
 
 export const NARRATED_STEPS = {
-    build: { note: 'Bring the film up to date, from the script to the movie: the voice of each beat that changed, the mix, the beat list, the check, and the render. It says why it runs or skips each step. With --draft, the movie is <name>-draft.mp4.', options: { '--draft': '', '--scene': 'id,...', '--quality': 'draft|standard|high|master', '--workers': 'n', '--allow-findings': '', ...DRY_RUN } },
+    build: { note: 'Bring the film up to date, from the script to the movie: the voice of each beat that changed, the mix, the beat list, the check, and the render. It says why it runs or skips each step. With --draft, the movie is <name>-draft.mp4.', options: { '--draft': '', '--scene': 'id,...', '--quality': 'draft|standard|high|master', '--dither': '', '--no-dither': '', '--workers': 'n', '--allow-findings': '', ...DRY_RUN } },
     voice: { note: 'Speak script.json on this machine. Writes audio/ and timing.json.', options: DRY_RUN },
     draft: { note: 'Write a timing with estimated times and no sound, for a first look at the scenes.', options: DRY_RUN },
     mix: { note: 'Lay the voice on the timeline with the pad and the chimes. Writes narration.wav.', options: DRY_RUN },
@@ -229,7 +229,7 @@ function buildTarget(request: NarratedRequest, film: NarratedParticulars): Build
     const unknown = known.length > 0 ? wanted.filter((id) => !known.includes(id)) : []
     if (unknown.length > 0) throw new Error(`--scene names the scene ${unknown.map((id) => JSON.stringify(id)).join(', ')}, and the film has no scene with that id. Its scenes are: ${known.join(', ')}`)
     const scenes = known.length > 0 ? known.filter((id) => wanted.includes(id)) : wanted
-    return { draft, quality: asked ?? (draft ? 'draft' : 'high'), scenes, name: movieName(film, draft, scenes) }
+    return { draft, quality: asked ?? (draft ? 'draft' : 'standard'), scenes, name: movieName(film, draft, scenes) }
 }
 
 /** The part of the film that a draft of some scenes shows: from just before its first scene opens to the start of the scene after its last one. */
@@ -259,6 +259,8 @@ export function buildSteps(request: NarratedRequest, film: NarratedParticulars, 
     const render = vizmatic(self, 'render', [
         'film', film.entry, '--name', target.name, '--quality', target.quality, '--out', 'dist', '--look', film.look, '--format', 'mp4', '--workers', workers, '--audio', 'narration.wav',
         ...(range ? ['--range', `${range[0]}:${range[1]}`] : []),
+        // The render takes the dither options as they are, in the order given: its last one decides.
+        ...[...request.options.keys()].filter((name) => name === '--dither' || name === '--no-dither'),
     ], partial ? { VIZMATIC_SCENES: target.scenes.join(',') } : undefined)
     const again = `vizmatic narrated beats ${request.shown}`
     return [

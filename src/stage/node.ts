@@ -8,6 +8,7 @@ import type { Ease } from './ease'
 import { pathMixer } from './morph'
 import type { DrawOp } from './display'
 import type { ImageAsset, ImageCrop } from './image'
+import type { Block } from './layout'
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay'
 export type Edge = 'left' | 'right' | 'top' | 'bottom'
@@ -107,6 +108,28 @@ export function mixer<K extends PropName>(prop: K, from: NodeProps[K], to: NodeP
 let nextId = 1
 
 /**
+ * A block of the layout, as this file sees it. The layout is made from nodes, so this file cannot load it:
+ * a block is known here by its shape. It stands for its nodes where a node takes other nodes.
+ */
+const isBlock = (value: unknown): value is Block => typeof value === 'object' && value !== null && !(value instanceof Node) && !Array.isArray(value)
+    && Array.isArray((value as { items?: unknown }).items) && typeof (value as { kind?: unknown }).kind === 'string'
+
+/** A value that is not a node, in a few words for a message. */
+const notNode = (value: unknown): string => (value === null ? 'null' : Array.isArray(value) ? 'a list' : typeof value === 'object' ? 'an object that is not a node' : typeof value === 'string' ? JSON.stringify(value) : String(value))
+
+/** The bounds of what a node moves to or lines up with: a node, a point of the stage, or a block of the layout. */
+function boundsOfTarget(what: string, target: unknown): Bounds {
+    if (target instanceof Node) return target.bounds()
+    if (isBlock(target)) {
+        const boxes = target.nodes.map((node) => node.bounds())
+        const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y))
+        return { x, y, width: Math.max(...boxes.map((b) => b.x + b.width)) - x, height: Math.max(...boxes.map((b) => b.y + b.height)) - y }
+    }
+    if (Array.isArray(target) && target.length === 2 && Number.isFinite(target[0]) && Number.isFinite(target[1])) return { x: target[0], y: target[1], width: 0, height: 0 }
+    throw new Error(`${what}: the target is ${Array.isArray(target) && target.length === 2 ? `the point [${target[0]}, ${target[1]}], which is not a place` : notNode(target)}. Give a node, a block of the layout, or a point [x, y] of the stage`)
+}
+
+/**
  * Every visible thing on stage. A node with a path draws. A node with children
  * groups. Both can carry a transform, and every property can change over time.
  *
@@ -121,6 +144,12 @@ export class Node {
     data: Record<string, unknown> = {}
     /** Label shown in timelines and diagnostics. */
     label = ''
+    /**
+     * The box that the layout measures for this node, in the coordinates of the node: left, top, right and
+     * bottom. Null for a node that measures as its bounds. A text sets its line box, and a pictogram sets the
+     * square of its grid, so that items of one size line up whatever they draw. `boxOf` reads it.
+     */
+    layoutBox: readonly [left: number, top: number, right: number, bottom: number] | null = null
     base: NodeProps = Object.create(DEFAULT_PROPS) as NodeProps
     tracks: Map<PropName, Track<unknown>> | null = null
     overlay: Map<string, unknown> | null = null
@@ -200,8 +229,10 @@ export class Node {
 
     // ── Tree ──────────────────────────────────────────────────────────────
 
-    add(...nodes: Node[]): this {
-        for (const child of nodes) {
+    add(...nodes: (Node | Block)[]): this {
+        // A block of the layout stands for its nodes.
+        for (const child of nodes.flatMap((item) => (isBlock(item) ? item.nodes : [item]))) {
+            if (!(child instanceof Node)) throw new Error(`add: a child is ${notNode(child)}. Give nodes, or blocks of the layout`)
             if (child.parent === this) continue
             child.parent?.drop(child)
             child.parent = this
@@ -365,8 +396,9 @@ export class Node {
     }
 
     /** Move so the center of the bounds lands on a stage point or on another node's center. */
-    moveTo(target: Vec | Node): this {
-        const destination: Vec = target instanceof Node ? target.center : target
+    moveTo(target: Vec | Node | Block): this {
+        const to = boundsOfTarget('moveTo', target)
+        const destination: Vec = target instanceof Node ? target.center : [to.x + to.width / 2, to.y + to.height / 2]
         const [cx, cy] = this.center
         const inverse = this.parent ? invert(this.parent.worldMatrix()) : IDENTITY
         const [lx0, ly0] = apply(inverse, cx, cy)
@@ -415,9 +447,9 @@ export class Node {
     // ── Layout ────────────────────────────────────────────────────────────
 
     /** Place beside another node or stage point, with a gap measured between bounds. */
-    nextTo(target: Node | Vec, side: Side = 'right', gap = 28): this {
+    nextTo(target: Node | Vec | Block, side: Side = 'right', gap = 28): this {
         const [dx, dy] = direction(side)
-        const b = target instanceof Node ? target.bounds() : { x: target[0], y: target[1], width: 0, height: 0 }
+        const b = boundsOfTarget('nextTo', target)
         const own = this.bounds()
         const cx = b.x + b.width / 2, cy = b.y + b.height / 2
         const anchorX = cx + dx * (b.width / 2 + gap + own.width / 2)
@@ -426,16 +458,20 @@ export class Node {
     }
 
     /** Line up one edge with another node's same edge. */
-    alignTo(target: Node | Vec, edge: Edge): this {
+    alignTo(target: Node | Vec | Block, edge: Edge): this {
         const own = this.bounds()
-        const b = target instanceof Node ? target.bounds() : { x: target[0], y: target[1], width: 0, height: 0 }
+        const b = boundsOfTarget('alignTo', target)
         if (edge === 'left') return this.shift(b.x - own.x, 0)
         if (edge === 'right') return this.shift(b.x + b.width - own.x - own.width, 0)
         if (edge === 'top') return this.shift(0, b.y - own.y)
         return this.shift(0, b.y + b.height - own.y - own.height)
     }
 
-    /** Lay out children in a row or column, keeping the group's center. */
+    /**
+     * Lay out children in a row or column, keeping the group's center. It stays for the films that use it.
+     * In a new film, use `row` and `column` of the layout: they line up left edges and base lines, they nest,
+     * and they leave each node its own, so one node fades in without the others.
+     */
     arrange(side: Side = 'right', gap = 24): this {
         const [dx, dy] = direction(side)
         const center = this.center
@@ -568,6 +604,7 @@ export function mountTree(node: Node, time: number): void {
  * `objectName`.
  */
 export function ownLabels<T extends Node>(owner: T, options: { name?: string; labels?: readonly (Node | null)[]; plot?: boolean } = {}): T {
+    if (!(owner instanceof Node)) throw new Error(`ownLabels: the owner is ${isBlock(owner) ? 'a block of the layout' : notNode(owner)}. Give the node of the object`)
     if (options.name) objectName(owner, options.name)
     // A plot stays a plot when a method of the object marks one more label.
     if (options.plot || !owner.data['ownLayout']) owner.data['ownLayout'] = options.plot ? 'plot' : true
@@ -582,12 +619,13 @@ export function ownLabels<T extends Node>(owner: T, options: { name?: string; la
  * changes that name to one letter.
  */
 export function objectName<T extends Node>(node: T, name: string): T {
+    if (!(node instanceof Node)) throw new Error(`objectName: the first argument is ${isBlock(node) ? 'a block of the layout' : notNode(node)}. Give the node of the object`)
     node.data['object'] = name
     return node
 }
 
 /** A group. Children keep their own transforms inside it. */
-export function group(...children: Node[]): Node {
+export function group(...children: (Node | Block)[]): Node {
     return new Node().add(...children)
 }
 

@@ -477,17 +477,18 @@ Use a pictogram when a card or a legend needs a picture of a kind of thing. When
 `card(options)` draws a box with a `title` at the top, a `figure` in the middle, and a `caption` at the bottom. All three are optional. The title and the caption sit at fixed distances from the border. The figure is centered in the space between them, and a figure that is too large is scaled down to fit. So the cards of a row share one layout whatever they hold: give them one `width`, one `height`, and one `captionLines`, which is the number of lines of the longest caption.
 
 ```film paired label="Three cards with one layout hold three different figures"
-import { card, fadeIn, film, group, lagged, pictogram, sparkline } from 'vizmatic/stage'
+import { card, fadeIn, film, lagged, pictogram, row, sparkline } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const values = Array.from({ length: 48 }, (_, i) => Math.sin(i / 5) + 0.4 * Math.sin(i / 1.7))
-    const row = { width: 500, height: 460, captionLines: 2, font: 'text-serif' } as const
+    const shared = { width: 500, height: 460, captionLines: 2, font: 'text-serif' } as const
     const cards = [
-        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', ...row }),
-        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', ...row }),
-        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', ...row }),
+        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', ...shared }),
+        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', ...shared }),
+        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', ...shared }),
     ]
-    group(...cards).arrange('right', 40).moveTo([0, 0])
+    // A row measures the cards and puts them around the middle of the stage.
+    row(cards, { gap: 40 })
     s.play(lagged(cards.map((made) => fadeIn(made, { shift: [0, 24] })), { lag: 0.25 }), { duration: 1.6 })
     s.wait(0.8)
 })

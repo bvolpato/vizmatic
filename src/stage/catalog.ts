@@ -16,6 +16,7 @@ const CHARTS = 'Charts'
 const SYSTEMS = 'Systems and computer science'
 const THREE = '3D'
 const BRIDGE = 'Bring in existing work'
+const LAYOUT = 'Layout'
 
 export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'text', group: TEXT, usage: "text('Hello', { font: 'serif', size: 72, color: 'ink' }): vector glyphs you can write and morph. With no font, it takes the font of the film: film({ font: 'text-serif' }, (s) => { ... }) sets it for every text and every label of an object that names none" },
@@ -37,7 +38,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'parametric', group: SHAPES, usage: 'parametric((t) => [x, y], t0, t1, style)' },
     { name: 'svgPath', group: SHAPES, usage: "svgPath('M0 0C...', style): any SVG path data" },
     { name: 'brace', group: SHAPES, usage: 'brace(from, to, { depth: 24 }): a curly brace beside a span' },
-    { name: 'group', group: SHAPES, usage: 'group(a, b, c).arrange("right", 24): move and lay out together' },
+    { name: 'group', group: SHAPES, usage: 'group(a, b, c): nodes that move, turn and scale together. To lay nodes out, use row, column and grid' },
     { name: 'dynamic', group: SHAPES, usage: 'dynamic(() => line(p(v.value), q)): rebuilt every frame from timeline values' },
     { name: 'axes', group: MATH, usage: 'axes({ x: [-1, 4], y: [0, 9], grid: true }). plot(f), world(x, y), dotAt(x, y), guides(x, y)' },
     { name: 'plane', group: MATH, usage: 'plane({ unit: 120 }): a grid that bends under applyMatrix and warp' },
@@ -116,8 +117,17 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'fromSvg', group: BRIDGE, usage: 'fromSvg(svgText): any SVG as animatable shapes' },
     { name: 'image', group: BRIDGE, usage: 'image(dataUrl, { width: 400 }): a logo or a photo, centered, that fades and moves like any node' },
     { name: 'narration', group: TIMING, usage: "narration(s, timing).scene('intro').on('a spoken phrase', () => s.play(...)): place changes on measured words" },
-    { name: 'narrated', group: TIMING, usage: "export default narrated({ title, timing, scenes: { hook, close } }): a whole film that follows a recorded voice. It draws the title card, calls each scene (s, c) when its picture opens, fades in what the scene adds there, and fades the scene out at its end. c.keep(node) holds a node for the next scene" },
-    { name: 'sceneKit', group: TEXT, usage: "const { area, heading, source, label, left, right, chip, claimTag } = sceneKit({ size: 36 }): the frame and the labels that the scenes of one film share, in one font. The one size sets the heading, the source line, the chips and the boxes too" },
+    { name: 'narrated', group: TIMING, usage: "export default narrated({ title, timing, scenes: { hook, close } }): a whole film that follows a recorded voice. It draws the title card, calls each scene (s, c) when its picture opens, fades in what the scene adds there, and fades the scene out at its end. c.show('a spoken phrase', nodes), c.hide and c.swap(cue, out, in) change the picture on a phrase with one lead and one fade, so a scene types no time. A node shows one time: c.show brings a node that is not on the screen. c.keep(node) holds a node for the next scene" },
+    { name: 'sceneKit', group: TEXT, usage: "const { area, heading, source, label, note, display, chip, claimTag } = sceneKit({ size: 36 }): the frame and the labels that the scenes of one film share, in one font. The one size sets the heading, the source line, the notes, the chips and the boxes too. label('requests'), note('our run') and display('160 times faster') have no place: the layout places them, in the regions of area" },
+    { name: 'sceneArea', group: LAYOUT, usage: "sceneArea(): the area for content as a region, for a film with no kit. A region is a Box: area.columns([2, 1]), area.rows(3), area.inset('normal'), area.beside(picture, 'under') and area.point('top right') cut it with no pixel numbers" },
+    { name: 'row', group: LAYOUT, usage: "row([icon, name, chip('virtio')], { gap: 'tight' }): measure the items and lay them out from left to right, with the middles on one line and the texts on one base line. It moves the nodes, leaves each one its own, and returns a block: s.add(block) puts its nodes on the stage. A gap is tight, normal, wide or loose, or none, or a number" },
+    { name: 'column', group: LAYOUT, usage: "column([title, rows, note], { gap: 'wide' }): lay items out from top to bottom, with the left edges on one line. An item is a node, a block, or a list of nodes that move as one, so containers nest" },
+    { name: 'grid', group: LAYOUT, usage: "grid([icon, name, null, note], { columns: 2, gap: 'tight', even: true }): a table, row by row. A column is as wide as its widest item, and null is an empty cell" },
+    { name: 'place', group: LAYOUT, usage: "place(block, region, 'top left'): put an item at the middle, an edge or a corner of a region. An item that is larger than the region stops the build: the message names it, says by how much, and names the changes that work" },
+    { name: 'beside', group: LAYOUT, usage: "beside(note, chip, 'right', 'tight'): put an item left, right, above or under a node, a block, a region or a point, by their measures. For a note on a part of an object, give the object and then the part: beside(note, log, 'right', 'wide', log.row(3)) is beside the whole log, at the height of the row" },
+    { name: 'between', group: LAYOUT, usage: 'between(upper, lower): the room between two things, as a region' },
+    { name: 'fitted', group: LAYOUT, usage: 'fitted(region, (width) => lanes(names, events, { width })): build an object so that all of it, with its names and labels, is as wide as a region' },
+    { name: 'boxOf', group: LAYOUT, usage: "boxOf(node): the measure of a node, a block or a list, as a Box with left, right, top, bottom, cx, cy and point('bottom'). A text measures as its line box, and hidden parts count" },
     { name: 'fitSize', group: TEXT, usage: "fitSize('Toto-2.0-2.5b', 220, 40, { font: 'text-serif' }): the largest font size, not over 40, at which the text is no wider than 220. textWidth(text, size, { font }) gives the width, and capHeight(size) the height of the capitals. The kit of a film has both with the font of the film" },
     { name: 'commas', group: TEXT, usage: 'commas(21915584): "21,915,584", a whole number with its digits in groups of three' },
     { name: 'fromComponent', group: BRIDGE, usage: "await fromComponent(<Flow ... />, { width, height }): any TSX figure as animatable shapes. Import from 'vizmatic/stage/export'. Node only" },

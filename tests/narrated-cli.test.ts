@@ -76,7 +76,7 @@ describe('the steps of vizmatic narrated', () => {
             'uv run tools/narration/mix.py .',
             'uv run tools/narration/beats.py .',
             'vizmatic check toto.ts --look midnight --text-margin 30 --motion',
-            'vizmatic film toto.ts --name Toto-Forecasting --quality high --out dist --look midnight --format mp4 --workers 6 --audio narration.wav',
+            'vizmatic film toto.ts --name Toto-Forecasting --quality standard --out dist --look midnight --format mp4 --workers 6 --audio narration.wav',
             'uv run tools/narration/record.py . dist/Toto-Forecasting.mp4',
         ])
         // Before the first voice, every step has work to do.
@@ -138,6 +138,12 @@ describe('the steps of vizmatic narrated', () => {
         expect(words(plan(['build', '.'], { render: { workers: 10, draftWorkers: 3 } }))[4]).toContain('--workers 10')
         // A draft at another quality keeps the name of a draft.
         expect(words(plan(['build', '.', '--draft', '--quality', 'high']))[4]).toContain('--name film-draft --quality high')
+        // The delivered movie at another quality keeps its name: the copy for an upload replaces it.
+        expect(words(plan(['build', '.', '--quality', 'high']))[4]).toContain('--name film --quality high')
+        // The render gets the dither option of the build, and none when the build has none.
+        expect(words(plan(['build', '.']))[4]).not.toContain('dither')
+        expect(words(plan(['build', '.', '--dither']))[4]).toMatch(/ --dither$/)
+        expect(words(plan(['build', '.', '--quality', 'high', '--no-dither']))[4]).toMatch(/--quality high .* --no-dither$/)
     })
 
     it('makes a movie of some scenes as a draft only: the delivered movie always holds every scene', () => {
@@ -178,7 +184,7 @@ describe('the steps of vizmatic narrated', () => {
             'uv run tools/narration/mix.py .',
             'uv run tools/narration/beats.py .',
             'vizmatic check film.ts --look paper --motion',
-            'vizmatic film film.ts --name film --quality high --out dist --look paper --format mp4 --workers 6 --audio narration.wav',
+            'vizmatic film film.ts --name film --quality standard --out dist --look paper --format mp4 --workers 6 --audio narration.wav',
             'uv run tools/narration/record.py . dist/film.mp4',
         ])
         expect(steps[0]).toMatchObject({ command: 'uv', args: ['run', 'proofs/run.py'] })
@@ -218,7 +224,7 @@ describe('the steps of vizmatic narrated', () => {
     })
 
     it('refuses an option that the step does not have, and names the options that it has', () => {
-        expect(() => parseNarratedArgs(['build', '.', '--drfat'])).toThrow('Unknown option --drfat for vizmatic narrated build. Its options are: --draft, --scene <id,...>, --quality <draft|standard|high|master>, --workers <n>, --allow-findings, --dry-run')
+        expect(() => parseNarratedArgs(['build', '.', '--drfat'])).toThrow('Unknown option --drfat for vizmatic narrated build. Its options are: --draft, --scene <id,...>, --quality <draft|standard|high|master>, --dither, --no-dither, --workers <n>, --allow-findings, --dry-run')
         expect(() => parseNarratedArgs(['build', '.', '--qualty', 'draft'])).toThrow('Unknown option --qualty for vizmatic narrated build')
         // The film name comes from film.json, and not from an option of the build.
         expect(() => parseNarratedArgs(['build', '.', '--name', 'My-Film'])).toThrow('Unknown option --name for vizmatic narrated build')
