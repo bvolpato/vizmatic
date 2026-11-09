@@ -49,6 +49,61 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+`plot` draws a function as a smooth curve through even samples. It also takes a series: the list of its points, `[x, y]` with x in rising order. A series is straight lines through its own points, so its shape stays the same while it grows or scrolls, and a point with no value (`NaN`) leaves a gap. `plot(points, { to: () => now.value })` draws a curve up to a value, and `from` takes a function too. `valueAt(points, x)` gives the value of a series at any x, for a mark that follows it.
+
+`axes.marker({ x: () => now.value, label: 'now' })` draws a line across the plot at one value of x, with its label over the plot. With `y`, the line is level and its label is at the right of the plot, for a limit or a target. Near an end of the plot, the label stays beside the plot and does not pass the end. A marker that follows a value does not show while the value is outside the range.
+
+## Bands
+
+`band(axes, low, high)` fills the band between two curves on the same axes: the interval around a forecast, the range of a sensor, the room between a load and its limit. Each curve is a function or a series. `from` and `to` take a number or a function, so `to: () => t.value` opens the band from left to right, as a curve is drawn. The band stays inside the y range, and it has a gap where a curve has no value. `areaUnder(axes, high, { over: low })` is the same band.
+
+```film paired label="A median draws, and two bands open around it: the dark one inside the light one"
+import { axes, band, fadeIn, film, type Vec } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const open = s.value(0)
+    const graph = s.add(axes({ x: [0, 12], y: [0, 10], width: 1300, height: 700, tips: false }))
+    // One value for each whole x. The bands are wider at each step.
+    const middle = [4, 4.6, 5.4, 6, 5.6, 4.8, 4.4, 5, 5.8, 6.4, 6, 5.2, 4.8]
+    const around = (reach: number): Vec[] => middle.map((y, x) => [x, y + reach * Math.sqrt(x)])
+    band(graph, around(-0.8), around(0.8), { to: () => open.value, fill: 'blue', opacity: 0.2 })
+    band(graph, around(-0.3), around(0.3), { to: () => open.value, fill: 'blue', opacity: 0.3 })
+    graph.plot(around(0), { to: () => open.value, stroke: 'blue' })
+    s.play(fadeIn(graph), { duration: 0.6 })
+    s.play(open.to(12), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+## Moving windows
+
+A range can be a function, for a window that moves along a series: `axes({ x: () => [now.value - 8, now.value + 4] })`. The axes then draw their ticks and their numbers again on every frame, and a number fades before it passes an end of its axis. Give `xStep`, so that the ticks stay the same when the window changes its width. Keep the y range, or move it slowly: a y axis that jumps is hard to read.
+
+Each mark on such axes follows the range. A curve and a band are cut at the two ends of the x range. A dot, a marker, guides, a tangent, a secant, the rectangles of `riemann`, and the names of the axes move with it, and a mark at a point does not show while the point is outside the range.
+
+```film paired label="A window moves along a series, a marker follows the present, and a band opens ahead of it"
+import { axes, band, dot, dynamic, fadeIn, film, linear, valueAt, type Vec } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const now = s.value(8), ahead = s.value(0)
+    // A series with one point for each whole x.
+    const points: Vec[] = Array.from({ length: 17 }, (_, x) => [x, 5 + 3 * Math.sin(x / 2)])
+    const wave = (x: number) => 5 + 3 * Math.sin(x / 2)
+    const graph = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], width: 1300, height: 700, xStep: 2, tips: false }))
+    band(graph, (x) => wave(x) - 0.3 * (x - 16), (x) => wave(x) + 0.3 * (x - 16), { from: 16, to: () => 16 + ahead.value, fill: 'blue' })
+    graph.plot(points, { to: () => now.value, stroke: 'ink' })
+    graph.marker({ x: () => now.value, label: 'now' })
+    // A mark of the film at a place of the data: `p` gives the place for the range of each frame.
+    graph.add(dynamic(() => dot(8, 'ink').at(graph.p(now.value, valueAt(points, now.value)))))
+    s.play(fadeIn(graph), { duration: 0.6 })
+    s.play(now.to(16, { ease: linear }), { duration: 3 })
+    s.play(ahead.to(4), { duration: 1.2 })
+    s.wait(0.8)
+})
+```
+
+`p(x, y)` gives the place for the range at the time of the frame, so make a mark of your own with `dynamic`, as the dot of the example. Fade the parts of such axes in: `draw` has no line to trace on them.
+
 ## Planes and fields
 
 `plane` draws the classic grid. Its lines are dense paths, so they bend smoothly under `applyMatrix` and `warp`. `complexPlane` and `applyComplex` map the grid through a complex function.

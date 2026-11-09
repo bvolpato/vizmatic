@@ -81,6 +81,7 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 | `fourier-epicycles.ts` | Compute motion and readouts from a real transform. |
 | `lorenz.ts` | Integrate a system, and read values from the result. |
 | `central-limit.ts` | Use seeded randomness, so that every render shows the same counts. |
+| `forecast.ts` | Move a window along a series, open a band up to a time, and count the truth against it. |
 | `taylor-series.ts` | Build a result one term at a time. |
 | `pythagoras.ts`, `euler-circle.ts` | Keep a short proof or a short idea to one picture. |
 | `deck-example.ts` | Write a talk with one chapter per step, for `<vz-film stepped>`. |
@@ -93,6 +94,19 @@ Any motion driven by a number:
 const t = s.value(0)
 s.add(dynamic(() => dot(10, 'yellow').at(plot.world(t.value, f(t.value)))))
 s.play(t.to(3, { duration: 4 }))
+```
+
+A chart of a series that moves: a window that scrolls, a line that grows, a marker for the present, and a band between two curves. Do not draw the frame, the band, and the marker by hand. A range of `axes` can be a function, and every mark on the axes then follows it. `plot` takes a function or the points of a series, `[x, y]`, and draws it up to a value. `band` fills the room between two curves. `examples/films/forecast.ts` is a whole film of it:
+
+```ts
+const now = s.value(8), ahead = s.value(0)
+const graph = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], xStep: 2, tips: false }))
+band(graph, low, high, { from: 16, to: () => 16 + ahead.value, fill: 'blue' })   // each curve is a function or a series
+graph.plot(points, { to: () => now.value, stroke: 'ink' })                       // a series: straight lines through its points
+graph.marker({ x: () => now.value, label: 'now' })
+graph.add(dynamic(() => dot(8, 'ink').at(graph.p(now.value, valueAt(points, now.value)))))
+s.play(now.to(16, { ease: linear }), { duration: 3 })
+s.play(ahead.to(4))
 ```
 
 A derivation that keeps shared terms in place:
