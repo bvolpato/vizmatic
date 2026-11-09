@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, objectName, ownLabels } from '../node'
 import { toPaint, type ColorInput, type Paint } from '../color'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -148,6 +148,7 @@ export class StateGrid extends Node {
             this.add(cell)
         }
         this.now = now
+        objectName(this, 'state grid')
     }
 
     /** The middle of a cell, in the coordinates of the grid. */
@@ -267,7 +268,8 @@ export class StateGrid extends Node {
             made.add(new Node().add(sample, name))
             left += side + room + ink.width + gap
         }
-        return made
+        // The legend places each name beside its sample cell. The film check does not judge that room.
+        return ownLabels(made, { name: 'legend of a state grid' })
     }
 
     private checked(index: number): number {

@@ -1,5 +1,5 @@
 import { arcPath, circlePath, parseSvgPath, polyPath, rectPath, transformPath, type Path, type Vec } from '../geometry'
-import { Node } from '../node'
+import { Node, objectName } from '../node'
 import type { ColorInput } from '../color'
 
 /**
@@ -388,6 +388,7 @@ export class Pictogram extends Node {
 
     constructor(readonly name: PictogramName, options: PictogramOptions = {}) {
         super()
+        objectName(this, 'pictogram')
         if (!Object.hasOwn(ART, name)) throw new Error(`pictogram: unknown name ${JSON.stringify(name)}. Names: ${PICTOGRAMS.join(', ')}`)
         const size = options.size ?? 96, unit = size / GRID
         const place = [unit, 0, 0, unit, -size / 2, -size / 2] as const

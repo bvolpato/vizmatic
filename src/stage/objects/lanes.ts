@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { parseSvgPath, polyPath, rectPath, type Bounds, type Path } from '../geometry'
 import { arrow, dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -555,6 +555,8 @@ export class Lanes extends Node {
             }
             plan.inside = chosen.inside === true
             texts[index] = made.at(chosen.x, chosen.y)
+            // The film sets the height of a bar and the size of the text. So the film check judges the room of a label in its bar.
+            if (plan.inside) made.data['fit'] = 'Give the lanes a taller bar (`barHeight`) or a smaller text (`size`).'
             this.patches[index] = backing === null ? null : new Node(rectPath(ink.x + chosen.x - padX, chosen.cover[0], ink.width + padX * 2, chosen.cover[1] - chosen.cover[0])).fill(backing).hide()
         }
 
@@ -576,6 +578,8 @@ export class Lanes extends Node {
         this.add(...this.rails)
         if (this.axis) this.add(this.axis)
         this.add(this.cursor, ground, ...this.spans, ...this.boundaries, ...this.handoffs, ...this.marks, ...this.names)
+        // The object places each label beside its own bars, arrows and lines. The film check does not judge that room.
+        ownLabels(this, { name: 'set of lanes' })
     }
 
     /** The label of an event belongs to its bar, its arrow, or its dot, so a light on that shape keeps the label bright. */

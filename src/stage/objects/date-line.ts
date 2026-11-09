@@ -1,4 +1,4 @@
-import { Node, type NodeProps, type PropName } from '../node'
+import { Node, ownLabels, type NodeProps, type PropName } from '../node'
 import { rectPath, type Vec } from '../geometry'
 import { circle, dot, line, polygon } from '../shapes'
 import { text, type TextNode, type TextOptions } from '../text'
@@ -877,6 +877,9 @@ export class DateLine extends Node {
         this.drawCursor = options.cursor !== false
         this.cursor = polygon([[0, laneTop], [pointerWidth / 2, laneTop + pointerHeight], [-pointerWidth / 2, laneTop + pointerHeight]], { fill: 'ink', stroke: null }).at(this.xOf(first), 0).hide()
         this.add(this.cursor, ...this.events)
+        // The line places its numbers, its labels and its notes beside its rule, its ticks, its marks and its cursor.
+        // The film check does not judge that room.
+        ownLabels(this, { name: 'date line' })
     }
 
     /**

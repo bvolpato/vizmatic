@@ -138,7 +138,7 @@ npx vizmatic check lesson.ts --motion --content-top 200 --json
 
 The scan cannot see that one block replaces another, so decide each warning yourself. A curve that passes an axis number while it draws is usually fine. Two sentences on the same lines are a defect. An empty result does not prove a film clean:
 
-- The check reports text crossed by a stroke. It does not report text on the edge of a filled shape.
+- The check reports text crossed by a stroke. It reports text on the edge of a filled shape, and text with no room beside a mark, only with `--text-gap 0.3`. Without `--motion`, that rule looks only at the moments of rest, so a film that never comes to rest needs both options.
 - A frame with one small mark counts as visible, so a nearly empty frame can pass. A blank shorter than 0.2 seconds is not reported. Read the frames at each handover in the delivered movie.
 
 The scan does not replace a look at the picture. Read the whole film as contact sheets, and not a sample of it.

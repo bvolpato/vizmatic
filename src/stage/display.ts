@@ -214,7 +214,10 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): 
         const built = node.draw(clockNow())
         if (built) {
             const list: readonly Node[] = Array.isArray(built) ? built as readonly Node[] : [built as Node]
-            for (const child of list) walk(child, m, opacity, least, pass)
+            for (const child of list) {
+                child.drawer = node
+                walk(child, m, opacity, least, pass)
+            }
         }
     }
     const children = node.children

@@ -185,6 +185,8 @@ export function tex(source: string, options: TexOptions = {}): TexNode {
         leaf.base.fill = paint
         leaf.base.trimEach = true
         leaf.data['key'] = glyph.key
+        // The base line of the formula, for the film check. The outline has its middle at the origin.
+        leaf.data['base'] = -cy
         node.glyphs.push(leaf)
         node.children.push(leaf)
         leaf.parent = node
@@ -193,5 +195,6 @@ export function tex(source: string, options: TexOptions = {}): TexNode {
         node.base.px = (minX + maxX) / 2
         node.base.py = (minY + maxY) / 2
     }
+    node.data['size'] = size
     return node
 }

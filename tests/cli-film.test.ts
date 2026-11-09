@@ -257,4 +257,27 @@ export default film({ title: 'Crossfade', fps: 30 }, (s) => {
         expect(file.diagnostics).toHaveLength(1)
         expect(file.diagnostics[0]).toMatchObject({ code: 'film.text_overlap', severity: 'warning', motion: { spans: 1 } })
     }, 60_000)
+
+    it('reports text with no room beside a mark only when --text-gap is set', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'tight.ts'), `import { film, rect, text } from 'vizmatic/stage'
+export default film({ title: 'Tight' }, (s) => {
+    s.add(rect(300, 60, { fill: 'blue', stroke: null }))
+    s.add(text('caption', { size: 40 }).alignTo([0, 33], 'top'))
+    s.wait(1)
+})
+`)
+        const plain = cli(['check', 'tight.ts', '--json'], directory)
+        expect(JSON.parse(plain.stdout).files[0].diagnostics).toEqual([])
+        const result = cli(['check', 'tight.ts', '--text-gap', '0.3', '--json'], directory)
+        expect(result.status).toBe(0)
+        expect(JSON.parse(result.stdout).files[0].diagnostics).toMatchObject([
+            { code: 'film.text_crowded', severity: 'warning', text: 'caption', message: 'Text "caption" is 3 px from a filled shape above it. Leave 12 px or more.' },
+        ])
+        // The value is the part of the font size. 0.05 of 40 is 2 px, which the caption has.
+        expect(JSON.parse(cli(['check', 'tight.ts', '--text-gap', '0.05', '--json'], directory).stdout).files[0].diagnostics).toEqual([])
+        const bad = cli(['check', 'tight.ts', '--text-gap', 'near'], directory)
+        expect(bad.status).not.toBe(0)
+        expect(bad.stderr + bad.stdout).toContain('--text-gap needs a part of the font size')
+    }, 60_000)
 })

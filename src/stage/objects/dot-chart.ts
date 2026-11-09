@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { circle, dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -280,6 +280,7 @@ export class DotChart extends Node {
             this.rows.push(row)
             this.add(row)
         })
+        ownLabels(this, { name: 'dot chart', plot: true })
     }
 
     /** The label, the dot and the interval of one row belong together, so a light on one of them keeps the row bright. */

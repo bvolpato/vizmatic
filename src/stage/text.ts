@@ -139,6 +139,8 @@ export function text(content: string, options: TextOptions = {}): TextNode {
             leaf.base.fill = paint
             leaf.base.trimEach = true
             leaf.data['key'] = placed.char
+            // The outline has its middle at the origin. The film check reads where the base line is.
+            leaf.data['base'] = -shape.y
             // Glyph 0 draws the font's empty box. The film check reports it.
             if (placed.glyph === 0) leaf.data['missingGlyph'] = true
             node.chars.push(leaf)

@@ -1,5 +1,5 @@
 import { parseSvgPath, pathLength, unionBounds, type Bounds } from '../geometry'
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { rect, shape } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -99,6 +99,8 @@ export class Zone extends Node {
             const scale = length / (Math.max(1, Math.round(length / (on + off))) * (on + off))
             this.frame.dash([on * scale, off * scale])
         }
+        // With a title, the border is an open line. It is still the border of a shape that holds the content.
+        this.frame.data['border'] = true
         this.backdrop = options.fill ? rect(width, height, { radius, fill: options.fill, stroke: null }) : null
         if (this.backdrop) this.backdrop.set('fillOpacity', options.fillOpacity ?? 0.12)
         // The content was built in its own place. Keep it there, with the middle of the border as the origin of the zone.
@@ -108,6 +110,8 @@ export class Zone extends Node {
         this.title = title
         if (title) this.add(title)
         this.at(cx, cy)
+        // The zone places its title in the gap of its border. The content is of the film, so the film check judges its text against the border.
+        ownLabels(this, { name: 'zone', labels: [title] })
     }
 }
 
