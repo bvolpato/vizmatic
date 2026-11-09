@@ -802,10 +802,21 @@ An id names one record, also in a closed fold. `log.mark(7, 'answered')` in a cl
 `log.p(id)` is the place of the row after the changes that the film has played so far. It is a point, and it does not follow the row: after the next `append` in a full window, another row is there. So a line to a row leaves before the row moves:
 
 ```ts
-const link = s.add(connector(worker, log.toWorld(...log.p(7, 'left')), { color: 'yellow' }))
-s.wait(1.2)
-s.play(fadeOut(link), { duration: 0.3 })
-s.play(log.append(more))
+import { connector, eventLog, fadeOut, film, rect } from 'vizmatic/stage'
+
+export default film((s) => {
+    const worker = s.add(rect(220, 120, { radius: 14, stroke: 'yellow' }).at(-720, 0))
+    const log = s.add(eventLog([
+        { id: 6, name: 'ActivityTaskStarted', detail: 'attempt 1' },
+        { id: 7, name: 'ActivityTaskCompleted', detail: '"ch_1002"' },
+    ], { visible: 4, width: 900 }).at(200, 0))
+    // The point is in the coordinates of the list. `toWorld` gives its place on the stage.
+    const link = s.add(connector(worker, log.toWorld(...log.p(7, 'left')), { color: 'yellow' }))
+    s.wait(1.2)
+    s.play(fadeOut(link), { duration: 0.3 })
+    s.play(log.append([{ id: 8, name: 'WorkflowTaskScheduled' }, { id: 9, name: 'WorkflowTaskStarted' }, { id: 10, name: 'WorkflowTaskCompleted' }]))
+    s.wait(1.2)
+})
 ```
 
 A connector to the node, `connector(worker, log.row(7))`, follows the row while it moves. When the row leaves the window, its node stops on the line of the count that stands for it, so the connector ends on "8 earlier", inside the panel, and not on another row.
