@@ -10,13 +10,13 @@ import {
     fadeOut, indicate,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
-    lanes, smooth,
+    lanes, smooth, eventLog, LogRowNode, LOG_STATES,
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
     dateLine,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
-    type LaneEvent,
+    type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
 } from '../src/stage/index'
 import { encode } from 'fast-png'
@@ -10084,6 +10084,2162 @@ describe('film font', () => {
             const report = await checkFilm(film(font ? { font } : {}, scene), { motion: true })
             expect([font, report.diagnostics.map((found) => `${found.code}: ${found.message}`)]).toEqual([font, []])
         }
+    })
+})
+
+describe('event log', () => {
+    type Log = ReturnType<typeof eventLog>
+    const history: LogRow[] = [
+        { id: 1, name: 'WorkflowExecutionStarted', detail: 'order' },
+        { id: 2, name: 'WorkflowTaskScheduled' },
+        { id: 3, name: 'WorkflowTaskStarted' },
+        { id: 4, name: 'WorkflowTaskCompleted' },
+        { id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard' },
+        { id: 6, name: 'ActivityTaskStarted', detail: 'attempt 1' },
+        { id: 7, name: 'ActivityTaskCompleted', detail: '"ch_1001"' },
+    ]
+    /** Rows with the ids `from` to `to`, and no detail. */
+    const some = (from: number, to: number, state?: string): LogRow[] => Array.from({ length: to - from + 1 }, (_, index) => ({ id: from + index, name: `Event${from + index}`, ...(state ? { state } : {}) }))
+    const words = (node: Node | null) => (node as unknown as { source: string }).source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    const right = (node: Node) => node.bounds().x + node.bounds().width
+    const bottom = (node: Node) => node.bounds().y + node.bounds().height
+    /** Every line that the list has made: rows and folds, also those that do not show. */
+    const made = (log: Log) => log.all().filter((node): node is LogRowNode => node instanceof LogRowNode)
+    /** The lines that a viewer sees at a time, from the top: the text of the id of each. */
+    const seen = (log: Log, time: number) => at(time, () => made(log).filter((node) => shows(node.content) > 0.99).sort((a, b) => a.get('y') - b.get('y')).map((node) => words(node.idText)))
+    /** The text that a holder shows at a time, such as the count of the rows above. */
+    const said = (holder: Node, time: number) => at(time, () => (shows(holder) > 0.99 ? holder.children.filter((child) => typeof words(child) === 'string' && child.get('visible')).map(words) : []))
+    /** The line of a row by the text of its id, also when it does not show. A fold is not a row. */
+    const line = (log: Log, id: number | string) => made(log).find((node) => words(node.idText) === String(id) && node.range === null)!
+    /** The folds that show at a time, from the top. */
+    const folds = (log: Log, time: number) => at(time, () => made(log).filter((node) => node.range !== null && shows(node.content) > 0.99).sort((a, b) => a.get('y') - b.get('y')))
+    /** What a line says, part by part: the id, the range of a fold, the name, the detail, the time. */
+    const says = (node: LogRowNode) => [node.idText, node.range, node.name, node.detail, node.time].map((part) => (part ? words(part) : null))
+    const ink = (node: Node) => node.children[0]!.get('fill')
+    /** The mark of a line at a time: the shape that shows, and its color. */
+    const markOf = (node: LogRowNode, time: number) => at(time, () => {
+        const shape = node.mark.children.filter((child) => child.get('visible')).sort((a, b) => b.get('opacity') - a.get('opacity'))[0]!
+        const leaf = shape.leaves()[0]!
+        return [shape.data['shape'], leaf.get('fill') ?? leaf.get('stroke')]
+    })
+    const inside = (part: Node, whole: Node) => {
+        const a = part.bounds(), b = whole.bounds()
+        expect(a.x).toBeGreaterThanOrEqual(b.x)
+        expect(a.y).toBeGreaterThanOrEqual(b.y)
+        expect(a.x + a.width).toBeLessThanOrEqual(b.x + b.width)
+        expect(a.y + a.height).toBeLessThanOrEqual(b.y + b.height)
+    }
+    /**
+     * Where the getters and the picture disagree at a time: a line of `rows` that is not at the y of `p()` or
+     * does not show, a line that shows and is not in `rows`, two lines at one place, and two texts in a count
+     * or in the footer.
+     */
+    const wrong = (log: Log, time: number): string[] => {
+        const found: string[] = []
+        const rows = log.rows
+        at(time, () => {
+            for (const row of rows) {
+                const id = words(row.idText)
+                if (shows(row.content) < 0.99) found.push(`row ${id} is in rows and does not show`)
+                else if (Math.abs(row.get('y') - log.p(id)[1]) > 0.5) found.push(`row ${id} is not at p()`)
+            }
+            for (const node of made(log)) if (shows(node.content) > 0.01 && !rows.includes(node)) found.push(`line ${words(node.idText)} shows and is not in rows`)
+            const places = rows.map((row) => Math.round(row.get('y')))
+            if (new Set(places).size !== places.length) found.push('two lines share one place')
+        })
+        for (const holder of [log.earlier, log.later, log.footer!]) if (said(holder, time).length > 1) found.push(`two texts: ${said(holder, time).join(' | ')}`)
+        return found
+    }
+
+    it('centers the panel on its place, with the title over the rows and the footer under them', async () => {
+        await compileFilm(film(() => {
+            const log = eventLog(history, { title: 'event history', footer: (count) => `${count} events`, visible: 8, size: 20, width: 600 }).at(100, 50)
+            const frame = log.frame.bounds(), P = log.pitch
+            expect(frame.x + frame.width / 2).toBeCloseTo(100, 6)
+            expect(frame.y + frame.height / 2).toBeCloseTo(50, 6)
+            // 8 lines, 8 px over and under them, and 38 px each for the title and the footer.
+            expect(frame.width).toBeCloseTo(600, 6)
+            expect(frame.height).toBeCloseTo(8 * P + 16 + 76, 6)
+            log.rows.forEach((row, index) => expect(row.get('y')).toBeCloseTo(-frame.height / 2 + 38 + 8 + P / 2 + index * P, 6))
+            // From the top: the title, a rule, the rows, a rule, the footer. The rules go from border to border.
+            const [over, under] = log.rules.map((rule) => rule.bounds())
+            expect(bottom(log.title!)).toBeLessThan(over!.y)
+            expect(over!.y).toBeLessThan(log.rows[0]!.bounds().y)
+            expect(bottom(log.rows[6]!)).toBeLessThan(under!.y)
+            expect(under!.y).toBeLessThan(log.footer!.bounds().y)
+            expect(over!.width).toBeCloseTo(600 - log.frame.get('strokeWidth'), 6)
+            for (const part of [log.title!, log.footer!, ...log.rows]) inside(part, log.frame)
+            expect(words(log.title)).toBe('event history')
+            // The title and the footer start where the marks of the rows start.
+            expect(Math.abs(log.title!.bounds().x - log.rows[0]!.mark.bounds().x)).toBeLessThan(2)
+            // Without a title and a footer, the panel has the rows and the room around them.
+            const plain = eventLog(history, { visible: 8, size: 20 })
+            expect(plain.title).toBeNull()
+            expect(plain.footer).toBeNull()
+            expect(plain.rules).toHaveLength(0)
+            expect(plain.frame.bounds().height).toBeCloseTo(8 * P + 16, 6)
+            // The defaults: 640 wide, ten lines, a text size of 24.
+            const usual = eventLog(history), box = usual.frame.bounds()
+            expect([box.width, box.height]).toEqual([640, expect.closeTo(10 * usual.pitch + 2 * 9.6, 6)])
+            expect(usual.rows[0]!.name.bounds().height / log.rows[0]!.name.bounds().height).toBeCloseTo(24 / 20, 2)
+        }))
+    })
+
+    it('puts the rows as far apart as the outline needs: 0.3 of the text size from the ink of its row, and from the ink of the rows next to it', async () => {
+        // Characters that go as far up and as far down as any printable ASCII character does, in mono and in the font of the details.
+        const tall = 'A(|$gjy_Q'
+        const lists: { log: Log; size: number }[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            for (const size of [24, 40]) {
+                for (const options of [{}, { detailFont: 'mono' as const }, { focusLook: 'band' as const }]) {
+                    const log = s.add(eventLog([1, 2, 3].map((id) => ({ id, name: tall, detail: tall })), { size, width: 1400, ...options }))
+                    s.play(log.focus(2), { duration: 0 })
+                    lists.push({ log, size })
+                }
+            }
+            s.wait(1)
+        }))
+        for (const { log, size } of lists) {
+            const [above, own, below] = at(0.5, () => log.rows.map((row) => { const boxes = [row.name.bounds(), row.detail!.bounds()]; return [Math.min(...boxes.map((box) => box.y)), Math.max(...boxes.map((box) => box.y + box.height))] }))
+            const box = at(0.5, () => log.outline.bounds())
+            // The band has no line. The outline has one, and the room is from the edge of that line.
+            const half = at(0.5, () => (log.outline.get('stroke') ? log.outline.get('strokeWidth') / 2 : 0))
+            const room = size * 0.3 - 1e-6
+            expect(own![0]! - (box.y + half)).toBeGreaterThanOrEqual(room)
+            expect(box.y + box.height - half - own![1]!).toBeGreaterThanOrEqual(room)
+            expect(box.y - half - above![1]!).toBeGreaterThanOrEqual(room)
+            expect(below![0]! - (box.y + box.height + half)).toBeGreaterThanOrEqual(room)
+            // The room is not more than it has to be: the distance between two rows is the ink, the room, and the line.
+            expect(box.y - half - above![1]!).toBeLessThan(room + size * 0.1)
+            expect(box.height).toBeCloseTo(log.pitch, 6)
+            // The outline has room at its two ends too: from the mark at the left, and from the end of the panel.
+            expect(at(0.5, () => log.rows[1]!.mark.bounds().x) - box.x).toBeGreaterThan(size * 0.3)
+            expect(box.x).toBeGreaterThan(at(0.5, () => log.frame.bounds().x) + size * 0.2)
+        }
+        // The pitch follows the fonts: a list with details in mono needs less than one with details in the text font.
+        expect(lists[1]!.log.pitch).toBeLessThan(lists[0]!.log.pitch)
+        expect(lists[0]!.log.pitch / 24).toBeCloseTo(lists[3]!.log.pitch / 40, 1)
+        expect(lists[0]!.log.pitch).toBeGreaterThan(24 * 1.7)
+        expect(lists[0]!.log.pitch).toBeLessThan(24 * 1.95)
+    })
+
+    it('lines up the columns over all rows: the marks, the ends of the ids, and the starts of the names and of the details', async () => {
+        await compileFilm(film(() => {
+            const log = eventLog([{ id: 7, name: 'Short', detail: 'a' }, { id: 12, name: 'ActivityTaskCompleted', detail: '"ch_1001"' }, { id: 'ab', name: 'Wide', detail: 'x y' }], { size: 20 })
+            const rows = log.rows
+            for (const part of ['mark', 'idText', 'name', 'detail'] as const) expect(new Set(rows.map((row) => row[part]!.get('x'))).size).toBe(1)
+            // An id ends at the x of its column, and a name and a detail start at theirs. The ink is there to 3 px:
+            // a glyph has a little room at its sides.
+            for (const row of rows) {
+                expect(Math.abs(right(row.idText) - row.idText.get('x'))).toBeLessThan(3)
+                expect(Math.abs(row.name.bounds().x - row.name.get('x'))).toBeLessThan(3)
+                expect(Math.abs(row.detail!.bounds().x - row.detail!.get('x'))).toBeLessThan(3)
+                // From the left: the mark, the id, the name, the detail. No part touches the next.
+                expect(right(row.mark)).toBeLessThan(row.idText.bounds().x)
+                expect(right(row.idText)).toBeLessThan(row.name.bounds().x)
+                expect(right(row.name)).toBeLessThan(row.detail!.bounds().x)
+                // The mark is at the middle height of the row.
+                expect(row.mark.get('y')).toBe(0)
+                // The id and the detail are dim, so the name is what a viewer reads first.
+                expect([ink(row.idText), ink(row.detail!)]).toEqual([parseColor('dim'), parseColor('dim')])
+            }
+            // The names have the room of the longest name of the first rows, and the details start 18 px after it.
+            expect(rows[0]!.detail!.get('x') - right(rows[1]!.name)).toBeGreaterThan(17)
+            expect(rows[0]!.detail!.get('x') - right(rows[1]!.name)).toBeLessThan(20)
+            // The ids have room for two digits at least, so a list that starts at 1 can go on to 99.
+            const short = eventLog([{ id: 1, name: 'One' }], { size: 20 })
+            expect(short.rows[0]!.name.get('x') - short.rows[0]!.idText.get('x')).toBeCloseTo(14, 6)
+            expect(short.rows[0]!.idText.get('x') - short.rows[0]!.mark.get('x')).toBeCloseTo(3.4 + 12 + 24, 6)
+            // The name is in mono and the detail in another font. Both stand on one baseline.
+            const large = eventLog([{ id: 1, name: 'HHH', detail: 'HHH' }], { size: 100, width: 1400 }).rows[0]!
+            expect(Math.abs(bottom(large.name) - bottom(large.detail!))).toBeLessThan(0.3)
+            for (const font of ['mono', 'text-serif'] as const) {
+                const other = eventLog([{ id: 1, name: 'HHH', detail: 'HHH' }], { size: 100, width: 1500, font }).rows[0]!
+                expect(Math.abs(bottom(other.name) - bottom(other.detail!))).toBeLessThan(0.3)
+            }
+        }))
+    })
+
+    it('has its full height from the start, and draws nothing outside the panel while rows arrive', async () => {
+        let log!: Log
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 2), { title: 'log', footer: (count) => `${count} rows`, visible: 4, size: 20, width: 400 }))
+            s.wait(0.5)
+            s.play(log.append(some(3, 8)), { duration: 3, ease: linear })
+            s.wait(0.5)
+        }))
+        const sizes = [0, 0.7, 1.9, 4].map((time) => at(time, () => { const box = log.frame.bounds(); return [box.x, box.y, box.width, box.height] }))
+        for (const size of sizes) expect(size).toEqual(sizes[0])
+        expect(sizes[0]![3]).toBeCloseTo(4 * log.pitch + 16 + 76, 6)
+        // At rest, the list is as large as its panel. And at each frame, every mark that the film draws is in the panel.
+        for (const time of [0, 4]) {
+            const box = at(time, () => log.bounds())
+            expect([box.x, box.y, box.width, box.height]).toEqual(sizes[0])
+        }
+        for (let step = 0; step <= 60; step++) {
+            const [panel, ...rest] = paths(compiled, 0.5 + step / 20)
+            const outer = pathBounds(panel!.path)!
+            for (const op of rest) {
+                if (Math.max(op.fillAlpha, op.strokeAlpha) < 0.02) continue
+                const box = pathBounds(op.path)!
+                expect(box.y).toBeGreaterThanOrEqual(outer.y)
+                expect(box.y + box.height).toBeLessThanOrEqual(outer.y + outer.height)
+            }
+        }
+    })
+
+    it('adds one row or many at the bottom, in the order given, and counts them', async () => {
+        let log!: Log
+        const counts: number[] = [], ids: (number | string)[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([], { visible: 8, size: 20 }))
+            counts.push(log.count)
+            s.play(log.append({ id: 1, name: 'One' }), { duration: 1, ease: linear })
+            counts.push(log.count)
+            s.play(log.append([{ id: 'b', name: 'Two' }, { id: 3, name: 'Three' }, { id: 4, name: 'Four' }]), { duration: 3, ease: linear })
+            counts.push(log.count)
+            ids.push(log.ids)
+            // An append with no row does nothing and takes no time.
+            const none = log.append([])
+            expect(none.duration).toBe(0)
+            s.play(none)
+            expect(log.count).toBe(4)
+        }))
+        const P = log.pitch
+        expect(counts).toEqual([0, 1, 4])
+        expect(ids[0]).toEqual([1, 'b', 3, 4])
+        expect(log.rows.map((row) => words(row.name))).toEqual(['One', 'Two', 'Three', 'Four'])
+        // The rows arrive one after another: each has a third of the time of its append.
+        expect(seen(log, 0.5)).toEqual([])
+        expect(seen(log, 1)).toEqual(['1'])
+        expect(seen(log, 1.5)).toEqual(['1'])
+        expect(seen(log, 2)).toEqual(['1', 'b'])
+        expect(seen(log, 3)).toEqual(['1', 'b', '3'])
+        expect(seen(log, 4)).toEqual(['1', 'b', '3', '4'])
+        // A new row fades in over six tenths of its time, and rises to its place from a third of a row under it. No other row moves.
+        const fresh = log.rows[1]!, first = log.rows[0]!
+        expect(at(1.3, () => shows(fresh))).toBeCloseTo(0.5, 6)
+        expect(at(1.6, () => shows(fresh))).toBeCloseTo(1, 6)
+        expect(at(1.3, () => fresh.get('y') - first.get('y'))).toBeCloseTo(P + 0.35 * P * 0.7, 6)
+        expect(at(2, () => fresh.get('y') - first.get('y'))).toBeCloseTo(P, 6)
+        expect(at(1.5, () => first.get('y'))).toBe(at(1, () => first.get('y')))
+        // The default time is 0.4 s for each row, and half a second at least.
+        expect(log.append(some(10, 14)).duration).toBeCloseTo(2, 6)
+        expect(log.append(some(10, 10)).duration).toBe(0.5)
+    })
+
+    it('shows the newest rows of a full window, and says in its first line how many rows are above', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 5), { visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(6, 6)), { duration: 1, ease: linear })
+            s.play(log.append(some(7, 8)), { duration: 2, ease: linear })
+        }))
+        const P = log.pitch
+        // Five rows fill the five lines, and the list has no line for a count.
+        expect(seen(log, 0.5)).toEqual(['1', '2', '3', '4', '5'])
+        expect(said(log.earlier, 0.5)).toEqual([])
+        // A sixth row needs a line, and the count needs one: two rows go, and four rows show.
+        expect(seen(log, 2)).toEqual(['3', '4', '5', '6'])
+        expect(said(log.earlier, 2)).toEqual(['2 earlier'])
+        expect(seen(log, 3)).toEqual(['4', '5', '6', '7'])
+        expect(said(log.earlier, 3)).toEqual(['3 earlier'])
+        expect(seen(log, 4)).toEqual(['5', '6', '7', '8'])
+        expect(said(log.earlier, 4)).toEqual(['4 earlier'])
+        // The count changes when the row that leaves is nearly gone: at 45% of the way, not at its end.
+        expect(said(log.earlier, 2.44)).toEqual(['2 earlier'])
+        expect(said(log.earlier, 2.46)).toEqual(['3 earlier'])
+        // The count is in the first line, where the first row was, and the rows are in the lines under it.
+        const top = at(0.5, () => line(log, 1).get('y'))
+        expect(log.earlier.get('y')).toBeCloseTo(top, 6)
+        expect(at(4, () => line(log, 5).get('y'))).toBeCloseTo(top + P, 6)
+        expect(at(4, () => line(log, 8).get('y'))).toBeCloseTo(top + 4 * P, 6)
+        expect(log.rows.map((row) => words(row.idText))).toEqual(['5', '6', '7', '8'])
+        expect(log.count).toBe(8)
+        // No row is under the window, so the last line has no count.
+        expect(said(log.later, 4)).toEqual([])
+        // The count is of records: a fold above the window counts each record that it holds, at the start and after a row arrives.
+        let folded!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            folded = s.add(eventLog([{ id: 1, name: 'One' }, { ids: [2, 3, 4], name: 'three' }, ...some(5, 8)], { visible: 4 }))
+            s.play(folded.append(some(9, 9)), { duration: 1 })
+        }))
+        expect(seen(folded, 0)).toEqual(['6', '7', '8'])
+        expect(said(folded.earlier, 0)).toEqual(['5 earlier'])
+        expect(seen(folded, 1)).toEqual(['7', '8', '9'])
+        expect(said(folded.earlier, 1)).toEqual(['6 earlier'])
+        // A list that is made with more rows than lines starts at its end.
+        const long = eventLog(some(1, 40), { visible: 12 })
+        expect(long.rows.map((row) => words(row.idText))).toEqual(some(30, 40).map((row) => String(row.id)))
+        expect(said(long.earlier, 0)).toEqual(['29 earlier'])
+        expect(long.count).toBe(40)
+        // The count line has its three dots and one text: the list writes a text for a count that it shows, and for no other.
+        expect(long.earlier.children).toHaveLength(2)
+        // A fold above the window, and its unfold: the records are the same, so the count is the same. A line that left the list counts no more.
+        let hidden!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            hidden = s.add(eventLog(some(1, 12), { visible: 5 }))
+            s.play(hidden.fold([2, 3, 4], 'three'), { duration: 1 })
+            s.play(hidden.unfold(2), { duration: 1 })
+        }))
+        expect([0, 1, 2].map((time) => [seen(hidden, time), said(hidden.earlier, time)])).toEqual(Array(3).fill([['9', '10', '11', '12'], ['8 earlier']]))
+    })
+
+    it('moves the rows of a full window as one when a row arrives, and no row jumps', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(7, 7)), { duration: 1 })
+        }))
+        const P = log.pitch
+        const rows = [3, 4, 5, 6, 7].map((id) => line(log, id))
+        const start = at(1, () => rows.map((row) => row.get('y')))
+        let before = start
+        for (let step = 1; step <= 20; step++) {
+            const now = at(1 + step / 20, () => rows.map((row) => row.get('y')))
+            // Each row is one row under the row before it, at every frame: the row that leaves, the rows that stay, and the row that comes.
+            for (let index = 1; index < now.length; index++) expect(now[index]! - now[index - 1]!).toBeCloseTo(P, 6)
+            // No frame moves a row by more than a small part of a row.
+            expect(Math.abs(now[0]! - before[0]!)).toBeLessThan(P * 0.27)
+            before = now
+        }
+        expect(before[0]! - start[0]!).toBeCloseTo(-P, 6)
+    })
+
+    it('fades a row that leaves before it reaches the count, and shows a new row only when it is at the window', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { title: 'log', footer: (count) => `${count} rows`, visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(7, 7)), { duration: 1, ease: linear })
+        }))
+        const P = log.pitch
+        const leaves = line(log, 3), comes = line(log, 7), stays = line(log, 5)
+        const first = log.earlier.get('y')
+        for (let step = 0; step <= 20; step++) {
+            const time = 1 + step / 20
+            const [up, opacity] = at(time, () => [(leaves.get('y') - first) / P, shows(leaves)])
+            // The row that leaves is whole in its line, and gone when it is 0.4 of a row past it.
+            if (up! >= 0.95) expect(opacity).toBeCloseTo(1, 6)
+            if (up! <= 0.6) expect(opacity).toBe(0)
+            const [down, alpha] = at(time, () => [(comes.get('y') - first) / P - 4, shows(comes)])
+            if (down! >= 0.4) expect(alpha).toBe(0)
+            expect(at(time, () => shows(stays))).toBe(1)
+        }
+        expect(at(1.2, () => shows(leaves))).toBeCloseTo(1 - 0.15 / 0.35, 6)
+        expect(at(1.8, () => shows(comes))).toBeCloseTo(1 - 0.15 / 0.35, 6)
+        expect(at(2, () => [shows(leaves), shows(comes)])).toEqual([0, 1])
+        // A row that has left is hidden, so the frame and the bounds of the list skip it.
+        expect(at(1.9, () => leaves.get('visible'))).toBe(true)
+        expect(at(2, () => leaves.get('visible'))).toBe(false)
+        // At the first row past the window, two rows go: the first fades where it is, for the count takes its line.
+        let short!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            short = s.add(eventLog(some(1, 5), { visible: 5, size: 20 }))
+            s.play(short.append(some(6, 6)), { duration: 1, ease: linear })
+        }))
+        const top = line(short, 1)
+        expect(at(0.3, () => top.get('y'))).toBe(at(0, () => top.get('y')))
+        expect(at(0.175, () => shows(top))).toBeCloseTo(0.5, 6)
+        expect(at(0.4, () => shows(top))).toBe(0)
+        // The count comes in the second half, when the two rows are gone.
+        expect(at(0.5, () => shows(short.earlier))).toBe(0)
+        expect(at(0.75, () => shows(short.earlier))).toBeCloseTo(0.5, 6)
+        expect(at(1, () => shows(short.earlier))).toBe(1)
+    })
+
+    it('chains two appends in one sequence, and refuses an id that the list has', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            s.play(seq(log.append(some(3, 3)), log.append(some(4, 5))), { duration: 3, ease: linear })
+            expect(log.count).toBe(5)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5])
+            // The film asks for the row now, and the list has it.
+            expect(() => log.append({ id: 3, name: 'Again' })).toThrow(/the list already has a row with the id 3\. Give each row its own id/)
+            // An id is known by its text, so the text '3' is the id 3.
+            expect(() => log.append({ id: '3', name: 'Again' })).toThrow(/already has a row with the id "3"/)
+            expect(() => log.append([{ id: 8, name: 'A' }, { id: 8, name: 'B' }])).toThrow(/two rows have the id 8/)
+            // Two appends of one id in one sequence: the second finds the row of the first when it is scheduled.
+            const twice = seq(log.append({ id: 9, name: 'A' }), log.append([{ id: 10, name: 'B' }, { id: 9, name: 'C' }]))
+            expect(() => s.play(twice)).toThrow(/already has a row with the id 9/)
+            // The append that is refused adds none of its rows: the list has row 9 of the first one, and no row 10.
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 9])
+            // A focus or a mark that the play names before the `append` of its row: the list has no such row yet, and says what to do.
+            expect(() => s.play(log.focus(21), log.append(some(21, 21)))).toThrow(/no row has the id 21\. The list has the ids 1 to 9\. When an `append` in the same play brings the row, name the `append` before this call: the list takes the calls of a play in their order$/)
+            expect(() => s.play(log.mark(21, 'answered'), log.append(some(21, 21)))).toThrow(/When an `append` in the same play brings the row, name the `append` before this call/)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 9])
+            // The play that was refused did not move the time of the film, and its first append has its time.
+            s.wait(1)
+            s.play(log.append(some(21, 21)), log.focus(21), log.mark(21, 'answered'))
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 9, 21])
+            // A getter is not a call of a play, so its message has no such advice.
+            expect(() => log.row(99)).toThrow(/no row has the id 99\. The list has the ids 1 to 21$/)
+        }))
+        // Three rows in three seconds, one after another, over the two appends.
+        expect(seen(log, 1)).toEqual(['1', '2', '3'])
+        expect(seen(log, 2)).toEqual(['1', '2', '3', '4'])
+        expect(seen(log, 3)).toEqual(['1', '2', '3', '4', '5'])
+    })
+
+    it('brings the rows of one call together with a lag of 0, and keeps rows that overlap in time one row apart', async () => {
+        let group!: Log, overlap!: Log, large!: Log, half!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            group = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            overlap = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            large = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            half = s.add(eventLog([], { visible: 8, size: 20 }))
+            s.play(group.append(some(7, 9), { lag: 0 }), large.append(some(7, 15), { lag: 0 }), half.append(some(1, 3), { lag: 0.5 }), { duration: 2, ease: linear })
+            // With the ease of the house, a row that gets a new place slows down and starts again.
+            s.play(overlap.append(some(7, 9), { lag: 0.5 }), { duration: 2 })
+        }))
+        const P = group.pitch
+        // The group goes up three rows in one move, and its rows come with it.
+        const rows = [6, 7, 8, 9].map((id) => line(group, id))
+        const top = group.earlier.get('y')
+        expect(at(1, () => rows.map((row) => (row.get('y') - top) / P))).toEqual([2.5, 3.5, 4.5, 5.5].map((value) => expect.closeTo(value, 6)))
+        expect(seen(group, 2)).toEqual(['6', '7', '8', '9'])
+        expect(said(group.earlier, 2)).toEqual(['5 earlier'])
+        // With a lag of 0.5, the second row starts when the first is half way. The rows stay one row apart.
+        const late = [5, 6, 7, 8, 9].map((id) => line(overlap, id))
+        for (let step = 1; step <= 40; step++) {
+            const ys = at(2 + step / 20, () => late.filter((row) => row.get('visible')).map((row) => row.get('y')))
+            for (let index = 1; index < ys.length; index++) expect(ys[index]! - ys[index - 1]!).toBeCloseTo(P, 6)
+        }
+        expect(seen(overlap, 4)).toEqual(['6', '7', '8', '9'])
+        // Three rows in two seconds with a lag of 0.5: each has one second, and the next starts half a second later.
+        expect(at(0.8, () => [1, 2, 3].map((id) => shows(line(half, id))))).toEqual([1, expect.closeTo(0.5, 6), 0])
+        expect(at(1.3, () => [1, 2, 3].map((id) => shows(line(half, id))))).toEqual([1, 1, expect.closeTo(0.5, 6)])
+        // A row that is still on its way in is not drawn under the window.
+        for (let step = 1; step <= 40; step++) {
+            for (const row of late) {
+                const down = at(2 + step / 20, () => (row.get('y') - top) / P - 4)
+                if (down >= 0.4) expect(at(2 + step / 20, () => shows(row))).toBe(0)
+            }
+        }
+        // A group that is larger than the window goes through it. Nine rows go up nine lines: after four
+        // ninths of the time, rows 7 to 10 are in the four lines, and none of them has a place at the end.
+        expect(seen(large, 2 * 4 / 9)).toEqual(['7', '8', '9', '10'])
+        expect(seen(large, 2)).toEqual(['12', '13', '14', '15'])
+        expect(said(large.earlier, 2)).toEqual(['11 earlier'])
+        // A row that went through is hidden at the end, so the bounds of the list are those of its panel.
+        expect(at(2, () => [7, 10].map((id) => line(large, id).get('visible')))).toEqual([false, false])
+        expect(at(1.9, () => line(large, 11).get('visible'))).toBe(true)
+        expect(at(1.8, () => line(large, 7).get('y'))).toBe(large.earlier.get('y'))
+        const box = at(2, () => large.bounds()), panel = at(2, () => large.frame.bounds())
+        expect([box.y, box.height]).toEqual([panel.y, panel.height])
+    })
+
+    it('refuses two changes of the rows whose times overlap, and never leaves the picture wrong', async () => {
+        const start = (): LogRow[] => [...some(1, 9), { ids: [10, 11, 12], name: 'a fold', rows: some(10, 12) }, ...some(13, 16), { ids: [17, 18], name: 'b fold', rows: some(17, 18) }, ...some(19, 20)]
+        // The 23 mixes of the review, and the calls around them. `true` is a mix whose changes overlap in time.
+        const cases: [string, boolean | ((visible: number) => boolean), (log: Log) => Anim][] = [
+            ['seq(fold, fold)', false, (log) => seq(log.fold([13, 14], 'x'), log.fold([19, 20], 'y'))],
+            ['par(fold, fold) in list order', true, (log) => par(log.fold([13, 14], 'x'), log.fold([19, 20], 'y'))],
+            ['par(fold, fold) lower first', true, (log) => par(log.fold([19, 20], 'y'), log.fold([13, 14], 'x'))],
+            ['lagged(fold, fold) lag 0.15', true, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')])],
+            ['lagged(fold, fold) lag 0.1', true, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')], { lag: 0.1 })],
+            ['lagged(fold lower, fold upper) lag 0.15', true, (log) => lagged([log.fold([19, 20], 'y'), log.fold([13, 14], 'x')])],
+            ['lagged(fold, fold) lag 0.5', true, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')], { lag: 0.5 })],
+            ['lagged(fold, fold) lag 1', false, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')], { lag: 1 })],
+            ['seq(unfold, unfold)', false, (log) => seq(log.unfold(10), log.unfold(17))],
+            ['par(unfold, unfold)', true, (log) => par(log.unfold(10), log.unfold(17))],
+            ['lagged(unfold, unfold) lag 0.15', true, (log) => lagged([log.unfold(10), log.unfold(17)])],
+            ['lagged(unfold, unfold) lag 0.5', true, (log) => lagged([log.unfold(10), log.unfold(17)], { lag: 0.5 })],
+            ['lagged(unfold lower, unfold upper) lag 0.5', true, (log) => lagged([log.unfold(17), log.unfold(10)], { lag: 0.5 })],
+            ['lagged(unfold, unfold) lag 1', false, (log) => lagged([log.unfold(10), log.unfold(17)], { lag: 1 })],
+            ['par(append 1 row, append 1 row)', true, (log) => par(log.append(some(21, 21)), log.append(some(22, 22)))],
+            ['par(append 2 rows, append 2 rows)', true, (log) => par(log.append(some(21, 22)), log.append(some(23, 24)))],
+            ['par(append 2 rows lag 0, append 2 rows lag 0)', true, (log) => par(log.append(some(21, 22), { lag: 0 }), log.append(some(23, 24), { lag: 0 }))],
+            ['lagged(append 2, append 2) lag 0.15', true, (log) => lagged([log.append(some(21, 22)), log.append(some(23, 24))])],
+            ['lagged(append 2, append 2) lag 1', false, (log) => lagged([log.append(some(21, 22)), log.append(some(23, 24))], { lag: 1 })],
+            ['par(append, fold)', true, (log) => par(log.append(some(21, 21)), log.fold([13, 14], 'x'))],
+            ['par(fold, append)', true, (log) => par(log.fold([13, 14], 'x'), log.append(some(21, 21)))],
+            ['par(append, unfold)', true, (log) => par(log.append(some(21, 21)), log.unfold(17))],
+            ['par(unfold, append)', true, (log) => par(log.unfold(17), log.append(some(21, 21)))],
+            ['par(fold, unfold)', true, (log) => par(log.fold([13, 14], 'x'), log.unfold(17))],
+            ['par(unfold, fold)', true, (log) => par(log.unfold(17), log.fold([13, 14], 'x'))],
+            // Row 1 is out of a window of 8 lines, so the window moves. In a window of 30 lines it shows, and nothing moves.
+            ['par(scrollTo, append)', (visible) => visible === 8, (log) => par(log.scrollTo(1), log.append(some(21, 21)))],
+            ['par(scrollTo of a row that shows, append)', false, (log) => par(log.scrollTo(19), log.append(some(21, 21)))],
+            ['par(append, scrollTo of a row that shows)', false, (log) => par(log.append(some(21, 21)), log.scrollTo(20))],
+            ['seq(scrollTo, append, fold)', false, (log) => seq(log.scrollTo(1), log.append(some(21, 21)), log.fold([13, 14], 'x'))],
+            // A change of the rows with calls that change no row: these are free to overlap.
+            ['par(mark, append, focus)', false, (log) => par(log.mark(15, 'answered'), log.append(some(21, 22)), log.focus(22))],
+            ['par(focus, fold)', false, (log) => par(log.focus(13), log.fold([13, 14], 'x'))],
+            ['par(mark, unfold)', false, (log) => par(log.mark(17, 'failed'), log.unfold(17))],
+            ['par(enter, append, show)', false, (log) => par(log.enter(), log.append(some(21, 21)), log.show(21))],
+        ]
+        for (const visible of [8, 30]) {
+            for (const [name, flag, build] of cases) {
+                const overlaps = typeof flag === 'function' ? flag(visible) : flag
+                let log!: Log, end = 0, thrown = ''
+                await compileFilm(film({ fps: 20 }, (s) => {
+                    log = s.add(eventLog(start(), { visible, size: 24, footer: (count) => `${count} events` }))
+                    s.wait(1)
+                    // A font that is not loaded yet stops the build with a promise, and the film runs again.
+                    try { s.play(build(log)) } catch (error) { if (!(error instanceof Error)) throw error; thrown = error.message }
+                    s.wait(1)
+                    end = s.time
+                }))
+                // Refused, or right: each line of `rows` shows at the place that `p()` gives, and nothing else shows.
+                if (overlaps) expect(thrown, name).toMatch(/^eventLog: \w+\(.*\) plays from [\d.]+ s to [\d.]+ s, and \w+\(.*\) plays from [\d.]+ s to [\d.]+ s\. The list changes its rows one change at a time: a change starts when the change before it is over\. \S/)
+                else expect(thrown, name).toBe('')
+                expect(wrong(log, end), `${name}, window of ${visible}`).toEqual([])
+            }
+        }
+        // The error names the two calls and their times.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = s.add(eventLog(some(1, 9), { visible: 8, size: 24 }))
+            s.wait(1)
+            expect(() => s.play(log.fold([3, 4], 'x'), log.append(some(10, 11)), { duration: 2 })).toThrow(/append\(\[10, 11\]\) plays from 1 s to 3 s, and fold\(\[3, 4\]\) plays from 1 s to 3 s\./)
+            // The first of the two is done, and the second is not: the list is as the fold left it.
+            expect(log.count).toBe(9)
+            expect(log.rows).toHaveLength(8)
+            // A change at the time where the last one ends is not an overlap. Two changes of no length at one time follow each other.
+            s.wait(2)
+            s.play(log.append(some(10, 10)), { duration: 1 })
+            s.play(log.fold([5, 6], 'y'), log.fold([7, 8], 'z'), { duration: 0 })
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['1', '2', '3', '5', '7', '9', '10'])
+            // Two lists do not know of each other.
+            const other = s.add(eventLog(some(1, 3), { visible: 8, size: 24 }))
+            s.play(log.append(some(11, 11)), other.append(some(4, 4)))
+            expect([log.count, other.count]).toEqual([11, 4])
+            // A change that the film puts before the last one in time is refused too: its rows start from the wrong places.
+            expect(() => s.at(0.5, () => s.play(log.append(some(12, 12))))).toThrow(/append\(\[12\]\) plays from 0\.5 s to 1 s, and append\(\[11\]\) plays from 4 s to 4\.5 s/)
+        }))
+        // This test builds 72 films. On a loaded machine that takes longer than the usual limit of a test.
+    }, 60_000)
+
+    it('gives the advice that fits two changes that overlap, and a film that follows it builds with the same pace', async () => {
+        const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+        const rule = 'The list changes its rows one change at a time: a change starts when the change before it is over. '
+        // Seven short appends in one play, each 0.23 s after the one before: the film of a session log.
+        const rows = some(1, 7)
+        let log!: Log, advice = ''
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([], { visible: 8, size: 20 }))
+            advice = message(() => s.play(...rows.map((row, index) => delay(log.append(row, { duration: 0.25 }), 0.15 + index * 0.23))))
+        }))
+        expect(advice).toBe(`eventLog: append([2]) plays from 0.38 s to 0.63 s, and append([1]) plays from 0.15 s to 0.4 s. ${rule}Give one \`append\` all the rows, with \`{ lag: 0.92, duration: 0.25 + 0.23 * (rows - 1) }\`. Each row then takes 0.25 s and starts 0.23 s after the row before it, as here`)
+        const [lag, first, each] = /lag: ([\d.]+), duration: ([\d.]+) \+ ([\d.]+) \* \(rows - 1\)/.exec(advice)!.slice(1).map(Number)
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([], { visible: 8, size: 20 }))
+            s.play(delay(log.append(rows, { lag: lag!, duration: first! + each! * (rows.length - 1), ease: linear }), 0.15))
+            expect(s.time).toBeCloseTo(0.15 + 6 * 0.23 + 0.25, 6)
+        }))
+        // The pace is that of the film: each row starts 0.23 s after the row before it, and takes 0.25 s.
+        rows.forEach((row, index) => {
+            const start = 0.15 + index * 0.23, node = line(log, row.id as number)
+            expect(at(start - 0.01, () => shows(node))).toBe(0)
+            expect(at(start + 0.075, () => shows(node))).toBeCloseTo(0.5, 5)
+            expect(at(start + 0.25, () => shows(node))).toBeCloseTo(1, 5)
+        })
+        // Two appends that start together: one call with all the rows, and `lag: 0`.
+        let together!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            together = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            expect(message(() => s.play(together.append(some(3, 3)), together.append(some(4, 4)), { duration: 1 }))).toBe(`eventLog: append([4]) plays from 0 s to 1 s, and append([3]) plays from 0 s to 1 s. ${rule}Give one \`append\` all the rows. With \`lag: 0\`, they arrive together`)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            together = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            s.play(together.append(some(3, 4), { lag: 0 }), { duration: 1, ease: linear })
+        }))
+        expect(at(0.3, () => [3, 4].map((id) => shows(line(together, id))))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        // Two folds in one play: a `seq`, and the play keeps its length.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 8), { visible: 8, size: 20 }))
+            expect(message(() => s.play(list.fold([1, 2], 'x'), list.fold([5, 6], 'y'), { duration: 1 }))).toBe(`eventLog: fold([5, 6]) plays from 0 s to 1 s, and fold([1, 2]) plays from 0 s to 1 s. ${rule}Play the two in a \`seq\`: each then has its share of the time of the play`)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 8), { visible: 8, size: 20 }))
+            s.play(seq(list.fold([1, 2], 'x'), list.fold([5, 6], 'y')), { duration: 1 })
+            expect(s.time).toBe(1)
+            expect(list.rows.map((row) => words(row.idText))).toEqual(['1', '3', '4', '5', '7', '8'])
+        }))
+        // Two folds, the second a little after the first: the first can be shorter, or the two go in a `seq`.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 8), { visible: 8, size: 20 }))
+            expect(message(() => s.play(lagged([list.fold([1, 2], 'x'), list.fold([5, 6], 'y')], { lag: 0.25, duration: 1 })))).toBe(`eventLog: fold([5, 6]) plays from 0.2 s to 1 s, and fold([1, 2]) plays from 0 s to 0.8 s. ${rule}fold([1, 2]) takes 0.8 s, and fold([5, 6]) starts 0.2 s after it. Give fold([1, 2]) a \`duration\` of 0.2 or less, or play the two in a \`seq\``)
+        }))
+        // Two cues that are nearer than the first append takes: the first gets the time that it has.
+        let cues!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            cues = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(2, () => s.play(cues.append(some(4, 8))))
+            expect(message(() => s.at(3, () => s.play(cues.append(some(9, 10)))))).toBe(`eventLog: append([9, 10]) plays from 3 s to 3.8 s, and append([4, 5, 6, 7, 8]) plays from 2 s to 4 s. ${rule}append([4, 5, 6, 7, 8]) takes 2 s, and append([9, 10]) starts 1 s after it. Give append([4, 5, 6, 7, 8]) a \`duration\` of 1 or less, or play the two in a \`seq\``)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            cues = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(2, () => s.play(cues.append(some(4, 8), { duration: 1 })))
+            s.at(3, () => s.play(cues.append(some(9, 10))))
+            expect(cues.count).toBe(10)
+        }))
+        // The cues are where the film put them: row 4 starts at 2 s, and row 9 at 3 s.
+        expect([1.99, 2.05].map((time) => at(time, () => shows(line(cues, 4)) > 0))).toEqual([false, true])
+        expect([2.99, 3.05].map((time) => at(time, () => shows(line(cues, 9)) > 0))).toEqual([false, true])
+        // A cue that the film writes after a later one: the list takes its changes in the order of time.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(5, () => s.play(list.append(some(4, 4))))
+            expect(message(() => s.at(3, () => s.play(list.append(some(5, 5)))))).toBe(`eventLog: append([5]) plays from 3 s to 3.5 s, and append([4]) plays from 5 s to 5.5 s. ${rule}The list takes the changes of its rows in the order of time, and the film calls append([4]) first. Call append([5]) before it`)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(3, () => s.play(list.append(some(5, 5))))
+            s.at(5, () => s.play(list.append(some(4, 4))))
+            expect(list.ids).toEqual([1, 2, 3, 5, 4])
+        }))
+    })
+
+    it('follows the count in the footer, and names a footer that does not fit', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 2), { footer: (count) => `${count} events`, visible: 8, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(3, 4)), { duration: 2, ease: linear })
+            s.play(log.fold([1, 2], 'pair'), { duration: 1 })
+            const wide = s.add(eventLog(some(1, 2), { footer: (count) => (count > 2 ? 'a footer with too many words for a panel of this width, by far' : 'short'), width: 300, size: 20 }))
+            expect(() => s.play(wide.append(some(3, 3)))).toThrow(/the footer "a footer with too many words .*" is \d+ px wide, and the panel has 268 px\. Use a shorter text, or raise `width`/)
+            expect(() => eventLog([], { footer: () => 'two\nlines' })).toThrow(/the footer has a line break/)
+        }))
+        expect(said(log.footer!, 0.5)).toEqual(['2 events'])
+        // The number changes when a row is half there.
+        expect(said(log.footer!, 1.45)).toEqual(['2 events'])
+        expect(said(log.footer!, 1.55)).toEqual(['3 events'])
+        expect(said(log.footer!, 2.55)).toEqual(['4 events'])
+        // A fold does not change the count: it holds its rows.
+        expect(said(log.footer!, 4)).toEqual(['4 events'])
+    })
+
+    it('changes the state of one row, of a list of rows, or of the rows that a function picks', async () => {
+        let log!: Log
+        let purple!: Rgba, green!: Rgba, red!: Rgba
+        await compileFilm(film({ fps: 20 }, (s) => {
+            [purple, green, red] = ['purple', 'green', 'red'].map((name) => parseColor(name)) as [Rgba, Rgba, Rgba]
+            log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            s.wait(1)
+            s.play(log.mark(2, 'answered'), { duration: 2, ease: linear })
+            // A row that the list names twice changes once. The text '7' is the id 7.
+            s.play(log.mark([5, '7', 5], 'failed'), { duration: 1, ease: linear })
+            // The function sees the states that the changes before it left, in the same sequence too.
+            s.play(seq(log.mark(1, 'answered'), log.mark((row) => row.state === 'answered', 'failed'), log.mark((row) => row.id === 3 && row.name === 'WorkflowTaskStarted' && row.detail === undefined, 'answered')), { duration: 3, ease: linear })
+        }))
+        const [one, two, three, four, five, , seven] = log.rows
+        // The name has the color of the state. The id and the detail keep theirs.
+        expect(at(1, () => ink(two!.name))).toEqual(purple)
+        expect(at(2, () => ink(two!.name))).toEqual(mixColor(purple, green, 0.5))
+        expect(at(3, () => ink(two!.name))).toEqual(green)
+        expect(at(3, () => ink(two!.idText))).toEqual(at(0, () => ink(two!.idText)))
+        expect(at(3, () => ink(one!.detail!))).toEqual(at(0, () => ink(one!.detail!)))
+        expect(at(3, () => ink(four!.name))).toEqual(purple)
+        // Every glyph of the name changes.
+        expect(at(3, () => two!.name.children.every((glyph) => String(glyph.get('fill')) === String(green)))).toBe(true)
+        expect(at(4, () => [ink(five!.name), ink(seven!.name)])).toEqual([red, red])
+        expect(at(4, () => ink(one!.name))).toEqual(purple)
+        // Rows 1 and 2 were answered when the function ran, and row 3 has the name and no detail.
+        expect(at(7, () => [one, two, three, four].map((row) => ink(row!.name)))).toEqual([red, red, green, purple])
+    })
+
+    it('gives each state its own mark, and changes the mark with the state', async () => {
+        let log!: Log, plain!: Log
+        let colors!: Record<string, Rgba>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            colors = Object.fromEntries(['purple', 'ink', 'green', 'yellow', 'red', 'teal'].map((name) => [name, parseColor(name)]))
+            log = s.add(eventLog(['stored', 'new', 'answered', 'waiting', 'failed'].map((state, index) => ({ id: index + 1, name: state, state })), { size: 24 }))
+            // A state with no mark has a dot, so the states of a film keep their look.
+            plain = s.add(eventLog([{ id: 1, name: 'a' }, { id: 2, name: 'b', state: 'done' }], { size: 24, states: { open: { color: 'teal' }, done: { color: 'green', mark: 'check' } } }))
+            s.wait(1)
+            s.play(log.mark(1, 'failed'), log.mark(2, 'stored'), { duration: 1, ease: linear })
+            s.play(seq(log.mark(3, 'new'), log.mark(3, 'answered'), log.mark(3, 'stored')), { duration: 3, ease: linear })
+            expect(() => eventLog([], { states: { odd: { color: 'red', mark: 'star' as never } } })).toThrow(/the mark of the state "odd" is "star"\. A mark is 'dot', 'ring', 'check' or 'cross'/)
+        }))
+        // A dot for a record at rest and for a new one, a check for an answer, a ring for a wait, a cross for a failure.
+        expect(log.rows.map((row) => markOf(row, 0))).toEqual([['dot', colors['purple']], ['dot', colors['ink']], ['check', colors['green']], ['ring', colors['yellow']], ['cross', colors['red']]])
+        expect(Object.entries(LOG_STATES).map(([name, state]) => [name, state.color, state.mark])).toEqual([['stored', 'purple', 'dot'], ['new', 'ink', 'dot'], ['answered', 'green', 'check'], ['waiting', 'yellow', 'ring'], ['failed', 'red', 'cross']])
+        expect(plain.rows.map((row) => markOf(row, 0))).toEqual([['dot', colors['teal']], ['check', colors['green']]])
+        // A dot is filled. A ring, a check and a cross are lines, so a ring is not a dot of another color.
+        expect(log.rows.map((row) => at(0, () => { const leaf = row.mark.leaves()[0]!; return [leaf.get('fill') !== null, leaf.get('stroke') !== null] }))).toEqual([[true, false], [true, false], [false, true], [false, true], [false, true]])
+        // Each mark is at the place of the dot, and about as large: it does not reach the id.
+        const dot = at(0, () => log.rows[0]!.mark.bounds())
+        for (const row of log.rows) {
+            const box = at(0, () => row.mark.bounds())
+            expect(box.x + box.width / 2).toBeCloseTo(dot.x + dot.width / 2, 0)
+            expect(box.y + box.height / 2).toBeCloseTo(at(0, () => row.get('y')), 0)
+            expect(box.width).toBeLessThan(24 * 0.5)
+            expect(box.width).toBeGreaterThanOrEqual(24 * 0.3)
+            expect(box.x + box.width + 2).toBeLessThan(at(0, () => row.idText.bounds().x))
+        }
+        // A mark of another shape comes in as the old one goes. Two states with one shape change color only.
+        const [first, second] = log.rows
+        const strength = (node: LogRowNode, shape: string, time: number) => at(time, () => { const made = node.mark.children.find((child) => child.data['shape'] === shape); return made ? shows(made) : 0 })
+        expect([strength(first!, 'dot', 1.5), strength(first!, 'cross', 1.5)]).toEqual([0.5, 0.5])
+        expect([strength(first!, 'dot', 2), strength(first!, 'cross', 2)]).toEqual([0, 1])
+        expect(markOf(first!, 2)).toEqual(['cross', colors['red']])
+        expect(markOf(second!, 1.5)).toEqual(['dot', mixColor(colors['ink']!, colors['purple']!, 0.5)])
+        expect(second!.mark.children).toHaveLength(1)
+        // The mark that went is hidden, so the line has one mark.
+        expect(at(2, () => first!.mark.children.filter((child) => child.get('visible')))).toHaveLength(1)
+        // A shape that comes back has the color of its state now: the dot of `new` is the dot of `stored` later.
+        const third = log.rows[2]!
+        expect([3, 4, 5].map((time) => markOf(third, time))).toEqual([['dot', colors['ink']], ['check', colors['green']], ['dot', colors['purple']]])
+        expect(third.mark.children).toHaveLength(2)
+    })
+
+    it('changes the rows of one mark together, or one after another with a lag, and leaves a row that has the state', async () => {
+        let log!: Log, lagging!: Log, again!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 4), { visible: 8, size: 20 }))
+            lagging = s.add(eventLog(some(1, 4), { visible: 8, size: 20 }))
+            again = s.add(eventLog(some(1, 4), { visible: 8, size: 20 }))
+            s.play(log.mark(2, 'answered'), again.mark(2, 'answered'), { duration: 1, ease: linear })
+            s.play(log.mark([4, 2, 1], 'answered'), lagging.mark([4, 2, 1], 'answered', { lag: 1 }), again.mark([4, 2, 1], 'answered', { lag: 1 }), { duration: 3, ease: linear })
+            expect(log.mark(1, 'failed').duration).toBe(0.5)
+        }))
+        const [purple, green] = [parseColor('purple'), parseColor('green')], half = mixColor(purple, green, 0.5)
+        const names = (list: Log, picked: number[], time: number) => at(time, () => picked.map((index) => ink(list.rows[index]!.name)))
+        // Row 2 has the state, so it does not change again. Rows 1 and 4 change together, over the whole time.
+        expect(names(log, [1], 1)).toEqual([green])
+        expect(names(log, [0, 1, 3], 2.5)).toEqual([half, green, half])
+        expect(names(log, [0, 3], 4)).toEqual([green, green])
+        // With a lag of 1, the rows change in the order of the list, each in its third of the time.
+        expect(names(lagging, [0, 1, 3], 1.5)).toEqual([half, purple, purple])
+        expect(names(lagging, [0, 1, 3], 2.5)).toEqual([green, half, purple])
+        expect(names(lagging, [0, 1, 3], 3.5)).toEqual([green, green, half])
+        // A row that has the state takes no time: the two others have a half of the time each.
+        expect(names(again, [0, 3], 1.75)).toEqual([half, purple])
+        expect(names(again, [0, 3], 3.25)).toEqual([green, half])
+    })
+
+    it('takes its own states, starts a row in the first one, and draws a dim state dim', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const states = { done: { color: 'teal' }, running: { color: 'yellow' }, planned: { color: 'ink', dim: true } }
+            log = s.add(eventLog([{ id: 1, name: 'model call', detail: 'plan' }, { id: 2, name: 'tool call', state: 'running' }, { id: 3, name: 'result', detail: 'later', state: 'planned' }], { states, visible: 8, size: 20 }))
+            s.wait(1)
+            s.play(log.mark(3, 'running'), { duration: 1, ease: linear })
+            s.play(log.mark(1, 'planned'), { duration: 1, ease: linear })
+            expect(() => log.mark(1, 'stored')).toThrow(/no state "stored"\. The states are done, running, planned/)
+            expect(() => eventLog([{ id: 1, name: 'x', state: 'new' }], { states })).toThrow(/row 1 has the state "new"\. The states are done, running, planned/)
+            expect(() => eventLog([], { states: {} })).toThrow(/give it at least one state/)
+        }))
+        const [first, second, third] = log.rows
+        // A row with no state has the first state of the record.
+        expect(at(1, () => [first, second, third].map((row) => ink(row!.name)))).toEqual(['teal', 'yellow', 'ink'].map((name) => parseColor(name)))
+        expect([first, second, third].map((row) => markOf(row!, 1)[1])).toEqual(['teal', 'yellow', 'ink'].map((name) => parseColor(name)))
+        // Each part of a dim row has an opacity of 0.4: the mark, the id, the name and the detail.
+        expect(at(1, () => third!.parts.map((part) => part.get('opacity')))).toEqual([0.4, 0.4, 0.4, 0.4])
+        expect(at(1, () => first!.parts.map((part) => part.get('opacity')))).toEqual([1, 1, 1, 1])
+        expect(at(1.5, () => third!.parts.map((part) => part.get('opacity')))).toEqual([0.7, 0.7, 0.7, 0.7].map((value) => expect.closeTo(value, 6)))
+        expect(at(2, () => [third!.name.get('opacity'), ink(third!.name)])).toEqual([1, parseColor('yellow')])
+        expect(at(3, () => [first!.name.get('opacity'), first!.mark.get('opacity'), ink(first!.name)])).toEqual([0.4, 0.4, parseColor('ink')])
+    })
+
+    it('folds rows that follow each other into one line, and opens the line again', async () => {
+        let log!: Log
+        const during: { count: number; ids: (number | string)[]; rows: number } = { count: 0, ids: [], rows: 0 }
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            s.wait(1)
+            // The ids can be in any order.
+            s.play(log.fold([4, 2, 3], 'workflow task'), { duration: 1, ease: linear })
+            Object.assign(during, { count: log.count, ids: log.ids, rows: log.rows.length })
+            // A record in a fold has the line of the fold, and a connector to any of its ids goes to that line.
+            expect(log.row(3)).toBe(log.rows[1])
+            expect(log.row(2)).toBe(log.row(4))
+            expect(log.p(3)).toEqual(log.p(2))
+            expect(log.p(4, 'right')).toEqual([320, log.p(2)[1]])
+            expect(log.p(3)[1]).toBeCloseTo(log.p(1)[1] + log.pitch, 6)
+            expect(log.p(5)[1]).toBeCloseTo(log.p(1)[1] + 2 * log.pitch, 6)
+            s.wait(1)
+            expect([log.fold([5, 6], 'x').duration, log.unfold(2).duration]).toEqual([0.8, 0.8])
+            // The id of an unfold is known by its text too.
+            s.play(log.unfold('2'), { duration: 1, ease: linear })
+            expect(log.row(3)).not.toBe(log.row(2))
+        }))
+        const P = log.pitch
+        // The fold is one line of the window, and the list still has its seven records.
+        expect(during).toEqual({ count: 7, ids: [1, 2, 3, 4, 5, 6, 7], rows: 5 })
+        expect(seen(log, 1)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+        expect(seen(log, 2)).toEqual(['1', '2', '5', '6', '7'])
+        // The line has the first id where the ids are, then "to" and the last id, then the name.
+        const [fold] = folds(log, 2)
+        expect(says(fold!)).toEqual(['2', 'to  4', 'workflow task', null, null])
+        expect(fold!.idText.get('x')).toBe(line(log, 1).idText.get('x'))
+        expect(fold!.range!.get('x')).toBe(line(log, 1).name.get('x'))
+        // The name starts after the room of "to" and the longest id: five characters of 12 px, and 14 px.
+        expect(fold!.name.get('x') - fold!.range!.get('x')).toBeCloseTo(5 * 12 + 14, 6)
+        expect(right(fold!.range!)).toBeLessThan(fold!.name.bounds().x)
+        // It has the state of its first row: the name and the three small dots of its mark have that color.
+        expect(ink(fold!.name)).toEqual(parseColor('purple'))
+        const dots = at(2, () => fold!.mark.children[0]!)
+        expect(dots.children).toHaveLength(3)
+        expect(dots.children.map((dot) => dot.get('fill'))).toEqual(Array(3).fill(parseColor('purple')))
+        expect(fold!.mark.get('x')).toBe(line(log, 1).mark.get('x'))
+        expect(fold!.mark.bounds().height).toBeLessThan(15)
+        // It is where row 2 was, and the rows after it are two lines up.
+        const y = (id: number, time: number) => at(time, () => line(log, id).get('y'))
+        expect(at(2, () => fold!.get('y'))).toBeCloseTo(y(2, 1), 6)
+        expect(y(5, 2)).toBeCloseTo(y(5, 1) - 2 * P, 6)
+        expect(y(1, 2)).toBe(y(1, 1))
+        // The rows go first, the others move after that, and the line comes where the rows were.
+        expect(at(1.15, () => shows(line(log, 3)))).toBeCloseTo(0.5, 6)
+        expect(at(1.3, () => shows(line(log, 3)))).toBe(0)
+        // A row in a fold is hidden, so the bounds of the list skip it.
+        expect(at(1.25, () => line(log, 3).get('visible'))).toBe(true)
+        expect(at(1.3, () => line(log, 3).get('visible'))).toBe(false)
+        expect(y(5, 1.15)).toBe(y(5, 1))
+        expect(y(5, 1.45)).toBeCloseTo(y(5, 1) - P, 6)
+        expect(at(1.3, () => shows(fold!))).toBe(0)
+        expect(at(1.55, () => shows(fold!))).toBeCloseTo(0.5, 6)
+        // After the unfold, the same rows are back at their places.
+        expect(seen(log, 4)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+        for (const id of [1, 2, 3, 4, 5, 6, 7]) expect(y(id, 4)).toBeCloseTo(y(id, 1), 6)
+        expect(at(4, () => shows(fold!))).toBe(0)
+        // The rows of an unfold come last, when the rows under them have left their places.
+        expect(at(3.6, () => shows(line(log, 3)))).toBe(0)
+        expect(at(3.8, () => shows(line(log, 3)))).toBeCloseTo(0.5, 6)
+        expect(y(5, 3.45)).toBeCloseTo(y(5, 1) - P, 6)
+    })
+
+    it('gives a fold the fields of a row: a detail, a time, a state and a family', async () => {
+        let log!: Log
+        const found: LogRow[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows: LogRow[] = [{ id: 1, name: 'WorkflowExecutionStarted', detail: 'order' }, ...some(2, 12)]
+            log = s.add(eventLog(rows, { visible: 12, size: 20, width: 800, timeWidth: 84 }))
+            s.play(seq(log.fold([2, 3], { name: 'pair', detail: 'two rows', time: '+0.10 s', state: 'answered', family: 'task' }), log.fold([9, 10, 11], 'three')), { duration: 1 })
+            log.find((row) => { found.push(row); return false })
+            // The names have the room that the longest of them needs. The name of a fold starts after its ids,
+            // so it needs that much more: here the fold is whole, and its detail is in the column of the details.
+            const longest = eventLog([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3], name: 'a pair of rows', detail: 'two' }], { size: 20, width: 700 })
+            expect(words(longest.rows[1]!.name)).toBe('a pair of rows')
+            expect(longest.rows[1]!.detail!.get('x')).toBe(longest.rows[0]!.detail!.get('x'))
+            expect(longest.rows[1]!.detail!.get('x') - right(longest.rows[1]!.name)).toBeGreaterThan(17)
+            expect(longest.rows[1]!.detail!.get('x') - right(longest.rows[1]!.name)).toBeLessThan(20)
+            // In a narrow column of names, the name of a fold has no room after its ids. It takes the room that
+            // it needs, and its detail comes 18 px after it.
+            const short = s.add(eventLog([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3], name: 'a pair of rows', detail: 'two' }], { size: 20, width: 700, nameWidth: 100 }))
+            const [row, fold] = short.rows
+            expect(says(fold!)).toEqual(['2', 'to  3', 'a pair of rows', 'two', null])
+            expect(fold!.detail!.get('x')).toBeGreaterThan(row!.detail!.get('x'))
+            expect(fold!.detail!.get('x') - right(fold!.name)).toBeGreaterThan(17)
+            expect(fold!.detail!.get('x') - right(fold!.name)).toBeLessThan(20)
+        }))
+        const [pair, three] = folds(log, 1)
+        expect(says(pair!)).toEqual(['2', 'to  3', 'pair', 'two rows', '+0.10 s'])
+        expect(says(three!)).toEqual(['9', 'to 11', 'three', null, null])
+        // The last id ends where the longest id would end, so the names of the two folds start at one x.
+        expect(pair!.name.get('x')).toBe(three!.name.get('x'))
+        expect(ink(pair!.name)).toEqual(parseColor('green'))
+        expect(ink(three!.name)).toEqual(parseColor('purple'))
+        // A fold in a state with its own mark shows that mark, and a fold in a state with a dot has its three dots.
+        expect(markOf(pair!, 1)).toEqual(['check', parseColor('green')])
+        expect(markOf(three!, 1)[0]).toBe('dot')
+        // The detail and the time of a fold are in the columns of the rows.
+        expect(pair!.detail!.get('x')).toBe(line(log, 1).detail!.get('x'))
+        expect(pair!.time!.get('x')).toBe(400 - 16)
+        expect(Math.abs(right(pair!.time!) - (400 - 16))).toBeLessThan(3)
+        // A function of `find()` gets a fold as one row, with its ids and its fields.
+        expect(found[1]).toEqual({ id: 2, ids: [2, 3], name: 'pair', detail: 'two rows', time: '+0.10 s', state: 'answered', family: 'task' })
+        expect(found[0]).toEqual({ id: 1, ids: [1], name: 'WorkflowExecutionStarted', detail: 'order', state: 'stored' })
+        expect(found).toHaveLength(9)
+    })
+
+    it('builds a row that stands for several records, and opens it into its rows', async () => {
+        let log!: Log
+        const record = { ids: [2, 3, 4], name: 'workflow task', detail: 'worker 71293', family: 'task', rows: [
+            { id: 2, name: 'WorkflowTaskScheduled', detail: 'queue orders' },
+            { id: 3, name: 'WorkflowTaskStarted', detail: 'worker 71293', state: 'failed' },
+            { id: 4, name: 'WorkflowTaskCompleted' },
+        ] } satisfies LogRow
+        let closed!: LogRowNode
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Each record of the film has `id` and `ids`. A list of one id is a row, and `id` is the first of the ids of a fold.
+            log = s.add(eventLog([{ id: 1, ids: [1], name: 'WorkflowExecutionStarted' }, { id: 2, ...record }, { id: 5, name: 'ActivityTaskScheduled' }], { footer: (count) => `${count} events`, visible: 8, size: 20, width: 800 }))
+            // The list counts records, not lines: three lines hold five records.
+            expect(log.count).toBe(5)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5])
+            expect(log.rows).toHaveLength(3)
+            expect(says(log.rows[1]!)).toEqual(['2', 'to  4', 'workflow task', 'worker 71293', null])
+            closed = log.rows[1]!
+            // Any id of the fold gives its line and the ends of a connector to it.
+            for (const id of [2, 3, 4]) {
+                expect(log.row(id)).toBe(closed)
+                expect(log.p(id, 'right')).toEqual([400, closed.get('y')])
+            }
+            expect(log.find((row) => row.family === 'task')).toEqual([2, 3, 4])
+            s.wait(1)
+            s.play(log.unfold(2), { duration: 1 })
+            expect(log.rows.map(says)).toEqual([
+                ['1', null, 'WorkflowExecutionStarted', null, null],
+                ['2', null, 'WorkflowTaskScheduled', 'queue orders', null],
+                ['3', null, 'WorkflowTaskStarted', 'worker 71293', null],
+                ['4', null, 'WorkflowTaskCompleted', null, null],
+                ['5', null, 'ActivityTaskScheduled', null, null],
+            ])
+            // A row of a fold has the state and the family of the fold, unless it has its own.
+            expect(log.rows.map((row) => ink(row.name))).toEqual(['purple', 'purple', 'red', 'purple', 'purple'].map((name) => parseColor(name)))
+            expect(log.find((row) => row.family === 'task')).toEqual([2, 3, 4])
+            expect(log.count).toBe(5)
+            s.wait(1)
+            // With no label, `fold` closes a fold that `unfold` opened: the same line comes back.
+            s.play(log.fold([2, 3, 4]), { duration: 1 })
+            expect(log.rows[1]).toBe(closed)
+            expect(log.rows).toHaveLength(3)
+            // An append takes a fold too, and counts its records.
+            s.play(log.append({ ids: [6, 7], name: 'pair', rows: [{ id: 6, name: 'Six' }, { id: 7, name: 'Seven' }] }), { duration: 1 })
+            expect(log.count).toBe(7)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 6, 7])
+            s.play(log.unfold(6), { duration: 1 })
+            expect(log.rows.slice(3).map(says)).toEqual([['6', null, 'Six', null, null], ['7', null, 'Seven', null, null]])
+            s.play(log.fold([6, 7]), { duration: 0 })
+            // Rows that were never a fold need a label, and so does a part of a fold that was open.
+            expect(() => s.play(log.fold([1, 5]))).toThrow(/row 2 is between 1 and 5 and not in the fold/)
+            s.play(log.unfold(6), { duration: 0 })
+            expect(() => s.play(log.fold([5, 6]))).toThrow(/the fold from 5 to 6 needs a label, such as fold\(\[5, 6\], 'workflow task'\)\. Only a fold that unfold\(\) opened closes with no label/)
+            s.play(log.unfold(2), { duration: 0 })
+            expect(() => s.play(log.fold([2, 3]))).toThrow(/the fold from 2 to 3 needs a label/)
+            s.play(log.fold([2, 3, 4]), { duration: 0 })
+            // The rows of a fold with a state have that state, and a fold of rows has the state of its first row.
+            const stated = s.add(eventLog([
+                { ids: [1, 2], name: 'pair', state: 'waiting', rows: some(1, 2) },
+                { ids: [3, 4, 5], name: 'three', state: 'waiting', rows: [{ id: 3, name: 'Three' }, { id: 4, name: 'Four', state: 'answered' }, { id: 5, name: 'Five' }] },
+                { id: 6, name: 'Six', state: 'failed' }, { id: 7, name: 'Seven', state: 'answered' },
+            ], { size: 20 }))
+            s.play(seq(stated.unfold(1), stated.unfold(3), stated.fold([6, 7], 'two')), { duration: 0 })
+            expect(stated.rows.map((row) => ink(row.name))).toEqual(['yellow', 'yellow', 'yellow', 'green', 'yellow', 'red'].map((name) => parseColor(name)))
+            expect(stated.find((row) => row.state === 'failed')).toEqual([6, 7])
+        }))
+        expect(seen(log, 0.5)).toEqual(['1', '2', '5'])
+        expect(seen(log, 2)).toEqual(['1', '2', '3', '4', '5'])
+        expect(seen(log, 4)).toEqual(['1', '2', '5'])
+        expect(at(4, () => shows(closed))).toBe(1)
+        expect(said(log.footer!, 0.5)).toEqual(['5 events'])
+        expect(said(log.footer!, 5)).toEqual(['7 events'])
+    })
+
+    it('refuses to open a fold that has no rows, and counts its records all the same', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = s.add(eventLog([{ id: 1, name: 'One' }, { ids: [5, 6, 7, 8, 9, 10], name: 'activity' }, { id: 11, name: 'Eleven' }], { size: 20 }))
+            // Six rows with the name of the fold would say that the fold holds six records of one kind.
+            expect(() => s.play(log.unfold(5))).toThrow(/the fold from 5 to 10 has no rows to open into\. Give it `rows`, one for each id, where the fold is made/)
+            expect(log.count).toBe(8)
+            expect(log.ids).toEqual([1, 5, 6, 7, 8, 9, 10, 11])
+            expect(log.rows).toHaveLength(3)
+            for (const id of [5, 7, 10]) expect(log.p(id)).toEqual(log.p(5))
+            // A refused unfold takes no time from the list: the next change is free.
+            s.play(log.append(some(12, 12)))
+            // A fold that the film makes from rows has them, and opens.
+            s.play(log.fold([11, 12], 'pair'))
+            s.play(log.unfold(11))
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['1', '5', '11', '12'])
+        }))
+    })
+
+    it('marks one record in a closed fold: the fold shows it, and each record has its own state when the fold opens', async () => {
+        let log!: Log
+        const found: LogRow[][] = [], states: (number | string)[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([{ id: 1, name: 'One' }, { ids: [5, 6, 7, 8], name: 'activity', rows: some(5, 8) }, { id: 9, name: 'Nine' }], { visible: 8, size: 20 }))
+            s.wait(1)
+            // A replay answers one event. The fold shows the look of the record that was marked last.
+            s.play(log.mark(7, 'answered'), { duration: 1, ease: linear })
+            s.play(log.mark(6, 'failed'), { duration: 1, ease: linear })
+            found.push(log.find((row) => row.state === 'failed').map((id) => ({ id, name: '' })))
+            // The line of the guide: the ids that `find` gives name each record of the fold, so the mark changes them all.
+            s.play(log.mark(log.find((row) => row.state === 'failed'), 'stored'), { duration: 0 })
+            states.push(log.find((row) => row.state === 'stored'))
+            s.play(seq(log.mark(7, 'answered'), log.mark(6, 'failed')), { duration: 0 })
+            s.play(log.unfold(5), { duration: 1 })
+            s.play(log.fold([5, 6, 7, 8]), { duration: 1 })
+            // A function sees the fold as one row. A fold that it picks takes the state with all its records.
+            s.play(log.mark((row) => row.ids!.length === 4, 'waiting'), { duration: 1, ease: linear })
+            s.play(log.unfold(5), { duration: 1 })
+            // The whole fold by its ids: each record takes the state.
+            s.play(log.fold([5, 6, 7, 8]), { duration: 0 })
+            s.play(log.mark([5, 6, 7, 8], 'answered'), { duration: 0 })
+            s.play(log.unfold(5), { duration: 1 })
+        }))
+        const [purple, green, red, yellow] = ['purple', 'green', 'red', 'yellow'].map((name) => parseColor(name))
+        const [fold] = folds(log, 1)
+        // The name and the mark of the fold cross-fade to the look of the answer.
+        expect(at(1.5, () => ink(fold!.name))).toEqual(mixColor(purple!, green!, 0.5))
+        expect(markOf(fold!, 2)).toEqual(['check', green])
+        expect(at(2, () => [1, 9].map((id) => ink(line(log, id).name)))).toEqual([purple, purple])
+        expect(markOf(fold!, 3)).toEqual(['cross', red])
+        // `find` gives each id of the fold. After `mark(find(...), 'stored')`, each of its records is stored again: also record 7.
+        expect(found[0]!.map((row) => row.id)).toEqual([5, 6, 7, 8])
+        expect(states[0]).toEqual([1, 5, 6, 7, 8, 9])
+        // Open: 5 and 8 are as they were, 6 failed, 7 answered.
+        expect(at(4, () => [5, 6, 7, 8].map((id) => [shows(line(log, id)), ink(line(log, id).name)]))).toEqual([[1, purple], [1, red], [1, green], [1, purple]])
+        expect([5, 6, 7, 8].map((id) => markOf(line(log, id), 4)[0])).toEqual(['dot', 'cross', 'check', 'dot'])
+        // Closed again, the fold has the look that it had.
+        expect(markOf(fold!, 5)).toEqual(['cross', red])
+        expect(markOf(fold!, 6)).toEqual(['ring', yellow])
+        expect(at(6.95, () => [5, 6, 7, 8].map((id) => ink(line(log, id).name)))).toEqual([yellow, yellow, yellow, yellow])
+        expect(at(8, () => [5, 6, 7, 8].map((id) => ink(line(log, id).name)))).toEqual([green, green, green, green])
+    })
+
+    it('finds the rows that a function picks, by their fields and their family', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = s.add(eventLog([
+                { id: 1, name: 'WorkflowExecutionStarted', family: 'workflow' },
+                { ids: [2, 3, 4], name: 'workflow task', family: 'task' },
+                { id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard', family: 'activity' },
+                { id: 6, name: 'ActivityTaskStarted', family: 'activity', state: 'waiting' },
+                { ids: [7, 8, 9], name: 'workflow task', family: 'task' },
+            ], { visible: 8, size: 20, width: 800 }))
+            // In the order of the list: one id for a row, and each id of a fold.
+            expect(log.find((row) => row.family === 'activity')).toEqual([5, 6])
+            expect(log.find((row) => row.family === 'task')).toEqual([2, 3, 4, 7, 8, 9])
+            expect(log.find((row) => row.state === 'waiting')).toEqual([6])
+            expect(log.find((row) => row.detail === 'chargeCard' && row.id === 5)).toEqual([5])
+            expect(log.find(() => false)).toEqual([])
+            // The ids go to `mark`, `row`, `p` and `focus`.
+            s.play(log.mark(log.find((row) => row.family === 'task'), 'answered'))
+            expect(log.find((row) => row.state === 'answered')).toEqual([2, 3, 4, 7, 8, 9])
+            expect([...new Set(log.find((row) => row.family === 'task').map((id) => log.p(id)[1]))]).toEqual([log.row(3).get('y'), log.row(8).get('y')])
+            // The answer follows the changes that the film has played.
+            s.play(log.append({ id: 10, name: 'ActivityTaskCompleted', family: 'activity' }))
+            expect(log.find((row) => row.family === 'activity')).toEqual([5, 6, 10])
+        }))
+    })
+
+    it('draws the times in a column at the right, when a first row has a time', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows: LogRow[] = [
+                { id: 1, name: 'ActivityTaskScheduled', detail: 'a detail that is long enough to reach the times', time: '+0.13 s' },
+                { id: 2, name: 'ActivityTaskStarted', detail: 'attempt 1' },
+                { id: 3, name: 'ActivityTaskCompleted', detail: '"ch_1002"', time: '+12.01 s' },
+            ]
+            const log = s.add(eventLog(rows, { size: 20, width: 700 }))
+            const [first, second, third] = log.rows
+            // A time ends where the content of the panel ends, 16 px from the border. So the digits of two times are one over the other.
+            expect([words(first!.time), second!.time, words(third!.time)]).toEqual(['+0.13 s', null, '+12.01 s'])
+            expect(first!.time!.get('x')).toBe(350 - 16)
+            expect(third!.time!.get('x')).toBe(350 - 16)
+            expect(Math.abs(right(third!.time!) - (350 - 16))).toBeLessThan(3)
+            // It is dim, as the id is, and in mono: each character has the same room.
+            expect(ink(first!.time!)).toEqual(ink(first!.idText))
+            expect(third!.time!.bounds().width).toBeGreaterThan(7 * 12)
+            expect(third!.time!.bounds().width).toBeLessThan(8 * 12)
+            // The column has the room of the longest time, and the details end 18 px before it.
+            const times = 350 - 16 - 8 * 12
+            expect(words(first!.detail).endsWith('…')).toBe(true)
+            expect(right(first!.detail!)).toBeLessThanOrEqual(times - 18)
+            expect(right(first!.detail!)).toBeGreaterThan(times - 18 - 20)
+            // With no time in the first rows, the list has no such column, and a detail goes on to the end.
+            const plain = eventLog(rows.map(({ time: _time, ...row }) => row as LogRow), { size: 20, width: 700 })
+            expect(plain.rows[0]!.time).toBeNull()
+            expect(right(plain.rows[0]!.detail!)).toBeGreaterThan(times)
+            expect(() => plain.append({ id: 4, name: 'Late', time: '+1 s' })).toThrow(/row 4 has the time "\+1 s", and the list has no column for times\. Give a time to one of the first rows, or set `timeWidth` to 48 or more/)
+            // A time that is wider than the column is refused. `timeWidth` gives the room, also to a list that starts with no time.
+            expect(() => log.append({ id: 4, name: 'Late', time: '+120.01 s' })).toThrow(/the time "\+120\.01 s" is 108 px wide, and the times have 96 px\. Set `timeWidth` to 108 or more/)
+            const roomy = s.add(eventLog([], { size: 20, width: 900, timeWidth: 108 }))
+            s.play(roomy.append({ id: 4, name: 'Late', detail: 'a detail that is long enough to reach the times, by far', time: '+120.01 s' }))
+            expect(words(roomy.rows[0]!.time)).toBe('+120.01 s')
+            expect(right(roomy.rows[0]!.detail!)).toBeLessThanOrEqual(450 - 16 - 108 - 18)
+            expect(right(roomy.rows[0]!.detail!)).toBeGreaterThan(450 - 16 - 108 - 18 - 20)
+            expect(() => eventLog([], { timeWidth: -1 })).toThrow(/timeWidth is the room of the times, 0 or more/)
+            // The time of a row of a fold counts for the column, and shows when the fold opens.
+            const folded = s.add(eventLog([{ ids: [1, 2], name: 'pair', rows: [{ id: 1, name: 'One', time: '+0.10 s' }, { id: 2, name: 'Two' }] }], { size: 20, width: 700 }))
+            s.play(folded.unfold(1))
+            expect(folded.rows.map((row) => (row.time ? words(row.time) : null))).toEqual(['+0.10 s', null])
+            // A number is taken as its text, for a detail and for a time.
+            const numbers = eventLog([{ id: 1, name: 'ActivityTaskStarted', detail: 3, time: 12.5 }, { id: 2, name: 'Zero', detail: 0 }], { size: 20, width: 700 })
+            expect(numbers.rows.map(says)).toEqual([['1', null, 'ActivityTaskStarted', '3', '12.5'], ['2', null, 'Zero', '0', null]])
+            expect(numbers.find((row) => row.detail === '3')).toEqual([1])
+            expect(() => eventLog([{ id: 1, name: 'x', detail: { text: 'no' } as never }])).toThrow(/the detail of row 1 is \{"text":"no"\}\. Give a text or a number/)
+        }))
+    })
+
+    it('brings rows back from above when a fold makes room in a full window, and takes the count away when the list fits', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 8), { visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.fold([6, 7], 'pair'), { duration: 1, ease: linear })
+            s.play(log.fold([1, 2, 3], 'three'), { duration: 1, ease: linear })
+            s.play(log.unfold(1), { duration: 1, ease: linear })
+        }))
+        const P = log.pitch
+        expect(seen(log, 1)).toEqual(['5', '6', '7', '8'])
+        expect(said(log.earlier, 1)).toEqual(['4 earlier'])
+        // The rows after the fold stay, and the row above comes down from under the count: one more row shows.
+        expect(seen(log, 2)).toEqual(['4', '5', '6', '8'])
+        expect(said(log.earlier, 2)).toEqual(['3 earlier'])
+        expect(at(2, () => line(log, 8).get('y'))).toBe(at(1, () => line(log, 8).get('y')))
+        expect(at(2, () => line(log, 5).get('y'))).toBeCloseTo(at(1, () => line(log, 5).get('y')) + P, 6)
+        expect(at(1.45, () => line(log, 5).get('y') - line(log, 4).get('y'))).toBeCloseTo(P, 6)
+        // Rows 1 to 3 fold above the window. Five lines are left, so they all show, and the count goes.
+        expect(seen(log, 3)).toEqual(['1', '4', '5', '6', '8'])
+        expect(said(log.earlier, 3)).toEqual([])
+        // The fold opens above the window: the list is full again, and the count is back.
+        expect(seen(log, 4)).toEqual(['4', '5', '6', '8'])
+        expect(said(log.earlier, 4)).toEqual(['3 earlier'])
+        expect(log.rows.map((row) => words(row.idText))).toEqual(['4', '5', '6', '8'])
+        // Two rows are above a window of five lines. A fold of two rows makes room for both, and the count goes.
+        // Row 2 comes down from the line of the count: no frame shows the two together.
+        let tight!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            tight = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            s.play(tight.fold([5, 6], 'pair'), { duration: 2 })
+        }))
+        expect(seen(tight, 2)).toEqual(['1', '2', '3', '4', '5'])
+        for (let step = 0; step <= 40; step++) {
+            const [count, row] = at(step / 20, () => [shows(tight.earlier), shows(line(tight, 2))])
+            expect(Math.min(count!, row!)).toBe(0)
+        }
+        expect(at(0.5, () => shows(tight.earlier))).toBeGreaterThan(0)
+        expect(at(2, () => [tight.earlier.get('visible'), shows(line(tight, 2))])).toEqual([false, 1])
+    })
+
+    it('moves the window to a row with scrollTo, with a count of the rows above and of the rows under', async () => {
+        let log!: Log
+        const rows: string[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 20), { footer: (count) => `${count} events`, visible: 6, size: 20 }))
+            s.wait(1)
+            // A row that was above is the first row of the window.
+            s.play(log.scrollTo(7), { duration: 1, ease: linear })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // A row that shows moves nothing, and a focus or a mark of it needs no scroll.
+            s.play(log.scrollTo(9), log.focus(9), log.mark(9, 'answered'), { duration: 1 })
+            // A mark of a row that is out of the window changes its state, and moves nothing. A focus of it is an error that names the way.
+            s.play(log.mark(18, 'failed'), { duration: 0 })
+            expect(() => s.play(log.focus(18))).toThrow(/row 18 is out of the window, which shows the rows 7 to 10\. Bring it in with scrollTo\(18\), named before this call in the play, or raise `visible`/)
+            // A row that was under is the last row, over the count of the rows that are still under it.
+            s.play(log.scrollTo(13), { duration: 1, ease: linear })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // The first row of the list: no row is above, so the first line is a row.
+            s.play(log.scrollTo(1), { duration: 1 })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // A fold keeps the window where the film put it.
+            s.play(log.fold([2, 3], 'pair'), { duration: 1 })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // An append brings the window back to the end first, in the first 0.3 of its time.
+            s.play(log.append(some(21, 21)), { duration: 2, ease: linear })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // The last row brings the window to the end, with no count under it.
+            s.play(log.scrollTo(1), { duration: 0 })
+            s.play(log.scrollTo(21), { duration: 1 })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            expect(log.scrollTo(1).duration).toBe(0.8)
+            const small = s.add(eventLog(some(1, 5), { visible: 2, size: 20 }))
+            expect(() => s.play(small.scrollTo(2))).toThrow(/scrollTo needs a window of 3 lines or more: one for each count, and one for the row\. This window has 2\. Raise `visible`/)
+            expect(() => s.play(log.scrollTo(99))).toThrow(/no row has the id 99/)
+        }))
+        const P = log.pitch
+        expect(rows).toEqual([['7', '8', '9', '10'], ['10', '11', '12', '13'], ['1', '2', '3', '4', '5'], ['1', '2', '4', '5', '6'], ['17', '18', '19', '20', '21'], ['17', '18', '19', '20', '21']])
+        // At the end of the list, the first line counts the rows above, and no line counts under.
+        expect(seen(log, 1)).toEqual(['16', '17', '18', '19', '20'])
+        expect([said(log.earlier, 1), said(log.later, 1)]).toEqual([['15 earlier'], []])
+        // After the scroll: six rows above, four rows in the window, ten rows under. The count under is in the last line.
+        expect(seen(log, 2)).toEqual(['7', '8', '9', '10'])
+        expect([said(log.earlier, 2), said(log.later, 2)]).toEqual([['6 earlier'], ['10 later']])
+        expect(log.later.get('y') - log.earlier.get('y')).toBeCloseTo(5 * P, 6)
+        expect(at(2, () => line(log, 7).get('y'))).toBeCloseTo(log.earlier.get('y') + P, 6)
+        expect(at(2, () => line(log, 10).get('y'))).toBeCloseTo(log.later.get('y') - P, 6)
+        // A long way: the old rows leave under, the new ones come from above, and no row between them flies past.
+        for (let step = 0; step <= 20; step++) {
+            const shown = at(1 + step / 20, () => made(log).filter((node) => shows(node) > 0).map((node) => Number(words(node.idText))))
+            for (const id of shown) expect(id <= 10 || id >= 16).toBe(true)
+            // The old rows are still leaving when the new ones come: the window is never empty.
+            expect(at(1 + step / 20, () => Math.max(...made(log).map((node) => shows(node))))).toBeGreaterThan(0.2)
+        }
+        // The count under comes in the second half of the way, where the last row was.
+        expect(at(1.5, () => shows(log.later))).toBe(0)
+        expect(at(1.75, () => shows(log.later))).toBeCloseTo(0.5, 6)
+        // No row moved for the row that showed, and the outline is on it.
+        expect(seen(log, 3)).toEqual(['7', '8', '9', '10'])
+        expect(at(3, () => shows(log.outline))).toBe(1)
+        expect(at(3, () => ink(line(log, 9).name))).toEqual(parseColor('green'))
+        // A short way: the rows move as one, three lines up.
+        expect(seen(log, 4)).toEqual(['10', '11', '12', '13'])
+        expect([said(log.earlier, 4), said(log.later, 4)]).toEqual([['9 earlier'], ['7 later']])
+        expect(at(3.5, () => line(log, 10).get('y') - line(log, 9).get('y'))).toBeCloseTo(P, 6)
+        expect(at(3.5, () => line(log, 10).get('y'))).toBeCloseTo(log.earlier.get('y') + 2.5 * P, 6)
+        // Row 9 left the window, and the outline left with it.
+        expect(at(4, () => shows(log.outline))).toBe(0)
+        // At the first row of the list, the first line is a row, and the last line counts the rows under.
+        expect(seen(log, 5)).toEqual(['1', '2', '3', '4', '5'])
+        expect([said(log.earlier, 5), said(log.later, 5)]).toEqual([[], ['15 later']])
+        expect(at(5, () => line(log, 1).get('y'))).toBeCloseTo(log.earlier.get('y'), 6)
+        expect(seen(log, 6)).toEqual(['1', '2', '4', '5', '6'])
+        expect(said(log.later, 6)).toEqual(['14 later'])
+        // The append: the window is at the end after 0.6 s, and the row arrives in the 1.4 s that are left.
+        expect(seen(log, 6.6)).toEqual(['16', '17', '18', '19', '20'])
+        expect([said(log.earlier, 6.6), said(log.later, 6.6)]).toEqual([['15 earlier'], []])
+        // The row that was marked while it was out of the window has its state when it shows.
+        expect(seen(log, 7.95)).toEqual(['17', '18', '19', '20', '21'])
+        expect(at(7.95, () => ink(line(log, 18).name))).toEqual(parseColor('red'))
+        expect(said(log.footer!, 7.95)).toEqual(['21 events'])
+        expect(seen(log, 9)).toEqual(['17', '18', '19', '20', '21'])
+        expect([said(log.earlier, 9), said(log.later, 9)]).toEqual([['16 earlier'], []])
+    })
+
+    it('gives the node and the two ends of a row, and rests a row that left on the count that stands for it', async () => {
+        let log!: Log, far!: Log, jump!: Log
+        let kept!: LogRowNode, low!: LogRowNode
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { visible: 5, size: 20, width: 500 }).at(100, 50))
+            const node = log.row(4)
+            expect(node).toBeInstanceOf(LogRowNode)
+            expect(words(node.idText)).toBe('4')
+            expect(log.rows).toContain(node)
+            // The ends are on the border of the panel, at the middle height of the row, in the coordinates of the list.
+            expect(log.p(4)).toEqual([-250, node.get('y')])
+            expect(log.p(4, 'left')).toEqual(log.p(4))
+            expect(log.p(4, 'right')).toEqual([250, node.get('y')])
+            const frame = log.frame.bounds(), [x, y] = log.toWorld(...log.p(4, 'right'))
+            expect(x).toBeCloseTo(frame.x + frame.width, 6)
+            expect(y).toBeCloseTo(node.bounds().y + node.bounds().height / 2, 0)
+            expect(log.p('4')).toEqual(log.p(4))
+            // Rows 1 and 2 are above the window from the start.
+            expect(() => log.row(2)).toThrow(/row 2 is out of the window, which shows the rows 3 to 6\. Bring it in with scrollTo\(2\), or raise `visible`/)
+            expect(() => log.p(1)).toThrow(/row 1 is out of the window/)
+            expect(() => log.row(9)).toThrow(/no row has the id 9\. The list has the ids 1 to 6/)
+            expect(() => eventLog([...some(1, 6), { ids: [7, 8], name: 'pair' }], { visible: 5, size: 20 }).row(1)).toThrow(/row 1 is out of the window, which shows the rows 4 to 8\./)
+            // `p()` is the place after the changes that the film has played. It does not follow the row: after one more
+            // row, row 3 is out and row 4 is one line up, and the point that the film took before is the place of row 5.
+            const before = log.p(4)
+            kept = log.row(3)
+            s.play(log.append(some(7, 7)), { duration: 1 })
+            expect(log.p(4)[1]).toBeCloseTo(before[1] - log.pitch, 6)
+            expect(log.p(5)).toEqual(before)
+            expect(() => log.p(3)).toThrow(/row 3 is out of the window/)
+            expect(log.row(7)).toBe(log.rows[3])
+            // A list at its first rows: the rows that leave go under the window.
+            far = s.add(eventLog(some(1, 12), { visible: 5, size: 20 }))
+            s.play(far.scrollTo(1), { duration: 1 })
+            low = far.row(4)
+            s.play(far.scrollTo(8), { duration: 1 })
+            s.play(far.append(some(13, 13)), { duration: 1 })
+            jump = s.add(eventLog(some(1, 12), { visible: 5, size: 20 }))
+            s.play(jump.scrollTo(1), { duration: 1 })
+        }))
+        // The node of a row that left rests on the line of the count, in the panel: a connector to it ends on "N earlier",
+        // and not on another row.
+        expect(at(1, () => [kept.get('visible'), kept.get('y')])).toEqual([false, log.earlier.get('y')])
+        // On its way out and on its way in, the node goes no further than that line. So a connector to it ends in the panel at every frame.
+        for (let step = 0; step <= 60; step++) {
+            for (const node of [low, line(far, 12), line(far, 9), line(far, 7), line(far, 1)]) {
+                const y = at(1 + step / 20, () => node.get('y'))
+                expect(y).toBeGreaterThanOrEqual(far.earlier.get('y') - 1e-6)
+                expect(y).toBeLessThanOrEqual(far.later.get('y') + 1e-6)
+            }
+        }
+        // A row that comes back moves with the others too: rows 6 and 7 come from under, one line apart.
+        expect(at(2.8, () => [shows(line(far, 7)) > 0, line(far, 7).get('y') - line(far, 6).get('y')])).toEqual([true, expect.closeTo(far.pitch, 6)])
+        // While a row shows, it moves with the others: row 4 is one line under row 3 on their way up.
+        expect(at(2.2, () => [shows(low), low.get('y') - line(far, 3).get('y')])).toEqual([1, expect.closeTo(far.pitch, 6)])
+        // Under the window it rests on the last line, and above the window on the first.
+        expect(at(2, () => [low.get('visible'), low.get('y')])).toEqual([true, expect.closeTo(far.earlier.get('y') + 3 * far.pitch, 6)])
+        expect(at(3, () => [low.get('visible'), low.get('y')])).toEqual([false, far.earlier.get('y')])
+        const under = line(far, 12)
+        expect(at(2.95, () => [under.get('visible'), under.get('y')])).toEqual([false, far.later.get('y')])
+        // Row 6 was above the window, and the window went past it to the first rows: it rests on the count under.
+        expect(at(4.5, () => [line(jump, 6).get('visible'), line(jump, 6).get('y')])).toEqual([false, jump.earlier.get('y')])
+        expect(at(5, () => [line(jump, 6).get('visible'), line(jump, 6).get('y')])).toEqual([false, jump.later.get('y')])
+        expect(at(4, () => shows(under))).toBe(1)
+    })
+
+    it('moves the outline of the focus to a row, to another row, and away', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(history, { visible: 8, size: 20, width: 600 }))
+            s.wait(1)
+            s.play(log.focus(2), { duration: 1, ease: linear })
+            s.play(log.focus(5), { duration: 1, ease: linear })
+            s.play(log.focus(5), { duration: 1, ease: linear })
+            s.play(log.focus(null), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(log.focus(null), log.focus('7'), { duration: 1, ease: linear })
+            s.play(log.focus(null), log.focus(1), { duration: 1, ease: linear })
+            expect(log.focus(1).duration).toBe(0.4)
+        }))
+        const outline = log.outline, y = (id: number) => line(log, id).get('y')
+        // The outline is at the middle of the ink of its row, which is a little under the middle of the row.
+        const lift = at(2, () => outline.get('y')) - y(2)
+        expect(Math.abs(lift)).toBeLessThan(1)
+        expect(at(0.5, () => shows(outline))).toBe(0)
+        // It fades in around the row: as wide as the panel less a margin, and one row tall.
+        const on = (time: number) => at(time, () => [shows(outline), outline.get('y') - lift])
+        expect(on(1.5)).toEqual([0.5, expect.closeTo(y(2), 6)])
+        expect(on(2)).toEqual([1, expect.closeTo(y(2), 6)])
+        const box = at(2, () => outline.bounds()), row = at(2, () => line(log, 2).bounds())
+        expect([box.width, box.height]).toEqual([expect.closeTo(600 - 12.8, 6), expect.closeTo(log.pitch, 6)])
+        expect(box.x).toBeLessThan(row.x)
+        expect(box.x + box.width).toBeGreaterThan(row.x + row.width)
+        expect(box.y).toBeLessThan(row.y)
+        expect(box.y + box.height).toBeGreaterThan(row.y + row.height)
+        expect(at(2, () => [outline.get('stroke'), outline.get('fill')])).toEqual([parseColor('yellow'), null])
+        // On its way to row 5, three rows down, it goes out at the first row and comes in at the second. It is
+        // never between the two, so it crosses no text.
+        for (let step = 0; step <= 20; step++) {
+            const [opacity, place] = on(2 + step / 20)
+            expect(opacity).toBeCloseTo(Math.abs(step - 10) / 10, 6)
+            expect(place).toBeCloseTo(step < 10 ? y(2) : y(5), 6)
+        }
+        expect(on(3)).toEqual([1, expect.closeTo(y(5), 6)])
+        // A focus on the row that has it changes nothing.
+        expect(on(3.5)).toEqual([1, expect.closeTo(y(5), 6)])
+        expect(at(4.5, () => shows(outline))).toBeCloseTo(0.5, 6)
+        expect(at(5, () => shows(outline))).toBe(0)
+        // It is hidden then, so the bounds of the list are those of its panel.
+        expect(at(4.9, () => outline.get('visible'))).toBe(true)
+        expect(at(5.5, () => outline.get('visible'))).toBe(false)
+        // After `focus(null)`, the outline comes in at the row. It does not come from the row before.
+        expect(on(6.5)).toEqual([0.5, expect.closeTo(y(7), 6)])
+        // `focus(null)` forgets its row, also in a play with the next focus: the outline comes in at row 1 from nothing.
+        expect(on(7.25)).toEqual([0.25, expect.closeTo(y(1), 6)])
+        expect(on(7.75)).toEqual([0.75, expect.closeTo(y(1), 6)])
+    })
+
+    it('keeps the outline with its row at every frame: before a scroll, in the same play, and when the row leaves', async () => {
+        let log!: Log
+        const film_ = film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 5), { title: 'log', footer: (count) => `${count} rows`, visible: 5, size: 20 }))
+            s.wait(1)
+            // A film lights a row as it arrives: the focus is in the play of the append.
+            s.play(log.append(some(6, 6)), log.focus(6), { duration: 1, ease: linear })
+            // The outline goes away while two rows arrive: it fades at its row, which moves.
+            s.play(log.focus(null), log.append(some(7, 8)), { duration: 2, ease: linear })
+            // A focus, and then a scroll in a later play.
+            s.play(log.focus(6), { duration: 0.5 })
+            s.play(log.append(some(9, 9)), { duration: 1 })
+            s.play(log.append(some(10, 10)), { duration: 1, ease: linear })
+            expect(() => log.focus(6)).not.toThrow()
+            expect(() => s.play(log.focus(6))).toThrow(/row 6 is out of the window, which shows the rows 7 to 10/)
+            s.play(log.focus(10), { duration: 1, ease: linear })
+            // A focus before the append in the play: the outline goes from one row to another while both move.
+            s.play(log.focus(9), log.append(some(11, 11)), { duration: 1, ease: linear })
+        })
+        await compileFilm(film_)
+        const outline = log.outline, P = log.pitch, top = log.earlier.get('y')
+        const lift = at(2, () => outline.get('y') - line(log, 6).get('y'))
+        // The outline arrives with the row: at the place of the row at every frame, and no stronger than the row.
+        const six = line(log, 6)
+        for (let step = 0; step <= 20; step++) {
+            const time = 1 + step / 20
+            expect(at(time, () => outline.get('y') - lift)).toBeCloseTo(at(time, () => six.get('y')), 6)
+            expect(at(time, () => shows(outline))).toBeCloseTo(at(time, () => shows(six)) * (step / 20), 6)
+        }
+        expect(at(1.5, () => (six.get('y') - top) / P)).toBeCloseTo(4.5, 6)
+        expect(at(1.5, () => shows(outline))).toBe(0)
+        expect(at(1.8, () => shows(outline))).toBeCloseTo(0.8 * (1 - 0.15 / 0.35), 6)
+        expect(at(2, () => [shows(outline), (outline.get('y') - lift - top) / P])).toEqual([1, expect.closeTo(4, 6)])
+        // It fades at its row, which goes up two lines in the same play.
+        for (let step = 0; step <= 40; step++) {
+            const time = 2 + step / 20
+            expect(at(time, () => outline.get('y') - lift)).toBeCloseTo(at(time, () => six.get('y')), 6)
+            expect(at(time, () => shows(outline))).toBeCloseTo(1 - step / 40, 6)
+        }
+        expect(at(3, () => (outline.get('y') - lift - top) / P)).toBeCloseTo(3, 6)
+        // The outline has the place of its row at every frame of a later scroll.
+        for (let step = 0; step <= 20; step++) expect(at(4.5 + step / 20, () => outline.get('y') - lift)).toBeCloseTo(at(4.5 + step / 20, () => six.get('y')), 6)
+        expect(at(5.5, () => (six.get('y') - top) / P)).toBeCloseTo(1, 6)
+        expect(at(5.5, () => shows(outline))).toBe(1)
+        // Row 6 leaves with the next row, and the outline fades with it.
+        for (let step = 0; step < 20; step++) expect(at(5.5 + step / 20, () => [outline.get('y') - lift, shows(outline)])).toEqual(at(5.5 + step / 20, () => [expect.closeTo(six.get('y'), 6), expect.closeTo(shows(six), 6)]))
+        expect(at(6, () => shows(outline))).toBeLessThan(0.5)
+        expect(at(6.5, () => shows(outline))).toBe(0)
+        // The next focus starts from nothing: the outline comes in at the row.
+        expect(at(7, () => [shows(outline), outline.get('y') - lift - line(log, 10).get('y')])).toEqual([0.5, expect.closeTo(0, 6)])
+        // The focus before the append in the play: the outline goes out at row 10 and comes in at row 9, and both rows move.
+        const [nine, ten] = [line(log, 9), line(log, 10)]
+        expect(at(7.75, () => [outline.get('y') - lift, shows(outline)])).toEqual(at(7.75, () => [expect.closeTo(ten.get('y'), 6), 0.5]))
+        expect(at(7.75, () => (ten.get('y') - top) / P)).toBeCloseTo(3.75, 6)
+        expect(at(8.25, () => [outline.get('y') - lift, shows(outline)])).toEqual(at(8.25, () => [expect.closeTo(nine.get('y'), 6), 0.5]))
+        expect(at(8.5, () => [shows(outline), (outline.get('y') - lift - top) / P])).toEqual([1, expect.closeTo(2, 6)])
+        // The film check finds no line through a text, and no text on a text, at any frame.
+        const report = await checkFilm(film_, { motion: true, readingSpeed: 0 })
+        expect(report.diagnostics).toEqual([])
+        // A row in the line that a count takes fades where it is, and the rows under it pass its place. The
+        // outline is taller than the text, so it is gone before the next row reaches it.
+        let full!: Log
+        const passing = film({ fps: 20 }, (s) => {
+            full = s.add(eventLog(some(1, 5), { visible: 5, size: 20 }))
+            s.play(full.focus(1), { duration: 0 })
+            s.wait(0.5)
+            s.play(full.append(some(6, 8), { lag: 0 }), { duration: 1, ease: linear })
+        })
+        await compileFilm(passing)
+        expect(at(0.5, () => shows(full.outline))).toBe(1)
+        for (let step = 1; step <= 200; step++) {
+            const time = 0.5 + step / 200
+            const edge = at(time, () => bottom(full.outline))
+            const near = at(time, () => Math.min(...[2, 3, 4].filter((id) => shows(line(full, id)) > 0.08).map((id) => line(full, id).name.bounds().y)))
+            if (at(time, () => shows(full.outline)) > 0.02) expect(near - edge).toBeGreaterThan(1)
+        }
+        expect(at(0.52, () => shows(full.outline))).toBeGreaterThan(0.4)
+        expect(at(0.55, () => shows(full.outline))).toBe(0)
+        expect(at(0.6, () => shows(line(full, 1)))).toBeGreaterThan(0)
+        expect((await checkFilm(passing, { motion: true, readingSpeed: 0 })).diagnostics).toEqual([])
+        // The focus of the second row of an append: that row starts after one second. Before that, the outline has no row to show with.
+        let two!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            two = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            s.play(two.append(some(3, 4)), two.focus(4), { duration: 2, ease: linear })
+        }))
+        expect(at(0.5, () => shows(two.outline))).toBe(0)
+        expect(at(1.3, () => shows(two.outline))).toBeCloseTo(0.65 * 0.5, 6)
+        expect(at(2, () => shows(two.outline))).toBe(1)
+    })
+
+    it('moves the outline to the fold when its row folds, and takes it away with a record that leaves the window', async () => {
+        let log!: Log, pushed!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            s.play(log.focus(3), { duration: 0.5 })
+            s.play(log.fold([2, 3, 4], 'workflow task'), { duration: 1, ease: linear })
+            s.play(log.unfold(2), { duration: 1, ease: linear })
+            s.play(log.focus(null), { duration: 0.5 })
+            // After `focus(null)`, no record has the focus: a fold of the row does not bring the outline back.
+            s.play(log.fold([2, 3, 4]), { duration: 1 })
+            // An unfold in a full window pushes the first rows out, and the focus with them.
+            pushed = s.add(eventLog([...some(1, 3), { ids: [4, 5, 6], name: 'three', rows: some(4, 6) }, ...some(7, 7)], { visible: 5, size: 20 }))
+            s.play(pushed.focus(2), { duration: 0 })
+            s.play(pushed.unfold(4), { duration: 1 })
+            s.play(pushed.fold([4, 5, 6]), { duration: 1 })
+            // The list forgot the record of the focus, so a new focus of the same row is a new focus.
+            s.play(pushed.focus(2), { duration: 0.5 })
+        }))
+        const outline = log.outline, y = (id: number, time: number) => at(time, () => line(log, id).get('y'))
+        const lift = at(0.5, () => outline.get('y')) - y(3, 0.5)
+        // The outline shows as much as its line does. It leaves with row 3, and comes with the fold, in the line of row 2.
+        const on = (time: number) => at(time, () => [shows(outline), outline.get('y') - lift])
+        expect(on(0.65)).toEqual([expect.closeTo(0.5, 6), expect.closeTo(y(3, 0.5), 6)])
+        expect(on(0.8)[0]).toBe(0)
+        expect(on(1.05)).toEqual([expect.closeTo(0.5, 6), expect.closeTo(y(2, 0.5), 6)])
+        expect(on(1.5)).toEqual([1, expect.closeTo(y(2, 0.5), 6)])
+        // And back to the row when the fold opens.
+        expect(on(1.65)[0]).toBeCloseTo(0.5, 6)
+        expect(on(2.5)).toEqual([1, expect.closeTo(y(3, 0.5), 6)])
+        for (const time of [3.2, 3.5, 3.8, 4]) expect(on(time)[0]).toBe(0)
+        // The record of the focus left the window: the outline is gone, and it does not come back with the row.
+        expect(at(4, () => shows(pushed.outline))).toBe(1)
+        expect(seen(pushed, 5)).toEqual(['4', '5', '6', '7'])
+        expect(at(5, () => shows(pushed.outline))).toBe(0)
+        expect(seen(pushed, 6)).toEqual(['1', '2', '3', '4', '7'])
+        expect(at(5.95, () => [shows(line(pushed, 2)), shows(pushed.outline)])).toEqual([1, 0])
+        expect(at(6.5, () => shows(pushed.outline))).toBe(1)
+    })
+
+    it('draws the focus as a band behind the row, with focusLook', async () => {
+        let band!: Log, usual!: Log
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            band = s.add(eventLog(history, { size: 20, focusLook: 'band' }).at(-400, 0))
+            usual = s.add(eventLog(history, { size: 20 }).at(400, 0))
+            s.play(band.focus(2), usual.focus(2), { duration: 0 })
+            s.wait(1)
+            expect(() => eventLog([], { focusLook: 'halo' as never })).toThrow(/focusLook is "halo"\. It is 'outline' or 'band'/)
+        }))
+        // The band is a faint fill in the color of the text, with no line. The outline is a line with no fill.
+        expect(at(0.5, () => [band.outline.get('fill'), band.outline.get('stroke'), band.outline.get('fillOpacity')])).toEqual([parseColor('ink'), null, 0.12])
+        expect(at(0.5, () => [usual.outline.get('fill'), usual.outline.get('stroke')])).toEqual([null, parseColor('yellow')])
+        // The two have one shape, at the row.
+        const [a, b] = at(0.5, () => [band.outline.bounds(), usual.outline.bounds()])
+        expect([a!.width, a!.height, a!.y]).toEqual([b!.width, b!.height, b!.y])
+        expect(band.pitch).toBe(usual.pitch)
+        // The band is under the text of its row: the frame draws it before the letters.
+        const ops = paths(compiled, 0.5)
+        const glyph = band.rows[1]!.name.children[0]!
+        expect(ops.findIndex((op) => op.node === band.outline)).toBeGreaterThan(0)
+        expect(ops.findIndex((op) => op.node === band.outline)).toBeLessThan(ops.findIndex((op) => op.node === glyph))
+        expect(ops.find((op) => op.node === band.outline)!.fillAlpha).toBeCloseTo(0.12, 6)
+    })
+
+    it('holds a row back with shown: false, and brings it in at its place with show()', async () => {
+        let log!: Log
+        const before: unknown[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two' }, { id: 3, name: 'Three', shown: false }, { id: 4, name: 'Four', shown: false }, { ids: [5, 6], name: 'pair', shown: false, rows: some(5, 6) }], { footer: (count) => `${count} of 6 rows`, visible: 8, size: 20 }))
+            // The rows have their places from the start, and the count is of the rows that show.
+            before.push(log.count, log.ids, log.rows.length, log.find((row) => row.shown === false), log.find(() => true))
+            expect(log.p(4)[1]).toBeCloseTo(log.p(1)[1] + 3 * log.pitch, 6)
+            s.wait(1)
+            // A mark of a row that does not show yet changes its state: the row arrives with it. A focus of it
+            // puts the outline there, and the outline shows when the row does.
+            s.play(log.mark(4, 'failed'), log.focus(4), { duration: 0 })
+            s.play(log.show(3), { duration: 1, ease: linear })
+            expect(log.count).toBe(3)
+            // In one play, two shows count one after the other. A row that shows already does not change.
+            s.play(log.show(4), log.show((row) => row.shown === false && row.ids!.length === 2), log.show([1, 3]), { duration: 1, ease: linear })
+            expect(log.count).toBe(6)
+            expect(log.find((row) => row.shown === false)).toEqual([])
+            // With no argument, the list itself shows, as any node does.
+            expect(log.hide().get('visible')).toBe(false)
+            expect(log.show()).toBe(log)
+            expect(log.get('visible')).toBe(true)
+            expect(log.show(3).duration).toBe(0.5)
+            expect(log.show([1, 2, 3]).label).toBe('eventLog.show')
+            // A row that does not show yet cannot go into a fold, and a fold that does not show yet cannot open.
+            const held = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }, { ids: [3, 4], name: 'pair', shown: false, rows: some(3, 4) }], { size: 20 }))
+            expect(() => s.play(held.fold([1, 2], 'pair'))).toThrow(/row 2 does not show yet, so it cannot go into a fold\. Bring it in first, with show\(2\)/)
+            expect(() => s.play(held.unfold(3))).toThrow(/the fold from 3 to 4 does not show yet, so it cannot open\. Bring it in first, with show\(3\)/)
+            expect(() => s.play(held.show(9))).toThrow(/no row has the id 9/)
+            // An append takes such a row too: it takes its line, and shows later.
+            s.play(held.append({ id: 5, name: 'Five', shown: false }))
+            expect([held.count, held.rows.length]).toEqual([1, 4])
+        }))
+        const P = log.pitch
+        expect(before).toEqual([2, [1, 2, 3, 4, 5, 6], 5, [3, 4, 5, 6], [1, 2, 3, 4, 5, 6]])
+        expect(seen(log, 0.5)).toEqual(['1', '2'])
+        expect(said(log.footer!, 0.5)).toEqual(['2 of 6 rows'])
+        // The row arrives as a row of `append` does: it fades in over six tenths of its time, and rises a third of a row.
+        const three = line(log, 3)
+        expect(at(1.3, () => shows(three.content))).toBeCloseTo(0.5, 6)
+        expect(at(1.3, () => three.content.get('y'))).toBeCloseTo(0.35 * P * 0.7, 6)
+        expect(at(2, () => [shows(three.content), three.content.get('y')])).toEqual([1, 0])
+        // No row moves, and the row itself keeps its place.
+        for (const id of [1, 2, 3, 4]) expect(at(1.5, () => line(log, id).get('y'))).toBe(at(0, () => line(log, id).get('y')))
+        // The footer changes when the row is half there.
+        expect(said(log.footer!, 1.45)).toEqual(['2 of 6 rows'])
+        expect(said(log.footer!, 1.55)).toEqual(['3 of 6 rows'])
+        // The outline waits for its row, and comes with it.
+        const lift = at(3, () => log.outline.get('y') - line(log, 4).get('y'))
+        expect(at(1.5, () => shows(log.outline))).toBe(0)
+        expect(at(2.3, () => [shows(log.outline), log.outline.get('y') - lift])).toEqual([expect.closeTo(0.5, 6), expect.closeTo(line(log, 4).get('y') + 0.35 * P * 0.7, 6)])
+        expect(at(3, () => shows(log.outline))).toBe(1)
+        expect(at(3, () => ink(line(log, 4).name))).toEqual(parseColor('red'))
+        // Two shows in one play: each row counts at the middle of its time, and the footer has one text at every frame.
+        for (let step = 0; step <= 20; step++) expect(said(log.footer!, 2 + step / 20)).toHaveLength(1)
+        expect(said(log.footer!, 2.45)).toEqual(['3 of 6 rows'])
+        expect(said(log.footer!, 2.55)).toEqual(['6 of 6 rows'])
+        expect(seen(log, 3)).toEqual(['1', '2', '3', '4', '5'])
+        // A show in the play of an append: the footer follows the two in the order of time. The rows of the
+        // append count at 0.5 s and at 1.5 s, and the row of the show at 1 s.
+        let both!: Log, pair!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            both = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }], { footer: (count) => `${count} rows`, visible: 8, size: 20 }))
+            pair = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }, { id: 3, name: 'Three', shown: false }], { footer: (count) => `${count} rows`, visible: 8, size: 20 }))
+            s.play(both.append(some(3, 4)), both.show(2), pair.show(() => true), { duration: 2, ease: linear })
+        }))
+        expect([0.4, 0.6, 1.1, 1.6].map((time) => said(both.footer!, time))).toEqual([['1 rows'], ['2 rows'], ['3 rows'], ['4 rows']])
+        // The rows of one show come one after another. A function that also picks a row that shows leaves that row as it is.
+        const parts = (time: number) => at(time, () => [1, 2, 3].map((id) => shows(line(pair, id).content)))
+        expect(parts(0.3)).toEqual([1, expect.closeTo(0.5, 6), 0])
+        expect(parts(1.3)).toEqual([1, 1, expect.closeTo(0.5, 6)])
+        expect([0.4, 0.6, 1.6].map((time) => said(pair.footer!, time))).toEqual([['1 rows'], ['2 rows'], ['3 rows']])
+    })
+
+    it('counts the rows that show above and under the window, and starts the window where rows show', async () => {
+        const footer = (count: number) => `${count} events`
+        const held = (ids: number[]) => some(1, 12).map((row) => ({ ...row, shown: !ids.includes(row.id as number) }))
+        let above!: Log, under!: Log, long!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            above = s.add(eventLog(held([2, 3]), { visible: 6, size: 20, footer }))
+            under = s.add(eventLog(held([10, 11]), { visible: 6, size: 20, footer }))
+            s.play(under.scrollTo(1), { duration: 1 })
+            s.play(above.show([2, 3]), under.show([10, 11]), { duration: 1, ease: linear })
+            s.play(above.append(some(13, 13)), { duration: 1 })
+        }))
+        // Rows 1 to 7 are above the window, and two of them wait: the first line counts the five that show.
+        expect([said(above.earlier, 0.5), said(above.footer!, 0.5)]).toEqual([['5 earlier'], ['10 events']])
+        // A row that shows above the window counts when it is half there, as it does in the footer: at 1.25 s and at 1.75 s.
+        expect([1.2, 1.25, 1.7, 1.75].map((time) => said(above.earlier, time))).toEqual([['5 earlier'], ['6 earlier'], ['6 earlier'], ['7 earlier']])
+        expect([1.2, 1.25, 1.75].map((time) => said(above.footer!, time))).toEqual([['10 events'], ['11 events'], ['12 events']])
+        expect([1.2, 1.3, 1.8].map((time) => said(above.footer!, time))).toEqual([['10 events'], ['11 events'], ['12 events']])
+        // The next row adds one, and no more: the count was right before it.
+        expect([2.4, 2.5, 3].map((time) => said(above.earlier, time))).toEqual([['7 earlier'], ['8 earlier'], ['8 earlier']])
+        // The same under the window, after a scroll to the first rows.
+        expect([said(under.earlier, 1.1), said(under.later, 1.1)]).toEqual([[], ['5 later']])
+        expect([1.3, 1.8, 3].map((time) => said(under.later, time))).toEqual([['6 later'], ['7 later'], ['7 later']])
+        expect([under.count, said(under.footer!, 3)]).toEqual([12, ['12 events']])
+        // A list of 12 turns that fills on cue, in a window of 6 lines: two rows show, and ten wait.
+        const starts: string[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            long = s.add(eventLog(held([3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), { visible: 6, size: 20, footer: (count) => `${count} of 12` }))
+            starts.push(long.rows.map((row) => words(row.idText)))
+            s.wait(1)
+            s.play(long.show([3, 4, 5]), { duration: 1 })
+            s.play(long.show([6, 7]), { duration: 1, ease: linear })
+            s.play(long.scrollTo(7), { duration: 1 })
+            // With no row that shows, the window is at the first rows. With rows that wait at the end only, the last row that shows is the last row of the window.
+            const none = eventLog(some(1, 12).map((row) => ({ ...row, shown: false })), { visible: 6, size: 20 })
+            const tail = s.add(eventLog(held([11, 12]), { visible: 6, size: 20 }))
+            const middle = eventLog(held([5, 6]), { visible: 6, size: 20 })
+            starts.push(...[none, tail, middle].map((list) => list.rows.map((row) => words(row.idText))))
+            expect(said(tail.earlier, s.time)).toEqual(['6 earlier'])
+            expect(said(middle.earlier, 0)).toEqual(['5 earlier'])
+            // The rows above the window wait: the first line is empty too. No "0 earlier".
+            const first = eventLog(held([1, 2, 3, 4, 5, 6, 7]), { visible: 6, size: 20 })
+            expect([first.rows.map((row) => words(row.idText)), said(first.earlier, 0), first.earlier.children[0]!.get('visible'), first.earlier.get('visible')]).toEqual([['8', '9', '10', '11', '12'], [], false, true])
+            // The window keeps the start that the list gave it, as it keeps the place of a `scrollTo`: a fold leaves it there.
+            const start = s.add(eventLog(held([3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), { visible: 6, size: 20 }))
+            s.play(start.fold([1, 2], 'pair'), { duration: 0 })
+            expect(start.rows.map((row) => words(row.idText))).toEqual(['1', '3', '4', '5', '6'])
+            // A fold that lets the rest of the list fit takes the count line away: the window goes on to the end.
+            s.play(tail.fold([8, 9], 'pair'), { duration: 0 })
+            expect(tail.rows.map((row) => words(row.idText))).toEqual(['7', '8', '10', '11', '12'])
+            // A window of two lines has one count line: it starts at the first row, or at the end.
+            expect(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }, { id: 3, name: 'Three', shown: false }], { visible: 2, size: 20 }).rows.map((row) => words(row.idText))).toEqual(['1'])
+        }))
+        // The window starts where rows show, with the places of the rows that wait: not at the end of the list, where it would be empty.
+        expect(starts).toEqual([['1', '2', '3', '4', '5'], ['1', '2', '3', '4', '5'], ['7', '8', '9', '10'], ['8', '9', '10', '11', '12']])
+        expect(seen(long, 0.5)).toEqual(['1', '2'])
+        // The rows under the window wait, so the last line counts nothing. It is empty: no "0 later", and no dots.
+        const dots = (holder: Node, time: number) => at(time, () => shows(holder.children[0]!))
+        expect([said(long.later, 0.5), dots(long.later, 0.5), at(0.5, () => long.later.get('visible'))]).toEqual([[], 0, true])
+        expect(seen(long, 2)).toEqual(['1', '2', '3', '4', '5'])
+        // Rows 6 and 7 show under the window. No row moves, and the last line counts each when it is half there.
+        expect([2.2, 2.3, 2.8].map((time) => said(long.later, time))).toEqual([[], ['1 later'], ['2 later']])
+        expect([dots(long.later, 2.2), dots(long.later, 2.3)]).toEqual([0, 1])
+        expect(seen(long, 3)).toEqual(['1', '2', '3', '4', '5'])
+        expect(said(long.footer!, 3)).toEqual(['7 of 12'])
+        // After the scroll, three rows are above and five wait under: the last line is empty again.
+        expect(seen(long, 4)).toEqual(['4', '5', '6', '7'])
+        expect([said(long.earlier, 4), said(long.later, 4), dots(long.later, 4)]).toEqual([['3 earlier'], [], 0])
+        // A count is of records: a fold under the window counts each record that it holds, and a row that waits counts none.
+        let folded!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            folded = s.add(eventLog([...some(1, 8), { ids: [9, 10, 11], name: 'three' }, { id: 12, name: 'Held', shown: false }, ...some(13, 14)], { visible: 5, size: 20 }))
+            s.play(folded.scrollTo(1), { duration: 1 })
+        }))
+        expect(seen(folded, 1)).toEqual(['1', '2', '3', '4'])
+        expect(said(folded.later, 1)).toEqual(['9 later'])
+    })
+
+    it('takes ids that are texts in scrollTo and show, and knows the id of a number by its text', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+            log = s.add(eventLog(ids.map((id) => ({ id, name: `Event ${id}`, shown: id !== 'g' })), { visible: 4, size: 20, footer: (count) => `${count} rows` }))
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['f', 'g', 'h'])
+            s.play(log.scrollTo('b'), { duration: 1 })
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['b', 'c'])
+            s.play(log.show('g'), { duration: 1, ease: linear })
+            expect(log.count).toBe(8)
+            s.play(log.scrollTo('g'), log.focus('g'), { duration: 1 })
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['f', 'g', 'h'])
+            expect(log.p('g')).toEqual(log.p('f').map((value, index) => value + index * log.pitch))
+            expect(() => s.play(log.scrollTo('z'))).toThrow(/no row has the id "z"\. The list has the ids "a" to "h"/)
+            expect(() => s.play(log.show(['a', 'z']))).toThrow(/no row has the id "z"/)
+            // An id that is a number is known by its text too.
+            const numbers = s.add(eventLog([...some(1, 9), { id: 10, name: 'Ten', shown: false }], { visible: 4, size: 20 }))
+            expect(numbers.rows.map((row) => words(row.idText))).toEqual(['8', '9', '10'])
+            s.play(numbers.scrollTo('2'), { duration: 0 })
+            expect(numbers.rows.map((row) => words(row.idText))).toEqual(['2', '3'])
+            s.play(numbers.show('10'), { duration: 0 })
+            expect(numbers.count).toBe(10)
+            expect(numbers.find((row) => row.shown === false)).toEqual([])
+        }))
+        // Row g waits at the start: the window shows f and h, and the first line counts the five rows above.
+        expect(seen(log, 0)).toEqual(['f', 'h'])
+        expect([said(log.earlier, 0), said(log.footer!, 0)]).toEqual([['5 earlier'], ['7 rows']])
+        expect([said(log.earlier, 1), said(log.later, 1)]).toEqual([['1 earlier'], ['4 later']])
+        // Row g shows under the window: the last line counts it when it is half there.
+        expect([1.4, 1.6].map((time) => said(log.later, time))).toEqual([['4 later'], ['5 later']])
+        expect(seen(log, 3)).toEqual(['f', 'g', 'h'])
+        expect([said(log.earlier, 3), said(log.later, 3), said(log.footer!, 3)]).toEqual([['5 earlier'], [], ['8 rows']])
+        expect(at(3, () => [shows(log.outline), Math.round(log.outline.get('y') - line(log, 'g').get('y'))])).toEqual([1, 0])
+    })
+
+    it('takes the outline back at each focus, whatever the film did to the node', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { visible: 6, size: 20 }))
+            s.play(log.focus(3), { duration: 0.4 }); s.wait(0.6)
+            s.play(fadeOut(log.outline), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(5), { duration: 0.4 }); s.wait(0.6)
+            s.play(fadeIn(log.outline), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(null), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(2), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(null), { duration: 0.4 }); s.wait(0.6)
+        }))
+        const on = (time: number, id: number) => at(time, () => [shows(log.outline), Math.round(log.outline.get('y') - line(log, id).get('y'))])
+        expect(on(0.9, 3)).toEqual([1, 0])
+        // The film fades the node out itself. The next focus shows the outline again, at its row.
+        expect(on(1.9, 3)[0]).toBe(0)
+        expect(on(2.3, 5)).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(on(2.9, 5)).toEqual([1, 0])
+        // The film fades the node in itself. `focus(null)` takes the outline away all the same.
+        expect(on(3.9, 5)).toEqual([1, 0])
+        expect(on(4.2, 5)).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(on(4.9, 5)[0]).toBe(0)
+        expect(on(5.9, 2)).toEqual([1, 0])
+        expect(on(6.9, 2)[0]).toBe(0)
+    })
+
+    it('sets the height of a row with leading, and refuses an outline that has too little room', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows = some(1, 4).map((row) => ({ ...row, detail: 'a (detail), jpg' }))
+            const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+            const usual = eventLog(rows, { size: 20, visible: 4 })
+            // `leading` is the height of a row as a part of the text size. The panel follows it.
+            const low = eventLog(rows, { size: 20, visible: 4, leading: 1.5 })
+            expect(low.pitch).toBe(30)
+            expect(low.frame.bounds().height).toBeCloseTo(4 * 30 + 16, 6)
+            low.rows.forEach((row, index) => expect(row.get('y') - low.rows[0]!.get('y')).toBeCloseTo(index * 30, 6))
+            // The default is the height that the outline needs. A larger leading is free.
+            expect(eventLog(rows, { size: 20, leading: usual.pitch / 20 }).pitch).toBeCloseTo(usual.pitch, 6)
+            expect(() => eventLog(rows, { size: 20, leading: 2.4 }).focus(2)).not.toThrow()
+            // A list with no focus takes the lower rows. The first focus is an error that names the leading that the outline needs.
+            const refused = message(() => low.focus(2))
+            expect(refused).toMatch(/^eventLog: a leading of 1\.5 leaves the outline of the focus too little room\. The outline needs 0\.3 of the text size between its line and the ink of the rows: a leading of (1\.\d+) or more\. Take that, or `focusLook: 'band'`$/)
+            const needs = Number(/a leading of (1\.\d+) or more/.exec(refused)![1])
+            expect(needs * 20).toBeGreaterThanOrEqual(usual.pitch)
+            expect(needs * 20).toBeLessThan(usual.pitch + 0.2)
+            expect(() => eventLog(rows, { size: 20, leading: needs }).focus(2)).not.toThrow()
+            expect(message(() => eventLog(rows, { size: 20, leading: needs - 0.02 }).focus(2))).toMatch(/a leading of 1\.\d+ leaves the outline/)
+            // `focus(null)` draws nothing, so it is free.
+            expect(() => low.focus(null)).not.toThrow()
+            // With the band, the lower rows are free: the band has no line. Its row has room in it, and the rows next to it are out of it.
+            const band = s.add(eventLog(rows, { size: 20, visible: 4, leading: 1.5, focusLook: 'band' }))
+            s.play(band.focus(2), { duration: 0 })
+            const box = band.outline.bounds(), [first, own, third] = band.rows.map((row) => { const boxes = [row.name.bounds(), row.detail!.bounds()]; return [Math.min(...boxes.map((part) => part.y)), Math.max(...boxes.map((part) => part.y + part.height))] })
+            expect(box.height).toBeCloseTo(30, 6)
+            expect(own![0]! - box.y).toBeGreaterThanOrEqual(20 * 0.14)
+            expect(box.y + box.height - own![1]!).toBeGreaterThanOrEqual(20 * 0.14)
+            expect(first![1]!).toBeLessThan(box.y)
+            expect(third![0]!).toBeGreaterThan(box.y + box.height)
+            // A leading with no room for the ink of two rows is an error where the list is made.
+            expect(message(() => eventLog(rows, { size: 20, leading: 1 }))).toMatch(/^eventLog: leading is 1\. It is the height of a row as a part of the text size, 1\.\d+ or more with these fonts: the ink of a row, and a little room$/)
+            expect(() => eventLog(rows, { leading: Number.NaN })).toThrow(/leading is NaN/)
+            const least = Number(/size, (1\.\d+) or more/.exec(message(() => eventLog(rows, { size: 20, leading: 1 })))![1])
+            expect(least).toBeLessThanOrEqual(1.5)
+            expect(least).toBeGreaterThanOrEqual(1.36)
+            expect(() => eventLog(rows, { size: 20, leading: least })).not.toThrow()
+            expect(() => eventLog(rows, { size: 20, leading: least - 0.01 })).toThrow(/leading is/)
+        }))
+    })
+
+    it('cuts a name or a detail that is longer than its column with an ellipsis, or refuses it with ellipsis: false', async () => {
+        await compileFilm(film(() => {
+            const long = 'the address is empty, so the update is not accepted'
+            const rows: LogRow[] = [
+                { id: 1, name: 'ActivityTaskCompleted', detail: '"ch_1001"' },
+                { id: 2, name: 'WorkflowExecutionUpdateAccepted', detail: 'setAddress' },
+                { id: 3, name: 'ActivityTaskFailed', detail: long },
+                { id: 4, name: 'WorkflowExecutionUpdateCompletedByTheWorkerAfterTheValidatorRan' },
+            ]
+            const log = eventLog(rows, { size: 20, width: 600, nameWidth: 252 })
+            const [whole, cutName, cutDetail, alone] = log.rows
+            // 252 px hold 21 characters of 12 px. A longer name keeps 20, and the ellipsis.
+            expect(words(whole!.name)).toBe('ActivityTaskCompleted')
+            expect(words(cutName!.name)).toBe('WorkflowExecutionUpd…')
+            expect(right(cutName!.name)).toBeLessThanOrEqual(cutName!.name.get('x') + 252)
+            expect(right(cutName!.name)).toBeLessThan(cutName!.detail!.bounds().x)
+            // A detail ends where the content of the panel ends: 16 px from the border.
+            expect(words(whole!.detail)).toBe('"ch_1001"')
+            expect(words(cutDetail!.detail).endsWith('…')).toBe(true)
+            expect(long.startsWith(words(cutDetail!.detail).slice(0, -1))).toBe(true)
+            expect(right(cutDetail!.detail!)).toBeLessThanOrEqual(300 - 16)
+            expect(right(cutDetail!.detail!)).toBeGreaterThan(300 - 16 - 20)
+            // A row with no detail has no next column, so its name goes on to the end of the row.
+            expect(words(alone!.name).length).toBeGreaterThan(22)
+            expect(words(alone!.name).endsWith('…')).toBe(true)
+            expect(right(alone!.name)).toBeLessThanOrEqual(300 - 16)
+            expect(right(alone!.name)).toBeGreaterThan(300 - 16 - 14)
+            // A name that is one character too long is cut too: no text goes over its room.
+            const over = eventLog([{ id: 1, name: 'ActivityTaskCompleted2', detail: 'x' }, { id: 2, name: 'Short', detail: 'a detail of thirty characters.' }], { size: 20, width: 600, nameWidth: 252 })
+            expect(words(over.rows[0]!.name)).toBe('ActivityTaskComplete…')
+            expect(right(over.rows[0]!.name)).toBeLessThanOrEqual(over.rows[0]!.name.get('x') + 252)
+            // A space before the cut is not kept: 60 px hold four characters and the ellipsis, and the fourth is a space.
+            expect(words(eventLog([{ id: 1, name: 'abc defgh', detail: 'x' }], { size: 20, width: 400, nameWidth: 60 }).rows[0]!.name)).toBe('abc…')
+        }))
+    })
+
+    it('lists every text that does not fit under ellipsis: false in one error, with the numbers that fit them all', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const long = 'the address is empty, so the update is not accepted'
+            const rows: LogRow[] = [
+                { id: 1, name: 'ActivityTaskCompleted', detail: '"ch_1001"' },
+                { id: 2, name: 'WorkflowExecutionUpdateAccepted', detail: 'setAddress' },
+                { id: 3, name: 'ActivityTaskFailed', detail: long },
+                { id: 4, name: 'WorkflowExecutionUpdateCompletedByTheWorkerAfterTheValidatorRan' },
+            ]
+            type Options = NonNullable<Parameters<typeof eventLog>[1]>
+            const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+            const numbers = (said: string): Options => {
+                const nameWidth = /`nameWidth` to (\d+)/.exec(said), width = /`width` to (\d+)/.exec(said)
+                return { ...(nameWidth ? { nameWidth: Number(nameWidth[1]) } : {}), ...(width ? { width: Number(width[1]) } : {}) }
+            }
+            /** Make the list with the numbers of its error. One round is enough: the list is made, and each text is whole. */
+            const follow = (given: LogRow[], options: Options) => {
+                const said = message(() => eventLog(given, { ...options, ellipsis: false }))
+                const fixed: Options = { ...options, ellipsis: false, ...numbers(said) }
+                const made = eventLog(given, fixed)
+                expect(made.rows.map((row) => [words(row.name), row.detail ? words(row.detail) : undefined])).toEqual(given.map((row) => [row.name, row.detail === undefined ? undefined : String(row.detail)]))
+                return { said, fixed }
+            }
+            // A name that is wider than its column, and a detail that is wider than the room of the details: one error names the two.
+            const two = follow(rows.slice(0, 3), { size: 20, width: 600, nameWidth: 252 })
+            expect(two.said).toMatch(/^eventLog: with `ellipsis: false`, a name and a detail show whole, and 2 texts do not fit: the name of row 2 \(37\d px, and it has 252\), the detail of row 3 \(\d+ px, and the details have \d+\)\. Set `nameWidth` to 37\d and `width` to \d+ or more$/)
+            // The numbers are the least that work: with 2 px less of width, the detail does not fit.
+            expect(message(() => eventLog(rows.slice(0, 3), { ...two.fixed, width: two.fixed.width! - 2 }))).toMatch(/one text does not fit: the detail of row 3/)
+            expect(message(() => eventLog(rows.slice(0, 3), { ...two.fixed, nameWidth: two.fixed.nameWidth! - 2 }))).toMatch(/the name of row 2/)
+            // A name alone, in a list with room: the `nameWidth` is enough.
+            const name = follow(rows.slice(0, 2), { size: 20, width: 1400, nameWidth: 252 })
+            expect(name.said).toMatch(/and one text does not fit: the name of row 2 \(37\d px, and it has 252\)\. Set `nameWidth` to 37\d$/)
+            // A detail alone, in a list that takes the room of its names from its rows: the width is enough.
+            const detail = follow(rows.slice(0, 3), { size: 20, width: 700 })
+            expect(detail.said).toMatch(/and one text does not fit: the detail of row 3 \(\d+ px, and the details have \d+\)\. Raise `width` to \d+ or more$/)
+            expect(message(() => eventLog(rows.slice(0, 3), { ...detail.fixed, width: detail.fixed.width! - 2 }))).toMatch(/the detail of row 3/)
+            // A list that gives its names 60% of the width: the error sets the room of the names, so that a wider panel does not change it.
+            const capped = follow(rows.slice(0, 3), { size: 20, width: 500 })
+            expect(capped.said).toMatch(/and 3 texts do not fit: the name of row 2 \(37\d px, and it has 300\), the detail of row 2 \(\d+ px, and the details have \d+\), the detail of row 3 \(\d+ px, and the details have \d+\)\. Set `nameWidth` to 37\d and `width` to \d+ or more$/)
+            // A row with no detail goes on to the end of the row. Past that, the width is what works.
+            const alone = follow(rows.slice(3), { size: 20, width: 600 })
+            expect(alone.said).toMatch(/and one text does not fit: the name of row 4 \(75\d px, and it has 511\)\. Raise `width` to \d+ or more$/)
+            expect(message(() => eventLog(rows.slice(3), { ...alone.fixed, width: alone.fixed.width! - 2 }))).toMatch(/the name of row 4/)
+            // Details with room for less than eight characters are in the same error.
+            const narrow = follow([{ id: 1, name: 'ActivityTask', detail: 'a' }], { size: 20, width: 330, nameWidth: 160 })
+            expect(narrow.said).toMatch(/^eventLog: with `ellipsis: false`, a name and a detail show whole\. The details have room for \d characters, and a detail needs 8\. Raise `width` to \d+ or more$/)
+            expect(message(() => eventLog([{ id: 1, name: 'ActivityTask', detail: 'a' }], { ...narrow.fixed, width: narrow.fixed.width! - 2 }))).toMatch(/The details have room for 7 characters/)
+            // A fold with no rows is named as the fold. The list does not report rows that the film did not write.
+            const fold = follow([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3, 4], name: 'a workflow task of the sticky queue', detail: 'worker 71293, sticky queue' }], { size: 20, width: 520 })
+            expect(fold.said).toMatch(/texts? do(es)? not fit: the name of the fold from 2 to 4 /)
+            expect(fold.said).not.toMatch(/row [234]/)
+            // The rows of a fold are in the list of the error too: the fold opens into them later.
+            const inner = follow([{ ids: [1, 2], name: 'pair', rows: [{ id: 1, name: 'One', detail: long }, { id: 2, name: 'WorkflowExecutionUpdateAccepted' }] }], { size: 20, width: 500 })
+            expect(inner.said).toMatch(/one text does not fit: the detail of row 1 /)
+            // More than six texts: the error names six, and counts the others.
+            const many = message(() => eventLog(Array.from({ length: 8 }, (_, index) => ({ id: index + 1, name: 'Event', detail: long })), { size: 20, width: 400, ellipsis: false }))
+            expect(many).toMatch(/and 8 texts do not fit: the detail of row 1 .*the detail of row 6 \(\d+ px, and the details have \d+\), and 2 more\. Raise `width` to \d+ or more$/)
+            // A row that comes later is checked where the film makes the append. No column gets smaller: the rows of the list still fit.
+            const log = s.add(eventLog(rows.slice(0, 2), { size: 20, width: 700, ellipsis: false }))
+            const later = message(() => log.append({ id: 9, name: 'N'.repeat(40), detail: 'a detail that is longer than the room' }))
+            expect(later).toMatch(/and 2 texts do not fit: the name of row 9 \(4[78]\d px, and it has 372\), the detail of row 9 \(\d+ px, and the details have \d+\)\. Set `nameWidth` to 4[78]\d and `width` to \d+ or more$/)
+            const wider = s.add(eventLog(rows.slice(0, 2), { size: 20, ellipsis: false, ...numbers(later) }))
+            s.play(wider.append({ id: 9, name: 'N'.repeat(40), detail: 'a detail that is longer than the room' }))
+            expect(wider.rows.map((row) => words(row.name))).toEqual([rows[0]!.name, rows[1]!.name, 'N'.repeat(40)])
+            // So is the label of a fold.
+            expect(message(() => s.play(log.fold([1, 2], { name: 'a pair with a name that is too long for the names', detail: 'two' })))).toMatch(/one text does not fit: the name of the fold from 1 to 2 /)
+            expect(log.rows).toHaveLength(2)
+        }))
+    })
+
+    it('gives the names the room of the longest name of the first rows, 60% of the width at most', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // The first rows have 21 characters at most. A row that comes later is cut to that room.
+            const log = s.add(eventLog([{ id: 1, name: 'ActivityTaskCompleted', detail: 'a' }], { size: 20, width: 700 }))
+            s.play(log.append({ id: 2, name: 'WorkflowExecutionUpdateAccepted', detail: 'setAddress' }))
+            expect(words(log.rows[1]!.name)).toBe('WorkflowExecutionUpd…')
+            // 60% of 700 is 420 px, which is 35 characters. The first name has 40.
+            const capped = eventLog([{ id: 1, name: 'N'.repeat(40), detail: 'a' }], { size: 20, width: 700 })
+            expect(words(capped.rows[0]!.name)).toBe(`${'N'.repeat(34)}…`)
+            expect(capped.rows[0]!.detail!.get('x') - capped.rows[0]!.name.get('x')).toBeCloseTo(420 + 18, 6)
+            // `nameWidth` sets the room.
+            const wide = eventLog([{ id: 1, name: 'N'.repeat(40), detail: 'a' }], { size: 20, width: 800, nameWidth: 500 })
+            expect(words(wide.rows[0]!.name)).toBe('N'.repeat(40))
+            expect(wide.rows[0]!.detail!.get('x') - wide.rows[0]!.name.get('x')).toBeCloseTo(518, 6)
+            // With no first row, the names have 60% of the width.
+            const empty = s.add(eventLog([], { size: 20, width: 700 }))
+            s.play(empty.append({ id: 1, name: 'N'.repeat(40), detail: 'a' }))
+            expect(words(empty.rows[0]!.name)).toBe(`${'N'.repeat(34)}…`)
+            // A list with no detail is not concerned by the room of the details: in a narrow panel, the names take it all.
+            const narrow = eventLog([{ id: 1, name: 'WorkflowExecutionUpdateAccepted' }], { size: 20, width: 300 })
+            expect(narrow.rows[0]!.detail).toBeNull()
+            expect(right(narrow.rows[0]!.name)).toBeGreaterThan(150 - 16 - 14)
+            expect(right(narrow.rows[0]!.name)).toBeLessThanOrEqual(150 - 16)
+        }))
+    })
+
+    it('refuses a list whose details have room for less than eight characters, and names a width that works', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows = history.slice(4)
+            const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+            // At 400 px the names are cut to 60% of the width, and 53 px are left: four characters of the text font.
+            const narrow = message(() => eventLog(rows, { size: 20, width: 400 }))
+            expect(narrow).toMatch(/^eventLog: the details have room for 4 characters, and row 5 has a detail\. A detail needs room for 8\. Raise `width` to (\d+) or more, or set `nameWidth` to (\d+) or less$/)
+            const [, width, nameWidth] = /`width` to (\d+) or more, or set `nameWidth` to (\d+) or less/.exec(narrow)!
+            // The width of the message works, and one px less does not. More width gives more to the names too, so it is not 400 plus what was missing.
+            expect(Number(width)).toBeGreaterThan(400 + 45)
+            expect(words(eventLog(rows, { size: 20, width: Number(width) }).rows[0]!.detail)).toMatch(/^charge/)
+            expect(message(() => eventLog(rows, { size: 20, width: Number(width) - 1 }))).toMatch(/the details have room for 7 characters/)
+            // The eight characters are those of the font of the details. Mono characters are wider than those of the
+            // text font, so the same panel has room for seven of them, and a wider one for eight.
+            expect(message(() => eventLog(rows, { size: 20, width: Number(width), detailFont: 'mono' }))).toMatch(/the details have room for 7 characters/)
+            expect(() => eventLog(rows, { size: 20, width: Number(width) + 6, detailFont: 'mono' })).not.toThrow()
+            // So does the `nameWidth` of the message, and two px more do not.
+            expect(words(eventLog(rows, { size: 20, width: 400, nameWidth: Number(nameWidth) }).rows[0]!.detail)).toMatch(/^charge/)
+            expect(message(() => eventLog(rows, { size: 20, width: 400, nameWidth: Number(nameWidth) + 2 }))).toMatch(/the details have room for 7 characters/)
+            // A `nameWidth` that leaves little room: no detail is drawn as an ellipsis alone.
+            expect(message(() => eventLog(rows, { size: 20, width: 500, nameWidth: 380 }))).toMatch(/the details have room for 1 characters, and row 5 has a detail\. A detail needs room for 8\. Raise `width` to \d+ or more, or set `nameWidth` to \d+ or less/)
+            // The room that passes holds eight characters at least, so a detail that is cut keeps most of them.
+            const tight = eventLog([{ id: 1, name: 'ActivityTaskScheduled', detail: 'a detail that is cut in this room' }], { size: 20, width: Number(width) })
+            expect(words(tight.rows[0]!.detail).length).toBeGreaterThanOrEqual(7)
+            expect(words(tight.rows[0]!.detail)).not.toBe('…')
+            // A list with no detail in its first rows gives the room to the names. A row with a detail that comes later is refused.
+            const plain = s.add(eventLog(some(1, 3).map((row) => ({ ...row, name: 'WorkflowExecutionUpdateAccepted' })), { size: 20, width: 400 }))
+            expect(() => plain.append({ id: 4, name: 'Late', detail: 'a detail' })).toThrow(/the details have room for 0 characters, and row 4 has a detail/)
+            // The detail of a fold starts after its name. In a narrow column of names, the name is cut so that the detail keeps its room.
+            const fold = eventLog([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3], name: 'a pair of rows with a long name', detail: 'two' }], { size: 20, width: 560, nameWidth: 100 }).rows[1]!
+            expect(words(fold.name).endsWith('…')).toBe(true)
+            expect(280 - 16 - fold.detail!.get('x')).toBeGreaterThanOrEqual(8 * 11.8)
+            expect(fold.detail!.get('x') - right(fold.name)).toBeGreaterThan(17)
+        }))
+    })
+
+    it('sets the size of the title and the footer with titleSize, and the font of the details with detailFont', async () => {
+        await compileFilm(film(() => {
+            const options = { title: 'event history', footer: (count: number) => `${count} events`, visible: 4, size: 20, width: 700 }
+            const usual = eventLog(some(1, 6), options), large = eventLog(some(1, 6), { ...options, titleSize: 34 })
+            // The default is 0.85 of the text size. `titleSize` sets the title and the footer, and their bands grow with it.
+            const height = (node: Node) => node.bounds().height
+            expect(height(large.title!) / height(usual.title!)).toBeCloseTo(34 / 17, 1)
+            expect(height(large.footer!) / height(usual.footer!)).toBeCloseTo(34 / 17, 1)
+            expect(usual.frame.bounds().height).toBeCloseTo(4 * usual.pitch + 16 + 2 * 38, 6)
+            expect(large.frame.bounds().height).toBeCloseTo(4 * large.pitch + 16 + 2 * 76, 6)
+            expect(large.pitch).toBe(usual.pitch)
+            for (const part of [large.title!, large.footer!]) inside(part, large.frame)
+            expect(bottom(large.title!)).toBeLessThan(large.rules[0]!.bounds().y - 34 * 0.3)
+            // The counts take the size too, and are never larger than the rows.
+            const count = (log: Log) => log.earlier.children.find((child) => typeof words(child) === 'string')!
+            expect(height(count(usual)) / height(usual.rows[0]!.idText)).toBeLessThan(1)
+            expect(height(count(large))).toBeCloseTo(height(count(eventLog(some(1, 6), { ...options, titleSize: 20 }))), 6)
+            expect(height(count(large))).toBeGreaterThan(height(count(usual)) * 1.1)
+            expect(count(large).get('y')).toBe(count(eventLog(some(1, 6), { ...options, titleSize: 20 })).get('y'))
+            expect(() => eventLog([], { titleSize: 0 })).toThrow(/titleSize is the text size of the title and the footer, more than 0/)
+            // `detailFont` sets the details, and `font` the title and the footer. A detail that is data is in mono.
+            const rows = [{ id: 1, name: 'HHHH', detail: 'iiii' }, { id: 2, name: 'HHHH', detail: 'mmmm' }]
+            const mono = eventLog(rows, { ...options, detailFont: 'mono' }), text_ = eventLog(rows, options), serif = eventLog(rows, { ...options, font: 'text-serif', detailFont: 'mono' })
+            const widths = (log: Log) => log.rows.map((row) => { const box = row.detail!.children.map((glyph) => glyph.get('x')); return box[3]! - box[0]! })
+            // In mono, four letters take the same room, whatever they are: three steps of 12 px.
+            expect(widths(mono)).toEqual([expect.closeTo(36, 6), expect.closeTo(36, 6)])
+            expect(widths(text_)[1]!).toBeGreaterThan(widths(text_)[0]! * 2)
+            // The title keeps the font of the list.
+            expect(mono.title!.bounds().width).toBe(text_.title!.bounds().width)
+            expect(serif.title!.bounds().width).not.toBe(text_.title!.bounds().width)
+            expect(widths(serif)).toEqual(widths(mono))
+            // A detail in mono stands on the baseline of the name, with no shift.
+            expect(mono.rows[0]!.detail!.get('y')).toBe(0)
+            expect(text_.rows[0]!.detail!.get('y')).not.toBe(0)
+        }))
+    })
+
+    it('takes the font of the film for its title, its footer and its details, and measures its rows in it', async () => {
+        const rows = [{ id: 1, name: 'HHHH', detail: 'a (detail), jpg' }, { id: 2, name: 'HHHH', detail: 'mmmm' }]
+        const options = { title: 'event history', footer: (count: number) => `${count} events`, visible: 4, size: 20, width: 700 }
+        const widths = (log: Log) => [log.title!.bounds().width, log.rows[0]!.detail!.bounds().width, log.rows[0]!.name.bounds().width, log.pitch]
+        let serif!: number[], named!: number[], own!: number[], late!: number[], usual!: number[]
+        await compileFilm(film({ font: 'text-serif' }, (s) => {
+            const log = s.add(eventLog(rows, options))
+            serif = widths(log)
+            // A font that the list names wins over the font of the film.
+            own = widths(eventLog(rows, { ...options, font: 'sans' }))
+            // A row that arrives later is in the font of the first rows.
+            s.play(log.append({ id: 3, name: 'HHHH', detail: 'a (detail), jpg' }))
+            late = [log.rows[2]!.detail!.bounds().width]
+        }))
+        await compileFilm(film(() => {
+            named = widths(eventLog(rows, { ...options, font: 'text-serif' }))
+            usual = widths(eventLog(rows, options))
+        }))
+        // In a film with a font, the list is as a list that names that font: the same texts, and the same height of a row.
+        expect(serif).toEqual(named)
+        expect(late[0]).toBe(serif[1])
+        // The name is in mono in any film. The film that names no font has the list as it was.
+        expect(serif[2]).toBe(usual[2])
+        expect(own).toEqual(usual)
+        expect(serif[0]).not.toBe(usual[0])
+        expect(serif[3]).not.toBe(usual[3])
+    })
+
+    it('arrives with its panel first, and then its rows, with the outline of the focus', async () => {
+        let log!: Log
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            log = eventLog(some(1, 6), { title: 'log', footer: (count) => `${count} rows`, visible: 5, size: 20 })
+            s.wait(1)
+            s.play(log.enter(), log.focus(5), { duration: 2, ease: linear })
+            s.wait(1)
+            expect(log.enter().duration).toBe(0.8)
+        }))
+        expect((await compiled.frame(0.5)).ops).toHaveLength(0)
+        // The panel, the rules, the title and the footer have the first half of the time.
+        for (const part of [log.frame, ...log.rules, log.title!, log.footer!]) expect(at(1.5, () => shows(part))).toBeCloseTo(0.5, 6)
+        // The rows and the count of the rows above come as one, from a fifth of the time to its end.
+        const parts = [log.earlier, ...log.rows]
+        expect(at(1.4, () => parts.map(shows))).toEqual([0, 0, 0, 0, 0])
+        expect(at(2.2, () => parts.map(shows))).toEqual(Array(5).fill(expect.closeTo(0.5, 6)))
+        expect(at(3, () => parts.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(seen(log, 3)).toEqual(['3', '4', '5', '6'])
+        // The outline comes with the rows, and is never stronger than its row.
+        expect(at(2.2, () => shows(log.outline))).toBeCloseTo(0.5 * 0.6, 6)
+        expect(at(3, () => shows(log.outline))).toBe(1)
+        // The list was not on the stage: `enter()` puts it there.
+        expect((await compiled.frame(3.5)).ops.length).toBeGreaterThan(40)
+    })
+
+    it('gives a copy its own rows and its own record of them', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = eventLog(some(1, 5), { footer: (count) => `${count} rows`, visible: 5, size: 20 })
+            s.add(log)
+            s.play(seq(log.append(some(6, 6)), log.fold([4, 5], 'pair'), log.unfold(4), log.focus(6)), { duration: 0 })
+            const copy = log.clone()
+            expect(copy.rows).toHaveLength(log.rows.length)
+            copy.rows.forEach((row, index) => expect(row).not.toBe(log.rows[index]))
+            expect(copy.rows.map((row) => words(row.idText))).toEqual(log.rows.map((row) => words(row.idText)))
+            expect(copy.all()).toContain(copy.row(6))
+            expect(copy.all()).not.toContain(log.row(6))
+            // A change of the copy leaves the list as it was.
+            s.add(copy)
+            // The copy keeps the focus: its outline is on row 6, and goes out there when the focus moves.
+            const start = s.time
+            expect(shows(copy.outline)).toBe(1)
+            expect(copy.outline.get('y')).toBeCloseTo(copy.row(6).get('y'), 0)
+            s.play(copy.focus(3), { duration: 1, ease: linear })
+            expect(at(start + 0.25, () => [shows(copy.outline), Math.round(copy.outline.get('y') - copy.row(6).get('y'))])).toEqual([0.5, 0])
+            expect(at(start + 1, () => [shows(copy.outline), Math.round(copy.outline.get('y') - copy.row(3).get('y'))])).toEqual([1, 0])
+            expect(at(start + 1, () => shows(log.outline))).toBe(1)
+            // The copy keeps the fold that was open: it closes with no label, as in the list.
+            s.play(copy.fold([4, 5]), { duration: 1 })
+            expect(copy.row(5)).toBe(copy.row(4))
+            expect(log.row(5)).not.toBe(log.row(4))
+            s.play(seq(copy.append(some(7, 7)), copy.mark(6, 'failed')), { duration: 1 })
+            expect(copy.count).toBe(7)
+            expect(log.count).toBe(6)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 6])
+            expect(ink(log.row(6).name)).toEqual(parseColor('purple'))
+            // The footer of the copy starts from the count of the list, with no change behind it.
+            expect(said(copy.footer!, s.time)).toEqual(['7 rows'])
+            expect(said(log.footer!, s.time)).toEqual(['6 rows'])
+            // A copy that the film does not focus again: its outline goes with its row, and with the record of the focus into a fold.
+            const second = s.add(log.clone())
+            s.play(second.append(some(7, 7)), { duration: 1 })
+            expect([shows(second.outline), Math.round(second.outline.get('y') - second.row(6).get('y'))]).toEqual([1, 0])
+            expect(Math.round(log.outline.get('y') - second.outline.get('y'))).toBe(Math.round(log.pitch))
+            s.play(second.fold([5, 6], 'pair'), { duration: 1 })
+            expect([shows(second.outline), Math.round(second.outline.get('y') - second.row(5).get('y'))]).toEqual([1, 0])
+            expect(second.row(5).range).not.toBeNull()
+            // A copy of a list that `scrollTo` moved keeps the window: a fold in the copy leaves the window there, as in the list.
+            const moved = s.add(eventLog(some(1, 12), { visible: 5, size: 20 }))
+            s.play(moved.scrollTo(3), { duration: 0 })
+            const still = s.add(moved.clone())
+            expect(still.rows.map((row) => words(row.idText))).toEqual(['3', '4', '5'])
+            expect([said(still.earlier, s.time), said(still.later, s.time)]).toEqual([['2 earlier'], ['7 later']])
+            s.play(still.fold([4, 5], 'pair'), { duration: 0.5 })
+            expect(still.rows.map((row) => words(row.idText))).toEqual(['3', '4', '6'])
+            expect([said(still.earlier, s.time), said(still.later, s.time)]).toEqual([['2 earlier'], ['6 later']])
+            // The list writes its counts again, from its own lines: the change of the copy is not in them.
+            s.play(moved.show(3), { duration: 0 })
+            expect([said(moved.earlier, s.time), said(moved.later, s.time)]).toEqual([['2 earlier'], ['7 later']])
+            // The copy has no change behind it: it can change its rows while the list is still in its last change.
+            const busy = s.add(eventLog(some(1, 3), { visible: 8, size: 20 }))
+            const from = s.time
+            s.play(busy.append(some(4, 4)), { duration: 2 })
+            const free = s.add(busy.clone())
+            s.at(from + 1, () => s.play(free.append(some(5, 5)), { duration: 0.5 }))
+            expect(free.ids).toEqual([1, 2, 3, 4, 5])
+            expect(busy.ids).toEqual([1, 2, 3, 4])
+        }))
+    })
+
+    it('keeps text off text and lines off text while rows scroll, fold and unfold, and while the focus moves', async () => {
+        const report = await checkFilm(film({ fps: 15 }, (s) => {
+            const log = s.add(eventLog([...history, { id: 8, name: 'TimerStarted', shown: false }], { title: 'event history', footer: (count) => `${count} events`, visible: 6, size: 30, width: 860 }))
+            s.play(log.show(8), log.focus(8), { duration: 0.8 })
+            s.play(log.append(some(9, 10)), log.focus(10), { duration: 1.4 })
+            s.play(log.focus(7), { duration: 0.6 })
+            s.play(log.fold([5, 6, 7], 'activity'), { duration: 1 })
+            s.play(log.append(some(11, 13), { lag: 0.5 }), { duration: 1.6 })
+            s.play(log.scrollTo(3), log.focus(3), { duration: 1 })
+            s.play(log.fold([1, 2, 3, 4], 'start'), { duration: 1 })
+            s.play(log.unfold(5), { duration: 1 })
+            s.play(log.scrollTo(13), { duration: 1 })
+            s.play(log.append(some(14, 17), { lag: 0 }), log.focus(null), { duration: 1 })
+            s.play(log.scrollTo(1), { duration: 0.8 })
+        }), { motion: true, readingSpeed: 0 })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('names what is wrong with a row, an id, a fold or an option', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            expect(() => eventLog([{ id: 1, name: 'a' }, { id: 1, name: 'b' }])).toThrow(/two rows have the id 1\. Give each row its own id/)
+            expect(() => eventLog([{ id: 1, name: 'a' }, { id: '1', name: 'b' }])).toThrow(/two rows have the id "1"/)
+            expect(() => eventLog([{ id: Number.NaN, name: 'a' }])).toThrow(/the id of a row is null\. An id is a number or a text/)
+            expect(() => eventLog([{ id: ' ', name: 'a' }])).toThrow(/the id of a row is " "/)
+            expect(() => eventLog([{ id: 1, name: ' ' }])).toThrow(/row 1 has no name/)
+            expect(() => eventLog([{ id: 1, name: 'two\nlines' }])).toThrow(/the name of row 1 has a line break or a tab/)
+            expect(() => eventLog([{ id: 1, name: 'a', detail: 'a\tb' }])).toThrow(/the detail of row 1 has a line break or a tab/)
+            expect(() => eventLog([{ id: 1, name: 'a', state: 'done' }])).toThrow(/row 1 has the state "done"\. The states are stored, new, answered, waiting, failed/)
+            expect(() => eventLog([], { size: 0 })).toThrow(/size is a text size, more than 0/)
+            expect(() => eventLog([], { width: Number.NaN })).toThrow(/width is the width of the panel, more than 0/)
+            expect(() => eventLog([], { visible: 1 })).toThrow(/visible is the number of lines in the window, a whole number, 2 or more/)
+            expect(() => eventLog([], { visible: 2.5 })).toThrow(/visible is the number of lines/)
+            expect(() => eventLog([], { idWidth: 0 })).toThrow(/idWidth is the room of the ids, more than 0/)
+            expect(() => eventLog([], { size: 20, width: 100 })).toThrow(/a width of 100 leaves 11 px for the names, and a name needs 60\. Raise `width`, or lower `size`/)
+            expect(() => eventLog([], { size: 20, width: 400, nameWidth: 20 })).toThrow(/nameWidth is 20\. It is the room of the names, 60 px or more at this size/)
+            expect(() => eventLog([], { size: 20, width: 400, nameWidth: 400 })).toThrow(/nameWidth is 400, and the panel has 311 px after the ids\. Lower `nameWidth`, or raise `width`/)
+            expect(() => eventLog([], { size: 20, width: 300, title: 'a title with too many words for a panel of this width' })).toThrow(/the title is \d+ px wide, and the panel has 268 px\. Use a shorter text, or raise `width`/)
+            expect(() => eventLog([], { title: 'two\nlines' })).toThrow(/the title has a line break/)
+            // An id that is wider than the room of the ids, at the start and later. `idWidth` gives the room.
+            expect(() => eventLog([{ id: 1000, name: 'a' }], { size: 20, idWidth: 24 })).toThrow(/the id 1000 is 48 px wide, and the ids have 24 px\. Set `idWidth` to 48 or more/)
+            const log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            expect(() => log.append({ id: 100, name: 'a' })).toThrow(/the id 100 is 36 px wide, and the ids have 24 px\. Set `idWidth` to 36 or more/)
+            expect(eventLog([{ id: 1, name: 'a' }], { size: 20, idWidth: 48 }).append({ id: 1000, name: 'b' }).label).toBe('eventLog.append')
+            expect(words(eventLog([{ id: 1000, name: 'a' }], { size: 20 }).rows[0]!.idText)).toBe('1000')
+            expect(() => log.append({ id: 8, name: 'a', state: 'done' })).toThrow(/row 8 has the state "done"/)
+            // A lag or a duration that is not a number would lose rows with no error.
+            expect(() => log.append(some(8, 9), { lag: Number.NaN })).toThrow(/the lag of append\(\[8, 9\]\) is NaN\. Give a number, 0 or more/)
+            expect(() => log.append(some(8, 9), { duration: -1 })).toThrow(/the duration of append\(\[8, 9\]\) is -1\. Give a number, 0 or more/)
+            expect(() => log.mark(1, 'answered', { lag: Number.NaN })).toThrow(/the lag of mark\(\) is NaN/)
+            expect(() => log.fold([1, 2], 'x', { duration: Number.POSITIVE_INFINITY })).toThrow(/the duration of fold\(\[1, 2\]\) is Infinity/)
+            expect(() => log.unfold(1, { duration: Number.NaN })).toThrow(/the duration of unfold\(1\) is NaN/)
+            expect(() => log.focus(1, { duration: Number.NaN })).toThrow(/the duration of focus\(\) is NaN/)
+            expect(() => log.show(1, { lag: -2 })).toThrow(/the lag of show\(\) is -2/)
+            expect(() => log.scrollTo(1, { duration: Number.NaN })).toThrow(/the duration of scrollTo\(1\) is NaN/)
+            expect(() => log.enter({ duration: Number.NaN })).toThrow(/the duration of enter\(\) is NaN/)
+            expect(() => s.play(log.append(some(8, 9)), { duration: Number.NaN })).toThrow(/append\(\[8, 9\]\) plays from \d+(\.\d+)? to NaN\. Give the play a duration that is a number, 0 or more/)
+            expect(log.count).toBe(7)
+            // A wrong state is found when the film makes the change. A wrong id is found when the film plays it:
+            // the row can come from a change before it in the same sequence.
+            expect(() => log.mark(1, 'done')).toThrow(/no state "done"\. The states are stored, new, answered, waiting, failed/)
+            expect(() => s.play(log.mark(99, 'answered'))).toThrow(/no row has the id 99\. The list has the ids 1 to 7/)
+            expect(() => s.play(log.mark([1, 'x'], 'answered'))).toThrow(/no row has the id "x"/)
+            expect(() => s.play(log.focus(99))).toThrow(/no row has the id 99/)
+            expect(() => log.row(99)).toThrow(/no row has the id 99/)
+            expect(() => log.p(99)).toThrow(/no row has the id 99/)
+            expect(() => eventLog([]).row(1)).toThrow(/no row has the id 1\. The list is empty/)
+            expect(() => eventLog([{ id: 'a', name: 'x' }]).row(1)).toThrow(/no row has the id 1\. The list has one row, "a"/)
+            expect(() => log.fold([2], 'one')).toThrow(/a fold takes two rows or more, and got 1/)
+            expect(() => log.fold([2, 3, '2'], 'twice')).toThrow(/the fold names row "2" twice/)
+            expect(() => log.fold([2, 3], 'two\nlines')).toThrow(/the name of a fold has a line break/)
+            expect(() => log.fold([2, 3], ' ')).toThrow(/the fold has no name\. Give a label, such as fold\(\[2, 3, 4\], 'workflow task'\)/)
+            expect(() => log.fold([2, 3], { name: 'pair', state: 'done' })).toThrow(/no state "done"/)
+            expect(() => log.fold([2, 3], { name: 'pair', detail: 'two\nlines' })).toThrow(/the detail of a fold has a line break/)
+            expect(() => s.play(log.fold([2, 99], 'none'))).toThrow(/no row has the id 99/)
+            expect(() => s.play(log.fold([2, 4], 'gap'))).toThrow(/the rows of a fold follow each other, and row 3 is between 2 and 4 and not in the fold\. Add it, or make two folds/)
+            expect(() => s.play(log.fold([5, 6], { name: 'pair', time: '+1 s' }))).toThrow(/the fold from 5 to 6 has the time "\+1 s", and the list has no column for times/)
+            // A row that stands for several records: its ids, and the rows that it opens into.
+            expect(() => eventLog([{ name: 'a' } as never])).toThrow(/a row has no id\. Give it an `id`, or the `ids` that it stands for/)
+            expect(() => eventLog([{ ids: [], name: 'a' }])).toThrow(/a row has no id/)
+            expect(() => eventLog([{ id: 3, ids: [2, 3, 4], name: 'a' }])).toThrow(/a row has the id 3, and its ids start at 2\. The id of a fold is the first of its ids/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a' }, { id: 3, name: 'b' }])).toThrow(/two rows have the id 3/)
+            expect(() => eventLog([{ ids: [2, 2], name: 'a' }])).toThrow(/two rows have the id 2/)
+            expect(() => eventLog([{ ids: [2, 3], name: ' ' }])).toThrow(/the fold from 2 to 3 has no name/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', state: 'done' }])).toThrow(/the fold from 2 to 3 has the state "done"/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 2, name: 'b' }] }])).toThrow(/the fold from 2 to 3 has the ids 2, 3, and its rows have the ids 2\. Give one row for each id, in order/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 3, name: 'b' }, { id: 2, name: 'c' }] }])).toThrow(/its rows have the ids 3, 2/)
+            expect(() => eventLog([{ ids: [2, 3, 4], name: 'a', rows: [{ id: 2, name: 'b' }, { ids: [3, 4], name: 'c' }] } as never])).toThrow(/its rows have the ids 2, 3/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 2, name: 'b' }, { ids: [3, 9], name: 'c' }] } as never])).toThrow(/the fold from 3 to 9 is a row of the fold from 2 to 3\. A row of a fold has one id/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 2, name: 'b' }, { id: 3, name: 'c', state: 'done' }] }])).toThrow(/row 3 has the state "done"/)
+            expect(() => eventLog([{ id: 2, name: 'a', rows: [{ id: 2, name: 'b' }] } as never])).toThrow(/row 2 has `rows`, and one id\. Give it the `ids` that it stands for/)
+            expect(() => log.append({ ids: [8, 100], name: 'a' })).toThrow(/the id 100 is 36 px wide/)
+            expect(() => s.play(log.unfold(2))).toThrow(/no fold starts at row 2\. The list has no fold/)
+            s.play(log.fold([2, 3, 4], 'workflow task'))
+            expect(() => s.play(log.fold([4, 5], 'again'))).toThrow(/row 4 is already in the fold from 2 to 4\. Open that fold first, with unfold\(2\)/)
+            expect(() => s.play(log.fold([2, 3, 4]))).toThrow(/row 2 is already in the fold from 2 to 4/)
+            expect(() => s.play(log.unfold(3))).toThrow(/no fold starts at row 3\. The folds start at 2/)
+            expect(() => s.play(log.unfold(99))).toThrow(/no row has the id 99/)
+            // A refused change leaves the list as it was.
+            expect(log.count).toBe(7)
+            expect(log.rows).toHaveLength(5)
+        }))
     })
 })
 

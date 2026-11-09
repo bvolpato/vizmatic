@@ -747,6 +747,89 @@ In `grid.change(which, state)`, `which` is an index, a list of indexes, or a fun
 
 `grid.legend(items)` makes a key: one sample cell and one name for each state, in one row. The key is a node of its own, so add it to the stage and place it. `.at(x, y)` places the left end of the row, and `y` is the middle line of the cells and the names. An item is the name of a state, or a `[state, label]` pair for a display name. Without `items`, the key lists the states that the grid has now, in the order of `states`. `size`, `gap`, and `font` set the look. The key does not wrap, so make two keys for many long names.
 
+## Event logs
+
+`eventLog(rows, options)` draws a list of records that grows: the event history of a workflow, the steps of an agent, the life of a sandbox. A row has an `id`, a `name` in mono, one short `detail`, and a `state` that sets its color and its mark. Rows arrive at the bottom. When the window is full, the oldest rows leave at the top, and the first line says how many records are above.
+
+```film paired label="A workflow history grows, one record waits, and a replay gets its answers from the history"
+import { eventLog, film } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const log = eventLog([
+        { id: 1, name: 'WorkflowExecutionStarted', detail: 'order' },
+        { ids: [2, 3, 4], name: 'workflow task', detail: 'worker 71293' },
+        { id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard' },
+    ], { title: 'event history', footer: (count) => `${count} events`, visible: 8, size: 34, width: 1000 })
+    s.play(log.enter(), { duration: 1 })
+    s.play(log.append([
+        { id: 6, name: 'ActivityTaskStarted', detail: 'attempt 1', state: 'new' },
+        { id: 7, name: 'ActivityTaskCompleted', detail: '"ch_1002"', state: 'new' },
+        { ids: [8, 9, 10], name: 'workflow task', detail: 'worker 71293', state: 'new' },
+        { id: 11, name: 'ActivityTaskScheduled', detail: 'reserveStock', state: 'waiting' },
+    ]), { duration: 3.2 })
+    s.play(log.mark((row) => row.state === 'new', 'stored'), log.focus(11), { duration: 0.6 })
+    s.wait(0.8)
+    for (const id of [5, 7]) {
+        s.play(log.focus(id), log.mark(id, 'answered'), { duration: 0.5 })
+        s.wait(0.6)
+    }
+    s.wait(0.6)
+})
+```
+
+A row has one `id`, a number or a text, and an id is in the list once. The list knows an id by its text, so `7` and `'7'` are one id. A row with `ids` stands for several records that follow each other, such as the three events of one workflow task. Such a row is a fold. It shows its first and its last id, as "2 to 4", and it has a name, a detail, and a state of its own. Give a fold its `rows`, one for each id, when the film opens it later. `time` is a short text at the right end of a row, in mono, such as `+6.01 s`. A `detail` or a `time` that is a number is taken as its text. `family` is a word that the list does not draw: the film reads it to pick rows.
+
+`visible` is the number of lines of the window, and the panel has the height of that many lines from the start. So the panel does not grow while rows arrive, and `.at()` places its middle. When the list has more lines than `visible`, the first line of the window is the count of the records above it, such as "8 earlier", and the other lines show the newest rows. A list that is made with more rows than lines starts at its end, or at the last row that shows when the rows after it wait for `show`. A count is of the records that show: a fold counts each record that it holds, a row that waits for `show` counts none, and a count of 0 draws nothing. `title` is a line over the rows, and `footer` is a function of the count that writes the line under them. `log.count` is the number of records that show, and `log.ids` holds the ids of all records. Both count each record of a fold: 18 rows can hold 26 events.
+
+`log.append(rows)` adds rows at the bottom, one after another. In a full window, all rows move up as one, a row that leaves fades before it reaches the count, and a new row shows when it reaches the window. `lag: 0` brings the rows of one call together, as a group. The default time is 0.4 s for each row, and 0.5 s at least: one row takes 0.5 s, and five rows take 2 s.
+
+The list changes its rows one change at a time. `append`, `fold`, `unfold`, and `scrollTo` are changes of the rows: each starts from the places that the change before it left. Two of them whose times overlap are an error that names the two calls and their times, and gives the advice that fits the two: one `append` with all the rows and the `lag` and the `duration` that keep the pace of the film, a `seq` for two folds, or a shorter `duration` for the first of two cues. A `scrollTo` of a row that shows already moves nothing, so it is free. `mark`, `focus`, `show`, and `enter` move no row, so they play with any change: `s.play(log.append(row), log.focus(row.id), log.mark(5, 'answered'))`. The list takes the calls of one play in their order. So name the `append` before the `focus` or the `mark` of its row, and the `scrollTo` before the `focus` of a row that it brings in: the error of the other order says so.
+
+How fast can rows arrive? A viewer reads about 20 characters in one second, and a row has 20 to 40 characters. At one row per second, the viewer reads each row. At two or three rows per second, the viewer sees each row arrive and reads the names that matter. Above about four rows per second, the list reads as a scroll, not as rows. The film check reports a row that leaves too soon, and its limit is higher than these rates. In a full window a row stays for `(visible - 1) / rate` seconds, and a name that comes once needs its characters divided by 20, in seconds. So the check accepts about 5 rows per second for `visible: 10` and a name of 32 characters, and about 3 for `visible: 6`. For a long history, do not raise the rate. Fold what repeats, such as the three events of each workflow task. Or append in groups: one `append` with `lag: 0` for the rows of one sentence of the voice, and a pause after it. A group with more rows than `visible - 1` sends rows through the window that nobody can read, so keep a group smaller than the window. Or give the old rows to `eventLog()` itself, and append only the rows that the film talks about.
+
+`log.mark(which, state)` changes the state of rows: the color of the name cross-fades, and so does the mark at the left. `which` is an id, a list of ids, or a function of a row. The list calls the function when the film plays the change, so in `seq(log.mark(7, 'answered'), log.mark((row) => row.state === 'answered', 'stored'))` the second change finds the row of the first. The function gets a row as the list shows it, with its `id`, its `ids`, its `state`, and its `family`. `lag` makes the rows change one after another. `log.find(test)` gives the ids of the rows that a function picks: one id for a row, and each id of a fold. So `log.mark(log.find((row) => row.family === 'activity'), 'answered')` changes the same records as the function itself in `mark`. For `row`, `p`, and `focus`, any id of a fold names the fold.
+
+An id names one record, also in a closed fold. `log.mark(7, 'answered')` in a closed fold of 5 to 10 sets the state of record 7 only. The fold then shows the look of the record that was marked last, so the viewer sees the answer. After `unfold`, each record has its own state. To mark a whole fold, give all its ids, as `log.find` does, or a function that picks the fold: `log.mark((row) => row.id === 5, 'answered')`. A function sees a fold as one row, and a fold that it picks takes the state with all its records.
+
+`log.fold(ids, label)` puts rows that follow each other into one fold. The label is the name of the fold, or its fields: `{ name, detail, time, state, family }`. Without a state, the fold has the state of its first row. `log.unfold(firstId)` opens a fold into its rows, and `log.fold(ids)` with no label closes it again as it was. A fold that was made with `ids` and no `rows` has nothing to open into, so `unfold` of it is an error. A fold is one line of the window. So a fold in a full window makes room, and rows come back from above. An unfold in a full window pushes the oldest rows out.
+
+`log.scrollTo(id)` moves the window to a row that is out of it, for a replay that answers an early event of a long history. A row that was above becomes the first row of the window, and a row that was under becomes its last row. The first line says how many records are above, and the last line says how many are under, such as "14 later". A row that shows already moves nothing. A fold or an unfold keeps the window where the film put it, and `append` brings it back to the end first, in the first three tenths of its time. `scrollTo` needs a window of three lines or more. `log.mark` of a row that is out of the window changes its state and moves nothing: the row has the new look when it shows. `log.focus`, `log.row`, and `log.p` of such a row are errors that name the rows that show, so call `scrollTo` first.
+
+`log.focus(id)` puts one outline around a row, and it stays there until the next `focus`. `log.focus(null)` takes it away. The outline is with its row at every frame. It moves with a row that scrolls, and it arrives with a row that arrives, so `s.play(log.append(row), log.focus(row.id))` lights a row as it lands. It leaves with a row that leaves the window, and it does not come back with that row. On its way to another row it fades out at the first row and comes in at the second, so its lines do not cross the text of the rows between the two. `focusLook: 'band'` draws the focus as a faint band behind the row, with no line, for a list where an outline is too loud. `log.outline` is the node of the outline or of the band: set its `stroke` or its `fill` for another color. Its place and how much of it shows belong to `focus`. Each `focus` takes them back from its time on, so a film that fades the node itself does not lose the next focus.
+
+`log.row(id)` is the node of the line that shows a record, and `log.p(id, side)` is the point where a connector to it ends: on the left or the right border of the panel, at the middle height of the row, in the coordinates of the list. For a record in a fold, both give the line of the fold, so any id of a fold works. `log.rows` holds the nodes of the lines in the window. A line has the parts `mark`, `idText`, `range` (the "to 4" of a fold), `name`, `detail`, and `time`. All of these follow the changes that the film has played so far.
+
+`log.p(id)` is the place of the row after the changes that the film has played so far. It is a point, and it does not follow the row: after the next `append` in a full window, another row is there. So a line to a row leaves before the row moves:
+
+```ts
+const link = s.add(connector(worker, log.toWorld(...log.p(7, 'left')), { color: 'yellow' }))
+s.wait(1.2)
+s.play(fadeOut(link), { duration: 0.3 })
+s.play(log.append(more))
+```
+
+A connector to the node, `connector(worker, log.row(7))`, follows the row while it moves. When the row leaves the window, its node stops on the line of the count that stands for it, so the connector ends on "8 earlier", inside the panel, and not on another row.
+
+The columns are set once, from the first rows, so they line up over every row that comes later. The ids end at one x, and have the room of the longest id of the first rows, two digits at least. The names have the room of the longest name of the first rows, 60% of the width at most. A name or a detail that is too long is cut with an ellipsis, and it is never drawn over the next column. With `ellipsis: false`, a text that does not fit is an error. One error lists every name and every detail that does not fit, and gives the `nameWidth` and the `width` that fit them all, so one change of the numbers is enough. The name of a row with no detail may go on into the room of the details. The list has a column for the times when one of its first rows has a time. `idWidth`, `nameWidth`, and `timeWidth` set these three rooms: use them for a list that starts with few rows, or with none. An id or a time that is wider than its room is an error, because a part of an id names another row. A detail needs room for 8 characters. With less, the list is an error that says how many characters fit, and names the `width` and the `nameWidth` that work. A list with no detail in its first rows gives that room to the names.
+
+`shown: false` on a row gives the row its place from the start and does not draw it, for a list whose lines must not move, such as the eight turns of one run. `log.show(which)` brings such rows in at their places, as the rows of `append` arrive, and `which` is an id, a list of ids, or a function of a row. The footer, the two counts of the window, and `log.count` count the rows that show. A list with more lines than `visible` starts where rows show: the last row that shows is the last row of the window, and the rows that wait after it have their places under it. `show` does not move the window. A row that shows out of the window changes the count of its side, so call `scrollTo` first for a row that the viewer must see arrive. `log.find` gives such a row with `shown: false`. `log.mark` of it changes its state, and the row arrives with that state. `log.focus` of it puts the outline at its place, and the outline shows when the row does. A row that does not show yet cannot go into a fold.
+
+Without `states`, a row has one of the states of `LOG_STATES`, for a history that is written and then replayed: `stored`, `new`, `answered`, `waiting`, and `failed`. Each state has a `mark`, the shape at the left of the row, so that color is not the only sign: a dot for `stored`, a dot in the color of the text for `new`, a check for `answered`, a ring for `waiting`, and a cross for `failed`. For another subject, give your own record, such as `states: { done: { color: 'teal', mark: 'check' }, running: { color: 'yellow', mark: 'ring' }, planned: { color: 'ink', dim: true } }`. A mark is `'dot'`, `'ring'`, `'check'`, or `'cross'`, and a state with no mark has a dot. `dim: true` draws the whole row dim, for a record that is old or not reached. A row with no state starts in the first state of the record.
+
+`log.enter()` brings the panel, the title, and the footer, and then the rows of the window as one. `log.frame`, `log.title`, `log.footer`, `log.rules` (the two lines under the title and over the footer), `log.earlier` and `log.later` (the two lines with a count), and `log.outline` are the parts. `size` is the text size, and `leading` is the height of a row as a part of it. By default, a row is as tall as the outline of the focus needs: the ink of the text, and 0.3 of the text size of clear room between that ink and the outline, at its two sides. That is about 1.9 of `size`, or 1.75 with the details in mono. A list with `focusLook: 'band'`, or with no focus, can take lower rows, such as `leading: 1.5`: the band has no line. With the outline, a `leading` under what the outline needs is an error at the first `focus`, and the error names the least value. `log.pitch` is the distance from one row to the next, so a `codeBlock` beside the list lines up with `leading: log.pitch / size`. `font` is the font of the title, the footer, and the details, and `detailFont` sets the font of the details alone: use `detailFont: 'mono'` for a detail that is data, such as a line of output. `titleSize` sets the text size of the title and the footer, which is 0.85 of `size` by default. The ids, the names, and the times are in mono.
+
+A film that was written for the first version of the list changes these things:
+
+- A row is about 1.9 of `size` tall, and it was 1.5. Twelve rows at size 26 take 587 px, and they took 468. For the old height, set `leading: 1.5` with `focusLook: 'band'`, or with no focus. With the outline, lower `visible` or `size`.
+- Two of `append`, `fold`, `unfold`, and `scrollTo` whose times overlap are an error. Follow the advice of the error: one `append` with a `lag`, a `seq`, or a shorter `duration`.
+- `log.mark(id, state)` in a closed fold changes that record only, and it changed the whole fold. For the whole fold, use `log.mark(log.find(test), state)` or a function. `log.find` gives each id of a fold, and it gave the first.
+- `log.unfold` needs a fold that was made with `rows`. A fold with `ids` and no `rows` does not open.
+- Details with room for less than 8 characters are an error, and they were cut or dropped. Raise `width`, or set `nameWidth`, as the error says.
+- The states of `LOG_STATES` draw a check, a ring, and a cross at the left of the row, and all drew a dot.
+- The parts of a line are in `row.parts`. `row.children` holds one node, `row.content`, and it held the parts.
+- `log.enter()` brings the rows as one, and it brought them one after another.
+- A style that the film gave to `log.outline` for a band, such as `log.outline.stroke(null).fill('ink', 0.1)`, becomes `focusLook: 'band'`.
+
 ## Bit fields
 
 `bitField(fields, options)` draws a word that is split into named fields: a row of boxes, one per field, with the bit numbers over them. Use it for a virtual address and its table indexes, for the flags of a register or of a page table entry, and for the layout of a structure. A field has its `bits`, a `label`, and a `color`. The first field is at the left, and it holds the highest bits.
