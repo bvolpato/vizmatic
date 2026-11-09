@@ -1,9 +1,9 @@
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decode, encode } from 'fast-png'
 import { build } from 'esbuild'
 import {
@@ -16,6 +16,7 @@ import {
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm, readingSeconds } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
+import { RasterPool, framesToJob, sameRasterJob } from '../src/stage/raster'
 import { renderRgbaVideo } from '../src/video'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
@@ -91,6 +92,116 @@ describe('film export', () => {
         expect(bytes.subarray(0, 6).toString('ascii')).toBe('GIF89a')
         // A static hold at the end costs nothing, so far fewer bytes than ten full frames.
         expect(bytes.length).toBeLessThan(240 * 135 * 2)
+    })
+
+    describe.skipIf(process.platform === 'win32')('the dither of the bloom', () => {
+        const width = 320, height = 180, bytes = width * height * 4
+        const page = () => [11, 12, 16] as const
+        // A ring of light on the dark page of the default look, or on paper, which has no bloom. Nothing moves.
+        const ring = (look?: 'paper') => compileFilm(film({ fps: 10, bloom: 0.6 }, (s) => {
+            s.add(circle(200, { stroke: 'yellow', width: 10 }))
+            s.wait(0.5)
+        }), look ? { look } : {})
+        type Ring = Awaited<ReturnType<typeof ring>>
+
+        /** The frame of the ring with the plain bloom and with the dithered bloom. */
+        async function expectedFrames(dark: Ring): Promise<{ plain: Uint8Array; dithered: Uint8Array }> {
+            const pool = new RasterPool(1)
+            try {
+                const frame = await dark.frame(0.1)
+                const plain = await pool.run(framesToJob([frame], width, page, height, false))
+                const dithered = await pool.run(framesToJob([frame], width, page, height))
+                expect(Buffer.compare(plain, dithered)).not.toBe(0)
+                return { plain, dithered }
+            } finally {
+                await pool.close()
+            }
+        }
+
+        /** Render a movie with a stand-in for FFmpeg that keeps its arguments and copies the raw frames to the output path. */
+        async function movie(directory: string, name: string, compiled: Ring, options: Parameters<typeof renderFilmVideo>[2]) {
+            const encoder = join(directory, 'keep-frames.sh')
+            await writeFile(encoder, '#!/bin/sh\ncase "$1" in -h) exit 0;; esac\nfor last; do :; done\nprintf \'%s\\n\' "$@" > "$last.args"\nexec cat > "$last"\n', { mode: 0o755 })
+            const output = await renderFilmVideo(compiled, join(directory, name), { width, workers: 1, ffmpegPath: encoder, ...options })
+            // The encoder gets a temporary path, so find its arguments beside the frames by name.
+            const kept = (await readdir(directory, { recursive: true })).find((file) => file.includes(name) && file.endsWith('.args'))
+            const args = (await readFile(join(directory, kept!), 'utf8')).split('\n')
+            const at = args.indexOf('-x264-params')
+            return { frames: await readFile(output.outputPath), settings: at < 0 ? undefined : args[at + 1] }
+        }
+
+        // The defaults: a quality for work on a film has no dither, and a quality for a copy to publish has it.
+        // The settings are what the H.264 encoder gets with the dither, so that it keeps the grain.
+        it.each([
+            ['draft', false, 'aq-strength=2.0'],
+            ['standard', false, 'aq-strength=1.0:subme=6:trellis=0'],
+            ['high', true, 'subme=6:trellis=0'],
+            ['master', true, 'subme=6:trellis=0'],
+        ] as const)('at %s, a movie has the dither by default: %s, and the option turns it on with %s and off with no settings', async (quality, byDefault, settings) => {
+            const directory = await tempDirectory()
+            const dark = await ring(), { plain, dithered } = await expectedFrames(dark)
+            // The first frame and a later frame: a still picture has the same grain in each. The motion blur is
+            // that of the quality, so at high and master each frame is an average of shutter samples.
+            const shows = (frames: Buffer, expected: Uint8Array) => frames.length === 5 * bytes
+                && Buffer.compare(frames.subarray(0, bytes), expected) === 0 && Buffer.compare(frames.subarray(3 * bytes, 4 * bytes), expected) === 0
+            const unset = await movie(directory, `${quality}.raw`, dark, { quality })
+            expect(shows(unset.frames, byDefault ? dithered : plain)).toBe(true)
+            expect(unset.settings).toBe(byDefault ? settings : undefined)
+            const on = await movie(directory, `${quality}-on.raw`, dark, { quality, dither: true })
+            expect(shows(on.frames, dithered)).toBe(true)
+            expect(on.settings).toBe(settings)
+            const off = await movie(directory, `${quality}-off.raw`, dark, { quality, dither: false })
+            expect(shows(off.frames, plain)).toBe(true)
+            expect(off.settings).toBeUndefined()
+        }, 120_000)
+
+        it('gives the settings of the grain to H.264 only, and only for a film with bloom', async () => {
+            const directory = await tempDirectory()
+            const dark = await ring(), { dithered } = await expectedFrames(dark)
+            // VP9 takes no x264 settings. Its frames have the dither all the same.
+            const webm = await movie(directory, 'high.webm.raw', dark, { quality: 'high', codec: 'vp9' })
+            expect(webm.settings).toBeUndefined()
+            expect(Buffer.compare(webm.frames.subarray(0, bytes), dithered)).toBe(0)
+            // A look with no bloom has no grain to keep, with the dither by default or by the option.
+            expect((await movie(directory, 'paper.raw', await ring('paper'), { quality: 'high' })).settings).toBeUndefined()
+            expect((await movie(directory, 'paper-on.raw', await ring('paper'), { quality: 'standard', dither: true })).settings).toBeUndefined()
+        }, 120_000)
+
+        it('dithers a PNG unless the option turns it off, and never a GIF', async () => {
+            const directory = await tempDirectory()
+            const dark = await ring(), { plain, dithered } = await expectedFrames(dark)
+            const still = async (name: string, options: Parameters<typeof renderFilmFrame>[3]) => {
+                await renderFilmFrame(dark, 0.1, join(directory, name), { width, ...options })
+                return decode(await readFile(join(directory, name))).data as Uint8Array
+            }
+            // A still is for a look at the picture, at any quality.
+            expect(Buffer.compare(await still('ring.png', {}), dithered)).toBe(0)
+            expect(Buffer.compare(await still('ring-draft.png', { quality: 'draft' }), dithered)).toBe(0)
+            expect(Buffer.compare(await still('ring-off.png', { dither: false }), plain)).toBe(0)
+            // A palette of 256 colors cannot hold the grain, so each frame of a GIF asks for the plain write.
+            const run = vi.spyOn(RasterPool.prototype, 'run')
+            try {
+                await renderFilmGif(dark, join(directory, 'ring.gif'), { width, fps: 10, workers: 1, quality: 'high', dither: true })
+                expect(run.mock.calls.length).toBeGreaterThan(0)
+                expect(run.mock.calls.every(([job]) => job.dither === false)).toBe(true)
+            } finally {
+                run.mockRestore()
+            }
+        }, 120_000)
+
+        it('keeps a still picture one job with the same bytes at two times, and has nothing to switch in a look with no bloom', async () => {
+            const dark = await ring(), pool = new RasterPool(1)
+            try {
+                const [first, later] = [await dark.frame(0.1), await dark.frame(0.4)]
+                // The grain does not move: the frame reuse of the export takes the pixels of the frame before.
+                expect(sameRasterJob(framesToJob([first], width, page, height), framesToJob([later], width, page, height))).toBe(true)
+                expect(Buffer.compare(await pool.run(framesToJob([first], width, page, height)), await pool.run(framesToJob([later], width, page, height)))).toBe(0)
+                const paper = await (await ring('paper')).frame(0.1)
+                expect(Buffer.compare(await pool.run(framesToJob([paper], width, page, height)), await pool.run(framesToJob([paper], width, page, height, false)))).toBe(0)
+            } finally {
+                await pool.close()
+            }
+        })
     })
 
     it.skipIf(!hasFfmpeg)('stays at H.264 level 4.2 at 1080p60, and a clip with the film settings shares its decoder settings', async () => {

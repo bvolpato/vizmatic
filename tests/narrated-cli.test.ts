@@ -140,6 +140,10 @@ describe('the steps of vizmatic narrated', () => {
         expect(words(plan(['build', '.', '--draft', '--quality', 'high']))[4]).toContain('--name film-draft --quality high')
         // The delivered movie at another quality keeps its name: the copy for an upload replaces it.
         expect(words(plan(['build', '.', '--quality', 'high']))[4]).toContain('--name film --quality high')
+        // The render gets the dither option of the build, and none when the build has none.
+        expect(words(plan(['build', '.']))[4]).not.toContain('dither')
+        expect(words(plan(['build', '.', '--dither']))[4]).toMatch(/ --dither$/)
+        expect(words(plan(['build', '.', '--quality', 'high', '--no-dither']))[4]).toMatch(/--quality high .* --no-dither$/)
     })
 
     it('makes a movie of some scenes as a draft only: the delivered movie always holds every scene', () => {
@@ -220,7 +224,7 @@ describe('the steps of vizmatic narrated', () => {
     })
 
     it('refuses an option that the step does not have, and names the options that it has', () => {
-        expect(() => parseNarratedArgs(['build', '.', '--drfat'])).toThrow('Unknown option --drfat for vizmatic narrated build. Its options are: --draft, --scene <id,...>, --quality <draft|standard|high|master>, --workers <n>, --allow-findings, --dry-run')
+        expect(() => parseNarratedArgs(['build', '.', '--drfat'])).toThrow('Unknown option --drfat for vizmatic narrated build. Its options are: --draft, --scene <id,...>, --quality <draft|standard|high|master>, --dither, --no-dither, --workers <n>, --allow-findings, --dry-run')
         expect(() => parseNarratedArgs(['build', '.', '--qualty', 'draft'])).toThrow('Unknown option --qualty for vizmatic narrated build')
         // The film name comes from film.json, and not from an option of the build.
         expect(() => parseNarratedArgs(['build', '.', '--name', 'My-Film'])).toThrow('Unknown option --name for vizmatic narrated build')
