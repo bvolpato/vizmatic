@@ -1,5 +1,7 @@
 export * from './math'
 export * from './charts'
+export * from './heatmap'
+export * from './matrix-product'
 export * from './cs'
 export * from './system'
 export * from './verbs'

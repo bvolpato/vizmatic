@@ -7,7 +7,7 @@ import { fontFor, glyphPath } from '../font'
 import { ramp, toPaint, type ColorInput } from '../color'
 import { morphMatching, par, pulse, recolor, seq, type Anim, type AnimOptions } from '../anim'
 import { matchSequence } from '../morph'
-import { Heatmap } from './charts'
+import { Heatmap, type HeatmapOptions } from './heatmap'
 import { Suspend } from '../stage'
 import { reveal, sampleAt, seededRandom, staggered, stepAt } from './util'
 import { oneObject } from '../layout'
@@ -1301,32 +1301,51 @@ export function tokens(items: readonly (string | TokenSpec)[], options: TokensOp
     return new TokenRow(items, options)
 }
 
-export interface AttentionMatrixOptions {
+export interface AttentionMatrixOptions extends Pick<HeatmapOptions, 'size' | 'width' | 'domain' | 'format' | 'axes' | 'name' | 'states' | 'initial' | 'shown'> {
     cell?: number
     colors?: readonly ColorInput[]
-    values?: boolean
+    values?: boolean | 'lit'
     labelSize?: number
     gap?: number
     /** The font of the token labels. Defaults to the font of the film. */
     font?: TextOptions['font']
+    /**
+     * `'causal'` starts with the mask of a decoder: a row reads its own column and the columns before it, and
+     * the cells after them are in the state `future`. For another mask, give `initial`.
+     */
+    mask?: 'causal'
 }
 
 /**
  * Attention weights as a heatmap, with source tokens across the top and targets
- * down the side. It is a Heatmap, so `.cell(i, j)` and `.row(i)` work.
+ * down the side. It is a Heatmap, so `.cell(i, j)` and `.row(i)` work, and so do its verbs: `mark()` covers
+ * the cells that a mask blocks, `setValue({ row }, weights, { lag })` sweeps a row from scores to weights,
+ * `light()` ties a cell to its two tokens, and `grow()` adds a token. Give `size` for text that a viewer reads.
  */
 export function attentionMatrix(rows: readonly string[], columns: readonly string[], weights: readonly (readonly number[])[], options: AttentionMatrixOptions = {}): Heatmap {
+    if (options.mask !== undefined && options.mask !== 'causal') throw new Error(`attentionMatrix: mask is 'causal', not ${JSON.stringify(options.mask)}. For another mask, give \`initial\`: a function of the row and the column that returns a state`)
+    if (options.mask !== undefined && options.initial !== undefined) throw new Error('attentionMatrix: mask and initial both set the first states. Give one of them')
+    // A matrix with one of these options has text of one size, and its cells follow that size.
+    const sized = options.mask !== undefined || (['size', 'width', 'axes', 'name', 'states', 'initial', 'shown'] as const).some((name) => options[name] !== undefined) || options.values === 'lit'
     return new Heatmap(weights, {
-        cell: options.cell ?? 42,
-        gap: options.gap ?? 2,
+        cell: options.cell ?? (sized ? undefined : 42),
+        gap: options.gap ?? (sized ? undefined : 2),
         colors: options.colors ?? ['surface', 'teal', 'yellow'],
-        domain: [0, Math.max(...weights.flat())],
+        // A weight is a share, from 0 to 1. A matrix as it was before `size` keeps the range of its first weights.
+        domain: options.domain ?? [0, sized ? Math.max(1, ...weights.flat()) : Math.max(...weights.flat())],
         values: options.values,
         rowLabels: rows,
         columnLabels: columns,
-        labelSize: options.labelSize ?? 18,
+        labelSize: options.labelSize ?? (sized ? undefined : 18),
         columnLabelAngle: -Math.PI / 4,
         font: options.font,
+        size: options.size,
+        width: options.width,
+        format: options.format,
+        axes: options.axes,
+        name: options.name,
+        states: options.states,
+        initial: options.mask === 'causal' ? (row, col) => (col > row ? 'future' : 'open') : options.initial,
+        shown: options.shown,
     })
 }
-

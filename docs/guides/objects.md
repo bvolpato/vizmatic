@@ -146,7 +146,7 @@ The [Fourier film](../films.html) uses these three together.
 
 | Object | Use |
 |---|---|
-| `matrix(rows)` | A bracketed matrix of numbers or TeX. |
+| `matrix(rows)` | A bracketed matrix of numbers or TeX, for a formula. For cells that light and change, use `heatmap` with a `size`. |
 | `braceLabel(target, label)` | A curly brace beside a node, with a label. |
 | `surroundingBox(target)` | A rounded box around a node. |
 | `labeledDot(label)` | A dot with a label, as a graph vertex. |
@@ -168,7 +168,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Charts
 
-`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation.
+`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation. `heatmap` is also the grid for a matrix, a tensor, or an image: see [Tensor grids](#tensor-grids).
 
 ```film paired label="Bars grow up from an axis"
 import { barChart, film, grow, lagged } from 'vizmatic/stage'
@@ -834,6 +834,178 @@ In `grid.change(which, state)`, `which` is an index, a list of indexes, or a fun
 
 `grid.legend(items)` makes a key: one sample cell and one name for each state, in one row. The key is a node of its own, so add it to the stage and place it. `.at(x, y)` places the left end of the row, and `y` is the middle line of the cells and the names. An item is the name of a state, or a `[state, label]` pair for a display name. Without `items`, the key lists the states that the grid has now, in the order of `states`. `size`, `gap`, and `font` set the look. The key does not wrap, so make two keys for many long names.
 
+## Tensor grids
+
+`heatmap(rows, options)` draws a grid of cells with a shade for each value. With `size`, it is the grid for a matrix, a tensor, an image, a feature map, or the weights of attention: text that a viewer can read, a name for each row and column, a brace and a size for each axis, and the shape. It keeps its values between scenes. `grid.light(slice)` lights a row, a column, or a block, `grid.setValue(cells, values)` changes numbers in place, `grid.mark(cells, state)` covers cells with the sign of a state, `grid.grow(by)` shows more rows and columns, and `grid.cut(rows, cols)` cuts the grid into patches.
+
+```film paired label="A tensor with three named axes: the row of one word lights, and a bias is added to each row in place"
+import { fadeIn, fadeOut, film, heatmap, text } from 'vizmatic/stage'
+
+const X = [[0.2, -0.4, 0.9, 0.1], [0.5, 0.3, -0.7, 0.6], [-0.1, 0.8, 0.4, -0.5]]
+const BIAS = [0.1, -0.2, 0.3, 0.1]
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const x = heatmap(X, {
+        size: 34, values: true, rowLabels: ['Birds', 'migrate', 'south'], axes: ['batch', 'seq', 'd'], depth: 2, name: 'x',
+        domain: [-1, 1.5], colors: ['orange', 'surface', 'blue'],
+    }).at(-330, -40)
+    const slice = text('x[:, 1, :]', { size: 48, font: 'mono', color: 'yellow' }).at(480, -40)
+    const sum = text('x + b', { size: 48, font: 'mono', color: 'yellow' }).at(480, -40)
+    s.play(x.enter(), { duration: 1.4 })
+    s.play(x.light({ row: 1 }), fadeIn(slice), { duration: 0.6 })
+    s.wait(1.4)
+    s.play(x.light(null), fadeOut(slice), { duration: 0.5 })
+    s.play(fadeIn(sum), { duration: 0.4 })
+    // One row of four values is added to each of the three rows.
+    for (const row of [0, 1, 2]) {
+        s.play(x.light({ row }), x.setValue({ row }, (_row, col, old) => old + BIAS[col]!, { lag: 0.5 }), { duration: 1.1 })
+    }
+    s.play(x.light(null), { duration: 0.4 })
+    s.wait(1.2)
+})
+```
+
+Each need of a grid has one object:
+
+| Need | Object |
+|---|---|
+| Cells with a number and a shade, names, braces, a shape, a lit slice, a window, patches, growth, a state over a cell | `heatmap` |
+| The same grid between a column of query tokens and a row of key tokens | `attentionMatrix`, which is a `heatmap` with tilted token names and a causal mask |
+| Two operands and their product, with a row paired with a column | `matrixProduct`, which is three `heatmap` grids |
+| A matrix in a formula, with brackets, in the type of the math | `matrix` |
+| Cells that are only in a state, with no value and no name, by the thousand | `stateGrid` |
+| One row of boxes whose items swap places | `arrayCells` |
+
+`size` is the text size of the names, the numbers, the brace labels, and the shape. It is 28 when the grid has `width`, `axes`, `name`, `depth`, `states`, `initial`, `shown`, or `values: 'lit'`, and no `size`. A lesson at 1080p uses 26 or more. A grid with none of these options draws as `heatmap` always did, for a small chart: cells of 44, names of 16, and numbers of about 16. Give `size` to a grid that a viewer must read.
+
+`values: true` prints the number of each cell, in mono. A cell is then as wide as its widest number needs, with 0.45 of the size at each side, and it holds a number of four characters at the least, so a 1 can become 0.25 later. `cell`, `cellWidth`, and `cellHeight` set the cell. `width` sets the width of all columns together, so the layout can size the grid: `fitted(region, (width) => heatmap(rows, { width, rowLabels }))` makes all of the grid, with its names, as wide as a region. A number that does not fit its cell is an error that names the least cell. So is a column name that is wider than its column: give a larger cell, a shorter name, or `columnLabelAngle: -Math.PI / 4` to tilt the names. `format` writes a number, and the default writes two decimals at most. `.at()` places the middle of the cells. The names are at the left and over the cells, and the braces and the shape are at the right and under them.
+
+`axes` names the axes, the outer one first. Each axis gets a brace with its name and its size, such as `seq = 3`, and the shape is under them, such as `[2, 3, 4]`. `name` writes the name of the tensor before the shape: `x [2, 3, 4]`. A name alone gives the shape and no brace. `depth` is the size of a third axis, such as a batch. The grid then draws sheets behind the cells, four at the most, and the label gives the true size. With `depth`, `axes` has three names. `grid.axis('seq')` is the brace and the label of one axis, to `indicate` it when the voice names the axis. `grid.shape` gives the sizes as numbers.
+
+A slice names cells: `{ row: 1 }` is a row, `{ col: 2 }` is a column, `{ row: 1, col: 2 }` is one cell, and `{ row: [0, 2], col: [1, 3] }` is a block from its first to its last row and column. Rows and columns count from 0. `grid.light(slice)` puts one outline around a slice, and the outline stays until the next `light`. `grid.light(null)` takes it away. A second `light` moves the outline, so a block that goes one column on is a window that slides. The names of the lit rows and columns go bright, which ties a cell to its row and its column. `color` sets the color of the outline. In a grid that prints every number, the outline does not slide over the numbers: it leaves the first slice and comes in at the second. `grid.lit` is the lit slice, or null.
+
+`values: 'lit'` prints the numbers of the lit slice only. Use it for an image, where a number in each pixel is too much: the window shows the numbers that it reads. A number leaves before the outline passes its cell and comes in after it, so no line crosses a number.
+
+`grid.setValue(cells, values)` changes numbers in place. The old number fades out, then the new one fades in at the same place, and the shade follows. `values` is one number for every cell, a list with one number for each cell row by row, the rows of a block, or a function of the row, the column, and the old value. `lag` makes the cells change one after another, so a row changes as a sweep from the left. `grid.update(rows)` gives every cell a new value. `grid.value(row, col)` and `grid.values(slice)` read the values after the changes that the film has played so far. A cell changes its number one change at a time: two changes of one cell whose times overlap are an error that says to play them in a `seq`. Without `domain`, the range of the colors comes from the first values, and a later value outside it is an error that names the `domain` to give. With `domain`, a value outside it takes the color of the nearest end.
+
+A cell that shows its value is in the state `open`. `grid.mark(cells, state)` moves cells to another state, and the sign of the state covers the cell and its number. The sign is the second sign of a state beside its color. `CELL_STATES` has four: `empty` is an outline, for a value that is not there yet. `masked` is a cross, for a cell that a mask takes out. `future` is diagonal lines, for a position that a causal mask hides. `padding` is an outline of dashes, for a position that holds no token. `grid.mark(cells, 'open')` takes the sign away, and the cell shows its value again. `initial` gives the first states: one name, or a function of the row and the column. `states` takes your own record, such as `{ ignored: { mark: 'cross', color: 'red' } }`, with a mark of `'none'`, `'cross'`, `'hatch'`, or `'dash'`. In `mark` and `setValue`, the cells are a slice or a function of the row, the column, the value, and the state. The grid calls the function when the film plays the change, so a second change in one `seq` finds the cells that the first one covered. `grid.stateOf(row, col)`, `grid.count(state)`, and `grid.find(test)` read the states.
+
+`setValue` takes a `state` too. `grid.setValue({ row: 0, col: 1 }, 3, { state: 'open' })` writes a value and opens the cell in one motion, which fills a cell of an output grid that started `empty`.
+
+```film paired label="A window slides over an image, and each sum fills one cell of the map"
+import { film, heatmap, text } from 'vizmatic/stage'
+
+// An image with one vertical edge: dark at the left, bright from column 3 on.
+const IMAGE = Array.from({ length: 6 }, () => [0, 0, 0, 1, 1, 1])
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const image = s.add(heatmap(IMAGE, { size: 30, cell: 96, values: 'lit', domain: [0, 1], colors: ['surface', 'teal'], name: 'image' }).at(-420, -30))
+    // The kernel takes the right column of the window and subtracts the left one.
+    const places = image.windows(3)
+    const edge = (slice: (typeof places)[number][number]) => image.values(slice).reduce((sum, row) => sum + row[2]! - row[0]!, 0)
+    const map = s.add(heatmap(places.map((line) => line.map(edge)), { size: 30, cell: 96, values: true, initial: 'empty', domain: [0, 3], colors: ['surface', 'orange'], name: 'map' }).at(480, -30))
+    s.add(text('right column − left column', { size: 34, color: 'dim' }).at(480, 310))
+    s.wait(0.6)
+    // Three slow steps: the window moves one column, and its sum lands in the map.
+    for (const col of [0, 1, 2]) {
+        s.play(image.light(places[0]![col]!), { duration: 0.7 })
+        s.play(map.mark({ row: 0, col }, 'open'), map.light({ row: 0, col }), { duration: 0.5 })
+        s.wait(0.4)
+    }
+    // Then the scan runs fast over the other places.
+    for (let row = 0; row < places.length; row++) {
+        for (let col = row === 0 ? 3 : 0; col < places[row]!.length; col++) {
+            s.play(image.light(places[row]![col]!), map.mark({ row, col }, 'open'), map.light({ row, col }), { duration: 0.28 })
+        }
+    }
+    s.play(image.light(null), map.light({ col: [1, 2] }, { color: 'yellow' }), { duration: 0.6 })
+    s.wait(1.2)
+})
+```
+
+`grid.windows(size, { stride })` lists the places that a window visits, as slices: one row for each row of the output, and one entry for each of its columns. So the size of the list is the size of the output of a convolution or of a pooling, and a film reads it and does not count. `size` and `stride` are one number, or one for the rows and one for the columns. For a padding around an image, make the grid with the border cells and give them the state `padding`.
+
+`shown: { rows, columns }` says how many rows and columns are there at the start. The grid is made with every row and column that it will have, and the rest have their room and wait. So nothing moves when the grid grows, and the layout measures the grid as it will be. `grid.grow({ columns: 1 })` shows the next column, for a cache that gains a token, and `grid.grow({ rows: 1, columns: 1 })` shows a row and a column, for a square of attention. The new cells arrive one after another, the braces move out, and the brace labels and the shape show the new sizes. `grid.shownRows` and `grid.shownCols` read the sizes. A `light` on a cell that waits is an error that says to play `grow` first. A change of the values or of the states is for the cells that wait too, so a column that is `padding` is `padding` in a row that comes later.
+
+`grid.cut(rows, cols)` cuts the grid into patches of that many rows and columns: the cells of a patch stay together, and the patches move apart by `gap`. `unroll: true` then lays each patch out as one row of cells, one patch under the other. That is the sequence of tokens that a vision model makes from the patches of an image, and each cell keeps its number and its shade on the way. `grid.join()` brings the grid back. The names, the braces, and the shape leave while the grid is cut, because they name the whole grid. `{ patch: 2 }` is a slice for one patch, counted row by row from 0, so `grid.light({ patch: 2 })` and `grid.region({ patch: 2 })` follow a patch. A grid is wider after a cut, by the gaps between its patches: check both arrangements. A count that does not divide the rows or the columns is an error.
+
+`grid.p(row, col)` is the middle of a cell in the coordinates of the grid, and `grid.p(row, col, 'top')` is the middle of an edge, for an arrow or a note. `grid.region(slice)` is the box of a slice on the stage, for `place` and `beside` of the layout: `beside(note, grid, 'right', 'wide', grid.cell(1, 0))` puts a note beside the grid at the height of a row. `grid.cell(row, col)`, `grid.row(index)`, and `grid.col(index)` give the nodes of the cells. `grid.numbers`, `grid.rowLabels`, `grid.columnLabels`, `grid.slabs`, `grid.caption`, and `grid.frame` are the other parts. A `spotlight` on a cell keeps its number bright.
+
+## Matrix products
+
+`matrixProduct(a, b, options)` draws a matrix product as three grids of numbers to one scale: the two operands, a sign between them, an equals sign, and the result. Each grid has its name and its shape over it, such as `A [2, 3]`, and the two inner sizes, which must be equal, have one color. Use it for a dot product, a projection, the scores of attention, or the two small matrices of LoRA. The result starts empty, and the film fills it.
+
+```film paired label="One cell of a product: a row meets a column, each pair of numbers adds to the sum, and the sum goes to its cell"
+import { film, matrixProduct } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const product = matrixProduct([[1, 2, 3], [4, 5, 6]], [[7, 4], [8, 5], [9, 6]], { size: 40 }).at(0, -30)
+    s.play(product.enter(), { duration: 1.4 })
+    // The first cell, one term at a time.
+    s.play(product.pair(0, 0), { duration: 0.8 })
+    for (let term = 0; term < 3; term++) {
+        s.play(product.addTerm(), { duration: 0.8 })
+        s.wait(0.3)
+    }
+    s.play(product.store(), { duration: 0.9 })
+    s.wait(0.6)
+    // The next cell in one play, and then the cells that are left.
+    s.play(product.compute(0, 1), { duration: 3 })
+    s.play(product.complete(), { duration: 1.2 })
+    s.wait(1.2)
+})
+```
+
+`product.pair(row, col)` lights that row of the first operand, that column of the second, and their cell of the result. The terms of the pair come in under the grids, all of them, in a weaker color: none is in the sum yet. `product.addTerm()` takes the next term into the sum. Its two numbers take the colors of their operands, their two cells take a tint, and the running sum after the equals sign changes. `product.addTerm(3)` takes three terms, one after another. `product.store()` takes the sum to its cell: the number leaves the line, goes to the cell, and the cell fills. `product.compute(row, col)` plays the three for one cell, and `product.complete()` fills every cell that is still empty, after the cells that the film showed slowly.
+
+The steps of a product follow each other. An `addTerm` with no pair, a `store` before every term is in the sum, a term too many, and two steps whose times overlap are errors that name the step to play. `product.lit` is the cell that is lit, `product.terms` the number of terms in the sum, `product.sum` the running sum, and `product.filled` the number of cells that are filled. `product.result(row, col)` is the value of a cell, filled or not. `product.shape` gives the three shapes.
+
+A vector is a matrix with one row or one column, so `matrixProduct([[0.5, -1.5, 2]], [[2], [0.25], [-1]], { names: ['q', 'k', 'score'] })` is a dot product. Operands whose inner sizes differ are an error that names the two sizes, because a picture of a product that does not exist teaches a wrong rule. A negative number of a term is in brackets. `size` is the text size, 30 by default, and `cell` is the side of a cell. All three grids have one cell, which holds the widest number of the three. `names` gives the three names, `colors` the colors of the lit row and the lit column, and `filled: true` starts with a full result. `.at()` places the middle of the row of grids. The line of the sum has its room from the start, so the layout measures the object with it.
+
+`product.a`, `product.b`, and `product.c` are the three grids. Each is a `heatmap`, so `product.c.p(row, col)` and `product.a.region({ row: 0 })` give places for a note. `product.signs`, `product.captions`, and `product.line` are the other parts.
+
+## Attention matrices
+
+`attentionMatrix(rows, columns, weights, options)` is a `heatmap` between the tokens that read, down the side, and the tokens that are read, across the top. It has every verb of a tensor grid. Give `size` for text that a viewer can read: the colors then go from 0 to 1, the range of a weight, and `domain` sets another range for scores.
+
+```film paired label="A token reads the tokens before it: its row of scores becomes weights, and the grid gains a token"
+import { attentionMatrix, fadeIn, fadeOut, film, text } from 'vizmatic/stage'
+
+const TOKENS = ['function', 'returns', 'the', 'result']
+// The scores of the last two rows are logarithms, so their weights are round: 0.2, 0.5, 0.3 and 0.1, 0.2, 0.3, 0.4.
+const SCORES = [[1.2, 0, 0, 0], [0.4, 1.6, 0, 0], [0.69, 1.61, 1.1, 0], [0, 0.69, 1.1, 1.39]]
+const softmax = (row: readonly number[]) => {
+    const parts = row.map(Math.exp), whole = parts.reduce((sum, part) => sum + part, 0)
+    return parts.map((part) => Math.round((part / whole) * 100) / 100)
+}
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const grid = s.add(attentionMatrix(TOKENS, TOKENS, SCORES, {
+        size: 34, values: true, mask: 'causal', domain: [0, 2], axes: ['queries', 'keys'], shown: { rows: 3, columns: 3 },
+    }).at(-140, 20))
+    const scores = s.add(text('scores', { size: 44, color: 'dim' }).at(600, -40))
+    const weights = text('weights: they add to 1', { size: 44, color: 'yellow' }).at(600, -40)
+    s.wait(0.8)
+    // The query "the": its row of scores, and then its row of weights.
+    s.play(grid.light({ row: 2 }), { duration: 0.6 })
+    s.play(grid.setValue({ row: 2, col: [0, 2] }, softmax(SCORES[2]!.slice(0, 3)), { lag: 0.6 }), fadeOut(scores), { duration: 1.8 })
+    s.play(fadeIn(weights), { duration: 0.4 })
+    s.wait(1.2)
+    // The model writes "result": the grid gains a row and a column, and the new query reads every key.
+    s.play(grid.light(null), fadeOut(weights), { duration: 0.4 })
+    s.play(grid.grow({ rows: 1, columns: 1 }), { duration: 1.2 })
+    s.play(grid.light({ row: 3 }), { duration: 0.6 })
+    s.play(grid.setValue({ row: 3 }, softmax(SCORES[3]!), { lag: 0.6 }), { duration: 2 })
+    s.wait(1.2)
+})
+```
+
+`mask: 'causal'` starts with the mask of a decoder: a row reads its own column and the columns before it, and the cells after them are in the state `future`, under diagonal lines. For another mask, give `initial`, such as `initial: (row, col) => (col === 0 ? 'padding' : col > row ? 'future' : 'open')` for a sequence that starts with a padding token. `grid.mark({ col: 0 }, 'padding')` covers cells later, and `grid.count('future')` counts them.
+
+`grid.setValue({ row: 2 }, weights, { lag: 0.6 })` sweeps one row from its scores to its weights, from the left. The film computes the weights: the grid shows numbers, and it does not know which cells a softmax reads. `grid.light({ row: 2, col: 1 })` lights one cell, and the names of its two tokens go bright. `grid.light({ row: [0, 1], col: [0, 1] })` lights a tile. `shown` and `grid.grow({ rows: 1, columns: 1 })` add a token, as for any grid.
+
+A matrix with none of `size`, `width`, `mask`, `axes`, `name`, `states`, `initial`, and `shown` draws as it always did: cells of 42, names of 18, and colors up to the largest weight. The token names over the columns are tilted in both cases, so a long token fits.
+
 ## Event logs
 
 `eventLog(rows, options)` draws a list of records that grows: the event history of a workflow, the steps of an agent, the life of a sandbox. A row has an `id`, a `name` in mono, one short `detail`, and a `state` that sets its color and its mark. Rows arrive at the bottom. When the window is full, the oldest rows leave at the top, and the first line says how many records are above.
@@ -999,7 +1171,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Code and tokens
 
-`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
+`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with token labels: see [Attention matrices](#attention-matrices).
 
 `block.find(fragment)` returns the glyphs of a piece of the code, to color them or to move them. A fragment that is one token, such as `lo`, matches every such token. Any other fragment, such as `lo + hi`, matches as text inside a line, and spaces do not count. Pass a line, counted from 0, as the second argument to search that line only.
 

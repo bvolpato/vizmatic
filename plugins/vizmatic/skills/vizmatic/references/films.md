@@ -275,6 +275,27 @@ s.play(pages.change([3, 4, 5, 40], 'dirty'))
 const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
 ```
 
+A matrix, a tensor, an image, or the weights of attention as a grid of cells. Do not draw the cells by hand, and do not print a new table of numbers in each scene. `heatmap` with a `size` keeps its values between scenes: it lights a slice, changes a number in place, covers a cell with the sign of a state (`empty`, `masked`, `future`, `padding`), grows by a row or a column, and cuts an image into patches. `axes` draws a brace with the name and the size of each axis, and the shape under the cells. `values: 'lit'` prints only the numbers of the lit window. Use 26 or more for `size`. `attentionMatrix` is the same grid between token names, and `mask: 'causal'` covers the positions that come later:
+
+```ts
+const x = s.add(heatmap(values, { size: 32, values: true, rowLabels: ['Birds', 'migrate', 'south'], axes: ['batch', 'seq', 'd'], depth: 2, name: 'x', domain: [-1, 1] }))
+s.play(x.light({ row: 1 }))
+s.play(x.setValue({ row: 1 }, [0.9, -0.2, 0.1, 0.4], { lag: 0.5 }))
+const grid = s.add(attentionMatrix(tokens, tokens, scores, { size: 32, values: true, mask: 'causal', domain: [0, 2], shown: { rows: 3, columns: 3 } }))
+s.play(grid.setValue({ row: 2, col: [0, 2] }, [0.2, 0.5, 0.3], { lag: 0.6 }))
+s.play(grid.grow({ rows: 1, columns: 1 }))
+```
+
+A window that fills an output grid, for a convolution or a pooling: `grid.windows(3)` lists the places of the window, the output grid starts in the state `empty`, and each step lights a place and opens a cell. A matrix product: `matrixProduct` draws the two operands and the result to one scale with their shapes, pairs a row with a column, keeps a running sum, and takes the sum to its cell. Do not write the product as text beside two boxes:
+
+```ts
+const places = image.windows(3)
+s.play(image.light(places[0]![1]!), map.mark({ row: 0, col: 1 }, 'open'))
+const product = s.add(matrixProduct([[1, 2, 3], [4, 5, 6]], [[7, 4], [8, 5], [9, 6]]))
+s.play(product.compute(0, 0), { duration: 4 })
+s.play(product.complete())
+```
+
 The output of a real program: the command, the lines that it printed with their exact characters, and where and when it ran. Do not build it from a box and a `codeBlock` in each film. `find` selects one number by its exact text, to light it when the voice says it. Expand tabs to spaces, and leave lines out with a note line such as `{ text: '[...]', kind: 'note' }`. A terminal shows all its lines unless it starts with `shown: false` or with `enter()`. `print()` brings one block: the lines up to the next command, with the command itself when the film did not type it:
 
 ```ts
