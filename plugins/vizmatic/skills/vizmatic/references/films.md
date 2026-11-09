@@ -316,6 +316,22 @@ const word = s.add(bitField([
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
 
+One bar in named parts to scale: a context window against its limit, the memory of a GPU, or shares that add up to one. Do not draw the parts, their labels, and the total by hand. `segmentedBar` keeps each part at its scale, puts the name and the amount of each part under it, keeps the labels apart, and counts the total against the `capacity`. `resize` grows or shrinks parts, `insert` and `remove` bring a part and take one out, `cut` takes parts out and gives their room to the rest (a renormalization), and `send` moves a part to another bar. Give a `max` over the capacity when the parts can pass it: the amount over the capacity then stands at the right of the frame, in red with a hatch. `bar.total`, `bar.free`, `bar.over`, and `bar.find(test)` read the state. `bar.region({ part })` is the box of a part, and `bar.region({ label })` is the box of its label, for a note under it. All its texts are 28 px by default:
+
+```ts
+const context = s.add(segmentedBar([
+    { name: 'system', value: 1200 },
+    { name: 'tool schemas', value: 2400 },
+    { name: 'trace export', value: 8200, color: 'orange' },
+], { capacity: 8192, max: 12436, title: 'context window, in tokens', free: 'free', width: 1700 }).at(0, -200))
+const archive = s.add(segmentedBar([], { capacity: 12436, title: 'archive', readout: false, width: 1700 }).at(0, 200))
+s.play(context.send('trace export', archive))                              // the raw trace moves to the other bar
+s.play(context.insert({ name: 'finding', value: 186, color: 'orange' }))   // one finding of it arrives
+s.play(context.resize('tool schemas', 1324))                               // the tools shrink, and the total counts down
+const next = segmentedBar([{ name: 'create', value: 0.5 }, { name: 'revoke', value: 0.25 }, { name: 'rename', value: 0.15 }, { name: 'quota', value: 0.1 }])
+s.play(next.cut(next.find((part) => part.index >= 2)))                     // top-k with k = 2: the two that stay take the whole bar
+```
+
 A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
 
 ```ts

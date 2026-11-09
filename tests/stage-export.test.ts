@@ -10,7 +10,7 @@ import {
     angleMark, arrayCells, arrow, axes, axes3d, barChart, bitField, boundary, braceLabel, callout, card, circle, circumscribe, codeBlock, complexPlane, connector, countUp, counter,
     crossThrough, dateLine, decimal, donut, dot, dotChart, dynamic, eventLog, film, fromSvg, graph, group, heatmap, highlightSweep, histogram, image, infoBox, label3d, labeledDot, lanes, legend, line,
     lineChart, linear, matrix, morphMatching, neuralNet, Node, numberLine, pictogram, pie, point3d, polygon, polyline, quote, quotePair, rect, ringBuffer, scatter, scene3d, seq, shift, sphere, spin,
-    stateGrid, steps, surface,
+    segmentedBar, stateGrid, steps, surface,
     surroundingBox, svgPath, tag, tagTrack, terminal, tex, text, to, tokens, tree, typewriter, unitChart, vectorField, write, zone,
 } from '../src/stage/index'
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
@@ -1265,6 +1265,8 @@ describe('film check', () => {
                 s.play(log.focus(4), { duration: 0.2 })
             },
             'terminal, tight, with a part that find() selects': (s) => { const run = s.add(terminal([{ text: 'perf stat ./one-byte', kind: 'command' }, '          1      page-faults', { text: '...', kind: 'note' }], { title: 'runs/02.txt', note: 'Linux 7.0', size: 40 })); run.find('page-faults').set('opacity', 0.9) },
+            'segmentedBar with a title, a readout, the free room, and labels that push each other': (s) => { s.add(segmentedBar([{ name: 'system', value: 1200 }, { name: 'trace export', value: 8200 }, { name: 'note gjpqy', value: 186 }, { name: 'question', value: 450 }], { capacity: 16000, title: 'context window', free: 'free', width: 1700 })) },
+            'segmentedBar, tight, over its capacity': (s) => { s.add(segmentedBar([{ name: 'weights', value: 7.6 }, { name: 'gjpqy', value: 0.4 }, { name: 'KV cache', value: 22.5 }], { capacity: 24, max: 34, width: 900, height: 30, size: 26, title: 'GPU', format: (value) => `${value.toFixed(1)} GB` })) },
         }
         // With 0.3 and 0.7, and with the most room that the rule asks for: 2% of the shorter side of the frame, for a text of any size.
         for (const textGap of [0.3, 0.7, 3]) {
