@@ -12,6 +12,12 @@ import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 
+// The website is not committed. Without the page, the wait below fails with a message about the server.
+if (!process.env.VIZMATIC_STUDIO_URL && !existsSync('docs/studio.html')) {
+    console.error('Build docs/studio.html first with `pnpm site:build`.')
+    process.exit(1)
+}
+
 const shots = process.env.STUDIO_SHOTS
 if (shots) mkdirSync(shots, { recursive: true })
 const downloads = mkdtempSync(join(tmpdir(), 'viz-studio-check-'))

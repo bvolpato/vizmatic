@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { toPaint, type ColorInput } from '../color'
 import { dot, rect } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -138,6 +138,8 @@ export class UnitChart extends Node {
             const at = this.placed.labels[index]
             if (label && at) this.add(label.at(at))
         })
+        // A label of a group that is empty or joined is not in the chart yet.
+        ownLabels(this, { name: 'unit chart', labels: this.labels })
     }
 
     /** The marks of each group, in the order of the groups. */

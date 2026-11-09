@@ -1,7 +1,7 @@
 import { apply, IDENTITY, matScale, mul, parseSvgPath, pathBounds, rectPath, arcPath, polyPath, transformPath, type Mat, type Path, type Ring } from './geometry'
 import { Node, type StageImage } from './node'
 import { parseColor, type Paint, type Rgba } from './color'
-import { text } from './text'
+import { filmFont, text, type TextOptions } from './text'
 
 interface XmlElement {
     name: string
@@ -78,8 +78,13 @@ interface InheritedStyle {
     dashOffset: number
     color: string
     fontSize: number
+    /** The `font-family` of the SVG, as written. The importer reads one thing from it: whether it is monospace. */
+    family: string
     anchor: string
 }
+
+// A family that sets code: the generic name, a name that ends in "Mono" or "Code", and the common ones with neither.
+const MONOSPACE = /monospace|mono\b|\bcode\b|courier|consolas|menlo|monaco|inconsolata/i
 
 const NOT_DRAWN = new Set(['defs', 'clipPath', 'mask', 'pattern', 'filter', 'symbol', 'marker', 'linearGradient', 'radialGradient', 'title', 'desc', 'metadata', 'style', 'script'])
 
@@ -93,6 +98,12 @@ export interface FromSvgOptions {
     background?: boolean
     /** Split filled multi-glyph outlines into one node per glyph, so text writes letter by letter. */
     splitGlyphs?: boolean
+    /**
+     * The font of the text elements. Defaults to the font that the film names. Text that the SVG sets in a
+     * monospace family is code, and it is then mono. With no font from this option or from the film, every
+     * text is sans, as it was before films had a font: the importer does not read which family the SVG names.
+     */
+    font?: TextOptions['font']
 }
 
 /** An imported picture. It is a regular node tree, so every verb works on it. */
@@ -333,6 +344,8 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
         if (dashOffset !== undefined) style.dashOffset = parseFloat(dashOffset) || 0
         const size = pick('font-size')
         if (size !== undefined) style.fontSize = parseFloat(size) || style.fontSize
+        const family = pick('font-family') ?? pick('font')
+        if (family) style.family = family
         const anchor = pick('text-anchor')
         if (anchor) style.anchor = anchor
         return { style, opacity: parseFloat(pick('opacity') ?? '1') }
@@ -423,7 +436,9 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
             if (!body) return
             const color = safeColor(style.fill) ?? [0, 0, 0, 1] as Rgba
             const size = style.fontSize * matScale(m)
-            const label = text(body, { size, color })
+            // A font from the option or from the film is for the labels of the picture. Code stays code.
+            const named = options.font ?? filmFont()
+            const label = text(body, { size, color, font: named === null ? undefined : MONOSPACE.test(style.family) ? 'mono' : named })
             const [x, y] = apply(m, parseFloat(element.attrs['x'] ?? '0') || 0, parseFloat(element.attrs['y'] ?? '0') || 0)
             const half = label.get('px')
             label.at(style.anchor === 'middle' ? x : style.anchor === 'end' ? x - half : x + half, y - size * 0.34)
@@ -455,7 +470,7 @@ export function fromSvg(source: string, options: FromSvgOptions = {}): SvgNode {
 
     const initial: InheritedStyle = {
         fill: '#000000', stroke: null, strokeWidth: 1, fillOpacity: 1, strokeOpacity: 1,
-        cap: 'butt', join: 'miter', dash: null, dashOffset: 0, color: '#000000', fontSize: 16, anchor: 'start',
+        cap: 'butt', join: 'miter', dash: null, dashOffset: 0, color: '#000000', fontSize: 16, family: '', anchor: 'start',
     }
     const { style } = styleOf(svg, initial)
     for (const child of svg.children) walk(child, out, style, base)

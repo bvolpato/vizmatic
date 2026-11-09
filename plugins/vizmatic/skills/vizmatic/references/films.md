@@ -5,6 +5,7 @@
 - The stage is 1920 by 1080. (0, 0) is the center and y points down. `film({ aspect: '9:16' })` changes the shape.
 - The build function runs once and may run again while fonts or math load. Keep it free of side effects and randomness that is not seeded.
 - Use `font: 'text-serif'` for sentences, labels, and numbers. Use `font: 'serif'` only for short titles at a large size, because its fine strokes fade at phone size.
+- Set the font once for the whole film: `film({ font: 'text-serif' }, (s) => { ... })`. Every `text()` with no `font` has it, and so has each label, title, caption and axis number that an object draws. Code, values, addresses and ids stay in mono, and `tex` stays in the math font. A text or an object with its own `font` keeps it. Make each node inside the callback: the fonts load while the callback runs, so a text at the top of a film file fails when the file loads.
 - `s.add(node)` puts a node on stage now. `s.play(...)` writes animation and moves time forward. `s.wait(seconds)` holds.
 - Reveal verbs such as `write`, `draw`, and `fadeIn` also add the node, so `s.add` is optional before them.
 - Setters such as `.at`, `.fill`, and `.scale` apply at the current time. On a node that is not on stage, they set its initial state.
@@ -100,6 +101,15 @@ const title = s.add(text('Zoom in', { size: 48 }).at(0, -460).pin())
 s.play(to(s.camera, (camera) => camera.at(300, 100).set('sx', 2.5)), { duration: 2, ease: smoother })
 ```
 
+One node in the light while the voice talks about it. Do not fade the other nodes by hand: the list of the nodes on screen gets long, and a node that the list forgets stays bright or stays dim. `spotlight` dims every other node that shows, a second `spotlight` moves the light, and `spotlight(null)` turns it off. `keep` lists what stays bright with the target, such as a heading and a source line. Give it to each call. Pinned nodes stay bright without it. `within: chart` dims only inside one node. A dim node keeps its opacity and its colors go toward the background, so it still hides what is behind it, and a `fade` under the light is still there when the light goes off. The lights follow the time of the film, so `s.at` can name them in any order. A light on `chart.bar(2)` keeps the name and the readout of that bar bright, and `dotChart` and `lanes` do the same for a dot and for the shape of an event. A light cannot dim a node while it morphs, so make the source of a morph a target or a `keep`. A node that comes to the stage with the light, or later, is not dimmed:
+
+```ts
+const keep = [heading, source]
+s.play(spotlight(row3, { keep }))
+s.play(spotlight([row5, total], { keep, dim: 0.25 }))
+s.play(spotlight(null))
+```
+
 Code in a specification or proof language. `codeBlock` knows `tla`, `dafny`, `lean`, and `smt`, where a prime is part of the code and not a quote:
 
 ```ts
@@ -116,7 +126,7 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
 
-A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
+A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `server`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `workflow`, `signal`, `issue`, `pullRequest`, `browser`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 
 ```ts
 const picture = s.add(pictogram('forecast', { size: 120, color: 'dim', accent: 'blue' }).at(-300, 0))
@@ -131,6 +141,50 @@ const jail = zone([guest, devices], { title: 'jail', color: 'yellow', dash: true
 s.add(zone(jail, { title: 'host' }).at(0, 0))
 ```
 
+A row of steps with one of them lit: the chapters of an argument, the stages of a process, a list of options that the film takes one by one. Do not build it from boxes and three colors in each film. `steps` gives the boxes one width, keeps one text size for all labels, and stops the build when a label cannot fit. `go(index)` moves the light: the steps before it are dim, and the steps after it are fainter. A step can have a `note` under its box, `direction: 'column'` makes a list at the left of a frame, and `strip.p(index)` is the point where a line to the picture of the step starts:
+
+```ts
+const strip = s.add(steps(['batching', 'SQPOLL', 'register', 'I/O polling'], { width: 1800, numbered: true, current: 0 }).at(0, -400))
+s.play(strip.go(1))
+```
+
+A sequence over time with one lane for each actor, such as a system call, a VM exit, or a request through several services. Do not draw the bars and the arrows by hand. `lanes` places the labels, and stops the build when two labels would touch. `advance` moves the cursor to a time and stops there, so one call fits one sentence of the voice. With `ticks`, one lane is a chart of durations on a time axis. With `boundaries`, a line between two lanes counts the handoffs that cross it, such as `{ between: ['user space', 'kernel'], label: 'system call line', count: true }`, so two objects side by side compare two designs by their crossings. `idle: true` is a span where the lane waits, and `dashed: true` is a handoff whose sender does not wait. When a label has no place, `labelSide` on the event names one. On a panel or in a zone with a fill, set `backing` to the color behind the object, or `backing: null` with `cursor: false`:
+
+```ts
+const flow = s.add(lanes(['user space', 'kernel'], [
+    { lane: 'user space', start: 0, end: 20, label: 'runs' },
+    { from: 'user space', to: 'kernel', at: 20, label: 'read' },
+    { lane: 'kernel', start: 20, end: 60, label: 'waits for the drive' },
+    { from: 'kernel', to: 'user space', at: 60, label: 'returns' },
+    { lane: 'user space', start: 60, end: 100, label: 'runs', open: true },
+]).at(120, 0))
+s.play(flow.advance(20))
+s.play(flow.advance(60))
+s.play(flow.showAll())
+```
+
+A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
+
+```ts
+const line = s.add(boundary({ label: 'system call line', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] }))
+s.play(line.enter())
+s.play(lagged([0.2, 0.5, 0.8].map((part) => line.cross(line.x(part), { direction: 'round' })), { lag: 0.4 }))
+s.play(line.addCrossings(9997), { duration: 2 })
+s.play(line.clear())
+```
+
+A line of time with events at their dates: the history of a project, the releases of a kernel, who said what and when. Do not draw the line, the ticks and the stems by hand. `dateLine` puts each event at its date, writes the years, the months, or the days by the span of the line so that two texts never touch, and places the labels over the line and under it so that no two meet. It stops the build when a label has no place. `advance(date)` moves the cursor to a date and stops there, as in `lanes`, and what it passes appears. An event with no label is a mark only, as a dot, a star, or a ring. Marks that are near take rows over the line, also the marks of two events with labels a few days apart, and `record.light(index)` gives the event of the scene the accent color and a ring. An error of a layout ends with the changes that work for that line. For events with labels that are crowded in time, `scale: 'order'` puts them at equal steps and says "not to scale", and then `at` can be a version such as `'5.1'`. The bounds of the object hold the labels from the start, also while they are hidden, and `record.extent` is that room:
+
+```ts
+const record = s.add(dateLine([
+    { at: 2020, label: 'the first paper' },
+    { at: '2025-06-10', label: 'the newsletter', color: 'orange' },
+    { at: '2026-03-24', label: 'the technical report', color: 'orange', note: 'names the system' },
+], { width: 1600, from: 2020, to: 2027 }).at(0, 240))
+s.play(record.advance(2021))
+s.play(record.showAll())
+```
+
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
 
 ```ts
@@ -138,6 +192,52 @@ s.add(tagTrack([
     { at: 0, word: 'PLAN', color: 'blue', note: 'the design of March' },
     { at: 41.5, word: 'MEASURED', color: 'green', note: 'the run of June, on 926 questions' },
 ], { until: 96 }).at(-912, -490))
+```
+
+The exact words of a source, with who said them and when. Do not build a quote from a text, a line, and a second text in each film. `quote` wraps the words at `width`, adds the quotation marks, and puts the source line under the words. `mark` sets a part of the words in the color of the rule, and `said.find(part)` gives its glyphs, to color them when the voice says them. A part is whole words, at all its places in the words. Where the film leaves words out, write `[...]` and set `cut: true`: the object adds none. Hold a quote for one second for each 20 characters of its words and its source line together. For a panel behind a quote, put the quote in a `zone` with a fill. `quotePair` puts two sources that disagree side by side, with a word such as "but" between them:
+
+```ts
+const said = quote('the agent loop lives in Temporal rather than on the VM itself', {
+    by: 'Cursor', when: '2026-06-02', width: 1100, size: 44, color: 'orange', mark: 'lives in Temporal',
+}).at(-550, -120)
+s.play(said.enter())
+s.wait(readingSeconds(said.reading))
+```
+
+A grid of cells that change state: pages of memory, blocks of a disk, the hosts of a fleet. Do not draw the cells by hand. `stateGrid` keeps the state of each cell, sweeps a change across the cells, and counts them. `PAGE_STATES` has the states of memory pages, and `states` takes your own:
+
+```ts
+const pages = s.add(stateGrid({ columns: 16, rows: 8, cell: 56, initial: 'absent' }).at(0, -40))
+s.add(pages.legend(['absent', 'present', 'dirty'], { size: 32 }).at(pages.left[0], 300))
+s.play(pages.change((index) => index < 96, 'present'), { duration: 1.6 })
+s.play(pages.change([3, 4, 5, 40], 'dirty'))
+const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
+```
+
+The output of a real program: the command, the lines that it printed with their exact characters, and where and when it ran. Do not build it from a box and a `codeBlock` in each film. `find` selects one number by its exact text, to light it when the voice says it. Expand tabs to spaces, and leave lines out with a note line such as `{ text: '[...]', kind: 'note' }`. A terminal shows all its lines unless it starts with `shown: false` or with `enter()`. `print()` brings one block: the lines up to the next command, with the command itself when the film did not type it:
+
+```ts
+const run = terminal([
+    { text: './one-byte', kind: 'command' },
+    'Rss after the write:       4 kB',
+    'minor faults:              1',
+], { title: 'data/runs/01-one-byte.txt', note: 'Linux 7.0, arm64, 2026-11-08' })
+s.play(run.enter())
+s.play(run.type(0))
+s.play(run.print())
+s.play(recolor(run.find('4 kB'), 'yellow'))
+```
+
+A list of records that grows, such as the event history of a workflow, the steps of an agent, or the life of a sandbox. Do not build it from a terminal or from texts by hand. `eventLog` keeps the columns in line, scrolls a full window with a count of the records above, and gives each row a state with its own mark, a place for a connector (`log.p(id)`), and one outline that `focus` moves. A row with `ids` is a fold that stands for several records, and `unfold` opens it into its `rows`. `scrollTo(id)` brings an early row back into the window, and `show(which)` brings in a row that had its place from the start (`shown: false`). Play one change of the rows at a time: two of `append`, `fold`, `unfold`, and `scrollTo` whose times overlap are an error, and `mark`, `focus`, and `show` play with any of them. Append two or three rows per second at most, and fold what repeats in a long history:
+
+```ts
+const log = s.add(eventLog([
+    { id: 1, name: 'WorkflowExecutionStarted', detail: 'order' },
+    { ids: [2, 3, 4], name: 'workflow task', detail: 'worker 71293' },
+], { title: 'event history', footer: (count) => `${count} events`, visible: 12 }))
+s.play(log.append({ id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard', state: 'new' }), log.focus(5))
+s.play(log.mark((row) => row.state === 'new', 'stored'))
+s.play(log.mark(5, 'answered'))
 ```
 
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
@@ -148,6 +248,37 @@ const logs = card({ title: 'Logs', figure: pictogram('logs', { size: 140 }), cap
 const traces = card({ title: 'Traces', figure: pictogram('traces', { size: 140 }), caption: 'the path of one request through the services', color: 'purple', ...row })
 s.add(group(logs, traces).arrange('right', 32).moveTo([0, 0]))
 ```
+
+Values that differ by more than about a hundred times, such as 100 ns beside 10 ms. On a linear axis, all but the largest sit at zero. Give `dotChart` a log axis, and say on screen that the axis is logarithmic. The `xLabel` is the place:
+
+```ts
+const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
+const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read from a spinning disk', value: 10_000_000 }], { scale: 'log', format: time, xLabel: 'time, logarithmic' })
+s.play(chart.enter())
+```
+
+A word split into named fields: a virtual address and its table indexes, the flags of a register, the layout of a structure. Do not build it from boxes and texts in each film. `bitField` gives each box a width for its bits, numbers the bits, and keeps every text inside its box. `minWidth` or `scale: 'even'` gives a field of one bit room for a name, and `unused: true` marks reserved bits. For the layout of a structure, `numbers: 'offsets'` counts its bytes, and `wrap: 16` fills rows of 16 bytes. A field with a `value` shows it in its box, and `word.setValue('fd', '3')` changes it in place. `word.field('table')` is the node of one field, and `word.p('table')` is the point where a line from it starts:
+
+```ts
+const word = s.add(bitField([
+    { bits: 10, label: 'directory', color: 'blue' },
+    { bits: 10, label: 'table', color: 'orange' },
+    { bits: 12, label: 'offset', color: 'purple' },
+], { width: 1400 }).at(0, -200))
+s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
+```
+
+A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
+
+```ts
+const sq = ringBuffer(8, { label: 'submission queue', counts: true, tailColor: 'blue', headColor: 'orange', tailFollows: 'publish' }).at(-430, 0)
+s.play(sq.enter())
+s.play(sq.push({ label: 'read', pending: true }))   // the producer writes, and the tail stays: the consumer sees nothing
+s.play(sq.publish())                                // one store of the tail: the consumer can now see the entry
+s.play(sq.pop())                                    // the consumer reads at the head
+```
+
+For the submission queue of io_uring, use `tailFollows: 'publish'`: the program stores the tail once for several entries, and a tail that counts up at each write teaches the opposite. The bounds of a ring hold the outside name at every slot, so place a ring by its bounds. `ring.length === 0` is an empty ring and `ring.length === ring.size` is a full ring: both pointers are then at one slot, and a text for the state is the work of the film. A `push()` on a full ring, a `pop()` on an empty ring, and a `pop()` of a pending entry are errors. For several pushes at once, pass them to `lagged`.
 
 3D:
 
@@ -191,7 +322,7 @@ s.play(fade(logo, 1, { duration: 0.4 }))
 
 - `film.off_canvas`: a mark leaves the frame. Text that is clipped is an error. Other marks are warnings. A mark that spans the whole frame, such as a grid line, is not reported.
 - `film.text_edge`: text is nearer to an edge of the frame than 2% of the shorter side, which is 22 px at 1080p. It is a warning, and only the moments at rest are checked. While the camera is zoomed, only pinned text is checked. `--text-margin <px>` sets the distance, and 0 turns the rule off.
-- `film.text_crowded`: text has no room. It is nearer to a line or a shape than a part of its font size, or it is larger than the shape that it sits on, such as a label that is wider than its dot. The rule is off by default. Turn it on with `--text-gap 0.3` for a film of cards, boxes and captions, and judge its findings in a film of plots, where a curve may pass a label on purpose. It is a warning, and only the moments at rest are checked. Move the text, make it smaller, or give the shape more padding. A label that an object places beside its own marks, such as the numbers of `axes`, is not judged against those marks. Text in a `group`, a `card` or a `zone` is.
+- `film.text_crowded`: text has no room. It is nearer to a line, a shape, or an image than a part of its font size, a line touches its letters, it starts on a filled shape and leaves it, such as a label that is wider than its dot, or a shape in front of it covers a part of it. The message names the mark: its kind, the object that drew it, and its side of the text. The rule is off by default. Turn it on with `--text-gap 0.3` for a film of cards, boxes and captions, and judge its findings in a film of plots, where a curve may pass a label on purpose. It is a warning. The moments at rest are checked, and with `--motion` also a text and a mark that stay too near for one second while they move, or while other things move. A mark that passes a text for a moment is not reported: the same mark must be too near for one second. Move the text, make it smaller, or give the shape more padding. Inside a shape that holds it, such as a cell, a pill, or a `zone`, text needs half of the distance. A backing hides the part of a mark that is behind it, so make a backing larger than the text by the distance. A mark counts when its contrast with what a viewer sees behind it is 1.2 or more: the rule of a table in the `grid` color counts, and a `surface` panel with no border does not. The rule does not judge a distance that the library sets: a label that an object places beside its own marks, such as the numbers of `axes` or the title of a `card`, a line or an arrow of the film that passes a label of a plot, the end of a `connector`, a `callout`, or a `braceLabel` at its target, and a box from `surroundingBox` or a mark from `highlightSweep`. A label of an object is judged against the marks of every other object, as text of the film is: a legend that the film puts on the axis of a chart is reported. Text that the film places is judged, also in a `group`, in the figure of a `card`, and in a `zone`. A strike, which is a thin filled bar through the middle of the letters, is not reported. An underline, which is a thin level line just under the base line and not longer than the text, is not reported.
 - `film.text_overlap`: two text blocks share pixels.
 - `film.text_crossed`: a stroke passes through text. A strong stroke is an error. An opaque shape between the stroke and the text prevents this report, so give a label a backing when it must sit on a line.
 - `film.missing_glyph`: no bundled font has a character, so it renders as an empty box. Replace the character, or set it with `tex`.

@@ -1,6 +1,6 @@
 import { arcPath, circlePath, curveThrough, linePath, parametricPath, parseSvgPath, polyPath, rectPath, smoothPath, transformPath, type Path, type Vec } from './geometry'
 import { toPaint, type ColorInput } from './color'
-import { Node } from './node'
+import { Node, objectName } from './node'
 import { imageFromAsset, type ImageAsset, type ImageFitOptions } from './image'
 
 export interface ShapeStyle {
@@ -206,7 +206,9 @@ export function arrow(from: Vec, to: Vec, style: ArrowStyle = {}): Node {
         shaft.glow(style.glow)
     }
     group.data['shaft'] = shaft
-    return group
+    // The head is a filled shape, and the arrow is a line: it may pass a label of a plot, as a curve does.
+    group.data['line'] = true
+    return objectName(group, 'arrow')
 }
 
 /** Curly brace beside a span of two points, pointing out to one side. */
@@ -225,7 +227,9 @@ export function brace(from: Vec, to: Vec, style: ShapeStyle & { depth?: number }
     const path = transformPath(parseSvgPath(data), [cos, sin, -sin, cos, from[0], from[1]])
     const node = styled(new Node(path), { ...style, width: undefined }, { fill: style.stroke ?? style.fill ?? 'ink' })
     node.data['tip'] = [(from[0] + to[0]) / 2 - sin * depth, (from[1] + to[1]) / 2 + cos * depth]
-    return node
+    // A brace is a line that is drawn as a filled shape. The film check takes it as a line.
+    node.data['line'] = true
+    return objectName(node, 'brace')
 }
 
 export { toPaint }

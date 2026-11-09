@@ -1,16 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough,
+    bitField,
+    quote, quotePair, readingSeconds,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
-    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, morph, morphCode, morphMatching,
-    neuralNet, numberLine, parseSvgPath, pathBounds, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
-    seq, sphere, streamLines, surface, swap, tag, tagTrack, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
+    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
+    steps,
+    fadeOut, indicate,
+    neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
+    seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
+    lanes, smooth, eventLog, LogRowNode, LOG_STATES,
+    delay, par, retime, ringBuffer,
+    appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
+    dateLine,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
-    type FilmDefinition, type Node, type PathOp, type Stage, type Vec, type Vec3,
+    type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
+    type LaneEvent, type LogRow,
+    decimal, label3d, TextNode, type FontFamily,
 } from '../src/stage/index'
+import { encode } from 'fast-png'
+import { Resvg } from '@resvg/resvg-js'
 import { fromComponent } from '../src/stage/export'
 import { clock } from '../src/stage/track'
+import type { Anim } from '../src/stage/anim'
 import { Suspend } from '../src/stage/stage'
 import { CalloutCard, getThemeColors, Row, StepCard } from '../src/index'
 
@@ -722,6 +735,137 @@ describe('extra verbs', () => {
     })
 })
 
+describe('animations that bring their own object to the stage', () => {
+    type Made = { nodes: Node[]; anim: Anim }
+    const one = <T extends Node>(node: T, anim: (node: T) => Anim): Made => ({ nodes: [node], anim: anim(node) })
+    /** Every animation that puts its object on the stage when the film did not. Each entry makes new nodes. */
+    const entrances: Record<string, () => Made> = {
+        'barChart.enter': () => one(barChart([{ label: 'a', value: 2 }, { label: 'b', value: 3 }], { width: 200, height: 100 }), (chart) => chart.enter()),
+        'histogram.fillUp': () => one(histogram([1, 2, 2, 3, 3, 3], { bins: 3, range: [0, 4] }), (chart) => chart.fillUp()),
+        'scatter.enter': () => one(scatter([{ x: 0, y: 0 }, { x: 1, y: 1 }]), (chart) => chart.enter()),
+        'lineChart.enter': () => one(lineChart([{ name: 'a', values: [1, 2, 3] }]), (chart) => chart.enter()),
+        'pie.enter': () => one(pie([{ label: 'a', value: 3 }, { label: 'b', value: 1 }], { radius: 100 }), (chart) => chart.enter()),
+        'heatmap.enter': () => one(heatmap([[0, 1], [2, 3]], { cell: 40 }), (chart) => chart.enter()),
+        'dotChart.enter': () => one(dotChart([{ label: 'a', value: 0.5 }], { domain: [0, 1] }), (chart) => chart.enter()),
+        'unitChart.enter': () => one(unitChart([{ count: 6 }], { rows: 2 }), (chart) => chart.enter()),
+        'graph.enter': () => one(graph([{ id: 'a', at: [-100, 0] }, { id: 'b', at: [100, 0] }], [{ from: 'a', to: 'b' }], { layout: 'manual' }), (made) => made.enter()),
+        'tree.enter': () => one(tree({ id: 'r', label: 'r', children: [{ id: 'c', label: 'c' }] }), (made) => made.enter()),
+        'arrayCells.enter': () => one(arrayCells([3, 1, 4]), (cells) => cells.enter()),
+        'neuralNet.enter': () => one(neuralNet([2, 2]), (net) => net.enter()),
+        'tokens.enter': () => one(tokens(['a', 'b']), (row) => row.enter()),
+        'infoBox.enter': () => one(infoBox({ title: 'A', rows: [{ label: 'x', value: '1' }] }), (box) => box.enter()),
+        // A connector draws between its two ends, so the ends are in the group with it.
+        'connector.pulse': () => {
+            const a = rect(40, 40).at(-100, 0), b = rect(40, 40).at(100, 0), link = connector(a, b)
+            return { nodes: [a, b, link], anim: link.pulse() }
+        },
+        'callout.enter': () => one(callout([0, 0], 'A note', { side: 'right', width: 200 }), (note) => note.enter()),
+        typewriter: () => one(text('abc', { font: 'mono', size: 30 }), (line) => typewriter(line)),
+        wipe: () => one(text('abc', { font: 'mono', size: 30 }), (line) => wipe(line)),
+        countUp: () => one(counter(7), (readout) => countUp(readout, 9)),
+        spin: () => one(rect(100, 40), (box) => spin(box, 1)),
+        swap: () => {
+            const a = rect(40, 40).at(-100, 0), b = rect(40, 40).at(100, 0)
+            return { nodes: [a, b], anim: swap(a, b) }
+        },
+    }
+    const left = (f: CompiledFilm, time: number) => Math.min(...paths(f, time).flatMap((op) => pathBounds(op.path)?.x ?? []))
+    const marks = () => unitChart([{ count: 6 }], { rows: 2 })
+
+    it.each(Object.keys(entrances))('%s draws nothing of its object before its turn in a sequence', async (name) => {
+        const compiled = await compile((s) => {
+            s.wait(1)
+            // Two parts of one second each: a small rectangle fades in, then the object arrives.
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...entrances[name]!().anim, duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws.
+        for (const time of [1.3, 1.6, 1.99]) expect(compiled.frame(time).ops).toHaveLength(1)
+        expect(compiled.frame(3.4).ops.length).toBeGreaterThan(1)
+    })
+
+    it.each(Object.keys(entrances))('%s keeps its object in a group that is not on the stage, at the place of the group', async (name) => {
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            let nodes!: Node[], outer!: Node
+            const compiled = await compile((s) => {
+                const made = entrances[name]!()
+                nodes = made.nodes
+                outer = group(...nodes).at(shift, 0)
+                s.play(made.anim, { duration: 1 })
+                s.wait(0.5)
+            })
+            for (const node of nodes) expect(node.parent).toBe(outer)
+            lefts.push(left(compiled, 1.4))
+        }
+        // The picture of the group that the film moved is the same picture, 300 to the right.
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+    })
+
+    it('leaves an object that shows alone, and shows a hidden object and a hidden parent at the start of the animation', async () => {
+        let shown!: ReturnType<typeof marks>, hidden!: ReturnType<typeof marks>, inner!: ReturnType<typeof marks>, outer!: Node, root!: Node
+        const compiled = await compile((s) => {
+            root = s.root
+            shown = s.add(marks())
+            hidden = s.add(marks().at(0, 200).hide())
+            inner = marks().at(0, 400)
+            outer = s.add(group(inner).hide())
+            s.wait(1)
+            s.play(shown.enter(), hidden.enter(), inner.enter(), { duration: 1 })
+            s.wait(0.5)
+        })
+        // Before the animations, the film draws the first chart and no other.
+        expect(compiled.frame(0.5).ops).toHaveLength(6)
+        expect(at(0.5, () => [shown, hidden, outer].map((node) => node.get('visible')))).toEqual([true, false, false])
+        expect(at(1, () => [shown, hidden, inner, outer].map((node) => node.get('visible')))).toEqual([true, true, true, true])
+        expect(compiled.frame(2.4).ops).toHaveLength(18)
+        // No object changed its parent, and each one is on the stage once.
+        expect(inner.parent).toBe(outer)
+        expect(root.children.filter((child) => child === shown || child === hidden || child === outer)).toHaveLength(3)
+    })
+
+    it('brings the whole group with the object, once, when the film adds the group later', async () => {
+        let chart!: ReturnType<typeof marks>, outer!: Node, root!: Node
+        const compiled = await compile((s) => {
+            root = s.root
+            chart = marks()
+            outer = group(chart, rect(10, 10).at(0, 300)).at(200, 0)
+            s.wait(1)
+            s.play(chart.enter(), { duration: 1 })
+            s.wait(1)
+            s.add(outer)
+            s.wait(1)
+        })
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The other node of the group shows from the start of the animation, with the group.
+        expect(compiled.frame(1.01).ops).toHaveLength(1)
+        expect(compiled.frame(3.5).ops).toHaveLength(7)
+        expect(chart.parent).toBe(outer)
+        expect(root.children.filter((child) => child === outer || child === chart)).toEqual([outer])
+    })
+
+    it('enters a copy at its own turn, and enters one object twice in one sequence', async () => {
+        let chart!: ReturnType<typeof marks>, copy!: ReturnType<typeof marks>, root!: Node
+        const compiled = await compile((s) => {
+            root = s.root
+            chart = marks()
+            copy = chart.clone().at(0, 200)
+            s.wait(1)
+            s.play(seq(chart.enter(), copy.enter(), chart.enter()), { duration: 3, ease: linear })
+            s.wait(0.5)
+        })
+        const drawn = (time: number) => [chart, copy].map((made) => paths(compiled, time).filter((op) => made.marks.some((mark) => mark === op.node)).length)
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The first second belongs to the chart, and the second one to its copy.
+        expect(drawn(1.99)).toEqual([6, 0])
+        expect(drawn(2.99)).toEqual([6, 6])
+        // In the last second the chart starts again from nothing, column by column, and its copy stays.
+        expect(drawn(3.1)).toEqual([2, 6])
+        expect(drawn(4.4)).toEqual([6, 6])
+        expect(root.children.filter((child) => child === chart || child === copy)).toEqual([chart, copy])
+    })
+})
+
 describe('marks and small objects', () => {
     it('labels and brace sit beside their targets, not on them', async () => {
         let target!: ReturnType<typeof rect>, brace!: ReturnType<typeof braceLabel>
@@ -816,6 +960,7 @@ describe('clone', () => {
 
 describe('pictograms', () => {
     const SIZE = 96
+    const paint = (mark: Node) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))
 
     it('keeps every mark of every picture inside its square', () => {
         expect(PICTOGRAMS.length).toBeGreaterThan(40)
@@ -832,7 +977,6 @@ describe('pictograms', () => {
     })
 
     it('paints the accent in every picture, and leaves the other lines in the color when there are some', () => {
-        const paint = (mark: Node) => JSON.stringify(mark.get('stroke') ?? mark.get('fill'))
         for (const name of PICTOGRAMS) {
             const plain = new Set(pictogram(name, { color: 'ink' }).children.map(paint))
             const accented = new Set(pictogram(name, { color: 'ink', accent: 'teal' }).children.map(paint))
@@ -840,6 +984,101 @@ describe('pictograms', () => {
             expect([...accented].some((value) => !plain.has(value)), name).toBe(true)
         }
         expect(new Set(pictogram('forecast', { color: 'ink', accent: 'teal' }).children.map(paint)).size).toBe(2)
+    })
+
+    it('puts the accent of ring, core, and syscall on the part that the picture is about', () => {
+        const parts = (name: PictogramName) => {
+            const plain = new Set(pictogram(name, { size: SIZE, color: 'ink' }).children.map(paint))
+            return pictogram(name, { size: SIZE, color: 'ink', accent: 'teal' }).children.map((mark) => {
+                const box = pathBounds(mark.get('path')!)!
+                return { accent: !plain.has(paint(mark)), filled: !mark.get('stroke'), box, reach: Math.hypot(box.x + box.width / 2, box.y + box.height / 2) }
+            })
+        }
+        // ring: the filled slots, which are a fill in the band and the two rims along it. The pointer outside the band, the dividers,
+        // and the rims of the empty slots keep the color.
+        const ring = parts('ring'), fills = ring.filter((part) => part.filled).sort((a, b) => a.reach - b.reach)
+        expect(fills.map((fill) => fill.accent)).toEqual([true, false])
+        expect(ring.filter((part) => part.accent && !part.filled)).toHaveLength(2)
+        expect(ring.filter((part) => !part.accent && !part.filled)).toHaveLength(10)
+        // core: one of the two lanes. The body and the legs keep the color.
+        const core = parts('core')
+        expect(core.filter((part) => part.filled).map((lane) => lane.accent).sort()).toEqual([false, true])
+        expect(core.filter((part) => !part.filled).some((part) => part.accent)).toBe(false)
+        // syscall: the arrow. The line that it crosses keeps the color.
+        const syscall = parts('syscall')
+        const line = syscall.filter((part) => part.box.height < 1e-6 && part.box.width > SIZE / 2)
+        expect(line).toHaveLength(1)
+        expect(syscall.filter((part) => !part.accent)).toEqual(line)
+    })
+
+    it('puts the accent of a picture in the place of the part that it is about', () => {
+        // For each picture: the number of accent marks, and the box that holds them on the 24-unit grid, as [left, top, right, bottom].
+        const places: [PictogramName, number, [number, number, number, number]][] = [
+            ['issue', 2, [5, 7, 11, 13.2]], // the circle and its dot
+            ['checklist', 2, [3.5, 3, 9, 13.6]], // the two checks
+            ['desktop', 1, [8.5, 6, 15.5, 15.5]], // the pointer
+            ['recording', 1, [8, 8, 16, 16]], // the dot
+            ['approval', 1, [14.5, 5.5, 21.5, 11]], // the check
+            ['proxy', 1, [8, 4, 16, 20]], // the gate
+            ['certificate', 2, [13.5, 10.5, 20.5, 22]], // the seal and its ribbon
+            ['sleep', 1, [12, 8.5, 19.2, 15.6]], // the moon
+            ['shard', 1, [13.4, 2.5, 20.4, 10.4]], // the piece
+            ['worker', 2, [10, 3, 21, 14.5]], // the arrow and its head
+            ['workflow', 1, [2, 6.5, 8, 13]], // the ribbon
+            ['activity', 2, [7, 10.5, 22, 13.5]], // the arrow and its head
+            ['creditCard', 1, [2, 8.2, 22, 12]], // the stripe
+            ['forum', 1, [13.5, 2.5, 21.7, 10.4]], // the badge
+            ['paywall', 2, [4, 9.4, 20, 22]], // the lock and its shackle
+            // The brief of these pictures does not name the accent. The picture says which part carries the meaning.
+            ['pullRequest', 3, [10.5, 3.5, 20.5, 21.5]], // the branch that asks to join, with its arrow head
+            ['repository', 5, [7, 9.3, 16.8, 18]], // the branch mark
+            ['browser', 1, [8, 5, 19.5, 8.2]], // the address line
+            ['server', 2, [4.5, 10.5, 11, 13.5]], // the two lights
+            ['laptop', 1, [1.5, 16.5, 22.5, 20]], // the deck
+            ['signal', 2, [2, 10.5, 13.2, 13.5]], // the arrow to the box
+            ['query', 2, [2, 13.9, 12, 16.9]], // the answer, which is the arrow back
+            ['update', 2, [2, 7.1, 13.2, 10.1]], // the write, which is the arrow to the box
+            ['warehouse', 3, [8, 14, 16, 21]], // the boxes behind the door
+            ['truck', 1, [2, 5, 14, 17]], // the load
+            ['microphone', 1, [8.5, 2.5, 15.5, 14]], // the capsule
+        ]
+        for (const [name, count, [left, top, right, bottom]] of places) {
+            // At a size of 24, one pixel is one unit of the grid, and the middle of the grid is at 0.
+            const plain = new Set(pictogram(name, { size: 24, color: 'ink' }).children.map(paint))
+            const accent = pictogram(name, { size: 24, color: 'ink', accent: 'teal' }).children.filter((mark) => !plain.has(paint(mark)))
+            expect(accent, name).toHaveLength(count)
+            for (const mark of accent) {
+                const box = pathBounds(mark.get('path')!)!
+                expect([box.x + 12 >= left, box.y + 12 >= top, box.x + box.width + 12 <= right, box.y + box.height + 12 <= bottom], name).toEqual([true, true, true, true])
+            }
+        }
+    })
+
+    it('tells signal, query, and update apart by the arrow back from the box: none, dashed, solid', () => {
+        // The arrow back is a line and a head, left of the box and under the middle of the grid. The box starts 1.5 units right of the middle.
+        const back = (name: PictogramName) => pictogram(name, { size: 24 }).children.filter((mark) => {
+            const box = pathBounds(mark.get('path')!)!
+            return box.x + box.width < 1.5 && box.y > 1
+        }).map((mark) => Boolean(mark.get('dash')))
+        expect(back('signal')).toEqual([])
+        expect(back('query')).toEqual([true, false])
+        expect(back('update')).toEqual([false, false])
+    })
+
+    it('ends each leg of chip, core, and timer on the edge of the body', () => {
+        for (const name of ['chip', 'core', 'timer'] as const) {
+            const lines = pictogram(name, { size: SIZE }).children.filter((mark) => mark.get('stroke')).map((mark) => pathBounds(mark.get('path')!)!)
+            const body = lines.reduce((largest, box) => (box.width * box.height > largest.width * largest.height ? box : largest))
+            const legs = lines.filter((box) => box.width < 1e-6 || box.height < 1e-6)
+            expect(legs, name).toHaveLength(12)
+            for (const leg of legs) {
+                const upright = leg.width < 1e-6
+                const [from, to] = upright ? [leg.y, leg.y + leg.height] : [leg.x, leg.x + leg.width]
+                const [near, far] = upright ? [body.y, body.y + body.height] : [body.x, body.x + body.width]
+                // A leg stops on the near edge or starts on the far edge. So it touches the body and does not cross it.
+                expect(Math.min(Math.abs(to - near), Math.abs(from - far)), name).toBeLessThan(1e-6)
+            }
+        }
     })
 
     it('rejects a name it does not know, also when an object has a property of that name', () => {
@@ -989,6 +1228,478 @@ describe('zone', () => {
     })
 })
 
+describe('steps', () => {
+    const NAMES = ['batching', 'SQPOLL', 'register', 'I/O polling']
+    type Strip = ReturnType<typeof steps>
+    // Four boxes of 235 in a row of 1000, with 20 between them.
+    const sized = { width: 1000, gap: 20, height: 60, size: 30 }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] }
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const sourceOf = (node: Node | null) => (node as unknown as { source: string } | null)?.source
+    /** The colors of each step: the border of its box, its label, and its note. */
+    const looks = (strip: Strip) => strip.boxes.map((box, index) => [box.get('stroke'), strip.labels[index]!.chars[0]!.get('fill'), strip.notes[index]?.chars[0]!.get('fill')])
+    /** The text of a step that is ahead: faint with 0.4 of dim in it. */
+    const aheadText = () => mixColor(parseColor('faint'), parseColor('dim'), 0.4)
+    const look = (state: 'current' | 'done' | 'ahead', color = 'ink', noted = false) => {
+        if (state === 'ahead') return [paint('grid'), aheadText(), noted ? aheadText() : undefined]
+        const [stroke, words] = state === 'current' ? [color, 'ink'] : ['gridStrong', 'dim']
+        return [paint(stroke), paint(words), noted ? paint(words) : undefined]
+    }
+
+    it('puts one box per step in a row of its width, with one width and one gap, and each label in the middle of its box', async () => {
+        await compileFilm(film(() => {
+            const strip = steps(NAMES, { ...sized, numbered: true, current: 1 }).at(100, 50)
+            // `.at()` places the middle of the row of boxes. The row is 1000 wide: from -400 to 600.
+            expect(strip.boxes.map(edges)).toEqual([[-400, 20, -165, 80], [-145, 20, 90, 80], [110, 20, 345, 80], [365, 20, 600, 80]])
+            expect(strip.labels.map(sourceOf)).toEqual(['1 batching', '2 SQPOLL', '3 register', '4 I/O polling'])
+            strip.labels.forEach((label, index) => {
+                const [x, y] = middle(label), [boxX, boxY] = middle(strip.boxes[index]!)
+                expect(Math.abs(x - boxX)).toBeLessThan(2)
+                // A word with a tail, such as "polling", has its middle a little under the middle of its capital letters.
+                expect(Math.abs(y - boxY)).toBeLessThan(6)
+                expect(label.data['size']).toBe(30)
+            })
+            // One node per step holds its box and its label, and the object holds these nodes in order.
+            expect(strip.items.map((item) => item.children)).toEqual(strip.boxes.map((box, index) => [box, strip.labels[index]]))
+            expect(strip.children).toEqual(strip.items)
+            expect(strip.notes).toEqual([null, null, null, null])
+            // Without `numbered`, a label is the name of its step.
+            expect(steps(NAMES, sized).labels.map(sourceOf)).toEqual(NAMES)
+            // The defaults: a row of 1600, a text size of 28, a box of 62, and 17 between two boxes.
+            const plain = steps(['a', 'b'])
+            expect(plain.boxes.map(edges)).toEqual([[-800, -31, -8.5, 31], [8.5, -31, 800, 31]])
+            expect(plain.labels[0]!.data['size']).toBe(28)
+            // One step takes the whole width.
+            expect(edges(steps(['alone'], sized).boxes[0]!)).toEqual([-500, -30, 500, 30])
+        }))
+    })
+
+    it('puts the note of a step under its box, and gives the points of the edges of a box for a line to a picture', async () => {
+        await compileFilm(film(() => {
+            const strip = steps([{ label: 'a', note: 'price: none' }, 'b', { label: 'c', note: 'price: a CPU' }, { label: 'd', note: ' ' }], { ...sized, current: 0 })
+            expect(strip.notes.map(sourceOf)).toEqual(['price: none', undefined, 'price: a CPU', undefined])
+            expect(strip.notes[1]).toBeNull()
+            expect(strip.items.map((item) => item.children.length)).toEqual([3, 2, 3, 2])
+            for (const index of [0, 2]) {
+                const note = strip.notes[index]!.bounds(), box = strip.boxes[index]!.bounds()
+                // Under the box, with room, in the middle, and smaller than the label: 0.9 of the size.
+                expect(note.y).toBeGreaterThan(box.y + box.height + 8)
+                expect(note.y).toBeLessThan(box.y + box.height + 20)
+                expect(Math.abs(note.x + note.width / 2 - (box.x + box.width / 2))).toBeLessThan(2)
+                expect(strip.notes[index]!.data['size']).toBe(27)
+                // The bottom point of a step with a note is under its note, so a line from it does not touch the note.
+                const [x, y] = strip.p(index)
+                expect(x).toBe(box.x + box.width / 2)
+                expect(y).toBeGreaterThan(note.y + note.height + 8)
+                expect(y).toBeLessThan(note.y + note.height + 10)
+            }
+            // The points are in the coordinates of the object: the middle of an edge of the box.
+            expect(strip.p(1)).toEqual([-127.5, 30])
+            expect(strip.p(1, 'bottom')).toEqual([-127.5, 30])
+            expect(strip.p(1, 'top')).toEqual([-127.5, -30])
+            expect(strip.p(0, 'top')).toEqual([-382.5, -30])
+            expect(strip.p(1, 'left')).toEqual([-245, 0])
+            expect(strip.p(1, 'right')).toEqual([-10, 0])
+            // They do not move with the object: `toWorld` gives the place on the stage.
+            const moved = steps(NAMES, sized).at(100, 50)
+            expect(moved.p(1)).toEqual([-127.5, 30])
+            expect(moved.toWorld(...moved.p(1))).toEqual([-27.5, 80])
+            expect(steps(NAMES, { ...sized, noteSize: 20 }).notes).toEqual([null, null, null, null])
+            expect(steps([{ label: 'a', note: 'b' }], { ...sized, noteSize: 20 }).notes[0]!.data['size']).toBe(20)
+        }))
+    })
+
+    it('gives a bottom point with clear room under the tails of a note, 0.3 of the note size, in the default font and in the serif text font', async () => {
+        await compileFilm(film(() => {
+            for (const font of [undefined, 'text-serif'] as const) {
+                for (const size of [28, 40]) {
+                    const strip = steps([{ label: 'register', note: 'gjpqy tails' }, { label: 'b', note: 'two\nlines gjpqy' }, 'c'], { width: 900, size, font })
+                    const noteSize = Math.round(size * 0.9)
+                    for (const index of [0, 1]) {
+                        const note = strip.notes[index]!.bounds()
+                        const under = strip.p(index)[1] - (note.y + note.height)
+                        expect(under).toBeGreaterThanOrEqual(noteSize * 0.3 - 1e-6)
+                        expect(under).toBeLessThan(noteSize * 0.3 + 1)
+                    }
+                    // A step with no note has its bottom point on its box.
+                    expect(strip.p(2)[1]).toBe(Math.round(size * 2.2) / 2)
+                }
+            }
+        }))
+    })
+
+    it('gives a note one line or two, each line in the middle under the box, and gives a column the room of its longest note', async () => {
+        await compileFilm(film(() => {
+            const strip = steps([{ label: 'a', note: 'first line\nsecond' }, { label: 'b', note: 'one' }], { ...sized, width: 600, current: 0 })
+            expect(strip.notes.map(sourceOf)).toEqual(['first line\nsecond', 'one'])
+            const [two, one] = strip.notes.map((note) => note!.bounds())
+            // The two notes start at one height under their boxes. The second line is one line of 1.25 of the note size lower.
+            expect(two!.y).toBeLessThan(one!.y + 8)
+            expect(two!.y).toBeGreaterThan(30 + 8)
+            const [upper, lower] = [strip.notes[0]!.chars[0]!.bounds(), strip.notes[0]!.chars[9]!.bounds()]
+            expect(lower.y - upper.y).toBeGreaterThan(27)
+            expect(two!.height).toBeGreaterThan(one!.height + 27)
+            // Each line is in the middle under its box: the first line has 9 letters, and the shorter second line starts further right.
+            const span = (glyphs: Node[]) => { const boxes = glyphs.map((glyph) => glyph.bounds()); return [Math.min(...boxes.map((box) => box.x)), Math.max(...boxes.map((box) => box.x + box.width))] as const }
+            const lines = [span(strip.notes[0]!.chars.slice(0, 9)), span(strip.notes[0]!.chars.slice(9))]
+            for (const [from, to] of lines) expect(Math.abs((from + to) / 2 - middle(strip.boxes[0]!)[0])).toBeLessThan(2)
+            expect(lines[1]![0]).toBeGreaterThan(lines[0]![0] + 3)
+            // The bottom point of each step is under its own note.
+            expect(strip.p(0)[1] - strip.p(1)[1]).toBeCloseTo(1.25 * 27, 6)
+            // A space around a line does not count, and a third line is an error.
+            expect(sourceOf(steps([{ label: 'a', note: ' first \n second ' }], sized).notes[0]!)).toBe('first\nsecond')
+            expect(() => steps(['a', { label: 'b', note: 'x\ny\nz' }])).toThrow(/steps: the note of step 1 has 3 lines\. A note has two lines at the most/)
+            // In a column, the lines start at one x, and every box is the room of the longest note further from the next.
+            const list = steps([{ label: 'a', note: 'first line\nfinal' }, { label: 'b', note: 'one' }, 'c'], { direction: 'column', width: 300, gap: 20, height: 60, size: 30 })
+            const boxes = list.boxes.map(edges), notes = list.notes.map((note) => note && edges(note))
+            // Both lines start with the same letter, so they start at the same pixel.
+            expect(list.notes[0]!.chars[9]!.bounds().x).toBeCloseTo(list.notes[0]!.chars[0]!.bounds().x, 6)
+            expect(list.notes[0]!.chars[9]!.bounds().y).toBeGreaterThan(list.notes[0]!.chars[0]!.bounds().y + 27)
+            expect(boxes[1]![1]! - boxes[0]![3]!).toBeCloseTo(boxes[2]![1]! - boxes[1]![3]!, 6)
+            // The room of the longest note ends at its bottom point, 0.3 of the note size or more under its letters. The next box is the gap under it.
+            expect(boxes[1]![1]! - list.p(0, 'bottom')[1]).toBeCloseTo(20, 6)
+            expect(list.p(0, 'bottom')[1] - notes[0]![3]!).toBeGreaterThanOrEqual(27 * 0.3 - 1e-6)
+            expect(list.p(1, 'bottom')[1]).toBeLessThan(list.p(1, 'top')[1] + 60 + 27 * 2)
+        }))
+    })
+
+    it('lights the current step, keeps the steps before it in dim, and gives the steps after it a weaker text that is still readable', async () => {
+        await compileFilm(film(() => {
+            const strip = steps(NAMES, { ...sized, current: 1 })
+            expect(looks(strip)).toEqual([look('done'), look('current'), look('ahead'), look('ahead')])
+            expect(NAMES.map((_, index) => strip.stateOf(index))).toEqual(['done', 'current', 'ahead', 'ahead'])
+            expect(strip.current).toBe(1)
+            // The border of the lit box is wider than the others.
+            const weights = strip.boxes.map((box) => box.get('strokeWidth'))
+            expect(weights[1]).toBeGreaterThan(weights[0]! + 0.5)
+            expect([weights[2], weights[3]]).toEqual([weights[0], weights[0]])
+            // Every box has the fill of a surface, so the border and the text say the state.
+            expect(strip.boxes.map((box) => box.get('fill'))).toEqual(NAMES.map(() => paint('surface')))
+            // `color` is the border of the lit step. Its label stays in ink.
+            expect(looks(steps(NAMES, { ...sized, current: 3, color: 'orange' }))).toEqual([look('done'), look('done'), look('done'), look('current', 'orange')])
+            expect(looks(steps(NAMES, { ...sized, current: 0 }))).toEqual([look('current'), look('ahead'), look('ahead'), look('ahead')])
+            // With no lit step, which is the default, every step is readable.
+            for (const none of [steps(NAMES, sized), steps(NAMES, { ...sized, current: null })]) {
+                expect(none.current).toBeNull()
+                expect(looks(none)).toEqual(NAMES.map(() => look('done')))
+                expect(none.stateOf(3)).toBe('done')
+            }
+            // A note has the state of its step: in ink under the lit step, in dim under a done one, and as weak as its label under a step ahead.
+            const noted = steps(NAMES.map((label) => ({ label, note: 'a note' })), { ...sized, current: 1 })
+            expect(looks(noted).map((one) => one[2])).toEqual([paint('dim'), paint('ink'), aheadText(), aheadText()])
+            expect(looks(noted)).toEqual([look('done', 'ink', true), look('current', 'ink', true), look('ahead', 'ink', true), look('ahead', 'ink', true)])
+        }))
+    })
+
+    it('keeps the text of a step ahead at a contrast of 3 or more on its box in the dark look and in the light one, with a done step clearly stronger', async () => {
+        const channel = (value: number) => { const x = value / 255; return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4 }
+        const light = (color: Rgba) => 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+        const contrast = (a: Rgba, b: Rgba) => { const [high, low] = [light(a), light(b)].sort((x, y) => y - x); return (high! + 0.05) / (low! + 0.05) }
+        const seen: Record<string, number[]> = {}
+        for (const name of ['midnight', 'paper'] as const) {
+            await compileFilm(film({ look: name }, () => {
+                const strip = steps(['a', 'b', 'c'].map((label) => ({ label, note: 'a note' })), { ...sized, current: 1 })
+                const fill = (node: Node) => node.get('fill') as Rgba
+                const surface = fill(strip.boxes[0]!), ground = parseColor('bg')
+                // The label of the step ahead and of the done step on their boxes, and the note of the step ahead on the background.
+                seen[name] = [contrast(fill(strip.labels[2]!.chars[0]!), surface), contrast(fill(strip.labels[0]!.chars[0]!), surface), contrast(fill(strip.notes[2]!.chars[0]!), ground)]
+            }))
+        }
+        expect(seen['midnight']).toEqual([expect.closeTo(4.23, 2), expect.closeTo(7.45, 2), expect.closeTo(4.62, 2)])
+        expect(seen['paper']).toEqual([expect.closeTo(3.21, 2), expect.closeTo(5.68, 2), expect.closeTo(3.51, 2)])
+        for (const [ahead, done, note] of Object.values(seen)) {
+            expect(ahead).toBeGreaterThanOrEqual(3)
+            expect(note).toBeGreaterThanOrEqual(3)
+            expect(done! / ahead!).toBeGreaterThan(1.5)
+        }
+    })
+
+    it('moves the light with go, and the states of the other steps follow, one move after another in a sequence', async () => {
+        let strip!: Strip, copy!: Strip, still!: Strip, plain!: Strip
+        const seen: (number | null)[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            strip = s.add(steps(NAMES.map((label) => ({ label, note: 'a note' })), { ...sized, current: 0 }))
+            copy = s.add(strip.clone().at(0, 200))
+            still = s.add(steps(NAMES, { ...sized, current: 2 }).at(0, 400))
+            // A strip with no note, and one with a note on one step only.
+            plain = s.add(steps(['a', { label: 'b', note: 'a note' }, 'c', 'd'], { ...sized, current: 0 }).at(0, -200))
+            s.wait(1)
+            // The check of the index is at the call. The light moves when the animation is scheduled.
+            const moves = seq(strip.go(1), strip.go(3))
+            seen.push(strip.current)
+            s.play(moves, still.go(2), plain.go(2), { duration: 2, ease: linear })
+            seen.push(strip.current)
+            s.wait(1)
+            s.play(strip.go(null), copy.go(2), { duration: 1, ease: linear })
+            seen.push(strip.current, copy.current)
+            s.wait(0.5)
+        }))
+        expect(seen).toEqual([0, 3, null, 2])
+        const at1 = (state: 'current' | 'done' | 'ahead') => look(state, 'ink', true)
+        expect(at(0.9, () => looks(strip))).toEqual([at1('current'), at1('ahead'), at1('ahead'), at1('ahead')])
+        // The first move takes the first second, and the second move starts from its end.
+        expect(at(2, () => looks(strip))).toEqual([at1('done'), at1('current'), at1('ahead'), at1('ahead')])
+        expect(at(3, () => looks(strip))).toEqual([at1('done'), at1('done'), at1('done'), at1('current')])
+        // The wide border goes with the light. Half way, a border is between its two weights.
+        const weight = (time: number, index: number) => at(time, () => strip.boxes[index]!.get('strokeWidth'))
+        const [lit, rest] = [weight(0.9, 0), weight(0.9, 1)]
+        expect(lit).toBeGreaterThan(rest + 0.5)
+        expect(NAMES.map((_, index) => weight(2, index))).toEqual([rest, lit, rest, rest])
+        expect(NAMES.map((_, index) => weight(3, index))).toEqual([rest, rest, rest, lit])
+        expect(NAMES.map((_, index) => weight(5.4, index))).toEqual([rest, rest, rest, rest])
+        expect([weight(1.5, 0), weight(1.5, 1)]).toEqual([expect.closeTo((lit + rest) / 2, 6), expect.closeTo((lit + rest) / 2, 6)])
+        expect(at(1.5, () => looks(strip).slice(2))).toEqual([at1('ahead'), at1('ahead')])
+        expect(at(1.5, () => looks(strip)[0])).not.toEqual(at1('current'))
+        expect(at(1.5, () => looks(strip)[0])).not.toEqual(at1('done'))
+        // With null the light goes off, and every step is readable.
+        expect(at(5.4, () => looks(strip))).toEqual(NAMES.map(() => at1('done')))
+        // A copy has its own boxes and its own light: it keeps the first step lit until its own move.
+        expect(at(3.9, () => looks(copy))).toEqual([at1('current'), at1('ahead'), at1('ahead'), at1('ahead')])
+        expect(at(5.4, () => looks(copy))).toEqual([at1('done'), at1('done'), at1('current'), at1('ahead')])
+        expect(copy.boxes[0]).not.toBe(strip.boxes[0])
+        // A move to the lit step changes nothing.
+        for (const time of [0.5, 1.5, 2.5, 5.4]) expect(at(time, () => looks(still))).toEqual([look('done'), look('done'), look('current'), look('ahead')])
+        // The steps of a strip change with a note or with none: the first, the third and the last have no note here.
+        expect(at(0.9, () => looks(plain))).toEqual([look('current'), at1('ahead'), look('ahead'), look('ahead')])
+        expect(at(3, () => looks(plain))).toEqual([look('done'), at1('done'), look('current'), look('ahead')])
+        // A move takes 0.4 s, and an entrance 1.2 s, when the film gives no duration.
+        expect([plain.go(1).duration, plain.enter().duration, plain.go(1, { duration: 2 }).duration]).toEqual([0.4, 1.2, 2])
+    })
+
+    it('brings a strip that is not on the stage with go, in the state before the move, and draws nothing of it before its turn', async () => {
+        let strip!: Strip
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            strip = steps(NAMES, { ...sized, current: 0 })
+            s.wait(1)
+            s.play(strip.go(2), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // Four boxes, and the 32 letters of the four names.
+        expect(compiled.frame(1).ops).toHaveLength(4 + 32)
+        expect(at(1, () => looks(strip))).toEqual([look('current'), look('ahead'), look('ahead'), look('ahead')])
+        expect(at(2, () => looks(strip))).toEqual([look('done'), look('done'), look('current'), look('ahead')])
+        const turn = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...steps(['a', 'b'], { ...sized, current: 0 }).go(1), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws. Then: two boxes and two letters more.
+        for (const time of [1.3, 1.99]) expect(turn.frame(time).ops).toHaveLength(1)
+        expect(turn.frame(2.5).ops).toHaveLength(5)
+    })
+
+    it('makes all labels smaller when one is too wide for its box, down to 0.7 of the size, and then refuses with the width that is enough', async () => {
+        await compileFilm(film(() => {
+            const names = ['a label that is too long for its box', 'b']
+            // The long label is 460 px wide at size 30. A box has 22.5 px at each side of its label.
+            expect(steps(names, { ...sized, width: 1100 }).labels.map((label) => label.data['size'])).toEqual([30, 30])
+            const smaller = steps(names, { ...sized, width: 1000 })
+            const [size, other] = smaller.labels.map((label) => label.data['size'] as number)
+            expect(size).toBeCloseTo(30 * (490 - 45) / 459.9609375, 6)
+            expect(other).toBe(size)
+            const [left, , right] = edges(smaller.labels[0]!), [boxLeft, , boxRight] = edges(smaller.boxes[0]!)
+            expect(left).toBeGreaterThan(boxLeft + 22)
+            expect(right).toBeLessThan(boxRight - 22)
+            // 754 gives a box of 367, where the label is in at 0.7 of the size. One pixel less is too narrow.
+            expect(steps(names, { ...sized, width: 754 }).labels[0]!.data['size']).toBeCloseTo(21, 1)
+            expect(() => steps(names, { ...sized, width: 753 })).toThrow(/the label "a label that is too long for its box" is 460 px wide at size 30, and a box is 366 px wide, with 321 px for its label\. A label can be 0\.7 of the size at the least\. Use a shorter label, or a width of 754 or more, or fewer steps/)
+            // A note has the width of its box less 15 px, so the notes of two steps that are neighbors do not read as one.
+            const noted = [{ label: 'a', note: 'a note that is too long for its box' }, { label: 'b', note: 'short' }]
+            const notes = steps(noted, { ...sized, width: 700 })
+            expect(new Set(notes.notes.map((note) => note!.data['size'])).size).toBe(1)
+            expect(notes.notes[0]!.data['size']).toBeLessThan(27)
+            expect(edges(notes.notes[0]!)[0]).toBeGreaterThan(edges(notes.boxes[0]!)[0]! + 6)
+            expect(edges(notes.notes[0]!)[2]).toBeLessThan(edges(notes.boxes[0]!)[2]! - 6)
+            expect(steps(noted, { ...sized, width: 624 }).notes[0]!.data['size']).toBeCloseTo(27 * 0.7, 1)
+            expect(() => steps(noted, { ...sized, width: 623 })).toThrow(/the note "a note that is too long for its box" is 410 px wide at size 27, and a box is 301 px wide, with 286 px for its note\. A note can be 0\.7 of the size at the least\. Use a shorter note, or a width of 624 or more, or fewer steps/)
+            // The longer line of a note of two lines is the one that counts.
+            expect(steps([{ label: 'a', note: 'short\na note that is too long for its box' }, 'b'], { ...sized, width: 624 }).notes[0]!.data['size']).toBeCloseTo(27 * 0.7, 1)
+            // In a column, the width is the width of a box, and the message says so.
+            expect(() => steps(names, { direction: 'column', width: 366, size: 30 })).toThrow(/a box is 366 px wide, with 321 px for its label\. A label can be 0\.7 of the size at the least\. Use a shorter label, or a width of 367 or more$/)
+            expect(() => steps(names, { direction: 'column', width: 367, size: 30 })).not.toThrow()
+            // A note of a column starts where the labels start, 22.5 px inside the box, and ends inside the box.
+            const list = steps(noted, { direction: 'column', width: 310, size: 30 })
+            expect(list.notes[0]!.data['size']).toBeCloseTo(27 * 0.7, 1)
+            expect(edges(list.notes[0]!)[2]).toBeLessThanOrEqual(edges(list.boxes[0]!)[2]!)
+            expect(() => steps(noted, { direction: 'column', width: 309, size: 30 })).toThrow(/a box is 309 px wide, with 286 px for its note\. A note can be 0\.7 of the size at the least\. Use a shorter note, or a width of 310 or more$/)
+        }))
+    })
+
+    it('puts the steps one under the other in a column, with the numbers in a column of their own and each note under its box', async () => {
+        await compileFilm(film(() => {
+            const list = steps([{ label: 'plan', note: 'a week' }, 'build', 'measure'], { direction: 'column', width: 300, gap: 20, height: 60, size: 30, numbered: true, current: 1 }).at(100, 50)
+            // The width is the width of each box. A note is between its box and the next one, so the boxes are 20 and the room of a note apart.
+            const boxes = list.boxes.map(edges)
+            expect(boxes.map((box) => [box[0], box[2]])).toEqual([[-50, 250], [-50, 250], [-50, 250]])
+            expect(boxes.map((box) => box[3]! - box[1]!)).toEqual([expect.closeTo(60, 6), 60, expect.closeTo(60, 6)])
+            expect(boxes[1]![1]! - boxes[0]![3]!).toBeCloseTo(boxes[2]![1]! - boxes[1]![3]!, 6)
+            expect(boxes[1]![1]! - boxes[0]![3]!).toBeGreaterThan(20 + 27)
+            // `.at()` places the middle of the column of boxes.
+            expect([(boxes[0]![1]! + boxes[2]![3]!) / 2, boxes[1]![1]]).toEqual([expect.closeTo(50, 6), 20])
+            // The labels are at the left of their boxes, 22.5 px inside, and at the height of the middle of their boxes.
+            const starts = list.labels.map((label) => label.bounds().x)
+            expect(Math.min(...starts)).toBeGreaterThan(-50 + 20)
+            expect(Math.max(...starts)).toBeLessThan(-50 + 32)
+            list.labels.forEach((label, index) => expect(Math.abs(middle(label)[1] - middle(list.boxes[index]!)[1])).toBeLessThan(6))
+            // The note starts where the labels start, under its box and over the next one.
+            const note = list.notes[0]!.bounds()
+            expect(Math.abs(note.x - (-50 + 22.5))).toBeLessThan(3)
+            expect(note.y).toBeGreaterThan(boxes[0]![3]! + 8)
+            expect(note.y + note.height).toBeLessThan(boxes[1]![1]! - 8)
+            // Without an edge, the point is at the right side of the box, for a picture at the right of the column.
+            expect(list.p(1)).toEqual([150, 0])
+            expect(list.p(1, 'bottom')).toEqual([0, 30])
+            expect(list.toWorld(...list.p(0, 'bottom'))[1]).toBeGreaterThan(note.y + note.height)
+            expect(looks(list).map((one) => one.slice(0, 2))).toEqual([look('done').slice(0, 2), look('current').slice(0, 2), look('ahead').slice(0, 2)])
+            // Without notes, the boxes are the gap apart. The default width of a column is 360.
+            const plain = steps(['a', 'b'], { direction: 'column', gap: 20, height: 60 })
+            expect(plain.boxes.map(edges)).toEqual([[-180, -70, 180, -10], [-180, 10, 180, 70]])
+            // Eleven numbered steps: the numbers end at one x and the names start at one x, from "9" to "10" too.
+            const many = steps(Array.from({ length: 11 }, (_, index) => `step ${index + 1}`), { direction: 'column', width: 300, numbered: true, size: 30, height: 60, current: 9 })
+            const digits = (index: number) => String(index + 1).length
+            const names = many.labels.map((label, index) => label.chars[digits(index)]!.bounds().x)
+            expect(Math.max(...names) - Math.min(...names)).toBeLessThan(1e-6)
+            const ends = many.labels.map((label, index) => { const last = label.chars[digits(index) - 1]!.bounds(); return last.x + last.width })
+            // "1" and "11" end with the same digit, so they end at the same pixel. Two other digits differ by the room at their sides.
+            expect(ends[10]).toBeCloseTo(ends[0]!, 6)
+            expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(1.5)
+            expect(names[0]! - Math.max(...ends)).toBeGreaterThan(6)
+            expect(many.labels.map(sourceOf).slice(8)).toEqual(['9 step 9', '10 step 10', '11 step 11'])
+            // The room of the widest number counts when the labels must be smaller: the long label of step 1 starts
+            // after that room, and still ends 22.5 px inside its box.
+            const long = steps(['a label that is too long for its box', ...Array.from({ length: 10 }, () => 'b')], { direction: 'column', width: 440, numbered: true, size: 30, height: 60 })
+            expect(long.labels[0]!.data['size']).toBeLessThan(30)
+            expect(long.labels[0]!.data['size']).toBeGreaterThan(21)
+            expect(new Set(long.labels.map((label) => label.data['size'])).size).toBe(1)
+            expect(edges(long.labels[0]!)[2]).toBeLessThanOrEqual(edges(long.boxes[0]!)[2]! - 22.5 + 0.01)
+            expect(edges(long.labels[0]!)[2]).toBeGreaterThan(edges(long.boxes[0]!)[2]! - 22.5 - 3)
+            // Without numbers, the labels start at one x.
+            const bare = steps(['step a', 'step b'], { direction: 'column', width: 300 })
+            expect(bare.labels[1]!.bounds().x).toBeCloseTo(bare.labels[0]!.bounds().x, 6)
+        }))
+    })
+
+    it('enters from the first step to the last, each one with the look of its state, and draws nothing before its turn', async () => {
+        let strip!: Strip, usual!: Strip
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            strip = steps(NAMES, { ...sized, current: 1 })
+            usual = steps(NAMES, sized).at(0, 200)
+            s.wait(1)
+            s.play(strip.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+            // Without a lag from the film, each step starts when the one before it is half way.
+            s.play(usual.enter(), { duration: 2.5, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // Four steps with a lag of 1: each one has a quarter of the time, one after the other.
+        const state = (time: number) => at(time, () => strip.items.map(shows))
+        expect(state(1.25)).toEqual([expect.closeTo(0.5, 6), 0, 0, 0])
+        expect(state(2.25)).toEqual([1, 1, expect.closeTo(0.5, 6), 0])
+        expect(state(3.2)).toEqual([1, 1, 1, 1])
+        expect(at(3.2, () => looks(strip))).toEqual([look('done'), look('current'), look('ahead'), look('ahead')])
+        // The entrance without a lag starts at 3.5 s: each step takes 1 s, and starts 0.5 s after the one before it.
+        expect(at(4.25, () => usual.items.map(shows))).toEqual([expect.closeTo(0.75, 6), expect.closeTo(0.25, 6), 0, 0])
+        expect(at(5.25, () => usual.items.map(shows))).toEqual([1, 1, expect.closeTo(0.75, 6), expect.closeTo(0.25, 6)])
+        const turn = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...steps(['a', 'b'], sized).enter(), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws. At the end: two boxes and two letters more.
+        for (const time of [1.3, 1.99]) expect(turn.frame(time).ops).toHaveLength(1)
+        expect(turn.frame(3.4).ops).toHaveLength(5)
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            const moved = await compile((s) => {
+                const made = steps(['a', 'b'], sized)
+                group(made).at(shift, 0)
+                s.play(made.enter(), { duration: 1 })
+                s.wait(0.5)
+            })
+            lefts.push(Math.min(...paths(moved, 1.4).flatMap((op) => pathBounds(op.path)?.x ?? [])))
+        }
+        // The strip of a group that the film moved is the same picture, 300 to the right.
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+    })
+
+    it('sets its labels and its notes in the font that the film gives', async () => {
+        await compileFilm(film(() => {
+            const letter = (words: string, size: number, font?: 'text-serif') => text(words, { size, font }).chars[0]!.get('path')
+            const serif = steps([{ label: 'batching', note: 'price' }], { ...sized, font: 'text-serif' })
+            expect(serif.labels[0]!.chars[0]!.get('path')).toEqual(letter('batching', 30, 'text-serif'))
+            expect(serif.notes[0]!.chars[0]!.get('path')).toEqual(letter('price', 27, 'text-serif'))
+            // Without a font, the texts have the font of `text()`, as the texts of a card or a zone have.
+            const usual = steps([{ label: 'batching', note: 'price' }], sized)
+            expect(usual.labels[0]!.chars[0]!.get('path')).toEqual(letter('batching', 30))
+            expect(usual.notes[0]!.chars[0]!.get('path')).toEqual(letter('price', 27))
+            expect(letter('batching', 30, 'text-serif')).not.toEqual(letter('batching', 30))
+        }))
+    })
+
+    it('refuses a label of two lines and a height with no room for a label, with the smallest height that works', async () => {
+        await compileFilm(film(() => {
+            expect(() => steps(['two\nlines', 'b'])).toThrow(/steps: the label of step 0 \("two\\nlines"\) has a line break\. A label is one line\. Give the step a note for a second line/)
+            expect(() => steps(['a', { label: 'b\r\nc' }])).toThrow(/the label of step 1 .* has a line break/)
+            // A line break at an end of a label is space, and does not count.
+            expect(sourceOf(steps(['plan\n']).labels[0]!)).toBe('plan')
+            // The box holds the highest and the lowest letters of the font, with the wide border of the lit step.
+            expect(() => steps(NAMES, { ...sized, height: 43 })).toThrow(/steps: a height of 43 has no room for a label of size 30: a letter with a tail would touch the border\. Give a height of 44 or more/)
+            expect(() => steps(NAMES, { ...sized, height: 45, font: 'text-serif' })).toThrow(/Give a height of 46 or more/)
+            expect(() => steps(NAMES, { height: 20 })).toThrow(/a height of 20 has no room for a label of size 28.*Give a height of 41 or more/)
+            expect(() => steps(NAMES, { height: 0 })).toThrow(/a height of 0 has no room for a label/)
+            expect(() => steps(NAMES, { height: Number.NaN })).toThrow(/a height of NaN has no room for a label/)
+            for (const [font, height] of [[undefined, 44], ['text-serif', 46]] as const) {
+                const tight = steps(['Typing', 'gjpqy (Á)'], { width: 600, size: 30, height, font, current: 1 })
+                tight.labels.forEach((label, index) => {
+                    const [, top, , bottom] = edges(label), [, boxTop, , boxBottom] = edges(tight.boxes[index]!)
+                    // The letters are inside the border of the lit box, which is 3.3 px wide.
+                    expect(top).toBeGreaterThan(boxTop! + 1.65)
+                    expect(bottom).toBeLessThan(boxBottom! - 1.65)
+                })
+            }
+        }))
+    })
+
+    it('refuses a list with no step, a step with no label, a width with no room for a label, a color that is none, and a step that the strip does not have', async () => {
+        await compileFilm(film(() => {
+            expect(() => steps([])).toThrow(/give it at least one step/)
+            expect(() => steps(['a', { label: ' ' }])).toThrow(/step 1 has no label/)
+            expect(() => steps(NAMES, { direction: 'stack' as never })).toThrow(/direction is 'row' or 'column', not "stack"/)
+            expect(() => steps(NAMES, { size: 0 })).toThrow(/size is the text size of the labels/)
+            expect(() => steps(NAMES, { noteSize: -1 })).toThrow(/noteSize is the text size of the notes/)
+            expect(() => steps(NAMES, { gap: -1 })).toThrow(/gap is the room between two boxes/)
+            // Three boxes in 100 px, with 17 between them, are 22 px wide. A label needs more than 21 px at each side.
+            expect(() => steps(['a', 'b', 'c'], { width: 100 })).toThrow(/a width of 100 gives each of the 3 boxes 22 px, with no room for a label\. Give a width of more than 160, a smaller gap, or fewer steps/)
+            expect(() => steps(['a', 'b', 'c'], { direction: 'column', width: 30, size: 30 })).toThrow(/a width of 30 gives the boxes 30 px, with no room for a label\. Give a width of more than 45$/)
+            // A color that is none is an error when the strip is made, with a lit step or with none.
+            expect(() => steps(NAMES, { color: 'nope' })).toThrow(/steps: color is "nope", which is not a color\. Use a color of the look, such as 'orange', or a CSS color/)
+            expect(() => steps(NAMES, { color: 'nope', current: 0 })).toThrow(/steps: color is "nope", which is not a color/)
+            expect(() => steps(NAMES, { color: '#ff8800', current: 0 })).not.toThrow()
+            const known = 'The steps are 0 \\("a"\\), 1 \\("b"\\), 2 \\("c"\\)'
+            expect(() => steps(['a', 'b', 'c'], { current: 3 })).toThrow(new RegExp(`no step 3\\. ${known}\\. Use null for no lit step`))
+            expect(() => steps(['a', 'b', 'c'], { current: -1 })).toThrow(/no step -1/)
+            expect(() => steps(['a', 'b', 'c'], { current: Number.NaN })).toThrow(/NaN is not a number/)
+            const strip = steps(['a', 'b', 'c'], { numbered: true })
+            // A wrong index is an error where the film writes the move, before anything plays.
+            expect(() => strip.go(3)).toThrow(/no step 3\. The steps are 0 \("1 a"\), 1 \("2 b"\), 2 \("3 c"\)/)
+            expect(() => strip.go(1.5)).toThrow(/no step 1\.5/)
+            expect(() => strip.go(Infinity)).toThrow(/no step Infinity/)
+            // An index that is not a number says so, and does not print "null".
+            expect(() => strip.go(Number.NaN)).toThrow(/steps: the index of a step is a whole number, and NaN is not a number\. The steps are 0 \("1 a"\), 1 \("2 b"\), 2 \("3 c"\)\. Use null for no lit step/)
+            expect(() => strip.go(undefined as never)).toThrow(/undefined is not a number/)
+            expect(() => strip.go('1' as never)).toThrow(/"1" is not a number/)
+            expect(() => strip.p(3)).toThrow(/no step 3/)
+            expect(() => strip.p(Number.NaN)).toThrow(/NaN is not a number/)
+            expect(() => strip.stateOf(-1)).toThrow(/no step -1/)
+            expect(() => strip.p(0, 'middle' as never)).toThrow(/edge is 'top', 'bottom', 'left' or 'right', not "middle"/)
+        }))
+    })
+})
+
 describe('dot chart', () => {
     const data = [
         { label: 'blocks', value: 0.89, low: 0.87, high: 0.91 },
@@ -1076,6 +1787,174 @@ describe('dot chart', () => {
             expect(() => dotChart([{ label: 'a', value: 0.5, low: 0.6, high: 0.7 }])).toThrow(/outside its interval/)
             expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [0, 1], ticks: [0, 2] })).toThrow(/the tick 2 is outside the domain/)
             expect(() => dotChart([{ label: 'a', value: 0.5 }], { domain: [1, 0] })).toThrow(/two different ends/)
+        }))
+    })
+
+    const spread = [{ label: 'small', value: 80 }, { label: 'large', value: 12_000_000 }]
+    // The x of each line of the grid, from left to right. Only these parts of the axis are as tall as the plot.
+    const gridLines = (chart: ReturnType<typeof dotChart>, height: number) => chart.axis.children.filter((node) => node.bounds().height > height * 0.9)
+    const gridAt = (chart: ReturnType<typeof dotChart>, height: number) => gridLines(chart, height).map((node) => node.bounds().x).sort((a, b) => a - b)
+
+    it('gives each power of ten the same room on a log axis', async () => {
+        await compileFilm(film(() => {
+            const items = [{ label: 'small', value: 80 }, { label: 'large', value: 1_200_000 }]
+            const chart = dotChart(items, { scale: 'log', width: 1200, height: 200, domain: [10, 1e7] })
+            expect(chart.domain).toEqual([10, 1e7])
+            expect(chart.p(10, 0)[0]).toBeCloseTo(-600, 6)
+            expect(chart.p(1e7, 0)[0]).toBeCloseTo(600, 6)
+            // Six powers of ten share 1200 px. On a linear axis, 100 would be 0.01 px from 10.
+            const powers = [10, 100, 1e3, 1e4, 1e5, 1e6, 1e7].map((value) => chart.p(value, 0)[0])
+            powers.slice(1).forEach((x, index) => expect(x - powers[index]!).toBeCloseTo(200, 6))
+            // The middle of the axis is the geometric middle of its two ends, also when no end is a power of ten.
+            expect(chart.p(1e4, 0)[0]).toBeCloseTo(0, 6)
+            const odd = dotChart([{ label: 'a', value: 40 }], { scale: 'log', width: 1200, domain: [2, 800] })
+            expect(odd.p(40, 0)[0]).toBeCloseTo(0, 6)
+            expect(middle(odd.dots[0]!)[0]).toBeCloseTo(0, 6)
+            chart.dots.forEach((mark, row) => expect(middle(mark)[0]).toBeCloseTo(chart.p(items[row]!.value, row)[0], 6))
+            // The rows are placed as on a linear axis.
+            expect(chart.p(100, 1)[1]).toBeCloseTo(50, 6)
+        }))
+    })
+
+    it('takes its default log axis from the powers of ten around the data', async () => {
+        await compileFilm(film(() => {
+            const wide = dotChart(spread, { scale: 'log' })
+            expect(wide.domain).toEqual([10, 100_000_000])
+            expect(words(wide)).toEqual(['10', '100', '1k', '10k', '100k', '1M', '10M', '100M'])
+            // Data inside one power of ten: the two powers around it are the ends, and the only ticks.
+            const narrow = dotChart([{ label: 'a', value: 2 }, { label: 'b', value: 8.5 }], { scale: 'log' })
+            expect(narrow.domain).toEqual([1, 10])
+            expect(words(narrow)).toEqual(['1', '10'])
+            const below = dotChart([{ label: 'a', value: 0.004 }, { label: 'b', value: 0.5 }], { scale: 'log' })
+            expect(below.domain).toEqual([0.001, 1])
+            expect(words(below)).toEqual(['0.001', '0.01', '0.1', '1'])
+            // A value on a power of ten is an end of the axis. One value alone still gets a whole power.
+            expect(dotChart([{ label: 'a', value: 100 }, { label: 'b', value: 1000 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            expect(dotChart([{ label: 'a', value: 100 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            // An interval counts as data.
+            expect(dotChart([{ label: 'a', value: 50, low: 5, high: 500 }], { scale: 'log' }).domain).toEqual([1, 1000])
+            // A value next to a power of ten is inside the axis, though its logarithm rounds to a whole number.
+            expect(dotChart([{ label: 'a', value: 999.9999999999999 }], { scale: 'log' }).domain).toEqual([100, 1000])
+            expect(dotChart([{ label: 'a', value: 5 }, { label: 'b', value: 1000.0000000000001 }], { scale: 'log' }).domain).toEqual([1, 10_000])
+        }))
+    })
+
+    it('names fewer powers of ten when there are more than eight, and keeps the two ends', async () => {
+        await compileFilm(film(() => {
+            const over = (most: number, options = {}) => words(dotChart([{ label: 'a', value: 3 }, { label: 'b', value: most }], { scale: 'log', ...options }))
+            // Eight powers fit. With nine, every second one has a name.
+            expect(over(7e6)).toEqual(['1', '10', '100', '1k', '10k', '100k', '1M', '10M'])
+            expect(over(7e7)).toEqual(['1', '100', '10k', '1M', '100M'])
+            expect(over(7e11)).toEqual(['1', '100', '10k', '1M', '100M', '10G', '1T'])
+            // No step of two reaches both ends of nine powers. A step of three does.
+            expect(over(7e8)).toEqual(['1', '1k', '1M', '1G'])
+            // No step reaches both ends of eleven powers. The last end keeps its name, and 10G, one power
+            // before it, has none.
+            expect(over(7e10)).toEqual(['1', '100', '10k', '1M', '100M', '100G'])
+            // With seventeen, every third one has a name. 1e15 is two powers before the end, so it keeps its name.
+            expect(over(7e16)).toEqual(['1', '1k', '1M', '1G', '1T', '1e15', '1e17'])
+            // A number asks for about that many.
+            expect(over(7e11, { ticks: 4 })).toEqual(['1', '10k', '100M', '1T'])
+            expect(over(7e5, { ticks: 4 })).toEqual(['1', '100', '10k', '1M'])
+            expect(over(7e6, { ticks: 4 })).toEqual(['1', '100', '10k', '10M'])
+            expect(over(7e5, { ticks: 2 })).toEqual(['1', '1M'])
+        }))
+    })
+
+    it('writes the ticks of a log axis in a short form, or with the format of the film', async () => {
+        await compileFilm(film(() => {
+            const powers = [0.001, 0.01, 0.1, 1, 10, 100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9]
+            expect(words(dotChart(spread, { scale: 'log', ticks: powers }))).toEqual(['0.001', '0.01', '0.1', '1', '10', '100', '1k', '10k', '100k', '1M', '10M', '100M', '1G'])
+            expect(words(dotChart(spread, { scale: 'log', ticks: [0.05, 2500, 1_500_000, 1e12, 1e-6] }))).toEqual(['0.05', '2.5k', '1.5M', '1T', '1e-6'])
+            expect(words(dotChart(spread, { scale: 'log', ticks: [100, 1e6], format: (value) => `${value / 1000} µs` }))).toEqual(['0.1 µs', '1000 µs'])
+            // A linear axis keeps its own form.
+            expect(words(dotChart(spread, { ticks: [0, 6_000_000, 12_000_000] }))).toEqual(['0', '6,000,000', '12,000,000'])
+        }))
+    })
+
+    it('draws an interval on a log axis from its low end to its high end, with the dot between them', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart([{ label: 'a', value: 100, low: 10, high: 10_000 }], { scale: 'log', width: 900, domain: [1, 1e6] })
+            const interval = chart.intervals[0]!.bounds()
+            // Each power of ten has 150 px. The dot is one power over the low end and two under the high end.
+            expect(interval.x).toBeCloseTo(-300, 6)
+            expect(interval.x + interval.width).toBeCloseTo(150, 6)
+            expect(middle(chart.dots[0]!)[0]).toBeCloseTo(-150, 6)
+        }))
+    })
+
+    it('uses a given domain and given ticks on a log axis as they are', async () => {
+        await compileFilm(film(() => {
+            const chart = dotChart(spread, { scale: 'log', width: 1000, height: 200, domain: [50, 20_000_000], ticks: [50, 200, 1000, 20_000_000] })
+            expect(chart.domain).toEqual([50, 20_000_000])
+            expect(words(chart)).toEqual(['50', '200', '1k', '20M'])
+            // Each tick has a line of the grid at its place on the log axis.
+            const places = gridAt(chart, 200)
+            expect(places).toHaveLength(4)
+            ;[50, 200, 1000, 20_000_000].forEach((tick, index) => expect(places[index]).toBeCloseTo(chart.p(tick, 0)[0], 6))
+            expect(places[0]).toBeCloseTo(-500, 6)
+            expect(places[3]).toBeCloseTo(500, 6)
+            // With a domain and no ticks, the ticks are the powers of ten inside the domain.
+            expect(words(dotChart(spread, { scale: 'log', domain: [50, 20_000_000] }))).toEqual(['100', '1k', '10k', '100k', '1M', '10M'])
+            // With ticks and no domain, the axis runs from the first tick to the last, and holds the data.
+            expect(dotChart(spread, { scale: 'log', ticks: [100, 1e4, 1e6] }).domain).toEqual([80, 12_000_000])
+            // A domain with one power of ten inside it gets 1, 2 and 5 times each power.
+            expect(words(dotChart([{ label: 'a', value: 3 }], { scale: 'log', domain: [2, 50] }))).toEqual(['2', '5', '10', '20', '50'])
+            // A domain with none of those inside it gets round values, as a linear axis does.
+            expect(words(dotChart([{ label: 'a', value: 33 }], { scale: 'log', domain: [30, 45] }))).toEqual(['30', '32', '34', '36', '38', '40', '42', '44'])
+            expect(() => dotChart(spread, { scale: 'log', domain: [100, 1e9] })).toThrow(/80 is outside the domain 100 to 1000000000/)
+            expect(() => dotChart(spread, { scale: 'log', domain: [10, 1e9], ticks: [1, 100] })).toThrow(/the tick 1 is outside the domain/)
+        }))
+    })
+
+    it('draws fainter lines inside each power of ten, on a log axis that is short and wide enough', async () => {
+        await compileFilm(film(() => {
+            const one = [{ label: 'a', value: 2 }, { label: 'b', value: 8.5 }]
+            const three = [{ label: 'a', value: 2 }, { label: 'b', value: 850 }]
+            const chart = dotChart(one, { scale: 'log', width: 900, height: 200 })
+            // One power of ten: a line at each of 1 to 10.
+            const places = gridAt(chart, 200)
+            expect(places).toHaveLength(10)
+            places.forEach((x, index) => expect(x).toBeCloseTo(chart.p(index + 1, 0)[0], 6))
+            // The lines at the two ticks are full. The eight between them are fainter.
+            const strength = gridLines(chart, 200).map((node) => node.get('opacity')).sort()
+            expect(strength.slice(8)).toEqual([1, 1])
+            expect(Math.max(...strength.slice(0, 8))).toBeLessThan(0.8)
+            // Three powers of ten on 900 px leave 13.7 px between the lines at 9 and 10 times a power.
+            expect(gridAt(dotChart(three, { scale: 'log', width: 900, height: 200 }), 200)).toHaveLength(28)
+            // On 700 px they would be 10.7 px apart, so only the ticks have a line. The same for four powers.
+            expect(gridAt(dotChart(three, { scale: 'log', width: 700, height: 200 }), 200)).toHaveLength(4)
+            expect(gridAt(dotChart([{ label: 'a', value: 2 }, { label: 'b', value: 8500 }], { scale: 'log', width: 4000, height: 200 }), 200)).toHaveLength(5)
+            // A tick at 2 or 5 times a power keeps its full line, and gets no second one.
+            const marked = dotChart(one, { scale: 'log', width: 900, height: 200, ticks: [1, 2, 5, 10] })
+            expect(gridAt(marked, 200)).toHaveLength(10)
+            expect(gridLines(marked, 200).filter((node) => node.get('opacity') === 1)).toHaveLength(4)
+            // In a domain of 2 to 50, the lines stop at 50: none at 60 to 90.
+            const cut = gridAt(dotChart([{ label: 'a', value: 3 }], { scale: 'log', width: 900, height: 200, domain: [2, 50] }), 200)
+            expect(cut).toHaveLength(13)
+            expect(cut[12]).toBeCloseTo(450, 6)
+            expect(gridAt(dotChart(one, { scale: 'log', width: 900, height: 200, grid: false }), 200)).toHaveLength(0)
+            // A linear axis has lines at its ticks only.
+            expect(gridAt(dotChart(one, { width: 900, height: 200, domain: [1, 10], ticks: [1, 10] }), 200)).toHaveLength(2)
+        }))
+    })
+
+    it('refuses a number that has no place on a log axis, and names it', async () => {
+        await compileFilm(film(() => {
+            expect(() => dotChart([{ label: 'idle', value: 0 }], { scale: 'log' })).toThrow(/the value of item 0 \("idle"\) is 0\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'ok', value: 5 }, { label: 'wide', value: 5, low: -1, high: 10 }], { scale: 'log' })).toThrow(/the low end of item 1 \("wide"\) is -1\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [0, 100] })).toThrow(/the domain starts at 0\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [0, 10] })).toThrow(/the tick 0 is not on a log axis\. A log axis has no zero/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [-5, 10] })).toThrow(/the tick -5 is not on a log axis/)
+            // Without a domain, a tick of 0 would be an end of the axis. The error still names the tick.
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', ticks: [0, 10] })).toThrow(/the tick 0 is not on a log axis/)
+            // A tick that is not a number gets the error of a linear axis.
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'log', domain: [1, 100], ticks: [NaN, 10] })).toThrow(/the tick NaN is outside the domain 1 to 100/)
+            // The same numbers are fine on a linear axis.
+            expect(dotChart([{ label: 'idle', value: 0 }, { label: 'wide', value: 5, low: -1, high: 10 }], { ticks: [0, 10] }).domain).toEqual([-1, 10])
+            const chart = dotChart([{ label: 'a', value: 5 }], { scale: 'log' })
+            expect(() => chart.p(0, 0)).toThrow(/0 has no place on a log axis/)
+            expect(() => dotChart([{ label: 'a', value: 5 }], { scale: 'logarithmic' as 'log' })).toThrow(/scale is 'linear' or 'log', not "logarithmic"/)
         }))
     })
 })
@@ -1402,4 +2281,9987 @@ describe('tag', () => {
     })
 })
 
+describe('quote', () => {
+    const WORDS = 'the agent loop lives in Temporal rather than on the VM itself'
+    type Quote = ReturnType<typeof quote>
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const right = (node: Node) => { const box = node.bounds(); return box.x + box.width }
+    const bottom = (node: Node) => { const box = node.bounds(); return box.y + box.height }
+    const keys = (glyphs: readonly Node[]) => glyphs.map((glyph) => glyph.data['key']).join('')
+    /** The letters of the words that have a color, in order. */
+    const colored = (made: Quote, color: string) => keys(made.words.chars.filter((glyph) => JSON.stringify(glyph.get('fill')) === JSON.stringify(paint(color))))
+
+    it('starts at the place it is given: the rule from the top to the bottom, the words after the rule, and the source line under the words', async () => {
+        await compileFilm(film(() => {
+            const said = quote(WORDS, { by: 'Cursor', when: '2026-06-02', where: 'a post', width: 600, size: 40 }).at(100, 50)
+            const rule = said.rule.bounds(), words = said.words.bounds(), source = said.source!.bounds()
+            // `.at()` places the top end of the rule. Nothing of the object is over the rule, under it, or at its left.
+            expect([rule.x, rule.y, rule.width]).toEqual([100, 50, 6])
+            const all = said.bounds()
+            expect([all.x, all.y]).toEqual([100, 50])
+            expect(all.y + all.height).toBeCloseTo(bottom(said.rule), 6)
+            expect(said.height).toBeCloseTo(rule.height, 6)
+            // The words and the source line start at one x, after the rule and the room at its right.
+            expect(words.x).toBeGreaterThan(rule.x + rule.width + 20)
+            expect(Math.abs(words.x - source.x)).toBeLessThan(4)
+            expect(source.y).toBeGreaterThan(words.y + words.height + 12)
+            // The words are between their quotation marks, and the first line stands on `baseline`.
+            expect(said.words.source).toBe(`“${WORDS}”`)
+            expect(said.baseline).toBeCloseTo(30, 0)
+            expect(bottom(said.find('T')[0]!)).toBeCloseTo(50 + said.baseline, 0)
+            // The speaker, the date, and the place, in that order. Each one is optional.
+            expect(said.source!.source).toBe('Cursor, 2026-06-02, a post')
+            expect(quote(WORDS, { where: 'a post', by: 'Cursor' }).source!.source).toBe('Cursor, a post')
+            expect(quote(WORDS, { when: '2026', by: ' ' }).source!.source).toBe('2026')
+            // The source line is smaller than the words, and not under 24 unless the words are.
+            expect([40, 24, 18].map((size) => quote(WORDS, { by: 'Cursor', size }).source!.data['size'])).toEqual([31, 24, 18])
+            expect(quote(WORDS, { by: 'Cursor', sourceSize: 36 }).source!.data['size']).toBe(36)
+            // The source line is in the font of the words: the serif text font, or the font that the film gives.
+            const letter = (font: 'sans' | 'text-serif') => text('C', { font, size: 25 }).chars[0]!.get('path')
+            expect(quote(WORDS, { by: 'Cursor' }).source!.chars[0]!.get('path')).toEqual(letter('text-serif'))
+            expect(quote(WORDS, { by: 'Cursor', font: 'sans' }).source!.chars[0]!.get('path')).toEqual(letter('sans'))
+            expect(letter('sans')).not.toEqual(letter('text-serif'))
+            // Space around the words does not count.
+            expect(quote('  yes \n').words.source).toBe('\u201cyes\u201d')
+            // With none of them, the object has no source line, and the rule ends under the words.
+            const bare = quote(WORDS, { width: 600, size: 40 }).at(100, 50)
+            expect(bare.source).toBeNull()
+            expect(bare.children).toEqual([bare.rule, bare.words])
+            expect(bottom(bare.rule)).toBeGreaterThan(bottom(bare.words) - 0.01)
+            expect(bottom(bare.rule)).toBeLessThan(bottom(bare.words) + 12)
+            expect(bottom(said.rule) - bottom(bare.rule)).toBeGreaterThan(40)
+            // A quote with more words starts at the same corner, and its first line is on the same line.
+            const long = quote(`${WORDS}, and ${WORDS}`, { width: 600, size: 40 }).at(100, 50)
+            expect([long.rule.bounds().x, long.rule.bounds().y]).toEqual([100, 50])
+            expect(long.words.chars[0]!.bounds()).toEqual(bare.words.chars[0]!.bounds())
+            expect(long.height).toBeGreaterThan(bare.height + 100)
+            // The two places that a film needs. Beside a picture with its middle at y 200: the middle of the quote at that y.
+            const beside = quote(WORDS, { by: 'Cursor', width: 600, size: 40 })
+            beside.at(40, 200 - beside.height / 2)
+            expect([beside.left[0], beside.center[1]]).toEqual([40, expect.closeTo(200, 6)])
+            // Centered on a point: `moveTo` puts the middle of the rule and the words there.
+            const centered = quote(WORDS, { by: 'Cursor', width: 600, size: 40 }).moveTo([300, 200])
+            expect(centered.center).toEqual([expect.closeTo(300, 6), expect.closeTo(200, 6)])
+            expect(centered.rule.bounds().x).toBeCloseTo(300 - centered.width / 2, 6)
+            // `lineEnd` is the x of the end of the ink of a line, in the coordinates of the object.
+            const broken = quote('first\nfinal line', { size: 40 }).at(100, 50)
+            expect(broken.lineEnd()).toBeCloseTo(right(broken.find('first')[4]!) - 100, 6)
+            expect(broken.lineEnd(1)).toBeCloseTo(right(broken.words.chars.at(-1)!) - 100, 6)
+            expect(broken.lineEnd(1)).toBeGreaterThan(broken.lineEnd(0) + 40)
+            expect(() => broken.lineEnd(2)).toThrow(/quote: no line 2\. The words have 2 lines/)
+        }))
+    })
+
+    it('wraps the words at its width, keeps a break that the film wrote, and is as high as its lines', async () => {
+        await compileFilm(film(() => {
+            // One line, two lines, and four lines. A line is 1.3 of the size: 52 px.
+            const widths = [1400, 600, 380]
+            const made = widths.map((width) => quote(WORDS, { width, size: 40 }))
+            made.forEach((one, index) => expect(right(one.words)).toBeLessThanOrEqual(widths[index]!))
+            // A line has the room of its ink, and an italic f leans over the place after it. So no letter passes the width, at any width.
+            for (let width = 240; width <= 440; width++) expect(right(quote('half of the staff left off the shelf', { width, size: 40 }))).toBeLessThanOrEqual(width)
+            // At 303, the advance of "staff" has room on the first line, and its last letter has not: the word goes to the next line.
+            const starts = (width: number) => { const one = quote('half of the staff left off', { width, size: 40 }); return one.find('staff')[0]!.bounds().y - one.find('half')[1]!.bounds().y }
+            expect(starts(303)).toBeGreaterThan(40)
+            expect(starts(304)).toBeLessThan(5)
+            expect(made[1]!.height - made[0]!.height).toBeCloseTo(52, 6)
+            expect(made[2]!.height - made[0]!.height).toBeCloseTo(52 * 3, 6)
+            // The words have the width less the 30 px of the rule and the room after it: one pixel less, and the line breaks.
+            const need = Math.ceil(text(`\u201c${WORDS}\u201d`, { font: 'text-serif', size: 40, italic: true }).get('px') * 2)
+            expect(quote(WORDS, { width: need + 30, size: 40 }).height).toBeCloseTo(made[0]!.height, 6)
+            expect(quote(WORDS, { width: need + 29, size: 40 }).height - made[0]!.height).toBeCloseTo(52, 6)
+            // The default width is 900, and the default size is 32, where the rule and the room after it take 23 px.
+            expect(() => quote('a'.repeat(200))).toThrow(/at size 32, and a width of 900 leaves 877 px for the words/)
+            // `leading` sets the height of a line.
+            expect(quote(WORDS, { width: 600, size: 40, leading: 2 }).height - made[0]!.height).toBeCloseTo(80, 6)
+            // A break in the words starts a line, at any width. The second line starts at the left edge of the words.
+            const broken = quote('first\nfinal', { width: 1400, size: 40 })
+            expect(broken.height - made[0]!.height).toBeCloseTo(52, 6)
+            const [first, final] = [broken.find('first')[0]!.bounds(), broken.find('final')[0]!.bounds()]
+            expect(final.y - first.y).toBeCloseTo(52, 6)
+            expect(final.x).toBeLessThan(first.x)
+            // A source line that is wider than the object wraps too, and the rule goes down with it.
+            const cited = quote('yes', { by: 'a speaker with a name of many words', where: 'a document with a title of many words', width: 380, size: 40 })
+            expect(right(cited.source!)).toBeLessThanOrEqual(381)
+            expect(cited.source!.bounds().height).toBeGreaterThan(60)
+            expect(bottom(cited.rule)).toBeGreaterThan(bottom(cited.source!) - 0.01)
+        }))
+    })
+
+    it('keeps a part that cannot break inside its width, or refuses it: words that no-break spaces join, and a web address in the source line', async () => {
+        await compileFilm(film(() => {
+            // A no-break space joins two words, so "4 of 10" stays on one line. The line breaks at a plain space.
+            const joined = quote('requests were slower in 4\u00a0of\u00a010 runs', { width: 460, size: 40 })
+            expect(right(joined)).toBeLessThanOrEqual(460)
+            expect(joined.find('4')[0]!.bounds().y - joined.find('in')[0]!.bounds().y).toBeGreaterThan(40)
+            expect(joined.find('10')[0]!.bounds().y).toBeCloseTo(joined.find('4')[0]!.bounds().y, 0)
+            // With plain spaces at the same width, the first line ends after the "4".
+            const plain = quote('requests were slower in 4 of 10 runs', { width: 460, size: 40 })
+            expect(plain.find('4')[0]!.bounds().y - plain.find('in')[0]!.bounds().y).toBeLessThan(5)
+            expect(plain.find('10')[0]!.bounds().y - plain.find('4')[0]!.bounds().y).toBeGreaterThan(40)
+            // Joined words that are wider than the object are an error, and the width that it names is enough.
+            const stuck = (width: number) => () => quote('4\u00a0of\u00a010\u00a0requests\u00a0were\u00a0slower', { width, size: 40 })
+            expect(stuck(420)).toThrow(/quote: no line can break in "“4\u00a0of\u00a010\u00a0requests\u00a0were\u00a0slower”", because no-break spaces join its words\. It is 489 px wide at size 40, and a width of 420 leaves 390 px for the words\. Give a width of 519 or more, a smaller size, or a plain space where a line may break/)
+            expect(stuck(518)).toThrow(/no line can break/)
+            expect(stuck(519)).not.toThrow()
+
+            // A web address has no space. A line of the source also breaks after a "/", so the address stays inside the width.
+            const cited = quote('yes', { where: 'https://example.com/load-test/2026-06-11', width: 420, size: 40 })
+            expect(right(cited.source!)).toBeLessThanOrEqual(420)
+            // "https://example.com/" has 20 characters, and the next line starts at the left edge.
+            const [first, next] = [cited.source!.chars[0]!, cited.source!.chars[20]!]
+            expect(next.data['key']).toBe('l')
+            expect(next.bounds().y - first.bounds().y).toBeCloseTo(1.25 * 31, 0)
+            expect(Math.abs(next.bounds().x - first.bounds().x)).toBeLessThan(3)
+            expect(bottom(cited.rule)).toBeGreaterThan(bottom(cited.source!) - 0.01)
+            // The film check reads the line as the film gave it.
+            expect(cited.source!.source).toBe('https://example.com/load-test/2026-06-11')
+            // A part of the source line with no space and no "/" that is wider than the object is an error. It names the option, and the width that is enough.
+            const address = 'https://cursor.com/blog/what-we-have-learned-building-cloud-agents'
+            expect(() => quote('yes', { by: 'Cursor', where: address, width: 578, size: 36 })).toThrow(/quote: the part "what-we-have-learned-building-cloud-agents" of `where` is 552 px wide at size 28, and a width of 578 leaves 551 px for the source line\. A line of the source breaks at a space and after a "\/"\. Give a shorter `where`, or a width of 579 or more/)
+            expect(() => quote('yes', { by: 'Cursor', where: address, width: 579, size: 36 })).not.toThrow()
+            expect(() => quote('yes', { by: 'Supercalifragilisticexpialidocious', when: '2026', width: 200, size: 40 })).toThrow(/the part "Supercalifragilisticexpialidocious" of `by` is 457 px wide at size 31, and a width of 200 leaves 170 px for the source line\..* Give a shorter `by`, or a width of 487 or more/)
+
+            // In a pair, the source line of the first quote stays in the half of that quote.
+            const pair = quotePair({ words: 'the agent loop lives in Temporal', by: 'Cursor', where: address }, { words: 'the harness runs inside the sandbox', by: 'a lab' }, { width: 1500, size: 36 })
+            expect(right(pair.quotes[0])).toBeLessThanOrEqual((1500 - 108) / 2)
+            // An error of a pair names the quote, and the width of the pair.
+            expect(() => quotePair({ words: 'yes', where: address }, { words: 'no' }, { width: 700, size: 36 })).toThrow(/quotePair: the part "what-we-have-learned-building-cloud-agents" of `where` of quote 0 is 552 px wide at size 28, and a width of 700 with a gap of 108 leaves 269 px for the source line of each quote\. A line of the source breaks at a space and after a "\/"\. Give a shorter `where`, a width of 1266 or more, or a smaller gap/)
+            expect(() => quotePair({ words: 'yes', where: address }, { words: 'no' }, { width: 1266, size: 36 })).not.toThrow()
+            expect(() => quotePair({ words: 'yes' }, { words: 'requests\u00a0were\u00a0slower\u00a0with\u00a0the\u00a0cache' }, { width: 700, size: 36 })).toThrow(/quotePair: no line can break in "“requests\u00a0were\u00a0slower\u00a0with\u00a0the\u00a0cache”" of quote 1, because no-break spaces join its words\. It is 553 px wide at size 36, and a width of 700 with a gap of 108 leaves 269 px for the words of each quote\. Give a width of 1267 or more, a smaller gap, a smaller size, or a plain space where a line may break/)
+        }))
+    })
+
+    it('sets each marked part in the color of the rule or in a color of its own, over a line end too, and each [...] of a cut quote in dim', async () => {
+        await compileFilm(film(() => {
+            const said = quote(WORDS, { mark: 'lives in Temporal', color: 'orange', width: 600, size: 40 })
+            expect(said.rule.get('fill')).toEqual(paint('orange'))
+            expect(colored(said, 'orange')).toBe('livesinTemporal')
+            expect(colored(said, 'ink')).toBe('“theagentloopratherthanontheVMitself”')
+            // The first line ends after "Temporal", so this mark is on two lines.
+            const over = quote(WORDS, { mark: 'Temporal rather', color: 'orange', width: 600, size: 40 })
+            expect(colored(over, 'orange')).toBe('Temporalrather')
+            expect(over.find('rather')[0]!.bounds().y - over.find('Temporal')[0]!.bounds().y).toBeGreaterThan(40)
+            // Several marks, in a color that is not the color of the rule.
+            const two = quote(WORDS, { mark: ['agent loop', 'VM'], markColor: 'yellow', color: 'teal' })
+            expect(two.rule.get('fill')).toEqual(paint('teal'))
+            expect(colored(two, 'yellow')).toBe('agentloopVM')
+            expect(colored(two, 'teal')).toBe('')
+            // A mark starts and ends at the borders of words: "not" is the word, and not the first letters of "nothing" and "notes".
+            expect(colored(quote('it is not safe, and nothing in the notes says another thing', { mark: 'not', color: 'orange' }), 'orange')).toBe('not')
+            // A part that is in the words more than once is marked at all its places. A comma, a period, and a quotation mark are borders.
+            expect(colored(quote('the loop and the lock, the last', { mark: 'the', color: 'orange' }), 'orange')).toBe('thethethe')
+            expect(colored(quote('it is safe, and version 5.1 is "safe"', { mark: ['safe', '5.1'], color: 'orange' }), 'orange')).toBe('safe5.1safe')
+            // The default color is blue.
+            const plain = quote(WORDS, { mark: 'VM' })
+            expect(plain.rule.get('fill')).toEqual(paint('blue'))
+            expect(colored(plain, 'blue')).toBe('VM')
+            // A cut quote shows each [...] in dim. Without `cut`, the same signs are words as the others are.
+            const cut = 'an emulator [...] and a virtualizer [...]'
+            expect(colored(quote(cut, { cut: true }), 'dim')).toBe('[...][...]')
+            expect(colored(quote(cut), 'dim')).toBe('')
+            expect(quote(cut, { cut: true }).words.source).toBe(`“${cut}”`)
+            // The source line is in dim.
+            const cited = quote(WORDS, { by: 'Cursor' })
+            expect(cited.source!.chars[0]!.get('fill')).toEqual(paint('dim'))
+            // The words are in the italic of the serif text font, or upright with `italic: false`.
+            const letter = (italic: boolean) => text('g', { font: 'text-serif', size: 32, italic }).chars[0]!.get('path')
+            expect(quote(WORDS).find('g')[0]!.get('path')).toEqual(letter(true))
+            expect(quote(WORDS, { italic: false }).find('g')[0]!.get('path')).toEqual(letter(false))
+            expect(letter(true)).not.toEqual(letter(false))
+        }))
+    })
+
+    it('finds the glyphs of a part of the words at every place, with spaces that do not count, in a copy too', async () => {
+        await compileFilm(film(() => {
+            const said = quote('the loop and the lock', { width: 300, size: 40 })
+            expect(keys(said.find('the'))).toBe('thethe')
+            // The first glyph is the opening quotation mark.
+            expect(said.find('the loop')).toEqual(said.words.chars.slice(1, 8))
+            expect(said.find('theloop')).toEqual(said.find('the  loop'))
+            expect(said.find('the lo')).toHaveLength(10)
+            expect(said.find('look')).toEqual([])
+            expect(said.find(' ')).toEqual([])
+            // The places at the borders of words come first: the word "not" and the word "thing", and not the letters in "nothing".
+            const short = quote('it is not safe, and nothing in the notes says another thing')
+            expect(short.find('not')).toEqual(short.words.chars.slice(5, 8))
+            expect(short.find('thing')).toEqual(short.words.chars.slice(-6, -1))
+            // A part that is only inside longer words gives those places: "noth" is in "nothing" and in "another".
+            expect(keys(short.find('noth'))).toBe('nothnoth')
+            expect(keys(short.find('nothi'))).toBe('nothi')
+            // A match starts after the one before it, so no glyph comes two times.
+            const run = quote('aaaaa').find('aa')
+            expect(run).toHaveLength(4)
+            expect(new Set(run).size).toBe(4)
+            // A copy has its own glyphs, and its own lines for `enter()`.
+            const copy = said.clone()
+            expect(keys(copy.find('lock'))).toBe('lock')
+            expect(copy.find('lock')[0]).not.toBe(said.find('lock')[0])
+            expect(copy.find('lock')[0]!.parent).toBe(copy.words)
+        }))
+    })
+
+    it('enters with the rule first, then the words line by line, then the source line', async () => {
+        let said!: Quote, bare!: Quote
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            said = quote(WORDS, { by: 'Cursor', width: 600, size: 40 }).at(-300, -200)
+            bare = quote(WORDS, { width: 600, size: 40 }).at(-300, 100)
+            s.wait(1)
+            s.play(said.enter({ lag: 1 }), bare.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The first line has 28 glyphs: the quotation mark and "the agent loop lives in Temporal".
+        const lines = (one: Quote) => [one.words.chars.slice(0, 28), one.words.chars.slice(28)].map((line) => [...new Set(line.map(shows))])
+        const state = (time: number) => at(time, () => [said.rule.get('sy'), ...lines(said), shows(said.source!)])
+        // The rule grows over the first 0.7 s. The two lines have 0.65 s each, from 1.3 s, and the source line the last 0.6 s.
+        expect(state(1.2)).toEqual([expect.closeTo(0.2 / 0.7, 6), [0], [0], 0])
+        expect(state(1.35)).toEqual([expect.closeTo(0.5, 6), [expect.closeTo(0.05 / 0.65, 6)], [0], 0])
+        expect(state(1.625)).toEqual([expect.closeTo(0.625 / 0.7, 6), [expect.closeTo(0.5, 6)], [0], 0])
+        expect(state(2.275)).toEqual([1, [1], [expect.closeTo(0.5, 6)], 0])
+        expect(state(2.7)).toEqual([1, [1], [1], expect.closeTo(0.5, 6)])
+        expect(state(3.2)).toEqual([1, [1], [1], 1])
+        // The rule grows down from its top end, which stays in place.
+        expect(at(1.35, () => said.rule.bounds())).toEqual({ x: -300, y: -200, width: 6, height: expect.closeTo(at(3.2, () => said.rule.bounds().height) / 2, 6) })
+        // Without a source line, the words have the time to the end: 0.85 s for each line.
+        expect(at(2.575, () => lines(bare))).toEqual([[1], [expect.closeTo(0.5, 6)]])
+        expect(at(3, () => lines(bare))).toEqual([[1], [1]])
+    })
+
+    it('draws nothing before its turn in a sequence, and keeps the place of a group that is not on the stage', async () => {
+        const compiled = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...quote('a b', { by: 'c' }).enter(), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws. At the end: the rule, four glyphs of the words, and the source.
+        for (const time of [1.3, 1.99]) expect(compiled.frame(time).ops).toHaveLength(1)
+        expect(compiled.frame(3.4).ops).toHaveLength(7)
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            let said!: Quote, outer!: Node
+            const moved = await compile((s) => {
+                said = quote('a b', { by: 'c' })
+                outer = group(said).at(shift, 0)
+                s.play(said.enter(), { duration: 1 })
+                s.wait(0.5)
+            })
+            expect(said.parent).toBe(outer)
+            lefts.push(Math.min(...paths(moved, 1.4).flatMap((op) => pathBounds(op.path)?.x ?? [])))
+        }
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+    })
+
+    it('is one text for the film check, which asks for the time to read all of its words', async () => {
+        const report = await checkFilm(film({ fps: 10 }, (s) => {
+            s.wait(0.5)
+            const said = s.add(quote(WORDS, { width: 600 }))
+            s.wait(1)
+            said.hide()
+            s.wait(1.5)
+        }), { motion: true })
+        const brief = report.diagnostics.filter((finding) => finding.code === 'film.text_brief')
+        // 63 characters at 20 in one second.
+        expect(brief.map((finding) => finding.text)).toEqual([`“${WORDS}”`])
+        expect(brief[0]!.message).toMatch(/needs about 3\.15 s for its 63 characters/)
+        // The source line is a text of its own for the check, with its own time: 26 characters.
+        const source = 'Cursor, 2026-06-02, a post'
+        let reading = ''
+        const cited = await checkFilm(film({ fps: 10 }, (s) => {
+            s.wait(0.5)
+            const said = s.add(quote(WORDS, { by: 'Cursor', when: '2026-06-02', where: 'a post', width: 600 }))
+            reading = said.reading
+            s.wait(1)
+            said.hide()
+            s.wait(1.5)
+        }), { motion: true })
+        const texts = cited.diagnostics.filter((finding) => finding.code === 'film.text_brief').map((finding) => [finding.text, /needs about [\d.]+ s for its \d+ characters/.exec(finding.message)?.[0]])
+        expect(texts).toEqual([[`“${WORDS}”`, 'needs about 3.15 s for its 63 characters'], [source, 'needs about 1.3 s for its 26 characters']])
+        // A viewer reads both. So a quote stays up for the time of its words and its source line together: `reading` is the two as one text.
+        expect(reading).toBe(`“${WORDS}” ${source}`)
+        expect(readingSeconds(reading)).toBeCloseTo(3.15 + 0.05 + 1.3, 6)
+        await compileFilm(film(() => expect(quote('yes').reading).toBe('“yes”')))
+    })
+
+    it('stands in a zone as a panel: the plate has the padding at each side of the quote, and the quote enters inside it', async () => {
+        let said!: Quote, panel!: ReturnType<typeof zone>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            said = quote(WORDS, { by: 'Cursor', width: 600, size: 40 })
+            panel = zone(said, { color: 'grid', fill: 'surface', fillOpacity: 1, padding: 40 }).at(100, 50)
+            s.wait(1)
+            s.play(fadeIn(panel), said.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        // The plate is the quote, from its rule to the end of its ink, with 40 px at each side. `.at()` of a zone places its middle.
+        const inner = said.bounds(), plate = panel.backdrop!.bounds()
+        expect([inner.x - plate.x, inner.y - plate.y, right(panel.backdrop!) - right(said), bottom(panel.backdrop!) - bottom(said)]).toEqual([40, 40, 40, 40].map((room) => expect.closeTo(room, 6)))
+        expect(panel.center).toEqual([expect.closeTo(100, 6), expect.closeTo(50, 6)])
+        // Nothing before the entrance. Then the plate fades in while the rule grows, and the source line comes last.
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        expect(at(1.35, () => [shows(panel), said.rule.get('sy'), shows(said.source!)])).toEqual([expect.closeTo(0.175, 6), expect.closeTo(0.5, 6), 0])
+        expect(at(3.2, () => [shows(panel), said.rule.get('sy'), ...new Set(said.words.chars.map(shows)), shows(said.source!)])).toEqual([1, 1, 1, 1])
+    })
+
+    it('puts two quotes side by side with one width and one top line, and a word between them with the same room at both sides', async () => {
+        await compileFilm(film(() => {
+            const pair = quotePair(
+                { words: WORDS, by: 'Cursor', color: 'orange' },
+                { words: 'the harness runs inside the sandbox', by: 'a lab', when: '2026', color: 'red', mark: 'sandbox' },
+                { width: 1300, gap: 300, versus: 'but', size: 40 },
+            ).at(-650, -100)
+            const [first, second] = pair.quotes
+            // Each quote is (1300 - 300) / 2 wide, so the second rule is 800 after the first one, at the same top.
+            expect([first.rule.bounds().x, first.rule.bounds().y]).toEqual([-650, -100])
+            expect([second.rule.bounds().x, second.rule.bounds().y]).toEqual([150, -100])
+            expect(first.baseline).toBe(second.baseline)
+            // Each one has the lines of a quote of that width, and its own color, mark, and source.
+            const alone = quote(WORDS, { by: 'Cursor', width: 500, size: 40 })
+            expect([first.words.bounds().width, first.height]).toEqual([expect.closeTo(alone.words.bounds().width, 6), expect.closeTo(alone.height, 6)])
+            expect(right(second.words)).toBeLessThanOrEqual(651)
+            expect([first.rule.get('fill'), second.rule.get('fill')]).toEqual([paint('orange'), paint('red')])
+            expect(colored(second, 'red')).toBe('sandbox')
+            expect(second.source!.source).toBe('a lab, 2026')
+            // The word is in dim, in the font of the quotes, on the base line of the first lines.
+            const word = pair.versus!.bounds()
+            const letter = (font: 'sans' | 'text-serif') => text('b', { font, size: 40 }).chars[0]!.get('path')
+            expect(pair.versus!.source).toBe('but')
+            expect([pair.versus!.data['size'], pair.versus!.chars[0]!.get('fill'), pair.versus!.chars[0]!.get('path')]).toEqual([40, paint('dim'), letter('text-serif')])
+            expect(quotePair({ words: 'yes' }, { words: 'no' }, { versus: 'but', size: 40, font: 'sans' }).versus!.chars[0]!.get('path')).toEqual(letter('sans'))
+            // A round letter goes a little under the base line.
+            expect(Math.abs(word.y + word.height - (-100 + first.baseline))).toBeLessThan(1)
+            // It has the same room at both sides: from the end of the ink of the first line of the first quote, and to the rule of the second quote.
+            const rooms = (one: ReturnType<typeof quotePair>) => { const box = one.versus!.bounds(), start = one.quotes[0].rule.bounds().x; return [box.x - (start + one.quotes[0].lineEnd()), one.quotes[1].rule.bounds().x - (box.x + box.width)] }
+            expect(rooms(pair)[0]).toBeCloseTo(rooms(pair)[1]!, 6)
+            expect(rooms(pair)[0]).toBeGreaterThan(text('H', { font: 'text-serif', size: 40 }).bounds().height)
+            // Beside a short first quote, the middle of the gap is far from the first quote and near the second one. The word is not there: it is at the left of the gap, which starts 500 after the first rule.
+            const short = quotePair({ words: 'yes' }, { words: 'no' }, { width: 1300, gap: 300, versus: 'but', size: 40 })
+            expect(rooms(short)[0]).toBeCloseTo(rooms(short)[1]!, 6)
+            expect(right(short.versus!)).toBeLessThan(500)
+            expect(pair.children).toEqual([first, pair.versus, second])
+            // With two sizes, the word has the smaller one, and stands on the first base line of the quote with that size. Nothing of the pair is over its top line.
+            for (const sizes of [[32, 56], [56, 32]] as const) {
+                const mixed = quotePair({ words: 'the cache makes every request faster', size: sizes[0] }, { words: 'with the cache, 4 of 10 requests were slower', size: sizes[1] }, { versus: 'but' }).at(-850, -160)
+                const smaller = mixed.quotes[sizes[0] === 32 ? 0 : 1]
+                expect(mixed.versus!.data['size']).toBe(32)
+                expect(mixed.bounds().y).toBe(-160)
+                expect(mixed.versus!.bounds().y).toBeGreaterThanOrEqual(-160)
+                expect(Math.abs(bottom(mixed.versus!) - (-160 + smaller.baseline))).toBeLessThan(1)
+                expect(rooms(mixed)[0]).toBeCloseTo(rooms(mixed)[1]!, 6)
+                // The default gap is 3 times the larger size: 168. Each quote has half of the rest.
+                expect(mixed.quotes[1].rule.bounds().x).toBeCloseTo(-850 + (1700 - 168) / 2 + 168, 6)
+            }
+            // Without a word, the pair has its two quotes only. The default gap is 3 times the size, in a width of 1700.
+            const plain = quotePair({ words: 'yes' }, { words: 'no', size: 20 })
+            expect(plain.versus).toBeNull()
+            expect(plain.quotes[1].rule.bounds().x).toBe(802 + 96)
+            // A quote of the pair can have its own size. An option of the pair is for both.
+            expect(plain.quotes.map((one) => one.words.data['size'])).toEqual([32, 20])
+            expect(quotePair({ words: 'yes', color: 'red' }, { words: 'no' }, { size: 50, color: 'green' }).quotes.map((one) => [one.words.data['size'], one.rule.get('fill')])).toEqual([[50, paint('red')], [50, paint('green')]])
+        }))
+    })
+
+    it('enters a pair with the first quote, then the word, then the second quote, which draws nothing before its turn', async () => {
+        let pair!: ReturnType<typeof quotePair>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            pair = quotePair({ words: 'yes', by: 'A' }, { words: 'no', by: 'B' }, { width: 1300, gap: 300, versus: 'but', size: 40 }).at(-650, -100)
+            s.wait(1)
+            s.play(pair.enter(), { duration: 5, ease: linear })
+            s.wait(0.5)
+        }))
+        const [first, second] = pair.quotes
+        const drawn = (time: number, one: Node) => paths(compiled, time).filter((op) => one.all().includes(op.node!)).length
+        const arrived = (one: Quote) => [one.rule.get('sy'), ...new Set(one.words.chars.map(shows)), shows(one.source!)]
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The first quote has the time to 3.3 s, the word comes from 3.1 s to 3.9 s, and the second quote has the time from 3.7 s.
+        expect(drawn(1.5, first)).toBeGreaterThan(0)
+        expect([drawn(1.5, pair.versus!), drawn(1.5, second)]).toEqual([0, 0])
+        expect(at(3.3, () => arrived(first))).toEqual([1, 1, expect.closeTo(1, 6)])
+        expect(at(3.5, () => shows(pair.versus!))).toBeCloseTo(0.5, 6)
+        expect(drawn(3.65, second)).toBe(0)
+        expect(at(3.75, () => second.rule.get('sy'))).toBeGreaterThan(0)
+        expect(at(3.75, () => second.rule.get('sy'))).toBeLessThan(0.2)
+        expect(at(3.75, () => shows(second.source!))).toBe(0)
+        expect(at(6, () => [shows(second), ...arrived(second)])).toEqual([1, 1, 1, 1])
+        // 2 rules, 5 and 4 glyphs of the words, 3 glyphs of the word between, and 2 of the sources.
+        expect(compiled.frame(6.4).ops).toHaveLength(16)
+    })
+
+    it('draws a double mark inside the words as a single curved mark, and finds a part as the film wrote it', async () => {
+        await compileFilm(film(() => {
+            const drawn = (words: string) => keys(quote(words).words.chars)
+            // The object puts the double marks around the words. A double mark inside them opens at the start of a word, and closes at any other place.
+            expect(drawn('"x"')).toBe('“‘x’”')
+            expect(drawn('he said "it is safe" and left')).toBe('“hesaid‘itissafe’andleft”')
+            expect(drawn('they call it "safe"')).toBe('“theycallit‘safe’”')
+            expect(drawn('a “curved” one ("x")')).toBe('“a‘curved’one(‘x’)”')
+            // After a digit, with no quotation open, a straight mark is the sign for inches, and it stays. An apostrophe stays too.
+            expect(drawn('it\'s a 5" disk')).toBe('“it\'sa5"disk”')
+            expect(drawn('"a 5" one')).toBe('“‘a5’one”')
+            // The film check reads what is on the screen.
+            expect(quote('he said "it is safe"').words.source).toBe('“he said ‘it is safe’”')
+            // `find` and `mark` take the words as the film wrote them, with the straight marks.
+            const said = quote('he said "it is safe" and left', { mark: '"it is safe"', color: 'orange' })
+            expect(colored(said, 'orange')).toBe('‘itissafe’')
+            expect(keys(said.find('"it'))).toBe('‘it')
+            expect(said.find('‘it')).toEqual([])
+        }))
+    })
+
+    it('takes 1.4 s to enter and 2.6 s for a pair by default, with half the time of a line between two lines, and a pair gives its lag to its quotes', async () => {
+        expect([quote('yes').enter().duration, quote('yes').enter({ duration: 3 }).duration]).toEqual([1.4, 3])
+        expect([quotePair({ words: 'yes' }, { words: 'no' }).enter().duration, quotePair({ words: 'yes' }, { words: 'no' }).enter({ duration: 4 }).duration]).toEqual([2.6, 4])
+        let said!: Quote, pair!: ReturnType<typeof quotePair>, slow!: ReturnType<typeof quotePair>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Two lines of six glyphs each, and no source line.
+            said = quote('first\nfinal', { size: 40 }).at(-800, -400)
+            pair = quotePair({ words: 'first\nfinal' }, { words: 'no' }, { size: 40 }).at(-800, -100)
+            slow = quotePair({ words: 'first\nfinal' }, { words: 'no' }, { size: 40 }).at(-800, 200)
+            s.wait(1)
+            s.play(said.enter(), pair.enter(), slow.enter({ lag: 1 }), { duration: 3, ease: linear })
+        }))
+        const lines = (one: Quote) => [one.words.chars.slice(0, 6), one.words.chars.slice(6)].map((line) => [...new Set(line.map(shows))])
+        // The words have the time from 1.45 s to 4 s. With a lag of 0.5, a line takes 1.7 s, and the second one starts 0.85 s after the first one.
+        expect(at(1.45 + 0.85, () => lines(said))).toEqual([[expect.closeTo(0.5, 6)], [0]])
+        expect(at(1.45 + 1.7, () => lines(said))).toEqual([[expect.closeTo(1, 6)], [expect.closeTo(0.5, 6)]])
+        // The first quote of a pair has the time from 1 s to 2.38 s, and its words from 1.207 s: 0.782 s for a line.
+        expect(at(1.207 + 0.782, () => lines(pair.quotes[0]))).toEqual([[expect.closeTo(1, 6)], [expect.closeTo(0.5, 6)]])
+        // With a lag of 1, the second line starts when the first one ends: 0.5865 s for a line.
+        expect(at(1.207 + 0.5865, () => lines(slow.quotes[0]))).toEqual([[expect.closeTo(1, 6)], [expect.closeTo(0, 6)]])
+        expect(at(1.207 + 0.5865 * 1.5, () => lines(slow.quotes[0]))).toEqual([[1], [expect.closeTo(0.5, 6)]])
+    })
+
+    it('refuses empty words, a width that cannot hold the longest word, a mark that is not in the words, a cut with no sign of it, and a time that is not a number', async () => {
+        await compileFilm(film(() => {
+            expect(() => quote(' ')).toThrow(/quote: give it the words of the source/)
+            // The longest word needs 156 px, and the rule with its room takes 30.
+            expect(() => quote(WORDS, { width: 185, size: 40 })).toThrow(/the word "Temporal" is 156 px wide at size 40, and a width of 185 leaves 155 px for the words\. Give a width of 186 or more, or a smaller size/)
+            expect(() => quote(WORDS, { width: 186, size: 40 })).not.toThrow()
+            expect(() => quote(WORDS, { width: 20 })).toThrow(/width is the width of the object\. Give more than 23/)
+            expect(() => quote(WORDS, { mark: 'temporal' })).toThrow(/the mark "temporal" is not in the words/)
+            expect(() => quote(WORDS, { mark: ['VM', 'the cloud'] })).toThrow(/the mark "the cloud" is not in the words/)
+            expect(() => quote(WORDS, { mark: '' })).toThrow(/the mark "" is not in the words/)
+            expect(() => quote(WORDS, { cut: true })).toThrow(/cut is true, and the words have no \[\.\.\.\]\. Write \[\.\.\.\] at each place/)
+            expect(() => quote(WORDS, { size: 0 })).toThrow(/size is the text size of the words/)
+            expect(() => quote(WORDS, { leading: 0 })).toThrow(/leading is the line height/)
+            expect(() => quote(WORDS, { by: 'A', sourceSize: -1 })).toThrow(/sourceSize is the text size of the source line/)
+            // A pair names the quote and the width of the pair, which is the width that the film gave.
+            expect(() => quotePair({ words: WORDS }, { words: ' ' })).toThrow(/quotePair: quote 1: give it the words of the source/)
+            expect(() => quotePair({ words: 'no' }, { words: WORDS }, { width: 431, gap: 60, size: 40 })).toThrow(/the word "Temporal" of quote 1 is 156 px wide at size 40, and a width of 431 with a gap of 60 leaves 155 px for the words of each quote\. Give a width of 432 or more, a smaller gap, or a smaller size/)
+            expect(() => quotePair({ words: 'no' }, { words: WORDS }, { width: 432, gap: 60, size: 40 })).not.toThrow()
+            expect(() => quotePair({ words: 'yes' }, { words: 'no' }, { width: 40, gap: 60 })).toThrow(/a width of 40 leaves no room for two quotes with a gap of 60/)
+            expect(() => quotePair({ words: 'yes' }, { words: 'no' }, { gap: -1 })).toThrow(/gap is the room between the two quotes/)
+            // The word between has the height of its letters as room at each side, at the least. A larger gap adds a quarter of what it grows to each side.
+            const narrow = (gap: number) => () => quotePair({ words: WORDS }, { words: 'no' }, { width: 1100, gap, versus: 'against', size: 40 })
+            expect(narrow(40)).toThrow(/quotePair: the word "against" has 21 px at each side, between the first line of quote 0 and the rule of quote 1\. It needs 27 px, the height of its letters\. Give a gap of 63 or more, or a shorter word/)
+            expect(narrow(62)).toThrow(/has 26 px at each side/)
+            expect(narrow(63)).not.toThrow()
+            // A mark that is in the words, and only inside longer words.
+            expect(() => quote('it is not safe, and nothing', { mark: 'noth' })).toThrow(/quote: the mark "noth" is not in the words as whole words: it is a part of "nothing"\. A mark starts and ends at the borders of words/)
+            expect(() => quote('it is not safe', { mark: 'ot sa' })).toThrow(/the mark "ot sa" is not in the words as whole words: it is a part of "not safe"\./)
+            // A lag or a duration that is not a number would leave the words hidden, with no error.
+            const said = quote(WORDS), pair = quotePair({ words: 'yes' }, { words: 'no' })
+            expect(() => said.enter({ lag: NaN })).toThrow(/quote: lag is NaN\. It is the part of the time of one line that passes before the next line starts: a number, 0 or more/)
+            expect(() => said.enter({ duration: NaN })).toThrow(/quote: duration is NaN\. It is a number of seconds, 0 or more/)
+            expect(() => said.enter({ lag: -1 })).toThrow(/quote: lag is -1\./)
+            expect(() => said.enter({ duration: '2' as never })).toThrow(/quote: duration is "2"\./)
+            expect(() => pair.enter({ lag: NaN })).toThrow(/quotePair: lag is NaN\./)
+            expect(() => pair.enter({ duration: Infinity })).toThrow(/quotePair: duration is Infinity\./)
+            expect(() => said.enter({ lag: 0, duration: 0 })).not.toThrow()
+        }))
+    })
+})
+
+describe('state grid', () => {
+    type Grid = ReturnType<typeof stateGrid>
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] }
+    const look = (cell: Node) => ({ fill: cell.get('fill'), fillOpacity: cell.get('fillOpacity'), stroke: cell.get('stroke'), dashed: cell.get('dash') !== null })
+    /** The look of a state, read from a grid of one cell. Call it while a film is built. */
+    const lookOf = (state: string, options: Partial<Parameters<typeof stateGrid>[0]> = {}) => look(stateGrid({ columns: 1, rows: 1, ...options, initial: state }).cells[0]!)
+    const fills = (grid: Grid) => grid.cells.map((cell) => cell.get('fillOpacity'))
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const words = (key: Node) => key.children.map((entry) => (entry.children[1] as unknown as { source: string }).source)
+    const fleet = { healthy: { color: 'green' }, draining: { color: 'yellow', fill: 0.3 }, down: { color: 'red', fill: 0, dash: true } }
+
+    it('places its middle, puts each cell where p() says, and keeps the edges on whole pixels', async () => {
+        await compileFilm(film(() => {
+            const grid = stateGrid({ columns: 4, rows: 2, cell: 20, gap: 4 }).at(100, 50)
+            expect(grid.cells).toHaveLength(8)
+            expect([grid.columns, grid.rows, grid.size]).toEqual([4, 2, 8])
+            // 4 cells of 20 with 3 gaps of 4 are 92 wide, and 2 rows are 44 tall, around the place of the grid.
+            const box = grid.bounds()
+            expect([box.x, box.y, box.width, box.height]).toEqual([54, 28, 92, 44])
+            // The index is row * columns + column: cell 5 is in the second row, in the second column.
+            expect(grid.p(0)).toEqual([-36, -12])
+            expect(grid.p(5)).toEqual([-12, 12])
+            grid.cells.forEach((cell, index) => expect(middle(cell)).toEqual([100 + grid.p(index)[0], 50 + grid.p(index)[1]]))
+            // A grid that is 35 wide and 9 tall cannot have its middle and its edges on whole pixels. The edges win.
+            const odd = stateGrid({ columns: 3, rows: 1, cell: 9, gap: 4 })
+            for (const cell of odd.cells) {
+                const edges = cell.bounds()
+                expect([edges.x, edges.y]).toEqual([Math.round(edges.x), Math.round(edges.y)])
+            }
+            expect(Math.abs(middle(odd)[0])).toBe(0.5)
+            expect(Math.abs(middle(odd)[1])).toBe(0.5)
+            // The default cell is 28, and the default gap is 0.18 of the cell in whole pixels, 3 at least.
+            const plain = stateGrid({ columns: 2, rows: 1 })
+            expect(plain.cells[0]!.bounds().width).toBe(28)
+            expect(plain.p(1)[0] - plain.p(0)[0]).toBe(33)
+            const small = stateGrid({ columns: 2, rows: 1, cell: 8 })
+            expect(small.p(1)[0] - small.p(0)[0]).toBe(11)
+        }))
+    })
+
+    it('takes the first states from one name, a list, or a function of the index', async () => {
+        await compileFilm(film(() => {
+            const names = ['absent', 'zero', 'present', 'dirty', 'shared', 'copied']
+            expect(stateGrid({ columns: 3, rows: 2, initial: 'dirty' }).count('dirty')).toBe(6)
+            const listed = stateGrid({ columns: 3, rows: 2, initial: names })
+            expect(names.map((_, index) => listed.stateOf(index))).toEqual(names)
+            const computed = stateGrid({ columns: 3, rows: 2, initial: (index) => (index % 2 ? 'file' : 'swapped') })
+            expect(computed.indexes('file')).toEqual([1, 3, 5])
+            expect(computed.count('swapped')).toBe(3)
+            expect(computed.count('present')).toBe(0)
+            // Without `initial`, every cell has the first state of the record.
+            expect(stateGrid({ columns: 2, rows: 1 }).indexes('absent')).toEqual([0, 1])
+            expect(stateGrid({ columns: 2, rows: 1, states: fleet }).indexes('healthy')).toEqual([0, 1])
+        }))
+    })
+
+    it('gives a cell the color of its state for the fill and the outline, with the fill opacity and the dashes of the state', async () => {
+        let purple!: Rgba, faint!: Rgba
+        const compiled = await compile((s) => {
+            purple = parseColor('purple')
+            faint = parseColor('faint')
+            s.add(stateGrid({ columns: 3, rows: 1, initial: ['absent', 'present', 'dirty'] }))
+            s.wait(1)
+        })
+        const [absent, present, dirty] = paths(compiled, 0.5)
+        // A fill of 0 draws the outline only.
+        expect(absent!.fill).toBeNull()
+        expect(absent!.stroke).toEqual(faint)
+        expect(absent!.dash).not.toBeNull()
+        expect(present!.fill).toEqual(purple)
+        expect(present!.stroke).toEqual(purple)
+        expect(present!.fillAlpha).toBeCloseTo(0.7, 6)
+        expect(present!.strokeAlpha).toBe(1)
+        expect(present!.dash).toBeNull()
+        expect(dirty!.fillAlpha).toBeCloseTo(0.8, 6)
+    })
+
+    it('gives the eight states of memory pages their looks', async () => {
+        await compileFilm(film(() => {
+            const pages = {
+                absent: ['faint', 0, true], zero: ['dim', 0.25, false], present: ['purple', 0.7, false], dirty: ['orange', 0.8, false],
+                shared: ['teal', 0.6, false], copied: ['green', 0.8, false], file: ['purple', 0.3, false], swapped: ['red', 0.3, false],
+            } as const
+            expect(Object.keys(PAGE_STATES)).toEqual(Object.keys(pages))
+            const grid = stateGrid({ columns: 8, rows: 1, initial: Object.keys(pages) })
+            Object.values(pages).forEach(([color, fill, dashed], index) => {
+                expect(look(grid.cells[index]!)).toEqual({ fill: parseColor(color), fillOpacity: fill, stroke: parseColor(color), dashed })
+            })
+        }))
+    })
+
+    it('draws an outline that grows with the cell, from 1 to 3 pixels', async () => {
+        await compileFilm(film(() => {
+            const widths = [8, 28, 40, 200].map((cell) => stateGrid({ columns: 1, rows: 1, cell }).cells[0]!.get('strokeWidth'))
+            expect(widths).toEqual([1, expect.closeTo(1.54, 6), expect.closeTo(2.2, 6), 3])
+        }))
+    })
+
+    it('closes the dashes around a cell, with one dash centered on each corner', async () => {
+        await compileFilm(film(() => {
+            for (const side of [12, 28, 90]) {
+                const cell = stateGrid({ columns: 1, rows: 1, cell: side }).cells[0]!
+                const [dash, room] = cell.get('dash')!
+                // Sixteen dashes go around: four for each quarter, so the four corners look the same. The length
+                // of a rounded corner is not exact, so allow a thousandth of the outline.
+                expect(Math.abs(((dash! + room!) * 16) / pathLength(cell.get('path')!) - 1)).toBeLessThan(0.001)
+                expect(dash!).toBeGreaterThan(room!)
+                // The ends of a dash are flat, so a dash is as long as its pattern says.
+                expect(cell.get('cap')).toBe('butt')
+                // The outline starts where the top left corner ends. The middle of that corner is an eighth of a
+                // circle before it, and the middle of a dash is there.
+                const box = cell.bounds(), start = cell.get('path')![0]!.p[0]!
+                const radius = start - box.x
+                expect(radius).toBeCloseTo(side * 0.16, 6)
+                expect(cell.get('dashOffset') - (Math.PI / 4) * radius).toBeCloseTo(dash! / 2, 6)
+            }
+        }))
+    })
+
+    it('changes one cell, a list of cells, or the cells that a function picks', async () => {
+        let grid!: Grid
+        let present!: ReturnType<typeof look>, dirty!: ReturnType<typeof look>, file!: ReturnType<typeof look>, absent!: ReturnType<typeof look>
+        await compile((s) => {
+            [absent, present, dirty, file] = ['absent', 'present', 'dirty', 'file'].map((state) => lookOf(state)) as [typeof absent, typeof absent, typeof absent, typeof absent]
+            grid = s.add(stateGrid({ columns: 4, rows: 2, initial: 'absent' }))
+            s.play(grid.change(5, 'present'), { duration: 1 })
+            // A cell that the list names twice changes once.
+            s.play(grid.change([7, 1, 1, 0], 'dirty'), { duration: 1 })
+            s.play(grid.change((index, state) => state === 'absent' && index < 4, 'file'), { duration: 1 })
+        })
+        expect(grid.indexes('present')).toEqual([5])
+        expect(grid.indexes('dirty')).toEqual([0, 1, 7])
+        expect(grid.indexes('file')).toEqual([2, 3])
+        expect(grid.indexes('absent')).toEqual([4, 6])
+        // The cells have their new looks when each change ends, and not before it starts.
+        expect(at(1, () => look(grid.cells[5]!))).toEqual(present)
+        expect(at(1, () => look(grid.cells[7]!))).toEqual(absent)
+        expect(at(2, () => [0, 1, 7].map((index) => look(grid.cells[index]!)))).toEqual([dirty, dirty, dirty])
+        expect(at(2, () => look(grid.cells[2]!))).toEqual(absent)
+        expect(at(3, () => [2, 3].map((index) => look(grid.cells[index]!)))).toEqual([file, file])
+        expect(at(3, () => [4, 6].map((index) => look(grid.cells[index]!)))).toEqual([absent, absent])
+    })
+
+    it('fades the fill, its opacity and the outline to the new state, and switches the dashes half way', async () => {
+        let grid!: Grid
+        let absent!: ReturnType<typeof look>, present!: ReturnType<typeof look>
+        await compile((s) => {
+            absent = lookOf('absent')
+            present = lookOf('present')
+            grid = s.add(stateGrid({ columns: 1, rows: 1, initial: 'absent' }))
+            s.wait(1)
+            s.play(grid.change(0, 'present'), { duration: 2, ease: linear })
+            s.wait(1)
+        })
+        const cell = grid.cells[0]!
+        const mixed = (share: number) => mixColor(absent.stroke as Rgba, present.stroke as Rgba, share)
+        expect(at(1, () => look(cell))).toEqual(absent)
+        // A quarter of the way: the colors and the opacity are a quarter of the way, and the outline is still dashed.
+        expect(at(1.5, () => look(cell))).toEqual({ fill: mixed(0.25), fillOpacity: expect.closeTo(0.175, 6), stroke: mixed(0.25), dashed: true })
+        expect(at(1.99, () => cell.get('dash'))).not.toBeNull()
+        expect(at(2.01, () => cell.get('dash'))).toBeNull()
+        expect(at(2.5, () => look(cell))).toEqual({ fill: mixed(0.75), fillOpacity: expect.closeTo(0.525, 6), stroke: mixed(0.75), dashed: false })
+        expect(at(3, () => look(cell))).toEqual(present)
+        expect(at(4, () => look(cell))).toEqual(present)
+    })
+
+    it('brings the dashes back when a cell goes to a dashed state', async () => {
+        let grid!: Grid
+        let absent!: ReturnType<typeof look>
+        await compile((s) => {
+            absent = lookOf('absent')
+            grid = s.add(stateGrid({ columns: 1, rows: 1, initial: 'present' }))
+            s.play(grid.change(0, 'absent'), { duration: 1, ease: linear })
+        })
+        expect(at(0.49, () => grid.cells[0]!.get('dash'))).toBeNull()
+        expect(at(0.51, () => grid.cells[0]!.get('dash'))).toEqual(stateGrid({ columns: 1, rows: 1 }).cells[0]!.get('dash'))
+        expect(at(1, () => look(grid.cells[0]!))).toEqual(absent)
+    })
+
+    it('sweeps the cells in index order, whatever the order of the list, over the whole duration', async () => {
+        let grid!: Grid, listed!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 2, rows: 2, initial: 'absent' }))
+            listed = s.add(stateGrid({ columns: 2, rows: 2, initial: 'absent' }))
+            s.wait(1)
+            // With a lag of 1, each cell starts when the cell before it ends: four cells, one second each.
+            s.play(grid.change(() => true, 'present', { lag: 1 }), listed.change([3, 0, 2, 1], 'present', { lag: 1 }), { duration: 4, ease: linear })
+        })
+        for (const made of [grid, listed]) {
+            expect(at(1, () => fills(made))).toEqual([0, 0, 0, 0])
+            expect(at(1.5, () => fills(made))).toEqual([expect.closeTo(0.35, 6), 0, 0, 0])
+            expect(at(3.5, () => fills(made))).toEqual([0.7, 0.7, expect.closeTo(0.35, 6), 0])
+            expect(at(4.5, () => fills(made))).toEqual([0.7, 0.7, 0.7, expect.closeTo(0.35, 6)])
+            expect(at(5, () => fills(made))).toEqual([0.7, 0.7, 0.7, 0.7])
+        }
+    })
+
+    it('gives each cell three tenths of the time of a change by default, at every count', async () => {
+        const grids: Grid[] = []
+        await compile((s) => {
+            for (const columns of [8, 50]) grids.push(s.add(stateGrid({ columns, rows: 1, initial: 'absent' })))
+            s.play(...grids.map((grid) => grid.change(() => true, 'present')), { duration: 10, ease: linear })
+        })
+        for (const grid of grids) {
+            const first = grid.cells[0]!, last = grid.cells[grid.size - 1]!
+            // The first cell changes from 0 to 3 seconds, and the last one from 7 to 10.
+            expect(at(1.5, () => first.get('fillOpacity'))).toBeCloseTo(0.35, 6)
+            expect(at(3, () => first.get('fillOpacity'))).toBeCloseTo(0.7, 6)
+            expect(at(7, () => last.get('fillOpacity'))).toBe(0)
+            expect(at(8.5, () => last.get('fillOpacity'))).toBeCloseTo(0.35, 6)
+            expect(at(10, () => last.get('fillOpacity'))).toBeCloseTo(0.7, 6)
+        }
+    })
+
+    it('takes the duration and the ease of a change and of an entrance from their options', async () => {
+        await compileFilm(film(() => {
+            const grid = stateGrid({ columns: 2, rows: 2 })
+            expect(grid.change(0, 'dirty').duration).toBe(1)
+            expect(grid.change(0, 'dirty', { duration: 3, ease: linear })).toMatchObject({ duration: 3, ease: linear })
+            expect(grid.enter().duration).toBe(1.2)
+            expect(grid.enter({ duration: 2, ease: linear })).toMatchObject({ duration: 2, ease: linear })
+        }))
+    })
+
+    it('gives two cells half of the time each, with no pause between them', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 2, rows: 1, initial: 'absent' }))
+            s.play(grid.change(() => true, 'present'), { duration: 2, ease: linear })
+        })
+        expect(at(0.5, () => fills(grid))).toEqual([expect.closeTo(0.35, 6), 0])
+        expect(at(1, () => fills(grid))).toEqual([expect.closeTo(0.7, 6), 0])
+        expect(at(1.5, () => fills(grid))).toEqual([0.7, expect.closeTo(0.35, 6)])
+    })
+
+    it('counts the states after two changes in one sequence, where the second change sees what the first one left', async () => {
+        let grid!: Grid
+        let dirty!: ReturnType<typeof look>, copied!: ReturnType<typeof look>
+        await compile((s) => {
+            dirty = lookOf('dirty')
+            copied = lookOf('copied')
+            grid = s.add(stateGrid({ columns: 3, rows: 2, initial: 'absent' }))
+            const first = grid.change([0, 1, 2], 'dirty'), second = grid.change((_, state) => state === 'dirty', 'copied')
+            // A change takes effect when the film plays it, not when the film makes it.
+            expect(grid.count('dirty')).toBe(0)
+            s.play(seq(first, second), { duration: 2 })
+        })
+        expect(grid.count('copied')).toBe(3)
+        expect(grid.count('dirty')).toBe(0)
+        expect(grid.count('absent')).toBe(3)
+        expect([0, 1, 2, 3].map((index) => grid.stateOf(index))).toEqual(['copied', 'copied', 'copied', 'absent'])
+        // On the timeline, the three cells are dirty after the first half, and copied at the end.
+        expect(at(1, () => [0, 1, 2].map((index) => look(grid.cells[index]!)))).toEqual([dirty, dirty, dirty])
+        expect(at(2, () => [0, 1, 2].map((index) => look(grid.cells[index]!)))).toEqual([copied, copied, copied])
+    })
+
+    it('leaves a cell that already has the state alone, and gives it no part of the time', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 4, rows: 1, initial: ['present', 'absent', 'present', 'absent'] }))
+            s.play(grid.change([0, 1, 2, 3], 'present', { lag: 1 }), { duration: 2, ease: linear })
+            // A change that finds no cell to change does nothing.
+            s.play(grid.change(() => true, 'present'), { duration: 1 })
+        })
+        // Two cells change, so each has half of the time. With a part for each of the four, cell 1 would start at 0.5.
+        expect(at(0.5, () => fills(grid))).toEqual([0.7, expect.closeTo(0.35, 6), 0.7, 0])
+        expect(at(1.5, () => fills(grid))).toEqual([0.7, 0.7, 0.7, expect.closeTo(0.35, 6)])
+        expect(grid.count('present')).toBe(4)
+        expect(at(2.5, () => fills(grid))).toEqual([0.7, 0.7, 0.7, 0.7])
+    })
+
+    it('takes its own set of states', async () => {
+        let grid!: Grid
+        let down!: ReturnType<typeof look>
+        await compile((s) => {
+            down = lookOf('down', { states: fleet })
+            grid = s.add(stateGrid({ columns: 5, rows: 2, states: fleet, initial: (index) => (index === 3 ? 'draining' : 'healthy') }))
+            // A state without a fill has a fill of 0.7.
+            expect(look(grid.cells[0]!)).toEqual({ fill: parseColor('green'), fillOpacity: 0.7, stroke: parseColor('green'), dashed: false })
+            expect(grid.cells[3]!.get('fillOpacity')).toBe(0.3)
+            s.play(grid.change([3, 4], 'down'), { duration: 1 })
+            // The states of memory pages are not states of this grid.
+            expect(() => grid.change(0, 'present')).toThrow(/no state "present". The states are healthy, draining, down/)
+        })
+        expect([grid.count('healthy'), grid.count('draining'), grid.count('down')]).toEqual([8, 0, 2])
+        expect(at(1, () => look(grid.cells[4]!))).toEqual(down)
+        expect(down).toMatchObject({ fillOpacity: 0, dashed: true })
+    })
+
+    it('makes a legend that starts at its place, with each sample and its name on one middle line and the same room between every pair', async () => {
+        await compileFilm(film(() => {
+            const grid = stateGrid({ columns: 4, rows: 2, initial: 'absent' })
+            const key = grid.legend([['absent', 'not in memory'], 'present', ['dirty', 'DIRTY']], { size: 30, gap: 40 }).at(100, 50)
+            // The legend is a node of its own. The grid still holds its cells and nothing else.
+            expect(key.parent).toBeNull()
+            expect(grid.children).toHaveLength(8)
+            expect(words(key)).toEqual(['not in memory', 'present', 'DIRTY'])
+            const samples = key.children.map((entry) => entry.children[0]!.bounds()), names = key.children.map((entry) => entry.children[1]!.bounds())
+            expect(samples[0]!.x).toBeCloseTo(100, 6)
+            // A sample is a little smaller than the text, with an even side, so its top and bottom are on whole pixels.
+            for (const sample of samples) {
+                expect(sample.y + sample.height / 2).toBeCloseTo(50, 6)
+                expect([sample.width, sample.height]).toEqual([26, 26])
+            }
+            expect(key.children.map((entry) => entry.children[1]!.data['size'])).toEqual([30, 30, 30])
+            // Capitals are as tall as the line is meant for: their middle is the middle line of the samples.
+            expect(Math.abs(names[2]!.y + names[2]!.height / 2 - 50)).toBeLessThan(1)
+            // Every name has a part above the line and a part below it, and no name is far off the line.
+            for (const name of names) expect(Math.abs(name.y + name.height / 2 - 50)).toBeLessThan(30 * 0.15)
+            // The room is measured to the ink of a name: the same after each sample, and the same before the next one.
+            names.forEach((name, index) => {
+                expect(name.x - (samples[index]!.x + samples[index]!.width)).toBeCloseTo(30 * 0.45, 6)
+                if (index + 1 < samples.length) expect(samples[index + 1]!.x - (name.x + name.width)).toBeCloseTo(40, 6)
+            })
+            // The names are dim, so the cells of the grid stay the strongest marks.
+            expect(key.children[1]!.children[1]!.children[0]!.get('fill')).toEqual(parseColor('dim'))
+            // A sample has the look of a cell in that state.
+            const cells = key.children.map((entry) => look(entry.children[0]!))
+            expect(cells).toEqual([lookOf('absent'), lookOf('present'), lookOf('dirty')])
+            // The default size is 26, and the default gap is 1.3 of the size.
+            const plain = grid.legend(['absent', 'present']).children.map((entry) => entry.children.map((part) => part.bounds()))
+            expect(plain[1]![0]!.x - (plain[0]![1]!.x + plain[0]![1]!.width)).toBeCloseTo(26 * 1.3, 6)
+            expect(plain[0]![0]!.width).toBe(22)
+            expect(grid.legend(['absent']).children[0]!.children[1]!.data['size']).toBe(26)
+            // The names take the font of the legend.
+            expect(grid.legend(['absent'], { font: 'mono' }).children[0]!.children[1]!.bounds().width).toBeGreaterThan(plain[0]![1]!.width + 5)
+        }))
+    })
+
+    it('lists the states that the grid has now, in the order of the record, when the legend gets no list', async () => {
+        await compile((s) => {
+            const grid = s.add(stateGrid({ columns: 3, rows: 1, initial: ['dirty', 'absent', 'dirty'] }))
+            expect(words(grid.legend())).toEqual(['absent', 'dirty'])
+            s.play(grid.change(1, 'swapped'), { duration: 1 })
+            expect(words(grid.legend())).toEqual(['dirty', 'swapped'])
+            expect(words(grid.legend(['swapped', 'zero']))).toEqual(['swapped', 'zero'])
+        })
+    })
+
+    it('enters row by row, with nothing on screen at the start and every cell at the end', async () => {
+        let grid!: Grid
+        const compiled = await compile((s) => {
+            grid = stateGrid({ columns: 3, rows: 4, initial: 'present' })
+            s.wait(0.5)
+            s.play(grid.enter({ lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        })
+        expect(compiled.frame(0.2).ops).toHaveLength(0)
+        // Four rows with a lag of 1: each row has half a second, one after the other. The cells of a row arrive together.
+        const rows = () => [0, 1, 2, 3].map((row) => [0, 1, 2].map((column) => shows(grid.cells[row * 3 + column]!)))
+        const half = expect.closeTo(0.5, 6)
+        expect(at(0.75, rows)).toEqual([[half, half, half], [0, 0, 0], [0, 0, 0], [0, 0, 0]])
+        expect(at(1.75, rows)).toEqual([[1, 1, 1], [1, 1, 1], [half, half, half], [0, 0, 0]])
+        expect(at(2.6, rows)).toEqual([[1, 1, 1], [1, 1, 1], [1, 1, 1], [1, 1, 1]])
+        expect(compiled.frame(2.6).ops).toHaveLength(12)
+    })
+
+    it('starts a row a quarter of the time of one row after the row before it, by default', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = stateGrid({ columns: 1, rows: 4, initial: 'present' })
+            // Four rows that start a quarter apart take 1.75 times the time of one row: one second for each row.
+            s.play(grid.enter(), { duration: 1.75, ease: linear })
+        })
+        expect(at(0.5, () => grid.cells.map(shows))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.25, 6), 0, 0])
+        expect(at(1.25, () => grid.cells.map(shows))).toEqual([1, 1, expect.closeTo(0.75, 6), expect.closeTo(0.5, 6)])
+    })
+
+    it('enters at its turn in a sequence, and stays in the group that holds it', async () => {
+        let grid!: Grid, outer!: Node
+        const compiled = await compile((s) => {
+            grid = stateGrid({ columns: 2, rows: 2, cell: 20, gap: 4, initial: 'present' })
+            outer = group(grid).at(300, 0)
+            s.wait(1)
+            s.play(seq(fadeIn(rect(50, 50)), grid.enter()), { duration: 2 })
+            s.wait(0.5)
+        })
+        // During the first half, the film draws the rectangle and no cell.
+        expect(compiled.frame(1.5).ops).toHaveLength(1)
+        expect(compiled.frame(3.2).ops).toHaveLength(5)
+        expect(grid.parent).toBe(outer)
+        expect(at(3.2, () => grid.cells[0]!.bounds().x)).toBe(300 - 22)
+    })
+
+    it('shows a grid that the film hid, when it enters', async () => {
+        const compiled = await compile((s) => {
+            const grid = s.add(stateGrid({ columns: 2, rows: 2, initial: 'present' }).hide())
+            s.wait(0.5)
+            s.play(grid.enter(), { duration: 1 })
+            s.wait(0.5)
+        })
+        expect(compiled.frame(0.3).ops).toHaveLength(0)
+        expect(compiled.frame(1.8).ops).toHaveLength(4)
+    })
+
+    it('gives a copy its own cells and its own states', async () => {
+        let grid!: Grid, copy!: Grid
+        await compile((s) => {
+            grid = s.add(stateGrid({ columns: 2, rows: 1, initial: 'absent' }))
+            copy = s.add(grid.clone().at(0, 100))
+            expect(copy.cells[0]).not.toBe(grid.cells[0])
+            expect(copy.children).toEqual(copy.cells)
+            s.play(copy.change(0, 'present'), { duration: 1 })
+        })
+        expect(copy.stateOf(0)).toBe('present')
+        expect(grid.stateOf(0)).toBe('absent')
+        expect(at(1, () => [fills(copy), fills(grid)])).toEqual([[0.7, 0], [0, 0]])
+    })
+
+    it('names a wrong size, state, list or index', async () => {
+        await compileFilm(film(() => {
+            expect(() => stateGrid({ columns: 0, rows: 2 })).toThrow(/columns is 0. Give a whole number, 1 or more/)
+            expect(() => stateGrid({ columns: 2, rows: 1.5 })).toThrow(/rows is 1.5. Give a whole number, 1 or more/)
+            expect(() => stateGrid({ columns: 100, rows: 51 })).toThrow(/100 by 51 is 5100 cells, and a grid draws 5000 at most/)
+            expect(stateGrid({ columns: 100, rows: 50 }).size).toBe(5000)
+            expect(() => stateGrid({ columns: 2, rows: 2, cell: 0 })).toThrow(/cell is the side/)
+            expect(() => stateGrid({ columns: 2, rows: 2, gap: -1 })).toThrow(/gap is the room/)
+            expect(() => stateGrid({ columns: 2, rows: 2, states: {} })).toThrow(/at least one state/)
+            expect(() => stateGrid({ columns: 2, rows: 2, states: { on: { color: 'green', fill: 1.5 } } })).toThrow(/the fill of the state "on" is 1.5. A fill is an opacity, 0 to 1/)
+            expect(() => stateGrid({ columns: 2, rows: 2, states: { on: { color: 'green', fill: -0.1 } } })).toThrow(/the fill of the state "on" is -0.1/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: 'missing' })).toThrow(/no state "missing". The states are absent, zero, present, dirty, shared, copied, file, swapped/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: () => 'gone' })).toThrow(/no state "gone"/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: ['absent', 'gone', 'absent', 'absent'] })).toThrow(/no state "gone"/)
+            expect(() => stateGrid({ columns: 2, rows: 2, initial: ['absent', 'zero'] })).toThrow(/the initial list has a length of 2, and the number of cells is 4/)
+            const grid = stateGrid({ columns: 2, rows: 2 })
+            expect(() => grid.p(4)).toThrow(/no cell 4. The cells of this grid are 0 to 3/)
+            expect(() => grid.stateOf(-1)).toThrow(/no cell -1/)
+            // A change names its mistake when the film makes it, before the film plays it.
+            expect(() => grid.change(1.5, 'dirty')).toThrow(/no cell 1.5/)
+            expect(() => grid.change([0, 9], 'dirty')).toThrow(/no cell 9/)
+            expect(() => grid.change(0, 'drity')).toThrow(/no state "drity"/)
+            expect(() => grid.change(() => true, 'drity')).toThrow(/no state "drity"/)
+            expect(() => grid.count('drity')).toThrow(/no state "drity"/)
+            expect(() => grid.indexes('drity')).toThrow(/no state "drity"/)
+            expect(() => grid.legend(['drity'])).toThrow(/no state "drity"/)
+            expect(() => grid.legend([])).toThrow(/give the legend at least one state/)
+            expect(() => grid.legend(undefined, { size: 0 })).toThrow(/size of the legend/)
+            expect(() => grid.legend(undefined, { gap: -1 })).toThrow(/gap of the legend/)
+        }))
+    })
+})
+
+describe('lanes', () => {
+    const names = [{ name: 'guest', color: 'red' }, { name: 'KVM', color: 'teal' }, { name: 'monitor', color: 'blue' }]
+    const events: LaneEvent[] = [
+        { lane: 'guest', start: 0, end: 30, label: 'runs' },
+        { from: 'guest', to: 'KVM', at: 30, label: 'VM exit' },
+        { lane: 'KVM', start: 30, end: 42 },
+        { from: 'KVM', to: 'monitor', at: 42, label: 'return to user space' },
+        { lane: 'monitor', start: 42, end: 70, label: 'emulates the device' },
+        { from: 'monitor', to: 'KVM', at: 70, label: 'KVM_RUN' },
+        { lane: 'KVM', start: 70, end: 78 },
+        { from: 'KVM', to: 'guest', at: 78, label: 'VM entry' },
+        { lane: 'guest', start: 78, end: 100, label: 'runs', open: true },
+    ]
+    // 10 px for each unit of time, and lanes at -100, 0 and 100, with bars from 20 over a lane to 20 under it.
+    const sized = { width: 1000, barHeight: 40, pitch: 100 }
+    const at = <T,>(time: number, read: () => T): T => { clock.now = time; return read() }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const right = (node: Node) => { const box = node.bounds(); return box.x + box.width }
+    const bottom = (node: Node) => { const box = node.bounds(); return box.y + box.height }
+    const words = (node: Node) => node.children.map((child) => (child as unknown as { source?: string }).source).filter(Boolean)
+
+    it('puts a time on x and a lane on y, each bar from the start of its span to its end, and the names at the left', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(names, events, sized)
+            expect([flow.x(0), flow.x(50), flow.x(100)]).toEqual([-500, 0, 500])
+            expect([flow.y('guest'), flow.y('KVM'), flow.y(2)]).toEqual([-100, 0, 100])
+            expect(flow.domain).toEqual([0, 100])
+            // One node per event, in the order given, and the same nodes by kind.
+            expect(flow.events.map((event) => event.kind)).toEqual(['span', 'handoff', 'span', 'handoff', 'span', 'handoff', 'span', 'handoff', 'span'])
+            expect(flow.spans).toEqual([0, 2, 4, 6, 8].map((index) => flow.events[index]))
+            expect(flow.handoffs).toEqual([1, 3, 5, 7].map((index) => flow.events[index]))
+            expect(flow.marks).toEqual([])
+            const bar = flow.spans[2]!.shape.bounds()
+            expect(bar.x).toBeCloseTo(flow.x(42), 6)
+            expect(bar.x + bar.width).toBeCloseTo(flow.x(70), 6)
+            expect([bar.y, bar.y + bar.height]).toEqual([80, 120])
+            flow.rails.forEach((rail, index) => {
+                const box = rail.bounds()
+                expect([box.x, box.x + box.width, box.y]).toEqual([-500, 500, flow.y(index)])
+            })
+            // The names end at one x, outside the time area, each at the height of its lane.
+            const ends = flow.names.map(right)
+            expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(4)
+            expect(Math.max(...ends)).toBeLessThan(-500 - 8)
+            flow.names.forEach((name, index) => expect(Math.abs(name.bounds().y + name.bounds().height / 2 - flow.y(index))).toBeLessThan(8))
+            expect(flow.names.map((name) => (name as unknown as { source: string }).source)).toEqual(['guest', 'KVM', 'monitor'])
+            // `.at()` places the middle of the time area, not the middle of the object with its names.
+            const moved = lanes(names, events, sized).at(120, -30)
+            const rail = moved.rails[1]!.bounds()
+            expect([rail.x + rail.width / 2, rail.y]).toEqual([120, -30])
+        }))
+    })
+
+    it('gives a span the color of its lane, or its own', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['plain', { name: 'teal', color: 'teal' }], [
+                { lane: 'plain', start: 0, end: 10 }, { lane: 'teal', start: 10, end: 20 }, { lane: 'teal', start: 20, end: 30, color: 'red' },
+            ])
+            const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+            expect(flow.spans.map((span) => span.shape.get('fill'))).toEqual([paint('blue'), paint('teal'), paint('red')])
+            // A handoff is in ink, whatever the colors of its two lanes. A mark takes the color of its lane. Each takes its own color when it has one.
+            const more = lanes(['plain', { name: 'teal', color: 'teal' }], [
+                { from: 'teal', to: 'plain', at: 10 }, { from: 'plain', to: 'teal', at: 20, color: 'orange' }, { lane: 'teal', at: 30 }, { lane: 'teal', at: 40, color: 'red' },
+            ])
+            expect(more.handoffs.map((handoff) => handoff.shape.children[0]!.get('stroke'))).toEqual([paint('ink'), paint('orange')])
+            expect(more.handoffs.map((handoff) => handoff.shape.children[1]!.get('fill'))).toEqual([paint('ink'), paint('orange')])
+            expect(more.marks.map((mark) => mark.shape.get('fill'))).toEqual([paint('teal'), paint('red')])
+        }))
+    })
+
+    it('draws the arrow of a handoff at its time, from the edge of one bar to the edge of the other', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(names, events, sized)
+            const down = flow.handoffs[0]!.shape.bounds()
+            expect(down.x + down.width / 2).toBeCloseTo(flow.x(30), 6)
+            expect([down.y, down.y + down.height]).toEqual([-80, -20])
+            // The head is at the lane that the handoff goes to: under the arrow on the way down, over it on the way up.
+            expect(bottom(flow.handoffs[0]!.shape.children[1]!)).toBe(-20)
+            const up = flow.handoffs[2]!.shape
+            expect([up.bounds().y, bottom(up)]).toEqual([20, 80])
+            expect(up.children[1]!.bounds().y).toBe(20)
+            expect(bottom(up.children[1]!)).toBeLessThan(40)
+        }))
+    })
+
+    it('puts the label of a span inside its bar when it fits, and over the bar when it does not', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a'], [
+                { lane: 'a', start: 0, end: 50, label: 'fits' },
+                { lane: 'a', start: 50, end: 53, label: 'does not fit' },
+                { lane: 'a', start: 96, end: 100, label: 'near the end' },
+            ], { ...sized, size: 26 })
+            const [inside, over, last] = flow.spans.map((span) => ({ bar: span.shape.bounds(), text: span.text!.bounds() }))
+            // Inside: at the start of the bar, with room at both sides, and between its top and its bottom.
+            expect(inside!.text.x).toBeCloseTo(inside!.bar.x + 13, 6)
+            expect(inside!.text.x + inside!.text.width).toBeLessThan(inside!.bar.x + inside!.bar.width - 13)
+            expect(inside!.text.y).toBeGreaterThan(inside!.bar.y)
+            expect(inside!.text.y + inside!.text.height).toBeLessThan(inside!.bar.y + inside!.bar.height)
+            // Over: it starts at the left end of the bar, and does not touch the bar.
+            expect(over!.text.x).toBeCloseTo(over!.bar.x, 6)
+            expect(over!.text.x + over!.text.width).toBeGreaterThan(over!.bar.x + over!.bar.width)
+            expect(over!.text.y + over!.text.height).toBeLessThan(over!.bar.y - 3)
+            // Over a bar at the right end, where it would leave the time area: it ends at the right end of the bar.
+            expect(last!.text.x + last!.text.width).toBeCloseTo(500, 6)
+            // A bar that is too low for the text has its label over it, at any width.
+            const low = lanes(['a'], [{ lane: 'a', start: 0, end: 100, label: 'fits' }], { ...sized, barHeight: 20, size: 26 })
+            expect(bottom(low.spans[0]!.text!)).toBeLessThan(low.spans[0]!.shape.bounds().y)
+            // A bar that is wider than its label by less than the room at both sides: the label is over it.
+            const width = inside!.text.width
+            const tight = lanes(['a'], [{ lane: 'a', start: 0, end: (width + 20) / 10, label: 'fits' }, { lane: 'a', start: 50, end: 50 + (width + 30) / 10, label: 'fits' }], { ...sized, size: 26, domain: [0, 100] })
+            expect(bottom(tight.spans[0]!.text!)).toBeLessThan(tight.spans[0]!.shape.bounds().y)
+            expect(tight.spans[1]!.text!.bounds().y).toBeGreaterThan(tight.spans[1]!.shape.bounds().y)
+        }))
+    })
+
+    it('puts the label of a handoff at the right of its arrow, between the two lanes, and at the left when the right has no room', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a', 'b', 'c'], [
+                { from: 'a', to: 'b', at: 20, label: 'at the right' },
+                { from: 'b', to: 'a', at: 96, label: 'near the end' },
+                { from: 'a', to: 'c', at: 50, label: 'two lanes down' },
+                { from: 'c', to: 'a', at: 75, label: 'up' },
+            ], { ...sized, domain: [0, 100] })
+            const [plain, late, far, up] = flow.handoffs.map((handoff) => ({ arrow: handoff.shape.bounds(), text: handoff.text!.bounds() }))
+            expect(plain!.text.x).toBeGreaterThan(plain!.arrow.x + plain!.arrow.width + 4)
+            expect(plain!.text.x).toBeLessThan(plain!.arrow.x + plain!.arrow.width + 16)
+            // Between the two bars: under the bar of the first lane and over the bar of the second.
+            expect(plain!.text.y).toBeGreaterThan(flow.y('a') + 20)
+            expect(plain!.text.y + plain!.text.height).toBeLessThan(flow.y('b') - 20)
+            expect(Math.abs(plain!.text.y + plain!.text.height / 2 - (flow.y('a') + flow.y('b')) / 2)).toBeLessThan(6)
+            // At the right, this label would leave the time area. It goes to the left of its arrow.
+            expect(late!.text.x + late!.text.width).toBeLessThan(late!.arrow.x - 4)
+            expect(late!.text.x + late!.text.width).toBeGreaterThan(late!.arrow.x - 16)
+            // Over two lanes, the label is beside the lane that the handoff leaves, where no bar of the middle lane is.
+            expect(far!.text.y + far!.text.height).toBeLessThan(flow.y('b') - 20)
+            expect(far!.text.x).toBeGreaterThan(far!.arrow.x + far!.arrow.width)
+            expect(up!.text.y).toBeGreaterThan(flow.y('b') + 20)
+            // With an arrow close at the right, the label goes to the left of its own arrow.
+            const close = lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 50, label: 'enter' }, { from: 'b', to: 'a', at: 52, label: 'leave' }], { ...sized, domain: [0, 100] })
+            expect(right(close.handoffs[0]!.text!)).toBeLessThan(close.handoffs[0]!.shape.bounds().x)
+            expect(close.handoffs[1]!.text!.bounds().x).toBeGreaterThan(right(close.handoffs[1]!.shape))
+        }))
+    })
+
+    it('puts a mark on its lane as a dot with its label over it, and keeps the label in the time area', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a', 'b'], [
+                { lane: 'a', at: 0, label: 'the first instant' },
+                { lane: 'a', at: 50, label: 'middle' },
+                { lane: 'a', at: 100, label: 'the last instant' },
+                { lane: 'b', start: 40, end: 60 },
+                { lane: 'b', at: 50, label: 'on a bar' },
+            ], sized)
+            const [first, middle, last, onBar] = flow.marks.map((mark) => ({ dot: mark.shape.bounds(), text: mark.text!.bounds() }))
+            expect([middle!.dot.x + middle!.dot.width / 2, middle!.dot.y + middle!.dot.height / 2]).toEqual([flow.x(50), flow.y('a')])
+            expect(middle!.text.x + middle!.text.width / 2).toBeCloseTo(flow.x(50), 6)
+            expect(middle!.text.y + middle!.text.height).toBeLessThan(middle!.dot.y)
+            expect(middle!.text.y + middle!.text.height).toBeGreaterThan(middle!.dot.y - 12)
+            expect(first!.text.x).toBeCloseTo(-500, 6)
+            expect(last!.text.x + last!.text.width).toBeCloseTo(500, 6)
+            // A label over a dot that is on a bar is over the bar.
+            expect(onBar!.text.y + onBar!.text.height).toBeLessThan(flow.spans[0]!.shape.bounds().y)
+        }))
+    })
+
+    it('ends an open span with an arrow head when it reaches the end of the domain, and gives it no outline', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['a'], [
+                { lane: 'a', start: 0, end: 40 }, { lane: 'a', start: 40, end: 60, open: true }, { lane: 'a', start: 70, end: 100, open: true },
+            ], sized)
+            expect(flow.spans.map((span) => span.shape.get('stroke') !== null)).toEqual([true, false, false])
+            expect(flow.spans.map((span) => span.tip !== null)).toEqual([false, false, true])
+            const tip = flow.spans[2]!.tip!.bounds()
+            expect(tip.x).toBeGreaterThan(500)
+            expect(tip.x + tip.width).toBeLessThan(500 + 24)
+            expect([tip.y, tip.y + tip.height]).toEqual([-20, 20])
+        }))
+    })
+
+    it('draws an axis with the ticks and the format that it is given, and no axis without ticks', async () => {
+        await compileFilm(film(() => {
+            expect(lanes(names, events, sized).axis).toBeNull()
+            const flow = lanes(names, events, { ...sized, ticks: [0, 50, 100], format: (time) => `${time} ms`, axisLabel: 'time since the exit' })
+            expect(words(flow.axis!)).toEqual(['0 ms', '50 ms', '100 ms', 'time since the exit'])
+            const numbers = flow.axis!.children.filter((child) => /ms$/.test((child as unknown as { source?: string }).source ?? ''))
+            numbers.forEach((number, index) => {
+                const box = number.bounds()
+                expect(Math.abs(box.x + box.width / 2 - flow.x(index * 50))).toBeLessThan(3)
+                // Under the bars of the last lane.
+                expect(box.y).toBeGreaterThan(flow.y('monitor') + 20)
+            })
+            // A count gives round ticks inside the domain, written as plain numbers.
+            expect(words(lanes(names, events, { ...sized, ticks: 4 }).axis!)).toEqual(['0', '20', '40', '60', '80', '100'])
+            expect(words(lanes(['a'], [{ lane: 'a', start: 0, end: 1 }], { ticks: [0, 0.25, 0.5, 1] }).axis!)).toEqual(['0.00', '0.25', '0.50', '1.00'])
+            // The cursor goes down to the line of the axis. With no axis, it stops a little under the bars of the last lane.
+            const line = flow.axis!.children[0]!.bounds().y
+            expect(bottom(flow.cursor)).toBeCloseTo(line, 6)
+            expect(line).toBeCloseTo(flow.y('monitor') + 50, 6)
+            const bare = lanes(names, events, sized)
+            expect(bottom(bare.cursor)).toBeLessThan(bare.y('monitor') + 20 + 14)
+            expect(bottom(bare.cursor)).toBeGreaterThan(bare.y('monitor') + 20)
+            // An axis label with no ticks is a line of time that is not to scale: the line and the label, and no tick.
+            const loose = lanes(names, events, { ...sized, axisLabel: 'time, not to scale' })
+            expect(words(loose.axis!)).toEqual(['time, not to scale'])
+            expect(loose.axis!.children).toHaveLength(2)
+            expect(right(loose.axis!.children[0]!) - loose.axis!.children[0]!.bounds().x).toBe(1000)
+        }))
+    })
+
+    it('enters with its names, its lanes and its axis, and shows no event and no cursor', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50, label: 'runs' }, { from: 'a', to: 'b', at: 50, label: 'call' }], { ...sized, domain: [0, 100], ticks: [0, 100] })
+            s.wait(0.5)
+            s.play(flow.enter({ lag: 1 }), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.2).ops).toHaveLength(0)
+        // With a lag of 1, the second lane starts when the first one is done.
+        expect(at(0.75, () => flow.names.map(shows))).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(0.75, () => flow.rails.map((rail) => rail.get('trimTo')))).toEqual([expect.closeTo(0.5, 6), 0])
+        // The axis waits for the first third of the time, then fades in.
+        expect(at(0.75, () => shows(flow.axis!))).toBe(0)
+        expect(at(1.2, () => shows(flow.axis!))).toBeGreaterThan(0)
+        expect(at(1.2, () => shows(flow.axis!))).toBeLessThan(1)
+        expect(at(1.6, () => [...flow.names, ...flow.rails, flow.axis!].map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(1.6, () => flow.rails.map((rail) => rail.get('trimTo')))).toEqual([1, 1])
+        expect(at(1.6, () => [...flow.events, flow.cursor].map(shows))).toEqual([0, 0, 0])
+        // Two names of one letter, two lines, the axis line, and two ticks with one number each.
+        expect(compiled.frame(1.6).ops).toHaveLength(2 + 2 + 1 + 2 + 4)
+        expect(flow.time).toBe(0)
+    })
+
+    it('grows a span with the cursor, so that its right end is at the cursor at every frame of an eased advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.wait(1)
+            s.play(flow.advance(20), { duration: 2 })
+            s.wait(1)
+        }))
+        const bar = flow.spans[0]!.shape
+        // Before the first advance, no event shows and the cursor is hidden.
+        expect(at(0.5, () => [...flow.events, flow.cursor].map(shows))).toEqual(Array(10).fill(0))
+        for (const [time, share] of [[1.5, 0.25], [2.4, 0.7]] as const) {
+            // The default ease is not linear: a quarter of the time is much less than a quarter of the way.
+            const cursor = flow.x(20 * smooth(share))
+            expect(at(time, () => right(bar))).toBeCloseTo(cursor, 6)
+            expect(at(time, () => flow.cursor.get('x'))).toBeCloseTo(cursor, 6)
+            expect(at(time, () => bar.bounds().x)).toBeCloseTo(flow.x(0), 6)
+            expect(at(time, () => [flow.spans[0]!, flow.cursor].map(shows))).toEqual([1, 1])
+        }
+        expect(flow.x(20 * smooth(0.25))).toBeLessThan(flow.x(2))
+        // The cursor stops at the time, inside the span. No other event shows.
+        expect(at(3.5, () => [right(bar), flow.cursor.get('x')])).toEqual([flow.x(20), flow.x(20)])
+        expect(at(3.5, () => flow.events.slice(1).map(shows))).toEqual(Array(8).fill(0))
+        expect(flow.time).toBe(20)
+    })
+
+    it('shows a handoff when the cursor reaches it and not before, and its label when the arrow is drawn', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            // From 0 to 40 at a constant speed in 2 seconds: the cursor reaches the handoff of time 30 at 1.5 s.
+            s.play(flow.advance(40), { duration: 2, ease: linear })
+            s.wait(1)
+        }))
+        const handoff = flow.handoffs[0]!, [shaft, head] = handoff.shape.children as [Node, Node]
+        expect(at(1.45, () => shows(handoff))).toBe(0)
+        expect(at(1.55, () => shows(handoff))).toBe(1)
+        // The arrow draws from the lane that the handoff leaves: the head starts there and leads the shaft.
+        expect(at(1.5, () => shaft.get('trimTo'))).toBe(0)
+        expect(at(1.5, () => head.bounds().y)).toBeCloseTo(-80, 6)
+        expect(at(1.6, () => shaft.get('trimTo'))).toBeGreaterThan(0)
+        expect(at(1.6, () => shaft.get('trimTo'))).toBeLessThan(1)
+        expect(at(1.6, () => shows(handoff.text!))).toBe(0)
+        expect(at(1.75, () => [shaft.get('trimTo'), bottom(head)])).toEqual([1, -20])
+        expect(at(1.75, () => shows(handoff.text!))).toBeLessThan(1)
+        expect(at(2, () => shows(handoff.text!))).toBe(1)
+        // The span of the next lane starts at the same time, and grows with the cursor.
+        expect(at(1.45, () => shows(flow.spans[1]!))).toBe(0)
+        expect(at(1.75, () => [shows(flow.spans[1]!), right(flow.spans[1]!.shape)])).toEqual([1, flow.x(35)])
+        // The handoff of time 42 is after the cursor.
+        expect(at(3, () => shows(flow.handoffs[1]!))).toBe(0)
+    })
+
+    it('stops the cursor early, so that a handoff at the end of an advance is complete when the advance ends', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.play(flow.advance(30), { duration: 2, ease: linear })
+            s.wait(1)
+            s.play(flow.advance(42), { duration: 0.5, ease: linear })
+        }))
+        const handoff = flow.handoffs[0]!
+        // The arrow and its label take half a second. The cursor has the first 1.5 s for its way.
+        expect(at(0.75, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(15), 6)
+        expect(at(1.5, () => [flow.cursor.get('x'), right(flow.spans[0]!.shape)])).toEqual([flow.x(30), flow.x(30)])
+        expect(at(1.45, () => shows(handoff))).toBe(0)
+        expect(at(2, () => [shows(handoff), shows(handoff.text!), handoff.shape.children[0]!.get('trimTo')])).toEqual([1, 1, 1])
+        // A stop at the start of a span shows nothing of it.
+        expect(at(2.5, () => shows(flow.spans[1]!))).toBe(0)
+        // The next advance starts at the time of the first handoff, and does not draw it again.
+        expect(at(3.1, () => [shows(handoff.text!), handoff.shape.children[0]!.get('trimTo')])).toEqual([1, 1])
+        // A short advance keeps 0.6 of its time for the cursor, and the handoff is still complete at its end.
+        expect(at(3.3, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(42), 6)
+        expect(at(3.29, () => shows(flow.handoffs[1]!))).toBe(0)
+        expect(at(3.5, () => [shows(flow.handoffs[1]!), shows(flow.handoffs[1]!.text!)])).toEqual([1, 1])
+    })
+
+    it('brings a label inside a bar when the span starts, and a label over a bar and the outline when the span is complete', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a'], [
+                { lane: 'a', start: 0, end: 50, label: 'inside' },
+                { lane: 'a', start: 50, end: 54, label: 'over the bar' },
+                { lane: 'a', start: 60, end: 100, label: 'goes on', open: true },
+            ], sized))
+            s.play(flow.advance(25), { duration: 2, ease: linear })
+            s.play(flow.advance(52), { duration: 2, ease: linear })
+            s.play(flow.advance(54), { duration: 1, ease: linear })
+            s.play(flow.advance(100), { duration: 2, ease: linear })
+        }))
+        const [inside, over, open] = flow.spans
+        // The label inside is there after 0.3 s, long before the bar is as long as the label.
+        expect(at(0.15, () => shows(inside!.text!))).toBeCloseTo(0.5, 6)
+        expect(at(0.3, () => [shows(inside!.text!), right(inside!.shape)])).toEqual([1, flow.x(3.75)])
+        // A span that grows has no outline. The outline comes when the cursor reaches its end.
+        expect(at(2, () => inside!.shape.get('strokeOpacity'))).toBe(0)
+        expect(at(4, () => inside!.shape.get('strokeOpacity'))).toBe(1)
+        // The second span is not complete at 52: its bar shows, and its label does not.
+        expect(at(4, () => [shows(over!), right(over!.shape), shows(over!.text!), over!.shape.get('strokeOpacity')])).toEqual([1, flow.x(52), 0, 0])
+        expect(at(4.69, () => shows(over!.text!))).toBe(0)
+        expect(at(5, () => [right(over!.shape), shows(over!.text!), over!.shape.get('strokeOpacity')])).toEqual([flow.x(54), 1, 1])
+        // The arrow head of an open span comes when the span reaches the end of the domain.
+        expect(at(6, () => [shows(open!), shows(open!.tip!)])).toEqual([1, 0])
+        expect(at(7, () => [right(open!.shape), shows(open!.tip!)])).toEqual([flow.x(100), 1])
+    })
+
+    it('chains two advances in one sequence, keeps the time of the cursor, and refuses to go back', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            expect(flow.time).toBe(0)
+            const first = flow.advance(30), second = flow.advance(50)
+            // The time moves when an advance is scheduled, not when it is made.
+            expect(flow.time).toBe(0)
+            s.play(seq(first, second), { duration: 2, ease: linear })
+            expect(flow.time).toBe(50)
+            expect(() => flow.advance(49)).toThrow(/cannot advance to 49\. The cursor is at 50, and it does not go back/)
+            expect(() => flow.advance(101)).toThrow(/cannot advance to 101\. The domain is 0 to 100/)
+            expect(() => flow.advance(Number.NaN)).toThrow(/cannot advance to NaN/)
+            // The second of two advances in one sequence is checked when it is scheduled.
+            expect(() => s.play(seq(flow.advance(60), flow.advance(55)))).toThrow(/cannot advance to 55\. The cursor is at 60/)
+            // An advance to the time of the cursor is not a step back.
+            s.play(flow.advance(60), { duration: 0.5 })
+            expect(flow.time).toBe(60)
+        }))
+        // The second advance starts where the first one stops: at 30 after one second, then on to 50.
+        expect(at(1, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(30), 6)
+        expect(at(1.5, () => flow.cursor.get('x'))).toBeGreaterThan(flow.x(35))
+        expect(at(1.5, () => flow.cursor.get('x'))).toBeLessThan(flow.x(50))
+        expect(at(2, () => [flow.cursor.get('x'), right(flow.spans[2]!.shape)])).toEqual([flow.x(50), flow.x(50)])
+        expect(at(2, () => flow.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+    })
+
+    it('shows a handoff exactly when the cursor is at its time or past it, at every frame of an eased advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.play(flow.showAll(), { duration: 4 })
+        }))
+        const seen = new Set<boolean>()
+        for (let frame = 0; frame <= 80; frame++) {
+            const time = frame / 20
+            const cursor = at(time, () => flow.cursor.get('x'))
+            for (const [handoff, when] of [[flow.handoffs[0]!, 30], [flow.handoffs[2]!, 70]] as const) {
+                if (Math.abs(cursor - flow.x(when)) < 0.5) continue
+                expect(at(time, () => shows(handoff) > 0)).toBe(cursor > flow.x(when))
+                seen.add(cursor > flow.x(when))
+            }
+        }
+        expect([...seen].sort()).toEqual([false, true])
+        // The default ease is slow at its two ends: the cursor reaches 30 after more than 0.3 of the time.
+        expect(at(1.3, () => shows(flow.handoffs[0]!))).toBe(0)
+    })
+
+    it('shows a mark when the cursor reaches it, and a mark at the first end of the domain on the first advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a'], [{ lane: 'a', at: 0, label: 'start' }, { lane: 'a', at: 50, label: 'tick' }], { ...sized, domain: [0, 100] }))
+            s.wait(1)
+            s.play(flow.advance(0), { duration: 1 })
+            s.play(flow.advance(100), { duration: 2, ease: linear })
+        }))
+        const [first, second] = flow.marks
+        expect(at(0.9, () => [first!, second!, flow.cursor].map(shows))).toEqual([0, 0, 0])
+        // The dot comes first, then its label. Both are complete after half a second.
+        expect(at(1.02, () => shows(first!.shape))).toBeLessThan(0.2)
+        // The dot grows as it comes: it starts at 0.3 of its size.
+        expect(at(1, () => first!.shape.get('sx'))).toBeCloseTo(0.3, 6)
+        expect(at(1.1, () => first!.shape.get('sx'))).toBeGreaterThan(0.3)
+        expect(at(1.1, () => first!.shape.get('sx'))).toBeLessThan(1)
+        // The cursor fades in over the first 0.3 s of the first advance.
+        expect(at(1.1, () => shows(flow.cursor))).toBeGreaterThan(0)
+        expect(at(1.1, () => shows(flow.cursor))).toBeLessThan(1)
+        expect(at(1.3, () => shows(flow.cursor))).toBe(1)
+        expect(at(1.1, () => shows(first!.shape))).toBeGreaterThan(0)
+        expect(at(1.1, () => shows(first!.text!))).toBe(0)
+        expect(at(1.5, () => [shows(first!), shows(first!.shape), shows(first!.text!), first!.shape.get('sx')])).toEqual([1, 1, 1, 1])
+        expect(at(2, () => [shows(second!), flow.cursor.get('x')])).toEqual([0, flow.x(0)])
+        // The cursor is at 50 after one second of the second advance.
+        expect(at(2.95, () => shows(second!))).toBe(0)
+        expect(at(3.05, () => shows(second!))).toBe(1)
+        expect(at(3.5, () => [shows(second!.shape), shows(second!.text!)])).toEqual([1, 1])
+        // The first mark is not shown again.
+        expect(at(2.1, () => [shows(first!.shape), shows(first!.text!)])).toEqual([1, 1])
+    })
+
+    it('hides the line of a lane behind a bar, as far as the bar goes', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.play(flow.advance(20), { duration: 1 })
+            s.wait(1)
+        }))
+        const ops = compiled.frame(1.5).ops.filter((op): op is PathOp => op.kind === 'path')
+        const line = ops.findIndex((op) => op.node === flow.rails[0]), bar = ops.findIndex((op) => op.node === flow.spans[0]!.shape)
+        expect(line).toBeGreaterThanOrEqual(0)
+        expect(bar).toBeGreaterThan(line)
+        // The bar lets what is under it show through. A shape of the same outline is under it, and nothing shows through that one.
+        expect(ops[bar]!.fillAlpha).toBeLessThan(0.9)
+        const under = ops.slice(line + 1, bar).filter((op) => op.fillAlpha === 1 && pathBounds(op.path)!.width === pathBounds(ops[bar]!.path)!.width)
+        expect(under).toHaveLength(1)
+        expect(pathBounds(under[0]!.path)).toEqual(pathBounds(ops[bar]!.path))
+        expect(pathBounds(ops[bar]!.path)!.width).toBeCloseTo(200, 6)
+    })
+
+    it('shows every event with showAll, at once when the film gives it no time', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, sized))
+            s.wait(1)
+            s.play(flow.showAll(), { duration: 0 })
+            s.wait(1)
+        }))
+        expect(flow.time).toBe(100)
+        const before = compiled.frame(0.5).ops.length
+        expect(at(0.9, () => flow.events.map(shows))).toEqual(Array(9).fill(0))
+        expect(at(1, () => [...flow.events, ...flow.events.flatMap((event) => (event.text ? [event.text] : [])), flow.spans[4]!.tip!, flow.cursor].map(shows))).toEqual(Array(18).fill(1))
+        expect(at(1, () => flow.cursor.get('x'))).toBe(flow.x(100))
+        expect(at(1, () => flow.spans.map((span) => right(span.shape)))).toEqual([30, 42, 70, 78, 100].map((time) => flow.x(time)))
+        expect(at(1, () => flow.handoffs.map((handoff) => handoff.shape.children[0]!.get('trimTo')))).toEqual([1, 1, 1, 1])
+        expect(compiled.frame(1.5).ops.length).toBeGreaterThan(before + 60)
+    })
+
+    it('keeps the cursor and the lines of the lanes behind the labels, so that the film check finds no line through a text', async () => {
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            // At 50 the cursor is behind the label of the handoff of time 42 and the label inside the bar that grows.
+            const flow = s.add(lanes(names, events, sized).at(60, 0))
+            s.play(flow.advance(50), { duration: 1 })
+            s.wait(1)
+        }))
+        expect(report.diagnostics).toEqual([])
+        // The same stop with marks: the cursor is behind the label of the mark that it stops at.
+        const marked = await checkFilm(film({ fps: 20 }, (s) => {
+            const flow = s.add(lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 60, label: 'runs' }, { lane: 'b', at: 40, label: 'interrupt' }], sized).at(60, 0))
+            s.play(flow.advance(40), { duration: 1 })
+            s.wait(1)
+        }))
+        expect(marked.diagnostics).toEqual([])
+    })
+
+    it('gives a copy its own events, which advance without the first object', async () => {
+        let flow!: ReturnType<typeof lanes>, copy!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(names, events, sized)
+            copy = flow.clone()
+            expect(copy.events[0]).not.toBe(flow.events[0])
+            expect(copy.children).toContain(copy.events[0])
+            expect(copy.spans[0]).toBe(copy.events[0])
+            expect(copy.events[0]!.shape.parent).toBe(copy.events[0])
+            s.add(flow, copy.at(0, 400))
+            s.play(copy.advance(50), { duration: 1 })
+        }))
+        expect([flow.time, copy.time]).toEqual([0, 50])
+        expect(at(1, () => flow.events.map(shows))).toEqual(Array(9).fill(0))
+        expect(at(1, () => copy.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+        // Nothing of the first object is in the picture but its names and its lines: 15 letters and 3 lines.
+        const upper = compiled.frame(1).ops.filter((op): op is PathOp => op.kind === 'path').filter((op) => pathBounds(op.path)!.y < 540 + 150)
+        expect(upper).toHaveLength(18)
+    })
+
+    it('draws a boundary between two lanes that are neighbors, moves the two lanes apart, and puts its label after the right end of the line', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['user', 'kernel', 'drive'], [{ lane: 'user', start: 0, end: 100 }], {
+                ...sized, size: 26, boundaries: [{ between: ['user', 'kernel'], label: 'system call line' }, { between: ['drive', 'kernel'], color: 'purple' }],
+            })
+            // Each boundary adds 1.25 of the text size to the distance of its two lanes. The first lane and the last one stay at the same distance from 0.
+            expect(flow.y('kernel') - flow.y('user')).toBeCloseTo(100 + 26 * 1.25, 6)
+            expect(flow.y('drive') - flow.y('kernel')).toBeCloseTo(100 + 26 * 1.25, 6)
+            expect(flow.y('user')).toBeCloseTo(-flow.y('drive'), 6)
+            expect(lanes(['user', 'kernel', 'drive'], [{ lane: 'user', start: 0, end: 100 }], { ...sized, boundaries: [{ between: ['user', 'kernel'] }] }).y('drive') - flow.y('drive')).toBeCloseTo(-26 * 1.25 / 2, 6)
+            expect(flow.boundaries).toHaveLength(2)
+            const [rule, label] = flow.boundaries[0]!.children
+            const line = rule!.bounds()
+            // The line is along the whole time area, in the middle between the bars of the two lanes.
+            expect([line.x, line.x + line.width]).toEqual([-500, 500])
+            expect(line.y).toBeCloseTo((flow.y('user') + 20 + flow.y('kernel') - 20) / 2, 6)
+            expect(rule!.get('dash')).not.toBeNull()
+            const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+            expect(rule!.get('stroke')).toEqual(paint('yellow'))
+            expect(flow.boundaries[1]!.children[0]!.get('stroke')).toEqual(paint('purple'))
+            // The label has room of its own after the right end of the time area, at the height of the line, as a name has before the left end.
+            expect((label as unknown as { source: string }).source).toBe('system call line')
+            expect(label!.bounds().x).toBeCloseTo(500 + 26 * 0.9, 6)
+            expect(Math.abs(label!.bounds().y + label!.bounds().height / 2 - line.y)).toBeLessThan(6)
+            // A boundary with no label and no count is a line and no more.
+            expect(flow.boundaries[1]!.children).toHaveLength(1)
+            expect(flow.counters).toEqual([null, null])
+        }))
+    })
+
+    it('counts the handoffs that cross a boundary, up to the time of the cursor, and shows the number and a tick for each one', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['user', 'kernel', 'drive'], [
+                { from: 'user', to: 'kernel', at: 10 },
+                { from: 'kernel', to: 'drive', at: 20, dashed: true },
+                // From the last lane to the first: this handoff crosses the two boundaries.
+                { from: 'drive', to: 'user', at: 30 },
+                { from: 'kernel', to: 'user', at: 40, dashed: true },
+            ], { ...sized, domain: [0, 100], boundaries: [{ between: ['user', 'kernel'], label: 'system call line', count: true }, { between: ['drive', 'kernel'], label: 'device' }] }))
+            expect([flow.crossings(0), flow.crossings('system call line'), flow.crossings(1), flow.crossings('device')]).toEqual([0, 0, 0, 0])
+            // At a constant speed, the cursor reaches 10 after 0.75 s and 20 after 1.5 s: it stops early for the arrow of 20.
+            s.play(flow.advance(25), { duration: 2, ease: linear })
+            expect([flow.crossings(0), flow.crossings('device')]).toEqual([1, 1])
+            s.play(flow.showAll(), { duration: 2 })
+            expect([flow.crossings('system call line'), flow.crossings(1)]).toEqual([3, 2])
+            expect(() => flow.crossings('wall')).toThrow(/no boundary "wall"\. The boundaries are 0 \("system call line"\), 1 \("device"\)/)
+            expect(() => flow.crossings(2)).toThrow(/no boundary 2/)
+        }))
+        // The counter is after the label, at the right end. Only the first boundary counts.
+        const counter = flow.counters[0]!, label = flow.boundaries[0]!.children[1]!
+        expect(flow.counters[1]).toBeNull()
+        expect(flow.boundaries[0]!.children[2]).toBe(counter)
+        const shown = (time: number) => at(time, () => counter.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))
+        expect(shown(0)).toEqual(['0'])
+        expect(at(0, () => label.bounds().x)).toBeGreaterThan(500 + 8)
+        expect(at(0, () => right(label))).toBeLessThan(at(0, () => counter.children[0]!.bounds().x) - 8)
+        // The number goes up at the moment the cursor passes the handoff. A dashed handoff over the other boundary does not move it.
+        expect(shown(0.7)).toEqual(['0'])
+        expect(shown(0.8)).toEqual(['1'])
+        expect(shown(1.9)).toEqual(['1'])
+        expect(shown(4)).toEqual(['3'])
+        // The handoff leaves a tick where its arrow passes a line that counts: on the first boundary, and not on the second.
+        const [first, second, third] = flow.handoffs
+        expect([first!.children.length, second!.children.length, third!.children.length]).toEqual([2, 1, 2])
+        const tick = first!.children[1]!
+        expect(at(0, () => [tick.bounds().x + tick.bounds().width / 2, tick.bounds().y + tick.bounds().height / 2])).toEqual([flow.x(10), flow.boundaries[0]!.children[0]!.bounds().y])
+        expect(at(0.8, () => shows(tick))).toBe(0)
+        expect(at(1.1, () => [shows(first!), shows(tick)])).toEqual([1, 1])
+        // A dashed handoff has an arrow of dashes. The others have a solid line.
+        expect(flow.handoffs.map((handoff) => handoff.shape.children[0]!.get('dash') !== null)).toEqual([false, true, false, true])
+    })
+
+    it('hides the cursor behind an arrow of dashes, so that a cursor that stops at the handoff does not fill the gaps', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 50, dashed: true }, { from: 'b', to: 'a', at: 80 }], { ...sized, domain: [0, 100] }))
+            s.play(flow.advance(50), { duration: 1 })
+            s.wait(1)
+            s.play(flow.advance(80), { duration: 1 })
+            s.wait(1)
+        }))
+        const strip = (time: number, handoff: number) => {
+            const ops = compiled.frame(time).ops.filter((op): op is PathOp => op.kind === 'path')
+            const cursor = ops.findIndex((op) => op.node === flow.cursor), shaft = ops.findIndex((op) => op.node === flow.handoffs[handoff]!.shape.children[0])
+            expect(cursor).toBeGreaterThanOrEqual(0)
+            expect(shaft).toBeGreaterThan(cursor)
+            const arrow = flow.handoffs[handoff]!.shape.bounds()
+            // A line that nothing shows through, wider than the arrow, over the cursor and under the arrow, from one end of the arrow to the other.
+            return ops.slice(cursor + 1, shaft).filter((op) => {
+                const box = pathBounds(op.strokePath)
+                return box !== null && op.strokeAlpha === 1 && op.strokeWidth > ops[shaft]!.strokeWidth && Math.abs(box.x - (960 + arrow.x + arrow.width / 2)) < 0.01 && box.y <= 540 + arrow.y && box.y + box.height >= 540 + arrow.y + arrow.height
+            }).length
+        }
+        expect(strip(1.5, 0)).toBe(1)
+        // A solid arrow covers the cursor by itself.
+        expect(strip(3.5, 1)).toBe(0)
+    })
+
+    it('counts in the order of time when the events are in another order, and brings a boundary in with the lane under it', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(['user', 'kernel'], [
+                { from: 'kernel', to: 'user', at: 60 },
+                { from: 'user', to: 'kernel', at: 20 },
+                { from: 'user', to: 'kernel', at: 80 },
+                { from: 'kernel', to: 'user', at: 40 },
+            ], { ...sized, domain: [0, 100], boundaries: [{ between: ['user', 'kernel'], label: 'line', count: true }] })
+            s.play(flow.enter({ lag: 1 }), { duration: 1, ease: linear })
+            s.play(flow.advance(90), { duration: 9, ease: linear })
+        }))
+        const [rule, label, counter] = flow.boundaries[0]!.children
+        // With a lag of 1, the second lane has the second half of the time. The line and its text come with it.
+        expect(at(0.4, () => [rule!.get('trimTo'), shows(label!), shows(counter!)])).toEqual([0, 0, 0])
+        expect(at(0.75, () => [rule!.get('trimTo'), shows(label!), shows(counter!)])).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        expect(at(1, () => [rule!.get('trimTo'), shows(label!), shows(counter!)])).toEqual([1, 1, 1])
+        // The cursor passes one unit of time in a tenth of a second: 20 at 3 s, 40 at 5 s, 60 at 7 s, 80 at 9 s.
+        const shown = (time: number) => at(time, () => counter!.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))
+        expect([2.9, 3.1, 4.9, 5.1, 6.9, 7.1, 8.9, 9.1].map(shown)).toEqual([['0'], ['1'], ['1'], ['2'], ['2'], ['3'], ['3'], ['4']])
+        expect(flow.crossings('line')).toBe(4)
+    })
+
+    it('puts the label of a handoff that crosses a boundary beside the lane that it leaves, and no label on the line', async () => {
+        await compileFilm(film(() => {
+            const flow = lanes(['user', 'kernel'], [
+                { lane: 'user', start: 0, end: 20 },
+                { from: 'user', to: 'kernel', at: 20, label: 'read' },
+                { lane: 'kernel', start: 20, end: 50, label: 'works' },
+                { from: 'kernel', to: 'user', at: 50, label: 'returns' },
+                { lane: 'kernel', start: 80, end: 82, label: 'over its bar' },
+            ], { ...sized, size: 26, domain: [0, 100], boundaries: [{ between: ['user', 'kernel'], label: 'system call line', count: true }] })
+            const line = flow.boundaries[0]!.children[0]!.bounds().y
+            const [down, up] = flow.handoffs.map((handoff) => handoff.text!.bounds())
+            // On the way down, the label is over the line, under the bars of the upper lane. On the way up, it is under the line.
+            expect(down!.y).toBeGreaterThan(flow.y('user') + 20 + 4)
+            expect(down!.y + down!.height).toBeLessThan(line - 4)
+            expect(up!.y).toBeGreaterThan(line + 4)
+            expect(up!.y + up!.height).toBeLessThan(flow.y('kernel') - 20 - 4)
+            // A label over a bar of the lower lane stays under the line.
+            expect(flow.spans[2]!.text!.bounds().y).toBeGreaterThan(line + 4)
+        }))
+    })
+
+    it('refuses a boundary that is not between two neighbors, and takes a handoff at the last end of the domain beside a boundary with a label', async () => {
+        await compileFilm(film(() => {
+            const span = { lane: 'a', start: 0, end: 10 }
+            expect(() => lanes(['a', 'b', 'c'], [span], { boundaries: [{ between: ['a', 'c'] }] })).toThrow(/boundary 0 is between the lanes "a" and "c", which are not neighbors\. A boundary is a line between two lanes that are next to each other/)
+            expect(() => lanes(['a', 'b'], [span], { boundaries: [{ between: ['a', 'a'] }] })).toThrow(/which are not neighbors/)
+            expect(() => lanes(['a', 'b'], [span], { boundaries: [{ between: ['a', 'x'] }] })).toThrow(/boundary 0 names the lane "x"\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            expect(() => lanes(['a', 'b'], [span], { boundaries: [{ between: ['a', 'b'] }, { between: [1, 0] }] })).toThrow(/boundaries 0 and 1 are between the same two lanes/)
+            expect(() => lanes(['a', 'b'], [span]).crossings(0)).toThrow(/no boundary 0\. The object has no boundary/)
+            // The label and the number of a boundary are outside the time area. So a handoff may be at the last end of the domain, with no room after it.
+            for (const boundary of [{ label: 'line' }, { count: true }, { label: 'line', count: true }, {}]) {
+                const last = lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 100 }, { from: 'a', to: 'b', at: 100, label: 'call' }], { ...sized, boundaries: [{ between: ['a', 'b'], ...boundary }] })
+                expect(last.handoffs[0]!.shape.bounds().x + last.handoffs[0]!.shape.bounds().width / 2).toBeCloseTo(500, 6)
+                for (const word of last.boundaries[0]!.children.slice(1)) expect(word.bounds().x).toBeGreaterThan(500 + 8)
+            }
+            // With too little room, a label would touch the line.
+            expect(() => lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50 }, { from: 'a', to: 'b', at: 50, label: 'lgy' }], { ...sized, size: 26, pitch: 64, domain: [0, 100], boundaries: [{ between: ['a', 'b'] }] })).toThrow(/the label of event 1 \("lgy"\) touches the (bar of event 0|line of boundary 0)/)
+            // A label over a bar of the lower lane, with no bar over it: it would touch the line and nothing else.
+            const lower = (pitch: number) => lanes(['a', 'b'], [{ lane: 'b', start: 50, end: 52, label: 'lgy' }], { ...sized, size: 26, pitch, domain: [0, 100], boundaries: [{ between: ['a', 'b'], label: 'wall' }] })
+            expect(() => lower(64)).toThrow(/the label of event 0 \("lgy"\) touches the line of boundary 0 \("wall"\)\. Use a wider width, a larger pitch/)
+            expect(lower(100).spans[0]!.text!.bounds().y).toBeGreaterThan(lower(100).boundaries[0]!.children[0]!.bounds().y + 3)
+        }))
+    })
+
+    it('draws an idle span as an outline of dashes with a faint fill, with no right end while it grows', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const film_ = film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['thread'], [
+                { lane: 'thread', start: 0, end: 20, label: 'runs' },
+                { lane: 'thread', start: 20, end: 60, label: 'sleeps', idle: true },
+                { lane: 'thread', start: 70, end: 100, idle: true, open: true },
+            ], sized).at(60, 0))
+            // The cursor stops in the idle span, where the label is: the right end of the outline would be a line through the text.
+            s.play(flow.advance(24), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(flow.advance(60), { duration: 1, ease: linear })
+            s.play(flow.showAll(), { duration: 1, ease: linear })
+            s.wait(0.5)
+        })
+        const report = await checkFilm(film_)
+        expect(report.diagnostics).toEqual([])
+        const [solid, idle, open] = flow.spans
+        // A solid span has its own outline. An idle span has a faint fill, and its outline is a second shape, of dashes.
+        expect([solid!.edge, solid!.shape.get('stroke') !== null]).toEqual([null, true])
+        expect(idle!.shape.get('stroke')).toBeNull()
+        expect(at(4, () => idle!.shape.get('fillOpacity'))).toBeLessThan(at(4, () => solid!.shape.get('fillOpacity')) / 2)
+        expect(idle!.edge!.get('dash')).not.toBeNull()
+        // The outline grows with the bar, and it is there from the start of the span.
+        expect(at(1.5, () => [shows(idle!), shows(idle!.edge!), right(idle!.shape), right(idle!.edge!)])).toEqual([1, 1, 60 + flow.x(24), 60 + flow.x(24)])
+        expect(at(1.5, () => idle!.edge!.bounds().x)).toBeCloseTo(60 + flow.x(20), 6)
+        // While the span grows, the outline is its left end, its top and its bottom. Its right end comes when the span is complete.
+        expect(at(1.5, () => idle!.edge!.get('path')!.length)).toBe(3)
+        // The cursor reaches the end of the span at 2.7 s: it stops 0.3 s early for what closes the span.
+        expect(at(2.65, () => idle!.edge!.get('path')!.length)).toBe(3)
+        expect(at(2.75, () => [idle!.edge!.get('path')!.length, right(idle!.edge!)])).toEqual([4, 60 + flow.x(60)])
+        // The bar of an idle span has a square corner at its right end while it grows, where its outline has no end. When the span is complete, the corner is round.
+        const corner = (node: Node, x: number, y: number) => {
+            const points = node.get('path')![0]!.p
+            for (let k = 0; k + 1 < points.length; k += 2) if (Math.abs(points[k]! - x) < 1e-6 && Math.abs(points[k + 1]! - y) < 1e-6) return true
+            return false
+        }
+        expect(at(1.5, () => corner(idle!.shape, flow.x(24), -20))).toBe(true)
+        expect(at(3.5, () => corner(idle!.shape, flow.x(60), -20))).toBe(false)
+        expect(at(3.5, () => corner(solid!.shape, flow.x(20), -20))).toBe(false)
+        // An open idle span never gets a right end. At the end of the domain, it gets an arrow head of dashes.
+        expect(at(4.4, () => [open!.edge!.get('path')!.length, right(open!.edge!), shows(open!.tip!)])).toEqual([3, 60 + flow.x(100), 1])
+        expect(open!.tip!.get('dash')).not.toBeNull()
+        expect(solid!.tip).toBeNull()
+    })
+
+    it('draws the bars, then the boundaries, then the arrows, then the dots, whatever the order of the list', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            // The mark and the handoff are on the bar of the middle lane, and are listed before it.
+            flow = s.add(lanes(['a', 'b', 'c'], [
+                { lane: 'b', at: 30, color: 'yellow' },
+                { from: 'a', to: 'c', at: 60 },
+                { lane: 'b', start: 10, end: 90 },
+            ], { ...sized, domain: [0, 100], boundaries: [{ between: ['a', 'b'] }] }))
+            s.play(flow.showAll(), { duration: 0 })
+            s.wait(1)
+        }))
+        const ops = compiled.frame(0.5).ops.filter((op): op is PathOp => op.kind === 'path')
+        const place = (node: Node) => ops.findIndex((op) => op.node === node)
+        const drawn = [flow.rails[1]!, flow.spans[0]!.shape, flow.boundaries[0]!.children[0]!, flow.handoffs[0]!.shape.children[0]!, flow.marks[0]!.shape].map(place)
+        expect(Math.min(...drawn)).toBeGreaterThanOrEqual(0)
+        expect(drawn).toEqual([...drawn].sort((a, b) => a - b))
+        // The list keeps the order that the film gave.
+        expect(flow.events.map((event) => event.kind)).toEqual(['mark', 'handoff', 'span'])
+    })
+
+    it('gives the labels their places in the order of time, so that the order of the list changes nothing', async () => {
+        await compileFilm(film(() => {
+            const options = { ...sized, domain: [0, 100] as [number, number] }
+            const first = { from: 0, to: 1, at: 40, label: 'aaaaa' }, second = { from: 1, to: 0, at: 50, label: 'bbbb' }, third = { from: 0, to: 1, at: 53 }
+            const outcome = (list: LaneEvent[]) => {
+                try {
+                    return lanes(['a', 'b'], list, options).events.filter((event) => event.text).map((event) => `${(event.text as unknown as { source: string }).source} at ${Math.round(event.text!.bounds().x)}`).sort()
+                } catch (error) {
+                    return (error as Error).message.replace(/event \d+/g, 'event')
+                }
+            }
+            // In the order of time, the first label takes the place at the right of its arrow, and the second label has no place left.
+            expect(outcome([first, second, third])).toBe('lanes: the label of event ("bbbb") touches the arrow of event. Use a wider width, a larger pitch, shorter labels, times that are further apart, or another labelSide')
+            expect(outcome([second, first, third])).toEqual(outcome([first, second, third]))
+            expect(outcome([third, second, first])).toEqual(outcome([first, second, third]))
+            // The film settles it: the first label at the left of its arrow leaves the room between the two arrows to the second.
+            const settled = lanes(['a', 'b'], [{ ...first, labelSide: 'left' }, second, third], options)
+            expect(right(settled.handoffs[0]!.text!)).toBeLessThan(settled.handoffs[0]!.shape.bounds().x)
+            expect(right(settled.handoffs[1]!.text!)).toBeLessThan(settled.handoffs[1]!.shape.bounds().x)
+            expect(settled.handoffs[1]!.text!.bounds().x).toBeGreaterThan(right(settled.handoffs[0]!.shape))
+            // Two orders of a list that has a layout give the same layout.
+            const far = [{ from: 0, to: 1, at: 20, label: 'aaaaa' }, { from: 1, to: 0, at: 60, label: 'bbbb' }]
+            expect(outcome([far[1]!, far[0]!])).toEqual(outcome(far))
+            expect(outcome(far)).toHaveLength(2)
+        }))
+    })
+
+    it('puts a label at the side that the film names: over, under, left or right', async () => {
+        await compileFilm(film(() => {
+            const options = { ...sized, size: 26, domain: [0, 100] as [number, number] }
+            // A short span at the foot of an arrow has no room for a label over it. Under it, and beside it, there is room.
+            const short = (labelSide?: 'left' | 'right' | 'over' | 'under') => lanes(['a', 'b'], [{ from: 0, to: 1, at: 50 }, { lane: 1, start: 50, end: 54, label: 'handles it', labelSide }], options).spans[0]!
+            expect(() => short()).toThrow(/the label of event 1 \("handles it"\) touches the arrow of event 0/)
+            expect(() => short('over')).toThrow(/touches the arrow of event 0/)
+            const under = short('under'), after = short('right'), before = short('left')
+            expect(under.text!.bounds().y).toBeGreaterThan(bottom(under.shape) + 3)
+            expect(under.text!.bounds().x).toBeCloseTo(under.shape.bounds().x, 6)
+            // Beside the bar, the label is on the lane, at the height of the bar.
+            expect(after.text!.bounds().x).toBeGreaterThan(right(after.shape) + 4)
+            expect(after.text!.bounds().x).toBeLessThan(right(after.shape) + 16)
+            expect(Math.abs(after.text!.bounds().y + after.text!.bounds().height / 2 - 50)).toBeLessThan(6)
+            expect(right(before.text!)).toBeLessThan(before.shape.bounds().x - 4)
+            // A label that fits inside its bar goes over the bar when the film says so.
+            const wide = lanes(['a'], [{ lane: 0, start: 0, end: 50, label: 'fits', labelSide: 'over' }], options).spans[0]!
+            expect(bottom(wide.text!)).toBeLessThan(wide.shape.bounds().y)
+            // A handoff: at the left of its arrow with room at the right, and over or under the boundary that it crosses.
+            const cross = (labelSide?: 'left' | 'right' | 'over' | 'under') => lanes(['a', 'b'], [{ from: 0, to: 1, at: 50, label: 'call', labelSide }], { ...options, boundaries: [{ between: [0, 1] }] })
+            const line = cross().boundaries[0]!.children[0]!.bounds().y
+            expect(right(cross('left').handoffs[0]!.text!)).toBeLessThan(cross('left').handoffs[0]!.shape.bounds().x)
+            expect(cross('right').handoffs[0]!.text!.bounds().x).toBeGreaterThan(right(cross('right').handoffs[0]!.shape))
+            expect(bottom(cross().handoffs[0]!.text!)).toBeLessThan(line)
+            expect(bottom(cross('over').handoffs[0]!.text!)).toBeLessThan(line)
+            expect(cross('under').handoffs[0]!.text!.bounds().y).toBeGreaterThan(line)
+            expect(() => lanes(['a', 'b'], [{ from: 0, to: 1, at: 50, label: 'call', labelSide: 'under' }], options)).toThrow(/event 0 \("call"\) has the labelSide 'under'\. The label of a handoff is at the 'left' or at the 'right' of its arrow/)
+            // A mark: under its dot, or beside it.
+            const mark = (labelSide?: 'left' | 'right' | 'over' | 'under') => lanes(['a'], [{ lane: 0, at: 50, label: 'irq', labelSide }], options).marks[0]!
+            expect(bottom(mark().text!)).toBeLessThan(mark().shape.bounds().y)
+            expect(bottom(mark('over').text!)).toBeLessThan(mark('over').shape.bounds().y)
+            expect(mark('under').text!.bounds().y).toBeGreaterThan(bottom(mark('under').shape))
+            expect(mark('right').text!.bounds().x).toBeGreaterThan(right(mark('right').shape) + 4)
+            expect(right(mark('left').text!)).toBeLessThan(mark('left').shape.bounds().x - 4)
+            // A label under the last lane must not touch the axis.
+            expect(() => lanes(['a'], [{ lane: 0, start: 0, end: 50, label: 'fits', labelSide: 'under' }], { ...options, ticks: 2 })).toThrow(/the label of event 0 \("fits"\) touches the axis/)
+            expect(() => lanes(['a'], [{ lane: 0, at: 5, label: 'x', labelSide: 'top' as never }], options)).toThrow(/event 0 has the labelSide "top"\. Use 'left', 'right', 'over' or 'under'/)
+        }))
+    })
+
+    it('paints its patches in the backing color that it is given, and draws none with null', async () => {
+        const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+        const marked: LaneEvent[] = [...events, { lane: 'KVM', at: 50, label: 'tick' }, { from: 'guest', to: 'monitor', at: 90, dashed: true }]
+        const count = async (backing: string | null | undefined, color: string) => {
+            let flow!: ReturnType<typeof lanes>
+            const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+                flow = s.add(lanes(names, marked, { ...sized, ...(backing === undefined ? {} : { backing }) }))
+                s.play(flow.showAll(), { duration: 0 })
+                s.wait(1)
+            }))
+            const ops = compiled.frame(0.5).ops.filter((op): op is PathOp => op.kind === 'path')
+            const same = (value: unknown) => JSON.stringify(value) === JSON.stringify(paint(color))
+            // Filled patches behind the bars and the labels, the strip behind the arrow of dashes, and the rim of the dot.
+            return { fills: ops.filter((op) => op.fillAlpha === 1 && same(op.fill)).length, strips: ops.filter((op) => !op.fill && op.strokeAlpha === 1 && same(op.stroke)).length, rim: flow.marks[0]!.shape.get('stroke') }
+        }
+        // Five bars, and eight labels: seven of the sequence and the label of the mark.
+        expect(await count(undefined, 'bg')).toEqual({ fills: 13, strips: 1, rim: paint('bg') })
+        expect(await count('surface', 'surface')).toEqual({ fills: 13, strips: 1, rim: paint('surface') })
+        expect(await count('surface', 'bg')).toMatchObject({ fills: 0, strips: 0 })
+        expect(await count(null, 'bg')).toEqual({ fills: 0, strips: 0, rim: null })
+    })
+
+    it('draws no cursor with cursor: false, and still shows the events at their times', async () => {
+        let flow!: ReturnType<typeof lanes>, plain!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(names, events, { ...sized, cursor: false }))
+            plain = s.add(lanes(names, events, sized).at(0, 400))
+            s.play(flow.advance(30), plain.advance(30), { duration: 1, ease: linear })
+            s.play(flow.advance(50), plain.advance(50), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        for (const time of [0, 0.25, 0.5, 1, 1.5, 2, 2.4]) {
+            expect(at(time, () => shows(flow.cursor))).toBe(0)
+            expect(compiled.frame(time).ops.some((op) => op.kind === 'path' && op.node === flow.cursor)).toBe(false)
+            // All the rest is as with a cursor: the same events show, and the bars are as long.
+            expect(at(time, () => flow.events.map(shows))).toEqual(at(time, () => plain.events.map(shows)))
+            expect(at(time, () => flow.spans.map((span) => right(span.shape)))).toEqual(at(time, () => plain.spans.map((span) => right(span.shape))))
+        }
+        expect(at(2.4, () => shows(plain.cursor))).toBe(1)
+        expect(at(2.4, () => flow.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+        expect(flow.time).toBe(50)
+    })
+
+    it('keeps the cursor and the bars in the range of the advance, and never moves them back, with an ease that passes its end or bounces', async () => {
+        const overshoot = (t: number) => { const x = t - 1; return x * x * (2.70158 * x + 1.70158) + 1 }
+        const bounce = (t: number) => {
+            if (t < 1 / 2.75) return 7.5625 * t * t
+            if (t < 2 / 2.75) return 7.5625 * (t -= 1.5 / 2.75) * t + 0.75
+            if (t < 2.5 / 2.75) return 7.5625 * (t -= 2.25 / 2.75) * t + 0.9375
+            return 7.5625 * (t -= 2.625 / 2.75) * t + 0.984375
+        }
+        const back = (t: number) => Math.sin(t * Math.PI)
+        for (const ease of [overshoot, bounce, back]) {
+            let flow!: ReturnType<typeof lanes>
+            await compileFilm(film({ fps: 20 }, (s) => {
+                flow = s.add(lanes(names, events, sized))
+                s.play(flow.advance(36), { duration: 2, ease })
+                s.play(flow.advance(74), { duration: 2, ease })
+            }))
+            let before = flow.x(0), least = 0
+            for (let frame = 0; frame <= 80; frame++) {
+                const time = frame / 20, end = flow.x(time <= 2 ? 36 : 74)
+                const cursor = at(time, () => flow.cursor.get('x'))
+                expect(cursor).toBeLessThanOrEqual(end + 1e-6)
+                expect(cursor).toBeGreaterThanOrEqual(before - 1e-6)
+                least = Math.min(least, cursor - before)
+                before = cursor
+                // No bar is past the cursor, and a handoff shows only when the cursor is at it or past it.
+                for (const span of flow.spans) if (at(time, () => shows(span) > 0 && span.shape.bounds().width > 0)) expect(at(time, () => right(span.shape))).toBeLessThanOrEqual(cursor + 1e-6)
+                flow.handoffs.forEach((handoff, index) => {
+                    if (at(time, () => shows(handoff)) > 0) expect(cursor).toBeGreaterThanOrEqual(flow.x([30, 42, 70, 78][index]!) - 0.5)
+                })
+            }
+            // The cursor is at the time of each advance when the advance ends.
+            expect(at(2, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(36), 6)
+            expect(at(4, () => flow.cursor.get('x'))).toBeCloseTo(flow.x(74), 6)
+        }
+    })
+
+    it('ends the numbers of all counters at one x, with room for the widest number from the start', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list: LaneEvent[] = []
+            for (let k = 0; k < 12; k++) list.push({ from: k % 2, to: 1 - (k % 2), at: 5 + k * 6 })
+            list.push({ from: 1, to: 2, at: 90 })
+            flow = s.add(lanes(['user space', 'kernel', 'drive'], list, { ...sized, domain: [0, 100], boundaries: [{ between: [0, 1], label: 'system call line', count: true }, { between: [1, 2], label: 'bus', count: true }] }))
+            s.play(flow.showAll(), { duration: 2, ease: linear })
+        }))
+        const [calls, bus] = flow.counters, labels = flow.boundaries.map((boundary) => boundary.children[1]!)
+        // The first counter goes to 12, and the second to 1.
+        expect([calls!.children.length, bus!.children.length]).toEqual([13, 2])
+        const ends = [...calls!.children, ...bus!.children].map((value) => at(0, () => right(value)))
+        expect(Math.max(...ends) - Math.min(...ends)).toBeLessThan(1.5)
+        // The two labels start at one x. The widest number, of two digits, has its room after the longest label.
+        expect(at(0, () => labels[0]!.bounds().x)).toBeCloseTo(at(0, () => labels[1]!.bounds().x), 6)
+        const widest = Math.min(...calls!.children.map((value) => at(0, () => value.bounds().x)))
+        expect(widest).toBeGreaterThan(at(0, () => right(labels[0]!)) + 8)
+        expect(at(0, () => calls!.children[12]!.bounds().width)).toBeGreaterThan(at(0, () => calls!.children[1]!.bounds().width) * 1.5)
+        // The label does not move when the number grows.
+        expect(at(2, () => labels[0]!.bounds().x)).toBe(at(0, () => labels[0]!.bounds().x))
+        expect(at(2, () => calls!.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))).toEqual(['12'])
+        // The numbers are after the longest label, whichever boundary has it.
+        await compileFilm(film(() => {
+            const other = lanes(['a', 'b', 'c'], [{ from: 0, to: 2, at: 50 }], { ...sized, domain: [0, 100], boundaries: [{ between: [0, 1], label: 'bus', count: true }, { between: [1, 2], label: 'system call line', count: true }] })
+            const long = other.boundaries[1]!.children[1]!
+            for (const counter of other.counters) expect(counter!.children[0]!.bounds().x).toBeGreaterThan(right(long) + 8)
+        }))
+    })
+
+    it('does not count a handoff at the first end of the domain before the first advance', async () => {
+        let flow!: ReturnType<typeof lanes>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            flow = s.add(lanes(['a', 'b'], [{ from: 0, to: 1, at: 0 }, { lane: 1, start: 0, end: 50 }], { ...sized, domain: [0, 100], boundaries: [{ between: [0, 1], count: true }] }))
+            // The cursor is at 0, and so is the handoff. No advance has shown it.
+            expect(flow.crossings(0)).toBe(0)
+            s.wait(1)
+            s.play(flow.advance(0), { duration: 1 })
+            expect(flow.crossings(0)).toBe(1)
+        }))
+        const shown = (time: number) => at(time, () => flow.counters[0]!.children.filter((value) => value.get('visible')).map((value) => (value as unknown as { source: string }).source))
+        expect([shown(0.5), shown(1.5)]).toEqual([['0'], ['1']])
+        expect(at(0.5, () => shows(flow.handoffs[0]!))).toBe(0)
+    })
+
+    it('puts itself on the stage with the first advance, and takes 1.6 s for an advance and 4 s for showAll when the film gives no time', async () => {
+        let flow!: ReturnType<typeof lanes>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            flow = lanes(names, events, sized)
+            expect(flow.advance(10).duration).toBe(1.6)
+            expect(flow.showAll().duration).toBe(4)
+            expect([flow.advance(10, { duration: 3 }).duration, flow.showAll({ duration: 2 }).duration]).toEqual([3, 2])
+            // The object is not on the stage: no `s.add`, and no `enter`.
+            s.wait(0.5)
+            s.play(flow.advance(50))
+            expect(s.time).toBeCloseTo(2.1, 6)
+            s.play(flow.showAll())
+            expect(s.time).toBeCloseTo(6.1, 6)
+        }))
+        expect(compiled.frame(0.25).ops).toHaveLength(0)
+        // From the start of the advance, the names and the lines are there: 15 letters and 3 lines.
+        expect(compiled.frame(0.5).ops.length).toBeGreaterThanOrEqual(18)
+        expect(at(2.1, () => flow.events.map(shows))).toEqual([1, 1, 1, 1, 1, 0, 0, 0, 0])
+        expect(flow.mounted).toBe(true)
+    })
+
+    it('refuses labels that would touch, and names the two events and what to do', async () => {
+        await compileFilm(film(() => {
+            const advice = 'Use a wider width, a larger pitch, shorter labels, times that are further apart, or another labelSide'
+            // Three arrows close together: the label of the middle one has no room at the right or at the left.
+            expect(() => lanes(['a', 'b'], [
+                { from: 'a', to: 'b', at: 40, label: 'the first handoff' },
+                { from: 'b', to: 'a', at: 50, label: 'the second handoff' },
+                { from: 'a', to: 'b', at: 60, label: 'the third handoff' },
+            ], { ...sized, domain: [0, 100] })).toThrow(`lanes: the label of event 1 ("the second handoff") touches the arrow of event 2 ("the third handoff"). ${advice}`)
+            // Two short spans side by side: the second label has no room over its bar.
+            expect(() => lanes(['a'], [
+                { lane: 'a', start: 40, end: 42, label: 'the first span' },
+                { lane: 'a', start: 44, end: 46, label: 'the second span' },
+            ], { ...sized, domain: [0, 100] })).toThrow(`lanes: the label of event 1 ("the second span") touches the label of event 0 ("the first span"). ${advice}`)
+            // A label over a bar at the foot of an arrow.
+            expect(() => lanes(['a', 'b'], [
+                { from: 'a', to: 'b', at: 30 },
+                { lane: 'b', start: 30, end: 34, label: 'handles the exit' },
+            ], { ...sized, domain: [0, 100] })).toThrow(`lanes: the label of event 1 ("handles the exit") touches the arrow of event 0. ${advice}`)
+            // With too little room between two lanes, the label of a handoff touches a bar.
+            expect(() => lanes(['a', 'b'], [
+                { lane: 'a', start: 0, end: 60 },
+                { from: 'a', to: 'b', at: 30, label: 'lgy' },
+            ], { ...sized, pitch: 64 })).toThrow(`lanes: the label of event 1 ("lgy") touches the bar of event 0. ${advice}`)
+            // A label that ends 3 px before an arrow touches it: a label needs a clear distance. With 20 px it has its place.
+            const probe = lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 0, label: 'call' }], { ...sized, domain: [0, 100] })
+            const end = right(probe.handoffs[0]!.text!) + 500, arrow = probe.handoffs[0]!.shape.bounds().width / 2
+            const near = (gap: number) => lanes(['a', 'b'], [{ from: 'a', to: 'b', at: 0, label: 'call' }, { from: 'b', to: 'a', at: (end + gap + arrow) / 10 }], { ...sized, domain: [0, 100] })
+            expect(() => near(3)).toThrow(`lanes: the label of event 0 ("call") touches the arrow of event 1. ${advice}`)
+            expect(near(20).handoffs[0]!.text!.bounds().x).toBeCloseTo(probe.handoffs[0]!.text!.bounds().x, 6)
+            // Wider than the time area: no place holds it.
+            expect(() => lanes(['a'], [{ lane: 'a', at: 5, label: 'a label that is much wider than the whole time area' }], { width: 300, domain: [0, 10] })).toThrow(/the label of event 0 \("a label that is much wider than the whole time area"\) is wider than the room/)
+            // The same events with more room are accepted.
+            expect(lanes(['a', 'b'], [
+                { from: 'a', to: 'b', at: 10, label: 'the first handoff' },
+                { from: 'b', to: 'a', at: 40, label: 'the second handoff' },
+                { from: 'a', to: 'b', at: 70, label: 'the third handoff' },
+            ], { ...sized, domain: [0, 100] }).handoffs).toHaveLength(3)
+        }))
+    })
+
+    it('names a wrong lane, event, domain or size', async () => {
+        await compileFilm(film(() => {
+            const span = { lane: 'a', start: 0, end: 10 }
+            expect(() => lanes([], [])).toThrow(/at least one lane/)
+            expect(() => lanes(['a', 'b', 'a'], [span])).toThrow(/two lanes have the name "a"\. Give each lane its own name/)
+            expect(() => lanes(['a', 'b'], [{ lane: 'c', start: 0, end: 10 }])).toThrow(/event 0 names the lane "c"\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            expect(() => lanes(['a', 'b'], [span, { from: 'a', to: 2, at: 5 }])).toThrow(/event 1 names the lane 2\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 10, end: 10 }])).toThrow(/the span of event 0 starts at 10 and ends at 10\. A span ends after it starts/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 10, end: 4 }])).toThrow(/A span ends after it starts/)
+            expect(() => lanes(['a'], [span, { lane: 'a', at: 120 }], { domain: [0, 100] })).toThrow(/event 1 has the time 120, outside the domain 0 to 100/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: -5, end: 10 }], { domain: [0, 100] })).toThrow(/event 0 has the time -5, outside the domain 0 to 100/)
+            expect(() => lanes(['a', 'b'], [span, { from: 'b', to: 1, at: 5 }])).toThrow(/event 1 is a handoff from the lane "b" to itself\. A handoff goes to another lane/)
+            expect(() => lanes(['a'], [span], { domain: [5, 5] })).toThrow(/the domain needs two different ends, the smaller one first/)
+            expect(() => lanes(['a'], [span], { domain: [10, 0] })).toThrow(/the domain needs two different ends/)
+            expect(() => lanes(['a'], [{ lane: 'a', at: 5 }])).toThrow(/the events give no range of time\. Give it a domain/)
+            expect(() => lanes(['a'], [])).toThrow(/the events give no range of time/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 0, end: Number.NaN }])).toThrow(/event 0 has a time that is not a number/)
+            expect(() => lanes(['a'], [{ lane: 'a' } as never])).toThrow(/event 0 is not a span/)
+            expect(() => lanes(['a'], [span], { width: 0 })).toThrow(/width is the width of the time area/)
+            expect(() => lanes(['a'], [span], { barHeight: -1 })).toThrow(/barHeight is the height of a bar/)
+            expect(() => lanes(['a'], [span], { size: 0 })).toThrow(/size is a text size/)
+            expect(() => lanes(['a'], [span], { barHeight: 44, pitch: 40 })).toThrow(/pitch is the distance from one lane to the next\. Give it 44 or more/)
+            expect(() => lanes(['a'], [span], { ticks: [0, 20] })).toThrow(/the tick 20 is outside the domain 0 to 10/)
+            expect(() => lanes(['a'], [span], { ticks: 0 })).toThrow(/ticks is a count of 1 or more/)
+            expect(() => lanes(['a'], [span], { width: 300, ticks: [0, 1, 2], format: (time) => `${time} seconds` })).toThrow(/the ticks "0 seconds" and "1 seconds" touch\. Use fewer ticks, a shorter format, or a wider width/)
+            expect(() => lanes(['a', 'b'], [span]).y('c')).toThrow(/no lane "c"\. The lanes are 0 \("a"\), 1 \("b"\)/)
+            // A pitch with no room for an arrow between two bars, when a handoff needs one. With no handoff, the same pitch is accepted.
+            expect(() => lanes(['a', 'b'], [span, { from: 'a', to: 'b', at: 5 }], { barHeight: 44, pitch: 50 })).toThrow(/a pitch of 50 leaves 6 px between two bars, and the arrow of a handoff needs 24\. Give a pitch of 68 or more/)
+            expect(lanes(['a', 'b'], [span], { barHeight: 44, pitch: 50 }).spans).toHaveLength(1)
+            expect(lanes(['a', 'b'], [span, { from: 'a', to: 'b', at: 5 }], { barHeight: 44, pitch: 68 }).handoffs).toHaveLength(1)
+            // Two spans that overlap on one lane. Two spans that meet at one time are accepted.
+            expect(() => lanes(['a'], [{ lane: 'a', start: 30, end: 60, label: 'two' }, { lane: 'a', start: 0, end: 50, label: 'one' }])).toThrow(/the spans of event 1 \("one"\) and event 0 \("two"\) overlap on the lane "a": one ends at 50, and the other starts at 30/)
+            expect(() => lanes(['a'], [{ lane: 'a', start: 0, end: 100 }, { lane: 'a', start: 30, end: 60 }])).toThrow(/the spans of event 0 and event 1 overlap on the lane "a"/)
+            expect(lanes(['a', 'b'], [{ lane: 'a', start: 0, end: 50 }, { lane: 'a', start: 50, end: 60 }, { lane: 'b', start: 30, end: 55 }]).spans).toHaveLength(3)
+            // A domain with no event in it is accepted: the lanes are empty.
+            expect(lanes(['a'], [], { domain: [0, 10] }).events).toEqual([])
+        }))
+    })
+})
+
+describe('date line', () => {
+    type Line = ReturnType<typeof dateLine>
+    const RECORD = [
+        { at: '2025-06-10', label: 'the newsletter', color: 'orange' },
+        { at: '2026-03-24', label: 'the technical report', note: 'names Anyrun' },
+        { at: 2020, label: 'the paper' },
+    ]
+    const CROWD = [
+        { at: '2025-06-03', label: 'the first post' }, { at: '2025-06-10', label: 'the newsletter' }, { at: '2025-06-16', label: 'the second post', note: 'two weeks later' },
+        { at: '2025-09-01', label: 'the conference talk' }, { at: '2025-12-12', label: 'the documentation' }, { at: '2026-03-24', label: 'the technical report', note: 'names Anyrun' },
+        { at: '2026-03-30', label: 'the reply' },
+    ]
+    // Ten years on 1000 px. At size 20 a dot has a radius of 5.4, and the first and the last date are that far inside the ends of the line.
+    const sized = { width: 1000, from: 2020, to: 2030, size: 20 }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] as const }
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    /** The texts under the line, from left to right. */
+    const numbers = (line: Line) => line.axis.children.filter((child) => typeof (child as unknown as { source?: unknown }).source === 'string')
+    const written = (line: Line) => numbers(line).map((node) => (node as unknown as { source: string }).source)
+    /** The room of the label of an event with its note: left, top, right, bottom. */
+    const room = (event: Line['events'][number]) => {
+        const boxes = [event.text!, ...(event.note ? [event.note] : [])].map(edges)
+        return [Math.min(...boxes.map((box) => box[0])), Math.min(...boxes.map((box) => box[1])), Math.max(...boxes.map((box) => box[2])), Math.max(...boxes.map((box) => box[3]))] as const
+    }
+    const sideOf = (event: Line['events'][number]) => (event.text!.bounds().y < 0 ? 'over' : 'under')
+    const stemOf = (event: Line['events'][number]) => edges(event.stem!)
+    const labelOf = (event: Line['events'][number]) => edges(event.text!)
+    type Events = Parameters<typeof dateLine>[0]
+    type Options = NonNullable<Parameters<typeof dateLine>[1]>
+    /** Random numbers from 0 to 1 that are the same in each run. */
+    const randomOf = (seed: number) => {
+        let state = (seed * 2654435761) >>> 0
+        return () => {
+            state = (state + 0x6d2b79f5) >>> 0
+            let t = state
+            t = Math.imul(t ^ (t >>> 15), t | 1)
+            t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+        }
+    }
+    /**
+     * Builds a line that must fail, and reads the changes that its error names after "What works for this
+     * line". `lines` builds the line with each of these changes, so a test can see that the advice is true.
+     */
+    const follow = (events: Events, options: Options = {}) => {
+        let message = ''
+        try {
+            dateLine(events, options)
+        } catch (error) {
+            if (!(error instanceof Error)) throw error
+            message = error.message
+        }
+        const ways = /What works for this line: (.+)$/.exec(message)?.[1]?.split(/, or |, | or /) ?? []
+        const changed = (index: number, change: (event: Events[number]) => Events[number]) => events.map((event, at) => (at === index ? change(event) : event))
+        const lines = ways.map((way) => {
+            const number = /^(width|levels|rows): (\d+)$/.exec(way)
+            if (number) return () => dateLine(events, { ...options, [number[1]!]: Number(number[2]) })
+            const unit = /^unit: '(year|month|day)'$/.exec(way)
+            if (unit) return () => dateLine(events, { ...options, unit: unit[1] as 'year' })
+            if (way === 'no unit') return () => dateLine(events, { ...options, unit: undefined })
+            if (way.startsWith("scale: 'order'")) return () => dateLine(events, { ...options, scale: 'order', from: undefined, to: undefined, unit: undefined })
+            const end = /^(from|to): (.+)$/.exec(way)
+            if (end) return () => dateLine(events, { ...options, [end[1]!]: JSON.parse(end[2]!) as string | number })
+            const bare = /^no (side|label) for event (\d+)$/.exec(way)
+            if (bare) return () => dateLine(changed(Number(bare[2]), (event) => (bare[1] === 'side' ? { ...event, side: undefined } : { at: event.at, mark: event.mark, color: event.color })), options)
+            const side = /^side: '(over|under)' for event (\d+)$/.exec(way)
+            if (side) return () => dateLine(changed(Number(side[2]), (event) => ({ ...event, side: side[1] as 'over' })), options)
+            const date = /^at: (.+) for event (\d+)$/.exec(way)
+            if (date) return () => dateLine(changed(Number(date[2]), (event) => ({ ...event, at: JSON.parse(date[1]!) as string | number })), options)
+            throw new Error(`the test does not know the advice "${way}"`)
+        })
+        return { message, ways, lines }
+    }
+
+    it('puts each event at its date on a line of its width, and reads a year, a month, or a day', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine(RECORD, sized).at(100, 50)
+            // `.at()` places the middle of the line.
+            expect(edges(line.axis.children[0]!)).toEqual([-400, 50, 600, 50])
+            expect([2020, 2025, 2030].map((year) => line.x(year))).toEqual([expect.closeTo(-494.6, 6), expect.closeTo(0, 6), expect.closeTo(494.6, 6)])
+            expect(line.domain).toEqual([2020, 2030])
+            // A year is its first day, and a month is its first day. 2 July is the middle of a leap year: 183 of 366 days.
+            const perYear = 989.2 / 10
+            expect(line.x('2025')).toBeCloseTo(0, 6)
+            expect(line.x('2024-07-02')).toBeCloseTo(-0.5 * perYear, 6)
+            expect(line.x('2025-07')).toBeCloseTo((181 / 365) * perYear, 6)
+            expect(line.x('2025-07-02')).toBeCloseTo((182 / 365) * perYear, 6)
+            expect(line.x(2023.25)).toBeCloseTo(-1.75 * perYear, 6)
+            // One node per event, in the order of the list. `p` is the place of its dot, in the coordinates of the object.
+            expect(line.events.map((event) => event.text!.source)).toEqual(['the newsletter', 'the technical report', 'the paper'])
+            expect(line.events.map((event) => event.note?.source)).toEqual([undefined, 'names Anyrun', undefined])
+            expect(dateLine([{ at: 2021, label: 'a', note: ' ' }]).events[0]!.note).toBeNull()
+            line.events.forEach((event, index) => {
+                const [x, y] = line.p(index)
+                expect([x, y]).toEqual([expect.closeTo(line.x(RECORD[index]!.at), 6), 0])
+                expect(middle(event.mark)).toEqual([expect.closeTo(100 + x, 6), expect.closeTo(50, 6)])
+                expect(event.children).toEqual([event.stem, event.halo, event.mark, event.text, ...(event.note ? [event.note] : [])])
+            })
+            expect(line.p(2)[0]).toBeCloseTo(-494.6, 6)
+            // An event has its color on its dot, its stem and its label, or ink. A note is in dim.
+            expect(line.events.map((event) => [event.mark.get('fill'), event.stem!.get('stroke'), event.text!.chars[0]!.get('fill')])).toEqual([
+                [paint('orange'), paint('orange'), paint('orange')], [paint('ink'), paint('ink'), paint('ink')], [paint('ink'), paint('ink'), paint('ink')],
+            ])
+            expect(line.events[1]!.note!.chars[0]!.get('fill')).toEqual(paint('dim'))
+            // Without `from` and `to`, the line holds the whole years around the events. It is 1600 wide.
+            expect(dateLine([{ at: '2020-05-01', label: 'a' }, { at: '2026-03-24', label: 'b' }]).domain).toEqual([2020, 2027])
+            expect(dateLine([{ at: 2021, label: 'a' }, { at: 2023, label: 'b' }]).domain).toEqual([2021, 2023])
+            expect(dateLine([{ at: 2021, label: 'a' }]).domain).toEqual([2021, 2022])
+            expect(edges(dateLine([{ at: 2021, label: 'a' }]).axis.children[0]!)).toEqual([-800, 0, 800, 0])
+            // `from` and `to` take the same dates as an event.
+            expect(dateLine([{ at: 2021, label: 'a' }], { from: '2020-07-02', to: '2022' }).domain).toEqual([2020.5, 2022])
+            // A leap year is every fourth year, but for a year of a hundred that is not a year of four hundred: 1900 has no 29 February.
+            expect(() => dateLine([{ at: '1900-02-29', label: 'a' }])).toThrow(/has the date "1900-02-29"/)
+            expect(dateLine([{ at: '2000-02-29', label: 'a' }]).x('2000-03')).toBeGreaterThan(dateLine([{ at: '2000-02-29', label: 'a' }]).p(0)[0])
+            // `font` reaches every text of the object: the label, the note, the numbers, and the words "not to scale".
+            const glyph = (font: 'sans' | 'text-serif', letter: string, size: number, italic = false) => text(letter, { font, size, italic }).chars[0]!.get('path')
+            for (const font of ['sans', 'text-serif'] as const) {
+                const made = dateLine([{ at: '5.1', label: 'a', note: 'b' }], { scale: 'order', size: 20, ...(font === 'sans' ? {} : { font }) })
+                const parts = numbers(made) as unknown as { chars: Node[] }[]
+                expect([made.events[0]!.text!.chars[0]!.get('path'), made.events[0]!.note!.chars[0]!.get('path'), parts[0]!.chars[0]!.get('path'), parts[1]!.chars[0]!.get('path')])
+                    .toEqual([glyph(font, 'a', 20), glyph(font, 'b', 17), glyph(font, '5', 18), glyph(font, 'n', 18, true)])
+            }
+            expect(glyph('sans', 'a', 20)).not.toEqual(glyph('text-serif', 'a', 20))
+        }))
+    })
+
+    it('writes a number in the middle under a tick for each year, or for every second, fifth or tenth one and so on, so that two numbers never touch', async () => {
+        await compileFilm(film(() => {
+            const event = [{ at: 2022, label: 'a' }]
+            const years = dateLine(event, sized)
+            expect(years.unit).toBe('year')
+            expect(written(years)).toEqual(['2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'])
+            // The line, a tick for each year, and the numbers.
+            expect(years.axis.children).toHaveLength(1 + 11 + 11)
+            // A number is in the middle under its tick, in dim. The first and the last one too, so half of each passes the end of the line.
+            const boxes = numbers(years).map(edges)
+            boxes.forEach((box, index) => expect((box[0] + box[2]) / 2).toBeCloseTo(years.x(2020 + index), 6))
+            expect(boxes[0]![0]).toBeLessThan(-510)
+            expect(boxes[10]![2]).toBeGreaterThan(510)
+            // `extent` and the bounds of the object hold these halves.
+            expect([years.extent.left, years.extent.right]).toEqual([expect.closeTo(boxes[0]![0], 6), expect.closeTo(boxes[10]![2], 6)])
+            expect([edges(years)[0], edges(years)[2]]).toEqual([expect.closeTo(boxes[0]![0], 6), expect.closeTo(boxes[10]![2], 6)])
+            expect(boxes.every((box) => box[1] > 18 && box[3] < 34)).toBe(true)
+            expect(numbers(years).map((node) => (node as unknown as { chars: Node[] }).chars[0]!.get('fill'))).toEqual(boxes.map(() => paint('dim')))
+            // On a narrow line, a number for every second year, and still a tick for each year.
+            const narrow = dateLine(event, { ...sized, width: 300 })
+            expect(written(narrow)).toEqual(['2020', '2022', '2024', '2026', '2028', '2030'])
+            expect(narrow.axis.children).toHaveLength(1 + 11 + 6)
+            // The tick of a year with a number is longer than the tick of a year with none.
+            const tickAt = (year: number) => narrow.axis.children.slice(1).find((child) => child.bounds().width === 0 && Math.abs(child.bounds().x - narrow.x(year)) < 0.01)!.bounds().height
+            expect([tickAt(2024), tickAt(2030)]).toEqual([12, 12])
+            expect(tickAt(2025)).toBeLessThan(8)
+            // A year that is narrower than 0.3 of the text size has no small tick: 200 years on 400 px have the 5 ticks of the numbers.
+            const dense = dateLine([{ at: 2000, label: 'a' }], { width: 400, from: 1900, to: 2100, size: 20 })
+            expect(written(dense)).toEqual(['1900', '1950', '2000', '2050', '2100'])
+            expect(dense.axis.children).toHaveLength(1 + 5 + 5)
+            // The numbers are at round years, and the first year of the line has none when it is not round.
+            expect(written(dateLine([{ at: 2000, label: 'a' }], { width: 600, from: 1974, to: 2018, size: 20 }))).toEqual(['1975', '1980', '1985', '1990', '1995', '2000', '2005', '2010', '2015'])
+            expect(written(dateLine(event, { width: 1000, from: 2020.5, to: 2023.2, size: 20 }))).toEqual(['2021', '2022', '2023'])
+            // A short line that holds no round year counts from its first year.
+            expect(written(dateLine(event, { width: 60, from: 2021, to: 2024, size: 20 }))).toEqual(['2021'])
+            // The step is 1, 2 or 5 times a power of ten, for any span: 12,000 years have a number for every 2,000.
+            expect(written(dateLine([{ at: 0, label: 'a' }], { width: 900, from: -10000, to: 2000 }))).toEqual(['-10000', '-8000', '-6000', '-4000', '-2000', '0', '2000'])
+            // At every width, two numbers are 10 px apart or more, and each one is in the middle under its tick.
+            for (let width = 100; width <= 1600; width += 50) {
+                for (const [from, to] of [[2020, 2030], [1974, 2018], [1900, 2100], [2021, 2024], [-10000, 2000], [-500000, 2000]] as const) {
+                    const line = dateLine([{ at: from, label: 'a' }], { width, from, to, size: 20 })
+                    const made = numbers(line).map(edges)
+                    expect(made.length).toBeGreaterThan(0)
+                    made.forEach((box, index) => {
+                        expect((box[0] + box[2]) / 2).toBeCloseTo(line.x(Number(written(line)[index])), 6)
+                        if (index > 0) expect(box[0] - made[index - 1]![2]).toBeGreaterThanOrEqual(10)
+                    })
+                }
+            }
+        }))
+    })
+
+    it('has a tick for each month or for each day on a short line, with the name of the month or the number of the day, and the year or the month at the first tick', async () => {
+        await compileFilm(film(() => {
+            const span = (from: string, to: string, options: Parameters<typeof dateLine>[1] = {}) => dateLine([{ at: from }, { at: to }], options)
+            // 17 months: a tick for each month. The line holds the whole months around the events.
+            const months = span('2025-06-09', '2026-11-06', { width: 1720 })
+            expect(months.unit).toBe('month')
+            expect(months.domain).toEqual([expect.closeTo(2025 + 151 / 365, 9), expect.closeTo(2026 + 334 / 365, 9)])
+            // The first tick says the year too, and each January has the number of its year in place of its name.
+            expect(written(months)).toEqual(['Jun 2025', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '2026', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+            expect(months.axis.children).toHaveLength(1 + 19 + 19)
+            numbers(months).map(edges).forEach((box, index) => expect((box[0] + box[2]) / 2).toBeCloseTo(months.x(index < 7 ? `2025-${String(index + 6).padStart(2, '0')}` : `2026-${String(index - 6).padStart(2, '0')}`), 6))
+            // With less room: a name for every second month, then for every third and every sixth one, counted from January. Each month keeps its tick.
+            const half = span('2025-06-09', '2026-11-06', { width: 860 })
+            expect(written(half)).toEqual(['Jun 2025', 'Sep', 'Nov', '2026', 'Mar', 'May', 'Jul', 'Sep', 'Nov'])
+            expect(half.axis.children).toHaveLength(1 + 19 + 9)
+            expect(written(span('2025-06-09', '2026-11-06', { width: 430 }))).toEqual(['Jun 2025', 'Oct', '2026', 'Apr', 'Jul', 'Oct'])
+            expect(written(span('2025-06-09', '2026-11-06', { width: 200 }))).toEqual(['Jul', '2026', 'Jul'])
+            // Six days: a tick for each day with its number. The first tick says the month and the year too.
+            const days = dateLine(['05', '06', '07', '08', '09', '10'].map((day) => ({ at: `2025-05-${day}` })))
+            expect(days.unit).toBe('day')
+            expect(days.domain).toEqual([expect.closeTo(2025 + 124 / 365, 9), expect.closeTo(2025 + 129 / 365, 9)])
+            expect(written(days)).toEqual(['May 5, 2025', '6', '7', '8', '9', '10'])
+            // A line of days that starts at the first day of a month, and a line of months that starts in January.
+            expect(written(span('2025-05-01', '2025-05-06'))).toEqual(['May 2025', '2', '3', '4', '5', '6'])
+            expect(written(span('2025-01-10', '2025-05-02'))).toEqual(['2025', 'Feb', 'Mar', 'Apr', 'May', 'Jun'])
+            // The first day of a month has the name of the month. With less room: every second, seventh or fourteenth day, counted from that first day.
+            expect(written(span('2025-05-20', '2025-06-29'))).toEqual(['May 20, 2025', '23', '25', '27', '29', 'Jun', '3', '5', '7', '9', '11', '13', '15', '17', '19', '21', '23', '25', '27', '29'])
+            expect(written(span('2025-05-20', '2025-06-29', { width: 700 }))).toEqual(['May 20, 2025', 'Jun', '8', '15', '22'])
+            // A text that would touch the text of the first tick has none: here the 15 of January.
+            expect(written(span('2025-01-10', '2025-05-02', { unit: 'day' }))).toEqual(['Jan 10, 2025', '22', 'Feb', '8', '15', '22', 'Mar', '8', '15', '22', 'Apr', '8', '15', '22', 'May'])
+            // Each of these 113 days has a tick, at 14 px for a day. At 6 px for a day, which is less than 0.3 of the text size, the line has the ticks of its texts only.
+            expect(span('2025-01-10', '2025-05-02', { unit: 'day' }).axis.children).toHaveLength(1 + 113 + 15)
+            const fewer = span('2025-01-10', '2025-05-02', { unit: 'day', width: 700 })
+            expect(written(fewer)).toEqual(['Jan 10, 2025', 'Feb', '15', 'Mar', '15', 'Apr', '15', 'May'])
+            expect(fewer.axis.children).toHaveLength(1 + 8 + 8)
+            // Without `unit`, the span decides: days up to 45 days, months under 2 years, and years from 2 years. One date has the year around it.
+            expect([span('2025-05-20', '2025-07-04').unit, span('2025-05-20', '2025-07-05').unit]).toEqual(['day', 'month'])
+            expect([span('2025-02-20', '2027-02-19').unit, span('2025-02-20', '2027-02-20').unit]).toEqual(['month', 'year'])
+            expect([dateLine([{ at: '2025-05-03' }]).unit, dateLine([{ at: '2025-05-03' }]).domain]).toEqual(['year', [2025, 2026]])
+            // `from` and `to` are the span when the film gives them, and they take a date as a text.
+            const given = dateLine([{ at: '2025-07-03' }], { from: '2025-06', to: '2025-09-15' })
+            expect([given.unit, written(given)]).toEqual(['month', ['Jun 2025', 'Jul', 'Aug', 'Sep']])
+            expect(written(dateLine([{ at: '2025-05-03' }], { from: 2025, to: 2026 }))).toEqual(['2025', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', '2026'])
+            // The unit of the film wins over the span.
+            const forced = span('2025-06-09', '2026-11-06', { unit: 'year' })
+            expect([forced.unit, forced.domain, written(forced)]).toEqual(['year', [2025, 2027], ['2025', '2026', '2027']])
+            // When the texts of the unit of the span have no room, the line has the ticks of the next unit.
+            expect([span('2025-05-20', '2025-06-29', { width: 120 }).unit, written(span('2025-05-20', '2025-06-29', { width: 120 }))]).toEqual(['month', ['May 2025', 'Jul']])
+            // A unit of the film that has no room, or no tick on the line, is an error.
+            const noRoom = follow([{ at: 2000 }, { at: 2030 }], { unit: 'month' })
+            expect(noRoom.message).toBe("dateLine: the line from 2000 to 2030 has no room for a tick for each month at a width of 1600: their texts touch, also at every sixth month. What works for this line: no unit, unit: 'year', or width: 4800")
+            const noYear = follow([{ at: 2025.3 }], { from: 2025.2, to: 2025.6, unit: 'year' })
+            expect(noYear.message).toBe("dateLine: the line from 2025.2 to 2025.6 holds the start of no year, so it has no tick. What works for this line: no unit, or unit: 'month'")
+            for (const line of [...noRoom.lines, ...noYear.lines]) expect(line).not.toThrow()
+            expect(() => dateLine([{ at: 2000 }, { at: 2002 }], { unit: 'day', width: 900 })).toThrow(/has no room for a tick for each day at a width of 900: their texts touch, also at every fourteenth day\. What works for this line: no unit, or unit: 'month'/)
+            expect(written(dateLine([{ at: 2025.3 }], { from: 2025.2, to: 2025.6 }))).toEqual(['Apr 2025', 'May', 'Jun', 'Jul', 'Aug'])
+            expect(() => dateLine([{ at: 2021 }], { unit: 'week' as never })).toThrow(/unit is 'year', 'month' or 'day', not "week"/)
+            expect(() => dateLine([{ at: 2021 }], { unit: 'day', scale: 'order' })).toThrow(/unit is the tick of a line with scale 'time'\. With 'order', each event has its own tick/)
+        }))
+    })
+
+    it('puts the labels over the line and under it by turns in date order, each one at the end of a stem from its dot, with its note under it', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine(RECORD, sized)
+            // In date order: the paper is over the line, the newsletter under it, and the report over it.
+            expect(line.events.map(sideOf)).toEqual(['under', 'over', 'over'])
+            // The order of the list changes nothing: the dates decide.
+            const turned = dateLine([RECORD[2]!, RECORD[0]!, RECORD[1]!], sized)
+            expect([turned.events[1]!, turned.events[2]!, turned.events[0]!].map(labelOf)).toEqual(line.events.map(labelOf))
+            const [news, report, paper] = line.events as [Line['events'][number], Line['events'][number], Line['events'][number]]
+            // A label is in the middle over the end of its stem. A label at an end of the line starts at that end, and its stem is under it.
+            expect(Math.abs(middle(news.text!)[0] - line.p(0)[0])).toBeLessThan(1.5)
+            expect(Math.abs(middle(report.text!)[0] - line.p(1)[0])).toBeLessThan(1.5)
+            expect(labelOf(paper)[0]).toBeCloseTo(-500, 6)
+            expect(labelOf(paper)[2]).toBeGreaterThan(line.p(2)[0])
+            // The stem goes from the line to a little short of the label.
+            const [, overTop, , overBottom] = stemOf(report)
+            expect(overBottom).toBe(0)
+            expect(overTop).toBeLessThan(-20)
+            expect(overTop - room(report)[3]).toBeGreaterThan(1)
+            expect(overTop - room(report)[3]).toBeLessThan(8)
+            expect(stemOf(report)[0]).toBeCloseTo(line.p(1)[0], 6)
+            // Under the line, the label is under the numbers, and the stem ends short of it.
+            const [, underTop, , underBottom] = stemOf(news)
+            expect(underTop).toBeGreaterThan(Math.max(...numbers(line).map((node) => edges(node)[3])) + 2)
+            expect(room(news)[1]).toBeGreaterThan(Math.max(...numbers(line).map((node) => edges(node)[3])) + 10)
+            expect(room(news)[1] - underBottom).toBeGreaterThan(1)
+            expect(room(news)[1] - underBottom).toBeLessThan(8)
+            // The note is under its label, in the middle, and smaller.
+            const note = edges(report.note!), words = labelOf(report)
+            expect(note[1]).toBeGreaterThan(words[3] + 2)
+            expect(note[1]).toBeLessThan(words[3] + 10)
+            expect(Math.abs((note[0] + note[2]) / 2 - (words[0] + words[2]) / 2)).toBeLessThan(1.5)
+            expect([report.text!.data['size'], report.note!.data['size']]).toEqual([20, 17])
+        }))
+    })
+
+    it('starts a stem under the line under the row of the texts, at the x of its mark, so that it touches no text', async () => {
+        await compileFilm(film(() => {
+            const rowOf = (made: Line) => { const boxes = numbers(made).map(edges); return [Math.min(...boxes.map((box) => box[1])), Math.max(...boxes.map((box) => box[3]))] as const }
+            // The second event of each line is under the line, in its turn: at a tick, over the text of a tick and not at the tick, beside a text, and between two texts.
+            for (const at of [2022, 2022.1, 2022.3, 2022.5]) {
+                const line = dateLine([{ at: 2020, label: 'a' }, { at, label: 'b' }], sized)
+                const event = line.events[1]!, stem = stemOf(event), [, bottom] = rowOf(line)
+                expect(sideOf(event)).toBe('under')
+                // The stem is at the x of the mark. It starts under the row of the texts, and ends short of its label.
+                expect(stem[0]).toBeCloseTo(line.p(1)[0], 6)
+                expect(stem[1] - bottom).toBeGreaterThan(2)
+                expect(stem[3]).toBeGreaterThan(stem[1] + 4)
+                expect(room(event)[1] - stem[3]).toBeGreaterThan(1)
+                // So it passes through no text and beside none: every text under the line ends over it.
+                for (const box of numbers(line).map(edges)) expect(stem[1] - box[3]).toBeGreaterThan(2)
+                expect(room(event)[1] - bottom).toBeGreaterThan(10)
+            }
+            // A stem over the line starts at its mark.
+            expect(stemOf(dateLine([{ at: 2020.4, label: 'a' }], sized).events[0]!)[3]).toBe(0)
+            // The row of the texts ends under the tails of their letters, as the y of "May".
+            const days = dateLine([{ at: '2025-05-05', label: 'a' }, { at: '2025-05-06', label: 'b' }])
+            expect(sideOf(days.events[1]!)).toBe('under')
+            expect(rowOf(days)[1]).toBeGreaterThan(edges(numbers(days)[1]!)[3] + 3)
+            expect(stemOf(days.events[1]!)[1] - rowOf(days)[1]).toBeGreaterThan(2)
+        }))
+    })
+
+    it('has the room of all its events as its bounds from the start, so a zone holds the labels that are still hidden', async () => {
+        let line!: Line, around!: ReturnType<typeof zone>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            line = dateLine(RECORD, sized)
+            // `extent` is the room of the line with all its labels, in the coordinates of the object.
+            expect(line.extent.top).toBeCloseTo(Math.min(...line.events.map((event) => room(event)[1])), 0)
+            expect(line.extent.bottom).toBeGreaterThanOrEqual(Math.max(...line.events.map((event) => room(event)[3])) - 0.5)
+            expect(line.extent.bottom).toBeLessThan(Math.max(...line.events.map((event) => room(event)[3])) + 8)
+            expect(line.extent.left).toBeLessThanOrEqual(-500)
+            expect(line.extent.right).toBeGreaterThanOrEqual(500)
+            // The events are hidden, and the bounds of the object are this room.
+            expect(line.events.map((event) => event.get('visible'))).toEqual([false, false, false])
+            const whole = [line.extent.left, line.extent.top, line.extent.right, line.extent.bottom].map((value) => expect.closeTo(value, 6))
+            expect(edges(line)).toEqual(whole)
+            // `.at()` still places the middle of the line.
+            line.at(100, 50)
+            expect(edges(line.axis.children[0]!)).toEqual([-400, 50, 600, 50])
+            line.at(0, 0)
+            around = zone(line, { padding: 30 })
+            s.add(around)
+            s.play(line.showAll(), { duration: 1 })
+        }))
+        // The border of the zone is 30 px from the room of the labels, before the events show and after.
+        for (const time of [0, 1.5]) {
+            at(time, () => {
+                const border = edges(around.frame), inside = edges(line)
+                expect([inside[0] - border[0], inside[1] - border[1], border[2] - inside[2], border[3] - inside[3]]).toEqual([30, 30, 30, 30].map((value) => expect.closeTo(value, 6)))
+                for (const event of line.events) {
+                    const own = room(event)
+                    expect([own[0] >= border[0] + 30 - 0.5, own[1] >= border[1] + 30 - 0.5, own[2] <= border[2] - 30 + 0.5, own[3] <= border[3] - 30 + 0.5]).toEqual([true, true, true, true])
+                }
+            })
+        }
+        expect(at(1.5, () => line.events.map((event) => event.get('visible')))).toEqual([true, true, true])
+    })
+
+    it('finds a place for every label of a crowd: no two labels meet, no stem passes through a label, and all of them are inside the line', async () => {
+        await compileFilm(film(() => {
+            const same = [{ at: 2021, label: 'first of the year' }, { at: 2021, label: 'second of the year' }, { at: 2021, label: 'third' }, { at: 2021, label: 'fourth' }, { at: 2023, label: 'alone' }]
+            // Three long labels at one side: the second one goes up, and the third one must not sit on the stem of the second.
+            const tall = [{ at: 2021, label: 'a first label that is long and wide' }, { at: 2023.3, label: 'a second label, long too' }, { at: 2023.9, label: 'the third label is long' }].map((event) => ({ ...event, side: 'over' as const }))
+            // Three events at the last end of the line: a label beside its stem has room at the left only.
+            const late = ['a long label one', 'a long label two', 'a long label three'].map((label) => ({ at: 2029.9, label }))
+            const lines = [
+                dateLine(CROWD, { width: 1800, from: 2025, to: 2027 }), dateLine(same, { width: 700, from: 2020, to: 2024, size: 22 }),
+                dateLine(tall, { width: 800, from: 2020, to: 2025, size: 20 }), dateLine(late, sized),
+            ]
+            for (const line of lines) {
+                const half = line.axis.children[0]!.bounds().width / 2
+                const rooms = line.events.map(room)
+                rooms.forEach((own, index) => {
+                    expect(own[0]).toBeGreaterThanOrEqual(-half - 0.5)
+                    expect(own[2]).toBeLessThanOrEqual(half + 0.5)
+                    rooms.forEach((other, at) => {
+                        if (at <= index) return
+                        // Two labels have room between them: beside each other, or one over the other.
+                        const beside = Math.max(other[0] - own[2], own[0] - other[2]), over = Math.max(other[1] - own[3], own[1] - other[3])
+                        expect(Math.max(beside, over)).toBeGreaterThan(2)
+                    })
+                    line.events.forEach((other, at) => {
+                        if (at === index) return
+                        const [x, top, , bottom] = stemOf(other)
+                        const passes = x > own[0] - 2 && x < own[2] + 2 && top < own[3] && bottom > own[1]
+                        expect(passes).toBe(false)
+                    })
+                })
+            }
+            // Three events in two weeks: their labels are at more than one place around their dots, and the labels of one row are 18 px apart or more.
+            const [first, news, second] = lines[0]!.events
+            expect(new Set([first, news, second].map((event) => `${sideOf(event!)} ${Math.round(labelOf(event!)[0])}`)).size).toBe(3)
+            // Four events of one date use more than one height, and their stems are on one line.
+            const year = lines[1]!.events.slice(0, 4)
+            expect(new Set(year.map((event) => Math.round(labelOf(event)[1]))).size).toBeGreaterThan(1)
+            expect(new Set(year.map((event) => Math.round(stemOf(event)[0]))).size).toBe(1)
+            // A label beside its stem: the far end of the stem is at the height of the label, not short of it.
+            const flag = year.find((event) => labelOf(event)[0] > stemOf(event)[0] + 2)!
+            const far = sideOf(flag) === 'over' ? stemOf(flag)[1] : stemOf(flag)[3]
+            expect(far).toBeGreaterThan(labelOf(flag)[1])
+            expect(far).toBeLessThan(labelOf(flag)[3])
+        }))
+    })
+
+    it('keeps the side that an event asks for, and ends each error of a layout with the changes that work for that line', async () => {
+        await compileFilm(film(() => {
+            const under = dateLine(RECORD.map((event) => ({ ...event, side: 'under' as const })), sized)
+            expect(under.events.map(sideOf)).toEqual(['under', 'under', 'under'])
+            const over = dateLine(RECORD.map((event) => ({ ...event, side: 'over' as const })), sized)
+            expect(over.events.map(sideOf)).toEqual(['over', 'over', 'over'])
+            // An event with a side has fewer places, so it takes its place first. The newsletter is near it, and goes to the other side.
+            expect(dateLine([RECORD[0]!, { ...RECORD[1]!, side: 'under' as const }, RECORD[2]!], sized).events.map(sideOf)).toEqual(['over', 'under', 'over'])
+            expect(dateLine([RECORD[0]!, RECORD[1]!, { ...RECORD[2]!, side: 'under' as const }], sized).events.map(sideOf)).toEqual(['under', 'over', 'under'])
+
+            // An error of a layout ends with the changes that work for its line. The object builds the line with each one, so each one is true.
+            const same = ['first of the year', 'second of the year', 'third', 'fourth', 'fifth', 'sixth', 'seventh'].map((label) => ({ at: 2021, label }))
+            const tight = { width: 700, from: 2020, to: 2024, size: 22 }
+            const cases: [Events, Options, string][] = [
+                // Seven events of one date have no room at one height, and four have room at two.
+                [same, { ...tight, levels: 1 }, 'the label of event 2 ("third") has no place. It meets the label of event 0 ("first of the year") at every height. What works for this line: levels: 4'],
+                [same.slice(0, 4), { ...tight, levels: 1 }, 'the label of event 2 ("third") has no place. It meets the label of event 0 ("first of the year") at every height. What works for this line: levels: 2'],
+                [[{ at: 2021, label: 'a label that is much wider than the line of this object' }], { width: 300 }, 'the label of event 0 ("a label that is much wider than the line of this object") is 637 px wide, and the line is 300. What works for this line: width: 638, or no label for event 0'],
+                // A side that has no place: only the side helps, so the advice is the side. The label of a mark in a row goes over the line.
+                [[{ at: 2021 }, { at: 2021, label: 'a', side: 'under' }], {}, "the label of event 1 (\"a\") has no place under the line. Its mark is in a row over the line, where a label goes over the line. What works for this line: no side for event 1, side: 'over' for event 1, or no label for event 1"],
+                [[{ at: '2025-06-10', label: 'a', side: 'over' }, { at: '2025-06-12', label: 'b' }], { from: 2020, to: 2027, width: 1180 }, "the label of event 0 (\"a\") has no place over the line. The mark of event 1 (\"b\") is in its way. What works for this line: no side for event 0, side: 'under' for event 0, or at: \"2025-06-12\" for event 0"],
+                // Three events with labels in a few days: the mark in the middle row has a mark under it and a mark over it.
+                [[{ at: '2025-06-10', label: 'a' }, { at: '2025-06-12', label: 'b' }, { at: '2025-06-14', label: 'c' }], { from: 2020, to: 2027, width: 1180 }, "the label of event 1 (\"b\") has no place. The mark of event 2 (\"c\") is in its way. What works for this line: at: \"2025-06-14\" for event 1, no label for event 1, or scale: 'order' without the ends and the unit of the line"],
+                [Array.from({ length: 4 }, () => ({ at: 2021 })), { rows: 3 }, 'the marks near event 3 (at 2021) need 4 rows, and `rows` is 3. What works for this line: rows: 4'],
+                [[{ at: '2025-06-03', label: 'a' }, { at: '2025-06-04', label: 'b' }], { scale: 'order', width: 300 }, 'the dates "2025-06-03" and "2025-06-04" touch under the line. What works for this line: width: 450'],
+                [[{ at: 2021, label: 'a' }], { scale: 'order', width: 100 }, 'a width of 100 has no room for the events before the words "not to scale". What works for this line: width: 217'],
+                [[{ at: 2021, label: 'a' }], { width: 40 }, 'a width of 40 has no room for the events. What works for this line: width: 68'],
+                [[{ at: 2019, label: 'a' }], { from: 2020, to: 2027 }, 'event 0 ("a") is at 2019, outside the line from 2020 to 2027. What works for this line: from: 2019'],
+                [[{ at: '2028-07', label: 'late' }], { from: 2020, to: 2027 }, 'event 0 ("late") is at "2028-07", outside the line from 2020 to 2027. What works for this line: to: "2028-07"'],
+            ]
+            for (const [events, options, message] of cases) {
+                const failed = follow(events, options)
+                expect(failed.message).toBe(`dateLine: ${message}`)
+                expect(failed.lines.length).toBeGreaterThan(0)
+                for (const line of failed.lines) expect(line).not.toThrow()
+            }
+            // More heights give more labels a place, and a line that builds has no error.
+            expect(() => dateLine(same.slice(0, 2), { ...tight, levels: 1 })).not.toThrow()
+            expect(() => dateLine(same.slice(0, 4), { ...tight, levels: 3 })).not.toThrow()
+            // When no change of one option works, the error says so.
+            expect(() => dateLine(Array.from({ length: 12 }, (_, index) => ({ at: 2021, label: `event ${index}` })), { ...tight, levels: 1 })).toThrow(/has no place\. It meets the label of event \d+ \("event \d+"\) at every height\. No one change of an option gives this line a layout\. Use fewer events, or two lines$/)
+        }))
+    })
+
+    it('puts the events at equal steps in date order with scale order, writes each date as the film gave it, and says that the line is not to scale', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine([{ at: '5.10', label: 'ten' }, { at: '5.1', label: 'one' }, { at: '6.0', label: 'six' }, { at: '5.3', label: 'three' }, { at: '5.3', label: 'three again' }], { width: 1000, scale: 'order', size: 20 })
+            // Four versions in their order: 5.10 is after 5.3. The words at the end of the line take their room.
+            expect(written(line)).toEqual(['5.1', '5.3', '5.10', '6.0', 'not to scale'])
+            const xs = ['5.1', '5.3', '5.10', '6.0'].map((version) => line.x(version))
+            const step = xs[1]! - xs[0]!
+            expect(step).toBeGreaterThan(200)
+            expect([xs[2]! - xs[1]!, xs[3]! - xs[2]!, xs[0]! + 500]).toEqual([expect.closeTo(step, 6), expect.closeTo(step, 6), expect.closeTo(step / 2, 6)])
+            // Two events of one date have one place.
+            expect([0, 1, 2, 3, 4].map((index) => line.p(index)[0])).toEqual([xs[2], xs[0], xs[3], xs[1], xs[1]])
+            // Each date is under its tick, in ink. "not to scale" ends at the end of the line, after the last date.
+            const boxes = numbers(line).map(edges)
+            boxes.slice(0, 4).forEach((box, index) => expect(Math.abs((box[0] + box[2]) / 2 - xs[index]!)).toBeLessThan(1.5))
+            expect((numbers(line)[0] as unknown as { chars: Node[] }).chars[0]!.get('fill')).toEqual(paint('ink'))
+            expect(boxes[4]![2]).toBeCloseTo(500, 6)
+            expect(boxes[4]![0]).toBeGreaterThan(xs[3]! + step / 2)
+            // The words are in the row of the dates.
+            expect(Math.abs((boxes[4]![1] + boxes[4]![3]) / 2 - (boxes[0]![1] + boxes[0]![3]) / 2)).toBeLessThan(3)
+            // An event is known by its date as the film wrote it. "5.1" and "5.1.0" are two texts, so they have two places, in the order of the list.
+            const texts = dateLine([{ at: '5.1', label: 'a' }, { at: '5.1.0', label: 'b' }, { at: '5.1', label: 'c' }, { at: '6', label: 'd' }], { scale: 'order' })
+            expect(written(texts)).toEqual(['5.1', '5.1.0', '6', 'not to scale'])
+            expect([texts.p(0)[0], texts.p(1)[0], texts.p(2)[0]]).toEqual([texts.x('5.1'), texts.x('5.1.0'), texts.x('5.1')])
+            expect(texts.x('5.1.0')).toBeGreaterThan(texts.x('5.1') + 100)
+            expect(line.domain).toEqual([-0.5, 3.5])
+            // With dates, the steps are equal too, whatever the time between the dates. A date is written as the film gave it.
+            const dates = dateLine([{ at: '2026-03-24', label: 'c' }, { at: 2020, label: 'a' }, { at: '2025-06', label: 'b' }], { width: 1000, scale: 'order', size: 20 })
+            expect(written(dates)).toEqual(['2020', '2025-06', '2026-03-24', 'not to scale'])
+            expect(dates.x('2025-06') - dates.x(2020)).toBeCloseTo(dates.x('2026-03-24') - dates.x('2025-06'), 6)
+            // A line with scale time says nothing of its scale.
+            expect(written(dateLine(RECORD, sized))).not.toContain('not to scale')
+            // The line has a place for the dates of its events, and for no other.
+            expect(() => line.x('5.2')).toThrow(/the line has no place for "5\.2"\. With scale 'order', it has the dates of its events: "5\.1", "5\.3", "5\.10", "6\.0"/)
+            expect(() => line.advance('7.0')).toThrow(/the line cannot advance to "7\.0"/)
+            expect(() => dateLine([{ at: '5.1', label: 'a' }, { at: '2025-06-10', label: 'b' }], { scale: 'order' })).toThrow(/event 1 \("b"\) has the date "2025-06-10"\. With scale 'order', give every event a date .*, or give every event a version such as '5\.1'/)
+            expect(() => dateLine([{ at: 'v5', label: 'a' }, { at: '5.1', label: 'b' }], { scale: 'order' })).toThrow(/event 0 \("a"\) has the date "v5"/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { scale: 'order', from: 2020 })).toThrow(/from and to are the ends of a line with scale 'time'/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { scale: 'order', width: 100 })).toThrow(/a width of 100 has no room for the events before the words "not to scale"/)
+            // A version is not a date on a line with scale time.
+            expect(() => dateLine([{ at: '5.1', label: 'a' }])).toThrow(/event 0 \("a"\) has the date "5\.1"\. A date is 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD', or a number of years/)
+        }))
+    })
+
+    it('moves its cursor to a date and stops there, and each event appears when the cursor passes it', async () => {
+        let line!: Line, bare!: Line, stops!: Line
+        const dates: number[] = []
+        const events = [{ at: 2020, label: 'a' }, { at: 2022, label: 'b', note: 'n' }, { at: 2024, label: 'c' }, { at: 2030, label: 'd' }]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            line = s.add(dateLine(events, sized))
+            bare = s.add(dateLine(events, { ...sized, cursor: false }).at(0, 300))
+            // This one is not on the stage: its first advance brings it.
+            stops = dateLine(events, sized).at(0, -300)
+            dates.push(line.date)
+            s.wait(1)
+            s.play(line.advance(2025), bare.advance(2025), stops.advance(2022), { duration: 2, ease: linear })
+            dates.push(line.date)
+            s.wait(1)
+            s.play(seq(line.advance('2026'), line.advance(2028)), stops.advance(2024), { duration: 2, ease: linear })
+            dates.push(line.date)
+            s.play(line.showAll(), { duration: 2, ease: linear })
+            dates.push(line.date)
+            s.wait(0.5)
+        }))
+        expect(dates).toEqual([2020, 2025, 2028, 2030])
+        const [a, b, c, d] = line.events as [Line['events'][number], Line['events'][number], Line['events'][number], Line['events'][number]]
+        const cursor = (time: number) => at(time, () => (line.cursor.get('visible') ? line.cursor.get('x') : null))
+        // A fade that ends at the time of the reading is 1 but for the last digits.
+        const one = expect.closeTo(1, 6)
+        // Before the first advance, the film draws the two lines with their ticks and numbers, and no event or cursor:
+        // a line, 11 ticks, and 11 numbers of 4 digits each. The third line comes with its first advance.
+        expect(compiled.frame(0.5).ops).toHaveLength(2 * 56)
+        expect(compiled.frame(1.05).ops.length).toBeGreaterThan(3 * 56)
+        // An event at the date where the cursor stops shows once: the next advance leaves it as it is.
+        const [first, stopped] = stops.events
+        expect(at(3.9, () => [shows(first!.text!), shows(stopped!.text!), stopped!.mark.get('opacity'), stopped!.stem!.get('trimTo')])).toEqual([1, 1, 1, 1])
+        for (const time of [4.02, 4.3]) expect(at(time, () => [shows(first!.text!), first!.mark.get('opacity'), shows(stopped!.text!), stopped!.mark.get('opacity'), stopped!.stem!.get('trimTo')])).toEqual([1, 1, 1, 1, 1])
+        expect(at(0.5, () => [a, b, c, d].map(shows))).toEqual([0, 0, 0, 0])
+        expect(cursor(0.5)).toBeNull()
+        // The last event of this advance needs 0.5 s after the cursor reaches it, so the cursor arrives 0.125 s
+        // before the end. It reaches 2022 at 1.75 s and 2024 at 2.5 s, and stops at 2025.
+        expect([cursor(1), cursor(1.9375), cursor(2.875), cursor(3), cursor(3.9)]).toEqual([expect.closeTo(line.x(2020), 6), expect.closeTo(line.x(2022.5), 6), expect.closeTo(line.x(2025), 6), expect.closeTo(line.x(2025), 6), expect.closeTo(line.x(2025), 6)])
+        // The first advance shows the cursor, in 0.3 s.
+        expect([1, 1.15, 1.3].map((time) => at(time, () => line.cursor.get('opacity')))).toEqual([0, expect.closeTo(0.5, 6), 1])
+        // An event at the first end of the line appears with the first advance.
+        expect(at(1.01, () => a.get('visible'))).toBe(true)
+        expect(at(1.74, () => [b, c, d].map(shows))).toEqual([0, 0, 0])
+        // The dot and the stem come first, and the stem draws from the line. Then the label and the note.
+        expect(at(1.875, () => [b.get('visible'), b.mark.get('opacity'), b.stem!.get('trimTo'), shows(b.text!), shows(b.note!)])).toEqual([true, expect.closeTo(0.5, 2), expect.closeTo(0.5, 2), 0, 0])
+        expect(at(2.25, () => [b.mark.get('opacity'), b.mark.get('sx'), b.stem!.get('trimTo'), shows(b.text!), shows(b.note!)])).toEqual([1, 1, 1, one, one])
+        expect(at(2.49, () => c.get('visible'))).toBe(false)
+        // All of it is over when the animation ends.
+        expect(at(3, () => [shows(c), c.mark.get('opacity'), shows(c.text!)])).toEqual([1, 1, one])
+        expect(at(3.9, () => shows(d))).toBe(0)
+        // The second advance of a sequence starts where the first one stops.
+        expect([cursor(4.5), cursor(5), cursor(5.5), cursor(6)]).toEqual([expect.closeTo(line.x(2025.5), 6), expect.closeTo(line.x(2026), 6), expect.closeTo(line.x(2027), 6), expect.closeTo(line.x(2028), 6)])
+        // `showAll` goes to the end of the line, where the last event is. The cursor arrives 0.5 s before the end.
+        expect(at(7.4, () => shows(d))).toBe(0)
+        expect([cursor(7.5), cursor(8)]).toEqual([expect.closeTo(line.x(2030), 6), expect.closeTo(line.x(2030), 6)])
+        expect(at(8, () => [shows(d), d.mark.get('opacity'), shows(d.text!)])).toEqual([1, 1, one])
+        // Without a cursor, the events appear at the same times.
+        expect(at(3, () => bare.cursor.get('visible'))).toBe(false)
+        expect(at(2.25, () => bare.events.map((event) => (event.get('visible') ? shows(event.text!) : 0)))).toEqual([1, one, 0, 0])
+        // The cursor does not go back, and it stays on the line.
+        expect(() => line.advance(2029)).toThrow(/cannot advance to 2029\. The cursor is past it, and it does not go back/)
+        expect(() => bare.advance(2031)).toThrow(/cannot advance to 2031\. The line goes from 2020 to 2030/)
+        expect(() => bare.advance('tomorrow')).toThrow(/the line cannot advance to "tomorrow"\. A date is/)
+        expect(() => bare.advance(2024)).toThrow(/The cursor is past it/)
+        // The check is made again when the move is scheduled: the second advance of this sequence would go back.
+        await expect(compile((s) => {
+            const made = s.add(dateLine(events, sized))
+            s.play(seq(made.advance(2028), made.advance(2026)))
+        })).rejects.toThrow(/cannot advance to 2026\. The cursor is past it, and it does not go back/)
+    })
+
+    it('enters with its line, its ticks and its numbers from the first end, and with no event', async () => {
+        let line!: Line
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            line = dateLine(RECORD, sized)
+            s.wait(1)
+            s.play(line.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        // The line draws over the first 1.4 s. A number arrives when the line reaches it, in 0.6 s.
+        const rule = line.axis.children[0]!
+        expect([1, 1.7, 2.4, 3].map((time) => at(time, () => rule.get('trimTo')))).toEqual([0, expect.closeTo(0.5, 6), 1, 1])
+        const [first, , , , , sixth] = numbers(line), last = numbers(line)[10]!
+        expect(at(1.3, () => [first, sixth, last].map(shows))).toEqual([expect.closeTo(0.5, 1), 0, 0])
+        expect(at(1.9, () => [first, sixth, last].map(shows))).toEqual([1, expect.closeTo(1 / 3, 1), 0])
+        expect(at(3, () => numbers(line).map(shows))).toEqual(numbers(line).map(() => 1))
+        expect(at(3.4, () => [...line.events.map((event) => event.get('visible')), line.cursor.get('visible')])).toEqual([false, false, false, false])
+        expect(compiled.frame(3.4).ops).toHaveLength(56)
+        const turn = await compile((s) => {
+            s.wait(1)
+            s.play(seq(fadeIn(rect(10, 10).at(-900, -500), { duration: 1 }), { ...dateLine(RECORD, sized).enter(), duration: 1 }))
+            s.wait(0.5)
+        })
+        // In the first second, the rectangle is the one mark that the film draws.
+        for (const time of [1.3, 1.99]) expect(turn.frame(time).ops).toHaveLength(1)
+        expect(turn.frame(3.4).ops).toHaveLength(57)
+        const lefts: number[] = []
+        for (const shift of [0, 300]) {
+            const moved = await compile((s) => {
+                const made = dateLine(RECORD, sized)
+                group(made).at(shift, 0)
+                s.play(made.enter(), { duration: 1 })
+                s.wait(0.5)
+            })
+            lefts.push(Math.min(...paths(moved, 1.4).flatMap((op) => pathBounds(op.path)?.x ?? [])))
+        }
+        // The line of a group that the film moved is the same picture, 300 to the right.
+        expect(lefts[1]! - lefts[0]!).toBeCloseTo(300, 6)
+        // A copy enters with its own ticks, and shows its own events.
+        let copy!: Line
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const made = dateLine(RECORD, sized)
+            copy = made.clone()
+            s.play(copy.enter(), { duration: 1 })
+            s.play(copy.showAll(), { duration: 1 })
+            expect(made.mounted).toBe(false)
+            expect(copy.events[0]).not.toBe(made.events[0])
+        }))
+        expect(at(2, () => copy.events.map(shows))).toEqual([1, 1, 1])
+    })
+
+    it('draws an event with no label as a mark only, as a dot, a star or a ring, and gives a mark that would touch another one a row over the line', async () => {
+        await compileFilm(film(() => {
+            const line = dateLine([{ at: '2025-06-09' }, { at: '2025-06-10', mark: 'star' }, { at: '2025-10-29', mark: 'ring', color: 'teal' }, { at: '2026-03-06' }, { at: '2026-03-06' }, { at: '2026-03-06' }], { width: 1720 })
+            // An event with no label has no stem and no text: its node holds its mark, and the ring that shows when the event is lit.
+            expect(line.events.map((event) => [event.stem, event.text, event.note, event.children])).toEqual(line.events.map((event) => [null, null, null, [event.halo, event.mark]]))
+            // At size 26, a dot is 14 px wide. A star is 1.8 times a dot from point to point. A ring is a dot with a line around the color of the background.
+            const [first, star, ring] = line.events as [Line['events'][number], Line['events'][number], Line['events'][number]]
+            expect([first.mark.bounds().width, star.mark.bounds().height, ring.mark.bounds().width + ring.mark.get('strokeWidth')]).toEqual([expect.closeTo(14.04, 6), expect.closeTo(7.02 * 1.8 * (1 + Math.cos(Math.PI / 5)), 6), expect.closeTo(14.04, 6)])
+            expect([first.mark.get('fill'), star.mark.get('fill'), ring.mark.get('fill'), ring.mark.get('stroke')]).toEqual([paint('ink'), paint('ink'), paint('bg'), paint('teal')])
+            // The star is one day after the first dot, which is 3 px: it goes to the second row. Three marks of one day take the line and two rows.
+            const pitch = -line.p(1)[1]
+            expect(pitch).toBeGreaterThan(2 * 7.02 * 1.8)
+            expect(line.events.map((_, index) => line.p(index)[1])).toEqual([0, -pitch, 0, 0, -pitch, -2 * pitch].map((y) => expect.closeTo(y, 6)))
+            line.events.forEach((event, index) => expect(middle(event.mark)[0]).toBeCloseTo(line.p(index)[0], 6))
+            expect(line.p(3)[0]).toBe(line.p(5)[0])
+            // The rows are in `extent`, with the ring of a lit event around the highest mark.
+            expect(line.extent.top).toBeCloseTo(-2 * pitch - 7.02 - 26 * 0.07, 6)
+
+            // A mark has a clear room of 0.18 of the text size around it: 4.7 px at size 26. In the record of a film, at its width and at half of it, no mark is in the room of another one.
+            const record = ['2025-06-09', '2025-06-10*', '2025-10-29', '2026-02-24', '2026-02-27', '2026-03-06', '2026-03-06', '2026-03-24*', '2026-03-25', '2026-04-17', '2026-04-29', '2026-05-13', '2026-05-27',
+                '2026-06-02', '2026-06-24', '2026-07-06', '2026-07-30', '2026-08-13', '2026-08-19', '2026-08-28', '2026-09-02', '2026-11-06', '2026-11-06']
+                .map((date) => (date.endsWith('*') ? { at: date.slice(0, -1), mark: 'star' as const } : { at: date }))
+            for (const width of [1720, 860]) {
+                const made = dateLine(record, { width })
+                const circles = made.events.map((_, index) => ({ at: made.p(index), radius: record[index]!.mark ? 7.02 * 1.8 : 7.02 }))
+                circles.forEach((one, index) => circles.slice(index + 1).forEach((other) => expect(Math.hypot(one.at[0] - other.at[0], one.at[1] - other.at[1])).toBeGreaterThanOrEqual(one.radius + other.radius + 26 * 0.18 - 1e-6)))
+                expect(new Set(circles.map((one) => Math.round(one.at[1]))).size).toBe(width === 1720 ? 2 : 4)
+            }
+            // Two marks that are 13.9 px apart at size 20 are in the room of each other, and two marks that are 14.8 px apart are not.
+            expect(dateLine([{ at: 2022 }, { at: 2022.14 }], sized).p(1)[1]).toBeLessThan(-10)
+            expect(dateLine([{ at: 2022 }, { at: 2022.15 }], sized).p(1)[1]).toBe(0)
+            // The ends of the line keep the radius of the largest mark, so a star at an end is inside the width.
+            const ends = dateLine([{ at: 2020, mark: 'star' }, { at: 2030, mark: 'star' }], sized)
+            expect([edges(ends.events[0]!.mark)[0], edges(ends.events[1]!.mark)[2]]).toEqual([expect.closeTo(-500 + 9.72 * (1 - Math.cos(Math.PI / 10)), 6), expect.closeTo(500 - 9.72 * (1 - Math.cos(Math.PI / 10)), 6)])
+
+            // The rows grow as the marks need. Four marks of one day take four rows, and the bounds hold them.
+            const four = dateLine(Array.from({ length: 4 }, () => ({ at: 2021 })))
+            expect(four.events.map((_, index) => four.p(index)[1] / four.p(1)[1])).toEqual([0, 1, 2, 3].map((row) => expect.closeTo(row, 6)))
+            expect(edges(four)[1]).toBeCloseTo(four.p(3)[1] - 7.02 - 26 * 0.07, 6)
+            // 60 marks at random dates on 860 px build with the rows that the object has when the film gives no number.
+            for (let seed = 1; seed <= 25; seed++) {
+                const random = randomOf(seed)
+                expect(() => dateLine(Array.from({ length: 60 }, () => ({ at: 2025.42 + random() * 1.5 })), { width: 860, from: 2025.42, to: 2026.92 })).not.toThrow()
+            }
+            // `rows` is the most rows. With fewer rows than the marks need, the error names the number that is enough.
+            expect(() => dateLine(Array.from({ length: 11 }, () => ({ at: 2021 })))).toThrow(/the marks near event 10 \(at 2021\) need 11 rows, and `rows` is 10\. What works for this line: rows: 11$/)
+            expect(() => dateLine(Array.from({ length: 11 }, () => ({ at: 2021 })), { rows: 11 })).not.toThrow()
+            expect(() => dateLine([{ at: 2021 }], { rows: 0 })).toThrow(/rows is the most rows of marks, a whole number of 1 or more/)
+
+            // Two events with labels that are near each other are no error. The later mark goes one row up, and its label goes over the line, from its mark. The label of the earlier one goes under the line.
+            const posts = dateLine([{ at: 2020, label: 'the Firecracker paper' }, { at: '2025-06-10', label: 'the newsletter' }, { at: '2025-06-16', label: 'the second post' }, { at: '2026-03-24', label: 'the technical report', note: 'names Anyrun' }], { width: 1180, from: 2020, to: 2027, font: 'text-serif' })
+            expect([posts.p(1)[1], posts.p(2)[1]]).toEqual([0, expect.closeTo(-(2 * 7.02 + 26 * 0.18 + 1.56), 1)])
+            expect(posts.events.map(sideOf)).toEqual(['over', 'under', 'over', 'over'])
+            expect(stemOf(posts.events[2]!)[3]).toBeCloseTo(posts.p(2)[1], 6)
+            expect(room(posts.events[2]!)[3]).toBeLessThan(posts.p(2)[1] - 7.02)
+            // Events with labels at one date have one place, on the line.
+            const twins = dateLine([{ at: 2021, label: 'a' }, { at: 2021, label: 'b' }, { at: 2021, label: 'c' }], sized)
+            expect(twins.events.map((_, index) => twins.p(index))).toEqual([twins.p(0), twins.p(0), twins.p(0)])
+            expect(twins.p(0)[1]).toBe(0)
+            // A label over the line counts its height from its mark. For a mark in a row, the stem is as long as for a mark on the line: 1.5 of the text size, less the room before the label.
+            const raised = dateLine([{ at: 2021 }, { at: 2021, label: 'a' }], sized)
+            expect([raised.p(1)[1] < -10, sideOf(raised.events[1]!)]).toEqual([true, 'over'])
+            expect(stemOf(raised.events[1]!)[3] - stemOf(raised.events[1]!)[1]).toBeCloseTo(stemOf(dateLine([{ at: 2021, label: 'a' }], sized).events[0]!)[3] - stemOf(dateLine([{ at: 2021, label: 'a' }], sized).events[0]!)[1], 6)
+            // A mark with no label at the date of an event with a label goes over it, and the label goes under the line, away from that mark.
+            const mixed = dateLine([{ at: 2021, label: 'a' }, { at: 2021 }], sized)
+            expect([mixed.p(0)[1], mixed.p(1)[1] < -10, sideOf(mixed.events[0]!)]).toEqual([0, true, 'under'])
+            // A label or a note that is a number is written as its text, and a value that is no text is an error.
+            const counted = dateLine([{ at: 2021, label: 7, note: 5 }], sized)
+            expect([counted.events[0]!.text!.source, counted.events[0]!.note!.source]).toEqual(['7', '5'])
+            expect(() => dateLine([{ at: 2021, label: 'a', note: true as never }])).toThrow(/the note of event 0 is true\. A note is a text, or a number that the line writes as its text/)
+            expect(() => dateLine([{ at: 2021, label: { a: 1 } as never }])).toThrow(/the label of event 0 is \{"a":1\}\. A label is a text, or a number that the line writes as its text/)
+        }))
+    })
+
+    it('takes away a tick that is in the clear room of a mark while the event shows, by any way that the film shows it', async () => {
+        let line!: Line, shown!: Line
+        const tickOf = (made: Line, date: string | number) => made.axis.children.slice(1).find((child) => child.bounds().width === 0 && Math.abs(child.bounds().x - made.x(date)) < 0.01)!
+        await compileFilm(film({ fps: 20 }, (s) => {
+            line = s.add(dateLine([{ at: '2025-06-09' }, { at: '2025-07-02' }, { at: '2025-08-15' }, { at: '2025-09-01', label: 'a' }], { width: 1720, from: '2025-06', to: '2026-12' }))
+            // At size 20 a dot has a radius of 5.4, its clear room is 3.6, and half a tick is 1: a tick is in the room of a mark up to 10 px from its middle.
+            const near = dateLine([{ at: 2022.09 }, { at: 2024.11 }, { at: 2026 }, { at: 2026 }, { at: 2028, label: 'a' }], sized)
+            const ticks = () => [2022, 2024, 2026, 2028].map((year) => tickOf(near, year).get('visible'))
+            expect(ticks()).toEqual([true, true, true, true])
+            // 8.9 px from the tick of 2022: the mark is 2.5 px beside the tick, in its clear room. `show()` takes the tick away, and `hide()` brings it back.
+            near.events[0]!.show()
+            expect(ticks()).toEqual([false, true, true, true])
+            near.events[0]!.hide()
+            expect(ticks()).toEqual([true, true, true, true])
+            // 10.9 px from the tick of 2024: the tick stays.
+            near.events[1]!.show()
+            expect(ticks()).toEqual([true, true, true, true])
+            // Two marks at the tick of 2026: the one in the row over the line is clear of the tick, and the one on the line is not.
+            expect([near.p(2)[1], near.p(3)[1] < -10]).toEqual([0, true])
+            near.events[3]!.show()
+            expect(ticks()).toEqual([true, true, true, true])
+            near.events[2]!.show()
+            expect(ticks()).toEqual([true, true, false, true])
+            // The mark of an event with a label takes its tick away too.
+            near.events[4]!.show()
+            expect(ticks()).toEqual([true, true, false, false])
+            // On the stage, the tick leaves at the time when the event shows: with `show()`, and with a fade.
+            shown = s.add(dateLine([{ at: 2022 }, { at: 2024 }, { at: 2026 }], sized).at(0, 300))
+            s.wait(1)
+            shown.events[0]!.show()
+            s.play(line.advance('2025-07-20'), fadeIn(shown.events[1]!), { duration: 1, ease: linear })
+            s.play(line.showAll(), { duration: 1, ease: linear })
+        }))
+        // The cursor reaches 2 July at 1.5 s. Its mark is 3 px after the tick of July. The mark of 9 June is 25 px from the tick of June.
+        const ticks = (time: number) => at(time, () => ['2025-06', '2025-07', '2025-08', '2025-09'].map((date) => tickOf(line, date).get('visible')))
+        expect(ticks(0.5)).toEqual([true, true, true, true])
+        expect(ticks(1.45)).toEqual([true, true, true, true])
+        expect(ticks(1.55)).toEqual([true, false, true, true])
+        // The event of 1 September has a label, and its mark is at the tick.
+        expect(ticks(3.5)).toEqual([true, false, true, false])
+        expect(at(3.5, () => line.events.map((event) => event.get('visible')))).toEqual([true, true, true, true])
+        const years = (time: number) => at(time, () => [2022, 2024, 2026].map((year) => tickOf(shown, year).get('visible')))
+        expect(years(0.5)).toEqual([true, true, true])
+        expect(years(1.5)).toEqual([false, false, true])
+        // A copy has its own ticks.
+        const copy = shown.clone()
+        copy.events[2]!.show()
+        expect([tickOf(copy, 2026).get('visible'), at(3.5, () => tickOf(shown, 2026).get('visible'))]).toEqual([false, true])
+    })
+
+    it('gives one event the look of the lit event with light: the accent color, and a ring around its mark', async () => {
+        let lights!: Line, early!: Line, same!: Line
+        const lit: (number | null)[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            lights = s.add(dateLine([{ at: 2021, label: 'a', note: 'n', color: 'teal' }, { at: 2023 }, { at: 2025, mark: 'ring' }], { ...sized, accent: 'red' }).at(0, 300))
+            // The color of these two events is the accent color.
+            same = s.add(dateLine([{ at: 2021, color: 'red' }, { at: 2023, color: 'red' }], { ...sized, accent: 'red' }))
+            early = s.add(dateLine([{ at: 2021 }, { at: 2023, label: 'b' }], sized).at(0, -300))
+            s.wait(1)
+            // An event that is lit while it is hidden stays hidden.
+            s.play(lights.showAll(), same.showAll(), early.light(1), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+            s.play(lights.light(0), same.light(0), early.showAll(), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+            s.play(lights.light(2), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+            s.play(lights.light(2), { duration: 1, ease: linear })
+            s.play(lights.light(null), { duration: 1, ease: linear })
+            lit.push(lights.lit)
+        }))
+        // `lit` is the index after the changes that the film has played.
+        expect(lit).toEqual([null, 0, 2, null])
+        const [first, , ring] = lights.events as [Line['events'][number], Line['events'][number], Line['events'][number]]
+        const looks = (time: number) => at(time, () => [first.mark.get('fill'), first.stem!.get('stroke'), first.text!.chars[0]!.get('fill'), first.note!.chars[0]!.get('fill'), first.halo.get('opacity'), ring.mark.get('stroke'), ring.mark.get('fill'), ring.halo.get('opacity')])
+        const [teal, red, ink, dim, bg] = ['teal', 'red', 'ink', 'dim', 'bg'].map(paint)
+        expect(looks(2)).toEqual([teal, teal, teal, dim, 0, ink, bg, 0])
+        // The mark, the stem and the label take the accent color, and the ring around the mark shows. The note stays in dim.
+        expect(looks(3)).toEqual([red, red, red, dim, 1, ink, bg, 0])
+        expect(looks(2.5)[0]).not.toEqual(teal)
+        expect(looks(2.5)[0]).not.toEqual(red)
+        expect(looks(2.5)[4]).toBeCloseTo(0.5, 6)
+        // The next event takes the look from the one before. A ring has the accent on its line.
+        expect(looks(4)).toEqual([teal, teal, teal, dim, 0, red, bg, 1])
+        // The same event again changes nothing, and null leaves no event lit.
+        expect(looks(4.5)).toEqual(looks(4))
+        expect(looks(6)).toEqual([teal, teal, teal, dim, 0, ink, bg, 0])
+        // The ring is in the accent color, around the mark and inside its clear room: 5.4 + 1.4 px at size 20, with a line of 1.5.
+        expect([first.halo.get('stroke'), first.halo.bounds().width, first.halo.get('strokeWidth')]).toEqual([red, expect.closeTo(2 * (5.4 + 1.4), 6), 1.5])
+        expect(middle(first.halo)).toEqual(middle(first.mark).map((value) => expect.closeTo(value, 6)))
+        // An event whose own color is the accent color looks lit by its ring only: the lit look differs from every look that is not lit.
+        expect(at(3, () => same.events.map((event) => [event.mark.get('fill'), event.halo.get('opacity')]))).toEqual([[red, 1], [red, 0]])
+        // An event that was lit while it was hidden appears lit.
+        const late = early.events[1]!
+        expect(at(1.9, () => [late.get('visible'), late.halo.get('opacity')])).toEqual([false, expect.closeTo(0.9, 6)])
+        expect(at(3, () => [late.get('visible'), late.mark.get('fill'), late.text!.chars[0]!.get('fill'), late.halo.get('opacity')])).toEqual([true, paint('orange'), paint('orange'), 1])
+        // The accent is orange when the film gives none, and the animations take these times when the film gives none.
+        let durations: number[] = []
+        await compileFilm(film(() => {
+            const plain = dateLine([{ at: 2021 }], sized)
+            durations = [plain.enter().duration, plain.advance(2022).duration, plain.showAll().duration, plain.light(null).duration]
+            expect(() => plain.light(1)).toThrow(/cannot light event 1\. The line has the events 0 to 0\. Use null for no lit event/)
+            expect(() => plain.light(0.5)).toThrow(/cannot light event 0\.5/)
+        }))
+        expect(durations).toEqual([1, 1.6, 3, 0.4])
+    })
+
+    it('keeps its cursor in a room of its own under the line, where it touches no mark, no tick, no stem and no text, and never moves it back or past the date with an ease that bounces', async () => {
+        await compileFilm(film(() => {
+            const record = ['2025-06-09', '2025-06-10*', '2025-10-29', '2026-03-06', '2026-03-06', '2026-03-24*', '2026-03-25', '2026-11-06'].map((date) => (date.endsWith('*') ? { at: date.slice(0, -1), mark: 'star' as const } : { at: date }))
+            const lines = [
+                dateLine(RECORD, sized), dateLine(CROWD, { width: 1800, from: 2025, to: 2027 }), dateLine([{ at: '5.1', label: 'one' }, { at: '5.19', label: 'the fix', mark: 'ring' }], { scale: 'order', width: 900 }),
+                dateLine([...record, { at: '2026-07-01', label: 'a', mark: 'star' }, { at: '2026-07-02', label: 'b' }], { width: 1720 }), dateLine([{ at: '2025-05-05', label: 'a' }, { at: '2025-05-10', label: 'b', note: 'n' }], { size: 40 }),
+            ]
+            /** The room of the ink of a node: its bounds, and half of its line. */
+            const ink = (node: Node) => { const box = edges(node), half = node.get('stroke') ? node.get('strokeWidth') / 2 : 0; return [box[0] - half, box[1] - half, box[2] + half, box[3] + half] as const }
+            for (const line of lines) {
+                // The cursor is a pointer under the line. It moves along the line only, so its height is the room that it needs: nothing else is in it, at any date.
+                const [left, top, right, bottom] = edges(line.cursor)
+                expect(top).toBeGreaterThan(0)
+                expect([bottom - top, right - left]).toEqual([expect.closeTo((right - left) * (0.32 / 0.42), 6), expect.closeTo(right - left, 6)])
+                const outside = (box: readonly [number, number, number, number]) => box[3] < top - 1 || box[1] > bottom + 1
+                // The marks, the ring of a lit event, the stems, the labels and the notes.
+                for (const event of line.events) {
+                    for (const part of [event.mark, event.halo, event.stem]) if (part) expect(outside(ink(part))).toBe(true)
+                    for (const words of [event.text, event.note]) if (words) expect(outside(edges(words))).toBe(true)
+                }
+                // The line and its ticks are over it, and the texts under the line are under it.
+                for (const part of line.axis.children) {
+                    const isText = typeof (part as unknown as { source?: unknown }).source === 'string'
+                    expect(isText ? edges(part)[1] > bottom + 1 : ink(part)[3] < top - 1).toBe(true)
+                }
+            }
+        }))
+        // An ease that passes its end and comes back, and an ease that starts backward.
+        const eases = [(t: number) => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2, (t: number) => 2.70158 * t ** 3 - 1.70158 * t ** 2]
+        for (const ease of eases) {
+            let line!: Line
+            await compileFilm(film({ fps: 20 }, (s) => {
+                line = s.add(dateLine([{ at: 2021, label: 'a' }, { at: 2029, label: 'b' }], sized))
+                s.play(line.advance(2022), { duration: 0.5, ease: linear })
+                s.play(line.advance(2026), { duration: 2, ease })
+            }))
+            const xs = Array.from({ length: 41 }, (_, step) => at(0.5 + step * 0.05, () => line.cursor.get('x')))
+            xs.forEach((x, index) => {
+                expect(x).toBeGreaterThanOrEqual(line.x(2022) - 1e-6)
+                expect(x).toBeLessThanOrEqual(line.x(2026) + 1e-6)
+                if (index > 0) expect(x).toBeGreaterThanOrEqual(xs[index - 1]! - 1e-6)
+            })
+            expect(xs[40]).toBeCloseTo(line.x(2026), 6)
+        }
+    })
+
+    it('uses as few heights as the labels need, so more levels never make a line fail', async () => {
+        await compileFilm(film(() => {
+            const places = (line: Line) => line.events.map(labelOf)
+            // A long label over the line, six labels under it, and one more over it. The last one needs the first one at another height.
+            const crowd = [
+                { at: '2020-01', label: 'the Firecracker paper at NSDI, by Agache and others', side: 'over' as const },
+                ...['2020-03', '2020-05', '2020-07', '2020-09', '2020-11', '2021-01'].map((at, index) => ({ at, label: `v0.2${index}`, side: 'under' as const })),
+                { at: '2021-09', label: 'Lambda adopts it', side: 'over' as const },
+            ]
+            const made = (levels: number) => dateLine(crowd, { width: 1800, from: 2020, to: 2027, levels })
+            expect(() => made(2)).toThrow(/has no place/)
+            const three = places(made(3))
+            for (const levels of [4, 5, 6, 7, 8]) expect(places(made(levels))).toEqual(three)
+            // 24 events with long labels on 1500 px: the search goes back many times, and finds their places with 3 heights. So 4 levels give the same places.
+            const words = ['the paper', 'a first public release', 'the newsletter', 'the technical report on the whole system', 'v2', 'a talk', 'the second post of the series', 'documentation', 'the reply', 'an incident in production', 'GA', 'the fix', 'open source', 'the acquisition is announced']
+            const notes = [undefined, 'names Anyrun', undefined, undefined, 'two weeks later', undefined, 'by Agache and others at NSDI', undefined]
+            const dense = Array.from({ length: 24 }, (_, index) => {
+                const years = 2000 + (30 * (index + 0.5)) / 24, year = Math.floor(years), month = 1 + Math.floor((years - year) * 12)
+                return { at: `${year}-${String(month).padStart(2, '0')}-${String(1 + ((index * 7) % 27)).padStart(2, '0')}`, label: words[index % words.length]!, note: notes[index % notes.length] }
+            })
+            const heights = (line: Line) => new Set(line.events.map((event) => Math.round(labelOf(event)[1]))).size
+            const tight = dateLine(dense, { width: 1500, levels: 3 })
+            expect(heights(tight)).toBeGreaterThan(4)
+            expect(places(dateLine(dense, { width: 1500, levels: 4 }))).toEqual(places(tight))
+            expect(() => dateLine(dense, { width: 1500, levels: 2 })).toThrow(/has no place/)
+        }))
+    })
+
+    it('refuses a date that it cannot read, a date outside the line, and a line that ends before it starts', async () => {
+        await compileFilm(film(() => {
+            const format = /A date is 'YYYY', 'YYYY-MM' or 'YYYY-MM-DD', or a number of years/
+            expect(() => dateLine([])).toThrow(/give it at least one event/)
+            expect(() => dateLine([{ at: 2021, label: ' ' }])).toThrow(/event 0 has an empty label\. Give it a label, or leave `label` out for a mark with no label/)
+            // A label and a note are one line each. The note is the second line.
+            expect(() => dateLine([{ at: 2021, label: 'two\nlines' }])).toThrow(/the label of event 0 \("two\\nlines"\) has a line break\. A label is one line\. Use `note` for a second line/)
+            expect(() => dateLine([{ at: 2021, label: 'a', note: 'two\nlines' }])).toThrow(/the note of event 0 \("a"\) has a line break\. A note is one line/)
+            expect(() => dateLine([{ at: 2021, note: 'n' }])).toThrow(/event 0 \(at 2021\) has a note and no label\. A note is the second line of a label/)
+            expect(() => dateLine([{ at: 2021, mark: 'square' as never }])).toThrow(/event 0 \(at 2021\) has the mark "square"\. Use 'dot', 'star' or 'ring'/)
+            expect(() => dateLine([{ at: 2021 }], { accent: 'nope' })).toThrow(/accent is "nope", which is not a color/)
+            expect(() => dateLine([{ at: '2025-13-01', label: 'a' }])).toThrow(/event 0 \("a"\) has the date "2025-13-01"\. A date is/)
+            // 2025 is not a leap year, and 2024 is.
+            expect(() => dateLine([{ at: '2025-02-29', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: '2024-02-29', label: 'a' }])).not.toThrow()
+            expect(() => dateLine([{ at: '2025-04-31', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: '2025-6-1', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: 'June 2025', label: 'a' }])).toThrow(/has the date "June 2025"/)
+            expect(() => dateLine([{ at: NaN, label: 'a' }])).toThrow(/has the date NaN/)
+            expect(() => dateLine([{ at: 2027, label: 'a' }, { at: 2020, label: 'b' }], { from: 2020, to: 2027 })).not.toThrow()
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { from: 2027, to: 2020 })).toThrow(/the line goes from 2027 to 2020\. Give a `from` that is before `to`/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { from: 2021, to: 2021 })).toThrow(/the line goes from 2021 to 2021/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { from: 'soon' })).toThrow(/from is "soon"\. A date is/)
+            // An error prints the ends of the line as the film wrote them, and as dates when the film gave none.
+            expect(() => dateLine([{ at: '2025-05-03', label: 'a' }, { at: '2025-05-08', label: 'b' }]).advance('2025-06')).toThrow(/cannot advance to "2025-06"\. The line goes from 2025-05-03 to 2025-05-08/)
+            expect(() => dateLine([{ at: '2025-05-03', label: 'a' }], { from: '2025-05', to: '2025-05-02' })).toThrow(/event 0 \("a"\) is at "2025-05-03", outside the line from "2025-05" to "2025-05-02"\. What works for this line: to: "2025-05-03"/)
+            expect(() => dateLine([{ at: '2025-05-03T10:00', label: 'a' }])).toThrow(format)
+            expect(() => dateLine([{ at: 2021, label: 'a', side: 'left' as never }])).toThrow(/event 0 \("a"\) has the side "left"\. Use 'over' or 'under'/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { scale: 'log' as never })).toThrow(/scale is 'time' or 'order', not "log"/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { levels: 0 })).toThrow(/levels is the number of heights/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { size: 0 })).toThrow(/size is the text size of the labels/)
+            expect(() => dateLine([{ at: 2021, label: 'a' }], { width: 0 })).toThrow(/width is the length of the line/)
+            const line = dateLine(RECORD, sized)
+            expect(() => line.x('x')).toThrow(/the line has no place for "x"\. A date is/)
+            expect(() => line.p(3)).toThrow(/no event 3\. The line has 3 events/)
+        }))
+    })
+})
+
+describe('bit field', () => {
+    const address = [
+        { bits: 16, label: 'sign extension', unused: true },
+        { bits: 9, label: 'PGD', color: 'blue' },
+        { bits: 9, label: 'PUD', color: 'teal' },
+        { bits: 9, label: 'PMD', color: 'green' },
+        { bits: 9, label: 'PTE', color: 'orange' },
+        { bits: 12, label: 'offset', color: 'purple' },
+    ]
+    /** `struct io_uring_sqe` of Linux 6.12, 64 bytes. A union is shown by its first member. */
+    const sqe = [
+        { bits: 1, label: 'opcode' }, { bits: 1, label: 'flags' }, { bits: 2, label: 'ioprio' }, { bits: 4, label: 'fd' }, { bits: 8, label: 'off' },
+        { bits: 8, label: 'addr' }, { bits: 4, label: 'len' }, { bits: 4, label: 'rw_flags' },
+        { bits: 8, label: 'user_data' }, { bits: 2, label: 'buf_index' }, { bits: 2, label: 'personality' }, { bits: 4, label: 'splice_fd_in' },
+        { bits: 8, label: 'addr3' }, { bits: 8, label: '__pad2', unused: true },
+    ]
+    type Box = { x: number; y: number; width: number; height: number }
+    const ends = (box: Box) => [box.x, box.x + box.width] as const
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const source = (node: Node | null) => (node as unknown as { source: string } | null)?.source
+    const shown = (made: ReturnType<typeof bitField>) => made.numbers.map(source)
+    /** The color of a text: the fill of its first glyph. */
+    const ink = (node: Node | null) => node!.children[0]!.get('fill')
+    const inkOf = (color: string) => text('a', { color }).children[0]!.get('fill')
+    /** The texts that a field has shown as its value, in the order that they arrived. */
+    const valuesOf = (made: ReturnType<typeof bitField>, index: number) => made.fields[index]!.children.filter((node) => source(node) !== undefined && node !== made.labels[index] && !made.numbers.includes(node))
+    const size = (node: Node | null) => node!.data['size'] as number
+    /** Two boxes with this much room between them, in x or in y. */
+    const apart = (a: Box, b: Box, room: number) => a.x + a.width + room <= b.x || b.x + b.width + room <= a.x || a.y + a.height + room <= b.y || b.y + b.height + room <= a.y
+    const message = (run: () => unknown) => { try { run() } catch (error) { return (error as Error).message } return '' }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    /** The lines of the hatch of a field: what the field strokes other than its box. */
+    const hatchOf = (made: ReturnType<typeof bitField>, index: number) => made.fields[index]!.children.find((node) => node !== made.boxes[index] && node.get('path') !== null && node.get('stroke') !== null)
+    /** True when a line of a hatch comes nearer than 4 px to a text. */
+    const crosses = (lines: Node, part: Box) => lines.get('path')!.some((ring) => {
+        const [x0, y0] = [ring.p[0]!, ring.p[1]!], [x1, y1] = [ring.p[ring.p.length - 2]!, ring.p[ring.p.length - 1]!]
+        return Array.from({ length: 11 }, (_, step) => [x0 + ((x1 - x0) * step) / 10, y0 + ((y1 - y0) * step) / 10] as const)
+            .some(([x, y]) => x > part.x - 4 && x < ends(part)[1] + 4 && y > part.y - 4 && y < part.y + part.height + 4)
+    })
+
+    it('centers the row of boxes on its place, and gives each box a width for its bits', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400, height: 70 }).at(300, 200)
+            const boxes = made.boxes.map((box) => box.bounds())
+            // The row is 1400 wide and 70 high, and its middle is the place of the object. The first field is at the left.
+            expect(boxes[0]!.x).toBeCloseTo(300 - 700, 6)
+            expect(ends(boxes[5]!)[1]).toBeCloseTo(300 + 700, 6)
+            for (const box of boxes) {
+                expect(box.y).toBeCloseTo(200 - 35, 6)
+                expect(box.height).toBeCloseTo(70, 6)
+            }
+            // The boxes follow each other with one small room between them, so each field is a box of its own.
+            const rooms = boxes.slice(1).map((box, index) => box.x - ends(boxes[index]!)[1])
+            for (const room of rooms) {
+                expect(room).toBeGreaterThan(4)
+                expect(room).toBeCloseTo(rooms[0]!, 6)
+            }
+            // A box and the room after it are in proportion to the bits of the field: 16, 9, 9, 9, 9 and 12 of 64.
+            // So each field starts at the place of its bit.
+            const unit = (1400 + rooms[0]!) / 64
+            expect(boxes.map((box) => (box.width + rooms[0]!) / unit)).toEqual([16, 9, 9, 9, 9, 12].map((bits) => expect.closeTo(bits, 6)))
+            expect(boxes.map((box) => (box.x - boxes[0]!.x) / unit)).toEqual([0, 16, 25, 34, 43, 52].map((bit) => expect.closeTo(bit, 6)))
+            expect(made.total).toBe(64)
+            // The defaults: 1200 wide, and 2.6 of the text size high.
+            const plain = bitField(address, { size: 30 })
+            expect(ends(plain.boxes[5]!.bounds())[1] - plain.boxes[0]!.bounds().x).toBeCloseTo(1200, 6)
+            expect(plain.boxes[0]!.bounds().height).toBeCloseTo(78, 6)
+        }))
+    })
+
+    it('gives every field one width when the scale is even', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400, scale: 'even' })
+            const boxes = made.boxes.map((box) => box.bounds())
+            for (const box of boxes) expect(box.width).toBeCloseTo(boxes[0]!.width, 6)
+            expect(boxes[0]!.x).toBeCloseTo(-700, 6)
+            expect(ends(boxes[5]!)[1]).toBeCloseTo(700, 6)
+            // The numbers still count the bits of each field.
+            expect(made.range('PGD')).toEqual([47, 39])
+        }))
+    })
+
+    it('gives a narrow field the least width, and lets the others share the rest in proportion', async () => {
+        await compileFilm(film(() => {
+            const widths = (made: ReturnType<typeof bitField>) => made.boxes.map((box) => box.bounds().width)
+            const row = (made: ReturnType<typeof bitField>) => ends(made.boxes[made.boxes.length - 1]!.bounds())[1] - made.boxes[0]!.bounds().x
+            // In 1000 px a bit has about 31 px, so the two fields of one bit take 100. The other two share the rest, 1 to 4.
+            const made = bitField([{ bits: 1 }, { bits: 1 }, { bits: 6 }, { bits: 24 }], { width: 1000, minWidth: 100 })
+            const [first, second, third, fourth] = widths(made)
+            const room = made.boxes[1]!.bounds().x - ends(made.boxes[0]!.bounds())[1]
+            expect([first, second]).toEqual([expect.closeTo(100, 6), expect.closeTo(100, 6)])
+            expect(third!).toBeGreaterThan(100)
+            expect((fourth! + room) / (third! + room)).toBeCloseTo(4, 6)
+            expect(row(made)).toBeCloseTo(1000, 6)
+            // A field of 5 bits is wide enough at first. When the four narrow fields take 140 each, it is not, so it takes 140 too.
+            const chain = bitField([{ bits: 1 }, { bits: 1 }, { bits: 1 }, { bits: 1 }, { bits: 5 }, { bits: 23 }], { width: 1000, minWidth: 140 })
+            expect(widths(chain).slice(0, 5)).toEqual(Array(5).fill(expect.closeTo(140, 6)))
+            expect(widths(chain)[5]!).toBeGreaterThan(140)
+            expect(row(chain)).toBeCloseTo(1000, 6)
+            // Fields that cannot have the least width are an error, also with an even scale.
+            expect(() => bitField(address, { width: 400, minWidth: 100 })).toThrow(/a width of 400 has no room for 6 fields of 100 or more. Give a larger width or a smaller minWidth/)
+            expect(() => bitField(address, { width: 400, minWidth: 100, scale: 'even' })).toThrow(/no room for 6 fields of 100 or more/)
+        }))
+    })
+
+    it('numbers the bits from the right, with the high bit over the left end of a field and the low bit over its right end', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400 })
+            expect(shown(made)).toEqual(['63', '48', '47', '39', '38', '30', '29', '21', '20', '12', '11', '0'])
+            expect(made.range(0)).toEqual([63, 48])
+            expect(made.range('PTE')).toEqual([20, 12])
+            expect(made.range('offset')).toEqual([11, 0])
+            made.boxes.forEach((node, index) => {
+                const box = node.bounds()
+                const high = made.numbers[index * 2]!.bounds(), low = made.numbers[index * 2 + 1]!.bounds()
+                // Both numbers are over the box, a little inside its two ends.
+                for (const number of [high, low]) {
+                    expect(number.y + number.height).toBeLessThan(box.y - 4)
+                    expect(number.y + number.height).toBeGreaterThan(box.y - 20)
+                }
+                expect(high.x - box.x).toBeGreaterThan(2)
+                expect(high.x - box.x).toBeLessThan(10)
+                expect(ends(box)[1] - ends(low)[1]).toBeGreaterThan(2)
+                expect(ends(box)[1] - ends(low)[1]).toBeLessThan(10)
+                // A number is a part of its field, so it fades and moves with it.
+                expect(made.fields[index]!.children).toContain(made.numbers[index * 2])
+                expect(made.fields[index]!.children).toContain(made.numbers[index * 2 + 1])
+            })
+            // The numbers are smaller than the labels, and dim, so that the names of the fields stand out.
+            expect(size(made.numbers[0]!)).toBeLessThan(26 * 0.8)
+            for (const number of made.numbers) expect(ink(number)).toEqual(inkOf('dim'))
+            // A field of one bit shows one number, over the middle of its box.
+            const flags = bitField([{ bits: 6, label: 'rest' }, { bits: 1, label: 'W' }, { bits: 1, label: 'P' }], { width: 600 })
+            expect(shown(flags)).toEqual(['7', '2', '1', '0'])
+            expect(middle(flags.numbers[2]!)[0]).toBeCloseTo(middle(flags.boxes[1]!)[0], 6)
+            expect(middle(flags.numbers[3]!)[0]).toBeCloseTo(middle(flags.boxes[2]!)[0], 6)
+            // Without numbers, the object writes none, and a range still counts the bits.
+            const bare = bitField(address, { width: 1400, numbers: false })
+            expect(bare.numbers).toHaveLength(0)
+            expect(bare.range('PGD')).toEqual([47, 39])
+        }))
+    })
+
+    it('counts offsets up from the left, one over each boundary, with the total over the right end', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 4, label: 'fd' }, { bits: 8, label: 'off' }, { bits: 8, label: 'addr' }, { bits: 4, label: 'len' }], { width: 1200, numbers: 'offsets' })
+            expect(shown(made)).toEqual(['0', '4', '12', '20', '24'])
+            expect(made.range('fd')).toEqual([0, 3])
+            expect(made.range('addr')).toEqual([12, 19])
+            expect(made.range(3)).toEqual([20, 23])
+            expect(made.total).toBe(24)
+            const boxes = made.boxes.map((box) => box.bounds())
+            expect(middle(made.numbers[0]!)[0]).toBeCloseTo(boxes[0]!.x, 6)
+            boxes.slice(1).forEach((box, index) => {
+                expect(middle(made.numbers[index + 1]!)[0]).toBeCloseTo((ends(boxes[index]!)[1] + box.x) / 2, 6)
+            })
+            expect(middle(made.numbers[4]!)[0]).toBeCloseTo(ends(boxes[3]!)[1], 6)
+            // The total is a part of the last field.
+            expect(made.fields[3]!.children).toContain(made.numbers[4])
+        }))
+    })
+
+    it('writes the label inside the box, or the value inside and the label under the box', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 8, label: 'type' }, { bits: 8, label: 'length', value: '0x40', color: 'orange' }, { bits: 8, value: '1' }, { bits: 8 }], { width: 1200, color: 'teal' })
+            const boxes = made.boxes.map((box) => box.bounds())
+            const inside = (box: Box, part: Box) => part.x > box.x + 8 && ends(part)[1] < ends(box)[1] - 8 && part.y > box.y + 8 && part.y + part.height < box.y + box.height - 8
+            // Without a value, the label is in the middle of the box.
+            expect(source(made.labels[0]!)).toBe('type')
+            expect(inside(boxes[0]!, made.labels[0]!.bounds())).toBe(true)
+            expect(middle(made.labels[0]!)[0]).toBeCloseTo(middle(made.boxes[0]!)[0], 6)
+            expect(Math.abs(middle(made.labels[0]!)[1] - middle(made.boxes[0]!)[1])).toBeLessThan(4)
+            expect(made.values[0]).toBeNull()
+            // With a value, the value is in the box, in mono, and the label is under the box, on the middle of the field.
+            const value = made.values[1]!, label = made.labels[1]!
+            expect(source(value)).toBe('0x40')
+            expect(inside(boxes[1]!, value.bounds())).toBe(true)
+            expect(middle(value)[0]).toBeCloseTo(middle(made.boxes[1]!)[0], 6)
+            expect(value.bounds().width).toBeCloseTo(text('0x40', { font: 'mono', size: 26 }).bounds().width, 6)
+            expect(source(label)).toBe('length')
+            expect(label.bounds().y).toBeGreaterThan(boxes[1]!.y + boxes[1]!.height + 4)
+            expect(label.bounds().y).toBeLessThan(boxes[1]!.y + boxes[1]!.height + 24)
+            expect(middle(label)[0]).toBeCloseTo(middle(made.boxes[1]!)[0], 6)
+            expect(made.labels[2]).toBeNull()
+            expect(inside(boxes[2]!, made.values[2]!.bounds())).toBe(true)
+            expect([made.labels[3], made.values[3]]).toEqual([null, null])
+            // A field holds its box and its texts. A field with no text holds its box and its two numbers.
+            expect(made.fields[1]!.children).toEqual(expect.arrayContaining([made.boxes[1], value, label]))
+            expect(made.fields[3]!.children).toHaveLength(3)
+            // A field has the color of the object, or its own. The label under a box has the color of its field.
+            const stroke = (color: string) => rect(10, 10, { stroke: color }).get('stroke')
+            expect(made.boxes.map((box) => box.get('stroke'))).toEqual([stroke('teal'), stroke('orange'), stroke('teal'), stroke('teal')])
+            expect(label.children[0]!.get('fill')).toEqual(stroke('orange'))
+            expect(bitField([{ bits: 4 }]).boxes[0]!.get('stroke')).toEqual(stroke('blue'))
+            // The labels take the font of the object, inside a box and under it. A value stays in mono.
+            const mono = bitField([{ bits: 8, label: 'type' }, { bits: 8, label: 'length', value: '0x40' }], { width: 1200, font: 'mono' })
+            expect(made.labels[0]!.bounds().width).toBeCloseTo(text('type', { size: 26 }).bounds().width, 6)
+            expect(mono.labels[0]!.bounds().width).toBeCloseTo(text('type', { font: 'mono', size: 26 }).bounds().width, 6)
+            expect(mono.labels[1]!.bounds().width).toBeCloseTo(text('length', { font: 'mono', size: 26 }).bounds().width, 6)
+            expect(mono.values[1]!.bounds().width).toBeCloseTo(value.bounds().width, 6)
+        }))
+    })
+
+    it('sets a text that is too wide in a smaller size, with room between it and the border', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 1, label: 'a long name' }, { bits: 1, label: 'P' }, { bits: 1, label: 'instruction', value: '0x00000000' }], { width: 420, scale: 'even', numbers: false })
+            // A box is about 136 px wide. The long texts are wider than that at size 26, and the short label is not.
+            for (const part of [made.labels[0], made.values[2], made.labels[2]]) {
+                expect(size(part)).toBeLessThan(26)
+                expect(size(part)).toBeGreaterThanOrEqual(26 * 0.6)
+            }
+            expect(size(made.labels[1])).toBe(26)
+            made.boxes.forEach((node, index) => {
+                const box = node.bounds()
+                for (const part of [made.labels[index], made.values[index]]) {
+                    if (!part) continue
+                    expect(part.bounds().x).toBeGreaterThan(box.x + 8)
+                    expect(ends(part.bounds())[1]).toBeLessThan(ends(box)[1] - 8)
+                }
+            })
+            // The label under the third box is as wide as the text in the box may be, so it cannot meet a label of a neighbor.
+            expect(made.labels[2]!.bounds().width).toBeCloseTo(made.values[2]!.bounds().width, 3)
+            expect(made.labels[2]!.bounds().y).toBeGreaterThan(made.boxes[2]!.bounds().y + made.boxes[2]!.bounds().height)
+        }))
+    })
+
+    it('refuses a text that cannot fit at 0.6 of the size, and says how wide the box is and what to do', async () => {
+        await compileFilm(film(() => {
+            const parts = [{ bits: 1, label: 'present' }, { bits: 31, label: 'frame' }]
+            // Build one object first, so that the fonts are there when the errors are read.
+            bitField(parts, { width: 800, scale: 'even' })
+            const narrow = message(() => bitField(parts, { width: 800 }))
+            expect(narrow).toMatch(/^bitField: the label "present" of field 0 does not fit in its box, which is 19 px wide\. Give a larger width, scale: 'even', a minWidth of \d+ or more, or a shorter text$/)
+            // The least width that the message names is enough, and a little less is not.
+            const least = Number(/a minWidth of (\d+) or more/.exec(narrow)![1])
+            const fixed = bitField(parts, { width: 800, minWidth: least })
+            expect(size(fixed.labels[0])).toBeGreaterThanOrEqual(26 * 0.6)
+            expect(size(fixed.labels[0])).toBeLessThan(26 * 0.65)
+            expect(() => bitField(parts, { width: 800, minWidth: least - 3 })).toThrow(/does not fit in its box/)
+            // With an even scale, the message does not name what the object already does.
+            const even = message(() => bitField([{ bits: 1, label: 'a label that is far too long', value: '1' }, { bits: 1 }], { width: 300, scale: 'even' }))
+            expect(even).toMatch(/^bitField: the label "a label that is far too long" of field 0 does not fit under its box, which is 147 px wide\. Give a larger width, or a shorter text$/)
+            expect(() => bitField([{ bits: 4, value: '0x00000000000000000000' }], { width: 200 })).toThrow(/the value "0x00000000000000000000" of field 0 does not fit in its box, which is 200 px wide/)
+            // Two fields are too narrow. The message names one least width that is enough for both, not the one of the first.
+            const flags = [{ bits: 1, label: 'present' }, { bits: 1, label: 'writable page' }, { bits: 30, label: 'frame' }]
+            const both = Number(/a minWidth of (\d+) or more/.exec(message(() => bitField(flags, { width: 800 })))![1])
+            expect(bitField(flags, { width: 800, minWidth: both }).labels.map(source)).toEqual(['present', 'writable page', 'frame'])
+            expect(() => bitField(flags, { width: 800, minWidth: both - 3 })).toThrow(/the label "writable page" of field 1 does not fit/)
+            // The message names only what helps. Here 21 fields cannot have the least width that the long label
+            // needs, and an even scale gives it a box of 80 px, which is too narrow as well.
+            const crowd = [{ bits: 1, label: 'a label of thirty characters !' }, ...Array.from({ length: 19 }, () => ({ bits: 1 })), { bits: 44, label: 'rest' }]
+            expect(message(() => bitField(crowd, { width: 1800 }))).toMatch(/does not fit in its box, which is 22 px wide\. Give a larger width, or a shorter text$/)
+            // A wide field gains nothing from an even scale, so the message does not name it.
+            expect(message(() => bitField([{ bits: 9, label: 'a name that is much too long for it' }, { bits: 1 }], { width: 300 }))).not.toMatch(/even/)
+        }))
+    })
+
+    it('gives the middle of each edge of a box, by index and by label', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address, { width: 1400, height: 80 }).at(100, -50)
+            const box = made.boxes[4]!.bounds()
+            // A point is in the coordinates of the object, so the place of the object is not in it.
+            expect(made.p('PTE')).toEqual(made.p(4))
+            expect(made.p('PTE')).toEqual(made.p('PTE', 'bottom'))
+            expect(made.p('PTE')).toEqual([expect.closeTo(box.x + box.width / 2 - 100, 6), expect.closeTo(40, 6)])
+            expect(made.p(4, 'top')).toEqual([made.p(4)[0], expect.closeTo(-40, 6)])
+            // On the stage, the points are on the two edges of the box.
+            expect(made.toWorld(...made.p('PTE'))).toEqual([expect.closeTo(box.x + box.width / 2, 6), expect.closeTo(box.y + box.height, 6)])
+            expect(made.toWorld(...made.p('PTE', 'top'))).toEqual([expect.closeTo(box.x + box.width / 2, 6), expect.closeTo(box.y, 6)])
+            // The left and the right edge, for a line that leaves the row at one of its ends.
+            const first = made.boxes[0]!.bounds(), last = made.boxes[5]!.bounds()
+            expect(made.toWorld(...made.p(0, 'left'))).toEqual([expect.closeTo(first.x, 6), expect.closeTo(first.y + 40, 6)])
+            expect(made.toWorld(...made.p('offset', 'right'))).toEqual([expect.closeTo(last.x + last.width, 6), expect.closeTo(last.y + 40, 6)])
+            expect(made.p('offset', 'right')).toEqual([expect.closeTo(700, 6), expect.closeTo(0, 6)])
+            expect(made.p(0)[0]).toBeLessThan(made.p('PGD')[0])
+            expect(made.field('PTE')).toBe(made.fields[4])
+            expect(made.field(0)).toBe(made.fields[0])
+            expect(made.field('PTE').children).toContain(made.boxes[4])
+        }))
+    })
+
+    it('keeps every text clear of the other texts and inside its box in rows of many narrow fields', async () => {
+        await compileFilm(film(() => {
+            const flag = (label: string) => ({ bits: 1, label })
+            const entry = [flag('NX'), { bits: 4, label: 'PKEY' }, { bits: 7, label: 'ignored', unused: true }, { bits: 40, label: 'physical frame number' }, { bits: 3, label: 'AVL', unused: true },
+                ...['G', 'PAT', 'D', 'A', 'PCD', 'PWT', 'US', 'RW', 'P'].map(flag)]
+            const rows = [
+                bitField(entry, { width: 1800, minWidth: 84 }),
+                bitField(entry.map((part) => ({ ...part, label: part.label.slice(0, 7), value: '0' })), { width: 1800, scale: 'even' }),
+                bitField(Array.from({ length: 32 }, () => ({ bits: 1 })), { width: 800, numbers: 'offsets' }),
+                bitField(Array.from({ length: 16 }, () => ({ bits: 4 })), { width: 500 }),
+                bitField(Array.from({ length: 16 }, () => ({ bits: 1 })), { width: 420 }),
+            ]
+            for (const made of rows) {
+                const texts = [...made.labels, ...made.values, ...made.numbers].filter((node): node is Node => node !== null).map((node) => node.bounds())
+                texts.forEach((one, index) => {
+                    for (const other of texts.slice(index + 1)) expect(apart(one, other, 4)).toBe(true)
+                })
+                made.boxes.forEach((node, index) => {
+                    const box = node.bounds()
+                    const part = (made.values[index] ?? made.labels[index])?.bounds()
+                    if (!part) return
+                    expect(part.x).toBeGreaterThan(box.x + 8)
+                    expect(ends(part)[1]).toBeLessThan(ends(box)[1] - 8)
+                    expect(part.y).toBeGreaterThan(box.y + 8)
+                    expect(part.y + part.height).toBeLessThan(box.y + box.height - 8)
+                })
+                // A number is over the boxes and not in them.
+                for (const number of made.numbers) expect(number.bounds().y + number.bounds().height).toBeLessThan(made.boxes[0]!.bounds().y)
+            }
+            // No number of the first row had to go: one for each of the ten fields of one bit, and two for each of the other four.
+            expect(rows[0]!.numbers).toHaveLength(18)
+        }))
+    })
+
+    it('drops a number that would meet another: the number of a field of one bit first, and bit 0, the first offset and the total last', async () => {
+        await compileFilm(film(() => {
+            // A box of 26 px has no room for two numbers, so each field shows its high bit. The last field shows bit 0.
+            const nibbles = bitField(Array.from({ length: 16 }, () => ({ bits: 4 })), { width: 500 })
+            expect(shown(nibbles)).toEqual([...Array.from({ length: 15 }, (_, index) => String(63 - index * 4)), '0'])
+            // 64 bits as 20, 3, 2, 1, 30, 1, 2, 3 and 2. The number of the narrow field of one bit, 38, is wider than its
+            // box. It goes, and the high bit of the wide field beside it, 37, stays. The low bits 41, 39 and 5 go
+            // before the high bits of their fields, and the last field shows bit 0 and not bit 1.
+            const mixed = bitField([20, 3, 2, 1, 30, 1, 2, 3, 2].map((bits) => ({ bits })), { width: 1200 })
+            expect(shown(mixed)).toEqual(['63', '44', '43', '40', '37', '8', '7', '6', '4', '2', '0'])
+            // The number of a first field of one bit goes too, when the high bit of the field after it needs the room.
+            expect(shown(bitField([{ bits: 1 }, { bits: 4 }, { bits: 59 }], { width: 1200 }))).toEqual(['62', '59', '58', '0'])
+            // Between two wide fields, the number of the field of one bit goes, and both wide fields keep their numbers.
+            const wide = bitField([{ bits: 100 }, { bits: 1 }, { bits: 127 }], { width: 2000, minWidth: 12 })
+            expect(shown(wide)).toEqual(['227', '128', '126', '0'])
+            // 32 fields, 25 px from one to the next: an offset of two digits has no room beside the next one, so every second one goes.
+            const bytes = bitField(Array.from({ length: 32 }, () => ({ bits: 1 })), { width: 800, numbers: 'offsets' })
+            expect(shown(bytes)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '12', '14', '16', '18', '20', '22', '24', '26', '28', '30', '32'])
+            // The total stays, and the offset before it goes, though that offset came first.
+            const odd = bitField(Array.from({ length: 31 }, () => ({ bits: 1 })), { width: 775, numbers: 'offsets' })
+            expect(shown(odd).slice(-3)).toEqual(['26', '28', '31'])
+            // The offset of a field of one byte goes before the offset of a wide field: 102 stays, and 100 and 101 go.
+            expect(shown(bitField([{ bits: 100 }, { bits: 1 }, { bits: 1 }, { bits: 97 }], { width: 1000, numbers: 'offsets', minWidth: 12 }))).toEqual(['0', '102', '199'])
+            // A last field of one bit keeps its number, bit 0, and the number of the field before it goes.
+            expect(shown(bitField([{ bits: 62 }, { bits: 1 }, { bits: 1 }], { width: 400, minWidth: 6 }))).toEqual(['63', '2', '0'])
+            // Offset 0 stays when the total would meet it.
+            expect(shown(bitField([{ bits: 8 }], { width: 14, numbers: 'offsets' }))).toEqual(['0'])
+            // The total takes the place of the offset 8, and then it meets the offset 4 too. Both go, so no two numbers touch.
+            const displaced = bitField([{ bits: 4 }, { bits: 4 }, { bits: 99992 }], { width: 58.8, scale: 'even', numbers: 'offsets' })
+            expect(shown(displaced)).toEqual(['0', '100000'])
+        }))
+    })
+
+    it('draws a field that carries nothing as a faint box with a hatch that stops around its text', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 8, label: 'reserved', unused: true }, { bits: 8, label: 'type' }, { bits: 8, unused: true, color: 'red' }], { width: 900 })
+            expect(hatchOf(made, 1)).toBeUndefined()
+            const hatch = hatchOf(made, 0)
+            // The box is fainter than the box of a field in use, and it is drawn over the hatch.
+            expect(made.boxes[0]!.get('stroke')).toEqual(rect(10, 10, { stroke: 'faint' }).get('stroke'))
+            expect(made.boxes[0]!.get('fillOpacity')).toBeLessThan(made.boxes[1]!.get('fillOpacity'))
+            expect(made.fields[0]!.children.indexOf(hatch!)).toBeLessThan(made.fields[0]!.children.indexOf(made.boxes[0]!))
+            // The lines are inside the box, at both sides of the label, and no line enters the room of the label.
+            const box = made.boxes[0]!.bounds(), label = made.labels[0]!.bounds(), drawn = hatch!.bounds()
+            expect(drawn.x).toBeGreaterThan(box.x - 1e-6)
+            expect(ends(drawn)[1]).toBeLessThan(ends(box)[1] + 1e-6)
+            expect(drawn.y).toBeGreaterThan(box.y - 1e-6)
+            expect(drawn.y + drawn.height).toBeLessThan(box.y + box.height + 1e-6)
+            expect(drawn.x).toBeLessThan(label.x - 20)
+            expect(ends(drawn)[1]).toBeGreaterThan(ends(label)[1] + 20)
+            const rings = hatch!.get('path')!
+            expect(rings.length).toBeGreaterThan(20)
+            expect(crosses(hatch!, label)).toBe(false)
+            // With a value, the hatch stops around the value in the box. The label is under the box, and it is dim, not faint.
+            const filled = bitField([{ bits: 8, label: 'reserved', value: '0x00', unused: true }, { bits: 8, label: 'type' }], { width: 600 })
+            expect(crosses(hatchOf(filled, 0)!, filled.values[0]!.bounds())).toBe(false)
+            expect(filled.labels[0]!.children[0]!.get('fill')).toEqual(text('a', { color: 'dim' }).children[0]!.get('fill'))
+            expect(filled.values[0]!.children[0]!.get('fill')).toEqual(text('a', { color: 'dim' }).children[0]!.get('fill'))
+            // The text of an unused field is dimmer than the text of a field in use.
+            expect(made.labels[0]!.children[0]!.get('fill')).toEqual(text('a', { color: 'dim' }).children[0]!.get('fill'))
+            expect(made.labels[1]!.children[0]!.get('fill')).toEqual(text('a', { color: 'ink' }).children[0]!.get('fill'))
+            // An unused field with a color of its own keeps the hatch, in that color. With no text, the hatch has no hole.
+            const red = hatchOf(made, 2)!
+            expect(red.get('stroke')).toEqual(rect(10, 10, { stroke: 'red' }).get('stroke'))
+            expect(red.bounds().width).toBeGreaterThan(made.boxes[2]!.bounds().width - 6)
+            expect(red.get('path')!.length).toBeLessThan(rings.length)
+            // The lines of two boxes are parts of one pattern: a line of the second box is a whole number of steps from a line of the first.
+            const sums = (node: Node) => node.get('path')!.map((ring) => ring.p[0]! + ring.p[1]!)
+            const step = sums(red)[1]! - sums(red)[0]!
+            const steps = (sums(red)[0]! - sums(hatch!)[0]!) / step
+            expect(step).toBeGreaterThan(8)
+            expect(steps).toBeCloseTo(Math.round(steps), 6)
+        }))
+    })
+
+    it('enters with nothing on screen at the start, the fields one after another from the left, and all of it at the end', async () => {
+        let made!: ReturnType<typeof bitField>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = bitField(address, { width: 1400 })
+            s.wait(0.5)
+            s.play(made.enter({ lag: 1 }), { duration: 3, ease: linear })
+            s.wait(0.5)
+        }))
+        expect((await compiled.frame(0.2)).ops).toHaveLength(0)
+        expect((await compiled.frame(0.5)).ops).toHaveLength(0)
+        // Six fields with a lag of 1: each has half a second, one after the other.
+        expect(at(0.75, () => made.fields.map(shows))).toEqual([expect.closeTo(0.5, 6), 0, 0, 0, 0, 0])
+        expect(at(2.25, () => made.fields.map(shows))).toEqual([1, 1, 1, expect.closeTo(0.5, 6), 0, 0])
+        expect(at(3.6, () => [made, ...made.fields].map(shows))).toEqual(Array(7).fill(1))
+        // The texts and the numbers are parts of their field, so the first field is on screen with its label and its two numbers.
+        const first = (await compiled.frame(0.9)).ops.filter((op): op is PathOp => op.kind === 'path' && Math.max(op.fillAlpha, op.strokeAlpha) > 0)
+        expect(first.length).toBe(made.fields[0]!.leaves().length)
+        expect((await compiled.frame(3.6)).ops).toHaveLength(made.leaves().length)
+    })
+
+    it('fills rows from the top when it wraps, each row as wide as the width, with the boundaries of the rows in line', async () => {
+        await compileFilm(film(() => {
+            // The 64 bytes of the structure, as four rows of 16: five, three, four and two fields.
+            const made = bitField(sqe, { width: 1600, height: 60, wrap: 16, rowGap: 40, numbers: 'offsets' }).at(100, 50)
+            // The offset of each member is the one that the kernel asserts with BUILD_BUG_SQE_ELEM in io_uring/io_uring.c.
+            expect(made.fields.map((_, index) => made.range(index)[0])).toEqual([0, 1, 2, 4, 8, 16, 24, 28, 32, 40, 42, 44, 48, 56])
+            expect(made.range('addr3')).toEqual([48, 55])
+            expect(made.range('__pad2')).toEqual([56, 63])
+            expect(made.total).toBe(64)
+            const boxes = made.boxes.map((box) => box.bounds())
+            const rows = [boxes.slice(0, 5), boxes.slice(5, 8), boxes.slice(8, 12), boxes.slice(12)]
+            rows.forEach((row, index) => {
+                // Each row is 1600 wide. The rows are 60 high and 40 apart, and the middle of all four is the place of the object.
+                expect(row[0]!.x).toBeCloseTo(100 - 800, 6)
+                expect(ends(row[row.length - 1]!)[1]).toBeCloseTo(100 + 800, 6)
+                for (const box of row) {
+                    expect(box.y).toBeCloseTo(50 - 180 + index * 100, 6)
+                    expect(box.height).toBeCloseTo(60, 6)
+                }
+            })
+            // A field starts at the place of its byte in every row, so the boundaries of the rows are in line.
+            const room = boxes[1]!.x - ends(boxes[0]!)[1]
+            const starts = [0, 1, 2, 4, 8, 0, 8, 12, 0, 8, 10, 12, 0, 8]
+            expect(boxes.map((box) => ((box.x - (100 - 800)) / (1600 + room)) * 16)).toEqual(starts.map((start) => expect.closeTo(start, 6)))
+            for (const index of [6, 9, 13]) expect(boxes[index]!.x).toBeCloseTo(boxes[4]!.x, 6)
+            // Each row starts with its own offset, over its left end. Only the last row shows the total, over its right end.
+            expect(shown(made)).toEqual(['0', '1', '2', '4', '8', '16', '24', '28', '32', '40', '42', '44', '48', '56', '64'])
+            for (const [number, box] of [[5, 5], [8, 8], [12, 12]] as const) {
+                expect(middle(made.numbers[number]!)[0]).toBeCloseTo(100 - 800, 6)
+                expect(made.numbers[number]!.bounds().y + made.numbers[number]!.bounds().height).toBeLessThan(boxes[box]!.y - 4)
+                // The numbers of a row are under the boxes of the row over it.
+                expect(made.numbers[number]!.bounds().y).toBeGreaterThan(boxes[box - 1]!.y + 60 + 4)
+            }
+            expect(middle(made.numbers[14]!)[0]).toBeCloseTo(100 + 800, 6)
+            // A point of a field is on the edge of its box, in any row. It is in the coordinates of the object.
+            expect(made.p('__pad2')).toEqual([expect.closeTo(boxes[13]!.x + boxes[13]!.width / 2 - 100, 6), expect.closeTo(180, 6)])
+            expect(made.p('addr', 'top')).toEqual([expect.closeTo(boxes[5]!.x + boxes[5]!.width / 2 - 100, 6), expect.closeTo(-80, 6)])
+            expect(made.p('user_data', 'left')).toEqual([expect.closeTo(-800, 6), expect.closeTo(50, 6)])
+            expect(made.toWorld(...made.p('splice_fd_in'))).toEqual([expect.closeTo(boxes[11]!.x + boxes[11]!.width / 2, 6), expect.closeTo(boxes[11]!.y + 60, 6)])
+            // The texts of a row are in its boxes.
+            expect(Math.abs(middle(made.labels[9]!)[1] - middle(made.boxes[9]!)[1])).toBeLessThan(4)
+        }))
+    })
+
+    it('keeps the boundaries of the rows in line when narrow fields take the least width', async () => {
+        await compileFilm(film(() => {
+            // At 1200 px a byte has 75 px, less than the least width. The fields of one byte, in the first row, take 110.
+            const made = bitField(sqe, { width: 1200, wrap: 16, numbers: 'offsets', minWidth: 110 })
+            const boxes = made.boxes.map((box) => box.bounds())
+            expect([boxes[0]!.width, boxes[1]!.width]).toEqual([expect.closeTo(110, 6), expect.closeTo(110, 6)])
+            for (const box of boxes) expect(box.width).toBeGreaterThan(110 - 1e-6)
+            // The rows have their columns in common: a field that starts at one byte of its row starts at one x, in every row.
+            const places = new Map<number, number>()
+            boxes.forEach((box, index) => {
+                const start = made.range(index)[0] % 16
+                expect(box.x).toBeCloseTo(places.get(start) ?? box.x, 6)
+                places.set(start, box.x)
+            })
+            expect([...places.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2, 4, 8, 10, 12])
+            // So `addr`, under the two wide fields of one byte, is wider than `off`, which has as many bytes.
+            expect(boxes[5]!.width).toBeGreaterThan(boxes[4]!.width + 60)
+            // Each row is still as wide as the width, and the bytes that need no more room share the rest evenly.
+            for (const first of [0, 5, 8, 12]) expect(boxes[first]!.x).toBeCloseTo(-600, 6)
+            for (const last of [4, 7, 11, 13]) expect(ends(boxes[last]!)[1]).toBeCloseTo(600, 6)
+            expect(boxes[6]!.width).toBeCloseTo(boxes[7]!.width, 6)
+            // A last row with fewer bytes has room in the same columns. Its two fields of one byte take the least width.
+            const short = bitField([{ bits: 8, label: 'a' }, { bits: 8, label: 'b' }, { bits: 1, label: 'cc' }, { bits: 1, label: 'dd' }], { width: 560, wrap: 16, minWidth: 60, numbers: 'offsets' })
+            const [a, , cc, dd] = short.boxes.map((box) => box.bounds())
+            expect([cc!.width, dd!.width]).toEqual([expect.closeTo(60, 6), expect.closeTo(60, 6)])
+            expect(cc!.x).toBeCloseTo(a!.x, 6)
+            expect(ends(dd!)[1]).toBeLessThan(ends(a!)[1])
+            // A field of two bytes over two fields of one byte: the narrow ones take the least width first, so the
+            // wide one is as wide as both, and every field has the least width or more.
+            const stacked = bitField([{ bits: 2, label: 'ab' }, { bits: 14, label: 'rest' }, { bits: 1, label: 'a' }, { bits: 1, label: 'b' }, { bits: 14, label: 'more' }], { width: 800, wrap: 16, minWidth: 100 })
+            const [ab, , one, two] = stacked.boxes.map((box) => box.bounds())
+            expect([one!.width, two!.width]).toEqual([expect.closeTo(100, 6), expect.closeTo(100, 6)])
+            expect(ab!.x).toBeCloseTo(one!.x, 6)
+            expect(ends(ab!)[1]).toBeCloseTo(ends(two!)[1], 6)
+            // When the fields cannot have the least width, the message names the rows and not one row.
+            expect(() => bitField(sqe, { width: 300, wrap: 16, numbers: 'offsets', minWidth: 110 })).toThrow(/a width of 300 has no room for the fields of 110 or more in rows of 16 bytes. Give a larger width or a smaller minWidth/)
+        }))
+    })
+
+    it('gives the rows the room that their numbers and labels need, and a short last row the width of its bits', async () => {
+        await compileFilm(film(() => {
+            const bytes = (count: number, label: string, value?: string) => ({ bits: count, label, ...(value ? { value } : {}) })
+            const top = (node: Node) => node.bounds().y, bottom = (node: Node) => node.bounds().y + node.bounds().height
+            // With no row gap given, the numbers of the second row are clear of the boxes of the first.
+            const plain = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(plain.numbers[2]!)).toBeGreaterThan(bottom(plain.boxes[0]!) + 8)
+            // A last row with half the bytes is half as long, and it starts at the left. A byte has one width in both rows.
+            expect(plain.boxes[2]!.bounds().x).toBeCloseTo(-800, 6)
+            expect(plain.boxes[2]!.bounds().width).toBeCloseTo(plain.boxes[0]!.bounds().width, 6)
+            expect(shown(plain)).toEqual(['0', '8', '16', '24'])
+            // One row with half the bytes of a full row starts at the left end of a full row too. So two structures
+            // with one `wrap` and one `width` have one scale, and `.at()` is the middle of a full row.
+            const single = bitField([bytes(4, 'a'), bytes(4, 'b')], { width: 1600, wrap: 16, numbers: 'offsets' }).at(100, 0)
+            expect(single.boxes[0]!.bounds().x).toBeCloseTo(100 - 800, 6)
+            expect(ends(single.boxes[1]!.bounds())[1]).toBeLessThan(100)
+            expect(single.boxes[0]!.bounds().width).toBeCloseTo(plain.boxes[0]!.bounds().width / 2 - (single.boxes[1]!.bounds().x - ends(single.boxes[0]!.bounds())[1]) / 2, 6)
+            // With labels under the boxes, the rows are farther apart: a label of the first row is clear of the numbers of the second.
+            const named = bitField([bytes(8, 'a', '1'), bytes(8, 'b', '2'), bytes(8, 'c', '3')], { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(named.boxes[2]!) - top(named.boxes[0]!)).toBeGreaterThan(top(plain.boxes[2]!) - top(plain.boxes[0]!) + 26)
+            expect(top(named.numbers[2]!)).toBeGreaterThan(bottom(named.labels[0]!) + 8)
+            expect(top(named.labels[2]!)).toBeGreaterThan(bottom(named.boxes[2]!))
+            // Without numbers and without labels under the boxes, the rows are near each other.
+            const bare = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { width: 1600, wrap: 16, numbers: false })
+            expect(top(bare.boxes[2]!) - bottom(bare.boxes[0]!)).toBeGreaterThan(8)
+            expect(top(bare.boxes[2]!) - bottom(bare.boxes[0]!)).toBeLessThan(top(plain.boxes[2]!) - bottom(plain.boxes[0]!))
+            // Values with no label under them need no room under the boxes: the rows are as near as without values.
+            const unnamed = bitField([{ bits: 8, value: '1' }, { bits: 8, value: '2' }, { bits: 8, value: '3' }], { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(unnamed.boxes[2]!) - top(unnamed.boxes[0]!)).toBeCloseTo(top(plain.boxes[2]!) - top(plain.boxes[0]!), 6)
+            // An empty value puts its label under the box as any value does, so the rows have room for the labels.
+            const empty = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')].map((part) => ({ ...part, value: '' })), { width: 1600, wrap: 16, numbers: 'offsets' })
+            expect(top(empty.boxes[2]!) - top(empty.boxes[0]!)).toBeCloseTo(top(named.boxes[2]!) - top(named.boxes[0]!), 6)
+            // The bits count down through the rows, and with an even scale each row shares its width among its fields.
+            const word = bitField([{ bits: 16 }, { bits: 16 }, { bits: 32 }], { width: 800, wrap: 32 })
+            expect(shown(word)).toEqual(['63', '48', '47', '32', '31', '0'])
+            expect(word.range(2)).toEqual([31, 0])
+            const even = bitField([{ bits: 1 }, { bits: 3 }, { bits: 4 }, { bits: 8 }], { width: 800, wrap: 8, scale: 'even' })
+            expect(even.boxes[1]!.bounds().width).toBeCloseTo(even.boxes[0]!.bounds().width, 6)
+            expect(even.boxes[3]!.bounds().width).toBeCloseTo(800, 6)
+            // An even scale has no width for a bit, so a last row with fewer bits is as wide as the other rows.
+            const short = bitField([{ bits: 4 }, { bits: 4 }, { bits: 4 }], { width: 800, wrap: 8, scale: 'even' })
+            expect(short.boxes[2]!.bounds().width).toBeCloseTo(800, 6)
+            // A row gap with no room for the numbers is an error. The room that the message names is enough.
+            const tight = message(() => bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { wrap: 16, numbers: 'offsets', rowGap: 10 }))
+            expect(tight).toMatch(/^bitField: rowGap is the room between two rows\. The numbers and the labels of these fields need \d+ or more$/)
+            const needed = Number(/need (\d+) or more/.exec(tight)![1])
+            const close = bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { wrap: 16, numbers: 'offsets', rowGap: needed })
+            expect(top(close.numbers[2]!)).toBeGreaterThanOrEqual(bottom(close.boxes[0]!))
+            expect(top(close.boxes[2]!) - bottom(close.boxes[0]!)).toBeCloseTo(needed, 6)
+            expect(() => bitField([bytes(8, 'a'), bytes(8, 'b'), bytes(8, 'c')], { wrap: 16, numbers: 'offsets', rowGap: needed - 2 })).toThrow(/rowGap is the room/)
+            // With one row, no text can meet a box of a next row, so any row gap is right: also 0.
+            expect(bitField([bytes(8, 'a'), bytes(8, 'b')], { rowGap: 0, numbers: 'offsets' }).boxes).toHaveLength(2)
+            expect(bitField([bytes(8, 'a'), bytes(8, 'b')], { wrap: 16, rowGap: 0, numbers: 'offsets' }).boxes).toHaveLength(2)
+            // A field that crosses the end of a row, and a row with no room for its fields, are errors.
+            expect(() => bitField([bytes(8, 'a'), bytes(4, 'b'), bytes(8, 'off')], { wrap: 16, numbers: 'offsets' })).toThrow(/field 2 \("off"\) has 8 bytes and starts at byte 12 of a row of 16, so it crosses the end of the row. Split it into two fields, or change wrap/)
+            expect(() => bitField([{ bits: 20 }], { wrap: 16 })).toThrow(/field 0 has 20 bits and starts at bit 0 of a row of 16/)
+            expect(() => bitField([bytes(8, 'a'), bytes(2, 'b'), bytes(2, 'c'), bytes(2, 'd'), bytes(2, 'e')], { width: 300, wrap: 8, minWidth: 80, scale: 'even' })).toThrow(/a width of 300 has no room for 4 fields of 80 or more in row 1. Give a larger width or a smaller minWidth/)
+        }))
+    })
+
+    it('changes a value in place: the old text fades out, then the new text fades in, and values holds the new text', async () => {
+        let made!: ReturnType<typeof bitField>
+        let first!: Node
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 1, label: 'P', value: '0' }, { bits: 7, label: 'rest', value: '0x00' }], { width: 600, minWidth: 80 }))
+            first = made.values[0]!
+            s.wait(0.5)
+            s.play(made.setValue('P', '1'), { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(seq(made.setValue(1, '0x7f'), made.setValue('rest', '0x01')), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        const next = made.values[0]!
+        expect(next).not.toBe(first)
+        expect(source(next)).toBe('1')
+        // The old text is not drawn after the change: the frame has as many marks as before it.
+        expect((await compiled.frame(1.6)).ops).toHaveLength((await compiled.frame(0.4)).ops.length)
+        expect(made.field('P').children).toContain(next)
+        // The new text is in the middle of the box, as the first one was.
+        expect(at(2, () => middle(next)[0])).toBeCloseTo(at(2, () => middle(made.boxes[0]!)[0]), 6)
+        expect(at(2, () => Math.abs(middle(next)[1] - middle(made.boxes[0]!)[1]))).toBeLessThan(4)
+        // The change runs from 0.5 to 1.5. The old text leaves in the first half, and the new one arrives in the second.
+        expect(at(0.4, () => [shows(first), shows(next)])).toEqual([1, 0])
+        expect(at(0.75, () => [shows(first), shows(next)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(1.25, () => [shows(first), shows(next)])).toEqual([0, expect.closeTo(0.5, 6)])
+        expect(at(1.6, () => [shows(first), shows(next)])).toEqual([0, 1])
+        for (let time = 0.4; time < 1.7; time += 0.05) expect(at(time, () => Math.min(shows(first), shows(next)))).toBe(0)
+        // Two changes in one sequence, from 2 to 3 and from 3 to 4: the second one starts from the text of the first.
+        const texts = made.field('rest').children.filter((node) => source(node)?.startsWith('0x'))
+        expect(texts.map(source)).toEqual(['0x00', '0x7f', '0x01'])
+        expect(made.values[1]).toBe(texts[2])
+        expect(at(2.9, () => texts.map(shows))).toEqual([0, expect.closeTo(0.8, 6), 0])
+        expect(at(3.25, () => texts.map(shows))).toEqual([0, expect.closeTo(0.5, 6), 0])
+        expect(at(3.75, () => texts.map(shows))).toEqual([0, 0, expect.closeTo(0.5, 6)])
+        expect(at(4.3, () => texts.map(shows))).toEqual([0, 0, 1])
+    })
+
+    it('fits a new value as it fits the first one, moves the hole of a hatch with it, and refuses a field with no value', async () => {
+        let made!: ReturnType<typeof bitField>
+        let old!: Box
+        // The object is away from 0, 0, and the lines of a hatch are in the coordinates of the object.
+        const local = (box: Box) => ({ ...box, x: box.x - 300, y: box.y - 200 })
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Two rows of 8 bytes: two fields of 4, and one reserved field of 8.
+            made = s.add(bitField([{ bits: 4, label: 'fd', value: '3' }, { bits: 4, label: 'len' }, { bits: 8, label: 'reserved', value: '0', unused: true }], { width: 300, wrap: 8, numbers: 'offsets' }).at(300, 200))
+            old = local(made.values[2]!.bounds())
+            s.wait(0.5)
+            s.play(made.setValue('fd', '0xffffffff'), made.setValue('reserved', '0x0000'), { duration: 1, ease: linear })
+            s.wait(0.5)
+            // A field with no value has its label in the box, so a value has no room there.
+            expect(() => made.setValue('len', '8')).toThrow(/field 1 \("len"\) was built with no value, so its box has no room for one. Give the field a value when you build the object/)
+            expect(() => made.setValue('size', '8')).toThrow(/no field has the label "size"/)
+            // A text that cannot fit at 0.6 of the size is an error when the film asks for it, and it changes nothing.
+            const shown = made.values[0]
+            expect(() => made.setValue('fd', '0xffffffffffffffff')).toThrow(/the value "0xffffffffffffffff" of field 0 \("fd"\) does not fit in its box, which is 147 px wide\. Give a larger width, or a shorter text$/)
+            // Where the fields can have it, the message names a least width. It is the one for the new text, which is
+            // wider than the text of any field: an object that is built with it and with that text has no error.
+            const roomy = [{ bits: 4, label: 'fd', value: '3' }, { bits: 28, label: 'rest' }]
+            const least = Number(/a minWidth of (\d+) or more/.exec(message(() => bitField(roomy, { width: 800 }).setValue('fd', '0xffffffffffffffff')))![1])
+            expect(least).toBeGreaterThan(150)
+            expect(source(bitField([{ ...roomy[0]!, value: '0xffffffffffffffff' }, roomy[1]!], { width: 800, minWidth: least }).values[0])).toBe('0xffffffffffffffff')
+            expect(() => made.setValue('fd', '1\n2')).toThrow(/the value "1\\n2" of field 0 has a line break. A value is one line/)
+            expect(() => made.setValue('fd', 7 as never)).toThrow(/the new value of field 0 \("fd"\) is 7. A value is a text, such as '1' or ''/)
+            expect(() => (made.setValue as (which: string) => unknown)('fd')).toThrow(/the new value of field 0 \("fd"\) is undefined/)
+            expect(made.values[0]).toBe(shown)
+        }))
+        // The new value of ten characters is wider than the room in the box, so it is smaller, with room at both sides.
+        const value = made.values[0]!, box = at(2, () => made.boxes[0]!.bounds()), drawn = at(2, () => value.bounds())
+        expect(source(value)).toBe('0xffffffff')
+        expect(size(value)).toBeLessThan(26)
+        expect(size(value)).toBeGreaterThanOrEqual(26 * 0.6)
+        expect(drawn.x).toBeGreaterThan(box.x + 8)
+        expect(ends(drawn)[1]).toBeLessThan(ends(box)[1] - 8)
+        // The value of the second row is in the box of the second row.
+        const wide = local(at(2, () => made.values[2]!.bounds())), lower = local(at(2, () => made.boxes[2]!.bounds()))
+        expect(wide.y).toBeGreaterThan(lower.y + 8)
+        expect(wide.y + wide.height).toBeLessThan(lower.y + lower.height - 8)
+        expect(wide.width).toBeGreaterThan(old.width * 3)
+        // The new value of an unused field is dim, as the first one was. The new value of a field in use is not.
+        expect(ink(made.values[2])).toEqual(inkOf('dim'))
+        expect(ink(made.values[0])).toEqual(inkOf('ink'))
+        // The hole in the hatch takes the size of the new text at the middle of the change, while no text shows.
+        const lines = hatchOf(made, 2)!
+        expect(at(0.9, () => crosses(lines, old))).toBe(false)
+        expect(at(0.9, () => crosses(lines, wide))).toBe(true)
+        expect(at(1.1, () => crosses(lines, wide))).toBe(false)
+    })
+
+    it('gives the same picture when a film plays one setValue animation twice', async () => {
+        let made!: ReturnType<typeof bitField>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 1, label: 'P', value: '0' }, { bits: 7, label: 'rest', value: '0x00' }], { width: 600, minWidth: 80 }))
+            const change = made.setValue('P', '1')
+            s.wait(0.5)
+            s.play(change, { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(change, { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(made.setValue('P', '2'), { duration: 1, ease: linear })
+            s.play(change, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const texts = valuesOf(made, 0)
+        expect(texts.map(source)).toEqual(['0', '1', '2'])
+        // The first play runs from 0.5 to 1.5. The second play, from 2 to 3, changes nothing: the box shows 1 all the time.
+        for (const time of [1.6, 2, 2.25, 2.5, 2.75, 3, 3.4]) expect(at(time, () => texts.map(shows))).toEqual([0, 1, 0])
+        // Another change, from 3.5 to 4.5, puts 2 in the box. The first animation, played again, brings 1 back.
+        expect(at(4.4, () => texts.map(shows))).toEqual([0, 0, expect.closeTo(0.8, 6)])
+        expect(at(4.75, () => texts.map(shows))).toEqual([0, 0, expect.closeTo(0.5, 6)])
+        expect(at(5.25, () => texts.map(shows))).toEqual([0, expect.closeTo(0.5, 6), 0])
+        expect(at(5.8, () => texts.map(shows))).toEqual([0, 1, 0])
+        expect(made.values[0]).toBe(texts[1])
+        // Two changes of one field at one time: the later one wins, and the text of the first one does not show under it.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 1, label: 'P', value: '0' }, { bits: 7, label: 'rest', value: '0x00' }], { width: 600, minWidth: 80 }))
+            s.wait(0.5)
+            s.play(made.setValue('P', '1'), made.setValue('P', '2'), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(valuesOf(made, 0).map(source)).toEqual(['0', '1', '2'])
+        expect(at(1.25, () => valuesOf(made, 0).map(shows))).toEqual([0, 0, expect.closeTo(0.5, 6)])
+        expect(at(1.8, () => valuesOf(made, 0).map(shows))).toEqual([0, 0, 1])
+        expect(source(made.values[0])).toBe('2')
+    })
+
+    it('takes an empty text as a value: an empty box with its label under it, which setValue fills', async () => {
+        let made!: ReturnType<typeof bitField>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(bitField([{ bits: 4, label: 'fd', value: '' }, { bits: 4, label: 'len' }, { bits: 8, label: 'res', value: '7' }], { width: 600, numbers: 'offsets' }))
+            s.wait(0.5)
+            s.play(made.setValue('fd', '3'), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const boxes = at(0, () => made.boxes.map((box) => box.bounds()))
+        // The field with the empty value has its label under its box, as the field with the value 7 has. The other label is in its box.
+        expect(at(0, () => made.labels[0]!.bounds().y)).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height + 4)
+        expect(at(0, () => made.labels[0]!.get('y'))).toBeCloseTo(at(0, () => made.labels[2]!.get('y')), 6)
+        expect(at(0, () => made.labels[1]!.bounds().y)).toBeLessThan(boxes[1]!.y + boxes[1]!.height)
+        // The box is empty at first, and then it shows the new value.
+        const texts = valuesOf(made, 0)
+        expect(texts.map(source)).toEqual(['', '3'])
+        expect(at(0.4, () => texts[0]!.bounds().width)).toBe(0)
+        expect(at(1.8, () => shows(texts[1]!))).toBe(1)
+        expect(made.values[0]).toBe(texts[1])
+        const drawn = at(1.8, () => texts[1]!.bounds())
+        expect(drawn.x).toBeGreaterThan(boxes[0]!.x + 8)
+        expect(drawn.y).toBeGreaterThan(boxes[0]!.y + 8)
+        expect(drawn.y + drawn.height).toBeLessThan(boxes[0]!.y + boxes[0]!.height - 8)
+        // An empty value takes no room, so the hatch of an unused field has no hole: its lines are those of a field with no text.
+        await compileFilm(film(() => {
+            const empty = bitField([{ bits: 8, label: 'pad', value: '', unused: true }], { width: 400 })
+            const none = bitField([{ bits: 8, unused: true }], { width: 400 })
+            expect(hatchOf(empty, 0)!.get('path')!.length).toBe(hatchOf(none, 0)!.get('path')!.length)
+            expect(crosses(hatchOf(empty, 0)!, { x: -6, y: -6, width: 12, height: 12 })).toBe(true)
+            // A value of one character has a hole.
+            const one = bitField([{ bits: 8, label: 'pad', value: '0', unused: true }], { width: 400 })
+            expect(crosses(hatchOf(one, 0)!, { x: -6, y: -6, width: 12, height: 12 })).toBe(false)
+        }))
+    })
+
+    it('has a duration and a lag of its own when the film gives none', async () => {
+        let made!: ReturnType<typeof bitField>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = bitField([{ bits: 1, label: 'N', value: '1' }, { bits: 1, label: 'Z', value: '0' }, { bits: 1, label: 'C', value: '0' }], { width: 400 })
+            expect(made.enter().duration).toBe(1.4)
+            expect(made.enter({ duration: 3 }).duration).toBe(3)
+            expect(made.setValue('N', '0').duration).toBe(0.6)
+            expect(made.setValue('N', '0', { duration: 2 }).duration).toBe(2)
+            s.wait(0.5)
+            // With no lag given, a field starts 0.35 of its own time after the field before it.
+            s.play(made.enter(), { duration: 1.7, ease: linear })
+            s.wait(0.5)
+        }))
+        // Three fields in 1.7 s: each one takes 1 s, and they start at 0.5, 0.85 and 1.2.
+        expect(at(1, () => made.fields.map(shows))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.15, 6), 0])
+        expect(at(1.7, () => made.fields.map(shows))).toEqual([1, expect.closeTo(0.85, 6), expect.closeTo(0.5, 6)])
+        expect(at(2.3, () => made.fields.map(shows))).toEqual([1, 1, 1])
+    })
+
+    it('gives a copy its own fields, boxes and texts', async () => {
+        await compileFilm(film(() => {
+            const made = bitField([{ bits: 8, label: 'type', value: '7' }, { bits: 8, label: 'rest' }], { width: 600 }), copy = made.clone()
+            expect(copy.field('type')).not.toBe(made.field('type'))
+            expect(copy.field('type').children).toEqual(expect.arrayContaining([copy.boxes[0], copy.values[0], copy.labels[0], copy.numbers[0]]))
+            expect(copy.boxes[0]).not.toBe(made.boxes[0])
+            expect(copy.values[1]).toBeNull()
+            expect(copy.p('rest')).toEqual(made.p('rest'))
+            expect(copy.range('rest')).toEqual([7, 0])
+        }))
+    })
+
+    it('names a wrong field, size or option', async () => {
+        await compileFilm(film(() => {
+            const made = bitField(address)
+            expect(() => bitField([])).toThrow(/at least one field/)
+            expect(() => bitField([{ bits: 0 }])).toThrow(/field 0 has 0 bits. A field has a whole number of bits, 1 or more/)
+            expect(() => bitField([{ bits: 4 }, { bits: 1.5, label: 'half' }])).toThrow(/field 1 \("half"\) has 1.5 bits/)
+            expect(() => bitField([{ bits: Number.NaN }])).toThrow(/whole number of bits/)
+            expect(() => bitField(address, { width: 0 })).toThrow(/width is the width of one row of fields, more than 0/)
+            expect(() => bitField(address, { size: 0 })).toThrow(/size is a text size, more than 0/)
+            expect(() => bitField(address, { size: -4 })).toThrow(/size is a text size/)
+            expect(() => bitField(address, { height: 0 })).toThrow(/height is the height of the boxes/)
+            expect(() => bitField(address, { height: 30 })).toThrow(/A text of size 26 needs a height of 39 or more/)
+            expect(() => bitField(address, { scale: 'equal' as never })).toThrow(/scale is 'proportional' or 'even', not "equal"/)
+            expect(() => bitField(address, { numbers: 'bytes' as never })).toThrow(/numbers is 'bits', 'offsets' or false, not "bytes"/)
+            expect(() => bitField(address, { minWidth: -1 })).toThrow(/minWidth is the least width of a field, 0 or more/)
+            expect(() => bitField(Array.from({ length: 64 }, () => ({ bits: 1 })), { width: 100 })).toThrow(/a width of 100 has no room for 64 fields. Give a larger width$/)
+            // A box with no inside is an error too: here a bit has 2 px, less than the room between two boxes.
+            expect(() => bitField([{ bits: 1, label: 'P' }, { bits: 499 }], { width: 1000 })).toThrow(/field 0 \("P"\) is too narrow to draw in a width of 1000. Give a larger width, scale: 'even', or a minWidth$/)
+            expect(() => bitField(Array.from({ length: 64 }, () => ({ bits: 1 })), { width: 500, scale: 'even' })).toThrow(/field 0 is too narrow to draw in a width of 500. Give a larger width$/)
+            expect(() => bitField(address, { wrap: 0 })).toThrow(/wrap is the number of bits in one row, a whole number, 1 or more/)
+            expect(() => bitField(address, { wrap: 2.5 })).toThrow(/wrap is the number of bits in one row/)
+            expect(() => bitField(address, { rowGap: -1 })).toThrow(/rowGap is the room between two rows/)
+            for (const read of [() => made.field('PGE'), () => made.p('PGE'), () => made.range('PGE')]) {
+                expect(read).toThrow(/no field has the label "PGE". The labels are "sign extension", "PGD", "PUD", "PMD", "PTE", "offset"/)
+            }
+            expect(() => made.field(6)).toThrow(/no field 6. The object has 6 fields, and the first is field 0/)
+            expect(() => made.p(-1)).toThrow(/no field -1/)
+            expect(() => made.range(1.5)).toThrow(/no field 1.5/)
+            expect(() => made.p('PTE', 'middle' as never)).toThrow(/the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/)
+            // A label or a value is one line of text. Its lines would start at the left and leave the middle of the box.
+            expect(() => bitField([{ bits: 8, label: 'physical\nframe number' }])).toThrow(/the label "physical\\nframe number" of field 0 has a line break. A label is one line: give a shorter text, or a second field/)
+            expect(() => bitField([{ bits: 8, label: 'a' }, { bits: 8, label: 'b', value: '0x1\n0x2' }])).toThrow(/the value "0x1\\n0x2" of field 1 has a line break. A value is one line/)
+            // A film is not type-checked when it runs, so a number can arrive in place of a text.
+            expect(() => bitField([{ bits: 4, label: 'a', value: 7 as never }])).toThrow(/the value of field 0 is 7. A value is a text, such as "7"/)
+            expect(() => bitField([{ bits: 4, label: 5 as never }])).toThrow(/the label of field 0 is 5. A label is a text, such as "5"/)
+            // Two fields may share a name. A film must then give the index.
+            const twice = bitField([{ bits: 4, label: 'reserved' }, { bits: 4, label: 'type' }, { bits: 4, label: 'reserved' }], { width: 900 })
+            expect(() => twice.p('reserved')).toThrow(/2 fields have the label "reserved". Give the index: 0 or 2/)
+            expect(twice.field('type')).toBe(twice.fields[1])
+            expect(() => bitField([{ bits: 4 }]).field('type')).toThrow(/No field has a label, so give an index/)
+        }))
+    })
+})
+
+describe('terminal', () => {
+    const lines = [
+        { text: './one-byte', kind: 'command' as const },
+        'mapped 1 GiB at 0xffff7c000000',
+        'Rss before the write:      0 kB',
+        'Rss after the write:       4 kB',
+        'minor faults:              1',
+    ]
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    /** The characters that a node draws, in the order of drawing. A space draws nothing. */
+    const keys = (node: Node) => node.leaves().map((leaf) => leaf.data['key']).join('')
+    const right = (node: Node) => node.bounds().x + node.bounds().width
+    const bottom = (node: Node) => node.bounds().y + node.bounds().height
+    const inside = (part: Node, whole: Node) => {
+        const a = part.bounds(), b = whole.bounds()
+        expect(a.x).toBeGreaterThanOrEqual(b.x - 1e-6)
+        expect(a.y).toBeGreaterThanOrEqual(b.y - 1e-6)
+        expect(a.x + a.width).toBeLessThanOrEqual(b.x + b.width + 1e-6)
+        expect(a.y + a.height).toBeLessThanOrEqual(b.y + b.height + 1e-6)
+    }
+
+    it('centers the panel on its place, with the bar over the lines, the title at the left and the note at the right', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines, { title: 'Host', note: 'Linux', columns: 40 }).at(100, 50)
+            const frame = run.frame.bounds(), bar = run.bar.bounds()
+            expect(frame.x + frame.width / 2).toBeCloseTo(100, 6)
+            expect(frame.y + frame.height / 2).toBeCloseTo(50, 6)
+            // The bar is at the top of the panel, inside the border, from one side to the other.
+            inside(run.bar, run.frame)
+            expect(bar.y - frame.y).toBeCloseTo(run.frame.get('strokeWidth') / 2, 6)
+            expect(frame.width - bar.width).toBeCloseTo(run.frame.get('strokeWidth'), 6)
+            // The top corners of the bar are round, with the center of the corners of the panel, so the bar
+            // does not go out of the border there. Its bottom corners are square. `cut` is how far from the
+            // left of a shape its outline starts at a height: the radius of a round corner, 0 for a square one.
+            const large = terminal(['x'.repeat(20)], { size: 100 })
+            const cut = (node: Node, height: 'top' | 'bottom') => {
+                const box = pathBounds(node.get('path')!)!
+                const level = height === 'top' ? box.y : box.y + box.height
+                const points = samplePath(node.get('path')!, 2000).filter((point) => Math.abs(point[1] - level) < 1e-6)
+                return Math.min(...points.map((point) => point[0])) - box.x
+            }
+            expect(cut(large.frame, 'top')).toBeGreaterThan(30)
+            expect(Math.abs(cut(large.bar, 'top') - (cut(large.frame, 'top') - large.frame.get('strokeWidth') / 2))).toBeLessThan(3)
+            expect(cut(large.bar, 'bottom')).toBeLessThan(3)
+            for (const line of run.lines) {
+                expect(line.bounds().y).toBeGreaterThan(bar.y + bar.height)
+                inside(line, run.frame)
+            }
+            // The title and the note are in the bar, on one baseline. The title starts where the lines start,
+            // and the note ends where column 40 ends.
+            const title = run.title!.bounds(), note = run.note!.bounds()
+            inside(run.title!, run.bar)
+            inside(run.note!, run.bar)
+            expect(title.y + title.height).toBeCloseTo(note.y + note.height, 0)
+            expect(Math.abs(title.x - run.lines[1]!.bounds().x)).toBeLessThan(3)
+            expect(Math.abs(right(run.note!) - run.toWorld(...terminal(['x'.repeat(40)]).p(0, 'right'))[0])).toBeLessThan(3)
+            expect(title.x + title.width).toBeLessThan(note.x)
+            // The middle of a capital letter of the bar is the middle of the bar.
+            expect(title.y + title.height / 2).toBeCloseTo(bar.y + bar.height / 2, 0)
+            const plain = terminal(lines)
+            expect(plain.title).toBeNull()
+            expect(plain.note).toBeNull()
+        }))
+    })
+
+    it('puts the lines one under the other at one left edge, with the same room on all four sides', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(['HHHHHHHHHH', 'HHHH', '', 'HHHHHHHHHH'], { size: 40 })
+            const boxes = run.lines.map((line) => line.bounds())
+            const frame = run.frame.bounds()
+            expect(boxes[1]!.x).toBeCloseTo(boxes[0]!.x, 6)
+            expect(boxes[3]!.x).toBeCloseTo(boxes[0]!.x, 6)
+            // An empty line draws nothing and keeps its row.
+            const step = boxes[1]!.y - boxes[0]!.y
+            expect(step).toBeGreaterThan(boxes[0]!.height)
+            expect(boxes[3]!.y - boxes[0]!.y).toBeCloseTo(3 * step, 6)
+            // The room around the letters: a capital letter has the same space at its two sides, so the left
+            // and the right are equal, and so are the top, under the bar, and the bottom, under the baseline.
+            const room = { left: boxes[0]!.x - frame.x, right: frame.x + frame.width - right(run.lines[0]!), top: boxes[0]!.y - bottom(run.bar), bottom: frame.y + frame.height - bottom(run.lines[3]!) }
+            expect(room.right).toBeCloseTo(room.left, 6)
+            expect(room.bottom).toBeCloseTo(room.top, 6)
+            // The sides have the space beside a letter more than the top: less than a tenth of the text size.
+            expect(room.left - room.top).toBeGreaterThanOrEqual(0)
+            expect(room.left - room.top).toBeLessThan(4)
+            expect(room.top).toBeGreaterThan(20)
+        }))
+    })
+
+    it('takes its width from the columns and its height from the number of lines', async () => {
+        await compileFilm(film(() => {
+            const glyphs = terminal(['HH']).lines[0]!.children
+            const advance = glyphs[1]!.get('x') - glyphs[0]!.get('x')
+            const width = (columns: number) => terminal(['x'], { columns }).frame.bounds().width
+            expect(width(30) - width(20)).toBeCloseTo(10 * advance, 6)
+            // Without `columns`, the panel is as wide as its longest line. The prompt is part of a command.
+            expect(terminal(['x'.repeat(30), 'x']).frame.bounds().width).toBeCloseTo(width(30), 6)
+            expect(terminal([{ text: 'x'.repeat(28), kind: 'command' }, 'x']).frame.bounds().width).toBeCloseTo(width(30), 6)
+            const tall = terminal(['a', 'b', 'c', 'd', 'e']), short = terminal(['a', 'b'])
+            const step = tall.lines[1]!.get('y') - tall.lines[0]!.get('y')
+            expect(tall.frame.bounds().height - short.frame.bounds().height).toBeCloseTo(3 * step, 6)
+            // The text size scales the panel and its border. The border is never thinner than 1.5, so it shows at a small size.
+            expect(terminal(['x'], { columns: 30, size: 52 }).frame.bounds().width).toBeCloseTo(2 * width(30), 6)
+            expect(terminal(['x'], { size: 100 }).frame.get('strokeWidth')).toBeCloseTo(7.5, 6)
+            expect(terminal(['x'], { size: 10 }).frame.get('strokeWidth')).toBe(1.5)
+        }))
+    })
+
+    it('draws each character in its own column, spaces included', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(['ab', 'a  b', '   c', 'calls    errors'])
+            const xs = (line: number) => run.lines[line]!.children.map((glyph) => glyph.get('x'))
+            const advance = xs(0)[1]! - xs(0)[0]!
+            expect(xs(1).map((x) => x / advance)).toEqual([0, 3])
+            // Spaces at the start of a line keep their columns.
+            expect(xs(2).map((x) => x / advance)).toEqual([3])
+            expect(xs(3)[5]! / advance).toBeCloseTo(9, 6)
+            expect(keys(run.lines[3]!)).toBe('callserrors')
+        }))
+    })
+
+    it('draws the prompt before a command, and none before output', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines, { prompt: '> ' })
+            expect(run.prompts.map((prompt) => prompt !== null)).toEqual([true, false, false, false, false])
+            expect(keys(run.prompts[0]!)).toBe('>')
+            expect(keys(terminal(lines).prompts[0]!)).toBe('$')
+            // The prompt is part of its line, at the left edge. The command starts two columns after it.
+            expect(run.lines[0]!.children).toContain(run.prompts[0])
+            expect(keys(run.lines[0]!)).toBe('>./one-byte')
+            const output = run.lines[1]!.children
+            const advance = output[1]!.get('x') - output[0]!.get('x')
+            const command = run.lines[0]!.children.filter((child) => child !== run.prompts[0])
+            expect(command[0]!.get('x')).toBeCloseTo(2 * advance, 6)
+            expect(right(run.prompts[0]!)).toBeLessThan(command[0]!.bounds().x)
+            expect(Math.abs(run.prompts[0]!.bounds().x - run.lines[1]!.bounds().x)).toBeLessThan(4)
+            // The prompt is dim, and the command is not.
+            expect(run.prompts[0]!.children[0]!.get('fill')).not.toEqual(command[0]!.get('fill'))
+            expect(keys(run.lines[1]!)).toBe('mapped1GiBat0xffff7c000000')
+        }))
+    })
+
+    it('gives a note line and the given color of a line their colors', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(['plain', { text: '[...]', kind: 'note' }, { text: 'FAIL', color: 'red' }, { text: 'red', kind: 'command', color: 'red' }])
+            const fill = (line: number, glyph = 0) => run.lines[line]!.children[glyph]!.get('fill')
+            expect(fill(1)).not.toEqual(fill(0))
+            expect(fill(2)).not.toEqual(fill(0))
+            expect(fill(2)).not.toEqual(fill(1))
+            // The color of a command is the color of its text. The prompt stays dim, as a note is.
+            expect(fill(3, 1)).toEqual(fill(2))
+            expect(run.prompts[3]!.children[0]!.get('fill')).toEqual(fill(1))
+        }))
+    })
+
+    it('finds the glyphs of one occurrence of a text, as one node inside its line', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines).at(200, -100)
+            const first = run.find('kB'), second = run.find('kB', 1)
+            expect(keys(first)).toBe('kB')
+            expect(keys(second)).toBe('kB')
+            inside(first, run.lines[2]!)
+            inside(second, run.lines[3]!)
+            expect(first.bounds().y).toBeLessThan(second.bounds().y)
+            // The matches count from the first line to the last, and a match starts after the one before.
+            inside(run.find('1'), run.lines[1]!)
+            inside(run.find('1', 1), run.lines[4]!)
+            const zeros = [0, 1, 2].map((occurrence) => run.find('00', occurrence).bounds().x)
+            expect(zeros[1]! - zeros[0]!).toBeCloseTo(zeros[2]! - zeros[1]!, 6)
+            expect(zeros[1]!).toBeGreaterThan(zeros[0]! + first.bounds().width * 0.9)
+            expect(() => run.find('00', 3)).toThrow(/the text "00" is there 3 times, so it has no occurrence 3/)
+            // It matches the exact characters, with their spaces. The node holds the glyphs, and a space has none.
+            expect(keys(run.find('write:      0'))).toBe('write:0')
+            expect(() => run.find('write: 0')).toThrow(/no line has the text "write: 0"/)
+            // It finds the text of a command, and not its prompt.
+            inside(run.find('./one-byte'), run.lines[0]!)
+            expect(() => run.find('$')).toThrow(/no line has the text "\$"/)
+        }))
+    })
+
+    it('gives the same node for the same part, and keeps a part inside a larger one', async () => {
+        await compileFilm(film(() => {
+            const run = terminal(lines)
+            const unit = run.find('kB', 1)
+            expect(run.find('kB', 1)).toBe(unit)
+            // A space at an end of the text has no glyph, so the part is the same with it and without it.
+            expect(run.find(' 1 ')).toBe(run.find('1'))
+            // A larger part takes the smaller one in, and a smaller part is made inside the larger one.
+            const number = run.find('4 kB')
+            expect(unit.parent).toBe(number)
+            expect(run.find('4').parent).toBe(number)
+            expect(run.find('kB', 1)).toBe(unit)
+            // A color on the part colors its glyphs, and no other glyph of the line.
+            const ink = run.lines[3]!.children[0]!.get('fill')
+            number.color('yellow')
+            expect(number.leaves().every((leaf) => leaf.get('fill') !== ink)).toBe(true)
+            expect(run.lines[3]!.leaves().filter((leaf) => leaf.get('fill') !== ink)).toHaveLength(3)
+            // The line still draws its characters from left to right.
+            expect(keys(run.lines[3]!)).toBe('Rssafterthewrite:4kB')
+            const xs = run.lines[3]!.leaves().map((leaf) => leaf.bounds().x)
+            expect([...xs].sort((a, b) => a - b)).toEqual(xs)
+            // Two parts that share characters, where neither holds the other, cannot both be nodes.
+            expect(() => run.find(':       4')).toThrow(/":       4" shares characters with "4 kB"/)
+        }))
+    })
+
+    it('finds a part on a terminal that is on the stage, and does not hide it before that time', async () => {
+        let part!: Node
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            const run = s.add(terminal(lines))
+            s.wait(1)
+            part = run.find('4 kB')
+            part.color('yellow').opacity(0.5)
+            s.wait(1)
+        }))
+        // A change of the part starts at the time of the change, as for every node on the stage.
+        expect(at(0.5, () => shows(part))).toBe(1)
+        expect(at(1.5, () => shows(part))).toBe(0.5)
+        expect(paths(compiled, 0.5)).toHaveLength(paths(compiled, 1.5).length)
+        const fill = (time: number) => at(time, () => part.leaves()[0]!.get('fill'))
+        expect(fill(0.5)).not.toEqual(fill(1.5))
+    })
+
+    it('gives the start and the end of a line in the coordinates of the panel', async () => {
+        await compileFilm(film(() => {
+            const run = terminal([...lines, ''], { columns: 40, size: 40 }).at(300, 200)
+            const [x0, y0] = run.p(2), [x1, y1] = run.p(2, 'right')
+            expect(run.p(2, 'left')).toEqual([x0, y0])
+            expect(y1).toBe(y0)
+            // On the stage, the letters of the line are between the two points, and nearer than a sixth of the text size.
+            const line = run.lines[2]!.bounds()
+            const start = run.toWorld(x0, y0), end = run.toWorld(x1, y1)
+            expect(line.x - start[0]).toBeGreaterThanOrEqual(0)
+            expect(line.x - start[0]).toBeLessThan(40 / 6)
+            expect(end[0] - (line.x + line.width)).toBeGreaterThanOrEqual(0)
+            expect(end[0] - (line.x + line.width)).toBeLessThan(40 / 6)
+            // The height is the middle of a capital letter. The "R" of this line is one.
+            const capital = run.lines[2]!.children[0]!.bounds()
+            expect(start[1]).toBeCloseTo(capital.y + capital.height / 2, 6)
+            // Every line starts at one x, and a command starts at its prompt. The end follows the length.
+            expect(run.p(0)[0]).toBe(x0)
+            expect(run.p(4)[0]).toBe(x0)
+            expect(run.p(4)[1] - run.p(3)[1]).toBeCloseTo(run.p(3)[1] - y0, 6)
+            expect(run.toWorld(...run.p(0, 'right'))[0] - right(run.lines[0]!)).toBeGreaterThanOrEqual(0)
+            expect(run.toWorld(...run.p(0, 'right'))[0] - right(run.lines[0]!)).toBeLessThan(40 / 6)
+            expect(run.p(4, 'right')[0]).toBeLessThan(x1)
+            expect(run.p(5, 'right')).toEqual(run.p(5))
+            expect(() => run.p(6)).toThrow(/no line 6. The terminal has 6 lines/)
+        }))
+    })
+
+    it('enters with its panel and its bar, and no line', async () => {
+        let run!: ReturnType<typeof terminal>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines, { title: 'runs/01.txt', note: 'Linux 7.0' })
+            s.wait(0.5)
+            s.play(run.enter(), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(paths(compiled, 0.2)).toHaveLength(0)
+        const parts = [run.frame, run.bar, run.title!, run.note!]
+        expect(at(1, () => parts.map(shows))).toEqual([0.5, 0.5, 0.5, 0.5].map((value) => expect.closeTo(value, 6)))
+        expect(at(1.8, () => parts.map(shows))).toEqual([1, 1, 1, 1])
+        for (const time of [0.6, 1, 1.8]) expect(at(time, () => run.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+        // The frame draws the panel, the bar, and the letters of the bar: "runs/01.txt" and "Linux7.0".
+        expect(paths(compiled, 1.8)).toHaveLength(2 + 11 + 8)
+    })
+
+    it('types a command character by character after its prompt, and then prints from the next line', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            // Ten characters in eleven steps of 0.1 s, at a steady rate: the prompt has the first step alone.
+            s.play(run.type(0), { duration: 1.1 })
+            s.play(run.print(), { duration: 1 })
+        }))
+        const command = run.lines[0]!.children.filter((child) => child !== run.prompts[0])
+        const typed = (time: number) => at(time, () => (shows(run.lines[0]!) ? command.filter((glyph) => glyph.get('opacity') > 0).map((glyph) => glyph.data['key']).join('') : null))
+        expect(typed(0.45)).toBeNull()
+        expect(typed(0.55)).toBe('')
+        expect(at(0.55, () => shows(run.prompts[0]!))).toBe(1)
+        expect(typed(0.65)).toBe('.')
+        expect(typed(1.05)).toBe('./one')
+        expect(typed(1.45)).toBe('./one-byt')
+        expect(typed(1.55)).toBe('./one-byte')
+        expect(at(1.55, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        // The command is shown, so the print starts with line 1: four lines, a quarter of a second apart.
+        expect(at(1.65, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0])
+        expect(at(2.2, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0])
+        expect(typed(2.7)).toBe('./one-byte')
+    })
+
+    it('prints the lines of a range one after another, in order, each at once', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.print({ from: 0 }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        // Five lines, 0.2 s apart, at a steady rate. A line is not there, or it is there whole.
+        expect(at(0.45, () => run.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+        expect(at(0.55, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(0.75, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0])
+        expect(at(1, () => run.lines.map(shows))).toEqual([1, 1, 1, 0, 0])
+        expect(at(1.25, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0])
+        expect(at(1.4, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        // A command in the range is printed too. It comes whole, with its prompt.
+        expect(at(0.55, () => run.lines[0]!.leaves().every((leaf) => leaf.get('opacity') === 1))).toBe(true)
+    })
+
+    it('prints a range of lines, and a second print in the same sequence goes on from the first', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+            s.play(seq(run.print({ from: 2, to: 3, duration: 1 }), run.print({ duration: 1 })), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        // The first print has one second for lines 2 and 3. The second has one second for the lines that are left, 1 and 4.
+        expect(at(1.25, () => run.lines.map(shows))).toEqual([1, 0, 1, 0, 0])
+        expect(at(1.75, () => run.lines.map(shows))).toEqual([1, 0, 1, 1, 0])
+        expect(at(2.25, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0])
+        expect(at(2.6, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('prints one block when it has no range: up to the next command, with its own command whole when the film did not type it', async () => {
+        const session = [{ text: 'first', kind: 'command' as const }, 'a', 'b', { text: 'second', kind: 'command' as const }, { text: 'third', kind: 'command' as const }, 'c']
+        let run!: ReturnType<typeof terminal>
+        let ranged!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(session)
+            // A print with a range does not stop at a command: from line 1, it brings every line to the last.
+            ranged = terminal(session).at(0, 400)
+            s.play(run.enter(), ranged.print({ from: 1 }), { duration: 0.5 })
+            // No command is typed. The first print brings the first command and its output: three lines.
+            s.play(run.print(), { duration: 0.6 })
+            // The second block is the second command alone: it has no output.
+            s.play(run.print(), { duration: 0.4 })
+            // The third command is typed, so the print after it brings its output only.
+            s.play(run.type(4), { duration: 0.5 })
+            s.play(run.print(), { duration: 0.5 })
+            // Every line is shown now. There is nothing to print, and that is not an error.
+            s.play(run.print(), { duration: 0.5 })
+        }))
+        expect(at(0.55, () => ranged.lines.map(shows))).toEqual([0, 1, 1, 1, 1, 1])
+        expect(at(0.45, () => run.lines.map(shows))).toEqual([0, 0, 0, 0, 0, 0])
+        expect(at(0.55, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0, 0])
+        // The command of the block comes whole, at once, as the output lines do.
+        expect(at(0.55, () => run.lines[0]!.leaves().every((leaf) => leaf.get('opacity') === 1))).toBe(true)
+        expect(at(0.75, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0, 0])
+        // The first print ends before the second command, and the second print before the third.
+        expect(at(1.05, () => run.lines.map(shows))).toEqual([1, 1, 1, 0, 0, 0])
+        expect(at(1.15, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0, 0])
+        expect(at(1.45, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 0, 0])
+        expect(at(1.95, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1, 0])
+        expect(at(2.05, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1, 1])
+    })
+
+    it('shows every line that is left, all together, and only once', async () => {
+        let run!: ReturnType<typeof terminal>
+        let fresh!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            run = terminal(lines)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+            s.play(run.showLines(), { duration: 1, ease: linear })
+            s.wait(0.5)
+            // The lines are shown now, so a second call has nothing to bring. A terminal that is not on
+            // the stage comes with its panel at once, and its lines fade in.
+            fresh = terminal(lines).at(0, 300)
+            s.play(run.showLines(), fresh.showLines(), { duration: 1, ease: linear })
+        }))
+        expect(at(0.95, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.5, () => run.lines.map(shows))).toEqual([1, 0.5, 0.5, 0.5, 0.5].map((value) => expect.closeTo(value, 6)))
+        expect(at(2.1, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(3, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(3, () => [shows(fresh), shows(fresh.frame)])).toEqual([1, 1])
+        expect(at(3, () => fresh.lines.map(shows))).toEqual([0.5, 0.5, 0.5, 0.5, 0.5].map((value) => expect.closeTo(value, 6)))
+    })
+
+    it('keeps a line that types or prints in the same play as the entry, in both orders', async () => {
+        let first!: ReturnType<typeof terminal>
+        let second!: ReturnType<typeof terminal>
+        let printed!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            first = terminal(lines).at(0, -300)
+            second = terminal(lines)
+            printed = terminal(lines).at(0, 300)
+            s.wait(0.5)
+            s.play(first.type(0), first.enter(), second.enter(), second.type(0), printed.print({ from: 0, to: 2 }), printed.enter(), { duration: 1 })
+            s.wait(0.5)
+            // A line that was shown before the entry leaves with it.
+            s.play(first.enter(), { duration: 0.5 })
+        }))
+        const typed = (run: ReturnType<typeof terminal>) => run.lines[0]!.children.filter((child) => child !== run.prompts[0] && child.get('opacity') > 0).length
+        for (const run of [first, second]) {
+            expect(at(1, () => [shows(run.frame), typed(run)])).toEqual([expect.closeTo(0.5, 1), 5])
+            expect(at(1.8, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+            expect(at(1.8, () => typed(run))).toBe(10)
+        }
+        expect(at(1.8, () => printed.lines.map(shows))).toEqual([1, 1, 1, 0, 0])
+        expect(at(2.4, () => first.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+    })
+
+    it('refuses to type a command that is already shown', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const whole = s.add(terminal(lines))
+            expect(() => s.play(whole.type(0))).toThrow(/line 0 is already shown, so type\(\) cannot type it. Start the terminal with \{ shown: false \}, or play enter\(\) before type\(\)/)
+            const run = terminal(lines).at(0, 300)
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+            expect(() => s.play(run.type(0))).toThrow(/line 0 is already shown/)
+            // After a new entry the terminal is empty, so the command types again.
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(run.type(0), { duration: 0.5 })
+        }))
+    })
+
+    it('starts with no line when shown is false, so a film can add it in a group and then type and print', async () => {
+        let run!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            expect(terminal(lines).lines.map(shows)).toEqual([1, 1, 1, 1, 1])
+            run = terminal(lines, { shown: false })
+            s.add(group(run, text('a label', { size: 28 }).at(0, 200)).at(300, -100))
+            s.wait(0.5)
+            s.play(run.type(0), { duration: 0.5 })
+            s.play(run.print(), { duration: 1 })
+            s.wait(0.5)
+        }))
+        // The panel is there from the start, with no line.
+        expect(at(0.2, () => [shows(run.frame), shows(run.bar), ...run.lines.map(shows)])).toEqual([1, 1, 0, 0, 0, 0, 0])
+        expect(at(0.9, () => run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.05, () => run.lines.map(shows))).toEqual([1, 1, 0, 0, 0])
+        expect(at(2.2, () => run.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('stays in a group that is not on the stage when it enters, types or prints, at the place and the size that the group gives it', async () => {
+        const made: { run: ReturnType<typeof terminal>; holder: Node; label: Node; x: number }[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made.length = 0
+            for (const x of [-600, 0, 600]) {
+                const run = terminal(lines), label = text('a label', { size: 28 }).at(0, 150)
+                const holder = group(run, label).at(x, -200)
+                holder.scale(0.5, [x, -200])
+                made.push({ run, holder, label, x })
+            }
+            s.wait(0.5)
+            s.play(made[0]!.run.enter(), made[1]!.run.type(0), made[2]!.run.print({ from: 1, to: 2 }), { duration: 0.5 })
+            s.wait(0.5)
+        }))
+        const natural = terminal(lines).frame.bounds().width
+        for (const { run, holder, label, x } of made) {
+            expect(run.parent).toBe(holder)
+            const frame = at(1.2, () => run.frame.bounds())
+            expect(frame.x + frame.width / 2).toBeCloseTo(x, 6)
+            expect(frame.width).toBeCloseTo(natural / 2, 6)
+            // The group comes with it, at the time of the animation and not before.
+            expect(at(0.2, () => shows(holder))).toBe(0)
+            expect(at(1.2, () => [shows(holder), shows(label)])).toEqual([1, 1])
+        }
+        expect(at(1.2, () => made[0]!.run.lines.map(shows))).toEqual([0, 0, 0, 0, 0])
+        expect(at(1.2, () => made[1]!.run.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.2, () => made[2]!.run.lines.map(shows))).toEqual([0, 1, 1, 0, 0])
+    })
+
+    it('is whole when a film adds it, and comes empty when its first animation is a type or a print', async () => {
+        let whole!: ReturnType<typeof terminal>
+        let typed!: ReturnType<typeof terminal>
+        let printed!: ReturnType<typeof terminal>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            whole = s.add(terminal(lines))
+            // All lines of a terminal that the film added are shown, so there is nothing to print.
+            s.play(whole.print(), { duration: 0.5 })
+            s.remove(whole)
+            typed = terminal(lines)
+            printed = terminal(lines).at(0, 300)
+            s.play(typed.type(0), printed.print({ from: 1, to: 2 }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        expect(at(0.1, () => whole.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(at(0.4, () => whole.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+        // The panel of a terminal that was not on the stage comes at once, with no line but those that the animation brings.
+        expect(at(0.55, () => [shows(typed), shows(typed.frame)])).toEqual([1, 1])
+        expect(at(1.8, () => typed.lines.map(shows))).toEqual([1, 0, 0, 0, 0])
+        expect(at(1.8, () => printed.lines.map(shows))).toEqual([0, 1, 1, 0, 0])
+        expect(paths(compiled, 0.55).length).toBeGreaterThan(0)
+    })
+
+    it('cuts a line that is too long with an ellipsis when clip is set, and refuses it without', async () => {
+        await compileFilm(film(() => {
+            const long = 'ffffbc1e0000-ffffbc368000 r-xp 00000000 fe:02 1318290 /usr/lib/libc.so.6'
+            expect(() => terminal(['short', long], { columns: 30 })).toThrow(new RegExp(`line 1 has ${long.length} characters, and \`columns\` is 30. Raise \`columns\`, or set \`clip\``))
+            const run = terminal(['short', long, 'x'.repeat(30)], { columns: 30, clip: true })
+            // 29 characters of the line, then the ellipsis in column 30. The panel keeps its 30 columns.
+            expect(keys(run.lines[1]!)).toBe(`${long.slice(0, 29).replace(/ /g, '')}…`)
+            expect(run.p(1, 'right')).toEqual([run.p(2, 'right')[0], run.p(1)[1]])
+            expect(run.frame.bounds().width).toBeCloseTo(terminal(['short'], { columns: 30 }).frame.bounds().width, 6)
+            inside(run.lines[1]!, run.frame)
+            // A line of exactly 30 characters is whole.
+            expect(keys(run.lines[2]!)).toBe('x'.repeat(30))
+            // The ellipsis is not a character of the program: it has the color of a note, not of the output.
+            const cut = run.lines[1]!.children
+            expect(cut[cut.length - 1]!.get('fill')).not.toEqual(cut[0]!.get('fill'))
+            expect(run.find('…').parent).toBe(run.lines[1])
+            // The prompt of a command counts.
+            expect(() => terminal([{ text: 'x'.repeat(29), kind: 'command' }], { columns: 30 })).toThrow(/line 0 has 31 characters with its prompt, and `columns` is 30/)
+            expect(keys(terminal([{ text: 'x'.repeat(29), kind: 'command' }], { columns: 30, clip: true }).lines[0]!)).toBe(`$${'x'.repeat(27)}…`)
+            // With no room for the prompt and an ellipsis, clip cannot help.
+            expect(() => terminal([{ text: 'ls', kind: 'command' }], { columns: 2, clip: true })).toThrow(/line 0 has 4 characters with its prompt, and `columns` is 2. Raise `columns`$/)
+        }))
+    })
+
+    it('grows for a title and a note that need more room than the lines, and refuses them when the columns are given', async () => {
+        await compileFilm(film(() => {
+            const title = 'data/runs/01-one-byte.txt', note = 'Linux 7.0, arm64, 2026-11-08'
+            const run = terminal(['x'], { title, note })
+            // The two do not meet: there is room for more than two characters of the bar between them.
+            inside(run.title!, run.bar)
+            inside(run.note!, run.bar)
+            const letter = run.title!.bounds().width / title.length
+            expect(run.note!.bounds().x - right(run.title!)).toBeGreaterThan(2 * letter)
+            expect(run.frame.bounds().width).toBeGreaterThan(terminal(['x']).frame.bounds().width * 5)
+            // A panel of 60 columns has the room, and keeps its width.
+            expect(terminal(['x'], { title, note, columns: 60 }).frame.bounds().width).toBeCloseTo(terminal(['x'], { columns: 60 }).frame.bounds().width, 6)
+            expect(() => terminal(['x'], { title, note, columns: 30 })).toThrow(/the title and the note need \d+ columns in the bar, and `columns` is 30. Shorten the title or the note, or raise `columns`/)
+            expect(() => terminal(['x'], { title, columns: 10 })).toThrow(/the title needs \d+ columns in the bar, and `columns` is 10. Shorten the title, or raise `columns`/)
+            expect(() => terminal(['x'], { note, columns: 10 })).toThrow(/the note needs \d+ columns in the bar, and `columns` is 10. Shorten the note, or raise `columns`/)
+        }))
+    })
+
+    it('makes the text of the bar readable on the color of the bar', async () => {
+        await compileFilm(film(() => {
+            const fill = (node: Node) => node.children[0]!.get('fill') as readonly number[]
+            const light = (color: readonly number[]) => color[0]! + color[1]! + color[2]!
+            // On the quiet bar of the dark default look the title is light. On a bright bar it is dark.
+            const quiet = terminal(['x'], { title: 'host', note: 'now' }), bright = terminal(['x'], { title: 'host', note: 'now', color: 'yellow' })
+            expect(light(fill(quiet.title!))).toBeGreaterThan(light(quiet.bar.get('fill') as readonly number[]) + 300)
+            expect(light(fill(bright.title!))).toBeLessThan(light(bright.bar.get('fill') as readonly number[]) - 300)
+            // The note is dimmer than the title: between the title and the bar.
+            expect(light(fill(quiet.note!))).toBeLessThan(light(fill(quiet.title!)))
+            expect(light(fill(quiet.note!))).toBeGreaterThan(light(quiet.bar.get('fill') as readonly number[]) + 150)
+            expect(light(fill(bright.note!))).toBeGreaterThan(light(fill(bright.title!)))
+            // The color is the color of the border and of the bar.
+            expect(bright.frame.get('stroke')).toEqual(bright.bar.get('fill'))
+            expect(bright.frame.get('fill')).toEqual(quiet.frame.get('fill'))
+        }))
+    })
+
+    it('gives a copy its own glyphs and its own record of the lines that are shown', async () => {
+        let copy!: ReturnType<typeof terminal>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const run = terminal(lines)
+            copy = run.clone().at(0, 300)
+            const part = copy.find('4 kB')
+            expect(part.parent).toBe(copy.lines[3])
+            expect(run.lines[3]!.children).toHaveLength(copy.lines[3]!.children.length + 2)
+            s.add(copy)
+            // The lines of the copy are shown. The entry of the first terminal does not change that.
+            s.play(run.enter(), { duration: 0.5 })
+            s.play(copy.showLines(), { duration: 1, ease: linear })
+        }))
+        expect(at(1, () => copy.lines.map(shows))).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('gives each line its text as a name for the film check, which reports a character that no font can draw', async () => {
+        const report = await checkFilm(film((s) => {
+            s.add(terminal([...lines, 'a\ue000b', '✓ ok'], { size: 40 }).at(700, 0))
+            // The left half of this panel is off the frame, with its prompt.
+            s.add(terminal([{ text: 'ls', kind: 'command' }], { size: 40 }).at(-960, 400))
+            s.wait(1)
+        }))
+        const clipped = report.diagnostics.filter((entry) => entry.code === 'film.off_canvas').map((entry) => entry.text)
+        expect(clipped).toContain('mapped 1 GiB at 0xffff7c000000')
+        expect(clipped).not.toContain('./one-byte')
+        expect(clipped).toContain('$ ')
+        expect(clipped).not.toContain('ls')
+        // The mono font has no check mark, and another font of the library has one. No font has U+E000.
+        expect(report.diagnostics.filter((entry) => entry.code === 'film.missing_glyph').map((entry) => entry.text)).toEqual(['a\ue000b'])
+    })
+
+    it('does not count or draw the spaces at the end of a line, and keeps the other spaces', async () => {
+        await compileFilm(film(() => {
+            // A line of `perf stat` ends in many spaces.
+            const perf = `             10070      context-switches${' '.repeat(54)}`
+            const width = (list: Parameters<typeof terminal>[0], options?: Parameters<typeof terminal>[1]) => terminal(list, options).frame.bounds().width
+            expect(width([perf])).toBeCloseTo(width([perf.trimEnd()]), 6)
+            expect(width(['a   ', 'bb'])).toBeCloseTo(width(['a', 'bb']), 6)
+            // Its text fits 60 columns, so it is not an error, and `clip` does not cut it.
+            expect(perf.length).toBeGreaterThan(60)
+            expect(keys(terminal([perf], { columns: 60 }).lines[0]!)).toBe('10070context-switches')
+            expect(keys(terminal([perf], { columns: 60, clip: true }).lines[0]!)).toBe('10070context-switches')
+            // A line that is too long says how long its text is, without the spaces.
+            expect(() => terminal([`${'x'.repeat(10)}    `], { columns: 5 })).toThrow(/line 0 has 10 characters, and `columns` is 5/)
+            // The end of a line is the end of its text. The spaces at the start and inside keep their columns.
+            const run = terminal(['  a  b   ', '     ', { text: 'ls   ', kind: 'command' }, 'xxxxxxxxxx'])
+            const advance = run.lines[3]!.children[1]!.get('x') - run.lines[3]!.children[0]!.get('x')
+            const columns = (line: number) => (run.p(line, 'right')[0] - run.p(line)[0]) / advance
+            expect(run.lines[0]!.children.map((glyph) => glyph.get('x') / advance)).toEqual([2, 5])
+            expect(columns(0)).toBeCloseTo(6, 6)
+            expect(columns(2)).toBeCloseTo(4, 6)
+            // A line of spaces is an empty line.
+            expect(run.lines[1]!.children).toHaveLength(0)
+            expect(columns(1)).toBe(0)
+            // A command with no text ends after the characters of its prompt.
+            const bare = terminal([{ text: '', kind: 'command' }, 'xx'])
+            expect((bare.p(0, 'right')[0] - bare.p(0)[0]) / advance).toBeCloseTo(1, 6)
+            expect(width([{ text: '', kind: 'command' }])).toBeCloseTo(width(['x']), 6)
+            // The spaces at the end are not there to find, and the error says so.
+            expect(() => terminal([perf]).find('context-switches  ')).toThrow(/no line has the text "context-switches  ".*The spaces at the end of a line are not a part of the line/)
+        }))
+    })
+
+    it('gives a character of another font one column, and refuses a glyph that is too wide for one', async () => {
+        await compileFilm(film(() => {
+            // The mono font has no check mark, no star and no vertical ellipsis. Another font of the library has them.
+            const run = terminal(['x✓x★★x⋮x', 'xxxxxxxx'], { size: 100 })
+            const glyphs = run.lines[0]!.children, plain = run.lines[1]!.children
+            const advance = plain[1]!.get('x') - plain[0]!.get('x')
+            const start = run.toWorld(...run.p(0))[0]
+            for (const column of [1, 3, 4, 6]) {
+                // The ink is in the middle of its column, and inside it.
+                const ink = glyphs[column]!.bounds()
+                expect(ink.x + ink.width / 2 - start).toBeCloseTo((column + 0.5) * advance, 6)
+                expect(ink.x - start).toBeGreaterThan(column * advance)
+                expect(ink.x + ink.width - start).toBeLessThan((column + 1) * advance)
+            }
+            // Two wide glyphs side by side do not touch.
+            expect(glyphs[4]!.bounds().x).toBeGreaterThan(right(glyphs[3]!) + 1)
+            // A glyph that is too wide for a column is drawn smaller, on the baseline of the line. A narrow one keeps its size.
+            const natural = (char: string) => text(char, { font: 'mono', size: 100 }).bounds().width
+            expect(glyphs[1]!.bounds().width).toBeLessThan(natural('✓') * 0.9)
+            expect(Math.abs(bottom(glyphs[1]!) - bottom(glyphs[0]!))).toBeLessThan(2)
+            expect(glyphs[6]!.bounds().width).toBeCloseTo(natural('⋮'), 6)
+            // The glyphs of the mono font keep their places: a box drawing line goes past its column, to join the next.
+            const box = terminal(['──'], { size: 100 }).lines[0]!.children
+            expect(right(box[0]!)).toBeGreaterThan(box[1]!.bounds().x)
+            // A glyph that is wider than 1.2 columns is refused, in a line and in the prompt, from any font.
+            expect(() => terminal(['ok', 'a ⇒ b'])).toThrow(/line 1 has the character "⇒" \(U\+21D2\). Its glyph is 1.5 columns wide, so it would cover the next character. Replace it/)
+            expect(() => terminal([{ text: 'ls', kind: 'command' }], { prompt: '⇒ ' })).toThrow(/the prompt has the character "⇒"/)
+            expect(() => terminal(['a ⟶ b'])).toThrow(/line 0 has the character "⟶" \(U\+27F6\). Its glyph is 1.9 columns wide/)
+        }))
+    })
+
+    it('is as tall as the guide says: a frame of 1080 holds 38 lines at size 18, 25 at 26 and 20 at 32', async () => {
+        await compileFilm(film(() => {
+            const height = (count: number, size: number) => terminal(Array.from({ length: count }, () => 'x'), { size }).frame.bounds().height
+            for (const [size, count] of [[18, 38], [26, 25], [32, 20]] as const) {
+                expect(height(count, size)).toBeLessThanOrEqual(1080)
+                expect(height(count + 1, size)).toBeGreaterThan(1080)
+            }
+            expect(height(10, 20)).toBeCloseTo(20 * (1.5 * 10 + 2.7), 0)
+        }))
+    })
+
+    it('says that clip cut a text off when find does not find it', async () => {
+        await compileFilm(film(() => {
+            const run = terminal([`start ${'x'.repeat(30)} needle`, `kB one kB ${'.'.repeat(30)} kB`, 'kB'], { columns: 30, clip: true })
+            expect(() => run.find('needle')).toThrow(/no line has the text "needle". find\(\) matches the exact characters, spaces included. Line 0 has it in the part that `clip` cut off/)
+            expect(() => run.find('kB', 3)).toThrow(/the text "kB" is there 3 times, so it has no occurrence 3. Occurrences count from 0. Line 1 has it in the part that `clip` cut off/)
+            // A text that no line has, cut or not, gets no such hint.
+            expect(() => run.find('nothing')).toThrow(/no line has the text "nothing". find\(\) matches the exact characters, spaces included$/)
+            expect(() => terminal(['kB', 'kB']).find('kB', 2)).toThrow(/Occurrences count from 0$/)
+        }))
+    })
+
+    it('takes its default times from the text: the characters of a command, and the lines of a print up to 3 s', async () => {
+        await compileFilm(film(() => {
+            const command = (length: number) => terminal([{ text: 'x'.repeat(length), kind: 'command' }])
+            expect(command(20).type(0).duration).toBeCloseTo(1.2, 6)
+            expect(command(2).type(0).duration).toBe(0.4)
+            const steady = command(20).type(0)
+            expect(steady.ease!(0.25)).toBe(0.25)
+            // The options of a call replace the defaults.
+            const eased = command(20).type(0, { duration: 2, ease: (value) => value * value })
+            expect(eased.duration).toBe(2)
+            expect(eased.ease!(0.5)).toBe(0.25)
+            const dump = (count: number) => terminal(Array.from({ length: count }, () => 'x'))
+            expect(dump(10).print().duration).toBeCloseTo(1.2, 6)
+            expect(dump(1).print().duration).toBe(0.3)
+            expect(dump(40).print().duration).toBe(3)
+            expect(dump(40).print({ to: 4 }).duration).toBeCloseTo(0.6, 6)
+            expect(dump(40).print({ duration: 5 }).duration).toBe(5)
+            // With no range, a print brings one block: its time is that of the longest block, a command and five lines here.
+            const first = { text: 'a', kind: 'command' as const }
+            expect(terminal([first, '1', '2', first, '1', '2', '3', '4', '5']).print().duration).toBeCloseTo(0.72, 6)
+            expect(dump(3).enter().duration).toBe(0.6)
+            expect(dump(3).showLines().duration).toBe(0.5)
+        }))
+    })
+
+    it('writes a glyph of a line as write() writes a glyph of a text: the two contours of a letter at one time', async () => {
+        let glyph!: Node
+        let letter!: Node
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            const run = terminal(['o'], { size: 100 }).at(-300, 0)
+            const plain = text('o', { font: 'mono', size: 100 }).at(300, 0)
+            glyph = run.lines[0]!.children[0]!
+            letter = plain.chars[0]!
+            s.add(run)
+            s.play(write(run.lines[0]!), write(plain), { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        // A third of the way, the outline of the outer contour and of the inner contour are both under way.
+        const outline = (node: Node) => paths(compiled, 0.3).find((op) => op.node === node)!.strokePath
+        expect(outline(letter)).toHaveLength(2)
+        expect(outline(glyph)).toHaveLength(2)
+    })
+
+    it('names each wrong input, and says what to do', async () => {
+        await compileFilm(film(() => {
+            expect(() => terminal([])).toThrow(/at least one line/)
+            expect(terminal(Array.from({ length: 40 }, () => 'x')).lines).toHaveLength(40)
+            expect(() => terminal(Array.from({ length: 41 }, () => 'x'))).toThrow(/41 lines are more than a frame can show.*Show 40 lines or fewer.*kind: 'note'/)
+            expect(() => terminal(['a\tb'])).toThrow(/line 0 has a tab. Expand each tab to spaces/)
+            expect(() => terminal(['ok', { text: 'a\nb' }])).toThrow(/line 1 has a line break. Give each line as its own item/)
+            expect(() => terminal(['\u001b[31mred'])).toThrow(/line 0 has a control character \(U\+001B\)/)
+            expect(() => terminal(['a\u007fb'])).toThrow(/line 0 has a control character \(U\+007F\)/)
+            expect(() => terminal(['x'], { prompt: '\t$ ' })).toThrow(/the prompt has a tab/)
+            expect(() => terminal(['x'], { title: 'a\nb' })).toThrow(/the title has a line break/)
+            expect(() => terminal(['x'], { note: 'a\tb' })).toThrow(/the note has a tab/)
+            expect(() => terminal(['x'], { size: 0 })).toThrow(/size is a text size, more than 0/)
+            expect(() => terminal(['x'], { columns: 2.5 })).toThrow(/columns is a whole number of characters, 1 or more/)
+            expect(() => terminal(['x'], { columns: 0 })).toThrow(/columns is a whole number of characters, 1 or more/)
+            const run = terminal(lines)
+            expect(() => run.find('')).toThrow(/find\(\) needs a text with a character to draw, and got ""/)
+            expect(() => run.find('   ')).toThrow(/find\(\) needs a text with a character to draw/)
+            expect(() => run.find('kB', 1.5)).toThrow(/occurrence is a whole number, 0 for the first match/)
+            expect(() => run.find('kB', 2)).toThrow(/the text "kB" is there 2 times, so it has no occurrence 2/)
+            expect(() => run.find('4 kB', 1)).toThrow(/the text "4 kB" is there 1 time, so/)
+            expect(() => run.find('page-faults')).toThrow(/no line has the text "page-faults"/)
+            expect(() => run.type(1)).toThrow(/line 1 is output, not a command/)
+            expect(() => run.type(5)).toThrow(/no line 5. The terminal has 5 lines, and the first is line 0/)
+            expect(() => terminal([{ text: '[...]', kind: 'note' }]).type(0)).toThrow(/line 0 is a note, not a command/)
+            expect(() => run.print({ from: 3, to: 1 })).toThrow(/print from 3 to 1. `from` and `to` are lines from 0 to 4/)
+            expect(() => run.print({ to: 5 })).toThrow(/print from 0 to 5/)
+            expect(() => run.print({ from: -1 })).toThrow(/print from -1 to 4/)
+            expect(() => run.print({ from: 0.5 })).toThrow(/print from 0.5 to 4/)
+        }))
+    })
+})
+
+describe('boundary', () => {
+    type Boundary = ReturnType<typeof boundary>
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    /** The glyphs of the number of the tally at a time, from left to right. */
+    const glyphs = (made: Boundary, time: number) => at(time, () => (made.tallyNode!.children[0]!.draw!(time) as Node).children)
+    const tally = (made: Boundary, time: number) => glyphs(made, time).map((glyph) => (glyph as unknown as { source: string }).source).join('')
+    const right = (box: { x: number; width: number }) => box.x + box.width
+    const bottom = (box: { y: number; height: number }) => box.y + box.height
+    /** The word of the tally at a time, as the tally draws it. */
+    const word = (made: Boundary, time = 0) => at(time, () => made.tallyNode!.children[1]!.draw!(time) as Node)
+    const said = (node: Node) => (node as unknown as { source: string }).source
+    /** The line of a group or a zone, such as the copy of a line in the copy of its zone. */
+    const lineIn = (holder: Node) => holder.all().find((node): node is Boundary => 'addCrossings' in node)!
+    /** The ticks that are on screen at a time, by their places, from the left. */
+    const ticksAt = (made: Boundary, time: number, list: readonly Node[] = made.ticks) => at(time, () => list.filter((tick) => shows(tick) > 0).map((tick) => tick.get('x')).sort((a, b) => a - b))
+
+    it('centers the line on its place, with the names at its left end and the tally at its right end, and none of them on the line', async () => {
+        await compileFilm(film(() => {
+            const made = boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' }).at(100, 50)
+            const line = made.line.bounds()
+            expect([line.x, right(line), line.y]).toEqual([-400, 600, 50])
+            const [above, below] = made.sides
+            const label = made.labelNode!.bounds(), over = above!.bounds(), under = below!.bounds(), count = made.tallyNode!.bounds()
+            // The ink of each name starts at the left end of the line, and the tally ends at its right end.
+            for (const box of [label, over, under]) expect(box.x).toBeCloseTo(-400, 6)
+            expect(right(count)).toBeCloseTo(600, 6)
+            // The stroke is 3 wide. One side name and the tally are over it, the other side name is under it, with room.
+            expect(bottom(over)).toBeLessThan(50 - 1.5 - 8)
+            expect(bottom(count)).toBeLessThan(50 - 1.5 - 8)
+            expect(under.y).toBeGreaterThan(50 + 1.5 + 8)
+            // The label is over the side name, and the names end before the tally starts.
+            expect(bottom(label)).toBeLessThan(over.y - 4)
+            expect(Math.max(right(label), right(over))).toBeLessThan(count.x - 40)
+
+            // With no side name over the line, the label takes the row next to the line.
+            const named = boundary({ label: 'VM wall', below: 'host' })
+            expect(named.labelNode!.get('y')).toBe(above!.get('y'))
+            expect(named.sides[0]).toBeNull()
+            expect(named.sides[1]).not.toBeNull()
+            const bare = boundary()
+            expect([bare.labelNode, bare.tallyNode, ...bare.sides]).toEqual([null, null, null, null])
+            expect(bare.line.bounds().width).toBe(1600)
+        }))
+    })
+
+    it('draws the line in its color and weight, a dashed line that ends in a full dash, and a tally with no word at the right end', async () => {
+        await compileFilm(film(() => {
+            const plain = boundary()
+            expect(plain.line.get('stroke')).toEqual(line([0, 0], [1, 0], { stroke: 'yellow' }).get('stroke'))
+            expect(plain.line.get('strokeWidth')).toBe(3)
+            expect(plain.line.get('dash')).toBeNull()
+            const wall = boundary({ width: 1000, color: 'red', weight: 6, dash: true, tally: true, label: 'VM wall' })
+            expect(wall.line.get('stroke')).toEqual(line([0, 0], [1, 0], { stroke: 'red' }).get('stroke'))
+            expect(wall.line.get('strokeWidth')).toBe(6)
+            // The label has the color of the line.
+            expect(wall.labelNode!.children[0]!.get('fill')).toEqual(wall.line.get('stroke'))
+            // A whole number of dashes and gaps, less the last gap, is the length of the line.
+            const [on, off] = wall.line.get('dash')!
+            expect((1000 + off!) / (on! + off!)).toBeCloseTo(Math.round((1000 + off!) / (on! + off!)), 6)
+            // With no word, the number itself ends at the right end of the line.
+            expect(wall.tallyNode!.children).toHaveLength(1)
+            expect(right(wall.tallyNode!.bounds())).toBeGreaterThan(500 - 4)
+            expect(right(wall.tallyNode!.bounds())).toBeLessThanOrEqual(500)
+            expect(boundary({ tally: false }).tallyNode).toBeNull()
+        }))
+    })
+
+    it('sets every text in its size and its font, and draws a heavier tick on a heavier line', async () => {
+        let thin!: Boundary, heavy!: Boundary, hair!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const sizes = (made: Boundary, time: number) => [made.labelNode!, made.sides[0]!, made.sides[1]!, word(made, time), ...glyphs(made, time)].map((part) => part.data['size'])
+            const names = { label: 'iii', above: 'iii', below: 'iii', tally: 'iii' }
+            thin = s.add(boundary({ ...names, width: 1000 }).at(0, -200))
+            heavy = s.add(boundary({ ...names, width: 1000, size: 40, weight: 8, font: 'mono' }).at(0, 200))
+            expect(sizes(thin, 0)).toEqual(Array(5).fill(26))
+            expect(sizes(heavy, 0)).toEqual(Array(5).fill(40))
+            // In the mono font, an "i" and a digit are as wide as each other. In the default font they are not.
+            // The text of a crossing is a little smaller than the names, in the font of the line. The mark follows the size too.
+            const near = thin.cross(0, { label: 'iii' }), far = heavy.cross(0, { label: 'iii' })
+            const widths = (made: Boundary, text: Node) => [made.labelNode!, made.sides[0]!, made.sides[1]!, word(made), text].map((part) => part.bounds().width / (part.data['size'] as number))
+            for (const width of widths(heavy, far.labelNode!)) expect(width).toBeGreaterThan(1.4)
+            for (const width of widths(thin, near.labelNode!)) expect(width).toBeLessThan(1)
+            expect((glyphs(heavy, 0)[0] as Node).get('px') * 2 / 40).toBeCloseTo(0.6, 2)
+            expect([near.labelNode!.data['size'], far.labelNode!.data['size']]).toEqual([26 * 0.85, 40 * 0.85])
+            expect([near.mark.bounds().width, far.mark.bounds().width]).toEqual([expect.closeTo(26 * 0.54, 6), expect.closeTo(40 * 0.54, 6)])
+            hair = s.add(boundary({ width: 600, weight: 1, tally: true }).at(0, 400))
+            s.play(near, far, hair.cross(0), { duration: 1 })
+            s.play(thin.addCrossings(99999), heavy.addCrossings(99999), hair.addCrossings(99999), { duration: 1 })
+        }))
+        // The note is smaller than the names, in the font of the line: in the mono font each of its characters is 0.6 of its size.
+        const wide = (note: Node) => at(2, () => note.bounds().width) / (note.data['size'] as number) / said(note).length
+        expect([thin.noteNode!.data['size'], heavy.noteNode!.data['size']]).toEqual([26 * 0.75, 40 * 0.75])
+        expect(wide(heavy.noteNode!)).toBeGreaterThan(0.57)
+        expect(wide(thin.noteNode!)).toBeLessThan(0.53)
+        // The ticks of a heavy line are 6 wide, so they stand 12 apart at least. The ticks of a thin line stand 6 apart.
+        const steps = (made: Boundary) => ticksAt(made, 2).slice(1).map((x, index, rest) => x - (index ? rest[index - 1]! : ticksAt(made, 2)[0]!))
+        expect(Math.min(...steps(heavy))).toBeGreaterThanOrEqual(12)
+        expect(Math.max(...steps(heavy))).toBeLessThan(14)
+        for (const made of [thin, hair]) {
+            expect(Math.min(...steps(made))).toBeGreaterThanOrEqual(6)
+            expect(Math.max(...steps(made))).toBeLessThan(7)
+        }
+        const [light, strong] = [thin.ticks[0]!, heavy.ticks[0]!]
+        expect(light.get('strokeWidth')).toBe(3)
+        expect(strong.get('strokeWidth')).toBeGreaterThan(4)
+        // The tick of a line that is thinner than 3 is as thin as the line.
+        expect(hair.ticks[0]!.get('strokeWidth')).toBe(1)
+        // The tick shows the same length on both sides of the stroke of its line.
+        const out = (tick: Node, weight: number) => at(1, () => tick.bounds().height) / 2 - weight / 2
+        expect(out(light, 3)).toBeCloseTo(26 * 0.3, 6)
+        expect(out(strong, 8)).toBeCloseTo(40 * 0.3, 6)
+    })
+
+    it('starts a mark 70 over the line by default, and takes the length and the ease of each animation from its options', async () => {
+        await compileFilm(film(() => {
+            const made = boundary({ tally: true })
+            const plain = made.cross(0)
+            expect([plain.mark.get('x'), plain.mark.get('y')]).toEqual([0, -70])
+            expect(made.cross(0, { direction: 'up', reach: 120 }).mark.get('y')).toBe(120)
+            // The reach follows the text size: 2.7 sizes, as a whole number.
+            expect(boundary({ size: 40 }).cross(0).mark.get('y')).toBe(-108)
+            expect([plain.duration, made.cross(0, { direction: 'round' }).duration, made.addCrossings(5).duration, made.clear().duration, made.enter().duration]).toEqual([0.8, 1.4, 1.6, 0.6, 1.2])
+            for (const anim of [made.cross(0, { duration: 3, ease: linear }), made.addCrossings(5, { duration: 3, ease: linear }), made.clear({ duration: 3, ease: linear }), made.enter({ duration: 3, ease: linear })]) {
+                expect([anim.duration, anim.ease]).toEqual([3, linear])
+            }
+        }))
+    })
+
+    it('gives places along the line that are clear of the names and of a tally of six digits', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' }))
+            s.play(made.addCrossings(999999), { duration: 1 })
+        }))
+        const names = Math.max(right(made.labelNode!.bounds()), right(made.sides[0]!.bounds()), right(made.sides[1]!.bounds()))
+        // The first place is farther from the names than the last place is from the tally: the text of a crossing goes to the right of its mark.
+        expect(made.x(0)).toBeGreaterThan(names + 44)
+        expect(made.x(0)).toBeLessThan(names + 60)
+        expect(tally(made, compiled.duration)).toBe('999,999')
+        const widest = at(compiled.duration, () => made.tallyNode!.bounds().x)
+        expect(made.x(1)).toBeLessThan(widest - 24)
+        expect(made.x(1)).toBeGreaterThan(widest - 48)
+        expect(made.x(0.5)).toBeCloseTo((made.x(0) + made.x(1)) / 2, 6)
+        // A line with no names and no tally keeps a small margin at each end.
+        const bare = boundary({ width: 1000 })
+        expect(bare.x(0)).toBeGreaterThan(-500 + 10)
+        expect(bare.x(0)).toBeLessThan(-500 + 40)
+        expect(bare.x(1)).toBeCloseTo(-bare.x(0), 6)
+        expect(bare.x(0.5)).toBeCloseTo(0, 6)
+    })
+
+    it('sends a mark down through the line, lights the line there, leaves a tick, and counts when the mark is on the line', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'crossings' }).at(0, 100))
+            s.wait(1)
+            crossing = made.cross(200, { reach: 80 })
+            s.play(crossing, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const mark = crossing.mark
+        // Over the line before, on it half way, under it after. The places are in the coordinates of the line.
+        expect(at(1, () => [mark.get('x'), mark.get('y')])).toEqual([200, -80])
+        expect(at(1.5, () => mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(2, () => mark.get('y'))).toBeCloseTo(80, 6)
+        // It fades in over the first fifth of its time and out over the last fifth, and is gone after.
+        expect(at(0.9, () => shows(mark))).toBe(0)
+        expect(at(1.1, () => shows(mark))).toBeCloseTo(0.5, 6)
+        expect(at(1.5, () => shows(mark))).toBe(1)
+        expect(at(1.9, () => shows(mark))).toBeCloseTo(0.5, 6)
+        expect(at(2.1, () => shows(mark))).toBe(0)
+        // The tick arrives when the mark is on the line, and stays. It is a short stroke across the line at x.
+        expect(made.ticks).toHaveLength(1)
+        const tick = made.ticks[0]!
+        expect(at(1.45, () => shows(tick))).toBe(0)
+        expect(at(2.4, () => shows(tick))).toBe(1)
+        const box = at(2.4, () => tick.bounds())
+        expect([box.x, box.width]).toEqual([200, 0])
+        expect(box.y).toBeLessThan(100 - 6)
+        expect(bottom(box)).toBeGreaterThan(100 + 6)
+        expect(box.height).toBeLessThan(30)
+        expect(tick.get('stroke')).toEqual(made.line.get('stroke'))
+        // The tally goes up at that moment, and not before.
+        expect([tally(made, 1.45), tally(made, 1.55), tally(made, 2.4)]).toEqual(['0', '1', '1'])
+        expect(made.count).toBe(1)
+        // The line lights around x while the mark passes: a wider piece of the line, which is gone after.
+        const lit = (time: number) => paths(compiled, time).filter((op) => op.stroke && op.strokeWidth > 3)
+        expect(lit(1.2)).toHaveLength(0)
+        expect(lit(1.5)).toHaveLength(1)
+        const piece = pathBounds(lit(1.5)[0]!.path)!
+        expect(piece.x).toBeLessThan(960 + 200 - 20)
+        expect(right(piece)).toBeGreaterThan(960 + 200 + 20)
+        expect(piece.width).toBeLessThan(120)
+        expect(piece.y).toBeCloseTo(540 + 100, 6)
+        expect(lit(1.95)).toHaveLength(0)
+        // The light comes up before the mark is on the line, and goes down after.
+        expect(lit(1.44)[0]!.strokeAlpha).toBeCloseTo(0.5, 6)
+        expect(lit(1.675)[0]!.strokeAlpha).toBeCloseTo(0.5, 6)
+        // The mark is drawn over the tick, the tick over the light, and the light over the line.
+        const order = paths(compiled, 1.6).map((op) => op.node)
+        const drawn = [made.line, lit(1.6)[0]!.node, tick, mark].map((node) => order.indexOf(node as Node))
+        expect(drawn[0]).toBe(0)
+        expect(drawn).toEqual([...drawn].sort((a, b) => a - b))
+        expect(drawn[3]).toBe(order.length - 1)
+    })
+
+    it('lights a dashed line in its dashes, in the color of the crossing', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, dash: true, weight: 4 }))
+            s.play(made.cross(123, { color: 'teal' }), { duration: 1, ease: linear })
+        }))
+        const piece = paths(compiled, 0.5).find((op) => op.strokeWidth > 4)!
+        const [on, off] = made.line.get('dash')!
+        expect(piece.dash).toEqual([on, off])
+        // The piece starts part of the way into a dash or a gap. From there, its dashes are at the places of the dashes of the line.
+        const start = pathBounds(piece.path)!.x - (960 - 500)
+        const periods = (start - piece.dashOffset) / (on! + off!)
+        expect(periods).toBeCloseTo(Math.round(periods), 6)
+        expect(piece.stroke).toEqual(made.ticks[0]!.get('stroke'))
+        expect(piece.stroke).not.toEqual(made.line.get('stroke'))
+    })
+
+    it('sends a mark up from under the line, and a round trip down and back to its start, which counts once', async () => {
+        let made!: Boundary, up!: ReturnType<Boundary['cross']>, round!: ReturnType<Boundary['cross']>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            up = made.cross(-100, { direction: 'up', reach: 60 })
+            round = made.cross(100, { direction: 'round', reach: 60 })
+            s.play(up, { duration: 1, ease: linear })
+            s.play(round, { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(at(0, () => up.mark.get('y'))).toBe(60)
+        expect(at(0.5, () => up.mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(1, () => up.mark.get('y'))).toBeCloseTo(-60, 6)
+        expect([tally(made, 0.45), tally(made, 0.55)]).toEqual(['0', '1'])
+        // The round trip is on the line at 1.5 and at 2.5, and at the far side between them.
+        expect(at(1, () => round.mark.get('y'))).toBe(-60)
+        expect(at(1.5, () => round.mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(2, () => round.mark.get('y'))).toBeCloseTo(60, 6)
+        expect(at(2.5, () => round.mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(3, () => round.mark.get('y'))).toBeCloseTo(-60, 6)
+        expect([tally(made, 1.45), tally(made, 1.55), tally(made, 2.45), tally(made, 2.55), tally(made, 3.4)]).toEqual(['1', '2', '2', '2', '2'])
+        expect(made.ticks.map((tick) => tick.get('x'))).toEqual([-100, 100])
+        expect(at(1.55, () => shows(made.ticks[1]!))).toBeGreaterThan(0)
+        // The line lights on the way down and on the way back.
+        const lit = (time: number) => paths(compiled, time).filter((op) => op.stroke && op.strokeWidth > 3).length
+        expect([lit(1.5), lit(2), lit(2.5)]).toEqual([1, 0, 1])
+    })
+
+    it('counts at the moment the mark is on the line when the ease is not symmetric', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            crossing = made.cross(0)
+            // With this ease the mark is half way after 0.7071 of the time.
+            s.play(crossing, { duration: 1, ease: (t) => t * t })
+        }))
+        const pass = Math.SQRT1_2
+        expect(at(pass, () => crossing.mark.get('y'))).toBeCloseTo(0, 4)
+        expect([tally(made, pass - 0.01), tally(made, pass + 0.01)]).toEqual(['0', '1'])
+        expect(at(pass - 0.01, () => shows(made.ticks[0]!))).toBe(0)
+        expect(at(pass + 0.1, () => shows(made.ticks[0]!))).toBeGreaterThan(0)
+    })
+
+    it('counts a crossing by its `counts`, and gives the mark and the tick the color of the crossing', async () => {
+        let made!: Boundary, batch!: ReturnType<Boundary['cross']>, free!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            batch = made.cross(-100, { counts: 32, color: 'teal' })
+            free = made.cross(100, { counts: 0 })
+            s.play(seq(batch, free), { duration: 2 })
+        }))
+        expect(made.count).toBe(32)
+        expect([tally(made, 0.4), tally(made, 0.6), tally(made, 2)]).toEqual(['0', '32', '32'])
+        // A crossing that counts 0 still leaves its tick.
+        expect(made.ticks).toHaveLength(2)
+        expect(made.ticks[0]!.get('stroke')).toEqual(batch.mark.get('fill'))
+        expect(made.ticks[0]!.get('stroke')).not.toEqual(made.line.get('stroke'))
+        expect(made.ticks[1]!.get('stroke')).toEqual(made.line.get('stroke'))
+        expect(free.mark.get('fill')).not.toEqual(made.line.get('stroke'))
+    })
+
+    it('keeps the text of a crossing where the mark starts, on the side that is clear of the tally, and fades it with the mark', async () => {
+        let made!: Boundary, near!: ReturnType<Boundary['cross']>, far!: ReturnType<Boundary['cross']>, bare!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls' }))
+            near = made.cross(made.x(0.3), { label: 'read()', reach: 80 })
+            far = made.cross(made.x(1), { label: 'read()', direction: 'up' })
+            bare = made.cross(made.x(0.6))
+            s.wait(1)
+            s.play(near, far, bare, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(bare.labelNode).toBeNull()
+        const text = near.labelNode!
+        // At the start the text is beside the mark, at its height. It does not travel: the mark does.
+        const start = at(1.2, () => text.bounds())
+        expect(start.x).toBeGreaterThan(made.x(0.3) + 8)
+        expect(start.x).toBeLessThan(made.x(0.3) + 30)
+        expect(start.y + start.height / 2).toBeGreaterThan(-80 - 8)
+        expect(start.y + start.height / 2).toBeLessThan(-80 + 8)
+        expect(at(1.8, () => text.bounds())).toEqual(start)
+        for (const time of [0.9, 1.1, 1.5, 1.9, 2.1]) expect(at(time, () => shows(text))).toBe(at(time, () => shows(near.mark)))
+        // At the last place of the line, the text goes to the left of the mark, away from the tally. An 'up' crossing starts under the line.
+        const left = at(1.5, () => far.labelNode!.bounds())
+        expect(right(left)).toBeLessThan(made.x(1) - 8)
+        expect(left.y).toBeGreaterThan(0)
+        expect(right(left)).toBeLessThan(at(1.5, () => made.tallyNode!.bounds().x))
+    })
+
+    it('chains eight crossings in one lagged: eight ticks in order, and a tally of 8', async () => {
+        let made!: Boundary
+        const places = Array.from({ length: 8 }, (_, index) => -350 + index * 100)
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls' }))
+            s.wait(1)
+            // To make a crossing counts nothing. The line counts it when the crossing is played.
+            const crossings = places.map((x) => made.cross(x))
+            expect([made.count, made.ticks.length]).toEqual([0, 0])
+            // With a lag of 0.5, each crossing has 1 s and starts 0.5 s after the one before: the crossings overlap.
+            s.play(lagged(crossings, { lag: 0.5 }), { duration: 4.5, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(made.ticks.map((tick) => tick.get('x'))).toEqual(places)
+        expect(made.count).toBe(8)
+        // Crossing k is on the line at 1.5 + 0.5 k. Just after that, k + 1 ticks show and the tally is k + 1.
+        places.forEach((_, index) => {
+            const time = 1.5 + index * 0.5 + 0.1
+            expect(at(time, () => made.ticks.filter((tick) => shows(tick) > 0)).length, `ticks at ${time}`).toBe(index + 1)
+            expect(tally(made, time), `tally at ${time}`).toBe(String(index + 1))
+        })
+        expect(tally(made, 1.4)).toBe('0')
+        expectPure(compiled, [1.4, 2.05, 3.3, 4.6, 6])
+    })
+
+    it('runs the tally up through whole numbers to the exact number, with a separator, and keeps the word and the digits at their places', async () => {
+        let made!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls' }))
+            s.wait(1)
+            s.play(made.addCrossings(10000), { duration: 2, ease: linear })
+            s.play(made.addCrossings(2345), { duration: 1, ease: linear })
+        }))
+        expect(made.count).toBe(12345)
+        expect([tally(made, 1), tally(made, 2), tally(made, 3), tally(made, 4)]).toEqual(['0', '5,000', '10,000', '12,345'])
+        let before = 0
+        for (const time of [1.013, 1.37, 1.999, 2.5021, 2.9999, 3.3333]) {
+            const shown = tally(made, time)
+            expect(shown, `at ${time}`).toMatch(/^\d{1,3}(,\d{3})*$/)
+            const value = Number(shown.replace(/,/g, ''))
+            expect(value).toBeGreaterThan(before)
+            before = value
+        }
+        // The word does not move while the number grows.
+        const word = made.tallyNode!.children[1]!
+        expect(at(4, () => word.bounds())).toEqual(at(1, () => word.bounds()))
+        // The number ends at one x, just before the word, and grows to the left.
+        const number = (time: number) => at(time, () => made.tallyNode!.children[0]!.bounds())
+        expect(right(number(1))).toBeCloseTo(right(number(3)), 6)
+        expect(right(number(1))).toBeLessThan(at(1, () => word.bounds().x) - 3)
+        expect(number(3).x).toBeLessThan(number(2).x)
+        expect(number(2).x).toBeLessThan(number(1).x)
+        // Each digit keeps its place, whatever the digit is: 1,111 and 8,888 take the same room.
+        const places = (time: number) => glyphs(made, time).map((glyph) => glyph.get('x')).reverse()
+        expect(tally(made, 1.2222)).toBe('1,111')
+        expect(tally(made, 2.7776)).toBe('8,888')
+        expect(places(1.2222)).toEqual(places(2.7776))
+        expect(places(4).slice(0, 5)).toEqual(places(1.2222))
+        expect(places(1)[0]).toBe(places(4)[0])
+    })
+
+    it('never shows less than 0 or more than the count, with an ease that goes past its ends', async () => {
+        let made!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            s.play(made.addCrossings(100), { duration: 1, ease: (t) => 3 * t - 1 })
+        }))
+        expect([tally(made, 0.2), tally(made, 0.5), tally(made, 0.8), tally(made, 1)]).toEqual(['0', '50', '100', '100'])
+    })
+
+    it('clears the ticks and the tally, and counts the next round from 0', async () => {
+        let made!: Boundary, old!: Node[]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'crossings' }))
+            s.play(lagged([-100, 0, 100].map((x) => made.cross(x))), { duration: 1 })
+            s.play(made.addCrossings(40), { duration: 1 })
+            old = [...made.ticks]
+            expect(made.count).toBe(43)
+            s.play(made.clear(), { duration: 1, ease: linear })
+            expect(made.ticks).toHaveLength(0)
+            expect(made.count).toBe(0)
+            s.wait(0.5)
+            s.play(made.cross(200), { duration: 1 })
+            s.wait(0.5)
+        }))
+        expect(tally(made, 2)).toBe('43')
+        // Half way through the clear, the ticks are half gone and the tally is a whole number on its way down.
+        expect(old).toHaveLength(43)
+        expect(at(2.5, () => old.map(shows))).toEqual(Array(43).fill(0.5))
+        expect(tally(made, 2.5)).toBe('22')
+        expect(at(3.2, () => old.map(shows))).toEqual(Array(43).fill(0))
+        expect(tally(made, 3.2)).toBe('0')
+        // The crossing after the clear starts from 0, and it is the only tick.
+        expect(tally(made, 5)).toBe('1')
+        expect(made.count).toBe(1)
+        expect(made.ticks).toHaveLength(1)
+        expect(made.ticks[0]!.get('x')).toBe(200)
+        expect(at(5, () => [shows(made.ticks[0]!), ...old.map(shows)])).toEqual([1, ...Array(43).fill(0)])
+        expectPure(compiled, [0.7, 1.5, 2.5, 3.2, 4.1, 5])
+    })
+
+    it('takes away a tick and a count that arrive after the end of a clear that was scheduled after their crossing', async () => {
+        let made!: Boundary, lost!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            // An earlier round, from 0 to 1 s: its tick arrived long before the clear of the next round.
+            s.play(seq(made.cross(-200), made.clear()), { duration: 1, ease: linear })
+            // The crossing is scheduled first, and its mark is on the line at 2 s. The clear is scheduled second, and ends at 1.5 s.
+            const crossing = made.cross(0, { duration: 2 })
+            s.play({ ...crossing, schedule: (ctx) => { crossing.schedule(ctx); lost = made.ticks[0]! } }, made.clear({ duration: 0.5 }), { ease: linear })
+            expect([made.count, made.ticks.length]).toEqual([0, 0])
+            // In the other order, the clear has nothing to take away, and the crossing counts.
+            s.play(made.clear({ duration: 0.5 }), made.cross(100, { duration: 2 }), { ease: linear })
+            s.wait(0.5)
+        }))
+        // The tick of the second round does not come back after the clear that took it away.
+        expect(at(2.5, () => shows(lost))).toBe(0)
+        expect(at(3, () => shows(lost))).toBe(0)
+        expect([tally(made, 1.9), tally(made, 2.5), tally(made, 3.9)]).toEqual(['0', '0', '0'])
+        expect([made.count, made.ticks.length]).toEqual([1, 1])
+        expect(at(5, () => shows(made.ticks[0]!))).toBe(1)
+        expect([tally(made, 4.1), tally(made, 5)]).toEqual(['1', '1'])
+    })
+
+    it('enters with the line first, from the left, then the names and the tally, and a line that waits its turn in a lagged does not show', async () => {
+        let first!: Boundary, second!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            first = boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' }).at(0, -150)
+            second = boundary({ width: 1000, label: 'VM wall', tally: 'VM exits' }).at(0, 150)
+            s.wait(0.5)
+            // With a lag of 1, each line has 1 s: the first from 0.5, the second from 1.5.
+            s.play(lagged([first.enter(), second.enter()], { lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.2).ops).toHaveLength(0)
+        const parts = (made: Boundary) => [made.labelNode, ...made.sides, made.tallyNode].filter((part): part is Node => part !== null)
+        // After 0.3 s the line is half drawn, from its left end, and no name shows. The other line is not on screen.
+        const drawn = paths(compiled, 0.8)
+        expect(drawn).toHaveLength(1)
+        const stroke = pathBounds(drawn[0]!.strokePath)!
+        expect(stroke.x).toBeCloseTo(960 - 500, 6)
+        expect(stroke.width).toBeCloseTo(500, 6)
+        expect(at(0.8, () => parts(first).map(shows))).toEqual([0, 0, 0, 0])
+        // After 0.6 s the line is whole, and the names and the tally arrive.
+        expect(at(1.1, () => first.line.get('trimTo'))).toBe(1)
+        expect(at(1.3, () => parts(first).map(shows))).toEqual(Array(4).fill(expect.closeTo(0.5, 6)))
+        expect(at(1.4, () => shows(second))).toBe(0)
+        expect(at(1.6, () => shows(second))).toBe(1)
+        expect(at(2.6, () => [...parts(first), ...parts(second)].map(shows))).toEqual(Array(6).fill(1))
+        expect(at(2.6, () => second.line.get('trimTo'))).toBe(1)
+    })
+
+    it('comes on stage with its first crossing or its first count, at its turn in a lagged, with the group that holds it', async () => {
+        let first!: Boundary, second!: Boundary, third!: Boundary, hidden!: Boundary, pair!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            first = boundary({ width: 600, tally: true }).at(0, -300)
+            second = boundary({ width: 600, tally: true }).at(0, -100)
+            third = boundary({ width: 600, tally: true }).at(0, 100)
+            pair = group(third, rect(10, 10).at(0, 160))
+            hidden = s.add(boundary({ width: 600 }).at(0, 300)).hide()
+            s.wait(1)
+            // With a lag of 1, each has 1 s: the first from 1, the second from 2, the third from 3, the last from 4.
+            s.play(lagged([first.addCrossings(5), second.cross(0), third.addCrossings(5), hidden.enter()], { lag: 1 }), { duration: 4 })
+        }))
+        expect(at(1.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 0, 0, 0])
+        expect(at(2.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 1, 0, 0])
+        expect(at(3.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 1, 1, 0])
+        expect(at(4.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 1, 1, 1])
+        // The line stays in its group, and the group comes with it.
+        expect(third.parent).toBe(pair)
+        expect(pair.mounted).toBe(true)
+    })
+
+    it('gives a copy its own ticks and its own tally', async () => {
+        let made!: Boundary, copy!: Boundary, fresh!: Boundary, twin!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }).at(0, -100))
+            fresh = s.add(boundary({ width: 1000, tally: true }).at(0, 200))
+            // The line has a clear in its past. The copy starts from the count after it.
+            s.play(seq(made.cross(50), made.clear(), made.cross(0)), { duration: 1 })
+            copy = s.add(made.clone().at(0, 100))
+            twin = fresh.clone()
+            expect(copy.count).toBe(1)
+            expect(copy.ticks).toHaveLength(1)
+            expect(copy.ticks[0]).not.toBe(made.ticks[0])
+            expect(copy.children).toContain(copy.ticks[0])
+            s.play(copy.addCrossings(5), copy.cross(100), twin.cross(0), { duration: 1 })
+            // A copy of a line with no tick does not get the ticks that its source gets after.
+            const shadow = fresh.clone()
+            s.play(fresh.addCrossings(3), { duration: 1 })
+            expect([fresh.ticks.length, shadow.ticks.length, shadow.count]).toEqual([3, 0, 0])
+        }))
+        expect([made.count, copy.count, fresh.count, twin.count]).toEqual([1, 7, 3, 1])
+        // The copy has its first tick, five ticks for the five crossings with no mark, and the tick of its own crossing.
+        expect([made.ticks.length, copy.ticks.length, fresh.ticks.length, twin.ticks.length]).toEqual([1, 7, 3, 1])
+        expect([tally(made, compiled.duration), tally(copy, compiled.duration), tally(fresh, compiled.duration)]).toEqual(['1', '7', '3'])
+    })
+
+    it('gives a copy that is made with its group or its zone its own tally and its own ticks', async () => {
+        for (const hold of [(inner: Boundary) => group(inner, rect(10, 10).at(0, 120)), (inner: Boundary) => zone(inner, { title: 'guest' })]) {
+            let first!: Boundary, second!: Boundary, late!: Boundary
+            await compileFilm(film({ fps: 20 }, (s) => {
+                first = boundary({ width: 700, tally: true })
+                const holder = s.add(hold(first).at(0, -300))
+                // A copy of the holder, made before any crossing. Then only the first line is crossed.
+                second = lineIn(s.add(holder.clone().at(0, 0)))
+                expect(second).not.toBe(first)
+                s.play(lagged([-100, 0].map((x) => first.cross(x))), { duration: 1 })
+                expect([first.count, second.count, first.ticks.length, second.ticks.length]).toEqual([2, 0, 2, 0])
+                s.play(second.cross(100), { duration: 1 })
+                expect([first.count, second.count, first.ticks.length, second.ticks.length]).toEqual([2, 1, 2, 1])
+                // A copy that is made later starts from what the first line shows then.
+                late = lineIn(s.add(holder.clone().at(0, 300)))
+                expect([late.count, late.ticks.length]).toEqual([2, 2])
+                s.play(first.addCrossings(9998), { duration: 1 })
+                s.play(first.clear(), { duration: 1 })
+                expect([first.count, second.count, late.count]).toEqual([0, 1, 2])
+                s.play(late.cross(200), { duration: 1 })
+            }))
+            // What each line shows is its own count, at each time.
+            expect([tally(first, 2), tally(second, 2), tally(late, 2)]).toEqual(['2', '1', '2'])
+            expect([tally(first, 3), tally(second, 3), tally(late, 3)]).toEqual(['10,000', '1', '2'])
+            expect([tally(first, 5), tally(second, 5), tally(late, 5)]).toEqual(['0', '1', '3'])
+            expect(ticksAt(second, 5)).toEqual([100])
+            expect(ticksAt(late, 5)).toEqual([-100, 0, 200])
+            expect(ticksAt(first, 5)).toEqual([])
+        }
+    })
+
+    it('lets a copy clear its ticks after its source has cleared its own', async () => {
+        let made!: Boundary, copy!: Boundary, kept!: readonly Node[]
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }).at(0, -100))
+            s.play(lagged([-100, 0, 100].map((x) => made.cross(x))), { duration: 1 })
+            copy = s.add(made.clone().at(0, 100))
+            kept = copy.ticks
+            s.play(made.clear(), { duration: 1 })
+            s.play(copy.clear(), { duration: 1, ease: linear })
+        }))
+        // The copy keeps the arrival times of its own ticks, so its clear fades them as the clear of the source did.
+        expect(kept).toHaveLength(3)
+        expect(at(2, () => kept.map(shows))).toEqual([1, 1, 1])
+        expect(at(2.5, () => kept.map(shows))).toEqual([0.5, 0.5, 0.5])
+        expect(at(3, () => kept.map(shows))).toEqual([0, 0, 0])
+        expect(tally(copy, 3)).toBe('0')
+    })
+
+    it('fills the line with one tick for each crossing that has no mark, from the left, while the number runs', async () => {
+        let made!: Boundary, eased!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, below: 'kernel', tally: ['crossing', 'crossings'] }))
+            eased = s.add(boundary({ width: 1000, tally: true }).at(0, 200))
+            s.wait(1)
+            // The other line gets the tick of a crossing at its left end, which is before its first place.
+            s.play(made.addCrossings(40), eased.cross(-500, { counts: 0 }), { duration: 2, ease: linear })
+            // From 3 to 5, with an ease that has done half of its way after 0.7071 of the time: at 4.4142.
+            s.play(eased.addCrossings(40), { duration: 2, ease: (t) => t * t })
+        }))
+        // A tick arrives when the number has run its share: half of the ticks with half of the count.
+        expect([ticksAt(eased, 4.42).length - 1, tally(eased, 4.42)]).toEqual([20, '20'])
+        // The tick at the end of the line is not a place of the fill: the fill starts at the first place.
+        expect(ticksAt(eased, 5).slice(0, 2)).toEqual([-500, expect.closeTo(eased.x(0), 6)])
+        for (const tick of made.ticks) expect(tick.get('stroke')).toEqual(made.line.get('stroke'))
+        const places = ticksAt(made, 3)
+        expect(places).toHaveLength(40)
+        // The ticks start at the first place and stand as near to each other as ticks can and still read as ticks.
+        expect(places[0]).toBeCloseTo(made.x(0), 6)
+        const steps = places.slice(1).map((x, index) => x - places[index]!)
+        expect(Math.min(...steps)).toBeGreaterThanOrEqual(6)
+        expect(Math.max(...steps)).toBeLessThan(7)
+        // Half way, the left half of the ticks is on the line, and the tally is 20.
+        expect(ticksAt(made, 2)).toEqual(places.slice(0, 20))
+        expect(tally(made, 2)).toBe('20')
+        expect(ticksAt(made, 1)).toEqual([])
+        // One tick is one crossing, so no note says what a tick stands for.
+        expect(made.noteNode).toBeNull()
+    })
+
+    it('fills the whole line for a count that is larger than the line, and says under the line what one tick stands for', async () => {
+        let made!: Boundary, note!: Node, old!: readonly Node[]
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] }))
+            s.play(lagged([0, 0.37, 1].map((part) => made.cross(made.x(part)))), { duration: 1 })
+            expect(made.noteNode).toBeNull()
+            s.play(made.addCrossings(9997), { duration: 2, ease: linear })
+            note = made.noteNode!
+            old = made.ticks
+            s.wait(1)
+            s.play(made.clear(), { duration: 1 })
+            expect([made.ticks.length, made.noteNode]).toEqual([0, null])
+            s.play(made.addCrossings(5), { duration: 1 })
+            // The note needs room beside the name of the side under the line. The line measures that room in its own coordinates, wherever it is on the stage.
+            const moved = s.add(boundary({ width: 560, above: 'user space', below: 'kernel', tally: 'system calls' }).at(680, -400))
+            expect(() => s.play(moved.addCrossings(313))).not.toThrow()
+            const tight = s.add(boundary({ width: 680, below: 'the kernel of the host, and its KVM module', tally: true, tallyDigits: 3 }).at(-600, 300))
+            expect(() => s.play(tight.addCrossings(999))).toThrow(/a line of 680 has no room under it for the note "each tick: about 250" beside the name of the side. Make the line longer, or the name shorter/)
+            // A free part of 3, which is less than the room of two ticks, has one place. So a large count is one tick, and the note says so.
+            const names = { label: 'system call line', tally: 'system calls' }
+            const probe = boundary({ ...names, width: 600 })
+            const short = s.add(boundary({ ...names, width: 600 - (probe.x(1) - probe.x(0)) + 3 }).at(0, 450))
+            expect(short.x(1) - short.x(0)).toBeCloseTo(3, 6)
+            s.play(short.addCrossings(50))
+            expect(short.ticks.map((tick) => tick.get('x'))).toEqual([short.x(0)])
+            expect(said(short.noteNode!)).toBe('each tick: about 50')
+        }))
+        const places = ticksAt(made, 3, old)
+        expect(places).toHaveLength(old.length)
+        // The line is full: ticks from the first place to the last, none nearer than 6, and no break around the tick of a crossing.
+        expect(places[0]).toBeCloseTo(made.x(0), 6)
+        expect(places[places.length - 1]).toBeCloseTo(made.x(1), 6)
+        expect(places).toContain(made.x(0.37))
+        const steps = places.slice(1).map((x, index) => x - places[index]!)
+        expect(Math.min(...steps)).toBeGreaterThanOrEqual(6)
+        expect(Math.max(...steps)).toBeLessThan(7)
+        // The note says what one tick stands for, and the ticks times that number is the count, within a twentieth.
+        expect(said(note)).toMatch(/^each tick: about \d+$/)
+        const each = Number(said(note).replace(/\D/g, ''))
+        expect(Math.abs(each * places.length - 10000)).toBeLessThan(500)
+        // It is small, under the line at its right end, and clear of the name of the side under the line.
+        const box = at(3.5, () => note.bounds())
+        expect(note.data['size']).toBeLessThan(26)
+        expect(right(box)).toBeCloseTo(500, 6)
+        expect(box.y).toBeGreaterThan(1.5 + 6)
+        expect(box.x).toBeGreaterThan(right(made.sides[1]!.bounds()) + 15)
+        // With the tally at the end of the line, the note is next to the line, on the row of the name under it.
+        expect(bottom(box)).toBeCloseTo(bottom(made.sides[1]!.bounds()), 0)
+        // It arrives in the first part of the run, from 1 to 1.6, so a viewer can read it while the number runs. A clear takes it away with the ticks.
+        expect([1, 1.3, 1.6, 3, 5.1].map((time) => at(time, () => shows(note)))).toEqual([0, expect.closeTo(0.5, 6), 1, 1, 0])
+        expect(ticksAt(made, 5.1, old)).toEqual([])
+        // The next round has one tick for each crossing again, from the first place, and no note.
+        expect(ticksAt(made, 6)).toHaveLength(5)
+        expect(ticksAt(made, 6)[0]).toBeCloseTo(made.x(0), 6)
+        expect(made.noteNode).toBeNull()
+    })
+
+    it('changes the note when the count of a full line grows, and the old note leaves before the new one comes', async () => {
+        let made!: Boundary, first!: Node, second!: Node, third!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, below: 'kernel', tally: true }))
+            s.play(made.addCrossings(10000), { duration: 1, ease: linear })
+            first = made.noteNode!
+            const ticks = made.ticks.length
+            // With no tick of a crossing on the line, the ticks go from the first place to the last.
+            expect([made.ticks[0]!.get('x'), made.ticks[ticks - 1]!.get('x')]).toEqual([expect.closeTo(made.x(0), 6), expect.closeTo(made.x(1), 6)])
+            // The line is full. After the second run, from 1 to 2, the same ticks stand for two times as much.
+            s.play(made.addCrossings(10000), { duration: 1, ease: linear })
+            second = made.noteNode!
+            expect(made.ticks).toHaveLength(ticks)
+            // After a clear, the next full round has its note again.
+            s.play(made.clear(), { duration: 1 })
+            s.play(made.addCrossings(10000), { duration: 1, ease: linear })
+            third = made.noteNode!
+            // A count that is a little more than the places of the line has no note: "about 1" says nothing.
+            const near = s.add(boundary({ width: 1000, below: 'kernel', tally: true }).at(0, 200))
+            s.play(near.addCrossings(ticks + 5))
+            expect([near.ticks.length, near.noteNode]).toEqual([ticks, null])
+        }))
+        expect(said(third)).toBe(said(first))
+        expect(at(4, () => [shows(second), shows(third)])).toEqual([0, 1])
+        expect(second).not.toBe(first)
+        const each = (note: Node) => Number(said(note).replace(/\D/g, ''))
+        expect(each(second) / each(first)).toBeCloseTo(2, 1)
+        // The old note leaves in the first 0.3 s of the run, and the new one comes in the next 0.3 s. So the two are never on each other.
+        expect([1, 1.15, 1.3, 1.45, 1.6].map((time) => at(time, () => [shows(first), shows(second)]))).toEqual([[1, 0], [expect.closeTo(0.5, 6), 0], [0, 0], [0, expect.closeTo(0.5, 6)], [0, 1]])
+    })
+
+    it('gives lines with one tickScale ticks that compare as their counts do', async () => {
+        const shared = { width: 560, above: 'user space', below: 'kernel', tally: ['system call', 'system calls'], tallySide: 'over', tickScale: 200 } as const
+        let lines!: Boundary[], low!: ReturnType<Boundary['cross']>, room!: { x: number; y: number; width: number; height: number }, early!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            lines = [boundary({ ...shared, label: 'read()' }).at(-620, 0), boundary({ ...shared, label: 'batches of 32' }).at(0, 0), boundary({ ...shared, label: 'polling' }).at(620, 0)]
+            const [reads, batches, polling] = lines as [Boundary, Boundary, Boundary]
+            s.add(reads, batches, polling)
+            room = polling.bounds()
+            low = polling.cross(polling.x(1), { direction: 'up', label: 'irq' })
+            s.play(lagged([0, 0.5, 1].map((part) => reads.cross(reads.x(part)))), { duration: 1 })
+            // With a scale of 200, three crossings are less than one tick more: the first leaves a tick, the next two do not.
+            expect([reads.count, reads.ticks.length]).toEqual([3, 1])
+            // One tick for three crossings: the note comes with the crossings, and the run that follows keeps it.
+            early = reads.noteNode!
+            expect(said(early)).toBe('each tick: about 200')
+            s.play(reads.addCrossings(9997), seq(batches.cross(batches.x(0)), batches.cross(batches.x(1))), polling.cross(polling.x(0.5)), { duration: 1 })
+            s.play(batches.addCrossings(311), { duration: 1 })
+            // The rounds of one line compare the same way: 50 ticks for 10,000, then 2 ticks for 313 after a clear.
+            const rounds = s.add(boundary({ ...shared }).at(0, 300))
+            s.play(rounds.addCrossings(10000), { duration: 1 })
+            expect(rounds.ticks).toHaveLength(50)
+            s.play(rounds.clear(), { duration: 1 })
+            s.play(rounds.addCrossings(313), { duration: 1 })
+            expect([rounds.ticks.length, said(rounds.noteNode!)]).toEqual([2, 'each tick: about 200'])
+            // A count that needs more ticks than the line has room for is an error that gives the least scale.
+            const tight = s.add(boundary({ width: 560, tally: true, tickScale: 40, below: 'kernel' }).at(0, 300))
+            expect(() => s.play(tight.addCrossings(10000))).toThrow(/with a tickScale of 40, a count of 10,000 is 250 ticks, and the line has room for \d+. Give a tickScale of \d+ or more, or a longer line/)
+            expect(() => boundary({ tickScale: 0.5 })).toThrow(/tickScale is 0.5. Give the number of crossings that one tick stands for, 1 or more/)
+        }))
+        expect(lines.map((made) => made.count)).toEqual([10000, 313, 1])
+        // 10,000, 313 and 1 crossings at 200 for each tick: 50 ticks, 2 ticks and 1 tick.
+        expect(lines.map((made) => ticksAt(made, 3).length)).toEqual([50, 2, 1])
+        // Where the ticks stand for more than they are, the note says so, with the same words on each line.
+        expect(lines.map((made) => (made.noteNode ? said(made.noteNode) : null))).toEqual(['each tick: about 200', 'each tick: about 200', null])
+        expect(lines.slice(0, 2).map((made) => at(3, () => shows(made.noteNode!)))).toEqual([1, 1])
+        expect(lines[0]!.noteNode).toBe(early)
+        // With the tally over the line, marks cross up to its right end. So the note is at that end, under the way of a mark and of its text.
+        const note = at(3, () => lines[0]!.noteNode!.bounds())
+        expect(right(note)).toBeCloseTo(-620 + 280, 6)
+        expect(note.y).toBeGreaterThan(bottom(low.mark.bounds()) + 8)
+        expect(note.y).toBeGreaterThan(bottom(low.labelNode!.bounds()) + 6)
+        // A line of this kind keeps room for the note from the start, so a zone around it holds the note that comes later.
+        expect(bottom(room)).toBeGreaterThanOrEqual(bottom(note))
+        expect(bottom(room)).toBeLessThan(bottom(note) + 6)
+    })
+
+    it('says the word for one when the tally is 1, and the word for more for any other count', async () => {
+        let made!: Boundary, runs!: Boundary, single!: Boundary
+        const pairs: Boundary[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: ['system call', 'system calls'] }))
+            s.play(made.cross(0), { duration: 1, ease: linear })
+            s.play(made.cross(100), { duration: 1, ease: linear })
+            // From 2 to 3 the number runs from 0 to 313, and from 3 to 4 back to 0. From 4 to 5 it goes from 0 to 1, and from 5 to 6 back to 0.
+            runs = s.add(boundary({ width: 1000, tally: ['system call', 'system calls'] }).at(0, 200))
+            single = s.add(boundary({ width: 1000, tally: ['system call', 'system calls'] }).at(0, 400))
+            s.play(runs.addCrossings(313), single.addCrossings(1), { duration: 1, ease: linear })
+            s.play(runs.clear(), { duration: 1, ease: linear })
+            s.play(runs.addCrossings(1), { duration: 1, ease: linear })
+            s.play(runs.clear(), { duration: 1, ease: linear })
+            // Two crossings on a new line, one after the other. Each mark is on the line at the middle of its time, so the tally is 1 for `seconds`.
+            const twice = (words: readonly [string, string], seconds: number) => {
+                const line = s.add(boundary({ width: 1000, tally: words }))
+                s.play(line.cross(-100), { duration: seconds, ease: linear })
+                s.play(line.cross(100), { duration: seconds, ease: linear })
+                pairs.push(line)
+            }
+            // From 6: the tally is 1 from 6.2 to 6.6, then on the next lines from 7.06 to 7.58, and from 8.12 to 8.68.
+            for (const seconds of [0.4, 0.52, 0.56]) twice(['system call', 'system calls'], seconds)
+            // From 8.96, with a short word: the tally is 1 from 9.16 to 9.56, and on the last line from 10.02 to 10.54.
+            for (const seconds of [0.4, 0.52]) twice(['hit', 'hits'], seconds)
+            // One word is the word for every count. An empty word, or a pair of empty words, is the number alone, at the right end.
+            expect([0.2, 0.8].map((time) => said(word(s.add(boundary({ tally: 'calls' })), time)))).toEqual(['calls', 'calls'])
+            for (const empty of ['', '  ', ['', ''] as const]) {
+                const alone = boundary({ width: 1000, tally: empty })
+                expect(alone.tallyNode!.children).toHaveLength(1)
+                expect(right(alone.tallyNode!.bounds())).toBeGreaterThan(500 - 4)
+                expect(right(alone.tallyNode!.bounds())).toBeLessThanOrEqual(500)
+            }
+            expect(() => boundary({ tally: ['system call', ''] })).toThrow(/tally has a word for one count and none for the other/)
+            expect(() => boundary({ tally: ['a', 'b', 'c'] as never })).toThrow(/tally is true, a word, or the word for one and the word for more/)
+        }))
+        expect([0.2, 0.8, 1.8].map((time) => said(word(made, time)))).toEqual(['system calls', 'system call', 'system calls'])
+        expect([0.2, 0.8, 1.8].map((time) => tally(made, time))).toEqual(['0', '1', '2'])
+        for (const time of [0.2, 0.8, 1.8]) {
+            // The word ends at the right end of the line, and the number ends just before the word.
+            const [number, words] = at(time, () => made.tallyNode!.children.map((part) => part.bounds()))
+            expect(right(words!)).toBeCloseTo(500, 6)
+            expect(right(number!)).toBeLessThan(words!.x - 3)
+            expect(right(number!)).toBeGreaterThan(words!.x - 12)
+        }
+        // A number that runs shows 1 for a moment on its way. The word for one there would change the word for one frame, so the word for more stays.
+        const reads = (time: number) => [tally(runs, time), said(word(runs, time))]
+        expect([2.003, 3.997].map(reads)).toEqual([['1', 'system calls'], ['1', 'system calls']])
+        // The last digit keeps its place before the word.
+        const last = (time: number) => glyphs(runs, time).map((glyph) => glyph.get('x')).pop()
+        expect(last(2.003)).toBe(last(2.5))
+        expect(last(4.7)).toBeGreaterThan(last(2.5)! + 3)
+        // Where the tally starts or ends at 1, the word changes when the number does.
+        expect([4.3, 4.7, 5.3, 5.7].map(reads)).toEqual([['0', 'system calls'], ['1', 'system call'], ['1', 'system call'], ['0', 'system calls']])
+        expect([2.3, 2.7, 6].map((time) => [tally(single, time), said(word(single, time))])).toEqual([['0', 'system calls'], ['1', 'system call'], ['1', 'system call']])
+        // A viewer needs 0.55 s to read "system call": one second for 20 characters. Between two crossings that are nearer in time, the tally is 1 and keeps the word for more.
+        const quick = (line: number, time: number) => [tally(pairs[line]!, time), said(word(pairs[line]!, time))]
+        expect([quick(0, 6.4), quick(1, 7.1), quick(1, 7.32), quick(1, 7.55)]).toEqual(Array(4).fill(['1', 'system calls']))
+        // With 0.56 s between the two, the word for one shows from the first moment of that time to the last, with no change between.
+        expect([quick(2, 8.11), quick(2, 8.69)]).toEqual([['0', 'system calls'], ['2', 'system calls']])
+        for (const time of [8.13, 8.2, 8.25, 8.3, 8.4, 8.5, 8.6, 8.67]) expect(quick(2, time), `at ${time}`).toEqual(['1', 'system call'])
+        // A short word needs half a second, and no less.
+        expect([quick(3, 9.36), quick(4, 10.28)]).toEqual([['1', 'hits'], ['1', 'hit']])
+    })
+
+    it("puts the tally on a row of its own with tallySide 'over', so that a narrow line keeps room for crossings", async () => {
+        await compileFilm(film(() => {
+            const names = { label: 'batches of 32', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] } as const
+            // At the end of the line, the tally takes most of a line of 560. At size 38 no crossing has room.
+            expect(() => boundary({ ...names, width: 560, size: 38 })).toThrow(/no room for a crossing.*or put the tally on a row of its own with tallySide: 'over'/)
+            const end = boundary({ ...names, width: 560 }), over = boundary({ ...names, width: 560, tallySide: 'over' }), large = boundary({ ...names, width: 560, size: 38, tallySide: 'over' })
+            expect(end.x(1) - end.x(0)).toBeLessThan(80)
+            expect(over.x(1) - over.x(0)).toBeGreaterThan(300)
+            expect(large.x(1) - large.x(0)).toBeGreaterThan(150)
+            // The free part goes to the right end of the line, less a small margin.
+            expect(over.x(1)).toBeGreaterThan(280 - 26)
+            expect(over.x(1)).toBeLessThan(280)
+            // The tally still ends at the right end. It is over the label and over a mark with the reach of the line, and its text.
+            const box = over.tallyNode!.bounds(), under = over.cross(over.x(1), { label: 'read()' })
+            expect(right(box)).toBeCloseTo(280, 6)
+            expect(bottom(box)).toBeLessThan(under.mark.bounds().y - 6)
+            expect(bottom(box)).toBeLessThan(under.labelNode!.bounds().y - 4)
+            expect(bottom(box)).toBeLessThan(over.labelNode!.bounds().y)
+            // A mark that starts higher, under the tally, would go into it. To the left of the tally it has room.
+            expect(() => over.cross(over.x(1), { reach: 110 })).toThrow(/with a reach of 110, the mark at x = \d+ goes into the tally. Under the tally a mark has a reach of 70 at most: give a smaller reach, or a place before -?\d+/)
+            expect(() => over.cross(over.x(0), { reach: 110 })).not.toThrow()
+            expect(() => boundary({ width: 200, tally: ['system call', 'system calls'], tallySide: 'over' })).toThrow(/a line of 200 is too short for its tally, which needs \d+/)
+            expect(() => boundary({ tally: true, tallySide: 'top' as never })).toThrow(/tallySide is "top". Use 'end' or 'over'/)
+        }))
+    })
+
+    it('gives the tally its own size and its own color, with room for its digits at that size', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, label: 'line', tally: 'system calls', tallySize: 48, tallyColor: 'teal' }))
+            s.play(made.addCrossings(999999), { duration: 1 })
+            expect(() => boundary({ tally: true, tallySize: 0 })).toThrow(/tallySize is a text size/)
+        }))
+        const digit = glyphs(made, 1)[0]!, words = word(made, 1)
+        expect([digit.data['size'], words.data['size'], made.labelNode!.data['size']]).toEqual([48, 48, 26])
+        // Each digit has a place as wide as a digit of that size, so the digits do not touch.
+        expect(glyphs(made, 1)[1]!.get('x') - digit.get('x')).toBeGreaterThanOrEqual(digit.get('px') * 2)
+        // The number has the color. The word stays dim.
+        const teal = line([0, 0], [1, 0], { stroke: 'teal' }).get('stroke'), dim = line([0, 0], [1, 0], { stroke: 'dim' }).get('stroke')
+        expect([digit.children[0]!.get('fill'), words.children[0]!.get('fill')]).toEqual([teal, dim])
+        // The larger tally is still over the line, and the last place is clear of its six digits.
+        const box = at(compiled.duration, () => made.tallyNode!.bounds())
+        expect(bottom(box)).toBeLessThan(-1.5 - 8)
+        expect(made.x(1)).toBeLessThan(box.x - 24)
+    })
+
+    it('refuses a count with more digits than the tally has room for, and keeps the last place clear with tallyDigits', async () => {
+        let seven!: Boundary, six!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            six = s.add(boundary({ width: 1000, tally: 'calls' }).at(0, -100))
+            seven = s.add(boundary({ width: 1000, tally: 'calls', tallyDigits: 7 }).at(0, 100))
+            expect(() => s.play(six.addCrossings(1234567))).toThrow(/a tally of 1,234,567 has more than the 6 digits that the line keeps room for. Give the line tallyDigits: 7/)
+            s.play(six.addCrossings(999999), seven.addCrossings(8888888), { duration: 1 })
+            expect(() => s.play(six.cross(0))).toThrow(/a tally of 1,000,000 has more than the 6 digits/)
+            expect(() => boundary({ tally: true, tallyDigits: 0 })).toThrow(/tallyDigits is 0/)
+        }))
+        expect(tally(seven, compiled.duration)).toBe('8,888,888')
+        // The note of a large count keeps two digits that count, with the separator of the tally.
+        expect(said(seven.noteNode!)).toMatch(/^each tick: about [1-9]\d?(0|,)*$/)
+        expect(said(seven.noteNode!)).toContain(',')
+        for (const made of [six, seven]) expect(made.x(1)).toBeLessThan(at(compiled.duration, () => made.tallyNode!.bounds().x) - 24)
+        expect(seven.x(1)).toBeLessThan(six.x(1) - 10)
+    })
+
+    it('puts the text of a crossing where it touches no name and no tally, and refuses a text with no room on either side', async () => {
+        await compileFilm(film(() => {
+            const touches = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < right(b) && b.x < right(a) && a.y < bottom(b) && b.y < bottom(a)
+            // At size 40 the mark starts 108 over the line, so its text is over the row of the tally at each place.
+            const big = boundary({ width: 1200, size: 40, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' })
+            for (const part of [0, 0.5, 1]) {
+                for (const direction of ['down', 'up'] as const) {
+                    const text = big.cross(big.x(part), { label: 'read()', direction }).labelNode!.bounds()
+                    for (const fixed of [big.labelNode!, big.sides[0]!, big.sides[1]!, big.tallyNode!]) expect(touches(text, fixed.bounds()), `${direction} at ${part}`).toBe(false)
+                    expect(text.x).toBeGreaterThanOrEqual(-600)
+                    expect(right(text)).toBeLessThanOrEqual(600)
+                }
+            }
+            // On a line of 560, a long text has no room: on the right it passes the end of the line, on the left it is on the names.
+            const narrow = boundary({ width: 560, label: 'io_uring', above: 'user', below: 'kernel', tally: 'calls' })
+            expect(() => narrow.cross(narrow.x(0.5), { label: 'io_uring_enter(to_submit=32)' })).toThrow(/the text "io_uring_enter\(to_submit=32\)" of the crossing at x = -?\d+ has no room beside its mark: it is \d+ wide.*Give a shorter text, another place, another reach, or a longer line/)
+            expect(() => narrow.cross(narrow.x(0.5), { label: 'enter' })).not.toThrow()
+            // With a small reach the text would be on the row of the tally, so it goes to the side that is clear of it.
+            const low = narrow.cross(narrow.x(1), { label: 'enter', reach: 24 })
+            expect(touches(low.labelNode!.bounds(), narrow.tallyNode!.bounds())).toBe(false)
+            expect(right(low.labelNode!.bounds())).toBeLessThan(narrow.x(1))
+            // A text that is too long for the free part takes a side where it touches no name and no tally. Over the row of the tally, that is the right.
+            const middle = narrow.x(0.5)
+            expect(narrow.cross(middle, { label: 'io_uring_en' }).labelNode!.bounds().x).toBeGreaterThan(middle)
+            // On the row of the tally, the right is on the tally, so the text goes to the left.
+            const beside = narrow.cross(middle, { label: 'io_uring_en', reach: 24 }).labelNode!.bounds()
+            expect(right(beside)).toBeLessThan(middle)
+            for (const fixed of [narrow.labelNode!, narrow.sides[0]!, narrow.tallyNode!]) expect(touches(beside, fixed.bounds())).toBe(false)
+            // A longer text on that row is on the tally at the right and on the names at the left. Higher, it has room.
+            expect(() => narrow.cross(middle, { label: 'io_uring_enter(32)', reach: 24 })).toThrow(/has no room beside its mark/)
+            expect(() => narrow.cross(middle, { label: 'io_uring_enter(32)' })).not.toThrow()
+        }))
+    })
+
+    it('has bounds that hold the way of a mark, so that a zone around the line leaves room for a crossing', async () => {
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            const made = boundary({ width: 760, label: 'system call line', above: 'guest user space', below: 'guest kernel', tally: 'system calls' })
+            const box = made.bounds()
+            expect([box.x, right(box)]).toEqual([expect.closeTo(-380, 6), expect.closeTo(380, 6)])
+            expect(box.y).toBeLessThanOrEqual(-70 - 7)
+            expect(bottom(box)).toBeGreaterThanOrEqual(70 + 7)
+            const crossings = [made.cross(made.x(0), { label: 'read()' }), made.cross(made.x(1), { direction: 'up', label: 'irq' }), made.cross(made.x(0.5), { direction: 'round' })]
+            const vm = s.add(zone(made, { title: 'microVM' }).at(-200, 100))
+            const border = { x: vm.box.x + vm.get('x'), y: vm.box.y + vm.get('y'), width: vm.box.width, height: vm.box.height }
+            // With the padding that a zone has by default, each mark and each text is inside the border, with room.
+            for (const crossing of crossings) {
+                for (const part of crossing.labelNode ? [crossing.mark, crossing.labelNode] : [crossing.mark]) {
+                    made.add(part)
+                    const own = part.bounds()
+                    expect(own.x - border.x).toBeGreaterThan(20)
+                    expect(right(border) - right(own)).toBeGreaterThan(20)
+                    expect(own.y - border.y).toBeGreaterThan(20)
+                    expect(bottom(border) - bottom(own)).toBeGreaterThan(20)
+                }
+            }
+            const bare = s.add(boundary({ width: 400 }).at(0, -300))
+            // A mark that starts farther than the bounds of the line, and its text, do not stay in the bounds after the crossing.
+            const before = bare.bounds()
+            s.play(bare.cross(0, { reach: 200, label: 'far' }), { duration: 1 })
+            s.wait(0.5)
+            expect(bare.bounds()).toEqual(before)
+        }))
+        // The shape that gives the bounds draws nothing: a bare line is one stroke, and the zone has its border and its title.
+        expect(paths(compiled, 0).filter((op) => pathBounds(op.path)!.y < 540 - 250)).toHaveLength(1)
+    })
+
+    it('brings the ticks back after the line when a line with ticks enters again', async () => {
+        let made!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Each crossing counts 10, at 10 for one tick: two ticks, and a note, because a tick stands for more than one.
+            made = boundary({ width: 1000, above: 'user space', tally: true, tickScale: 10 })
+            // The film dims a name. It stays dim when the line enters again.
+            made.sides[0]!.opacity(0.4)
+            s.add(made)
+            s.play(lagged([-100, 100].map((x) => made.cross(x, { counts: 10 }))), { duration: 1 })
+            s.play(fadeOut(made), { duration: 0.5 })
+            s.wait(0.5)
+            // From 2 to 3: the line draws until 2.6, then the name, the tally, the note and the ticks arrive.
+            s.play(made.enter(), { duration: 1, ease: linear })
+        }))
+        const parts = () => [...made.ticks, made.tallyNode!, made.noteNode!, made.sides[0]!].map(shows)
+        expect(made.ticks).toHaveLength(2)
+        expect(at(2.3, () => [shows(made), made.line.get('trimTo'), ...parts()])).toEqual([1, expect.closeTo(0.5, 6), 0, 0, 0, 0, 0])
+        expect(at(2.8, parts)).toEqual([...Array(4).fill(expect.closeTo(0.5, 6)), expect.closeTo(0.2, 6)])
+        expect(at(3, parts)).toEqual([1, 1, 1, 1, expect.closeTo(0.4, 6)])
+    })
+
+    it('lets an emphasis tint the whole tally, the digits and the word', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls', tallyColor: 'teal' }))
+            s.play(made.cross(0, { counts: 1234 }), { duration: 1 })
+            // The emphasis is at its peak at 1.5, and back at 2.
+            s.play(indicate(made.tallyNode!, { color: 'red' }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        const paint = (color: string) => line([0, 0], [1, 0], { stroke: color }).get('stroke')
+        // Every glyph of this film is a glyph of the tally: five of the number, then eleven of the word.
+        const fills = (time: number) => paths(compiled, time).filter((op) => op.fill).map((op) => op.fill)
+        expect(fills(1)).toEqual([...Array(5).fill(paint('teal')), ...Array(11).fill(paint('dim'))])
+        expect(fills(1.5)).toEqual(Array(16).fill(paint('red')))
+        expect(fills(2.2)).toEqual(fills(1))
+        // The number and the word grow as one, about the middle of the tally.
+        const widthAt = (time: number) => at(time, () => made.tallyNode!.bounds().width)
+        expect(widthAt(1.5)).toBeGreaterThan(widthAt(1) * 1.1)
+    })
+
+    it('sends one mark through two lines, and each line lights, keeps a tick and counts when the mark is on it', async () => {
+        let calls!: Boundary, wall!: Boundary, down!: ReturnType<typeof crossThrough>, round!: ReturnType<typeof crossThrough>, up!: ReturnType<typeof crossThrough>, lone!: Boundary[]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            calls = s.add(boundary({ width: 800, tally: true, label: 'calls' }).at(100, -150))
+            // The second line is 40 to the right of the first, so a place on it has another x than on the first.
+            wall = s.add(boundary({ width: 800, tally: true, weight: 6, color: 'red', label: 'wall' }).at(140, 190))
+            s.wait(1)
+            // From 1 to 3, the mark goes 500 down: from 80 over the first line to 80 under the second.
+            down = crossThrough([calls, wall], 50, { reach: 80, label: 'write()' })
+            s.play(down, { duration: 2, ease: linear })
+            // From 3 to 7, a round trip: down until 5, then back.
+            round = crossThrough([calls, wall], -100, { direction: 'round', reach: 80 })
+            s.play(round, { duration: 4, ease: linear })
+            // From 7 to 9, up from under the wall. The lines are in the order that the mark meets them.
+            up = crossThrough([wall, calls], 0, { direction: 'up', reach: 80 })
+            s.play(up, { duration: 2, ease: linear })
+            // Without a length, a crossing through two lines takes two times the length of a crossing of one.
+            expect([down.duration, round.duration]).toEqual([1.6, 2.8])
+            expect(() => crossThrough([calls], 0)).toThrow(/give it two lines or more. For one line, use line.cross\(x\)/)
+            expect(() => crossThrough([wall, calls], 0)).toThrow(/give the lines in the order that the mark meets them/)
+            expect(() => crossThrough([calls, wall], 401)).toThrow(/x is 401, and the line runs from -400 to 400/)
+            // The second line is 300 to the right here, so the mark would come down through its label.
+            const shifted = boundary({ width: 800, label: 'a label', tally: true }).at(400, 400)
+            expect(() => crossThrough([calls, shifted], -50)).toThrow(/the mark meets line 1 at x = -350 of that line, under its names or its tally. Its free part runs from -?\d+ to \d+/)
+            // A tally that is over its line is in the way of a mark that comes from the line over it.
+            const roofed = boundary({ width: 800, tally: true, tallySide: 'over' }).at(100, 400)
+            expect(() => crossThrough([calls, roofed], 340)).toThrow(/the mark meets line 1 at x = 340 of that line, under its names or its tally/)
+            expect(() => crossThrough([calls, roofed], 200)).not.toThrow()
+            // From 9 to 11, with an ease that has done 0.16 of its way after 0.4 of the time, and 0.84 after 0.9165.
+            s.play(crossThrough([calls, wall], 200, { reach: 80, counts: 5 }), { duration: 2, ease: (t) => t * t })
+            // From 11 to 12, through two lines that are not on the stage: they come with the mark.
+            lone = [boundary({ width: 300 }).at(-700, -300), boundary({ width: 300 }).at(-700, -200)]
+            s.play(crossThrough(lone, 0, { reach: 40 }), { duration: 1 })
+        }))
+        const place = (crossing: typeof down, time: number) => at(time, () => [crossing.mark.get('x'), crossing.mark.get('y')])
+        // The mark is on the stage, at the x of the place on the first line, and it moves at one speed.
+        expect(place(down, 1)).toEqual([150, -230])
+        expect(place(down, 2)).toEqual([150, expect.closeTo(20, 6)])
+        expect(place(down, 3)).toEqual([150, expect.closeTo(270, 6)])
+        expect(down.mark.parent).toBe(compiled.stage.root)
+        expect(at(2, () => shows(down.mark))).toBe(1)
+        expect(at(3.1, () => shows(down.mark))).toBe(0)
+        // It is on the first line after 80 of 500 and on the second after 420 of 500. Each line counts at its moment.
+        expect([tally(calls, 1.3), tally(calls, 1.34), tally(wall, 2.66), tally(wall, 2.7)]).toEqual(['0', '1', '0', '1'])
+        // The light of a line is a piece with a glow, at the height of that line: 390 and 730 on the frame.
+        const lit = (time: number, y: number) => paths(compiled, time).filter((op) => op.glow > 0 && Math.abs(pathBounds(op.path)!.y - y) < 1).length
+        expect([lit(1.32, 390), lit(1.32, 730), lit(2.68, 390), lit(2.68, 730), lit(2, 390), lit(2, 730)]).toEqual([1, 0, 0, 1, 0, 0])
+        // Each line has its tick at its own place under the mark: 150 on the stage is 50 on the first line and 10 on the second.
+        expect([calls.ticks[0]!.get('x'), wall.ticks[0]!.get('x')]).toEqual([50, expect.closeTo(10, 6)])
+        // The text is beside the start, in the first line, and it fades with the mark.
+        expect(down.labelNode!.parent).toBe(calls)
+        const text = at(1.5, () => down.labelNode!.bounds())
+        expect(text.x).toBeGreaterThan(150 + 8)
+        expect(text.y + text.height / 2).toBeCloseTo(-230, -1)
+        expect([0.9, 2, 3.1].map((time) => at(time, () => shows(down.labelNode!)))).toEqual([0, 1, 0])
+        // The round trip turns 80 under the second line, comes back to its start, and counts once on each line.
+        expect([place(round, 3)[1], place(round, 5)[1], place(round, 7)[1]]).toEqual([-230, expect.closeTo(270, 6), expect.closeTo(-230, 6)])
+        expect([tally(calls, 3.3), tally(calls, 3.34), tally(wall, 4.7), tally(calls, 6.9)]).toEqual(['1', '2', '2', '2'])
+        expect([lit(3.32, 390), lit(4.68, 730), lit(5.32, 730), lit(6.68, 390)]).toEqual([1, 1, 1, 1])
+        // Up: from 80 under the wall to 80 over the first line.
+        expect([place(up, 7), place(up, 9)]).toEqual([[140, 270], [140, expect.closeTo(-230, 6)]])
+        expect([tally(wall, 7.3), tally(wall, 7.34), tally(calls, 8.66), tally(calls, 8.7)]).toEqual(['2', '3', '2', '3'])
+        // With an ease that is not linear, each line still counts at the moment the mark is on it: at 9.8 and at 10.833. This mark counts 5.
+        expect([tally(calls, 9.78), tally(calls, 9.82), tally(wall, 10.81), tally(wall, 10.85)]).toEqual(['3', '8', '3', '8'])
+        expect([calls.count, wall.count, calls.ticks.length, wall.ticks.length]).toEqual([8, 8, 4, 4])
+        expect([10.9, 11.5].map((time) => at(time, () => lone.map(shows)))).toEqual([[0, 0], [1, 1]])
+        expect(lone.map((made) => made.ticks.length)).toEqual([1, 1])
+    })
+
+    it('counts a round trip when the mark is on the line on its way down, whatever the ease, and shows the mark on its way back', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            crossing = made.cross(0, { direction: 'round' })
+            // Each leg has 1 s. With this ease the mark is half way after 0.7071 of a leg.
+            s.play(crossing, { duration: 2, ease: (t) => t * t })
+        }))
+        const pass = Math.SQRT1_2
+        expect(at(pass, () => crossing.mark.get('y'))).toBeCloseTo(0, 4)
+        expect(at(1 + pass, () => crossing.mark.get('y'))).toBeCloseTo(0, 4)
+        expect([tally(made, pass - 0.02), tally(made, pass + 0.02), tally(made, 2)]).toEqual(['0', '1', '1'])
+        const lit = (time: number) => paths(compiled, time).filter((op) => op.stroke && op.strokeWidth > 3).length
+        expect([lit(0.5), lit(pass), lit(1.2), lit(1 + pass)]).toEqual([0, 1, 0, 1])
+        // The mark stays on screen for the whole way back, and fades out at the end of it.
+        expect([1.1, 1.5, 1.79].map((time) => at(time, () => shows(crossing.mark)))).toEqual([1, 1, 1])
+        expect(at(2.05, () => shows(crossing.mark))).toBe(0)
+    })
+
+    it('keeps the light on the line at its ends, and gives it the color of the line when the crossing has none', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, color: 'teal' }))
+            s.play(made.cross(500), { duration: 1, ease: linear })
+            s.play(made.cross(-500), { duration: 1, ease: linear })
+        }))
+        const [atRight, atLeft] = [0.5, 1.5].map((time) => paths(compiled, time).find((op) => op.stroke && op.strokeWidth > 3)!)
+        // The line runs from 460 to 1460 on the frame. The light does not go past an end.
+        expect(right(pathBounds(atRight!.path)!)).toBeCloseTo(1460, 6)
+        expect(pathBounds(atRight!.path)!.width).toBeGreaterThan(20)
+        expect(pathBounds(atLeft!.path)!.x).toBeCloseTo(460, 6)
+        expect(atRight!.stroke).toEqual(made.line.get('stroke'))
+    })
+
+    it('starts a crossing again from its start when a film plays it a second time', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            crossing = made.cross(0, { label: 'again' })
+            s.play(crossing, { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(crossing, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const y = (time: number) => at(time, () => crossing.mark.get('y'))
+        // The first time ends under the line. The second time starts over it again, shows again, and counts again.
+        expect([y(1), y(1.5), y(2), y(2.5)]).toEqual([expect.closeTo(70, 6), -70, expect.closeTo(0, 6), expect.closeTo(70, 6)])
+        expect([1.2, 2, 2.6].map((time) => at(time, () => [shows(crossing.mark), shows(crossing.labelNode!)]))).toEqual([[0, 0], [1, 1], [0, 0]])
+        expect([made.count, made.ticks.length, tally(made, 3)]).toEqual([2, 2, '2'])
+    })
+
+    it('names a wrong size, a line with no room, a place off the line, a wrong crossing, a full line, and a wrong count', async () => {
+        await compileFilm(film((s) => {
+            expect(() => boundary({ width: 0 })).toThrow(/width is the length of the line/)
+            expect(() => boundary({ weight: -1 })).toThrow(/weight is the width of the stroke/)
+            expect(() => boundary({ size: Number.NaN })).toThrow(/size is a text size/)
+            expect(() => boundary({ width: 300, label: 'a long name of a line', tally: 'system calls' })).toThrow(/a line of 300 has no room for a crossing.*need \d+\. Make the line longer/)
+            const made = s.add(boundary({ width: 1000, tally: true }))
+            // A part is from 0 to 1. Outside it, the place would be on the names or on the tally.
+            expect(() => made.x(-0.08)).toThrow(/x\(-0.08\) is not a place on the line. A part is from 0 to 1: 0 is the first place after the names, and 1 is the last place before the tally/)
+            expect(() => made.x(1.15)).toThrow(/x\(1.15\) is not a place on the line/)
+            expect(() => made.x(Number.NaN)).toThrow(/x\(NaN\) is not a place on the line/)
+            expect([made.x(0), made.x(1)].every(Number.isFinite)).toBe(true)
+            expect(() => made.cross(501)).toThrow(/x is 501, and the line runs from -500 to 500/)
+            expect(() => made.cross(-500.5)).toThrow(/x is -500.5/)
+            expect(() => made.cross(Number.NaN)).toThrow(/x is NaN/)
+            expect(() => made.cross(0, { direction: 'left' as never })).toThrow(/direction is "left". Use 'down', 'up' or 'round'/)
+            expect(() => made.cross(0, { reach: 0 })).toThrow(/reach is how far/)
+            expect(() => made.cross(0, { counts: 1.5 })).toThrow(/counts is 1.5/)
+            expect(() => made.cross(0, { counts: -1 })).toThrow(/counts is -1/)
+            expect(() => made.addCrossings(2.5)).toThrow(/addCrossings\(2.5\) is not a count/)
+            expect(() => made.addCrossings(-3)).toThrow(/addCrossings\(-3\) is not a count/)
+            expect(() => boundary().addCrossings(10)).toThrow(/this line shows no tally/)
+            // The two ends of the line are places on it.
+            expect(() => [made.cross(-500), made.cross(500)]).not.toThrow()
+
+            // A line holds 400 ticks. The crossings of one `lagged` are all made before any is scheduled, so the error comes from the play.
+            const full = s.add(boundary({ width: 1000 }))
+            expect(() => s.play(lagged(Array.from({ length: 401 }, (_, index) => full.cross(index - 200, { duration: 0.1 })), { lag: 0.1 }))).toThrow(/a line holds 400 ticks.*Use addCrossings\(count\)/)
+            expect(full.ticks).toHaveLength(400)
+            // On a full line, the error comes where the film names the crossing. After a clear there is room again.
+            expect(() => full.cross(0)).toThrow(/Use addCrossings\(count\)/)
+            s.play(full.clear())
+            expect(() => s.play(full.cross(0))).not.toThrow()
+            // The ticks of addCrossings stop at 400 too, on a line that has more places.
+            const wide = s.add(boundary({ width: 3000, tally: true }))
+            s.play(wide.addCrossings(100000))
+            expect(wide.ticks).toHaveLength(400)
+        }))
+    })
+})
+
+describe('ring buffer', () => {
+    type Made = ReturnType<typeof ringBuffer>
+    type Box = { x: number; y: number; width: number; height: number }
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const xy = (node: Node) => [node.get('x'), node.get('y')] as const
+    const far = (place: readonly [number, number]) => Math.hypot(place[0], place[1])
+    const corners = (box: Box) => [[box.x, box.y], [box.x + box.width, box.y], [box.x, box.y + box.height], [box.x + box.width, box.y + box.height]] as const
+    const apart = (a: Box, b: Box, room = 0) => a.x + a.width + room <= b.x || b.x + b.width + room <= a.x || a.y + a.height + room <= b.y || b.y + b.height + room <= a.y
+    const middle = (box: Box) => [box.x + box.width / 2, box.y + box.height / 2] as const
+    const inside = (inner: Box, outer: Box) => Math.min(inner.x - outer.x, inner.y - outer.y, outer.x + outer.width - inner.x - inner.width, outer.y + outer.height - inner.y - inner.height)
+    const paintOf = (color: string) => rect(1, 1, { fill: color }).get('fill')
+    /** The labels of an entry that show now. */
+    const words = (entry: Node) => entry.children.filter((child) => child.get('visible')).map((child) => (child as unknown as { source?: string }).source).filter((source) => source !== undefined)
+    /** The two parts of a pointer: its arrow head, and the node that draws its name. The place of a pointer is its tip. */
+    const parts = (pointer: Node) => ({ arrow: pointer.children[0]!, name: pointer.children[1]! })
+    /** The text that is the name of a pointer now. */
+    const nameText = (pointer: Node) => pointer.children[1]!.draw!(clock.now) as Node
+    const nameOf = (pointer: Node) => (nameText(pointer) as unknown as { source: string }).source
+    /** Two points are in one direction from the center of the ring. */
+    const expectSameWay = (a: readonly [number, number], b: readonly [number, number], digits = 9) => {
+        expect(a[0] / far(a)).toBeCloseTo(b[0] / far(b), digits)
+        expect(a[1] / far(a)).toBeCloseTo(b[1] / far(b), digits)
+    }
+    /** A pointer is at a slot when its tip is in the direction of the middle of that slot, from the center of the ring. */
+    const expectAtSlot = (made: Made, pointer: Node, slot: number) => expectSameWay(xy(pointer), made.p(slot))
+    /** How far around the ring a pointer is, in slots from slot 0. */
+    const turn = (made: Made, pointer: Node) => { const [x, y] = xy(pointer); return ((Math.atan2(y, x) + Math.PI / 2 + Math.PI * 2) % (Math.PI * 2)) / ((Math.PI * 2) / made.size) }
+
+    it('puts slot 0 at the top and the slots clockwise, around the place of the ring', async () => {
+        await compileFilm(film(() => {
+            const made = ringBuffer(8, { radius: 200, thickness: 60 }).at(300, 100)
+            expect(made.size).toBe(8)
+            expect(made.slots).toHaveLength(8)
+            expect(made.entries).toHaveLength(8)
+            // The middle of the band is 170 from the center: slot 0 at the top, then the right, the bottom and the left.
+            const quarter = [[0, -170], [170, 0], [0, 170], [-170, 0]]
+            ;[0, 2, 4, 6].forEach((slot, index) => {
+                expect(made.p(slot)[0]).toBeCloseTo(quarter[index]![0]!, 6)
+                expect(made.p(slot)[1]).toBeCloseTo(quarter[index]![1]!, 6)
+            })
+            expect(made.p(1)[0]).toBeCloseTo(170 * Math.SQRT1_2, 6)
+            expect(made.p(1)[1]).toBeCloseTo(-170 * Math.SQRT1_2, 6)
+            // The slot wraps, in both directions.
+            expect(made.p(8)).toEqual(made.p(0))
+            expect(made.p(19)).toEqual(made.p(3))
+            expect(made.p(-1)).toEqual(made.p(7))
+            // Each outline is around the middle of its slot, and the band is centered on the place of the ring.
+            const boxes = made.slots.map((slot) => slot.bounds())
+            boxes.forEach((box, slot) => {
+                const [x, y] = made.p(slot)
+                expect(apart(box, { x: 300 + x, y: 100 + y, width: 0, height: 0 })).toBe(false)
+            })
+            expect(Math.min(...boxes.map((box) => box.x))).toBeCloseTo(100, 0)
+            expect(Math.max(...boxes.map((box) => box.x + box.width))).toBeCloseTo(500, 0)
+            expect(Math.min(...boxes.map((box) => box.y))).toBeCloseTo(-100, 0)
+            expect(Math.max(...boxes.map((box) => box.y + box.height))).toBeCloseTo(300, 0)
+            // Every slot starts empty.
+            expect(made.entries.map(shows)).toEqual(Array(8).fill(0))
+            expect([made.head, made.tail, made.length, made.pending]).toEqual([0, 0, 0, 0])
+            // The fill of an entry is smaller than its slot on every side, so two entries side by side read as two.
+            // The outline of a pending entry is inside the edge of the fill, so the entry keeps its size when it fills.
+            for (const slot of [0, 2]) {
+                const [fill, edge] = made.entries[slot]!.children.map((part) => part.bounds())
+                expect(inside(fill!, boxes[slot]!)).toBeGreaterThan(2)
+                expect(inside(edge!, fill!)).toBeGreaterThanOrEqual(made.entries[slot]!.children[1]!.get('strokeWidth') / 2 - 0.01)
+            }
+            // The default radius is 170, and a slot is 0.32 of the radius thick.
+            const plain = ringBuffer(8)
+            expect([plain.radius, plain.thickness]).toEqual([170, 170 * 0.32])
+            expect(plain.p(0)[1]).toBeCloseTo(-(170 - 170 * 0.16), 6)
+        }))
+    })
+
+    it('draws thinner outlines and keeps less room around a fill when the slots are narrow', async () => {
+        await compileFilm(film(() => {
+            // 64 slots on the default ring are 11.35 wide at the inner edge: 2 * 115.6 * sin(pi / 64).
+            const chord = 2 * (170 - 170 * 0.32) * Math.sin(Math.PI / 64)
+            const narrow = ringBuffer(64), wide = ringBuffer(8)
+            // The outline is a fifth of that width. On 8 slots it is 0.0175 of the radius.
+            expect(narrow.slots[0]!.get('strokeWidth')).toBeCloseTo(chord * 0.2, 6)
+            expect(wide.slots[0]!.get('strokeWidth')).toBeCloseTo(170 * 0.0175, 6)
+            // The fill is 0.22 of that width inside the slot. On 8 slots it is 3 inside the ink of the outline.
+            const room = (made: Made) => { const fill = made.entries[0]!.children[0]!.bounds(), slot = made.slots[0]!.bounds(); return fill.y - slot.y }
+            expect(room(narrow)).toBeCloseTo(chord * 0.22, 2)
+            expect(room(wide)).toBeCloseTo(170 * 0.0175 / 2 + 3, 2)
+            // The outline of a pending entry is dashed, and thinner than the outline of a slot.
+            const dashed = wide.entries[0]!.children[1]!
+            expect(dashed.get('dash')).not.toBeNull()
+            expect(dashed.get('strokeWidth')).toBeCloseTo(170 * 0.0175 * 0.6, 6)
+        }))
+    })
+
+    it('fills the slot at the tail and empties the slot at the head, then moves that pointer one slot on, along the band', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            s.wait(1)
+            s.play(made.push(), { duration: 2, ease: linear })
+            expect([made.head, made.tail, made.length]).toEqual([0, 1, 1])
+            s.wait(1)
+            s.play(made.pop(), { duration: 2, ease: linear })
+            expect([made.head, made.tail, made.length]).toEqual([1, 1, 0])
+        }))
+        const entry = made.entries[0]!, tail = made.tailPointer!, head = made.headPointer!
+        // The push is from 1 to 3. The slot fills in the first 0.45 of it, and the tail does not move yet.
+        expect(at(1, () => shows(entry))).toBe(0)
+        expect(at(1.45, () => shows(entry))).toBeCloseTo(0.5, 6)
+        expect(at(1.9, () => shows(entry))).toBeCloseTo(1, 6)
+        expect(at(1.9, () => [entry.children[0]!.get('fillOpacity'), entry.children[1]!.get('strokeOpacity')])).toEqual([1, 0])
+        at(1.9, () => expectAtSlot(made, tail, 0))
+        // Then the tail moves. Half way it is between the two slots, and as far from the center as at rest:
+        // a straight line between the two slots would pass nearer to the center.
+        at(2.45, () => expectAtSlot(made, tail, 0.5))
+        expect(at(2.45, () => far(xy(tail)))).toBeCloseTo(at(1, () => far(xy(tail))), 6)
+        at(3, () => expectAtSlot(made, tail, 1))
+        at(3, () => expectAtSlot(made, head, 0))
+        expect(at(3.5, () => shows(entry))).toBe(1)
+        // The pop is from 4 to 6: the entry at the head empties, then the head moves.
+        expect(at(4.45, () => shows(entry))).toBeCloseTo(0.5, 6)
+        expect(at(4.9, () => shows(entry))).toBeCloseTo(0, 6)
+        at(4.9, () => expectAtSlot(made, head, 0))
+        at(5.45, () => expectAtSlot(made, head, 0.5))
+        expect(at(5.45, () => far(xy(head)))).toBeCloseTo(at(4, () => far(xy(head))), 6)
+        at(6, () => expectAtSlot(made, head, 1))
+        at(6, () => expectAtSlot(made, tail, 1))
+        expect(at(6, () => shows(entry))).toBe(0)
+        // Without `counts`, a name is the name alone, before and after a move.
+        expect([0, 6].map((time) => at(time, () => [nameOf(head), nameOf(tail)]))).toEqual([['head', 'tail'], ['head', 'tail']])
+    })
+
+    it('counts on past the last slot: after 9 pushes on 8 slots the tail is 9, at slot 1', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            for (let k = 0; k < 8; k++) s.play(made.push(), { duration: 0.5 })
+            expect([made.head, made.tail, made.length]).toEqual([0, 8, 8])
+            // The ring is full. In one sequence, the push finds the room that the two pops before it make.
+            s.play(seq(made.pop(), made.pop(), made.push()), { duration: 1.5 })
+            expect([made.head, made.tail, made.length]).toEqual([2, 9, 7])
+        }))
+        const tail = made.tailPointer!, head = made.headPointer!
+        // After one turn, the tail is exactly where it started.
+        expect(at(4, () => xy(tail))).toEqual(at(0, () => xy(tail)))
+        expect(at(4, () => made.entries.map(shows))).toEqual(Array(8).fill(1))
+        at(5.5, () => expectAtSlot(made, tail, 1))
+        at(5.5, () => expectAtSlot(made, head, 2))
+        expect(at(5.5, () => xy(tail))).toEqual(at(0.5, () => xy(tail)))
+        // The ninth entry is in slot 0, and slot 1 is empty: its entry was read.
+        expect(at(5.5, () => made.entries.map(shows))).toEqual([1, 0, 1, 1, 1, 1, 1, 1])
+    })
+
+    it('lets the entry that is read leave before the new entry of its slot arrives, when a pop and a push share one play', async () => {
+        let made!: Made, pending!: Made
+        let blue: unknown, green: unknown
+        await compileFilm(film({ fps: 20 }, (s) => {
+            blue = paintOf('blue')
+            green = paintOf('green')
+            made = s.add(ringBuffer(4, { radius: 200, thickness: 60 }))
+            pending = s.add(ringBuffer(2, { radius: 200, thickness: 60 }))
+            s.play(seq(made.push(), made.push(), made.push(), made.push()), seq(pending.push({ pending: true, label: 'A' }), pending.push({ pending: true })), { duration: 1 })
+            // Both rings are full, so the push takes the slot that the pop reads, in the same second.
+            s.play(made.pop(), made.push({ color: 'green' }), pending.publish(), pending.pop(), pending.push({ pending: true }), { duration: 1, ease: linear })
+            expect([made.head, made.tail, made.length]).toEqual([1, 5, 4])
+            expect([pending.length, pending.pending]).toEqual([2, 1])
+        }))
+        // The slot changes in the first 0.45 s: the old entry fades out in the first half of it, with its
+        // own color, and the new one fades in in the second half.
+        const cell = made.entries[0]!, fill = cell.children[0]!
+        expect(at(1, () => [shows(cell), fill.get('fill')])).toEqual([1, blue])
+        expect(at(1.1125, () => [shows(cell), fill.get('fill')])).toEqual([expect.closeTo(0.5, 6), blue])
+        expect(at(1.3375, () => [shows(cell), fill.get('fill')])).toEqual([expect.closeTo(0.5, 6), green])
+        expect(at(1.45, () => shows(cell))).toBeCloseTo(1, 6)
+        expect(at(2, () => [shows(cell), fill.get('fill')])).toEqual([1, green])
+        // A publish in the same play is of the old entry. It does not take the outline of the new pending
+        // entry away, or fill it: the new entry shows as an outline, and has no label of the old one.
+        const [inner, dashed] = pending.entries[0]!.children
+        for (const time of [1.5, 2, 3]) expect(at(time, () => [shows(pending.entries[0]!), inner!.get('fillOpacity'), dashed!.get('strokeOpacity')])).toEqual([1, 0, 1])
+        expect(at(2, () => words(pending.entries[0]!))).toEqual([])
+        // The other entry was published, and is full.
+        expect(at(2, () => [pending.entries[1]!.children[0]!.get('fillOpacity'), pending.entries[1]!.children[1]!.get('strokeOpacity')])).toEqual([1, 0])
+    })
+
+    it('fills eight slots in order from eight pushes in one lagged, and moves the tail on without a jump', async () => {
+        let made!: Made, batch!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(16, { radius: 200, thickness: 60, counts: true }))
+            batch = s.add(ringBuffer(16, { radius: 200, thickness: 60 }))
+            // With a lag of 0.25, each push has 1 s, and starts 0.25 s after the push before it.
+            s.play(lagged(Array.from({ length: 8 }, () => made.push()), { lag: 0.25 }), batch.push(), batch.push(), batch.push(), { duration: 2.75, ease: linear })
+            expect([made.tail, made.length, batch.tail]).toEqual([8, 8, 3])
+        }))
+        // Slot k fills from 0.25 k, in 0.45 s. So the slots fill in the order of the pushes.
+        for (let slot = 0; slot < 8; slot++) {
+            expect(at(0.25 * slot, () => shows(made.entries[slot]!))).toBe(0)
+            expect(at(0.25 * slot + 0.225, () => shows(made.entries[slot]!))).toBeCloseTo(0.5, 6)
+            expect(at(0.25 * slot + 0.45, () => shows(made.entries[slot]!))).toBeCloseTo(1, 6)
+        }
+        expect(at(2.75, () => made.entries.map(shows))).toEqual([...Array(8).fill(1), ...Array(8).fill(0)])
+        // The moves of the tail share time, and they add up: the tail goes from slot 0 to slot 8 and never jumps.
+        const tail = made.tailPointer!
+        let last = at(0.4, () => turn(made, tail))
+        for (let time = 0.41; time < 2.749; time += 0.01) {
+            const now = at(time, () => turn(made, tail))
+            expect(now - last).toBeGreaterThanOrEqual(-1e-9)
+            expect(now - last).toBeLessThan(0.1)
+            last = now
+        }
+        expect(at(0.4, () => turn(made, tail))).toBeCloseTo(0, 6)
+        at(2.75, () => expectAtSlot(made, tail, 8))
+        // The count beside the name is the number of whole slots that the tail has passed, also between two rests.
+        expect([0.6, 0.9, 1.25, 2.75].map((time) => at(time, () => nameOf(tail)))).toEqual(['tail 0', 'tail 1', 'tail 2', 'tail 8'])
+        for (const time of [0.6, 0.9, 1.25, 1.7, 2.3]) expect(at(time, () => nameOf(tail))).toBe(`tail ${Math.floor(at(time, () => turn(made, tail)))}`)
+        // Three pushes at one moment: the tail goes over three slots in the time of one move, from 1.2375 to 2.75.
+        at(1.2375, () => expectAtSlot(batch, batch.tailPointer!, 0))
+        at((1.2375 + 2.75) / 2, () => expectAtSlot(batch, batch.tailPointer!, 1.5))
+        at(2.75, () => expectAtSlot(batch, batch.tailPointer!, 3))
+        expect(at(1.2375, () => batch.entries.map(shows).slice(0, 4))).toEqual([expect.closeTo(1, 6), expect.closeTo(1, 6), expect.closeTo(1, 6), 0])
+    })
+
+    it('keeps the name with its arrow head when two moves of one pointer overlap, whichever of them starts first', async () => {
+        let slow!: Made, late!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            slow = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            late = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            s.play(seq(late.push(), late.push()), { duration: 0.5 })
+            // The first push takes 2 s and the second 0.9 s, so the move of the second one starts first.
+            // The same holds for the pop that waits 0.6 s and the pop after it.
+            s.play(slow.push({}, { duration: 2 }), slow.push(), par(delay(late.pop(), 0.6), late.pop()), { ease: linear })
+        }))
+        for (const [made, pointer] of [[slow, slow.tailPointer!], [late, late.headPointer!]] as const) {
+            let last = at(0.5, () => turn(made, pointer))
+            for (let time = 0.5; time <= 2.5001; time += 0.02) {
+                at(time, () => {
+                    // The name is on the line from the center through the tip, at every frame.
+                    expectSameWay(middle(parts(pointer).name.bounds()), xy(pointer), 6)
+                    const now = turn(made, pointer)
+                    expect(now - last).toBeGreaterThanOrEqual(-1e-9)
+                    expect(now - last).toBeLessThan(0.08)
+                    last = now
+                })
+            }
+            at(2.5, () => expectAtSlot(made, pointer, 2))
+            expect(at(2.5, () => nameOf(pointer))).toMatch(/ 2$/)
+        }
+        // The second push moves the tail from 0.905 to 1.4, before the move of the first push starts.
+        at(1.1525, () => expectAtSlot(slow, slow.tailPointer!, 0.5))
+    })
+
+    it('keeps the color and the label of an entry until it is read, and gives the slot to the next entry', async () => {
+        let made!: Made
+        let orange: unknown, green: unknown, ground: unknown
+        await compileFilm(film({ fps: 20 }, (s) => {
+            orange = paintOf('orange')
+            green = paintOf('green')
+            ground = paintOf('bg')
+            made = s.add(ringBuffer(4, { radius: 200, thickness: 60 }))
+            s.play(made.push({ color: 'orange', label: 'A' }), { duration: 1 })
+            s.play(made.push(), { duration: 1 })
+            s.play(made.pop(), { duration: 1, ease: linear })
+            s.play(seq(made.push(), made.push(), made.push({ color: 'green', label: 'E' })), { duration: 1 })
+        }))
+        const fill = (slot: number) => made.entries[slot]!.children[0]!.get('fill')
+        expect(at(1.5, () => fill(0))).toEqual(orange)
+        // An entry with no color has the color of the ring.
+        expect(at(2, () => fill(1))).toEqual(made.slots[0]!.get('stroke'))
+        expect(at(2, () => words(made.entries[1]!))).toEqual([])
+        // The label is in the middle of its slot, in the color of the background.
+        const label = made.entries[0]!.children[2]!
+        expect(at(1.5, () => words(made.entries[0]!))).toEqual(['A'])
+        expect(at(1.5, () => middle(label.bounds()))[0]).toBeCloseTo(made.p(0)[0], 6)
+        expect(at(1.5, () => middle(label.bounds()))[1]).toBeCloseTo(made.p(0)[1], 6)
+        expect(at(1.5, () => label.children[0]!.get('fill'))).toEqual(ground)
+        // While the entry is read, it still has its color.
+        expect(at(2.2, () => shows(made.entries[0]!))).toBeGreaterThan(0)
+        expect(at(2.2, () => fill(0))).toEqual(orange)
+        // The fifth entry takes slot 0: its color and its label, and no label of the first entry.
+        expect(at(4, () => fill(0))).toEqual(green)
+        expect(at(4, () => words(made.entries[0]!))).toEqual(['E'])
+        expect(at(4, () => shows(made.entries[0]!))).toBe(1)
+    })
+
+    it('draws a pending entry as a dashed outline with no fill, fills it at publish(), and refuses to read it before', async () => {
+        let made!: Made
+        let orange: Rgba, ground: Rgba
+        await compileFilm(film({ fps: 20 }, (s) => {
+            orange = paintOf('orange') as Rgba
+            ground = paintOf('bg') as Rgba
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            s.play(made.push({ pending: true, color: 'orange', label: 'A' }), { duration: 1 })
+            s.play(made.push({ pending: true }), made.push(), { duration: 1 })
+            // The tail moves for a pending entry too. The entry at the head is pending, so the consumer cannot read it.
+            expect([made.tail, made.length, made.pending]).toEqual([3, 3, 2])
+            const pop = made.pop()
+            expect(() => s.play(pop)).toThrow(/the entry at the head is pending, so the consumer cannot see it. publish\(\) before pop\(\)/)
+            expect(made.head).toBe(0)
+            // With a lag of 1, the two pending entries fill one after the other, the older one first.
+            s.play(made.publish({ lag: 1 }), { duration: 1, ease: linear })
+            expect(made.pending).toBe(0)
+            // With nothing pending, publish() changes nothing. Then the consumer can read.
+            s.play(made.publish(), { duration: 0.5 })
+            s.play(made.pop(), { duration: 0.5 })
+            expect([made.head, made.length]).toEqual([1, 2])
+        }))
+        const [fill, edge, label] = made.entries[0]!.children
+        const filled = (slot: number) => made.entries[slot]!.children[0]!.get('fillOpacity')
+        const outlined = (slot: number) => made.entries[slot]!.children[1]!.get('strokeOpacity')
+        // Pending: the entry shows, with a dashed outline in its color and no fill. Its label has its color too.
+        expect(at(1, () => [shows(made.entries[0]!), filled(0)])).toEqual([1, 0])
+        expect(at(1, () => [edge!.get('stroke'), edge!.get('strokeOpacity'), fill!.get('fill')])).toEqual([orange!, 1, orange!])
+        expect(edge!.get('dash')).not.toBeNull()
+        expect(at(1, () => label!.children[0]!.get('fill'))).toEqual(orange!)
+        at(1, () => expectAtSlot(made, made.tailPointer!, 1))
+        // An entry that is not pending is filled from its push, and shows no outline.
+        expect(at(2, () => [0, 1, 2].map(filled))).toEqual([0, 0, 1])
+        expect(at(2, () => [0, 1, 2].map(outlined))).toEqual([1, 1, 0])
+        // publish() is from 2 to 3: slot 0 fills in the first half, and slot 1 in the second.
+        expect(at(2.25, () => [filled(0), filled(1)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(2.75, () => [filled(0), filled(1)])).toEqual([1, expect.closeTo(0.5, 6)])
+        expect(at(3, () => [0, 1, 2].map(filled))).toEqual([1, 1, 1])
+        // The outline stays until its entry is full, then the fill replaces it.
+        expect(at(2.4, () => outlined(0))).toBe(1)
+        expect(at(3, () => [0, 1].map(outlined))).toEqual([0, 0])
+        // The label stays readable through the change. It has the color of the entry, then at once the
+        // color of the background. At each moment it is at least 0.45 as far from what is under it as at the ends.
+        const surface = made.slots[0]!.get('fill') as Rgba
+        const distance = (a: Rgba, b: Rgba) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])
+        for (let time = 2; time <= 2.5001; time += 0.01) {
+            const [ink, share] = at(time, () => [label!.children[0]!.get('fill') as Rgba, filled(0)] as const)
+            expect(distance(ink, mixColor(surface, orange!, share))).toBeGreaterThan(0.45 * distance(orange!, surface))
+        }
+        expect(at(2.2, () => label!.children[0]!.get('fill'))).toEqual(orange!)
+        expect(at(2.3, () => label!.children[0]!.get('fill'))).toEqual(ground!)
+        expect(at(4, () => shows(made.entries[0]!))).toBe(0)
+    })
+
+    it('publishes from the oldest entry when the pending entries wrap, and does not let a late publish fill a new entry', async () => {
+        let wrapped!: Made, late!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            wrapped = s.add(ringBuffer(4, { radius: 200, thickness: 60 }))
+            late = s.add(ringBuffer(2, { radius: 200, thickness: 60 }))
+            // Three entries written and read, then two pending ones: in slot 3, and past the last slot in slot 0.
+            s.play(seq(wrapped.push(), wrapped.push(), wrapped.push(), wrapped.pop(), wrapped.pop(), wrapped.pop(), wrapped.push({ pending: true }), wrapped.push({ pending: true })), seq(late.push({ pending: true }), late.push({ pending: true })), { duration: 1 })
+            // From 1 to 2, with a lag of 1: the older entry, in slot 3, fills first.
+            s.play(wrapped.publish({ lag: 1 }), { duration: 1, ease: linear })
+            // From 2 to 4 the publish of the second ring fills slot 0, then slot 1 from 3. In the first
+            // second, the two entries are read and two new pending ones are written.
+            s.play(late.publish({ lag: 1, duration: 2 }), retime(seq(late.pop(), late.pop(), late.push({ pending: true }), late.push({ pending: true })), { duration: 1 }), { ease: linear })
+        }))
+        const state = (ring: Made, slot: number) => [ring.entries[slot]!.children[0]!.get('fillOpacity'), ring.entries[slot]!.children[1]!.get('strokeOpacity')]
+        expect(at(1.25, () => [state(wrapped, 3)[0], state(wrapped, 0)[0]])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(1.75, () => [state(wrapped, 3)[0], state(wrapped, 0)[0]])).toEqual([1, expect.closeTo(0.5, 6)])
+        // The new entry of slot 1 is written before 3, when the publish of the old entry of that slot would
+        // start. It stays an outline with no fill, during that time and after it.
+        expect(late.pending).toBe(2)
+        for (const time of [3.2, 3.6, 4, 5]) expect(at(time, () => [shows(late.entries[1]!), ...state(late, 1)])).toEqual([1, 0, 1])
+        for (const time of [3.2, 4, 5]) expect(at(time, () => [shows(late.entries[0]!), ...state(late, 0)])).toEqual([1, 0, 1])
+    })
+
+    it('keeps a pending label as far from its outline as a label is from the edge of a fill', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, labelSize: 20 }))
+            s.play(seq(made.push(), made.push(), made.push({ label: 'writev', pending: true }), made.push(), made.push(), made.push(), made.push({ label: 'writev' })), { duration: 1 })
+        }))
+        // Slots 2 and 6 are at the right and the left, where the band is 60 wide and the label is across it.
+        const room = (slot: number) => at(1, () => {
+            const [fill, edge, label] = made.entries[slot]!.children.map((part) => part.bounds())
+            const ink = edge!.x + made.entries[slot]!.children[1]!.get('strokeWidth') / 2
+            return { pending: Math.min(label!.x - ink, 2 * middle(edge!)[0] - ink - label!.x - label!.width), filled: label!.x - fill!.x, size: made.entries[slot]!.children[2]!.data['size'] }
+        })
+        // The pending label is 4 or more from the ink of its outline, as the filled label is from the edge
+        // of its fill. So the pending label is the smaller of the two, by the outline on each side.
+        expect(room(2).pending).toBeGreaterThan(4)
+        expect(room(6).filled).toBeGreaterThan(4)
+        expect(room(2).pending).toBeCloseTo(room(6).filled, 0)
+        expect(room(2).size as number).toBeLessThan(room(6).size as number)
+    })
+
+    it('gives each pointer its color, or the color of the ring, and keeps the slots and the caption in the color of the ring', async () => {
+        let made!: Made
+        const colors: Record<string, unknown> = {}
+        await compileFilm(film({ fps: 20 }, (s) => {
+            for (const name of ['teal', 'orange', 'purple', 'blue', 'red']) colors[name] = paintOf(name)
+            made = s.add(ringBuffer(8, { color: 'teal', headColor: 'orange', tailColor: 'purple', label: 'submission queue', counts: true }))
+            const plain = ringBuffer(8)
+            expect(plain.headPointer!.children[0]!.get('fill')).toEqual(colors['blue'])
+            expect(plain.tailPointer!.children[0]!.get('fill')).toEqual(colors['blue'])
+            expect(nameText(plain.tailPointer!).children[0]!.get('fill')).toEqual(colors['blue'])
+            s.play(made.push(), { duration: 1 })
+            // The film can recolor a pointer as one node. The name follows the arrow head.
+            made.headPointer!.color('red')
+            s.wait(1)
+        }))
+        const ink = (pointer: Node) => [pointer.children[0]!.get('fill'), nameText(pointer).children[0]!.get('fill')]
+        expect(at(0, () => ink(made.headPointer!))).toEqual([colors['orange'], colors['orange']])
+        expect(at(0, () => ink(made.tailPointer!))).toEqual([colors['purple'], colors['purple']])
+        // The name with the next count has the color of its pointer too.
+        expect(at(1, () => nameOf(made.tailPointer!))).toBe('tail 1')
+        expect(at(1, () => ink(made.tailPointer!))).toEqual([colors['purple'], colors['purple']])
+        expect(at(2, () => ink(made.headPointer!))).toEqual([colors['red'], colors['red']])
+        expect(made.slots[0]!.get('stroke')).toEqual(colors['teal'])
+        expect(made.caption!.children[0]!.get('fill')).toEqual(colors['teal'])
+        expect(at(1, () => made.entries[0]!.children[0]!.get('fill'))).toEqual(colors['teal'])
+    })
+
+    it('grows a scaled pointer about its tip, which stays on the band at every move', async () => {
+        let made!: Made, plain!: Made, bare!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            plain = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            bare = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            // A scale moves the pivot of a node to the middle of its bounds. A scale of 1 must change nothing.
+            s.play(to(made, (ring) => ring.scale(1)), to(made.tailPointer!, (pointer) => pointer.scale(1.5)), to(made.headPointer!, (pointer) => pointer.scale(1.5)), { duration: 0.5 })
+            for (const ring of [made, plain]) s.play(seq(ring.push(), ring.push(), ring.push(), ring.push(), ring.pop(), ring.pop()), { duration: 3 })
+            // With no counts, a pointer has one text for its name. A film that measures the ring inside to(),
+            // after the pointer moved, must not hold that text in place.
+            s.play(seq(bare.push(), bare.push()), { duration: 0.5 })
+            s.play(to(bare, (ring) => ring.scale(1)), { duration: 0.25 })
+            s.play(seq(bare.push(), bare.push()), { duration: 0.5 })
+        }))
+        for (const [time, slot] of [[7, 2], [7.25, 2], [7.75, 4]] as const) {
+            at(time, () => expectSameWay(middle(parts(bare.tailPointer!).name.bounds()), bare.p(slot), 6))
+        }
+        const size = (box: Box) => Math.hypot(box.width, box.height)
+        // Every half second a move ends, in the scaled ring until 3.5 and in the plain one from 3.5.
+        for (let step = 0; step <= 6; step++) {
+            const tailSlot = Math.min(step, 4), headSlot = Math.max(0, step - 4)
+            for (const [pointer, other, slot, outside] of [[made.tailPointer!, plain.tailPointer!, tailSlot, false], [made.headPointer!, plain.headPointer!, headSlot, true]] as const) {
+                const scaled = at(0.5 + step * 0.5, () => ({ tip: xy(pointer), arrow: parts(pointer).arrow.bounds(), name: parts(pointer).name.bounds() }))
+                const normal = at(3.5 + step * 0.5, () => ({ tip: xy(other), arrow: parts(other).arrow.bounds(), name: parts(other).name.bounds() }))
+                // The tip is where the tip of a pointer that was not scaled is: on the band, at the slot.
+                expect(scaled.tip).toEqual(normal.tip)
+                expectSameWay(scaled.tip, made.p(slot))
+                // The arrow head and the name are 1.5 times as large, and on their side of the band.
+                expect(size(scaled.arrow)).toBeCloseTo(size(normal.arrow) * 1.5, 6)
+                expect(size(scaled.name)).toBeCloseTo(size(normal.name) * 1.5, 6)
+                for (const corner of [...corners(scaled.arrow), ...corners(scaled.name)]) {
+                    if (outside) expect(far(corner)).toBeGreaterThan(200)
+                    else expect(far(corner)).toBeLessThan(140)
+                }
+                // The name is beyond the arrow head, on the line through the tip, 1.5 times as far from it.
+                expectSameWay(middle(scaled.name), scaled.tip, 6)
+                expect(Math.abs(far(middle(scaled.name)) - far(scaled.tip))).toBeCloseTo(Math.abs(far(middle(normal.name)) - far(normal.tip)) * 1.5, 6)
+            }
+        }
+    })
+
+    it('puts one pointer outside the band and one inside, so the two do not meet at one slot', async () => {
+        let made!: Made, swapped!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            swapped = s.add(ringBuffer(8, { radius: 200, thickness: 60, outside: 'tail' }))
+            // Three entries written and read: an empty ring with both pointers at slot 3.
+            for (const ring of [made, swapped]) s.play(seq(ring.push(), ring.push(), ring.push(), ring.pop(), ring.pop(), ring.pop()), { duration: 1 })
+            // Eight more entries: a full ring, with both pointers at slot 3 again.
+            for (const ring of [made, swapped]) s.play(seq(...Array.from({ length: 8 }, () => ring.push())), { duration: 1 })
+        }))
+        for (const [ring, outer, inner] of [[made, made.headPointer!, made.tailPointer!], [swapped, swapped.tailPointer!, swapped.headPointer!]] as const) {
+            for (const time of [0, 1, 2, 3, 4]) {
+                at(time, () => {
+                    // Each pointer touches the band: the outside one at the outer edge, the inside one at the inner edge.
+                    expect(far(xy(outer)) - 200).toBeGreaterThan(0)
+                    expect(far(xy(outer)) - 200).toBeLessThan(3)
+                    expect(140 - far(xy(inner))).toBeGreaterThan(0)
+                    expect(140 - far(xy(inner))).toBeLessThan(3)
+                    for (const corner of corners(parts(outer).arrow.bounds())) expect(far(corner)).toBeGreaterThan(200)
+                    for (const corner of corners(parts(inner).arrow.bounds())) expect(far(corner)).toBeLessThan(140)
+                    expect(apart(outer.bounds(), inner.bounds(), 30)).toBe(true)
+                })
+            }
+            at(2, () => expectAtSlot(ring, outer, 3))
+            at(2, () => expectAtSlot(ring, inner, 3))
+            // Empty at 2, and full at 4: the length tells the two apart, and the pointers do not.
+            expect(ring.length).toBe(ring.size)
+            expect(at(4, () => xy(outer))).toEqual(at(2, () => xy(outer)))
+        }
+    })
+
+    it('rests each pointer at the middle of its slot, with its name upright and clear of the band, the arrow heads, the caption and the other name', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(16, { radius: 200, thickness: 60, label: 'submission queue', captionGap: 96, counts: true, head: 'consumer head', tail: 'producer tail' }))
+            for (let k = 0; k < 17; k++) {
+                s.play(made.push(), { duration: 0.25 })
+                s.play(made.pop(), { duration: 0.25 })
+            }
+        }))
+        const head = made.headPointer!, tail = made.tailPointer!
+        // Every quarter second a move ends. The tail is then at the same slot as the head, or one slot on.
+        for (let step = 0; step <= 34; step++) {
+            at(step * 0.25, () => {
+                const headSlot = Math.floor(step / 2), tailSlot = Math.ceil(step / 2)
+                expectAtSlot(made, head, headSlot)
+                expectAtSlot(made, tail, tailSlot)
+                const outside = parts(head), inner = parts(tail)
+                const outer = outside.name.bounds(), within = inner.name.bounds(), caption = made.caption!.bounds()
+                expect([nameText(head).get('rotation'), nameText(tail).get('rotation'), outside.name.get('rotation'), head.get('rotation')]).toEqual([0, 0, 0, 0])
+                // No corner of a name is in the band. The inside name is long, so near the top it moves toward the center to fit.
+                for (const corner of corners(outer)) expect(far(corner)).toBeGreaterThan(200 + 6)
+                for (const corner of corners(within)) expect(far(corner)).toBeLessThan(140 - 6)
+                expect(apart(outer, within, 6)).toBe(true)
+                expect(apart(outer, caption, 6)).toBe(true)
+                expect(apart(within, caption, 6)).toBe(true)
+                // The name is beyond its arrow head, on the line from the center through its slot.
+                expect(far(middle(outer))).toBeGreaterThan(far(middle(outside.arrow.bounds())))
+                expect(far(middle(within))).toBeLessThan(far(middle(inner.arrow.bounds())))
+                expectSameWay(middle(outer), made.p(headSlot), 6)
+                expectSameWay(middle(within), made.p(tailSlot), 6)
+                // Slots 0, 4, 8 and 12 of 16 are at the top, the right, the bottom and the left. An arrow head
+                // is upright there, so its bounds are its shape, and the name must be clear of them.
+                if (headSlot % 4 === 0) expect(apart(outer, outside.arrow.bounds(), 6)).toBe(true)
+                if (tailSlot % 4 === 0) expect(apart(within, inner.arrow.bounds(), 6)).toBe(true)
+            })
+        }
+        // The caption is under the ring, and centered on it.
+        const caption = at(0, () => made.caption!.bounds())
+        expect(caption.y).toBeGreaterThan(200)
+        expect(Math.abs(middle(caption)[0])).toBeLessThan(2)
+    })
+
+    it('puts the caption at a distance that follows from the radius, the size and the numbers alone, or at captionGap', async () => {
+        await compileFilm(film(() => {
+            const line = (slots: number, options: Parameters<typeof ringBuffer>[1]) => ringBuffer(slots, { label: 'a queue', ...options }).caption!.get('y')
+            const plain = line(8, {})
+            // The names, the counts, the side of a pointer, a pointer that is not there, the number of slots
+            // and the thickness do not move the caption. So the captions of two such rings are on one line.
+            for (const options of [{ outside: 'tail' }, { counts: true }, { head: 'kernel', counts: true }, { head: 'consumer', tail: 'producer' }, { head: null }, { thickness: 30 }, { tailFollows: 'publish' }] as const) expect(line(8, options)).toBe(plain)
+            expect(line(16, {})).toBe(plain)
+            // With numbers the caption is lower, and at one place for 8 and for 16 slots, which have numbers of two digits.
+            const numbered = line(8, { numbers: true })
+            expect(numbered).toBeGreaterThan(plain + 20)
+            expect(line(16, { numbers: true })).toBe(numbered)
+            expect(line(16, { numbers: true, counts: true, head: 'kernel' })).toBe(numbered)
+            // A larger text or a larger ring moves it.
+            expect(line(8, { size: 32 })).toBeGreaterThan(plain + 10)
+            expect(line(8, { radius: 230 })).toBeGreaterThan(plain + 50)
+            // captionGap is the distance from the band to the top of the capital letters of the caption.
+            const made = ringBuffer(8, { radius: 200, label: 'ABC', captionGap: 100 })
+            expect(made.caption!.bounds().y).toBeCloseTo(300, 0)
+            expect(line(8, { numbers: true, captionGap: 100 })).toBe(line(16, { captionGap: 100 }))
+            // A name that can reach the caption is an error, which gives a distance that has the room.
+            const long = { head: 'the head of the consumer', counts: true }
+            let need = 0
+            try { ringBuffer(8, { label: 'a queue', ...long }) } catch (error) { need = Number(/can reach the caption under the ring.*"88" stands for it. Set captionGap to (\d+) or more/.exec((error as Error).message)?.[1]) }
+            expect(need).toBeGreaterThan(80)
+            expect(ringBuffer(8, { label: 'a queue', ...long, captionGap: need }).caption).not.toBeNull()
+            expect(() => ringBuffer(8, { label: 'a queue', ...long, captionGap: need - 8 })).toThrow(/can reach the caption/)
+            expect(() => ringBuffer(8, { label: 'a queue', captionGap: -1 })).toThrow(/captionGap is the distance/)
+            // With no caption, a long name is no error. The names and the caption have the text size of the ring.
+            expect(ringBuffer(8, long).caption).toBeNull()
+            const small = ringBuffer(8, { label: 'a queue', size: 16 })
+            expect([small.caption!.data['size'], nameText(small.headPointer!).data['size'], nameText(small.tailPointer!).data['size']]).toEqual([16, 16, 16])
+        }))
+    })
+
+    it('has bounds that hold the outside name at every slot, so a zone around a ring has room for it', async () => {
+        let made!: Made, around!: ReturnType<typeof zone>
+        let first!: Box
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = ringBuffer(8, { radius: 200, thickness: 60, counts: true, label: 'submission queue' })
+            first = made.bounds()
+            around = s.add(zone(made, { title: 'shared memory' }))
+            for (let k = 0; k < 8; k++) s.play(seq(made.push(), made.pop()), { duration: 0.5 })
+        }))
+        // At the start the name is at the top. The bounds reach as far to the sides as to the top.
+        expect(first.x).toBeCloseTo(-(first.x + first.width), 6)
+        expect(first.width).toBeGreaterThan(400 + 2 * 60)
+        let right = 0
+        for (let time = 0; time <= 4.0001; time += 0.05) {
+            const name = at(time, () => parts(made.headPointer!).name.bounds())
+            expect(inside(name, first)).toBeGreaterThanOrEqual(-0.01)
+            expect(inside(name, at(time, () => around.frame.bounds()))).toBeGreaterThan(8)
+            right = Math.max(right, name.x + name.width)
+        }
+        // The bounds have the room of a count of two digits, and no more: one digit of slack at the side.
+        expect(first.x + first.width - right).toBeLessThan(26 * 0.7)
+        // A ring with no pointer outside has the bounds of its band.
+        expect(ringBuffer(8, { radius: 200, head: null }).bounds().width).toBeCloseTo(400, 0)
+    })
+
+    it('shows the running count beside each name, not the slot, and changes it when the pointer arrives', async () => {
+        let made!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            for (let k = 0; k < 8; k++) s.play(made.push(), { duration: 0.5 })
+            s.play(made.pop(), { duration: 0.5 })
+            s.play(made.push(), { duration: 1, ease: linear })
+        }))
+        const head = made.headPointer!, tail = made.tailPointer!
+        expect(at(0, () => [nameOf(head), nameOf(tail)])).toEqual(['head 0', 'tail 0'])
+        expect(at(4, () => [nameOf(head), nameOf(tail)])).toEqual(['head 0', 'tail 8'])
+        expect(at(4.5, () => nameOf(head))).toBe('head 1')
+        // The ninth push is from 4.5 to 5.5. The count changes at the end of the move, not before.
+        expect(at(5.4, () => nameOf(tail))).toBe('tail 8')
+        expect(at(5.5, () => nameOf(tail))).toBe('tail 9')
+        at(5.5, () => expectAtSlot(made, tail, 1))
+    })
+
+    it('keeps the tail behind the pending entries until publish() with tailFollows, and marks where the producer writes', async () => {
+        let made!: Made, plain!: Made
+        let blue: unknown
+        await compileFilm(film({ fps: 20 }, (s) => {
+            blue = paintOf('blue')
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true, tailFollows: 'publish', tailColor: 'blue', color: 'dim', outside: 'tail' }))
+            plain = s.add(ringBuffer(8, { radius: 200, thickness: 60, counts: true }))
+            s.play(made.push(), plain.push({ pending: true }), { duration: 1 })
+            // Three pending entries: the producer writes, and the consumer does not see them yet.
+            s.play(seq(made.push({ pending: true }), made.push({ pending: true }), made.push({ pending: true })), { duration: 1 })
+            expect([made.tail, made.length, made.pending]).toEqual([4, 4, 3])
+            s.play(made.publish(), { duration: 1, ease: linear })
+            expect(made.pending).toBe(0)
+            // With a lag, the tail goes over each entry in the time in which that entry fills.
+            s.play(seq(made.push({ pending: true }), made.push({ pending: true }), made.push({ pending: true })), { duration: 2 })
+            s.play(made.publish({ lag: 0.5 }), { duration: 1, ease: linear })
+        }))
+        const tail = made.tailPointer!, marker = made.writeMarker!
+        // The default is 'push': the tail moves for a pending entry, and there is no mark of the writer.
+        expect(plain.writeMarker).toBeNull()
+        at(1, () => expectAtSlot(plain, plain.tailPointer!, 1))
+        // The mark is an arrow head with no name, in the color of the tail, dim, on the side of the tail.
+        expect(marker.children).toHaveLength(1)
+        expect([marker.children[0]!.get('fill'), marker.get('opacity')]).toEqual([blue, 0.5])
+        expect(at(0, () => far(xy(marker)))).toBeGreaterThan(200)
+        // An entry that is not pending moves both: the tail and the mark are at one place.
+        expect(at(1, () => xy(marker))).toEqual(at(1, () => xy(tail)))
+        expect(at(1, () => nameOf(tail))).toBe('tail 1')
+        // Pending entries move the mark alone. The tail and its count stay.
+        at(2, () => expectAtSlot(made, marker, 4))
+        at(2, () => expectAtSlot(made, tail, 1))
+        expect(at(2, () => nameOf(tail))).toBe('tail 1')
+        // publish() is from 2 to 3. The tail goes over the three entries, and counts as it passes each slot.
+        at(2.5, () => expectAtSlot(made, tail, 2.5))
+        expect(at(2.5, () => nameOf(tail))).toBe('tail 2')
+        at(3, () => expectAtSlot(made, tail, 4))
+        expect(at(3, () => [nameOf(tail), xy(marker)])).toEqual(['tail 4', at(3, () => xy(tail))])
+        // Three entries published with a lag of 0.5, from 5 to 6: each fills in 0.5 s, and starts 0.25 s
+        // after the one before it. The tail is half over an entry when that entry is half full.
+        at(5.25, () => expectAtSlot(made, tail, 4.5))
+        expect(at(5.25, () => made.entries[4]!.children[0]!.get('fillOpacity'))).toBeCloseTo(0.5, 6)
+        at(5.5, () => expectAtSlot(made, tail, 5.5))
+        at(5.75, () => expectAtSlot(made, tail, 6.5))
+        at(6, () => expectAtSlot(made, tail, 7))
+        expect(made.tail).toBe(7)
+    })
+
+    it('draws no pointer for a name that is null, and the slot then changes over the whole time', async () => {
+        let noHead!: Made, noTail!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            noHead = s.add(ringBuffer(8, { head: null, tailFollows: 'publish' }))
+            noTail = s.add(ringBuffer(8, { tail: null, tailFollows: 'publish' }))
+            s.play(noHead.push(), noTail.push(), { duration: 1, ease: linear })
+            s.play(noHead.pop(), noTail.pop(), { duration: 1, ease: linear })
+        }))
+        expect(noHead.headPointer).toBeNull()
+        expect(noHead.tailPointer).not.toBeNull()
+        expect(noTail.tailPointer).toBeNull()
+        expect(noTail.headPointer).not.toBeNull()
+        // With no tail pointer, there is no mark of the writer.
+        expect([noHead.writeMarker === null, noTail.writeMarker === null]).toEqual([false, true])
+        // With a tail pointer the slot is full at 0.45 of the push. With none, it fills until the end.
+        expect(at(0.45, () => shows(noHead.entries[0]!))).toBeCloseTo(1, 6)
+        expect(at(0.45, () => shows(noTail.entries[0]!))).toBeCloseTo(0.45, 6)
+        expect(at(1.45, () => shows(noHead.entries[0]!))).toBeCloseTo(0.55, 6)
+        expect(at(1.45, () => shows(noTail.entries[0]!))).toBeCloseTo(0, 6)
+        expect([noHead.head, noHead.tail, noTail.head, noTail.tail]).toEqual([1, 1, 1, 1])
+    })
+
+    it('writes the number of each slot beside it, beyond the arrow head of the outside pointer, and apart from the name', async () => {
+        await compileFilm(film(() => {
+            const made = ringBuffer(8, { radius: 200, thickness: 60, numbers: true, counts: true })
+            expect(made.numbers.map((number) => (number as unknown as { source: string }).source)).toEqual(['0', '1', '2', '3', '4', '5', '6', '7'])
+            // A number is 0.7 of the text size, and dim.
+            expect(made.numbers.map((number) => number.data['size'])).toEqual(Array(8).fill(26 * 0.7))
+            expect(made.numbers[3]!.children[0]!.get('fill')).toEqual(paintOf('dim'))
+            const arrow = parts(made.headPointer!).arrow.bounds(), name = parts(made.headPointer!).name.bounds()
+            made.numbers.forEach((number, slot) => {
+                const box = number.bounds()
+                // The number is outside the band, in the direction of its slot.
+                expectSameWay(middle(box), made.p(slot), 6)
+                for (const corner of corners(box)) expect(far(corner)).toBeGreaterThan(200 + 6)
+            })
+            // At slot 0, from the band upward: the arrow head, the number, then the name. The name is three
+            // gaps from the number, so that "head 0" and the number of the slot do not read as one phrase.
+            const zero = made.numbers[0]!.bounds()
+            expect(zero.y + zero.height).toBeLessThan(arrow.y - 4)
+            expect(zero.y - name.y - name.height).toBeGreaterThanOrEqual(26 * 0.3 * 3 - 0.01)
+            expect(zero.y - name.y - name.height).toBeLessThan(26 * 0.3 * 3 + 6)
+            // With no numbers, the name is one gap from the arrow head.
+            const bare = ringBuffer(8, { radius: 200, thickness: 60, counts: true })
+            const [tip, word] = [parts(bare.headPointer!).arrow.bounds(), parts(bare.headPointer!).name.bounds()]
+            expect(tip.y - word.y - word.height).toBeCloseTo(26 * 0.3, 1)
+            // With no pointer outside, the numbers are nearer to the band.
+            const alone = ringBuffer(8, { radius: 200, thickness: 60, numbers: true, head: null })
+            expect(alone.numbers[0]!.bounds().y).toBeGreaterThan(zero.y + 8)
+            expect(ringBuffer(8).numbers).toEqual([])
+        }))
+    })
+
+    it('enters with the band first, slot after slot, then the pointers and the caption', async () => {
+        let made!: Made, plain!: Made
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = ringBuffer(8, { label: 'submission queue', numbers: true })
+            plain = ringBuffer(8, { label: 'a dim caption' })
+            // The film made the caption dim. enter() brings it back to that, not to 1.
+            plain.caption!.opacity(0.4)
+            s.play(seq(made.push(), made.push()), { duration: 0 })
+            s.wait(0.5)
+            s.play(made.enter({ lag: 1 }), plain.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect((await compiled.frame(0.2)).ops).toHaveLength(0)
+        expect((await compiled.frame(0.5)).ops).toHaveLength(0)
+        const drawn = (ring: Made, slot: number) => ring.slots[slot]!.get('trimTo')
+        const late = [made.headPointer!, made.tailPointer!, made.caption!]
+        // The band has 0.7 of the time, from 0.5 to 1.9. With a lag of 1, each of the 8 slots has 0.175 s.
+        expect(at(0.5 + 0.175 / 2, () => [drawn(made, 0), drawn(made, 1), drawn(made, 7)])).toEqual([expect.closeTo(0.5, 6), 0, 0])
+        expect(at(1.7, () => [drawn(made, 0), drawn(made, 5), drawn(made, 7)])).toEqual([1, 1, 0])
+        expect(at(1.7, () => late.map(shows))).toEqual([0, 0, 0])
+        // The default lag is 0.5: a slot has 1.4 / 4.5 s, and starts when the slot before it is half drawn.
+        const each = 1.4 / 4.5
+        expect(at(0.5 + each / 2, () => [drawn(plain, 0), drawn(plain, 1)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(0.5 + each, () => [drawn(plain, 0), drawn(plain, 1), drawn(plain, 2)])).toEqual([1, expect.closeTo(0.5, 6), 0])
+        // The fill of a slot comes in the second half of its time, and is whole at the end.
+        const fillOf = (slot: number) => made.slots[slot]!.get('fillOpacity')
+        expect(at(0.5, () => fillOf(0))).toBe(0)
+        expect(at(0.5 + 0.175 / 2, () => fillOf(0))).toBe(0)
+        expect(at(0.5 + 0.175 * 0.75, () => fillOf(0))).toBeCloseTo(0.5, 6)
+        expect(at(2.6, () => made.slots.map((_, slot) => fillOf(slot)))).toEqual(Array(8).fill(1))
+        // An entry that is in the ring and the number of a slot arrive with that slot.
+        expect(at(0.5 + 0.175 / 2, () => [shows(made.numbers[0]!), shows(made.numbers[1]!)])).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(at(0.5 + 0.175, () => shows(made.entries[0]!))).toBeCloseTo(1, 6)
+        expect(at(0.5 + 0.175, () => shows(made.entries[1]!))).toBe(0)
+        // The pointers and the caption come last, from 0.65 of the time.
+        expect(at(2.15, () => late.map(shows))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        expect(at(2.6, () => [...late, ...made.numbers, ...made.entries].map(shows))).toEqual([1, 1, 1, ...Array(8).fill(1), 1, 1, 0, 0, 0, 0, 0, 0])
+        expect(at(2.6, () => made.slots.map((_, slot) => drawn(made, slot)))).toEqual(Array(8).fill(1))
+        expect([2.15, 2.6].map((time) => at(time, () => shows(plain.caption!)))).toEqual([expect.closeTo(0.2, 6), 0.4])
+        // enter() puts the ring on the stage: the film draws the 8 slots, the 2 entries, the 2 arrow heads and the texts.
+        expect((await compiled.frame(2.6)).ops.length).toBeGreaterThan(8 + 2 + 2)
+        // The setup pushes took no time, and the tail is at slot 2 from the start.
+        at(0, () => expectAtSlot(made, made.tailPointer!, 2))
+    })
+
+    it('sets a label that is too wide smaller, inside its slot, and keeps a short label at its size', async () => {
+        let made!: Made, plain!: Made, small!: Made
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(ringBuffer(8, { radius: 200, thickness: 60, labelSize: 20 }))
+            plain = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            small = s.add(ringBuffer(8, { radius: 200, thickness: 60, size: 12 }))
+            s.play(seq(made.push({ label: 'A' }), made.push({ label: 'B' }), made.push({ label: 'writev' })), plain.push({ label: 'A' }), small.push({ label: 'A' }), { duration: 1 })
+        }))
+        const [short, , long] = [0, 1, 2].map((slot) => made.entries[slot]!.children[2]!)
+        expect(short!.data['size']).toBe(20)
+        expect(long!.data['size'] as number).toBeLessThan(20)
+        expect(long!.data['size'] as number).toBeGreaterThanOrEqual(12)
+        // Slot 2 is at the right, so the band is 60 wide there, from 140 to 200. The label is inside the fill.
+        const box = at(1, () => long!.bounds())
+        expect(box.x).toBeGreaterThan(140 + 6)
+        expect(box.x + box.width).toBeLessThan(200 - 6)
+        expect(middle(box)[1]).toBeCloseTo(0, 6)
+        // The default size is 0.28 of the thickness, and the size of the names at the most.
+        expect(plain.entries[0]!.children[2]!.data['size']).toBeCloseTo(16.8, 6)
+        expect(small.entries[0]!.children[2]!.data['size']).toBe(12)
+    })
+
+    it('says what fits when a label does not: a label size, a number of slots, a radius', async () => {
+        await compileFilm(film((s) => {
+            // 'read' does not fit in a slot of a ring of 32. More thickness makes a slot narrower, so the
+            // message does not name it.
+            let message = ''
+            try { ringBuffer(32).push({ label: 'read' }) } catch (error) { message = (error as Error).message }
+            expect(message).toMatch(/the label "read" does not fit in a slot. At [\d.]+ px, its smallest size, it is \d+ px wide, and a slot has room for \d+ px. It fits with labelSize: \d+, or with \d+ slots, or with radius: \d+, or as a shorter label/)
+            expect(message).not.toMatch(/thickness/)
+            const [labelSize, slots, radius] = [/labelSize: (\d+)/, /with (\d+) slots/, /radius: (\d+)/].map((part) => Number(part.exec(message)![1]))
+            // Each way works, and is the first that does: one more slot, or 10 less of radius, does not fit.
+            const tried = (count: number, options: Parameters<typeof ringBuffer>[1]) => () => ringBuffer(count, options).push({ label: 'read' })
+            expect(tried(32, { labelSize: labelSize! })).not.toThrow()
+            expect(tried(slots!, {})).not.toThrow()
+            expect(tried(32, { radius: radius! })).not.toThrow()
+            expect(tried(slots! + 1, {})).toThrow(/does not fit in a slot/)
+            expect(tried(32, { radius: radius! - 10 })).toThrow(/does not fit in a slot/)
+            // The label size of the message is the largest at which the label keeps its size: one more, and it is set smaller.
+            const drawn = (size: number) => {
+                const made = s.add(ringBuffer(32, { labelSize: size }))
+                s.play(made.push({ label: 'read' }), { duration: 0 })
+                return made.entries[0]!.children[2]!.data['size'] as number
+            }
+            expect(drawn(labelSize!)).toBe(labelSize!)
+            expect(drawn(labelSize! + 1)).toBeLessThan(labelSize! + 1)
+            // A ring that the film gave a thickness keeps it in the advice. Where no number of slots helps, the message leaves it out.
+            expect(() => ringBuffer(8, { radius: 200, thickness: 60 }).push({ label: 'submission' })).toThrow(/It fits with labelSize: \d+, or as a shorter label/)
+        }))
+    })
+
+    it('names what is wrong: the number of slots, a full or an empty ring, a name that has no room', async () => {
+        await compileFilm(film((s) => {
+            expect(() => ringBuffer(1)).toThrow(/a ring has 2 to 64 slots, a whole number. It got 1/)
+            expect(() => ringBuffer(65)).toThrow(/2 to 64 slots/)
+            expect(() => ringBuffer(2.5)).toThrow(/2 to 64 slots/)
+            expect(ringBuffer(2).size).toBe(2)
+            expect(ringBuffer(64).size).toBe(64)
+            expect(() => ringBuffer(8, { radius: 0 })).toThrow(/radius is the outer radius/)
+            expect(() => ringBuffer(8, { radius: 100, thickness: 100 })).toThrow(/thickness is the radial size of a slot, more than 0 and less than the radius of 100/)
+            expect(() => ringBuffer(8, { thickness: 0 })).toThrow(/thickness is the radial size/)
+            expect(() => ringBuffer(8, { size: 0 })).toThrow(/size is a text size/)
+            expect(() => ringBuffer(8, { labelSize: -1 })).toThrow(/labelSize is a text size/)
+            expect(() => ringBuffer(8).p(Number.NaN)).toThrow(/names no slot/)
+
+            // The fill state is known when a change is scheduled, so that is where a full or an empty ring is found.
+            const made = s.add(ringBuffer(8, { radius: 200, thickness: 60 }))
+            const pop = made.pop()
+            expect(() => s.play(pop)).toThrow(/the ring is empty. push\(\) before the next pop\(\)/)
+            s.play(seq(...Array.from({ length: 8 }, () => made.push())), { duration: 1 })
+            const push = made.push()
+            expect(() => s.play(push)).toThrow(/the ring is full, 8 of 8 slots. pop\(\) before the next push\(\)/)
+            expect([made.head, made.tail]).toEqual([0, 8])
+
+            // A label is checked when the film calls push(), full ring or not.
+            expect(() => made.push({ label: 'submission' })).toThrow(/the label "submission" does not fit in a slot/)
+            expect(() => made.push({ color: 'no such color' })).toThrow(/Unknown color/)
+
+            // The inside name must fit inside the ring: its diagonal, across the inside, less one arrow head.
+            // On this ring that is 2 * (140 - 1.75 - 7.8) - 16.12. The message gives a radius that has the room.
+            const name = 'the tail of the producer and more'
+            const ink = text(name, { size: 26 }).bounds()
+            let message = ''
+            try { ringBuffer(8, { radius: 200, thickness: 60, tail: name }) } catch (error) { message = (error as Error).message }
+            const [, wide, room, radius] = /the name "the tail of the producer and more" is (\d+) px wide, and the inside of the ring has room for (\d+) px. Raise radius to (\d+), or put this pointer outside with outside: 'tail'/.exec(message)!.map(Number)
+            expect(wide).toBe(Math.ceil(ink.width))
+            expect(room).toBe(Math.floor(Math.sqrt((2 * (140 - 1.75 - 26 * 0.3) - 26 * 0.62) ** 2 - ink.height ** 2)))
+            expect(ringBuffer(8, { radius: radius!, thickness: 60, tail: name }).tailPointer).not.toBeNull()
+            expect(() => ringBuffer(8, { radius: radius! - 10, thickness: 60, tail: name })).toThrow(/has room for/)
+            expect(() => ringBuffer(8, { head: name, outside: 'tail' })).toThrow(/put this pointer outside with outside: 'head'/)
+            expect(ringBuffer(8, { tail: name, outside: 'tail' }).tailPointer).not.toBeNull()
+
+            // 64 numbers do not fit around the default ring. They fit around a larger one.
+            expect(() => ringBuffer(64, { numbers: true })).toThrow(/the numbers of 64 slots touch each other around a ring of radius 170. Raise radius/)
+            expect(ringBuffer(64, { numbers: true, radius: 340 }).numbers).toHaveLength(64)
+        }))
+    })
+
+    it('asks for the room of a count of two digits at the start, and checks a third digit when a pointer reaches it', async () => {
+        await compileFilm(film((s) => {
+            // Without counts the name fits. With counts it must fit with two digits, from the start.
+            const options = { thickness: 30, tail: 'the writer' } as const
+            const fails = (radius: number) => { try { ringBuffer(8, { ...options, radius, counts: true }); return false } catch { return true } }
+            let tight = 100
+            while (tight < 300 && fails(tight)) tight += 2
+            expect(tight).toBeGreaterThan(104)
+            expect(tight).toBeLessThan(300)
+            expect(ringBuffer(8, { ...options, radius: tight - 2 }).tailPointer).not.toBeNull()
+            expect(() => ringBuffer(8, { ...options, radius: tight - 2, counts: true })).toThrow(/the name "the writer 88" is \d+ px wide, and the inside of the ring has room for \d+ px. With counts, a name needs the room of a count of two digits, and "88" stands for it. Raise radius to \d+, or put this pointer outside/)
+            // At the first radius with room for two digits, 99 pushes pass. The hundredth has no room.
+            const made = s.add(ringBuffer(8, { ...options, radius: tight, counts: true }))
+            for (let k = 0; k < 99; k++) s.play(seq(made.push(), made.pop()), { duration: 0 })
+            expect(made.tail).toBe(99)
+            const push = made.push()
+            expect(() => s.play(push)).toThrow(/the name "the writer 100" is \d+ px wide, and the inside of the ring has room for \d+ px. Raise radius to \d+/)
+        }))
+    })
+
+    it('gives a copy its own entries and pointers, at rest in the state of the ring', async () => {
+        await compileFilm(film((s) => {
+            const made = s.add(ringBuffer(8, { counts: true, label: 'submission queue', tailFollows: 'publish' }))
+            s.play(seq(made.push({ label: 'A' }), made.push({ pending: true })), { duration: 0.5 })
+            const copy = made.clone()
+            expect(copy.entries[0]).not.toBe(made.entries[0])
+            expect(copy.children).toContain(copy.entries[0])
+            expect(copy.children).toContain(copy.tailPointer)
+            expect(copy.children).toContain(copy.writeMarker)
+            expect(copy.tailPointer).not.toBe(made.tailPointer)
+            expect(copy.caption).not.toBe(made.caption)
+            expect([copy.head, copy.tail, copy.length, copy.pending]).toEqual([0, 2, 2, 1])
+            expect(copy.entries.map(shows)).toEqual([1, 1, 0, 0, 0, 0, 0, 0])
+            // The tail of the copy is where the tail of the ring is: behind the pending entry. So is its mark of the writer.
+            expect(nameOf(copy.tailPointer!)).toBe('tail 1')
+            expect(xy(copy.tailPointer!)).toEqual(xy(made.tailPointer!))
+            expect(xy(copy.writeMarker!)).toEqual(xy(made.writeMarker!))
+            // A change of the copy is not a change of the ring: its count, its pending entry, its pointer, its name.
+            s.play(copy.publish(), { duration: 0.5 })
+            s.play(copy.push(), { duration: 0.5 })
+            expect([copy.tail, made.tail, copy.pending, made.pending]).toEqual([3, 2, 0, 1])
+            expect(shows(made.entries[2]!)).toBe(0)
+            expect([nameOf(copy.tailPointer!), nameOf(made.tailPointer!)]).toEqual(['tail 3', 'tail 1'])
+            expectAtSlot(copy, copy.tailPointer!, 3)
+            expectAtSlot(made, made.tailPointer!, 1)
+            expectAtSlot(made, made.writeMarker!, 2)
+        }))
+    })
+})
+
+describe('spotlight', () => {
+    // The films here have the midnight look. These are its background and the blue of the boxes.
+    const BACK = parseColor('#0b0c10'), BLUE = parseColor('#5cc4f0')
+    const box = (x: number, y = 0) => rect(120, 120, { fill: 'blue', stroke: null }).at(x, y)
+    const round = (value: number) => Math.round(value * 1e4) / 1e4
+    const mark = (f: CompiledFilm, time: number, node: Node) => paths(f, time).find((op) => op.node === node)
+    /** A color between the background and another color: the look of a paint at a `dim`. */
+    const toward = (color: Rgba, dim: number, back: Rgba = BACK) => [0, 1, 2].map((i) => round(back[i]! + (color[i]! - back[i]!) * dim))
+    const rgb = (color: unknown) => (color as Rgba).slice(0, 3).map(round)
+    /**
+     * How much of its own color the film draws each box with at a time: 1 is its blue, 0 is the color of the
+     * background, and null is a box that the frame does not draw.
+     */
+    const lit = (f: CompiledFilm, time: number, ...nodes: Node[]) => nodes.map((node) => {
+        const fill = mark(f, time, node)?.fill as Rgba | undefined
+        return fill ? round((fill[0] - BACK[0]) / (BLUE[0] - BACK[0])) : null
+    })
+    /** The alpha that the film draws each box with, which a light must leave as it is. */
+    const alphas = (f: CompiledFilm, time: number, ...nodes: Node[]) => nodes.map((node) => round(mark(f, time, node)?.fillAlpha ?? 0))
+    const dims = (time: number, ...nodes: Node[]) => at(time, () => nodes.map((node) => node.get('dim')))
+
+    it('dims a sibling and a node of another group, and keeps the target, what is in it, and its ancestors, before, in the middle and after', async () => {
+        let ancestor!: Node, target!: Node, part!: Node, sibling!: Node, cousin!: Node, far!: Node, other!: Node
+        const f = await compile((s) => {
+            // The target and its ancestor draw a shape of their own, so that the frame shows what each one keeps.
+            part = box(0)
+            target = box(-300).add(part)
+            sibling = box(-100)
+            ancestor = box(-500).opacity(0.8).add(target, sibling)
+            // One more level: the group of the ancestor is an ancestor too, and its other child dims.
+            cousin = box(-500, 300)
+            s.add(group(ancestor, cousin))
+            other = box(400)
+            far = s.add(group(other))
+            s.wait(1)
+            s.play(spotlight(target, { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        const all = [ancestor, target, part, sibling, cousin, other] as const
+        expect(lit(f, 0.5, ...all)).toEqual([1, 1, 1, 1, 1, 1])
+        expect(lit(f, 1.5, ...all)).toEqual([1, 1, 1, 0.65, 0.65, 0.65])
+        expect(lit(f, 2.5, ...all)).toEqual([1, 1, 1, 0.3, 0.3, 0.3])
+        // The light wrote no opacity, and no alpha changed: each node has the opacity that the film gave it.
+        for (const time of [0.5, 1.5, 2.5]) expect(alphas(f, time, ...all)).toEqual([0.8, 0.8, 0.8, 0.8, 1, 1])
+        expect(at(2.5, () => [...all, far].map((node) => node.get('opacity')))).toEqual([0.8, 1, 1, 1, 1, 1, 1])
+        // One `dim` on the other group dims what is in it.
+        expect(dims(2.5, ancestor, target, part, sibling, cousin, far, other)).toEqual([1, 1, 1, 0.3, 0.3, 0.3, 1])
+    })
+
+    it('takes each paint of a dim node toward the background and leaves every alpha: a fill, a stroke, a glow, and each stop of a gradient', async () => {
+        const YELLOW = parseColor('#ffd75e'), RED = parseColor('#ff6b6b'), CLEAR: Rgba = [255, 107, 107, 0.4]
+        let solid!: Node, shaded!: Node
+        const f = await compile((s) => {
+            const lit = s.add(box(-500))
+            solid = s.add(rect(120, 120, { fill: 'blue', stroke: 'yellow', width: 6 }).at(-200, 0).opacity(0.5).glow(12, 'red'))
+            solid.set('fillOpacity', 0.8)
+            shaded = s.add(rect(120, 120, { stroke: null }).at(100, 0).fill(linearGradient([-60, 0], [60, 0], ['blue', CLEAR])))
+            s.play(spotlight(lit, { dim: 0.25, duration: 1 }))
+        })
+        const before = mark(f, 0, solid)!, after = mark(f, 1, solid)!
+        expect([rgb(before.fill), rgb(before.stroke), rgb(before.glowColor)]).toEqual([rgb(BLUE), rgb(YELLOW), rgb(RED)])
+        expect([rgb(after.fill), rgb(after.stroke), rgb(after.glowColor)]).toEqual([toward(BLUE, 0.25), toward(YELLOW, 0.25), toward(RED, 0.25)])
+        // The opacity of the node, 0.5, times the opacity of its fill, 0.8. The light is not in it.
+        expect([after.fillAlpha, after.strokeAlpha]).toEqual([before.fillAlpha, before.strokeAlpha])
+        expect([after.fillAlpha, after.strokeAlpha]).toEqual([0.4, 0.5])
+        const stops = (mark(f, 1, shaded)!.fill as unknown as { stops: [number, Rgba][] }).stops
+        expect(stops.map(([, color]) => rgb(color))).toEqual([toward(BLUE, 0.25), toward(CLEAR, 0.25)])
+        // A stop keeps its own alpha too.
+        expect(stops.map(([, color]) => color[3])).toEqual([1, 0.4])
+    })
+
+    it('keeps a dim node opaque, so a dim label still hides the line behind it and the film check finds no line through a text', async () => {
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            const node = (name: string, x: number) => s.add(group(rect(260, 140, { radius: 14, stroke: 'blue', width: 5 }), text(name, { size: 44 })).at(x, -150))
+            const [client, server, cache] = [node('client', -600), node('server', 0), node('cache', 600)]
+            // The label of a connector sits on its line, on a plate in the background color.
+            s.add(connector(client, server, { label: 'request', labelSize: 30, color: 'ink', width: 4, route: 'straight' }))
+            s.add(connector(server, cache, { label: 'lookup', labelSize: 30, color: 'yellow', width: 4, route: 'straight' }))
+            s.wait(0.5)
+            s.play(spotlight(cache))
+            s.wait(1)
+            s.play(spotlight(null))
+            s.wait(0.5)
+        }), { motion: true })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('goes toward the background of the film, which can be its own color, and toward the background of the look for a film with none', async () => {
+        const backs: Record<string, Rgba> = {}
+        let rest!: Node
+        const build = (s: Stage) => {
+            const target = s.add(box(-300))
+            rest = s.add(box(0))
+            s.play(spotlight(target, { dim: 0, duration: 0 }))
+            s.wait(1)
+        }
+        // The token comes after a film in another look: it must be the `surface` of paper, not of the film before.
+        for (const [name, options] of [['a color', { background: '#804020' }], ['none', { background: null }], ['a token', { look: 'paper', background: 'surface' }], ['paper', { look: 'paper' }]] as const) {
+            const f = await compile(build, options)
+            backs[name] = mark(f, 0.5, rest)!.fill as Rgba
+            // At a dim of 0 the node has the color of the background, and it is still drawn, with its alpha.
+            expect(mark(f, 0.5, rest)!.fillAlpha, name).toBe(1)
+        }
+        // A background that the compile call gives, as `--background` of the command line does.
+        const given = await compileFilm(film(build), { background: '#203040' })
+        expect(rgb(mark(given, 0.5, rest)!.fill)).toEqual([32, 48, 64])
+        expect(rgb(backs['a color'])).toEqual([128, 64, 32])
+        expect(rgb(backs['none'])).toEqual(rgb(BACK))
+        expect(rgb(backs['a token'])).toEqual(rgb(parseColor('#efe9db')))
+        expect(rgb(backs['paper'])).toEqual(rgb(parseColor('#f7f3ea')))
+    })
+
+    it('takes the rest to the dim that the film names, lights a list of targets, and is less dim by default on a light look', async () => {
+        let a!: Node, b!: Node, c!: Node
+        const f = await compile((s) => {
+            ;[a, b, c] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(spotlight([a, c], { dim: 0.25, duration: 1 }))
+            s.wait(1)
+            // A duration of 0 changes the light at once.
+            s.play(spotlight(b, { dim: 0, duration: 0 }))
+            s.wait(1)
+        })
+        expect(lit(f, 1.999, a, b, c)).toEqual([1, 0.25, 1])
+        expect(lit(f, 2, a, b, c)).toEqual([0, 1, 0])
+        // With no duration, the light takes half a second.
+        expect(spotlight(a).duration).toBe(0.5)
+        // The default leaves ink text at a contrast of about 2.4 on the dark looks, and 0.4 does the same on paper.
+        for (const [look, dim] of [['midnight', 0.3], ['blueprint', 0.3], ['paper', 0.4]] as const) {
+            let rest!: Node
+            await compile((s) => {
+                const target = s.add(box(-300))
+                rest = s.add(box(0))
+                s.play(spotlight(target, { duration: 1 }))
+            }, { look })
+            expect(dims(1, rest), look).toEqual([dim])
+        }
+    })
+
+    it('follows the ease that the film gives', async () => {
+        let rest!: Node
+        const f = await compile((s) => {
+            const target = s.add(box(-300))
+            rest = s.add(box(0))
+            s.play(spotlight(target, { duration: 1, ease: (t) => t * t }))
+        })
+        // At half of the time, this ease is at a quarter of the way from 1 to 0.3.
+        expect(lit(f, 0.5, rest)).toEqual([0.825])
+    })
+
+    it('dims only inside `within`, leaves the light of another node as it is, and turns the light off there alone', async () => {
+        let left!: Node[], right!: Node[], leftChart!: Node, rightChart!: Node, alone!: Node
+        const f = await compile((s) => {
+            left = [box(-500), box(-350), box(-200)]
+            right = [box(200), box(350)]
+            leftChart = s.add(group(...left))
+            rightChart = s.add(group(...right))
+            alone = s.add(box(0, 300))
+            s.play(spotlight(left[1]!, { within: leftChart, duration: 1 }))
+            // A second light, in the other chart, with its own dim. The first one stays as it is.
+            s.play(spotlight(right[0]!, { within: rightChart, dim: 0.5, duration: 1 }))
+            s.play(spotlight(null, { within: leftChart, duration: 1 }))
+            // A light on the whole stage takes the place of every light. Then the light of the right chart off: the chart itself is still dim.
+            s.play(spotlight(alone, { duration: 1 }))
+            s.play(spotlight(null, { within: rightChart, duration: 1 }))
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        const all = (time: number) => lit(f, time, ...left, ...right, alone)
+        expect(all(1)).toEqual([0.3, 1, 0.3, 1, 1, 1])
+        expect(all(2)).toEqual([0.3, 1, 0.3, 1, 0.5, 1])
+        expect(all(3)).toEqual([1, 1, 1, 1, 0.5, 1])
+        expect(all(4)).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 1])
+        expect(dims(5, ...right, rightChart)).toEqual([1, 1, 0.3])
+        expect(all(5)).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 1])
+        expect(all(6)).toEqual([1, 1, 1, 1, 1, 1])
+    })
+
+    it('lets a light in a node decide there again, after a light of the whole stage dimmed parts of that node', async () => {
+        let bars!: Node[], other!: Node
+        const f = await compile((s) => {
+            bars = [box(-450), box(-300), box(-150)]
+            const chart = s.add(group(...bars))
+            other = s.add(box(300))
+            // The light of the stage is on one bar, so the chart holds it and does not dim as a whole.
+            s.play(spotlight(bars[0]!, { duration: 1 }))
+            s.play(spotlight(bars[2]!, { within: chart, duration: 1 }))
+        })
+        expect(lit(f, 1, ...bars, other)).toEqual([1, 0.3, 0.3, 0.3])
+        // Inside the chart the later light decides. Outside it, the light of the stage still does.
+        expect(lit(f, 2, ...bars, other)).toEqual([0.3, 0.3, 1, 0.3])
+    })
+
+    it('keeps the nodes in `keep` and the pinned nodes bright, with what is in them, and dims what is beside them', async () => {
+        let target!: Node, rest!: Node, heading!: Node, source!: Node, pinned!: Node, inPinned!: Node, deepPinned!: Node, beside!: Node, kept!: Node, notKept!: Node
+        const f = await compile((s) => {
+            target = s.add(box(-300))
+            rest = s.add(box(0))
+            heading = s.add(box(0, -300))
+            source = box(0, 300)
+            const footer = s.add(group(source))
+            inPinned = box(0)
+            pinned = s.add(box(600, -300).add(inPinned).pin())
+            // A pinned node in a group: the group cannot dim as a whole, and its other child dims.
+            deepPinned = box(600, 300).pin()
+            beside = box(450, 300)
+            s.add(group(deepPinned, beside))
+            // The same for a node in `keep` that is one child of a group.
+            kept = box(-600, 300)
+            notKept = box(-450, 300)
+            s.add(group(kept, notKept))
+            s.play(spotlight(target, { keep: [heading, footer, kept], duration: 1 }))
+            // `keep` belongs to one call. The next call names one node, with no list, and the others dim.
+            s.play(spotlight(target, { keep: heading, duration: 1 }))
+        })
+        expect(lit(f, 1, target, rest, heading, source, pinned, inPinned, deepPinned, beside, kept, notKept)).toEqual([1, 0.3, 1, 1, 1, 1, 1, 0.3, 1, 0.3])
+        expect(lit(f, 2, target, rest, heading, source, pinned, deepPinned, kept)).toEqual([1, 0.3, 1, 0.3, 1, 1, 0.3])
+    })
+
+    it('lights the name and the readout of a bar with the bar, also in a copy of the chart', async () => {
+        const make = () => barChart([{ label: 'parse', value: 3 }, { label: 'plan', value: 7 }, { label: 'run', value: 12 }], { width: 400, height: 240 })
+        let chart!: ReturnType<typeof make>, copy!: ReturnType<typeof make>
+        await compile((s) => {
+            chart = s.add(make().at(-400, 0))
+            copy = s.add(chart.clone().at(400, 0))
+            s.play(spotlight([chart.bar(1), copy.bar(2)], { duration: 1 }))
+        })
+        for (const [made, index] of [[chart, 1], [copy, 2]] as const) {
+            const shown = (nodes: readonly Node[]) => dims(1, ...nodes).map((dim) => dim === 1)
+            expect(shown(made.bars)).toEqual([0, 1, 2].map((i) => i === index))
+            expect(shown(made.labels)).toEqual([0, 1, 2].map((i) => i === index))
+            expect(shown(made.readouts)).toEqual([0, 1, 2].map((i) => i === index))
+            // The base line belongs to no bar, and the chart holds the bar.
+            expect(dims(1, made.baseline, made)).toEqual([0.3, 1])
+        }
+    })
+
+    it('moves the light from one target to another, and gives every node its first look when the light goes off', async () => {
+        let items!: Node[]
+        const first = [1, 0.9, 0.6, 1]
+        const f = await compile((s) => {
+            items = first.map((opacity, index) => s.add(box(-450 + index * 300).opacity(opacity)))
+            s.wait(1)
+            s.play(spotlight(items[0]!, { duration: 1, ease: linear }))
+            s.play(spotlight(items[1]!, { duration: 1, ease: linear }))
+            s.play(spotlight(items[2]!, { duration: 1, ease: linear }))
+            s.play(spotlight(null, { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        expect(lit(f, 0.5, ...items)).toEqual([1, 1, 1, 1])
+        expect(lit(f, 2, ...items)).toEqual([1, 0.3, 0.3, 0.3])
+        // In the middle of the move, the old target is on its way down and the new one on its way up.
+        expect(lit(f, 2.5, ...items)).toEqual([0.65, 0.65, 0.3, 0.3])
+        expect(lit(f, 3, ...items)).toEqual([0.3, 1, 0.3, 0.3])
+        expect(lit(f, 4, ...items)).toEqual([0.3, 0.3, 1, 0.3])
+        expect(lit(f, 4.5, ...items)).toEqual([0.65, 0.65, 1, 0.65])
+        expect(lit(f, 5.5, ...items)).toEqual([1, 1, 1, 1])
+        expect(dims(5.5, ...items)).toEqual([1, 1, 1, 1])
+        for (const time of [0.5, 2.5, 4, 5.5]) expect(alphas(f, time, ...items)).toEqual(first)
+    })
+
+    it('keeps a dim node exactly as dim as it is while the light moves between a group and one of its parts', async () => {
+        let parts!: Node[], solo!: Node, whole!: Node
+        const f = await compile((s) => {
+            parts = [box(-450), box(-300), box(-150)]
+            whole = s.add(group(...parts))
+            solo = s.add(box(300))
+            // The first light dims two parts of the group, each by itself.
+            s.play(spotlight(parts[0]!, { duration: 1 }))
+            // The light leaves the group, which dims as a whole. Its two dim parts must not get dimmer.
+            s.play(spotlight(solo, { duration: 1 }))
+            // The light comes back to another part, and the group comes back. The parts that stay dim must not get brighter.
+            s.play(spotlight(parts[1]!, { duration: 1 }))
+            // A light with another dim takes the rest there in one direction.
+            s.play(spotlight(solo, { dim: 0.5, duration: 1, ease: linear }))
+            // The light on the whole group brings back the parts that were dim by themselves.
+            s.play(spotlight(whole, { duration: 1 }))
+        })
+        const during = [0.1, 0.25, 0.5, 0.75, 0.9]
+        for (const part of during) {
+            expect(lit(f, 1 + part, parts[1]!, parts[2]!), `the group dims, at ${part}`).toEqual([0.3, 0.3])
+            expect(lit(f, 2 + part, parts[0]!, parts[2]!), `the group comes back, at ${part}`).toEqual([0.3, 0.3])
+            expect(lit(f, 3 + part, parts[0]!, parts[2]!), `the dim changes, at ${part}`).toEqual([round(0.3 + 0.2 * part), round(0.3 + 0.2 * part)])
+        }
+        expect(lit(f, 2, ...parts, solo)).toEqual([0.3, 0.3, 0.3, 1])
+        expect(lit(f, 3, ...parts, solo)).toEqual([0.3, 1, 0.3, 0.3])
+        expect(lit(f, 4, ...parts, solo)).toEqual([0.5, 0.5, 0.5, 1])
+        expect(lit(f, 5, ...parts, solo)).toEqual([1, 1, 1, 0.3])
+    })
+
+    it('leaves the opacity of a node to the film: a fade under the light is still there when the light goes off', async () => {
+        let target!: Node, dimmed!: Node, gone!: Node
+        const f = await compile((s) => {
+            ;[target, dimmed, gone] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(spotlight(target, { duration: 1 }))
+            s.play(fade(target, 0.8), fade(dimmed, 0.5), fadeOut(gone), { duration: 1 })
+            // A dim node that the film takes away and brings back under the same light is still dim.
+            s.play(fadeIn(gone), { duration: 1 })
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(alphas(f, 2, target, dimmed, gone)).toEqual([0.8, 0.5, 0])
+        expect(lit(f, 2, target, dimmed)).toEqual([1, 0.3])
+        expect([alphas(f, 3, target, dimmed, gone), lit(f, 3, target, dimmed, gone)]).toEqual([[0.8, 0.5, 1], [1, 0.3, 0.3]])
+        expect([alphas(f, 4, target, dimmed, gone), lit(f, 4, target, dimmed, gone)]).toEqual([[0.8, 0.5, 1], [1, 1, 1]])
+    })
+
+    it('does not dim a node that comes to the stage while the light is on, and dims it when the light moves', async () => {
+        let target!: Node, added!: Node, faded!: Node, hidden!: Node, clear!: Node, group_!: Node, joined!: Node
+        const f = await compile((s) => {
+            target = s.add(box(-600))
+            group_ = s.add(group(box(-450)))
+            // These two are on the stage, and nobody can see them when the light starts.
+            hidden = s.add(box(-150).hide())
+            clear = s.add(box(0).opacity(0))
+            s.play(spotlight(target, { duration: 1 }))
+            added = s.add(box(150))
+            faded = box(300)
+            hidden.show()
+            // A node that joins a dim group is dim with its group.
+            joined = box(-450, 200)
+            group_.add(joined)
+            s.play(fadeIn(faded), fade(clear, 1), { duration: 1 })
+            s.play(spotlight(added, { duration: 1 }))
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(lit(f, 2, target, added, faded, hidden, clear, joined)).toEqual([1, 1, 1, 1, 1, 0.3])
+        expect(lit(f, 3, target, added, faded, hidden, clear, joined)).toEqual([0.3, 1, 0.3, 0.3, 0.3, 0.3])
+        expect(lit(f, 4, target, added, faded, hidden, clear, joined)).toEqual([1, 1, 1, 1, 1, 1])
+    })
+
+    it('does not dim a node whose group is hidden, or at opacity 0, when the light starts', async () => {
+        for (const how of ['hidden', 'clear'] as const) {
+            let target!: Node, inner!: Node, tucked!: Node
+            const f = await compile((s) => {
+                target = s.add(box(-300))
+                inner = box(0)
+                tucked = box(150)
+                // The group holds a node in `keep`, so the light looks at its children one by one. Nobody can see them yet.
+                const holder = s.add(group(inner, tucked))
+                if (how === 'hidden') holder.hide()
+                else holder.opacity(0)
+                s.play(spotlight(target, { keep: [inner], duration: 1 }))
+                if (how === 'hidden') holder.show()
+                else holder.opacity(1)
+                s.wait(1)
+            })
+            expect(lit(f, 1.5, target, inner, tucked), how).toEqual([1, 1, 1])
+        }
+    })
+
+    it('forgets a node that is hidden when the light moves: it comes back with its own look', async () => {
+        let a!: Node, b!: Node, c!: Node
+        const f = await compile((s) => {
+            ;[a, b, c] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(spotlight(a, { duration: 1 }))
+            // b is dim, and the film hides it. The next light starts with b away, so it does not act on b.
+            b.hide()
+            s.play(spotlight(c, { duration: 1 }))
+            b.show()
+            s.wait(1)
+            // The same after the light goes off: a was dim, and it is hidden when the next light starts.
+            s.play(spotlight(null, { duration: 1 }))
+            a.hide()
+            s.play(spotlight(c, { duration: 1 }))
+            a.show()
+            s.wait(1)
+        })
+        expect(lit(f, 2.5, a, b, c)).toEqual([0.3, 1, 1])
+        expect(lit(f, 5.5, a, b, c)).toEqual([1, 0.3, 1])
+    })
+
+    describe('a node that enters at the very time that a light starts arrives with its own look', () => {
+        const entrances: Record<string, (node: Node, from: Node) => Anim> = {
+            fadeIn: (node) => fadeIn(node), write: (node) => write(node), draw: (node) => draw(node), grow: (node) => grow(node),
+            appear: (node) => appear(node), morph: (node, from) => morph(from, node),
+        }
+        const cases = Object.keys(entrances).flatMap((verb) => [0, 2].map((start) => [verb, start] as const))
+
+        it.each(cases)('%s at %d s, whichever of the two the film names first', async (verb, start) => {
+            const pictures: string[][] = []
+            for (const lightFirst of [true, false]) {
+                let target!: Node, rest!: Node, entering!: Node
+                const f = await compile((s) => {
+                    ;[target, rest] = [s.add(box(-300)), s.add(box(0))]
+                    // A morph starts from a node that is there. The light is on it too, so it is not a part of the rest.
+                    const from = s.add(box(300, 300))
+                    entering = box(300)
+                    s.wait(start)
+                    const anims = [spotlight([target, from], { duration: 1 }), { ...entrances[verb]!(entering, from), duration: 1 }]
+                    s.play(...(lightFirst ? anims : anims.reverse()))
+                    s.wait(1)
+                })
+                expect(lit(f, start + 1.5, target, rest, entering), lightFirst ? 'the light first' : 'the light last').toEqual([1, 0.3, 1])
+                expect(dims(start + 1.5, entering)).toEqual([1])
+                pictures.push([0, 0.3, 0.6, 1, 1.5].map((time) => svgAt(f, start + time)))
+            }
+            // The two orders give one film, frame for frame.
+            expect(pictures[1]).toEqual(pictures[0])
+        })
+
+        it('the same for the other children of a group that a verb brings with a light on one child, at 0 s and later', async () => {
+            for (const start of [0, 2]) {
+                let rest!: Node, child!: Node, sibling!: Node
+                const f = await compile((s) => {
+                    rest = s.add(box(-300))
+                    s.wait(start)
+                    ;[child, sibling] = [box(0), box(300)]
+                    s.play(appear(group(child, sibling)), spotlight(child, { duration: 1 }))
+                })
+                expect(lit(f, start + 1, rest, child, sibling), `at ${start} s`).toEqual([0.3, 1, 1])
+            }
+        })
+
+        it('the same for a node that the film adds at that time, and not for the nodes that the film starts with', async () => {
+            let target!: Node, early!: Node, late!: Node
+            const f = await compile((s) => {
+                ;[target, early] = [s.add(box(-300)), s.add(box(0))]
+                s.play(spotlight(target, { duration: 1 }))
+                s.wait(1)
+                // The light is off, and the next one starts at the time of this `s.add`.
+                s.play(spotlight(null, { duration: 0 }))
+                s.wait(1)
+                late = s.add(box(300))
+                s.play(spotlight(target, { duration: 1 }))
+            })
+            // At time 0 there is no time before: the nodes that the film starts with are there.
+            expect(lit(f, 1, target, early)).toEqual([1, 0.3])
+            expect(lit(f, 4, target, early, late)).toEqual([1, 0.3, 1])
+        })
+    })
+
+    describe('follows the time of the film, not the order of its code', () => {
+        it('gives one film for lights that the code names in any order', async () => {
+            const cues: [number, (nodes: Node[]) => Anim][] = [
+                [0, (nodes) => spotlight(nodes[0]!, { duration: 0.5 })],
+                [2, (nodes) => spotlight(nodes[1]!, { duration: 0.5 })],
+                [3, (nodes) => spotlight([nodes[1]!, nodes[2]!], { dim: 0.5, duration: 0.5 })],
+                [5.5, () => spotlight(null, { duration: 0.5 })],
+            ]
+            const times = [0.25, 1, 2.25, 2.75, 3.25, 4, 5.75, 6.5]
+            const make = async (order: number[]) => {
+                let nodes!: Node[]
+                const f = await compile((s) => {
+                    nodes = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+                    for (const index of order) s.at(cues[index]![0], () => s.play(cues[index]![1](nodes)))
+                    s.wait(7)
+                })
+                return times.map((time) => lit(f, time, ...nodes))
+            }
+            const inOrder = await make([0, 1, 2, 3])
+            expect(inOrder[1]).toEqual([1, 0.3, 0.3])
+            expect(inOrder[3]).toEqual([0.3, 1, 0.3])
+            expect(inOrder[5]).toEqual([0.5, 1, 1])
+            expect(inOrder[7]).toEqual([1, 1, 1])
+            for (const order of [[3, 2, 1, 0], [0, 3, 1, 2], [2, 0, 3, 1]]) expect(await make(order), `the cues in the order ${order.join(' ')}`).toEqual(inOrder)
+        })
+
+        it('dims a node that is on the stage before the light, when the code brings it after the light', async () => {
+            let a!: Node, b!: Node, c!: Node, d!: Node
+            const f = await compile((s) => {
+                ;[a, b] = [s.add(box(-450)), s.add(box(-150))]
+                s.at(3, () => s.play(spotlight(a, { duration: 0.5 })))
+                // The code names these after the light. On the timeline, c enters before the light and d after it.
+                c = box(150)
+                s.at(1, () => s.play(fadeIn(c, { duration: 0.5 })))
+                d = box(450)
+                s.at(4, () => s.play(fadeIn(d, { duration: 0.5 })))
+                s.wait(5)
+            })
+            expect(lit(f, 2, a, b, c)).toEqual([1, 1, 1])
+            expect(lit(f, 5, a, b, c, d)).toEqual([1, 0.3, 0.3, 1])
+        })
+
+        it('takes two times that differ in the last digit as one time: 0.1 + 0.2 and 0.3', async () => {
+            const a = 0.1 + 0.2, b = 0.3
+            expect(a).not.toBe(b)
+            for (const [enters, light] of [[a, b], [b, a]] as const) {
+                // A target that enters at the time of its light, and a node that enters then and is not a target.
+                let rest!: Node, target!: Node, other!: Node
+                const f = await compile((s) => {
+                    rest = s.add(box(-300))
+                    target = box(0)
+                    other = box(300)
+                    s.at(enters, () => s.play(fadeIn(target, { duration: 0.2 }), fadeIn(other, { duration: 0.2 })))
+                    s.at(light, () => s.play(spotlight(target, { duration: 0.2 })))
+                    s.wait(2)
+                })
+                expect(lit(f, 1.5, rest, target, other), `the node enters at ${enters}, and the light starts at ${light}`).toEqual([0.3, 1, 1])
+            }
+            // Two lights of the stage at these two times are two lights at one time.
+            const twice = compile((s) => {
+                const nodes = [s.add(box(-300)), s.add(box(0))]
+                s.at(a, () => s.play(spotlight(nodes[0]!)))
+                s.at(b, () => s.play(spotlight(nodes[1]!)))
+                s.wait(2)
+            })
+            await expect(twice).rejects.toThrow(/two lights start at 0.3 s on the stage/)
+            // A light of the stage and a light in a node, at these two times, in the two orders: the one of the stage is first.
+            for (const [stage, inner] of [[a, b], [b, a]] as const) {
+                let parts!: Node[], other!: Node
+                const f = await compile((s) => {
+                    parts = [box(-300), box(0)]
+                    const holder = s.add(group(...parts))
+                    other = s.add(box(300))
+                    s.at(inner, () => s.play(spotlight(parts[1]!, { within: holder, dim: 0.5, duration: 0.2 })))
+                    s.at(stage, () => s.play(spotlight(holder, { duration: 0.2 })))
+                    s.wait(2)
+                })
+                expect(lit(f, 1.5, ...parts, other), `the light of the stage at ${stage}`).toEqual([0.5, 1, 0.3])
+            }
+        })
+
+        it('refuses two lights that start at one time in one place, because they have no order', async () => {
+            const twice = (within: boolean) => compile((s) => {
+                const parts = [box(-300), box(0)]
+                const holder = s.add(group(...parts))
+                const options = within ? { within: holder } : {}
+                s.wait(2)
+                s.play(spotlight(parts[0]!, options), spotlight(parts[1]!, options))
+            })
+            await expect(twice(false)).rejects.toThrow(/two lights start at 2 s on the stage, and only one can decide what is dim. Give one light all the targets, or start one of them later/)
+            await expect(twice(true)).rejects.toThrow(/two lights start at 2 s in the same node/)
+            // A light of the stage and a light in a node can start together: the one of the stage is first.
+            let parts!: Node[], other!: Node
+            const f = await compile((s) => {
+                parts = [box(-300), box(0)]
+                const holder = s.add(group(...parts))
+                other = s.add(box(300))
+                s.play(spotlight(parts[1]!, { within: holder, dim: 0.5, duration: 1 }), spotlight(holder, { duration: 1 }))
+            })
+            expect(lit(f, 1, ...parts, other)).toEqual([0.5, 1, 0.3])
+        })
+    })
+
+    it('chains two spotlights in one seq, and runs in a par with a fade of its target', async () => {
+        let a!: Node, b!: Node, c!: Node
+        const f = await compile((s) => {
+            ;[a, b, c] = [s.add(box(-300)), s.add(box(0)), s.add(box(300))]
+            s.play(seq(spotlight(a), spotlight(b)), { duration: 2, ease: linear })
+            s.play(par(spotlight(c, { duration: 1 }), fade(c, 0.6, { duration: 1 })), { ease: linear })
+        })
+        // The second light starts from what the first one left.
+        expect(lit(f, 1, a, b, c)).toEqual([1, 0.3, 0.3])
+        expect(lit(f, 1.5, a, b, c)).toEqual([0.65, 0.65, 0.3])
+        expect(lit(f, 2, a, b, c)).toEqual([0.3, 1, 0.3])
+        // The light and the fade write two values of the target, so both arrive.
+        expect([lit(f, 2.5, a, b, c), alphas(f, 2.5, c)]).toEqual([[0.3, 0.65, 0.65], [0.8]])
+        expect([lit(f, 3, a, b, c), alphas(f, 3, c)]).toEqual([[0.3, 0.3, 1], [0.6]])
+    })
+
+    it('gives a copy of a dim node its own look, with the light on and after it, also for a dim node in the copy', async () => {
+        let target!: Node, dimmed!: Node, copy!: Node, held!: Node, heldCopy!: Node, twinPart!: Node
+        const f = await compile((s) => {
+            target = box(-450)
+            const part = box(-450, 200)
+            // The family holds the target, so the light dims its other child by itself.
+            const family = s.add(group(target, part))
+            dimmed = s.add(box(-150).opacity(0.9))
+            held = box(150)
+            const holder = s.add(group(held))
+            s.play(spotlight(target, { duration: 1 }))
+            copy = s.add(dimmed.clone().at(-150, 300))
+            heldCopy = s.add(holder.clone().shift(0, 300)).children[0]!
+            // In this copy the dim node is below the top.
+            twinPart = s.add(family.clone().shift(900, 0)).children[1]!
+            s.wait(1)
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(lit(f, 2, dimmed, copy, held, heldCopy, twinPart)).toEqual([0.3, 1, 0.3, 1, 1])
+        expect(alphas(f, 2, dimmed, copy)).toEqual([0.9, 0.9])
+        expect(lit(f, 3, dimmed, copy, held, heldCopy, twinPart)).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('draws with the least dim of a branch, for a shape, a drawing that is rebuilt, a picture, and the marks that a node makes itself', async () => {
+        const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAEUlEQVR4nGP4z8DwH4YZkDkAm34L9XKwuTwAAAAASUVORK5CYII='
+        let twice!: Node, under!: Node, built!: Node, own!: Node
+        const f = await compile((s) => {
+            // Opacities multiply, and dims do not: the least of 0.4 and 0.6, and the least of 0.9 and 0.6.
+            twice = box(-450).set('dim', 0.4)
+            under = box(-300).set('dim', 0.9)
+            s.add(group(twice, under).opacity(0.5).set('dim', 0.6))
+            built = box(0)
+            const drawing = s.add(dynamic(() => built).set('dim', 0.5))
+            s.add(image(PNG, { width: 60 }).at(300, 0).opacity(0.8).set('dim', 0.25))
+            own = s.add(group().set('dim', 0.5))
+            own.rawOps = (_matrix, alpha, ops) => {
+                ops.push({ kind: 'path', path: circlePath(0, 0, 10), strokePath: [], fill: BLUE, fillAlpha: alpha, stroke: null, strokeAlpha: 0, strokeWidth: 0,
+                    cap: 'round', join: 'round', dash: null, dashOffset: 0, glow: 0, glowColor: null, blend: 'normal', node: own })
+            }
+            s.wait(1)
+            // `dim` is a number, so a change of it passes through the values between.
+            s.play(to(drawing, (node) => node.set('dim', 1)), { duration: 1, ease: linear })
+        })
+        expect(lit(f, 0.5, twice, under, built, own)).toEqual([0.4, 0.6, 0.5, 0.5])
+        expect(alphas(f, 0.5, twice, under, built, own)).toEqual([0.5, 0.5, 1, 1])
+        expect(lit(f, 1.5, built)).toEqual([0.75])
+        // A picture keeps its alpha, and the draw list has no mark over it: the painter mixes its pixels.
+        const ops = f.frame(0.5).ops, pictures = ops.filter((op) => op.kind === 'image')
+        expect(pictures.map((op) => [op.alpha, op.dim, rgb(op.backdrop)])).toEqual([[0.8, 0.25, rgb(BACK)]])
+        expect(ops.filter((op) => op.kind === 'path' && op.node === pictures[0]!.node)).toEqual([])
+    })
+
+    it('paints the same colors and alphas on the canvas as in the SVG, for a dim shape and a dim picture', async () => {
+        const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAEUlEQVR4nGP4z8DwH4YZkDkAm34L9XKwuTwAAAAASUVORK5CYII='
+        const f = await compile((s) => {
+            const target = s.add(box(-300))
+            s.add(rect(120, 120, { fill: 'blue', stroke: 'yellow', width: 6 }).opacity(0.5))
+            s.add(image(PNG, { width: 60 }).at(300, 0).opacity(0.8))
+            s.play(spotlight(target, { duration: 0 }))
+            s.wait(1)
+        })
+        const frame = f.frame(0.5)
+        // A context that keeps the color and the alpha of each mark that a painter draws.
+        const recorder = (painted: string[]) => {
+            const state: Record<string, unknown> = { globalAlpha: 1, globalCompositeOperation: 'source-over' }
+            const record = (kind: string, color: () => unknown) => () => { painted.push(`${kind} ${String(color())} ${round(state['globalAlpha'] as number)} ${String(state['globalCompositeOperation'] ?? '')}`.trim()) }
+            const calls: Record<string, () => void> = {
+                fill: record('fill', () => state['fillStyle']), stroke: record('stroke', () => state['strokeStyle']),
+                drawImage: record('image', () => ''), fillRect: record('rect', () => state['fillStyle']),
+            }
+            return new Proxy(state, { get: (target, name: string) => calls[name] ?? (name in target ? target[name] : () => undefined) })
+        }
+        const painted: string[] = [], copy: string[] = []
+        const scope = globalThis as { Path2D?: unknown; OffscreenCanvas?: unknown }, saved = [scope.Path2D, scope.OffscreenCanvas]
+        scope.Path2D = class { moveTo() {} lineTo() {} bezierCurveTo() {} closePath() {} }
+        scope.OffscreenCanvas = class { getContext() { return recorder(copy) } }
+        try {
+            paintFrame(recorder(painted) as never, frame, 1, () => ({}) as never)
+        } finally {
+            ;[scope.Path2D, scope.OffscreenCanvas] = saved
+        }
+        // The same marks from the SVG text, in order. The first `rect` of the canvas is its background.
+        const svg = frameToSvg(frame)
+        const drawn = [...svg.matchAll(/<(path|g)\b[^>]*>/g)].flatMap(([tag, kind]) => {
+            if (kind === 'g') return [`image  ${tag!.match(/ opacity="([^"]*)"/)?.[1] ?? 1} source-over`]
+            const part = (name: string) => {
+                const color = tag!.match(new RegExp(` ${name}="(rgb[^"]*)"`))?.[1]
+                return color ? [`${name} ${color} ${tag!.match(new RegExp(` ${name}-opacity="([^"]*)"`))?.[1] ?? 1} source-over`] : []
+            }
+            return [...part('fill'), ...part('stroke')]
+        })
+        expect(painted.slice(1)).toEqual(drawn)
+        // The lit box, the dim box with its fill and its stroke, and the picture.
+        expect(painted.slice(1)).toHaveLength(4)
+        expect(painted[2]).toBe(`fill rgb(${toward(BLUE, 0.3).map(Math.round).join(',')}) 0.5 source-over`)
+        // The picture dims by its own pixels, with one rule in both painters: each color is 0.3 of the pixel and 0.7 of
+        // the background, and the alpha of the pixel stays. The canvas paints the background over a copy, where the copy has ink.
+        expect(copy).toEqual(['image  1 source-over', `rect rgb(${rgb(BACK).join(',')}) 0.7 source-atop`])
+        const matrix = svg.match(/<filter id="d0" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="([^"]*)"\/>/)![1]!.split(' ').map(Number)
+        const offsets = rgb(BACK).map((channel) => round(0.7 * channel / 255))
+        expect(matrix.map(round)).toEqual([0.3, 0, 0, 0, offsets[0], 0, 0.3, 0, 0, offsets[1], 0, 0, 0.3, 0, offsets[2], 0, 0, 0, 1, 0])
+        expect(svg).toMatch(/<g transform="[^"]*" opacity="0.8" filter="url\(#d0\)">/)
+    })
+
+    it('makes the dim copy of a picture once for the frames of a still light, and again when the dim changes', async () => {
+        const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAEUlEQVR4nGP4z8DwH4YZkDkAm34L9XKwuTwAAAAASUVORK5CYII='
+        const f = await compile((s) => {
+            const target = s.add(box(-300))
+            s.add(image(PNG, { width: 60 }).at(300, 0))
+            s.play(spotlight(target, { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        const pen = new Proxy({} as Record<string, unknown>, { get: (target, name: string) => (name in target ? target[name] : () => undefined) })
+        const scope = globalThis as { Path2D?: unknown; OffscreenCanvas?: unknown }, saved = [scope.Path2D, scope.OffscreenCanvas]
+        let copies = 0
+        scope.Path2D = class { moveTo() {} lineTo() {} bezierCurveTo() {} closePath() {} }
+        scope.OffscreenCanvas = class { constructor() { copies++ } getContext() { return pen } }
+        try {
+            // One source for every frame, as the player has: the copy belongs to it.
+            const source = {} as never
+            for (const time of [1.2, 1.5, 1.8]) paintFrame(pen as never, f.frame(time), 1, () => source)
+            expect(copies).toBe(1)
+            // While the light changes, each frame has another dim.
+            for (const time of [0.25, 0.5]) paintFrame(pen as never, f.frame(time), 1, () => source)
+            expect(copies).toBe(3)
+        } finally {
+            ;[scope.Path2D, scope.OffscreenCanvas] = saved
+        }
+    })
+
+    it('keeps the clear parts of a dim picture clear: the card behind it shows there with its own color', async () => {
+        // Four pixels in a row: two of opaque red, and two that are clear.
+        const data = encode({ width: 4, height: 1, depth: 8, channels: 4, data: new Uint8Array([255, 0, 0, 255, 255, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0]) })
+        const png = 'data:image/png;base64,' + Buffer.from(data).toString('base64')
+        const f = await compile((s) => {
+            // The card is green and is a target, so it stays as it is behind the dim picture.
+            const cardBehind = s.add(rect(64, 64, { fill: '#00ff00', stroke: null }))
+            s.add(image(png, { width: 64, height: 64 }))
+            s.play(spotlight(cardBehind, { dim: 0.25, duration: 0 }))
+            s.wait(1)
+        }, { width: 64, height: 64, background: '#000000', bloom: 0 })
+        const pixels = new Resvg(f.svg(0.5), { font: { loadSystemFonts: false } }).render().pixels
+        const pixel = (x: number, y: number) => Array.from(pixels.subarray((y * 64 + x) * 4, (y * 64 + x) * 4 + 3))
+        // Left, the red ink at a quarter of its color, toward the black background. Right, the green card and no box.
+        const [red, green, blue] = pixel(16, 32)
+        expect([Math.round(red! / 255 * 100) / 100, green, blue]).toEqual([0.25, 0, 0])
+        expect(pixel(48, 32)).toEqual([0, 255, 0])
+    })
+
+    describe('a morph', () => {
+        const shapes = (f: CompiledFilm, time: number, known: Node[]) => paths(f, time).filter((op) => !known.includes(op.node!)).map((op) => round(((op.fill as Rgba)[0] - BACK[0]) / (BLUE[0] - BACK[0])))
+
+        it('keeps its own look from its source to its result, with no jump, when the light is on its source', async () => {
+            let other!: Node, source!: Node, result!: Node
+            const f = await compile((s) => {
+                ;[other, source] = [s.add(box(-300)), s.add(box(0))]
+                result = box(300)
+                s.play(spotlight(source, { duration: 0.5 }))
+                s.wait(0.5)
+                s.play(morph(source, result), { duration: 1, ease: linear })
+                s.wait(0.5)
+                // The light goes off while the next morph is under way. Nothing in the morph is dim, so nothing jumps.
+                s.play(morph(result, box(300, 300)), spotlight(null), { duration: 1, ease: linear })
+            })
+            expect(lit(f, 0.9, other, source)).toEqual([0.3, 1])
+            // The shape that travels, at the start, in the middle and at the end, and the result after it.
+            for (const time of [1, 1.001, 1.5, 1.999]) expect(shapes(f, time, [other, source, result]), `at ${time}`).toEqual([1])
+            expect(lit(f, 2.2, other, result)).toEqual([0.3, 1])
+            for (const time of [2.5, 2.501, 3, 3.499, 3.5]) expect(shapes(f, time, [other, source, result]), `at ${time}`).toEqual([1])
+        })
+
+        it('is refused when a light dims its source, also when the code names the light after the morph', async () => {
+            const dimSource = (order: 'time' | 'code') => compile((s) => {
+                const lit_ = s.add(box(-300)), source = s.add(box(0)), result = box(300)
+                const light = () => s.play(spotlight(lit_, { duration: 0.5 })), change = () => s.play(morph(source, result), { duration: 1 })
+                if (order === 'time') { s.at(1, light); s.at(2, change) } else { s.at(2, change); s.at(1, light) }
+                s.wait(4)
+            })
+            for (const order of ['time', 'code'] as const) {
+                await expect(dimSource(order), order).rejects.toThrow(/the light at 1 s dims a node while it morphs, from 2 s to 3 s. A dim morph would jump in brightness. Make the node that the morph starts from a target or a keep of that light, or turn the light off before the morph/)
+            }
+            // The same morph with its source in `keep` is a film.
+            const kept = await compile((s) => {
+                const lit_ = s.add(box(-300)), source = s.add(box(0))
+                s.play(spotlight(lit_, { keep: source, duration: 0.5 }))
+                s.play(morph(source, box(300)), { duration: 1 })
+            })
+            expect(kept.duration).toBe(1.5)
+        })
+
+        it('is refused when a light starts while it is under way and dims its shapes, or when it ends in a dim group', async () => {
+            const during = compile((s) => {
+                const source = s.add(box(0)), other = s.add(box(-300))
+                // The first light is on the source too, so the morph starts bright. The error names the light that dims it.
+                s.play(spotlight([source, other], { duration: 0.2 }))
+                s.wait(0.8)
+                s.play(morph(source, box(300)), { duration: 1 })
+                s.at(1.5, () => s.play(spotlight(other, { duration: 0.3 })))
+            })
+            await expect(during).rejects.toThrow(/the light at 1.5 s dims a node while it morphs, from 1 s to 2 s/)
+            const intoDim = compile((s) => {
+                const lit_ = s.add(box(-300)), result = box(300).hide()
+                s.add(group(box(300, 200), result))
+                s.play(spotlight(lit_, { duration: 0.5 }))
+                s.play(morph(lit_, result), { duration: 1 })
+            })
+            await expect(intoDim).rejects.toThrow(/the light at 0 s dims a node while it morphs, from 0.5 s to 1.5 s/)
+        })
+
+        it('does not make the lights settle again: 60 morphs under 60 lights on 2,000 nodes compile in the time of the lights alone', async () => {
+            const build = (morphs: boolean) => async () => {
+                const started = performance.now()
+                await compile((s) => {
+                    const nodes = Array.from({ length: 2000 }, (_, i) => s.add(rect(10, 10, { fill: 'blue', stroke: null }).at(-900 + (i % 100) * 18, -400 + Math.floor(i / 100) * 18)))
+                    for (let i = 0; i < 60; i++) {
+                        // The light is also on the node that morphs next, because a morph cannot be dim.
+                        s.play(spotlight([nodes[i * 7]!, nodes[1000 + i]!], { duration: 0.2 }))
+                        if (morphs) s.play(morph(nodes[1000 + i]!, rect(10, 10, { fill: 'red', stroke: null }).at(-900 + i * 18, 450)), { duration: 0.2 })
+                        else s.wait(0.2)
+                    }
+                })
+                return performance.now() - started
+            }
+            const alone = Math.min(await build(false)(), await build(false)()), withMorphs = Math.min(await build(true)(), await build(true)())
+            // When each morph made every light settle again, this film took more than ten times the film with no morph.
+            // The limit is wide: three times the lights alone, and half a second for a loaded machine.
+            expect(withMorphs).toBeLessThan(alone * 3 + 500)
+        })
+    })
+
+    it('keeps the lights of a film on its stage, so a second film compiles and does not change the first', async () => {
+        let rest!: Node
+        const build = (s: Stage) => {
+            const target = s.add(box(-300))
+            rest = s.add(box(0))
+            s.play(spotlight(target, { duration: 1 }))
+            s.wait(3)
+        }
+        const first = await compile(build), firstRest = rest
+        // With one list for every stage, this film would get the light of the first, and its target is not here.
+        await compile((s) => {
+            build(s)
+            s.play(spotlight(null, { duration: 1 }))
+        })
+        expect(lit(first, 3.5, firstRest)).toEqual([0.3])
+    })
+
+    it('leaves dim text as text for the film check, which has no new finding and still reports a dim text on another text', async () => {
+        for (const dim of [undefined, 0.1]) {
+            const page = film({ fps: 20 }, (s) => {
+                s.wait(0.5)
+                const lines = ['The first sentence of a page of text.', 'The second sentence, which the light is on.'].map((line, index) => s.add(text(line, { font: 'text-serif', size: 44 }).at(0, -60 + index * 120)))
+                // The first sentence is bright for half a second, which is too short to read it. It stays up, dim.
+                s.wait(0.5)
+                s.play(spotlight(lines[1]!, dim === undefined ? {} : { dim }))
+                s.wait(3)
+            })
+            // A dim text keeps its alpha, and the check has no rule for the contrast of a text.
+            expect((await checkFilm(page, { motion: true })).diagnostics, `dim ${dim}`).toEqual([])
+        }
+        const crossed = await checkFilm(film({ fps: 20 }, (s) => {
+            s.add(text('one text', { size: 60 }))
+            const over = s.add(text('one more', { size: 60 }).at(20, 10))
+            s.play(spotlight(over))
+            s.wait(1)
+        }))
+        expect(crossed.diagnostics.map((entry) => entry.code)).toEqual(['film.text_overlap'])
+    })
+
+    it('stops the build for a light that would show nothing, and says what to do', async () => {
+        const failure = (build: (s: Stage, a: Node, b: Node) => void, start = 3) => compile((s) => {
+            const a = s.add(box(-300)), b = s.add(box(0))
+            s.wait(start)
+            build(s, a, b)
+            s.wait(1)
+        })
+        // A target that the film never added, one that it adds later, and one that is hidden: at 3 s, and at 0 s.
+        await expect(failure((s) => s.play(spotlight(box(300))))).rejects.toThrow(/the target of the light at 3 s is not on the stage. So the light would show nothing. Show the node before the light, or bring it at the time that the light starts/)
+        await expect(failure((s, a) => { const late = box(300); s.play(spotlight([a, late])); s.play(fadeIn(late)) })).rejects.toThrow(/target 2 of 2 of the light at 3 s does not show at that time: it is hidden, or it comes to the stage later/)
+        for (const start of [3, 0]) {
+            await expect(failure((s) => s.play(spotlight(s.add(box(300).hide()))), start), `at ${start}`).rejects.toThrow(new RegExp(`the target of the light at ${start} s does not show at that time`))
+            await expect(failure((s, a) => { a.hide(); s.play(spotlight(a)) }, start), `at ${start}`).rejects.toThrow(new RegExp(`the target of the light at ${start} s does not show at that time`))
+        }
+        // A target that left just before the light is hidden too, and so is the source of a morph that is over.
+        await expect(failure((s, a) => { s.play(fadeOut(a)); s.play(spotlight(a)) })).rejects.toThrow(/the target of the light at 3.6 s does not show at that time/)
+        await expect(failure((s, a) => { s.play(morph(a, box(300)), { duration: 1 }); s.play(spotlight(a)) })).rejects.toThrow(/the target of the light at 4 s does not show at that time/)
+        await expect(failure((s) => s.play(spotlight(s.camera)))).rejects.toThrow(/a target is the camera, which is not a part of the picture. Give it a node that the film draws/)
+        await expect(failure((s) => s.play(spotlight(s.root)))).rejects.toThrow(/a target is the root of the stage, which holds every node, so nothing would dim/)
+        // A light in a node that another light dimmed as a whole, and in a node whose group is dim.
+        const inDim = (order: 'time' | 'code', deep: boolean) => compile((s) => {
+            const bars = [box(-450), box(-300)]
+            const chart = group(...bars)
+            s.add(deep ? group(chart, box(-450, 300)) : chart)
+            const other = s.add(box(300))
+            const stage = () => s.play(spotlight(other, { duration: 1 })), inner = () => s.play(spotlight(bars[1]!, { within: chart, duration: 1 }))
+            if (order === 'time') { s.at(1, stage); s.at(2, inner) } else { s.at(2, inner); s.at(1, stage) }
+            s.wait(4)
+        })
+        for (const order of ['time', 'code'] as const) for (const deep of [false, true]) {
+            await expect(inDim(order, deep), `${order}, ${deep ? 'in a dim group' : 'dim itself'}`).rejects.toThrow(/the node for within is dim at 2 s, because another light is on something else then. So the light in it would show nothing. Make that node a target of the other light, or turn the other light off first/)
+        }
+    })
+
+    it('takes as a target a node that enters with the light, a part of a thing that enters with it, and the source of a morph that starts with it', async () => {
+        const film_ = (build: (s: Stage) => Node[], start: number) => {
+            let nodes!: Node[], rest!: Node
+            return compile((s) => {
+                rest = s.add(box(-600))
+                s.wait(start)
+                nodes = build(s)
+                s.wait(1)
+            }).then((f) => [lit(f, f.duration, rest), nodes.map((node) => at(f.duration, () => node.get('dim')))])
+        }
+        for (const start of [0, 2]) {
+            const entrances: Record<string, (s: Stage) => Node[]> = {
+                'fadeIn and the light, in the two orders': (s) => {
+                    const first = box(-300), second = box(-150)
+                    s.play(spotlight([first, second], { duration: 0.5 }), fadeIn(first, { duration: 0.5 }))
+                    s.at(s.time - 0.5, () => s.play(fadeIn(second, { duration: 0.5 })))
+                    return [first, second]
+                },
+                // `write` keeps each glyph hidden until its turn, so the last glyphs are hidden when the light starts.
+                'one term of an equation that write brings': (s) => { const eq = tex('a^2 + b^2 = c^2', { size: 90 }); s.play(write(eq), spotlight(eq.part('c^2'))); return eq.part('c^2') },
+                'the last child of a group that fades in child by child': (s) => { const rows = [0, 1, 2].map((i) => box(-300 + i * 150, 200)); s.play(fadeIn(group(...rows), { lag: 0.5 }), spotlight(rows[2]!)); return [rows[2]!] },
+                'one bar of a chart that enters': (s) => { const chart = barChart([{ label: 'a', value: 3 }, { label: 'b', value: 7 }], { width: 400, height: 240 }); s.play(chart.enter(), spotlight(chart.bar(1))); return [chart.bar(1)] },
+                'the source of a morph': (s) => { const source = s.add(box(0)); s.wait(start === 0 ? 0 : 0.5); s.play(spotlight(source, { duration: 0.5 }), morph(source, box(300), { duration: 0.5 })); return [source] },
+            }
+            for (const [name, build] of Object.entries(entrances)) {
+                const [rest, dims_] = await film_(build, start)
+                expect([rest, [...new Set(dims_)]], `${name}, at ${start} s`).toEqual([[0.3], [1]])
+            }
+        }
+    })
+
+    it('refuses a target that is not a node, an empty list, a dim that is not a number from 0 to 1, a duration under 0, and a target outside `within`', async () => {
+        await compileFilm(film(() => {
+            const a = box(0), inner = box(100), outer = group(inner)
+            expect(() => spotlight([])).toThrow(/list of targets is empty.*or null to turn the light off/)
+            expect(() => spotlight(undefined as never)).toThrow(/a target is undefined, not a node/)
+            expect(() => spotlight([a, [inner][1]!])).toThrow(/a target is undefined, not a node/)
+            expect(() => spotlight(a, { keep: [null as never] })).toThrow(/a node in keep is null, not a node/)
+            expect(() => spotlight(a, { keep: 'heading' as never })).toThrow(/a node in keep is string, not a node/)
+            expect(() => spotlight(inner, { within: 'chart' as never })).toThrow(/the node for within is string, not a node/)
+            for (const dim of [-0.1, 1.5, NaN, Infinity]) expect(() => spotlight(a, { dim })).toThrow(new RegExp(`dim is ${dim}. It is the part of its color that the rest keeps, a number from 0 to 1`))
+            expect(() => spotlight(a, { dim: '0.3' as never })).toThrow(/dim is "0.3"/)
+            for (const duration of [-1, NaN, Infinity]) expect(() => spotlight(a, { duration })).toThrow(new RegExp(`duration is ${duration}. It is the time that the light takes to change, in seconds, 0 or more`))
+            expect(() => spotlight(a, { within: outer })).toThrow(/a target is not inside the node for within/)
+            expect(() => spotlight(outer, { within: outer })).toThrow(/a target is not inside the node for within/)
+            // The ends of the range, a target in `within`, the light off in `within`, and one node for `keep` are all valid.
+            for (const dim of [0, 1]) expect(spotlight(a, { dim }).label).toBe('spotlight')
+            expect(spotlight(inner, { within: outer }).label).toBe('spotlight')
+            expect(spotlight(null, { within: outer }).label).toBe('spotlight')
+            expect(spotlight(a, { keep: inner, duration: 0 }).label).toBe('spotlight')
+            // Two nodes as two arguments: the second one would be lost as the options.
+            expect(() => spotlight(a, inner as never)).toThrow(/the second argument is a node, and it must be the options. To light more than one node, give them as one list: spotlight\(\[a, b\]\)/)
+            expect(() => spotlight(a, [inner] as never)).toThrow(/the second argument is a node/)
+        }))
+    })
+
+    describe('changes nothing in a film with no light', () => {
+        const shown = (f: CompiledFilm, time: number, node: Node) => f.frame(time).ops.some((op) => op.node === node)
+
+        it('keeps the timeline of a node that a verb brings at 0 s: a group that takes the node in later still hides it before', async () => {
+            let brought!: Node, added!: Node
+            const f = await compile((s) => {
+                const holder = s.add(group())
+                brought = box(0)
+                s.play(fadeIn(brought, { duration: 0.4 }))
+                added = s.add(box(200))
+                s.wait(1.1)
+                // At 1.5 s a group on the stage takes the two nodes in. The stage mounts them again then, as it did before.
+                holder.add(brought, added)
+                s.wait(1)
+            })
+            expect(brought.tracks?.get('dim')).toBeUndefined()
+            expect([shown(f, 0.2, brought), shown(f, 1, brought), shown(f, 2, brought)]).toEqual([false, false, true])
+            expect([shown(f, 0.2, added), shown(f, 1, added), shown(f, 2, added)]).toEqual([false, true, true])
+        })
+
+        it('keeps a node hidden that the film removes before it mounts the node at 0 s', async () => {
+            let removed!: Node, after!: Node, alone!: Node
+            const f = await compile((s) => {
+                removed = box(-300)
+                s.remove(removed)
+                s.mountAt(removed, 0)
+                after = box(0)
+                s.mountAt(after, 0)
+                s.remove(after)
+                alone = box(300)
+                s.mountAt(alone, 0)
+                s.wait(1)
+            })
+            expect([removed, after, alone].map((node) => shown(f, 0.5, node))).toEqual([false, false, true])
+            // A mount at 0 s writes no key: the node shows from the start by its own `visible`.
+            expect(alone.tracks?.get('visible')).toBeUndefined()
+        })
+    })
+
+    describe('a mark that a verb adds for a node is as bright as that node, at 0 s and later', () => {
+        const YELLOW = parseColor('#ffd75e')
+        const verbs: Record<string, (a: Node, wire: Node, word: Node) => Anim> = {
+            circumscribe: (a) => circumscribe(a, { duration: 1 }),
+            flash: (a) => flash(a, { duration: 1 }),
+            ripple: (a) => ripple(a, { color: 'yellow', duration: 1 }),
+            pulse: (_a, wire) => pulse(wire, { duration: 1 }),
+            highlightSweep: (_a, _wire, word) => highlightSweep(word, { duration: 1 }),
+            typewriter: (_a, _wire, word) => typewriter(word, { cursor: true, cursorColor: 'yellow', duration: 1 }),
+        }
+        const cases = Object.keys(verbs).flatMap((verb) => [0, 2].map((start) => [verb, start] as const))
+
+        it.each(cases)('%s at %d s: bright with a light on its node, and as dim as its node with the light on another node', async (verb, start) => {
+            for (const lit_ of [true, false]) {
+                let known!: Set<Node | undefined>
+                const f = await compile((s) => {
+                    const a = s.add(box(-300)), b = s.add(box(300))
+                    const wire = s.add(line([-200, 200], [200, 200], { stroke: 'blue', width: 4 }))
+                    const word = s.add(text('word', { size: 60 }).at(0, -250))
+                    known = new Set([a, b, wire, ...word.all()])
+                    s.wait(start)
+                    s.play(spotlight(lit_ ? [a, wire, word] : b, { duration: 0.2 }), verbs[verb]!(a, wire, word))
+                })
+                // Each mark is yellow. Read its red channel as a part of the way from the background to yellow.
+                const marks = paths(f, start + 0.5).filter((op) => !known.has(op.node))
+                const parts = [...new Set(marks.map((op) => round((((op.stroke ?? op.fill) as Rgba)[0] - BACK[0]) / (YELLOW[0] - BACK[0]))))]
+                expect(marks.length).toBeGreaterThan(0)
+                expect(parts, lit_ ? 'the light is on its node' : 'the light is on another node').toEqual([lit_ ? 1 : 0.3])
+            }
+        })
+
+        it('leaves a mark at a point, which belongs to no node, with its own look', async () => {
+            for (const start of [0, 2]) {
+                let known!: Set<Node | undefined>
+                const f = await compile((s) => {
+                    const a = s.add(box(-300)), b = s.add(box(300))
+                    known = new Set([a, b])
+                    s.wait(start)
+                    s.play(spotlight(a, { duration: 0.2 }), flash([0, 0], { duration: 1 }), ripple([0, 200], { color: 'yellow', duration: 1 }))
+                })
+                const marks = paths(f, start + 0.5).filter((op) => !known.has(op.node))
+                expect([...new Set(marks.map((op) => round((((op.stroke ?? op.fill) as Rgba)[0] - BACK[0]) / (YELLOW[0] - BACK[0]))))], `at ${start} s`).toEqual([1])
+            }
+        })
+    })
+
+    it('lights the label of a span of `lanes` with its bar, and the row of a dot chart with its dot', async () => {
+        const flow = () => lanes(['guest', 'monitor'], [{ lane: 'guest', start: 0, end: 30, label: 'runs' }, { lane: 'monitor', start: 30, end: 70, label: 'emulates the device' }], { width: 900 })
+        const dots = () => dotChart([{ label: 'blocks', value: 0.89, low: 0.87, high: 0.91 }, { label: 'tall CSV', value: 0.57, low: 0.54, high: 0.6 }], { width: 500, domain: [0, 1] })
+        let made!: ReturnType<typeof flow>, chart!: ReturnType<typeof dots>
+        await compile((s) => {
+            made = s.add(flow().at(0, -200))
+            chart = s.add(dots().at(0, 250))
+            s.play(made.showAll(), { duration: 0.5 })
+            // The bar of the second span, and the dot of the first row. The chart is two levels over the dot: its row is between.
+            s.play(spotlight(made.spans[1]!.shape, { within: made, duration: 0.5 }), spotlight(chart.dots[0]!, { within: chart, duration: 0.5 }))
+        })
+        const bright = (...nodes: (Node | null)[]) => dims(1, ...nodes.map((node) => node!)).map((dim) => dim === 1)
+        expect(bright(made.spans[1]!.shape, made.spans[1]!.text, made.spans[0]!, made.names[1]!)).toEqual([true, true, false, false])
+        expect(chart.dots[0]!.parent).not.toBe(chart)
+        expect(bright(chart.dots[0]!, chart.labels[0]!, chart.intervals[0]!, chart.rows[1]!, chart.axis)).toEqual([true, true, true, false, false])
+    })
+})
+
+describe('film font', () => {
+    /** The fonts of the texts that the frames at these times draw, by the words of each text. Each font is the one that the text node reports. */
+    function fontsIn(f: CompiledFilm, ...times: number[]): Map<string, string[]> {
+        const found = new Map<string, Set<string>>()
+        for (const t of times) {
+            for (const op of paths(f, t)) {
+                const block = op.node?.parent
+                if (block instanceof TextNode) found.set(block.source, (found.get(block.source) ?? new Set<string>()).add(block.font))
+            }
+        }
+        return new Map([...found].map(([words, fonts]) => [words, [...fonts].sort()]))
+    }
+
+    const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><text x="0" y="30" font-size="20">svg words</text>'
+        + '<g font-family="ui-monospace, Menlo, monospace"><text x="0" y="70" font-size="20">svg code</text></g></svg>'
+
+    /**
+     * One object of each kind that draws a label, with words that no other text has. `own` goes to each
+     * object as its `font`, to the note of the tag, to the edge labels of the graph, and to the plain text.
+     * The objects that set data in mono by default (array cells, tokens, a counter, a decimal) do not get it,
+     * and the quotes do not: they have a font of their own.
+     */
+    function everyObject(s: Stage, own?: FontFamily): void {
+        const font = own
+        s.add(text('plain note', { font }), text('0x7ffd', { font: 'mono' }))
+        s.add(card({ title: 'card title', caption: 'card caption', font }))
+        s.add(zone(rect(120, 60), { title: 'zone title', font }))
+        s.add(tag('TAGWORD', { note: 'tag note', noteFont: font }))
+        s.add(dotChart([{ label: 'dot label', value: 0.5 }], { domain: [0, 1], ticks: [0, 1], format: (value) => `dot tick ${value}`, xLabel: 'dot axis', font }))
+        const flow = s.add(lanes(['lane one', 'lane two'], [
+            { lane: 0, start: 0, end: 40, label: 'lane span' },
+            { from: 0, to: 1, at: 40, label: 'lane handoff' },
+            { from: 1, to: 0, at: 80 },
+        ], { domain: [0, 100], ticks: [0, 100], format: (time) => `lane tick ${time}`, axisLabel: 'lane axis', boundaries: [{ between: [0, 1], label: 'lane wall', count: true }], font }))
+        s.add(bitField([{ bits: 4, label: 'bit under', value: '0xf' }, { bits: 8, label: 'bit inside' }], { font }))
+        s.add(terminal(['a line of output'], { title: 'run title', note: 'run note' }))
+        s.add(stateGrid({ columns: 2, rows: 1 }).legend([['present', 'grid key']], { font }))
+        s.add(barChart([{ label: 'bar label', value: 412 }], { font }))
+        s.add(unitChart([{ count: 4, label: 'unit label' }, { count: 2, color: 'green', label: 'unit other' }], { rows: 2, split: true, font }))
+        s.add(infoBox({ title: 'info title', subtitle: 'info subtitle', badge: 'info badge', rows: [{ label: 'info row', value: 'info value' }], tags: ['info tag'], font }))
+        s.add(callout([0, 0], 'callout body', { title: 'callout title', font }))
+        s.add(legend([{ label: 'key label' }], { font }))
+        s.add(graph([{ id: 'a', label: 'graph node' }, { id: 'b', label: 'graph other' }], [{ from: 'a', to: 'b', label: 'edge label' }], { font, edgeFont: font }))
+        s.add(tree({ label: 'tree root', children: [{ label: 'tree leaf' }] }, { font }))
+        s.add(neuralNet([2, 2], { layerLabels: ['layer in', 'layer out'], font }))
+        s.add(heatmap([[0.1, 0.9]], { values: true, format: (value) => `cell ${value}`, rowLabels: ['heat row'], columnLabels: ['heat column', 'heat other'], font }))
+        s.add(attentionMatrix(['attend row'], ['attend column'], [[1]], { font }))
+        s.add(lineChart([{ name: 'line name', values: [1, 2] }], { xLabel: 'line x', yLabel: 'line y', xFormat: (x) => `line x tick ${x}`, yFormat: (y) => `line y tick ${y}`, font }))
+        s.add(scatter([{ x: 1, y: 1, group: 'scatter group' }, { x: 2, y: 2, group: 'scatter group' }], { xLabel: 'scatter x', yLabel: 'scatter y', font }))
+        s.add(histogram([10, 20, 20, 30], { bins: 3, ticks: 2, font }))
+        s.add(donut([{ label: 'pie label', value: 1 }], { percent: false, centerLabel: 'pie center', font }))
+        s.add(braceLabel(rect(100, 40), 'brace label', { plain: true, font }))
+        s.add(labeledDot('dot name', { plain: true, font }))
+        const view = s.add(scene3d())
+        view.add(axes3d({ x: [0, 9], y: [0, 9], z: [0, 9], step: 9, numbers: true, font }), label3d('space label', [1, 1, 1], { math: false, font }))
+        s.add(fromSvg(SVG, { font }))
+        s.add(connector([0, 0], [300, 0], { label: 'wire label', font }))
+        s.add(arrayCells(['cell value']), tokens([{ text: 'token', sub: 'token sub' }]), counter(1234), decimal(() => 0.25, { prefix: 'm = ' }))
+        // A drawing that is rebuilt on each frame makes its text while the frame is drawn, not in the callback.
+        s.add(dynamic(() => text('made each frame', { font })))
+        const strip = s.add(steps([{ label: 'step label', note: 'step note' }, { label: 'step other' }], { numbered: true, current: 0, font }))
+        const wall = s.add(boundary({ width: 900, label: 'wall label', above: 'wall above', below: 'wall below', tally: ['wall call', 'wall calls'], tallySide: 'over', tickScale: 250, font }))
+        const ring = s.add(ringBuffer(4, { radius: 320, label: 'ring caption', counts: true, numbers: true, font }))
+        s.add(quote('quoted words', { by: 'quote source', width: 600 }))
+        s.add(quotePair({ words: 'pair first' }, { words: 'pair second' }, { width: 1200, versus: 'pair but' }))
+        const dates = s.add(dateLine([{ at: '2021-03', label: 'date label', note: 'date note' }, { at: '2024' }], { width: 900, from: 2020, to: 2026, font }))
+        s.play(flow.enter(), ring.enter(), wall.enter(), strip.enter(), dates.enter(), { duration: 0.1 })
+        s.play(flow.showAll(), ring.push({ label: 'ringed' }), dates.showAll(), { duration: 0.2 })
+        // The label of a crossing is on screen while its mark crosses: from 0.3 to 0.7.
+        s.play(wall.cross(wall.x(0.2), { direction: 'round', label: 'wall mark' }), { duration: 0.4 })
+        s.play(wall.addCrossings(9999), { duration: 0.2 })
+        s.wait(0.5)
+    }
+    const CROSSING = 0.5, END = 1.35
+
+    // Labels, titles, notes, captions and the numbers of an axis. "2" is the count of a boundary of the lanes,
+    // "20" is a tick of the histogram, "9" is a number of the 3D axes, "," is in the tally of the boundary,
+    // "3" is the number of a slot of the ring, and "2023" is a year of the date line.
+    const LABELS = [
+        'plain note', 'card title', 'card caption', 'zone title', 'tag note', 'dot label', 'dot tick 0', 'dot axis',
+        'lane one', 'lane span', 'lane handoff', 'lane tick 100', 'lane axis', 'lane wall', '2', 'bit under', 'bit inside', 'grid key',
+        'bar label', 'unit label', 'info title', 'info row', 'callout title', 'callout body', 'key label', 'graph node', 'tree leaf',
+        'layer in', 'heat row', 'heat column', 'attend row', 'attend column', 'line name', 'line x', 'line y', 'line x tick 1', 'line y tick 1',
+        'scatter group', 'scatter x', 'scatter y', '20', 'pie label', 'brace label', 'dot name', '9', 'space label', 'svg words', 'made each frame',
+        '1 step label', 'step note', 'wall label', 'wall above', 'wall below', 'wall calls', ',', 'wall mark', 'each tick: about 250',
+        'ring caption', 'ringed', 'head 0', 'tail 1', '3', 'date label', 'date note', '2023',
+    ]
+    // Code, values, addresses and ids. "11" is a bit number of the bit field, "412" is the value over a bar, and "1,234" is the counter.
+    const MONO = [
+        '0x7ffd', 'TAGWORD', 'run title', 'run note', '0xf', '11', '412', 'info subtitle', 'info badge', 'info value', 'info tag',
+        'cell value', 'token', 'token sub', '1,234', 'm = 0.25', 'cell 0.1',
+    ]
+    // The label on a line: of a connector, and of an edge of a graph. It was mono before films had a font.
+    const ON_LINES = ['wire label', 'edge label']
+    // A quote sets its words and its source line in the serif text font, by its own rule.
+    const QUOTED = ['“quoted words”', 'quote source', '“pair first”', 'pair but']
+    /** The font of each of the words, as pairs, so that a failure names the text. */
+    const pairs = (fonts: Map<string, string[]>, words: readonly string[]) => words.map((text) => [text, fonts.get(text)?.join(' and ')])
+    const all = (words: readonly string[], font: string) => words.map((text) => [text, font])
+    const every = async (options: { font?: FontFamily }, own?: FontFamily) => fontsIn(await compile((s) => everyObject(s, own), options), CROSSING, END)
+
+    it('sets the labels of every kind of object in the font of the film, and keeps code and values in mono', async () => {
+        const fonts = await every({ font: 'text-serif' })
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'text-serif'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'text-serif'))
+        expect(pairs(fonts, QUOTED)).toEqual(all(QUOTED, 'text-serif'))
+        // The middle of a donut is a display title, in the display serif. Text that an SVG sets in a monospace family is code.
+        expect(pairs(fonts, ['pie center', 'svg code'])).toEqual([['pie center', 'serif'], ['svg code', 'mono']])
+        // The rule of the film: no text is in the sans font.
+        expect([...fonts].filter(([, own]) => own.includes('sans'))).toEqual([])
+    })
+
+    it('keeps the font that an object or a text names, also when it is the library default', async () => {
+        const fonts = await every({ font: 'text-serif' }, 'sans')
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'sans'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'sans'))
+        // The font of an object is the font of its labels: the code of an SVG stays mono, and a quote that got no font keeps its own.
+        expect(pairs(fonts, ['svg code', ...QUOTED])).toEqual([['svg code', 'mono'], ...all(QUOTED, 'text-serif')])
+    })
+
+    it('keeps a film with no font as it was: sans labels, mono on the lines, and all the text of an SVG in sans', async () => {
+        const none = await compile((s) => everyObject(s)), serif = await compile((s) => everyObject(s), { font: 'text-serif' })
+        const fonts = fontsIn(none, CROSSING, END)
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'sans'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'mono'))
+        expect(pairs(fonts, ['svg code', ...QUOTED])).toEqual([['svg code', 'sans'], ...all(QUOTED, 'text-serif')])
+        expect(none.stage.font).toBeNull()
+        expect(serif.stage.font).toBe('text-serif')
+        expect(svgAt(serif, END)).not.toBe(svgAt(none, END))
+    })
+
+    it('takes sans as a font that the film names: the labels on the lines follow it, and a quote keeps the serif text font', async () => {
+        const fonts = await every({ font: 'sans' })
+        expect(pairs(fonts, LABELS)).toEqual(all(LABELS, 'sans'))
+        expect(pairs(fonts, MONO)).toEqual(all(MONO, 'mono'))
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'sans'))
+        expect(pairs(fonts, ['svg code', ...QUOTED])).toEqual([['svg code', 'mono'], ...all(QUOTED, 'text-serif')])
+    })
+
+    it('gives the label of a connector and of a graph edge their own font in a film with none', async () => {
+        const fonts = await every({}, 'text-serif')
+        expect(pairs(fonts, ON_LINES)).toEqual(all(ON_LINES, 'text-serif'))
+        expect(pairs(fonts, ['svg words', 'svg code'])).toEqual([['svg words', 'text-serif'], ['svg code', 'mono']])
+    })
+
+    it('lays out an object with the measures of the font of the film', async () => {
+        const words = 'one line for each event sent'
+        const build = async (font?: FontFamily) => {
+            let made!: ReturnType<typeof card>
+            const wide = { sans: 0, serif: 0 }
+            await compile(() => {
+                made = card({ title: 'Logs', caption: words })
+                // The caption of a card with these defaults has a size of 28.8, and 364 px for a line.
+                wide.sans = text(words, { size: 28.8, font: 'sans' }).bounds().width
+                wide.serif = text(words, { size: 28.8, font: 'text-serif' }).bounds().width
+            }, font ? { font } : {})
+            return { made, wide }
+        }
+        const serif = await build('text-serif'), plain = await build()
+        expect(plain.wide.sans).toBeGreaterThan(364)
+        expect(serif.wide.serif).toBeLessThan(364)
+        // In the serif text font the caption fits in one line, and it is as wide as that text. In sans it takes two lines.
+        expect(serif.made.caption!.bounds().width).toBeCloseTo(serif.wide.serif, 6)
+        expect(plain.made.caption!.bounds().width).toBeLessThan(plain.wide.sans - 40)
+        expect(plain.made.frame.bounds().height - serif.made.frame.bounds().height).toBeCloseTo(1.25 * 28.8, 6)
+    })
+
+    it('sets weight 600 of the serif text font in its semibold, so a title differs from its body in a serif film', async () => {
+        let regular = 0, semibold = 0, title = 0, body = 0, count = 0, plainCount = 0
+        await compile(() => {
+            regular = text('Why it is fast', { size: 40, font: 'text-serif' }).bounds().width
+            semibold = text('Why it is fast', { size: 40, font: 'text-serif', weight: 600 }).bounds().width
+            const note = callout([0, 0], 'Why it is fast', { title: 'Why it is fast', size: 40, width: 2000 })
+            title = note.titleNode!.bounds().width
+            // The body of a callout is 0.94 of the size of its title.
+            body = note.body.bounds().width / 0.94
+            const flow = lanes(['one', 'two'], [{ from: 0, to: 1, at: 5 }], { domain: [0, 10], size: 40, boundaries: [{ between: [0, 1], count: true }] })
+            count = flow.counters[0]!.children[1]!.bounds().width
+            plainCount = text('1', { size: 40, font: 'text-serif' }).bounds().width
+        }, { font: 'text-serif' })
+        // The strokes of the semibold are heavier, so its letters are wider.
+        expect(semibold).toBeGreaterThan(regular * 1.01)
+        expect(title).toBeCloseTo(semibold, 6)
+        expect(body).toBeCloseTo(regular, 6)
+        expect(count).toBeGreaterThan(plainCount * 1.01)
+    })
+
+    it('keeps the font of one film away from another film in the same process', async () => {
+        const made: Record<string, TextNode> = {}
+        const build = (name: string) => (s: Stage) => {
+            made[name] = s.add(text(`${name} text`))
+            s.add(dynamic(() => text(`${name} drawn`)))
+            s.wait(1)
+        }
+        const serif = await compile(build('serif'), { font: 'text-serif' })
+        const plain = await compile(build('plain'))
+        expect(clock.font).toBeNull()
+        expect(made['serif']!.font).toBe('text-serif')
+        expect(made['plain']!.font).toBe('sans')
+        // The frames of the two films in mixed order: a drawing that is rebuilt on each frame makes its text then.
+        for (const [f, name, font] of [[serif, 'serif', 'text-serif'], [plain, 'plain', 'sans'], [serif, 'serif', 'text-serif']] as const) {
+            expect(fontsIn(f, 0.5).get(`${name} drawn`)).toEqual([font])
+            expect(clock.font).toBeNull()
+        }
+    })
+
+    /** The font of each text of a film, in the order of the film. */
+    const fontsOf = (f: CompiledFilm) => f.stage.root.all().flatMap((node) => (node instanceof TextNode ? [`${node.source}: ${node.font}`] : []))
+    const turn = () => Promise.resolve()
+    const timer = (ms: number) => () => new Promise<void>((resolve) => setTimeout(resolve, ms))
+    /**
+     * A film of two texts. With `wait`, its callback awaits between them. With `call`, the callback makes that
+     * call on its stage after the await, before it makes the second text.
+     */
+    const twoTexts = (name: string, font: FontFamily | undefined, wait?: () => Promise<void>, call?: (s: Stage) => void) => film(font ? { fps: 10, font } : { fps: 10 }, wait
+        ? async (s) => {
+            s.add(text(`${name} one`).at(0, -100))
+            await wait()
+            call?.(s)
+            s.add(text(`${name} two`).at(0, 100))
+            s.wait(1)
+        }
+        : (s) => {
+            s.add(text(`${name} one`).at(0, -100))
+            s.add(text(`${name} two`).at(0, 100))
+            s.wait(1)
+        })
+    /** What is left after the films: the mode and the font of the clock, and the font of a text that is made outside a film. */
+    const after = () => [clock.mode, clock.font, text('made outside').font]
+
+    it('gives two films that compile at the same time their own fonts and the picture that each has alone, when one callback awaits or none', async () => {
+        const waits: [string, (() => Promise<void>) | undefined, (() => Promise<void>) | undefined][] = [
+            ['no await', undefined, undefined], ['the plain film awaits a ready value', undefined, turn], ['the plain film awaits a timer', undefined, timer(10)],
+            ['the serif film awaits a ready value', turn, undefined], ['the serif film awaits a timer', timer(10), undefined],
+        ]
+        for (const [name, serifWait, plainWait] of waits) {
+            const serif = () => twoTexts('serif', 'text-serif', serifWait), plain = () => twoTexts('plain', undefined, plainWait)
+            const alone = [(await compileFilm(serif())).svg(0.5), (await compileFilm(plain())).svg(0.5)]
+            for (const first of ['serif', 'plain']) {
+                const both = await Promise.all(first === 'serif' ? [compileFilm(serif()), compileFilm(plain())] : [compileFilm(plain()), compileFilm(serif())])
+                const [a, b] = first === 'serif' ? both : [both[1]!, both[0]!]
+                const label = `${name}, the ${first} film starts first`
+                expect([label, fontsOf(a!), fontsOf(b!)]).toEqual([label, ['serif one: text-serif', 'serif two: text-serif'], ['plain one: sans', 'plain two: sans']])
+                expect([label, a!.svg(0.5) === alone[0], b!.svg(0.5) === alone[1]]).toEqual([label, true, true])
+                expect([label, ...after()]).toEqual([label, 'free', null, 'sans'])
+            }
+        }
+    })
+
+    it('does not wait for a callback that is not async, also when it returns a value', async () => {
+        // An arrow function with no braces returns its node. The film is still done when the callback returns.
+        const short = film({ font: 'text-serif' }, (s) => s.add(text('short one')) as unknown as void)
+        const [a, b] = await Promise.all([compileFilm(twoTexts('plain', undefined, turn)), compileFilm(short)])
+        expect([fontsOf(a), fontsOf(b)]).toEqual([['plain one: sans', 'plain two: sans'], ['short one: text-serif']])
+        expect(after()).toEqual(['free', null, 'sans'])
+    })
+
+    it('gives two films whose callbacks both await their own fonts, when each calls its stage after its await, whatever the call', async () => {
+        // Each call that a callback can make on its stage takes the clock for its film.
+        const calls: Record<string, (s: Stage) => void> = {
+            add: (s) => s.add(group()), mountAt: (s) => s.mountAt(group(), 0), remove: (s) => s.remove(), play: (s) => s.play(), wait: (s) => s.wait(0),
+            at: (s) => s.at(0, () => {}), chapter: (s) => s.chapter('two'), caption: (s) => s.caption('two', 0.1), value: (s) => s.value(), update: (s) => s.update(group(), () => {}),
+        }
+        for (const [name, call] of Object.entries(calls)) {
+            // The film that starts first also goes on first, so the clock has the font of the other film when it does.
+            for (const first of ['serif', 'plain']) {
+                const serif = twoTexts('serif', 'text-serif', timer(first === 'serif' ? 5 : 20), call), plain = twoTexts('plain', undefined, timer(first === 'serif' ? 20 : 5), call)
+                const both = await Promise.all(first === 'serif' ? [compileFilm(serif), compileFilm(plain)] : [compileFilm(plain), compileFilm(serif)])
+                const [a, b] = first === 'serif' ? both : [both[1]!, both[0]!]
+                const label = `s.${name}(), the ${first} film starts first`
+                expect([label, fontsOf(a!), fontsOf(b!)]).toEqual([label, ['serif one: text-serif', 'serif two: text-serif'], ['plain one: sans', 'plain two: sans']])
+                expect([label, ...after()]).toEqual([label, 'free', null, 'sans'])
+            }
+        }
+    })
+
+    it('puts the clock back after any mix of films, and gives the film that goes on last its own font', async () => {
+        // Here each callback makes its second text after its await, before any call to its stage. The film that
+        // goes on first can then get the font of the other film: the guide says so. The film that goes on last
+        // is alone by then, and the clock is as it was after all of them.
+        for (const [serifMs, plainMs] of [[5, 20], [20, 5]]) {
+            for (const first of ['serif', 'plain']) {
+                const serif = twoTexts('serif', 'text-serif', timer(serifMs!)), plain = twoTexts('plain', undefined, timer(plainMs!)), mono = twoTexts('mono', 'mono')
+                const made = await Promise.all(first === 'serif' ? [compileFilm(serif), compileFilm(plain), compileFilm(mono)] : [compileFilm(plain), compileFilm(mono), compileFilm(serif)])
+                const label = `the serif film waits ${serifMs} ms and the plain film ${plainMs} ms, the ${first} film starts first`
+                const last = serifMs! > plainMs! ? fontsOf(made[first === 'serif' ? 0 : 2]!) : fontsOf(made[first === 'serif' ? 1 : 0]!)
+                expect([label, last]).toEqual([label, serifMs! > plainMs! ? ['serif one: text-serif', 'serif two: text-serif'] : ['plain one: sans', 'plain two: sans']])
+                expect([label, fontsOf(made[first === 'serif' ? 2 : 1]!)]).toEqual([label, ['mono one: mono', 'mono two: mono']])
+                expect([label, ...after()]).toEqual([label, 'free', null, 'sans'])
+            }
+        }
+    })
+
+    it('gives a film that is compiled inside the callback of another film its own font, then goes on with the first', async () => {
+        const made: TextNode[] = []
+        await compile(async (s) => {
+            made.push(s.add(text('before')))
+            await compile((inner) => {
+                made.push(inner.add(text('inside')))
+            })
+            made.push(s.add(text('after')))
+        }, { font: 'text-serif' })
+        expect(made.map((node) => [node.source, node.font])).toEqual([['before', 'text-serif'], ['inside', 'sans'], ['after', 'text-serif']])
+        expect(after()).toEqual(['free', null, 'sans'])
+    })
+
+    it('reaches a scene in its own function, and the part of a callback after an await', async () => {
+        const made: TextNode[] = []
+        const scene = (s: Stage) => {
+            made.push(s.add(text('in a scene')))
+        }
+        await compile(async (s) => {
+            scene(s)
+            await Promise.resolve()
+            made.push(s.add(text('after an await')))
+        }, { font: 'serif' })
+        expect(made.map((node) => node.font)).toEqual(['serif', 'serif'])
+    })
+
+    it('gives a text that an updater makes on a frame the font of the film', async () => {
+        const seen: string[] = []
+        const f = await compile((s) => {
+            s.update(s.add(group()), () => {
+                seen.push(text('from an updater').font)
+            })
+            s.wait(1)
+        }, { font: 'text-serif' })
+        seen.length = 0
+        f.frame(0.5)
+        expect(seen).toEqual(['text-serif'])
+        expect(clock.font).toBeNull()
+    })
+
+    it('keeps the new value of an info box in mono', async () => {
+        let box!: ReturnType<typeof infoBox>
+        await compile((s) => {
+            box = s.add(infoBox({ title: 'checkout', rows: [{ label: 'rate', value: 'old value' }] }))
+            s.play(box.setValue(0, 'new value'))
+        }, { font: 'text-serif' })
+        const value = box.rowValues[0] as TextNode
+        expect([value.source, value.font]).toEqual(['new value', 'mono'])
+    })
+
+    it('puts the library font back when a callback or a frame throws, and leaves a text from outside a callback in it', async () => {
+        await expect(compile((s) => {
+            s.add(text('made'))
+            throw new Error('the scene broke')
+        }, { font: 'text-serif' })).rejects.toThrow('the scene broke')
+        expect(after()).toEqual(['free', null, 'sans'])
+        await expect(compile(async (s) => {
+            s.add(text('made'))
+            await Promise.resolve()
+            throw new Error('the scene broke later')
+        }, { font: 'text-serif' })).rejects.toThrow('the scene broke later')
+        expect(after()).toEqual(['free', null, 'sans'])
+
+        let broken = false
+        const f = await compile((s) => {
+            s.add(dynamic(() => {
+                if (broken) throw new Error('the drawing broke')
+                return text('drawn')
+            }))
+            s.wait(1)
+        }, { font: 'text-serif' })
+        broken = true
+        expect(() => f.frame(0.5)).toThrow('the drawing broke')
+        expect(after()).toEqual(['free', null, 'sans'])
+
+        // A text measures its glyphs when it is made. This one is made before the film starts, so the film cannot change it.
+        const outside = text('made outside')
+        await compile((s) => {
+            s.add(outside)
+        }, { font: 'text-serif' })
+        expect(outside.font).toBe('sans')
+        // The stage of a film that is done does not take the clock when a tool calls it.
+        f.stage.add(group())
+        f.stage.wait(1)
+        expect(after()).toEqual(['free', null, 'sans'])
+    })
+
+    it('refuses a font that the library does not have, and names the fonts that it has', async () => {
+        await expect(compile(() => {}, { font: 'comic' })).rejects.toThrow(`film: font is 'sans', 'serif', 'text-serif', 'mono' or 'noto', not "comic"`)
+        expect(clock.font).toBeNull()
+    })
+
+    it('says what is wrong and what to do when a text is made before its font is loaded, outside a callback', () => {
+        // A text at the top of a film file throws this. A tool that does not know it prints it as a string.
+        const thrown = new Suspend(Promise.resolve())
+        expect(String(thrown)).toMatch(/not loaded yet.*inside the callback of film\(\), not at the top of a file/s)
+        expect(String(thrown)).toMatch(/two copies of vizmatic.*package\.json with "type": "module"/s)
+        expect(thrown.message).toBe(String(thrown))
+    })
+
+    it('gives the film check nothing new to report when a film only adds the font', async () => {
+        // The labels have characters that the serif fonts do not have, so they come from the fonts behind them.
+        const scene = (s: Stage) => {
+            s.add(card({ title: 'the CPU', caption: 'one core → one thread', width: 400 }).at(-640, -260))
+            s.add(zone(text('a write ≤ 4 kB', { size: 40 }), { title: 'guest memory', dash: true }).at(-60, -300))
+            s.add(tag('MEASURED', { note: 'run 03, Linux 7.0' }).at(300, -400))
+            s.add(dotChart([{ label: 'page cache', value: 0.8, low: 0.7, high: 0.9 }, { label: 'huge pages', value: 0.3 }], { width: 700, domain: [0, 1], labelSize: 28, xLabel: 'share of faults' }).at(120, -40))
+            s.add(bitField([{ bits: 9, label: 'directory', value: '0x1ff' }, { bits: 9, label: 'table' }, { bits: 12, label: 'offset in the page' }], { width: 1400 }).at(0, 320))
+            s.wait(2)
+        }
+        for (const font of [undefined, 'text-serif', 'serif'] as const) {
+            const report = await checkFilm(film(font ? { font } : {}, scene), { motion: true })
+            expect([font, report.diagnostics.map((found) => `${found.code}: ${found.message}`)]).toEqual([font, []])
+        }
+    })
+})
+
+describe('event log', () => {
+    type Log = ReturnType<typeof eventLog>
+    const history: LogRow[] = [
+        { id: 1, name: 'WorkflowExecutionStarted', detail: 'order' },
+        { id: 2, name: 'WorkflowTaskScheduled' },
+        { id: 3, name: 'WorkflowTaskStarted' },
+        { id: 4, name: 'WorkflowTaskCompleted' },
+        { id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard' },
+        { id: 6, name: 'ActivityTaskStarted', detail: 'attempt 1' },
+        { id: 7, name: 'ActivityTaskCompleted', detail: '"ch_1001"' },
+    ]
+    /** Rows with the ids `from` to `to`, and no detail. */
+    const some = (from: number, to: number, state?: string): LogRow[] => Array.from({ length: to - from + 1 }, (_, index) => ({ id: from + index, name: `Event${from + index}`, ...(state ? { state } : {}) }))
+    const words = (node: Node | null) => (node as unknown as { source: string }).source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    const right = (node: Node) => node.bounds().x + node.bounds().width
+    const bottom = (node: Node) => node.bounds().y + node.bounds().height
+    /** Every line that the list has made: rows and folds, also those that do not show. */
+    const made = (log: Log) => log.all().filter((node): node is LogRowNode => node instanceof LogRowNode)
+    /** The lines that a viewer sees at a time, from the top: the text of the id of each. */
+    const seen = (log: Log, time: number) => at(time, () => made(log).filter((node) => shows(node.content) > 0.99).sort((a, b) => a.get('y') - b.get('y')).map((node) => words(node.idText)))
+    /** The text that a holder shows at a time, such as the count of the rows above. */
+    const said = (holder: Node, time: number) => at(time, () => (shows(holder) > 0.99 ? holder.children.filter((child) => typeof words(child) === 'string' && child.get('visible')).map(words) : []))
+    /** The line of a row by the text of its id, also when it does not show. A fold is not a row. */
+    const line = (log: Log, id: number | string) => made(log).find((node) => words(node.idText) === String(id) && node.range === null)!
+    /** The folds that show at a time, from the top. */
+    const folds = (log: Log, time: number) => at(time, () => made(log).filter((node) => node.range !== null && shows(node.content) > 0.99).sort((a, b) => a.get('y') - b.get('y')))
+    /** What a line says, part by part: the id, the range of a fold, the name, the detail, the time. */
+    const says = (node: LogRowNode) => [node.idText, node.range, node.name, node.detail, node.time].map((part) => (part ? words(part) : null))
+    const ink = (node: Node) => node.children[0]!.get('fill')
+    /** The mark of a line at a time: the shape that shows, and its color. */
+    const markOf = (node: LogRowNode, time: number) => at(time, () => {
+        const shape = node.mark.children.filter((child) => child.get('visible')).sort((a, b) => b.get('opacity') - a.get('opacity'))[0]!
+        const leaf = shape.leaves()[0]!
+        return [shape.data['shape'], leaf.get('fill') ?? leaf.get('stroke')]
+    })
+    const inside = (part: Node, whole: Node) => {
+        const a = part.bounds(), b = whole.bounds()
+        expect(a.x).toBeGreaterThanOrEqual(b.x)
+        expect(a.y).toBeGreaterThanOrEqual(b.y)
+        expect(a.x + a.width).toBeLessThanOrEqual(b.x + b.width)
+        expect(a.y + a.height).toBeLessThanOrEqual(b.y + b.height)
+    }
+    /**
+     * Where the getters and the picture disagree at a time: a line of `rows` that is not at the y of `p()` or
+     * does not show, a line that shows and is not in `rows`, two lines at one place, and two texts in a count
+     * or in the footer.
+     */
+    const wrong = (log: Log, time: number): string[] => {
+        const found: string[] = []
+        const rows = log.rows
+        at(time, () => {
+            for (const row of rows) {
+                const id = words(row.idText)
+                if (shows(row.content) < 0.99) found.push(`row ${id} is in rows and does not show`)
+                else if (Math.abs(row.get('y') - log.p(id)[1]) > 0.5) found.push(`row ${id} is not at p()`)
+            }
+            for (const node of made(log)) if (shows(node.content) > 0.01 && !rows.includes(node)) found.push(`line ${words(node.idText)} shows and is not in rows`)
+            const places = rows.map((row) => Math.round(row.get('y')))
+            if (new Set(places).size !== places.length) found.push('two lines share one place')
+        })
+        for (const holder of [log.earlier, log.later, log.footer!]) if (said(holder, time).length > 1) found.push(`two texts: ${said(holder, time).join(' | ')}`)
+        return found
+    }
+
+    it('centers the panel on its place, with the title over the rows and the footer under them', async () => {
+        await compileFilm(film(() => {
+            const log = eventLog(history, { title: 'event history', footer: (count) => `${count} events`, visible: 8, size: 20, width: 600 }).at(100, 50)
+            const frame = log.frame.bounds(), P = log.pitch
+            expect(frame.x + frame.width / 2).toBeCloseTo(100, 6)
+            expect(frame.y + frame.height / 2).toBeCloseTo(50, 6)
+            // 8 lines, 8 px over and under them, and 38 px each for the title and the footer.
+            expect(frame.width).toBeCloseTo(600, 6)
+            expect(frame.height).toBeCloseTo(8 * P + 16 + 76, 6)
+            log.rows.forEach((row, index) => expect(row.get('y')).toBeCloseTo(-frame.height / 2 + 38 + 8 + P / 2 + index * P, 6))
+            // From the top: the title, a rule, the rows, a rule, the footer. The rules go from border to border.
+            const [over, under] = log.rules.map((rule) => rule.bounds())
+            expect(bottom(log.title!)).toBeLessThan(over!.y)
+            expect(over!.y).toBeLessThan(log.rows[0]!.bounds().y)
+            expect(bottom(log.rows[6]!)).toBeLessThan(under!.y)
+            expect(under!.y).toBeLessThan(log.footer!.bounds().y)
+            expect(over!.width).toBeCloseTo(600 - log.frame.get('strokeWidth'), 6)
+            for (const part of [log.title!, log.footer!, ...log.rows]) inside(part, log.frame)
+            expect(words(log.title)).toBe('event history')
+            // The title and the footer start where the marks of the rows start.
+            expect(Math.abs(log.title!.bounds().x - log.rows[0]!.mark.bounds().x)).toBeLessThan(2)
+            // Without a title and a footer, the panel has the rows and the room around them.
+            const plain = eventLog(history, { visible: 8, size: 20 })
+            expect(plain.title).toBeNull()
+            expect(plain.footer).toBeNull()
+            expect(plain.rules).toHaveLength(0)
+            expect(plain.frame.bounds().height).toBeCloseTo(8 * P + 16, 6)
+            // The defaults: 640 wide, ten lines, a text size of 24.
+            const usual = eventLog(history), box = usual.frame.bounds()
+            expect([box.width, box.height]).toEqual([640, expect.closeTo(10 * usual.pitch + 2 * 9.6, 6)])
+            expect(usual.rows[0]!.name.bounds().height / log.rows[0]!.name.bounds().height).toBeCloseTo(24 / 20, 2)
+        }))
+    })
+
+    it('puts the rows as far apart as the outline needs: 0.3 of the text size from the ink of its row, and from the ink of the rows next to it', async () => {
+        // Characters that go as far up and as far down as any printable ASCII character does, in mono and in the font of the details.
+        const tall = 'A(|$gjy_Q'
+        const lists: { log: Log; size: number }[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            for (const size of [24, 40]) {
+                for (const options of [{}, { detailFont: 'mono' as const }, { focusLook: 'band' as const }]) {
+                    const log = s.add(eventLog([1, 2, 3].map((id) => ({ id, name: tall, detail: tall })), { size, width: 1400, ...options }))
+                    s.play(log.focus(2), { duration: 0 })
+                    lists.push({ log, size })
+                }
+            }
+            s.wait(1)
+        }))
+        for (const { log, size } of lists) {
+            const [above, own, below] = at(0.5, () => log.rows.map((row) => { const boxes = [row.name.bounds(), row.detail!.bounds()]; return [Math.min(...boxes.map((box) => box.y)), Math.max(...boxes.map((box) => box.y + box.height))] }))
+            const box = at(0.5, () => log.outline.bounds())
+            // The band has no line. The outline has one, and the room is from the edge of that line.
+            const half = at(0.5, () => (log.outline.get('stroke') ? log.outline.get('strokeWidth') / 2 : 0))
+            const room = size * 0.3 - 1e-6
+            expect(own![0]! - (box.y + half)).toBeGreaterThanOrEqual(room)
+            expect(box.y + box.height - half - own![1]!).toBeGreaterThanOrEqual(room)
+            expect(box.y - half - above![1]!).toBeGreaterThanOrEqual(room)
+            expect(below![0]! - (box.y + box.height + half)).toBeGreaterThanOrEqual(room)
+            // The room is not more than it has to be: the distance between two rows is the ink, the room, and the line.
+            expect(box.y - half - above![1]!).toBeLessThan(room + size * 0.1)
+            expect(box.height).toBeCloseTo(log.pitch, 6)
+            // The outline has room at its two ends too: from the mark at the left, and from the end of the panel.
+            expect(at(0.5, () => log.rows[1]!.mark.bounds().x) - box.x).toBeGreaterThan(size * 0.3)
+            expect(box.x).toBeGreaterThan(at(0.5, () => log.frame.bounds().x) + size * 0.2)
+        }
+        // The pitch follows the fonts: a list with details in mono needs less than one with details in the text font.
+        expect(lists[1]!.log.pitch).toBeLessThan(lists[0]!.log.pitch)
+        expect(lists[0]!.log.pitch / 24).toBeCloseTo(lists[3]!.log.pitch / 40, 1)
+        expect(lists[0]!.log.pitch).toBeGreaterThan(24 * 1.7)
+        expect(lists[0]!.log.pitch).toBeLessThan(24 * 1.95)
+    })
+
+    it('lines up the columns over all rows: the marks, the ends of the ids, and the starts of the names and of the details', async () => {
+        await compileFilm(film(() => {
+            const log = eventLog([{ id: 7, name: 'Short', detail: 'a' }, { id: 12, name: 'ActivityTaskCompleted', detail: '"ch_1001"' }, { id: 'ab', name: 'Wide', detail: 'x y' }], { size: 20 })
+            const rows = log.rows
+            for (const part of ['mark', 'idText', 'name', 'detail'] as const) expect(new Set(rows.map((row) => row[part]!.get('x'))).size).toBe(1)
+            // An id ends at the x of its column, and a name and a detail start at theirs. The ink is there to 3 px:
+            // a glyph has a little room at its sides.
+            for (const row of rows) {
+                expect(Math.abs(right(row.idText) - row.idText.get('x'))).toBeLessThan(3)
+                expect(Math.abs(row.name.bounds().x - row.name.get('x'))).toBeLessThan(3)
+                expect(Math.abs(row.detail!.bounds().x - row.detail!.get('x'))).toBeLessThan(3)
+                // From the left: the mark, the id, the name, the detail. No part touches the next.
+                expect(right(row.mark)).toBeLessThan(row.idText.bounds().x)
+                expect(right(row.idText)).toBeLessThan(row.name.bounds().x)
+                expect(right(row.name)).toBeLessThan(row.detail!.bounds().x)
+                // The mark is at the middle height of the row.
+                expect(row.mark.get('y')).toBe(0)
+                // The id and the detail are dim, so the name is what a viewer reads first.
+                expect([ink(row.idText), ink(row.detail!)]).toEqual([parseColor('dim'), parseColor('dim')])
+            }
+            // The names have the room of the longest name of the first rows, and the details start 18 px after it.
+            expect(rows[0]!.detail!.get('x') - right(rows[1]!.name)).toBeGreaterThan(17)
+            expect(rows[0]!.detail!.get('x') - right(rows[1]!.name)).toBeLessThan(20)
+            // The ids have room for two digits at least, so a list that starts at 1 can go on to 99.
+            const short = eventLog([{ id: 1, name: 'One' }], { size: 20 })
+            expect(short.rows[0]!.name.get('x') - short.rows[0]!.idText.get('x')).toBeCloseTo(14, 6)
+            expect(short.rows[0]!.idText.get('x') - short.rows[0]!.mark.get('x')).toBeCloseTo(3.4 + 12 + 24, 6)
+            // The name is in mono and the detail in another font. Both stand on one baseline.
+            const large = eventLog([{ id: 1, name: 'HHH', detail: 'HHH' }], { size: 100, width: 1400 }).rows[0]!
+            expect(Math.abs(bottom(large.name) - bottom(large.detail!))).toBeLessThan(0.3)
+            for (const font of ['mono', 'text-serif'] as const) {
+                const other = eventLog([{ id: 1, name: 'HHH', detail: 'HHH' }], { size: 100, width: 1500, font }).rows[0]!
+                expect(Math.abs(bottom(other.name) - bottom(other.detail!))).toBeLessThan(0.3)
+            }
+        }))
+    })
+
+    it('has its full height from the start, and draws nothing outside the panel while rows arrive', async () => {
+        let log!: Log
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 2), { title: 'log', footer: (count) => `${count} rows`, visible: 4, size: 20, width: 400 }))
+            s.wait(0.5)
+            s.play(log.append(some(3, 8)), { duration: 3, ease: linear })
+            s.wait(0.5)
+        }))
+        const sizes = [0, 0.7, 1.9, 4].map((time) => at(time, () => { const box = log.frame.bounds(); return [box.x, box.y, box.width, box.height] }))
+        for (const size of sizes) expect(size).toEqual(sizes[0])
+        expect(sizes[0]![3]).toBeCloseTo(4 * log.pitch + 16 + 76, 6)
+        // At rest, the list is as large as its panel. And at each frame, every mark that the film draws is in the panel.
+        for (const time of [0, 4]) {
+            const box = at(time, () => log.bounds())
+            expect([box.x, box.y, box.width, box.height]).toEqual(sizes[0])
+        }
+        for (let step = 0; step <= 60; step++) {
+            const [panel, ...rest] = paths(compiled, 0.5 + step / 20)
+            const outer = pathBounds(panel!.path)!
+            for (const op of rest) {
+                if (Math.max(op.fillAlpha, op.strokeAlpha) < 0.02) continue
+                const box = pathBounds(op.path)!
+                expect(box.y).toBeGreaterThanOrEqual(outer.y)
+                expect(box.y + box.height).toBeLessThanOrEqual(outer.y + outer.height)
+            }
+        }
+    })
+
+    it('adds one row or many at the bottom, in the order given, and counts them', async () => {
+        let log!: Log
+        const counts: number[] = [], ids: (number | string)[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([], { visible: 8, size: 20 }))
+            counts.push(log.count)
+            s.play(log.append({ id: 1, name: 'One' }), { duration: 1, ease: linear })
+            counts.push(log.count)
+            s.play(log.append([{ id: 'b', name: 'Two' }, { id: 3, name: 'Three' }, { id: 4, name: 'Four' }]), { duration: 3, ease: linear })
+            counts.push(log.count)
+            ids.push(log.ids)
+            // An append with no row does nothing and takes no time.
+            const none = log.append([])
+            expect(none.duration).toBe(0)
+            s.play(none)
+            expect(log.count).toBe(4)
+        }))
+        const P = log.pitch
+        expect(counts).toEqual([0, 1, 4])
+        expect(ids[0]).toEqual([1, 'b', 3, 4])
+        expect(log.rows.map((row) => words(row.name))).toEqual(['One', 'Two', 'Three', 'Four'])
+        // The rows arrive one after another: each has a third of the time of its append.
+        expect(seen(log, 0.5)).toEqual([])
+        expect(seen(log, 1)).toEqual(['1'])
+        expect(seen(log, 1.5)).toEqual(['1'])
+        expect(seen(log, 2)).toEqual(['1', 'b'])
+        expect(seen(log, 3)).toEqual(['1', 'b', '3'])
+        expect(seen(log, 4)).toEqual(['1', 'b', '3', '4'])
+        // A new row fades in over six tenths of its time, and rises to its place from a third of a row under it. No other row moves.
+        const fresh = log.rows[1]!, first = log.rows[0]!
+        expect(at(1.3, () => shows(fresh))).toBeCloseTo(0.5, 6)
+        expect(at(1.6, () => shows(fresh))).toBeCloseTo(1, 6)
+        expect(at(1.3, () => fresh.get('y') - first.get('y'))).toBeCloseTo(P + 0.35 * P * 0.7, 6)
+        expect(at(2, () => fresh.get('y') - first.get('y'))).toBeCloseTo(P, 6)
+        expect(at(1.5, () => first.get('y'))).toBe(at(1, () => first.get('y')))
+        // The default time is 0.4 s for each row, and half a second at least.
+        expect(log.append(some(10, 14)).duration).toBeCloseTo(2, 6)
+        expect(log.append(some(10, 10)).duration).toBe(0.5)
+    })
+
+    it('shows the newest rows of a full window, and says in its first line how many rows are above', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 5), { visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(6, 6)), { duration: 1, ease: linear })
+            s.play(log.append(some(7, 8)), { duration: 2, ease: linear })
+        }))
+        const P = log.pitch
+        // Five rows fill the five lines, and the list has no line for a count.
+        expect(seen(log, 0.5)).toEqual(['1', '2', '3', '4', '5'])
+        expect(said(log.earlier, 0.5)).toEqual([])
+        // A sixth row needs a line, and the count needs one: two rows go, and four rows show.
+        expect(seen(log, 2)).toEqual(['3', '4', '5', '6'])
+        expect(said(log.earlier, 2)).toEqual(['2 earlier'])
+        expect(seen(log, 3)).toEqual(['4', '5', '6', '7'])
+        expect(said(log.earlier, 3)).toEqual(['3 earlier'])
+        expect(seen(log, 4)).toEqual(['5', '6', '7', '8'])
+        expect(said(log.earlier, 4)).toEqual(['4 earlier'])
+        // The count changes when the row that leaves is nearly gone: at 45% of the way, not at its end.
+        expect(said(log.earlier, 2.44)).toEqual(['2 earlier'])
+        expect(said(log.earlier, 2.46)).toEqual(['3 earlier'])
+        // The count is in the first line, where the first row was, and the rows are in the lines under it.
+        const top = at(0.5, () => line(log, 1).get('y'))
+        expect(log.earlier.get('y')).toBeCloseTo(top, 6)
+        expect(at(4, () => line(log, 5).get('y'))).toBeCloseTo(top + P, 6)
+        expect(at(4, () => line(log, 8).get('y'))).toBeCloseTo(top + 4 * P, 6)
+        expect(log.rows.map((row) => words(row.idText))).toEqual(['5', '6', '7', '8'])
+        expect(log.count).toBe(8)
+        // No row is under the window, so the last line has no count.
+        expect(said(log.later, 4)).toEqual([])
+        // The count is of records: a fold above the window counts each record that it holds, at the start and after a row arrives.
+        let folded!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            folded = s.add(eventLog([{ id: 1, name: 'One' }, { ids: [2, 3, 4], name: 'three' }, ...some(5, 8)], { visible: 4 }))
+            s.play(folded.append(some(9, 9)), { duration: 1 })
+        }))
+        expect(seen(folded, 0)).toEqual(['6', '7', '8'])
+        expect(said(folded.earlier, 0)).toEqual(['5 earlier'])
+        expect(seen(folded, 1)).toEqual(['7', '8', '9'])
+        expect(said(folded.earlier, 1)).toEqual(['6 earlier'])
+        // A list that is made with more rows than lines starts at its end.
+        const long = eventLog(some(1, 40), { visible: 12 })
+        expect(long.rows.map((row) => words(row.idText))).toEqual(some(30, 40).map((row) => String(row.id)))
+        expect(said(long.earlier, 0)).toEqual(['29 earlier'])
+        expect(long.count).toBe(40)
+        // The count line has its three dots and one text: the list writes a text for a count that it shows, and for no other.
+        expect(long.earlier.children).toHaveLength(2)
+        // A fold above the window, and its unfold: the records are the same, so the count is the same. A line that left the list counts no more.
+        let hidden!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            hidden = s.add(eventLog(some(1, 12), { visible: 5 }))
+            s.play(hidden.fold([2, 3, 4], 'three'), { duration: 1 })
+            s.play(hidden.unfold(2), { duration: 1 })
+        }))
+        expect([0, 1, 2].map((time) => [seen(hidden, time), said(hidden.earlier, time)])).toEqual(Array(3).fill([['9', '10', '11', '12'], ['8 earlier']]))
+    })
+
+    it('moves the rows of a full window as one when a row arrives, and no row jumps', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(7, 7)), { duration: 1 })
+        }))
+        const P = log.pitch
+        const rows = [3, 4, 5, 6, 7].map((id) => line(log, id))
+        const start = at(1, () => rows.map((row) => row.get('y')))
+        let before = start
+        for (let step = 1; step <= 20; step++) {
+            const now = at(1 + step / 20, () => rows.map((row) => row.get('y')))
+            // Each row is one row under the row before it, at every frame: the row that leaves, the rows that stay, and the row that comes.
+            for (let index = 1; index < now.length; index++) expect(now[index]! - now[index - 1]!).toBeCloseTo(P, 6)
+            // No frame moves a row by more than a small part of a row.
+            expect(Math.abs(now[0]! - before[0]!)).toBeLessThan(P * 0.27)
+            before = now
+        }
+        expect(before[0]! - start[0]!).toBeCloseTo(-P, 6)
+    })
+
+    it('fades a row that leaves before it reaches the count, and shows a new row only when it is at the window', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { title: 'log', footer: (count) => `${count} rows`, visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(7, 7)), { duration: 1, ease: linear })
+        }))
+        const P = log.pitch
+        const leaves = line(log, 3), comes = line(log, 7), stays = line(log, 5)
+        const first = log.earlier.get('y')
+        for (let step = 0; step <= 20; step++) {
+            const time = 1 + step / 20
+            const [up, opacity] = at(time, () => [(leaves.get('y') - first) / P, shows(leaves)])
+            // The row that leaves is whole in its line, and gone when it is 0.4 of a row past it.
+            if (up! >= 0.95) expect(opacity).toBeCloseTo(1, 6)
+            if (up! <= 0.6) expect(opacity).toBe(0)
+            const [down, alpha] = at(time, () => [(comes.get('y') - first) / P - 4, shows(comes)])
+            if (down! >= 0.4) expect(alpha).toBe(0)
+            expect(at(time, () => shows(stays))).toBe(1)
+        }
+        expect(at(1.2, () => shows(leaves))).toBeCloseTo(1 - 0.15 / 0.35, 6)
+        expect(at(1.8, () => shows(comes))).toBeCloseTo(1 - 0.15 / 0.35, 6)
+        expect(at(2, () => [shows(leaves), shows(comes)])).toEqual([0, 1])
+        // A row that has left is hidden, so the frame and the bounds of the list skip it.
+        expect(at(1.9, () => leaves.get('visible'))).toBe(true)
+        expect(at(2, () => leaves.get('visible'))).toBe(false)
+        // At the first row past the window, two rows go: the first fades where it is, for the count takes its line.
+        let short!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            short = s.add(eventLog(some(1, 5), { visible: 5, size: 20 }))
+            s.play(short.append(some(6, 6)), { duration: 1, ease: linear })
+        }))
+        const top = line(short, 1)
+        expect(at(0.3, () => top.get('y'))).toBe(at(0, () => top.get('y')))
+        expect(at(0.175, () => shows(top))).toBeCloseTo(0.5, 6)
+        expect(at(0.4, () => shows(top))).toBe(0)
+        // The count comes in the second half, when the two rows are gone.
+        expect(at(0.5, () => shows(short.earlier))).toBe(0)
+        expect(at(0.75, () => shows(short.earlier))).toBeCloseTo(0.5, 6)
+        expect(at(1, () => shows(short.earlier))).toBe(1)
+    })
+
+    it('chains two appends in one sequence, and refuses an id that the list has', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            s.play(seq(log.append(some(3, 3)), log.append(some(4, 5))), { duration: 3, ease: linear })
+            expect(log.count).toBe(5)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5])
+            // The film asks for the row now, and the list has it.
+            expect(() => log.append({ id: 3, name: 'Again' })).toThrow(/the list already has a row with the id 3\. Give each row its own id/)
+            // An id is known by its text, so the text '3' is the id 3.
+            expect(() => log.append({ id: '3', name: 'Again' })).toThrow(/already has a row with the id "3"/)
+            expect(() => log.append([{ id: 8, name: 'A' }, { id: 8, name: 'B' }])).toThrow(/two rows have the id 8/)
+            // Two appends of one id in one sequence: the second finds the row of the first when it is scheduled.
+            const twice = seq(log.append({ id: 9, name: 'A' }), log.append([{ id: 10, name: 'B' }, { id: 9, name: 'C' }]))
+            expect(() => s.play(twice)).toThrow(/already has a row with the id 9/)
+            // The append that is refused adds none of its rows: the list has row 9 of the first one, and no row 10.
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 9])
+            // A focus or a mark that the play names before the `append` of its row: the list has no such row yet, and says what to do.
+            expect(() => s.play(log.focus(21), log.append(some(21, 21)))).toThrow(/no row has the id 21\. The list has the ids 1 to 9\. When an `append` in the same play brings the row, name the `append` before this call: the list takes the calls of a play in their order$/)
+            expect(() => s.play(log.mark(21, 'answered'), log.append(some(21, 21)))).toThrow(/When an `append` in the same play brings the row, name the `append` before this call/)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 9])
+            // The play that was refused did not move the time of the film, and its first append has its time.
+            s.wait(1)
+            s.play(log.append(some(21, 21)), log.focus(21), log.mark(21, 'answered'))
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 9, 21])
+            // A getter is not a call of a play, so its message has no such advice.
+            expect(() => log.row(99)).toThrow(/no row has the id 99\. The list has the ids 1 to 21$/)
+        }))
+        // Three rows in three seconds, one after another, over the two appends.
+        expect(seen(log, 1)).toEqual(['1', '2', '3'])
+        expect(seen(log, 2)).toEqual(['1', '2', '3', '4'])
+        expect(seen(log, 3)).toEqual(['1', '2', '3', '4', '5'])
+    })
+
+    it('brings the rows of one call together with a lag of 0, and keeps rows that overlap in time one row apart', async () => {
+        let group!: Log, overlap!: Log, large!: Log, half!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            group = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            overlap = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            large = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            half = s.add(eventLog([], { visible: 8, size: 20 }))
+            s.play(group.append(some(7, 9), { lag: 0 }), large.append(some(7, 15), { lag: 0 }), half.append(some(1, 3), { lag: 0.5 }), { duration: 2, ease: linear })
+            // With the ease of the house, a row that gets a new place slows down and starts again.
+            s.play(overlap.append(some(7, 9), { lag: 0.5 }), { duration: 2 })
+        }))
+        const P = group.pitch
+        // The group goes up three rows in one move, and its rows come with it.
+        const rows = [6, 7, 8, 9].map((id) => line(group, id))
+        const top = group.earlier.get('y')
+        expect(at(1, () => rows.map((row) => (row.get('y') - top) / P))).toEqual([2.5, 3.5, 4.5, 5.5].map((value) => expect.closeTo(value, 6)))
+        expect(seen(group, 2)).toEqual(['6', '7', '8', '9'])
+        expect(said(group.earlier, 2)).toEqual(['5 earlier'])
+        // With a lag of 0.5, the second row starts when the first is half way. The rows stay one row apart.
+        const late = [5, 6, 7, 8, 9].map((id) => line(overlap, id))
+        for (let step = 1; step <= 40; step++) {
+            const ys = at(2 + step / 20, () => late.filter((row) => row.get('visible')).map((row) => row.get('y')))
+            for (let index = 1; index < ys.length; index++) expect(ys[index]! - ys[index - 1]!).toBeCloseTo(P, 6)
+        }
+        expect(seen(overlap, 4)).toEqual(['6', '7', '8', '9'])
+        // Three rows in two seconds with a lag of 0.5: each has one second, and the next starts half a second later.
+        expect(at(0.8, () => [1, 2, 3].map((id) => shows(line(half, id))))).toEqual([1, expect.closeTo(0.5, 6), 0])
+        expect(at(1.3, () => [1, 2, 3].map((id) => shows(line(half, id))))).toEqual([1, 1, expect.closeTo(0.5, 6)])
+        // A row that is still on its way in is not drawn under the window.
+        for (let step = 1; step <= 40; step++) {
+            for (const row of late) {
+                const down = at(2 + step / 20, () => (row.get('y') - top) / P - 4)
+                if (down >= 0.4) expect(at(2 + step / 20, () => shows(row))).toBe(0)
+            }
+        }
+        // A group that is larger than the window goes through it. Nine rows go up nine lines: after four
+        // ninths of the time, rows 7 to 10 are in the four lines, and none of them has a place at the end.
+        expect(seen(large, 2 * 4 / 9)).toEqual(['7', '8', '9', '10'])
+        expect(seen(large, 2)).toEqual(['12', '13', '14', '15'])
+        expect(said(large.earlier, 2)).toEqual(['11 earlier'])
+        // A row that went through is hidden at the end, so the bounds of the list are those of its panel.
+        expect(at(2, () => [7, 10].map((id) => line(large, id).get('visible')))).toEqual([false, false])
+        expect(at(1.9, () => line(large, 11).get('visible'))).toBe(true)
+        expect(at(1.8, () => line(large, 7).get('y'))).toBe(large.earlier.get('y'))
+        const box = at(2, () => large.bounds()), panel = at(2, () => large.frame.bounds())
+        expect([box.y, box.height]).toEqual([panel.y, panel.height])
+    })
+
+    it('refuses two changes of the rows whose times overlap, and never leaves the picture wrong', async () => {
+        const start = (): LogRow[] => [...some(1, 9), { ids: [10, 11, 12], name: 'a fold', rows: some(10, 12) }, ...some(13, 16), { ids: [17, 18], name: 'b fold', rows: some(17, 18) }, ...some(19, 20)]
+        // The 23 mixes of the review, and the calls around them. `true` is a mix whose changes overlap in time.
+        const cases: [string, boolean | ((visible: number) => boolean), (log: Log) => Anim][] = [
+            ['seq(fold, fold)', false, (log) => seq(log.fold([13, 14], 'x'), log.fold([19, 20], 'y'))],
+            ['par(fold, fold) in list order', true, (log) => par(log.fold([13, 14], 'x'), log.fold([19, 20], 'y'))],
+            ['par(fold, fold) lower first', true, (log) => par(log.fold([19, 20], 'y'), log.fold([13, 14], 'x'))],
+            ['lagged(fold, fold) lag 0.15', true, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')])],
+            ['lagged(fold, fold) lag 0.1', true, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')], { lag: 0.1 })],
+            ['lagged(fold lower, fold upper) lag 0.15', true, (log) => lagged([log.fold([19, 20], 'y'), log.fold([13, 14], 'x')])],
+            ['lagged(fold, fold) lag 0.5', true, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')], { lag: 0.5 })],
+            ['lagged(fold, fold) lag 1', false, (log) => lagged([log.fold([13, 14], 'x'), log.fold([19, 20], 'y')], { lag: 1 })],
+            ['seq(unfold, unfold)', false, (log) => seq(log.unfold(10), log.unfold(17))],
+            ['par(unfold, unfold)', true, (log) => par(log.unfold(10), log.unfold(17))],
+            ['lagged(unfold, unfold) lag 0.15', true, (log) => lagged([log.unfold(10), log.unfold(17)])],
+            ['lagged(unfold, unfold) lag 0.5', true, (log) => lagged([log.unfold(10), log.unfold(17)], { lag: 0.5 })],
+            ['lagged(unfold lower, unfold upper) lag 0.5', true, (log) => lagged([log.unfold(17), log.unfold(10)], { lag: 0.5 })],
+            ['lagged(unfold, unfold) lag 1', false, (log) => lagged([log.unfold(10), log.unfold(17)], { lag: 1 })],
+            ['par(append 1 row, append 1 row)', true, (log) => par(log.append(some(21, 21)), log.append(some(22, 22)))],
+            ['par(append 2 rows, append 2 rows)', true, (log) => par(log.append(some(21, 22)), log.append(some(23, 24)))],
+            ['par(append 2 rows lag 0, append 2 rows lag 0)', true, (log) => par(log.append(some(21, 22), { lag: 0 }), log.append(some(23, 24), { lag: 0 }))],
+            ['lagged(append 2, append 2) lag 0.15', true, (log) => lagged([log.append(some(21, 22)), log.append(some(23, 24))])],
+            ['lagged(append 2, append 2) lag 1', false, (log) => lagged([log.append(some(21, 22)), log.append(some(23, 24))], { lag: 1 })],
+            ['par(append, fold)', true, (log) => par(log.append(some(21, 21)), log.fold([13, 14], 'x'))],
+            ['par(fold, append)', true, (log) => par(log.fold([13, 14], 'x'), log.append(some(21, 21)))],
+            ['par(append, unfold)', true, (log) => par(log.append(some(21, 21)), log.unfold(17))],
+            ['par(unfold, append)', true, (log) => par(log.unfold(17), log.append(some(21, 21)))],
+            ['par(fold, unfold)', true, (log) => par(log.fold([13, 14], 'x'), log.unfold(17))],
+            ['par(unfold, fold)', true, (log) => par(log.unfold(17), log.fold([13, 14], 'x'))],
+            // Row 1 is out of a window of 8 lines, so the window moves. In a window of 30 lines it shows, and nothing moves.
+            ['par(scrollTo, append)', (visible) => visible === 8, (log) => par(log.scrollTo(1), log.append(some(21, 21)))],
+            ['par(scrollTo of a row that shows, append)', false, (log) => par(log.scrollTo(19), log.append(some(21, 21)))],
+            ['par(append, scrollTo of a row that shows)', false, (log) => par(log.append(some(21, 21)), log.scrollTo(20))],
+            ['seq(scrollTo, append, fold)', false, (log) => seq(log.scrollTo(1), log.append(some(21, 21)), log.fold([13, 14], 'x'))],
+            // A change of the rows with calls that change no row: these are free to overlap.
+            ['par(mark, append, focus)', false, (log) => par(log.mark(15, 'answered'), log.append(some(21, 22)), log.focus(22))],
+            ['par(focus, fold)', false, (log) => par(log.focus(13), log.fold([13, 14], 'x'))],
+            ['par(mark, unfold)', false, (log) => par(log.mark(17, 'failed'), log.unfold(17))],
+            ['par(enter, append, show)', false, (log) => par(log.enter(), log.append(some(21, 21)), log.show(21))],
+        ]
+        for (const visible of [8, 30]) {
+            for (const [name, flag, build] of cases) {
+                const overlaps = typeof flag === 'function' ? flag(visible) : flag
+                let log!: Log, end = 0, thrown = ''
+                await compileFilm(film({ fps: 20 }, (s) => {
+                    log = s.add(eventLog(start(), { visible, size: 24, footer: (count) => `${count} events` }))
+                    s.wait(1)
+                    // A font that is not loaded yet stops the build with a promise, and the film runs again.
+                    try { s.play(build(log)) } catch (error) { if (!(error instanceof Error)) throw error; thrown = error.message }
+                    s.wait(1)
+                    end = s.time
+                }))
+                // Refused, or right: each line of `rows` shows at the place that `p()` gives, and nothing else shows.
+                if (overlaps) expect(thrown, name).toMatch(/^eventLog: \w+\(.*\) plays from [\d.]+ s to [\d.]+ s, and \w+\(.*\) plays from [\d.]+ s to [\d.]+ s\. The list changes its rows one change at a time: a change starts when the change before it is over\. \S/)
+                else expect(thrown, name).toBe('')
+                expect(wrong(log, end), `${name}, window of ${visible}`).toEqual([])
+            }
+        }
+        // The error names the two calls and their times.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = s.add(eventLog(some(1, 9), { visible: 8, size: 24 }))
+            s.wait(1)
+            expect(() => s.play(log.fold([3, 4], 'x'), log.append(some(10, 11)), { duration: 2 })).toThrow(/append\(\[10, 11\]\) plays from 1 s to 3 s, and fold\(\[3, 4\]\) plays from 1 s to 3 s\./)
+            // The first of the two is done, and the second is not: the list is as the fold left it.
+            expect(log.count).toBe(9)
+            expect(log.rows).toHaveLength(8)
+            // A change at the time where the last one ends is not an overlap. Two changes of no length at one time follow each other.
+            s.wait(2)
+            s.play(log.append(some(10, 10)), { duration: 1 })
+            s.play(log.fold([5, 6], 'y'), log.fold([7, 8], 'z'), { duration: 0 })
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['1', '2', '3', '5', '7', '9', '10'])
+            // Two lists do not know of each other.
+            const other = s.add(eventLog(some(1, 3), { visible: 8, size: 24 }))
+            s.play(log.append(some(11, 11)), other.append(some(4, 4)))
+            expect([log.count, other.count]).toEqual([11, 4])
+            // A change that the film puts before the last one in time is refused too: its rows start from the wrong places.
+            expect(() => s.at(0.5, () => s.play(log.append(some(12, 12))))).toThrow(/append\(\[12\]\) plays from 0\.5 s to 1 s, and append\(\[11\]\) plays from 4 s to 4\.5 s/)
+        }))
+        // This test builds 72 films. On a loaded machine that takes longer than the usual limit of a test.
+    }, 60_000)
+
+    it('gives the advice that fits two changes that overlap, and a film that follows it builds with the same pace', async () => {
+        const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+        const rule = 'The list changes its rows one change at a time: a change starts when the change before it is over. '
+        // Seven short appends in one play, each 0.23 s after the one before: the film of a session log.
+        const rows = some(1, 7)
+        let log!: Log, advice = ''
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([], { visible: 8, size: 20 }))
+            advice = message(() => s.play(...rows.map((row, index) => delay(log.append(row, { duration: 0.25 }), 0.15 + index * 0.23))))
+        }))
+        expect(advice).toBe(`eventLog: append([2]) plays from 0.38 s to 0.63 s, and append([1]) plays from 0.15 s to 0.4 s. ${rule}Give one \`append\` all the rows, with \`{ lag: 0.92, duration: 0.25 + 0.23 * (rows - 1) }\`. Each row then takes 0.25 s and starts 0.23 s after the row before it, as here`)
+        const [lag, first, each] = /lag: ([\d.]+), duration: ([\d.]+) \+ ([\d.]+) \* \(rows - 1\)/.exec(advice)!.slice(1).map(Number)
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([], { visible: 8, size: 20 }))
+            s.play(delay(log.append(rows, { lag: lag!, duration: first! + each! * (rows.length - 1), ease: linear }), 0.15))
+            expect(s.time).toBeCloseTo(0.15 + 6 * 0.23 + 0.25, 6)
+        }))
+        // The pace is that of the film: each row starts 0.23 s after the row before it, and takes 0.25 s.
+        rows.forEach((row, index) => {
+            const start = 0.15 + index * 0.23, node = line(log, row.id as number)
+            expect(at(start - 0.01, () => shows(node))).toBe(0)
+            expect(at(start + 0.075, () => shows(node))).toBeCloseTo(0.5, 5)
+            expect(at(start + 0.25, () => shows(node))).toBeCloseTo(1, 5)
+        })
+        // Two appends that start together: one call with all the rows, and `lag: 0`.
+        let together!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            together = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            expect(message(() => s.play(together.append(some(3, 3)), together.append(some(4, 4)), { duration: 1 }))).toBe(`eventLog: append([4]) plays from 0 s to 1 s, and append([3]) plays from 0 s to 1 s. ${rule}Give one \`append\` all the rows. With \`lag: 0\`, they arrive together`)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            together = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            s.play(together.append(some(3, 4), { lag: 0 }), { duration: 1, ease: linear })
+        }))
+        expect(at(0.3, () => [3, 4].map((id) => shows(line(together, id))))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        // Two folds in one play: a `seq`, and the play keeps its length.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 8), { visible: 8, size: 20 }))
+            expect(message(() => s.play(list.fold([1, 2], 'x'), list.fold([5, 6], 'y'), { duration: 1 }))).toBe(`eventLog: fold([5, 6]) plays from 0 s to 1 s, and fold([1, 2]) plays from 0 s to 1 s. ${rule}Play the two in a \`seq\`: each then has its share of the time of the play`)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 8), { visible: 8, size: 20 }))
+            s.play(seq(list.fold([1, 2], 'x'), list.fold([5, 6], 'y')), { duration: 1 })
+            expect(s.time).toBe(1)
+            expect(list.rows.map((row) => words(row.idText))).toEqual(['1', '3', '4', '5', '7', '8'])
+        }))
+        // Two folds, the second a little after the first: the first can be shorter, or the two go in a `seq`.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 8), { visible: 8, size: 20 }))
+            expect(message(() => s.play(lagged([list.fold([1, 2], 'x'), list.fold([5, 6], 'y')], { lag: 0.25, duration: 1 })))).toBe(`eventLog: fold([5, 6]) plays from 0.2 s to 1 s, and fold([1, 2]) plays from 0 s to 0.8 s. ${rule}fold([1, 2]) takes 0.8 s, and fold([5, 6]) starts 0.2 s after it. Give fold([1, 2]) a \`duration\` of 0.2 or less, or play the two in a \`seq\``)
+        }))
+        // Two cues that are nearer than the first append takes: the first gets the time that it has.
+        let cues!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            cues = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(2, () => s.play(cues.append(some(4, 8))))
+            expect(message(() => s.at(3, () => s.play(cues.append(some(9, 10)))))).toBe(`eventLog: append([9, 10]) plays from 3 s to 3.8 s, and append([4, 5, 6, 7, 8]) plays from 2 s to 4 s. ${rule}append([4, 5, 6, 7, 8]) takes 2 s, and append([9, 10]) starts 1 s after it. Give append([4, 5, 6, 7, 8]) a \`duration\` of 1 or less, or play the two in a \`seq\``)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            cues = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(2, () => s.play(cues.append(some(4, 8), { duration: 1 })))
+            s.at(3, () => s.play(cues.append(some(9, 10))))
+            expect(cues.count).toBe(10)
+        }))
+        // The cues are where the film put them: row 4 starts at 2 s, and row 9 at 3 s.
+        expect([1.99, 2.05].map((time) => at(time, () => shows(line(cues, 4)) > 0))).toEqual([false, true])
+        expect([2.99, 3.05].map((time) => at(time, () => shows(line(cues, 9)) > 0))).toEqual([false, true])
+        // A cue that the film writes after a later one: the list takes its changes in the order of time.
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(5, () => s.play(list.append(some(4, 4))))
+            expect(message(() => s.at(3, () => s.play(list.append(some(5, 5)))))).toBe(`eventLog: append([5]) plays from 3 s to 3.5 s, and append([4]) plays from 5 s to 5.5 s. ${rule}The list takes the changes of its rows in the order of time, and the film calls append([4]) first. Call append([5]) before it`)
+        }))
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const list = s.add(eventLog(some(1, 3), { visible: 12, size: 20 }))
+            s.at(3, () => s.play(list.append(some(5, 5))))
+            s.at(5, () => s.play(list.append(some(4, 4))))
+            expect(list.ids).toEqual([1, 2, 3, 5, 4])
+        }))
+    })
+
+    it('follows the count in the footer, and names a footer that does not fit', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 2), { footer: (count) => `${count} events`, visible: 8, size: 20 }))
+            s.wait(1)
+            s.play(log.append(some(3, 4)), { duration: 2, ease: linear })
+            s.play(log.fold([1, 2], 'pair'), { duration: 1 })
+            const wide = s.add(eventLog(some(1, 2), { footer: (count) => (count > 2 ? 'a footer with too many words for a panel of this width, by far' : 'short'), width: 300, size: 20 }))
+            expect(() => s.play(wide.append(some(3, 3)))).toThrow(/the footer "a footer with too many words .*" is \d+ px wide, and the panel has 268 px\. Use a shorter text, or raise `width`/)
+            expect(() => eventLog([], { footer: () => 'two\nlines' })).toThrow(/the footer has a line break/)
+        }))
+        expect(said(log.footer!, 0.5)).toEqual(['2 events'])
+        // The number changes when a row is half there.
+        expect(said(log.footer!, 1.45)).toEqual(['2 events'])
+        expect(said(log.footer!, 1.55)).toEqual(['3 events'])
+        expect(said(log.footer!, 2.55)).toEqual(['4 events'])
+        // A fold does not change the count: it holds its rows.
+        expect(said(log.footer!, 4)).toEqual(['4 events'])
+    })
+
+    it('changes the state of one row, of a list of rows, or of the rows that a function picks', async () => {
+        let log!: Log
+        let purple!: Rgba, green!: Rgba, red!: Rgba
+        await compileFilm(film({ fps: 20 }, (s) => {
+            [purple, green, red] = ['purple', 'green', 'red'].map((name) => parseColor(name)) as [Rgba, Rgba, Rgba]
+            log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            s.wait(1)
+            s.play(log.mark(2, 'answered'), { duration: 2, ease: linear })
+            // A row that the list names twice changes once. The text '7' is the id 7.
+            s.play(log.mark([5, '7', 5], 'failed'), { duration: 1, ease: linear })
+            // The function sees the states that the changes before it left, in the same sequence too.
+            s.play(seq(log.mark(1, 'answered'), log.mark((row) => row.state === 'answered', 'failed'), log.mark((row) => row.id === 3 && row.name === 'WorkflowTaskStarted' && row.detail === undefined, 'answered')), { duration: 3, ease: linear })
+        }))
+        const [one, two, three, four, five, , seven] = log.rows
+        // The name has the color of the state. The id and the detail keep theirs.
+        expect(at(1, () => ink(two!.name))).toEqual(purple)
+        expect(at(2, () => ink(two!.name))).toEqual(mixColor(purple, green, 0.5))
+        expect(at(3, () => ink(two!.name))).toEqual(green)
+        expect(at(3, () => ink(two!.idText))).toEqual(at(0, () => ink(two!.idText)))
+        expect(at(3, () => ink(one!.detail!))).toEqual(at(0, () => ink(one!.detail!)))
+        expect(at(3, () => ink(four!.name))).toEqual(purple)
+        // Every glyph of the name changes.
+        expect(at(3, () => two!.name.children.every((glyph) => String(glyph.get('fill')) === String(green)))).toBe(true)
+        expect(at(4, () => [ink(five!.name), ink(seven!.name)])).toEqual([red, red])
+        expect(at(4, () => ink(one!.name))).toEqual(purple)
+        // Rows 1 and 2 were answered when the function ran, and row 3 has the name and no detail.
+        expect(at(7, () => [one, two, three, four].map((row) => ink(row!.name)))).toEqual([red, red, green, purple])
+    })
+
+    it('gives each state its own mark, and changes the mark with the state', async () => {
+        let log!: Log, plain!: Log
+        let colors!: Record<string, Rgba>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            colors = Object.fromEntries(['purple', 'ink', 'green', 'yellow', 'red', 'teal'].map((name) => [name, parseColor(name)]))
+            log = s.add(eventLog(['stored', 'new', 'answered', 'waiting', 'failed'].map((state, index) => ({ id: index + 1, name: state, state })), { size: 24 }))
+            // A state with no mark has a dot, so the states of a film keep their look.
+            plain = s.add(eventLog([{ id: 1, name: 'a' }, { id: 2, name: 'b', state: 'done' }], { size: 24, states: { open: { color: 'teal' }, done: { color: 'green', mark: 'check' } } }))
+            s.wait(1)
+            s.play(log.mark(1, 'failed'), log.mark(2, 'stored'), { duration: 1, ease: linear })
+            s.play(seq(log.mark(3, 'new'), log.mark(3, 'answered'), log.mark(3, 'stored')), { duration: 3, ease: linear })
+            expect(() => eventLog([], { states: { odd: { color: 'red', mark: 'star' as never } } })).toThrow(/the mark of the state "odd" is "star"\. A mark is 'dot', 'ring', 'check' or 'cross'/)
+        }))
+        // A dot for a record at rest and for a new one, a check for an answer, a ring for a wait, a cross for a failure.
+        expect(log.rows.map((row) => markOf(row, 0))).toEqual([['dot', colors['purple']], ['dot', colors['ink']], ['check', colors['green']], ['ring', colors['yellow']], ['cross', colors['red']]])
+        expect(Object.entries(LOG_STATES).map(([name, state]) => [name, state.color, state.mark])).toEqual([['stored', 'purple', 'dot'], ['new', 'ink', 'dot'], ['answered', 'green', 'check'], ['waiting', 'yellow', 'ring'], ['failed', 'red', 'cross']])
+        expect(plain.rows.map((row) => markOf(row, 0))).toEqual([['dot', colors['teal']], ['check', colors['green']]])
+        // A dot is filled. A ring, a check and a cross are lines, so a ring is not a dot of another color.
+        expect(log.rows.map((row) => at(0, () => { const leaf = row.mark.leaves()[0]!; return [leaf.get('fill') !== null, leaf.get('stroke') !== null] }))).toEqual([[true, false], [true, false], [false, true], [false, true], [false, true]])
+        // Each mark is at the place of the dot, and about as large: it does not reach the id.
+        const dot = at(0, () => log.rows[0]!.mark.bounds())
+        for (const row of log.rows) {
+            const box = at(0, () => row.mark.bounds())
+            expect(box.x + box.width / 2).toBeCloseTo(dot.x + dot.width / 2, 0)
+            expect(box.y + box.height / 2).toBeCloseTo(at(0, () => row.get('y')), 0)
+            expect(box.width).toBeLessThan(24 * 0.5)
+            expect(box.width).toBeGreaterThanOrEqual(24 * 0.3)
+            expect(box.x + box.width + 2).toBeLessThan(at(0, () => row.idText.bounds().x))
+        }
+        // A mark of another shape comes in as the old one goes. Two states with one shape change color only.
+        const [first, second] = log.rows
+        const strength = (node: LogRowNode, shape: string, time: number) => at(time, () => { const made = node.mark.children.find((child) => child.data['shape'] === shape); return made ? shows(made) : 0 })
+        expect([strength(first!, 'dot', 1.5), strength(first!, 'cross', 1.5)]).toEqual([0.5, 0.5])
+        expect([strength(first!, 'dot', 2), strength(first!, 'cross', 2)]).toEqual([0, 1])
+        expect(markOf(first!, 2)).toEqual(['cross', colors['red']])
+        expect(markOf(second!, 1.5)).toEqual(['dot', mixColor(colors['ink']!, colors['purple']!, 0.5)])
+        expect(second!.mark.children).toHaveLength(1)
+        // The mark that went is hidden, so the line has one mark.
+        expect(at(2, () => first!.mark.children.filter((child) => child.get('visible')))).toHaveLength(1)
+        // A shape that comes back has the color of its state now: the dot of `new` is the dot of `stored` later.
+        const third = log.rows[2]!
+        expect([3, 4, 5].map((time) => markOf(third, time))).toEqual([['dot', colors['ink']], ['check', colors['green']], ['dot', colors['purple']]])
+        expect(third.mark.children).toHaveLength(2)
+    })
+
+    it('changes the rows of one mark together, or one after another with a lag, and leaves a row that has the state', async () => {
+        let log!: Log, lagging!: Log, again!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 4), { visible: 8, size: 20 }))
+            lagging = s.add(eventLog(some(1, 4), { visible: 8, size: 20 }))
+            again = s.add(eventLog(some(1, 4), { visible: 8, size: 20 }))
+            s.play(log.mark(2, 'answered'), again.mark(2, 'answered'), { duration: 1, ease: linear })
+            s.play(log.mark([4, 2, 1], 'answered'), lagging.mark([4, 2, 1], 'answered', { lag: 1 }), again.mark([4, 2, 1], 'answered', { lag: 1 }), { duration: 3, ease: linear })
+            expect(log.mark(1, 'failed').duration).toBe(0.5)
+        }))
+        const [purple, green] = [parseColor('purple'), parseColor('green')], half = mixColor(purple, green, 0.5)
+        const names = (list: Log, picked: number[], time: number) => at(time, () => picked.map((index) => ink(list.rows[index]!.name)))
+        // Row 2 has the state, so it does not change again. Rows 1 and 4 change together, over the whole time.
+        expect(names(log, [1], 1)).toEqual([green])
+        expect(names(log, [0, 1, 3], 2.5)).toEqual([half, green, half])
+        expect(names(log, [0, 3], 4)).toEqual([green, green])
+        // With a lag of 1, the rows change in the order of the list, each in its third of the time.
+        expect(names(lagging, [0, 1, 3], 1.5)).toEqual([half, purple, purple])
+        expect(names(lagging, [0, 1, 3], 2.5)).toEqual([green, half, purple])
+        expect(names(lagging, [0, 1, 3], 3.5)).toEqual([green, green, half])
+        // A row that has the state takes no time: the two others have a half of the time each.
+        expect(names(again, [0, 3], 1.75)).toEqual([half, purple])
+        expect(names(again, [0, 3], 3.25)).toEqual([green, half])
+    })
+
+    it('takes its own states, starts a row in the first one, and draws a dim state dim', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const states = { done: { color: 'teal' }, running: { color: 'yellow' }, planned: { color: 'ink', dim: true } }
+            log = s.add(eventLog([{ id: 1, name: 'model call', detail: 'plan' }, { id: 2, name: 'tool call', state: 'running' }, { id: 3, name: 'result', detail: 'later', state: 'planned' }], { states, visible: 8, size: 20 }))
+            s.wait(1)
+            s.play(log.mark(3, 'running'), { duration: 1, ease: linear })
+            s.play(log.mark(1, 'planned'), { duration: 1, ease: linear })
+            expect(() => log.mark(1, 'stored')).toThrow(/no state "stored"\. The states are done, running, planned/)
+            expect(() => eventLog([{ id: 1, name: 'x', state: 'new' }], { states })).toThrow(/row 1 has the state "new"\. The states are done, running, planned/)
+            expect(() => eventLog([], { states: {} })).toThrow(/give it at least one state/)
+        }))
+        const [first, second, third] = log.rows
+        // A row with no state has the first state of the record.
+        expect(at(1, () => [first, second, third].map((row) => ink(row!.name)))).toEqual(['teal', 'yellow', 'ink'].map((name) => parseColor(name)))
+        expect([first, second, third].map((row) => markOf(row!, 1)[1])).toEqual(['teal', 'yellow', 'ink'].map((name) => parseColor(name)))
+        // Each part of a dim row has an opacity of 0.4: the mark, the id, the name and the detail.
+        expect(at(1, () => third!.parts.map((part) => part.get('opacity')))).toEqual([0.4, 0.4, 0.4, 0.4])
+        expect(at(1, () => first!.parts.map((part) => part.get('opacity')))).toEqual([1, 1, 1, 1])
+        expect(at(1.5, () => third!.parts.map((part) => part.get('opacity')))).toEqual([0.7, 0.7, 0.7, 0.7].map((value) => expect.closeTo(value, 6)))
+        expect(at(2, () => [third!.name.get('opacity'), ink(third!.name)])).toEqual([1, parseColor('yellow')])
+        expect(at(3, () => [first!.name.get('opacity'), first!.mark.get('opacity'), ink(first!.name)])).toEqual([0.4, 0.4, parseColor('ink')])
+    })
+
+    it('folds rows that follow each other into one line, and opens the line again', async () => {
+        let log!: Log
+        const during: { count: number; ids: (number | string)[]; rows: number } = { count: 0, ids: [], rows: 0 }
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            s.wait(1)
+            // The ids can be in any order.
+            s.play(log.fold([4, 2, 3], 'workflow task'), { duration: 1, ease: linear })
+            Object.assign(during, { count: log.count, ids: log.ids, rows: log.rows.length })
+            // A record in a fold has the line of the fold, and a connector to any of its ids goes to that line.
+            expect(log.row(3)).toBe(log.rows[1])
+            expect(log.row(2)).toBe(log.row(4))
+            expect(log.p(3)).toEqual(log.p(2))
+            expect(log.p(4, 'right')).toEqual([320, log.p(2)[1]])
+            expect(log.p(3)[1]).toBeCloseTo(log.p(1)[1] + log.pitch, 6)
+            expect(log.p(5)[1]).toBeCloseTo(log.p(1)[1] + 2 * log.pitch, 6)
+            s.wait(1)
+            expect([log.fold([5, 6], 'x').duration, log.unfold(2).duration]).toEqual([0.8, 0.8])
+            // The id of an unfold is known by its text too.
+            s.play(log.unfold('2'), { duration: 1, ease: linear })
+            expect(log.row(3)).not.toBe(log.row(2))
+        }))
+        const P = log.pitch
+        // The fold is one line of the window, and the list still has its seven records.
+        expect(during).toEqual({ count: 7, ids: [1, 2, 3, 4, 5, 6, 7], rows: 5 })
+        expect(seen(log, 1)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+        expect(seen(log, 2)).toEqual(['1', '2', '5', '6', '7'])
+        // The line has the first id where the ids are, then "to" and the last id, then the name.
+        const [fold] = folds(log, 2)
+        expect(says(fold!)).toEqual(['2', 'to  4', 'workflow task', null, null])
+        expect(fold!.idText.get('x')).toBe(line(log, 1).idText.get('x'))
+        expect(fold!.range!.get('x')).toBe(line(log, 1).name.get('x'))
+        // The name starts after the room of "to" and the longest id: five characters of 12 px, and 14 px.
+        expect(fold!.name.get('x') - fold!.range!.get('x')).toBeCloseTo(5 * 12 + 14, 6)
+        expect(right(fold!.range!)).toBeLessThan(fold!.name.bounds().x)
+        // It has the state of its first row: the name and the three small dots of its mark have that color.
+        expect(ink(fold!.name)).toEqual(parseColor('purple'))
+        const dots = at(2, () => fold!.mark.children[0]!)
+        expect(dots.children).toHaveLength(3)
+        expect(dots.children.map((dot) => dot.get('fill'))).toEqual(Array(3).fill(parseColor('purple')))
+        expect(fold!.mark.get('x')).toBe(line(log, 1).mark.get('x'))
+        expect(fold!.mark.bounds().height).toBeLessThan(15)
+        // It is where row 2 was, and the rows after it are two lines up.
+        const y = (id: number, time: number) => at(time, () => line(log, id).get('y'))
+        expect(at(2, () => fold!.get('y'))).toBeCloseTo(y(2, 1), 6)
+        expect(y(5, 2)).toBeCloseTo(y(5, 1) - 2 * P, 6)
+        expect(y(1, 2)).toBe(y(1, 1))
+        // The rows go first, the others move after that, and the line comes where the rows were.
+        expect(at(1.15, () => shows(line(log, 3)))).toBeCloseTo(0.5, 6)
+        expect(at(1.3, () => shows(line(log, 3)))).toBe(0)
+        // A row in a fold is hidden, so the bounds of the list skip it.
+        expect(at(1.25, () => line(log, 3).get('visible'))).toBe(true)
+        expect(at(1.3, () => line(log, 3).get('visible'))).toBe(false)
+        expect(y(5, 1.15)).toBe(y(5, 1))
+        expect(y(5, 1.45)).toBeCloseTo(y(5, 1) - P, 6)
+        expect(at(1.3, () => shows(fold!))).toBe(0)
+        expect(at(1.55, () => shows(fold!))).toBeCloseTo(0.5, 6)
+        // After the unfold, the same rows are back at their places.
+        expect(seen(log, 4)).toEqual(['1', '2', '3', '4', '5', '6', '7'])
+        for (const id of [1, 2, 3, 4, 5, 6, 7]) expect(y(id, 4)).toBeCloseTo(y(id, 1), 6)
+        expect(at(4, () => shows(fold!))).toBe(0)
+        // The rows of an unfold come last, when the rows under them have left their places.
+        expect(at(3.6, () => shows(line(log, 3)))).toBe(0)
+        expect(at(3.8, () => shows(line(log, 3)))).toBeCloseTo(0.5, 6)
+        expect(y(5, 3.45)).toBeCloseTo(y(5, 1) - P, 6)
+    })
+
+    it('gives a fold the fields of a row: a detail, a time, a state and a family', async () => {
+        let log!: Log
+        const found: LogRow[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows: LogRow[] = [{ id: 1, name: 'WorkflowExecutionStarted', detail: 'order' }, ...some(2, 12)]
+            log = s.add(eventLog(rows, { visible: 12, size: 20, width: 800, timeWidth: 84 }))
+            s.play(seq(log.fold([2, 3], { name: 'pair', detail: 'two rows', time: '+0.10 s', state: 'answered', family: 'task' }), log.fold([9, 10, 11], 'three')), { duration: 1 })
+            log.find((row) => { found.push(row); return false })
+            // The names have the room that the longest of them needs. The name of a fold starts after its ids,
+            // so it needs that much more: here the fold is whole, and its detail is in the column of the details.
+            const longest = eventLog([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3], name: 'a pair of rows', detail: 'two' }], { size: 20, width: 700 })
+            expect(words(longest.rows[1]!.name)).toBe('a pair of rows')
+            expect(longest.rows[1]!.detail!.get('x')).toBe(longest.rows[0]!.detail!.get('x'))
+            expect(longest.rows[1]!.detail!.get('x') - right(longest.rows[1]!.name)).toBeGreaterThan(17)
+            expect(longest.rows[1]!.detail!.get('x') - right(longest.rows[1]!.name)).toBeLessThan(20)
+            // In a narrow column of names, the name of a fold has no room after its ids. It takes the room that
+            // it needs, and its detail comes 18 px after it.
+            const short = s.add(eventLog([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3], name: 'a pair of rows', detail: 'two' }], { size: 20, width: 700, nameWidth: 100 }))
+            const [row, fold] = short.rows
+            expect(says(fold!)).toEqual(['2', 'to  3', 'a pair of rows', 'two', null])
+            expect(fold!.detail!.get('x')).toBeGreaterThan(row!.detail!.get('x'))
+            expect(fold!.detail!.get('x') - right(fold!.name)).toBeGreaterThan(17)
+            expect(fold!.detail!.get('x') - right(fold!.name)).toBeLessThan(20)
+        }))
+        const [pair, three] = folds(log, 1)
+        expect(says(pair!)).toEqual(['2', 'to  3', 'pair', 'two rows', '+0.10 s'])
+        expect(says(three!)).toEqual(['9', 'to 11', 'three', null, null])
+        // The last id ends where the longest id would end, so the names of the two folds start at one x.
+        expect(pair!.name.get('x')).toBe(three!.name.get('x'))
+        expect(ink(pair!.name)).toEqual(parseColor('green'))
+        expect(ink(three!.name)).toEqual(parseColor('purple'))
+        // A fold in a state with its own mark shows that mark, and a fold in a state with a dot has its three dots.
+        expect(markOf(pair!, 1)).toEqual(['check', parseColor('green')])
+        expect(markOf(three!, 1)[0]).toBe('dot')
+        // The detail and the time of a fold are in the columns of the rows.
+        expect(pair!.detail!.get('x')).toBe(line(log, 1).detail!.get('x'))
+        expect(pair!.time!.get('x')).toBe(400 - 16)
+        expect(Math.abs(right(pair!.time!) - (400 - 16))).toBeLessThan(3)
+        // A function of `find()` gets a fold as one row, with its ids and its fields.
+        expect(found[1]).toEqual({ id: 2, ids: [2, 3], name: 'pair', detail: 'two rows', time: '+0.10 s', state: 'answered', family: 'task' })
+        expect(found[0]).toEqual({ id: 1, ids: [1], name: 'WorkflowExecutionStarted', detail: 'order', state: 'stored' })
+        expect(found).toHaveLength(9)
+    })
+
+    it('builds a row that stands for several records, and opens it into its rows', async () => {
+        let log!: Log
+        const record = { ids: [2, 3, 4], name: 'workflow task', detail: 'worker 71293', family: 'task', rows: [
+            { id: 2, name: 'WorkflowTaskScheduled', detail: 'queue orders' },
+            { id: 3, name: 'WorkflowTaskStarted', detail: 'worker 71293', state: 'failed' },
+            { id: 4, name: 'WorkflowTaskCompleted' },
+        ] } satisfies LogRow
+        let closed!: LogRowNode
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Each record of the film has `id` and `ids`. A list of one id is a row, and `id` is the first of the ids of a fold.
+            log = s.add(eventLog([{ id: 1, ids: [1], name: 'WorkflowExecutionStarted' }, { id: 2, ...record }, { id: 5, name: 'ActivityTaskScheduled' }], { footer: (count) => `${count} events`, visible: 8, size: 20, width: 800 }))
+            // The list counts records, not lines: three lines hold five records.
+            expect(log.count).toBe(5)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5])
+            expect(log.rows).toHaveLength(3)
+            expect(says(log.rows[1]!)).toEqual(['2', 'to  4', 'workflow task', 'worker 71293', null])
+            closed = log.rows[1]!
+            // Any id of the fold gives its line and the ends of a connector to it.
+            for (const id of [2, 3, 4]) {
+                expect(log.row(id)).toBe(closed)
+                expect(log.p(id, 'right')).toEqual([400, closed.get('y')])
+            }
+            expect(log.find((row) => row.family === 'task')).toEqual([2, 3, 4])
+            s.wait(1)
+            s.play(log.unfold(2), { duration: 1 })
+            expect(log.rows.map(says)).toEqual([
+                ['1', null, 'WorkflowExecutionStarted', null, null],
+                ['2', null, 'WorkflowTaskScheduled', 'queue orders', null],
+                ['3', null, 'WorkflowTaskStarted', 'worker 71293', null],
+                ['4', null, 'WorkflowTaskCompleted', null, null],
+                ['5', null, 'ActivityTaskScheduled', null, null],
+            ])
+            // A row of a fold has the state and the family of the fold, unless it has its own.
+            expect(log.rows.map((row) => ink(row.name))).toEqual(['purple', 'purple', 'red', 'purple', 'purple'].map((name) => parseColor(name)))
+            expect(log.find((row) => row.family === 'task')).toEqual([2, 3, 4])
+            expect(log.count).toBe(5)
+            s.wait(1)
+            // With no label, `fold` closes a fold that `unfold` opened: the same line comes back.
+            s.play(log.fold([2, 3, 4]), { duration: 1 })
+            expect(log.rows[1]).toBe(closed)
+            expect(log.rows).toHaveLength(3)
+            // An append takes a fold too, and counts its records.
+            s.play(log.append({ ids: [6, 7], name: 'pair', rows: [{ id: 6, name: 'Six' }, { id: 7, name: 'Seven' }] }), { duration: 1 })
+            expect(log.count).toBe(7)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 6, 7])
+            s.play(log.unfold(6), { duration: 1 })
+            expect(log.rows.slice(3).map(says)).toEqual([['6', null, 'Six', null, null], ['7', null, 'Seven', null, null]])
+            s.play(log.fold([6, 7]), { duration: 0 })
+            // Rows that were never a fold need a label, and so does a part of a fold that was open.
+            expect(() => s.play(log.fold([1, 5]))).toThrow(/row 2 is between 1 and 5 and not in the fold/)
+            s.play(log.unfold(6), { duration: 0 })
+            expect(() => s.play(log.fold([5, 6]))).toThrow(/the fold from 5 to 6 needs a label, such as fold\(\[5, 6\], 'workflow task'\)\. Only a fold that unfold\(\) opened closes with no label/)
+            s.play(log.unfold(2), { duration: 0 })
+            expect(() => s.play(log.fold([2, 3]))).toThrow(/the fold from 2 to 3 needs a label/)
+            s.play(log.fold([2, 3, 4]), { duration: 0 })
+            // The rows of a fold with a state have that state, and a fold of rows has the state of its first row.
+            const stated = s.add(eventLog([
+                { ids: [1, 2], name: 'pair', state: 'waiting', rows: some(1, 2) },
+                { ids: [3, 4, 5], name: 'three', state: 'waiting', rows: [{ id: 3, name: 'Three' }, { id: 4, name: 'Four', state: 'answered' }, { id: 5, name: 'Five' }] },
+                { id: 6, name: 'Six', state: 'failed' }, { id: 7, name: 'Seven', state: 'answered' },
+            ], { size: 20 }))
+            s.play(seq(stated.unfold(1), stated.unfold(3), stated.fold([6, 7], 'two')), { duration: 0 })
+            expect(stated.rows.map((row) => ink(row.name))).toEqual(['yellow', 'yellow', 'yellow', 'green', 'yellow', 'red'].map((name) => parseColor(name)))
+            expect(stated.find((row) => row.state === 'failed')).toEqual([6, 7])
+        }))
+        expect(seen(log, 0.5)).toEqual(['1', '2', '5'])
+        expect(seen(log, 2)).toEqual(['1', '2', '3', '4', '5'])
+        expect(seen(log, 4)).toEqual(['1', '2', '5'])
+        expect(at(4, () => shows(closed))).toBe(1)
+        expect(said(log.footer!, 0.5)).toEqual(['5 events'])
+        expect(said(log.footer!, 5)).toEqual(['7 events'])
+    })
+
+    it('refuses to open a fold that has no rows, and counts its records all the same', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = s.add(eventLog([{ id: 1, name: 'One' }, { ids: [5, 6, 7, 8, 9, 10], name: 'activity' }, { id: 11, name: 'Eleven' }], { size: 20 }))
+            // Six rows with the name of the fold would say that the fold holds six records of one kind.
+            expect(() => s.play(log.unfold(5))).toThrow(/the fold from 5 to 10 has no rows to open into\. Give it `rows`, one for each id, where the fold is made/)
+            expect(log.count).toBe(8)
+            expect(log.ids).toEqual([1, 5, 6, 7, 8, 9, 10, 11])
+            expect(log.rows).toHaveLength(3)
+            for (const id of [5, 7, 10]) expect(log.p(id)).toEqual(log.p(5))
+            // A refused unfold takes no time from the list: the next change is free.
+            s.play(log.append(some(12, 12)))
+            // A fold that the film makes from rows has them, and opens.
+            s.play(log.fold([11, 12], 'pair'))
+            s.play(log.unfold(11))
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['1', '5', '11', '12'])
+        }))
+    })
+
+    it('marks one record in a closed fold: the fold shows it, and each record has its own state when the fold opens', async () => {
+        let log!: Log
+        const found: LogRow[][] = [], states: (number | string)[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([{ id: 1, name: 'One' }, { ids: [5, 6, 7, 8], name: 'activity', rows: some(5, 8) }, { id: 9, name: 'Nine' }], { visible: 8, size: 20 }))
+            s.wait(1)
+            // A replay answers one event. The fold shows the look of the record that was marked last.
+            s.play(log.mark(7, 'answered'), { duration: 1, ease: linear })
+            s.play(log.mark(6, 'failed'), { duration: 1, ease: linear })
+            found.push(log.find((row) => row.state === 'failed').map((id) => ({ id, name: '' })))
+            // The line of the guide: the ids that `find` gives name each record of the fold, so the mark changes them all.
+            s.play(log.mark(log.find((row) => row.state === 'failed'), 'stored'), { duration: 0 })
+            states.push(log.find((row) => row.state === 'stored'))
+            s.play(seq(log.mark(7, 'answered'), log.mark(6, 'failed')), { duration: 0 })
+            s.play(log.unfold(5), { duration: 1 })
+            s.play(log.fold([5, 6, 7, 8]), { duration: 1 })
+            // A function sees the fold as one row. A fold that it picks takes the state with all its records.
+            s.play(log.mark((row) => row.ids!.length === 4, 'waiting'), { duration: 1, ease: linear })
+            s.play(log.unfold(5), { duration: 1 })
+            // The whole fold by its ids: each record takes the state.
+            s.play(log.fold([5, 6, 7, 8]), { duration: 0 })
+            s.play(log.mark([5, 6, 7, 8], 'answered'), { duration: 0 })
+            s.play(log.unfold(5), { duration: 1 })
+        }))
+        const [purple, green, red, yellow] = ['purple', 'green', 'red', 'yellow'].map((name) => parseColor(name))
+        const [fold] = folds(log, 1)
+        // The name and the mark of the fold cross-fade to the look of the answer.
+        expect(at(1.5, () => ink(fold!.name))).toEqual(mixColor(purple!, green!, 0.5))
+        expect(markOf(fold!, 2)).toEqual(['check', green])
+        expect(at(2, () => [1, 9].map((id) => ink(line(log, id).name)))).toEqual([purple, purple])
+        expect(markOf(fold!, 3)).toEqual(['cross', red])
+        // `find` gives each id of the fold. After `mark(find(...), 'stored')`, each of its records is stored again: also record 7.
+        expect(found[0]!.map((row) => row.id)).toEqual([5, 6, 7, 8])
+        expect(states[0]).toEqual([1, 5, 6, 7, 8, 9])
+        // Open: 5 and 8 are as they were, 6 failed, 7 answered.
+        expect(at(4, () => [5, 6, 7, 8].map((id) => [shows(line(log, id)), ink(line(log, id).name)]))).toEqual([[1, purple], [1, red], [1, green], [1, purple]])
+        expect([5, 6, 7, 8].map((id) => markOf(line(log, id), 4)[0])).toEqual(['dot', 'cross', 'check', 'dot'])
+        // Closed again, the fold has the look that it had.
+        expect(markOf(fold!, 5)).toEqual(['cross', red])
+        expect(markOf(fold!, 6)).toEqual(['ring', yellow])
+        expect(at(6.95, () => [5, 6, 7, 8].map((id) => ink(line(log, id).name)))).toEqual([yellow, yellow, yellow, yellow])
+        expect(at(8, () => [5, 6, 7, 8].map((id) => ink(line(log, id).name)))).toEqual([green, green, green, green])
+    })
+
+    it('finds the rows that a function picks, by their fields and their family', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = s.add(eventLog([
+                { id: 1, name: 'WorkflowExecutionStarted', family: 'workflow' },
+                { ids: [2, 3, 4], name: 'workflow task', family: 'task' },
+                { id: 5, name: 'ActivityTaskScheduled', detail: 'chargeCard', family: 'activity' },
+                { id: 6, name: 'ActivityTaskStarted', family: 'activity', state: 'waiting' },
+                { ids: [7, 8, 9], name: 'workflow task', family: 'task' },
+            ], { visible: 8, size: 20, width: 800 }))
+            // In the order of the list: one id for a row, and each id of a fold.
+            expect(log.find((row) => row.family === 'activity')).toEqual([5, 6])
+            expect(log.find((row) => row.family === 'task')).toEqual([2, 3, 4, 7, 8, 9])
+            expect(log.find((row) => row.state === 'waiting')).toEqual([6])
+            expect(log.find((row) => row.detail === 'chargeCard' && row.id === 5)).toEqual([5])
+            expect(log.find(() => false)).toEqual([])
+            // The ids go to `mark`, `row`, `p` and `focus`.
+            s.play(log.mark(log.find((row) => row.family === 'task'), 'answered'))
+            expect(log.find((row) => row.state === 'answered')).toEqual([2, 3, 4, 7, 8, 9])
+            expect([...new Set(log.find((row) => row.family === 'task').map((id) => log.p(id)[1]))]).toEqual([log.row(3).get('y'), log.row(8).get('y')])
+            // The answer follows the changes that the film has played.
+            s.play(log.append({ id: 10, name: 'ActivityTaskCompleted', family: 'activity' }))
+            expect(log.find((row) => row.family === 'activity')).toEqual([5, 6, 10])
+        }))
+    })
+
+    it('draws the times in a column at the right, when a first row has a time', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows: LogRow[] = [
+                { id: 1, name: 'ActivityTaskScheduled', detail: 'a detail that is long enough to reach the times', time: '+0.13 s' },
+                { id: 2, name: 'ActivityTaskStarted', detail: 'attempt 1' },
+                { id: 3, name: 'ActivityTaskCompleted', detail: '"ch_1002"', time: '+12.01 s' },
+            ]
+            const log = s.add(eventLog(rows, { size: 20, width: 700 }))
+            const [first, second, third] = log.rows
+            // A time ends where the content of the panel ends, 16 px from the border. So the digits of two times are one over the other.
+            expect([words(first!.time), second!.time, words(third!.time)]).toEqual(['+0.13 s', null, '+12.01 s'])
+            expect(first!.time!.get('x')).toBe(350 - 16)
+            expect(third!.time!.get('x')).toBe(350 - 16)
+            expect(Math.abs(right(third!.time!) - (350 - 16))).toBeLessThan(3)
+            // It is dim, as the id is, and in mono: each character has the same room.
+            expect(ink(first!.time!)).toEqual(ink(first!.idText))
+            expect(third!.time!.bounds().width).toBeGreaterThan(7 * 12)
+            expect(third!.time!.bounds().width).toBeLessThan(8 * 12)
+            // The column has the room of the longest time, and the details end 18 px before it.
+            const times = 350 - 16 - 8 * 12
+            expect(words(first!.detail).endsWith('…')).toBe(true)
+            expect(right(first!.detail!)).toBeLessThanOrEqual(times - 18)
+            expect(right(first!.detail!)).toBeGreaterThan(times - 18 - 20)
+            // With no time in the first rows, the list has no such column, and a detail goes on to the end.
+            const plain = eventLog(rows.map(({ time: _time, ...row }) => row as LogRow), { size: 20, width: 700 })
+            expect(plain.rows[0]!.time).toBeNull()
+            expect(right(plain.rows[0]!.detail!)).toBeGreaterThan(times)
+            expect(() => plain.append({ id: 4, name: 'Late', time: '+1 s' })).toThrow(/row 4 has the time "\+1 s", and the list has no column for times\. Give a time to one of the first rows, or set `timeWidth` to 48 or more/)
+            // A time that is wider than the column is refused. `timeWidth` gives the room, also to a list that starts with no time.
+            expect(() => log.append({ id: 4, name: 'Late', time: '+120.01 s' })).toThrow(/the time "\+120\.01 s" is 108 px wide, and the times have 96 px\. Set `timeWidth` to 108 or more/)
+            const roomy = s.add(eventLog([], { size: 20, width: 900, timeWidth: 108 }))
+            s.play(roomy.append({ id: 4, name: 'Late', detail: 'a detail that is long enough to reach the times, by far', time: '+120.01 s' }))
+            expect(words(roomy.rows[0]!.time)).toBe('+120.01 s')
+            expect(right(roomy.rows[0]!.detail!)).toBeLessThanOrEqual(450 - 16 - 108 - 18)
+            expect(right(roomy.rows[0]!.detail!)).toBeGreaterThan(450 - 16 - 108 - 18 - 20)
+            expect(() => eventLog([], { timeWidth: -1 })).toThrow(/timeWidth is the room of the times, 0 or more/)
+            // The time of a row of a fold counts for the column, and shows when the fold opens.
+            const folded = s.add(eventLog([{ ids: [1, 2], name: 'pair', rows: [{ id: 1, name: 'One', time: '+0.10 s' }, { id: 2, name: 'Two' }] }], { size: 20, width: 700 }))
+            s.play(folded.unfold(1))
+            expect(folded.rows.map((row) => (row.time ? words(row.time) : null))).toEqual(['+0.10 s', null])
+            // A number is taken as its text, for a detail and for a time.
+            const numbers = eventLog([{ id: 1, name: 'ActivityTaskStarted', detail: 3, time: 12.5 }, { id: 2, name: 'Zero', detail: 0 }], { size: 20, width: 700 })
+            expect(numbers.rows.map(says)).toEqual([['1', null, 'ActivityTaskStarted', '3', '12.5'], ['2', null, 'Zero', '0', null]])
+            expect(numbers.find((row) => row.detail === '3')).toEqual([1])
+            expect(() => eventLog([{ id: 1, name: 'x', detail: { text: 'no' } as never }])).toThrow(/the detail of row 1 is \{"text":"no"\}\. Give a text or a number/)
+        }))
+    })
+
+    it('brings rows back from above when a fold makes room in a full window, and takes the count away when the list fits', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 8), { visible: 5, size: 20 }))
+            s.wait(1)
+            s.play(log.fold([6, 7], 'pair'), { duration: 1, ease: linear })
+            s.play(log.fold([1, 2, 3], 'three'), { duration: 1, ease: linear })
+            s.play(log.unfold(1), { duration: 1, ease: linear })
+        }))
+        const P = log.pitch
+        expect(seen(log, 1)).toEqual(['5', '6', '7', '8'])
+        expect(said(log.earlier, 1)).toEqual(['4 earlier'])
+        // The rows after the fold stay, and the row above comes down from under the count: one more row shows.
+        expect(seen(log, 2)).toEqual(['4', '5', '6', '8'])
+        expect(said(log.earlier, 2)).toEqual(['3 earlier'])
+        expect(at(2, () => line(log, 8).get('y'))).toBe(at(1, () => line(log, 8).get('y')))
+        expect(at(2, () => line(log, 5).get('y'))).toBeCloseTo(at(1, () => line(log, 5).get('y')) + P, 6)
+        expect(at(1.45, () => line(log, 5).get('y') - line(log, 4).get('y'))).toBeCloseTo(P, 6)
+        // Rows 1 to 3 fold above the window. Five lines are left, so they all show, and the count goes.
+        expect(seen(log, 3)).toEqual(['1', '4', '5', '6', '8'])
+        expect(said(log.earlier, 3)).toEqual([])
+        // The fold opens above the window: the list is full again, and the count is back.
+        expect(seen(log, 4)).toEqual(['4', '5', '6', '8'])
+        expect(said(log.earlier, 4)).toEqual(['3 earlier'])
+        expect(log.rows.map((row) => words(row.idText))).toEqual(['4', '5', '6', '8'])
+        // Two rows are above a window of five lines. A fold of two rows makes room for both, and the count goes.
+        // Row 2 comes down from the line of the count: no frame shows the two together.
+        let tight!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            tight = s.add(eventLog(some(1, 6), { visible: 5, size: 20 }))
+            s.play(tight.fold([5, 6], 'pair'), { duration: 2 })
+        }))
+        expect(seen(tight, 2)).toEqual(['1', '2', '3', '4', '5'])
+        for (let step = 0; step <= 40; step++) {
+            const [count, row] = at(step / 20, () => [shows(tight.earlier), shows(line(tight, 2))])
+            expect(Math.min(count!, row!)).toBe(0)
+        }
+        expect(at(0.5, () => shows(tight.earlier))).toBeGreaterThan(0)
+        expect(at(2, () => [tight.earlier.get('visible'), shows(line(tight, 2))])).toEqual([false, 1])
+    })
+
+    it('moves the window to a row with scrollTo, with a count of the rows above and of the rows under', async () => {
+        let log!: Log
+        const rows: string[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 20), { footer: (count) => `${count} events`, visible: 6, size: 20 }))
+            s.wait(1)
+            // A row that was above is the first row of the window.
+            s.play(log.scrollTo(7), { duration: 1, ease: linear })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // A row that shows moves nothing, and a focus or a mark of it needs no scroll.
+            s.play(log.scrollTo(9), log.focus(9), log.mark(9, 'answered'), { duration: 1 })
+            // A mark of a row that is out of the window changes its state, and moves nothing. A focus of it is an error that names the way.
+            s.play(log.mark(18, 'failed'), { duration: 0 })
+            expect(() => s.play(log.focus(18))).toThrow(/row 18 is out of the window, which shows the rows 7 to 10\. Bring it in with scrollTo\(18\), named before this call in the play, or raise `visible`/)
+            // A row that was under is the last row, over the count of the rows that are still under it.
+            s.play(log.scrollTo(13), { duration: 1, ease: linear })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // The first row of the list: no row is above, so the first line is a row.
+            s.play(log.scrollTo(1), { duration: 1 })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // A fold keeps the window where the film put it.
+            s.play(log.fold([2, 3], 'pair'), { duration: 1 })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // An append brings the window back to the end first, in the first 0.3 of its time.
+            s.play(log.append(some(21, 21)), { duration: 2, ease: linear })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            // The last row brings the window to the end, with no count under it.
+            s.play(log.scrollTo(1), { duration: 0 })
+            s.play(log.scrollTo(21), { duration: 1 })
+            rows.push(log.rows.map((row) => words(row.idText)))
+            expect(log.scrollTo(1).duration).toBe(0.8)
+            const small = s.add(eventLog(some(1, 5), { visible: 2, size: 20 }))
+            expect(() => s.play(small.scrollTo(2))).toThrow(/scrollTo needs a window of 3 lines or more: one for each count, and one for the row\. This window has 2\. Raise `visible`/)
+            expect(() => s.play(log.scrollTo(99))).toThrow(/no row has the id 99/)
+        }))
+        const P = log.pitch
+        expect(rows).toEqual([['7', '8', '9', '10'], ['10', '11', '12', '13'], ['1', '2', '3', '4', '5'], ['1', '2', '4', '5', '6'], ['17', '18', '19', '20', '21'], ['17', '18', '19', '20', '21']])
+        // At the end of the list, the first line counts the rows above, and no line counts under.
+        expect(seen(log, 1)).toEqual(['16', '17', '18', '19', '20'])
+        expect([said(log.earlier, 1), said(log.later, 1)]).toEqual([['15 earlier'], []])
+        // After the scroll: six rows above, four rows in the window, ten rows under. The count under is in the last line.
+        expect(seen(log, 2)).toEqual(['7', '8', '9', '10'])
+        expect([said(log.earlier, 2), said(log.later, 2)]).toEqual([['6 earlier'], ['10 later']])
+        expect(log.later.get('y') - log.earlier.get('y')).toBeCloseTo(5 * P, 6)
+        expect(at(2, () => line(log, 7).get('y'))).toBeCloseTo(log.earlier.get('y') + P, 6)
+        expect(at(2, () => line(log, 10).get('y'))).toBeCloseTo(log.later.get('y') - P, 6)
+        // A long way: the old rows leave under, the new ones come from above, and no row between them flies past.
+        for (let step = 0; step <= 20; step++) {
+            const shown = at(1 + step / 20, () => made(log).filter((node) => shows(node) > 0).map((node) => Number(words(node.idText))))
+            for (const id of shown) expect(id <= 10 || id >= 16).toBe(true)
+            // The old rows are still leaving when the new ones come: the window is never empty.
+            expect(at(1 + step / 20, () => Math.max(...made(log).map((node) => shows(node))))).toBeGreaterThan(0.2)
+        }
+        // The count under comes in the second half of the way, where the last row was.
+        expect(at(1.5, () => shows(log.later))).toBe(0)
+        expect(at(1.75, () => shows(log.later))).toBeCloseTo(0.5, 6)
+        // No row moved for the row that showed, and the outline is on it.
+        expect(seen(log, 3)).toEqual(['7', '8', '9', '10'])
+        expect(at(3, () => shows(log.outline))).toBe(1)
+        expect(at(3, () => ink(line(log, 9).name))).toEqual(parseColor('green'))
+        // A short way: the rows move as one, three lines up.
+        expect(seen(log, 4)).toEqual(['10', '11', '12', '13'])
+        expect([said(log.earlier, 4), said(log.later, 4)]).toEqual([['9 earlier'], ['7 later']])
+        expect(at(3.5, () => line(log, 10).get('y') - line(log, 9).get('y'))).toBeCloseTo(P, 6)
+        expect(at(3.5, () => line(log, 10).get('y'))).toBeCloseTo(log.earlier.get('y') + 2.5 * P, 6)
+        // Row 9 left the window, and the outline left with it.
+        expect(at(4, () => shows(log.outline))).toBe(0)
+        // At the first row of the list, the first line is a row, and the last line counts the rows under.
+        expect(seen(log, 5)).toEqual(['1', '2', '3', '4', '5'])
+        expect([said(log.earlier, 5), said(log.later, 5)]).toEqual([[], ['15 later']])
+        expect(at(5, () => line(log, 1).get('y'))).toBeCloseTo(log.earlier.get('y'), 6)
+        expect(seen(log, 6)).toEqual(['1', '2', '4', '5', '6'])
+        expect(said(log.later, 6)).toEqual(['14 later'])
+        // The append: the window is at the end after 0.6 s, and the row arrives in the 1.4 s that are left.
+        expect(seen(log, 6.6)).toEqual(['16', '17', '18', '19', '20'])
+        expect([said(log.earlier, 6.6), said(log.later, 6.6)]).toEqual([['15 earlier'], []])
+        // The row that was marked while it was out of the window has its state when it shows.
+        expect(seen(log, 7.95)).toEqual(['17', '18', '19', '20', '21'])
+        expect(at(7.95, () => ink(line(log, 18).name))).toEqual(parseColor('red'))
+        expect(said(log.footer!, 7.95)).toEqual(['21 events'])
+        expect(seen(log, 9)).toEqual(['17', '18', '19', '20', '21'])
+        expect([said(log.earlier, 9), said(log.later, 9)]).toEqual([['16 earlier'], []])
+    })
+
+    it('gives the node and the two ends of a row, and rests a row that left on the count that stands for it', async () => {
+        let log!: Log, far!: Log, jump!: Log
+        let kept!: LogRowNode, low!: LogRowNode
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { visible: 5, size: 20, width: 500 }).at(100, 50))
+            const node = log.row(4)
+            expect(node).toBeInstanceOf(LogRowNode)
+            expect(words(node.idText)).toBe('4')
+            expect(log.rows).toContain(node)
+            // The ends are on the border of the panel, at the middle height of the row, in the coordinates of the list.
+            expect(log.p(4)).toEqual([-250, node.get('y')])
+            expect(log.p(4, 'left')).toEqual(log.p(4))
+            expect(log.p(4, 'right')).toEqual([250, node.get('y')])
+            const frame = log.frame.bounds(), [x, y] = log.toWorld(...log.p(4, 'right'))
+            expect(x).toBeCloseTo(frame.x + frame.width, 6)
+            expect(y).toBeCloseTo(node.bounds().y + node.bounds().height / 2, 0)
+            expect(log.p('4')).toEqual(log.p(4))
+            // Rows 1 and 2 are above the window from the start.
+            expect(() => log.row(2)).toThrow(/row 2 is out of the window, which shows the rows 3 to 6\. Bring it in with scrollTo\(2\), or raise `visible`/)
+            expect(() => log.p(1)).toThrow(/row 1 is out of the window/)
+            expect(() => log.row(9)).toThrow(/no row has the id 9\. The list has the ids 1 to 6/)
+            expect(() => eventLog([...some(1, 6), { ids: [7, 8], name: 'pair' }], { visible: 5, size: 20 }).row(1)).toThrow(/row 1 is out of the window, which shows the rows 4 to 8\./)
+            // `p()` is the place after the changes that the film has played. It does not follow the row: after one more
+            // row, row 3 is out and row 4 is one line up, and the point that the film took before is the place of row 5.
+            const before = log.p(4)
+            kept = log.row(3)
+            s.play(log.append(some(7, 7)), { duration: 1 })
+            expect(log.p(4)[1]).toBeCloseTo(before[1] - log.pitch, 6)
+            expect(log.p(5)).toEqual(before)
+            expect(() => log.p(3)).toThrow(/row 3 is out of the window/)
+            expect(log.row(7)).toBe(log.rows[3])
+            // A list at its first rows: the rows that leave go under the window.
+            far = s.add(eventLog(some(1, 12), { visible: 5, size: 20 }))
+            s.play(far.scrollTo(1), { duration: 1 })
+            low = far.row(4)
+            s.play(far.scrollTo(8), { duration: 1 })
+            s.play(far.append(some(13, 13)), { duration: 1 })
+            jump = s.add(eventLog(some(1, 12), { visible: 5, size: 20 }))
+            s.play(jump.scrollTo(1), { duration: 1 })
+        }))
+        // The node of a row that left rests on the line of the count, in the panel: a connector to it ends on "N earlier",
+        // and not on another row.
+        expect(at(1, () => [kept.get('visible'), kept.get('y')])).toEqual([false, log.earlier.get('y')])
+        // On its way out and on its way in, the node goes no further than that line. So a connector to it ends in the panel at every frame.
+        for (let step = 0; step <= 60; step++) {
+            for (const node of [low, line(far, 12), line(far, 9), line(far, 7), line(far, 1)]) {
+                const y = at(1 + step / 20, () => node.get('y'))
+                expect(y).toBeGreaterThanOrEqual(far.earlier.get('y') - 1e-6)
+                expect(y).toBeLessThanOrEqual(far.later.get('y') + 1e-6)
+            }
+        }
+        // A row that comes back moves with the others too: rows 6 and 7 come from under, one line apart.
+        expect(at(2.8, () => [shows(line(far, 7)) > 0, line(far, 7).get('y') - line(far, 6).get('y')])).toEqual([true, expect.closeTo(far.pitch, 6)])
+        // While a row shows, it moves with the others: row 4 is one line under row 3 on their way up.
+        expect(at(2.2, () => [shows(low), low.get('y') - line(far, 3).get('y')])).toEqual([1, expect.closeTo(far.pitch, 6)])
+        // Under the window it rests on the last line, and above the window on the first.
+        expect(at(2, () => [low.get('visible'), low.get('y')])).toEqual([true, expect.closeTo(far.earlier.get('y') + 3 * far.pitch, 6)])
+        expect(at(3, () => [low.get('visible'), low.get('y')])).toEqual([false, far.earlier.get('y')])
+        const under = line(far, 12)
+        expect(at(2.95, () => [under.get('visible'), under.get('y')])).toEqual([false, far.later.get('y')])
+        // Row 6 was above the window, and the window went past it to the first rows: it rests on the count under.
+        expect(at(4.5, () => [line(jump, 6).get('visible'), line(jump, 6).get('y')])).toEqual([false, jump.earlier.get('y')])
+        expect(at(5, () => [line(jump, 6).get('visible'), line(jump, 6).get('y')])).toEqual([false, jump.later.get('y')])
+        expect(at(4, () => shows(under))).toBe(1)
+    })
+
+    it('moves the outline of the focus to a row, to another row, and away', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(history, { visible: 8, size: 20, width: 600 }))
+            s.wait(1)
+            s.play(log.focus(2), { duration: 1, ease: linear })
+            s.play(log.focus(5), { duration: 1, ease: linear })
+            s.play(log.focus(5), { duration: 1, ease: linear })
+            s.play(log.focus(null), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(log.focus(null), log.focus('7'), { duration: 1, ease: linear })
+            s.play(log.focus(null), log.focus(1), { duration: 1, ease: linear })
+            expect(log.focus(1).duration).toBe(0.4)
+        }))
+        const outline = log.outline, y = (id: number) => line(log, id).get('y')
+        // The outline is at the middle of the ink of its row, which is a little under the middle of the row.
+        const lift = at(2, () => outline.get('y')) - y(2)
+        expect(Math.abs(lift)).toBeLessThan(1)
+        expect(at(0.5, () => shows(outline))).toBe(0)
+        // It fades in around the row: as wide as the panel less a margin, and one row tall.
+        const on = (time: number) => at(time, () => [shows(outline), outline.get('y') - lift])
+        expect(on(1.5)).toEqual([0.5, expect.closeTo(y(2), 6)])
+        expect(on(2)).toEqual([1, expect.closeTo(y(2), 6)])
+        const box = at(2, () => outline.bounds()), row = at(2, () => line(log, 2).bounds())
+        expect([box.width, box.height]).toEqual([expect.closeTo(600 - 12.8, 6), expect.closeTo(log.pitch, 6)])
+        expect(box.x).toBeLessThan(row.x)
+        expect(box.x + box.width).toBeGreaterThan(row.x + row.width)
+        expect(box.y).toBeLessThan(row.y)
+        expect(box.y + box.height).toBeGreaterThan(row.y + row.height)
+        expect(at(2, () => [outline.get('stroke'), outline.get('fill')])).toEqual([parseColor('yellow'), null])
+        // On its way to row 5, three rows down, it goes out at the first row and comes in at the second. It is
+        // never between the two, so it crosses no text.
+        for (let step = 0; step <= 20; step++) {
+            const [opacity, place] = on(2 + step / 20)
+            expect(opacity).toBeCloseTo(Math.abs(step - 10) / 10, 6)
+            expect(place).toBeCloseTo(step < 10 ? y(2) : y(5), 6)
+        }
+        expect(on(3)).toEqual([1, expect.closeTo(y(5), 6)])
+        // A focus on the row that has it changes nothing.
+        expect(on(3.5)).toEqual([1, expect.closeTo(y(5), 6)])
+        expect(at(4.5, () => shows(outline))).toBeCloseTo(0.5, 6)
+        expect(at(5, () => shows(outline))).toBe(0)
+        // It is hidden then, so the bounds of the list are those of its panel.
+        expect(at(4.9, () => outline.get('visible'))).toBe(true)
+        expect(at(5.5, () => outline.get('visible'))).toBe(false)
+        // After `focus(null)`, the outline comes in at the row. It does not come from the row before.
+        expect(on(6.5)).toEqual([0.5, expect.closeTo(y(7), 6)])
+        // `focus(null)` forgets its row, also in a play with the next focus: the outline comes in at row 1 from nothing.
+        expect(on(7.25)).toEqual([0.25, expect.closeTo(y(1), 6)])
+        expect(on(7.75)).toEqual([0.75, expect.closeTo(y(1), 6)])
+    })
+
+    it('keeps the outline with its row at every frame: before a scroll, in the same play, and when the row leaves', async () => {
+        let log!: Log
+        const film_ = film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 5), { title: 'log', footer: (count) => `${count} rows`, visible: 5, size: 20 }))
+            s.wait(1)
+            // A film lights a row as it arrives: the focus is in the play of the append.
+            s.play(log.append(some(6, 6)), log.focus(6), { duration: 1, ease: linear })
+            // The outline goes away while two rows arrive: it fades at its row, which moves.
+            s.play(log.focus(null), log.append(some(7, 8)), { duration: 2, ease: linear })
+            // A focus, and then a scroll in a later play.
+            s.play(log.focus(6), { duration: 0.5 })
+            s.play(log.append(some(9, 9)), { duration: 1 })
+            s.play(log.append(some(10, 10)), { duration: 1, ease: linear })
+            expect(() => log.focus(6)).not.toThrow()
+            expect(() => s.play(log.focus(6))).toThrow(/row 6 is out of the window, which shows the rows 7 to 10/)
+            s.play(log.focus(10), { duration: 1, ease: linear })
+            // A focus before the append in the play: the outline goes from one row to another while both move.
+            s.play(log.focus(9), log.append(some(11, 11)), { duration: 1, ease: linear })
+        })
+        await compileFilm(film_)
+        const outline = log.outline, P = log.pitch, top = log.earlier.get('y')
+        const lift = at(2, () => outline.get('y') - line(log, 6).get('y'))
+        // The outline arrives with the row: at the place of the row at every frame, and no stronger than the row.
+        const six = line(log, 6)
+        for (let step = 0; step <= 20; step++) {
+            const time = 1 + step / 20
+            expect(at(time, () => outline.get('y') - lift)).toBeCloseTo(at(time, () => six.get('y')), 6)
+            expect(at(time, () => shows(outline))).toBeCloseTo(at(time, () => shows(six)) * (step / 20), 6)
+        }
+        expect(at(1.5, () => (six.get('y') - top) / P)).toBeCloseTo(4.5, 6)
+        expect(at(1.5, () => shows(outline))).toBe(0)
+        expect(at(1.8, () => shows(outline))).toBeCloseTo(0.8 * (1 - 0.15 / 0.35), 6)
+        expect(at(2, () => [shows(outline), (outline.get('y') - lift - top) / P])).toEqual([1, expect.closeTo(4, 6)])
+        // It fades at its row, which goes up two lines in the same play.
+        for (let step = 0; step <= 40; step++) {
+            const time = 2 + step / 20
+            expect(at(time, () => outline.get('y') - lift)).toBeCloseTo(at(time, () => six.get('y')), 6)
+            expect(at(time, () => shows(outline))).toBeCloseTo(1 - step / 40, 6)
+        }
+        expect(at(3, () => (outline.get('y') - lift - top) / P)).toBeCloseTo(3, 6)
+        // The outline has the place of its row at every frame of a later scroll.
+        for (let step = 0; step <= 20; step++) expect(at(4.5 + step / 20, () => outline.get('y') - lift)).toBeCloseTo(at(4.5 + step / 20, () => six.get('y')), 6)
+        expect(at(5.5, () => (six.get('y') - top) / P)).toBeCloseTo(1, 6)
+        expect(at(5.5, () => shows(outline))).toBe(1)
+        // Row 6 leaves with the next row, and the outline fades with it.
+        for (let step = 0; step < 20; step++) expect(at(5.5 + step / 20, () => [outline.get('y') - lift, shows(outline)])).toEqual(at(5.5 + step / 20, () => [expect.closeTo(six.get('y'), 6), expect.closeTo(shows(six), 6)]))
+        expect(at(6, () => shows(outline))).toBeLessThan(0.5)
+        expect(at(6.5, () => shows(outline))).toBe(0)
+        // The next focus starts from nothing: the outline comes in at the row.
+        expect(at(7, () => [shows(outline), outline.get('y') - lift - line(log, 10).get('y')])).toEqual([0.5, expect.closeTo(0, 6)])
+        // The focus before the append in the play: the outline goes out at row 10 and comes in at row 9, and both rows move.
+        const [nine, ten] = [line(log, 9), line(log, 10)]
+        expect(at(7.75, () => [outline.get('y') - lift, shows(outline)])).toEqual(at(7.75, () => [expect.closeTo(ten.get('y'), 6), 0.5]))
+        expect(at(7.75, () => (ten.get('y') - top) / P)).toBeCloseTo(3.75, 6)
+        expect(at(8.25, () => [outline.get('y') - lift, shows(outline)])).toEqual(at(8.25, () => [expect.closeTo(nine.get('y'), 6), 0.5]))
+        expect(at(8.5, () => [shows(outline), (outline.get('y') - lift - top) / P])).toEqual([1, expect.closeTo(2, 6)])
+        // The film check finds no line through a text, and no text on a text, at any frame.
+        const report = await checkFilm(film_, { motion: true, readingSpeed: 0 })
+        expect(report.diagnostics).toEqual([])
+        // A row in the line that a count takes fades where it is, and the rows under it pass its place. The
+        // outline is taller than the text, so it is gone before the next row reaches it.
+        let full!: Log
+        const passing = film({ fps: 20 }, (s) => {
+            full = s.add(eventLog(some(1, 5), { visible: 5, size: 20 }))
+            s.play(full.focus(1), { duration: 0 })
+            s.wait(0.5)
+            s.play(full.append(some(6, 8), { lag: 0 }), { duration: 1, ease: linear })
+        })
+        await compileFilm(passing)
+        expect(at(0.5, () => shows(full.outline))).toBe(1)
+        for (let step = 1; step <= 200; step++) {
+            const time = 0.5 + step / 200
+            const edge = at(time, () => bottom(full.outline))
+            const near = at(time, () => Math.min(...[2, 3, 4].filter((id) => shows(line(full, id)) > 0.08).map((id) => line(full, id).name.bounds().y)))
+            if (at(time, () => shows(full.outline)) > 0.02) expect(near - edge).toBeGreaterThan(1)
+        }
+        expect(at(0.52, () => shows(full.outline))).toBeGreaterThan(0.4)
+        expect(at(0.55, () => shows(full.outline))).toBe(0)
+        expect(at(0.6, () => shows(line(full, 1)))).toBeGreaterThan(0)
+        expect((await checkFilm(passing, { motion: true, readingSpeed: 0 })).diagnostics).toEqual([])
+        // The focus of the second row of an append: that row starts after one second. Before that, the outline has no row to show with.
+        let two!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            two = s.add(eventLog(some(1, 2), { visible: 8, size: 20 }))
+            s.play(two.append(some(3, 4)), two.focus(4), { duration: 2, ease: linear })
+        }))
+        expect(at(0.5, () => shows(two.outline))).toBe(0)
+        expect(at(1.3, () => shows(two.outline))).toBeCloseTo(0.65 * 0.5, 6)
+        expect(at(2, () => shows(two.outline))).toBe(1)
+    })
+
+    it('moves the outline to the fold when its row folds, and takes it away with a record that leaves the window', async () => {
+        let log!: Log, pushed!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            s.play(log.focus(3), { duration: 0.5 })
+            s.play(log.fold([2, 3, 4], 'workflow task'), { duration: 1, ease: linear })
+            s.play(log.unfold(2), { duration: 1, ease: linear })
+            s.play(log.focus(null), { duration: 0.5 })
+            // After `focus(null)`, no record has the focus: a fold of the row does not bring the outline back.
+            s.play(log.fold([2, 3, 4]), { duration: 1 })
+            // An unfold in a full window pushes the first rows out, and the focus with them.
+            pushed = s.add(eventLog([...some(1, 3), { ids: [4, 5, 6], name: 'three', rows: some(4, 6) }, ...some(7, 7)], { visible: 5, size: 20 }))
+            s.play(pushed.focus(2), { duration: 0 })
+            s.play(pushed.unfold(4), { duration: 1 })
+            s.play(pushed.fold([4, 5, 6]), { duration: 1 })
+            // The list forgot the record of the focus, so a new focus of the same row is a new focus.
+            s.play(pushed.focus(2), { duration: 0.5 })
+        }))
+        const outline = log.outline, y = (id: number, time: number) => at(time, () => line(log, id).get('y'))
+        const lift = at(0.5, () => outline.get('y')) - y(3, 0.5)
+        // The outline shows as much as its line does. It leaves with row 3, and comes with the fold, in the line of row 2.
+        const on = (time: number) => at(time, () => [shows(outline), outline.get('y') - lift])
+        expect(on(0.65)).toEqual([expect.closeTo(0.5, 6), expect.closeTo(y(3, 0.5), 6)])
+        expect(on(0.8)[0]).toBe(0)
+        expect(on(1.05)).toEqual([expect.closeTo(0.5, 6), expect.closeTo(y(2, 0.5), 6)])
+        expect(on(1.5)).toEqual([1, expect.closeTo(y(2, 0.5), 6)])
+        // And back to the row when the fold opens.
+        expect(on(1.65)[0]).toBeCloseTo(0.5, 6)
+        expect(on(2.5)).toEqual([1, expect.closeTo(y(3, 0.5), 6)])
+        for (const time of [3.2, 3.5, 3.8, 4]) expect(on(time)[0]).toBe(0)
+        // The record of the focus left the window: the outline is gone, and it does not come back with the row.
+        expect(at(4, () => shows(pushed.outline))).toBe(1)
+        expect(seen(pushed, 5)).toEqual(['4', '5', '6', '7'])
+        expect(at(5, () => shows(pushed.outline))).toBe(0)
+        expect(seen(pushed, 6)).toEqual(['1', '2', '3', '4', '7'])
+        expect(at(5.95, () => [shows(line(pushed, 2)), shows(pushed.outline)])).toEqual([1, 0])
+        expect(at(6.5, () => shows(pushed.outline))).toBe(1)
+    })
+
+    it('draws the focus as a band behind the row, with focusLook', async () => {
+        let band!: Log, usual!: Log
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            band = s.add(eventLog(history, { size: 20, focusLook: 'band' }).at(-400, 0))
+            usual = s.add(eventLog(history, { size: 20 }).at(400, 0))
+            s.play(band.focus(2), usual.focus(2), { duration: 0 })
+            s.wait(1)
+            expect(() => eventLog([], { focusLook: 'halo' as never })).toThrow(/focusLook is "halo"\. It is 'outline' or 'band'/)
+        }))
+        // The band is a faint fill in the color of the text, with no line. The outline is a line with no fill.
+        expect(at(0.5, () => [band.outline.get('fill'), band.outline.get('stroke'), band.outline.get('fillOpacity')])).toEqual([parseColor('ink'), null, 0.12])
+        expect(at(0.5, () => [usual.outline.get('fill'), usual.outline.get('stroke')])).toEqual([null, parseColor('yellow')])
+        // The two have one shape, at the row.
+        const [a, b] = at(0.5, () => [band.outline.bounds(), usual.outline.bounds()])
+        expect([a!.width, a!.height, a!.y]).toEqual([b!.width, b!.height, b!.y])
+        expect(band.pitch).toBe(usual.pitch)
+        // The band is under the text of its row: the frame draws it before the letters.
+        const ops = paths(compiled, 0.5)
+        const glyph = band.rows[1]!.name.children[0]!
+        expect(ops.findIndex((op) => op.node === band.outline)).toBeGreaterThan(0)
+        expect(ops.findIndex((op) => op.node === band.outline)).toBeLessThan(ops.findIndex((op) => op.node === glyph))
+        expect(ops.find((op) => op.node === band.outline)!.fillAlpha).toBeCloseTo(0.12, 6)
+    })
+
+    it('holds a row back with shown: false, and brings it in at its place with show()', async () => {
+        let log!: Log
+        const before: unknown[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two' }, { id: 3, name: 'Three', shown: false }, { id: 4, name: 'Four', shown: false }, { ids: [5, 6], name: 'pair', shown: false, rows: some(5, 6) }], { footer: (count) => `${count} of 6 rows`, visible: 8, size: 20 }))
+            // The rows have their places from the start, and the count is of the rows that show.
+            before.push(log.count, log.ids, log.rows.length, log.find((row) => row.shown === false), log.find(() => true))
+            expect(log.p(4)[1]).toBeCloseTo(log.p(1)[1] + 3 * log.pitch, 6)
+            s.wait(1)
+            // A mark of a row that does not show yet changes its state: the row arrives with it. A focus of it
+            // puts the outline there, and the outline shows when the row does.
+            s.play(log.mark(4, 'failed'), log.focus(4), { duration: 0 })
+            s.play(log.show(3), { duration: 1, ease: linear })
+            expect(log.count).toBe(3)
+            // In one play, two shows count one after the other. A row that shows already does not change.
+            s.play(log.show(4), log.show((row) => row.shown === false && row.ids!.length === 2), log.show([1, 3]), { duration: 1, ease: linear })
+            expect(log.count).toBe(6)
+            expect(log.find((row) => row.shown === false)).toEqual([])
+            // With no argument, the list itself shows, as any node does.
+            expect(log.hide().get('visible')).toBe(false)
+            expect(log.show()).toBe(log)
+            expect(log.get('visible')).toBe(true)
+            expect(log.show(3).duration).toBe(0.5)
+            expect(log.show([1, 2, 3]).label).toBe('eventLog.show')
+            // A row that does not show yet cannot go into a fold, and a fold that does not show yet cannot open.
+            const held = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }, { ids: [3, 4], name: 'pair', shown: false, rows: some(3, 4) }], { size: 20 }))
+            expect(() => s.play(held.fold([1, 2], 'pair'))).toThrow(/row 2 does not show yet, so it cannot go into a fold\. Bring it in first, with show\(2\)/)
+            expect(() => s.play(held.unfold(3))).toThrow(/the fold from 3 to 4 does not show yet, so it cannot open\. Bring it in first, with show\(3\)/)
+            expect(() => s.play(held.show(9))).toThrow(/no row has the id 9/)
+            // An append takes such a row too: it takes its line, and shows later.
+            s.play(held.append({ id: 5, name: 'Five', shown: false }))
+            expect([held.count, held.rows.length]).toEqual([1, 4])
+        }))
+        const P = log.pitch
+        expect(before).toEqual([2, [1, 2, 3, 4, 5, 6], 5, [3, 4, 5, 6], [1, 2, 3, 4, 5, 6]])
+        expect(seen(log, 0.5)).toEqual(['1', '2'])
+        expect(said(log.footer!, 0.5)).toEqual(['2 of 6 rows'])
+        // The row arrives as a row of `append` does: it fades in over six tenths of its time, and rises a third of a row.
+        const three = line(log, 3)
+        expect(at(1.3, () => shows(three.content))).toBeCloseTo(0.5, 6)
+        expect(at(1.3, () => three.content.get('y'))).toBeCloseTo(0.35 * P * 0.7, 6)
+        expect(at(2, () => [shows(three.content), three.content.get('y')])).toEqual([1, 0])
+        // No row moves, and the row itself keeps its place.
+        for (const id of [1, 2, 3, 4]) expect(at(1.5, () => line(log, id).get('y'))).toBe(at(0, () => line(log, id).get('y')))
+        // The footer changes when the row is half there.
+        expect(said(log.footer!, 1.45)).toEqual(['2 of 6 rows'])
+        expect(said(log.footer!, 1.55)).toEqual(['3 of 6 rows'])
+        // The outline waits for its row, and comes with it.
+        const lift = at(3, () => log.outline.get('y') - line(log, 4).get('y'))
+        expect(at(1.5, () => shows(log.outline))).toBe(0)
+        expect(at(2.3, () => [shows(log.outline), log.outline.get('y') - lift])).toEqual([expect.closeTo(0.5, 6), expect.closeTo(line(log, 4).get('y') + 0.35 * P * 0.7, 6)])
+        expect(at(3, () => shows(log.outline))).toBe(1)
+        expect(at(3, () => ink(line(log, 4).name))).toEqual(parseColor('red'))
+        // Two shows in one play: each row counts at the middle of its time, and the footer has one text at every frame.
+        for (let step = 0; step <= 20; step++) expect(said(log.footer!, 2 + step / 20)).toHaveLength(1)
+        expect(said(log.footer!, 2.45)).toEqual(['3 of 6 rows'])
+        expect(said(log.footer!, 2.55)).toEqual(['6 of 6 rows'])
+        expect(seen(log, 3)).toEqual(['1', '2', '3', '4', '5'])
+        // A show in the play of an append: the footer follows the two in the order of time. The rows of the
+        // append count at 0.5 s and at 1.5 s, and the row of the show at 1 s.
+        let both!: Log, pair!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            both = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }], { footer: (count) => `${count} rows`, visible: 8, size: 20 }))
+            pair = s.add(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }, { id: 3, name: 'Three', shown: false }], { footer: (count) => `${count} rows`, visible: 8, size: 20 }))
+            s.play(both.append(some(3, 4)), both.show(2), pair.show(() => true), { duration: 2, ease: linear })
+        }))
+        expect([0.4, 0.6, 1.1, 1.6].map((time) => said(both.footer!, time))).toEqual([['1 rows'], ['2 rows'], ['3 rows'], ['4 rows']])
+        // The rows of one show come one after another. A function that also picks a row that shows leaves that row as it is.
+        const parts = (time: number) => at(time, () => [1, 2, 3].map((id) => shows(line(pair, id).content)))
+        expect(parts(0.3)).toEqual([1, expect.closeTo(0.5, 6), 0])
+        expect(parts(1.3)).toEqual([1, 1, expect.closeTo(0.5, 6)])
+        expect([0.4, 0.6, 1.6].map((time) => said(pair.footer!, time))).toEqual([['1 rows'], ['2 rows'], ['3 rows']])
+    })
+
+    it('counts the rows that show above and under the window, and starts the window where rows show', async () => {
+        const footer = (count: number) => `${count} events`
+        const held = (ids: number[]) => some(1, 12).map((row) => ({ ...row, shown: !ids.includes(row.id as number) }))
+        let above!: Log, under!: Log, long!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            above = s.add(eventLog(held([2, 3]), { visible: 6, size: 20, footer }))
+            under = s.add(eventLog(held([10, 11]), { visible: 6, size: 20, footer }))
+            s.play(under.scrollTo(1), { duration: 1 })
+            s.play(above.show([2, 3]), under.show([10, 11]), { duration: 1, ease: linear })
+            s.play(above.append(some(13, 13)), { duration: 1 })
+        }))
+        // Rows 1 to 7 are above the window, and two of them wait: the first line counts the five that show.
+        expect([said(above.earlier, 0.5), said(above.footer!, 0.5)]).toEqual([['5 earlier'], ['10 events']])
+        // A row that shows above the window counts when it is half there, as it does in the footer: at 1.25 s and at 1.75 s.
+        expect([1.2, 1.25, 1.7, 1.75].map((time) => said(above.earlier, time))).toEqual([['5 earlier'], ['6 earlier'], ['6 earlier'], ['7 earlier']])
+        expect([1.2, 1.25, 1.75].map((time) => said(above.footer!, time))).toEqual([['10 events'], ['11 events'], ['12 events']])
+        expect([1.2, 1.3, 1.8].map((time) => said(above.footer!, time))).toEqual([['10 events'], ['11 events'], ['12 events']])
+        // The next row adds one, and no more: the count was right before it.
+        expect([2.4, 2.5, 3].map((time) => said(above.earlier, time))).toEqual([['7 earlier'], ['8 earlier'], ['8 earlier']])
+        // The same under the window, after a scroll to the first rows.
+        expect([said(under.earlier, 1.1), said(under.later, 1.1)]).toEqual([[], ['5 later']])
+        expect([1.3, 1.8, 3].map((time) => said(under.later, time))).toEqual([['6 later'], ['7 later'], ['7 later']])
+        expect([under.count, said(under.footer!, 3)]).toEqual([12, ['12 events']])
+        // A list of 12 turns that fills on cue, in a window of 6 lines: two rows show, and ten wait.
+        const starts: string[][] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            long = s.add(eventLog(held([3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), { visible: 6, size: 20, footer: (count) => `${count} of 12` }))
+            starts.push(long.rows.map((row) => words(row.idText)))
+            s.wait(1)
+            s.play(long.show([3, 4, 5]), { duration: 1 })
+            s.play(long.show([6, 7]), { duration: 1, ease: linear })
+            s.play(long.scrollTo(7), { duration: 1 })
+            // With no row that shows, the window is at the first rows. With rows that wait at the end only, the last row that shows is the last row of the window.
+            const none = eventLog(some(1, 12).map((row) => ({ ...row, shown: false })), { visible: 6, size: 20 })
+            const tail = s.add(eventLog(held([11, 12]), { visible: 6, size: 20 }))
+            const middle = eventLog(held([5, 6]), { visible: 6, size: 20 })
+            starts.push(...[none, tail, middle].map((list) => list.rows.map((row) => words(row.idText))))
+            expect(said(tail.earlier, s.time)).toEqual(['6 earlier'])
+            expect(said(middle.earlier, 0)).toEqual(['5 earlier'])
+            // The rows above the window wait: the first line is empty too. No "0 earlier".
+            const first = eventLog(held([1, 2, 3, 4, 5, 6, 7]), { visible: 6, size: 20 })
+            expect([first.rows.map((row) => words(row.idText)), said(first.earlier, 0), first.earlier.children[0]!.get('visible'), first.earlier.get('visible')]).toEqual([['8', '9', '10', '11', '12'], [], false, true])
+            // The window keeps the start that the list gave it, as it keeps the place of a `scrollTo`: a fold leaves it there.
+            const start = s.add(eventLog(held([3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), { visible: 6, size: 20 }))
+            s.play(start.fold([1, 2], 'pair'), { duration: 0 })
+            expect(start.rows.map((row) => words(row.idText))).toEqual(['1', '3', '4', '5', '6'])
+            // A fold that lets the rest of the list fit takes the count line away: the window goes on to the end.
+            s.play(tail.fold([8, 9], 'pair'), { duration: 0 })
+            expect(tail.rows.map((row) => words(row.idText))).toEqual(['7', '8', '10', '11', '12'])
+            // A window of two lines has one count line: it starts at the first row, or at the end.
+            expect(eventLog([{ id: 1, name: 'One' }, { id: 2, name: 'Two', shown: false }, { id: 3, name: 'Three', shown: false }], { visible: 2, size: 20 }).rows.map((row) => words(row.idText))).toEqual(['1'])
+        }))
+        // The window starts where rows show, with the places of the rows that wait: not at the end of the list, where it would be empty.
+        expect(starts).toEqual([['1', '2', '3', '4', '5'], ['1', '2', '3', '4', '5'], ['7', '8', '9', '10'], ['8', '9', '10', '11', '12']])
+        expect(seen(long, 0.5)).toEqual(['1', '2'])
+        // The rows under the window wait, so the last line counts nothing. It is empty: no "0 later", and no dots.
+        const dots = (holder: Node, time: number) => at(time, () => shows(holder.children[0]!))
+        expect([said(long.later, 0.5), dots(long.later, 0.5), at(0.5, () => long.later.get('visible'))]).toEqual([[], 0, true])
+        expect(seen(long, 2)).toEqual(['1', '2', '3', '4', '5'])
+        // Rows 6 and 7 show under the window. No row moves, and the last line counts each when it is half there.
+        expect([2.2, 2.3, 2.8].map((time) => said(long.later, time))).toEqual([[], ['1 later'], ['2 later']])
+        expect([dots(long.later, 2.2), dots(long.later, 2.3)]).toEqual([0, 1])
+        expect(seen(long, 3)).toEqual(['1', '2', '3', '4', '5'])
+        expect(said(long.footer!, 3)).toEqual(['7 of 12'])
+        // After the scroll, three rows are above and five wait under: the last line is empty again.
+        expect(seen(long, 4)).toEqual(['4', '5', '6', '7'])
+        expect([said(long.earlier, 4), said(long.later, 4), dots(long.later, 4)]).toEqual([['3 earlier'], [], 0])
+        // A count is of records: a fold under the window counts each record that it holds, and a row that waits counts none.
+        let folded!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            folded = s.add(eventLog([...some(1, 8), { ids: [9, 10, 11], name: 'three' }, { id: 12, name: 'Held', shown: false }, ...some(13, 14)], { visible: 5, size: 20 }))
+            s.play(folded.scrollTo(1), { duration: 1 })
+        }))
+        expect(seen(folded, 1)).toEqual(['1', '2', '3', '4'])
+        expect(said(folded.later, 1)).toEqual(['9 later'])
+    })
+
+    it('takes ids that are texts in scrollTo and show, and knows the id of a number by its text', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+            log = s.add(eventLog(ids.map((id) => ({ id, name: `Event ${id}`, shown: id !== 'g' })), { visible: 4, size: 20, footer: (count) => `${count} rows` }))
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['f', 'g', 'h'])
+            s.play(log.scrollTo('b'), { duration: 1 })
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['b', 'c'])
+            s.play(log.show('g'), { duration: 1, ease: linear })
+            expect(log.count).toBe(8)
+            s.play(log.scrollTo('g'), log.focus('g'), { duration: 1 })
+            expect(log.rows.map((row) => words(row.idText))).toEqual(['f', 'g', 'h'])
+            expect(log.p('g')).toEqual(log.p('f').map((value, index) => value + index * log.pitch))
+            expect(() => s.play(log.scrollTo('z'))).toThrow(/no row has the id "z"\. The list has the ids "a" to "h"/)
+            expect(() => s.play(log.show(['a', 'z']))).toThrow(/no row has the id "z"/)
+            // An id that is a number is known by its text too.
+            const numbers = s.add(eventLog([...some(1, 9), { id: 10, name: 'Ten', shown: false }], { visible: 4, size: 20 }))
+            expect(numbers.rows.map((row) => words(row.idText))).toEqual(['8', '9', '10'])
+            s.play(numbers.scrollTo('2'), { duration: 0 })
+            expect(numbers.rows.map((row) => words(row.idText))).toEqual(['2', '3'])
+            s.play(numbers.show('10'), { duration: 0 })
+            expect(numbers.count).toBe(10)
+            expect(numbers.find((row) => row.shown === false)).toEqual([])
+        }))
+        // Row g waits at the start: the window shows f and h, and the first line counts the five rows above.
+        expect(seen(log, 0)).toEqual(['f', 'h'])
+        expect([said(log.earlier, 0), said(log.footer!, 0)]).toEqual([['5 earlier'], ['7 rows']])
+        expect([said(log.earlier, 1), said(log.later, 1)]).toEqual([['1 earlier'], ['4 later']])
+        // Row g shows under the window: the last line counts it when it is half there.
+        expect([1.4, 1.6].map((time) => said(log.later, time))).toEqual([['4 later'], ['5 later']])
+        expect(seen(log, 3)).toEqual(['f', 'g', 'h'])
+        expect([said(log.earlier, 3), said(log.later, 3), said(log.footer!, 3)]).toEqual([['5 earlier'], [], ['8 rows']])
+        expect(at(3, () => [shows(log.outline), Math.round(log.outline.get('y') - line(log, 'g').get('y'))])).toEqual([1, 0])
+    })
+
+    it('takes the outline back at each focus, whatever the film did to the node', async () => {
+        let log!: Log
+        await compileFilm(film({ fps: 20 }, (s) => {
+            log = s.add(eventLog(some(1, 6), { visible: 6, size: 20 }))
+            s.play(log.focus(3), { duration: 0.4 }); s.wait(0.6)
+            s.play(fadeOut(log.outline), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(5), { duration: 0.4 }); s.wait(0.6)
+            s.play(fadeIn(log.outline), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(null), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(2), { duration: 0.4 }); s.wait(0.6)
+            s.play(log.focus(null), { duration: 0.4 }); s.wait(0.6)
+        }))
+        const on = (time: number, id: number) => at(time, () => [shows(log.outline), Math.round(log.outline.get('y') - line(log, id).get('y'))])
+        expect(on(0.9, 3)).toEqual([1, 0])
+        // The film fades the node out itself. The next focus shows the outline again, at its row.
+        expect(on(1.9, 3)[0]).toBe(0)
+        expect(on(2.3, 5)).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(on(2.9, 5)).toEqual([1, 0])
+        // The film fades the node in itself. `focus(null)` takes the outline away all the same.
+        expect(on(3.9, 5)).toEqual([1, 0])
+        expect(on(4.2, 5)).toEqual([expect.closeTo(0.5, 6), 0])
+        expect(on(4.9, 5)[0]).toBe(0)
+        expect(on(5.9, 2)).toEqual([1, 0])
+        expect(on(6.9, 2)[0]).toBe(0)
+    })
+
+    it('sets the height of a row with leading, and refuses an outline that has too little room', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows = some(1, 4).map((row) => ({ ...row, detail: 'a (detail), jpg' }))
+            const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+            const usual = eventLog(rows, { size: 20, visible: 4 })
+            // `leading` is the height of a row as a part of the text size. The panel follows it.
+            const low = eventLog(rows, { size: 20, visible: 4, leading: 1.5 })
+            expect(low.pitch).toBe(30)
+            expect(low.frame.bounds().height).toBeCloseTo(4 * 30 + 16, 6)
+            low.rows.forEach((row, index) => expect(row.get('y') - low.rows[0]!.get('y')).toBeCloseTo(index * 30, 6))
+            // The default is the height that the outline needs. A larger leading is free.
+            expect(eventLog(rows, { size: 20, leading: usual.pitch / 20 }).pitch).toBeCloseTo(usual.pitch, 6)
+            expect(() => eventLog(rows, { size: 20, leading: 2.4 }).focus(2)).not.toThrow()
+            // A list with no focus takes the lower rows. The first focus is an error that names the leading that the outline needs.
+            const refused = message(() => low.focus(2))
+            expect(refused).toMatch(/^eventLog: a leading of 1\.5 leaves the outline of the focus too little room\. The outline needs 0\.3 of the text size between its line and the ink of the rows: a leading of (1\.\d+) or more\. Take that, or `focusLook: 'band'`$/)
+            const needs = Number(/a leading of (1\.\d+) or more/.exec(refused)![1])
+            expect(needs * 20).toBeGreaterThanOrEqual(usual.pitch)
+            expect(needs * 20).toBeLessThan(usual.pitch + 0.2)
+            expect(() => eventLog(rows, { size: 20, leading: needs }).focus(2)).not.toThrow()
+            expect(message(() => eventLog(rows, { size: 20, leading: needs - 0.02 }).focus(2))).toMatch(/a leading of 1\.\d+ leaves the outline/)
+            // `focus(null)` draws nothing, so it is free.
+            expect(() => low.focus(null)).not.toThrow()
+            // With the band, the lower rows are free: the band has no line. Its row has room in it, and the rows next to it are out of it.
+            const band = s.add(eventLog(rows, { size: 20, visible: 4, leading: 1.5, focusLook: 'band' }))
+            s.play(band.focus(2), { duration: 0 })
+            const box = band.outline.bounds(), [first, own, third] = band.rows.map((row) => { const boxes = [row.name.bounds(), row.detail!.bounds()]; return [Math.min(...boxes.map((part) => part.y)), Math.max(...boxes.map((part) => part.y + part.height))] })
+            expect(box.height).toBeCloseTo(30, 6)
+            expect(own![0]! - box.y).toBeGreaterThanOrEqual(20 * 0.14)
+            expect(box.y + box.height - own![1]!).toBeGreaterThanOrEqual(20 * 0.14)
+            expect(first![1]!).toBeLessThan(box.y)
+            expect(third![0]!).toBeGreaterThan(box.y + box.height)
+            // A leading with no room for the ink of two rows is an error where the list is made.
+            expect(message(() => eventLog(rows, { size: 20, leading: 1 }))).toMatch(/^eventLog: leading is 1\. It is the height of a row as a part of the text size, 1\.\d+ or more with these fonts: the ink of a row, and a little room$/)
+            expect(() => eventLog(rows, { leading: Number.NaN })).toThrow(/leading is NaN/)
+            const least = Number(/size, (1\.\d+) or more/.exec(message(() => eventLog(rows, { size: 20, leading: 1 })))![1])
+            expect(least).toBeLessThanOrEqual(1.5)
+            expect(least).toBeGreaterThanOrEqual(1.36)
+            expect(() => eventLog(rows, { size: 20, leading: least })).not.toThrow()
+            expect(() => eventLog(rows, { size: 20, leading: least - 0.01 })).toThrow(/leading is/)
+        }))
+    })
+
+    it('cuts a name or a detail that is longer than its column with an ellipsis, or refuses it with ellipsis: false', async () => {
+        await compileFilm(film(() => {
+            const long = 'the address is empty, so the update is not accepted'
+            const rows: LogRow[] = [
+                { id: 1, name: 'ActivityTaskCompleted', detail: '"ch_1001"' },
+                { id: 2, name: 'WorkflowExecutionUpdateAccepted', detail: 'setAddress' },
+                { id: 3, name: 'ActivityTaskFailed', detail: long },
+                { id: 4, name: 'WorkflowExecutionUpdateCompletedByTheWorkerAfterTheValidatorRan' },
+            ]
+            const log = eventLog(rows, { size: 20, width: 600, nameWidth: 252 })
+            const [whole, cutName, cutDetail, alone] = log.rows
+            // 252 px hold 21 characters of 12 px. A longer name keeps 20, and the ellipsis.
+            expect(words(whole!.name)).toBe('ActivityTaskCompleted')
+            expect(words(cutName!.name)).toBe('WorkflowExecutionUpd…')
+            expect(right(cutName!.name)).toBeLessThanOrEqual(cutName!.name.get('x') + 252)
+            expect(right(cutName!.name)).toBeLessThan(cutName!.detail!.bounds().x)
+            // A detail ends where the content of the panel ends: 16 px from the border.
+            expect(words(whole!.detail)).toBe('"ch_1001"')
+            expect(words(cutDetail!.detail).endsWith('…')).toBe(true)
+            expect(long.startsWith(words(cutDetail!.detail).slice(0, -1))).toBe(true)
+            expect(right(cutDetail!.detail!)).toBeLessThanOrEqual(300 - 16)
+            expect(right(cutDetail!.detail!)).toBeGreaterThan(300 - 16 - 20)
+            // A row with no detail has no next column, so its name goes on to the end of the row.
+            expect(words(alone!.name).length).toBeGreaterThan(22)
+            expect(words(alone!.name).endsWith('…')).toBe(true)
+            expect(right(alone!.name)).toBeLessThanOrEqual(300 - 16)
+            expect(right(alone!.name)).toBeGreaterThan(300 - 16 - 14)
+            // A name that is one character too long is cut too: no text goes over its room.
+            const over = eventLog([{ id: 1, name: 'ActivityTaskCompleted2', detail: 'x' }, { id: 2, name: 'Short', detail: 'a detail of thirty characters.' }], { size: 20, width: 600, nameWidth: 252 })
+            expect(words(over.rows[0]!.name)).toBe('ActivityTaskComplete…')
+            expect(right(over.rows[0]!.name)).toBeLessThanOrEqual(over.rows[0]!.name.get('x') + 252)
+            // A space before the cut is not kept: 60 px hold four characters and the ellipsis, and the fourth is a space.
+            expect(words(eventLog([{ id: 1, name: 'abc defgh', detail: 'x' }], { size: 20, width: 400, nameWidth: 60 }).rows[0]!.name)).toBe('abc…')
+        }))
+    })
+
+    it('lists every text that does not fit under ellipsis: false in one error, with the numbers that fit them all', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const long = 'the address is empty, so the update is not accepted'
+            const rows: LogRow[] = [
+                { id: 1, name: 'ActivityTaskCompleted', detail: '"ch_1001"' },
+                { id: 2, name: 'WorkflowExecutionUpdateAccepted', detail: 'setAddress' },
+                { id: 3, name: 'ActivityTaskFailed', detail: long },
+                { id: 4, name: 'WorkflowExecutionUpdateCompletedByTheWorkerAfterTheValidatorRan' },
+            ]
+            type Options = NonNullable<Parameters<typeof eventLog>[1]>
+            const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+            const numbers = (said: string): Options => {
+                const nameWidth = /`nameWidth` to (\d+)/.exec(said), width = /`width` to (\d+)/.exec(said)
+                return { ...(nameWidth ? { nameWidth: Number(nameWidth[1]) } : {}), ...(width ? { width: Number(width[1]) } : {}) }
+            }
+            /** Make the list with the numbers of its error. One round is enough: the list is made, and each text is whole. */
+            const follow = (given: LogRow[], options: Options) => {
+                const said = message(() => eventLog(given, { ...options, ellipsis: false }))
+                const fixed: Options = { ...options, ellipsis: false, ...numbers(said) }
+                const made = eventLog(given, fixed)
+                expect(made.rows.map((row) => [words(row.name), row.detail ? words(row.detail) : undefined])).toEqual(given.map((row) => [row.name, row.detail === undefined ? undefined : String(row.detail)]))
+                return { said, fixed }
+            }
+            // A name that is wider than its column, and a detail that is wider than the room of the details: one error names the two.
+            const two = follow(rows.slice(0, 3), { size: 20, width: 600, nameWidth: 252 })
+            expect(two.said).toMatch(/^eventLog: with `ellipsis: false`, a name and a detail show whole, and 2 texts do not fit: the name of row 2 \(37\d px, and it has 252\), the detail of row 3 \(\d+ px, and the details have \d+\)\. Set `nameWidth` to 37\d and `width` to \d+ or more$/)
+            // The numbers are the least that work: with 2 px less of width, the detail does not fit.
+            expect(message(() => eventLog(rows.slice(0, 3), { ...two.fixed, width: two.fixed.width! - 2 }))).toMatch(/one text does not fit: the detail of row 3/)
+            expect(message(() => eventLog(rows.slice(0, 3), { ...two.fixed, nameWidth: two.fixed.nameWidth! - 2 }))).toMatch(/the name of row 2/)
+            // A name alone, in a list with room: the `nameWidth` is enough.
+            const name = follow(rows.slice(0, 2), { size: 20, width: 1400, nameWidth: 252 })
+            expect(name.said).toMatch(/and one text does not fit: the name of row 2 \(37\d px, and it has 252\)\. Set `nameWidth` to 37\d$/)
+            // A detail alone, in a list that takes the room of its names from its rows: the width is enough.
+            const detail = follow(rows.slice(0, 3), { size: 20, width: 700 })
+            expect(detail.said).toMatch(/and one text does not fit: the detail of row 3 \(\d+ px, and the details have \d+\)\. Raise `width` to \d+ or more$/)
+            expect(message(() => eventLog(rows.slice(0, 3), { ...detail.fixed, width: detail.fixed.width! - 2 }))).toMatch(/the detail of row 3/)
+            // A list that gives its names 60% of the width: the error sets the room of the names, so that a wider panel does not change it.
+            const capped = follow(rows.slice(0, 3), { size: 20, width: 500 })
+            expect(capped.said).toMatch(/and 3 texts do not fit: the name of row 2 \(37\d px, and it has 300\), the detail of row 2 \(\d+ px, and the details have \d+\), the detail of row 3 \(\d+ px, and the details have \d+\)\. Set `nameWidth` to 37\d and `width` to \d+ or more$/)
+            // A row with no detail goes on to the end of the row. Past that, the width is what works.
+            const alone = follow(rows.slice(3), { size: 20, width: 600 })
+            expect(alone.said).toMatch(/and one text does not fit: the name of row 4 \(75\d px, and it has 511\)\. Raise `width` to \d+ or more$/)
+            expect(message(() => eventLog(rows.slice(3), { ...alone.fixed, width: alone.fixed.width! - 2 }))).toMatch(/the name of row 4/)
+            // Details with room for less than eight characters are in the same error.
+            const narrow = follow([{ id: 1, name: 'ActivityTask', detail: 'a' }], { size: 20, width: 330, nameWidth: 160 })
+            expect(narrow.said).toMatch(/^eventLog: with `ellipsis: false`, a name and a detail show whole\. The details have room for \d characters, and a detail needs 8\. Raise `width` to \d+ or more$/)
+            expect(message(() => eventLog([{ id: 1, name: 'ActivityTask', detail: 'a' }], { ...narrow.fixed, width: narrow.fixed.width! - 2 }))).toMatch(/The details have room for 7 characters/)
+            // A fold with no rows is named as the fold. The list does not report rows that the film did not write.
+            const fold = follow([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3, 4], name: 'a workflow task of the sticky queue', detail: 'worker 71293, sticky queue' }], { size: 20, width: 520 })
+            expect(fold.said).toMatch(/texts? do(es)? not fit: the name of the fold from 2 to 4 /)
+            expect(fold.said).not.toMatch(/row [234]/)
+            // The rows of a fold are in the list of the error too: the fold opens into them later.
+            const inner = follow([{ ids: [1, 2], name: 'pair', rows: [{ id: 1, name: 'One', detail: long }, { id: 2, name: 'WorkflowExecutionUpdateAccepted' }] }], { size: 20, width: 500 })
+            expect(inner.said).toMatch(/one text does not fit: the detail of row 1 /)
+            // More than six texts: the error names six, and counts the others.
+            const many = message(() => eventLog(Array.from({ length: 8 }, (_, index) => ({ id: index + 1, name: 'Event', detail: long })), { size: 20, width: 400, ellipsis: false }))
+            expect(many).toMatch(/and 8 texts do not fit: the detail of row 1 .*the detail of row 6 \(\d+ px, and the details have \d+\), and 2 more\. Raise `width` to \d+ or more$/)
+            // A row that comes later is checked where the film makes the append. No column gets smaller: the rows of the list still fit.
+            const log = s.add(eventLog(rows.slice(0, 2), { size: 20, width: 700, ellipsis: false }))
+            const later = message(() => log.append({ id: 9, name: 'N'.repeat(40), detail: 'a detail that is longer than the room' }))
+            expect(later).toMatch(/and 2 texts do not fit: the name of row 9 \(4[78]\d px, and it has 372\), the detail of row 9 \(\d+ px, and the details have \d+\)\. Set `nameWidth` to 4[78]\d and `width` to \d+ or more$/)
+            const wider = s.add(eventLog(rows.slice(0, 2), { size: 20, ellipsis: false, ...numbers(later) }))
+            s.play(wider.append({ id: 9, name: 'N'.repeat(40), detail: 'a detail that is longer than the room' }))
+            expect(wider.rows.map((row) => words(row.name))).toEqual([rows[0]!.name, rows[1]!.name, 'N'.repeat(40)])
+            // So is the label of a fold.
+            expect(message(() => s.play(log.fold([1, 2], { name: 'a pair with a name that is too long for the names', detail: 'two' })))).toMatch(/one text does not fit: the name of the fold from 1 to 2 /)
+            expect(log.rows).toHaveLength(2)
+        }))
+    })
+
+    it('gives the names the room of the longest name of the first rows, 60% of the width at most', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // The first rows have 21 characters at most. A row that comes later is cut to that room.
+            const log = s.add(eventLog([{ id: 1, name: 'ActivityTaskCompleted', detail: 'a' }], { size: 20, width: 700 }))
+            s.play(log.append({ id: 2, name: 'WorkflowExecutionUpdateAccepted', detail: 'setAddress' }))
+            expect(words(log.rows[1]!.name)).toBe('WorkflowExecutionUpd…')
+            // 60% of 700 is 420 px, which is 35 characters. The first name has 40.
+            const capped = eventLog([{ id: 1, name: 'N'.repeat(40), detail: 'a' }], { size: 20, width: 700 })
+            expect(words(capped.rows[0]!.name)).toBe(`${'N'.repeat(34)}…`)
+            expect(capped.rows[0]!.detail!.get('x') - capped.rows[0]!.name.get('x')).toBeCloseTo(420 + 18, 6)
+            // `nameWidth` sets the room.
+            const wide = eventLog([{ id: 1, name: 'N'.repeat(40), detail: 'a' }], { size: 20, width: 800, nameWidth: 500 })
+            expect(words(wide.rows[0]!.name)).toBe('N'.repeat(40))
+            expect(wide.rows[0]!.detail!.get('x') - wide.rows[0]!.name.get('x')).toBeCloseTo(518, 6)
+            // With no first row, the names have 60% of the width.
+            const empty = s.add(eventLog([], { size: 20, width: 700 }))
+            s.play(empty.append({ id: 1, name: 'N'.repeat(40), detail: 'a' }))
+            expect(words(empty.rows[0]!.name)).toBe(`${'N'.repeat(34)}…`)
+            // A list with no detail is not concerned by the room of the details: in a narrow panel, the names take it all.
+            const narrow = eventLog([{ id: 1, name: 'WorkflowExecutionUpdateAccepted' }], { size: 20, width: 300 })
+            expect(narrow.rows[0]!.detail).toBeNull()
+            expect(right(narrow.rows[0]!.name)).toBeGreaterThan(150 - 16 - 14)
+            expect(right(narrow.rows[0]!.name)).toBeLessThanOrEqual(150 - 16)
+        }))
+    })
+
+    it('refuses a list whose details have room for less than eight characters, and names a width that works', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const rows = history.slice(4)
+            const message = (build: () => unknown) => { try { build() } catch (error) { if (!(error instanceof Error)) throw error; return error.message } return '' }
+            // At 400 px the names are cut to 60% of the width, and 53 px are left: four characters of the text font.
+            const narrow = message(() => eventLog(rows, { size: 20, width: 400 }))
+            expect(narrow).toMatch(/^eventLog: the details have room for 4 characters, and row 5 has a detail\. A detail needs room for 8\. Raise `width` to (\d+) or more, or set `nameWidth` to (\d+) or less$/)
+            const [, width, nameWidth] = /`width` to (\d+) or more, or set `nameWidth` to (\d+) or less/.exec(narrow)!
+            // The width of the message works, and one px less does not. More width gives more to the names too, so it is not 400 plus what was missing.
+            expect(Number(width)).toBeGreaterThan(400 + 45)
+            expect(words(eventLog(rows, { size: 20, width: Number(width) }).rows[0]!.detail)).toMatch(/^charge/)
+            expect(message(() => eventLog(rows, { size: 20, width: Number(width) - 1 }))).toMatch(/the details have room for 7 characters/)
+            // The eight characters are those of the font of the details. Mono characters are wider than those of the
+            // text font, so the same panel has room for seven of them, and a wider one for eight.
+            expect(message(() => eventLog(rows, { size: 20, width: Number(width), detailFont: 'mono' }))).toMatch(/the details have room for 7 characters/)
+            expect(() => eventLog(rows, { size: 20, width: Number(width) + 6, detailFont: 'mono' })).not.toThrow()
+            // So does the `nameWidth` of the message, and two px more do not.
+            expect(words(eventLog(rows, { size: 20, width: 400, nameWidth: Number(nameWidth) }).rows[0]!.detail)).toMatch(/^charge/)
+            expect(message(() => eventLog(rows, { size: 20, width: 400, nameWidth: Number(nameWidth) + 2 }))).toMatch(/the details have room for 7 characters/)
+            // A `nameWidth` that leaves little room: no detail is drawn as an ellipsis alone.
+            expect(message(() => eventLog(rows, { size: 20, width: 500, nameWidth: 380 }))).toMatch(/the details have room for 1 characters, and row 5 has a detail\. A detail needs room for 8\. Raise `width` to \d+ or more, or set `nameWidth` to \d+ or less/)
+            // The room that passes holds eight characters at least, so a detail that is cut keeps most of them.
+            const tight = eventLog([{ id: 1, name: 'ActivityTaskScheduled', detail: 'a detail that is cut in this room' }], { size: 20, width: Number(width) })
+            expect(words(tight.rows[0]!.detail).length).toBeGreaterThanOrEqual(7)
+            expect(words(tight.rows[0]!.detail)).not.toBe('…')
+            // A list with no detail in its first rows gives the room to the names. A row with a detail that comes later is refused.
+            const plain = s.add(eventLog(some(1, 3).map((row) => ({ ...row, name: 'WorkflowExecutionUpdateAccepted' })), { size: 20, width: 400 }))
+            expect(() => plain.append({ id: 4, name: 'Late', detail: 'a detail' })).toThrow(/the details have room for 0 characters, and row 4 has a detail/)
+            // The detail of a fold starts after its name. In a narrow column of names, the name is cut so that the detail keeps its room.
+            const fold = eventLog([{ id: 1, name: 'One', detail: 'a' }, { ids: [2, 3], name: 'a pair of rows with a long name', detail: 'two' }], { size: 20, width: 560, nameWidth: 100 }).rows[1]!
+            expect(words(fold.name).endsWith('…')).toBe(true)
+            expect(280 - 16 - fold.detail!.get('x')).toBeGreaterThanOrEqual(8 * 11.8)
+            expect(fold.detail!.get('x') - right(fold.name)).toBeGreaterThan(17)
+        }))
+    })
+
+    it('sets the size of the title and the footer with titleSize, and the font of the details with detailFont', async () => {
+        await compileFilm(film(() => {
+            const options = { title: 'event history', footer: (count: number) => `${count} events`, visible: 4, size: 20, width: 700 }
+            const usual = eventLog(some(1, 6), options), large = eventLog(some(1, 6), { ...options, titleSize: 34 })
+            // The default is 0.85 of the text size. `titleSize` sets the title and the footer, and their bands grow with it.
+            const height = (node: Node) => node.bounds().height
+            expect(height(large.title!) / height(usual.title!)).toBeCloseTo(34 / 17, 1)
+            expect(height(large.footer!) / height(usual.footer!)).toBeCloseTo(34 / 17, 1)
+            expect(usual.frame.bounds().height).toBeCloseTo(4 * usual.pitch + 16 + 2 * 38, 6)
+            expect(large.frame.bounds().height).toBeCloseTo(4 * large.pitch + 16 + 2 * 76, 6)
+            expect(large.pitch).toBe(usual.pitch)
+            for (const part of [large.title!, large.footer!]) inside(part, large.frame)
+            expect(bottom(large.title!)).toBeLessThan(large.rules[0]!.bounds().y - 34 * 0.3)
+            // The counts take the size too, and are never larger than the rows.
+            const count = (log: Log) => log.earlier.children.find((child) => typeof words(child) === 'string')!
+            expect(height(count(usual)) / height(usual.rows[0]!.idText)).toBeLessThan(1)
+            expect(height(count(large))).toBeCloseTo(height(count(eventLog(some(1, 6), { ...options, titleSize: 20 }))), 6)
+            expect(height(count(large))).toBeGreaterThan(height(count(usual)) * 1.1)
+            expect(count(large).get('y')).toBe(count(eventLog(some(1, 6), { ...options, titleSize: 20 })).get('y'))
+            expect(() => eventLog([], { titleSize: 0 })).toThrow(/titleSize is the text size of the title and the footer, more than 0/)
+            // `detailFont` sets the details, and `font` the title and the footer. A detail that is data is in mono.
+            const rows = [{ id: 1, name: 'HHHH', detail: 'iiii' }, { id: 2, name: 'HHHH', detail: 'mmmm' }]
+            const mono = eventLog(rows, { ...options, detailFont: 'mono' }), text_ = eventLog(rows, options), serif = eventLog(rows, { ...options, font: 'text-serif', detailFont: 'mono' })
+            const widths = (log: Log) => log.rows.map((row) => { const box = row.detail!.children.map((glyph) => glyph.get('x')); return box[3]! - box[0]! })
+            // In mono, four letters take the same room, whatever they are: three steps of 12 px.
+            expect(widths(mono)).toEqual([expect.closeTo(36, 6), expect.closeTo(36, 6)])
+            expect(widths(text_)[1]!).toBeGreaterThan(widths(text_)[0]! * 2)
+            // The title keeps the font of the list.
+            expect(mono.title!.bounds().width).toBe(text_.title!.bounds().width)
+            expect(serif.title!.bounds().width).not.toBe(text_.title!.bounds().width)
+            expect(widths(serif)).toEqual(widths(mono))
+            // A detail in mono stands on the baseline of the name, with no shift.
+            expect(mono.rows[0]!.detail!.get('y')).toBe(0)
+            expect(text_.rows[0]!.detail!.get('y')).not.toBe(0)
+        }))
+    })
+
+    it('takes the font of the film for its title, its footer and its details, and measures its rows in it', async () => {
+        const rows = [{ id: 1, name: 'HHHH', detail: 'a (detail), jpg' }, { id: 2, name: 'HHHH', detail: 'mmmm' }]
+        const options = { title: 'event history', footer: (count: number) => `${count} events`, visible: 4, size: 20, width: 700 }
+        const widths = (log: Log) => [log.title!.bounds().width, log.rows[0]!.detail!.bounds().width, log.rows[0]!.name.bounds().width, log.pitch]
+        let serif!: number[], named!: number[], own!: number[], late!: number[], usual!: number[]
+        await compileFilm(film({ font: 'text-serif' }, (s) => {
+            const log = s.add(eventLog(rows, options))
+            serif = widths(log)
+            // A font that the list names wins over the font of the film.
+            own = widths(eventLog(rows, { ...options, font: 'sans' }))
+            // A row that arrives later is in the font of the first rows.
+            s.play(log.append({ id: 3, name: 'HHHH', detail: 'a (detail), jpg' }))
+            late = [log.rows[2]!.detail!.bounds().width]
+        }))
+        await compileFilm(film(() => {
+            named = widths(eventLog(rows, { ...options, font: 'text-serif' }))
+            usual = widths(eventLog(rows, options))
+        }))
+        // In a film with a font, the list is as a list that names that font: the same texts, and the same height of a row.
+        expect(serif).toEqual(named)
+        expect(late[0]).toBe(serif[1])
+        // The name is in mono in any film. The film that names no font has the list as it was.
+        expect(serif[2]).toBe(usual[2])
+        expect(own).toEqual(usual)
+        expect(serif[0]).not.toBe(usual[0])
+        expect(serif[3]).not.toBe(usual[3])
+    })
+
+    it('arrives with its panel first, and then its rows, with the outline of the focus', async () => {
+        let log!: Log
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            log = eventLog(some(1, 6), { title: 'log', footer: (count) => `${count} rows`, visible: 5, size: 20 })
+            s.wait(1)
+            s.play(log.enter(), log.focus(5), { duration: 2, ease: linear })
+            s.wait(1)
+            expect(log.enter().duration).toBe(0.8)
+        }))
+        expect((await compiled.frame(0.5)).ops).toHaveLength(0)
+        // The panel, the rules, the title and the footer have the first half of the time.
+        for (const part of [log.frame, ...log.rules, log.title!, log.footer!]) expect(at(1.5, () => shows(part))).toBeCloseTo(0.5, 6)
+        // The rows and the count of the rows above come as one, from a fifth of the time to its end.
+        const parts = [log.earlier, ...log.rows]
+        expect(at(1.4, () => parts.map(shows))).toEqual([0, 0, 0, 0, 0])
+        expect(at(2.2, () => parts.map(shows))).toEqual(Array(5).fill(expect.closeTo(0.5, 6)))
+        expect(at(3, () => parts.map(shows))).toEqual([1, 1, 1, 1, 1])
+        expect(seen(log, 3)).toEqual(['3', '4', '5', '6'])
+        // The outline comes with the rows, and is never stronger than its row.
+        expect(at(2.2, () => shows(log.outline))).toBeCloseTo(0.5 * 0.6, 6)
+        expect(at(3, () => shows(log.outline))).toBe(1)
+        // The list was not on the stage: `enter()` puts it there.
+        expect((await compiled.frame(3.5)).ops.length).toBeGreaterThan(40)
+    })
+
+    it('gives a copy its own rows and its own record of them', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const log = eventLog(some(1, 5), { footer: (count) => `${count} rows`, visible: 5, size: 20 })
+            s.add(log)
+            s.play(seq(log.append(some(6, 6)), log.fold([4, 5], 'pair'), log.unfold(4), log.focus(6)), { duration: 0 })
+            const copy = log.clone()
+            expect(copy.rows).toHaveLength(log.rows.length)
+            copy.rows.forEach((row, index) => expect(row).not.toBe(log.rows[index]))
+            expect(copy.rows.map((row) => words(row.idText))).toEqual(log.rows.map((row) => words(row.idText)))
+            expect(copy.all()).toContain(copy.row(6))
+            expect(copy.all()).not.toContain(log.row(6))
+            // A change of the copy leaves the list as it was.
+            s.add(copy)
+            // The copy keeps the focus: its outline is on row 6, and goes out there when the focus moves.
+            const start = s.time
+            expect(shows(copy.outline)).toBe(1)
+            expect(copy.outline.get('y')).toBeCloseTo(copy.row(6).get('y'), 0)
+            s.play(copy.focus(3), { duration: 1, ease: linear })
+            expect(at(start + 0.25, () => [shows(copy.outline), Math.round(copy.outline.get('y') - copy.row(6).get('y'))])).toEqual([0.5, 0])
+            expect(at(start + 1, () => [shows(copy.outline), Math.round(copy.outline.get('y') - copy.row(3).get('y'))])).toEqual([1, 0])
+            expect(at(start + 1, () => shows(log.outline))).toBe(1)
+            // The copy keeps the fold that was open: it closes with no label, as in the list.
+            s.play(copy.fold([4, 5]), { duration: 1 })
+            expect(copy.row(5)).toBe(copy.row(4))
+            expect(log.row(5)).not.toBe(log.row(4))
+            s.play(seq(copy.append(some(7, 7)), copy.mark(6, 'failed')), { duration: 1 })
+            expect(copy.count).toBe(7)
+            expect(log.count).toBe(6)
+            expect(log.ids).toEqual([1, 2, 3, 4, 5, 6])
+            expect(ink(log.row(6).name)).toEqual(parseColor('purple'))
+            // The footer of the copy starts from the count of the list, with no change behind it.
+            expect(said(copy.footer!, s.time)).toEqual(['7 rows'])
+            expect(said(log.footer!, s.time)).toEqual(['6 rows'])
+            // A copy that the film does not focus again: its outline goes with its row, and with the record of the focus into a fold.
+            const second = s.add(log.clone())
+            s.play(second.append(some(7, 7)), { duration: 1 })
+            expect([shows(second.outline), Math.round(second.outline.get('y') - second.row(6).get('y'))]).toEqual([1, 0])
+            expect(Math.round(log.outline.get('y') - second.outline.get('y'))).toBe(Math.round(log.pitch))
+            s.play(second.fold([5, 6], 'pair'), { duration: 1 })
+            expect([shows(second.outline), Math.round(second.outline.get('y') - second.row(5).get('y'))]).toEqual([1, 0])
+            expect(second.row(5).range).not.toBeNull()
+            // A copy of a list that `scrollTo` moved keeps the window: a fold in the copy leaves the window there, as in the list.
+            const moved = s.add(eventLog(some(1, 12), { visible: 5, size: 20 }))
+            s.play(moved.scrollTo(3), { duration: 0 })
+            const still = s.add(moved.clone())
+            expect(still.rows.map((row) => words(row.idText))).toEqual(['3', '4', '5'])
+            expect([said(still.earlier, s.time), said(still.later, s.time)]).toEqual([['2 earlier'], ['7 later']])
+            s.play(still.fold([4, 5], 'pair'), { duration: 0.5 })
+            expect(still.rows.map((row) => words(row.idText))).toEqual(['3', '4', '6'])
+            expect([said(still.earlier, s.time), said(still.later, s.time)]).toEqual([['2 earlier'], ['6 later']])
+            // The list writes its counts again, from its own lines: the change of the copy is not in them.
+            s.play(moved.show(3), { duration: 0 })
+            expect([said(moved.earlier, s.time), said(moved.later, s.time)]).toEqual([['2 earlier'], ['7 later']])
+            // The copy has no change behind it: it can change its rows while the list is still in its last change.
+            const busy = s.add(eventLog(some(1, 3), { visible: 8, size: 20 }))
+            const from = s.time
+            s.play(busy.append(some(4, 4)), { duration: 2 })
+            const free = s.add(busy.clone())
+            s.at(from + 1, () => s.play(free.append(some(5, 5)), { duration: 0.5 }))
+            expect(free.ids).toEqual([1, 2, 3, 4, 5])
+            expect(busy.ids).toEqual([1, 2, 3, 4])
+        }))
+    })
+
+    it('keeps text off text and lines off text while rows scroll, fold and unfold, and while the focus moves', async () => {
+        const report = await checkFilm(film({ fps: 15 }, (s) => {
+            const log = s.add(eventLog([...history, { id: 8, name: 'TimerStarted', shown: false }], { title: 'event history', footer: (count) => `${count} events`, visible: 6, size: 30, width: 860 }))
+            s.play(log.show(8), log.focus(8), { duration: 0.8 })
+            s.play(log.append(some(9, 10)), log.focus(10), { duration: 1.4 })
+            s.play(log.focus(7), { duration: 0.6 })
+            s.play(log.fold([5, 6, 7], 'activity'), { duration: 1 })
+            s.play(log.append(some(11, 13), { lag: 0.5 }), { duration: 1.6 })
+            s.play(log.scrollTo(3), log.focus(3), { duration: 1 })
+            s.play(log.fold([1, 2, 3, 4], 'start'), { duration: 1 })
+            s.play(log.unfold(5), { duration: 1 })
+            s.play(log.scrollTo(13), { duration: 1 })
+            s.play(log.append(some(14, 17), { lag: 0 }), log.focus(null), { duration: 1 })
+            s.play(log.scrollTo(1), { duration: 0.8 })
+        }), { motion: true, readingSpeed: 0 })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('names what is wrong with a row, an id, a fold or an option', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            expect(() => eventLog([{ id: 1, name: 'a' }, { id: 1, name: 'b' }])).toThrow(/two rows have the id 1\. Give each row its own id/)
+            expect(() => eventLog([{ id: 1, name: 'a' }, { id: '1', name: 'b' }])).toThrow(/two rows have the id "1"/)
+            expect(() => eventLog([{ id: Number.NaN, name: 'a' }])).toThrow(/the id of a row is null\. An id is a number or a text/)
+            expect(() => eventLog([{ id: ' ', name: 'a' }])).toThrow(/the id of a row is " "/)
+            expect(() => eventLog([{ id: 1, name: ' ' }])).toThrow(/row 1 has no name/)
+            expect(() => eventLog([{ id: 1, name: 'two\nlines' }])).toThrow(/the name of row 1 has a line break or a tab/)
+            expect(() => eventLog([{ id: 1, name: 'a', detail: 'a\tb' }])).toThrow(/the detail of row 1 has a line break or a tab/)
+            expect(() => eventLog([{ id: 1, name: 'a', state: 'done' }])).toThrow(/row 1 has the state "done"\. The states are stored, new, answered, waiting, failed/)
+            expect(() => eventLog([], { size: 0 })).toThrow(/size is a text size, more than 0/)
+            expect(() => eventLog([], { width: Number.NaN })).toThrow(/width is the width of the panel, more than 0/)
+            expect(() => eventLog([], { visible: 1 })).toThrow(/visible is the number of lines in the window, a whole number, 2 or more/)
+            expect(() => eventLog([], { visible: 2.5 })).toThrow(/visible is the number of lines/)
+            expect(() => eventLog([], { idWidth: 0 })).toThrow(/idWidth is the room of the ids, more than 0/)
+            expect(() => eventLog([], { size: 20, width: 100 })).toThrow(/a width of 100 leaves 11 px for the names, and a name needs 60\. Raise `width`, or lower `size`/)
+            expect(() => eventLog([], { size: 20, width: 400, nameWidth: 20 })).toThrow(/nameWidth is 20\. It is the room of the names, 60 px or more at this size/)
+            expect(() => eventLog([], { size: 20, width: 400, nameWidth: 400 })).toThrow(/nameWidth is 400, and the panel has 311 px after the ids\. Lower `nameWidth`, or raise `width`/)
+            expect(() => eventLog([], { size: 20, width: 300, title: 'a title with too many words for a panel of this width' })).toThrow(/the title is \d+ px wide, and the panel has 268 px\. Use a shorter text, or raise `width`/)
+            expect(() => eventLog([], { title: 'two\nlines' })).toThrow(/the title has a line break/)
+            // An id that is wider than the room of the ids, at the start and later. `idWidth` gives the room.
+            expect(() => eventLog([{ id: 1000, name: 'a' }], { size: 20, idWidth: 24 })).toThrow(/the id 1000 is 48 px wide, and the ids have 24 px\. Set `idWidth` to 48 or more/)
+            const log = s.add(eventLog(history, { visible: 8, size: 20 }))
+            expect(() => log.append({ id: 100, name: 'a' })).toThrow(/the id 100 is 36 px wide, and the ids have 24 px\. Set `idWidth` to 36 or more/)
+            expect(eventLog([{ id: 1, name: 'a' }], { size: 20, idWidth: 48 }).append({ id: 1000, name: 'b' }).label).toBe('eventLog.append')
+            expect(words(eventLog([{ id: 1000, name: 'a' }], { size: 20 }).rows[0]!.idText)).toBe('1000')
+            expect(() => log.append({ id: 8, name: 'a', state: 'done' })).toThrow(/row 8 has the state "done"/)
+            // A lag or a duration that is not a number would lose rows with no error.
+            expect(() => log.append(some(8, 9), { lag: Number.NaN })).toThrow(/the lag of append\(\[8, 9\]\) is NaN\. Give a number, 0 or more/)
+            expect(() => log.append(some(8, 9), { duration: -1 })).toThrow(/the duration of append\(\[8, 9\]\) is -1\. Give a number, 0 or more/)
+            expect(() => log.mark(1, 'answered', { lag: Number.NaN })).toThrow(/the lag of mark\(\) is NaN/)
+            expect(() => log.fold([1, 2], 'x', { duration: Number.POSITIVE_INFINITY })).toThrow(/the duration of fold\(\[1, 2\]\) is Infinity/)
+            expect(() => log.unfold(1, { duration: Number.NaN })).toThrow(/the duration of unfold\(1\) is NaN/)
+            expect(() => log.focus(1, { duration: Number.NaN })).toThrow(/the duration of focus\(\) is NaN/)
+            expect(() => log.show(1, { lag: -2 })).toThrow(/the lag of show\(\) is -2/)
+            expect(() => log.scrollTo(1, { duration: Number.NaN })).toThrow(/the duration of scrollTo\(1\) is NaN/)
+            expect(() => log.enter({ duration: Number.NaN })).toThrow(/the duration of enter\(\) is NaN/)
+            expect(() => s.play(log.append(some(8, 9)), { duration: Number.NaN })).toThrow(/append\(\[8, 9\]\) plays from \d+(\.\d+)? to NaN\. Give the play a duration that is a number, 0 or more/)
+            expect(log.count).toBe(7)
+            // A wrong state is found when the film makes the change. A wrong id is found when the film plays it:
+            // the row can come from a change before it in the same sequence.
+            expect(() => log.mark(1, 'done')).toThrow(/no state "done"\. The states are stored, new, answered, waiting, failed/)
+            expect(() => s.play(log.mark(99, 'answered'))).toThrow(/no row has the id 99\. The list has the ids 1 to 7/)
+            expect(() => s.play(log.mark([1, 'x'], 'answered'))).toThrow(/no row has the id "x"/)
+            expect(() => s.play(log.focus(99))).toThrow(/no row has the id 99/)
+            expect(() => log.row(99)).toThrow(/no row has the id 99/)
+            expect(() => log.p(99)).toThrow(/no row has the id 99/)
+            expect(() => eventLog([]).row(1)).toThrow(/no row has the id 1\. The list is empty/)
+            expect(() => eventLog([{ id: 'a', name: 'x' }]).row(1)).toThrow(/no row has the id 1\. The list has one row, "a"/)
+            expect(() => log.fold([2], 'one')).toThrow(/a fold takes two rows or more, and got 1/)
+            expect(() => log.fold([2, 3, '2'], 'twice')).toThrow(/the fold names row "2" twice/)
+            expect(() => log.fold([2, 3], 'two\nlines')).toThrow(/the name of a fold has a line break/)
+            expect(() => log.fold([2, 3], ' ')).toThrow(/the fold has no name\. Give a label, such as fold\(\[2, 3, 4\], 'workflow task'\)/)
+            expect(() => log.fold([2, 3], { name: 'pair', state: 'done' })).toThrow(/no state "done"/)
+            expect(() => log.fold([2, 3], { name: 'pair', detail: 'two\nlines' })).toThrow(/the detail of a fold has a line break/)
+            expect(() => s.play(log.fold([2, 99], 'none'))).toThrow(/no row has the id 99/)
+            expect(() => s.play(log.fold([2, 4], 'gap'))).toThrow(/the rows of a fold follow each other, and row 3 is between 2 and 4 and not in the fold\. Add it, or make two folds/)
+            expect(() => s.play(log.fold([5, 6], { name: 'pair', time: '+1 s' }))).toThrow(/the fold from 5 to 6 has the time "\+1 s", and the list has no column for times/)
+            // A row that stands for several records: its ids, and the rows that it opens into.
+            expect(() => eventLog([{ name: 'a' } as never])).toThrow(/a row has no id\. Give it an `id`, or the `ids` that it stands for/)
+            expect(() => eventLog([{ ids: [], name: 'a' }])).toThrow(/a row has no id/)
+            expect(() => eventLog([{ id: 3, ids: [2, 3, 4], name: 'a' }])).toThrow(/a row has the id 3, and its ids start at 2\. The id of a fold is the first of its ids/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a' }, { id: 3, name: 'b' }])).toThrow(/two rows have the id 3/)
+            expect(() => eventLog([{ ids: [2, 2], name: 'a' }])).toThrow(/two rows have the id 2/)
+            expect(() => eventLog([{ ids: [2, 3], name: ' ' }])).toThrow(/the fold from 2 to 3 has no name/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', state: 'done' }])).toThrow(/the fold from 2 to 3 has the state "done"/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 2, name: 'b' }] }])).toThrow(/the fold from 2 to 3 has the ids 2, 3, and its rows have the ids 2\. Give one row for each id, in order/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 3, name: 'b' }, { id: 2, name: 'c' }] }])).toThrow(/its rows have the ids 3, 2/)
+            expect(() => eventLog([{ ids: [2, 3, 4], name: 'a', rows: [{ id: 2, name: 'b' }, { ids: [3, 4], name: 'c' }] } as never])).toThrow(/its rows have the ids 2, 3/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 2, name: 'b' }, { ids: [3, 9], name: 'c' }] } as never])).toThrow(/the fold from 3 to 9 is a row of the fold from 2 to 3\. A row of a fold has one id/)
+            expect(() => eventLog([{ ids: [2, 3], name: 'a', rows: [{ id: 2, name: 'b' }, { id: 3, name: 'c', state: 'done' }] }])).toThrow(/row 3 has the state "done"/)
+            expect(() => eventLog([{ id: 2, name: 'a', rows: [{ id: 2, name: 'b' }] } as never])).toThrow(/row 2 has `rows`, and one id\. Give it the `ids` that it stands for/)
+            expect(() => log.append({ ids: [8, 100], name: 'a' })).toThrow(/the id 100 is 36 px wide/)
+            expect(() => s.play(log.unfold(2))).toThrow(/no fold starts at row 2\. The list has no fold/)
+            s.play(log.fold([2, 3, 4], 'workflow task'))
+            expect(() => s.play(log.fold([4, 5], 'again'))).toThrow(/row 4 is already in the fold from 2 to 4\. Open that fold first, with unfold\(2\)/)
+            expect(() => s.play(log.fold([2, 3, 4]))).toThrow(/row 2 is already in the fold from 2 to 4/)
+            expect(() => s.play(log.unfold(3))).toThrow(/no fold starts at row 3\. The folds start at 2/)
+            expect(() => s.play(log.unfold(99))).toThrow(/no row has the id 99/)
+            // A refused change leaves the list as it was.
+            expect(log.count).toBe(7)
+            expect(log.rows).toHaveLength(5)
+        }))
+    })
+})
+
 export type { Vec, Vec3 }
+
+describe('object catalog', () => {
+    it('names only things that the stage exports, so no entry is lost from the list of objects', async () => {
+        const { FILM_OBJECTS } = await import('../src/stage/catalog')
+        const stage = await import('../src/stage/index')
+        // fromComponent lives in the Node-only export module, because it needs the layout engine.
+        const missing = FILM_OBJECTS.filter((entry) => !(entry.name in stage) && entry.name !== 'fromComponent').map((entry) => entry.name)
+        expect(missing).toEqual([])
+    })
+
+    it('names every verb that the stage exports, so a new verb is not left out of the list', async () => {
+        const { FILM_OBJECTS } = await import('../src/stage/catalog')
+        const named = new Set(FILM_OBJECTS.map((entry) => entry.name))
+        // The two modules of verbs. A class is not a verb, and `toPaint` is a helper for colors that `anim` passes on.
+        const verbs = { ...await import('../src/stage/anim'), ...await import('../src/stage/objects/verbs') } as Record<string, unknown>
+        const isVerb = ([name, value]: [string, unknown]) => typeof value === 'function' && !/^class\b/.test(Function.prototype.toString.call(value)) && name !== 'toPaint'
+        const missing = Object.entries(verbs).filter(isVerb).map(([name]) => name).filter((name) => !named.has(name))
+        expect(missing).toEqual([])
+        expect(named.has('spotlight')).toBe(true)
+    })
+})

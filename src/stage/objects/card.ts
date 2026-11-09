@@ -1,5 +1,5 @@
 import type { Bounds } from '../geometry'
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -71,8 +71,6 @@ function wrap(content: string, width: number, options: TextOptions): string[] {
  * Cards with one width, one height, and one `captionLines` share one layout whatever they hold.
  */
 export class Card extends Node {
-    static override readonly holdsContent = true
-
     readonly frame: Node
     readonly title: Node | null
     readonly figure: Node | null
@@ -146,6 +144,8 @@ export class Card extends Node {
         this.title = title
         this.figure = figure
         this.caption = caption
+        // The card places its title and its caption. The figure is of the film, so the film check judges its text.
+        ownLabels(this, { name: 'card', labels: [title, caption] })
     }
 }
 

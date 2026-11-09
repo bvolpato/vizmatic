@@ -1,8 +1,8 @@
 import { curveThrough, linePath, type Path, type Vec } from './geometry'
-import { Node, group } from './node'
+import { Node, group, ownLabels, objectName } from './node'
 import { arrow, dot, line, type ShapeStyle } from './shapes'
 import { tex } from './tex'
-import { text } from './text'
+import { text, type TextOptions } from './text'
 import type { ColorInput } from './color'
 
 export interface AxesOptions {
@@ -95,6 +95,7 @@ export class Axes extends Node {
             const label = tex(options.yLabel, { size: 28, color: 'ink', display: false })
             this.add(label.moveTo([top[0] + 16 + label.width / 2, top[1] + 4]))
         }
+        ownLabels(this, { name: 'pair of axes', plot: true })
     }
 
     /** Math coordinates to this group's local stage coordinates. */
@@ -207,6 +208,7 @@ export class NumberPlane extends Node {
 
     constructor(options: PlaneOptions = {}) {
         super()
+        objectName(this, 'number plane')
         this.unit = options.unit ?? 120
         const [x0, x1] = options.x ?? [-12, 12]
         const [y0, y1] = options.y ?? [-8, 8]
@@ -266,7 +268,8 @@ export interface DecimalOptions {
     digits?: number
     size?: number
     color?: ColorInput
-    font?: 'sans' | 'mono' | 'serif'
+    /** Defaults to mono, in every film: a number that changes keeps its width in mono. */
+    font?: TextOptions['font']
     prefix?: string
     suffix?: string
 }

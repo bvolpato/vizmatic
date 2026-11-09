@@ -1,4 +1,4 @@
-import { setColorTokens } from './color'
+import { parseColor, setColorTokens, type Rgba } from './color'
 import { smooth, type Ease } from './ease'
 import { buildOps, frameToSvg, type Frame } from './display'
 import { resolveLook, type Look, type LookName } from './look'
@@ -6,6 +6,8 @@ import { Node, mountTree, type StageImage } from './node'
 import { isImageAsset, resolveLegacyImage, validateStageImage, ImageAssetError, type ImageAsset } from './image'
 import { clock } from './track'
 import { Value, type Anim } from './anim'
+import type { FontFamily } from './font'
+import { settleLights, type Light, type MorphRecord } from './light'
 
 export type Aspect = '16:9' | '9:16' | '1:1' | '4:3' | '21:9'
 
@@ -22,6 +24,12 @@ export interface FilmOptions {
     height?: number
     fps?: number
     look?: LookName | Look
+    /**
+     * The font of every text of the film that names none: a `text()` with no `font`, and each label of an
+     * object that got no `font`. A text or an object that names a font keeps it, and so do the code and the
+     * values that an object sets in mono. Without it, such a text is sans.
+     */
+    font?: FontFamily
     background?: string | null
     /** Light that spills from bright marks. Defaults to the look's value. */
     bloom?: number
@@ -53,9 +61,22 @@ export interface PlayOptions {
     label?: string
 }
 
+/** The background of a film as a color. A look token is valid, and a value that is not a color gives the `bg` of the look. */
+function backdropOf(background: string, look: Look): Rgba {
+    const colors = look.colors as Record<string, string>
+    try {
+        return parseColor(colors[background] ?? background)
+    } catch {
+        return parseColor(colors['bg']!)
+    }
+}
+
 const ASPECTS: Record<Aspect, [number, number]> = {
     '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:3': [1440, 1080], '21:9': [2520, 1080],
 }
+
+// A film is not type-checked when it runs, so any value can arrive as its font. The record makes the compiler ask for each family.
+const FONTS = Object.keys({ sans: true, serif: true, 'text-serif': true, mono: true, noto: true } satisfies Record<FontFamily, true>)
 
 interface Updater {
     node: Node
@@ -73,10 +94,28 @@ export class Stage {
     readonly height: number
     readonly fps: number
     readonly look: Look
+    /** The font that the film names for its texts, or null when it names none. A text with no font is then sans. */
+    readonly font: FontFamily | null
     readonly chapters: Chapter[] = []
     readonly clips: Clip[] = []
     readonly captions: Caption[] = []
     readonly updaters: Updater[] = []
+    /** The lights that `spotlight` added. `settleLights` turns them into the `dim` of each node, in time order. */
+    readonly lights: Light[] = []
+    /**
+     * Three records for the lights, of facts that the timeline does not hold. Only a film with a light reads
+     * them, so they change nothing in a film with none.
+     * `arrivals` is the time at which a verb brought a node to the stage: a node that arrives at the very
+     * time of a light enters with it, and at time 0 the timeline cannot tell it from a node of `s.add`.
+     * `marks` is the node that a mark of a verb belongs to, such as the line of `circumscribe` and its
+     * target: the mark is as bright as that node.
+     * `morphs` is each morph with its nodes: a light must not dim a node while it changes its shape.
+     */
+    readonly arrivals = new WeakMap<Node, number>()
+    readonly marks = new Map<Node, Node>()
+    readonly morphs: MorphRecord[] = []
+    /** The color that a dim node goes toward: the background of the film, or of its look when the film has none. */
+    readonly backdrop: Rgba
     time = 0
     private ending = 0
 
@@ -86,6 +125,11 @@ export class Stage {
         this.height = options.height ?? h
         this.fps = options.fps ?? 60
         this.look = resolveLook(options.look)
+        if (options.font !== undefined && !FONTS.includes(options.font)) {
+            throw new Error(`film: font is ${FONTS.map((name) => `'${name}'`).join(', ').replace(/, ([^,]*)$/, ' or $1')}, not ${JSON.stringify(options.font)}`)
+        }
+        this.font = options.font ?? null
+        this.backdrop = backdropOf(options.background ?? this.look.background, this.look)
         this.root.mounted = true
         this.camera.mounted = true
     }
@@ -104,8 +148,18 @@ export class Stage {
         return this.height / 2
     }
 
+    /**
+     * Take the clock for this film. Each call that the callback makes on its stage starts here. When the
+     * callbacks of two films await, they take turns, and the other film has put its own font on the clock
+     * since the last call. A stage whose callback does not run leaves the clock alone.
+     */
+    private claim(): void {
+        if (building(this)) clock.font = this.font
+    }
+
     /** Put nodes on stage now. Returns the first, so setup reads as one line. */
     add<T extends Node>(first: T, ...rest: Node[]): T {
+        this.claim()
         clock.now = this.time
         for (const node of [first, ...rest]) {
             if (!node.mounted) {
@@ -122,19 +176,24 @@ export class Stage {
 
     /** Put a node on stage so it first shows at `time`, which may differ from the cursor. */
     mountAt(node: Node, time: number): void {
+        this.claim()
         if (node.mounted) return
         node.parent?.drop(node)
         node.parent = this.root
         this.root.children.push(node)
         mountTree(node, time)
+        // At time 0 the timeline does not say that a verb brought this node, so keep the time for the lights.
+        this.arrivals.set(node, time)
     }
 
     remove(...nodes: Node[]): void {
+        this.claim()
         for (const node of nodes) node.track('visible').step(this.time, false)
     }
 
     /** Run animations together and advance the timeline past them. */
     play(...items: (Anim | PlayOptions)[]): this {
+        this.claim()
         const anims = items.filter((item): item is Anim => 'schedule' in item)
         const options = (items.find((item) => !('schedule' in item)) ?? {}) as PlayOptions
         if (anims.length === 0) return this
@@ -157,6 +216,7 @@ export class Stage {
 
     /** Hold on the current picture. */
     wait(seconds = 1): this {
+        this.claim()
         this.time += seconds
         this.ending = Math.max(this.ending, this.time)
         clock.now = this.time
@@ -165,6 +225,7 @@ export class Stage {
 
     /** Author something at another time, then return to where you were. */
     at(time: number, build: () => void): this {
+        this.claim()
         const saved = this.time
         this.time = time
         clock.now = time
@@ -177,12 +238,14 @@ export class Stage {
 
     /** Mark a chapter for the player, presentation steps, and the timeline. */
     chapter(title: string): this {
+        this.claim()
         this.chapters.push({ title, time: this.time })
         return this
     }
 
     /** Show a caption for a span of time. Captions also export as a VTT sidecar. */
     caption(text: string, duration = 3): this {
+        this.claim()
         this.captions.push({ t0: this.time, t1: this.time + duration, text })
         this.ending = Math.max(this.ending, this.time + duration)
         return this
@@ -190,11 +253,13 @@ export class Stage {
 
     /** A number that animates, for driving dynamic drawings. */
     value(initial = 0): Value {
+        this.claim()
         return new Value(initial)
     }
 
     /** Re-run a function each frame while the node shows. It can set any property on the node. */
     update<T extends Node>(node: T, fn: (node: T, time: number) => void, window: { from?: number; to?: number } = {}): T {
+        this.claim()
         this.updaters.push({
             node, fn: fn as (node: Node, time: number) => void,
             from: window.from ?? this.time, to: window.to ?? Infinity,
@@ -240,7 +305,19 @@ export function isFilm(value: unknown): value is FilmDefinition {
 export class Suspend {
     /** Lets a second copy of the engine recognize this without instanceof. */
     readonly isVizmaticSuspend = true
+    /**
+     * What a tool prints when this leaves the compiler: a text at the top of a film file throws it when the
+     * file loads, and a second copy of the engine throws one that this copy does not know.
+     */
+    readonly message = 'vizmatic needs a font, the math engine or another asset that is not loaded yet. A film loads them while its callback runs, '
+        + 'and then runs the callback again. Make each text, equation and graph inside the callback of film(), not at the top of a file. '
+        + 'If they are inside the callback, the film file and a file that it imports use two copies of vizmatic: '
+        + 'give the folder of the film a package.json with "type": "module".'
     constructor(readonly promise: Promise<unknown>) {}
+
+    toString(): string {
+        return this.message
+    }
 }
 
 /** True for a Suspend thrown by any copy of the engine. */
@@ -336,10 +413,12 @@ export class CompiledFilm {
     frame(time: number): Frame {
         const t = Math.max(0, Math.min(this.duration, time))
         const stage = this.stage
-        const previous = { mode: clock.mode, now: clock.now }
+        const previous = { mode: clock.mode, now: clock.now, font: clock.font }
         setColorTokens(stage.look.colors)
         clock.mode = 'render'
         clock.now = t
+        // A drawing that is rebuilt on each frame makes its texts now, so they need the font of the film here too.
+        clock.font = stage.font
         clock.frame++
         try {
             for (const updater of stage.updaters) {
@@ -348,7 +427,7 @@ export class CompiledFilm {
             const camera = stage.camera
             const ops = buildOps(stage.root, {
                 x: camera.get('x'), y: camera.get('y'), zoom: camera.get('sx'), rotation: camera.get('rotation'),
-            }, stage.width, stage.height)
+            }, stage.width, stage.height, stage.backdrop, stage.lights.length > 0 ? stage.marks : null)
             const preparedOps = ops.map(op => {
                 if (op.kind !== 'image') return op
                 const asset = op.image.asset ?? this.imageAssets.get(op.image.src)
@@ -361,6 +440,7 @@ export class CompiledFilm {
         } finally {
             clock.mode = previous.mode
             clock.now = previous.now
+            clock.font = previous.font
         }
     }
 
@@ -370,27 +450,78 @@ export class CompiledFilm {
     }
 }
 
+/** A film whose callback runs now, and the clock that it found when it started. */
+interface Build {
+    readonly stage: Stage
+    found: { mode: typeof clock.mode; now: number; font: FontFamily | null }
+}
+
+/**
+ * The films whose callbacks run now, in the order of their starts. There is more than one when a callback
+ * awaits and another film starts, and when a callback compiles a film.
+ */
+const builds: Build[] = []
+
+function building(stage: Stage): boolean {
+    return builds.some((build) => build.stage === stage)
+}
+
+/** The callback of a film starts: the film takes the clock, and keeps what it found. */
+function begin(stage: Stage): Build {
+    const build: Build = { stage, found: { mode: clock.mode, now: clock.now, font: clock.font } }
+    builds.push(build)
+    clock.mode = 'compile'
+    clock.now = 0
+    clock.font = stage.font
+    return build
+}
+
+/** The callback of a film is done, or it threw. A second call for one film does nothing. */
+function end(build: Build): void {
+    const index = builds.indexOf(build)
+    if (index < 0) return
+    builds.splice(index, 1)
+    const later = builds[index]
+    if (!later) {
+        // No film that started after this one still builds: put back the clock that this film found.
+        clock.mode = build.found.mode
+        clock.now = build.found.now
+        clock.font = build.found.font
+        return
+    }
+    // A film that started later still builds, because the two callbacks await. It found the clock of this
+    // film, which is of no use now. It takes what this film found, so the last film to end puts back the
+    // clock from before them all. Until its next call, the clock has the font of the newest film.
+    later.found = build.found
+    clock.font = builds[builds.length - 1]!.stage.font
+}
+
 /** Run the build function, waiting for fonts and math when it asks for them, and return a seekable film. */
 export async function compileFilm(definition: FilmDefinition, overrides: CompileOverrides = {}): Promise<CompiledFilm> {
-    const options: FilmOptions = { ...definition.options, ...(overrides.look ? { look: overrides.look } : {}), ...(overrides.fps ? { fps: overrides.fps } : {}) }
+    const options: FilmOptions = {
+        ...definition.options, ...(overrides.look ? { look: overrides.look } : {}), ...(overrides.fps ? { fps: overrides.fps } : {}),
+        // The stage needs the background too: a light dims a node toward it.
+        ...(overrides.background !== undefined ? { background: overrides.background } : {}),
+    }
     for (let attempt = 0; attempt < 64; attempt++) {
         const stage = new Stage(options)
         setColorTokens(stage.look.colors)
-        const saved = { mode: clock.mode, now: clock.now }
-        clock.mode = 'compile'
-        clock.now = 0
+        const build = begin(stage)
         try {
-            await definition.build(stage)
-            clock.mode = saved.mode
-            clock.now = saved.now
+            // A callback that is not async is done when it returns. Do not await it: the clock then goes
+            // back before any other film can start, so two such films never have the clock of each other.
+            const pending = definition.build(stage) as unknown
+            if (pending !== null && typeof pending === 'object' && typeof (pending as PromiseLike<void>).then === 'function') await pending
+            // The timeline is complete, so each light can ask what was on the stage at its start.
+            settleLights(stage)
+            end(build)
             const compiled = new CompiledFilm(stage, options, overrides)
             await compiled.preloadImages()
             // Drawings can ask for assets too, so sample across the timeline before returning.
             await probe(compiled)
             return compiled
         } catch (error) {
-            clock.mode = saved.mode
-            clock.now = saved.now
+            end(build)
             clock.capture = null
             if (error instanceof Suspend) {
                 await error.promise

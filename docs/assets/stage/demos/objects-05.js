@@ -1,1 +1,0 @@
-import{Ga as e,Ia as i,lb as o,mc as d,nc as m}from"../chunk-V2QVZECD.js";import"../chunk-VZNL6JY2.js";import"../chunk-SQE76S5B.js";var l=o({fps:30},t=>{let a=t.add(d([[2,1],[0,3]],{size:130}));t.play(e(a));let r=t.add(m(a,"\\text{a linear map}",{side:"bottom",size:72}));t.play(i(r,{shift:[0,-24]})),t.wait(.8)});export{l as default};

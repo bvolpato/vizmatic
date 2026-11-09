@@ -1,6 +1,6 @@
 import { invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
-import { Node, type Edge } from '../node'
-import { text } from '../text'
+import { Node, ownLabels, type Edge, objectName } from '../node'
+import { filmFont, text, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
 import { toPaint, type ColorInput } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
@@ -48,6 +48,8 @@ export interface InfoBoxOptions {
     fill?: ColorInput
     border?: ColorInput
     radius?: number
+    /** The font of the title and the row labels. Defaults to the font of the film. The subtitle, the badge, the values and the tags are in mono. */
+    font?: TextOptions['font']
 }
 
 /**
@@ -76,11 +78,11 @@ export class InfoBox extends Node {
         const pad = size * 0.8
         const rows = options.rows ?? []
         const rowHeight = size * 1.56
-        const title = text(options.title, { size: size * 1.14, weight: 600, color: 'ink' })
+        const title = text(options.title, { size: size * 1.14, font: options.font, weight: 600, color: 'ink' })
         const subtitle = options.subtitle ? text(options.subtitle, { size: size * 0.86, font: 'mono', color: 'dim' }) : null
         const badgeTone = options.badgeTone ?? options.accent ?? 'dim'
         const badge = options.badge ? text(options.badge, { size: size * 0.78, font: 'mono', color: badgeTone }) : null
-        const labels = rows.map((row) => text(row.label, { size, color: 'dim' }))
+        const labels = rows.map((row) => text(row.label, { size, font: options.font, color: 'dim' }))
         const values = rows.map((row) => row.value !== undefined ? text(row.value, { size, font: 'mono', color: row.tone ?? 'ink' }) : null)
         const sparkWidth = size * 3.6
         const contentWidth = Math.max(
@@ -162,6 +164,7 @@ export class InfoBox extends Node {
                 x += w + size * 0.34
             }
         }
+        ownLabels(this, { name: 'info box' })
     }
 
     /** Stage point on one side of the box. `at` moves along the side, from -1 to 1. */
@@ -211,6 +214,7 @@ export class InfoBox extends Node {
             label: 'infoBox.setValue',
             schedule: (ctx) => {
                 this.add(next)
+                ownLabels(this, { labels: [next] })
                 this.rowValues[row] = next
                 anim.schedule(ctx)
             },
@@ -250,7 +254,7 @@ export function sparkline(values: readonly number[], options: SparklineOptions =
     }
     made.add(new Node(values.length > 2 ? smoothPath(points) : polyPath(points)).stroke(color, options.weight ?? 1.5))
     if (options.dotted) made.add(dot((options.weight ?? 1.5) * 1.5, color).at(points[points.length - 1]!))
-    return made
+    return objectName(made, 'sparkline')
 }
 
 // ── Connector ───────────────────────────────────────────────────────────────
@@ -270,6 +274,8 @@ export interface ConnectorOptions {
     tipSize?: number
     /** Label on the line, on a plate so the line never crosses its text. */
     label?: string
+    /** The font of the label. Defaults to the font that the film names, and to mono in a film that names none. */
+    font?: TextOptions['font']
     labelSize?: number
     labelColor?: ColorInput
     labelBackground?: ColorInput
@@ -346,6 +352,8 @@ export class Connector extends Node {
     private readonly toEnd: ConnectorEnd
     private readonly options: ConnectorOptions
     private readonly pulses: ActivePulse[] = []
+    /** The label is made on the first frame that shows it. Its font is the one of the film that made the connector. */
+    private readonly labelFont: NonNullable<TextOptions['font']>
     private plate: Node | null = null
     private caption: Node | null = null
 
@@ -355,9 +363,15 @@ export class Connector extends Node {
         this.fromEnd = from
         this.toEnd = to
         this.options = options
+        this.labelFont = options.font ?? filmFont() ?? 'mono'
         this.base.stroke = toPaint(options.color ?? 'dim')
         this.base.strokeWidth = options.width ?? 1.6
         this.draw = (time) => this.build(time)
+        // The label sits on the line, on a plate. `build` makes it later.
+        ownLabels(this, { name: 'connector', labels: [] })
+        // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
+        this.data['attached'] = [from, to].filter((end) => end instanceof Node)
+        this.data['line'] = true
     }
 
     private anchors(): [Anchor, Anchor] {
@@ -441,7 +455,10 @@ export class Connector extends Node {
         }
         if (options.label && progress > 0.5) {
             const size = options.labelSize ?? 12
-            this.caption ??= text(options.label, { size, font: 'mono', color: options.labelColor ?? 'dim' })
+            if (!this.caption) {
+                this.caption = text(options.label, { size, font: this.labelFont, color: options.labelColor ?? 'dim' })
+                ownLabels(this, { labels: [this.caption] })
+            }
             const textWidth = advanceWidth(this.caption)
             const pad = size * 0.35
             this.plate ??= new Node(rectPath(-textWidth / 2 - pad, -size * 0.72, textWidth + pad * 2, size * 1.44, 2)).fill(options.labelBackground ?? 'bg')
@@ -489,6 +506,8 @@ export interface LegendOptions {
     direction?: 'row' | 'column'
     size?: number
     gap?: number
+    /** The font of the labels. Defaults to the font of the film. */
+    font?: TextOptions['font']
 }
 
 /** A small key. Prefer direct labels. Use this when a figure holds too many marks to label. */
@@ -508,7 +527,7 @@ export function legend(items: readonly LegendItem[], options: LegendOptions = {}
                 : kind === 'dot' ? dot(size * 0.32, color)
                     : kind === 'ring' ? circle(size * 0.32, { stroke: color, width: 1.6 })
                         : new Node(rectPath(-size * 0.42, -size * 0.42, size * 0.84, size * 0.84, 1.5)).fill(color)
-        const caption = text(item.label, { size, color: 'dim' })
+        const caption = text(item.label, { size, font: options.font, color: 'dim' })
         const width = keyWidth + size * 0.5 + advanceWidth(caption)
         const entry = new Node()
         entry.add(key.at(keyWidth / 2, 0))
@@ -528,9 +547,7 @@ export function legend(items: readonly LegendItem[], options: LegendOptions = {}
         }
         made.add(entry.node)
     })
-    // Each label sits beside its swatch on purpose.
-    made.data['ownLayout'] = true
-    return made
+    return ownLabels(made, { name: 'legend' })
 }
 
 // ── Callout ─────────────────────────────────────────────────────────────────
@@ -550,6 +567,8 @@ export interface CalloutOptions {
     bodyColor?: ColorInput
     /** Plate behind the text, for placing a note over busy marks. */
     plate?: boolean
+    /** The font of the title and the body. Defaults to the font of the film. */
+    font?: TextOptions['font']
 }
 
 /**
@@ -572,8 +591,8 @@ export class Callout extends Node {
         const normal = NORMALS[side]
         const box = target instanceof Node ? target.bounds() : { x: target[0], y: target[1], width: 0, height: 0 }
         const anchor = target instanceof Node ? sidePoint(box, side, 0) : target
-        const title = options.title ? text(options.title, { size, weight: 600, color }) : null
-        const copy = text(body, { size: size * 0.94, color: options.bodyColor ?? 'dim', maxWidth: wrap, leading: 1.36 })
+        const title = options.title ? text(options.title, { size, font: options.font, weight: 600, color }) : null
+        const copy = text(body, { size: size * 0.94, font: options.font, color: options.bodyColor ?? 'dim', maxWidth: wrap, leading: 1.36 })
         const titleHeight = title ? size * 1.42 : 0
         const blockWidth = Math.max(copy.width, title ? advanceWidth(title) : 0)
         const copyHeight = copy.height
@@ -604,6 +623,9 @@ export class Callout extends Node {
         this.leader = new Node(polyPath([anchor, elbow, reach])).stroke(color, 1.25)
         this.marker = dot(3, color).at(anchor)
         this.add(this.leader, this.marker)
+        ownLabels(this, { name: 'callout' })
+        // The leader ends at the target on purpose, so the film check does not judge the text of the target against it.
+        if (target instanceof Node) this.data['attached'] = [target]
     }
 
     /** The marker lands, the leader runs out, and the text settles at the end of it. */

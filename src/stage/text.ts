@@ -2,9 +2,11 @@ import { fallbackGlyph, fontFor, glyphPath, type FontFamily, type FontWeight, ty
 import { Node } from './node'
 import { pathBounds, transformPath, type Path } from './geometry'
 import { toPaint, type ColorInput } from './color'
+import { clock, LIBRARY_FONT } from './track'
 
 export interface TextOptions {
     size?: number
+    /** Defaults to the `font` of the film, and to sans in a film that has none. */
     font?: FontFamily
     weight?: FontWeight
     italic?: boolean
@@ -33,6 +35,8 @@ export interface TextOptions {
 export class TextNode extends Node {
     readonly chars: Node[] = []
     source = ''
+    /** The font of the text: the font that it names, or the font of the film. `text()` records it when it makes the node. */
+    font: FontFamily = LIBRARY_FONT
 
     /** Glyph nodes whose characters match, such as every "x". */
     find(fragment: string): Node[] {
@@ -54,9 +58,18 @@ function centered(path: Path): { path: Path; x: number; y: number } {
     return { path: transformPath(path, [1, 0, 0, 1, -x, -y]), x, y }
 }
 
+/**
+ * The font that the film names, or null in a film that names none and outside a film. It is for a label that
+ * an object set in mono before films had a font, such as the label of a connector: `font ?? filmFont() ?? 'mono'`
+ * follows a film that names a font, and leaves a film that names none as it was.
+ */
+export function filmFont(): FontFamily | null {
+    return clock.font
+}
+
 export function text(content: string, options: TextOptions = {}): TextNode {
     const size = options.size ?? 40
-    const family = options.font ?? 'sans'
+    const family = options.font ?? clock.font ?? LIBRARY_FONT
     const weight = options.weight ?? 400
     const italic = options.italic ?? false
     const font = fontFor(family, weight, italic)
@@ -115,6 +128,7 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     const align = options.align ?? 'left'
     const node = new TextNode()
     node.source = content
+    node.font = family
     lines.forEach((line, row) => {
         const start = align === 'left' ? 0 : align === 'center' ? (blockWidth - line.width) / 2 : blockWidth - line.width
         for (const placed of line.glyphs) {
@@ -125,6 +139,8 @@ export function text(content: string, options: TextOptions = {}): TextNode {
             leaf.base.fill = paint
             leaf.base.trimEach = true
             leaf.data['key'] = placed.char
+            // The outline has its middle at the origin. The film check reads where the base line is.
+            leaf.data['base'] = -shape.y
             // Glyph 0 draws the font's empty box. The film check reports it.
             if (placed.glyph === 0) leaf.data['missingGlyph'] = true
             node.chars.push(leaf)
