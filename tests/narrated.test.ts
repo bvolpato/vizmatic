@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-    assertEqual, capHeight, card, checkFilm, chip, chipRow, circle, clamp, commas, compileFilm, fade, fadeIn, fadeOut, film, fitSize, lerp, namedBox, narrated, narration, rect, sceneKit, seededRandom, smoothstep, tag, text, textWidth,
+    assertEqual, capHeight, card, checkFilm, chip, chipRow, circle, clamp, commas, compileFilm, fade, fadeIn, fadeOut, film, fitSize, lerp, namedBox, narrated, narration, rect, sceneArea, sceneKit, seededRandom, smoothstep, tag, text, textWidth,
     type FilmClock, type NarratedOptions, type Node, type PathOp, type SceneClock, type Stage, type TimingFile,
 } from '../src/stage/index'
 import { clock } from '../src/stage/track'
@@ -783,6 +783,47 @@ describe('scene kit', () => {
     })
 
     it('has no helper that a film can make in one line from the library: no mono label, and no panel', () => {
-        expect(Object.keys(sceneKit()).sort()).toEqual(['area', 'card', 'chip', 'chipRow', 'claimTag', 'fitSize', 'font', 'heading', 'label', 'left', 'namedBox', 'para', 'right', 'source', 'textWidth'])
+        // `note` and `display` are here because they hold a size of the kit, which a film would type as a number.
+        expect(Object.keys(sceneKit()).sort()).toEqual(['area', 'card', 'chip', 'chipRow', 'claimTag', 'display', 'fitSize', 'font', 'heading', 'label', 'left', 'namedBox', 'note', 'para', 'right', 'source', 'textWidth'])
+    })
+
+    it('makes a text with no place, for the layout: a label, a block, a note and a display line in the sizes of the kit', async () => {
+        await inFilm(() => {
+            const kit = sceneKit({ size: 50 })
+            // With no x and no y, the text is at the origin, and it has the look that it has with a place.
+            const free = kit.label('requests', { color: 'blue' }), placed = kit.label('requests', 120, 80, { color: 'blue' })
+            expect([free.get('x'), free.get('y'), placed.get('x'), placed.get('y')]).toEqual([0, 0, 120, 80])
+            expect(free.bounds().width).toBeCloseTo(placed.bounds().width, 6)
+            // A text with no place takes the options of a text, as a text with a place does.
+            expect([kit.label('requests', { size: 80 }).data['size'], kit.label('requests', 0, 0, { size: 80 }).data['size'], free.data['size']]).toEqual([80, 80, 50])
+            expect(kit.left('requests').get('px')).toBe(0)
+            expect(kit.right('requests').get('px')).toBeGreaterThan(0)
+            // A block wraps at its width, with a place or with none.
+            const long = 'one process for each microVM, and one thread for each virtual CPU'
+            expect(kit.para(long, 400).bounds().width).toBeLessThanOrEqual(400)
+            expect(kit.para(long, 400).bounds().height).toBeCloseTo(kit.para(long, -300, 0, 400).bounds().height, 6)
+            // The note has the size of the source line, and the display line is 1.78 of the label: both follow the one size.
+            expect(kit.note('our run').data['size']).toBe(kit.source('our run').data['size'])
+            expect(kit.note('our run').data['size']).toBe(36)
+            // A note is dim, as the source line is, and it takes a color of its own.
+            const paint = (node: { chars: readonly { get(prop: 'fill'): unknown }[] }) => node.chars[0]!.get('fill')
+            expect(paint(kit.note('our run'))).toEqual(paint(kit.source('our run')))
+            expect(paint(kit.note('our run'))).not.toEqual(paint(kit.label('our run')))
+            expect(paint(kit.note('our run', { color: 'ink' }))).toEqual(paint(kit.label('our run')))
+            expect(kit.display('160 times faster').data['size']).toBe(89)
+            expect(sceneKit().display('160 times faster').data['size']).toBe(64)
+            expect(() => (kit.label as (content: string, x: number) => unknown)('requests', 120)).toThrow('the text "requests" has an x and no y')
+            expect(() => kit.para(long, 0)).toThrow('para wraps at a width, more than 0, and it is 0')
+        })
+    })
+
+    it('gives the area as a region that cuts into columns and rows, and the same region to a film with no kit', async () => {
+        await inFilm(() => {
+            const { area } = sceneKit({ area: { left: -800, right: 800 } })
+            expect(area.columns(2).map((part) => [part.left, part.right])).toEqual([[-800, -24], [24, 800]])
+            expect(area.rows([3, 1], 'none').map((part) => [part.top, part.bottom])).toEqual([[-400, 230], [230, 440]])
+            expect(sceneArea()).toEqual(sceneKit().area)
+            expect(sceneArea({ bottom: 300 }).height).toBe(700)
+        })
     })
 })

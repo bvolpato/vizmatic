@@ -5,6 +5,7 @@ import { text, type TextOptions } from '../text'
 import { smooth } from '../ease'
 import type { ColorInput } from '../color'
 import type { Anim, AnimContext, AnimOptions } from '../anim'
+import { Box } from '../layout'
 import { formatNumber, forwardOnly, niceTicks, reaches, reveal, staggered, stepAt } from './util'
 
 /** The name of a lane, or its index. */
@@ -602,6 +603,41 @@ export class Lanes extends Node {
         const index = this.find(lane)
         if (index === null) throw new Error(`lanes: no lane ${JSON.stringify(lane)}. ${this.known()}`)
         return this.ys[index]!
+    }
+
+    /**
+     * The box of a part of the object, in stage pixels, for `place` and `beside` of the layout: such as
+     * `beside(note, flow.region({ lane: 'monitor', at: 1.09 }), 'above')`. Without a lane it is the time
+     * area over all lanes. `lane` is the row of the bars of one lane. `between` is the room between the
+     * bars of two lanes. `from` and `to` are times of the domain, and `at` is one time. The box is where
+     * the object is now, so ask for it after the object has its place.
+     */
+    region(part: { lane?: LaneRef; between?: readonly [LaneRef, LaneRef]; from?: number; to?: number; at?: number } = {}): Box {
+        const names = ['lane', 'between', 'from', 'to', 'at']
+        if (typeof part !== 'object' || part === null) throw new Error(`lanes: region takes an object such as { lane: 0, at: 4 }, and it got ${part === null ? 'null' : typeof part}`)
+        const unknown = Object.keys(part).find((name) => !names.includes(name))
+        if (unknown !== undefined) throw new Error(`lanes: region has no part "${unknown}". Its parts are: ${names.join(', ')}`)
+        if (part.at !== undefined && (part.from !== undefined || part.to !== undefined)) throw new Error('lanes: region takes `at` for one time, or `from` and `to` for a stretch of time, not both')
+        const half = this.barHeight / 2
+        let top = this.ys[0]! - half, bottom = this.ys[this.ys.length - 1]! + half
+        if (part.lane !== undefined && part.between !== undefined) throw new Error('lanes: region takes `lane` or `between`, not both. `lane` is the row of one lane, and `between` is the room between two lanes')
+        if (part.lane !== undefined) {
+            top = this.y(part.lane) - half
+            bottom = this.y(part.lane) + half
+        } else if (part.between !== undefined) {
+            const one = this.y(part.between[0]), other = this.y(part.between[1])
+            if (one === other) throw new Error(`lanes: region: \`between\` names the lane ${JSON.stringify(part.between[0])} two times. Give two lanes, such as the first two: ${JSON.stringify(this.laneNames.slice(0, 2))}`)
+            top = Math.min(one, other) + half
+            bottom = Math.max(one, other) - half
+        }
+        const from = part.at ?? part.from ?? this.domain[0], to = part.at ?? part.to ?? this.domain[1]
+        for (const time of [from, to]) {
+            // A time outside the domain is outside the object, and so would be what a film puts there.
+            if (!(Number.isFinite(time) && time >= this.domain[0] && time <= this.domain[1])) throw new Error(`lanes: region: a time is ${time}. \`from\`, \`to\` and \`at\` are times of the domain, ${this.domain[0]} to ${this.domain[1]}`)
+        }
+        if (from > to) throw new Error(`lanes: region: \`from\` is ${from} and \`to\` is ${to}. Give a \`from\` that is not after \`to\``)
+        const [x0, y0] = this.toWorld(this.x(from), top), [x1, y1] = this.toWorld(this.x(to), bottom)
+        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
     }
 
     /**

@@ -6,6 +6,7 @@
  */
 import { fade, fadeIn } from './anim'
 import type { FontFamily } from './font'
+import { describe as describeItem } from './layout'
 import { HANDOVER, narration, type NarrationOptions, type NarrationTiming, type SceneClock } from './narration'
 import type { Node } from './node'
 import { film, type FilmDefinition, type FilmOptions, type Stage } from './stage'
@@ -166,6 +167,19 @@ function fadeOutBy(s: Stage, nodes: readonly Node[], end: number, duration: numb
     if (leaving.length > 0) s.at(end - duration, () => s.play(...leaving.map((node) => fade(node, 0, { duration }))))
 }
 
+/**
+ * Stop when a node of a scene arrives after the picture of the scene started to leave. The fade at the end of
+ * the scene does not reach such a node, so it would stay over the next scenes.
+ */
+function checkArrivals(id: string, nodes: readonly Node[], leaves: number): void {
+    for (const node of nodes) {
+        if (shownAt(node, leaves)) continue
+        const late = node.tracks?.get('visible')?.keys.find((key) => key.t0 >= leaves && key.to === true)
+        if (!late) continue
+        throw new Error(`narrated: scene "${id}": ${describeItem(node)} arrives at ${Math.round(late.t0 * 100) / 100} seconds, and the picture of the scene starts to leave at ${Math.round(leaves * 100) / 100}. It would stay over the next scene. Bring it on an earlier phrase, or hold it for the next scene with c.keep`)
+    }
+}
+
 type Box = ReturnType<Node['bounds']>
 
 /** A node for a message: its name, its text, or its place and its size. */
@@ -281,18 +295,24 @@ export function narrated(options: NarratedOptions): FilmDefinition {
             // What is on the screen before this scene is gone at this time: the title card, or the scene before.
             const cleared = id === first ? (card ? introSeconds : 0) : scene.start - voice.gap
             const opens = Math.max(0, cleared - OPEN_BEFORE)
+            // When the picture of this scene starts to leave. The last picture stays while the sound fades.
+            const leaves = id === last ? clock.end - LAST_LEAVE : scene.end - CLOSE_LEAD
+            // `c.show` and `c.swap` bring a node between these two times.
+            scene.window = { from: opens, to: leaves }
             const nodes = named(`scene "${id}"`, () => addedBy(s, opens, () => scenes[id]!(s, scene, clock)))
             fadeInOpening(s, nodes.filter((node) => !scene.taken.has(node)), opens, OPEN_FADE)
             // The scene before this one is built too when its end is one gap before the start of this one.
             if (before && Math.abs(before.next - scene.start) < 1e-6) checkHandover(s, before, scene)
             before = scene
             const leaving = nodes.filter((node) => !scene.kept.has(node))
+            // A node of the scene leaves with the scene, so it does not arrive after the scene starts to leave.
+            checkArrivals(id, leaving, leaves)
             if (id !== last) {
-                fadeOutBy(s, leaving, scene.end - CLOSE_LEAD + CLOSE_FADE, CLOSE_FADE)
+                fadeOutBy(s, leaving, leaves + CLOSE_FADE, CLOSE_FADE)
                 continue
             }
             if (scene.kept.size > 0) throw new Error(`narrated: scene "${id}": keep holds a picture for the next scene, and this is the last scene. Without keep, its picture stays to the end of the film`)
-            fadeOutBy(s, leaving, clock.end - LAST_LEAVE + LAST_FADE, LAST_FADE)
+            fadeOutBy(s, leaving, leaves + LAST_FADE, LAST_FADE)
         }
         // The sound runs past the last word while the pad fades, and the film must not end before the sound.
         s.at(clock.end, () => {})

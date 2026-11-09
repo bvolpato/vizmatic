@@ -5,6 +5,7 @@
  * every object's opacity and reveal live on the timeline like anything else.
  */
 import { Node, ownLabels } from '../node'
+import { oneNode } from '../layout'
 import { parseColor, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimOptions } from '../anim'
 import { clock } from '../track'
@@ -1137,6 +1138,7 @@ export class Label3D extends Object3D {
 
     constructor(content: string | Node, private readonly position: Reactive3, options: Label3DOptions = {}) {
         super()
+        if (typeof content !== 'string') oneNode('label3d', content, 'the content')
         this.content = typeof content === 'string'
             ? options.math === false
                 ? text(content, { size: options.size ?? 28, font: options.font, color: options.color ?? 'ink' })

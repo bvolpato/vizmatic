@@ -12,7 +12,7 @@ import {
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
     lanes, smooth, eventLog, LogRowNode, LOG_STATES,
     delay, par, retime, ringBuffer,
-    appear, circumscribe, fade, flash, grow, image, linearGradient, paintFrame, pulse, ripple, spotlight,
+    appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
@@ -700,6 +700,338 @@ describe('extra verbs', () => {
             s.play(indicate([shape, number], { color: 'yellow' }), { duration: 1 })
         }))
         expect(colors(listed, 0.5)).toEqual([[paint('yellow'), paint('surface')], [null, paint('yellow')]])
+    })
+
+    // ── indicate: the rule of a part on a fill ─────────────────────────────────────────────────────────────
+    const paintOf = (color: string) => line([0, 0], [1, 0], { stroke: color }).get('stroke') as Rgba
+    const dark = '#101014'
+    /** The fills and the lines that a frame draws for a node and its parts. A part that has both gives both. */
+    const paintsOf = (f: CompiledFilm, time: number, node: Node) => paths(f, time).filter((op) => op.node && node.all().includes(op.node)).flatMap((op) => [op.stroke, op.fill].filter((paint) => paint !== null))
+    const fillOf = (f: CompiledFilm, time: number, node: Node) => paths(f, time).find((op) => op.node === node)?.fill ?? null
+    const strokeOf = (f: CompiledFilm, time: number, node: Node) => paths(f, time).find((op) => op.node === node)?.stroke ?? null
+    /** A film that builds parts, plays one `indicate` of what `build` returns for one second, and waits. The peak is at 0.5. */
+    const atPeak = (build: (s: Stage) => Node | Node[], options: { color?: string; fill?: boolean } = {}) => compileFilm(film({ fps: 20 }, (s) => {
+        s.play(indicate(build(s), { color: 'yellow', ...options }), { duration: 1 })
+        s.wait(0.5)
+    }))
+    const ringShape = () => circle(50, { stroke: 'ink', fill: 'surface', width: 4 })
+    const badge = () => circle(50, { stroke: null, fill: 'blue' })
+
+    it('indicate gives the glyphs of one text or one formula the tint together: no glyph is the backing of the next', async () => {
+        const yellow = paintOf('yellow')
+        for (const make of [() => tex('\\int_0^1 f(x)\\,dx', { size: 64 }), () => tex('V_i + T_1', { size: 72 }), () => tex('\\frac{a}{b}+\\sqrt{x}', { size: 52 }), () => text('7. V. fi', { size: 64, font: 'serif', italic: true })]) {
+            let made!: Node
+            const f = await atPeak((s) => made = s.add(make()))
+            expect(paintsOf(f, 0, made).length).toBeGreaterThan(3)
+            expect(paintsOf(f, 0.5, made).every((paint) => paint === yellow), (made as unknown as { source: string }).source).toBe(true)
+            expect(paintsOf(f, 1.2, made)).toEqual(paintsOf(f, 0, made))
+        }
+        // In a box, the formula is one part on the panel: the border and every glyph take the tint, and the panel keeps its color.
+        let panel!: Node, formula!: Node
+        const boxed = await atPeak((s) => s.add(group(panel = rect(290, 150, { radius: 12, stroke: 'ink', fill: 'surface' }), formula = tex('\\int_0^1 f\\,dx', { size: 56 }))))
+        expect([strokeOf(boxed, 0.5, panel), fillOf(boxed, 0.5, panel)]).toEqual([yellow, paintOf('surface')])
+        expect(paintsOf(boxed, 0.5, formula).every((paint) => paint === yellow)).toBe(true)
+        // Some glyphs of a formula as the targets: each one takes the tint, and the other glyphs keep their color.
+        let eq!: ReturnType<typeof tex>
+        const some = await atPeak((s) => { eq = s.add(tex('a^2 + b^2 = c^2', { size: 72 })); return eq.part('c^2') })
+        expect(eq.part('c^2').map((glyph) => fillOf(some, 0.5, glyph))).toEqual(eq.part('c^2').map(() => yellow))
+        expect(eq.part('a^2').map((glyph) => fillOf(some, 0.5, glyph))).toEqual(eq.part('a^2').map(() => paintOf('ink')))
+    })
+
+    it('indicate takes a part as on a fill by the shape of the fill, not by its box', async () => {
+        const yellow = paintOf('yellow'), blue = paintOf('blue')
+        // The label is in the box of the triangle and outside its shape: it is beside the fill, so both take the tint in full.
+        const triangle = () => polygon([[-120, 80], [120, 80], [120, -80]], { stroke: null, fill: 'blue' })
+        let shape!: Node, label!: Node
+        const beside = await atPeak((s) => s.add(group(shape = triangle(), label = text('c', { size: 44, color: dark }).at(-40, -40))))
+        expect(fillOf(beside, 0.5, shape)).toBe(yellow)
+        expect(paintsOf(beside, 0.5, label)).toEqual([yellow])
+        // The same label inside the shape is on the fill: the fill takes the tint, and the dark label keeps its color on it.
+        const inside = await atPeak((s) => s.add(group(shape = triangle(), label = text('c', { size: 44, color: dark }).at(60, 30))))
+        expect(fillOf(inside, 0.5, shape)).toBe(yellow)
+        expect(paintsOf(inside, 0.5, label)).toEqual([paintOf(dark)])
+        expect(fillOf(inside, 0, shape)).toBe(blue)
+        // A number in the hole of a donut is on no wedge: every wedge takes the tint, and not one of them alone.
+        let ring!: Node
+        const hole = await atPeak((s) => ring = s.add(donut([{ label: 'a', value: 3 }, { label: 'b', value: 1 }], { radius: 110, labels: false, centerLabel: '75%' })))
+        const before = paintsOf(hole, 0, ring), peak = paintsOf(hole, 0.5, ring)
+        expect(new Set(before).size).toBeGreaterThan(1)
+        expect(peak.every((paint) => paint === yellow)).toBe(true)
+        // A part that is larger than a fill is not on it: a wide outline around a dot. Both take the tint in full.
+        let dot!: Node, outline!: Node
+        const around = await atPeak((s) => s.add(group(dot = circle(20, { stroke: null, fill: 'blue' }), outline = circle(100, { stroke: 'ink', fill: null }))))
+        expect([fillOf(around, 0.5, dot), strokeOf(around, 0.5, outline)]).toEqual([yellow, yellow])
+        // A part of the size of the fill is its border, and not a thing on it: a separate border takes the tint, where the dark
+        // word on the light fill keeps its color.
+        let fillOnly!: Node, border!: Node, title!: Node
+        const twin = await atPeak((s) => s.add(group(fillOnly = rect(220, 100, { radius: 18, stroke: null, fill: 'blue' }), border = rect(220, 100, { radius: 18, stroke: dark, fill: null, width: 4 }), title = text('review', { size: 44, color: dark }))))
+        expect([fillOf(twin, 0.5, fillOnly), strokeOf(twin, 0.5, border)]).toEqual([yellow, yellow])
+        expect(paintsOf(twin, 0.5, title).every((paint) => paint === paintOf(dark))).toBe(true)
+        // The glyphs of a text as the targets: a dot that lies on the stem of a letter is not on a fill, so both take the tint.
+        let letters!: ReturnType<typeof text>
+        const glyphs = await atPeak((s) => { letters = s.add(text('l.', { size: 200 })); letters.chars[1]!.moveTo(letters.chars[0]!.center); return letters.chars })
+        expect(letters.chars.map((glyph) => fillOf(glyphs, 0.5, glyph))).toEqual([yellow, yellow])
+        // A group that is turned and scaled: the test is on the shape as the stage draws it.
+        let panel!: Node, word!: Node
+        const turned = await atPeak((s) => s.add(group(panel = rect(200, 90, { radius: 12, stroke: 'ink', fill: 'surface', width: 3 }), word = text('turn', { size: 40 })).rotate(0.6).scale(1.2)))
+        expect([strokeOf(turned, 0.5, panel), fillOf(turned, 0.5, panel)]).toEqual([yellow, paintOf('surface')])
+        expect(paintsOf(turned, 0.5, word).every((paint) => paint === yellow)).toBe(true)
+    })
+
+    it('indicate calls the color() of an object that has its own, and `fill: true` is the old call', async () => {
+        const yellow = paintOf('yellow')
+        const made = () => tag('MEASURED', { note: 'June 2026', color: 'green', anchor: 'center' })
+        let label!: ReturnType<typeof tag>
+        const own = await atPeak((s) => label = s.add(made()))
+        // The border of the pill and the word take the tint. The fill of the pill and the note keep their colors.
+        const look = (f: CompiledFilm, time: number) => ({ border: strokeOf(f, time, label.pill), pill: fillOf(f, time, label.pill), word: paintsOf(f, time, label.word), note: paintsOf(f, time, label.note!) })
+        const rest = look(own, 0), peak = look(own, 0.5)
+        expect(peak.border).toBe(yellow)
+        expect(peak.word.every((paint) => paint === yellow)).toBe(true)
+        expect([peak.pill, peak.note]).toEqual([rest.pill, rest.note])
+        // The same picture as the call of the object, with no rule between them.
+        const called = await compileFilm(film({ fps: 20 }, (s) => { label = s.add(made()); s.play(to(label, (t) => t.scale(1.14).color('yellow'), { restore: true, ease: (x) => 4 * x * (1 - x) }), { duration: 1 }); s.wait(0.5) }))
+        expect(look(called, 0.5)).toEqual(peak)
+        // `fill: true` is `node.color(color)`: for a tag, that is its own color() too.
+        const filled = await atPeak((s) => label = s.add(made()), { fill: true })
+        expect(look(filled, 0.5)).toEqual(peak)
+        // A tag in a group, on a panel: the tag still has its own emphasis.
+        const grouped = await atPeak((s) => s.add(group(rect(600, 200, { stroke: 'ink', fill: 'surface' }), label = made())))
+        expect([look(grouped, 0.5).pill, look(grouped, 0.5).note]).toEqual([rest.pill, rest.note])
+        expect(look(grouped, 0.5).border).toBe(yellow)
+        // `fill: true` on a plain shape with a number is the old picture: one color for the disc, its border and its number.
+        let both!: Node
+        const flat = await atPeak((s) => both = s.add(group(ringShape(), text('2', { size: 48 }))), { fill: true })
+        expect(paintsOf(flat, 0.5, both).every((paint) => paint === yellow)).toBe(true)
+    })
+
+    it('indicate makes its choice when the animation starts, from the places and the colors that the parts have then', async () => {
+        const yellow = paintOf('yellow')
+        // The number moves onto its ring, and then both are indicated, in one sequence: the number is on the ring when the tint starts.
+        let shape!: Node, number!: Node
+        const moved = await compileFilm(film({ fps: 20 }, (s) => {
+            shape = s.add(ringShape().at(-200, 0))
+            number = s.add(text('2', { size: 48 }).at(200, 0))
+            s.play(seq(moveTo(number, shape, { duration: 0.5 }), indicate([shape, number], { color: 'yellow', duration: 1 })))
+            s.wait(0.5)
+        }))
+        expect([strokeOf(moved, 1, shape), fillOf(moved, 1, shape)]).toEqual([yellow, paintOf('surface')])
+        expect(paintsOf(moved, 1, number)).toEqual([yellow])
+        // The disc turns blue and its number dark, and then both are indicated: the choice is for the new colors.
+        const recolored = await compileFilm(film({ fps: 20 }, (s) => {
+            shape = ringShape()
+            number = text('3', { size: 48 })
+            const both = s.add(group(shape, number))
+            s.play(seq(par(to(shape, (d) => d.fill('blue').stroke(null), { duration: 0.5 }), to(number, (n) => n.color(dark), { duration: 0.5 })), indicate(both, { color: 'yellow', duration: 1 })))
+            s.wait(0.5)
+        }))
+        expect(fillOf(recolored, 1, shape)).toBe(yellow)
+        expect(paintsOf(recolored, 1, number)).toEqual([paintOf(dark)])
+        // One animation that a film plays two times makes its choice two times.
+        const twice = await compileFilm(film({ fps: 20 }, (s) => {
+            shape = s.add(ringShape())
+            number = text('2', { size: 48 }).at(300, 0)
+            s.add(number)
+            const pulse = indicate([shape, number], { color: 'yellow', duration: 1 })
+            s.play(pulse)
+            number.at(0, 0)
+            s.play(pulse)
+        }))
+        expect(fillOf(twice, 0.5, shape)).toBe(yellow)
+        expect(fillOf(twice, 1.5, shape)).toBe(paintOf('surface'))
+    })
+
+    it('indicate follows the draw order of the stage, and leaves out a part that does not show', async () => {
+        const yellow = paintOf('yellow'), surface = paintOf('surface')
+        let shape!: Node, number!: Node
+        // The list names the number before its ring. The stage draws the ring first.
+        const listed = await atPeak((s) => { shape = s.add(ringShape()); number = s.add(text('2', { size: 48 })); return [number, shape] })
+        expect([strokeOf(listed, 0.5, shape), fillOf(listed, 0.5, shape)]).toEqual([yellow, surface])
+        expect(paintsOf(listed, 0.5, number)).toEqual([yellow])
+        // A panel that is added after its number and sent behind it with z.
+        const behind = await atPeak((s) => s.add(group(number = text('2', { size: 48 }), shape = ringShape().zIndex(-1))))
+        expect([strokeOf(behind, 0.5, shape), fillOf(behind, 0.5, shape)]).toEqual([yellow, surface])
+        expect(paintsOf(behind, 0.5, number)).toEqual([yellow])
+        // The same group when it is not on the stage yet: `indicate` brings it, and then looks at the order.
+        const brought = await atPeak(() => group(number = text('2', { size: 48 }), shape = ringShape().zIndex(-1)))
+        expect([strokeOf(brought, 0.5, shape), fillOf(brought, 0.5, shape)]).toEqual([yellow, surface])
+        expect(paintsOf(brought, 0.5, number)).toEqual([yellow])
+        // A number that the stage draws under its disc is not on the disc: both take the tint in full, as a disc alone does.
+        const under = await atPeak((s) => s.add(group(number = text('2', { size: 48 }), shape = ringShape())))
+        expect(fillOf(under, 0.5, shape)).toBe(yellow)
+        // A white part on a light badge that does not show is no content: the badge takes the tint under its dark number.
+        for (const gone of [(part: Node) => part.opacity(0), (part: Node) => part.set('visible', false)]) {
+            const hidden = await atPeak((s) => s.add(group(shape = badge(), number = text('3', { size: 48, color: dark }), gone(text('ok', { size: 40, color: '#ffffff' })))))
+            expect(fillOf(hidden, 0.5, shape)).toBe(yellow)
+            expect(paintsOf(hidden, 0.5, number)).toEqual([paintOf(dark)])
+        }
+        // With a dark tint, a part that does not show would look as dark as the film behind it. It is not counted: the badge
+        // takes the tint under its white number.
+        const night = await atPeak((s) => s.add(group(shape = badge(), number = text('3', { size: 48, color: '#ffffff' }), text('ok', { size: 40, color: '#ffffff' }).opacity(0))), { color: dark })
+        expect(fillOf(night, 0.5, shape)).toEqual(paintOf(dark))
+        expect(paintsOf(night, 0.5, number)).toEqual([paintOf('#ffffff')])
+        // A fill that does not show is no backing: its number takes the tint.
+        const clear = await atPeak((s) => s.add(group(shape = badge().opacity(0), number = text('3', { size: 48, color: dark }))))
+        expect(paintsOf(clear, 0.5, number)).toEqual([yellow])
+    })
+
+    it('indicate chooses by the least readable part, by the line or the fill that shows a part, and keeps a pair that no tint keeps readable', async () => {
+        const yellow = paintOf('yellow'), blue = paintOf('blue')
+        let shape!: Node, number!: Node, other!: Node
+        // A dark number and a white word on one light badge. A yellow badge would hide the white word, and a yellow word is
+        // hard to read on the badge: the pair is easier to read as it is, so the badge and both texts keep their colors.
+        const two = await atPeak((s) => s.add(group(shape = badge(), number = text('3', { size: 48, color: dark }).at(-18, 0), other = text('ok', { size: 28, color: '#ffffff' }).at(24, 0))))
+        expect(fillOf(two, 0.5, shape)).toBe(blue)
+        expect([paintsOf(two, 0.5, number), paintsOf(two, 0.5, other)]).toEqual([[paintOf(dark)], [paintOf('#ffffff'), paintOf('#ffffff')]])
+        // The same for one light number on a light badge. It still swells.
+        const light = await atPeak((s) => s.add(group(shape = badge(), number = text('3', { size: 48, color: '#ffffff' }))))
+        expect([fillOf(light, 0.5, shape), paintsOf(light, 0.5, number)]).toEqual([blue, [paintOf('#ffffff')]])
+        expect(at(0.5, () => shape.parent!.get('sx'))).toBeCloseTo(1.14, 6)
+        // A text of two colors is as readable as its least readable glyph: a dark letter and a white letter on the light badge
+        // keep their colors, and so does the badge.
+        let pair!: ReturnType<typeof text>
+        const mixed = await atPeak((s) => { const both = s.add(group(shape = badge(), pair = text('ab', { size: 48 }))); pair.chars[0]!.color(dark); pair.chars[1]!.color('#ffffff'); return both })
+        expect(fillOf(mixed, 0.5, shape)).toBe(blue)
+        expect(paintsOf(mixed, 0.5, pair)).toEqual([paintOf(dark), paintOf('#ffffff')])
+        // A pair that is hard to read as it is takes the tint where it helps: a light word on a white panel turns yellow.
+        const pale = await atPeak((s) => s.add(group(shape = rect(200, 100, { stroke: null, fill: '#ffffff' }), other = text('pale', { size: 48 }))))
+        expect(fillOf(pale, 0.5, shape)).toEqual(paintOf('#ffffff'))
+        expect(paintsOf(pale, 0.5, other).every((paint) => paint === yellow)).toBe(true)
+        // "Readable" is a contrast of 3 to 1. A gold badge under this gray number has 2 to 1, and the pair has 3.2 as it is:
+        // both keep their colors.
+        const gold = await atPeak((s) => s.add(group(shape = circle(50, { stroke: null, fill: '#1e6fb4' }), number = text('3', { size: 48, color: '#cccccc' }))), { color: '#b8860b' })
+        expect([fillOf(gold, 0.5, shape), paintsOf(gold, 0.5, number)]).toEqual([paintOf('#1e6fb4'), [paintOf('#cccccc')]])
+        // A drawing that a tint cannot reach decides with the texts: white digits on the light badge are hard to read, so a dark
+        // tint goes to the badge, where the digits and the gray word are readable.
+        const digits = await atPeak((s) => s.add(group(shape = badge(), counter(7, { size: 40, digits: 0, color: '#ffffff' }).at(-20, 0), other = text('x', { size: 40, color: '#888888' }).at(22, 0))), { color: dark })
+        expect(fillOf(digits, 0.5, shape)).toEqual(paintOf(dark))
+        expect(paintsOf(digits, 0.5, other)).toEqual([paintOf('#888888')])
+        // A small box with a light border and a dark fill on a light badge: its dark fill shows it on a yellow badge, so the badge takes the tint.
+        const boxed = await atPeak((s) => s.add(group(shape = badge(), other = circle(24, { stroke: 'ink', fill: 'surface', width: 3 }))))
+        expect(fillOf(boxed, 0.5, shape)).toBe(yellow)
+        expect([strokeOf(boxed, 0.5, other), fillOf(boxed, 0.5, other)]).toEqual([paintOf('ink'), paintOf('surface')])
+        // A small box with a dark border and a light fill: its border shows it.
+        const lined = await atPeak((s) => s.add(group(shape = badge(), other = circle(24, { stroke: dark, fill: 'ink', width: 3 }))))
+        expect(fillOf(lined, 0.5, shape)).toBe(yellow)
+        expect([strokeOf(lined, 0.5, other), fillOf(lined, 0.5, other)]).toEqual([paintOf(dark), paintOf('ink')])
+        // A ring in a badge in a ring: each part has one backing, the last fill that is drawn under it.
+        let outer!: Node, middle!: Node, inner!: Node
+        const nested = await atPeak((s) => s.add(group(outer = circle(120, { stroke: 'ink', fill: 'surface', width: 3 }), middle = circle(84, { stroke: null, fill: 'blue' }), inner = circle(46, { stroke: 'ink', fill: 'surface', width: 3 }), number = text('1', { size: 44 }))))
+        expect([strokeOf(nested, 0.5, outer), fillOf(nested, 0.5, outer)]).toEqual([yellow, paintOf('surface')])
+        expect(fillOf(nested, 0.5, middle)).toBe(yellow)
+        expect([strokeOf(nested, 0.5, inner), fillOf(nested, 0.5, inner)]).toEqual([paintOf('ink'), paintOf('surface')])
+        expect(paintsOf(nested, 0.5, number)).toEqual([yellow])
+    })
+
+    it('indicate keeps the alpha of a wash, reads a gradient by its middle, and leaves a drawing that a function makes', async () => {
+        const yellow = paintOf('yellow')
+        let shape!: Node, word!: Node
+        // A fill that is not opaque keeps its alpha under the tint. `fill: true` is the old call, which makes it opaque.
+        const wash = await atPeak((s) => shape = s.add(rect(240, 100, { stroke: null, fill: 'rgba(92, 196, 240, 0.2)' })))
+        expect(fillOf(wash, 0.5, shape)).toEqual([yellow[0], yellow[1], yellow[2], 0.2])
+        const opaque = await atPeak((s) => shape = s.add(rect(240, 100, { stroke: null, fill: 'rgba(92, 196, 240, 0.2)' })), { fill: true })
+        expect(fillOf(opaque, 0.5, shape)).toBe(yellow)
+        // A wash on a dark film is a dark panel: the border and the text light up, and the wash stays.
+        const panel = await atPeak((s) => s.add(group(shape = rect(240, 100, { radius: 14, stroke: 'faint', width: 2 }).fill('ink', 0.12), word = text('wash', { size: 48 }))))
+        expect([strokeOf(panel, 0.5, shape), fillOf(panel, 0.5, shape)]).toEqual([yellow, paintOf('ink')])
+        expect(paintsOf(panel, 0.5, word).every((paint) => paint === yellow)).toBe(true)
+        // A warm gradient under a dark word is a light panel: it takes the tint as one color, and the word keeps its color.
+        const warm = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null, fill: linearGradient([-120, 0], [120, 0], ['yellow', 'orange']) }), word = text('warm', { size: 48, color: dark }))))
+        expect(fillOf(warm, 0.5, shape)).toBe(yellow)
+        expect(paintsOf(warm, 0.5, word).every((paint) => paint === paintOf(dark))).toBe(true)
+        // A dark gradient under a light word is a dark panel: the gradient stays, and the word lights up.
+        const night = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null, fill: linearGradient([-120, 0], [120, 0], ['#101014', '#202030']) }), word = text('night', { size: 48 }))))
+        expect((fillOf(night, 0.5, shape) as { stops?: unknown }).stops).toEqual((fillOf(night, 0, shape) as { stops?: unknown }).stops)
+        expect(fillOf(night, 0.5, shape)).toHaveProperty('stops')
+        expect(paintsOf(night, 0.5, word).every((paint) => paint === yellow)).toBe(true)
+        // A gradient from white to black is a gray panel, by its middle: a light blue word takes the tint on it.
+        const gray = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null, fill: linearGradient([-120, 0], [120, 0], ['#ffffff', '#000000']) }), word = text('gray', { size: 48, color: 'blue' }))))
+        expect(fillOf(gray, 0.5, shape)).toHaveProperty('stops')
+        expect(paintsOf(gray, 0.5, word).every((paint) => paint === yellow)).toBe(true)
+        // A dark word on a wash is on a dark panel, by what a viewer sees through the wash: the word takes the tint.
+        const faint = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null }).fill('ink', 0.12), word = text('dark', { size: 48, color: dark }))))
+        expect(fillOf(faint, 0.5, shape)).toBe(paintOf('ink'))
+        expect(paintsOf(faint, 0.5, word).every((paint) => paint === yellow)).toBe(true)
+        // A pale wash under a dark word: yellow is hard to read on it, so the wash takes the tint, at its own opacity.
+        const pale = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null }).fill('#ffffff', 0.8), word = text('pale', { size: 48, color: dark }))))
+        expect(fillOf(pale, 0.5, shape)).toBe(yellow)
+        expect(paths(pale, 0.5).find((op) => op.node === shape)!.fillAlpha).toBeCloseTo(0.8, 6)
+        expect(paintsOf(pale, 0.5, word).every((paint) => paint === paintOf(dark))).toBe(true)
+        // An opaque white panel under a dark word, with a gold tint that is readable on it: the panel takes the tint, because the
+        // dark word on gold has more contrast. Only a wash gives its content the tint first.
+        const solid = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null, fill: '#ffffff' }), word = text('solid', { size: 48, color: dark }))), { color: '#b8860b' })
+        expect(fillOf(solid, 0.5, shape)).toEqual(paintOf('#b8860b'))
+        expect(paintsOf(solid, 0.5, word).every((paint) => paint === paintOf(dark))).toBe(true)
+        // A counter draws its digits again on each frame, so a tint cannot reach it. On a ring it is one part: the disc keeps its
+        // color under the light digits, and the border takes the tint.
+        const counted = await atPeak((s) => s.add(group(shape = ringShape(), counter(7, { size: 48, digits: 0 }))))
+        expect([strokeOf(counted, 0.5, shape), fillOf(counted, 0.5, shape)]).toEqual([yellow, paintOf('surface')])
+        // Dark digits on a light badge: the badge takes the tint under them.
+        const dial = await atPeak((s) => s.add(group(shape = badge(), counter(7, { size: 48, digits: 0, color: dark }))))
+        expect(fillOf(dial, 0.5, shape)).toBe(yellow)
+        // A glow takes the tint with its shape, and the glow of a part that keeps its colors stays.
+        let glowing!: Node
+        const lit = await atPeak((s) => s.add(group(shape = badge().glow(8, 'blue'), glowing = text('3', { size: 48, color: dark }).glow(4, 'red'))))
+        expect(paths(lit, 0.5).find((op) => op.node === shape)!.glowColor).toBe(yellow)
+        expect(at(0.5, () => glowing.get('glowColor'))).toEqual(paintOf('red'))
+        // The tint `ink` on an ink target changes no color: the target only swells.
+        let plain!: Node
+        const same = await atPeak((s) => plain = s.add(text('ink', { size: 48 })), { color: 'ink' })
+        expect(paintsOf(same, 0.5, plain)).toEqual(paintsOf(same, 0, plain))
+    })
+
+    it('indicate gives the marks of one pictogram the tint together: a soft fill of it is not the backing of its lines', async () => {
+        const yellow = paintOf('yellow')
+        // Each of these pictures has lines of one color on a soft fill of its other color.
+        for (const name of ['ring', 'pagetable', 'forecast'] as const) {
+            let picture!: Node
+            const f = await atPeak((s) => picture = s.add(pictogram(name, { size: 96, accent: 'teal' })))
+            expect(new Set(paintsOf(f, 0, picture)).size, name).toBeGreaterThan(1)
+            expect(paintsOf(f, 0.5, picture).every((paint) => paint === yellow), name).toBe(true)
+            expect(paintsOf(f, 1.2, picture)).toEqual(paintsOf(f, 0, picture))
+        }
+    })
+
+    it('indicate reads the tint on a wash at the opacity of the wash', async () => {
+        const yellow = paintOf('yellow'), gray = '#585858'
+        let shape!: Node, word!: Node
+        // A gray word on a pale wash, on a dark film. The wash shows a tint at its own opacity: yellow is a dim yellow there,
+        // and the word has 2 to 1 on it, less than the 2.6 that it has now. A yellow word has less too. The pair keeps its colors.
+        const wash = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null }).fill('#ffffff', 0.6), word = text('gray', { size: 48, color: gray }))))
+        expect(fillOf(wash, 0.5, shape)).toEqual(paintOf('#ffffff'))
+        expect(paintsOf(wash, 0.5, word).every((paint) => paint === paintOf(gray))).toBe(true)
+        // An opaque panel of the color that the wash shows: the word has 5 to 1 on a yellow panel, so the panel takes the tint.
+        const solid = await atPeak((s) => s.add(group(shape = rect(240, 100, { stroke: null, fill: '#9d9e9f' }), word = text('gray', { size: 48, color: gray }))))
+        expect(fillOf(solid, 0.5, shape)).toBe(yellow)
+        expect(paintsOf(solid, 0.5, word).every((paint) => paint === paintOf(gray))).toBe(true)
+    })
+
+    it('indicate takes 3 to 1 as the limit of a readable pair', async () => {
+        // The blue, the yellow and the page color of the look `paper`. A white number has 3.3 to 1 on a yellow badge: the badge
+        // takes the tint. A number in the page color looks the same and has a little less than 3 to 1 there, where it has 4.8
+        // on the blue: that pair keeps its colors. The limit is a line.
+        const navy = '#1f6fb2', amber = '#b98500', page = '#f7f3ea'
+        let shape!: Node, number!: Node
+        const white = await atPeak((s) => s.add(group(shape = circle(50, { stroke: null, fill: navy }), number = text('3', { size: 48, color: '#ffffff' }))), { color: amber })
+        expect([fillOf(white, 0.5, shape), paintsOf(white, 0.5, number)]).toEqual([paintOf(amber), [paintOf('#ffffff')]])
+        const offWhite = await atPeak((s) => s.add(group(shape = circle(50, { stroke: null, fill: navy }), number = text('3', { size: 48, color: page }))), { color: amber })
+        expect([fillOf(offWhite, 0.5, shape), paintsOf(offWhite, 0.5, number)]).toEqual([paintOf(navy), [paintOf(page)]])
+    })
+
+    it('indicate finds the backing of each part of a large target', async () => {
+        // A grid of 60 by 50 cells on a panel. Each cell is on the panel, and no cell is on another cell: the panel keeps its
+        // color, and each cell takes the tint. The parts look for their backing in a grid of cells, and not at every other part.
+        let grid!: ReturnType<typeof stateGrid>, panel!: Node
+        const f = await compileFilm(film({ fps: 20 }, (s) => {
+            panel = s.add(rect(1400, 1000, { stroke: 'ink', fill: 'surface' }))
+            grid = s.add(stateGrid({ columns: 60, rows: 50, cell: 8, gap: 2, initial: 'present' }))
+            s.play(indicate([panel, grid], { color: 'yellow' }), { duration: 1 })
+        }))
+        expect(grid.cells).toHaveLength(3000)
+        expect(fillOf(f, 0.5, panel)).toBe(paintOf('surface'))
+        expect(strokeOf(f, 0.5, panel)).toBe(paintOf('yellow'))
+        const tinted = paths(f, 0.5).filter((op) => op.node !== panel && op.fill === paintOf('yellow')).length
+        expect(tinted).toBeGreaterThanOrEqual(3000)
     })
 
     it('typewriter reveals one glyph at a time', async () => {

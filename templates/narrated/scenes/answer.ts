@@ -1,6 +1,6 @@
 // Keep the answer: a second bar, to the same scale, for the request that the cache serves.
-import { assertEqual, commas, fadeIn, grow, type SceneClock, type Stage } from 'vizmatic/stage'
-import { BAR, COLOR, N, SCALE, area, claimTag, heading, label, left, slowRequest, source, timeBar } from './kit'
+import { assertEqual, boxOf, commas, grow, place, type SceneClock, type Stage } from 'vizmatic/stage'
+import { COLOR, N, SIZE, claimTag, display, heading, lower, middle, request, slowRequest, source } from './kit'
 
 // The numbers that the voice says.
 assertEqual(N.cache.ms, 5, 'the time from the cache')
@@ -14,13 +14,12 @@ export function answer(s: Stage, c: SceneClock) {
     const slow = slowRequest()
     c.take(slow.all)
 
-    const fast = timeBar(N.cache.ms, BAR.fastY, COLOR.fast)
-    const name = left('served from the cache', BAR.left, BAR.fastY - 80)
-    const time = left(`${N.cache.ms} ms`, BAR.left + N.cache.ms * SCALE + 32, BAR.fastY, { size: 56, color: COLOR.fast })
-    c.on('A cache keeps', () => s.play(fadeIn(name, { duration: 0.4 })), -0.1)
-    c.on('five milliseconds', () => s.play(grow(fast, { from: [BAR.left, BAR.fastY], duration: 0.3 }), fadeIn(time, { duration: 0.4 })), -0.1)
+    // The fast request has the place of the five requests of the scene before: the band under the slow one.
+    const fast = request('served from the cache', N.cache.ms, COLOR.fast, middle)
+    c.show('A cache keeps', fast.name)
+    c.show('five milliseconds', [grow(fast.bar, { from: boxOf(fast.bar).point('left') }), fast.time])
 
-    const result = label(`${commas(TIMES_FASTER)} times faster`, area.cx, 300, { size: 88, color: COLOR.fast })
-    c.on('one hundred and sixty times', () => s.play(fadeIn(result, { duration: 0.4 })), -0.1, 1)
+    const result = place(display(`${commas(TIMES_FASTER)} times faster`, { size: SIZE.result, color: COLOR.fast }), lower)
+    c.show('one hundred and sixty times', result)
     // This is the last scene. Its picture stays while the sound fades, and the film takes it away at the end.
 }

@@ -393,6 +393,8 @@ export class Pictogram extends Node {
         const size = options.size ?? 96, unit = size / GRID
         const place = [unit, 0, 0, unit, -size / 2, -size / 2] as const
         this.size = size
+        // The layout measures the square of the grid, not the ink, so pictures of one size line up in a column.
+        this.layoutBox = [-size / 2, -size / 2, size / 2, size / 2]
         const draw = ART[name]
         const color = options.color ?? 'ink', accent = options.accent ?? color
         const weight = (options.weight ?? 1.6) * unit

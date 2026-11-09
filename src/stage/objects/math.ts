@@ -8,6 +8,7 @@ import { ramp, sampleStops, toPaint, type ColorInput, type Rgba } from '../color
 import { clock } from '../track'
 import { morphMatching, warp, type Anim, type AnimOptions } from '../anim'
 import { labelNode, polylineRing, seededRandom, stepsBetween } from './util'
+import { nodesFor, oneObject, type Block } from '../layout'
 
 type Reactive = number | (() => number)
 const read = (value: Reactive): number => typeof value === 'function' ? value() : value
@@ -149,6 +150,7 @@ export function complexPlane(options: ComplexPlaneOptions = {}): ComplexPlane {
  * separately, so this moves only the grid.
  */
 export function applyComplex(plane: NumberPlane, f: (re: number, im: number) => Vec, options: AnimOptions & { subdivisions?: number } = {}): Anim {
+    oneObject('applyComplex', plane, 'the first argument', NumberPlane, 'a number plane, such as complexPlane()')
     const inverse = invert(plane.worldMatrix())
     const world = plane.worldMatrix()
     const unit = plane.unit
@@ -446,6 +448,7 @@ export interface RiemannOptions {
 
 /** Rectangles under a curve. Morph one set into a finer one to show the integral appear. */
 export function riemann(axes: Axes, f: (x: number) => number, options: RiemannOptions = {}): Node {
+    oneObject('riemann', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const from = options.from ?? axes.xRange[0], to = options.to ?? axes.xRange[1]
     const n = options.n ?? 12
     const rule = options.rule ?? 'mid'
@@ -486,6 +489,7 @@ function areaPath(axes: Axes, f: (x: number) => number, from: number, to: number
 
 /** Shaded region between a curve and the x axis. Pass functions for bounds that move. */
 export function areaUnder(axes: Axes, f: (x: number) => number, options: AreaOptions = {}): Node {
+    oneObject('areaUnder', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const samples = options.samples ?? 96
     const color = options.fill ?? 'blue'
     const opacity = options.opacity ?? 0.28
@@ -517,6 +521,7 @@ export interface TangentOptions extends ShapeStyle {
 
 /** The tangent at x, as a line on the axes. Pass a function of time to make it slide. */
 export function tangentLine(axes: Axes, f: (x: number) => number, x: Reactive, style: TangentOptions = {}): Node {
+    oneObject('tangentLine', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const length = style.length ?? 420
     const color = style.stroke ?? 'yellow'
     const build = (): Node[] => {
@@ -545,6 +550,7 @@ export interface SecantOptions extends ShapeStyle {
 
 /** The line through two points on a curve. Pass functions to shrink h on screen. */
 export function secantLine(axes: Axes, f: (x: number) => number, a: Reactive, b: Reactive, style: SecantOptions = {}): Node {
+    oneObject('secantLine', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const extend = style.extend ?? 140
     const color = style.stroke ?? 'yellow'
     const build = (): Node[] => {
@@ -568,6 +574,7 @@ export function secantLine(axes: Axes, f: (x: number) => number, a: Reactive, b:
 
 /** Dashed drop lines from a point on the axes. Pass functions to follow a moving point. */
 export function dashedGuides(axes: Axes, x: Reactive, y: Reactive, style: ShapeStyle = {}): Node {
+    oneObject('dashedGuides', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const build = (): Node[] => {
         const px = read(x), py = read(y)
         const originX = Math.max(axes.xRange[0], Math.min(axes.xRange[1], 0))
@@ -752,8 +759,10 @@ export function matrix(rows: readonly (readonly (string | number)[])[], options:
 
 // ── Annotation marks ────────────────────────────────────────────────────────
 
-function boundsOf(target: Node | readonly Node[]): { x: number; y: number; width: number; height: number } {
-    const list: readonly Node[] = Array.isArray(target) ? target as readonly Node[] : [target as Node]
+function boundsOf(what: string, target: Node | Block | readonly (Node | Block)[]): { x: number; y: number; width: number; height: number } {
+    // A block of the layout stands for its nodes.
+    const list = nodesFor(what, target)
+    if (list.length === 0) throw new Error(`${what}: the target is an empty list. Give it at least one node`)
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
     for (const node of list) {
         const b = node.bounds()
@@ -778,8 +787,8 @@ export interface BraceLabelOptions {
 }
 
 /** A brace along one side of a node or nodes, with a label at its point. */
-export function braceLabel(target: Node | readonly Node[], label: string, options: BraceLabelOptions = {}): Node {
-    const b = boundsOf(target)
+export function braceLabel(target: Node | Block | readonly (Node | Block)[], label: string, options: BraceLabelOptions = {}): Node {
+    const b = boundsOf('braceLabel', target)
     const side = options.side ?? 'bottom'
     const gap = options.gap ?? 12
     const color = options.color ?? 'ink'
@@ -813,8 +822,8 @@ export interface SurroundOptions {
 }
 
 /** A rounded box around a node or nodes, measured now. */
-export function surroundingBox(target: Node | readonly Node[], options: SurroundOptions = {}): Node {
-    const b = boundsOf(target)
+export function surroundingBox(target: Node | Block | readonly (Node | Block)[], options: SurroundOptions = {}): Node {
+    const b = boundsOf('surroundingBox', target)
     const pad = options.pad ?? 12
     const box = rect(b.width + pad * 2, b.height + pad * 2, { radius: options.radius ?? 8, stroke: options.color ?? 'yellow', width: options.width ?? 2.5, glow: options.glow })
     if (options.fill) box.fill(options.fill, options.fillOpacity ?? 0.14)

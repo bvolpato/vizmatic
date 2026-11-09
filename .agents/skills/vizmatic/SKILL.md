@@ -25,7 +25,7 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
 ## Film workflow
 
 1. Start from `assets/starter-film.ts`, or run `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`. The `narrated` template writes a folder for a film that follows a recorded voice.
-2. Read `references/films.md` for the engine rules and patterns. Run `npx vizmatic objects` for the object catalog and `npx vizmatic looks` for the looks.
+2. Read `references/films.md` for the engine rules and patterns. Lay each picture out with `row`, `column`, `grid`, `place` and `beside` before you type a coordinate: see "Layout" there. Run `npx vizmatic objects` for the object catalog and `npx vizmatic looks` for the looks.
 3. Check it, and fix every error. Each finding has times, a `box` in canvas pixels, and a `stage` center in authoring coordinates.
    ```bash
    npx vizmatic check intro.ts --json

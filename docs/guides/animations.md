@@ -213,7 +213,37 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-A part that is drawn on a fill stays readable. Such a fill is a backing: the disc of a numbered ring, the panel of a box, a solid badge under its number. A backing and its content never take the tint together, because one color for both hides the content. The tint goes to the one of the two that leaves more contrast between them: the border and the number of a ring on a dark panel, or the disc of a light badge under a dark number. So pass a shape together with what is on it, as one group or a list: `indicate([ring, number])`. A shape with nothing on it, such as a dot or a bar, takes the tint in full. `fill: true` tints every paint, also a backing and its content.
+`indicate` swells a target and tints it for a moment. A fill that another part of the target is drawn on is a backing, and a backing and its content never take the tint together: the tint goes to the one of the two that leaves more contrast between them.
+
+That gives two pictures:
+
+- **On a dark panel, the border and the text light up.** The panel keeps its color. This is a numbered ring, a box or a card in the `midnight` look with a yellow tint.
+- **On a light panel, the panel lights up under its dark text.** The text keeps its color. This is a solid badge under a dark number. It is also the same ring, box or card in the `paper` look with a yellow tint, when each text on it is dark: yellow has no contrast on a light panel, so the panel takes it.
+
+The least readable part on the panel decides. A card in `paper` with an ink caption becomes a yellow panel. The same card with a `dim` caption gets only a lit border: the caption is hard to read on yellow, and yellow text is hard to read on the panel, so the panel and its texts keep their colors.
+
+So pass a shape together with what is on it, as one group or a list: `indicate([ring, number])`. A shape with nothing on it, such as a dot or a bar, takes the tint in full.
+
+What is a part, and what is on a fill:
+
+- A part is on a fill when the stage draws it after the fill, it is smaller than the fill, and its middle is inside the shape of the fill. The order of the list does not count. A label in the box of a triangle and outside the triangle is beside it, and a number in the hole of a donut is on no wedge.
+- A text, a formula and a pictogram are one part each. So the integral sign and the root sign of a formula take the tint with the rest, and no glyph is the backing of the next.
+- A part that does not show, hidden or at opacity 0, is not counted.
+- An object with a `color()` of its own gets that call. A `tag` tints the border of its pill and its word, and its note keeps its color.
+- The choice is made when the animation starts, from the places and the colors of that moment. So `seq(moveTo(number, ring), indicate([ring, number]))` sees the number on its ring.
+- `fill: true` is `node.color(color)` for the whole target, with no choice: every paint takes the tint.
+
+The limits:
+
+- A pair keeps its colors when no tint leaves it readable and it is more readable as it is. Readable is a contrast of 3 to 1 between a part and its fill. Only the border of the fill lights up then, and a target with no border only swells. A light number on a light badge is such a pair: give the number a dark color.
+- With a tint that is near the page color, such as yellow in `paper`, expect lit borders more often than lit panels. A chip, a named box, and a panel under a `dim` or a colored word get only a lit border there. For a stronger emphasis, use a tint with contrast to the page, such as `red` in `paper`.
+- The limit of 3 to 1 is a line, so two colors that look alike can get two pictures. In `paper` with a yellow tint, a white number on a blue badge has 3.3 to 1 on a yellow badge, and the badge takes the tint. A number in the `bg` color has a little less than 3 to 1, and that pair keeps its colors.
+- A fill that is not opaque keeps its alpha under the tint, and it counts as the color that a viewer sees through it. On a wash, the content takes the tint when that is readable, because a wash hardly shows a tint. With `fill: true`, as before, the fill takes the tint and loses its alpha.
+- A gradient counts as the color of its middle. When it takes the tint, it becomes one color.
+- A `counter`, and any drawing that a function makes again on each frame, cannot take a tint. It is one part: its ring keeps its color under it when that is more readable, and takes the tint when not.
+- A part whose middle is off its fill, such as a number at the edge of a disc, is not on the fill: both take the tint.
+- The tint `ink` on a target in the ink color changes no color. The target only swells.
+- The choice takes about a quarter of a second for 10,000 parts, at the start of the animation.
 
 ### shake
 
@@ -273,12 +303,14 @@ export default film({ fps: 30 }, (s) => {
 `spotlight` dims the rest of the stage, so that the viewer looks at one node. The targets keep their look. A second `spotlight` moves the light, and `spotlight(null)` turns it off. Use it in place of a list of fades: a film that fades the other nodes by hand forgets one, and that node stays bright or stays dim.
 
 ```film paired label="A light moves across four boxes while the heading stays bright, then every box comes back"
-import { film, group, rect, spotlight, text } from 'vizmatic/stage'
+import { beside, film, group, rect, row, spotlight, text } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const heading = s.add(text('Four steps of a request', { font: 'text-serif', size: 90 }).at(0, -330))
     const steps = ['parse', 'plan', 'run', 'reply'].map((name) => group(rect(360, 240, { radius: 16, stroke: 'blue', width: 6 }), text(name, { font: 'text-serif', size: 80 })))
-    s.add(group(...steps).arrange('right', 60).moveTo([0, 60]))
+    // A row measures the boxes, and it goes under the heading.
+    beside(row(steps, { gap: 60 }), heading, 'under', 'loose')
+    for (const step of steps) s.add(step)
     s.wait(0.5)
     for (const step of steps) {
         s.play(spotlight(step, { keep: [heading] }))

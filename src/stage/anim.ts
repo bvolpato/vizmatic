@@ -1,12 +1,15 @@
 import { smooth, linear, thereAndBack, wiggle as wiggleEase, type Ease } from './ease'
+import { encloses } from './enclose'
 import {
-    apply, compose, matScale, pointAt, subdivideEach, tangentAt, transformPath, warpPath, circlePath, linePath, rectPath,
-    type Mat, type Path, type Vec,
+    apply, compose, matScale, pathBounds, pointAt, subdivideEach, tangentAt, transformPath, warpPath, circlePath, linePath, rectPath,
+    type Bounds, type Mat, type Path, type Vec,
 } from './geometry'
-import { contrast, isGradient, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from './color'
+import { contrast, isGradient, over, sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from './color'
 import { clock, Track } from './track'
 import { Node, type NodeProps, type PropName } from './node'
+import { Block, nodeOrPoint, nodesFor, oneNode } from './layout'
 import { matchSequence, pathMixer } from './morph'
+import { Pictogram } from './objects/pictograms'
 import type { Stage } from './stage'
 
 export interface AnimContext {
@@ -31,10 +34,18 @@ export interface AnimOptions {
     lag?: number
 }
 
-export type Target = Node | readonly Node[]
+/** What an animation acts on: a node, a block of the layout, or a list of them. A block stands for its nodes. */
+export type Target = Node | Block | readonly (Node | Block)[]
 
-function list(target: Target): Node[] {
-    return Array.isArray(target) ? [...target] as Node[] : [target as Node]
+function list(target: Target, what = 'an animation'): Node[] {
+    return nodesFor(what, target)
+}
+
+/** The middle of the bounds of nodes that are one target, as a stage point. */
+function middleOf(nodes: readonly Node[]): Vec {
+    const boxes = nodes.map((node) => node.bounds())
+    const left = Math.min(...boxes.map((b) => b.x)), right = Math.max(...boxes.map((b) => b.x + b.width)), top = Math.min(...boxes.map((b) => b.y)), bottom = Math.max(...boxes.map((b) => b.y + b.height))
+    return [(left + right) / 2, (top + bottom) / 2]
 }
 
 function run(anim: Anim, t0: number, t1: number, parent: AnimContext): void {
@@ -354,11 +365,14 @@ export function vanish(target: Target): Anim {
  *
  *   s.play(to(dot, (d) => d.moveTo(axes.p(2, 4)).color('yellow').scale(1.5)))
  */
-export function to<T extends Node>(node: T, change: (node: T) => unknown, options: AnimOptions & { restore?: boolean } = {}): Anim {
+export function to<T extends Node | Block>(node: T, change: (node: T) => unknown, options: AnimOptions & { restore?: boolean } = {}): Anim {
+    // A block of the layout is its nodes: `to(block, () => place(block, region))` moves each one.
+    const nodes = nodesFor('to', node, 'the first argument')
+    if (typeof change !== 'function') throw new Error('to: the second argument is the change, a function such as (node) => node.shift(100, 0)')
     return {
         label: 'to', duration: options.duration ?? 1, ease: options.ease,
         schedule(ctx) {
-            ensureVisible(node, ctx.t0, ctx.stage)
+            for (const each of nodes) ensureVisible(each, ctx.t0, ctx.stage)
             const touched = new Set<{ overlay: Map<string, unknown> | null }>()
             clock.capture = touched
             try {
@@ -404,32 +418,62 @@ function applyChanges(node: Node, values: Map<string, unknown>, ctx: AnimContext
     for (const [prop, value] of restoreValues) stepAt(node, prop, value, t1)
 }
 
-export function moveTo(node: Node, target: Vec | Node, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.moveTo(target), options), label: 'moveTo' }
+/** A change of each node of a target, as one animation. A block of the layout stands for its nodes. */
+function toEach(what: string, target: Node | Block, change: (node: Node, all: readonly Node[]) => unknown, options: AnimOptions): Anim {
+    const nodes = nodesFor(what, target, 'the first argument')
+    return { ...to(target, () => { for (const node of nodes) change(node, nodes) }, options), label: what === 'scaleBy' ? 'scale' : what }
 }
 
-export function shift(node: Node, dx: number, dy: number, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.shift(dx, dy), options), label: 'shift' }
+/** Move a node so that its middle is on a stage point, or on the middle of another node. A block moves as one. */
+export function moveTo(node: Node | Block, target: Vec | Node | Block, options: AnimOptions = {}): Anim {
+    const nodes = nodesFor('moveTo', node, 'the first argument')
+    if (!(target instanceof Block)) nodeOrPoint('moveTo', target, 'the place')
+    if (node instanceof Node && !(target instanceof Block)) return { ...to(node, (n) => n.moveTo(target), options), label: 'moveTo' }
+    return {
+        ...to(node, () => {
+            // One distance for all the nodes, so that a block keeps its shape.
+            const [x, y] = target instanceof Block ? middleOf(target.nodes) : target instanceof Node ? target.center : target
+            const [cx, cy] = middleOf(nodes)
+            for (const each of nodes) each.moveTo([each.center[0] + x - cx, each.center[1] + y - cy])
+        }, options),
+        label: 'moveTo',
+    }
 }
 
-export function scaleBy(node: Node, factor: number | Vec, options: AnimOptions & { about?: Vec } = {}): Anim {
-    return { ...to(node, (n) => n.scale(factor, options.about), options), label: 'scale' }
+export function shift(node: Node | Block, dx: number, dy: number, options: AnimOptions = {}): Anim {
+    return toEach('shift', node, (n) => n.shift(dx, dy), options)
 }
 
-export function rotate(node: Node, radians: number, options: AnimOptions & { about?: Vec } = {}): Anim {
-    return { ...to(node, (n) => n.rotate(radians, options.about), options), label: 'rotate' }
+/** Scale a node about its middle, or about a stage point. A block scales as one, about its middle. */
+export function scaleBy(node: Node | Block, factor: number | Vec, options: AnimOptions & { about?: Vec } = {}): Anim {
+    let about: Vec | undefined
+    return toEach('scaleBy', node, (n, all) => {
+        if (n === all[0]) about = options.about ?? (all.length > 1 ? middleOf(all) : undefined)
+        n.scale(factor, about)
+    }, options)
 }
 
-export function recolor(node: Node, color: ColorInput, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.color(color), options), label: 'recolor' }
+/** Turn a node about its middle, or about a stage point. A block turns as one, about its middle. */
+export function rotate(node: Node | Block, radians: number, options: AnimOptions & { about?: Vec } = {}): Anim {
+    let about: Vec | undefined
+    return toEach('rotate', node, (n, all) => {
+        if (n === all[0]) about = options.about ?? (all.length > 1 ? middleOf(all) : undefined)
+        n.rotate(radians, about)
+    }, options)
 }
 
-export function fade(node: Node, opacity: number, options: AnimOptions = {}): Anim {
-    return { ...to(node, (n) => n.opacity(opacity), { duration: 0.6, ...options }), label: 'fade' }
+export function recolor(node: Node | Block, color: ColorInput, options: AnimOptions = {}): Anim {
+    return toEach('recolor', node, (n) => n.color(color), options)
+}
+
+export function fade(node: Node | Block, opacity: number, options: AnimOptions = {}): Anim {
+    return toEach('fade', node, (n) => n.opacity(opacity), { duration: 0.6, ...options })
 }
 
 /** Follow a path, or the shape of a node, from start to end. */
 export function along(node: Node, track: Path | Node, options: AnimOptions & { orient?: boolean } = {}): Anim {
+    oneNode('along', node, 'the first argument')
+    if (track instanceof Block) oneNode('along', track, 'the track')
     return {
         label: 'along', duration: options.duration ?? 2, ease: options.ease,
         schedule(ctx) {
@@ -659,6 +703,8 @@ function finishMorph(a: readonly Node[], b: readonly Node[], ghosts: readonly No
  * to their new places. The rest fade out or in where they stand.
  */
 export function morphMatching(from: Node, to: Node, options: AnimOptions & { key?: (leaf: Node) => unknown; fadeShift?: Vec } = {}): Anim {
+    oneNode('morphMatching', from, 'the first argument')
+    oneNode('morphMatching', to, 'the second argument')
     return {
         label: 'morphMatching', duration: options.duration ?? 1.4, ease: options.ease,
         schedule(ctx) {
@@ -694,74 +740,248 @@ export function morphMatching(from: Node, to: Node, options: AnimOptions & { key
 /**
  * Swell and tint for a moment, then return.
  *
- * A part that is drawn on a fill stays readable. Such a fill is a backing: the disc of a numbered ring, the panel of a
- * box, a solid badge under its number. A backing and its content never take the tint together, because one color for
- * both hides the content. The tint goes to the one of the two that leaves more contrast between them: the border and
- * the number of a ring on a dark panel, or the disc of a light badge under a dark number. So pass a shape together
- * with what is on it, as one group or a list. A shape with nothing on it takes the tint in full.
- * `fill: true` tints every paint, also a backing and its content.
+ * A fill that another part of the target is drawn on is a backing: the disc of a numbered ring, the panel of
+ * a box, a solid badge under its number. A backing and what is on it never take the tint together, because
+ * one color for both hides the content: the tint goes to the one of the two that leaves more contrast between
+ * them. On a dark panel, the border and the text light up. On a light panel, the panel lights up under its
+ * dark text. So pass a shape together with what is on it, as one group or a list.
+ *
+ * A part is on a fill when it is drawn after the fill, it is smaller, and its middle is inside the shape of
+ * the fill. A text, a formula and a pictogram are one part each. An object with a `color()` of its own, such
+ * as a tag, gets that call. A shape with nothing on it takes the tint in full. The choice is made when the
+ * animation starts, from what shows then. `fill: true` is `node.color(color)` with no choice.
  */
 export function indicate(target: Target, options: AnimOptions & { color?: ColorInput; scale?: number; fill?: boolean } = {}): Anim {
-    const nodes = list(target)
+    const nodes = list(target, 'indicate')
     const color = options.color ?? 'yellow'
-    // The parts of all the targets, in the order that they are drawn: a number can be on a ring that is another target.
-    const parts = nodes.flatMap((node) => node.all()).filter((part) => part.get('stroke') || part.get('fill'))
-    const kept = options.fill ? { fills: new Set<Node>(), parts: new Set<Node>() } : keptBy(parts, toPaint(color))
-    const anims = nodes.map((node) => retime(to(node, (n) => {
-        n.scale(options.scale ?? 1.14)
-        tint(n, color, kept)
-    }, { restore: true }), { ease: options.ease ?? thereAndBack }))
-    return { ...par(...anims), label: 'indicate', duration: options.duration ?? 0.9 }
+    return {
+        label: 'indicate', duration: options.duration ?? 0.9,
+        schedule(ctx) {
+            let tint: (node: Node) => void = (node) => { node.color(color) }
+            if (!options.fill) {
+                // The choice is for this moment: a part can move onto a fill, change its color, or arrive, before the animation starts.
+                for (const node of nodes) ensureVisible(node, ctx.t0, ctx.stage)
+                clock.now = ctx.t0
+                const plan = tintPlan(nodes, color, ctx.stage)
+                tint = (node) => applyTint(node, plan)
+            }
+            const anims = nodes.map((node) => retime(to(node, (n) => {
+                n.scale(options.scale ?? 1.14)
+                tint(n)
+            }, { restore: true }), { ease: options.ease ?? thereAndBack }))
+            par(...anims).schedule(ctx)
+        },
+    }
 }
 
-/** What a tint leaves alone: the fills of some backings, and the whole of the parts that are on the other backings. */
-interface Kept { fills: Set<Node>; parts: Set<Node> }
+/** A pair with less contrast than this is hard to read, also in large text. */
+const READABLE = 3
+/** A part is on a fill when its box is smaller than the box of the fill by this much. A part of the size of the fill is its border, or its twin. */
+const SMALLER = 0.9
 
 /**
- * For each fill that a later, smaller part sits on (the middle of that part is inside the fill), choose what keeps its
- * color: the fill, or the parts on it. The choice is the one with more contrast between the two after the tint.
+ * One thing that `indicate` tints as a whole or leaves as a whole. A shape is one outline. A text, a formula,
+ * a pictogram, and a drawing that a function makes again on each frame are one part each: none of their
+ * marks is the backing of another. An object with a `color()` of its own is one part too.
  */
-function keptBy(parts: readonly Node[], tintPaint: Paint): Kept {
-    const kept: Kept = { fills: new Set(), parts: new Set() }
-    const boxes = parts.map((part) => part.bounds())
-    const solid = (paint: Paint | null | undefined): Rgba | null => paint && !isGradient(paint) ? paint as Rgba : null
-    const tintColor = solid(tintPaint)
-    parts.forEach((part, i) => {
-        const fill = part.get('fill')
-        if (!fill) return
-        const box = boxes[i]!
-        const on = parts.filter((_, j) => {
-            if (j <= i) return false
-            const other = boxes[j]!
-            const x = other.x + other.width / 2, y = other.y + other.height / 2
-            return other.width * other.height < box.width * box.height * 0.9 && x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height
-        })
-        if (on.length === 0) return
-        const backing = solid(fill)
-        const inks = on.map((other) => solid(other.get('fill')) ?? solid(other.get('stroke')))
-        // With a gradient somewhere, there is no one contrast to compare: the fill stays, which never hides its content.
-        if (!tintColor || !backing || inks.some((ink) => !ink)) { kept.fills.add(part); return }
-        const tintedContent = contrast(tintColor, backing)
-        const tintedBacking = Math.min(...inks.map((ink) => contrast(ink!, tintColor)))
-        if (tintedBacking > tintedContent) for (const other of on) kept.parts.add(other)
-        else kept.fills.add(part)
-    })
-    return kept
+interface TintPart {
+    node: Node
+    kind: 'shape' | 'whole' | 'object'
+    /** Its place in the draw order of the stage. */
+    order: number
+    bounds: Bounds
+    /** The colors that a viewer sees of each mark of the part: its line, its fill, or both. */
+    colors: Rgba[][]
+    /** For a shape with a fill, which can be a backing: the color that a viewer sees, and its opacity. */
+    fill: { color: Rgba; alpha: number } | null
+    /** False for a drawing that takes its colors from a function: a tint cannot reach it. */
+    tints: boolean
 }
 
-/** Recolor each line and each fill of a node and its parts, but for what `kept` names. */
-function tint(target: Node, color: ColorInput, kept: Kept): void {
+/** What `indicate` does at one start: the paint, the parts, the fills that keep their color, and the parts that keep all their colors. */
+interface TintPlan {
+    color: ColorInput
+    paint: Paint
+    parts: Map<Node, TintPart>
+    keepFill: Set<Node>
+    keepPart: Set<Node>
+}
+
+const isText = (node: Node): boolean => typeof (node as { source?: unknown }).source === 'string' && (Array.isArray((node as { chars?: unknown }).chars) || Array.isArray((node as { glyphs?: unknown }).glyphs))
+
+/** The place of each node of the stage in the order of drawing, as the renderer walks the tree: a node, then its children by `z`. */
+function drawOrder(root: Node): Map<Node, number> {
+    const order = new Map<Node, number>()
+    const walk = (node: Node): void => {
+        order.set(node, order.size)
+        const children = node.children
+        if (children.length === 0) return
+        const sorted = children.some((child) => child.get('z') !== 0)
+            ? children.map((child, index) => ({ child, index, z: child.get('z') })).sort((a, b) => a.z - b.z || a.index - b.index).map((entry) => entry.child)
+            : children
+        for (const child of sorted) walk(child)
+    }
+    walk(root)
+    return order
+}
+
+/** The opacity that a node has for a viewer now: 0 when it or a group that holds it is hidden. */
+function shownOpacity(node: Node): number {
+    let opacity = 1
+    for (let up: Node | null = node; up; up = up.parent) {
+        if (!up.get('visible')) return 0
+        opacity *= up.get('opacity')
+    }
+    return opacity
+}
+
+/**
+ * Decide what a tint leaves alone, from the parts as they are now. Each part that shows has at most one
+ * backing: the last fill drawn before it whose shape holds the middle of the part. For each backing, the
+ * tint goes to its content or to its fill, by the contrast that each choice leaves between the two.
+ */
+function tintPlan(targets: readonly Node[], color: ColorInput, stage: Stage): TintPlan {
     const paint = toPaint(color)
-    for (const node of target.all()) {
-        if (kept.parts.has(node)) continue
-        if (node.get('stroke')) node.set('stroke', paint)
-        if (node.get('fill') && !kept.fills.has(node)) node.set('fill', paint)
+    const plan: TintPlan = { color, paint, parts: new Map(), keepFill: new Set(), keepPart: new Set() }
+    const order = drawOrder(stage.root)
+    const backdrop = stage.backdrop
+    // The color that a viewer sees of a paint: a gradient by its middle, and a paint that is not opaque over the background of the film.
+    const seen = (value: Paint, alpha: number): Rgba => over(isGradient(value) ? sampleStops(value.stops, 0.5) : value as Rgba, alpha, backdrop)
+    const marks = (node: Node, opacity: number): Rgba[] => {
+        const stroke = node.get('stroke'), fill = node.get('fill')
+        return [...(stroke ? [seen(stroke, node.get('strokeOpacity') * opacity)] : []), ...(fill ? [seen(fill, node.get('fillOpacity') * opacity)] : [])]
+    }
+    const add = (node: Node, kind: TintPart['kind']): void => {
+        const opacity = shownOpacity(node)
+        // A part that does not show is no content and no backing. It still takes the tint, as each paint did before.
+        const part: TintPart = { node, kind, order: opacity > 0.002 ? order.get(node) ?? Infinity : -1, bounds: { x: 0, y: 0, width: 0, height: 0 }, colors: [], fill: null, tints: true }
+        plan.parts.set(node, part)
+        if (part.order < 0) return
+        if (kind === 'shape') {
+            const path = node.get('path'), fill = node.get('fill')
+            part.bounds = (path && pathBounds(transformPath(path, node.worldMatrix()))) ?? node.bounds()
+            part.colors = [marks(node, opacity)]
+            // A glyph is a mark of its text, so it is not the backing of the next glyph.
+            if (path && fill && node.data['key'] === undefined) part.fill = { color: seen(fill, node.get('fillOpacity') * opacity), alpha: node.get('fillOpacity') * opacity }
+            return
+        }
+        part.bounds = node.bounds()
+        // A drawing that a function makes again on each frame has the colors of what the function returns now.
+        const built = node.draw ? node.draw(clock.now) : null
+        const drawn = node.draw ? (built ? (Array.isArray(built) ? built as readonly Node[] : [built as Node]) : []) : [node]
+        part.tints = !node.draw
+        const leaves = drawn.flatMap((each) => each.all()).filter((each) => each.get('visible') && (each.get('stroke') || each.get('fill')))
+        // An object with a color of its own is seen by its body, the first mark that it draws.
+        part.colors = (kind === 'object' ? leaves.slice(0, 1) : leaves).map((each) => marks(each, opacity)).filter((list) => list.length > 0)
+    }
+    const visited = new Set<Node>()
+    const visit = (node: Node): void => {
+        if (visited.has(node)) return
+        visited.add(node)
+        if (node.color !== Node.prototype.color) return add(node, 'object')
+        if (isText(node) || node instanceof Pictogram || node.draw || node.rawOps) return add(node, 'whole')
+        if (node.get('stroke') || node.get('fill')) add(node, 'shape')
+        for (const child of node.children) visit(child)
+    }
+    for (const target of targets) visit(target)
+
+    // The backing of each part: the fills that are drawn before it are in a grid of cells, so a part looks at the
+    // fills of one cell and not at every fill.
+    const shown = [...plan.parts.values()].filter((part) => part.order >= 0 && (part.bounds.width > 0 || part.bounds.height > 0)).sort((a, b) => a.order - b.order)
+    const fills = shown.filter((part) => part.fill)
+    const cell = Math.max(8, fills.reduce((sum, part) => sum + Math.max(part.bounds.width, part.bounds.height), 0) / Math.max(1, fills.length))
+    const cells = new Map<number, TintPart[]>(), wide: TintPart[] = []
+    const key = (ix: number, iy: number): number => ix * 1048576 + iy
+    const paths = new Map<TintPart, Path>()
+    const holds = (fill: TintPart, x: number, y: number): boolean => {
+        const b = fill.bounds
+        if (x < b.x || y < b.y || x > b.x + b.width || y > b.y + b.height) return false
+        let path = paths.get(fill)
+        if (!path) paths.set(fill, path = transformPath(fill.node.get('path')!, fill.node.worldMatrix()))
+        return encloses(path, x, y)
+    }
+    const contents = new Map<TintPart, TintPart[]>()
+    for (const part of shown) {
+        const x = part.bounds.x + part.bounds.width / 2, y = part.bounds.y + part.bounds.height / 2, area = part.bounds.width * part.bounds.height
+        let backing: TintPart | null = null
+        for (const fill of [...(cells.get(key(Math.floor(x / cell), Math.floor(y / cell))) ?? []), ...wide]) {
+            if ((!backing || fill.order > backing.order) && area < fill.bounds.width * fill.bounds.height * SMALLER && holds(fill, x, y)) backing = fill
+        }
+        if (backing) {
+            const on = contents.get(backing)
+            if (on) on.push(part)
+            else contents.set(backing, [part])
+        }
+        if (!part.fill) continue
+        const b = part.bounds
+        const x0 = Math.floor(b.x / cell), x1 = Math.floor((b.x + b.width) / cell), y0 = Math.floor(b.y / cell), y1 = Math.floor((b.y + b.height) / cell)
+        if ((x1 - x0 + 1) * (y1 - y0 + 1) > 1024) { wide.push(part); continue }
+        for (let ix = x0; ix <= x1; ix++) for (let iy = y0; iy <= y1; iy++) {
+            const list = cells.get(key(ix, iy))
+            if (list) list.push(part)
+            else cells.set(key(ix, iy), [part])
+        }
+    }
+
+    // A part is seen by its line or by its fill: the one with more contrast counts. A part of many marks, such as a
+    // text of two colors, is as readable as its least readable mark.
+    const contrastOf = (part: TintPart, against: Rgba): number => Math.min(Infinity, ...part.colors.map((list) => Math.max(...list.map((each) => contrast(each, against)))))
+    const tintColor = seen(paint, 1)
+    for (const [backing, on] of contents) {
+        const fill = backing.fill!
+        const tinted = seen(paint, fill.alpha)
+        // The tint on the content: the fill keeps its color. A drawing that the tint cannot reach stays as it is.
+        const onContent = Math.min(...on.map((part) => (part.tints ? contrast(tintColor, fill.color) : contrastOf(part, fill.color))))
+        // The tint on the fill: the content keeps its colors.
+        const onBacking = Math.min(...on.map((part) => contrastOf(part, tinted)))
+        const asItIs = Math.min(...on.map((part) => contrastOf(part, fill.color)))
+        const best = Math.max(onContent, onBacking)
+        if (best < READABLE && asItIs > best) {
+            // No tint keeps this pair readable, such as a light number on a light badge: both keep their colors.
+            plan.keepFill.add(backing.node)
+            for (const part of on) plan.keepPart.add(part.node)
+        } else if (onBacking > onContent && !(onContent >= READABLE && fill.alpha < 1)) {
+            for (const part of on) plan.keepPart.add(part.node)
+        } else {
+            // Also for a wash, a fill that is not opaque, when the tint is readable on it: a wash hardly shows a tint.
+            plan.keepFill.add(backing.node)
+        }
+    }
+    return plan
+}
+
+/** Give the tint to a target and its parts, but for what the plan keeps. */
+function applyTint(target: Node, plan: TintPlan): void {
+    const paint = plan.paint
+    // A paint that is not opaque keeps its alpha: a wash stays a wash.
+    const like = (old: Paint): Paint => (!isGradient(paint) && !isGradient(old) && (old as Rgba)[3] < 1 ? [(paint as Rgba)[0], (paint as Rgba)[1], (paint as Rgba)[2], (old as Rgba)[3]] : paint)
+    const tintNode = (node: Node, withFill: boolean): void => {
+        const stroke = node.get('stroke'), fill = node.get('fill')
+        if (stroke) node.set('stroke', like(stroke))
+        if (fill && withFill) node.set('fill', like(fill))
         if (node.get('glowColor') && !isGradient(paint)) node.set('glowColor', paint as Rgba)
     }
+    const visit = (node: Node): void => {
+        const part = plan.parts.get(node)
+        if (part) {
+            if (!plan.keepPart.has(node)) {
+                if (part.kind === 'object') node.color(plan.color)
+                else if (part.kind === 'shape') tintNode(node, !plan.keepFill.has(node))
+                else for (const each of node.all()) tintNode(each, true)
+            }
+            if (part.kind !== 'shape') return
+        } else if (node.get('glowColor') && !isGradient(paint)) {
+            // A group can have a glow of its own, with no line and no fill.
+            node.set('glowColor', paint as Rgba)
+        }
+        for (const child of node.children) visit(child)
+    }
+    visit(target)
 }
 
 /** Shake gently to draw the eye. */
 export function shake(node: Node, options: AnimOptions & { angle?: number; cycles?: number } = {}): Anim {
+    oneNode('shake', node, 'the first argument')
     return {
         label: 'shake', duration: options.duration ?? 0.8,
         ease: wiggleEase(options.cycles ?? 3),
@@ -779,6 +999,7 @@ export function shake(node: Node, options: AnimOptions & { angle?: number; cycle
 
 /** Trace a line around a node for emphasis, then let it run off. */
 export function circumscribe(target: Node, options: AnimOptions & { color?: ColorInput; pad?: number; radius?: number; width?: number } = {}): Anim {
+    oneNode('circumscribe', target, 'the first argument')
     return {
         label: 'circumscribe', duration: options.duration ?? 1.3, ease: options.ease ?? linear,
         schedule(ctx) {
@@ -811,6 +1032,7 @@ function markOf(ctx: AnimContext, mark: Node, target: Vec | Node): void {
 
 /** Radial burst at a point, for a moment of arrival. */
 export function flash(point: Vec | Node, options: AnimOptions & { color?: ColorInput; radius?: number; rays?: number } = {}): Anim {
+    nodeOrPoint('flash', point, 'the first argument')
     return {
         label: 'flash', duration: options.duration ?? 0.7, ease: options.ease ?? smooth,
         schedule(ctx) {
@@ -836,6 +1058,7 @@ export function flash(point: Vec | Node, options: AnimOptions & { color?: ColorI
 
 /** Expanding ring that fades out, for a pulse from a point. */
 export function ripple(point: Vec | Node, options: AnimOptions & { color?: ColorInput; radius?: number; width?: number } = {}): Anim {
+    nodeOrPoint('ripple', point, 'the first argument')
     return {
         label: 'ripple', duration: options.duration ?? 1, ease: options.ease ?? smooth,
         schedule(ctx) {
@@ -858,6 +1081,7 @@ export function ripple(point: Vec | Node, options: AnimOptions & { color?: Color
  * on a wire. The source line stays in place underneath.
  */
 export function pulse(line: Node, options: AnimOptions & { color?: ColorInput; length?: number; width?: number; glow?: number } = {}): Anim {
+    oneNode('pulse', line, 'the first argument')
     return {
         label: 'pulse', duration: options.duration ?? 1.1, ease: options.ease ?? smooth,
         schedule(ctx) {
