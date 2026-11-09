@@ -5,6 +5,7 @@ import { Value } from '../anim'
 import type { Stage } from '../stage'
 import { tex } from '../tex'
 import { text, type TextOptions } from '../text'
+import { line } from '../shapes'
 import type { Path, Ring, Vec } from '../geometry'
 import type { ColorInput } from '../color'
 import { parseColor, type Rgba } from '../color'
@@ -164,6 +165,87 @@ export function formatNumber(value: number, step?: number): string {
     const rounded = Math.round(value * 1000) / 1000
     if (Math.abs(rounded) >= 1000 && Number.isInteger(rounded)) return rounded.toLocaleString('en-US')
     return String(rounded)
+}
+
+/** A number of a node at a time, read from its track or from its first value: no change of the clock, and no new track. */
+export function propAt(node: Node, prop: 'x' | 'y' | 'opacity', time: number): number {
+    const track = node.tracks?.get(prop)
+    return track ? track.sample(time) as number : node.base[prop]
+}
+
+/**
+ * A drawing that an object rebuilds on each frame from its own state at that time: a mark whose look follows
+ * other values, such as a dot that takes the color of the side of a threshold that it is on. It reads the
+ * object from its `owner` field and not from a closure, so a copy of the object draws the state of the copy:
+ * `clone()` points the field of each copied part at the copied object.
+ */
+export class Part<T extends Node> extends Node {
+    constructor(
+        public owner: T,
+        readonly render: (owner: T, time: number) => Node | readonly Node[] | null,
+    ) {
+        super()
+        // Not an arrow function: `this` is the node that draws, which is the copy in a copy.
+        this.draw = function (this: Part<T>, time: number) {
+            return this.render(this.owner, time)
+        }
+    }
+}
+
+// ── The frame of a chart with two axes ──────────────────────────────────────
+
+/** The colors of the series and the groups of a chart, in order. */
+export const DEFAULT_SERIES: readonly string[] = ['blue', 'yellow', 'teal', 'orange', 'purple', 'green', 'pink', 'red']
+
+/** A label or a tick of a chart. With no `font`, it is in the font of the film. */
+export function small(content: string, size: number, color: ColorInput = 'dim', font?: TextOptions['font']): Node {
+    return text(content, { size, color, font })
+}
+
+export interface XYFrame {
+    xRange: readonly [number, number]
+    yRange: readonly [number, number]
+    w: number
+    h: number
+}
+
+export function xyPoint(frame: XYFrame, x: number, y: number): [number, number] {
+    const { xRange, yRange, w, h } = frame
+    return [
+        ((x - xRange[0]) / ((xRange[1] - xRange[0]) || 1) - 0.5) * w,
+        (0.5 - (y - yRange[0]) / ((yRange[1] - yRange[0]) || 1)) * h,
+    ]
+}
+
+export function xyAxes(frame: XYFrame, options: { labelSize: number; color?: ColorInput; font?: TextOptions['font']; xLabel?: string; yLabel?: string; gridY?: boolean; xTicks?: number; yTicks?: number; xFormat?: (x: number) => string; yFormat?: (y: number) => string }): Node {
+    const axis = new Node()
+    const size = options.labelSize
+    const color = options.color ?? 'faint'
+    const font = options.font
+    const { w, h } = frame
+    const x = niceTicks(frame.xRange[0], frame.xRange[1], options.xTicks ?? 6)
+    const y = niceTicks(frame.yRange[0], frame.yRange[1], options.yTicks ?? 5)
+    for (const value of y.ticks) {
+        const [, py] = xyPoint(frame, frame.xRange[0], value)
+        if (options.gridY !== false) axis.add(line([-w / 2, py], [w / 2, py], { stroke: 'grid', width: 1.25 }))
+        const label = small(options.yFormat ? options.yFormat(value) : formatNumber(value, y.step), size, 'dim', font)
+        axis.add(label.at(-w / 2 - 12 - label.width / 2, py))
+    }
+    axis.add(line([-w / 2, h / 2], [w / 2, h / 2], { stroke: color, width: 1.5 }))
+    for (const value of x.ticks) {
+        const [px] = xyPoint(frame, value, frame.yRange[0])
+        axis.add(line([px, h / 2], [px, h / 2 + 6], { stroke: color, width: 1.5 }))
+        axis.add(small(options.xFormat ? options.xFormat(value) : formatNumber(value, x.step), size, 'dim', font).at(px, h / 2 + 12 + size * 0.6))
+    }
+    if (options.xLabel) {
+        const label = small(options.xLabel, size, 'ink', font)
+        axis.add(label.at(w / 2 - label.width / 2, h / 2 + 18 + size * 1.6))
+    }
+    if (options.yLabel) {
+        const label = small(options.yLabel, size, 'ink', font)
+        axis.add(label.at(-w / 2 + label.width / 2, -h / 2 - 12 - size / 2))
+    }
+    return axis
 }
 
 /** Straight run of segments as one open ring. */

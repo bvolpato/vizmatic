@@ -14,6 +14,7 @@ import {
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
+    boxOf, fitted,
     circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
@@ -12877,6 +12878,848 @@ describe('named box', () => {
 })
 
 export type { Vec, Vec3 }
+
+describe('number line', () => {
+    type Line = ReturnType<typeof numberLine>
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    /** The texts that a frame draws, each one time: a text of a drawing that is rebuilt on each frame is one of them. */
+    const words = (f: CompiledFilm, t: number) => [...new Set(paths(f, t).filter((op) => op.node?.data['key'] !== undefined).map((op) => (op.node!.parent as unknown as { source: string }).source))]
+    /** The dot of a point in a frame: the only mark of its node with a fill and a line. */
+    const dotOf = (f: CompiledFilm, t: number, point: Node) => paths(f, t).find((op) => op.fill !== null && op.stroke !== null && op.node?.drawer?.parent === point)!
+    const wide = (op: PathOp) => { const box = pathBounds(op.strokePath)!; return [box.x, box.x + box.width] as const }
+    const orange = () => parseColor('orange'), green = () => parseColor('green')
+
+    it('puts the ticks of a list at their values, and a number under the ticks that the film names', async () => {
+        await compile(() => {
+            const line = numberLine({ ticks: [4, 0, 0.5, 1, 2], labels: [0, 1, 4], length: 800 })
+            // The list is in any order, and the line goes from its first value to its last.
+            expect(line.tickValues).toEqual([0, 0.5, 1, 2, 4])
+            expect(line.range).toEqual([0, 4])
+            expect(line.ticks.children.map((tick) => middle(tick)[0])).toEqual([-400, -300, -200, 0, 400])
+            expect(line.numbers.children.map((number) => number.get('x'))).toEqual([-400, -200, 400])
+            // A tick with no number is shorter than a tick with one.
+            const heights = line.ticks.children.map((tick) => tick.bounds().height)
+            expect(heights[1]).toBeLessThan(heights[0]!)
+            expect(heights[3]).toBeLessThan(heights[2]!)
+            // With a format, the numbers are plain text, as the film writes them.
+            const plain = numberLine({ range: [0, 600], ticks: [0, 250, 550], format: (value) => `${value} ms`, length: 900 })
+            expect(plain.numbers.children.map((number) => (number as unknown as { source: string }).source)).toEqual(['0 ms', '250 ms', '550 ms'])
+            expect(plain.numbers.children[2]!.get('x')).toBeCloseTo(plain.p(550)[0], 6)
+        })
+    })
+
+    it('adds nothing to a line with no points, thresholds or bands', async () => {
+        await compile(() => {
+            const line = numberLine({ range: [0, 10], length: 500 })
+            expect(line.children).toEqual([line.line, line.ticks, line.numbers])
+            expect(line.ticks.children).toHaveLength(11)
+            expect(line.numbers.children).toHaveLength(11)
+            expect(line.extent).toBeNull()
+            // The numbers of a line with a step are 24 px, as they were: 6/7 of the default size.
+            expect(line.numbers.children[0]!.bounds().height).toBeLessThan(24)
+            expect(line.numbers.children[0]!.get('y')).toBe(34)
+        })
+    })
+
+    it('refuses ticks that it cannot draw truly, and names what works', async () => {
+        await compile(() => {
+            expect(() => numberLine({ ticks: [0, 1], step: 0.5 })).toThrow(/give `step` for ticks at equal steps, or `ticks` for a list of values, not both/)
+            expect(() => numberLine({ ticks: [] })).toThrow(/at least one value/)
+            expect(() => numberLine({ ticks: [0, NaN] })).toThrow(/the tick NaN is not a number/)
+            expect(() => numberLine({ ticks: [0, 1, 1] })).toThrow(/the tick 1 is in the list two times/)
+            expect(() => numberLine({ range: [0, 1], ticks: [0, 2] })).toThrow(/the tick 2 is outside the line, which goes from 0 to 1/)
+            expect(() => numberLine({ ticks: [0, 1, 2], labels: [0, 1.5] })).toThrow(/labels names 1\.5, which is not a tick of the line/)
+            expect(() => numberLine({ range: [3, 3] })).toThrow(/the range is 3 to 3\. Give two different values, the smaller one first/)
+            expect(() => numberLine({ step: 0 })).toThrow(/step is 0\. A step is the distance between two ticks, more than 0/)
+            expect(() => numberLine({ range: [0, 1], step: 0.0001 })).toThrow(/gives 10000 ticks from 0 to 1/)
+            // Numbers that touch: the message names the ticks that have room, from the last one down.
+            const grid = [0, 0.125, 0.25, 0.375, 0.5, 1, 2, 4]
+            let message = ''
+            try { numberLine({ ticks: grid, length: 600 }) } catch (error) { message = (error as Error).message }
+            expect(message).toMatch(/the numbers "0" and "0\.125" touch under the line/)
+            const named = /labels: \[([^\]]+)\]/.exec(message)![1]!.split(', ').map(Number)
+            expect(named[named.length - 1]).toBe(4)
+            // The list that the message names builds.
+            expect(numberLine({ ticks: grid, length: 600, labels: named }).numbers.children).toHaveLength(named.length)
+        })
+    })
+
+    it('gives the tick that is nearest to a value, and of two that are as near the one with the even index', async () => {
+        await compile(() => {
+            const line = numberLine({ ticks: [0, 1, 2, 3] })
+            expect(line.nearestTick(0.4)).toBe(0)
+            expect(line.nearestTick(0.6)).toBe(1)
+            expect(line.nearestTick(0.5)).toBe(0)
+            expect(line.nearestTick(1.5)).toBe(2)
+            expect(line.nearestTick(2.5)).toBe(2)
+            // A value past the last tick goes to it.
+            expect(line.nearestTick(9)).toBe(3)
+            // The ticks of a step are ticks too.
+            expect(numberLine({ range: [0, 1], step: 0.25 }).nearestTick(0.7)).toBe(0.75)
+        })
+    })
+
+    it('moves a point along the line, and a second move in one sequence starts from the first', async () => {
+        let line!: Line
+        await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, points: [{ name: 'A', value: 2 }, { name: 'B', value: 9 }] }))
+            expect(line.value('A')).toBe(2)
+            s.play(seq(line.move('A', 6), line.move('A', 4)), { duration: 2, ease: linear })
+            expect(line.value('A')).toBe(4)
+            // Two points at one time, by their names.
+            s.play(line.move({ A: 5, B: 8 }), { duration: 1, ease: linear })
+        })
+        const x = (name: string, time: number) => at(time, () => line.point(name).get('x'))
+        expect([0, 0.5, 1, 1.5, 2].map((time) => x('A', time))).toEqual([2, 4, 6, 5, 4].map((value) => line.p(value)[0]))
+        expect(x('A', 2.5)).toBeCloseTo(line.p(4.5)[0], 6)
+        expect(x('B', 2.5)).toBeCloseTo(line.p(8.5)[0], 6)
+        expect([line.value('A'), line.value('B')]).toEqual([5, 8])
+        expect(line.names).toEqual(['A', 'B'])
+    })
+
+    it('snaps a point to the nearest tick, and leaves the error as a line from the place that it came from', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ ticks: [0, 0.5, 1, 2], length: 1000, points: [{ name: 'w', value: 0.7 }, { name: 'v', value: 1.6 }, { name: 'u', value: 1 }] }))
+            s.play(line.snap(), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(line.move('v', 1.5), { duration: 1, ease: linear })
+            s.wait(1)
+        })
+        expect([line.value('w'), line.value('v'), line.value('u')]).toEqual([0.5, 1.5, 1])
+        expect(at(1, () => line.point('w').get('x'))).toBe(line.p(0.5)[0])
+        expect(at(1, () => line.point('v').get('x'))).toBe(line.p(2)[0])
+        const red = parseColor('red')
+        const errors = (time: number) => paths(f, time).filter((op) => op.stroke === red).map(wide).sort((a, b) => a[0] - b[0])
+        // Two points moved, so two lines: each one goes from the old place to the tick. The point on a tick has none.
+        const done = errors(1.5)
+        expect(done).toHaveLength(2)
+        expect(done[0]![1] - done[0]![0]).toBeCloseTo(line.p(0.7)[0] - line.p(0.5)[0], 3)
+        expect(done[1]![1] - done[1]![0]).toBeCloseTo(line.p(2)[0] - line.p(1.6)[0], 3)
+        // Half way, the line is as long as the way that the dot has gone.
+        const half = errors(0.5)
+        expect(half[1]![1] - half[1]![0]).toBeCloseTo((line.p(2)[0] - line.p(1.6)[0]) / 2, 3)
+        // The next move of a point takes its line away.
+        expect(errors(3.5)).toHaveLength(1)
+        // `trace: false` leaves no line.
+        const bare = await compile((s) => {
+            const other = s.add(numberLine({ ticks: [0, 1], points: [{ name: 'w', value: 0.7 }] }))
+            s.play(other.snap('w', { trace: false }), { duration: 1 })
+            s.wait(1)
+        })
+        expect(paths(bare, 1.5).filter((op) => op.stroke === red)).toHaveLength(0)
+    })
+
+    it('puts a point in the band of its side of a threshold, and a point at the threshold in the band that the film names', async () => {
+        await compile(() => {
+            const points = [{ name: 'a', value: 4 }, { name: 'b', value: 5 }, { name: 'c', value: 6 }]
+            const line = numberLine({ range: [0, 10], thresholds: [5], bands: ['low', 'high'], points })
+            expect(['a', 'b', 'c'].map((name) => line.bandOf(name))).toEqual([0, 1, 1])
+            expect([line.count('low'), line.count('high'), line.count(1)]).toEqual([1, 2, 2])
+            expect(line.find((point) => point.band === 1)).toEqual(['b', 'c'])
+            expect(line.thresholds).toEqual([5])
+            const under = numberLine({ range: [0, 10], thresholds: [{ at: 5, ties: 'under' }], points })
+            expect(under.bandOf('b')).toBe(0)
+            // Two thresholds leave three bands.
+            const three = numberLine({ range: [0, 10], thresholds: [3, 7], points })
+            expect(['a', 'b', 'c'].map((name) => three.bandOf(name))).toEqual([1, 1, 1])
+            expect([0, 1, 2].map((band) => three.count(band))).toEqual([0, 3, 0])
+            expect(() => numberLine({ thresholds: [1], bands: ['one'] })).toThrow(/1 band and 1 threshold\. 1 threshold leaves 2 bands: give 2 bands, or 0 thresholds/)
+            expect(() => numberLine({ thresholds: [2, 1] })).toThrow(/threshold 1 is at 1, and threshold 0 is at 2\. Give the thresholds from the smallest to the largest/)
+            expect(() => numberLine({ thresholds: [9] })).toThrow(/threshold 0 is at 9, outside the line, which goes from -5 to 5/)
+            expect(() => numberLine({ thresholds: [1], bands: ['same', 'same'] })).toThrow(/two bands have the name "same"/)
+            expect(() => line.count('middle')).toThrow(/no band "middle"\. The bands are 0 \("low"\), 1 \("high"\)/)
+        })
+    })
+
+    it('gives a point the look of its band when a threshold passes it, at that moment and not before', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, thresholds: [5], bands: [{ color: 'orange', hollow: true }, { color: 'green' }], points: [{ name: 'p', value: 3 }] }))
+            // The threshold goes from 5 to 1 in two seconds, so it is at the point at 1 s.
+            s.play(line.moveThreshold(1), { duration: 2, ease: linear })
+            s.wait(1)
+        })
+        const point = line.point('p')
+        // Before: a ring in the color of the band under the threshold. The fill is the background.
+        expect(dotOf(f, 0.95, point).stroke).toEqual(orange())
+        expect(dotOf(f, 0.95, point).fill).not.toEqual(orange())
+        // A moment after the crossing, the look is between the two.
+        expect(dotOf(f, 1.1, point).stroke).not.toEqual(orange())
+        expect(dotOf(f, 1.1, point).stroke).not.toEqual(green())
+        // After: a dot in the color of the band over the threshold.
+        expect(dotOf(f, 1.6, point).stroke).toEqual(green())
+        expect(dotOf(f, 1.6, point).fill).toEqual(green())
+        expect(line.bandOf('p')).toBe(1)
+        expect(line.thresholds).toEqual([1])
+        expect(at(1, () => line.threshold().get('x'))).toBe(line.p(3)[0])
+    })
+
+    it('gives a point the look of its band when it crosses a threshold', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, thresholds: [5], bands: [{ color: 'orange' }, { color: 'green' }], points: [{ name: 'p', value: 3 }, { name: 'own', value: 3, color: 'blue', label: false }] }))
+            s.play(line.move({ p: 7, own: 7 }), { duration: 2, ease: linear })
+            s.wait(1)
+        })
+        expect(dotOf(f, 0.95, line.point('p')).fill).toEqual(orange())
+        expect(dotOf(f, 1.6, line.point('p')).fill).toEqual(green())
+        // A point with a color of its own keeps it in every band.
+        expect(dotOf(f, 0.5, line.point('own')).fill).toEqual(parseColor('blue'))
+        expect(dotOf(f, 2.5, line.point('own')).fill).toEqual(parseColor('blue'))
+        expect(line.bandOf('own')).toBe(1)
+    })
+
+    it('counts the points of each band under the line, at each frame', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, labels: false, thresholds: [{ at: 5, readout: false }], bands: ['low', 'high'], counts: true, points: [2, 4, 6, 8].map((value) => ({ name: `p${value}`, value, label: false as const })) }))
+            // The threshold passes the point at 6 after one second.
+            s.play(line.moveThreshold(7), { duration: 2, ease: linear })
+            s.wait(1)
+        })
+        const numbers = (time: number) => words(f, time).filter((text) => /^\d+$/.test(text)).sort()
+        expect(words(f, 0.5)).toEqual(expect.arrayContaining(['low', 'high']))
+        expect(numbers(0.9)).toEqual(['2'])
+        expect(numbers(1.1)).toEqual(['1', '3'])
+        expect([line.count('low'), line.count('high')]).toEqual([3, 1])
+    })
+
+    it('writes the value of a threshold over it, and counts it while the threshold moves', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, format: (value) => value.toFixed(1), thresholds: [{ at: 5, label: 'cutoff' }, { at: 8, readout: false, label: 'limit' }] }))
+            s.play(line.moveThreshold(1), { duration: 2, ease: linear })
+        })
+        expect(words(f, 0)).toEqual(expect.arrayContaining(['cutoff 5.0', 'limit']))
+        expect(words(f, 1)).toContain('cutoff 3.0')
+        expect(words(f, 2)).toContain('cutoff 1.0')
+        expect(line.threshold('limit')).toBe(line.thresholdNodes[1])
+    })
+
+    it('keeps the thresholds in their order', async () => {
+        await expect(compile((s) => {
+            const line = s.add(numberLine({ range: [0, 10], thresholds: [3, 6] }))
+            s.play(line.moveThreshold(7))
+        })).rejects.toThrow(/threshold 0 cannot go to 7: threshold 1 is at 6, and the thresholds keep their order/)
+        await compile((s) => {
+            const line = s.add(numberLine({ range: [0, 10], thresholds: [3, 6] }))
+            s.play(line.moveThreshold(9, { which: 1 }))
+            s.play(line.moveThreshold(7))
+            expect(line.thresholds).toEqual([7, 9])
+            expect(() => line.moveThreshold(11)).toThrow(/the new value is 11, outside the line, which goes from 0 to 10/)
+            expect(() => line.moveThreshold(4, { which: 2 })).toThrow(/no threshold 2\. The thresholds are 0, 1/)
+        })
+    })
+
+    it('refuses two changes of one point at one time, and takes two points at one time', async () => {
+        const build = (play: (s: Stage, line: Line) => void) => compile((s) => {
+            const line = s.add(numberLine({ range: [0, 10], thresholds: [5], points: [{ name: 'A', value: 2 }, { name: 'B', value: 8 }] }))
+            play(s, line)
+        })
+        await expect(build((s, line) => s.play(line.move('A', 3), line.move('A', 4)))).rejects.toThrow(/move\("A"\) plays from 0 s to 1 s, and move\("A"\) plays from 0 s to 1 s\. Both change the point "A", and a part takes one change at a time/)
+        await expect(build((s, line) => s.play(line.move('A', 3.4), line.snap('A')))).rejects.toThrow(/snap\("A"\) plays from 0 s to 0\.8 s, and move\("A"\)/)
+        // A point that a move takes to a tick has no way to go in a snap, so the two play together.
+        await build((s, line) => s.play(line.move('A', 3), line.snap('A')))
+        await expect(build((s, line) => s.play(line.moveThreshold(3), line.moveThreshold(4)))).rejects.toThrow(/Both change threshold 0/)
+        // A change that the film writes at an earlier time, after a later one.
+        await expect(build((s, line) => {
+            s.at(5, () => s.play(line.move('A', 3)))
+            s.play(line.move('A', 4))
+        })).rejects.toThrow(/The line takes the changes of a part in the order of time/)
+        // Two points, a point and a threshold, and a sequence of one point: each plays.
+        await build((s, line) => {
+            s.play(line.move('A', 3), line.move('B', 4), line.moveThreshold(6))
+            s.play(seq(line.move('A', 7), line.snap('A')))
+            expect(line.value('A')).toBe(7)
+        })
+    })
+
+    it('places names that are near beside their dots and over them, and no name on the line of a threshold', async () => {
+        await compile((s) => {
+            const points = [0.9992, 0.9981, 0.9968, 0.9952, 0.9944, 0.9944, 0.9944].map((value, index) => ({ name: `Q${index + 1}`, value }))
+            const line = s.add(numberLine({ range: [0.98, 1], ticks: [0.98, 0.99, 1], length: 1500, format: (value) => value.toFixed(2), points, thresholds: [0.995] }))
+            const boxes = line.pointLabels.map((label) => label!.bounds())
+            const meets = (a: typeof boxes[number], b: typeof boxes[number]) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+            for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) expect(meets(boxes[i]!, boxes[j]!), `Q${i + 1} and Q${j + 1}`).toBe(false)
+            // Three points at one value: one name at each side of the dot, and one over them.
+            const [left, right, over] = [boxes[4]!, boxes[5]!, boxes[6]!].sort((a, b) => b.y - a.y || a.x - b.x)
+            const x = line.toWorld(...line.p(0.9944))[0]
+            expect(left!.x + left!.width).toBeLessThan(x)
+            expect(right!.x).toBeGreaterThan(x)
+            expect(over!.y + over!.height).toBeLessThan(left!.y)
+            // The point at 0.9952 is 15 px from the threshold: its name is at one side of the line.
+            const wall = line.toWorld(...line.p(0.995))[0]
+            for (const box of boxes) expect(box.x > wall || box.x + box.width < wall).toBe(true)
+            // With one height, three names at one value have no place. The message names the option that works.
+            expect(() => numberLine({ range: [0.98, 1], length: 1500, levels: 1, points })).toThrow(/the names of the points have no place over the line with 1 height.*What works for this line: levels: 2/)
+            // A point with no label takes no room.
+            expect(numberLine({ range: [0.98, 1], length: 1500, levels: 1, points: points.map((point) => ({ ...point, label: false as const })) }).pointLabels).toEqual(points.map(() => null))
+        })
+    })
+
+    it('lifts the name of a point that passes another point, and not the names of points that move together', async () => {
+        let line!: Line
+        await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, points: [{ name: 'A', value: 2 }, { name: 'B', value: 5 }] }))
+            s.play(line.move('A', 8), { duration: 2, ease: linear })
+            s.play(line.move({ A: 9, B: 6 }), { duration: 2, ease: linear })
+        })
+        const y = (name: string, time: number) => at(time, () => line.pointLabels[line.names.indexOf(name)]!.get('y'))
+        const rest = y('A', 0)
+        // On its way over B, the name of A is one height up. It is back at the end.
+        expect(y('A', 1)).toBeLessThan(rest - 20)
+        expect(y('A', 2)).toBeCloseTo(rest, 6)
+        expect(y('B', 1)).toBeCloseTo(rest, 6)
+        // The two keep their order in the second move, so no name goes up.
+        expect(y('A', 3)).toBeCloseTo(rest, 6)
+        expect(y('B', 3)).toBeCloseTo(rest, 6)
+    })
+
+    it('draws a bracket that follows its two points, with their gap', async () => {
+        let line!: Line, gap!: Node
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, labels: false, format: (value) => value.toFixed(1), points: [{ name: 'A', value: 2 }, { name: 'B', value: 5 }] }))
+            gap = line.bracket('A', 'B')
+            line.bracket(1, 'A', { side: 'over', label: (width, from, to) => `${from} to ${to}: ${width}` })
+            s.wait(1)
+            s.play(line.move('A', 4), { duration: 2, ease: linear })
+            s.play(line.remove('B'), { duration: 1 })
+            s.wait(1)
+        })
+        const ends = (time: number) => at(time, () => { const box = gap.bounds(); const [x0] = line.toWorld(line.p(0)[0], 0); return [box.x - x0, box.x + box.width - x0] })
+        // The bracket goes from one point to the other. Its text is the gap, and it counts while a point moves.
+        expect(ends(0.5)[0]).toBeCloseTo(200, 0)
+        expect(ends(0.5)[1]).toBeCloseTo(500, 0)
+        expect(words(f, 0.5)).toEqual(expect.arrayContaining(['3.0', '1 to 2: 1']))
+        expect(ends(2)[0]).toBeCloseTo(300, 0)
+        expect(words(f, 2)).toContain('2.0')
+        expect(words(f, 3)).toEqual(expect.arrayContaining(['1.0', '1 to 4: 3']))
+        // A bracket of a point that left is not drawn.
+        expect(words(f, 4.5)).not.toContain('1.0')
+        expect(() => line.bracket('A', 'nobody')).toThrow(/bracket: no point "nobody"\. The points are "A"/)
+        expect(() => line.bracket(0, 11)).toThrow(/an end is 11\. An end is a value of the line, 0 to 10, or the name of a point/)
+    })
+
+    it('brings a point with insert and takes one with remove, and the counts follow', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, labels: false, thresholds: [{ at: 5, readout: false }], bands: ['low', 'high'], counts: true, points: [{ name: 'A', value: 2 }] }).at(0, 100))
+            s.play(line.insert({ name: 'new', value: 8 }, { from: [300, -200] }), { duration: 1, ease: linear })
+            expect(line.names).toEqual(['A', 'new'])
+            expect(line.count('high')).toBe(1)
+            expect(() => line.insert({ name: 'new', value: 1 })).toThrow(/insert: the line has a point "new" already/)
+            s.wait(1)
+            s.play(line.remove('A'), { duration: 1 })
+            expect(line.names).toEqual(['new'])
+            expect(() => line.point('A')).toThrow(/no point "A"\. The points are "new"/)
+            // The name of a point that left is free again.
+            s.play(line.insert({ name: 'A', value: 9 }), { duration: 1 })
+            expect(line.pointNodes).toHaveLength(3)
+            s.wait(1)
+        })
+        const node = line.point('new')
+        // The dot travels from the place of the stage to its value.
+        expect(at(0, () => node.toWorld(0, 0))).toEqual([300, -200])
+        expect(at(0.5, () => node.toWorld(0, 0))).toEqual([(300 + line.p(8)[0]) / 2, -50])
+        expect(at(1, () => node.toWorld(0, 0))).toEqual([line.p(8)[0], 100])
+        const numbers = (time: number) => words(f, time).filter((text) => /^\d+$/.test(text)).sort()
+        // The count takes the point when it lands, and loses a point when it starts to leave.
+        expect(numbers(0.5)).toEqual(['0', '1'])
+        expect(numbers(1.5)).toEqual(['1'])
+        expect(numbers(2.1)).toEqual(['0', '1'])
+        expect(numbers(4.5)).toEqual(['0', '2'])
+    })
+
+    it('gives the box of a part for the layout, and takes its length as its width', async () => {
+        await compile((s) => {
+            const line = s.add(numberLine({ range: [0, 10], length: 1000, thresholds: [4], bands: ['low', 'high'], points: [{ name: 'A', value: 2 }] }).at(100, 50))
+            const at4 = line.region({ at: 4 })
+            expect(at4.left).toBeCloseTo(0, 6)
+            expect(at4.right).toBeCloseTo(0, 6)
+            expect(at4.top).toBe(50 + line.extent!.top)
+            expect(at4.bottom).toBe(50 + line.extent!.bottom)
+            const high = line.region({ band: 'high' })
+            const edges = (box: { left: number; right: number }) => [box.left, box.right].map((x) => Math.round(x * 1e6) / 1e6)
+            expect(edges(high)).toEqual([0, 600])
+            expect(edges(line.region())).toEqual([-400, 600])
+            expect(edges(line.region({ from: 1, to: 2 }))).toEqual([-300, -200])
+            expect(() => line.region({ at: 11 })).toThrow(/a value is 11\. `from`, `to` and `at` are values of the line, 0 to 10/)
+            expect(() => line.region({ at: 1, to: 2 })).toThrow(/`at` for one value, or `from` and `to` for a stretch, not both/)
+            expect(() => line.region({ where: 1 } as never)).toThrow(/region has no part "where"\. Its parts are: from, to, at, band/)
+            // `fitted` gives the line the length that makes all of it as wide as a region.
+            const made = fitted(900, (length) => numberLine({ range: [0, 10], length, points: [{ name: 'a long name at the end', value: 10 }] }))
+            expect(boxOf(made).width).toBeCloseTo(900, 0)
+            expect(made.length).toBeLessThan(900)
+            // The room of the names is a part of the measure from the start, with no point yet.
+            expect(boxOf(numberLine({ range: [0, 10], points: [] })).height).toBeGreaterThan(boxOf(numberLine({ range: [0, 10] })).height + 40)
+        })
+    })
+
+    it('enters with nothing on screen at the start, and all of it at the end', async () => {
+        let line!: Line
+        const f = await compile((s) => {
+            line = numberLine({ range: [0, 10], thresholds: [5], bands: [{ name: 'low', color: 'orange' }, 'high'], points: [{ name: 'A', value: 2 }] })
+            s.wait(0.5)
+            s.play(line.enter(), { duration: 1 })
+            s.wait(0.5)
+        })
+        expect(f.frame(0.2).ops).toHaveLength(0)
+        expect(words(f, 1.9)).toEqual(expect.arrayContaining(['A', 'low', 'high', '5']))
+        const shows = (node: Node, time: number) => at(time, () => (node.get('visible') ? node.get('opacity') : 0))
+        expect(shows(line.point('A'), 0.6)).toBe(0)
+        expect(shows(line.point('A'), 1.9)).toBe(1)
+        expect(shows(line.threshold(), 1.9)).toBe(1)
+        expect(shows(line.numbers.children[10]!, 0.55)).toBe(0)
+        expect(shows(line.numbers.children[10]!, 1.9)).toBe(1)
+    })
+
+    it('gives a copy its own points and thresholds', async () => {
+        let line!: Line, copy!: Line
+        const f = await compile((s) => {
+            line = s.add(numberLine({ range: [0, 10], length: 1000, thresholds: [5], bands: [{ color: 'orange' }, { color: 'green' }], points: [{ name: 'A', value: 2 }] }).at(0, -200))
+            s.play(line.move('A', 4), { duration: 1 })
+            copy = s.add(line.clone().at(0, 200))
+            s.play(copy.move('A', 8), copy.moveThreshold(9), { duration: 1, ease: linear })
+            s.play(copy.insert({ name: 'B', value: 1 }), { duration: 0.5 })
+            s.wait(0.5)
+        })
+        expect([line.value('A'), copy.value('A')]).toEqual([4, 8])
+        expect([line.thresholds, copy.thresholds]).toEqual([[5], [9]])
+        expect([line.names, copy.names]).toEqual([['A'], ['A', 'B']])
+        expect(copy.point('A')).not.toBe(line.point('A'))
+        expect(at(2.5, () => line.point('A').get('x'))).toBe(line.p(4)[0])
+        expect(at(2.5, () => copy.point('A').get('x'))).toBe(line.p(8)[0])
+        // The dot of the copy has the look of the band of the copy: under its threshold at 9. The dot of the line is under 5 too.
+        expect(dotOf(f, 2.9, copy.point('A')).fill).toEqual(orange())
+        expect(dotOf(f, 2.9, line.point('A')).fill).toEqual(orange())
+        expect(copy.bandOf('A')).toBe(0)
+    })
+
+    it('passes the film check with its names, its bands and a threshold that moves', async () => {
+        const made = film({ fps: 20 }, (s) => {
+            const scores = [0.52, 0.61, 0.67, 0.69, 0.71, 0.78, 0.83, 0.9, 0.94, 0.97]
+            const line = s.add(numberLine({
+                range: [0.4, 1], ticks: [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], format: (value) => value.toFixed(2), length: 1500,
+                thresholds: [{ at: 0.7, label: 'cutoff' }], bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'auto-serve', color: 'green' }], counts: true,
+                points: scores.map((value, index) => ({ name: `p${index + 1}`, value })),
+            }))
+            line.bracket('p1', 'p3')
+            s.wait(0.5)
+            s.play(line.moveThreshold(0.5), { duration: 1 })
+            s.play(line.move('p1', 0.99), { duration: 1 })
+            s.play(line.snap('p2'), { duration: 0.6 })
+            s.wait(1)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(made, { motion: true, textGap, readingSpeed: 0 })).diagnostics, `text gap ${textGap}`).toEqual([])
+    })
+
+    it('says what is wrong with a point, and what to give', async () => {
+        await compile(() => {
+            const line = numberLine({ range: [0, 10], points: [{ name: 'A', value: 2 }] })
+            expect(() => numberLine({ range: [0, 10], points: [{ name: 'A', value: 12 }] })).toThrow(/the value of the point "A" is 12, outside the line, which goes from 0 to 10/)
+            expect(() => numberLine({ points: [{ name: '', value: 1 }] })).toThrow(/point 0 has no name/)
+            expect(() => numberLine({ points: [{ name: 'A', value: 1 }, { name: 'A', value: 2 }] })).toThrow(/the line has a point "A" already/)
+            expect(() => numberLine({ points: [{ name: 'A', value: 1, color: 'no such color' }] })).toThrow(/the color of the point "A" is "no such color", which is not a color/)
+            expect(() => numberLine({ points: [{ name: 'A', value: 1, label: 'two\nlines' }] })).toThrow(/the label of the point "A" has a line break/)
+            expect(() => line.move('B', 1)).toThrow(/move: no point "B"\. The points are "A"/)
+            expect(() => line.move('A', 11)).toThrow(/move: the new value of "A" is 11, outside the line/)
+            expect(() => line.move({})).toThrow(/move got no point/)
+            expect(() => line.snap('B')).toThrow(/snap: no point "B"/)
+            expect(() => line.remove([])).toThrow(/remove takes the name of a point, or a list of names/)
+            expect(() => numberLine().value('A')).toThrow(/no point "A"\. The line has no points: give `points` to numberLine\(\), or play an insert\(\)/)
+            expect(() => numberLine().moveThreshold(1)).toThrow(/no threshold 0\. The line has no threshold: give `thresholds` to numberLine\(\)/)
+            expect(() => numberLine({ levels: 0 })).toThrow(/levels is the number of heights/)
+        })
+    })
+})
+
+describe('scatter', () => {
+    type Plane = ReturnType<typeof scatter>
+    // A plot of 800 by 800 for 10 by 10 units: one unit is 80 px, and the middle of the plot is at (5, 5).
+    const frame = { x: [0, 10] as const, y: [0, 10] as const, width: 800, height: 800 }
+    const middle = (node: Node) => { const box = node.bounds(); return [box.x + box.width / 2, box.y + box.height / 2] as const }
+    const meets = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+    const holds = (outer: { x: number; y: number; width: number; height: number }, inner: { x: number; y: number; width: number; height: number }) => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width && inner.y + inner.height <= outer.y + outer.height
+    /** The marks of the search in a frame: its ring, the ring around each point that it holds, and its lines. They are the only yellow lines. */
+    const search = (f: CompiledFilm, t: number) => paths(f, t).filter((op) => op.stroke === parseColor('yellow') && op.fill === null).map((op) => pathBounds(op.strokePath)!)
+    const shows = (node: Node, time: number) => at(time, () => (node.get('visible') ? node.get('opacity') : 0))
+
+    it('adds nothing to a chart with no name, no area and no search', async () => {
+        await compile(() => {
+            const chart = scatter([{ x: 0, y: 0, group: 'g' }, { x: 1, y: 1, group: 'g' }, { x: 2, y: 0 }])
+            expect(chart.children).toEqual([chart.axis, ...chart.dots, ...chart.groupLabels])
+            expect(chart.nameLabels).toEqual([null, null, null])
+            expect(chart.areas).toEqual([])
+        })
+    })
+
+    it('writes the name of a point beside its mark, inside the plot and clear of the other names', async () => {
+        await compile(() => {
+            const chart = scatter([
+                { x: 5, y: 5, name: 'middle' }, { x: 9.8, y: 5, name: 'at the right edge' }, { x: 5, y: 5.5, name: 'near' },
+                { x: 2, y: 2, name: 'hidden', label: false }, { x: 2, y: 8, name: 'k', label: 'a label' }, { x: 7, y: 8, name: 'low', side: 'under' },
+            ], frame)
+            const boxes = chart.nameLabels.map((label) => label?.bounds() ?? null), dots = chart.dots.map((mark) => mark.bounds())
+            // At the right of its mark by default.
+            expect(boxes[0]!.x).toBeGreaterThan(dots[0]!.x + dots[0]!.width)
+            expect(Math.abs(middle(chart.nameLabels[0]!)[1] - middle(chart.dots[0]!)[1])).toBeLessThan(3)
+            // At the right it would leave the plot, so it takes another side, inside the plot.
+            expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(401)
+            expect(meets(boxes[1]!, dots[1]!)).toBe(false)
+            const texts = boxes.filter((box) => box !== null)
+            for (let i = 0; i < texts.length; i++) for (let j = i + 1; j < texts.length; j++) expect(meets(texts[i]!, texts[j]!), `${i} and ${j}`).toBe(false)
+            expect(boxes[3]).toBeNull()
+            expect((chart.nameLabels[4] as unknown as { source: string }).source).toBe('a label')
+            expect(boxes[5]!.y).toBeGreaterThan(dots[5]!.y + dots[5]!.height)
+            expect(chart.labelsOf(chart.point('middle'))).toEqual([chart.nameLabels[0]])
+            expect(chart.indexOf('near')).toBe(2)
+            expect(() => scatter([{ x: 9.9, y: 5, name: 'a long name', side: 'right' }], frame)).toThrow(/the name of the point "a long name" has no room at the side 'right'/)
+            expect(() => scatter([{ x: 1, y: 1, name: 'a' }, { x: 2, y: 2, name: 'a' }], frame)).toThrow(/the chart has a point "a" already/)
+            expect(() => scatter([{ x: 1, y: 1, name: 'a', side: 'north' as 'over' }], frame)).toThrow(/has the side "north"\. Use 'right', 'left', 'over' or 'under'/)
+        })
+    })
+
+    it('gives a group its shape, and a query a dot in a ring', async () => {
+        await compile(() => {
+            const chart = scatter([{ x: 1, y: 1, group: 'a' }, { x: 2, y: 2, group: 'b' }, { x: 3, y: 3, name: 'q', query: true }, { x: 4, y: 4, group: 'c' }], { ...frame, radius: 10, groups: { a: 'teal', b: { shape: 'square', color: 'orange' }, c: { shape: 'ring' } } })
+            expect(chart.dots.map((mark) => mark.get('path')!.length)).toEqual([1, 1, 3, 2])
+            expect(chart.dots[0]!.bounds().width).toBeCloseTo(20, 6)
+            expect(chart.dots[1]!.bounds().width).toBeCloseTo(17.6, 6)
+            // A query is larger than a point, and in ink when it has no color: it is in no group of the data.
+            expect(chart.dots[2]!.bounds().width).toBeCloseTo(32, 6)
+            expect(chart.dots.map((mark) => mark.get('fill'))).toEqual([parseColor('teal'), parseColor('orange'), parseColor('ink'), parseColor('teal')])
+            expect(() => scatter([], { ...frame, groups: { a: { shape: 'star' as 'dot' } } })).toThrow(/the group "a" has the shape "star"\. A shape is 'dot', 'ring', 'square', 'diamond', 'triangle'/)
+            expect(() => scatter([])).toThrow(/with no point at the start, give the ranges of the two axes: x and y/)
+        })
+    })
+
+    it('moves a point with its name, and reads its place', async () => {
+        let chart!: Plane
+        await compile((s) => {
+            chart = s.add(scatter([{ x: 2, y: 2, name: 'a' }, { x: 8, y: 8, name: 'b' }], frame))
+            s.play(chart.move('a', [6, 4]), { duration: 2, ease: linear })
+            expect(chart.positionOf('a')).toEqual([6, 4])
+            s.play(chart.move({ a: [1, 1], b: [2, 2] }), { duration: 1, ease: linear })
+            expect([chart.positionOf('a'), chart.positionOf(1)]).toEqual([[1, 1], [2, 2]])
+            expect(() => chart.move('a', [11, 4])).toThrow(/move: the new place of the point "a" is \[11, 4\], outside the plot, which goes from 0 to 10 in x and from 0 to 10 in y/)
+            expect(() => chart.move('c', [1, 1])).toThrow(/move: no point "c"\. The chart has 2 points, with the indexes 0 to 1, and the names "a", "b"/)
+            expect(() => chart.move(5, [1, 1])).toThrow(/no point 5/)
+        })
+        const mark = chart.point('a'), name = chart.nameLabels[0]!
+        const round = (place: number[]) => place.map((value) => Math.round(value * 1e6) / 1e6)
+        const place = (time: number) => at(time, () => round([mark.get('x'), mark.get('y')]))
+        expect(place(0)).toEqual(round(chart.p(2, 2)))
+        expect(place(1)).toEqual(round(chart.p(4, 3)))
+        expect(place(2)).toEqual(round(chart.p(6, 4)))
+        expect(place(3)).toEqual(round(chart.p(1, 1)))
+        // The name keeps its side: it is as far from its mark at the end as at the start.
+        const beside = (time: number) => at(time, () => name.get('x') - mark.get('x'))
+        expect(beside(2)).toBeCloseTo(beside(0), 6)
+        expect(beside(1)).toBeCloseTo(beside(0), 6)
+    })
+
+    it('gives points another group: the color, the shape, the count and the label of the group follow', async () => {
+        let chart!: Plane
+        await compile((s) => {
+            chart = s.add(scatter([{ x: 1, y: 1, group: 'a' }, { x: 2, y: 2, group: 'a' }, { x: 8, y: 8, group: 'b' }], { ...frame, groups: { b: { color: 'orange', shape: 'square' }, c: 'green' } }))
+            expect([chart.count('a'), chart.count('b'), chart.count('c')]).toEqual([2, 1, 0])
+            s.play(chart.assign(1, 'b'), { duration: 1, ease: linear })
+            expect([chart.count('a'), chart.count('b'), chart.groupOf(1)]).toEqual([1, 2, 'b'])
+            expect(chart.find((point) => point.group === 'b')).toEqual([1, 2])
+            s.play(chart.assign((point) => point.group === 'a', 'c'), { duration: 1, ease: linear })
+            expect(() => chart.assign(0, 'd')).toThrow(/assign: no group "d"\. The groups are "b", "c", "a"\. For a group that no point has at the start, name it in the option `groups`, such as groups: \{ d: 'teal' \}/)
+        })
+        const mark = chart.dots[1]!
+        const [b, c, a] = chart.groupLabels as [Node, Node, Node]
+        // The mark of the point goes from the dot of its first group to the square of the new one, in its color.
+        expect(at(0, () => mark.get('fill'))).toEqual(parseColor('teal'))
+        expect(at(1, () => mark.get('fill'))).toEqual(parseColor('orange'))
+        expect(at(0, () => mark.bounds().width)).toBeCloseTo(12, 6)
+        expect(at(1, () => mark.bounds().width)).toBeCloseTo(10.56, 6)
+        // The label of a group is over its highest member, at their mean x: it goes to its new members.
+        expect(at(0, () => b.get('x'))).toBeCloseTo(chart.p(8, 8)[0], 6)
+        expect(at(1, () => b.get('x'))).toBeCloseTo(chart.p(5, 8)[0], 6)
+        // A group with no point has no label. It shows when the group gets its first point, and it leaves with the last one.
+        expect([shows(c, 0.5), shows(c, 2)]).toEqual([0, 1])
+        expect([shows(a, 0.5), shows(a, 2)]).toEqual([1, 0])
+        expect(at(2, () => c.get('x'))).toBeCloseTo(chart.p(1, 1)[0], 6)
+    })
+
+    it('finds the nearest points by their distance in the units of the axes, and not a query', async () => {
+        await compile(() => {
+            // One unit of x is 80 px, and one unit of y is 20 px: on the screen, n3 is nearer to q than n2.
+            const chart = scatter([{ x: 5, y: 5, name: 'q', query: true }, { x: 5, y: 6, name: 'n1' }, { x: 7, y: 5, name: 'n2' }, { x: 5, y: 2, name: 'n3' }, { x: 4.9, y: 5, name: 'other', query: true }], { x: [0, 10], y: [0, 20], width: 800, height: 400 })
+            expect(chart.nearestTo('q')).toEqual([{ index: 1, name: 'n1', distance: 1 }, { index: 2, name: 'n2', distance: 2 }, { index: 3, name: 'n3', distance: 3 }])
+            expect(chart.nearestTo('q', 2).map((one) => one.name)).toEqual(['n1', 'n2'])
+            expect(chart.nearestTo('q', 1, { among: ['n2', 'n3'] })[0]!.name).toBe('n2')
+            expect(chart.nearestTo('q', 1, { among: (point) => point.y < 4 })[0]!.name).toBe('n3')
+            expect(chart.nearestTo([5, 3], 1)[0]!.name).toBe('n3')
+            expect(() => chart.nearestTo('q', -1)).toThrow(/nearestTo: k is -1\. Give a whole number, 0 or more/)
+        })
+    })
+
+    it('grows a ring from a point to its k-th nearest point, and draws a line to each point that the ring holds', async () => {
+        let chart!: Plane
+        const f = await compile((s) => {
+            chart = s.add(scatter([{ x: 5, y: 5, name: 'q', query: true }, { x: 5, y: 6, name: 'a' }, { x: 7, y: 5, name: 'b' }, { x: 5, y: 2, name: 'c' }], frame))
+            // The ring grows to the second nearest point in two seconds: its radius is the time, in units.
+            s.play(chart.nearest('q', 2), { duration: 2, ease: linear })
+            expect(chart.neighbors).toEqual([1, 2])
+            s.wait(1)
+        })
+        const widest = (time: number) => Math.max(...search(f, time).map((box) => box.width))
+        // The ring alone, until it reaches the first point.
+        expect(search(f, 0.5)).toHaveLength(1)
+        expect(widest(0.5)).toBeCloseTo(80, 3)
+        // Then the nearest point has a line and a ring around its mark.
+        expect(search(f, 1.2)).toHaveLength(3)
+        // At the end the ring passes through the second nearest point, 2 units away, and both points have a line.
+        expect(search(f, 2.5)).toHaveLength(5)
+        expect(widest(2.5)).toBeCloseTo(320, 3)
+        await expect(compile((s) => {
+            const other = s.add(scatter([{ x: 5, y: 5, name: 'q' }, { x: 5, y: 6 }], frame))
+            s.play(other.nearest('q', 2))
+        })).rejects.toThrow(/nearest\("q", 2\): the search has 1 point to find\. Give a k of 1 or less/)
+    })
+
+    it('keeps the search true while its point moves, keeps it to the points of `among`, and ends it with a k of 0', async () => {
+        let chart!: Plane
+        const f = await compile((s) => {
+            chart = s.add(scatter([{ x: 5, y: 5, name: 'q', query: true }, { x: 5, y: 6, name: 'a' }, { x: 7, y: 5, name: 'b' }, { x: 5, y: 2, name: 'c' }], frame))
+            s.play(chart.nearest('q', 1), { duration: 1 })
+            expect(chart.neighbors).toEqual([1])
+            s.play(chart.move('q', [6.5, 5]), { duration: 1 })
+            // The point is now half a unit from b: b is the nearest, with no new call.
+            expect(chart.neighbors).toEqual([2])
+            s.play(chart.nearest('q', 1, { among: ['c'] }), { duration: 1 })
+            expect(chart.neighbors).toEqual([3])
+            s.play(chart.nearest('q', 0), { duration: 1 })
+            expect(chart.neighbors).toEqual([])
+            s.wait(1)
+        })
+        const line = (time: number) => search(f, time).reduce((best, box) => (box.width > 30 && box.height < best.height ? box : best))
+        // The ring is 1 unit wide around the point at its new place, with a line to b.
+        expect(Math.max(...search(f, 1.99).map((box) => box.width))).toBeCloseTo(80, 0)
+        expect(search(f, 1.99)).toHaveLength(3)
+        // Among c alone, the ring reaches c, more than 3 units away, and the line goes down to it.
+        expect(Math.max(...search(f, 2.99).map((box) => box.width))).toBeCloseTo(2 * 80 * Math.hypot(1.5, 3), 0)
+        expect(line(2.99).height).toBeGreaterThan(150)
+        // The search that ends keeps its points: when the ring starts to close, its line is still at c. Then the ring leaves c.
+        expect(search(f, 3)).toHaveLength(3)
+        expect(line(3).height).toBeGreaterThan(150)
+        expect(search(f, 3.2)).toHaveLength(1)
+        expect(search(f, 4.5)).toHaveLength(0)
+    })
+
+    it('draws the hull of a group around its points and their names, and grows to a point that joins', async () => {
+        let chart!: Plane, hull!: ReturnType<Plane['hull']>
+        await compile((s) => {
+            chart = s.add(scatter([{ x: 2, y: 2, group: 'a', name: 'a1' }, { x: 3, y: 3, group: 'a' }, { x: 8, y: 8, group: 'b', name: 'b1' }], { ...frame, groupLabels: false }))
+            hull = chart.hull('a')
+            expect(hull.points).toEqual([0, 1])
+            expect(hull.shaded).toBe(true)
+            s.play(chart.assign('b1', 'a'), { duration: 2, ease: linear })
+            expect(hull.points).toEqual([0, 1, 2])
+            expect(hull.holds('b1')).toBe(true)
+            expect(() => chart.hull('c')).toThrow(/hull: no group "c"/)
+        })
+        const box = (time: number) => at(time, () => hull.bounds())
+        const part = (node: Node, time: number) => at(time, () => node.bounds())
+        for (const node of [chart.dots[0]!, chart.dots[1]!, chart.nameLabels[0]!]) expect(holds(box(0), part(node, 0))).toBe(true)
+        expect(holds(box(0), part(chart.dots[2]!, 0))).toBe(false)
+        // Half way, the hull is on its way to the point. At the end it holds the point and its name.
+        expect(box(1).x + box(1).width).toBeGreaterThan(box(0).x + box(0).width + 100)
+        expect(box(1).x + box(1).width).toBeLessThan(box(2).x + box(2).width - 100)
+        for (const node of [chart.dots[2]!, chart.nameLabels[2]!]) expect(holds(box(2), part(node, 2))).toBe(true)
+    })
+
+    it('cuts the plot into the cells of its centers, and a cell follows its center', async () => {
+        let chart!: Plane, cells!: ReturnType<Plane['cells']>
+        await compile((s) => {
+            chart = s.add(scatter([{ x: 2.5, y: 5, name: 'c1', group: 'center' }, { x: 7.5, y: 5, name: 'c2', group: 'center' }, { x: 4, y: 5, name: 'p' }, { x: 6, y: 5, name: 'r' }, { x: 4.9, y: 1, name: 'q', query: true }], { ...frame, groupLabels: false }))
+            cells = chart.cells(['c1', 'c2'])
+            // The points of a cell are the points of the data: not its center, and not a query.
+            expect(cells.map((cell) => cell.points)).toEqual([[2], [3]])
+            expect([cells[0]!.holds('q'), cells[0]!.holds('c1'), cells[1]!.holds('q')]).toEqual([true, true, false])
+            s.play(chart.move('c2', [9.7, 5]), { duration: 1, ease: linear })
+            // The line between the cells is now at 6.1, so the point at 6 is in the first cell.
+            expect(cells.map((cell) => cell.points)).toEqual([[2, 3], []])
+            const fixed = chart.cells([[2, 5], [8, 5], [5, 9]])
+            expect(fixed).toHaveLength(3)
+            expect(chart.areas).toEqual([...cells, ...fixed])
+            expect(() => chart.cells(['c1'])).toThrow(/cells takes a list of two centers or more/)
+            expect(() => chart.cells(['c1', 'nobody'])).toThrow(/cells: no point "nobody"/)
+        })
+        const edges = (index: number, time: number) => at(time, () => { const box = cells[index]!.bounds(); return [box.x, box.x + box.width] })
+        // Each cell is the part of the plot that is nearer to its center: the line between the two is half way.
+        expect(edges(0, 0)[0]).toBeCloseTo(-400, 6)
+        expect(edges(0, 0)[1]).toBeCloseTo(0, 6)
+        expect(edges(1, 0)[0]).toBeCloseTo(0, 6)
+        expect(edges(1, 0)[1]).toBeCloseTo(400, 6)
+        expect(edges(0, 1)[1]).toBeCloseTo(chart.p(6.1, 0)[0], 6)
+        expect(edges(0, 0.5)[1]).toBeCloseTo(chart.p(5.55, 0)[0], 6)
+    })
+
+    it('shades an area and reads its shade, and spans a part of the axes', async () => {
+        let chart!: Plane, left!: ReturnType<Plane['span']>
+        const f = await compile((s) => {
+            chart = s.add(scatter([{ x: 2, y: 2 }, { x: 6, y: 3 }, { x: 4, y: 9, name: 'q', query: true }], frame))
+            left = chart.span({ x: [0, 5] }, { color: 'teal' })
+            const corner = chart.span({ x: [5, Infinity], y: [2, 4] })
+            expect([left.points, corner.points]).toEqual([[0], [1]])
+            expect(left.holds('q')).toBe(true)
+            expect(left.shaded).toBe(false)
+            s.wait(1)
+            s.play(left.shade(), { duration: 1, ease: linear })
+            expect(left.shaded).toBe(true)
+            s.wait(1)
+            s.play(left.shade(false, { duration: 1 }))
+            expect(left.shaded).toBe(false)
+            s.wait(1)
+            const box = corner.bounds()
+            expect([box.x, box.x + box.width, box.y, box.y + box.height].map((value) => Math.round(value))).toEqual([0, 400, 80, 240])
+            expect(() => chart.span({})).toThrow(/span takes a range of x, of y, or of both/)
+            expect(() => chart.span({ x: [20, 30] })).toThrow(/span: x goes from 20 to 30, outside the axis, which goes from 0 to 10/)
+            expect(() => left.shade('on' as never)).toThrow(/shade takes true or false, and then the options/)
+        })
+        const fill = (time: number) => paths(f, time).find((op) => op.node?.drawer === left && op.fill !== null)?.fillAlpha ?? 0
+        // An area that is not shaded is its outline, with no fill.
+        expect(fill(0.5)).toBe(0)
+        expect(fill(1.5)).toBeCloseTo(0.11, 6)
+        expect(fill(2.5)).toBeCloseTo(0.22, 6)
+        expect(fill(4.5)).toBe(0)
+        expect(at(0.5, () => left.bounds().width)).toBeCloseTo(400, 6)
+        await expect(compile((s) => {
+            const other = s.add(scatter([{ x: 2, y: 2 }], frame))
+            const area = other.span({ x: [0, 5] })
+            s.play(area.shade(), area.shade(false))
+        })).rejects.toThrow(/An area takes one change of its shade at a time/)
+    })
+
+    it('brings a point with insert and takes one with remove', async () => {
+        let chart!: Plane
+        await compile((s) => {
+            chart = s.add(scatter([{ x: 2, y: 2, name: 'a', group: 'g' }, { x: 8, y: 8, name: 'b', group: 'g' }], frame).at(0, 100))
+            s.play(chart.insert({ x: 5, y: 5, name: 'new', group: 'g' }, { from: [700, -100] }), { duration: 1, ease: linear })
+            expect([chart.indexOf('new'), chart.dots.length, chart.count('g')]).toEqual([2, 3, 3])
+            expect(chart.positionOf('new')).toEqual([5, 5])
+            expect(chart.nearestTo('a', 1)[0]!.name).toBe('new')
+            expect(() => chart.insert({ x: 1, y: 1, name: 'new' })).toThrow(/insert: the chart has a point "new" already/)
+            expect(() => chart.insert({ x: 11, y: 1 })).toThrow(/insert: the place of the point is \[11, 1\], outside the plot/)
+            expect(() => chart.insert({ x: 1, y: 1, group: 'h' })).toThrow(/insert: no group "h"/)
+            s.play(chart.remove('new'), { duration: 1 })
+            expect(chart.count('g')).toBe(2)
+            expect(chart.nearestTo('a', 1)[0]!.name).toBe('b')
+            expect(() => chart.point('new')).toThrow(/point: no point "new"/)
+            expect(() => chart.point(2)).toThrow(/no point 2\. That point left the chart/)
+            s.play(chart.nearest('a', 1), { duration: 0.5 })
+        })
+        const mark = chart.dots[2]!
+        // The mark travels from the place of the stage to its place on the plot.
+        expect(at(0, () => mark.toWorld(0, 0))).toEqual([700, -100])
+        expect(at(1, () => mark.toWorld(0, 0))).toEqual([chart.p(5, 5)[0], chart.p(5, 5)[1] + 100])
+        expect([shows(mark, 1), shows(chart.nameLabels[2]!, 1)]).toEqual([1, 1])
+        expect([shows(mark, 2.5), shows(chart.nameLabels[2]!, 2.5)]).toEqual([0, 0])
+        await expect(compile((s) => {
+            const other = s.add(scatter([{ x: 2, y: 2, name: 'a' }, { x: 8, y: 8, name: 'b' }], frame))
+            s.play(other.nearest('a', 1))
+            s.play(other.remove('a'))
+        })).rejects.toThrow(/remove: the search of nearest\(\) starts at the point "a"\. End the search first, with nearest\("a", 0\)/)
+    })
+
+    it('refuses two moves of one point at one time, and takes a move with a change of group', async () => {
+        const build = (play: (s: Stage, chart: Plane) => void) => compile((s) => {
+            const chart = s.add(scatter([{ x: 2, y: 2, name: 'a', group: 'g' }, { x: 8, y: 8, name: 'b', group: 'h' }], frame))
+            play(s, chart)
+        })
+        await expect(build((s, chart) => s.play(chart.move('a', [1, 1]), chart.move('a', [3, 3])))).rejects.toThrow(/move\("a"\) plays from 0 s to 1 s, and move\("a"\) plays from 0 s to 1 s\. Both change the place of the point "a"/)
+        await expect(build((s, chart) => s.play(chart.assign('a', 'h'), chart.assign('a', 'g')))).rejects.toThrow(/Both change the group of the point "a"/)
+        await expect(build((s, chart) => s.play(chart.nearest('a', 1), chart.nearest('b', 1)))).rejects.toThrow(/A chart has one search, and it takes one change at a time/)
+        await build((s, chart) => {
+            s.play(chart.move('a', [1, 1]), chart.assign('a', 'h'), chart.move('b', [3, 3]))
+            s.play(seq(chart.move('a', [2, 1]), chart.move('a', [3, 1])))
+            expect([chart.positionOf('a'), chart.groupOf('a')]).toEqual([[3, 1], 'h'])
+        })
+    })
+
+    it('keeps the lines of an area and of a search behind its texts, so the film check finds no line through a text', async () => {
+        const made = film({ fps: 20 }, (s) => {
+            const chart = s.add(scatter([
+                { x: 2.5, y: 5, name: 'c1', group: 'center' }, { x: 7.5, y: 5, name: 'c2', group: 'center' },
+                { x: 4.6, y: 5.2, name: 'A', group: 'left' }, { x: 5.1, y: 5, name: 'B', group: 'right', side: 'right' }, { x: 3, y: 7, group: 'left' }, { x: 7, y: 3, group: 'right' },
+            ], { ...frame, labelSize: 26, groups: { left: 'blue', right: 'teal', center: { color: 'ink', shape: 'ring', label: false }, found: { color: 'green', shape: 'diamond' } } }))
+            const cells = chart.cells(['c1', 'c2'])
+            chart.hull('left')
+            s.wait(0.5)
+            s.play(chart.insert({ x: 4.8, y: 5, name: 'q', query: true, side: 'under' }), { duration: 0.5 })
+            // The line between the cells passes the name of B, and the ring of the search passes the names of A and of the groups.
+            s.play(cells[0]!.shade(), chart.nearest('q', 4, { among: (point) => point.group !== 'center' }), { duration: 1 })
+            // The point moves away from the names, and its ring passes them.
+            s.play(chart.move('q', [4.4, 3.4]), { duration: 1 })
+            // The label of the new group goes over the name of A, which is one of its points.
+            s.play(chart.assign(chart.neighbors.slice(0, 2), 'found'), chart.nearest('q', 2, { among: (point) => point.group !== 'center' }), { duration: 1 })
+            s.wait(1)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(made, { motion: true, textGap, readingSpeed: 0 })).diagnostics, `text gap ${textGap}`).toEqual([])
+    })
+
+    it('gives a copy its own points, areas and search', async () => {
+        let chart!: Plane, copy!: Plane
+        const f = await compile((s) => {
+            chart = s.add(scatter([{ x: 2, y: 2, name: 'a', group: 'g' }, { x: 8, y: 8, name: 'b', group: 'h' }, { x: 5, y: 5, name: 'q', query: true }], { ...frame, width: 400, height: 400 }).at(-450, 0))
+            const area = chart.span({ x: [0, 5] })
+            s.play(chart.move('a', [4, 4]), chart.nearest('q', 1), area.shade(), { duration: 1 })
+            copy = s.add(chart.clone().at(450, 0))
+            s.play(copy.move('a', [1, 9]), copy.assign('a', 'h'), copy.areas[0]!.shade(false), { duration: 1, ease: linear })
+            s.wait(1)
+        })
+        expect([chart.positionOf('a'), copy.positionOf('a')]).toEqual([[4, 4], [1, 9]])
+        expect([chart.groupOf('a'), copy.groupOf('a')]).toEqual(['g', 'h'])
+        expect([chart.areas[0]!.shaded, copy.areas[0]!.shaded]).toEqual([true, false])
+        expect(copy.areas[0]).not.toBe(chart.areas[0])
+        expect(copy.areas[0]!.chart).toBe(copy)
+        // The search of the copy is at its own point: the nearest point of each chart has a line.
+        expect([chart.neighbors, copy.neighbors]).toEqual([[0], [1]])
+        expect(search(f, 2.5)).toHaveLength(6)
+        expect(at(2.5, () => chart.point('a').get('x'))).toBe(chart.p(4, 4)[0])
+        expect(at(2.5, () => copy.point('a').get('x'))).toBe(chart.p(1, 9)[0])
+    })
+
+    it('gives the box of a part of the plot for the layout, and enters with its names', async () => {
+        let chart!: Plane
+        await compile((s) => {
+            chart = scatter([{ x: 2, y: 2, name: 'a' }, { x: 8, y: 8, name: 'b' }], frame).at(100, 50)
+            const plot = chart.region(), part = chart.region({ x: [0, 5], y: [5, 10] })
+            expect([plot.left, plot.right, plot.top, plot.bottom]).toEqual([-300, 500, -350, 450])
+            expect([part.left, part.right, part.top, part.bottom]).toEqual([-300, 100, -350, 50])
+            expect(() => chart.region({ z: [0, 1] } as never)).toThrow(/region has no part "z"\. Its parts are: x, y/)
+            // `fitted` gives the plot the width that makes all of the chart, with its numbers, as wide as a region.
+            const made = fitted(1000, (width) => scatter([{ x: 2, y: 2, name: 'a' }], { ...frame, width, height: 300 }))
+            expect(boxOf(made).width).toBeCloseTo(1000, 0)
+            s.wait(0.5)
+            s.play(chart.enter(), { duration: 1 })
+            s.wait(0.5)
+        })
+        // A name comes with its mark.
+        expect([shows(chart.nameLabels[1]!, 0.6), shows(chart.nameLabels[1]!, 1.9)]).toEqual([0, 1])
+    })
+
+    it('says what is wrong with a point, and what to give', async () => {
+        await compile(() => {
+            const chart = scatter([{ x: 2, y: 2, name: 'a' }, { x: 8, y: 8 }], frame)
+            expect(() => scatter([{ x: 1, y: 1, name: '' }], frame)).toThrow(/the name of point 0 is ""\. A name is a text that is not empty/)
+            expect(() => scatter([{ x: 1, y: 1, name: 'a', label: 3 as never }], frame)).toThrow(/the label of point 0 \("a"\) is 3\. A label is a text, or false for a point with no text/)
+            expect(() => scatter([], { ...frame, groups: { a: 'no such color' } })).toThrow(/the color of the group "a" is "no such color", which is not a color/)
+            expect(() => chart.point('b')).toThrow(/point: no point "b"\. The chart has 2 points, with the indexes 0 to 1, and the names "a"/)
+            expect(() => chart.nearest('a', 1.5)).toThrow(/nearest: k is 1\.5\. Give a whole number of points, or 0 to end the search/)
+            expect(() => chart.assign([0, 7], 'g')).toThrow(/assign: no group "g"\. The chart has no group/)
+            expect(() => chart.remove(7)).toThrow(/remove: no point 7/)
+            expect(() => chart.move({})).toThrow(/move got no point/)
+            expect(() => chart.count('g')).toThrow(/count: no group "g"/)
+        })
+    })
+})
 
 describe('object catalog', () => {
     it('names only things that the stage exports, so no entry is lost from the list of objects', async () => {

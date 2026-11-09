@@ -1,5 +1,7 @@
 export * from './math'
+export * from './number-line'
 export * from './charts'
+export * from './scatter'
 export * from './cs'
 export * from './system'
 export * from './verbs'
