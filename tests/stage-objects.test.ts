@@ -14,7 +14,7 @@ import {
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
-    circle, tangentLine, secantLine, areaUnder, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
+    circle, tangentLine, secantLine, areaUnder, band, valueAt, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
@@ -373,6 +373,368 @@ describe('calculus and series helpers', () => {
         expect(width).toBeGreaterThan(95)
         expect(width).toBeLessThan(105)
         expect(pathBounds(early[0]!.path)!.x).toBeLessThan(pathBounds(later[0]!.path)!.x)
+    })
+})
+
+describe('axes', () => {
+    /** The nodes that a part of moving axes draws at a time. */
+    const drawn = (node: Node, time: number): Node[] => at(time, () => [node.draw!(time)].flat().filter((made): made is Node => made !== null))
+    const number = (made: Node) => ({ source: (made as Node & { source: string }).source, x: Math.round(made.center[0]), opacity: made.get('opacity') })
+    /** The bounds of a path as left, top, width and height, with no error of the last digits. */
+    const box = (path: Node) => { const b = pathBounds(path.get('path')!)!; return [b.x, b.y, b.width, b.height].map((value) => Math.round(value * 1e6) / 1e6 + 0) }
+    /** A point with no error of the last digits. */
+    const near = ([x, y]: readonly [number, number]): [number, number] => [Math.round(x * 1e6) / 1e6 + 0, Math.round(y * 1e6) / 1e6 + 0]
+    /** The corners of a path of straight lines: its start, and the end of each line. */
+    const corners = (path: Node, ringIndex = 0): [number, number][] => {
+        const p = path.get('path')![ringIndex]!.p
+        return Array.from({ length: (p.length - 2) / 6 + 1 }, (_, i) => near([p[i * 6]!, p[i * 6 + 1]!]))
+    }
+    const series = (values: readonly number[], first = 0): Vec[] => values.map((y, i) => [first + i, y])
+
+    it('keeps the same numbers at the default size, and gives larger numbers more room from their axis', async () => {
+        let small!: ReturnType<typeof axes>, large!: ReturnType<typeof axes>
+        await compile((s) => {
+            small = s.add(axes({ x: [0, 4], y: [0, 4], width: 400, height: 400, xStep: 1, yStep: 1 }))
+            large = s.add(axes({ x: [0, 4], y: [0, 4], width: 400, height: 400, xStep: 1, yStep: 1, labelSize: 40 }))
+        })
+        expect(small.moving).toBe(false)
+        expect(small.numbers.draw).toBeNull()
+        // The first of the four numbers of the x axis, and the first number of the y axis: 26 under the axis, and 28 beside it.
+        const first = (made: ReturnType<typeof axes>) => made.numbers.children[0]!.center, firstY = (made: ReturnType<typeof axes>) => made.numbers.children[4]!.center
+        expect(first(small)[1]).toBeCloseTo(200 + 26, 6)
+        expect(firstY(small)[0]).toBeCloseTo(-200 - 28, 6)
+        expect(first(large)[1]).toBeCloseTo(200 + 52, 6)
+        expect(firstY(large)[0]).toBeCloseTo(-200 - 56, 6)
+    })
+
+    it('follows a range that moves: a point scrolls, and a number fades before it passes an end of its axis', async () => {
+        let made!: ReturnType<typeof axes>
+        const f = await compile((s) => {
+            const now = s.value(10)
+            made = s.add(axes({ x: () => [now.value - 10, now.value], y: [0, 4], width: 1000, height: 400, xStep: 5, yStep: 2, tips: false }))
+            s.play(now.to(20, { duration: 10, ease: linear }))
+        })
+        expect(made.moving).toBe(true)
+        expect(at(0, () => made.xRange)).toEqual([0, 10])
+        expect(at(10, () => made.xRange)).toEqual([10, 20])
+        // x = 10 is at the right end of the plot at the start, and in its middle 5 seconds later.
+        expect(at(0, () => made.p(10, 0))).toEqual([500, 200])
+        expect(at(5, () => made.p(10, 0))[0]).toBeCloseTo(0, 6)
+        const numbers = (time: number) => drawn(made.numbers, time).map(number)
+        // At 2.2 s the window is 2.2 to 12.2: 5 and 10 are far from both ends. The y axis does not move: its number at its end keeps its place.
+        expect(numbers(2.2)).toEqual([{ source: '5', x: -220, opacity: 1 }, { source: '10', x: 280, opacity: 1 }, { source: '2', x: -528, opacity: 1 }, { source: '4', x: -528, opacity: 1 }])
+        // At 0.2 s, 10 is 20 px from the right end. Its tick is at half. Its number is 20 px wide, so it is 10 px from the end, and at a quarter.
+        const tickAt = (time: number, x: number) => drawn(made.lines, time).filter((mark) => Math.abs(mark.center[0] - x) < 0.5 && mark.bounds().height < 20).map((mark) => mark.get('opacity'))
+        const width = at(0.2, () => drawn(made.numbers, 0.2)[1]!.width)
+        expect(width).toBeGreaterThan(12)
+        expect(numbers(0.2).slice(0, 2)).toEqual([{ source: '5', x: -20, opacity: 1 }, { source: '10', x: 480, opacity: expect.closeTo((20 - width / 2) / 40, 6) }])
+        expect(tickAt(0.2, 480)).toEqual([expect.closeTo(0.5, 6)])
+        // The left end is the same: at 4.8 s, 5 is 20 px from it.
+        const left = numbers(4.8)[0]!, leftWidth = at(4.8, () => drawn(made.numbers, 4.8)[0]!.width)
+        expect(left).toEqual({ source: '5', x: -480, opacity: expect.closeTo((20 - leftWidth / 2) / 40, 6) })
+        expect(tickAt(4.8, -480)).toEqual([expect.closeTo(0.5, 6)])
+        // At an end itself the number is gone. The numbers and the ticks of the y axis, also the ones at its end, show in full at every time.
+        expect(numbers(0).map((entry) => entry.source)).toEqual(['5', '2', '4'])
+        for (const time of [0, 0.2, 4.8]) {
+            expect(numbers(time).filter((entry) => entry.x === -528)).toEqual([{ source: '2', x: -528, opacity: 1 }, { source: '4', x: -528, opacity: 1 }])
+            expect(drawn(made.lines, time).filter((mark) => mark.bounds().width < 20 && mark.bounds().height < 1).map((mark) => mark.get('opacity'))).toEqual([1, 1])
+        }
+        // Every frame is a function of its time.
+        expectPure(f, [0, 0.2, 2.2, 7, 10])
+    })
+
+    it('draws the grid of a range that moves again on every frame, with lines that fade at the ends', async () => {
+        let made!: ReturnType<typeof axes>
+        await compile((s) => {
+            const now = s.value(10)
+            made = s.add(axes({ x: () => [now.value - 10, now.value], y: [0, 4], width: 1000, height: 400, xStep: 5, yStep: 2, grid: true, tips: false }))
+            s.play(now.to(20, { duration: 10, ease: linear }))
+        })
+        // Window 2.2 to 12.2: the lines of x = 5 and x = 10, and the three level lines of the y axis.
+        const lines = (time: number) => drawn(made.grid, time).map((mark) => [...box(mark), mark.get('opacity')])
+        expect(lines(2.2)).toEqual([[-220, -200, 0, 400, 1], [280, -200, 0, 400, 1], [-500, 200, 1000, 0, 1], [-500, 0, 1000, 0, 1], [-500, -200, 1000, 0, 1]])
+        expect(lines(0.2).slice(0, 2)).toEqual([[-20, -200, 0, 400, 1], [480, -200, 0, 400, expect.closeTo(0.5, 6)]])
+        // Axes with no grid draw none.
+        expect(axes({ x: () => [0, 10] }).grid.draw).toBeNull()
+    })
+
+    it('draws a series as straight lines through its points, up to a value and from a value', async () => {
+        const points = series([2, 8, 3, 7, 4, 6, 5, 9, 1, 8, 2])
+        let made!: ReturnType<typeof axes>, curve!: Node, fixed!: Node, tail!: Node, uneven!: Node
+        await compile((s) => {
+            const end = s.value(0)
+            made = s.add(axes({ x: [0, 10], y: [0, 10], width: 1000, height: 500 }))
+            curve = made.plot(points, { to: () => end.value, stroke: 'yellow' })
+            fixed = made.plot(points)
+            tail = made.plot(points, { from: () => end.value })
+            // Points at any x: the line goes through each of them.
+            uneven = made.plot([[0.5, 2], [1.5, 8], [4, 3], [4.2, 7], [9.5, 2]])
+            s.play(end.to(10, { duration: 10, ease: linear }))
+        })
+        // A curve with two ends that are numbers is one path, as before. A series has one straight line between two points.
+        expect(fixed.draw).toBeNull()
+        expect(corners(fixed)).toEqual(points.map(([x, y]) => near(made.p(x, y))))
+        // The lines are straight: the first one goes a third of its way, and two thirds, on the line from its start to its end.
+        const first = fixed.get('path')![0]!.p
+        expect(near([first[2]!, first[3]!])).toEqual(near([-500 + 100 / 3, 150 - 300 / 3]))
+        expect(near([first[4]!, first[5]!])).toEqual(near([-500 + 200 / 3, 150 - 600 / 3]))
+        expect(corners(uneven)).toEqual([[-450, 150], [-350, -150], [-100, 100], [-80, -100], [450, 150]])
+        const cornersAt = (node: Node, time: number) => { const made = drawn(node, time)[0]; return made ? corners(made) : null }
+        expect(cornersAt(curve, 0)).toBeNull()
+        // At 4.5 the line has the points of x = 0 to 4, and it ends between two points of the series.
+        expect(cornersAt(curve, 4.5)).toEqual([...points.slice(0, 5).map(([x, y]) => made.p(x, y)), made.p(4.5, 5)].map(near))
+        // The points stay the same when the end moves on: the line does not change its shape while it grows.
+        expect(cornersAt(curve, 4.6)!.slice(0, 5)).toEqual(cornersAt(curve, 4.5)!.slice(0, 5))
+        // A start that is a function: at 4.5 the line starts between two points, and has the points of x = 5 to 10.
+        expect(cornersAt(tail, 4.5)).toEqual([made.p(4.5, 5), ...points.slice(5).map(([x, y]) => made.p(x, y))].map(near))
+        expect(cornersAt(tail, 10)).toBeNull()
+        // A function is a smooth curve through even samples, as before.
+        const smooth = made.plot((x) => x, { samples: 8 })
+        expect((smooth.get('path')![0]!.p.length - 2) / 6).toBe(8)
+    })
+
+    it('keeps the samples of a series at its points while the window scrolls, and cuts a curve and a band at the ends of the range', async () => {
+        const points = series([5, 6, 4, 7, 3, 6, 5, 4, 6, 5, 7, 3, 5, 6, 4, 5, 6])
+        let made!: ReturnType<typeof axes>, curve!: Node, smooth!: Node, area!: Node
+        await compile((s) => {
+            const now = s.value(4)
+            made = s.add(axes({ x: () => [now.value - 4, now.value], y: [0, 10], width: 800, height: 400 }))
+            curve = made.plot(points)
+            smooth = made.plot((x) => 5 + Math.sin(x), { from: 0, to: 20 })
+            area = band(made, (x) => 4 + Math.sin(x), (x) => 6 + Math.sin(x), { from: 6, to: 20 })
+            s.play(now.to(12, { duration: 8, ease: linear }))
+        })
+        // At 2.3 s the window is 2.3 to 6.3. The line starts at the left end, has the points of x = 3 to 6, and ends at the right end.
+        const line23 = at(2.3, () => corners(drawn(curve, 2.3)[0]!))
+        expect(line23).toEqual(at(2.3, () => [made.p(2.3, valueAt(points, 2.3)), ...[3, 4, 5, 6].map((x) => made.p(x, points[x]![1])), made.p(6.3, valueAt(points, 6.3))].map(near)))
+        expect([line23[0]![0], line23[5]![0]]).toEqual([-400, 400])
+        // 0.05 s later the same points of the series are 10 px more to the left.
+        const line235 = at(2.35, () => corners(drawn(curve, 2.35)[0]!))
+        expect(line235.slice(1, 5)).toEqual(line23.slice(1, 5).map(([x, y]) => near([x - 10, y])))
+        for (const time of [0, 2.3, 5, 8]) {
+            const cut = pathBounds(drawn(smooth, time)[0]!.get('path')!)!
+            expect(cut.x).toBeCloseTo(-400, 6)
+            expect(cut.x + cut.width).toBeCloseTo(400, 6)
+        }
+        // The band starts at x = 6. The window reaches it at 2 s, and holds a part of it one second later.
+        expect(drawn(area, 1)).toEqual([])
+        const part = pathBounds(drawn(area, 3)[0]!.get('path')!)!
+        expect(at(3, () => made.p(6, 0)[0])).toBeCloseTo(200, 6)
+        expect(part.x).toBeCloseTo(200, 6)
+        expect(part.x + part.width).toBeCloseTo(400, 6)
+    })
+
+    it('fills the band between two curves, opens it up to a value, and keeps it inside the y range', async () => {
+        let made!: ReturnType<typeof axes>, between!: Node, named!: Node, open!: Node, tall!: Node, under!: Node, swapped!: Node, gap!: Node
+        await compile((s) => {
+            const end = s.value(2)
+            made = s.add(axes({ x: [0, 10], y: [0, 10], width: 1000, height: 500 }))
+            between = areaUnder(made, () => 6, { over: () => 4, from: 2, to: 8, fill: 'teal', opacity: 0.4 })
+            named = band(made, () => 4, () => 6, { from: 2, to: 8, fill: 'teal', opacity: 0.4 })
+            // The two edges are series with a point at each whole x: the band has its corners at those points.
+            open = band(made, series([4, 3.9, 3.8, 3.7, 3.6, 3.5, 3.4, 3.3, 3.2]), series([6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8]), { from: 2, to: () => end.value })
+            tall = band(made, () => -5, () => 20)
+            under = areaUnder(made, () => 6, { from: 2, to: 8 })
+            // The low curve over the high one: the band is between the two, as before.
+            swapped = band(made, () => 6, () => 4, { from: 2, to: 8 })
+            // A series with no value at x = 5: the band has a gap from 4 to 6.
+            gap = band(made, () => 4, series([7, 7, 7, 7, 7, NaN, 7, 7, 7, 7, 7]))
+            s.play(end.to(8, { duration: 6, ease: linear }))
+        })
+        expect(box(between)).toEqual([-300, -50, 600, 100])
+        expect(between.get('fill')).toEqual(parseColor('teal'))
+        expect(between.get('fillOpacity')).toBe(0.4)
+        expect(between.data['object']).toBe('band between two curves')
+        // `band` is the same shape by its name, with the low curve first.
+        expect(pathToD(named.get('path')!)).toBe(pathToD(between.get('path')!))
+        expect(named.get('fillOpacity')).toBe(0.4)
+        expect(named.data['object']).toBe('band between two curves')
+        expect(pathToD(swapped.get('path')!)).toBe(pathToD(named.get('path')!))
+        // Without `over`, the area goes down to the x axis, as before.
+        expect(box(under)).toEqual([-300, -50, 600, 300])
+        expect(under.data['object']).toBe('area under a curve')
+        expect(box(tall)).toEqual([-500, -250, 1000, 500])
+        // The band opens from x = 2: nothing at the start. At 3.5 s it ends at x = 5.5, with a corner at each point of the series on the way.
+        expect(drawn(open, 0)).toEqual([])
+        const shape = drawn(open, 3.5)[0]!
+        const high = (x: number) => made.p(x, 6 + x / 10), low = (x: number) => made.p(x, 4 - x / 10)
+        expect(corners(shape)).toEqual([high(2), high(3), high(4), high(5), high(5.5), low(5.5), low(5), low(4), low(3), low(2), high(2)].map(near))
+        // A value that is not a number leaves a gap: two shapes, up to x = 4 and from x = 6.
+        expect(gap.get('path')!.map((ring) => { const b = pathBounds([ring])!; return [...near([b.x, b.y]), ...near([b.width, b.height])] })).toEqual([[-500, -100, 400, 150], [100, -100, 400, 150]])
+    })
+
+    it('marks a value of x or of y with a line across the plot and a label at its end', async () => {
+        let made!: ReturnType<typeof axes>, limit!: Node, live!: Node, thick!: Node
+        const f = await compile((s) => {
+            const now = s.value(2)
+            made = s.add(axes({ x: [0, 10], y: [0, 10], width: 1000, height: 500 }))
+            limit = made.marker({ y: 8, label: 'limit', color: 'red', labelSize: 30, dash: null })
+            live = made.marker({ x: () => now.value, label: 'now', labelSize: 30 })
+            thick = made.marker({ x: 5, width: 6, glow: 9 })
+            made.plot((x) => x, { stroke: 'blue' })
+            s.play(now.to(12, { duration: 10, ease: linear }))
+        })
+        // A level line from the left edge of the plot to the right edge, and its label at the right of the plot, in the color of the line.
+        const [rule, name] = limit.children
+        expect(box(rule!)).toEqual([-500, -150, 1000, 0])
+        expect(rule!.get('dash')).toBeNull()
+        expect(rule!.get('stroke')).toEqual(parseColor('red'))
+        expect((name as TextNode).chars[0]!.get('fill')).toEqual(parseColor('red'))
+        expect(name!.bounds().x).toBeCloseTo(500 + 0.4 * 30, 6)
+        expect(name!.center[1]).toBeCloseTo(-150, 6)
+        // A vertical line that follows a value, with its label over the plot. Past the end of the axis it does not show.
+        const [line3, name3] = drawn(live, 1)
+        expect(box(line3!)).toEqual([-200, -250, 0, 500])
+        expect(line3!.get('dash')).toEqual([8, 8])
+        expect(line3!.get('strokeWidth')).toBe(2.5)
+        expect(line3!.get('glow')).toBe(0)
+        expect((name3 as TextNode).chars[0]!.get('fill')).toEqual(parseColor('yellow'))
+        expect(name3!.center[0]).toBeCloseTo(-200, 6)
+        expect(name3!.bounds().y + name3!.bounds().height).toBeCloseTo(-250 - 0.4 * 30, 6)
+        expect(drawn(live, 9)).toEqual([])
+        // A marker with no label is its line, with the width and the glow that it was given.
+        expect(thick.children).toHaveLength(1)
+        expect(thick.children[0]!.get('strokeWidth')).toBe(6)
+        expect(thick.children[0]!.get('glow')).toBe(9)
+        // The labels are labels of the plot: the check judges neither against the line of its marker, nor against the curve that passes it.
+        const report = await checkFilm(f, { textGap: 0.3, times: [0.5, 5.5] })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('keeps the label of a marker beside the plot at an end of the plot, and moves a marker with the window', async () => {
+        let fixed!: ReturnType<typeof axes>, moving!: ReturnType<typeof axes>, deploy!: Node
+        await compile((s) => {
+            const now = s.value(8)
+            fixed = s.add(axes({ x: [0, 10], y: [0, 10], width: 800, height: 400 }).at(0, -260))
+            fixed.marker({ x: 10, label: 'the forecast was made here', labelSize: 30 })
+            fixed.marker({ x: 0, label: 'the start of the record', labelSize: 30 })
+            fixed.marker({ y: 10, label: 'limit', labelSize: 30 })
+            moving = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], width: 1200, height: 300 }).at(0, 300))
+            // A marker at a number on axes with a range that moves: it scrolls with the window.
+            deploy = moving.marker({ x: 12, label: 'deploy', labelSize: 30 })
+            s.play(now.to(24, { duration: 8, ease: linear }))
+        })
+        // At the right end, the label ends at the end of the plot. At the left end, it starts there. Its line stays at its value.
+        const [end, start, top] = fixed.children.slice(-3)
+        expect(box(end!.children[0]!)).toEqual([400, -200, 0, 400])
+        expect(end!.children[1]!.bounds().x + end!.children[1]!.bounds().width).toBeCloseTo(400, 6)
+        expect(start!.children[1]!.bounds().x).toBeCloseTo(-400, 6)
+        // A level marker at the top of the plot: its label does not pass the top. The axes are 260 over the middle of the stage.
+        expect(top!.children[1]!.bounds().y).toBeCloseTo(-260 - 200, 6)
+        // At the start the window is 0 to 12: the marker of x = 12 is at the right end, and its label is inside the plot.
+        const [line0, name0] = drawn(deploy, 0)
+        expect(box(line0!)).toEqual([600, -150, 0, 300])
+        expect(at(0, () => name0!.bounds().x + name0!.bounds().width)).toBeCloseTo(600, 6)
+        // Two seconds later the window is 4 to 16: the marker is at two thirds, with its label over it. At 8 s it is out of the window.
+        const [line2, name2] = drawn(deploy, 2)
+        expect(box(line2!)).toEqual([200, -150, 0, 300])
+        expect(at(2, () => name2!.center[0])).toBeCloseTo(200, 6)
+        expect(drawn(deploy, 8)).toEqual([])
+    })
+
+    it('moves the marks of the older helpers with a range that moves, and hides a mark while its point is outside', async () => {
+        const f = (x: number) => 5 + 3 * Math.sin(x / 2)
+        let made!: ReturnType<typeof axes>, point!: Node, lines!: Node, sum!: Node, tangent!: Node, secant!: Node, guides!: Node
+        const film = await compile((s) => {
+            const now = s.value(8)
+            made = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], width: 1200, height: 500, xStep: 2, xLabel: 'x', yLabel: 'y' }))
+            point = made.dotAt(6, f(6))
+            lines = made.guides(4, f(4))
+            sum = riemann(made, f, { from: 1, to: 5, n: 4 })
+            tangent = tangentLine(made, f, 7)
+            secant = secantLine(made, f, 7, 9)
+            guides = dashedGuides(made, 9, f(9))
+            s.play(now.to(16, { duration: 8, ease: linear }))
+        })
+        // The window is 0 to 12 at the start, and 100 px for each unit of x.
+        expect(drawn(point, 0)[0]!.get('x')).toBeCloseTo(0, 6)
+        expect(drawn(point, 2)[0]!.get('x')).toBeCloseTo(-200, 6)
+        expect(at(2, () => [drawn(point, 2)[0]!.get('x'), drawn(point, 2)[0]!.get('y')])).toEqual(at(2, () => made.p(6, f(6))))
+        // At 5 s the window is 5 to 17: the point of x = 6 is still inside, and the points of x = 4 and of the sum are not.
+        expect(drawn(point, 5)).toHaveLength(1)
+        expect(drawn(point, 7)).toEqual([])
+        expect(drawn(lines, 0)).toHaveLength(2)
+        expect(box(drawn(lines, 2)[0]!)[0]).toBeCloseTo(-400, 6)
+        expect(drawn(lines, 5)).toEqual([])
+        // The four rectangles of the sum from x = 1 to 5. At 2 s the window starts at 2, so the first one is gone. At 2.5 s the second one is cut in half.
+        expect(drawn(sum, 0).map((leaf) => leaf.bounds().width)).toEqual([100, 100, 100, 100].map((width) => expect.closeTo(width, 6)))
+        expect(drawn(sum, 2)).toHaveLength(3)
+        expect(drawn(sum, 2.5).map((leaf) => leaf.bounds().width)).toEqual([50, 100, 100].map((width) => expect.closeTo(width, 6)))
+        expect(at(2.5, () => drawn(sum, 2.5)[0]!.bounds().x)).toBeCloseTo(-600, 6)
+        expect(drawn(sum, 5.5)).toEqual([])
+        // The tangent, the secant and the guides follow their points, and do not show while a point is outside.
+        expect(drawn(tangent, 2).map((mark) => Math.round(mark.center[0]))).toEqual([-100, -100])
+        expect(drawn(tangent, 7.5)).toEqual([])
+        expect(drawn(secant, 2).slice(-2).map((mark) => Math.round(mark.center[0]))).toEqual([-100, 100])
+        expect(drawn(secant, 7.5)).toEqual([])
+        expect(box(drawn(guides, 2)[0]!)[0]).toBeCloseTo(100, 6)
+        expect(drawn(guides, 7.5)).toHaveLength(2)
+        expect(drawn(guides, 8)).toHaveLength(2)
+        // The names of the axes stay at the ends of the axis lines: the y axis moves with x = 0 until the window passes it.
+        const names = (time: number) => at(time, () => drawn(made.children[3]!, time).map((name) => name.center.map(Math.round)))
+        expect(names(0)).toEqual([[604, 224], [-600 + 16 + Math.round(drawn(made.children[3]!, 0)[1]!.width / 2), -246]])
+        expect(names(4)[1]![0]).toBe(names(0)[1]![0])
+        expect(at(-0, () => made.p(0, 0)[0])).toBeCloseTo(-600, 6)
+        expectPure(film, [0, 2, 5, 8])
+    })
+
+    it('follows a y range that moves too', async () => {
+        let made!: ReturnType<typeof axes>, limit!: Node
+        await compile((s) => {
+            const level = s.value(10)
+            made = s.add(axes({ x: [0, 10], y: () => [level.value - 10, level.value + 10], width: 1000, height: 400, yStep: 5, xLabel: 'x', yLabel: 'y' }))
+            limit = made.marker({ y: 20, label: 'limit' })
+            s.play(level.to(30, { duration: 10, ease: linear }))
+        })
+        // The range is 0 to 20 at the start: the limit is at the top. Five seconds later it is in the middle, and at the end it is at the bottom.
+        expect(box(drawn(limit, 0)[0]!)).toEqual([-500, -200, 1000, 0])
+        expect(box(drawn(limit, 5)[0]!)).toEqual([-500, 0, 1000, 0])
+        expect(box(drawn(limit, 10)[0]!)).toEqual([-500, 200, 1000, 0])
+        // The x axis is at y = 0 while 0 is in the range, and at the bottom of the plot after that. Its name goes with it.
+        const xAxis = (time: number) => at(time, () => box(drawn(made.lines, time)[0]!.children[0] ?? drawn(made.lines, time)[0]!)[1])
+        expect(xAxis(0)).toBeCloseTo(200, 6)
+        const name = (time: number) => at(time, () => drawn(made.children[3]!, time)[0]!.center[1])
+        expect(name(0)).toBeCloseTo(200 - 26, 0)
+        expect(name(10)).toBeCloseTo(200 - 26, 0)
+        expect(at(4, () => made.p(0, 10)[1])).toBeCloseTo(at(4, () => made.p(0, 14)[1]) + 80, 6)
+    })
+
+    it('says what to give for each wrong argument of a curve, a band, a marker and a range', () => {
+        const made = () => axes({ x: [0, 10], y: [0, 10], width: 1000, height: 500 })
+        const any = (value: unknown) => value as never
+        // A curve.
+        expect(() => made().plot(any(4))).toThrow('plot: the curve is a function of x, such as (x) => x * x, or the points of a series, such as [[0, 2], [1, 5]], and it is the value 4')
+        expect(() => made().plot([[0, 1], any([1])])).toThrow('plot: point 1 of the curve is the list [1]. A point of a series is [x, y], and its x is a number')
+        expect(() => made().plot([[0, 1], [2, 1], [2, 3]])).toThrow('plot: point 2 of the curve has the x 2, and the point before it has the x 2. The points of a series have their x in rising order')
+        expect(() => made().plot((x) => x, { to: any('5') })).toThrow('plot: to is a number, or a function that gives the number now, such as () => now.value, and it is the string "5"')
+        expect(() => made().plot((x) => x, { from: NaN })).toThrow('plot: from is a number, or a function that gives the number now, such as () => now.value, and it is the value NaN')
+        // A band.
+        expect(() => areaUnder(made(), (x) => x, { over: any(4) })).toThrow('areaUnder: over is a function of x, such as (x) => x * x, or the points of a series, such as [[0, 2], [1, 5]], and it is the value 4')
+        expect(() => band(made(), any('low'), (x) => x)).toThrow('band: the low curve is a function of x, such as (x) => x * x, or the points of a series, such as [[0, 2], [1, 5]], and it is the string "low"')
+        expect(() => band(made(), (x) => x, any(undefined))).toThrow('band: the high curve is a function of x')
+        expect(() => band(made(), (x) => x, (x) => x + 1, { to: any(null) })).toThrow('band: to is a number, or a function that gives the number now, such as () => now.value, and it is null')
+        expect(() => band(any(rect(10, 10)), (x) => x, (x) => x + 1)).toThrow('band: the first argument is a node of another kind. Give a pair of axes, such as axes()')
+        // A marker.
+        expect(() => made().marker({ label: 'now' })).toThrow("axes.marker: give x for a vertical line or y for a level line, and one of the two only, such as marker({ x: 3, label: 'now' })")
+        expect(() => made().marker({ x: 1, y: 2 })).toThrow('axes.marker: give x for a vertical line or y for a level line')
+        expect(() => made().marker(any(3))).toThrow("axes.marker: the options are an object such as { x: 3, label: 'now' }, and the argument is the value 3")
+        expect(() => made().marker({ x: 12 })).toThrow('axes.marker: x is 12, and the x range is 0 to 10. Give a value inside the range')
+        expect(() => made().marker({ x: NaN })).toThrow('axes.marker: x is a number, or a function that gives the number now, such as () => now.value, and it is the value NaN')
+        expect(() => made().marker({ y: any('high') })).toThrow('axes.marker: y is a number, or a function that gives the number now, such as () => now.value, and it is the string "high"')
+        expect(() => made().marker({ x: 3, label: any(42) })).toThrow('axes.marker: label is the text at the end of the line, and it is the value 42')
+        expect(() => made().marker({ x: 3, label: 'a', labelSize: 0 })).toThrow('axes.marker: labelSize is the size of the label in pixels, more than 0, and it is the value 0')
+        expect(() => axes({ width: 200 }).marker({ x: 1, label: 'a label that is wider than the plot of these axes' })).toThrow(/^axes\.marker: the label "a label that is wider than the plot of these axes" is \d+ wide, and the plot is 200 wide\. Use a shorter label, or a smaller labelSize$/)
+        // A function that gives no number stops the frame, and the message names the call.
+        expect(() => made().plot((x) => x, { to: () => NaN }).draw!(0)).toThrow('plot: the function of to gave the value NaN. It gives the number now, such as () => now.value')
+        expect(() => band(made(), (x) => x, (x) => x + 1, { from: any(() => 'start') }).draw!(0)).toThrow('band: the function of from gave the string "start". It gives the number now, such as () => now.value')
+        expect(() => made().marker({ x: () => NaN, label: 'now' }).draw!(0)).toThrow('axes.marker: the function of x gave the value NaN. It gives the number now, such as () => now.value')
+        // A range.
+        expect(() => axes({ x: any(5) })).toThrow('axes: x is the range of the x axis: its two ends, such as [0, 10], or a function that gives them now, and it is the value 5')
+        expect(() => axes({ x: any(() => 5) })).toThrow('axes: the function of the x range gave the value 5. It gives the two ends of the range now, the first one under the second, such as () => [now.value - 8, now.value + 4]')
+        expect(() => axes({ y: () => [3, 3] })).toThrow('axes: the function of the y range gave the list [3, 3]. It gives the two ends of the range now, the first one under the second')
+        expect(() => axes({ x: () => [9, 4] })).toThrow('axes: the function of the x range gave the list [9, 4]')
+        expect(() => axes({ x: () => [NaN, 4] })).toThrow('axes: the function of the x range gave the list [NaN, 4]')
+        expect(() => axes({ x: () => [0, 200000], xStep: 1 })).toThrow('axes: the x range 0 to 200000 has 200000 ticks at a step of 1, and axes with a range that moves draw each tick again on every frame. Give a larger xStep')
     })
 })
 
