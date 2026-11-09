@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import {
-    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp,
+    CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough,
     bitField,
-    counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
-    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
+    counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, fadeOut, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
+    heatmap, highlightSweep, histogram, indicate, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone,
     lanes, smooth,
@@ -4788,6 +4788,1127 @@ describe('terminal', () => {
             expect(() => run.print({ to: 5 })).toThrow(/print from 0 to 5/)
             expect(() => run.print({ from: -1 })).toThrow(/print from -1 to 4/)
             expect(() => run.print({ from: 0.5 })).toThrow(/print from 0.5 to 4/)
+        }))
+    })
+})
+
+describe('boundary', () => {
+    type Boundary = ReturnType<typeof boundary>
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    /** The glyphs of the number of the tally at a time, from left to right. */
+    const glyphs = (made: Boundary, time: number) => at(time, () => (made.tallyNode!.children[0]!.draw!(time) as Node).children)
+    const tally = (made: Boundary, time: number) => glyphs(made, time).map((glyph) => (glyph as unknown as { source: string }).source).join('')
+    const right = (box: { x: number; width: number }) => box.x + box.width
+    const bottom = (box: { y: number; height: number }) => box.y + box.height
+    /** The word of the tally at a time, as the tally draws it. */
+    const word = (made: Boundary, time = 0) => at(time, () => made.tallyNode!.children[1]!.draw!(time) as Node)
+    const said = (node: Node) => (node as unknown as { source: string }).source
+    /** The line of a group or a zone, such as the copy of a line in the copy of its zone. */
+    const lineIn = (holder: Node) => holder.all().find((node): node is Boundary => 'addCrossings' in node)!
+    /** The ticks that are on screen at a time, by their places, from the left. */
+    const ticksAt = (made: Boundary, time: number, list: readonly Node[] = made.ticks) => at(time, () => list.filter((tick) => shows(tick) > 0).map((tick) => tick.get('x')).sort((a, b) => a - b))
+
+    it('centers the line on its place, with the names at its left end and the tally at its right end, and none of them on the line', async () => {
+        await compileFilm(film(() => {
+            const made = boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' }).at(100, 50)
+            const line = made.line.bounds()
+            expect([line.x, right(line), line.y]).toEqual([-400, 600, 50])
+            const [above, below] = made.sides
+            const label = made.labelNode!.bounds(), over = above!.bounds(), under = below!.bounds(), count = made.tallyNode!.bounds()
+            // The ink of each name starts at the left end of the line, and the tally ends at its right end.
+            for (const box of [label, over, under]) expect(box.x).toBeCloseTo(-400, 6)
+            expect(right(count)).toBeCloseTo(600, 6)
+            // The stroke is 3 wide. One side name and the tally are over it, the other side name is under it, with room.
+            expect(bottom(over)).toBeLessThan(50 - 1.5 - 8)
+            expect(bottom(count)).toBeLessThan(50 - 1.5 - 8)
+            expect(under.y).toBeGreaterThan(50 + 1.5 + 8)
+            // The label is over the side name, and the names end before the tally starts.
+            expect(bottom(label)).toBeLessThan(over.y - 4)
+            expect(Math.max(right(label), right(over))).toBeLessThan(count.x - 40)
+
+            // With no side name over the line, the label takes the row next to the line.
+            const named = boundary({ label: 'VM wall', below: 'host' })
+            expect(named.labelNode!.get('y')).toBe(above!.get('y'))
+            expect(named.sides[0]).toBeNull()
+            expect(named.sides[1]).not.toBeNull()
+            const bare = boundary()
+            expect([bare.labelNode, bare.tallyNode, ...bare.sides]).toEqual([null, null, null, null])
+            expect(bare.line.bounds().width).toBe(1600)
+        }))
+    })
+
+    it('draws the line in its color and weight, a dashed line that ends in a full dash, and a tally with no word at the right end', async () => {
+        await compileFilm(film(() => {
+            const plain = boundary()
+            expect(plain.line.get('stroke')).toEqual(line([0, 0], [1, 0], { stroke: 'yellow' }).get('stroke'))
+            expect(plain.line.get('strokeWidth')).toBe(3)
+            expect(plain.line.get('dash')).toBeNull()
+            const wall = boundary({ width: 1000, color: 'red', weight: 6, dash: true, tally: true, label: 'VM wall' })
+            expect(wall.line.get('stroke')).toEqual(line([0, 0], [1, 0], { stroke: 'red' }).get('stroke'))
+            expect(wall.line.get('strokeWidth')).toBe(6)
+            // The label has the color of the line.
+            expect(wall.labelNode!.children[0]!.get('fill')).toEqual(wall.line.get('stroke'))
+            // A whole number of dashes and gaps, less the last gap, is the length of the line.
+            const [on, off] = wall.line.get('dash')!
+            expect((1000 + off!) / (on! + off!)).toBeCloseTo(Math.round((1000 + off!) / (on! + off!)), 6)
+            // With no word, the number itself ends at the right end of the line.
+            expect(wall.tallyNode!.children).toHaveLength(1)
+            expect(right(wall.tallyNode!.bounds())).toBeGreaterThan(500 - 4)
+            expect(right(wall.tallyNode!.bounds())).toBeLessThanOrEqual(500)
+            expect(boundary({ tally: false }).tallyNode).toBeNull()
+        }))
+    })
+
+    it('sets every text in its size and its font, and draws a heavier tick on a heavier line', async () => {
+        let thin!: Boundary, heavy!: Boundary, hair!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const sizes = (made: Boundary, time: number) => [made.labelNode!, made.sides[0]!, made.sides[1]!, word(made, time), ...glyphs(made, time)].map((part) => part.data['size'])
+            const names = { label: 'iii', above: 'iii', below: 'iii', tally: 'iii' }
+            thin = s.add(boundary({ ...names, width: 1000 }).at(0, -200))
+            heavy = s.add(boundary({ ...names, width: 1000, size: 40, weight: 8, font: 'mono' }).at(0, 200))
+            expect(sizes(thin, 0)).toEqual(Array(5).fill(26))
+            expect(sizes(heavy, 0)).toEqual(Array(5).fill(40))
+            // In the mono font, an "i" and a digit are as wide as each other. In the default font they are not.
+            // The text of a crossing is a little smaller than the names, in the font of the line. The mark follows the size too.
+            const near = thin.cross(0, { label: 'iii' }), far = heavy.cross(0, { label: 'iii' })
+            const widths = (made: Boundary, text: Node) => [made.labelNode!, made.sides[0]!, made.sides[1]!, word(made), text].map((part) => part.bounds().width / (part.data['size'] as number))
+            for (const width of widths(heavy, far.labelNode!)) expect(width).toBeGreaterThan(1.4)
+            for (const width of widths(thin, near.labelNode!)) expect(width).toBeLessThan(1)
+            expect((glyphs(heavy, 0)[0] as Node).get('px') * 2 / 40).toBeCloseTo(0.6, 2)
+            expect([near.labelNode!.data['size'], far.labelNode!.data['size']]).toEqual([26 * 0.85, 40 * 0.85])
+            expect([near.mark.bounds().width, far.mark.bounds().width]).toEqual([expect.closeTo(26 * 0.54, 6), expect.closeTo(40 * 0.54, 6)])
+            hair = s.add(boundary({ width: 600, weight: 1, tally: true }).at(0, 400))
+            s.play(near, far, hair.cross(0), { duration: 1 })
+            s.play(thin.addCrossings(99999), heavy.addCrossings(99999), hair.addCrossings(99999), { duration: 1 })
+        }))
+        // The note is smaller than the names, in the font of the line: in the mono font each of its characters is 0.6 of its size.
+        const wide = (note: Node) => at(2, () => note.bounds().width) / (note.data['size'] as number) / said(note).length
+        expect([thin.noteNode!.data['size'], heavy.noteNode!.data['size']]).toEqual([26 * 0.75, 40 * 0.75])
+        expect(wide(heavy.noteNode!)).toBeGreaterThan(0.57)
+        expect(wide(thin.noteNode!)).toBeLessThan(0.53)
+        // The ticks of a heavy line are 6 wide, so they stand 12 apart at least. The ticks of a thin line stand 6 apart.
+        const steps = (made: Boundary) => ticksAt(made, 2).slice(1).map((x, index, rest) => x - (index ? rest[index - 1]! : ticksAt(made, 2)[0]!))
+        expect(Math.min(...steps(heavy))).toBeGreaterThanOrEqual(12)
+        expect(Math.max(...steps(heavy))).toBeLessThan(14)
+        for (const made of [thin, hair]) {
+            expect(Math.min(...steps(made))).toBeGreaterThanOrEqual(6)
+            expect(Math.max(...steps(made))).toBeLessThan(7)
+        }
+        const [light, strong] = [thin.ticks[0]!, heavy.ticks[0]!]
+        expect(light.get('strokeWidth')).toBe(3)
+        expect(strong.get('strokeWidth')).toBeGreaterThan(4)
+        // The tick of a line that is thinner than 3 is as thin as the line.
+        expect(hair.ticks[0]!.get('strokeWidth')).toBe(1)
+        // The tick shows the same length on both sides of the stroke of its line.
+        const out = (tick: Node, weight: number) => at(1, () => tick.bounds().height) / 2 - weight / 2
+        expect(out(light, 3)).toBeCloseTo(26 * 0.3, 6)
+        expect(out(strong, 8)).toBeCloseTo(40 * 0.3, 6)
+    })
+
+    it('starts a mark 70 over the line by default, and takes the length and the ease of each animation from its options', async () => {
+        await compileFilm(film(() => {
+            const made = boundary({ tally: true })
+            const plain = made.cross(0)
+            expect([plain.mark.get('x'), plain.mark.get('y')]).toEqual([0, -70])
+            expect(made.cross(0, { direction: 'up', reach: 120 }).mark.get('y')).toBe(120)
+            // The reach follows the text size: 2.7 sizes, as a whole number.
+            expect(boundary({ size: 40 }).cross(0).mark.get('y')).toBe(-108)
+            expect([plain.duration, made.cross(0, { direction: 'round' }).duration, made.addCrossings(5).duration, made.clear().duration, made.enter().duration]).toEqual([0.8, 1.4, 1.6, 0.6, 1.2])
+            for (const anim of [made.cross(0, { duration: 3, ease: linear }), made.addCrossings(5, { duration: 3, ease: linear }), made.clear({ duration: 3, ease: linear }), made.enter({ duration: 3, ease: linear })]) {
+                expect([anim.duration, anim.ease]).toEqual([3, linear])
+            }
+        }))
+    })
+
+    it('gives places along the line that are clear of the names and of a tally of six digits', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' }))
+            s.play(made.addCrossings(999999), { duration: 1 })
+        }))
+        const names = Math.max(right(made.labelNode!.bounds()), right(made.sides[0]!.bounds()), right(made.sides[1]!.bounds()))
+        // The first place is farther from the names than the last place is from the tally: the text of a crossing goes to the right of its mark.
+        expect(made.x(0)).toBeGreaterThan(names + 44)
+        expect(made.x(0)).toBeLessThan(names + 60)
+        expect(tally(made, compiled.duration)).toBe('999,999')
+        const widest = at(compiled.duration, () => made.tallyNode!.bounds().x)
+        expect(made.x(1)).toBeLessThan(widest - 24)
+        expect(made.x(1)).toBeGreaterThan(widest - 48)
+        expect(made.x(0.5)).toBeCloseTo((made.x(0) + made.x(1)) / 2, 6)
+        // A line with no names and no tally keeps a small margin at each end.
+        const bare = boundary({ width: 1000 })
+        expect(bare.x(0)).toBeGreaterThan(-500 + 10)
+        expect(bare.x(0)).toBeLessThan(-500 + 40)
+        expect(bare.x(1)).toBeCloseTo(-bare.x(0), 6)
+        expect(bare.x(0.5)).toBeCloseTo(0, 6)
+    })
+
+    it('sends a mark down through the line, lights the line there, leaves a tick, and counts when the mark is on the line', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'crossings' }).at(0, 100))
+            s.wait(1)
+            crossing = made.cross(200, { reach: 80 })
+            s.play(crossing, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const mark = crossing.mark
+        // Over the line before, on it half way, under it after. The places are in the coordinates of the line.
+        expect(at(1, () => [mark.get('x'), mark.get('y')])).toEqual([200, -80])
+        expect(at(1.5, () => mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(2, () => mark.get('y'))).toBeCloseTo(80, 6)
+        // It fades in over the first fifth of its time and out over the last fifth, and is gone after.
+        expect(at(0.9, () => shows(mark))).toBe(0)
+        expect(at(1.1, () => shows(mark))).toBeCloseTo(0.5, 6)
+        expect(at(1.5, () => shows(mark))).toBe(1)
+        expect(at(1.9, () => shows(mark))).toBeCloseTo(0.5, 6)
+        expect(at(2.1, () => shows(mark))).toBe(0)
+        // The tick arrives when the mark is on the line, and stays. It is a short stroke across the line at x.
+        expect(made.ticks).toHaveLength(1)
+        const tick = made.ticks[0]!
+        expect(at(1.45, () => shows(tick))).toBe(0)
+        expect(at(2.4, () => shows(tick))).toBe(1)
+        const box = at(2.4, () => tick.bounds())
+        expect([box.x, box.width]).toEqual([200, 0])
+        expect(box.y).toBeLessThan(100 - 6)
+        expect(bottom(box)).toBeGreaterThan(100 + 6)
+        expect(box.height).toBeLessThan(30)
+        expect(tick.get('stroke')).toEqual(made.line.get('stroke'))
+        // The tally goes up at that moment, and not before.
+        expect([tally(made, 1.45), tally(made, 1.55), tally(made, 2.4)]).toEqual(['0', '1', '1'])
+        expect(made.count).toBe(1)
+        // The line lights around x while the mark passes: a wider piece of the line, which is gone after.
+        const lit = (time: number) => paths(compiled, time).filter((op) => op.stroke && op.strokeWidth > 3)
+        expect(lit(1.2)).toHaveLength(0)
+        expect(lit(1.5)).toHaveLength(1)
+        const piece = pathBounds(lit(1.5)[0]!.path)!
+        expect(piece.x).toBeLessThan(960 + 200 - 20)
+        expect(right(piece)).toBeGreaterThan(960 + 200 + 20)
+        expect(piece.width).toBeLessThan(120)
+        expect(piece.y).toBeCloseTo(540 + 100, 6)
+        expect(lit(1.95)).toHaveLength(0)
+        // The light comes up before the mark is on the line, and goes down after.
+        expect(lit(1.44)[0]!.strokeAlpha).toBeCloseTo(0.5, 6)
+        expect(lit(1.675)[0]!.strokeAlpha).toBeCloseTo(0.5, 6)
+        // The mark is drawn over the tick, the tick over the light, and the light over the line.
+        const order = paths(compiled, 1.6).map((op) => op.node)
+        const drawn = [made.line, lit(1.6)[0]!.node, tick, mark].map((node) => order.indexOf(node as Node))
+        expect(drawn[0]).toBe(0)
+        expect(drawn).toEqual([...drawn].sort((a, b) => a - b))
+        expect(drawn[3]).toBe(order.length - 1)
+    })
+
+    it('lights a dashed line in its dashes, in the color of the crossing', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, dash: true, weight: 4 }))
+            s.play(made.cross(123, { color: 'teal' }), { duration: 1, ease: linear })
+        }))
+        const piece = paths(compiled, 0.5).find((op) => op.strokeWidth > 4)!
+        const [on, off] = made.line.get('dash')!
+        expect(piece.dash).toEqual([on, off])
+        // The piece starts part of the way into a dash or a gap. From there, its dashes are at the places of the dashes of the line.
+        const start = pathBounds(piece.path)!.x - (960 - 500)
+        const periods = (start - piece.dashOffset) / (on! + off!)
+        expect(periods).toBeCloseTo(Math.round(periods), 6)
+        expect(piece.stroke).toEqual(made.ticks[0]!.get('stroke'))
+        expect(piece.stroke).not.toEqual(made.line.get('stroke'))
+    })
+
+    it('sends a mark up from under the line, and a round trip down and back to its start, which counts once', async () => {
+        let made!: Boundary, up!: ReturnType<Boundary['cross']>, round!: ReturnType<Boundary['cross']>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            up = made.cross(-100, { direction: 'up', reach: 60 })
+            round = made.cross(100, { direction: 'round', reach: 60 })
+            s.play(up, { duration: 1, ease: linear })
+            s.play(round, { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(at(0, () => up.mark.get('y'))).toBe(60)
+        expect(at(0.5, () => up.mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(1, () => up.mark.get('y'))).toBeCloseTo(-60, 6)
+        expect([tally(made, 0.45), tally(made, 0.55)]).toEqual(['0', '1'])
+        // The round trip is on the line at 1.5 and at 2.5, and at the far side between them.
+        expect(at(1, () => round.mark.get('y'))).toBe(-60)
+        expect(at(1.5, () => round.mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(2, () => round.mark.get('y'))).toBeCloseTo(60, 6)
+        expect(at(2.5, () => round.mark.get('y'))).toBeCloseTo(0, 6)
+        expect(at(3, () => round.mark.get('y'))).toBeCloseTo(-60, 6)
+        expect([tally(made, 1.45), tally(made, 1.55), tally(made, 2.45), tally(made, 2.55), tally(made, 3.4)]).toEqual(['1', '2', '2', '2', '2'])
+        expect(made.ticks.map((tick) => tick.get('x'))).toEqual([-100, 100])
+        expect(at(1.55, () => shows(made.ticks[1]!))).toBeGreaterThan(0)
+        // The line lights on the way down and on the way back.
+        const lit = (time: number) => paths(compiled, time).filter((op) => op.stroke && op.strokeWidth > 3).length
+        expect([lit(1.5), lit(2), lit(2.5)]).toEqual([1, 0, 1])
+    })
+
+    it('counts at the moment the mark is on the line when the ease is not symmetric', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            crossing = made.cross(0)
+            // With this ease the mark is half way after 0.7071 of the time.
+            s.play(crossing, { duration: 1, ease: (t) => t * t })
+        }))
+        const pass = Math.SQRT1_2
+        expect(at(pass, () => crossing.mark.get('y'))).toBeCloseTo(0, 4)
+        expect([tally(made, pass - 0.01), tally(made, pass + 0.01)]).toEqual(['0', '1'])
+        expect(at(pass - 0.01, () => shows(made.ticks[0]!))).toBe(0)
+        expect(at(pass + 0.1, () => shows(made.ticks[0]!))).toBeGreaterThan(0)
+    })
+
+    it('counts a crossing by its `counts`, and gives the mark and the tick the color of the crossing', async () => {
+        let made!: Boundary, batch!: ReturnType<Boundary['cross']>, free!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            batch = made.cross(-100, { counts: 32, color: 'teal' })
+            free = made.cross(100, { counts: 0 })
+            s.play(seq(batch, free), { duration: 2 })
+        }))
+        expect(made.count).toBe(32)
+        expect([tally(made, 0.4), tally(made, 0.6), tally(made, 2)]).toEqual(['0', '32', '32'])
+        // A crossing that counts 0 still leaves its tick.
+        expect(made.ticks).toHaveLength(2)
+        expect(made.ticks[0]!.get('stroke')).toEqual(batch.mark.get('fill'))
+        expect(made.ticks[0]!.get('stroke')).not.toEqual(made.line.get('stroke'))
+        expect(made.ticks[1]!.get('stroke')).toEqual(made.line.get('stroke'))
+        expect(free.mark.get('fill')).not.toEqual(made.line.get('stroke'))
+    })
+
+    it('keeps the text of a crossing where the mark starts, on the side that is clear of the tally, and fades it with the mark', async () => {
+        let made!: Boundary, near!: ReturnType<Boundary['cross']>, far!: ReturnType<Boundary['cross']>, bare!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls' }))
+            near = made.cross(made.x(0.3), { label: 'read()', reach: 80 })
+            far = made.cross(made.x(1), { label: 'read()', direction: 'up' })
+            bare = made.cross(made.x(0.6))
+            s.wait(1)
+            s.play(near, far, bare, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(bare.labelNode).toBeNull()
+        const text = near.labelNode!
+        // At the start the text is beside the mark, at its height. It does not travel: the mark does.
+        const start = at(1.2, () => text.bounds())
+        expect(start.x).toBeGreaterThan(made.x(0.3) + 8)
+        expect(start.x).toBeLessThan(made.x(0.3) + 30)
+        expect(start.y + start.height / 2).toBeGreaterThan(-80 - 8)
+        expect(start.y + start.height / 2).toBeLessThan(-80 + 8)
+        expect(at(1.8, () => text.bounds())).toEqual(start)
+        for (const time of [0.9, 1.1, 1.5, 1.9, 2.1]) expect(at(time, () => shows(text))).toBe(at(time, () => shows(near.mark)))
+        // At the last place of the line, the text goes to the left of the mark, away from the tally. An 'up' crossing starts under the line.
+        const left = at(1.5, () => far.labelNode!.bounds())
+        expect(right(left)).toBeLessThan(made.x(1) - 8)
+        expect(left.y).toBeGreaterThan(0)
+        expect(right(left)).toBeLessThan(at(1.5, () => made.tallyNode!.bounds().x))
+    })
+
+    it('chains eight crossings in one lagged: eight ticks in order, and a tally of 8', async () => {
+        let made!: Boundary
+        const places = Array.from({ length: 8 }, (_, index) => -350 + index * 100)
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls' }))
+            s.wait(1)
+            // To make a crossing counts nothing. The line counts it when the crossing is played.
+            const crossings = places.map((x) => made.cross(x))
+            expect([made.count, made.ticks.length]).toEqual([0, 0])
+            // With a lag of 0.5, each crossing has 1 s and starts 0.5 s after the one before: the crossings overlap.
+            s.play(lagged(crossings, { lag: 0.5 }), { duration: 4.5, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(made.ticks.map((tick) => tick.get('x'))).toEqual(places)
+        expect(made.count).toBe(8)
+        // Crossing k is on the line at 1.5 + 0.5 k. Just after that, k + 1 ticks show and the tally is k + 1.
+        places.forEach((_, index) => {
+            const time = 1.5 + index * 0.5 + 0.1
+            expect(at(time, () => made.ticks.filter((tick) => shows(tick) > 0)).length, `ticks at ${time}`).toBe(index + 1)
+            expect(tally(made, time), `tally at ${time}`).toBe(String(index + 1))
+        })
+        expect(tally(made, 1.4)).toBe('0')
+        expectPure(compiled, [1.4, 2.05, 3.3, 4.6, 6])
+    })
+
+    it('runs the tally up through whole numbers to the exact number, with a separator, and keeps the word and the digits at their places', async () => {
+        let made!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls' }))
+            s.wait(1)
+            s.play(made.addCrossings(10000), { duration: 2, ease: linear })
+            s.play(made.addCrossings(2345), { duration: 1, ease: linear })
+        }))
+        expect(made.count).toBe(12345)
+        expect([tally(made, 1), tally(made, 2), tally(made, 3), tally(made, 4)]).toEqual(['0', '5,000', '10,000', '12,345'])
+        let before = 0
+        for (const time of [1.013, 1.37, 1.999, 2.5021, 2.9999, 3.3333]) {
+            const shown = tally(made, time)
+            expect(shown, `at ${time}`).toMatch(/^\d{1,3}(,\d{3})*$/)
+            const value = Number(shown.replace(/,/g, ''))
+            expect(value).toBeGreaterThan(before)
+            before = value
+        }
+        // The word does not move while the number grows.
+        const word = made.tallyNode!.children[1]!
+        expect(at(4, () => word.bounds())).toEqual(at(1, () => word.bounds()))
+        // The number ends at one x, just before the word, and grows to the left.
+        const number = (time: number) => at(time, () => made.tallyNode!.children[0]!.bounds())
+        expect(right(number(1))).toBeCloseTo(right(number(3)), 6)
+        expect(right(number(1))).toBeLessThan(at(1, () => word.bounds().x) - 3)
+        expect(number(3).x).toBeLessThan(number(2).x)
+        expect(number(2).x).toBeLessThan(number(1).x)
+        // Each digit keeps its place, whatever the digit is: 1,111 and 8,888 take the same room.
+        const places = (time: number) => glyphs(made, time).map((glyph) => glyph.get('x')).reverse()
+        expect(tally(made, 1.2222)).toBe('1,111')
+        expect(tally(made, 2.7776)).toBe('8,888')
+        expect(places(1.2222)).toEqual(places(2.7776))
+        expect(places(4).slice(0, 5)).toEqual(places(1.2222))
+        expect(places(1)[0]).toBe(places(4)[0])
+    })
+
+    it('never shows less than 0 or more than the count, with an ease that goes past its ends', async () => {
+        let made!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            s.play(made.addCrossings(100), { duration: 1, ease: (t) => 3 * t - 1 })
+        }))
+        expect([tally(made, 0.2), tally(made, 0.5), tally(made, 0.8), tally(made, 1)]).toEqual(['0', '50', '100', '100'])
+    })
+
+    it('clears the ticks and the tally, and counts the next round from 0', async () => {
+        let made!: Boundary, old!: Node[]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'crossings' }))
+            s.play(lagged([-100, 0, 100].map((x) => made.cross(x))), { duration: 1 })
+            s.play(made.addCrossings(40), { duration: 1 })
+            old = [...made.ticks]
+            expect(made.count).toBe(43)
+            s.play(made.clear(), { duration: 1, ease: linear })
+            expect(made.ticks).toHaveLength(0)
+            expect(made.count).toBe(0)
+            s.wait(0.5)
+            s.play(made.cross(200), { duration: 1 })
+            s.wait(0.5)
+        }))
+        expect(tally(made, 2)).toBe('43')
+        // Half way through the clear, the ticks are half gone and the tally is a whole number on its way down.
+        expect(old).toHaveLength(43)
+        expect(at(2.5, () => old.map(shows))).toEqual(Array(43).fill(0.5))
+        expect(tally(made, 2.5)).toBe('22')
+        expect(at(3.2, () => old.map(shows))).toEqual(Array(43).fill(0))
+        expect(tally(made, 3.2)).toBe('0')
+        // The crossing after the clear starts from 0, and it is the only tick.
+        expect(tally(made, 5)).toBe('1')
+        expect(made.count).toBe(1)
+        expect(made.ticks).toHaveLength(1)
+        expect(made.ticks[0]!.get('x')).toBe(200)
+        expect(at(5, () => [shows(made.ticks[0]!), ...old.map(shows)])).toEqual([1, ...Array(43).fill(0)])
+        expectPure(compiled, [0.7, 1.5, 2.5, 3.2, 4.1, 5])
+    })
+
+    it('takes away a tick and a count that arrive after the end of a clear that was scheduled after their crossing', async () => {
+        let made!: Boundary, lost!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            // An earlier round, from 0 to 1 s: its tick arrived long before the clear of the next round.
+            s.play(seq(made.cross(-200), made.clear()), { duration: 1, ease: linear })
+            // The crossing is scheduled first, and its mark is on the line at 2 s. The clear is scheduled second, and ends at 1.5 s.
+            const crossing = made.cross(0, { duration: 2 })
+            s.play({ ...crossing, schedule: (ctx) => { crossing.schedule(ctx); lost = made.ticks[0]! } }, made.clear({ duration: 0.5 }), { ease: linear })
+            expect([made.count, made.ticks.length]).toEqual([0, 0])
+            // In the other order, the clear has nothing to take away, and the crossing counts.
+            s.play(made.clear({ duration: 0.5 }), made.cross(100, { duration: 2 }), { ease: linear })
+            s.wait(0.5)
+        }))
+        // The tick of the second round does not come back after the clear that took it away.
+        expect(at(2.5, () => shows(lost))).toBe(0)
+        expect(at(3, () => shows(lost))).toBe(0)
+        expect([tally(made, 1.9), tally(made, 2.5), tally(made, 3.9)]).toEqual(['0', '0', '0'])
+        expect([made.count, made.ticks.length]).toEqual([1, 1])
+        expect(at(5, () => shows(made.ticks[0]!))).toBe(1)
+        expect([tally(made, 4.1), tally(made, 5)]).toEqual(['1', '1'])
+    })
+
+    it('enters with the line first, from the left, then the names and the tally, and a line that waits its turn in a lagged does not show', async () => {
+        let first!: Boundary, second!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            first = boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' }).at(0, -150)
+            second = boundary({ width: 1000, label: 'VM wall', tally: 'VM exits' }).at(0, 150)
+            s.wait(0.5)
+            // With a lag of 1, each line has 1 s: the first from 0.5, the second from 1.5.
+            s.play(lagged([first.enter(), second.enter()], { lag: 1 }), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }))
+        expect(compiled.frame(0.2).ops).toHaveLength(0)
+        const parts = (made: Boundary) => [made.labelNode, ...made.sides, made.tallyNode].filter((part): part is Node => part !== null)
+        // After 0.3 s the line is half drawn, from its left end, and no name shows. The other line is not on screen.
+        const drawn = paths(compiled, 0.8)
+        expect(drawn).toHaveLength(1)
+        const stroke = pathBounds(drawn[0]!.strokePath)!
+        expect(stroke.x).toBeCloseTo(960 - 500, 6)
+        expect(stroke.width).toBeCloseTo(500, 6)
+        expect(at(0.8, () => parts(first).map(shows))).toEqual([0, 0, 0, 0])
+        // After 0.6 s the line is whole, and the names and the tally arrive.
+        expect(at(1.1, () => first.line.get('trimTo'))).toBe(1)
+        expect(at(1.3, () => parts(first).map(shows))).toEqual(Array(4).fill(expect.closeTo(0.5, 6)))
+        expect(at(1.4, () => shows(second))).toBe(0)
+        expect(at(1.6, () => shows(second))).toBe(1)
+        expect(at(2.6, () => [...parts(first), ...parts(second)].map(shows))).toEqual(Array(6).fill(1))
+        expect(at(2.6, () => second.line.get('trimTo'))).toBe(1)
+    })
+
+    it('comes on stage with its first crossing or its first count, at its turn in a lagged, with the group that holds it', async () => {
+        let first!: Boundary, second!: Boundary, third!: Boundary, hidden!: Boundary, pair!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            first = boundary({ width: 600, tally: true }).at(0, -300)
+            second = boundary({ width: 600, tally: true }).at(0, -100)
+            third = boundary({ width: 600, tally: true }).at(0, 100)
+            pair = group(third, rect(10, 10).at(0, 160))
+            hidden = s.add(boundary({ width: 600 }).at(0, 300)).hide()
+            s.wait(1)
+            // With a lag of 1, each has 1 s: the first from 1, the second from 2, the third from 3, the last from 4.
+            s.play(lagged([first.addCrossings(5), second.cross(0), third.addCrossings(5), hidden.enter()], { lag: 1 }), { duration: 4 })
+        }))
+        expect(at(1.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 0, 0, 0])
+        expect(at(2.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 1, 0, 0])
+        expect(at(3.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 1, 1, 0])
+        expect(at(4.5, () => [first, second, pair, hidden].map(shows))).toEqual([1, 1, 1, 1])
+        // The line stays in its group, and the group comes with it.
+        expect(third.parent).toBe(pair)
+        expect(pair.mounted).toBe(true)
+    })
+
+    it('gives a copy its own ticks and its own tally', async () => {
+        let made!: Boundary, copy!: Boundary, fresh!: Boundary, twin!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }).at(0, -100))
+            fresh = s.add(boundary({ width: 1000, tally: true }).at(0, 200))
+            // The line has a clear in its past. The copy starts from the count after it.
+            s.play(seq(made.cross(50), made.clear(), made.cross(0)), { duration: 1 })
+            copy = s.add(made.clone().at(0, 100))
+            twin = fresh.clone()
+            expect(copy.count).toBe(1)
+            expect(copy.ticks).toHaveLength(1)
+            expect(copy.ticks[0]).not.toBe(made.ticks[0])
+            expect(copy.children).toContain(copy.ticks[0])
+            s.play(copy.addCrossings(5), copy.cross(100), twin.cross(0), { duration: 1 })
+            // A copy of a line with no tick does not get the ticks that its source gets after.
+            const shadow = fresh.clone()
+            s.play(fresh.addCrossings(3), { duration: 1 })
+            expect([fresh.ticks.length, shadow.ticks.length, shadow.count]).toEqual([3, 0, 0])
+        }))
+        expect([made.count, copy.count, fresh.count, twin.count]).toEqual([1, 7, 3, 1])
+        // The copy has its first tick, five ticks for the five crossings with no mark, and the tick of its own crossing.
+        expect([made.ticks.length, copy.ticks.length, fresh.ticks.length, twin.ticks.length]).toEqual([1, 7, 3, 1])
+        expect([tally(made, compiled.duration), tally(copy, compiled.duration), tally(fresh, compiled.duration)]).toEqual(['1', '7', '3'])
+    })
+
+    it('gives a copy that is made with its group or its zone its own tally and its own ticks', async () => {
+        for (const hold of [(inner: Boundary) => group(inner, rect(10, 10).at(0, 120)), (inner: Boundary) => zone(inner, { title: 'guest' })]) {
+            let first!: Boundary, second!: Boundary, late!: Boundary
+            await compileFilm(film({ fps: 20 }, (s) => {
+                first = boundary({ width: 700, tally: true })
+                const holder = s.add(hold(first).at(0, -300))
+                // A copy of the holder, made before any crossing. Then only the first line is crossed.
+                second = lineIn(s.add(holder.clone().at(0, 0)))
+                expect(second).not.toBe(first)
+                s.play(lagged([-100, 0].map((x) => first.cross(x))), { duration: 1 })
+                expect([first.count, second.count, first.ticks.length, second.ticks.length]).toEqual([2, 0, 2, 0])
+                s.play(second.cross(100), { duration: 1 })
+                expect([first.count, second.count, first.ticks.length, second.ticks.length]).toEqual([2, 1, 2, 1])
+                // A copy that is made later starts from what the first line shows then.
+                late = lineIn(s.add(holder.clone().at(0, 300)))
+                expect([late.count, late.ticks.length]).toEqual([2, 2])
+                s.play(first.addCrossings(9998), { duration: 1 })
+                s.play(first.clear(), { duration: 1 })
+                expect([first.count, second.count, late.count]).toEqual([0, 1, 2])
+                s.play(late.cross(200), { duration: 1 })
+            }))
+            // What each line shows is its own count, at each time.
+            expect([tally(first, 2), tally(second, 2), tally(late, 2)]).toEqual(['2', '1', '2'])
+            expect([tally(first, 3), tally(second, 3), tally(late, 3)]).toEqual(['10,000', '1', '2'])
+            expect([tally(first, 5), tally(second, 5), tally(late, 5)]).toEqual(['0', '1', '3'])
+            expect(ticksAt(second, 5)).toEqual([100])
+            expect(ticksAt(late, 5)).toEqual([-100, 0, 200])
+            expect(ticksAt(first, 5)).toEqual([])
+        }
+    })
+
+    it('lets a copy clear its ticks after its source has cleared its own', async () => {
+        let made!: Boundary, copy!: Boundary, kept!: readonly Node[]
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }).at(0, -100))
+            s.play(lagged([-100, 0, 100].map((x) => made.cross(x))), { duration: 1 })
+            copy = s.add(made.clone().at(0, 100))
+            kept = copy.ticks
+            s.play(made.clear(), { duration: 1 })
+            s.play(copy.clear(), { duration: 1, ease: linear })
+        }))
+        // The copy keeps the arrival times of its own ticks, so its clear fades them as the clear of the source did.
+        expect(kept).toHaveLength(3)
+        expect(at(2, () => kept.map(shows))).toEqual([1, 1, 1])
+        expect(at(2.5, () => kept.map(shows))).toEqual([0.5, 0.5, 0.5])
+        expect(at(3, () => kept.map(shows))).toEqual([0, 0, 0])
+        expect(tally(copy, 3)).toBe('0')
+    })
+
+    it('fills the line with one tick for each crossing that has no mark, from the left, while the number runs', async () => {
+        let made!: Boundary, eased!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, below: 'kernel', tally: ['crossing', 'crossings'] }))
+            eased = s.add(boundary({ width: 1000, tally: true }).at(0, 200))
+            s.wait(1)
+            // The other line gets the tick of a crossing at its left end, which is before its first place.
+            s.play(made.addCrossings(40), eased.cross(-500, { counts: 0 }), { duration: 2, ease: linear })
+            // From 3 to 5, with an ease that has done half of its way after 0.7071 of the time: at 4.4142.
+            s.play(eased.addCrossings(40), { duration: 2, ease: (t) => t * t })
+        }))
+        // A tick arrives when the number has run its share: half of the ticks with half of the count.
+        expect([ticksAt(eased, 4.42).length - 1, tally(eased, 4.42)]).toEqual([20, '20'])
+        // The tick at the end of the line is not a place of the fill: the fill starts at the first place.
+        expect(ticksAt(eased, 5).slice(0, 2)).toEqual([-500, expect.closeTo(eased.x(0), 6)])
+        for (const tick of made.ticks) expect(tick.get('stroke')).toEqual(made.line.get('stroke'))
+        const places = ticksAt(made, 3)
+        expect(places).toHaveLength(40)
+        // The ticks start at the first place and stand as near to each other as ticks can and still read as ticks.
+        expect(places[0]).toBeCloseTo(made.x(0), 6)
+        const steps = places.slice(1).map((x, index) => x - places[index]!)
+        expect(Math.min(...steps)).toBeGreaterThanOrEqual(6)
+        expect(Math.max(...steps)).toBeLessThan(7)
+        // Half way, the left half of the ticks is on the line, and the tally is 20.
+        expect(ticksAt(made, 2)).toEqual(places.slice(0, 20))
+        expect(tally(made, 2)).toBe('20')
+        expect(ticksAt(made, 1)).toEqual([])
+        // One tick is one crossing, so no note says what a tick stands for.
+        expect(made.noteNode).toBeNull()
+    })
+
+    it('fills the whole line for a count that is larger than the line, and says under the line what one tick stands for', async () => {
+        let made!: Boundary, note!: Node, old!: readonly Node[]
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, label: 'system call line', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] }))
+            s.play(lagged([0, 0.37, 1].map((part) => made.cross(made.x(part)))), { duration: 1 })
+            expect(made.noteNode).toBeNull()
+            s.play(made.addCrossings(9997), { duration: 2, ease: linear })
+            note = made.noteNode!
+            old = made.ticks
+            s.wait(1)
+            s.play(made.clear(), { duration: 1 })
+            expect([made.ticks.length, made.noteNode]).toEqual([0, null])
+            s.play(made.addCrossings(5), { duration: 1 })
+            // The note needs room beside the name of the side under the line. The line measures that room in its own coordinates, wherever it is on the stage.
+            const moved = s.add(boundary({ width: 560, above: 'user space', below: 'kernel', tally: 'system calls' }).at(680, -400))
+            expect(() => s.play(moved.addCrossings(313))).not.toThrow()
+            const tight = s.add(boundary({ width: 680, below: 'the kernel of the host, and its KVM module', tally: true, tallyDigits: 3 }).at(-600, 300))
+            expect(() => s.play(tight.addCrossings(999))).toThrow(/a line of 680 has no room under it for the note "each tick: about 250" beside the name of the side. Make the line longer, or the name shorter/)
+            // A free part of 3, which is less than the room of two ticks, has one place. So a large count is one tick, and the note says so.
+            const names = { label: 'system call line', tally: 'system calls' }
+            const probe = boundary({ ...names, width: 600 })
+            const short = s.add(boundary({ ...names, width: 600 - (probe.x(1) - probe.x(0)) + 3 }).at(0, 450))
+            expect(short.x(1) - short.x(0)).toBeCloseTo(3, 6)
+            s.play(short.addCrossings(50))
+            expect(short.ticks.map((tick) => tick.get('x'))).toEqual([short.x(0)])
+            expect(said(short.noteNode!)).toBe('each tick: about 50')
+        }))
+        const places = ticksAt(made, 3, old)
+        expect(places).toHaveLength(old.length)
+        // The line is full: ticks from the first place to the last, none nearer than 6, and no break around the tick of a crossing.
+        expect(places[0]).toBeCloseTo(made.x(0), 6)
+        expect(places[places.length - 1]).toBeCloseTo(made.x(1), 6)
+        expect(places).toContain(made.x(0.37))
+        const steps = places.slice(1).map((x, index) => x - places[index]!)
+        expect(Math.min(...steps)).toBeGreaterThanOrEqual(6)
+        expect(Math.max(...steps)).toBeLessThan(7)
+        // The note says what one tick stands for, and the ticks times that number is the count, within a twentieth.
+        expect(said(note)).toMatch(/^each tick: about \d+$/)
+        const each = Number(said(note).replace(/\D/g, ''))
+        expect(Math.abs(each * places.length - 10000)).toBeLessThan(500)
+        // It is small, under the line at its right end, and clear of the name of the side under the line.
+        const box = at(3.5, () => note.bounds())
+        expect(note.data['size']).toBeLessThan(26)
+        expect(right(box)).toBeCloseTo(500, 6)
+        expect(box.y).toBeGreaterThan(1.5 + 6)
+        expect(box.x).toBeGreaterThan(right(made.sides[1]!.bounds()) + 15)
+        // With the tally at the end of the line, the note is next to the line, on the row of the name under it.
+        expect(bottom(box)).toBeCloseTo(bottom(made.sides[1]!.bounds()), 0)
+        // It arrives in the first part of the run, from 1 to 1.6, so a viewer can read it while the number runs. A clear takes it away with the ticks.
+        expect([1, 1.3, 1.6, 3, 5.1].map((time) => at(time, () => shows(note)))).toEqual([0, expect.closeTo(0.5, 6), 1, 1, 0])
+        expect(ticksAt(made, 5.1, old)).toEqual([])
+        // The next round has one tick for each crossing again, from the first place, and no note.
+        expect(ticksAt(made, 6)).toHaveLength(5)
+        expect(ticksAt(made, 6)[0]).toBeCloseTo(made.x(0), 6)
+        expect(made.noteNode).toBeNull()
+    })
+
+    it('changes the note when the count of a full line grows, and the old note leaves before the new one comes', async () => {
+        let made!: Boundary, first!: Node, second!: Node, third!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, below: 'kernel', tally: true }))
+            s.play(made.addCrossings(10000), { duration: 1, ease: linear })
+            first = made.noteNode!
+            const ticks = made.ticks.length
+            // With no tick of a crossing on the line, the ticks go from the first place to the last.
+            expect([made.ticks[0]!.get('x'), made.ticks[ticks - 1]!.get('x')]).toEqual([expect.closeTo(made.x(0), 6), expect.closeTo(made.x(1), 6)])
+            // The line is full. After the second run, from 1 to 2, the same ticks stand for two times as much.
+            s.play(made.addCrossings(10000), { duration: 1, ease: linear })
+            second = made.noteNode!
+            expect(made.ticks).toHaveLength(ticks)
+            // After a clear, the next full round has its note again.
+            s.play(made.clear(), { duration: 1 })
+            s.play(made.addCrossings(10000), { duration: 1, ease: linear })
+            third = made.noteNode!
+            // A count that is a little more than the places of the line has no note: "about 1" says nothing.
+            const near = s.add(boundary({ width: 1000, below: 'kernel', tally: true }).at(0, 200))
+            s.play(near.addCrossings(ticks + 5))
+            expect([near.ticks.length, near.noteNode]).toEqual([ticks, null])
+        }))
+        expect(said(third)).toBe(said(first))
+        expect(at(4, () => [shows(second), shows(third)])).toEqual([0, 1])
+        expect(second).not.toBe(first)
+        const each = (note: Node) => Number(said(note).replace(/\D/g, ''))
+        expect(each(second) / each(first)).toBeCloseTo(2, 1)
+        // The old note leaves in the first 0.3 s of the run, and the new one comes in the next 0.3 s. So the two are never on each other.
+        expect([1, 1.15, 1.3, 1.45, 1.6].map((time) => at(time, () => [shows(first), shows(second)]))).toEqual([[1, 0], [expect.closeTo(0.5, 6), 0], [0, 0], [0, expect.closeTo(0.5, 6)], [0, 1]])
+    })
+
+    it('gives lines with one tickScale ticks that compare as their counts do', async () => {
+        const shared = { width: 560, above: 'user space', below: 'kernel', tally: ['system call', 'system calls'], tallySide: 'over', tickScale: 200 } as const
+        let lines!: Boundary[], low!: ReturnType<Boundary['cross']>, room!: { x: number; y: number; width: number; height: number }, early!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            lines = [boundary({ ...shared, label: 'read()' }).at(-620, 0), boundary({ ...shared, label: 'batches of 32' }).at(0, 0), boundary({ ...shared, label: 'polling' }).at(620, 0)]
+            const [reads, batches, polling] = lines as [Boundary, Boundary, Boundary]
+            s.add(reads, batches, polling)
+            room = polling.bounds()
+            low = polling.cross(polling.x(1), { direction: 'up', label: 'irq' })
+            s.play(lagged([0, 0.5, 1].map((part) => reads.cross(reads.x(part)))), { duration: 1 })
+            // With a scale of 200, three crossings are less than one tick more: the first leaves a tick, the next two do not.
+            expect([reads.count, reads.ticks.length]).toEqual([3, 1])
+            // One tick for three crossings: the note comes with the crossings, and the run that follows keeps it.
+            early = reads.noteNode!
+            expect(said(early)).toBe('each tick: about 200')
+            s.play(reads.addCrossings(9997), seq(batches.cross(batches.x(0)), batches.cross(batches.x(1))), polling.cross(polling.x(0.5)), { duration: 1 })
+            s.play(batches.addCrossings(311), { duration: 1 })
+            // The rounds of one line compare the same way: 50 ticks for 10,000, then 2 ticks for 313 after a clear.
+            const rounds = s.add(boundary({ ...shared }).at(0, 300))
+            s.play(rounds.addCrossings(10000), { duration: 1 })
+            expect(rounds.ticks).toHaveLength(50)
+            s.play(rounds.clear(), { duration: 1 })
+            s.play(rounds.addCrossings(313), { duration: 1 })
+            expect([rounds.ticks.length, said(rounds.noteNode!)]).toEqual([2, 'each tick: about 200'])
+            // A count that needs more ticks than the line has room for is an error that gives the least scale.
+            const tight = s.add(boundary({ width: 560, tally: true, tickScale: 40, below: 'kernel' }).at(0, 300))
+            expect(() => s.play(tight.addCrossings(10000))).toThrow(/with a tickScale of 40, a count of 10,000 is 250 ticks, and the line has room for \d+. Give a tickScale of \d+ or more, or a longer line/)
+            expect(() => boundary({ tickScale: 0.5 })).toThrow(/tickScale is 0.5. Give the number of crossings that one tick stands for, 1 or more/)
+        }))
+        expect(lines.map((made) => made.count)).toEqual([10000, 313, 1])
+        // 10,000, 313 and 1 crossings at 200 for each tick: 50 ticks, 2 ticks and 1 tick.
+        expect(lines.map((made) => ticksAt(made, 3).length)).toEqual([50, 2, 1])
+        // Where the ticks stand for more than they are, the note says so, with the same words on each line.
+        expect(lines.map((made) => (made.noteNode ? said(made.noteNode) : null))).toEqual(['each tick: about 200', 'each tick: about 200', null])
+        expect(lines.slice(0, 2).map((made) => at(3, () => shows(made.noteNode!)))).toEqual([1, 1])
+        expect(lines[0]!.noteNode).toBe(early)
+        // With the tally over the line, marks cross up to its right end. So the note is at that end, under the way of a mark and of its text.
+        const note = at(3, () => lines[0]!.noteNode!.bounds())
+        expect(right(note)).toBeCloseTo(-620 + 280, 6)
+        expect(note.y).toBeGreaterThan(bottom(low.mark.bounds()) + 8)
+        expect(note.y).toBeGreaterThan(bottom(low.labelNode!.bounds()) + 6)
+        // A line of this kind keeps room for the note from the start, so a zone around it holds the note that comes later.
+        expect(bottom(room)).toBeGreaterThanOrEqual(bottom(note))
+        expect(bottom(room)).toBeLessThan(bottom(note) + 6)
+    })
+
+    it('says the word for one when the tally is 1, and the word for more for any other count', async () => {
+        let made!: Boundary, runs!: Boundary, single!: Boundary
+        const pairs: Boundary[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: ['system call', 'system calls'] }))
+            s.play(made.cross(0), { duration: 1, ease: linear })
+            s.play(made.cross(100), { duration: 1, ease: linear })
+            // From 2 to 3 the number runs from 0 to 313, and from 3 to 4 back to 0. From 4 to 5 it goes from 0 to 1, and from 5 to 6 back to 0.
+            runs = s.add(boundary({ width: 1000, tally: ['system call', 'system calls'] }).at(0, 200))
+            single = s.add(boundary({ width: 1000, tally: ['system call', 'system calls'] }).at(0, 400))
+            s.play(runs.addCrossings(313), single.addCrossings(1), { duration: 1, ease: linear })
+            s.play(runs.clear(), { duration: 1, ease: linear })
+            s.play(runs.addCrossings(1), { duration: 1, ease: linear })
+            s.play(runs.clear(), { duration: 1, ease: linear })
+            // Two crossings on a new line, one after the other. Each mark is on the line at the middle of its time, so the tally is 1 for `seconds`.
+            const twice = (words: readonly [string, string], seconds: number) => {
+                const line = s.add(boundary({ width: 1000, tally: words }))
+                s.play(line.cross(-100), { duration: seconds, ease: linear })
+                s.play(line.cross(100), { duration: seconds, ease: linear })
+                pairs.push(line)
+            }
+            // From 6: the tally is 1 from 6.2 to 6.6, then on the next lines from 7.06 to 7.58, and from 8.12 to 8.68.
+            for (const seconds of [0.4, 0.52, 0.56]) twice(['system call', 'system calls'], seconds)
+            // From 8.96, with a short word: the tally is 1 from 9.16 to 9.56, and on the last line from 10.02 to 10.54.
+            for (const seconds of [0.4, 0.52]) twice(['hit', 'hits'], seconds)
+            // One word is the word for every count. An empty word, or a pair of empty words, is the number alone, at the right end.
+            expect([0.2, 0.8].map((time) => said(word(s.add(boundary({ tally: 'calls' })), time)))).toEqual(['calls', 'calls'])
+            for (const empty of ['', '  ', ['', ''] as const]) {
+                const alone = boundary({ width: 1000, tally: empty })
+                expect(alone.tallyNode!.children).toHaveLength(1)
+                expect(right(alone.tallyNode!.bounds())).toBeGreaterThan(500 - 4)
+                expect(right(alone.tallyNode!.bounds())).toBeLessThanOrEqual(500)
+            }
+            expect(() => boundary({ tally: ['system call', ''] })).toThrow(/tally has a word for one count and none for the other/)
+            expect(() => boundary({ tally: ['a', 'b', 'c'] as never })).toThrow(/tally is true, a word, or the word for one and the word for more/)
+        }))
+        expect([0.2, 0.8, 1.8].map((time) => said(word(made, time)))).toEqual(['system calls', 'system call', 'system calls'])
+        expect([0.2, 0.8, 1.8].map((time) => tally(made, time))).toEqual(['0', '1', '2'])
+        for (const time of [0.2, 0.8, 1.8]) {
+            // The word ends at the right end of the line, and the number ends just before the word.
+            const [number, words] = at(time, () => made.tallyNode!.children.map((part) => part.bounds()))
+            expect(right(words!)).toBeCloseTo(500, 6)
+            expect(right(number!)).toBeLessThan(words!.x - 3)
+            expect(right(number!)).toBeGreaterThan(words!.x - 12)
+        }
+        // A number that runs shows 1 for a moment on its way. The word for one there would change the word for one frame, so the word for more stays.
+        const reads = (time: number) => [tally(runs, time), said(word(runs, time))]
+        expect([2.003, 3.997].map(reads)).toEqual([['1', 'system calls'], ['1', 'system calls']])
+        // The last digit keeps its place before the word.
+        const last = (time: number) => glyphs(runs, time).map((glyph) => glyph.get('x')).pop()
+        expect(last(2.003)).toBe(last(2.5))
+        expect(last(4.7)).toBeGreaterThan(last(2.5)! + 3)
+        // Where the tally starts or ends at 1, the word changes when the number does.
+        expect([4.3, 4.7, 5.3, 5.7].map(reads)).toEqual([['0', 'system calls'], ['1', 'system call'], ['1', 'system call'], ['0', 'system calls']])
+        expect([2.3, 2.7, 6].map((time) => [tally(single, time), said(word(single, time))])).toEqual([['0', 'system calls'], ['1', 'system call'], ['1', 'system call']])
+        // A viewer needs 0.55 s to read "system call": one second for 20 characters. Between two crossings that are nearer in time, the tally is 1 and keeps the word for more.
+        const quick = (line: number, time: number) => [tally(pairs[line]!, time), said(word(pairs[line]!, time))]
+        expect([quick(0, 6.4), quick(1, 7.1), quick(1, 7.32), quick(1, 7.55)]).toEqual(Array(4).fill(['1', 'system calls']))
+        // With 0.56 s between the two, the word for one shows from the first moment of that time to the last, with no change between.
+        expect([quick(2, 8.11), quick(2, 8.69)]).toEqual([['0', 'system calls'], ['2', 'system calls']])
+        for (const time of [8.13, 8.2, 8.25, 8.3, 8.4, 8.5, 8.6, 8.67]) expect(quick(2, time), `at ${time}`).toEqual(['1', 'system call'])
+        // A short word needs half a second, and no less.
+        expect([quick(3, 9.36), quick(4, 10.28)]).toEqual([['1', 'hits'], ['1', 'hit']])
+    })
+
+    it("puts the tally on a row of its own with tallySide 'over', so that a narrow line keeps room for crossings", async () => {
+        await compileFilm(film(() => {
+            const names = { label: 'batches of 32', above: 'user space', below: 'kernel', tally: ['system call', 'system calls'] } as const
+            // At the end of the line, the tally takes most of a line of 560. At size 38 no crossing has room.
+            expect(() => boundary({ ...names, width: 560, size: 38 })).toThrow(/no room for a crossing.*or put the tally on a row of its own with tallySide: 'over'/)
+            const end = boundary({ ...names, width: 560 }), over = boundary({ ...names, width: 560, tallySide: 'over' }), large = boundary({ ...names, width: 560, size: 38, tallySide: 'over' })
+            expect(end.x(1) - end.x(0)).toBeLessThan(80)
+            expect(over.x(1) - over.x(0)).toBeGreaterThan(300)
+            expect(large.x(1) - large.x(0)).toBeGreaterThan(150)
+            // The free part goes to the right end of the line, less a small margin.
+            expect(over.x(1)).toBeGreaterThan(280 - 26)
+            expect(over.x(1)).toBeLessThan(280)
+            // The tally still ends at the right end. It is over the label and over a mark with the reach of the line, and its text.
+            const box = over.tallyNode!.bounds(), under = over.cross(over.x(1), { label: 'read()' })
+            expect(right(box)).toBeCloseTo(280, 6)
+            expect(bottom(box)).toBeLessThan(under.mark.bounds().y - 6)
+            expect(bottom(box)).toBeLessThan(under.labelNode!.bounds().y - 4)
+            expect(bottom(box)).toBeLessThan(over.labelNode!.bounds().y)
+            // A mark that starts higher, under the tally, would go into it. To the left of the tally it has room.
+            expect(() => over.cross(over.x(1), { reach: 110 })).toThrow(/with a reach of 110, the mark at x = \d+ goes into the tally. Under the tally a mark has a reach of 70 at most: give a smaller reach, or a place before -?\d+/)
+            expect(() => over.cross(over.x(0), { reach: 110 })).not.toThrow()
+            expect(() => boundary({ width: 200, tally: ['system call', 'system calls'], tallySide: 'over' })).toThrow(/a line of 200 is too short for its tally, which needs \d+/)
+            expect(() => boundary({ tally: true, tallySide: 'top' as never })).toThrow(/tallySide is "top". Use 'end' or 'over'/)
+        }))
+    })
+
+    it('gives the tally its own size and its own color, with room for its digits at that size', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, label: 'line', tally: 'system calls', tallySize: 48, tallyColor: 'teal' }))
+            s.play(made.addCrossings(999999), { duration: 1 })
+            expect(() => boundary({ tally: true, tallySize: 0 })).toThrow(/tallySize is a text size/)
+        }))
+        const digit = glyphs(made, 1)[0]!, words = word(made, 1)
+        expect([digit.data['size'], words.data['size'], made.labelNode!.data['size']]).toEqual([48, 48, 26])
+        // Each digit has a place as wide as a digit of that size, so the digits do not touch.
+        expect(glyphs(made, 1)[1]!.get('x') - digit.get('x')).toBeGreaterThanOrEqual(digit.get('px') * 2)
+        // The number has the color. The word stays dim.
+        const teal = line([0, 0], [1, 0], { stroke: 'teal' }).get('stroke'), dim = line([0, 0], [1, 0], { stroke: 'dim' }).get('stroke')
+        expect([digit.children[0]!.get('fill'), words.children[0]!.get('fill')]).toEqual([teal, dim])
+        // The larger tally is still over the line, and the last place is clear of its six digits.
+        const box = at(compiled.duration, () => made.tallyNode!.bounds())
+        expect(bottom(box)).toBeLessThan(-1.5 - 8)
+        expect(made.x(1)).toBeLessThan(box.x - 24)
+    })
+
+    it('refuses a count with more digits than the tally has room for, and keeps the last place clear with tallyDigits', async () => {
+        let seven!: Boundary, six!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            six = s.add(boundary({ width: 1000, tally: 'calls' }).at(0, -100))
+            seven = s.add(boundary({ width: 1000, tally: 'calls', tallyDigits: 7 }).at(0, 100))
+            expect(() => s.play(six.addCrossings(1234567))).toThrow(/a tally of 1,234,567 has more than the 6 digits that the line keeps room for. Give the line tallyDigits: 7/)
+            s.play(six.addCrossings(999999), seven.addCrossings(8888888), { duration: 1 })
+            expect(() => s.play(six.cross(0))).toThrow(/a tally of 1,000,000 has more than the 6 digits/)
+            expect(() => boundary({ tally: true, tallyDigits: 0 })).toThrow(/tallyDigits is 0/)
+        }))
+        expect(tally(seven, compiled.duration)).toBe('8,888,888')
+        // The note of a large count keeps two digits that count, with the separator of the tally.
+        expect(said(seven.noteNode!)).toMatch(/^each tick: about [1-9]\d?(0|,)*$/)
+        expect(said(seven.noteNode!)).toContain(',')
+        for (const made of [six, seven]) expect(made.x(1)).toBeLessThan(at(compiled.duration, () => made.tallyNode!.bounds().x) - 24)
+        expect(seven.x(1)).toBeLessThan(six.x(1) - 10)
+    })
+
+    it('puts the text of a crossing where it touches no name and no tally, and refuses a text with no room on either side', async () => {
+        await compileFilm(film(() => {
+            const touches = (a: { x: number; y: number; width: number; height: number }, b: typeof a) => a.x < right(b) && b.x < right(a) && a.y < bottom(b) && b.y < bottom(a)
+            // At size 40 the mark starts 108 over the line, so its text is over the row of the tally at each place.
+            const big = boundary({ width: 1200, size: 40, label: 'system call line', above: 'user space', below: 'kernel', tally: 'system calls' })
+            for (const part of [0, 0.5, 1]) {
+                for (const direction of ['down', 'up'] as const) {
+                    const text = big.cross(big.x(part), { label: 'read()', direction }).labelNode!.bounds()
+                    for (const fixed of [big.labelNode!, big.sides[0]!, big.sides[1]!, big.tallyNode!]) expect(touches(text, fixed.bounds()), `${direction} at ${part}`).toBe(false)
+                    expect(text.x).toBeGreaterThanOrEqual(-600)
+                    expect(right(text)).toBeLessThanOrEqual(600)
+                }
+            }
+            // On a line of 560, a long text has no room: on the right it passes the end of the line, on the left it is on the names.
+            const narrow = boundary({ width: 560, label: 'io_uring', above: 'user', below: 'kernel', tally: 'calls' })
+            expect(() => narrow.cross(narrow.x(0.5), { label: 'io_uring_enter(to_submit=32)' })).toThrow(/the text "io_uring_enter\(to_submit=32\)" of the crossing at x = -?\d+ has no room beside its mark: it is \d+ wide.*Give a shorter text, another place, another reach, or a longer line/)
+            expect(() => narrow.cross(narrow.x(0.5), { label: 'enter' })).not.toThrow()
+            // With a small reach the text would be on the row of the tally, so it goes to the side that is clear of it.
+            const low = narrow.cross(narrow.x(1), { label: 'enter', reach: 24 })
+            expect(touches(low.labelNode!.bounds(), narrow.tallyNode!.bounds())).toBe(false)
+            expect(right(low.labelNode!.bounds())).toBeLessThan(narrow.x(1))
+            // A text that is too long for the free part takes a side where it touches no name and no tally. Over the row of the tally, that is the right.
+            const middle = narrow.x(0.5)
+            expect(narrow.cross(middle, { label: 'io_uring_en' }).labelNode!.bounds().x).toBeGreaterThan(middle)
+            // On the row of the tally, the right is on the tally, so the text goes to the left.
+            const beside = narrow.cross(middle, { label: 'io_uring_en', reach: 24 }).labelNode!.bounds()
+            expect(right(beside)).toBeLessThan(middle)
+            for (const fixed of [narrow.labelNode!, narrow.sides[0]!, narrow.tallyNode!]) expect(touches(beside, fixed.bounds())).toBe(false)
+            // A longer text on that row is on the tally at the right and on the names at the left. Higher, it has room.
+            expect(() => narrow.cross(middle, { label: 'io_uring_enter(32)', reach: 24 })).toThrow(/has no room beside its mark/)
+            expect(() => narrow.cross(middle, { label: 'io_uring_enter(32)' })).not.toThrow()
+        }))
+    })
+
+    it('has bounds that hold the way of a mark, so that a zone around the line leaves room for a crossing', async () => {
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            const made = boundary({ width: 760, label: 'system call line', above: 'guest user space', below: 'guest kernel', tally: 'system calls' })
+            const box = made.bounds()
+            expect([box.x, right(box)]).toEqual([expect.closeTo(-380, 6), expect.closeTo(380, 6)])
+            expect(box.y).toBeLessThanOrEqual(-70 - 7)
+            expect(bottom(box)).toBeGreaterThanOrEqual(70 + 7)
+            const crossings = [made.cross(made.x(0), { label: 'read()' }), made.cross(made.x(1), { direction: 'up', label: 'irq' }), made.cross(made.x(0.5), { direction: 'round' })]
+            const vm = s.add(zone(made, { title: 'microVM' }).at(-200, 100))
+            const border = { x: vm.box.x + vm.get('x'), y: vm.box.y + vm.get('y'), width: vm.box.width, height: vm.box.height }
+            // With the padding that a zone has by default, each mark and each text is inside the border, with room.
+            for (const crossing of crossings) {
+                for (const part of crossing.labelNode ? [crossing.mark, crossing.labelNode] : [crossing.mark]) {
+                    made.add(part)
+                    const own = part.bounds()
+                    expect(own.x - border.x).toBeGreaterThan(20)
+                    expect(right(border) - right(own)).toBeGreaterThan(20)
+                    expect(own.y - border.y).toBeGreaterThan(20)
+                    expect(bottom(border) - bottom(own)).toBeGreaterThan(20)
+                }
+            }
+            const bare = s.add(boundary({ width: 400 }).at(0, -300))
+            // A mark that starts farther than the bounds of the line, and its text, do not stay in the bounds after the crossing.
+            const before = bare.bounds()
+            s.play(bare.cross(0, { reach: 200, label: 'far' }), { duration: 1 })
+            s.wait(0.5)
+            expect(bare.bounds()).toEqual(before)
+        }))
+        // The shape that gives the bounds draws nothing: a bare line is one stroke, and the zone has its border and its title.
+        expect(paths(compiled, 0).filter((op) => pathBounds(op.path)!.y < 540 - 250)).toHaveLength(1)
+    })
+
+    it('brings the ticks back after the line when a line with ticks enters again', async () => {
+        let made!: Boundary
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // Each crossing counts 10, at 10 for one tick: two ticks, and a note, because a tick stands for more than one.
+            made = boundary({ width: 1000, above: 'user space', tally: true, tickScale: 10 })
+            // The film dims a name. It stays dim when the line enters again.
+            made.sides[0]!.opacity(0.4)
+            s.add(made)
+            s.play(lagged([-100, 100].map((x) => made.cross(x, { counts: 10 }))), { duration: 1 })
+            s.play(fadeOut(made), { duration: 0.5 })
+            s.wait(0.5)
+            // From 2 to 3: the line draws until 2.6, then the name, the tally, the note and the ticks arrive.
+            s.play(made.enter(), { duration: 1, ease: linear })
+        }))
+        const parts = () => [...made.ticks, made.tallyNode!, made.noteNode!, made.sides[0]!].map(shows)
+        expect(made.ticks).toHaveLength(2)
+        expect(at(2.3, () => [shows(made), made.line.get('trimTo'), ...parts()])).toEqual([1, expect.closeTo(0.5, 6), 0, 0, 0, 0, 0])
+        expect(at(2.8, parts)).toEqual([...Array(4).fill(expect.closeTo(0.5, 6)), expect.closeTo(0.2, 6)])
+        expect(at(3, parts)).toEqual([1, 1, 1, 1, expect.closeTo(0.4, 6)])
+    })
+
+    it('lets an emphasis tint the whole tally, the digits and the word', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: 'system calls', tallyColor: 'teal' }))
+            s.play(made.cross(0, { counts: 1234 }), { duration: 1 })
+            // The emphasis is at its peak at 1.5, and back at 2.
+            s.play(indicate(made.tallyNode!, { color: 'red' }), { duration: 1 })
+            s.wait(0.5)
+        }))
+        const paint = (color: string) => line([0, 0], [1, 0], { stroke: color }).get('stroke')
+        // Every glyph of this film is a glyph of the tally: five of the number, then eleven of the word.
+        const fills = (time: number) => paths(compiled, time).filter((op) => op.fill).map((op) => op.fill)
+        expect(fills(1)).toEqual([...Array(5).fill(paint('teal')), ...Array(11).fill(paint('dim'))])
+        expect(fills(1.5)).toEqual(Array(16).fill(paint('red')))
+        expect(fills(2.2)).toEqual(fills(1))
+        // The number and the word grow as one, about the middle of the tally.
+        const widthAt = (time: number) => at(time, () => made.tallyNode!.bounds().width)
+        expect(widthAt(1.5)).toBeGreaterThan(widthAt(1) * 1.1)
+    })
+
+    it('sends one mark through two lines, and each line lights, keeps a tick and counts when the mark is on it', async () => {
+        let calls!: Boundary, wall!: Boundary, down!: ReturnType<typeof crossThrough>, round!: ReturnType<typeof crossThrough>, up!: ReturnType<typeof crossThrough>, lone!: Boundary[]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            calls = s.add(boundary({ width: 800, tally: true, label: 'calls' }).at(100, -150))
+            // The second line is 40 to the right of the first, so a place on it has another x than on the first.
+            wall = s.add(boundary({ width: 800, tally: true, weight: 6, color: 'red', label: 'wall' }).at(140, 190))
+            s.wait(1)
+            // From 1 to 3, the mark goes 500 down: from 80 over the first line to 80 under the second.
+            down = crossThrough([calls, wall], 50, { reach: 80, label: 'write()' })
+            s.play(down, { duration: 2, ease: linear })
+            // From 3 to 7, a round trip: down until 5, then back.
+            round = crossThrough([calls, wall], -100, { direction: 'round', reach: 80 })
+            s.play(round, { duration: 4, ease: linear })
+            // From 7 to 9, up from under the wall. The lines are in the order that the mark meets them.
+            up = crossThrough([wall, calls], 0, { direction: 'up', reach: 80 })
+            s.play(up, { duration: 2, ease: linear })
+            // Without a length, a crossing through two lines takes two times the length of a crossing of one.
+            expect([down.duration, round.duration]).toEqual([1.6, 2.8])
+            expect(() => crossThrough([calls], 0)).toThrow(/give it two lines or more. For one line, use line.cross\(x\)/)
+            expect(() => crossThrough([wall, calls], 0)).toThrow(/give the lines in the order that the mark meets them/)
+            expect(() => crossThrough([calls, wall], 401)).toThrow(/x is 401, and the line runs from -400 to 400/)
+            // The second line is 300 to the right here, so the mark would come down through its label.
+            const shifted = boundary({ width: 800, label: 'a label', tally: true }).at(400, 400)
+            expect(() => crossThrough([calls, shifted], -50)).toThrow(/the mark meets line 1 at x = -350 of that line, under its names or its tally. Its free part runs from -?\d+ to \d+/)
+            // A tally that is over its line is in the way of a mark that comes from the line over it.
+            const roofed = boundary({ width: 800, tally: true, tallySide: 'over' }).at(100, 400)
+            expect(() => crossThrough([calls, roofed], 340)).toThrow(/the mark meets line 1 at x = 340 of that line, under its names or its tally/)
+            expect(() => crossThrough([calls, roofed], 200)).not.toThrow()
+            // From 9 to 11, with an ease that has done 0.16 of its way after 0.4 of the time, and 0.84 after 0.9165.
+            s.play(crossThrough([calls, wall], 200, { reach: 80, counts: 5 }), { duration: 2, ease: (t) => t * t })
+            // From 11 to 12, through two lines that are not on the stage: they come with the mark.
+            lone = [boundary({ width: 300 }).at(-700, -300), boundary({ width: 300 }).at(-700, -200)]
+            s.play(crossThrough(lone, 0, { reach: 40 }), { duration: 1 })
+        }))
+        const place = (crossing: typeof down, time: number) => at(time, () => [crossing.mark.get('x'), crossing.mark.get('y')])
+        // The mark is on the stage, at the x of the place on the first line, and it moves at one speed.
+        expect(place(down, 1)).toEqual([150, -230])
+        expect(place(down, 2)).toEqual([150, expect.closeTo(20, 6)])
+        expect(place(down, 3)).toEqual([150, expect.closeTo(270, 6)])
+        expect(down.mark.parent).toBe(compiled.stage.root)
+        expect(at(2, () => shows(down.mark))).toBe(1)
+        expect(at(3.1, () => shows(down.mark))).toBe(0)
+        // It is on the first line after 80 of 500 and on the second after 420 of 500. Each line counts at its moment.
+        expect([tally(calls, 1.3), tally(calls, 1.34), tally(wall, 2.66), tally(wall, 2.7)]).toEqual(['0', '1', '0', '1'])
+        // The light of a line is a piece with a glow, at the height of that line: 390 and 730 on the frame.
+        const lit = (time: number, y: number) => paths(compiled, time).filter((op) => op.glow > 0 && Math.abs(pathBounds(op.path)!.y - y) < 1).length
+        expect([lit(1.32, 390), lit(1.32, 730), lit(2.68, 390), lit(2.68, 730), lit(2, 390), lit(2, 730)]).toEqual([1, 0, 0, 1, 0, 0])
+        // Each line has its tick at its own place under the mark: 150 on the stage is 50 on the first line and 10 on the second.
+        expect([calls.ticks[0]!.get('x'), wall.ticks[0]!.get('x')]).toEqual([50, expect.closeTo(10, 6)])
+        // The text is beside the start, in the first line, and it fades with the mark.
+        expect(down.labelNode!.parent).toBe(calls)
+        const text = at(1.5, () => down.labelNode!.bounds())
+        expect(text.x).toBeGreaterThan(150 + 8)
+        expect(text.y + text.height / 2).toBeCloseTo(-230, -1)
+        expect([0.9, 2, 3.1].map((time) => at(time, () => shows(down.labelNode!)))).toEqual([0, 1, 0])
+        // The round trip turns 80 under the second line, comes back to its start, and counts once on each line.
+        expect([place(round, 3)[1], place(round, 5)[1], place(round, 7)[1]]).toEqual([-230, expect.closeTo(270, 6), expect.closeTo(-230, 6)])
+        expect([tally(calls, 3.3), tally(calls, 3.34), tally(wall, 4.7), tally(calls, 6.9)]).toEqual(['1', '2', '2', '2'])
+        expect([lit(3.32, 390), lit(4.68, 730), lit(5.32, 730), lit(6.68, 390)]).toEqual([1, 1, 1, 1])
+        // Up: from 80 under the wall to 80 over the first line.
+        expect([place(up, 7), place(up, 9)]).toEqual([[140, 270], [140, expect.closeTo(-230, 6)]])
+        expect([tally(wall, 7.3), tally(wall, 7.34), tally(calls, 8.66), tally(calls, 8.7)]).toEqual(['2', '3', '2', '3'])
+        // With an ease that is not linear, each line still counts at the moment the mark is on it: at 9.8 and at 10.833. This mark counts 5.
+        expect([tally(calls, 9.78), tally(calls, 9.82), tally(wall, 10.81), tally(wall, 10.85)]).toEqual(['3', '8', '3', '8'])
+        expect([calls.count, wall.count, calls.ticks.length, wall.ticks.length]).toEqual([8, 8, 4, 4])
+        expect([10.9, 11.5].map((time) => at(time, () => lone.map(shows)))).toEqual([[0, 0], [1, 1]])
+        expect(lone.map((made) => made.ticks.length)).toEqual([1, 1])
+    })
+
+    it('counts a round trip when the mark is on the line on its way down, whatever the ease, and shows the mark on its way back', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            crossing = made.cross(0, { direction: 'round' })
+            // Each leg has 1 s. With this ease the mark is half way after 0.7071 of a leg.
+            s.play(crossing, { duration: 2, ease: (t) => t * t })
+        }))
+        const pass = Math.SQRT1_2
+        expect(at(pass, () => crossing.mark.get('y'))).toBeCloseTo(0, 4)
+        expect(at(1 + pass, () => crossing.mark.get('y'))).toBeCloseTo(0, 4)
+        expect([tally(made, pass - 0.02), tally(made, pass + 0.02), tally(made, 2)]).toEqual(['0', '1', '1'])
+        const lit = (time: number) => paths(compiled, time).filter((op) => op.stroke && op.strokeWidth > 3).length
+        expect([lit(0.5), lit(pass), lit(1.2), lit(1 + pass)]).toEqual([0, 1, 0, 1])
+        // The mark stays on screen for the whole way back, and fades out at the end of it.
+        expect([1.1, 1.5, 1.79].map((time) => at(time, () => shows(crossing.mark)))).toEqual([1, 1, 1])
+        expect(at(2.05, () => shows(crossing.mark))).toBe(0)
+    })
+
+    it('keeps the light on the line at its ends, and gives it the color of the line when the crossing has none', async () => {
+        let made!: Boundary
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, color: 'teal' }))
+            s.play(made.cross(500), { duration: 1, ease: linear })
+            s.play(made.cross(-500), { duration: 1, ease: linear })
+        }))
+        const [atRight, atLeft] = [0.5, 1.5].map((time) => paths(compiled, time).find((op) => op.stroke && op.strokeWidth > 3)!)
+        // The line runs from 460 to 1460 on the frame. The light does not go past an end.
+        expect(right(pathBounds(atRight!.path)!)).toBeCloseTo(1460, 6)
+        expect(pathBounds(atRight!.path)!.width).toBeGreaterThan(20)
+        expect(pathBounds(atLeft!.path)!.x).toBeCloseTo(460, 6)
+        expect(atRight!.stroke).toEqual(made.line.get('stroke'))
+    })
+
+    it('starts a crossing again from its start when a film plays it a second time', async () => {
+        let made!: Boundary, crossing!: ReturnType<Boundary['cross']>
+        await compileFilm(film({ fps: 20 }, (s) => {
+            made = s.add(boundary({ width: 1000, tally: true }))
+            crossing = made.cross(0, { label: 'again' })
+            s.play(crossing, { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(crossing, { duration: 1, ease: linear })
+            s.wait(0.5)
+        }))
+        const y = (time: number) => at(time, () => crossing.mark.get('y'))
+        // The first time ends under the line. The second time starts over it again, shows again, and counts again.
+        expect([y(1), y(1.5), y(2), y(2.5)]).toEqual([expect.closeTo(70, 6), -70, expect.closeTo(0, 6), expect.closeTo(70, 6)])
+        expect([1.2, 2, 2.6].map((time) => at(time, () => [shows(crossing.mark), shows(crossing.labelNode!)]))).toEqual([[0, 0], [1, 1], [0, 0]])
+        expect([made.count, made.ticks.length, tally(made, 3)]).toEqual([2, 2, '2'])
+    })
+
+    it('names a wrong size, a line with no room, a place off the line, a wrong crossing, a full line, and a wrong count', async () => {
+        await compileFilm(film((s) => {
+            expect(() => boundary({ width: 0 })).toThrow(/width is the length of the line/)
+            expect(() => boundary({ weight: -1 })).toThrow(/weight is the width of the stroke/)
+            expect(() => boundary({ size: Number.NaN })).toThrow(/size is a text size/)
+            expect(() => boundary({ width: 300, label: 'a long name of a line', tally: 'system calls' })).toThrow(/a line of 300 has no room for a crossing.*need \d+\. Make the line longer/)
+            const made = s.add(boundary({ width: 1000, tally: true }))
+            // A part is from 0 to 1. Outside it, the place would be on the names or on the tally.
+            expect(() => made.x(-0.08)).toThrow(/x\(-0.08\) is not a place on the line. A part is from 0 to 1: 0 is the first place after the names, and 1 is the last place before the tally/)
+            expect(() => made.x(1.15)).toThrow(/x\(1.15\) is not a place on the line/)
+            expect(() => made.x(Number.NaN)).toThrow(/x\(NaN\) is not a place on the line/)
+            expect([made.x(0), made.x(1)].every(Number.isFinite)).toBe(true)
+            expect(() => made.cross(501)).toThrow(/x is 501, and the line runs from -500 to 500/)
+            expect(() => made.cross(-500.5)).toThrow(/x is -500.5/)
+            expect(() => made.cross(Number.NaN)).toThrow(/x is NaN/)
+            expect(() => made.cross(0, { direction: 'left' as never })).toThrow(/direction is "left". Use 'down', 'up' or 'round'/)
+            expect(() => made.cross(0, { reach: 0 })).toThrow(/reach is how far/)
+            expect(() => made.cross(0, { counts: 1.5 })).toThrow(/counts is 1.5/)
+            expect(() => made.cross(0, { counts: -1 })).toThrow(/counts is -1/)
+            expect(() => made.addCrossings(2.5)).toThrow(/addCrossings\(2.5\) is not a count/)
+            expect(() => made.addCrossings(-3)).toThrow(/addCrossings\(-3\) is not a count/)
+            expect(() => boundary().addCrossings(10)).toThrow(/this line shows no tally/)
+            // The two ends of the line are places on it.
+            expect(() => [made.cross(-500), made.cross(500)]).not.toThrow()
+
+            // A line holds 400 ticks. The crossings of one `lagged` are all made before any is scheduled, so the error comes from the play.
+            const full = s.add(boundary({ width: 1000 }))
+            expect(() => s.play(lagged(Array.from({ length: 401 }, (_, index) => full.cross(index - 200, { duration: 0.1 })), { lag: 0.1 }))).toThrow(/a line holds 400 ticks.*Use addCrossings\(count\)/)
+            expect(full.ticks).toHaveLength(400)
+            // On a full line, the error comes where the film names the crossing. After a clear there is room again.
+            expect(() => full.cross(0)).toThrow(/Use addCrossings\(count\)/)
+            s.play(full.clear())
+            expect(() => s.play(full.cross(0))).not.toThrow()
+            // The ticks of addCrossings stop at 400 too, on a line that has more places.
+            const wide = s.add(boundary({ width: 3000, tally: true }))
+            s.play(wide.addCrossings(100000))
+            expect(wide.ticks).toHaveLength(400)
         }))
     })
 })

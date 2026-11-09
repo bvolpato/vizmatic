@@ -396,6 +396,54 @@ Build the content where you want it, then the zone, then add the zone to the sta
 
 The zone is wide enough for its title. `minWidth` and `minHeight` give the zones of a row one size. `padding` is the space between the content and the border. The border has a gap for the title, so no line crosses the title. A `fill` is faint by default, because its top edge runs behind the title. `zone.frame`, `zone.title`, `zone.backdrop` (the fill), and `zone.content` are the parts. `zone.box` is the middle line of the border, in the coordinates of the zone.
 
+## Boundaries
+
+`boundary(options)` draws an open line between two sides, such as user space and the kernel, and counts what crosses it. Use it when a film compares designs by their number of crossings: 10,000 system calls, then 313, then 1. A `zone` is a closed border around a group. A boundary is a line that marks cross.
+
+```film paired label="Three interfaces side by side: 10,000 system calls, 313, and 1"
+import { boundary, film, lagged } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const shared = { width: 560, size: 30, above: 'user space', below: 'kernel', tally: ['system call', 'system calls'], tallySide: 'over', tickScale: 250 } as const
+    const reads = boundary({ ...shared, label: 'read()' }).at(-620, 0)
+    const batches = boundary({ ...shared, label: 'batches of 32', color: 'teal' }).at(0, 0)
+    const polling = boundary({ ...shared, label: 'polling', color: 'green' }).at(620, 0)
+    s.play(lagged([reads, batches, polling].map((line) => line.enter()), { lag: 0.4 }), { duration: 1.6 })
+    s.play(reads.cross(reads.x(0), { direction: 'round', label: 'read()' }), { duration: 1.4 })
+    s.play(reads.addCrossings(9999), { duration: 2 })
+    s.play(batches.cross(batches.x(0), { direction: 'round', label: '32 at a time' }), { duration: 1.4 })
+    s.play(batches.addCrossings(312), { duration: 1 })
+    s.play(polling.cross(polling.x(0.5), { direction: 'round' }), { duration: 1.4 })
+    s.wait(1)
+})
+```
+
+`.at()` places the middle of the line, and `width` is its length. The `label` names the line, over its left end. `above` and `below` name the two sides, next to the line. `tally` shows the count: `true` for the number alone, a word, or a pair with the word for one and the word for more, such as `['system call', 'system calls']`. `tallySize` sets the text size of the tally, and `tallyColor` the color of its number. `weight` is the width of the stroke, so a wall that is harder to cross can be heavier, and `dash: true` draws a dashed line. No text touches the line.
+
+`line.cross(x)` sends a mark through the line. Where the mark passes, the line lights for a moment and a tick stays. The tally goes up at the moment the mark is on the line. `x` is a place in the coordinates of the line, and `line.x(part)` gives one: 0 is the first place after the names, and 1 is the last place before the tally. A part outside 0 to 1 is an error, and so is an `x` that is not on the line. The `direction` is `'down'`, `'up'`, or `'round'`. A round trip goes down and comes back, as a system call does, and counts once. `reach` is how far from the line the mark starts and ends: 2.7 text sizes by default, which is 70 at size 26. `color` sets the mark and its tick. `counts` is how much the tally goes up, for one mark that carries a batch. `label` is a short text beside the place where the mark starts. It stays there and fades with the mark, so give a crossing with a long text a longer `duration`. It goes on the right of the mark, or on the left when the right has no room, and a text with no room on either side is an error.
+
+`crossThrough([calls, wall], x, options)` sends one mark through several lines, one under the other, such as a system call line and the wall of a virtual machine. Give the lines in the order that the mark meets them, and `x` as a place on the first line. Each line lights, keeps a tick, and counts at the moment the mark is on it.
+
+### Ticks that agree with the tally
+
+A tick is one crossing. `line.addCrossings(count)` runs the tally up with no mark, for a number that is too large to draw, and puts one tick on the line for each of those crossings while the number runs. The ticks go from the left into the places that have no tick, at one spacing of 6 or a little more, and wider on a heavy line. The number runs through whole values and ends exact, and its digits keep their places. The word for one shows where the tally stays at 1 for the time that a viewer needs to read it: half a second, or one second for 20 characters. A tally that only passes 1 keeps the word for more: a number that runs, or the first of several fast crossings. When the count is larger than the number of places on the line, the line is full, and a note under the right end of the line says what one tick stands for, such as "each tick: about 40". So a full line says "many", and the note says how many.
+
+The tick of a crossing with a mark stays where the mark crossed. So for a large number, draw a few crossings and give the rest to `addCrossings`: hundreds of drawn crossings make a band as long as the film spreads them, which says nothing about their number.
+
+To compare lines, or the rounds of one line, give them one `tickScale`: the number of crossings that one tick stands for. A line then has one tick for each `tickScale` crossings, rounded up, whatever way the count grew. With a scale of 250, 10,000 crossings are 40 ticks, 313 are 2, and 1 is 1. Without a scale, each count that is larger than the line fills the line, so 10,000 and 313 look the same but for the note. A crossing with a mark leaves a tick only when the count needs one more. The note shows on each line where a tick stands for more than one crossing. A count that needs more ticks than the line has places is an error that gives the least scale. A line holds 400 ticks, and one more is an error that names `addCrossings`.
+
+`line.clear()` fades the ticks and the note and takes the tally back to 0, for the next round of a comparison. Crossings chain in one `lagged` or `seq`, and `line.count` is the tally after the changes that are scheduled so far.
+
+### How wide a line must be
+
+With `tallySide: 'end'`, the default, the tally is over the right end of the line, next to it, and crossings stay between the names and the tally. The line needs the width of its widest name, the width of the word of its tally, and about 8 text sizes, before it has room for a crossing. With `tallySide: 'over'`, the tally is on a row of its own, over the place where a mark starts, and crossings have the line up to its right end. The line then needs its widest name and about 3 text sizes. With the names "user space" and "kernel" at size 26, a line of 560 keeps 77 for crossings with the tally at the end, and 355 with the tally over. Use `'over'` for lines side by side. A line with no room for a crossing is an error. Under a tally that is over, a mark may not start higher than the default `reach`.
+
+`tallyDigits` is the number of digits that the tally has room for, 6 by default. `x(1)` stays clear of the widest tally, and a count with more digits is an error that says which `tallyDigits` to give.
+
+The bounds of a line hold the way of a mark with the default `reach`, on both sides. With the tally over, the note is under the way of a mark, and the bounds hold it too. So a `zone` or a `card` around a line has room for its crossings. A copy of a line has its own tally and its own ticks, also when `clone()` is called on a group or a zone that holds the line.
+
+`line.line`, `line.labelNode`, `line.sides`, `line.tallyNode`, `line.ticks`, and `line.noteNode` are the parts. The tally is one node: an emphasis such as `indicate(line.tallyNode)` tints the digits and the word. The animation that `cross()` returns has the `mark`. `line.enter()` draws the line from the left, then brings the names, the tally, and the ticks.
+
 ## Tags
 
 `tag(word, options)` draws a word in a pill, with a `note` beside it. Use it to say what kind of claim is on the screen and where it comes from: measured, plan, judgment, with the source and its date. `.at(x, y)` places the left end of the pill, so tags with words of different lengths start at one x.
