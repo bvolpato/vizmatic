@@ -370,7 +370,9 @@ function hasMovieTimescale(ffmpegPath: string): Promise<boolean> {
     let answer = movieTimescale.get(ffmpegPath)
     if (!answer) {
         answer = new Promise<boolean>((done) => {
-            const child = execFile(ffmpegPath, ['-hide_banner', '-h', 'muxer=mp4'], { timeout: 5_000, maxBuffer: 1 << 20 }, (error, stdout) => {
+            // No time limit: on a busy machine a limit would end the question early, and the movie would then
+            // lose the option and a long chapter with no message. The input is closed, so a program that reads it ends.
+            const child = execFile(ffmpegPath, ['-hide_banner', '-h', 'muxer=mp4'], { maxBuffer: 1 << 20 }, (error, stdout) => {
                 done(!error && String(stdout).includes('movie_timescale'))
             })
             child.stdin?.end()
