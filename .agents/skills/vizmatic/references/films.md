@@ -319,6 +319,29 @@ const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read fro
 s.play(chart.enter())
 ```
 
+A small distribution that the film acts on: the next-token probabilities of a model, the scores of a ranking, a teacher beside a student. Do not draw rectangles with no scale, and do not start a new chart in each scene. `barChart` with `max: 1` keeps the bars on one scale, and each verb starts from what the verb before it left. A state has its own mark, so color is not the only sign. The default text size is 20: give `labelSize: 28` or more at 1080p. In a layout, name `ticks`, `states`, `reference`, `cutAt` and `cutAfter` in the options, so the layout measures them:
+
+```ts
+const chart = s.add(barChart(tokens.map((label, i) => ({ label, value: probs[i]! })), { max: 1, ticks: [0, 0.5, 1], labelSize: 32, barColor: 'blue', states: true, format: (v) => v.toFixed(2) }))
+s.play(chart.update(flatter))                          // a temperature reshapes the same bars
+s.play(chart.cutAfter(3, { label: (count) => `top ${count}` }))
+s.play(chart.mask(chart.tail()))                       // the tail goes to 0, and the rest grows by one factor
+s.play(chart.mark('slept', 'chosen'))                  // target, chosen, masked, plain, or your own states
+s.play(chart.reference(teacher))                       // a second series as outlines. With no values, it holds the bars as they are
+s.play(chart.cutAt(0.1, { label: 'min p' }))           // a line at a value. chart.below() gives the bars under it
+s.play(chart.sort())                                   // into rank order, one bar at a time
+```
+
+Samples against a threshold, and two distributions on one axis. `histogram` counts the samples on each side of a line, and draws a second distribution as an outline on the same bins:
+
+```ts
+const chart = s.add(histogram(reference, { bins: 10, range: [0, 1], max: 110, labelSize: 30 }))
+const current = chart.outline(thisWeek, { color: 'orange' })
+s.play(current.fillUp())
+s.play(chart.cutAt(0.7, { label: 'limit', count: (count, total) => `${Math.round(100 * count / total)}%` }))
+const { below, above } = chart.sides()
+```
+
 A word split into named fields: a virtual address and its table indexes, the flags of a register, the layout of a structure. Do not build it from boxes and texts in each film. `bitField` gives each box a width for its bits, numbers the bits, and keeps every text inside its box. `minWidth` or `scale: 'even'` gives a field of one bit room for a name, and `unused: true` marks reserved bits. For the layout of a structure, `numbers: 'offsets'` counts its bytes, and `wrap: 16` fills rows of 16 bytes. A field with a `value` shows it in its box, and `word.setValue('fd', '3')` changes it in place. `word.field('table')` is the node of one field, and `word.p('table')` is the point where a line from it starts:
 
 ```ts

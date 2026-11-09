@@ -168,7 +168,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Charts
 
-`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation.
+`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation. A film can also act on a `barChart` and on a `histogram`: see [Bars that a film acts on](#bars-that-a-film-acts-on) and [A threshold and a second distribution on a histogram](#a-threshold-and-a-second-distribution-on-a-histogram).
 
 ```film paired label="Bars grow up from an axis"
 import { barChart, film, grow, lagged } from 'vizmatic/stage'
@@ -251,6 +251,147 @@ The chart has three arrangements. By default the groups follow each other in one
 `chart.enter()` brings the marks in line by line. `plain: true` starts every mark and label in one color, and `chart.paint()` gives each group its color. `chart.rearrange(arrangement)` moves the marks to another arrangement. It keeps the rows or columns and the seed that the new arrangement does not name. `split` and `mixed` turn each other off, and `rows` replaces `columns`. Each group moves over the whole time of the move, so a small group does not wait for a large one.
 
 `.at()` places the middle of the grid, or of the row of blocks. A block is as wide as its marks or its label, so a row of blocks is wider than the grid: check both arrangements. A group with a count of 0 and a label keeps the room of its label, such as "0 failed". `chart.marks` holds every mark, `chart.groups` the marks of each group, and `chart.p(index)` the place of a mark. `shape: 'square'` draws squares. A chart of more than 20,000 marks is an error: let one mark stand for more than one unit, and say so in a label. Above about 2,000 marks, a move reads as a wipe.
+
+### Bars that a film acts on
+
+`barChart(data, options)` draws one bar for each item, with its label and its value. `chart.enter()` grows the bars, and `chart.update(values)` moves them to new values while the numbers count. Without `max`, the scale follows the data. With `max: 1`, the chart is a small distribution on a fixed scale: the next-token probabilities of a model, the weights of a router, the shares of one row of attention. A film then acts on the same bars. Each verb is an animation, and it leaves the chart in the state that the next verb starts from.
+
+```film paired label="Next-token probabilities: a temperature flattens them, a cut keeps three, and one token is drawn"
+import { barChart, film } from 'vizmatic/stage'
+
+const LOGITS = [2.0, 1.2, 0.6, 0.1, -0.9]
+const softmax = (temperature: number) => {
+    const weights = LOGITS.map((logit) => Math.exp(logit / temperature))
+    const sum = weights.reduce((a, b) => a + b, 0)
+    return weights.map((weight) => weight / sum)
+}
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(barChart(['sat', 'slept', 'ran', 'ate', 'flew'].map((label, i) => ({ label, value: softmax(1)[i]! })), {
+        width: 1300, height: 560, max: 1, labelSize: 44, barColor: 'blue', states: true, format: (v) => v.toFixed(2),
+    }).at(0, 60))
+    s.play(chart.enter(), { duration: 1.2 })
+    s.play(chart.update(softmax(2)), { duration: 1.2 })
+    s.play(chart.update(softmax(1)), { duration: 1 })
+    s.play(chart.cutAfter(3, { label: (count) => `top ${count}` }), { duration: 0.8 })
+    s.play(chart.mask(chart.tail()), { duration: 1.4 })
+    s.play(chart.mark('slept', 'chosen'), { duration: 0.6 })
+    s.wait(1)
+})
+```
+
+**States.** `chart.mark(which, state)` gives bars a state. `which` is an index, a label, or a list of them. The states are `target` (green, with a ring), `chosen` (yellow, with a check), `masked` (faint, with a cross), and `plain`, which is the bar as the data gives it. The bar takes the color of the state, and the mark of the state comes under its label, so color is not the only sign. The label of a bar with a mark is bright, and a `masked` bar has a faint label and a faint number. `chart.clearStates()` puts every bar back to `plain`, and `chart.state(which)` reads the state. The option `states` takes a table of your own states, such as `{ legal: { color: 'teal', mark: 'dot' } }`. A mark is `'dot'`, `'ring'`, `'check'` or `'cross'`, and a state with no mark is an error. `dim: true` makes a state faint, as `masked` is.
+
+**Mask.** `chart.mask(which)` sends bars to 0 and gives them the state `masked`. The other bars grow by one factor, so the sum of all bars stays what it was: a distribution stays a distribution, and the sum is the same at every frame. `renormalize: false` leaves the other bars as they are. A bar under 0 has no share, and a mask that leaves no bar with a value has no bar to give the share to: both are errors. `mask()` computes from the values at its start. So a `mask()` and an `update()` at one time are an error: play them in a `seq`. A bar keeps its state when its value changes. After a mask, `chart.clearStates()` or `chart.mark(bar, 'plain')` gives a bar its look back, before an `update()` gives it a value again.
+
+**A second series.** `chart.reference(values)` draws one outline on each column: the truth beside a prediction, a teacher beside a student. Outlines that show move to new values, and `chart.reference(null)` takes them away. With no values, `chart.reference()` holds the values that the bars have now, so the next `update()` shows before and after. The option `reference` draws the outlines from the start, and `chart.enter()` brings them with the bars. A scale that follows the data holds both series. The number of a bar stands over its outline when the outline is the higher one. The chart draws no key for the two series: add a `legend()`.
+
+```film paired label="A student learns from a teacher: the outlines are the teacher, and each update halves the gap"
+import { barChart, film, legend } from 'vizmatic/stage'
+
+const softmax = (logits: readonly number[], temperature: number) => {
+    const weights = logits.map((logit) => Math.exp(logit / temperature))
+    const sum = weights.reduce((a, b) => a + b, 0)
+    return weights.map((weight) => weight / sum)
+}
+const TEACHER = [3, 1, 0], STUDENT = [0.3, 1.2, 0.7]
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(barChart(['bird', 'dog', 'cat'].map((label, i) => ({ label, value: softmax(STUDENT, 1)[i]! })), {
+        width: 1100, height: 560, max: 1, ticks: [0, 0.5, 1], labelSize: 44, barColor: 'blue', format: (v) => v.toFixed(2),
+        reference: softmax(TEACHER, 1),
+    }).at(40, 90))
+    s.add(legend([{ label: 'student', color: 'blue' }, { label: 'teacher', color: 'ink', kind: 'line' }], { size: 40 }).at(0, -420))
+    s.play(chart.enter(), { duration: 1.2 })
+    // A temperature of 3 flattens both, so the small preferences of the teacher show.
+    s.play(chart.reference(softmax(TEACHER, 3)), chart.update(softmax(STUDENT, 3)), { duration: 1.6 })
+    let student = softmax(STUDENT, 3)
+    for (let step = 0; step < 3; step++) {
+        student = student.map((value, i) => value + (softmax(TEACHER, 3)[i]! - value) * 0.5)
+        s.play(chart.update(student), { duration: 0.8 })
+    }
+    s.wait(1)
+})
+```
+
+**Cuts.** `chart.cutAt(value, { label })` draws a line across the bars at a value: a threshold, a mean, a limit. `chart.cutAfter(count, { label })` draws a line after a number of bars, between two columns: the cut of a top-k rule. The first call draws the line, a later call moves it, and `null` takes it away. A label is a text, or a function of the value or of the count, and it follows the line while the line moves. `color` sets the color of the line and of its label. `chart.below()` gives the bars under the value line, and `chart.tail()` gives the bars after the rank line, so `chart.mask(chart.tail())` drops what a top-k rule drops. With a `max` or a `min`, a value line outside the scale is an error. A number that the value line would cross stands over the line.
+
+**Sort.** `chart.sort()` moves the bars to a new order: `'descending'` by default, `'ascending'`, or a list of the bars. The sort plays in steps. In each step one bar goes to its new column in front of the others, and the bars that it passes move one column on, so a viewer follows one bar at a time. The steps share the time of the sort. A bar keeps its index: `chart.bar(2)` is the same bar after the sort, and `chart.order` lists the bars by column. The line of `cutAfter` counts columns, so it stays where it is. The order is by the values at the end of the sort. In one play, name an `update()` before the `sort()`. A sort that starts while another sort moves the bars is an error. A bar that passes others has a patch in the color of `backing` under it, so its label does not print over theirs. The default `backing` is the background of the look. On a panel of another color, set `backing` to that color. With `backing: null`, the chart draws no patch, and the bars pass through each other.
+
+```film paired label="Four documents get their scores, change places into rank order, and a cut admits two"
+import { barChart, film } from 'vizmatic/stage'
+
+// The part of each term of the query "queue timeout" in the score of each document.
+const QUEUE = [0.42, 0.0, 0.31, 0.58]
+const TIMEOUT = [0.0, 0.64, 0.22, 0.49]
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(barChart(['retries.md', 'alerts.md', 'faq.md', 'queue-guide.md'].map((label) => ({ label, value: 0 })), {
+        width: 1000, height: 600, horizontal: true, max: 1.2, labelSize: 42, barColor: 'teal', states: true, format: (v) => v.toFixed(2),
+    }).at(150, 0))
+    s.play(chart.update(QUEUE), { duration: 1 })
+    s.play(chart.update(QUEUE.map((part, i) => part + TIMEOUT[i]!)), { duration: 1 })
+    s.play(chart.sort(), { duration: 2.4 })
+    s.play(chart.cutAfter(2, { label: 'top 2' }), { duration: 0.8 })
+    s.play(chart.mark(chart.tail(), 'masked'), chart.mark(chart.order[0]!, 'chosen'), { duration: 0.6 })
+    s.wait(1)
+})
+```
+
+**The scale, the sizes and the places.** `ticks` draws the lines of the scale behind the bars, each with its value: about that many, or a list such as `[0, 0.5, 1]`. They need `max`, and a value that is not on the scale is then an error. Without `ticks`, a bar may pass the end of the plot. `barColor` gives every bar one color, so the color of a state stands out. `labelSize` sets every text of the chart: the labels, the numbers, the values of the scale and the labels of the cuts. The marks follow it too. The default is 20. For a frame of 1080p, give 28 or more.
+
+As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels, the marks and the labels of the cuts are outside the plot. The marks are 1.2 text sizes under the labels, or at the left of the labels in a chart with `horizontal: true`. The label of a value line is after the right end of the line, and the label of a rank line is over the plot. The layout measures the parts that the options name: `ticks`, `states`, `reference`, `cutAt: { value, label }` and `cutAfter: { count, label }`. So name them in the options of a chart that is in a layout. A cut of the options shows from the start: hide it until its verb, as in `chart.rankCut.hide()`. A part that a verb adds later is measured from that call. `fitted(region, (width) => barChart(data, { width, ticks: 3, max: 1 }))` makes all of the chart as wide as a region.
+
+`chart.p(which, value)` gives a place on the column of a bar, in the coordinates of the chart: the end of the bar, or the height of another value. `chart.region(which)` gives the box of the column in stage pixels, for `place` and `beside`. `chart.find(label)` gives the index of a bar. `chart.bars`, `chart.labels`, `chart.readouts`, `chart.outlines`, `chart.ticks`, `chart.valueCut` and `chart.rankCut` are the parts. A copy from `chart.clone()` is a still picture. Its numbers follow the chart that it is a copy of, so `mark()`, `mask()`, `reference()`, the two cuts and `sort()` refuse to act on it: build a second chart from the data.
+
+### A threshold and a second distribution on a histogram
+
+`histogram(samples, options)` puts samples in bins. `chart.fillUp()` drops them in, in their order, and `chart.fillUp({ count })` stops at a count, so a film drops five samples slowly and then all of them. `chart.cutAt(value, options)` draws a threshold: a line at a value, with the count of the samples on each side over the plot. The count at the left is of the samples under the value, and the count at the right is of the samples at or over it. `keep` names the side that stays bright: `'above'` by default, `'below'`, or `'both'`. The other side goes faint, and the line cuts the bar that it is in. The counts are of the samples, and a bar does not show where its samples are inside its bin. So put the threshold on an edge of a bin when the two must agree in that bar. `count` writes a count as the film wants it, such as a share. `label` puts a name over the line. A later `cutAt` moves the line, and the counts follow it. `chart.cutAt(null)` takes the threshold away. `chart.sides()` gives the two counts, and `chart.counts()` gives the samples in each bin. A value outside the axis is an error.
+
+```film paired label="A null histogram fills up, and a threshold shows the share of 8 wins or more"
+import { film, histogram, linear } from 'vizmatic/stage'
+
+// Every way to give 13 disagreements to model A or to model B: 8,192 ways. The wins of B are the bits that are set.
+const wins = (way: number) => way.toString(2).split('').filter((bit) => bit === '1').length
+// A fixed order that mixes them, so the bars rise together.
+const SAMPLES = Array.from({ length: 8192 }, (_, i) => wins((i * 5741 + 4099) % 8192))
+
+export default film({ fps: 30 }, (s) => {
+    const chart = histogram(SAMPLES, { bins: 14, range: [-0.5, 13.5], width: 1400, height: 560, labelSize: 40, ticks: 14 }).at(0, 80)
+    s.play(chart.fillUp({ count: 5, ease: linear }), { duration: 2 })
+    s.play(chart.fillUp(), { duration: 2.5 })
+    // The observed result is a line. The bars at 8 wins and more stay bright, and their share is the p-value.
+    s.play(chart.cutAt(7.5, { label: 'observed: 8 wins', count: (count, total) => (count / total).toFixed(3) }), { duration: 1 })
+    s.wait(1)
+    s.play(chart.cutAt(10.5, { label: '11 wins' }), { duration: 1.4 })
+    s.wait(1)
+})
+```
+
+`chart.outline(samples)` draws a second distribution on the same bins and the same scale, as one line over the bars: this week over the reference week, the effect over the null. It returns the outline, which has its own `fillUp()`, `counts()` and `sides(value)`. A bin of the second distribution that is higher than the scale is an error: give the histogram a `max` that holds both. The chart draws no key: add a `legend()`.
+
+```film paired label="The scores of this week arrive over the scores of the reference week"
+import { film, histogram, legend, linear } from 'vizmatic/stage'
+
+// The scores of a model in two weeks. A fixed list: a film is built more than once.
+const scores = (seed: number, shift: number) => Array.from({ length: 400 }, (_, i) => {
+    const a = ((i + seed) * 7919) % 1000 / 1000, b = ((i + seed) * 104729) % 1000 / 1000, c = ((i + seed) * 1299709) % 1000 / 1000
+    return Math.min(0.999, (a + b + c) / 3 * 0.9 + shift)
+})
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(histogram(scores(0, 0), { bins: 10, range: [0, 1], width: 1300, height: 520, labelSize: 40, ticks: 5, max: 110 }).at(0, 110))
+    const current = chart.outline(scores(11, 0.08), { color: 'orange' })
+    current.hide()
+    s.add(legend([{ label: 'reference week', color: 'blue' }, { label: 'this week', color: 'orange', kind: 'line' }], { size: 38 }).at(0, -420))
+    s.wait(0.6)
+    s.play(current.fillUp({ ease: linear }), { duration: 2.5 })
+    s.play(chart.cutAt(0.7, { label: 'scores over 0.7' }), { duration: 1 })
+    s.wait(1.2)
+})
+```
+
+`labelSize` sets the texts of a histogram, and the default is 20: for a frame of 1080p, give 28 or more. The counts of a threshold are over the plot, and its label is over them: together they take about 3 text sizes. The option `cutAt: { value, label }` draws the threshold from the start, so the layout measures it. Hide it until its verb with `chart.threshold.hide()`.
 
 ## Graphs and networks
 

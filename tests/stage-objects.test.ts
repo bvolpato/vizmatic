@@ -18,6 +18,7 @@ import {
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
+    boxOf, fitted,
 } from '../src/stage/index'
 import { encode } from 'fast-png'
 import { Resvg } from '@resvg/resvg-js'
@@ -796,6 +797,812 @@ describe('charts', () => {
         expect(chart.cell(1, 1).get('y')).toBe(20)
         expect(chart.row(0)).toHaveLength(2)
         expect(() => chart.cell(2, 0)).toThrow(/2 by 2/)
+    })
+})
+
+describe('bar chart and histogram: states, a second series, cuts and a sort', () => {
+    // A chart at the middle of a 1920 by 1080 frame. Its columns are 200 wide, with middles at -200, 0 and 200.
+    // The baseline is at y 200, and a value v is at y 200 - 400 v. A frame draws a stage point at (960 + x, 540 + y).
+    const DATA = [{ label: 'sat', value: 0.5 }, { label: 'ran', value: 0.3 }, { label: 'ate', value: 0.2 }]
+    type Chart = ReturnType<typeof barChart>
+    const make = (options: Parameters<typeof barChart>[1] = {}, data = DATA) => barChart(data, { width: 600, height: 400, max: 1, labelSize: 30, barColor: 'blue', ...options })
+    const middle = (node: Node) => { const b = node.bounds(); return [b.x + b.width / 2, b.y + b.height / 2] as const }
+    /** True for a mark that a node drew, or that a drawing of the node made for this frame. */
+    const from = (op: PathOp, owner: Node | null | undefined): boolean => {
+        for (let node: Node | null | undefined = op.node; node; node = node.parent ?? node.drawer) if (node === owner) return true
+        return false
+    }
+    const drawn = (f: CompiledFilm, t: number, owner: Node | null | undefined) => paths(f, t).filter((op) => from(op, owner))
+    /** The texts that a node drew at a time, in the order in which it drew them. */
+    const said = (f: CompiledFilm, t: number, owner: Node | null | undefined) => [...new Set(drawn(f, t, owner).flatMap((op) => (op.node?.data['key'] !== undefined ? [op.node.parent as TextNode] : [])))].map((words) => words.source)
+    const boundsOf = (ops: readonly PathOp[]) => {
+        const boxes = ops.map((op) => pathBounds(op.path)!)
+        const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y))
+        return { x, y, right: Math.max(...boxes.map((b) => b.x + b.width)), bottom: Math.max(...boxes.map((b) => b.y + b.height)) }
+    }
+    // A histogram of ten samples in five bins of [0, 5): 2, 3, 4 and 1 samples in the bins of 1, 2, 3 and 4.
+    // The plot is 500 wide and 200 high, so a bin is 100 wide and one sample is 50 high.
+    const SAMPLES = [1.5, 1.5, 2.2, 2.4, 2.6, 3.1, 3.2, 3.3, 3.4, 4.5]
+    const bins = (options: Parameters<typeof histogram>[1] = {}) => histogram(SAMPLES, { bins: 5, range: [0, 5], width: 500, height: 200, labelSize: 30, gap: 0, ...options })
+    const fills = (f: CompiledFilm, t: number, owner: Node) => drawn(f, t, owner.children[0]).filter((op) => op.fill)
+    /** The marks of the states on the screen: the shape, the middle and the color of each. */
+    const stateMarks = (f: CompiledFilm, t: number) => paths(f, t).filter((op) => typeof op.node?.data['shape'] === 'string' && op.strokeAlpha + op.fillAlpha > 0.5).map((op) => {
+        const b = pathBounds(op.path)!
+        return { shape: op.node!.data['shape'] as string, x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2), color: op.stroke ?? op.fill }
+    })
+
+    it('leaves a chart that uses none of the new parts with the nodes that it had', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(barChart(DATA, { width: 600, height: 400 }))
+            s.play(chart.enter(), { duration: 1 })
+            s.play(chart.update([0.1, 0.9, 0.4]), { duration: 1 })
+        })
+        // Three bars, the baseline, three labels and three numbers: a film that fades the children one by one sees no other node.
+        expect(chart.children).toHaveLength(10)
+        expect(chart.children.slice(0, 4)).toEqual([...chart.bars, chart.baseline])
+        expect([chart.ticks, chart.valueCut, chart.rankCut, chart.referenceValues]).toEqual([null, null, null, null])
+        expect(chart.outlines).toEqual([])
+        expect(chart.order).toEqual([0, 1, 2])
+        expect(chart.cut).toEqual({ at: null, after: null })
+    })
+
+    it('gives a bar a state: the color of the bar, a mark under its label, and a bright label', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mark('ran', 'target'), { duration: 1 })
+            expect(chart.state('ran')).toBe('target')
+            s.play(chart.mark(1, 'chosen'), chart.mark(2, 'masked'), { duration: 1 })
+            s.play(chart.mark('ran', 'plain'), { duration: 1 })
+            expect([0, 1, 2].map((index) => chart.state(index))).toEqual(['plain', 'plain', 'masked'])
+        })
+        const fill = (index: number, t: number) => at(t, () => chart.bar(index).get('fill'))
+        const label = (index: number, t: number) => at(t, () => chart.labels[index]!.children[0]!.get('fill'))
+        expect(fill(1, 0)).toEqual(parseColor('blue'))
+        expect(fill(1, 1)).toEqual(parseColor('green'))
+        expect(fill(1, 2)).toEqual(parseColor('yellow'))
+        expect(fill(1, 3)).toEqual(parseColor('blue'))
+        expect(label(1, 0)).toEqual(parseColor('dim'))
+        expect(label(1, 1)).toEqual(parseColor('ink'))
+        expect(label(1, 3)).toEqual(parseColor('dim'))
+        // The mark is under the label, on the middle of the column: the label is at y 227, and the mark 1.2 sizes lower.
+        expect(stateMarks(f, 0.999)).toEqual([{ shape: 'ring', x: 960, y: 540 + 227 + 36, color: parseColor('green') }])
+        // A mark of another shape takes the place of the old one, and each bar has its own.
+        expect(stateMarks(f, 1.999).map((mark) => [mark.shape, mark.x])).toEqual([['check', 960], ['cross', 1160]])
+        expect(stateMarks(f, 1.999)[0]!.color).toEqual(parseColor('yellow'))
+        expect(stateMarks(f, 3).map((mark) => mark.shape)).toEqual(['cross'])
+        // A dim state: the bar, its label and its number are faint.
+        expect(at(2, () => chart.bar(2).get('fillOpacity'))).toBeCloseTo(0.3, 6)
+        expect(at(0, () => chart.bar(2).get('fillOpacity'))).toBeCloseTo(0.84, 6)
+        expect(label(2, 2)).toEqual(parseColor('faint'))
+        expect(drawn(f, 2, chart.readouts[2])[0]!.fillAlpha).toBeCloseTo(0.45, 6)
+        expect(drawn(f, 2, chart.readouts[1])[0]!.fillAlpha).toBeCloseTo(1, 6)
+    })
+
+    it('puts every bar back to plain, and changes only the bars that a call names', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mark(['sat', 2], 'chosen', { lag: 1 }), { duration: 2 })
+            s.play(chart.clearStates(), { duration: 1 })
+        })
+        // With a lag of 1, the second bar starts when the first one is done.
+        expect(stateMarks(f, 0.999).map((mark) => mark.x)).toEqual([760])
+        expect(stateMarks(f, 2).map((mark) => mark.x)).toEqual([760, 1160])
+        expect(at(2, () => chart.bar(1).get('fill'))).toEqual(parseColor('blue'))
+        expect(stateMarks(f, 3)).toEqual([])
+        expect(at(3, () => chart.bar(0).get('fill'))).toEqual(parseColor('blue'))
+        expect([0, 1, 2].map((index) => chart.state(index))).toEqual(['plain', 'plain', 'plain'])
+    })
+
+    it('keeps the room of the state marks from the start with `states`, and measures a mark from the first one without it', async () => {
+        await compileFilm(film((s) => {
+            const plain = make(), ready = make({ states: true })
+            // The mark of a state is 1.2 text sizes under the middle of the label, and 0.36 of a size in radius.
+            const bottom = 200 + 12 + 15 + 30 * 1.2 + 30 * 0.36
+            expect(boxOf(ready).bottom).toBeCloseTo(bottom, 6)
+            expect(boxOf(plain).bottom).toBeLessThan(bottom - 20)
+            // The room is not drawn: the chart on the screen is as high as before.
+            expect(ready.bounds().height).toBeCloseTo(plain.bounds().height, 6)
+            s.add(plain, ready)
+            s.play(plain.mark(0, 'target'), ready.mark(0, 'target'))
+            expect(boxOf(ready).bottom).toBeCloseTo(bottom, 6)
+            expect(boxOf(plain).bottom).toBeCloseTo(bottom, 6)
+        }))
+    })
+
+    it('takes a table of states, and refuses a state whose color is its only sign', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make({ states: { legal: { color: 'teal', mark: 'dot' }, masked: { mark: 'cross', dim: true } } }))
+            s.play(chart.mark(0, 'legal'), { duration: 1 })
+        })
+        expect(stateMarks(f, 1)).toEqual([{ shape: 'dot', x: 760, y: 803, color: parseColor('teal') }])
+        expect(() => chart.mark(0, 'target')).toThrow('barChart: mark(): no state "target". The states are plain, legal, masked')
+        expect(() => make({ states: { loud: { color: 'red' } as never } })).toThrow('the state "loud" has no mark, so its color is its only sign')
+        expect(() => make({ states: { odd: { mark: 'star' as never } } })).toThrow('the mark of the state "odd" is "star". A mark is \'dot\', \'ring\', \'check\' or \'cross\'')
+        expect(() => make({ states: { plain: { mark: 'dot' } } })).toThrow('a table of states cannot change `plain`')
+        expect(() => make({ states: { legal: { mark: 'dot' } } }).mask(0)).toThrow('mask(): no state "masked". The states are plain, legal. Add a state `masked` to the table')
+    })
+
+    it('masks bars and gives their share to the rest, with the same sum at every frame', async () => {
+        let chart!: Chart
+        const values = (t: number) => at(t, () => chart.values.map((value) => value.value))
+        await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mask('ate'), { duration: 1 })
+            expect(chart.state('ate')).toBe('masked')
+            // A second mask starts from what the first one left.
+            s.play(chart.mask(1), { duration: 1 })
+        })
+        expect(values(1)[0]).toBeCloseTo(0.625, 9)
+        expect(values(1)[1]).toBeCloseTo(0.375, 9)
+        expect(values(1)[2]).toBe(0)
+        for (const t of [0, 0.2, 0.5, 0.8, 1, 1.4, 2]) expect(values(t).reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 9)
+        expect(values(2)).toEqual([1, 0, 0])
+        // The bar is drawn to its value: a bar of 0.625 is 250 high.
+        expect(at(1, () => pathBounds(chart.bar(0).get('path')!)!.height)).toBeCloseTo(250, 6)
+        expect(at(1, () => pathBounds(chart.bar(2).get('path')!)!.height)).toBeCloseTo(0, 6)
+    })
+
+    it('masks without a new share on request, and refuses a share that cannot be given', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mask([0, 1], { renormalize: false }), { duration: 1 })
+            expect(() => s.play(chart.mask(2))).toThrow('barChart: mask() leaves no bar with a value, so no bar can take the share of the masked ones')
+        })
+        expect(at(1, () => chart.values.map((value) => value.value))).toEqual([0, 0, 0.2])
+        await compile((s) => {
+            const signed = s.add(barChart([{ label: 'a', value: 0.5 }, { label: 'b', value: -0.5 }], { min: -1, max: 1 }))
+            expect(() => s.play(signed.mask(0))).toThrow('the value of bar 1 ("b") is -0.5. A share is 0 or more. For values that are not shares, use mask(bars, { renormalize: false })')
+            s.play(signed.mask(0, { renormalize: false }))
+        })
+    })
+
+    it('refuses a mask and another change of the values at one time, and takes them one after the other', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            expect(() => s.play(chart.mask(2), chart.update([0.2, 0.2, 0.6]), { duration: 1 })).toThrow('barChart: update() plays from 0 s to 1 s, and mask() plays from 0 s to 1 s. Both set the values of the bars')
+        })
+        await compile((s) => {
+            const chart = s.add(make())
+            expect(() => s.play(chart.update([0.2, 0.2, 0.6]), chart.mask(2), { duration: 1 })).toThrow('barChart: mask() plays from 0 s to 1 s, and update() plays from 0 s to 1 s')
+        })
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(make())
+            s.play(seq(chart.update([0.2, 0.2, 0.6]), chart.mask(2)), { duration: 2 })
+            // Two updates at one time are as they were before: the last one wins.
+            s.play(chart.update([0.5, 0.5, 0]), chart.update([0.25, 0.75, 0]), { duration: 1 })
+        })
+        expect(at(2, () => chart.values.map((value) => value.value))).toEqual([0.5, 0.5, 0])
+        expect(at(3, () => chart.values.map((value) => value.value))).toEqual([0.25, 0.75, 0])
+    })
+
+    it('holds the values of the bars as outlines, so an update shows before and after', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.reference(), { duration: 1 })
+            expect(chart.referenceValues).toEqual([0.5, 0.3, 0.2])
+            s.play(chart.update([0.1, 0.8, 0.1]), { duration: 1 })
+            s.play(chart.reference(null), { duration: 1 })
+            expect(chart.referenceValues).toBeNull()
+        })
+        expect(chart.outlines).toHaveLength(3)
+        expect(drawn(f, 0, chart.outlines[0])).toEqual([])
+        // An outline is a line with no fill, around the bar as it was: 200 high for 0.5, on the first column.
+        const outline = (index: number, t: number) => drawn(f, t, chart.outlines[index])[0]!
+        expect(outline(0, 2).fill).toBeNull()
+        expect(outline(0, 2).stroke).toEqual(parseColor('ink'))
+        const b = pathBounds(outline(0, 2).path)!
+        expect([b.x, b.y, b.width, b.height].map(Math.round)).toEqual([960 - 200 - 72, 540, 144, 200])
+        expect(Math.round(pathBounds(outline(1, 2).path)!.height)).toBe(120)
+        // The bars moved, and the outlines did not.
+        expect(at(2, () => pathBounds(chart.bar(0).get('path')!)!.height)).toBeCloseTo(40, 6)
+        expect(drawn(f, 3, chart.outlines[0])).toEqual([])
+    })
+
+    it('moves the second series to new values, and brings it from the baseline when it does not show', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.reference([0.8, 0.1, 0.1]), { duration: 1 })
+            s.play(chart.reference([0.4, 0.3, 0.3]), { duration: 1 })
+        })
+        const height = (index: number, t: number) => pathBounds(drawn(f, t, chart.outlines[index])[0]!.path)!.height
+        expect(height(0, 0.5)).toBeGreaterThan(40)
+        expect(height(0, 0.5)).toBeLessThan(300)
+        expect(height(0, 1)).toBeCloseTo(320, 6)
+        expect(height(0, 1.5)).toBeCloseTo(240, 6)
+        expect(height(0, 2)).toBeCloseTo(160, 6)
+        expect(chart.referenceValues).toEqual([0.4, 0.3, 0.3])
+        expect(() => chart.reference([0.5, 0.5])).toThrow('barChart: reference() has 2 values, and the chart has 3 bars. Give one value for each bar')
+        expect(() => chart.reference([0.5, Number.NaN, 0.1])).toThrow('barChart: reference(): value 1 is NaN. Each value is a finite number')
+    })
+
+    it('draws the second series of the options from the start, holds it in the scale, and brings it in with the bars', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            // No fixed scale: the largest value of both series is at the top of the plot.
+            chart = s.add(barChart(DATA, { width: 600, height: 400, reference: [1, 0.25, 0.25], referenceColor: 'orange' }))
+            s.wait(1)
+            s.play(chart.enter(), { duration: 2 })
+        })
+        expect(Math.round(pathBounds(drawn(f, 0.5, chart.outlines[0])[0]!.path)!.height)).toBe(400)
+        expect(drawn(f, 0.5, chart.outlines[0])[0]!.stroke).toEqual(parseColor('orange'))
+        expect(at(0.5, () => pathBounds(chart.bar(0).get('path')!)!.height)).toBeCloseTo(200, 6)
+        // At the start of the enter the outlines are away, and at its end they stand.
+        expect(drawn(f, 1.05, chart.outlines[0])).toEqual([])
+        expect(Math.round(pathBounds(drawn(f, 3, chart.outlines[0])[0]!.path)!.height)).toBe(400)
+        // An update that passes the second series takes the scale with it, and the outline follows the scale.
+        let grown!: Chart
+        const g = await compile((s) => {
+            grown = s.add(barChart(DATA, { width: 600, height: 400, reference: [1, 0.25, 0.25] }))
+            s.play(grown.update([2, 0.3, 0.2]), { duration: 1 })
+        })
+        expect(Math.round(pathBounds(drawn(g, 1, grown.outlines[0])[0]!.path)!.height)).toBe(200)
+        // Bars that get smaller leave the scale to the second series, and it grows again when the second series goes.
+        let small!: Chart
+        const h = await compile((s) => {
+            small = s.add(barChart(DATA, { width: 600, height: 400, reference: [1, 0.25, 0.25] }))
+            s.play(small.update([0.1, 0.1, 0.1]), { duration: 1 })
+            s.play(small.reference(null), { duration: 1 })
+        })
+        expect(Math.round(pathBounds(drawn(h, 1, small.outlines[0])[0]!.path)!.height)).toBe(400)
+        expect(at(1, () => pathBounds(small.bar(0).get('path')!)!.height)).toBeCloseTo(40, 6)
+        expect(at(2, () => pathBounds(small.bar(0).get('path')!)!.height)).toBeCloseTo(400, 6)
+    })
+
+    it('puts the number of a bar past an outline that ends over the bar', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.wait(1)
+            s.play(chart.reference([0.2, 0.9, 0.2]), { duration: 1 })
+        })
+        const number = (index: number, t: number) => boundsOf(drawn(f, t, chart.readouts[index]))
+        // The number of "ran" is over its bar of 0.3, and then over the outline of 0.9: 240 higher.
+        expect(number(1, 2).bottom).toBeCloseTo(number(1, 1).bottom - 240, 3)
+        expect(number(1, 2).bottom).toBeLessThan(540 + 200 - 360)
+        // An outline that ends under the bar moves no number.
+        expect(number(0, 2).bottom).toBeCloseTo(number(0, 1).bottom, 6)
+    })
+
+    it('draws a line across the bars at a value, moves it, and takes it away', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.wait(1)
+            s.play(chart.cutAt(0.25, { label: (value) => `p >= ${value.toFixed(2)}` }), { duration: 1 })
+            expect(chart.cut).toEqual({ at: 0.25, after: null })
+            expect(chart.below()).toEqual([2])
+            s.play(chart.cutAt(0.45, { color: 'red' }), { duration: 1 })
+            expect(chart.below()).toEqual([1, 2])
+            expect(chart.below(0.6)).toEqual([0, 1, 2])
+            // A bar at the value is not under it.
+            expect(chart.below(0.3)).toEqual([2])
+            s.play(chart.cutAt(null), { duration: 1 })
+            expect(chart.cut.at).toBeNull()
+        })
+        expect(chart.valueCut).not.toBeNull()
+        expect(drawn(f, 0.5, chart.valueCut)).toEqual([])
+        const line = (t: number) => drawn(f, t, chart.valueCut).filter((op) => op.dash)[0]!
+        // The line is at the height of the value, from the left edge of the plot to a little past its right edge.
+        const b = pathBounds(line(2).path)!
+        expect([b.x, b.y, b.height].map(Math.round)).toEqual([660, 540 + 200 - 100, 0])
+        expect(b.x + b.width).toBeCloseTo(960 + 300 + 9, 6)
+        expect(line(1.99).stroke).toEqual(parseColor('ink'))
+        // While it draws, the line grows from the left, and its label is not there yet.
+        expect(pathBounds(line(1.3).path)!.width).toBeLessThan(400)
+        expect(said(f, 1.3, chart.valueCut)).toEqual([])
+        // The label is after the right end of the line, at its height, and it follows the value.
+        expect(said(f, 2, chart.valueCut)).toEqual(['p >= 0.25'])
+        const words = boundsOf(drawn(f, 2, chart.valueCut).filter((op) => !op.dash))
+        expect(words.x).toBeGreaterThan(1269 + 9)
+        expect((words.y + words.bottom) / 2).toBeGreaterThan(630)
+        expect((words.y + words.bottom) / 2).toBeLessThan(650)
+        expect(said(f, 2.5, chart.valueCut)).toEqual(['p >= 0.35'])
+        expect(Math.round(pathBounds(line(3).path)!.y)).toBe(540 + 200 - 180)
+        // A later call changes what it names: the color here, and the label stays.
+        expect(line(3).stroke).toEqual(parseColor('red'))
+        expect(said(f, 3, chart.valueCut)).toEqual(['p >= 0.45'])
+        expect(drawn(f, 4, chart.valueCut)).toEqual([])
+    })
+
+    it('refuses a cut that is not on the scale, and a label that is not a text', async () => {
+        const chart = make()
+        expect(() => chart.cutAt(1.2)).toThrow('barChart: cutAt(): the value 1.2 is outside the scale, which goes to 1. Give a value of the scale, or a wider `min` and `max`')
+        expect(() => chart.cutAt(Number.NaN)).toThrow('barChart: cutAt(): the value is NaN. It is a finite number of the scale')
+        expect(() => chart.cutAt(0.5, { label: (() => 5) as never })).toThrow('barChart: cutAt(): the label is a function that returned number. A label is a text')
+        expect(() => chart.cutAfter(4)).toThrow('barChart: cutAfter(): the count is 4. It is the number of bars before the line, a whole number from 0 to 3')
+        expect(() => chart.cutAfter(1.5)).toThrow('the count is 1.5')
+        expect(() => make({ cutAt: { value: 2 } })).toThrow('barChart: the option `cutAt`: the value 2 is outside the scale')
+        expect(() => chart.below()).toThrow('barChart: below() needs a value, or a cut that `cutAt()` drew')
+        expect(() => chart.tail()).toThrow('barChart: tail() needs a count, or a cut that `cutAfter()` drew')
+        // A chart whose scale follows the data takes a cut at any value.
+        expect(() => barChart(DATA).cutAt(7)).not.toThrow()
+    })
+
+    it('draws a line after a number of bars, between two columns, and gives the bars after it', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.cutAfter(2, { label: (count) => `top ${count}` }), { duration: 1 })
+            expect(chart.cut).toEqual({ at: null, after: 2 })
+            expect(chart.tail()).toEqual([2])
+            expect(chart.tail(1)).toEqual([1, 2])
+            s.play(chart.cutAfter(1), { duration: 1 })
+            expect(chart.tail()).toEqual([1, 2])
+        })
+        const line = (t: number) => pathBounds(drawn(f, t, chart.rankCut).filter((op) => op.dash)[0]!.path)!
+        // The line is between the second and the third column, from the bottom of the plot to over the numbers of the bars.
+        expect([line(1).x, line(1).width, line(1).y + line(1).height].map(Math.round)).toEqual([960 + 100, 0, 740])
+        expect(line(1).y).toBeCloseTo(540 - 200 - 10 - 30 * 1.25, 6)
+        expect(said(f, 1, chart.rankCut)).toEqual(['top 2'])
+        const words = boundsOf(drawn(f, 1, chart.rankCut).filter((op) => !op.dash))
+        expect(words.bottom).toBeLessThan(line(1).y)
+        expect((words.x + words.right) / 2).toBeGreaterThan(1050)
+        expect((words.x + words.right) / 2).toBeLessThan(1070)
+        expect(Math.round(line(2).x)).toBe(960 - 100)
+        expect(said(f, 2, chart.rankCut)).toEqual(['top 1'])
+    })
+
+    it('shows the cuts of the options from the start, and lets a film hide one until its verb', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = make({ cutAt: { value: 0.4, label: 'mean' }, cutAfter: { count: 1, label: 'top 1' } })
+            // The label of a cut is a part of the measure of the chart from the start, also while it is hidden.
+            const right = boxOf(chart).right
+            expect(right).toBeGreaterThan(300 + 9 + 12 + 40)
+            chart.rankCut!.hide()
+            expect(boxOf(chart).right).toBe(right)
+            s.add(chart)
+            s.wait(1)
+            s.play(chart.cutAfter(1), { duration: 1 })
+        })
+        expect(said(f, 0.5, chart.valueCut)).toEqual(['mean'])
+        expect(drawn(f, 0.5, chart.rankCut)).toEqual([])
+        expect(said(f, 2, chart.rankCut)).toEqual(['top 1'])
+        // The line draws: it does not jump in.
+        const half = pathBounds(drawn(f, 1.5, chart.rankCut).filter((op) => op.dash)[0]!.path)!
+        expect(half.height).toBeGreaterThan(50)
+        expect(half.height).toBeLessThan(400)
+        // In an enter, a cut comes after the bars: it is away at the start, and whole at the end.
+        let entered!: Chart
+        const g = await compile((s) => {
+            entered = make({ cutAt: { value: 0.4, label: 'mean' } })
+            s.play(entered.enter(), { duration: 2 })
+        })
+        expect(drawn(g, 0.5, entered.valueCut)).toEqual([])
+        expect(pathBounds(drawn(g, 2, entered.valueCut).filter((op) => op.dash)[0]!.path)!.width).toBeCloseTo(609, 6)
+        expect(said(g, 2, entered.valueCut)).toEqual(['mean'])
+    })
+
+    it('puts the number of a bar past a line of a cut that would cross it', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.wait(1)
+            // The line at 0.35 is 20 px over the bar of 0.3, where its number is. It is far from the other two bars.
+            s.play(chart.cutAt(0.35), { duration: 1 })
+            s.play(chart.cutAt(0.9), { duration: 1 })
+        })
+        const number = (index: number, t: number) => boundsOf(drawn(f, t, chart.readouts[index]))
+        const line = 540 + 200 - 140
+        expect(number(1, 1).bottom).toBeGreaterThan(line - 30)
+        expect(number(1, 2).bottom).toBeLessThan(line - 9)
+        expect(number(1, 2).bottom).toBeCloseTo(number(1, 1).bottom - 20, 3)
+        expect(number(0, 2).bottom).toBeCloseTo(number(0, 1).bottom, 6)
+        // When the line is far again, the number is back over its bar.
+        expect(number(1, 3).bottom).toBeCloseTo(number(1, 1).bottom, 6)
+        // A line of the options that the film hides until its verb moves no number.
+        let hidden!: Chart, shown!: Chart
+        const g = await compile((s) => {
+            hidden = make({ cutAt: { value: 0.35 } })
+            hidden.valueCut!.hide()
+            shown = make({ cutAt: { value: 0.35 } }).at(0, 2000)
+            s.add(hidden, shown)
+        })
+        const top = (chart: Chart) => boundsOf(drawn(g, 0, chart.readouts[1])).bottom - at(0, () => chart.get('y'))
+        expect(top(hidden)).toBeCloseTo(number(1, 1).bottom, 6)
+        expect(top(shown)).toBeCloseTo(number(1, 2).bottom, 6)
+    })
+
+    it('ends each verb in its last picture when the play has no duration', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make({ states: true }))
+            s.play(chart.mark(0, 'target'), chart.mask(2), chart.reference([0.2, 0.2, 0.6]), chart.cutAt(0.4, { label: 'limit' }), chart.cutAfter(1), chart.sort('ascending'), { duration: 0 })
+            s.wait(1)
+        })
+        expect(chart.order).toEqual([2, 1, 0])
+        expect(at(0, () => chart.values.map((value) => Math.round(value.value * 1000) / 1000))).toEqual([0.625, 0.375, 0])
+        expect(stateMarks(f, 0).map((mark) => [mark.shape, mark.x])).toEqual([['ring', 1160], ['cross', 760]])
+        expect(at(0, () => Math.round(middle(chart.bar(0))[0]))).toBe(200)
+        expect(Math.round(pathBounds(drawn(f, 0, chart.outlines[2])[0]!.path)!.height)).toBe(240)
+        expect(said(f, 0, chart.valueCut)).toEqual(['limit'])
+        expect(drawn(f, 0, chart.rankCut).filter((op) => op.dash)).toHaveLength(1)
+        // A sort with no time has no bar on its way, so it adds no patch: the bars, the baseline, the labels,
+        // the numbers, what each bar carries, and the two cuts.
+        expect(chart.children).toHaveLength(3 + 1 + 3 + 3 + 3 + 2)
+    })
+
+    it('sorts the bars in steps: one bar goes to its column, and the bars that it passes make room', async () => {
+        let chart!: Chart
+        const data = [{ label: 'low', value: 0.2 }, { label: 'high', value: 0.5 }, { label: 'mid', value: 0.3 }]
+        const f = await compile((s) => {
+            chart = s.add(make({ states: true }, data))
+            s.play(chart.mark('low', 'target'), { duration: 1 })
+            s.play(chart.sort(), { duration: 2 })
+            expect(chart.order).toEqual([1, 2, 0])
+        })
+        const x = (node: Node, t: number) => at(t, () => Math.round(middle(node)[0]))
+        expect([0, 1, 2].map((index) => x(chart.bar(index), 1))).toEqual([-200, 0, 200])
+        // The first step takes half of the time: "high" goes to the first column, and "low" moves one on. "mid" waits.
+        expect([0, 1, 2].map((index) => x(chart.bar(index), 2))).toEqual([0, -200, 200])
+        expect([0, 1, 2].map((index) => x(chart.bar(index), 3))).toEqual([200, -200, 0])
+        // A bar keeps its index, and its label, its number and its mark go with it.
+        expect(chart.bar(1)).toBe(chart.bars[1])
+        expect([0, 1, 2].map((index) => x(chart.labels[index]!, 3) - x(chart.labels[index]!, 1))).toEqual([400, -200, -200])
+        const number = boundsOf(drawn(f, 3, chart.readouts[0]))
+        expect(Math.round((number.x + number.right) / 2)).toBe(960 + 200)
+        expect(stateMarks(f, 3).map((mark) => mark.x)).toEqual([960 + 200])
+        // A place on the column of a bar follows the bar.
+        expect(at(3, () => chart.p('low'))).toEqual([200, 200 - 80])
+        expect(at(3, () => chart.p('high', 1))).toEqual([-200, -200])
+    })
+
+    it('sorts by the values at the end of the sort, keeps bars with one value in their order, and takes a list', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(make())
+            // The update is named first, so the sort sees its values.
+            s.play(chart.update([0.1, 0.6, 0.3]), chart.sort(), { duration: 1 })
+            expect(chart.order).toEqual([1, 2, 0])
+            s.play(chart.sort('ascending'), { duration: 1 })
+            expect(chart.order).toEqual([0, 2, 1])
+            s.play(chart.sort(['ran', 0, 'ate']), { duration: 1 })
+            expect(chart.order).toEqual([1, 0, 2])
+            expect(chart.tail(1)).toEqual([0, 2])
+            s.play(chart.update([0.4, 0.4, 0.4]), { duration: 1 })
+            s.play(chart.sort(), { duration: 1 })
+            expect(chart.order).toEqual([1, 0, 2])
+        })
+        expect(() => chart.sort([0, 1])).toThrow('barChart: sort() names 2 bars, and the chart has 3. Name each bar one time, in the new order')
+        expect(() => chart.sort([0, 1, 1])).toThrow('barChart: sort() names bar 1 ("ran") two times')
+        expect(() => chart.sort('up' as never)).toThrow('barChart: sort() got "up". It takes \'descending\', \'ascending\', or a list of the bars in their new order')
+    })
+
+    it('refuses a sort that starts while another one moves the bars', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            expect(() => s.play(chart.sort('ascending'), chart.sort(), { duration: 1 })).toThrow('barChart: sort() plays from 0 s to 1 s, and the sort before it plays from 0 s to 1 s. A bar has one way to its column')
+        })
+    })
+
+    it('puts a patch behind a bar that passes others, and none with no backing', async () => {
+        let chart!: Chart, bare!: Chart
+        const data = [{ label: 'low', value: 0.2 }, { label: 'high', value: 0.5 }]
+        const f = await compile((s) => {
+            chart = s.add(make({}, data))
+            bare = s.add(make({ backing: null }, data).at(0, 2000))
+            s.play(chart.sort(), bare.sort(), { duration: 1 })
+        })
+        // Two bars, the baseline, two labels and two numbers. The sort adds one patch to the first chart.
+        expect(bare.children).toHaveLength(7)
+        expect(chart.children).toHaveLength(8)
+        const patch = chart.children[7]!
+        expect(drawn(f, 0.5, patch)[0]!.fill).toEqual(parseColor('bg'))
+        // The patch is as wide as one column, under the bar that moves and over the bar that it passes.
+        const b = pathBounds(drawn(f, 0.5, patch)[0]!.path)!
+        expect(b.width).toBeCloseTo(300, 6)
+        expect(Math.round(b.x + b.width / 2)).toBe(960)
+        const order = paths(f, 0.5).map((op) => (from(op, patch) ? 'patch' : from(op, chart.bar(1)) ? 'mover' : from(op, chart.bar(0)) ? 'passed' : ''))
+        expect(order.indexOf('passed')).toBeLessThan(order.indexOf('patch'))
+        expect(order.indexOf('patch')).toBeLessThan(order.indexOf('mover'))
+        // After the sort it is away, and the bars are in one layer again.
+        expect(drawn(f, 1, patch)).toEqual([])
+        expect(at(1, () => patch.get('visible'))).toBe(false)
+        expect(at(1, () => chart.bar(1).get('z'))).toBe(0)
+    })
+
+    it('lets a part that a bar gets while it moves join the move', async () => {
+        let chart!: Chart
+        const data = [{ label: 'low', value: 0.2 }, { label: 'mid', value: 0.3 }, { label: 'high', value: 0.5 }]
+        const f = await compile((s) => {
+            chart = s.add(make({}, data))
+            // "low" moves in the two steps of the sort. Its mark comes in the middle of the first step.
+            s.play(chart.sort('descending', { duration: 2 }), delay(chart.mark('low', 'target', { duration: 0.2 }), 0.5), chart.reference())
+        })
+        expect(chart.order).toEqual([2, 1, 0])
+        expect(stateMarks(f, 2).map((mark) => mark.x)).toEqual([960 + 200])
+        // The outline of the second series was made before the sort, and it is with its bar too.
+        const b = pathBounds(drawn(f, 2, chart.outlines[0])[0]!.path)!
+        expect(Math.round(b.x + b.width / 2)).toBe(960 + 200)
+        // In the first step the mark is where its bar is, between two columns.
+        const bar = at(0.9, () => middle(chart.bar(0))[0])
+        expect(stateMarks(f, 0.9)[0]!.x).toBeCloseTo(960 + bar, -1)
+        expect(bar).toBeGreaterThan(-200)
+        expect(bar).toBeLessThan(0)
+        // A part that a bar gets after a sort is in the column where the bar is now.
+        let later!: Chart
+        const g = await compile((s) => {
+            later = s.add(make({}, data))
+            s.play(later.sort(), { duration: 1 })
+            s.play(later.mark('low', 'target'), { duration: 1 })
+        })
+        expect(stateMarks(g, 2).map((mark) => mark.x)).toEqual([960 + 200])
+        // A part that the film gives a bar at a time before a sort that it named first goes with the bar too.
+        let early!: Chart
+        const h = await compile((s) => {
+            early = s.add(make({}, data))
+            s.wait(1)
+            s.play(early.sort(), { duration: 1 })
+            s.at(0.2, () => s.play(early.mark('low', 'target'), { duration: 0.2 }))
+        })
+        expect(stateMarks(h, 0.5).map((mark) => mark.x)).toEqual([960 - 200])
+        expect(stateMarks(h, 2).map((mark) => mark.x)).toEqual([960 + 200])
+    })
+
+    it('draws the lines of a fixed scale, and refuses a value that is not on it', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make({ ticks: [0, 0.5, 1], format: (value) => value.toFixed(1) }))
+        })
+        expect(said(f, 0, chart.ticks)).toEqual(['0.0', '0.5', '1.0'])
+        const lines = drawn(f, 0, chart.ticks).filter((op) => op.stroke && !op.fill).map((op) => pathBounds(op.path)!)
+        expect(lines.map((b) => Math.round(b.y))).toEqual([740, 540, 340])
+        expect(lines.map((b) => [Math.round(b.x), Math.round(b.width)])).toEqual([[660, 600], [660, 600], [660, 600]])
+        // The values are before the left edge of the plot, so `fitted` gives the plot the width that is left.
+        const words = boundsOf(drawn(f, 0, chart.ticks).filter((op) => op.fill))
+        expect(words.right).toBeLessThan(660 - 10)
+        expect(() => make({ ticks: 3, max: undefined })).toThrow('barChart: ticks need a scale that does not change. Give `max` with them')
+        expect(() => make({ ticks: [0, 2] })).toThrow('barChart: the tick 2 is not on the scale, which goes from 0 to 1')
+        expect(() => chart.update([0.2, 1.4, 0.1])).toThrow('barChart: update(): the value of bar 1 ("ran") is 1.4, and the scale goes from 0 to 1. Give a `min` and a `max` that hold every value')
+        expect(() => chart.reference([0.2, 0.2, -0.1])).toThrow('barChart: reference(): the value of bar 2 ("ate") is -0.1, and the scale goes from 0 to 1')
+        expect(() => make({ ticks: 2 }, [{ label: 'a', value: 3 }])).toThrow('barChart: the data: the value of bar 0 ("a") is 3')
+        // Without ticks, a bar may pass the end of the plot, as it did before.
+        expect(() => make().update([0.2, 1.4, 0.1])).not.toThrow()
+    })
+
+    it('is as wide as its region with `fitted`, with the values of its scale and the label of a cut', async () => {
+        await compileFilm(film(() => {
+            const chart = fitted(900, (width) => make({ width, ticks: [0, 0.5, 1], cutAt: { value: 0.5, label: 'a limit with a long name' } }))
+            expect(boxOf(chart).width).toBeCloseTo(900, 0)
+            expect(chart.region().width).toBeLessThan(700)
+        }))
+    })
+
+    it('gives the box of a column and of the plot in stage pixels, where the chart is', async () => {
+        await compile((s) => {
+            const chart = s.add(make().at(100, 50))
+            expect(chart.region()).toMatchObject({ left: -200, right: 400, top: -150, bottom: 250 })
+            expect(chart.region('ran')).toMatchObject({ left: 0, right: 200, top: -150, bottom: 250 })
+            s.play(chart.sort('ascending'), { duration: 1 })
+            expect(chart.region('ran')).toMatchObject({ left: 0, right: 200 })
+            expect(chart.region('ate')).toMatchObject({ left: -200, right: 0 })
+            expect(chart.p(0)).toEqual([200, 0])
+        })
+    })
+
+    it('lays a chart of rows out the other way: marks at the left of the labels, and the two cuts turned', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(barChart([{ label: 'a long name', value: 0.5 }, { label: 'b', value: 0.2 }], { width: 600, height: 200, horizontal: true, max: 1, labelSize: 30, states: true, cutAt: { value: 0.75, label: 'limit' }, cutAfter: { count: 1, label: 'top 1' } }))
+            s.play(chart.mark([0, 1], 'chosen'), { duration: 1 })
+            s.play(chart.sort('ascending'), { duration: 1 })
+        })
+        // The marks are in one column, at the left of the longest label.
+        const marks = stateMarks(f, 1)
+        expect(marks.map((mark) => mark.y)).toEqual([490, 590])
+        expect(marks[0]!.x).toBe(marks[1]!.x)
+        const long = boundsOf(drawn(f, 1, chart.labels[0]))
+        expect(marks[0]!.x).toBeLessThan(long.x - 10)
+        // The line of a value runs down the plot, and its label is over the plot.
+        const value = pathBounds(drawn(f, 1, chart.valueCut).filter((op) => op.dash)[0]!.path)!
+        expect([value.x, value.width, value.y + value.height].map(Math.round)).toEqual([960 - 300 + 450, 0, 640])
+        expect(boundsOf(drawn(f, 1, chart.valueCut).filter((op) => !op.dash)).bottom).toBeLessThan(440)
+        // The line of a rank runs between two rows, and its label is after the plot.
+        const rank = pathBounds(drawn(f, 1, chart.rankCut).filter((op) => op.dash)[0]!.path)!
+        expect([rank.x, rank.y, rank.height].map(Math.round)).toEqual([660, 540, 0])
+        expect(boundsOf(drawn(f, 1, chart.rankCut).filter((op) => !op.dash)).x).toBeGreaterThan(1260)
+        // A sort moves the rows up and down.
+        expect(at(2, () => Math.round(middle(chart.bar(0))[1]))).toBe(50)
+        expect(stateMarks(f, 2).map((mark) => mark.y)).toEqual([590, 490])
+    })
+
+    it('names a bar by its index or its label, and says which bars there are', async () => {
+        const chart = make()
+        expect(chart.find('ran')).toBe(1)
+        expect(chart.find('none')).toBeNull()
+        expect(() => chart.mark('none', 'target')).toThrow('barChart: mark(): no bar has the label "none". The labels are "sat", "ran", "ate"')
+        expect(() => chart.mark(3, 'target')).toThrow('barChart: mark(): no bar 3. The chart has 3 bars, 0 to 2')
+        expect(() => chart.mask(1.5)).toThrow('barChart: mask(): no bar 1.5')
+        expect(() => chart.state(null as never)).toThrow('barChart: state(): a bar is named by its index or by its label, and it got null')
+        const twins = make({}, [{ label: 'a', value: 0.5 }, { label: 'a', value: 0.5 }])
+        expect(() => twins.mark('a', 'target')).toThrow('barChart: mark(): 2 bars have the label "a". Name the bar by its index: 0, 1')
+        expect(() => twins.find('a')).toThrow('2 bars have the label "a"')
+        expect(() => chart.update([1, 2, 3, 4])).toThrow('barChart: update() got 4 values, and the chart has 3 bars. Give one value for each bar')
+        expect(() => chart.update([1, Number.POSITIVE_INFINITY])).toThrow('barChart: update(): value 1 is Infinity. Each value is a finite number')
+    })
+
+    it('makes a copy that is a still picture, and refuses to act on it', async () => {
+        await compile((s) => {
+            const chart = s.add(make({ states: true }))
+            s.play(chart.sort('ascending'), chart.mark(0, 'target'), { duration: 1 })
+            const copy = chart.clone()
+            // The copy has the order and the states of its source at that time, and its own nodes.
+            expect(copy.order).toEqual([2, 1, 0])
+            expect(copy.state(0)).toBe('target')
+            expect(copy.bars[0]).not.toBe(chart.bars[0])
+            for (const act of [() => copy.mark(1, 'chosen'), () => copy.clearStates(), () => copy.mask(1), () => copy.reference(), () => copy.cutAt(0.5), () => copy.cutAfter(1), () => copy.sort()]) {
+                expect(act).toThrow(/^barChart: \w+\(\) is called on a copy of a chart\. A copy is a still picture, and its numbers follow the chart that it is a copy of\. Build a second chart from the data/)
+            }
+            // The source is as it was: a later change of its order leaves the copy alone.
+            s.play(chart.sort(), { duration: 1 })
+            expect(chart.order).toEqual([0, 1, 2])
+            expect(copy.order).toEqual([2, 1, 0])
+            const twin = bins().clone()
+            expect(() => twin.cutAt(2)).toThrow('histogram: cutAt() is called on a copy of a histogram')
+            expect(() => twin.outline([1])).toThrow('histogram: outline() is called on a copy of a histogram')
+        })
+    })
+
+    it('refuses a color that the look does not have where the film names it', async () => {
+        expect(() => make({ referenceColor: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => make({ backing: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => make({ cutAt: { value: 0.5, color: 'nope' } })).toThrow('Unknown color: "nope"')
+        expect(() => make().cutAfter(1, { color: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => make({ states: { odd: { color: 'nope', mark: 'dot' } } })).toThrow('Unknown color: "nope"')
+        expect(() => bins().cutAt(2, { color: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => bins().outline([1], { color: 'nope' })).toThrow('Unknown color: "nope"')
+    })
+
+    it('takes the changes of the state of a bar in the order of time', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            s.wait(2)
+            s.play(chart.mark(0, 'target'), { duration: 1 })
+            expect(() => s.at(1, () => s.play(chart.mark(0, 'chosen'), { duration: 0.5 }))).toThrow('barChart: mark() changes the state of bar 0 ("sat") at 1 s, and the film named a change of the same bar at 2 s before it')
+        })
+    })
+
+    it('reports nothing on its own layout, at a text gap of 0.3 and of 0.7', async () => {
+        const scene = film({ fps: 10 }, (s) => {
+            const chart = s.add(make({ states: true, ticks: [0, 0.5, 1], reference: [0.3, 0.4, 0.3], cutAt: { value: 0.35, label: 'limit 0.35' }, cutAfter: { count: 2, label: 'top 2' }, format: (value) => value.toFixed(2) }))
+            s.play(chart.mark(0, 'target'), chart.mark(1, 'chosen'), { duration: 0.5 })
+            s.play(chart.mask(2), { duration: 1 })
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(scene, { textGap })).diagnostics, `gap ${textGap}`).toEqual([])
+    })
+
+    it('draws a threshold on a histogram, with the count of the samples on each side', async () => {
+        let chart!: ReturnType<typeof histogram>
+        const f = await compile((s) => {
+            chart = s.add(bins())
+            s.wait(1)
+            s.play(chart.cutAt(2.5, { label: 'limit' }), { duration: 1 })
+            expect(chart.cut).toBe(2.5)
+            // A sample at the value is at or over it.
+            expect(chart.sides()).toEqual({ below: 4, above: 6 })
+            expect(chart.sides(2.6)).toEqual({ below: 4, above: 6 })
+            expect(chart.sides(2.61)).toEqual({ below: 5, above: 5 })
+            s.play(chart.cutAt(4), { duration: 1 })
+            expect(chart.sides()).toEqual({ below: 9, above: 1 })
+            s.play(chart.cutAt(null), { duration: 1 })
+            expect(chart.cut).toBeNull()
+        })
+        expect(drawn(f, 0.5, chart.threshold)).toEqual([])
+        // The line is at the value, from the baseline to over the plot.
+        const line = pathBounds(drawn(f, 2, chart.threshold).filter((op) => op.dash)[0]!.path)!
+        expect([line.x, line.width, line.y + line.height].map(Math.round)).toEqual([960, 0, 640])
+        expect(line.y).toBeLessThan(440 - 30)
+        expect(said(f, 2, chart.threshold)).toEqual(['4', '6', 'limit'])
+        // The count of the samples under the value is at the left of the line, and the other one at its right.
+        const texts = drawn(f, 2, chart.threshold).filter((op) => !op.dash)
+        const of = (source: string) => boundsOf(texts.filter((op) => (op.node!.parent as TextNode).source === source))
+        expect(of('4').right).toBeLessThan(960)
+        expect(of('6').x).toBeGreaterThan(960)
+        expect(of('4').bottom).toBeLessThan(440)
+        expect(of('limit').bottom).toBeLessThan(of('6').y)
+        // While the line moves, the counts follow it: at half of the way it is at 3.25.
+        expect(said(f, 2.5, chart.threshold).slice(0, 2)).toEqual(['7', '3'])
+        expect(said(f, 3, chart.threshold).slice(0, 2)).toEqual(['9', '1'])
+        expect(drawn(f, 4, chart.threshold)).toEqual([])
+    })
+
+    it('keeps one side of a threshold bright, and cuts the bar that the line is in', async () => {
+        let chart!: ReturnType<typeof histogram>, low!: ReturnType<typeof histogram>, both!: ReturnType<typeof histogram>
+        const f = await compile((s) => {
+            chart = s.add(bins({ cutAt: { value: 2.5 } }))
+            low = s.add(bins({ cutAt: { value: 2.5, keep: 'below' } }).at(0, 1000))
+            both = s.add(bins({ cutAt: { value: 2.5, keep: 'both' } }).at(0, 2000))
+        })
+        // The bins of 1 and of 2 are at the left, the bin of 2 is cut in two halves, and the bins of 3 and 4 are at the right.
+        const parts = fills(f, 0, chart).map((op) => { const b = pathBounds(op.path)!; return [Math.round(b.x - 960), Math.round(b.width), Math.round(b.height), Math.round(op.fillAlpha * 100) / 100] })
+        expect(parts).toEqual([[-150, 100, 100, 0.3], [-50, 50, 150, 0.3], [0, 50, 150, 1], [50, 100, 200, 1], [150, 100, 50, 1]])
+        expect(fills(f, 0, low).map((op) => Math.round(op.fillAlpha * 100) / 100)).toEqual([1, 1, 0.3, 0.3, 0.3])
+        // With both sides kept, the bars are one shape, as in a histogram with no threshold.
+        expect(fills(f, 0, both)).toHaveLength(1)
+        expect(fills(f, 0, both)[0]!.fillAlpha).toBe(1)
+        expect(said(f, 0, both.threshold)).toEqual(['4', '6'])
+        // A threshold of the options that the film hides until its verb leaves the bars as they are.
+        let hidden!: ReturnType<typeof histogram>
+        const g = await compile((s) => {
+            hidden = bins({ cutAt: { value: 2.5 } })
+            hidden.threshold!.hide()
+            s.add(hidden)
+            s.wait(1)
+            s.play(hidden.cutAt(2.5), { duration: 1 })
+        })
+        expect(fills(g, 0.5, hidden)).toHaveLength(1)
+        expect(fills(g, 2, hidden)).toHaveLength(5)
+    })
+
+    it('counts the samples that show, and writes a count as the film asks', async () => {
+        let chart!: ReturnType<typeof histogram>
+        const f = await compile((s) => {
+            chart = s.add(bins({ cutAt: { value: 3, count: (count, total) => `${count} of ${total}` } }))
+            s.play(chart.fillUp({ count: 5, ease: linear }), { duration: 1 })
+            expect(chart.sides()).toEqual({ below: 5, above: 0 })
+            expect(chart.counts()).toEqual([0, 2, 3, 0, 0])
+            s.play(chart.fillUp({ ease: linear }), { duration: 1 })
+            expect(chart.sides()).toEqual({ below: 5, above: 5 })
+            expect(chart.counts()).toEqual([0, 2, 3, 4, 1])
+        })
+        expect(said(f, 1, chart.threshold)).toEqual(['5 of 5', '0 of 5'])
+        expect(said(f, 2, chart.threshold)).toEqual(['5 of 10', '5 of 10'])
+        // A sample outside the range is in no bar and in no count.
+        const wide = histogram([-1, 1, 2, 9], { bins: 5, range: [0, 5] })
+        expect(wide.sides(1.5)).toEqual({ below: 1, above: 1 })
+    })
+
+    it('refuses a threshold that is not on the axis, and options that it cannot draw', async () => {
+        const chart = bins()
+        expect(() => chart.cutAt(6)).toThrow('histogram: cutAt(): the value 6 is outside the axis, which goes from 0 to 5. Give a value of the axis, or a wider `range`')
+        expect(() => chart.cutAt(Number.NaN)).toThrow('histogram: cutAt(): the value is NaN')
+        expect(() => chart.cutAt(2, { keep: 'left' as never })).toThrow('histogram: cutAt(): keep is "left". It is \'above\', \'below\' or \'both\'')
+        expect(() => chart.cutAt(2, { count: (() => 3) as never })).toThrow('histogram: cutAt(): count returned number. It returns a text')
+        expect(() => bins({ cutAt: { value: -1 } })).toThrow('histogram: the option `cutAt`: the value -1 is outside the axis')
+        expect(() => chart.sides()).toThrow('histogram: sides() needs a value, or a threshold that `cutAt()` drew')
+    })
+
+    it('draws a second distribution as one outline on the same bins, and fills it up', async () => {
+        let chart!: ReturnType<typeof histogram>, second!: ReturnType<ReturnType<typeof histogram>['outline']>
+        const f = await compile((s) => {
+            chart = s.add(bins())
+            second = chart.outline([0.5, 4.2, 4.8, 4.9], { color: 'orange' })
+            expect(second.counts()).toEqual([1, 0, 0, 0, 3])
+            expect(second.sides(4.5)).toEqual({ below: 2, above: 2 })
+            s.play(second.fillUp({ ease: linear }), { duration: 2 })
+        })
+        expect(second.parent).toBe(chart)
+        expect(drawn(f, 0, second)).toEqual([])
+        const line = drawn(f, 2, second)[0]!
+        expect(line.fill).toBeNull()
+        expect(line.stroke).toEqual(parseColor('orange'))
+        // One line from the baseline at the left end, over the top of each bin, to the baseline at the right end.
+        const points = line.path[0]!.p
+        const corners: number[][] = []
+        for (let i = 0; i < points.length; i += 6) corners.push([Math.round(points[i]! - 960), Math.round(points[i + 1]! - 540)])
+        expect(corners.slice(0, 4)).toEqual([[-250, 100], [-250, 50], [-150, 50], [-150, 100]])
+        expect(corners.slice(-3)).toEqual([[150, -50], [250, -50], [250, 100]])
+        // After one sample of four, only the first bin is up.
+        expect(pathBounds(drawn(f, 0.5, second)[0]!.path)!.height).toBeCloseTo(50, 6)
+        // The histogram under it is as it was: one shape for all its bars.
+        expect(fills(f, 2, chart)).toHaveLength(1)
+    })
+
+    it('refuses a second distribution that is higher than the scale, and says what scale holds it', async () => {
+        const chart = bins()
+        expect(() => chart.outline([1, 1, 1, 1, 1])).toThrow('histogram: outline(): one bin of the second distribution holds 5 samples, and the scale of the histogram ends at 4. Give the histogram `max: 5` or more, so that both distributions fit')
+        expect(() => bins({ max: 5 }).outline([1, 1, 1, 1, 1])).not.toThrow()
+        expect(() => chart.outline([1, Number.NaN])).toThrow('histogram: outline(): sample 1 is NaN. Each sample is a finite number')
+        expect(() => chart.outline([1]).fillUp({ count: 2 })).toThrow('histogram: outline: fillUp() got the count 2. It is from 0 to 1, the number of samples')
     })
 })
 
