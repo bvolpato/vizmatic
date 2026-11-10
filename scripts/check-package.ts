@@ -8,9 +8,9 @@ interface PackResult {
     entryCount?: number
 }
 
-// Keep room for number lines, scatter plots, and course narration in the same package.
-// The combined local build packs to 6,735,794 bytes, or 18,859,999 bytes unpacked, with 222 files.
-// Retain the course build budgets for differences between builds. These limits detect accidental growth.
+// The full course component build packs to 7,346,603 bytes, or 21,157,943 bytes unpacked.
+// Its 232 files include the new component examples. The growth is in the stage runtime,
+// type declarations, examples and narration tools. The offline assets are unchanged.
 const limits = {
     size: 7_400_000,
     unpackedSize: 21_200_000,
