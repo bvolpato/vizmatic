@@ -1,10 +1,10 @@
-import { Node, ownLabels } from '../node'
-import { apply, invert, matScale, parseSvgPath, pathBounds, pathLength, pointAt, polyPath, ring, trimPath, circlePath, type Path, type Ring, type Vec } from '../geometry'
+import { Node, ownLabels, rebindCloneParts } from '../node'
+import { apply, invert, mul, transformPath, parseSvgPath, pathBounds, pathLength, pointAt, polyPath, ring, trimPath, circlePath, type Path, type Ring, type Vec } from '../geometry'
 import { text, TextNode, type TextOptions } from '../text'
 import { toPaint, type ColorInput } from '../color'
 import { Value, type Anim, type AnimContext, type AnimOptions } from '../anim'
 import { Box, boxOf } from '../layout'
-import { matchSequence } from '../morph'
+import { matchSequence, pathMixer } from '../morph'
 import { clock, Track } from '../track'
 import type { Ease } from '../ease'
 import { lerpSame, reveal, sampleAt, staggered, stepAt, tweenValue } from './util'
@@ -226,6 +226,9 @@ interface Tie {
     places: Track<Anchors | null>
 }
 
+type LinkAnchor = (side: 'left' | 'right') => readonly [Vec, Vec, Vec] | null
+const COPY_ANCHOR = new WeakMap<LinkAnchor, (page: Passage) => LinkAnchor>()
+
 const SPANS = new WeakMap<PassageSpan, { range: Range; words: () => string }>()
 
 /**
@@ -437,12 +440,13 @@ export class Passage extends Node {
     private strips: Range[] = []
     private edits: Range[] = []
     private picked: Range | null = null
-    private readonly counters = new Map<PassageUnit, Value>()
+    private counters = new Map<PassageUnit, Value>()
     /** The last change that moves words. A second one starts when it is over. */
+    private changesOnPaper: { call: string; t0: number; t1: number }[] = []
     private moving: { call: string; t0: number; t1: number } | null = null
     /** For a slip: the passage that it comes from, and the glyphs of that passage that its glyphs stand for. */
     private origin: { from: Passage; glyphs: Glyph[] } | null = null
-    private readonly ties: Tie[] = []
+    private ties: Tie[] = []
 
     constructor(content: string, options: PassageOptions = {}) {
         super()
@@ -476,6 +480,9 @@ export class Passage extends Node {
         this.least = options.lines ?? null
         if (options.tokens !== undefined && typeof options.tokens !== 'function') throw new Error('passage: tokens is a function that counts the tokens of a text, such as (text) => Math.ceil(text.length / 4)')
         this.counted = options.tokens ?? null
+        // A readout may first request its counter while rendering an earlier frame.
+        for (const unit of ['words', 'characters'] as const) this.counters.set(unit, new Value(0))
+        if (this.counted) this.counters.set('tokens', new Value(0))
 
         this.tokens = this.makeTokens(wordsOf(content))
         if (this.tokens.length === 0) throw new Error(`passage: the text ${short(content)} has no character that a font of the library can draw`)
@@ -521,6 +528,8 @@ export class Passage extends Node {
         words.data['size'] = size
         this.reindex()
         const flow = this.flow(this.tokens)
+        const needed = Math.ceil(flow.height / this.pitch - SOON)
+        if (this.least !== null && needed > this.least) throw new Error(`passage: the text needs ${needed} lines. Give lines: ${needed} or more, or a larger width`)
         this.place(flow)
         for (const glyph of this.glyphs) {
             const [x, y] = this.home(glyph)
@@ -535,6 +544,61 @@ export class Passage extends Node {
         this.layoutBox = [0, 0, width, height]
         // The passage places its words on its bands and its lines. The film check does not judge that room.
         ownLabels(this, { name: 'passage', labels: [words, title] })
+    }
+
+    /** Copy the current text and its annotations so that each passage can change independently. */
+    protected override [rebindCloneParts](copy: this, nodes: ReadonlyMap<Node, Node>): void | (() => void) {
+        const glyphs = new Map<Glyph, Glyph>()
+        copy.tokens = this.tokens.map((original) => {
+            const token: Token = { ...original, glyphs: [] }
+            for (const source of original.glyphs) {
+                const glyph = { ...source, token, node: nodes.get(source.node)! }
+                token.glyphs.push(glyph)
+                glyphs.set(source, glyph)
+            }
+            return token
+        })
+        copy.tops = [...this.tops]
+        copy.reindex()
+
+        const cloneRange = (range: Range): Range => {
+            const node = nodes.get(range.node) as PassageSpan
+            const result: Range = {
+                ...range, node, over: nodes.get(range.over)!,
+                first: glyphs.get(range.first)!, last: glyphs.get(range.last)!,
+                look: { ...range.look }, joins: [...range.joins],
+                parts: range.parts.map((part) => ({
+                    ...part, group: nodes.get(part.group)!, band: nodes.get(part.band)!,
+                    sign: part.sign ? nodes.get(part.sign)! : null,
+                })),
+            }
+            SPANS.set(node, { range: result, words: () => copy.wordsIn(result) })
+            return result
+        }
+        copy.marks = this.marks.map(cloneRange)
+        copy.pieces = this.pieces.map(cloneRange)
+        copy.strips = this.strips.map(cloneRange)
+        copy.edits = this.edits.map(cloneRange)
+        copy.picked = this.picked ? cloneRange(this.picked) : null
+        copy.counters = new Map([...this.counters].map(([unit, value]) => [unit, new Value(value.value)]))
+        copy.moving = null
+        copy.changesOnPaper = []
+        // Each copied link registers its ends after both passages have copied their glyphs.
+        copy.ties = []
+        const origin = this.origin
+        if (!origin) return
+        const parent = nodes.get(origin.from) as Passage | undefined
+        if (!parent) {
+            copy.origin = { from: origin.from, glyphs: [...origin.glyphs] }
+            return
+        }
+        return () => {
+            const source = origin.glyphs.map((glyph) => {
+                const index = origin.from.order.get(glyph)
+                return index === undefined ? undefined : parent.glyphs[index]
+            })
+            copy.origin = source.every((glyph): glyph is Glyph => glyph !== undefined) ? { from: parent, glyphs: source } : null
+        }
     }
 
     // ── State ─────────────────────────────────────────────────────────────
@@ -605,9 +669,7 @@ export class Passage extends Node {
     counter(unit: PassageUnit = 'words'): Value {
         if (unit !== 'words' && unit !== 'characters' && unit !== 'tokens') throw new Error(`passage: a counter counts 'words', 'characters' or 'tokens', not ${shown(unit)}`)
         if (unit === 'tokens' && !this.counted) throw new Error(this.noTokens('counter(\'tokens\')'))
-        let value = this.counters.get(unit)
-        if (!value) this.counters.set(unit, value = new Value(this.selection?.[unit] ?? 0))
-        return value
+        return this.counters.get(unit)!
     }
 
     // ── Places ────────────────────────────────────────────────────────────
@@ -643,7 +705,7 @@ export class Passage extends Node {
      */
     region(which?: PassageRef | { line: number }): Box {
         let left = this.padX, right = this.w - this.padX, top = this.textTop, bottom = this.textTop + this.tops[this.tops.length - 1]! + this.pitch
-        if (which !== undefined && typeof which === 'object' && !(which instanceof PassageSpan) && 'line' in which) {
+        if (which !== null && typeof which === 'object' && !(which instanceof PassageSpan) && 'line' in which) {
             const line = which.line
             if (!Number.isInteger(line) || line < 0 || line >= this.tops.length) throw new Error(`passage: region: no line ${shown(line)}. The text has ${this.tops.length} lines, and the first is line 0`)
             top = this.textTop + this.tops[line]! + this.rise + this.bandTop
@@ -655,8 +717,9 @@ export class Passage extends Node {
             top = boxes[0]![1]
             bottom = boxes[boxes.length - 1]![3]
         }
-        const [x0, y0] = this.toWorld(left, top), [x1, y1] = this.toWorld(right, bottom)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        const corners = [this.toWorld(left, top), this.toWorld(right, top), this.toWorld(right, bottom), this.toWorld(left, bottom)]
+        const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y)
+        return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
     /**
@@ -728,12 +791,11 @@ export class Passage extends Node {
     mark(which: PassageRef, kind?: string | null, options: AnimOptions = {}): Anim {
         checkTiming('mark()', options)
         const name = kind === null ? null : this.kind(kind ?? Object.keys(this.kinds)[0]!)
-        this.locate('mark', which)
         return {
             label: 'passage.mark', duration: options.duration ?? 0.6, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
-                this.free('mark()', ctx)
+                const record = this.free('mark()', ctx)
                 const { t0, t1, ease } = ctx
                 const [first, last] = this.locate('mark', which)
                 const found = this.spanAt(first, last)
@@ -756,6 +818,7 @@ export class Passage extends Node {
                     this.settle(range, t0, t1, ease, true)
                 }
                 this.tint(t0, t1, ease)
+                record()
             },
         }
     }
@@ -772,12 +835,11 @@ export class Passage extends Node {
         checkTiming('cut()', options)
         const colors = options.colors ?? ['purple', 'orange']
         if (!Array.isArray(colors) || colors.length !== 2) throw new Error('passage: the colors of cut() are two colors, for the chunks in turn, such as [\'purple\', \'orange\']')
-        if (how !== null) this.plan(how)
         return {
             label: 'passage.cut', duration: options.duration ?? (how === null ? 0.5 : 1.4), ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
-                this.free('cut()', ctx)
+                const record = this.free('cut()', ctx)
                 const { t0, t1, ease } = ctx, span = t1 - t0
                 const next = how === null ? [] : this.plan(how)
                 // The old chunks leave before the new ones arrive.
@@ -804,6 +866,7 @@ export class Passage extends Node {
                     }
                     return whole
                 })
+                record()
             },
         }
     }
@@ -815,12 +878,11 @@ export class Passage extends Node {
      */
     select(which: PassageRef | null, options: AnimOptions = {}): Anim {
         checkTiming('select()', options)
-        if (which !== null) this.locate('select', which)
         return {
             label: 'passage.select', duration: options.duration ?? 0.7, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
-                this.free('select()', ctx)
+                const record = this.free('select()', ctx)
                 const { t0, t1, ease } = ctx
                 if (which === null) {
                     if (this.picked) this.dismiss(this.picked, t0, t1, ease)
@@ -837,6 +899,7 @@ export class Passage extends Node {
                     }
                 }
                 this.recount(t0, t1, ease)
+                record()
             },
         }
     }
@@ -870,9 +933,10 @@ export class Passage extends Node {
             label: 'passage.lift', duration: options.duration ?? 1.2, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
-                this.free('lift()', ctx)
+                const record = this.free('lift()', ctx)
                 const from = slip.origin!.glyphs
                 if (from.some((glyph) => !this.order.has(glyph))) throw new Error(`passage: lift: the words ${short(slip.text)} of the slip are no longer in the passage, after a diff() and an accept(). Make the slip again from the text of now`)
+                if (from.length !== slip.glyphs.length || from.some((glyph, i) => glyph.char !== slip.glyphs[i]!.char)) throw new Error('passage: the slip text changed before lift(). Lift the original slip or make a new slip from the passage')
                 reveal(slip, ctx.t0, ctx.stage)
                 const { t0, t1, ease } = ctx, span = t1 - t0, land = t0 + span * 0.8
                 for (const part of [slip.frame, slip.title]) {
@@ -882,23 +946,22 @@ export class Passage extends Node {
                 }
                 const saved = clock.now
                 clock.now = t0
-                const source = this.words.worldMatrix(), target = invert(slip.flight.worldMatrix())
-                const scale = matScale(source) * matScale(target)
+                const target = invert(slip.flight.worldMatrix())
                 slip.glyphs.forEach((glyph, index) => {
                     const start = from[index]!
-                    const [x, y] = apply(target, ...apply(source, start.node.get('x'), start.node.get('y')))
-                    // On its way, a glyph is a plain shape and not text: the film check would read two texts at one place.
-                    const ghost = new Node(glyph.node.get('path')).fill('ink')
+                    // Interpolate the outlines in flight coordinates. A parent can rotate or stretch either page.
+                    const outline = (node: Node) => transformPath(node.get('path')!, mul(target, node.worldMatrix()))
+                    const startPath = outline(start.node), endPath = outline(glyph.node)
+                    const ghost = new Node(startPath).fill(start.node.get('fill'))
                     slip.flight.add(ghost)
-                    for (const [name, value, end] of [['x', x, glyph.node.get('x')], ['y', y, glyph.node.get('y')], ['sx', scale, 1], ['sy', scale, 1]] as const) {
-                        stepAt(ghost, name, value, t0)
-                        ghost.tween(name, end, t0, land, ease)
-                    }
+                    const sameShape = startPath.length === endPath.length && startPath.every((ring, i) => ring.p.length === endPath[i]!.p.length)
+                    ghost.track('path').add({ t0, t1: land, ease, to: endPath, at: sameShape ? lerpSame(startPath, endPath) : pathMixer(startPath, endPath) })
                     ghost.track('visible').step(land, false)
                     stepAt(glyph.node, 'opacity', 0, t0)
                     stepAt(glyph.node, 'opacity', 1, land)
                 })
                 clock.now = saved
+                record()
             },
         }
     }
@@ -932,57 +995,68 @@ export class Passage extends Node {
         checkTiming('diff()', options)
         if (typeof next !== 'string' || next.trim() === '') throw new Error('passage: diff takes the text of the next version')
         // Make the words of the next version now, so a word that is too wide stops the film at the line that names it.
-        const made = this.makeTokens(wordsOf(next))
-        if (made.length === 0) throw new Error(`passage: diff: the next version ${short(next)} has no character that a font of the library can draw`)
-        const wide = made.find((token) => token.ink > this.room)
+        const nextWords = wordsOf(next)
+        let prepared: Token[] | null = this.makeTokens(nextWords)
+        if (prepared.length === 0) throw new Error(`passage: diff: the next version ${short(next)} has no character that a font of the library can draw`)
+        const wide = prepared.find((token) => token.ink > this.room)
         if (wide) throw new Error(`passage: diff: the word ${JSON.stringify(wide.text)} of the next version is ${Math.ceil(wide.ink)} px wide at size ${this.size}, and a width of ${this.w} leaves ${Math.floor(this.room)} px for the text. Give the passage a width of ${Math.ceil(wide.ink + this.padX * 2)} or more, or a smaller size`)
-        const wanted = made.map((token) => ({ text: token.text, gap: token.gap }))
-        this.steady('diff')
+        const wanted = prepared.map((token) => ({ text: token.text, gap: token.gap }))
         return {
             label: 'passage.diff', duration: options.duration ?? 1.6, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
                 this.steady('diff')
                 const { t0, t1, ease } = ctx, span = t1 - t0
+                // Replaying an animation needs fresh glyphs with no visibility keys from its first play.
+                const made = prepared ?? this.makeTokens(nextWords)
+                prepared = null
                 const old = this.tokens
                 const pairs = matchSequence(old.map((token) => token.text), wanted.map((word) => word.text))
                 const same = pairs.length === old.length && pairs.length === wanted.length
                 if (same && old.every((token, index) => token.gap === wanted[index]!.gap)) return
-                this.claim('diff()', ctx)
+                const gaps = new Map<Token, Gap>(), later = new Map<Token, Gap>()
+                const replacements: [Token[], Glyph][] = []
                 const merged: Token[] = [], struck: Token[][] = [], added: Token[][] = []
                 let i = 0, j = 0
                 for (const [pi, pj] of [...pairs, [old.length, wanted.length] as const]) {
                     const gone = old.slice(i, pi), come = made.slice(j, pj)
-                    for (const token of gone) token.state = 'struck'
-                    for (const token of come) token.state = 'added'
                     const kept = pi < old.length ? old[pi]! : null
-                    if (kept) kept.gap = wanted[pj]!.gap
+                    if (kept) gaps.set(kept, wanted[pj]!.gap)
                     // The new words stand beside the old ones. So the first word after words that are struck does
                     // not start a line where they started one: it takes its own gap when they leave.
                     const follower = come[0] ?? kept
                     if (gone.length > 0 && follower) {
-                        const own = follower.gap, before = gone[0]!.gap
+                        const own = gaps.get(follower) ?? follower.gap, before = gone[0]!.gap
                         if (own === 'start' || (own !== 'space' && before !== 'space')) {
-                            follower.gap = 'space'
-                            follower.later = own
+                            gaps.set(follower, 'space')
+                            later.set(follower, own)
                         }
                     }
                     if (gone.length > 0) struck.push(gone)
                     if (come.length > 0) added.push(come)
                     // New words that take the place of the last word of a span are a part of the span.
                     const end = come[come.length - 1]?.glyphs.at(-1)
-                    if (end && gone.length > 0) {
-                        for (const range of [...this.marks, ...(this.picked ? [this.picked] : []), ...this.ties.map((tie) => tie.range)]) if (gone.includes(range.last.token)) range.last = end
-                    }
+                    if (end && gone.length > 0) replacements.push([gone, end])
                     merged.push(...gone, ...come)
                     if (kept) merged.push(kept)
                     i = pi + 1
                     j = pj + 1
                 }
-                const flow = this.flow(merged)
-                if (this.least !== null && flow.tops.length > this.least) {
-                    for (const token of old) token.state = 'plain'
-                    throw new Error(`passage: diff: the two versions take ${flow.tops.length} lines side by side, and the passage has lines: ${this.least}. Give lines: ${flow.tops.length} or more, or a larger width`)
+                const flow = this.flow(merged, gaps)
+                const needed = Math.ceil(flow.height / this.pitch - SOON)
+                if (this.least !== null && needed > this.least) throw new Error(`passage: diff: the two versions take ${needed} lines side by side, and the passage has lines: ${this.least}. Give lines: ${needed} or more, or a larger width`)
+                this.claim('diff()', ctx)
+                for (const [token, gap] of gaps) token.gap = gap
+                for (const [token, gap] of later) token.later = gap
+                for (const run of struck) for (const token of run) token.state = 'struck'
+                for (const run of added) for (const token of run) token.state = 'added'
+                const ranges = new Set([...this.marks, ...(this.picked ? [this.picked] : []), ...this.ties.map((tie) => tie.range)])
+                for (const [gone, end] of replacements) {
+                    // A replacement that crosses two annotations belongs to neither one.
+                    const start = this.order.get(gone[0]!.glyphs[0]!)!
+                    for (const range of ranges) {
+                        if (gone.at(-1) === range.last.token && this.order.get(range.first)! <= start) range.last = end
+                    }
                 }
                 // The line through the old words comes first, where the words are. Then the text moves, and the new words arrive.
                 const strike = t0 + span * 0.3, move = [t0 + span * 0.2, t0 + span * 0.7] as const, arrive = t0 + span * 0.6
@@ -1114,14 +1188,15 @@ export class Passage extends Node {
     }
 
     /** The place of each word in the width of the text. A line breaks at a space, where the film wrote a break, and at no other place. */
-    private flow(tokens: readonly Token[]): Flow {
+    private flow(tokens: readonly Token[], gaps?: ReadonlyMap<Token, Gap>): Flow {
         const at = new Map<Token, readonly [number, number]>(), tops = [0]
         let x = 0
         tokens.forEach((token, index) => {
-            const breaks = index > 0 && (token.gap === 'line' || token.gap === 'para')
+            const gap = gaps?.get(token) ?? token.gap
+            const breaks = index > 0 && (gap === 'line' || gap === 'para')
             // A line has the room of the ink of its last word, so no letter passes the width.
             if (breaks || (x > 0 && x + this.space + token.ink > this.room + SOON)) {
-                tops.push(tops[tops.length - 1]! + this.pitch * (breaks && token.gap === 'para' ? 1 + PARA : 1))
+                tops.push(tops[tops.length - 1]! + this.pitch * (breaks && gap === 'para' ? 1 + PARA : 1))
                 x = 0
             }
             const start = x > 0 ? x + this.space : 0
@@ -1157,6 +1232,7 @@ export class Passage extends Node {
      */
     private reflow(flow: Flow, t0: number, t1: number, ease: Ease, fresh?: ReadonlySet<Glyph>): void {
         this.place(flow)
+        this.layoutBox = [0, 0, this.w, this.heightFor(flow.height)]
         const span = t1 - t0, turn = (t0 + t1) / 2
         for (const glyph of this.glyphs) {
             const [x, y] = this.home(glyph), node = glyph.node
@@ -1419,13 +1495,19 @@ export class Passage extends Node {
      * and the lists of the passage hold the text after all its changes. So the place of the part is kept over
      * time: each `diff()` and each `accept()` adds the way from the old place to the new one.
      */
-    private tie(range: { first: Glyph; last: Glyph }): (side: 'left' | 'right') => [Vec, Vec, Vec] | null {
-        const places = new Track<Anchors | null>(this.anchors(range))
+    private tie(range: { first: Glyph; last: Glyph }, initial: Anchors | null = this.anchors(range)): LinkAnchor {
+        const places = new Track<Anchors | null>(initial)
         this.ties.push({ range, places })
-        return (side) => {
+        const read: LinkAnchor = (side) => {
             const at = places.sample(clock.now)
             return at ? this.way(at, side) : null
         }
+        COPY_ANCHOR.set(read, (page) => {
+            const first = this.order.get(range.first), last = this.order.get(range.last)
+            if (first === undefined || last === undefined) return () => null
+            return page.tie({ first: page.glyphs[first]!, last: page.glyphs[last]! }, places.sample(clock.now))
+        })
+        return read
     }
 
     /** The ends of the links follow the words to their places of now. A part with no word left has no place. */
@@ -1609,7 +1691,7 @@ export class Passage extends Node {
             let from = 0
             tokens.forEach((token, index) => {
                 const next = tokens[index + 1]
-                if (next && !(next.gap === 'line' || next.gap === 'para' || (how.by === 'sentence' && endsSentence(token.text)))) return
+                if (next && !(next.gap === 'para' || (how.by === 'sentence' && endsSentence(token.text)))) return
                 chunks.push(ends(from, index))
                 from = index + 1
             })
@@ -1652,13 +1734,16 @@ export class Passage extends Node {
     private claim(call: string, ctx: AnimContext): void {
         const [t0, t1] = this.times(call, ctx), last = this.moving
         if (last && t0 < last.t1 - SOON) throw new Error(`passage: ${call} plays from ${seconds(t0)} to ${seconds(t1)}, and ${last.call} plays from ${seconds(last.t0)} to ${seconds(last.t1)}. The words move in one change at a time. Play the two in a \`seq\`, or start ${call} at ${seconds(last.t1)} or later`)
+        const busy = this.changesOnPaper.find((change) => t0 < change.t1 - SOON && t1 > change.t0 + SOON)
+        if (busy) throw new Error(`passage: ${call} moves the words while ${busy.call} plays from ${seconds(busy.t0)} to ${seconds(busy.t1)}. Play the two in a \`seq\``)
         this.moving = { call, t0, t1 }
     }
 
     /** A band that arrives while the words move would be at the place where the words are not yet. */
-    private free(call: string, ctx: AnimContext): void {
+    private free(call: string, ctx: AnimContext): () => void {
         const [t0, t1] = this.times(call, ctx), last = this.moving
         if (last && t0 < last.t1 - SOON && t1 > last.t0 + SOON) throw new Error(`passage: ${call} plays from ${seconds(t0)} to ${seconds(t1)}, while ${last.call} moves the words from ${seconds(last.t0)} to ${seconds(last.t1)}. Play ${call} after it, or the two in a \`seq\``)
+        return () => { this.changesOnPaper.push({ call, t0, t1 }) }
     }
 }
 
@@ -1689,7 +1774,7 @@ export interface PassageLinkOptions {
  * `passage.link()`.
  */
 export class PassageLink extends Node {
-    private readonly gap = new Value(0)
+    private gap = new Value(0)
     private cut = false
     private readonly size: number
     private readonly side: 'left' | 'right'
@@ -1699,10 +1784,10 @@ export class PassageLink extends Node {
     constructor(
         private readonly from: Passage,
         /** The three points of the way out of the passage, by one side, in its coordinates. Null when the words are gone. */
-        private readonly leader: (side: 'left' | 'right') => readonly [Vec, Vec, Vec] | null,
+        private leader: LinkAnchor,
         private readonly to: Node,
         /** The same for the span of a passage that the line ends at, in the coordinates of that passage. Null for any other node. */
-        private readonly entry: ((side: 'left' | 'right') => readonly [Vec, Vec, Vec] | null) | null = null,
+        private entry: LinkAnchor | null = null,
         options: PassageLinkOptions = {},
     ) {
         // An empty path lets the standard draw verb animate trimTo here.
@@ -1710,6 +1795,7 @@ export class PassageLink extends Node {
         if (!(from instanceof Passage) || typeof leader !== 'function' || !(to instanceof Node) || (to instanceof PassageSpan) !== (typeof entry === 'function')) throw new Error('passageLink: make a link with passage.link(words, target)')
         if (options.side !== undefined && options.side !== 'left' && options.side !== 'right') throw new Error(`passage: the side of a link is 'left' or 'right', not ${shown(options.side)}`)
         this.size = options.size ?? 32
+        if (!(Number.isFinite(this.size) && this.size > 0)) throw new Error('passage: the size of a link must be a positive text size in pixels')
         this.side = options.side ?? 'right'
         this.aside = options.shift ?? 0
         if (!Number.isFinite(this.aside)) throw new Error(`passage: the shift of a link is a number of pixels, not ${shown(options.shift)}`)
@@ -1722,6 +1808,18 @@ export class PassageLink extends Node {
         // The line ends at the two on purpose, so the film check does not judge their text against it.
         this.data['attached'] = [from, to instanceof PassageSpan ? to.passage : to]
         this.data['line'] = true
+    }
+
+    protected override [rebindCloneParts](copy: this): () => void {
+        copy.gap = new Value(this.gap.value)
+        copy.draw = () => copy.build()
+        copy.data['attached'] = [copy.from, copy.to instanceof PassageSpan ? copy.to.passage : copy.to]
+        return () => {
+            if (copy.from !== this.from) copy.leader = COPY_ANCHOR.get(this.leader)?.(copy.from) ?? this.leader
+            if (this.entry && this.to instanceof PassageSpan && copy.to instanceof PassageSpan && copy.to.passage !== this.to.passage) {
+                copy.entry = COPY_ANCHOR.get(this.entry)?.(copy.to.passage) ?? this.entry
+            }
+        }
     }
 
     /** True after `break()`, for the changes that the film has played so far. */
@@ -1767,7 +1865,7 @@ export class PassageLink extends Node {
             points.push([channel, bend[1]], bend, end)
         } else {
             // The line stops before a node, so its dot does not touch what the node draws.
-            const gap = this.size * 0.5
+            const gap = this.size * 0.9
             const end: Vec = [entry === 'left' ? there.left - gap : there.right + gap, there.cy]
             points.push([channel, end[1]], end)
         }

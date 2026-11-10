@@ -1167,7 +1167,7 @@ export default film({ fps: 30 }, (s) => {
 
 The `language` option names the syntax. The languages are `ts`, `python`, `rust`, `go`, `java`, `c`, `sql`, `bash`, and `plain`, and four languages for specifications and proofs: `tla` for TLA+, `dafny`, `lean`, and `smt` for SMT-LIB. In those four, a prime such as the one in `x'` is part of the code and does not start a string. An unknown name uses the TypeScript rules.
 
-`json` and `yaml` are for data: a tool call, the reply of a model, a configuration file. A key has its own color, so a viewer tells the names from the values: a string before a colon in JSON, and a word before a colon and a space in YAML. `true`, `false` and `null` are keywords, and in YAML also `yes`, `no`, `on` and `off`. No word of a value is read as a function or a type. `colors: { key: 'teal' }` changes the color of the keys.
+Use `json` or `yaml` to color the fields of a tool call, model reply, or configuration file. The aliases are `jsonl` and `yml`. A key keeps its lexical `kind` and gains an optional `role: 'key'`. Set `colors: { key: 'teal' }` to change its color. YAML highlighting covers simple keys on a single line, including quoted keys, numeric keys, and keys with spaces. Complex keys, block scalars, tags, and flow collections across lines require a YAML parser. Use `language: 'ts'` explicitly to reproduce the earlier fallback coloring for these language names.
 
 ```ts
 import { codeBlock, film } from 'vizmatic/stage'

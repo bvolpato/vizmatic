@@ -256,7 +256,9 @@ s.play(said.enter())
 s.wait(readingSeconds(said.reading))
 ```
 
-A passage of real text that the film works on: a source page, a prompt, one turn of a chat, the sentences of an answer. Do not show a card that names the text, and do not build a page from texts and rectangles. `passage` wraps the words at `width`, and a film names a part by its words. `mark(words, kind)` gives a part a kind with its own color and sign (`mark`, `claim`, `supported`, `unsupported`, `contradicted`, `external`), and `count(kind)` reads the state. `cut({ size: 12, overlap: 3 })`, `cut({ by: 'sentence' })` or a list of chunks cuts the text, and the words that two chunks share show both. `select(part)` moves one selection, and `counter('words')` follows it. `slip(part)` with `lift(slip)` lifts a part out as a passage of its own. `answer.link(words, source.span(words))` ties a claim to its source with a line that crosses no word, and `link.break()` is for a tie that does not hold. `diff(next)` strikes the old words and brings the new ones beside them, and `accept()` closes the text up. Play one change of the words at a time. Hold a passage for one second for each 20 characters:
+Use `passage` for prose that a viewer follows through an edit. Name a span by its words. Mark a claim with `mark(words, kind)`, connect it to its source with `link()`, and call `break()` on the link when the source contradicts the claim. Each kind has a color and a distinct sign. `diff(next)` displays the revision and `accept()` removes the deleted words.
+
+For document chunking, `cut({ size: 12, overlap: 3 })` makes windows of words. Use `select({ chunk: 0 })` to move the selection, `counter('words')` for a readout, and `slip()` with `lift()` to pull a copy out. The films in `examples/films/passage/` show how to lay out a runbook, an answer with supporting sources, and a prompt with a JSON reply.
 
 ```ts
 const answer = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 700, title: 'answer' }).at(-800, -300))
@@ -264,7 +266,7 @@ const source = s.add(passage('Closed on Sunday. A refund is paid on the next bus
 s.play(answer.mark('The shop is closed on Sunday.', 'claim'), source.mark('Closed on Sunday.'))
 const tie = answer.link('The shop is closed on Sunday.', source.span('Closed on Sunday.'), { color: 'green' })
 s.play(tie.enter(), answer.mark('The shop is closed on Sunday.', 'supported'))
-s.play(answer.mark('Refunds arrive immediately.', 'unsupported'))
+s.play(answer.mark('Refunds arrive immediately.', 'contradicted'))
 s.play(source.diff('Closed on Sunday and on Monday. A refund is paid on the next business day.'))
 s.play(source.accept())
 ```

@@ -212,7 +212,7 @@ describe('morphs land exactly on their targets', () => {
     })
 
     it('colors the keys of JSON and YAML apart from their values', async () => {
-        const kinds = (source: string, language: string) => tokenize(source, language).filter((t) => t.kind !== 'space').map((t) => [t.text, t.kind])
+        const kinds = (source: string, language: string) => tokenize(source, language).filter((t) => t.kind !== 'space').map((t) => [t.text, t.role ?? t.kind])
         // JSON: a string before a colon is a key, and true, false and null are keywords.
         expect(kinds('{"name": "get_weather", "days": 3, "metric": true, "note": null}', 'json')).toEqual([
             ['{', 'punctuation'], ['"name"', 'key'], [':', 'punctuation'], ['"get_weather"', 'string'], [',', 'punctuation'],
@@ -13744,21 +13744,21 @@ describe('passage', () => {
             s.play(page.cut(null), { duration: 0.5 })
             expect(page.chunks).toEqual([])
             s.wait(0.5)
-            const two = s.add(passage('One. Two!\nThree? Four.', { width: 600 }).at(-300, 200))
+            const two = s.add(passage('One. Two!\nThree?\n\nFour.', { width: 600 }).at(-300, 200))
             s.play(two.cut({ by: 'paragraph' }), { duration: 0.2 })
-            expect(two.chunks).toEqual(['One. Two!', 'Three? Four.'])
+            expect(two.chunks).toEqual(['One. Two!\nThree?', 'Four.'])
             s.play(two.cut({ by: 'sentence' }), { duration: 0.2 })
             expect(two.chunks).toEqual(['One.', 'Two!', 'Three?', 'Four.'])
 
-            expect(() => page.cut({ size: 4, overlap: 3 })).toThrow(/cut: overlap is the number of words that two chunks share, a whole number from 0 to half of size \(2\), not 3/)
-            expect(() => page.cut({ size: 0 })).toThrow(/cut: size is the number of words of a chunk, a whole number, 1 or more, not 0/)
-            expect(() => page.cut(['Then page', 'If the error'])).toThrow(/cut: chunk 1 \("If the error"\) starts before chunk 0 or with it\. Give the chunks in the order of the text/)
-            expect(() => page.cut(['If the error rate', 'the error'])).toThrow(/cut: chunk 1 \("the error"\) is inside chunk 0\. A chunk ends after the one before it/)
-            expect(() => page.cut(['If the error rate', 'error rate stays', 'rate stays above'])).toThrow(/cut: chunks 0, 1 and 2 share the word "rate"\. A word is in two chunks at the most: give a smaller overlap/)
-            expect(() => page.cut([])).toThrow(/cut: the list of chunks is empty/)
-            expect(() => page.cut({ by: 'word' as never })).toThrow(/cut: by is 'sentence' or 'paragraph', not "word"/)
-            expect(() => page.cut('sentence' as never)).toThrow(/cut takes \{ size, overlap \}, \{ by: 'sentence' \} or \{ by: 'paragraph' \}, the words of each chunk, or null, not "sentence"/)
-            expect(() => page.cut({ size: 7 }, { colors: ['blue'] as never })).toThrow(/the colors of cut\(\) are two colors/)
+            expect(() => s.play(page.cut({ size: 4, overlap: 3 }))).toThrow(/cut: overlap is the number of words that two chunks share, a whole number from 0 to half of size \(2\), not 3/)
+            expect(() => s.play(page.cut({ size: 0 }))).toThrow(/cut: size is the number of words of a chunk, a whole number, 1 or more, not 0/)
+            expect(() => s.play(page.cut(['Then page', 'If the error']))).toThrow(/cut: chunk 1 \("If the error"\) starts before chunk 0 or with it\. Give the chunks in the order of the text/)
+            expect(() => s.play(page.cut(['If the error rate', 'the error']))).toThrow(/cut: chunk 1 \("the error"\) is inside chunk 0\. A chunk ends after the one before it/)
+            expect(() => s.play(page.cut(['If the error rate', 'error rate stays', 'rate stays above']))).toThrow(/cut: chunks 0, 1 and 2 share the word "rate"\. A word is in two chunks at the most: give a smaller overlap/)
+            expect(() => s.play(page.cut([]))).toThrow(/cut: the list of chunks is empty/)
+            expect(() => s.play(page.cut({ by: 'word' as never }))).toThrow(/cut: by is 'sentence' or 'paragraph', not "word"/)
+            expect(() => s.play(page.cut('sentence' as never))).toThrow(/cut takes \{ size, overlap \}, \{ by: 'sentence' \} or \{ by: 'paragraph' \}, the words of each chunk, or null, not "sentence"/)
+            expect(() => s.play(page.cut({ size: 7 }, { colors: ['blue'] as never }))).toThrow(/the colors of cut\(\) are two colors/)
         }))
         // The chunks are bands of two colors in turn, as high as a line. Two chunks on one line have a gap between them.
         const [purple, orange] = [filled(compiled, 1.5, 'purple'), filled(compiled, 1.5, 'orange')]
@@ -13920,9 +13920,9 @@ describe('passage', () => {
             page = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 1000 }).at(-800, -300))
             end = page.find('Sunday.').at(-1)!
             const box = s.add(rect(200, 100).at(600, 300))
-            // The line stops half a text size before a node that is no span, at the middle of its side.
+            // The endpoint leaves room for the dot beside a text label.
             const plain = page.link('Refunds arrive immediately.', box)
-            expect(plain.routeNow()!.at(-1)).toEqual([expect.closeTo(500 - 16, 6), expect.closeTo(300, 6)])
+            expect(plain.routeNow()!.at(-1)).toEqual([expect.closeTo(500 - 32 * 0.9, 6), expect.closeTo(300, 6)])
             expect(plain.routeNow()![2]![0]).toBeCloseTo(350, 6)
             // `shift` moves the part that goes up or down.
             expect(page.link('Refunds arrive immediately.', box, { shift: 40 }).routeNow()![2]![0]).toBeCloseTo(390, 6)
@@ -13979,8 +13979,8 @@ describe('passage', () => {
             expect(page.spans).toEqual([{ words: 'within 15 days', kind: 'mark' }])
             expect([page.kindOf('within 15 days'), page.find('30'), page.measure().words]).toEqual(['mark', [], 23])
             // A second change waits for accept(), and so does a cut.
-            expect(() => page.diff(V1)).toThrow(/diff: the passage shows a change that waits\. Play accept\(\) first: it takes the old words away, and the text is then one version/)
-            expect(() => page.cut({ size: 5 })).toThrow(/cut: the passage shows a change that waits\. Play accept\(\) first/)
+            expect(() => s.play(page.diff(V1))).toThrow(/diff: the passage shows a change that waits\. Play accept\(\) first: it takes the old words away, and the text is then one version/)
+            expect(() => s.play(page.cut({ size: 5 }))).toThrow(/cut: the passage shows a change that waits\. Play accept\(\) first/)
             s.wait(1)
             s.play(page.accept(), { duration: 1 })
             expect([page.text, page.changes]).toEqual([V2, 0])
@@ -14062,7 +14062,7 @@ describe('passage', () => {
             expect(() => passage('alpha beta', { width: 300 }).diff('alpha incomprehensibilities-and-more')).toThrow(/diff: the word "incomprehensibilities-and-more" of the next version is \d+ px wide at size 32, and a width of 300 leaves \d+ px for the text\. Give the passage a width of \d+ or more, or a smaller size/)
             const cut = s.add(passage(POLICY))
             s.play(cut.cut({ size: 5 }), { duration: 0.1 })
-            expect(() => cut.diff(V2)).toThrow(/diff: the passage is cut into chunks, and a chunk is a part of one version\. Take the chunks away first with cut\(null\), and cut the next version again/)
+            expect(() => s.play(cut.diff(V2))).toThrow(/diff: the passage is cut into chunks, and a chunk is a part of one version\. Take the chunks away first with cut\(null\), and cut the next version again/)
         }))
         // A frame with `lines` does not grow: a change that needs more lines says how many.
         await expect(compile((s) => {
@@ -14077,6 +14077,47 @@ describe('passage', () => {
             const made = s.add(passage(V1, { width: 700 }))
             s.play(made.diff(V2), made.mark('Gift cards'), { duration: 1 })
         })).rejects.toThrow(/mark\(\) plays from 0 s to 1 s, while diff\(\) moves the words from 0 s to 1 s\. Play mark\(\) after it, or the two in a `seq`/)
+    })
+
+    it('resolves references in play order and measures the accepted text', async () => {
+        let page!: Page
+        await compile((s) => {
+            page = s.add(passage('old text', { width: 420 }))
+            s.wait(1)
+            s.play(seq(page.cut({ size: 1 }), page.select({ chunk: 0 }), page.cut(null),
+                page.diff('old text\na new line'), page.accept(), page.mark('new line'), page.select('new line')))
+            expect(page.spans).toEqual([{ words: 'new line', kind: 'mark' }])
+            expect(boxOf(page).height).toBeCloseTo(page.frame!.bounds().height)
+            expect(page.lineCount).toBe(2)
+            // The readout can be attached after the timeline has been written.
+            expect(at(0, () => page.counter('words').value)).toBe(0)
+            expect(page.counter('words').value).toBe(2)
+        })
+    })
+
+    it('rejects overlapping edits in either order and leaves room for a shorter retry', async () => {
+        await expect(compile((s) => {
+            const page = s.add(passage('alpha beta', { width: 500 }))
+            s.play(page.mark('beta'), page.diff('alpha gamma'))
+        })).rejects.toThrow(/diff\(\) moves the words while mark\(\) plays/)
+        await compile((s) => {
+            const page = s.add(passage('one two', { width: 360, lines: 1 }))
+            s.play(page.mark('two'))
+            expect(() => s.play(page.diff('one\nthree\nfour'))).toThrow(/Give lines:/)
+            expect(page.spans).toEqual([{ words: 'two', kind: 'mark' }])
+            s.play(seq(page.diff('one six'), page.accept()))
+            expect(page.span('six').words).toBe('six')
+        })
+    })
+
+    it('drops ambiguous marks when one replacement crosses both of them', async () => {
+        await compile((s) => {
+            const page = s.add(passage('one two three four'))
+            s.play(page.mark('two'), page.mark('three'))
+            s.play(seq(page.diff('one six four'), page.accept()))
+            expect(page.text).toBe('one six four')
+            expect(page.spans).toEqual([])
+        })
     })
 
     it('gives the places of its parts: a region, a point on a band, and the way of a line out of the passage', async () => {

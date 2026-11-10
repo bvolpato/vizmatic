@@ -9,10 +9,10 @@ export default film({ title: 'Which claims does the policy support?', fps: 30, f
     s.add(sceneKit().heading('Which claims does the policy support?'))
     const [left, right] = sceneArea().columns([4, 5], 'loose')
     // Each passage is as wide as its column: the layout gives the width.
-    const answer = place(fitted(left!, (width) => passage(ANSWER, { width, size: 36, title: 'answer' })), left!, 'top')
-    const a = fitted(right!, (width) => passage(SOURCE_A, { width, size: 36, title: 'source A' }))
-    const b = fitted(right!, (width) => passage(SOURCE_B, { width, size: 36, title: 'source B' }))
-    place(column([a, b], { gap: 'wide' }), right!, 'top')
+    const answer = place(fitted(left!, (width) => passage(ANSWER, { width, size: 44, title: 'answer' })), left!)
+    const a = fitted(right!, (width) => passage(SOURCE_A, { width, size: 44, title: 'source A' }))
+    const b = fitted(right!, (width) => passage(SOURCE_B, { width, size: 44, title: 'source B' }))
+    place(column([a, b], { gap: 'wide' }), right!)
     s.play(answer.enter(), a.enter(), b.enter(), { duration: 1.2 })
 
     // The count of the claims that a source supports. It reads the state of the answer after each change.

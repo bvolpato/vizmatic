@@ -10,9 +10,9 @@ export default film({ title: 'How does the deadline reach the JSON reply?', fps:
     s.add(sceneKit().heading('How does the deadline reach the JSON reply?'))
     const [left, right] = sceneArea().columns([5, 4], 'loose')
     // One passage for each section of the prompt, with its role as the title.
-    const system = fitted(left!, (width) => passage(SYSTEM, { width, size: 36, title: 'system', color: 'purple' }))
-    const user = fitted(left!, (width) => passage(USER, { width, size: 36, title: 'user', color: 'teal' }))
-    place(column([system, user], { gap: 'normal' }), left!, 'top')
+    const system = fitted(left!, (width) => passage(SYSTEM, { width, lines: 4, size: 42, title: 'system', color: 'purple' }))
+    const user = fitted(left!, (width) => passage(USER, { width, size: 42, title: 'user', color: 'teal' }))
+    place(column([system, user], { gap: 'wide' }), left!)
     s.play(system.enter(), user.enter(), { duration: 1.2 })
     const first = place(codeBlock(reply(90), { language: 'json', size: 34 }), right!, 'right'), second = place(codeBlock(reply(15), { language: 'json', size: 34 }), right!, 'right')
     s.play(fadeIn(first), { duration: 0.6 })
