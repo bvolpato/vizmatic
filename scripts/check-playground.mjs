@@ -172,7 +172,7 @@ try {
     const textEditTargets = page.locator('.playground-text-target')
     const exampleStories = [
         { id: 'daybreak-launch', title: 'Daybreak launch', marker: 'The launch found its people.' },
-        { id: 'aurora-incident', title: 'Aurora incident room', marker: 'AURORA / RELIABILITY DRILL 07' },
+        { id: 'checkout-incident', title: 'Checkout incident room', marker: 'CHECKOUT / RELIABILITY DRILL 07' },
         { id: 'model-garden', title: 'Model garden', marker: 'MODEL OPTIONS / COST × QUALITY FRONTIER' },
         { id: 'weekend-field-notes', title: 'Weekend field notes', marker: 'Take the long way through Bellweather.' },
     ]

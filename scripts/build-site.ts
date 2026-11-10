@@ -349,7 +349,7 @@ const figures = await renderFigures([
     { name: 'production-system-map', label: 'System map', alt: 'A dense production system map with services, data stores, regions, ports, and live metrics', caption: 'A production system on one page: services, boundaries, ports, protocols, and live numbers.' },
     { name: 'production-system-map-presentation', label: 'Same source, larger', alt: 'The same production system map rendered at presentation density, with larger type and strokes', caption: 'The same source at presentation density. One prop changes, and nothing else does.' },
     { name: 'system-architecture', label: 'Architecture', alt: 'System architecture diagram with nested production boundaries and labeled relationships', caption: 'Nested boundaries, typed relationships, and labeled protocols.' },
-    { name: 'aurora-incident', label: 'Incident room', alt: 'A fictional reliability drill with routed services, recovery signals, and a timeline', caption: 'Routing, recovery metrics, and a response timeline on one page.' },
+    { name: 'checkout-incident', label: 'Incident room', alt: 'A fictional reliability drill with routed services, recovery signals, and a timeline', caption: 'Routing, recovery metrics, and a response timeline on one page.' },
     { name: 'eval-dashboard', label: 'Dashboard', alt: 'An evaluation dashboard with charts and tables', caption: 'Charts and tables that share one scale of type and rule.' },
 ])
 const landingWall = await renderFilmWall(films, '', { limit: 6 })
