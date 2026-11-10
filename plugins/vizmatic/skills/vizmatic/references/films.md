@@ -249,7 +249,7 @@ const strip = s.add(numberLine({
 }))
 s.play(strip.moveThreshold(0.5))                    // both are served: strip.count('served at once') is 2
 s.play(strip.move('plain', 0.45))                   // the point crosses the cutoff, and takes the look of the review side
-const grid = s.add(numberLine({ ticks: [1, 1.125, 1.25, 1.5, 2, 3, 4], labels: [1, 2, 4], points: [{ name: 'w', value: 1.3 }] }))
+const grid = s.add(numberLine({ ticks: [1, 1.125, 1.25, 1.5, 2, 3, 4], tickLabels: [1, 2, 4], points: [{ name: 'w', value: 1.3 }] }))
 s.play(grid.snap('w'))                              // to 1.25, the nearest value that the format can store
 ```
 
