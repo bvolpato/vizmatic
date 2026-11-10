@@ -13447,7 +13447,7 @@ describe('named box', () => {
 })
 
 // The request queue has its own import, so that its tests stay one block.
-import { boxOf, fitted, narrated, requestQueue, zone as queueZone } from '../src/stage/index'
+import { narrated, requestQueue } from '../src/stage/index'
 
 describe('request queue', () => {
     type Queue = ReturnType<typeof requestQueue>
@@ -14210,7 +14210,7 @@ describe('request queue', () => {
             expect(region.width).toBeCloseTo(W / 2, 6)
             // A queue in a zone keeps its size: the zone is around the whole object.
             const framed = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
-            const around = queueZone([framed], { title: 'server' })
+            const around = zone([framed], { title: 'server' })
             expect(around.bounds().width).toBeGreaterThanOrEqual(900)
         })
         expect(at(0.5, () => made.mounted && made.get('visible'))).toBe(false)
