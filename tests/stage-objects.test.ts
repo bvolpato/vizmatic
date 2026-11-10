@@ -392,20 +392,62 @@ describe('axes', () => {
     }
     const series = (values: readonly number[], first = 0): Vec[] => values.map((y, i) => [first + i, y])
 
-    it('keeps the same numbers at the default size, and gives larger numbers more room from their axis', async () => {
+    it('keeps the numbers of fixed axes at one place at every size, and moves a number only as far as it must to clear its tick', async () => {
+        const SIZES = [20, 26, 30, 36, 40, 60]
+        const planes: ReturnType<typeof axes>[] = []
+        await compile((s) => {
+            // Numbers 1, 2, 3 under the x axis, and -1, 1, 2 beside the y axis. The origin is at the left end of the x axis.
+            for (const labelSize of SIZES) planes.push(s.add(axes({ x: [0, 3.4], y: [-1.4, 2.4], width: 340, height: 380, xStep: 1, yStep: 1, labelSize, tips: false })))
+        })
+        const places = planes.map((plane) => {
+            expect(plane.moving).toBe(false)
+            expect(plane.numbers.draw).toBeNull()
+            const [ox, oy] = plane.p(0, 0)
+            const [x1, , , low, y1] = plane.numbers.children.map((number) => number.bounds())
+            return {
+                // The middle of the number 1 of each axis from its axis, and the room between a number and the end of its tick, which is 6 from the axis.
+                under: (x1!.y + x1!.height / 2) - oy, xRoom: x1!.y - oy - 6,
+                beside: ox - (y1!.x + y1!.width / 2), yRoom: ox - 6 - (y1!.x + y1!.width),
+                wide: ox - (low!.x + low!.width / 2), wideRoom: ox - 6 - (low!.x + low!.width), width: low!.width,
+            }
+        })
+        const [at20, at26, at30, at36, at40, at60] = places
+        // A film places what is beside its axes by these numbers: 26 under the x axis and 28 beside the y axis, at every size.
+        for (const place of [at20!, at26!, at30!, at36!, at40!]) {
+            expect(place.under).toBeCloseTo(26, 6)
+            expect(place.beside).toBeCloseTo(28, 6)
+            expect(place.xRoom).toBeGreaterThan(4)
+            expect(place.yRoom).toBeGreaterThan(4)
+        }
+        // The number -1 is wide. Up to size 26 it is clear of its tick at 28 from the axis.
+        expect(at20!.wide).toBeCloseTo(28, 6)
+        expect(at26!.wide).toBeCloseTo(28, 6)
+        expect(at26!.wideRoom).toBeGreaterThan(4)
+        // From size 30 it would be nearer to its tick than 4 pixels, or on it. It moves away to 4 pixels, and no further.
+        for (const place of [at30!, at36!, at40!, at60!]) {
+            expect(28 + place.width / 2 - 6).toBeGreaterThan(18)
+            expect(place.wideRoom).toBeCloseTo(4, 6)
+            expect(place.wide).toBeCloseTo(10 + place.width / 2, 6)
+        }
+        expect(at36!.wide - 28).toBeGreaterThan(4)
+        expect(at36!.wide - 28).toBeLessThan(6)
+        // At size 60 a number under the x axis is so high that it would touch its tick too: it has the same 4 pixels.
+        expect(at60!.xRoom).toBeCloseTo(4, 6)
+        expect(at60!.under).toBeGreaterThan(26)
+    })
+
+    it('gives the numbers of axes with a range that moves a room that grows with their size', async () => {
         let small!: ReturnType<typeof axes>, large!: ReturnType<typeof axes>
         await compile((s) => {
-            small = s.add(axes({ x: [0, 4], y: [0, 4], width: 400, height: 400, xStep: 1, yStep: 1 }))
-            large = s.add(axes({ x: [0, 4], y: [0, 4], width: 400, height: 400, xStep: 1, yStep: 1, labelSize: 40 }))
+            small = s.add(axes({ x: () => [0, 4], y: [0, 4], width: 400, height: 400, xStep: 1, yStep: 1 }))
+            large = s.add(axes({ x: () => [0, 4], y: [0, 4], width: 400, height: 400, xStep: 1, yStep: 1, labelSize: 30 }))
         })
-        expect(small.moving).toBe(false)
-        expect(small.numbers.draw).toBeNull()
-        // The first of the four numbers of the x axis, and the first number of the y axis: 26 under the axis, and 28 beside it.
-        const first = (made: ReturnType<typeof axes>) => made.numbers.children[0]!.center, firstY = (made: ReturnType<typeof axes>) => made.numbers.children[4]!.center
-        expect(first(small)[1]).toBeCloseTo(200 + 26, 6)
-        expect(firstY(small)[0]).toBeCloseTo(-200 - 28, 6)
-        expect(first(large)[1]).toBeCloseTo(200 + 52, 6)
-        expect(firstY(large)[0]).toBeCloseTo(-200 - 56, 6)
+        // The number 2 of the x axis, and the number 2 of the y axis: 26 and 28 from the axes at the default size of 20, and 1.5 times that at size 30.
+        const middles = (made: ReturnType<typeof axes>) => drawn(made.numbers, 0).filter((mark) => (mark as Node & { source: string }).source === '2').map((mark) => mark.center)
+        expect(middles(small)[0]![1]).toBeCloseTo(200 + 26, 6)
+        expect(middles(small)[1]![0]).toBeCloseTo(-200 - 28, 6)
+        expect(middles(large)[0]![1]).toBeCloseTo(200 + 39, 6)
+        expect(middles(large)[1]![0]).toBeCloseTo(-200 - 42, 6)
     })
 
     it('follows a range that moves: a point scrolls, and a number fades before it passes an end of its axis', async () => {
