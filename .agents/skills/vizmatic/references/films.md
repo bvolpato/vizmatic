@@ -260,6 +260,22 @@ s.play(fadeIn(note))
 s.play(trace.showAll())
 ```
 
+A path of stages or gates with an item that goes through them: a tool call through the gates of a host, a request through a serving path, rows through the filters of a data set. Do not build it from a row of boxes and a dot on an arrow, and do not use `steps` for it: a viewer learns from the item, which keeps its id while it moves and changes. `put` brings an item, `move` takes it to the next stage or to a named one, `setBadge` changes the value that it carries, `pass` and `stop` give it the verdict of a stage, with a check or with a cross and the reason, `eject` sends it to the tray under the path, and `exit` takes it away. Each item has its own lane (`lanes`), and the marks of a lane keep where its item passed and where it was stopped. `counts` shows under each name how many items reached the stage, so a row of gates is a funnel. `which` is an id, a list of ids, or a function of an item, and `lag` brings a list one after another. An item takes one change at a time: play two changes of one item in a `seq`. No text is made smaller: a name or a badge that is too wide for one stage stops the build, and the message gives the least `width`. The default text is 28 px. Keep it at 26 or more:
+
+```ts
+const flow = s.add(pipeline(['complete', 'schema', 'authorization', 'execute'], { width: 1800, gates: true, lanes: 2, tray: 'refused', counts: true }))
+s.play(flow.put({ id: 'call 17', badge: 'hold B7' }))
+s.play(flow.pass('call 17', 'complete'))                       // the gate lets it through: a check, and a stamp
+s.play(flow.move('call 17'))                                   // to the next stage. A check stays at the gate that it left
+s.play(flow.put({ id: 'call 18', color: 'orange' }), flow.move('call 17', 'execute'))
+s.play(flow.move('call 18'))
+s.play(flow.stop('call 18', 'id is a number'))                 // a cross, a red border, and the reason
+s.play(flow.eject('call 18'))                                  // to the tray, with its reason. Its lane is free
+const done = flow.find((item) => item.state !== 'stopped')     // also flow.stateOf(id), flow.count(stage), flow.reached(stage)
+```
+
+`flow.item(id)` is the node of an item, `flow.p(stage)` is a point over a stage, and `flow.region({ stage, lane })` is a box of the object: use them with `beside` for a note of the film. `flow.fork(id, item)` and `flow.join(id, into)` split and merge an item on the same path. For branches with stages of their own, use `graph`. For actors over time, use `lanes`.
+
 A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
 
 ```ts
