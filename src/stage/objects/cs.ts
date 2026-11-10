@@ -273,22 +273,22 @@ export class Graph extends Node {
     private readonly valueSize: number
     private readonly textFont: TextOptions['font']
     private readonly noteColor: ColorInput
-    /** The color and the fill of each node as it was built: the look of the idle state. */
+    // The color and the fill of each node as it was built: the look of the idle state.
     private readonly built = new Map<string, { paint: Paint; fillOpacity: number }>()
     /** The state of each node, after the changes that are scheduled so far. */
     protected readonly states = new Map<string, GraphState>()
-    /** The text of the value and of the note of each node, after the changes that are scheduled so far. */
+    // The text of the value and of the note of each node, after the changes that are scheduled so far.
     private readonly words = new Map<string, { value: string | null; note: string | null }>()
     /** The nodes and the edges that do not show yet. */
     protected readonly waiting = new Set<string>()
     private readonly waitingEdges = new Set<GraphEdge>()
-    /** The dot that carries the token along an edge. Null in a graph with no token. */
+    // The dot that carries the token along an edge. Null in a graph with no token.
     private readonly tokenDot: Node | null = null
     private readonly tokenPaint: Paint
     private tokenAt: string | null = null
-    /** The call that moved the token last, and the time when that move ends. */
+    // The call that moved the token last, and the time when that move ends.
     private tokenMove: { call: string; t0: number; t1: number } | null = null
-    /** The call that last changed the look of each node, and the time when that change ends. */
+    // The call that last changed the look of each node, and the time when that change ends.
     private readonly lookMoves = new Map<string, { ctx: AnimContext; call: string; t0: number; t1: number }>()
 
     /** The name of the object in a message. */
@@ -714,12 +714,7 @@ export class Graph extends Node {
         }
     }
 
-    /**
-     * A node goes to a state. The border and the fill take the color of the state, and the sign of the state
-     * comes with it: a wide border for active, a check for done, a cross for failed, dashes and dim text for
-     * off. `idle` gives the node the look that it was built with. `color` replaces the color of the state,
-     * such as a second color for a second active node.
-     */
+    /** Change the node state and its sign. The idle state restores the original colors. Use `color` to override a state's color. */
     setState(id: string, state: GraphState, options: AnimOptions & { color?: ColorInput } = {}): Anim {
         this.view(id, 'setState')
         if (!GRAPH_STATES.includes(state)) throw new Error(`${this.kind}: setState: no state ${quoted(state)}. The states are ${GRAPH_STATES.join(', ')}`)
@@ -737,11 +732,7 @@ export class Graph extends Node {
         }
     }
 
-    /**
-     * The value of a node changes in place. The old text fades out, then the new text fades in, so no moment
-     * shows two texts. It works on a node that was built with a `value`, because the box keeps its size. A
-     * text that is too wide for the box is an error.
-     */
+    /** Replace the text in a value box. The old value fades before the new value appears. A value wider than the box is an error. */
     setValue(id: string, value: string, options: AnimOptions = {}): Anim {
         const write = this.write(id, 'value', value, 'setValue')
         return {
@@ -765,13 +756,7 @@ export class Graph extends Node {
         }
     }
 
-    /**
-     * A light goes from one node to another along their edge, in the direction that the call names: with the
-     * arrow, or against it. With `value` or `note`, the node at the end takes the new text when the light
-     * arrives. So one call is one step of a pass: `send('w', 'mul', { value: '6' })` forward, and
-     * `send('loss', 'mul', { note: '2', color: 'pink' })` back along the same edge.
-     * As with `connector.send`, `duration` is travel time. A value or a note then changes over 0.5 seconds.
-     */
+    /** Send a light along an edge from `from` to `to`, including against an arrow. As in `connector.send`, `duration` is travel time. On arrival, an optional value or note changes over 0.5 seconds. */
     send(from: string, to: string, options: AnimOptions & { color?: ColorInput; length?: number; value?: string; note?: string } = {}): Anim {
         this.view(from, 'send')
         this.view(to, 'send')
@@ -799,11 +784,7 @@ export class Graph extends Node {
         }
     }
 
-    /**
-     * The token goes to another node along the edge between the two. An edge with an arrow takes the token
-     * from its start to its end only. A move with no edge is an error that names the nodes that the token
-     * can go to: a state machine has no such step. `current` is then the new node.
-     */
+    /** Move the token along a visible edge. Directed edges allow only forward travel. On arrival, `current` gives the destination. */
     go(to: string, options: AnimOptions = {}): Anim {
         this.view(to, 'go')
         this.tokenNeeded('go')
@@ -826,11 +807,7 @@ export class Graph extends Node {
         }
     }
 
-    /**
-     * The machine refuses a step: the token starts toward a node, turns back, and its ring is red for a
-     * moment. The token stays where it is, and `current` does not change. The node can be one that no edge
-     * reaches from here, or the end of an edge whose guard says no.
-     */
+    /** Move the token toward a node and back. Its ring flashes red and `current` keeps the starting node. The target can have a blocked edge or no edge. */
     refuse(to: string, options: AnimOptions = {}): Anim {
         this.view(to, 'refuse')
         this.tokenNeeded('refuse')
@@ -868,11 +845,7 @@ export class Graph extends Node {
         }
     }
 
-    /**
-     * Nodes that wait arrive, one after another, each with the edges that join it to the nodes that show. An
-     * edge from a node that shows draws first, and the new node pops in at its end. A node that shows
-     * already takes no time. The option `shown` says which nodes wait.
-     */
+    /** Reveal waiting nodes in order, with the edges that connect them to visible nodes. Incoming edges draw first. Nodes that already show take no turn. */
     grow(which: string | readonly string[], options: AnimOptions = {}): Anim {
         const ids = typeof which === 'string' ? [which] : [...which]
         if (ids.length === 0) throw new Error(`${this.kind}: grow: give the id of a node, or a list of ids`)
@@ -1021,7 +994,7 @@ export class Graph extends Node {
         return Math.max(8, this.labelSize * 0.34)
     }
 
-    /** The mark of a state: a disc at the top right corner of the node, with a check or a cross in it. */
+    // The mark of a state: a disc at the top right corner of the node, with a check or a cross in it.
     private badge(view: GraphNode, mark: 'done' | 'failed', paint: Paint): Node {
         const radius = this.badgeRadius
         // The middle of the badge is a little outside the corner, so that the badge is clear of the label of a
@@ -1033,20 +1006,20 @@ export class Graph extends Node {
         return new Node().add(disc, sign).at(x, y)
     }
 
-    /** A text of one line, or an error. A film is not type-checked when it runs, so a number can arrive here. */
+    // A text of one line, or an error. A film is not type-checked when it runs, so a number can arrive here.
     private oneLine(content: unknown, what: 'value' | 'note', id: string): string {
         if (typeof content !== 'string') throw new Error(`${this.kind}: the ${what} of the node ${quoted(id)} is ${JSON.stringify(content)}. A ${what} is a text, such as ${JSON.stringify(String(content))}`)
         if (/[\r\n]/.test(content)) throw new Error(`${this.kind}: the ${what} ${JSON.stringify(content)} of the node ${quoted(id)} has a line break. A ${what} is one line`)
         return content
     }
 
-    /** The patch under a note that is not yet a part of a node: the box of its letters, with a little room. An empty note has none. */
+    // The patch under a note that is not yet a part of a node: the box of its letters, with a little room. An empty note has none.
     private plate(note: Node): Path {
         const box = note.bounds(), pad = this.valueSize * 0.25
         return box.width > 0 ? rectPath(box.x - pad, box.y - pad * 0.5, box.width + pad * 2, box.height + pad, 4) : []
     }
 
-    /** Every value on this node follows one ink track, including a value that arrives during a state change. */
+    // Every value on this node follows one ink track, including a value that arrives during a state change.
     private bindValueInk(view: GraphNode, value: Node): void {
         const ink = view.track('fill')
         for (const leaf of value.leaves()) {
@@ -1056,14 +1029,14 @@ export class Graph extends Node {
         }
     }
 
-    /** The text of a value or of a note. A value is in ink and strong, because it is the part that changes. */
+    // The text of a value or of a note. A value is in ink and strong, because it is the part that changes.
     private word(content: string, what: 'value' | 'note'): Node {
         return what === 'value'
             ? text(content, { size: this.valueSize, font: this.textFont, color: 'ink', weight: 600 })
             : text(content, { size: this.valueSize, font: this.textFont, color: this.noteColor })
     }
 
-    /** The size of a node, and whether it is a box. A node with a value is a box that holds its label and its value. */
+    // The size of a node, and whether it is a box. A node with a value is a box that holds its label and its value.
     private frame(spec: GraphNodeSpec, radius: number): { width: number; height: number; box: boolean } {
         if (spec.value === undefined) {
             if (spec.width) return { width: spec.width, height: spec.height ?? this.labelSize * 2, box: true }
@@ -1078,7 +1051,7 @@ export class Graph extends Node {
         return { width, height: spec.height ?? Math.round((spec.label ? size * NODE_LINE : 0) + this.valueSize * NODE_LINE + size * 0.6), box: true }
     }
 
-    /**
+    /*
      * Build the new text of a value or of a note now, so that a text that cannot fit is an error at the line
      * of the film that names it. The function that comes back writes the change over a time.
      */
@@ -1118,20 +1091,20 @@ export class Graph extends Node {
         }
     }
 
-    /** The edge that takes the token from one node to another, or null: an edge with an arrow goes one way. */
+    // The edge that takes the token from one node to another, or null: an edge with an arrow goes one way.
     private step(from: string, to: string): GraphEdge | null {
         return this.edges.find((edge) => !this.waitingEdges.has(edge) && edge.from === from && edge.to === to)
             ?? this.edges.find((edge) => !this.waitingEdges.has(edge) && !edge.directed && edge.from === to && edge.to === from)
             ?? null
     }
 
-    /** The nodes that the token can go to from a node, as a sentence. */
+    // The nodes that the token can go to from a node, as a sentence.
     private steps(from: string): string {
         const next = [...new Set(this.edges.flatMap((edge) => (this.waitingEdges.has(edge) ? [] : edge.from === from ? [edge.to] : !edge.directed && edge.to === from ? [edge.from] : [])))]
         return next.length > 0 ? `From ${quoted(from)}, the token can go to ${next.map(quoted).join(', ')}` : `No edge leaves ${quoted(from)}`
     }
 
-    /** The nodes that an edge joins to a node, as a sentence. */
+    // The nodes that an edge joins to a node, as a sentence.
     private joined(id: string): string {
         const others = [...new Set(this.edges.flatMap((edge) => (edge.from === id ? [edge.to] : edge.to === id ? [edge.from] : [])))]
         return others.length > 0 ? `The edges of ${quoted(id)} join it to ${others.map(quoted).join(', ')}` : `${quoted(id)} has no edge`
@@ -1141,7 +1114,7 @@ export class Graph extends Node {
         if (this.tokenAt === null) throw new Error(`${this.kind}: ${call}: this ${this.kind} has no token. Give the option token the id of the node where the token starts`)
     }
 
-    /**
+    /*
      * Take the time of a move of the token. Two moves at one time would each write a way for the one dot, and
      * the picture would follow neither. So a move that starts before the last one is over is an error.
      */
@@ -1151,7 +1124,7 @@ export class Graph extends Node {
         this.tokenMove = { call, t0: ctx.t0, t1: ctx.t1 }
     }
 
-    /** The dot of the token shows, follows a way over the time of the move, and goes. */
+    // The dot of the token shows, follows a way over the time of the move, and goes.
     private carry(way: (share: number) => [number, number], ctx: AnimContext, edge: GraphEdge | null): void {
         if (edge && !edge.token) {
             edge.token = new Node(circlePath(0, 0, this.tokenRadius)).fill(this.tokenPaint).opacity(0)
@@ -1304,12 +1277,12 @@ export interface TreeOptions extends Pick<GraphOptions, 'radius' | 'labelSize' |
  */
 export class TreeGraph extends Graph {
     readonly depths = new Map<string, number>()
-    /** The parent of each node under the root, and the children of each node, in the order of the tree. */
+    // The parent of each node under the root, and the children of each node, in the order of the tree.
     private readonly parents = new Map<string, string>()
     private readonly kids = new Map<string, string[]>()
     private readonly scores = new Map<string, number>()
     private readonly scored: 'product' | 'sum' | null
-    /** The nodes on a lit path, each with the color of its light. */
+    // The nodes on a lit path, each with the color of its light.
     private lit = new Map<string, Paint>()
     private pruned = new Set<string>()
 
@@ -1556,14 +1529,7 @@ export class TreeGraph extends Graph {
         }
     }
 
-    /**
-     * Light the way from the root to a node, or to each node of a list. A light runs down each edge, and the
-     * edge and its node keep the color: a lit edge is wider, and a lit node is active. The lit paths are then
-     * these paths, in this color, and no other: a path that was lit and is not named goes back to its plain
-     * look. So a second call moves the light, a list lights two paths, and `null` turns the light off. With
-     * `add: true`, the paths that are lit stay as they are, and this call lights one more: a second path in a
-     * second color. A node that is done or failed keeps its state.
-     */
+    /** Light the paths from the root to the named nodes. By default, this replaces earlier paths. Use `add: true` to keep them, or `path(null)` to clear them. Done and failed nodes keep their states. */
     path(to: string | readonly string[] | null, options: AnimOptions & { color?: ColorInput; add?: boolean } = {}): Anim {
         const ends = to === null ? [] : typeof to === 'string' ? [to] : [...to]
         for (const id of ends) this.view(id, 'path')
@@ -1578,11 +1544,7 @@ export class TreeGraph extends Graph {
         }
     }
 
-    /**
-     * Turn a branch off: the node and all under it. Each node gets a border of dashes and dim text, and each
-     * edge of the branch a line of dashes, from the top of the branch down. The nodes of the branch that wait
-     * are off too, and never grow: a pruned branch does no more work.
-     */
+    /** Prune a node and its descendants. Visible branches turn dim and dashed. Hidden descendants stay off and cannot grow. */
     prune(id: string, options: AnimOptions = {}): Anim {
         this.view(id, 'prune')
         if (!this.parents.has(id)) throw new Error(`tree: prune: ${quoted(id)} is the root. A prune turns off a branch under the root`)
@@ -1595,12 +1557,7 @@ export class TreeGraph extends Graph {
         }
     }
 
-    /**
-     * One step of a beam search. Name the nodes of the frontier that the search keeps: their paths from the
-     * root are lit, and every other node of the frontier is pruned, with each branch that then has no open
-     * node. A node that is not in the frontier is an error that names the frontier. `frontier` is then the
-     * kept nodes, and the next `grow` gives them children.
-     */
+    /** Keep the named frontier nodes and light their paths. Prune other frontier nodes and the branches that lead only to them. An ID outside the frontier is an error. */
     keep(which: string | readonly string[], options: AnimOptions & { color?: ColorInput } = {}): Anim {
         const kept = typeof which === 'string' ? [which] : [...which]
         if (kept.length === 0) throw new Error('tree: keep: give the id of a node of the frontier, or a list of ids. A search keeps one node at the least')
@@ -1656,13 +1613,13 @@ export class TreeGraph extends Graph {
         }
     }
 
-    /** True for a node that shows and is idle or active. */
+    // True for a node that shows and is idle or active.
     private open(id: string): boolean {
         const state = this.states.get(id)
         return !this.waiting.has(id) && (state === 'idle' || state === 'active')
     }
 
-    /** The nodes on the ways from the root to some nodes. Each way must show, and no part of it may be off. */
+    // The nodes on the ways from the root to some nodes. Each way must show, and no part of it may be off.
     private ways(ends: readonly string[], call: string): Set<string> {
         const all = new Set<string>()
         for (const end of ends) {
@@ -1675,12 +1632,12 @@ export class TreeGraph extends Graph {
         return all
     }
 
-    /** The edge from the parent of a node to the node. */
+    // The edge from the parent of a node to the node.
     private edgeTo(id: string): GraphEdge {
         return this.edges.find((edge) => edge.to === id)!
     }
 
-    /**
+    /*
      * Light the ways that are given. Without `add`, the lit paths become these ways in this color: a part that
      * is on no way goes plain, and a part that is lit in another color takes the new one. With `add`, what is
      * lit stays as it is. The parts light from the root down.
@@ -1720,7 +1677,7 @@ export class TreeGraph extends Graph {
         }
     }
 
-    /** Turn off some branches: each node that is given, and all under it. The nodes of one depth change together, from the top down. */
+    // Turn off some branches: each node that is given, and all under it. The nodes of one depth change together, from the top down.
     private cut(tops: readonly string[], call: string, ctx: AnimContext): void {
         const branch: string[] = []
         const walk = (id: string) => {
@@ -1750,13 +1707,13 @@ export class TreeGraph extends Graph {
         }
     }
 
-    /** The line of an edge takes a color and a width. */
+    // The line of an edge takes a color and a width.
     private strokeEdge(edge: GraphEdge, paint: Paint, width: number, t0: number, t1: number, ease: Ease): void {
         edge.shaft.tween('stroke', paint, t0, t1, ease)
         edge.shaft.tween('strokeWidth', width, t0, t1, ease)
     }
 
-    /**
+    /*
      * The labels of the edges must be clear of each other and of the nodes. The tree gives each label its
      * place, so a label with no room is an error that says which distance to change.
      */
@@ -1917,6 +1874,8 @@ export type TokenKind = 'keyword' | 'string' | 'number' | 'comment' | 'function'
 export interface CodeToken {
     text: string
     kind: TokenKind
+    /** A data key keeps its lexical kind and can have a separate color. */
+    role?: 'key'
     line: number
     glyphs: Node[]
 }
@@ -1941,6 +1900,11 @@ interface LanguageRule {
     number?: RegExp
     /** The word after an opening parenthesis names a function, as in Lisp. */
     headIsFunction?: boolean
+    /**
+     * For a data format: what follows a key, such as the colon of `"name": 1`. A string or a word with this
+     * after it is a key. Every other word is a keyword or plain: no word names a function or a type.
+     */
+    keyBefore?: RegExp
 }
 
 const words = (list: string): ReadonlySet<string> => new Set(list.split(' '))
@@ -1976,12 +1940,17 @@ const LANGUAGES: Record<string, LanguageRule> = {
         word: /^[A-Za-z_~!@$%^&*+=<>.?/-][\w~!@$%^&*+=<>.?/-]*/, number: /^(#x[\da-fA-F]+|#b[01]+)/,
         keywords: words('assert check-sat check-sat-assuming declare-const declare-datatypes declare-fun declare-sort define-const define-fun define-fun-rec define-sort echo exit get-info get-model get-option get-proof get-unsat-core get-value pop push reset set-info set-logic set-option exists forall let match par as _ !'),
     },
+    // Data formats. A key has its own color, so a reader tells the names from the values.
+    json: { lineComments: [], quotes: '"', keyBefore: /^\s*:/, number: /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/, keywords: words('true false null') },
+    // In YAML, a colon ends a key when a space or the end of the line follows it: `image: nginx:1.27` has one key.
+    yaml: { lineComments: ['#'], quotes: '"\'', insensitive: true, keyBefore: /^\s*:(?:\s|$)/, keywords: words('true false null yes no on off') },
     plain: { lineComments: [], quotes: '', keywords: new Set() },
 }
 
 const ALIASES: Record<string, string> = {
     js: 'ts', jsx: 'ts', tsx: 'ts', typescript: 'ts', javascript: 'ts', py: 'python', rs: 'rust', golang: 'go', sh: 'bash', shell: 'bash',
     'tla+': 'tla', tlaplus: 'tla', dfy: 'dafny', lean4: 'lean', smt2: 'smt', smtlib: 'smt', 'smt-lib': 'smt', cpp: 'c', 'c++': 'c', h: 'c', text: 'plain',
+    yml: 'yaml', jsonl: 'json',
 }
 
 /** The languages that `tokenize` and `codeBlock` color. An unknown name falls back to TypeScript. */
@@ -1991,6 +1960,7 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 function stringPattern(rule: LanguageRule): RegExp | null {
     const forms = [...rule.quotes].map((quote) => {
+        if (rule === LANGUAGES['yaml'] && quote === "'") return "'(?:[^']|'')*'?"
         const q = escapeRegExp(quote)
         return `${q}(?:[^${q}\\\\]|\\\\.)*${q}?`
     })
@@ -1999,10 +1969,19 @@ function stringPattern(rule: LanguageRule): RegExp | null {
     return forms.length > 0 ? new RegExp(`^(?:${forms.join('|')})`) : null
 }
 
+// A single-line plain key at a block or flow entry. Complex keys, block scalar bodies,
+// tags and multiline flow context need a YAML parser and are outside this highlighter.
+function yamlKeyLength(rest: string): number {
+    if (/^[\s'"#,\[\]{}&*!|>@%\x60]|^[-?:](?:\s|$)/.test(rest)) return 0
+    const separator = /:(?=\s|$)|[ \t]+#|[\[\]{},]/.exec(rest)
+    return separator?.[0] === ':' ? separator.index : 0
+}
+
 /** A small tokenizer for film code. It colors the common cases and never blocks on odd input. */
 export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyphs'>[] {
     const name = language.toLowerCase()
     const rule = LANGUAGES[ALIASES[name] ?? name] ?? LANGUAGES['ts']!
+    const yaml = rule === LANGUAGES['yaml']
     const string = stringPattern(rule)
     const word = rule.word ?? /^[A-Za-z_$][\w$]*/
     const out: Omit<CodeToken, 'glyphs'>[] = []
@@ -2011,10 +1990,14 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
     source.split('\n').forEach((row, line) => {
         let i = 0
         let afterOpen = false
+        let entryStart = true
+        let keyEnd = 0
         while (i < row.length) {
             const rest = row.slice(i)
-            const push = (value: string, kind: TokenKind) => {
-                out.push({ text: value, kind, line })
+            const push = (value: string, kind: TokenKind, key = false) => {
+                const token = { text: value, kind, line }
+                out.push(key || (kind !== 'space' && i < keyEnd) ? { ...token, role: 'key' } : token)
+                if (yaml && kind !== 'space') entryStart = value === '{' || value === ',' || (entryStart && value === '-')
                 i += value.length
             }
             const space = /^\s+/.exec(rest)
@@ -2028,7 +2011,8 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 push(close < 0 ? rest : rest.slice(0, close + rule.blockComment![1].length), 'comment')
                 continue
             }
-            if (rule.lineComments.some((marker) => rest.startsWith(marker))) {
+            if (yaml && entryStart) keyEnd = i + yamlKeyLength(rest)
+            if ((!yaml || i === 0 || /\s/.test(row[i - 1]!)) && rule.lineComments.some((marker) => rest.startsWith(marker))) {
                 push(rest, 'comment')
                 continue
             }
@@ -2042,7 +2026,7 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
             afterOpen = rest[0] === '('
             const quoted = string?.exec(rest)
             if (quoted) {
-                push(quoted[0], 'string')
+                push(quoted[0], 'string', yaml && entryStart && rule.keyBefore!.test(rest.slice(quoted[0].length)))
                 continue
             }
             const number = rule.number?.exec(rest) ?? /^(0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:e[-+]?\d+)?)/.exec(rest)
@@ -2060,26 +2044,38 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 const value = found[0]
                 const after = rest.slice(value.length)
                 const isKeyword = rule.keywords.has(rule.insensitive ? value.toLowerCase() : value)
+                // A data format has no function or type names.
                 const kind: TokenKind = isKeyword ? 'keyword'
-                    : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
-                        : /^[A-Z]/.test(value) ? 'type'
-                            : 'plain'
+                    : rule.keyBefore ? 'plain'
+                        : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
+                            : /^[A-Z]/.test(value) ? 'type'
+                                : 'plain'
                 push(value, kind)
                 continue
             }
             push(rest[0]!, 'punctuation')
         }
     })
+    if (rule === LANGUAGES['json']) {
+        // JSON permits a line break between a key and its colon.
+        let previous: Omit<CodeToken, 'glyphs'> | undefined
+        for (const token of out) {
+            if (token.kind === 'space') continue
+            if (token.text === ':' && previous?.kind === 'string') previous.role = 'key'
+            previous = token
+        }
+    }
     return out
 }
 
-const CODE_COLORS: Record<Exclude<TokenKind, 'space'>, string> = {
+type CodeColor = Exclude<TokenKind, 'space'> | 'key'
+const CODE_COLORS: Record<CodeColor, string> = {
     keyword: 'purple', string: 'green', number: 'orange', comment: 'faint',
-    function: 'blue', type: 'teal', punctuation: 'dim', plain: 'ink',
+    function: 'blue', type: 'teal', key: 'blue', punctuation: 'dim', plain: 'ink',
 }
 
 export interface CodeBlockOptions {
-    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, or `smt2`. Defaults to TypeScript. */
+    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, `smt2`, or `yml`. Defaults to TypeScript. */
     language?: string
     size?: number
     /** Line height as a multiple of size. */
@@ -2090,7 +2086,7 @@ export interface CodeBlockOptions {
     padding?: number
     /** Minimum panel width, so versions of a snippet can share one frame. */
     minWidth?: number
-    colors?: Partial<Record<Exclude<TokenKind, 'space'>, ColorInput>>
+    colors?: Partial<Record<CodeColor, ColorInput>>
 }
 
 /**
@@ -2159,7 +2155,7 @@ export class CodeBlock extends Node {
             const entry: CodeToken = { ...token, glyphs: [] }
             this.tokens.push(entry)
             if (token.kind === 'space') continue
-            const color = colors[token.kind]
+            const color = colors[token.role ?? token.kind]
             ;[...token.text].forEach((char, offset) => {
                 const leaf = makeGlyph(font, char, size, color, left + (start + offset) * advance, top + token.line * rowHeight)
                 entry.glyphs.push(leaf)
