@@ -242,6 +242,24 @@ s.play(flow.advance(60))
 s.play(flow.showAll())
 ```
 
+A request against a deadline, the trace of a request, a retry, or an outage: `lanes` has these too, so do not draw them over it by hand. `deadline: { at, label, drain: true }` is a line at a time with a bar that drains as the cursor moves, and `flow.remaining()` is the time that is left. A span with `inside: id` is a child of the span with that id, in a row under it, as in a trace. `outcome: 'failed'` or `'cancelled'` puts a cross or a square on the end of a span, makes a mark that sign, and stops a handoff on its way as a lost message. `down: true` is a hatched span where the lane is not there. A link, `{ from, to, at: [time, time] }`, joins two times, also on one lane and back in time. `{ bracket: [from, to], label }` names a window of time. Give an event an `id`: `advance(id)` stops the cursor at that event, and `flow.region({ event: id })` is its box for a note. This request trace stops at the first token. Play advances on the same cursor in sequence.
+
+```ts
+const trace = s.add(lanes(['request', 'model API'], [
+    { lane: 'request', start: 0, end: 430, id: 'answer', label: 'answer' },
+    { lane: 'request', start: 0, end: 90, inside: 'answer', label: 'retrieval' },
+    { lane: 'request', start: 90, end: 380, inside: 'answer', id: 'generation', label: 'generation', outcome: 'failed' },
+    { lane: 'request', at: 280, inside: 'generation', id: 'first-token', label: 'first token' },
+    { lane: 'model API', start: 90, end: 380, label: 'streams' },
+    { lane: 'model API', start: 380, end: 500, down: true, label: 'outage' },
+    { bracket: [0, 280], label: 'time to first token' },
+], { pitch: 200, deadline: { at: 450, label: (left) => `${Math.round(left)} ms left`, drain: true } }).at(120, 0))
+s.play(trace.advance('first-token'))
+const note = beside(text('nothing shows before this'), trace, 'above', 'normal', trace.region({ event: 'first-token' }))
+s.play(fadeIn(note))
+s.play(trace.showAll())
+```
+
 A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
 
 ```ts
