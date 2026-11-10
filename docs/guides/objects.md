@@ -449,6 +449,139 @@ To write several entries at once, pass the pushes to `lagged`, to `par`, or to o
 
 The bounds of a ring hold the outside name at every slot, with a count of two digits. So a `zone` or a `card` around a ring has room for the name wherever the pointer goes, and `nextTo` keeps two rings apart. `ring.p(slot)` gives the middle of a slot in the coordinates of the ring, to fly an entry in from another place. The slot wraps, so `ring.p(ring.tail)` is the slot that the next `push()` fills. `ring.enter()` draws the band slot by slot, then brings the pointers and the caption. `ring.slots`, `ring.entries`, `ring.numbers`, `ring.headPointer`, `ring.tailPointer`, `ring.writeMarker`, and `ring.caption` are the parts. A ring has 2 to 64 slots.
 
+## Request queues
+
+`requestQueue(items, options)` moves identifiable requests from waiting lines into server slots. Use it to show how a batch refills, why a request misses its deadline, or what happens when two tenants share a block pool.
+
+```film paired label="Five requests share three batch slots across six decode steps"
+import { beside, countUp, counter, film, fitted, linear, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+// Work is the number of decode iterations the request needs.
+const REQUESTS = [
+    { id: 'A', work: 2, color: 'blue' }, { id: 'B', work: 4, color: 'teal' }, { id: 'C', work: 6, color: 'purple' },
+    { id: 'D', work: 4, color: 'orange' }, { id: 'E', work: 2, color: 'green' },
+]
+
+export default film({ fps: 30, font: 'text-serif', title: 'Continuous batching refills each free slot' }, (s) => {
+    const { area, heading } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue(REQUESTS, { width, slots: 3, size: 36, names: { slots: 'batch slots' } })), area)
+    // Count completed work across all requests, including those that have left the batch.
+    const totalWork = REQUESTS.reduce((sum, request) => sum + request.work, 0)
+    const done = () => queue.ids.reduce<number>((sum, id) => sum + queue.stateOf(id).work! - queue.stateOf(id).left!, 0)
+    const steps = beside(counter(0, { size: 40, font: 'text-serif', suffix: ` of ${totalWork} decode steps complete` }), queue, 'under', 'loose')
+    s.add(heading('Continuous batching refills each free slot'))
+    s.play(queue.enter(), { duration: 1 })
+    s.play(queue.admit(queue.next(3)), { duration: 2.4 })
+    s.add(steps)
+    s.wait(0.4)
+    // Refill the first free slot after each pair of iterations.
+    for (let round = 0; round < 3; round++) {
+        const units = queue.find((item) => item.state === 'running').reduce<number>((sum, id) => sum + Math.min(2, queue.stateOf(id).left!), 0)
+        s.play(queue.run(2), countUp(steps, done() + units), { duration: 1.6, ease: linear })
+        s.play(queue.finish(), ...(queue.count('waiting') > 0 ? [queue.admit()] : []), { duration: 1.2 })
+        s.wait(0.4)
+    }
+    s.wait(1)
+})
+```
+
+An item has an `id`, a text or a number, and an id is in the queue once. The queue knows an id by its text, so `7` and `'7'` are one id. `work` is the size of the item in units of work: decode steps, tokens, seconds. It is a whole number. An item with `work` shows the units that are left at its right end, and a bar fills it from the left as it runs. An item with no `work` has no number and no bar, and its id is in the middle. `color` sets the color of the border and the bar. `running: true` on an item of the first list puts it in a slot from the start.
+
+The texts are large enough for a lesson at 1080p. With the default `size` of 28, an id is 28 px and bold, and the names, the counts, the numbers of work, the waits and the statuses are 26 px. All of them follow `size`, and they are in the font of the film. `idFont: 'mono'` sets the ids in mono. All items have one width, `itemWidth`. Without it, the width has room for the longest id of the first items with its number, and it is 4.3 text sizes at the least. An id that is too wide for an item is set smaller, down to 0.6 of `size`. An id that is still too wide is an error that gives the `itemWidth` to set.
+
+`width` is the width of the whole object, and `.at()` places its middle. The slots are one column at the right, and the lines get the places that fit: `queue.places`. An item enters from behind the items already in line, and an item that leaves a slot goes out at the right by one place, so the object has that room at its two ends. The layout measures the object at its full `width`, also while no item is there, so `fitted(region, (width) => requestQueue(items, { width }))` fills a region. A line with more items than places draws the first ones, and three dots at its far end stand for the others. The count over the line is of all its items. A width with no room for one place is an error that gives the least width.
+
+Each line has its name and its count over its head, such as "waiting 4". The slots have theirs over the first slot, such as "running 2 / 3". Two more counts come with the first item that they count: "done" under the slots, and "rejected" under the lines. `names` sets the three words, and `null` for `done` or `rejected` draws no count there. `counts: false` leaves the names alone. `queue.enter()` brings the lines, the slots and the names, and then the items.
+
+`queue.admit()` takes the head of the first line that has an item, and gives it the first free slot. The item leaves its line by one place, crosses to the height of its slot, and comes into the slot by one place. It changes its height only in the room between the lines and the slots, so it meets no item of another line and no item in a slot. Its line closes up behind it. With an id, `admit` takes that item, and with a list it takes the items one after another, each in its own part of the time. `queue.next(count)` gives the ids that `admit()` takes next, so `queue.admit(queue.next(queue.freeSlots))` fills the free slots. A line serves its head first: an id that is not the head of its line is an error, and so is an `admit` with no free slot.
+
+`queue.run(units)` lets every item in a slot work for a number of units. The bar grows and the number counts down, at one speed. An item never does more than its work. `queue.finish()` drains the slots: with no argument, each item that has no work left goes out at the right and fades, and its slot shows its outline again. `queue.finish(which)` takes an id, a list of ids, or a function of an item. Use it for an item with no `work`. An item that has work left is an error: `run` it first.
+
+A batch that refills is one play: `s.play(queue.finish(), queue.admit())`. Name the `finish` first. The slot that the item leaves is then free for the next one, and the new item comes in behind the one that leaves: it is never nearer to the slot than that one is to its way out. The `finish` must end no later than the `admit`.
+
+`queue.reject(which, status)` sends waiting items away with a status, such as `'503'`, `'429'` or `'timeout'`. In the first fifth of the time the border of the item turns red with dashes, and a cross and the status show under it. The item stays for the viewer to read it. It fades from 0.6 to 0.8 of the time, and its line closes up in the last fifth, when the place is empty. `which` is an id, a list of ids, or a function of an item, which the queue calls when the film plays the change: `queue.reject((item) => item.late, 'timeout')`. Only an item that waits can be rejected. A status that is wider than the room under an item is an error.
+
+`queue.wait(which, value)` runs the wait of waiting items to a value, as a number under each item. The value is in the unit of the film, and `format` writes it. With a `deadline`, the number turns red and bold when the wait reaches it, and the border of the item turns red with dashes. `queue.stateOf(id).late` is true while the item waits at or past its deadline. When the item leaves the line, the flag clears and `stateOf(id).wait` retains its last wait.
+
+```film paired label="Request R-105 exceeds its wait budget and receives a 503"
+import { beside, fadeIn, film, fitted, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif', title: 'R-105 runs out of time in the queue' }, (s) => {
+    const { area, heading, note } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue([
+        { id: 'R-103', work: 4, running: true }, { id: 'R-104', work: 5 },
+    ], { width, slots: 1, size: 36, idFont: 'mono', deadline: 250, format: (ms) => `${Math.round(ms)} ms`, names: { slots: 'model worker', rejected: 'refused' } })), area)
+    const budget = beside(note('Queue wait budget: 250 ms'), queue, 'above', 'loose', queue.region({ line: 0 }))
+    s.add(heading('R-105 runs out of time in the queue'))
+    s.play(queue.enter(), fadeIn(budget), { duration: 1 })
+    s.play(queue.arrive([{ id: 'R-105', work: 3 }, { id: 'R-106', work: 2 }]), { duration: 1.2 })
+    s.wait(0.4)
+    // The worker is busy, and the two waits run.
+    s.play(queue.run(4), queue.wait('R-104', 190), queue.wait('R-105', 130), { duration: 2.4 })
+    // R-104 is in time: the worker is free 60 ms before its budget ends.
+    s.play(queue.finish(), queue.admit(), { duration: 1.2 })
+    s.wait(0.4)
+    // R-105 crosses its deadline while R-104 is still running.
+    s.play(queue.run(3), queue.wait('R-105', 310), { duration: 2.6 })
+    s.wait(0.6)
+    s.play(queue.reject((item) => item.late, '503'), { duration: 2 })
+    s.wait(1.2)
+})
+```
+
+`lines` gives the queue more than one waiting line, from the top: a line is a name, or `{ name, color }`. Use it for a second tenant, or for a priority. An item names its line by its name or its index, and takes the color of its line. `queue.admit()` serves the first line that has an item, so the order of the lines is their priority. A scheduler of the film that picks another line names the head of that line: `queue.admit('B-1')`. With two lines or more, two slots are as far apart as half of two lines, so a line is at the height of a slot or in the middle between two slots.
+
+`pool` adds a pool of fixed blocks under the slots, such as the pages of a KV cache: a number of blocks, or `{ blocks, name, columns }`. An item with `blocks` takes that many when it comes into its slot, and gives them back when it finishes. `queue.take(id, count)` gives an item in a slot more blocks, as a request whose cache grows with each token. An item takes the first free blocks by index, so the next item uses again the blocks that another gave back. A free block is an outline of dashes, and a block that is taken has the color of its owner. The name over the pool shows the count, such as "KV blocks 6 / 8", and `queue.freeBlocks` gives the free ones. An `admit` or a `take` for more blocks than are free is an error. So a film reads the state first, and shows why a request waits:
+
+```film paired label="Tenant B gets a slot when tenant A releases its KV blocks"
+import { beside, fadeIn, fadeOut, film, fitted, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif', title: 'A free GPU slot still needs KV blocks' }, (s) => {
+    const { area, heading, note } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue([
+        { id: 'A-1', line: 'tenant A', work: 2, blocks: 3, running: true },
+        { id: 'A-2', line: 'tenant A', work: 3, blocks: 2 },
+        { id: 'B-1', line: 'tenant B', work: 2, blocks: 4 }, { id: 'B-2', line: 'tenant B', work: 2, blocks: 2 },
+    ], { width, slots: 3, size: 34, lines: [{ name: 'tenant A', color: 'teal' }, { name: 'tenant B', color: 'orange' }], names: { slots: 'GPU slots' }, pool: { blocks: 8, name: 'KV blocks' } })), area)
+    s.add(heading('A free GPU slot still needs KV blocks'))
+    s.play(queue.enter(), { duration: 1 })
+    s.play(queue.admit('A-2'), { duration: 1.2 })
+    s.wait(0.4)
+    // A seat is free for B-1, and the pool is short: the film reads both from the queue.
+    const needs = queue.stateOf('B-1').blocks, free = queue.freeBlocks
+    const short = beside(note(`B-1 needs ${needs} blocks, and ${free} are free`, { color: 'ink' }), queue, 'under', 'normal', queue.region({ line: 'tenant B' }))
+    s.play(fadeIn(short), { duration: 0.5 })
+    s.wait(1)
+    s.play(queue.run(2), { duration: 1.4 })
+    // A-1 ends. Its three blocks go back to the pool, and B-1 takes them and one more.
+    s.play(queue.finish(), queue.admit('B-1'), fadeOut(short), { duration: 1.6 })
+    s.wait(0.6)
+    // The cache of A-2 grows by two blocks, and the pool is full.
+    s.play(queue.take('A-2', 2), { duration: 0.8 })
+    s.wait(1.6)
+})
+```
+
+`queue.arrive(items)` takes one item or a list. The items of a list arrive one after another, and `lag` sets how much later each one starts, as a part of the time of one. An id that the queue has is an error. An item is all there at the middle of its way in.
+
+Each animation leaves the queue in the state that the next one starts from, and the queue changes its bookkeeping when the film plays an animation. So in `seq(queue.arrive({ id: 'N' }), queue.admit('N'))` the second call finds the item of the first. `queue.stateOf(id)` gives what an item is and where: its `state` (`'waiting'`, `'running'`, `'done'` or `'rejected'`), its `line`, its `place` in the line from 0 at the head, its `slot`, its `work` and the units that are `left`, its `blocks`, its `wait`, `late`, and the `status` that it left with. `queue.find(test)` gives the ids that a function picks, `queue.count(state, line)` counts the items in a state, and `queue.ids` holds all ids in the order of arrival. `queue.freeSlots` is the number of free slots.
+
+A rejected call leaves the queue ready to retry. The queue takes the calls of one play in their order, and the calls of a film in the order of their times: a call that starts before a call that the film made earlier is an error. Some calls cannot share their time:
+
+- An item takes one change of its state at a time: it arrives, then it goes to a slot, then it leaves.
+- The slots take one `admit` at a time, so that no two items cross. Give one `admit` all the items, as a list.
+- A line takes one change of its order at a time: an `admit` from it, or a `reject` from it.
+- An `arrive` can share its time with an `admit` or a `reject` of its line, and with another `arrive`. The item that arrives stays behind the items that move, so it must be in its place no sooner than they are.
+- Call `run` or `take` after the request reaches its slot. Wait for its work and block allocation to end before calling `finish` on it. A `wait` in the line can run alongside work in a slot.
+
+A call that breaks one of these is an error that names the two calls and their times, and says what to change. An ease that goes back, or past its end, does not move an item back: the queue takes the furthest point that the ease has reached.
+
+`queue.item(id)` is the node of one item: its box, its bar, its id and its numbers. Fade it, light it or circle it as one node, and a connector to it follows the item. The queue moves the item, so do not move that node. `queue.p(part, edge)` is a point of a part in the coordinates of the object, and `queue.region(part)` is its box on the stage, for `place` and `beside` of the layout. A region encloses all four corners, including when a parent rotates or scales the queue. A part is `{ line }` for the row of a line, `{ line, place }` for one place, `{ slot }`, `{ block }`, `'slots'` or `'pool'`. `queue.rails` (the line of each waiting line), `queue.captions`, `queue.more` (the three dots), `queue.seats`, `queue.slotsCaption`, `queue.doneTally`, `queue.rejectedTally`, `queue.blocks`, `queue.poolCaption` and `queue.chips` are the parts. A queue has 1 to 12 slots, 1 to 4 lines, and a pool of 256 blocks at the most.
+
+Each state has a sign beside its color. An item that waits is in a line, and one that runs is in a slot with its bar. A late item has dashes and a red number, and a rejected one has dashes, a cross and its status. A free slot and a free block are outlines of dashes.
+
+Use `ringBuffer` where the lesson is about the ring: two indexes that wrap. Use `requestQueue` for admission, batching and scheduling. For a population of a hundred requests or more, draw one mark for each with `unitChart` or `stateGrid`, and keep the queue for the few that the viewer follows.
+
 ## Date lines
 
 `dateLine(events, options)` draws a line of time with events at their dates: the history of a project, the releases of a kernel, or the documents of a source in the order in which they came. An event has its date in `at`, a `label`, and a `color`. Each event is a mark on the line, with a stem to its label. An event with no label is a mark only.
