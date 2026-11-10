@@ -81,6 +81,8 @@ A range can be a function, for a window that moves along a series: `axes({ x: ()
 
 Each mark on such axes follows the range. A curve and a band are cut at the two ends of the x range. A dot, a marker, guides, a tangent, a secant, the rectangles of `riemann`, and the names of the axes move with it, and a mark at a point does not show while the point is outside the range.
 
+On fixed axes, the numbers have one place at every `labelSize`: the middle of a number is 26 pixels under the x axis, or 28 pixels beside the y axis. A number that would touch its tick there moves away as far as it must to clear the tick. On axes with a range that moves, that room grows with `labelSize`.
+
 ```film paired label="A window moves along a series, a marker follows the present, and a band opens ahead of it"
 import { axes, band, dot, dynamic, fadeIn, film, linear, valueAt, type Vec } from 'vizmatic/stage'
 
