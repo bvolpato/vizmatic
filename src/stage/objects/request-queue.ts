@@ -597,8 +597,11 @@ export class RequestQueue extends Node {
      */
     region(part?: QueuePart): Box {
         const [left, top, right, bottom] = part === undefined ? [this.geo.left, this.geo.top, this.geo.right, this.geo.bottom] : this.partBox(part, 'region')
-        const [x0, y0] = this.toWorld(left, top), [x1, y1] = this.toWorld(right, bottom)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        const corners = [[left, top], [right, top], [right, bottom], [left, bottom]].map(([x, y]) => this.toWorld(x!, y!))
+        return new Box(
+            Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, y]) => y)),
+            Math.max(...corners.map(([x]) => x)), Math.max(...corners.map(([, y]) => y)),
+        )
     }
 
     /** A copy with its own items and its own bookkeeping, at rest in the state that the queue has now. */

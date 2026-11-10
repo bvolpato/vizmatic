@@ -13404,7 +13404,7 @@ describe('named box', () => {
 })
 
 // The request queue has its own import, so that its tests stay one block.
-import { boxOf, fitted, requestQueue, zone as queueZone } from '../src/stage/index'
+import { boxOf, fitted, narrated, requestQueue, zone as queueZone } from '../src/stage/index'
 
 describe('request queue', () => {
     type Queue = ReturnType<typeof requestQueue>
@@ -14094,6 +14094,64 @@ describe('request queue', () => {
             expect(border.width).toBeCloseTo(W / 2, 6)
         })
         expectPure(f, [0.5, 1.5, 2.5, 3])
+    })
+
+    it.each([false, true])('keeps a narrated queue across scenes after show uses enter: %s', async (enter) => {
+        let first!: Queue, next!: Queue
+        const f = await compileFilm(narrated({
+            intro: false, fps: 10,
+            timing: { lead: 1, gap: 0.5, tail: 0, scenes: [
+                { id: 'queue', beats: [{ say: 'requests admit', duration: 3, hold: 0.5, words: [
+                    { text: 'requests', start: 0, end: 0.3 }, { text: 'admit', start: 1, end: 1.3 },
+                ] }] },
+                { id: 'refill', beats: [{ say: 'work refill', duration: 3, hold: 1, words: [
+                    { text: 'work', start: 0, end: 0.3 }, { text: 'refill', start: 1.5, end: 1.8 },
+                ] }] },
+            ] },
+            scenes: {
+                queue: (s, c) => {
+                    first = requestQueue([{ id: 'A', work: 1 }, { id: 'B', work: 1 }])
+                    c.show('requests', enter ? first.enter({ duration: 0.3 }) : first)
+                    c.on('admit', () => {
+                        s.play(first.admit(), { duration: 0.5 })
+                        next = first.clone()
+                    })
+                    c.keep(first)
+                },
+                refill: (s, c) => {
+                    c.take(next)
+                    c.on('work', () => s.play(next.run(1), { duration: 0.5 }))
+                    c.on('refill', () => s.play(next.finish(), next.admit(), { duration: 0.5 }))
+                },
+            },
+        }))
+        expect(first.stateOf('A').state).toBe('running')
+        expect(next.stateOf('A').state).toBe('done')
+        expect(next.stateOf('B').state).toBe('running')
+        expect(seen(first, 'A', 4.6)).toBe(1)
+        expect(seen(first, 'A', 4.8)).toBe(0)
+        expect(seen(next, 'A', 4.6)).toBe(0)
+        expect(seen(next, 'A', 4.8)).toBe(1)
+        expect(where(first, 'A', 4.6)).toEqual(where(next, 'A', 4.8))
+        expectPure(f, [0.5, 1.2, 2.5, 4.6, 4.8, 7.5])
+    })
+
+    it('measures every corner of a region through a rotated parent', async () => {
+        await compile((s) => {
+            const made = requestQueue([{ id: 'A' }], { width: 900, slots: 2, pool: 4 })
+            s.add(group(made).at(120, -60).rotate(Math.PI / 4).scale([1.3, 0.8]))
+            for (const part of [{ slot: 0 }, { line: 0 }, 'pool'] as const) {
+                const [left] = made.p(part, 'left'), [right] = made.p(part, 'right')
+                const [, top] = made.p(part, 'top'), [, bottom] = made.p(part, 'bottom')
+                const corners = [[left, top], [right, top], [right, bottom], [left, bottom]].map(([x, y]) => made.toWorld(x!, y!))
+                const region = made.region(part)
+                expect([region.left, region.top, region.right, region.bottom]).toEqual([
+                    Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, y]) => y)),
+                    Math.max(...corners.map(([x]) => x)), Math.max(...corners.map(([, y]) => y)),
+                ])
+            }
+            expect(made.region().width).toBeCloseTo(boxOf(made).width, 6)
+        })
     })
 
     it('ends an animation of no length in the state that it names', async () => {
