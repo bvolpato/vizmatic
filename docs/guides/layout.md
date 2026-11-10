@@ -29,6 +29,7 @@ A scene types no x and no y. It cuts its area into regions, lets a container mea
 | `lanes(...).region({ lane, between, from, to, at })` | The box of a part of a `lanes` object: a lane, the room between two lanes, a stretch of time. `region({ event })` is the box of one event. |
 | `numberLine(...).region({ at, from, to, band })` | The box around one value, a range of values, or a threshold band on a number line. |
 | `scatter(...).region({ x, y })` | The box around the selected data ranges on a scatter plot. Omit both ranges for the whole plot. |
+| `segmentedBar(...).region({ part, label, from, to, at })` | The box of a piece of a `segmentedBar`: one part, the label of a part, a stretch of amounts, one amount. |
 | `table(...).region(row, column)` | The box of a table row, column, or cell in stage pixels. Use `null` for the row to select a column. With no arguments, it measures the room for `maxRows` rows. |
 | `tokens(...).region({ from, to, row })` | The box of a run of token cells, or of their values in one named row. Read it again after a change moves the tokens. |
 

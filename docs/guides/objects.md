@@ -2114,6 +2114,154 @@ export default film({ fps: 30 }, (s) => {
 
 `word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
 
+## Segmented bars
+
+`segmentedBar(parts, options)` draws one bar whose segment widths match their values. Use it to compare a budget with a capacity, or to show shares of a whole. Give each part a unique `name`, a nonnegative `value`, and an optional `color`. The name and color stay with the part as it grows, shrinks, or moves between bars.
+
+```film paired label="A context window holds more than its capacity. The raw trace moves to an archive, one finding of it stays, and the tool schemas shrink"
+import { beside, fadeIn, fadeOut, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, note } = sceneKit({ size: 36 })
+
+export default film({ fps: 30 }, (s) => {
+    const [upper, lower] = area.rows(2)
+    // The two bars have one scale: the right end of both is the first total, 12,436 units.
+    const context = place(fitted(upper!, (width) => segmentedBar([
+        { name: 'system', value: 1200 },
+        { name: 'tool schemas', value: 2400 },
+        { name: 'trace export', value: 8200, color: 'orange' },
+        { name: 'question', value: 636, color: 'purple' },
+    ], { width, capacity: 8192, max: 12436, title: 'context window of RUN-842, in units', free: 'free' })), upper!)
+    const shelf = place(fitted(lower!, (width) => segmentedBar([], { width, capacity: 12436, title: 'archive, outside the window', readout: false })), lower!)
+    s.add(heading('Build the input: compress, then select'))
+    s.play(context.enter(), fadeIn(shelf), { duration: 1.8 })
+    s.wait(1.6)
+    // Compress: the raw trace goes to the archive, and one finding of it stays.
+    s.play(context.send('trace export', shelf), { duration: 1.6 })
+    s.play(context.insert({ name: 'finding', value: 186, color: 'orange' }, { before: 'question' }), { duration: 0.8 })
+    s.wait(1.4)
+    // Select: only the tools that this phase allows.
+    s.play(context.resize('tool schemas', 1324), { duration: 1.2 })
+    // A note on a part: under the label of the part. It is placed after the change, where the label is then.
+    const allowed = beside(note('3 of the 9 tools', { color: 'teal' }), context.region({ label: 'tool schemas' }), 'under', 'tight')
+    s.play(fadeIn(allowed), { duration: 0.4 })
+    s.wait(2)
+    s.play(fadeOut(allowed), { duration: 0.4 })
+    s.wait(0.4)
+})
+```
+
+`capacity` sets the limit and puts a vertical mark at that value. `max` sets the value at the right edge of the drawing. It defaults to `capacity`, or to the initial total for a bar of shares. Set `max` above `capacity` to leave room for overflow. For an empty bar, give `capacity` or `max` to set its scale. Two bars with the same `width` and `max` draw one unit at the same width. `.at()` places the center of this scale.
+
+Each part has a name and an amount below the bar. Leader lines connect narrow parts to their labels when the labels need more room. If the row does not fit, the error gives the required width. Set `free` to a name such as `'available'` to label unused capacity. Set `labels: false` to omit the row.
+
+Names use the film font. Amounts use a monospaced font. The default `size` is 28 px and the default `height` is 2.4 times that size, rounded to the nearest pixel. The default number format groups thousands and uses the greatest number of decimal places in the initial values, capacity, and maximum, up to three. Use `format` for percentages, units, or a different precision.
+
+`title` appears above the left edge. With a capacity, the readout shows the current total and the limit above the capacity mark. Use `readout: false` to hide it or `readout: true` to show the total on a bar of shares.
+
+When the total exceeds capacity, a red hatch covers the excess and the readout reports the difference. Set `over` to change the word before the excess amount. If the total exceeds `max` on an animation frame, the build reports the parts, the time, and the required maximum.
+
+Each verb is an animation that changes the parts:
+
+| Verb | What it does |
+|---|---|
+| `bar.resize('cache', 4)` | A part grows or shrinks to a new amount. `bar.resize({ weights: 3.4, cache: 4 })` changes several parts at one time. |
+| `bar.insert({ name, value, color }, { before })` | A part arrives. Its box grows from nothing at its place: in front of the part `before`, or at the right end. |
+| `bar.remove('trace')` | A part leaves, and its room is free. A list of names takes several parts out. |
+| `bar.cut(['rename', 'quota'])` | Parts leave, and the parts that stay take their room: each one grows by the same factor, so the total stays. |
+| `bar.send('trace', archive, { before })` | A part moves to another bar. Its box travels and lands at its place there, to the scale of that bar. |
+| `bar.enter()` | The frame arrives, and then the parts grow from the left, one after another. |
+
+The parts at the right of a part that changes move with it. The amounts under the parts count, and so do the readout and the free room. `cut` is a renormalization, such as top-k on a distribution: the cut parts shrink first, so the viewer sees the room that they leave, and then the rest grow. With `send`, the part keeps its name, its amount, and its color. The first bar closes the room of the part, and the second bar makes room before the box lands.
+
+To freeze a transfer, clone the group that contains both bars. The snapshot keeps the travelling box at its current position as the original continues. Cloning a single endpoint captures only that bar.
+
+Changes to different parts can play together. Schedule changes to the same part in time order, with each change ending before the next begins. Use `seq` to remove and replace a part with the same name, or to send a part to an archive and back. The bar resolves part names when each animation plays.
+
+`bar.names`, `bar.count`, `bar.total`, `bar.free`, and `bar.over` read the state after the changes that the film has played so far. `bar.amount(name)` is the amount of one part, `bar.range(name)` holds its two ends as amounts, and `bar.has(name)` says if the bar has the part. `bar.find(test)` gives the names of the parts that a function picks. The function gets a part with its `name`, its `value`, its `share` of the total, its two ends `from` and `to`, and its `index`. If the parts are sorted by decreasing probability, `bar.cut(bar.find((part) => part.index >= 2))` keeps the two most probable outcomes. `bar.find((part) => part.from <= u && u < part.to)` locates a draw on the cumulative scale.
+
+```film paired label="A distribution over the next token: the temperature changes its shape, top-k cuts it, and a draw lands on one part"
+import { arrow, beside, fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, label, note } = sceneKit({ size: 36 })
+const TOKENS = ['create', 'revoke', 'rename', 'quota']
+const P = [0.5, 0.25, 0.15, 0.1]
+/** The shares at a temperature: each one to the power of 1 / T, and then all divided by their sum. */
+function heated(temperature: number): Record<string, number> {
+    const raised = P.map((p) => p ** (1 / temperature)), sum = raised.reduce((a, b) => a + b, 0)
+    return Object.fromEntries(TOKENS.map((token, i) => [token, raised[i]! / sum]))
+}
+
+export default film({ fps: 30 }, (s) => {
+    const strip = place(fitted(area, (width) => segmentedBar(TOKENS.map((name, i) => ({ name, value: P[i]! })), {
+        width, height: 130, size: 44, title: 'the next token', format: (share) => `${Math.round(share * 100)}%`,
+    })), area)
+    s.add(heading('Each sampler changes one distribution'))
+    s.play(strip.enter(), { duration: 1.6 })
+    s.wait(1)
+    // Temperature: a low one makes the largest share larger, and a high one makes the shares more equal.
+    const dial = beside(note('temperature 0.5'), strip, 'under', 'wide')
+    s.play(strip.resize(heated(0.5)), fadeIn(dial), { duration: 1.2 })
+    s.wait(1)
+    s.remove(dial)
+    const warm = s.add(beside(note('temperature 2'), strip, 'under', 'wide'))
+    s.play(strip.resize(heated(2)), { duration: 1.2 })
+    s.wait(1)
+    s.remove(warm)
+    s.play(strip.resize(heated(1)), { duration: 0.8 })
+    // Top-k with k = 2: the tokens after the second leave, and the two that stay share the whole.
+    const rule = s.add(beside(note('top-k, k = 2'), strip, 'under', 'wide'))
+    s.play(strip.cut(strip.find((part) => part.index >= 2)), { duration: 1.8 })
+    s.wait(1)
+    // The draw: a number from 0 to 1 lands on the strip, and the part under it is the token.
+    const u = 0.71, drawn = strip.find((part) => part.from <= u && u < part.to)[0]!
+    const tip = strip.region({ at: u }).point('top')
+    const marker = arrow([tip[0], tip[1] - 110], [tip[0], tip[1] - 12], { stroke: 'yellow', width: 5 })
+    const pick = beside(label(`u = ${u}: ${drawn}`, { color: 'yellow' }), marker, 'above')
+    s.play(fadeIn(marker, { shift: [0, -30] }), fadeIn(pick), { duration: 0.6 })
+    s.wait(2)
+    s.remove(rule)
+})
+```
+
+Use `bar.region({ part: name })` for the box of a part on the stage. To put a note below its label, use `beside(note, bar.region({ label: name }), 'under')`. For a brace, use `region({ from, to })` and connect two corners. For a marker at one value, use `region({ at: value }).point('top')`. `region()` covers the frame up to the capacity. Read the region again after moving the bar or changing its parts.
+
+`bar.x(value)` and `bar.p(name, edge)` return local coordinates. The default edge is `'top'`. Use `bar.part(name)` to select the box and label together, for example with `spotlight`. The frame, capacity mark, title, and readout are available as `bar.frame`, `bar.limit`, `bar.title`, and `bar.readout`.
+
+The layout reserves room for the full bar and its label rows, including when the bar starts empty. Use `fitted(region, (width) => segmentedBar(parts, { width }))` to fit a bar to a region. The GPU and host below use the same scale, so the cache keeps its width during transfer.
+
+```film paired label="Four sequences grow beyond GPU capacity. Their KV cache moves to host memory."
+import { beside, fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, note } = sceneKit({ size: 40 })
+const gb = (value: number) => value.toFixed(1)
+
+export default film({ fps: 30 }, (s) => {
+    const [left, right] = area.columns(2)
+    // One scale for the two bars: both end at 34 GB, so one GB is as wide in the host as in the device.
+    const device = place(fitted(left!, (width) => segmentedBar([
+        { name: 'weights', value: 7.6 },
+        { name: 'workspace', value: 2.0, color: 'purple' },
+    ], { width, capacity: 24, max: 34, title: 'GPU (GB)', free: 'free', format: gb, size: 30 })), left!)
+    const host = place(fitted(right!, (width) => segmentedBar([], { width, capacity: 32, max: 34, title: 'Host (GB)', free: 'free', format: gb, size: 30 })), right!)
+    s.add(heading('Where does the KV cache fit?'))
+    s.play(device.enter(), fadeIn(host), { duration: 1.6 })
+    s.wait(1)
+    // With a cap of 1,024 tokens for each of the four sequences, the cache stops at 1.3 GB.
+    const short = s.add(beside(note('4 sequences of 1,024 tokens'), device, 'under', 'wide'))
+    s.play(device.insert({ name: 'KV cache', value: 1.3, color: 'teal' }), { duration: 1 })
+    s.wait(1.4)
+    // With no cap, the four sequences run to 16,384 tokens.
+    s.remove(short)
+    s.add(beside(note('4 sequences of 16,384 tokens'), device, 'under', 'wide'))
+    s.play(device.resize('KV cache', 22.5), { duration: 2.4 })
+    s.wait(1.8)
+    // The cache moves to the host, where it has room.
+    s.play(device.send('KV cache', host), { duration: 1.8 })
+    s.wait(2)
+})
+```
+
 ## Layer stacks
 
 `layerStack(layers, options)` draws a model from its input at the bottom to its output at the top. A block transforms values on the main path. A branch reads those values and joins the main path at a plus sign. Use the same diagram across scenes to show where each step happens.

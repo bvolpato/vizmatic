@@ -495,6 +495,22 @@ const word = s.add(bitField([
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
 
+Use `segmentedBar` for a budget against a limit or for shares of a whole. Each part keeps its name and color as its value changes. Set `capacity` to draw a limit and `max` to reserve space for a red hatch over any excess. The labels and readout default to 28 px. Use `resize`, `insert`, and `remove` to change parts. `cut` removes selected parts and scales the others to restore the total. `send` moves one part between bars. Use `bar.region({ label: name })` to place a note under the label of a narrow part.
+
+```ts
+const context = s.add(segmentedBar([
+    { name: 'system', value: 1200 },
+    { name: 'tool schemas', value: 2400 },
+    { name: 'trace export', value: 8200, color: 'orange' },
+], { capacity: 8192, max: 12436, title: 'context window, in tokens', free: 'free', width: 1700 }).at(0, -200))
+const archive = s.add(segmentedBar([], { capacity: 12436, title: 'archive', readout: false, width: 1700 }).at(0, 200))
+s.play(context.send('trace export', archive))                              // the raw trace moves to the other bar
+s.play(context.insert({ name: 'finding', value: 186, color: 'orange' }))   // one finding of it arrives
+s.play(context.resize('tool schemas', 1324))                               // the tools shrink, and the total counts down
+const next = segmentedBar([{ name: 'create', value: 0.5 }, { name: 'revoke', value: 0.25 }, { name: 'rename', value: 0.15 }, { name: 'quota', value: 0.1 }])
+s.play(next.cut(next.find((part) => part.index >= 2)))                     // top-k with k = 2: the two that stay take the whole bar
+```
+
 Use `tokens` for a sentence, a sequence of bytes, or the parts of a prompt. Put IDs, positions, or targets in named rows under the cells. Mark prompt tokens as masked, or append generated tokens as they arrive. A bracket names a span, and a window highlights a range. Give the strip `size: 32` or larger for a 1080p film. The default token size is 22, and the row values use 0.82 of the token size.
 
 ```ts
