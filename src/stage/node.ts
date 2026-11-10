@@ -286,9 +286,13 @@ export class Node {
                     target[key] = value.map((item: Node | null) => (item ? copies.get(item) ?? item : null))
                 }
             }
+            from.copyStateTo(to, copies)
         }
         return copy
     }
+
+    /** Rebind object state that refers to descendants through maps or sets, including inside a cloned group. */
+    protected copyStateTo(_copy: this, _parts: ReadonlyMap<Node, Node>): void {}
 
     private copyTree(copies: Map<Node, Node>): this {
         const copy = Object.create(Object.getPrototypeOf(this)) as this

@@ -354,7 +354,7 @@ export default film((s) => {
         { from: 'run', to: 'observe', label: 'receipt' },
         { from: 'observe', to: 'choose' },
         { from: 'choose', to: 'answer', label: 'enough facts' },
-    ], { width: 1800, token: 'choose', labelSize: 30, edgeLabelSize: 26, nodeGap: 150 }))
+    ], { fit: true, width: 1800, token: 'choose', labelSize: 30, edgeLabelSize: 26, nodeGap: 150 }))
     // Lap 1: the tool times out. The error is the observation.
     s.play(seq(loop.go('admit'), loop.go('run')))
     s.play(loop.setState('run', 'failed'))
@@ -374,7 +374,9 @@ export default film((s) => {
 
 A node with a `value` is a box with its label over a number. A `note` is a second text under the box, such as a gradient under a value, in the color of `noteColor`. Give `''` for a text that arrives later: the box has its room from the start. `g.setValue(id, text)` and `g.setNote(id, text)` change a text in place, and `g.valueOf(id)` and `g.noteOf(id)` read it. A node with no `width` is as wide as the texts that it is built with, so give a `width` to a node whose later value is longer. A value that is too wide for its box is an error that names the width to give.
 
-`g.send(from, to)` sends a light along the edge between two nodes, in the direction that the call names: with the arrow, or against it. With `value` or `note`, the node at the end takes the text when the light arrives. So one call is one step of a pass, forward or back, and the label of an edge is the local factor.
+`g.send(from, to)` sends a light along the edge between two nodes, in the direction that the call names: with the arrow, or against it. With `value` or `note`, the node at the end takes the text after the light arrives. So one call is one step of a pass, forward or back, and the label of an edge is the local factor.
+
+As with `connector.send`, `duration` is the travel time, 0.9 seconds by default, with linear motion unless `ease` is given. A value or a note then changes over 0.5 seconds, and the animation includes that change. `length` is the share of the edge that lights at once, 0.3 by default. The graph sends a light along the edge as it was when the light left. For a separate message mark, loss, or refusal at a receiver, use `connector.send(mark, options)`. A graph call names both ends to set its direction, while a connector uses `reverse: true` for an answer.
 
 ```ts
 import { film, graph } from 'vizmatic/stage'
@@ -394,7 +396,7 @@ export default film((s) => {
         { from: 'pred', to: 'err', label: '× 1' },
         { from: 'y', to: 'err' },
         { from: 'err', to: 'loss', label: '× 2' },
-    ], { width: 1800, labelSize: 30, valueSize: 30, edgeLabelSize: 26, noteColor: 'pink', nodeGap: 90 }))
+    ], { fit: true, width: 1800, labelSize: 30, valueSize: 30, edgeLabelSize: 26, noteColor: 'pink', nodeGap: 90 }))
     // Forward: a node takes its value when the light of its inputs arrives.
     s.play(net.send('w', 'pred'), net.send('x', 'pred', { value: '6' }))
     s.play(net.send('y', 'err'), net.send('pred', 'err', { value: '1' }))
@@ -411,7 +413,7 @@ In a tree, the same `send` computes the value of a node from its children: `t.se
 
 ### A graph that fills a region, and a graph that is built
 
-With the default layout, `width` and `height` are the size of the graph, from the edge of its first node to the edge of its last one. The layout keeps its order and moves the nodes apart or together, so `fitted(region, (width) => graph(nodes, edges, { width }))` fills a region and a film types no place for a node. A size with no room between two nodes, or for the label of their edge, is an error that names the least size. With the force and the circle layout, `width` and `height` are the bounding size, as before.
+With `fit: true` and the default layout, `width` and `height` are the size of the graph, from the outline of its first node to the outline of its last one. The layout keeps its order and moves the nodes apart or together, so `fitted(region, (width) => graph(nodes, edges, { fit: true, width }))` fills a region and a film types no place for a node. A size with no room between two nodes, or for the label of their edge, is an error that names the least size. Without `fit: true`, the default layout ignores `width` and `height`, as it did before. With the force and the circle layout, `width` and `height` are the bounding size, as before.
 
 With `shown`, only the nodes that it names show at the start. `g.grow(ids)` brings the others one after another, each with the edges that join it to the nodes that show: an edge that comes to the new node draws first, and the node pops in at its end. `g.isShown(id)` reads it. So a film builds a knowledge graph from the sentences that it reads.
 

@@ -446,6 +446,29 @@ describe('graph and tree that change', () => {
         expect(await fails((s) => { s.add(graph([{ id: 'a', value: 3 as unknown as string }], [])) })).toMatch(/the value of the node "a" is 3. A value is a text, such as "3"/)
     })
 
+    it('lets a clone continue a tree search independently after the original tree has changed', async () => {
+        let source!: T, copy!: T
+        await compile((s) => {
+            source = words({ shown: 1, token: 'the' })
+            const holder = s.add(group(source))
+            s.play(source.go('ran'), source.setValue('ran', '0.59'))
+            s.play(source.path('ran'))
+            const other = s.add(holder.clone().at(0, 250))
+            copy = other.children[0] as T
+            s.play(copy.grow('home'))
+            s.play(copy.go('home'), copy.setValue('ran', '0.58'))
+            s.play(copy.prune('slept'))
+            s.play(copy.path('home'))
+        })
+        expect(copy.node('ran')).not.toBe(source.node('ran'))
+        expect(copy.nodeLayer.children).toContain(copy.node('ran'))
+        expect([source.current, copy.current]).toEqual(['ran', 'home'])
+        expect([source.valueOf('ran'), copy.valueOf('ran')]).toEqual(['0.59', '0.58'])
+        expect([source.isShown('home'), copy.isShown('home')]).toEqual([false, true])
+        expect([source.stateOf('slept'), copy.stateOf('slept')]).toEqual(['idle', 'off'])
+        expect([source.litPath, copy.litPath]).toEqual([['the', 'ran'], ['the', 'ran', 'home']])
+    })
+
     it('setValue and setNote change a text in place, and no moment shows two texts', async () => {
         let g!: G, old!: Node
         const f = await compile((s) => {
@@ -530,6 +553,26 @@ describe('graph and tree that change', () => {
         expect(await fails((s) => { s.play(s.add(chain()).send('a', 'c')) })).toMatch(/graph: send: no edge joins "a" and "c". The edges of "a" join it to "b"/)
     })
 
+    it('send uses duration for travel and changes a value only after arrival', async () => {
+        let g!: G
+        const f = await compile((s) => {
+            g = s.add(graph([{ id: 'a', value: '1', width: 120 }, { id: 'b', value: '', width: 120 }], [{ from: 'a', to: 'b' }]))
+            s.play(g.send('a', 'b', { duration: 2, value: '2' }))
+        })
+        expect(f.duration).toBe(2.5)
+        const light = lightOf(g.edge('a', 'b'))
+        expect(at(1.9, () => light.get('visible'))).toBe(true)
+        expect(at(2.01, () => light.get('visible'))).toBe(false)
+        expect(at(1.99, () => g.node('b').value!.get('visible'))).toBe(false)
+        expect(at(2.5, () => g.node('b').value!.get('opacity'))).toBe(1)
+        for (const duration of [0, -1, NaN, Infinity]) {
+            expect(await fails((s) => { s.add(chain()).send('a', 'b', { duration }) })).toMatch(/send: duration is the travel time/)
+        }
+        for (const length of [0, -1, 1.1, NaN, Infinity]) {
+            expect(await fails((s) => { s.add(chain()).send('a', 'b', { length }) })).toMatch(/send: length is the share of the edge/)
+        }
+    })
+
     it('go moves the token along an edge, and current is the new node', async () => {
         let g!: G
         const f = await compile((s) => {
@@ -543,7 +586,7 @@ describe('graph and tree that change', () => {
         expect([ring('a', 1.5), ring('b', 1.5), ring('c', 1.5)]).toEqual([0, 1, 0])
         expect([ring('a', f.duration), ring('b', f.duration), ring('c', f.duration)]).toEqual([0, 0, 1])
         // The dot is on the edge while it moves, between the two nodes, and it does not show at rest.
-        const dot = g.children.at(-1)!
+        const dot = g.edge('a', 'b').token!
         const [x, y, opacity] = at(1, () => [dot.get('x'), dot.get('y'), dot.get('opacity')])
         expect(x).toBeGreaterThan(-300 + 30)
         expect(x).toBeLessThan(-30)
@@ -551,7 +594,25 @@ describe('graph and tree that change', () => {
         expect(opacity).toBe(1)
         expect([at(0.25, () => dot.get('opacity')), at(1.5, () => dot.get('opacity')), at(f.duration, () => dot.get('opacity'))]).toEqual([0, 0, 0])
         // The second move starts where the first one ended.
-        expect(at(2, () => dot.get('x'))).toBeGreaterThan(30)
+        expect(at(2, () => g.edge('b', 'c').token!.get('x'))).toBeGreaterThan(30)
+    })
+
+    it('keeps the token on a moving edge and its label above the token', async () => {
+        for (const moveFirst of [true, false]) {
+            let g!: G
+            await compile((s) => {
+                g = s.add(graph([{ id: 'a', at: [-250, 0] }, { id: 'b', at: [250, 0] }], [{ from: 'a', to: 'b', label: 'step' }], { layout: 'manual', token: 'a' }))
+                const travel = g.go('b'), move = g.moveNode('b', [250, 300])
+                s.play(...(moveFirst ? [move, travel] : [travel, move]), { duration: 1, ease: linear })
+            })
+            const edge = g.edge('a', 'b')
+            const position = at(0.5, () => pointAt(edge.shaft.get('path')!, 0.5))
+            expect(position[1]).toBeGreaterThan(30)
+            expect(at(0.5, () => [edge.token!.get('x'), edge.token!.get('y')])).toEqual(position)
+            expect(edge.children.indexOf(edge.caption!)).toBeGreaterThan(edge.children.indexOf(edge.token!))
+            expect(at(0.5, () => edge.caption!.get('y'))).toBeGreaterThan(30)
+            expect(at(1, () => g.node('b').ring!.get('opacity'))).toBe(1)
+        }
     })
 
     it('go follows the arrows: a step with no edge is an error that names the steps that work', async () => {
@@ -596,7 +657,7 @@ describe('graph and tree that change', () => {
             s.play(g.refuse('c'), { duration: 1 })
         })
         expect(g.current).toBe('a')
-        const ring = g.node('a').ring!, dot = g.children.at(-1)!
+        const ring = g.node('a').ring!, dot = g.edge('a', 'b').token!
         expect(at(2, () => ring.get('opacity'))).toBe(1)
         expect(rgb(at(0.6, () => ring.get('stroke')))).toEqual(color('red'))
         expect(rgb(at(1, () => ring.get('stroke')))).toEqual(color('yellow'))
@@ -605,7 +666,7 @@ describe('graph and tree that change', () => {
         // The dot turns before the middle of the edge, and comes back to where it started.
         expect(far).toBeLessThan(-150)
         expect(end).toBeCloseTo(start, 0)
-        expect(at(1.5, () => dot.get('x'))).toBeGreaterThan(start + 40)
+        expect(at(1.5, () => g.children.at(-1)!.get('x'))).toBeGreaterThan(start + 40)
         expect(await fails((s) => { s.play(s.add(chain({ token: 'a' })).refuse('a')) })).toMatch(/refuse: the token is at "a". Name the node that the machine does not let it go to/)
         // The dot turns before the label of the edge, so that it does not stop on the text.
         let named!: G
@@ -613,7 +674,7 @@ describe('graph and tree that change', () => {
             named = s.add(graph([{ id: 'a', label: 'a', at: [-200, 0] }, { id: 'b', label: 'b', at: [200, 0] }], [{ from: 'a', to: 'b', label: 'slow', labelAt: 0.34 }], { layout: 'manual', token: 'a' }))
             s.play(named.refuse('b'), { duration: 1 })
         })
-        const plate = named.edge('a', 'b').caption!.children[0]!.bounds(), token = named.children.at(-1)!
+        const plate = named.edge('a', 'b').caption!.children[0]!.bounds(), token = named.edge('a', 'b').token!
         const reach = Math.max(...[0.3, 0.4, 0.5, 0.6, 0.7].map((time) => at(time, () => token.bounds().x + token.bounds().width)))
         expect(reach).toBeLessThan(plate.x)
         expect(reach).toBeGreaterThan(named.node('a').shape.bounds().x + named.node('a').shape.bounds().width)
@@ -670,7 +731,19 @@ describe('graph and tree that change', () => {
         expect(at(0.14, () => three.node('c').get('sx'))).toBeCloseTo(0.001, 6)
     })
 
-    it('a width and a height spread the default layout of a graph to that size, and a size with no room is an error with the size that works', async () => {
+    it('keeps the default graph layout when old films pass width and height without fit', async () => {
+        let plain!: G, sized!: G
+        const nodes = [{ id: 'a', label: 'a' }, { id: 'b', label: 'b' }]
+        const links = [{ from: 'a', to: 'b', label: 'x' }]
+        await compile((s) => {
+            plain = s.add(graph(nodes, links))
+            sized = s.add(graph(nodes, links, { width: 10, height: 10 }))
+        })
+        for (const id of ['a', 'b']) expect(sized.p(id)).toEqual(plain.p(id))
+        expect(sized.edge('a', 'b').shaft.get('path')).toEqual(plain.edge('a', 'b').shaft.get('path'))
+    })
+
+    it('fit spreads the default graph layout to its width and height, and a size with no room names the size that works', async () => {
         const nodes = [{ id: 'a', label: 'plan', width: 160 }, { id: 'b', label: 'act', width: 160 }, { id: 'c', label: 'observe', width: 160 }, { id: 'd', label: 'answer', width: 160 }]
         const links = [{ from: 'a', to: 'b', label: 'tool call' }, { from: 'b', to: 'c' }, { from: 'a', to: 'd' }]
         const size = (g: G) => {
@@ -680,9 +753,9 @@ describe('graph and tree that change', () => {
         let plain!: G, wide!: G, both!: G, fit!: G
         await compile((s) => {
             plain = s.add(graph(nodes, links))
-            wide = s.add(graph(nodes, links, { width: 1400 }))
-            both = s.add(graph(nodes, links, { width: 1000, height: 500 }))
-            fit = s.add(fitted(1200, (width) => graph(nodes, links, { width })))
+            wide = s.add(graph(nodes, links, { fit: true, width: 1400 }))
+            both = s.add(graph(nodes, links, { fit: true, width: 1000, height: 500 }))
+            fit = s.add(fitted(1200, (width) => graph(nodes, links, { fit: true, width })))
         })
         expect(size(wide)[0]).toBeCloseTo(1400, 3)
         expect(size(wide)[1]).toBeCloseTo(size(plain)[1], 3)
@@ -697,15 +770,15 @@ describe('graph and tree that change', () => {
         expect(left).toBeCloseTo(-700, 3)
         let uneven!: G
         await compile((s) => {
-            uneven = s.add(graph([{ id: 'a', label: 'a wide first node', width: 400 }, { id: 'b', label: 'b', width: 80 }], [{ from: 'a', to: 'b' }], { width: 1000 }))
+            uneven = s.add(graph([{ id: 'a', label: 'a wide first node', width: 400 }, { id: 'b', label: 'b', width: 80 }], [{ from: 'a', to: 'b' }], { fit: true, width: 1000 }))
         })
         expect([uneven.node('a').shape.bounds().x, uneven.node('b').shape.bounds().x + 80].map((x) => Math.round(x * 1000) / 1000)).toEqual([-500, 500])
-        const narrow = await fails((s) => { s.add(graph(nodes, links, { width: 620 })) })
+        const narrow = await fails((s) => { s.add(graph(nodes, links, { fit: true, width: 620 })) })
         expect(narrow).toMatch(/graph: a width of 620 leaves no room between the nodes "a" and "b". Give a width of (\d+) or more, shorter labels, or fewer nodes side by side/)
         const least = Number(/a width of (\d+) or more/.exec(narrow)![1])
-        expect(await fails((s) => { s.add(graph(nodes, links, { width: least })) })).toBe('no error')
-        expect(await fails((s) => { s.add(graph(nodes, links, { width: least - 2 })) })).toMatch(/leaves no room/)
-        expect(await fails((s) => { s.add(graph(nodes, links, { width: 100 })) })).toMatch(/graph: a width of 100 is less than the width of the largest node, which is 160/)
+        expect(await fails((s) => { s.add(graph(nodes, links, { fit: true, width: least })) })).toBe('no error')
+        expect(await fails((s) => { s.add(graph(nodes, links, { fit: true, width: least - 2 })) })).toMatch(/leaves no room/)
+        expect(await fails((s) => { s.add(graph(nodes, links, { fit: true, width: 100 })) })).toMatch(/graph: a width of 100 is less than the width of the largest node, which is 160/)
     })
 
     it('a tree with a value has boxes of one size, with text sizes that a viewer reads', async () => {

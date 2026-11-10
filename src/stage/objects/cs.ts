@@ -11,6 +11,7 @@ import { Heatmap } from './charts'
 import { Suspend } from '../stage'
 import { clock } from '../track'
 import type { Ease } from '../ease'
+import { linear } from '../ease'
 import { reveal, sampleAt, seededRandom, staggered, stepAt } from './util'
 import { oneObject } from '../layout'
 
@@ -87,13 +88,14 @@ export interface GraphOptions {
     layout?: 'dagre' | 'force' | 'circle' | 'manual'
     direction?: 'LR' | 'RL' | 'TB' | 'BT'
     /**
-     * With the default layout: the width of the graph, from the left edge of its first node to the right
-     * edge of its last one. The layout keeps its order and moves the nodes apart or together. A width with
-     * no room between two nodes is an error. With the force and the circle layout: the bounding size.
+     * Bounding size for force and circle layouts. With `fit: true`, also sets the size of the default
+     * layout, from the outline of the first node to the outline of the last one.
      */
     width?: number
     /** The height of the graph, as `width`. */
     height?: number
+    /** Fit the default layout to `width` and `height`. Defaults to false, so existing layouts keep their places. */
+    fit?: boolean
     nodeGap?: number
     rankGap?: number
     radius?: number
@@ -127,6 +129,8 @@ export class GraphNode extends Node {
     halfWidth = 0
     halfHeight = 0
     round = true
+    /** Space outside a node for its token ring. */
+    ringClearance = 0
     /** The value in the node, or null for a node that was built with none. */
     value: Node | null = null
     /** The note under the node, or null for a node that was built with none. */
@@ -146,9 +150,10 @@ export class GraphNode extends Node {
     edgePoint(fx: number, fy: number, tx: number, ty: number, pad = 0): Vec {
         const dx = tx - fx, dy = ty - fy
         const length = Math.hypot(dx, dy) || 1
-        if (this.round) return [fx + (dx / length) * (this.halfWidth + pad), fy + (dy / length) * (this.halfWidth + pad)]
-        const sx = dx === 0 ? Infinity : this.halfWidth / Math.abs(dx)
-        const sy = dy === 0 ? Infinity : this.halfHeight / Math.abs(dy)
+        const width = this.halfWidth + this.ringClearance, height = this.halfHeight + this.ringClearance
+        if (this.round) return [fx + (dx / length) * (width + pad), fy + (dy / length) * (width + pad)]
+        const sx = dx === 0 ? Infinity : width / Math.abs(dx)
+        const sy = dy === 0 ? Infinity : height / Math.abs(dy)
         const s = Math.min(sx, sy)
         return [fx + dx * s + (dx / length) * pad, fy + dy * s + (dy / length) * pad]
     }
@@ -158,6 +163,9 @@ export class GraphEdge extends Node {
     shaft!: Node
     tip: Node | null = null
     caption: Node | null = null
+    /** The token in transit on this edge. The caption covers it while it passes behind the text. */
+    token: Node | null = null
+    labelAt = 0.5
     from = ''
     to = ''
     tipSize = 14
@@ -402,8 +410,10 @@ export class Graph extends Node {
                 for (const spec of nodes) positions.set(spec.id, place(positions.get(spec.id)!))
                 for (const [edge, points] of routes) routes.set(edge, points.map(place))
             }
-            fit(0, options.width, 'width')
-            fit(1, options.height, 'height')
+            if (options.fit) {
+                fit(0, options.width, 'width')
+                fit(1, options.height, 'height')
+            }
         } else if (layout === 'circle') {
             const radius = Math.min(options.width ?? 700, options.height ?? 700) / 2
             nodes.forEach((spec, i) => {
@@ -416,6 +426,7 @@ export class Graph extends Node {
             for (const spec of nodes) positions.set(spec.id, spec.at ?? [0, 0])
         }
         const nodeColor = options.nodeColor ?? 'blue'
+        const ringGap = Math.max(6, labelSize * 0.25), ringWeight = Math.max(3.5, labelSize * 0.14)
         nodes.forEach((spec, index) => {
             const view = new GraphNode()
             const color = spec.color ?? nodeColor
@@ -423,6 +434,7 @@ export class Graph extends Node {
             view.halfWidth = width / 2
             view.halfHeight = height / 2
             view.round = !box
+            if (options.token !== undefined) view.ringClearance = ringGap + ringWeight / 2
             view.shape = new Node(box ? rectPath(-width / 2, -height / 2, width, height, 8) : circlePath(0, 0, width / 2))
                 .fill(color, options.fillOpacity ?? 0.16)
                 .stroke(color, NODE_STROKE)
@@ -486,6 +498,7 @@ export class Graph extends Node {
             }
             if (spec.label) {
                 const share = spec.labelAt ?? 0.5
+                view.labelAt = share
                 if (!(Number.isFinite(share) && share >= 0 && share <= 1)) throw new Error(`${what}: labelAt of the edge ${spec.from} -> ${spec.to} is ${quoted(share)}. It is a share of the edge, from 0 at its start to 1 at its end`)
                 const [mx, my] = pointAt(path, share)
                 const caption = text(spec.label, { size: edgeLabelSize, color: 'ink', font: edgeFont }).at(mx, my)
@@ -519,10 +532,9 @@ export class Graph extends Node {
             if (this.waiting.has(options.token)) throw new Error(`${what}: the token starts at the node ${quoted(options.token)}, which does not show at the start. Name it in shown`)
             // Each node has a ring around it, and the ring of the node with the token shows. A ring is a sign of its
             // own: it stays when a state changes the color of the node.
-            const gap = Math.max(6, labelSize * 0.25), weight = Math.max(3.5, labelSize * 0.14)
             for (const view of this.nodes.values()) {
-                const w = view.halfWidth + gap, h = view.halfHeight + gap
-                view.ring = new Node(view.round ? circlePath(0, 0, w) : rectPath(-w, -h, w * 2, h * 2, 8 + gap)).stroke(this.tokenPaint, weight)
+                const w = view.halfWidth + ringGap, h = view.halfHeight + ringGap
+                view.ring = new Node(view.round ? circlePath(0, 0, w) : rectPath(-w, -h, w * 2, h * 2, 8 + ringGap)).stroke(this.tokenPaint, ringWeight)
                 view.ring.set('opacity', view === start ? 1 : 0)
                 view.add(view.ring)
             }
@@ -532,6 +544,18 @@ export class Graph extends Node {
             this.add(this.tokenDot)
         }
         ownLabels(this, { name: 'graph' })
+    }
+
+    protected override copyStateTo(copy: this, parts: ReadonlyMap<Node, Node>): void {
+        Object.assign(copy, {
+            nodes: new Map([...this.nodes].map(([id, node]) => [id, parts.get(node) as GraphNode])),
+            states: new Map(this.states),
+            words: new Map([...this.words].map(([id, words]) => [id, { ...words }])),
+            waiting: new Set(this.waiting),
+            waitingEdges: new Set([...this.waitingEdges].map((edge) => parts.get(edge) as GraphEdge)),
+            lookMoves: new Map(),
+            tokenMove: null,
+        })
     }
 
     node(id: string): GraphNode {
@@ -674,6 +698,14 @@ export class Graph extends Node {
                         const tipAt = (a: number) => tipPath(geometry(a), edge.tipSize).head
                         edge.tip.track('path').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: tipAt(1), at: tipAt })
                     }
+                    if (this.tokenAt !== null && edge.caption) {
+                        const caption = edge.caption, words = caption.children[1]!
+                        for (const [axis, prop] of [[0, 'x'], [1, 'y']] as const) {
+                            const origin = words.get(prop)
+                            const offset = (a: number) => pointAt(geometry(a), edge.labelAt)[axis] - origin
+                            caption.track(prop).add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: offset(1), at: offset })
+                        }
+                    }
                 }
             },
         }
@@ -735,6 +767,7 @@ export class Graph extends Node {
      * arrow, or against it. With `value` or `note`, the node at the end takes the new text when the light
      * arrives. So one call is one step of a pass: `send('w', 'mul', { value: '6' })` forward, and
      * `send('loss', 'mul', { note: '2', color: 'pink' })` back along the same edge.
+     * As with `connector.send`, `duration` is travel time. A value or a note then changes over 0.5 seconds.
      */
     send(from: string, to: string, options: AnimOptions & { color?: ColorInput; length?: number; value?: string; note?: string } = {}): Anim {
         this.view(from, 'send')
@@ -744,19 +777,21 @@ export class Graph extends Node {
         const back = edge.from !== from
         const color = options.color ?? 'yellow'
         this.paintOf(color, 'the color of send')
+        const travel = options.duration ?? 0.9, length = options.length ?? 0.3
+        if (!(Number.isFinite(travel) && travel > 0)) throw new Error(`${this.kind}: send: duration is the travel time in seconds, more than 0, and it is ${quoted(travel)}`)
+        if (!(Number.isFinite(length) && length > 0 && length <= 1)) throw new Error(`${this.kind}: send: length is the share of the edge that lights at once, more than 0 and at most 1, and it is ${quoted(length)}`)
         const writes = [
             ...(options.value === undefined ? [] : [this.write(to, 'value', options.value, 'send')]),
             ...(options.note === undefined ? [] : [this.write(to, 'note', options.note, 'send')]),
         ]
         return {
-            label: 'graph.send', duration: options.duration ?? (writes.length > 0 ? 1.3 : 1.1), ease: options.ease,
+            label: 'graph.send', duration: travel + (writes.length > 0 ? 0.5 : 0), ease: options.ease ?? linear,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
                 const span = ctx.t1 - ctx.t0
-                // The text changes while the light arrives: it starts to change a little before the end of the light.
-                const arrives = writes.length > 0 ? ctx.t0 + span * 0.7 : ctx.t1
-                runLight(edge, back, ctx.t0, arrives, ctx.ease, color, options.length ?? 0.3)
-                for (const write of writes) write(ctx.t0 + span * 0.55, ctx.t1, ctx.ease)
+                const arrives = ctx.t0 + span * travel / (travel + (writes.length > 0 ? 0.5 : 0))
+                runLight(edge, back, ctx.t0, arrives, ctx.ease, color, length)
+                for (const write of writes) write(arrives, ctx.t1, ctx.ease)
             },
         }
     }
@@ -778,9 +813,8 @@ export class Graph extends Node {
                 if (!edge) throw new Error(`${this.kind}: go: no edge goes from ${quoted(from)}, where the token is, to ${quoted(to)}. ${this.steps(from)}. For a step that the machine refuses, play refuse(${quoted(to)})`)
                 this.claimToken(`go(${quoted(to)})`, ctx)
                 const span = ctx.t1 - ctx.t0
-                const path = sampleAt(edge.shaft, 'path', ctx.t0)!
                 const back = edge.from !== from
-                this.carry((a) => pointAt(path, back ? 1 - a : a), ctx)
+                this.carry((a) => pointAt(edge.shaft.get('path')!, back ? 1 - a : a), ctx, edge)
                 // The ring leaves the old node while the dot starts, and comes to the new node while the dot arrives.
                 this.nodes.get(from)!.ring!.tween('opacity', 0, ctx.t0, ctx.t0 + span * 0.3, ctx.ease)
                 this.nodes.get(to)!.ring!.tween('opacity', 1, ctx.t1 - span * 0.3, ctx.t1, ctx.ease)
@@ -823,7 +857,7 @@ export class Graph extends Node {
                 this.carry((a) => {
                     const share = reach * (1 - Math.abs(1 - 2 * a))
                     return pointAt(path, back ? 1 - share : share)
-                }, ctx)
+                }, ctx, edge)
                 const span = ctx.t1 - ctx.t0, ring = here.ring!
                 ring.tween('stroke', red, ctx.t0 + span * 0.3, ctx.t0 + span * 0.5, ctx.ease)
                 ring.tween('stroke', this.tokenPaint, ctx.t0 + span * 0.75, ctx.t1, ctx.ease)
@@ -1101,14 +1135,22 @@ export class Graph extends Node {
     }
 
     /** The dot of the token shows, follows a way over the time of the move, and goes. */
-    private carry(way: (share: number) => [number, number], ctx: AnimContext): void {
-        const dot = this.tokenDot!, span = ctx.t1 - ctx.t0
-        const [x, y] = way(0), [ex, ey] = way(1)
-        stepAt(dot, 'x', x, ctx.t0)
-        stepAt(dot, 'y', y, ctx.t0)
+    private carry(way: (share: number) => [number, number], ctx: AnimContext, edge: GraphEdge | null): void {
+        if (edge && !edge.token) {
+            edge.token = new Node(circlePath(0, 0, this.tokenRadius)).fill(this.tokenPaint).opacity(0)
+            edge.add(edge.token)
+            if (edge.caption) {
+                edge.children.splice(edge.children.indexOf(edge.token), 1)
+                edge.children.splice(edge.children.indexOf(edge.caption), 0, edge.token)
+            }
+        }
+        const dot = edge?.token ?? this.tokenDot!, span = ctx.t1 - ctx.t0
+        // Sample the route at the time of the frame so a token follows a node that moves during go().
+        const position = (a: number) => way(Math.max(0, Math.min(1, (a - 0.1) / 0.8)))
+        const [ex, ey] = asOf(ctx.t1, () => way(1))
         dot.tween('opacity', 1, ctx.t0, ctx.t0 + span * 0.15, ctx.ease)
-        dot.track('x').add({ t0: ctx.t0 + span * 0.1, t1: ctx.t1 - span * 0.1, ease: ctx.ease, to: ex, at: (a) => way(a)[0] })
-        dot.track('y').add({ t0: ctx.t0 + span * 0.1, t1: ctx.t1 - span * 0.1, ease: ctx.ease, to: ey, at: (a) => way(a)[1] })
+        dot.track('x').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: ex, at: (a) => position(a)[0] })
+        dot.track('y').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: ey, at: (a) => position(a)[1] })
         dot.tween('opacity', 0, ctx.t1 - span * 0.15, ctx.t1, ctx.ease)
     }
 }
@@ -1255,6 +1297,11 @@ export class TreeGraph extends Graph {
 
     protected override get kind(): string {
         return 'tree'
+    }
+
+    protected override copyStateTo(copy: this, parts: ReadonlyMap<Node, Node>): void {
+        super.copyStateTo(copy, parts)
+        Object.assign(copy, { depths: new Map(this.depths), lit: new Map(this.lit) })
     }
 
     constructor(root: TreeSpec, options: TreeOptions = {}) {

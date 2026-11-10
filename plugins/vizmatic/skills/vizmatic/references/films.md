@@ -75,6 +75,7 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 |---|---|
 | `attention.ts` | Compute every number on screen from small real inputs. |
 | `cache-miss.ts` | Run a small queueing model, and draw the system from its results. |
+| `beam-search.ts` | Grow a search tree, keep a beam of two, and add the log probabilities along each path. |
 | `paxos.ts` | Play a protocol through a schedule of delays and losses, and send each message of the trace along a `connector` with `send`. |
 | `gradient-descent.ts` | Drive motion from real iterates, and compare two runs. |
 | `linear-maps.ts` | Bend a grid with `applyMatrix`, and follow what it does to area. |
@@ -213,15 +214,15 @@ s.play(words.keep(['soundly', 'home']))
 s.play(words.path('soundly', { color: 'green' }))
 ```
 
-A graph whose nodes change: the plan of an agent, a state machine, a computation graph. Do not recolor nodes by hand, and do not draw a dot that runs on a typed path. `setState(id, state)` gives a node one of `idle`, `active`, `done`, `failed` and `off`, each with its own sign. With `token`, the graph is a state machine: `go(id)` moves the token along an edge, `refuse(id)` shows a step that the machine does not take, and a `go` with no edge stops the build. A node with a `value` is a box with a name and a number, and a `note` is a second text under it. `send(from, to, { value })` sends a light along an edge, with the arrow or against it, and the node at the end takes the text: one call for each step of a forward or a backward pass. With `shown`, `grow(ids)` builds the graph node by node. `width` and `height` fit the default layout to a region, so a film types no place for a node. Give `edgeLabelSize: 26` for a video:
+A graph whose nodes change: the plan of an agent, a state machine, a computation graph. Do not recolor nodes by hand, and do not draw a dot that runs on a typed path. `setState(id, state)` gives a node one of `idle`, `active`, `done`, `failed` and `off`, each with its own sign. With `token`, the graph is a state machine: `go(id)` moves the token along an edge, `refuse(id)` shows a step that the machine does not take, and a `go` with no edge stops the build. A node with a `value` is a box with a name and a number, and a `note` is a second text under it. `send(from, to, { value })` sends a light along an edge, with the arrow or against it, and the node at the end takes the text: one call for each step of a forward or a backward pass. `duration` is travel time, as in `connector.send`, followed by 0.5 seconds to change a value or note. With `shown`, `grow(ids)` builds the graph node by node. `fit: true` lets `width` and `height` fit the default layout to a region, so a film types no place for a node. Give `edgeLabelSize: 26` for a video:
 
 ```ts
 const breaker = s.add(graph([{ id: 'closed', label: 'closed', width: 200 }, { id: 'open', label: 'open', width: 200, color: 'red' }, { id: 'half', label: 'half-open', width: 200, color: 'orange' }], [
     { from: 'closed', to: 'open', label: '2 failures' }, { from: 'open', to: 'half', label: '10 s' }, { from: 'half', to: 'closed', label: 'probe passes' },
-], { width: 1600, token: 'closed', edgeLabelSize: 26 }))
+], { fit: true, width: 1600, token: 'closed', edgeLabelSize: 26 }))
 s.play(seq(breaker.go('open'), breaker.refuse('closed'), breaker.go('half'), breaker.go('closed')))
 
-const net = s.add(graph([{ id: 'w', label: 'w', value: '3', note: '' }, { id: 'y', label: 'w · x', value: '', note: '', width: 150 }], [{ from: 'w', to: 'y', label: '× 2' }], { width: 900, noteColor: 'pink' }))
+const net = s.add(graph([{ id: 'w', label: 'w', value: '3', note: '' }, { id: 'y', label: 'w · x', value: '', note: '', width: 150 }], [{ from: 'w', to: 'y', label: '× 2' }], { fit: true, width: 900, noteColor: 'pink' }))
 s.play(net.send('w', 'y', { value: '6' }))
 s.play(net.send('y', 'w', { note: 'grad 2', color: 'pink' }))
 ```
