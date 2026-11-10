@@ -84,6 +84,21 @@ describe('narration', () => {
         expect(compiled.clips.some((clip) => Math.abs(clip.t0 - 4) < 1e-9 && Math.abs(clip.t1 - 4.5) < 1e-9)).toBe(true)
     })
 
+    it('takes the cues that a timing declares, with no shell: a scene names the id, and a cue that drives nothing stops the build', async () => {
+        const declared: NarrationTiming = { scenes: [{ ...timing.scenes[0]!, beats: [{ ...timing.scenes[0]!.beats[0]!, cues: [{ id: 'page', phrase: 'should we page', data: 7 }] }, timing.scenes[0]!.beats[1]!] }, timing.scenes[1]!] }
+        let built = -1
+        await compileFilm(film({ fps: 10 }, (s) => {
+            const scene = narration(s, declared, { lead: 2 }).scene('intro')
+            expect(scene.cues).toEqual([{ id: 'page', phrase: 'should we page', beat: 0, data: 7 }])
+            scene.on('page', () => { built = s.time })
+        }))
+        expect(built).toBeCloseTo(3.8, 6)
+        const unused = compileFilm(film({ fps: 10 }, (s) => { narration(s, declared, { lead: 2 }).scene('intro') }))
+        await expect(unused).rejects.toThrow(`narration: 1 cue that the script declares drives nothing in the film: scene "intro": page. Use each one in its scene, such as c.show('page', nodes), or remove it from the script`)
+        // A film that does not ask for the scene does not build it, so its cues are not counted.
+        await expect(compileFilm(film({ fps: 10 }, (s) => { narration(s, declared, { lead: 2 }).scene('model') }))).resolves.toBeDefined()
+    })
+
     it('clears nodes and values just before a scene ends', async () => {
         let ring!: ReturnType<typeof circle>, level!: ReturnType<Parameters<Parameters<typeof film>[1]>[0]['value']>
         const compiled = await compileFilm(film({ fps: 10 }, (s) => {

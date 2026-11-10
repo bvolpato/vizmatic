@@ -118,7 +118,7 @@ Vizmatic uses `react` for JSX frames, `satori` for layout, `@resvg/resvg-js` for
 
 Published packages include Inter, JetBrains Mono, Noto Sans, Noto Sans Math, and a compressed Twemoji bundle under `assets/`, so normal CLI rendering does not fetch them at runtime. Set `VIZMATIC_FONT_DIR` or `VIZMATIC_ASSET_DIR` to use other local assets. Set `VIZMATIC_DISABLE_NETWORK=1` or `VIZMATIC_OFFLINE=1` to disable public fallbacks.
 
-The complete Twemoji set stays available offline but ships as one Brotli bundle instead of 3,720 individual SVG files. `pnpm deps:check` keeps the package below 3.2 MB compressed, 7.3 MB unpacked, and 100 files, including the separately loaded browser scene renderer.
+The complete Twemoji set stays available offline but ships as one Brotli bundle instead of 3,720 individual SVG files. `pnpm deps:check` checks the packed size, unpacked size, and file count against the limits in `scripts/check-package.ts`, including the separately loaded browser scene renderer.
 
 ## API
 
