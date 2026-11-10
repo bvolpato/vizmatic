@@ -23,7 +23,8 @@ const limits = {
     // The budget is a tripwire for an accident, such as a font that ships two times. It leaves room for features.
     // With the semibold of the serif text font (one file of 0.33 MB), the package is at 16.03 MB.
     // Passage adds 0.28 MB of runtime code, 0.08 MB of declarations, and 8 KB of examples to the 17.89 MB package.
-    unpackedSize: 18_500_000,
+    // RequestQueue adds 231,955 bytes of runtime code and 59,823 bytes of declarations. The package unpacks to 18,546,070 bytes.
+    unpackedSize: 18_600_000,
     // Includes the bundled raster codec license notice and film examples. The narration tools (15 files) and the
     // narrated film template (13 files) are 28 files: with them the package holds 209 files.
     entryCount: 220,
