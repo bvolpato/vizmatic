@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
+import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narrated, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
 import { captionsToSrt, chapterMetadata } from '../src/video'
 
 const timing: NarrationTiming = {
@@ -13,6 +13,12 @@ const timing: NarrationTiming = {
         { id: 'model', title: 'The model', beats: [{ say: 'One pass.', duration: 1.5, hold: 0.5, words: [{ text: 'One', start: 0.1, end: 0.4 }, { text: 'pass.', start: 0.4, end: 1 }] }] },
     ],
 }
+
+// Synthetic product names cover dotted tokens and version numbers.
+const productCaptionSamples = [
+    'Acme.io ships Nova.js 22.23.4 with OrbitDB 1.25.0. Values include 3.8, 0.17, and .5.',
+    'Northstar.dev starts Comet.js. A second line keeps 4.6 intact!',
+]
 
 describe('narration', () => {
     it('places beats after the lead, with holds inside a scene and a gap between scenes', async () => {
@@ -132,8 +138,41 @@ describe('narration', () => {
     })
 
     it('splits captions by sentence and by length, and keeps a decimal number whole', () => {
-        expect(captionLines('The network is Qwen 3.8. It runs once.')).toEqual(['The network is Qwen 3.8.', 'It runs once.'])
+        expect(captionLines('The demo uses Nova 3.8. It runs once.')).toEqual(['The demo uses Nova 3.8.', 'It runs once.'])
         expect(captionLines('one two three four five six', 12)).toEqual(['one two', 'three four', 'five six'])
+    })
+
+    it.each([
+        ['Acme.io runs Nova.js. Comet.js too!', ['Acme.io runs Nova.js.', 'Comet.js too!']],
+        ['Acme.io release 22.23.4 uses Nova.js 1.25.0. Values: 3.8, 0.17 and .5.', ['Acme.io release 22.23.4 uses Nova.js 1.25.0.', 'Values: 3.8, 0.17 and .5.']],
+        ["In the '80s, then the 1990s... Really?! Yes!", ["In the '80s, then the 1990s...", 'Really?!', 'Yes!']],
+        ['.Env, "Acme.js", (Nova.io): keep all punctuation.', ['.Env, "Acme.js", (Nova.io): keep all punctuation.']],
+        ['... ?! .', ['...', '?!', '.']],
+        ['\tFirst.\nSecond?  Third!\r\nAn unfinished sentence', ['First.', 'Second?', 'Third!', 'An unfinished sentence']],
+        ['', []],
+        [' \n\t ', []],
+    ] as const)('preserves tokens and punctuation when splitting %j', (text, expected) => {
+        expect(captionLines(text)).toEqual(expected)
+    })
+
+    it.each(productCaptionSamples)('preserves every token of a synthetic product caption when wrapping: %s', (text) => {
+        for (const length of [12, 40, 74, 1000]) {
+            const lines = captionLines(text, length)
+            expect(lines.flatMap((line) => line.split(' '))).toEqual(text.split(' '))
+            expect(lines.every((line) => line.length <= length || !line.includes(' '))).toBe(true)
+        }
+    })
+
+    it.each(['narration', 'narrated'])('preserves synthetic product captions through %s and their timing', async (caller) => {
+        const timing: NarrationTiming = { lead: 1, scenes: [{ id: 'captions', beats: productCaptionSamples.map((say) => ({ say, duration: 3 })) }] }
+        const compiled = await compileFilm(caller === 'narration'
+            ? film({}, (s) => { narration(s, timing) })
+            : narrated({ timing, scenes: { captions: () => {} } }))
+        expect(compiled.captions.flatMap((cue) => cue.text.split(' '))).toEqual(productCaptionSamples.flatMap((text) => text.split(' ')))
+        expect(compiled.captions[0]!.t0).toBe(1)
+        expect(compiled.captions.at(-1)!.t1).toBeCloseTo(7, 6)
+        expect(compiled.captions.every((cue) => cue.t1 > cue.t0)).toBe(true)
+        for (let i = 1; i < compiled.captions.length; i++) expect(compiled.captions[i]!.t0).toBeCloseTo(compiled.captions[i - 1]!.t1, 6)
     })
 })
 
