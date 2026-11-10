@@ -7,7 +7,7 @@
 import { fade, fadeIn } from './anim'
 import type { FontFamily } from './font'
 import { describe as describeItem } from './layout'
-import { HANDOVER, narration, type NarrationOptions, type NarrationTiming, type SceneClock } from './narration'
+import { HANDOVER, isClearClip, narration, type NarrationOptions, type NarrationTiming, type SceneClock } from './narration'
 import type { Node } from './node'
 import { film, type FilmDefinition, type FilmOptions, type Stage } from './stage'
 import { text } from './text'
@@ -108,6 +108,9 @@ function checkTiming(timing: TimingFile): void {
     if (!Array.isArray(timing?.scenes) || timing.scenes.length === 0) {
         throw new Error('narrated: the timing has no scene, so the film has no voice to follow. Give the content of timing.json, which the voice step writes')
     }
+    for (const [index, scene] of timing.scenes.entries()) {
+        if (typeof scene?.id !== 'string' || !scene.id.trim()) throw new Error(`narrated: timing.scenes[${index}].id must name a scene in the film`)
+    }
     const silent = timing.scenes.filter((scene) => !Array.isArray(scene.beats) || scene.beats.length === 0).map((scene) => scene.id)
     if (silent.length > 0) throw new Error(`narrated: the scene ${quoted(silent)} of the timing has no beat, so it has no length. Give it a beat in the script, and make the voice again`)
 }
@@ -190,10 +193,13 @@ function checkArrivals(id: string, nodes: readonly Node[], leaves: number): void
  */
 function checkPlays(id: string, plays: readonly Stage['clips'][number][], limit: number, last: boolean): void {
     // `c.clear` fades a node until 0.02 seconds after the end of its scene, as the shell does. That is not late.
-    const most = limit + (last ? 0 : CLOSE_FADE - CLOSE_LEAD) + 1e-3
-    const late = plays.reduce<Stage['clips'][number] | undefined>((worst, clip) => (clip.t1 > (worst?.t1 ?? most) ? clip : worst), undefined)
+    let late: Stage['clips'][number] | undefined
+    for (const clip of plays) {
+        const end = !last && isClearClip(clip) ? limit + CLOSE_FADE - CLOSE_LEAD : limit
+        if (clip.t1 > end + 1e-6 && (!late || clip.t1 > late.t1)) late = clip
+    }
     if (!late) return
-    const seconds = (time: number) => Math.round(time * 100) / 100
+    const seconds = (time: number) => Math.round(time * 1000) / 1000
     const name = [...new Set(late.labels)].join(' and ') || 'animation'
     const ends = last ? `the film ends at ${seconds(limit)} seconds, one gap and the tail after its last word` : `the scene ends at ${seconds(limit)} seconds, with the hold of its last beat`
     throw new Error(`narrated: scene "${id}": the play of ${name} that starts at ${seconds(late.t0)} seconds ends at ${seconds(late.t1)}, and ${ends}. That is ${seconds(late.t1 - limit)} seconds too late, so the film would run past its narration. Give the play a shorter duration, start it on an earlier cue, or give the last beat of the scene a longer hold in the script`)
@@ -289,14 +295,15 @@ export function narrated(options: NarratedOptions): FilmDefinition {
     const building = scenesToBuild(options)
     const whole = building.length === timing.scenes.length
     const introSeconds = timing.intro ?? 0, tail = timing.tail ?? 0
-    if (!(introSeconds >= 0) || !(tail >= 0)) throw new Error('narrated: intro and tail must be zero or more seconds')
+    if (!Number.isFinite(introSeconds) || introSeconds < 0 || !Number.isFinite(tail) || tail < 0) throw new Error('narrated: intro and tail must be zero or more seconds, given as finite numbers')
     // A partial film is for a fast look at some scenes. It must never pass for the whole film in silence.
     if (!whole) console.warn(`narrated: only the scene ${quoted(building)} is built, without the title card, because VIZMATIC_SCENES is set. This is not the whole film.`)
 
     return film({ font: 'text-serif', ...filmOptions }, (s) => {
         const voice = narration(s, timing, voiceOptions)
-        if (introSeconds > voice.lead) {
-            throw new Error(`narrated: the intro is ${introSeconds} seconds and the first word starts at ${voice.lead} seconds, so the voice would start over the title card. In the timing, lead is the time of the first word: the intro and the pause after it`)
+        const firstWord = voice.scenes[0]!.start
+        if (introSeconds > firstWord) {
+            throw new Error(`narrated: the intro is ${introSeconds} seconds and the first word starts at ${firstWord} seconds, so the voice would start over the title card. In the timing, lead is the time of the first word: the intro and the pause after it. An explicit first scene start overrides lead`)
         }
         const clock: FilmClock = { intro: introSeconds, gap: voice.gap, tail, end: voice.duration + voice.gap + tail }
         // A film of some scenes has no title card, and its scenes keep the times that they have in the whole film.

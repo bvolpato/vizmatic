@@ -114,7 +114,7 @@ Each declared cue must drive something. At the end of the build, the cues that n
 narration: 2 cues that the script declares drive nothing in the film: scene "answer": cache, result. Use each one in its scene, such as c.show('cache', nodes), or remove it from the script
 ```
 
-A draft of some scenes counts the cues of those scenes only. A string that is the id of a cue of the scene is that cue, also when the voice says the same word somewhere else. A scene can still type a phrase beside the declared cues, and a film with no declared cue works as before.
+A draft checks cue use in the selected scenes. The clock resolves an exact id first, even when the narration speaks the same word elsewhere. Other strings match spoken phrases. If your course requires every string to be a declared id, enforce that rule when you import the script. Reading `c.cue(id)` counts as a use because a scene can use its time or data to schedule a change itself.
 
 Which to choose:
 
@@ -250,7 +250,7 @@ In `timing.json`, `lead` is the time of the first word: the title card and the p
 }
 ```
 
-All times are seconds.
+Give all times as finite numbers in seconds. Each word starts at or after zero and ends within its beat. The start times and end times must each follow spoken order. The shell allows one millisecond of rounding at the end of a measured take.
 
 | Key | What it is |
 |---|---|
@@ -274,6 +274,7 @@ What the film makes of it:
 - The hold of the last beat of a scene is the time of the scene after its last word. The picture leaves in the last quarter of a second of it. In the example, the question ends at 3.25, and the answer has its picture from then to its first word at 3.95.
 - `c.keep` and `c.take` change the two copies 0.3 seconds before the first word of the next scene, with or without a `start`.
 - The film ends one gap and one tail after the last hold. With `gap: 0`, the tail is the time after the last hold.
+- An explicit first scene start overrides `lead`. Allow enough time for the title card before that start.
 
 The words are in the form that the voice says: "eight", "hundred", and not "800". A tool with no measured words can estimate them, as the draft step does. The sound steps of this command line read more keys, which they write themselves: `wav` and `text` of a beat, and `voice`, `speed` and `fingerprint` of the file. A film with its own sound needs none of them. The steps of `vizmatic narrated` check the file before they read it, and they ask for a `hold` in each beat.
 
@@ -326,8 +327,9 @@ export function answer(s: Stage, c: SceneClock) {
 | `c.at(1.5, build)` | Runs `build` at a time from the first word of the scene. |
 | `c.cue('a spoken phrase')` | Returns the start and the end of the phrase, in film seconds. For a cue that the script declares, it also returns its `id`, its `phrase`, its `beat` and its `data`. |
 | `c.cues` | The cues that the script declares for the scene, each with its `beat`. |
+| `c.title` | The chapter title from the timing, when the scene has one. |
 | `c.beats` | The beats of the scene, each with `start`, `end` and `until`. |
-| `c.start`, `c.end`, `c.next` | The first word, the last word, and the time at which the next scene starts. |
+| `c.start`, `c.end`, `c.next` | The start of the first take, the end of the last hold, and the start of the next scene's first take. |
 | `c.keep(nodes)`, `c.take(nodes)` | Hands a picture to the next scene with no fade. |
 | `c.clear([title, alpha])` | Fades nodes out just before the scene ends, and brings values to zero in the same time. |
 | `film.intro`, `film.gap`, `film.tail`, `film.end` | The time of the title card, the silence between scenes, the picture after the last gap, and the last moment of the film. |
@@ -347,12 +349,12 @@ export function answer(s: Stage, c: SceneClock) {
 | The call | `c.show('the cache', box)` | `c.show('one hundred and sixty times', number, { after: true })` |
 | The change starts | 0.1 seconds before the first word of the phrase | When the voice has said the last word of the phrase |
 | The node is fully there | 0.2 seconds after the phrase starts | 0.3 seconds after the phrase ends |
-| With the index of a beat, `c.show(1, ...)` | At the start of the voice of the beat | At the end of the voice of the beat, before its hold |
+| With the index of a beat, `c.show(1, ...)` | Starts 0.1 seconds before the take, or when the picture opens if that is later | Starts at the end of the take, before its hold |
 | `lead` | Counts back from the start of the phrase. 0.1 by default. | Counts back from the end of the phrase. 0 by default. |
 
 `c.hide` and `c.swap` take the same option: `c.swap('the answer', question, answer, { after: true })` changes the picture when the voice has said "the answer". `c.after('a phrase', build)` is the same moment for a play of your own.
 
-A result at the last words of a scene needs time after them. The fade takes 0.3 seconds, and the picture starts to leave 0.24 seconds before the scene ends. So that beat needs a `hold` of 0.6 seconds at the least, and a viewer needs about 1.5 seconds to read a result. The build stops when the fade does not fit, and says so.
+When the last word ends with the recording, leave time for the result before the scene closes. In a nonfinal scene, a default show needs at least 0.54 seconds for its fade and the scene close. A default swap needs 0.74 seconds because the incoming picture waits another 0.2 seconds. A hold of about 1.5 seconds also gives the viewer time to read a short result.
 
 ## The kit
 
