@@ -465,7 +465,7 @@ The delivered movie has the `standard` quality: the full size and frame rate, an
 The build runs these steps in the folder, in this order. It skips a step that has no work to do, says why, and stops at the first step that fails.
 
 1. `voice` speaks each beat of the script. It keeps each take by the hash of its voice, its speed and its text, so only the beats that changed are made again. It writes `timing.json`. The build skips it when the script did not change.
-2. `mix` lays the takes on the timeline, and adds a quiet pad and soft bell chimes. It writes `narration.wav`. The build skips it when the timing and the mix of `film.json` did not change.
+2. `mix` places the recorded voice, background pad, and selected sound effects on the timeline. It writes `narration.wav`. The build reuses that file when the timing and mix are current.
 3. `beats` prints where each beat starts and ends, when the timing is new.
 4. `check` checks the layout of the film at rest and in every frame. A finding stops the build before the render, because a render takes minutes. `--allow-findings` builds with them.
 5. The render writes the movie under its name, with the title, the chapters, and the captions inside it.
@@ -524,7 +524,21 @@ Every key has a default. `output` is the name of the movie, and without it the m
 
 ## Sound
 
-The voice stays on top. A quiet pad sits under it, and a few bells mark the title and the end.
+The mixer puts a quiet pad under the voice. Use a sound effect when it helps the viewer hear a change in the picture. For example, a short mechanical catch can mark the moment a lock engages. Leave the surrounding steps quiet so that the catch is easy to hear.
+
+List the available sounds with `vizmatic sounds`. In `film.json`, place a sound at a time or at a point in the recorded speech. This example plays a soft two-note resolution just after the final answer.
+
+```json
+{
+  "mix": {
+    "effects": [
+      { "sound": "resolve", "scene": "answer", "beat": -1, "edge": "end", "offset": 0.12 }
+    ]
+  }
+}
+```
+
+Use `"effects": []` to play only the voice and pad. Films that omit both `effects` and `chimes` use the original title and ending bells. To use the same sound in another mixer, run `vizmatic sounds render latch --out latch.wav`. The WAV file contains just the effect, ready to place on a timeline.
 
 - The pad stays about 21 dB below the voice while the voice speaks. It rises to 15 dB below only in a pause longer than about 1 second, and to 10 dB below under the title card and after the last word.
 - The pad has no loop. The chord changes where a beat of the narration starts, a seeded random walk picks each chord from nine, and each scene has its own texture. `seed` picks the walk. Without a seed, the name of the film picks it, so two films do not share their chords.

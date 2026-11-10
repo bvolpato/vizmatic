@@ -1,11 +1,34 @@
-"""The sound bed of a narrated film: a quiet pad, and its level under the voice.
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.13"
+# dependencies = ["numpy", "scipy", "soundfile"]
+# ///
+"""Synthesize a quiet music bed and short sound effects for narrated films.
 
 The pad has no loop. It changes chord where the narration starts a new beat, takes each chord
 from a palette by a seeded random walk, and changes its texture at each scene. `mix.py` gives
-the seed and the levels of the film. Everything is synthesized here: no sample is read."""
+the seed and the levels of the film. Everything is synthesized here: no sample is read.
+
+Run this script with `list` to see the effects, or `render NAME --out PATH.wav` to audition one.
+"""
+import argparse
+import sys
+from math import gcd
+from numbers import Integral
+from pathlib import Path
+
 import numpy as np
 from scipy.ndimage import uniform_filter1d
-from scipy.signal import butter, sosfilt
+from scipy.signal import butter, resample_poly, sosfilt
+
+if __name__ == "__main__":
+    # The standalone command can run directly from an installed package.
+    sys.dont_write_bytecode = True
+
+if __package__:
+    from .checks import SOUND_EFFECTS
+else:
+    from checks import SOUND_EFFECTS
 
 STEP = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 
@@ -111,3 +134,141 @@ def level(voice, rate, under=-22.0, pause=-15.0):
 
 def decibels(x):
     return 20 * np.log10(np.sqrt(np.mean(np.square(x, dtype=np.float64))) + 1e-12)
+
+
+SOUND_EFFECT_RATE = 48_000
+SOUND_EFFECT_MIN_RATE = 8_000
+BELL_NOTES = (659.25, 987.77, 1318.51)
+
+
+def bell_samples(t, notes, gain):
+    """Return the legacy bell as mono float32 samples, preserving its per-note summation order."""
+    out = np.zeros(len(t), dtype=np.float32)
+    for index, pitch in enumerate(notes):
+        decay = np.exp(-t / (1.5 - index * 0.3)) * np.clip((t - index * 0.09) / 0.006, 0, 1)
+        out += (gain / (1 + index * 0.6) * decay * (np.sin(2 * np.pi * pitch * t) + 0.25 * np.sin(2 * np.pi * 2.01 * pitch * t))).astype(np.float32)
+    return out
+
+
+def _bell(t):
+    """Use the classic Vizmatic bell with a gentle fade at the end of its five-second tail."""
+    return bell_samples(t, BELL_NOTES, 1.0) * np.clip((t[-1] - t) / 0.25, 0, 1)
+
+
+def _tap(t):
+    """Combine damped wood resonances with a brief, filtered impact."""
+    out = np.zeros_like(t)
+    for frequency, gain, decay in ((620, 1.0, 0.026), (1090, 0.55, 0.015), (1870, 0.28, 0.009)):
+        out += gain * np.sin(2 * np.pi * frequency * t) * np.exp(-t / decay)
+    noise = np.random.default_rng(4101).standard_normal(len(t))
+    impact = sosfilt(butter(2, 3800, "lowpass", fs=SOUND_EFFECT_RATE, output="sos"), noise)
+    return out + 0.3 * impact * np.exp(-t / 0.0025)
+
+
+def _slide(t):
+    """Move from a dark brush texture to a bright one through a smooth swell."""
+    noise = np.random.default_rng(4102).standard_normal(len(t))
+    dark = sosfilt(butter(2, (650, 2100), "bandpass", fs=SOUND_EFFECT_RATE, output="sos"), noise)
+    bright = sosfilt(butter(2, (2500, 6500), "bandpass", fs=SOUND_EFFECT_RATE, output="sos"), noise)
+    motion = t / t[-1]
+    envelope = np.sin(np.pi * motion) ** 2
+    texture = 0.85 + 0.15 * np.sin(2 * np.pi * (23 * t + 24 * t * t))
+    return ((1 - motion) * dark + motion * bright) * envelope * texture
+
+
+def _latch(t):
+    """Make a light metal contact followed by a lower, firmer catch."""
+    out = np.zeros_like(t)
+    noise = np.random.default_rng(4103).standard_normal(len(t))
+    click = sosfilt(butter(2, (1400, 7000), "bandpass", fs=SOUND_EFFECT_RATE, output="sos"), noise)
+    for start, gain, pitch in ((0.0, 0.65, 2400), (0.085, 1.0, 1700)):
+        local = np.maximum(t - start, 0)
+        attack = 1 - np.exp(-local / 0.0006)
+        ring = np.sin(2 * np.pi * pitch * local) + 0.45 * np.sin(2 * np.pi * pitch * 1.71 * local)
+        body = 0.65 * np.sin(2 * np.pi * 230 * local) * np.exp(-local / 0.022)
+        out += gain * attack * (ring * np.exp(-local / 0.009) + body + click * np.exp(-local / 0.002))
+    return out
+
+
+def _resolve(t):
+    """Play a rounded G4 followed by C5, with a short overlapping tail."""
+    out = np.zeros_like(t)
+    for start, note, gain, decay in ((0.0, "G4", 0.78, 0.105), (0.22, "C5", 1.0, 0.12)):
+        local = np.maximum(t - start, 0)
+        envelope = (1 - np.exp(-local / 0.008)) ** 2 * np.exp(-local / decay)
+        phase = 2 * np.pi * hz(note) * local
+        out += gain * envelope * (np.sin(phase) + 0.22 * np.sin(2 * phase) + 0.06 * np.sin(3 * phase))
+    return out
+
+
+# Shared metadata lives in the dependency-free catalog in checks.py.
+# This dispatch derives its keys from the synthesis functions instead of repeating the catalog names.
+_EFFECTS = {
+    synthesize.__name__.removeprefix("_"): synthesize
+    for synthesize in (_tap, _slide, _latch, _resolve, _bell)
+}
+
+
+def sound_effect(name: str, rate: int = SOUND_EFFECT_RATE) -> np.ndarray:
+    """Return deterministic mono float32 samples with an absolute peak of 1.
+
+    Effects are synthesized at 48 kHz and resampled when `rate` differs. Apply a low gain before mixing with speech.
+    The returned array is new on each call. The rate must be an integer of at least 8 kHz.
+    Invalid names and sample rates raise ValueError.
+    """
+    if not isinstance(name, str) or name not in SOUND_EFFECTS:
+        raise ValueError(f"Unknown sound effect {name!r}. Choose from: {', '.join(SOUND_EFFECTS)}.")
+    if isinstance(rate, bool) or not isinstance(rate, Integral) or rate < SOUND_EFFECT_MIN_RATE:
+        raise ValueError("Sample rate must be an integer of at least 8000 Hz.")
+    rate = int(rate)
+    effect = SOUND_EFFECTS[name]
+    length = round(effect["seconds"] * rate)
+    if length < 3:
+        raise ValueError("Sample rate is too low for this sound effect.")
+    t = np.arange(round(effect["seconds"] * SOUND_EFFECT_RATE)) / SOUND_EFFECT_RATE
+    samples = _EFFECTS[name](t)
+    # Taper before resampling to keep the boundary from exciting the resampling filter.
+    _fade_effect(samples, SOUND_EFFECT_RATE)
+    if rate != SOUND_EFFECT_RATE:
+        divisor = gcd(rate, SOUND_EFFECT_RATE)
+        samples = resample_poly(samples, rate // divisor, SOUND_EFFECT_RATE // divisor)[:length]
+        _fade_effect(samples, rate)
+    samples = samples.astype(np.float32)
+    peak = np.max(np.abs(samples))
+    if not np.isfinite(peak) or peak == 0:
+        raise ValueError(f"Cannot synthesize {name!r} at {rate} Hz.")
+    return samples / peak
+
+
+def _fade_effect(samples, rate):
+    """Taper both ends to exact silence without masking a short impact."""
+    limit = max(2, len(samples) // 2)
+    attack = min(max(2, round(0.0008 * rate)), limit)
+    release = min(max(2, round(0.012 * rate)), limit)
+    samples[:attack] *= np.sin(np.linspace(0, np.pi / 2, attack)) ** 2
+    samples[-release:] *= np.sin(np.linspace(np.pi / 2, 0, release)) ** 2
+
+
+def main():
+    parser = argparse.ArgumentParser(description="List or render original sound effects for narrated films.")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("list", help="List the available effects and their descriptions.")
+    render = commands.add_parser("render", help="Render an effect as a quiet mono 48 kHz PCM WAV file.")
+    render.add_argument("name", choices=SOUND_EFFECTS)
+    render.add_argument("--out", type=Path, required=True, help="The output WAV path.")
+    args = parser.parse_args()
+    if args.command == "list":
+        for name in SOUND_EFFECTS:
+            print(f"{name}: {SOUND_EFFECTS[name]['description']}")
+        return
+    import soundfile as sf
+
+    try:
+        sf.write(args.out, sound_effect(args.name) * 0.16, SOUND_EFFECT_RATE, subtype="PCM_16", format="WAV")
+    except (OSError, RuntimeError, ValueError) as error:
+        parser.exit(1, f"error: {error}\n")
+    print(f"Rendered {args.name} to {args.out}.")
+
+
+if __name__ == "__main__":
+    main()

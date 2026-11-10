@@ -25,6 +25,15 @@ HOLD = 0.25
 ANCHOR_KEYS = {"at", "intro", "scene", "beat", "word", "last", "edge", "offset"}
 SWELL_KEYS = ANCHOR_KEYS | {"width", "db", "after"}
 CHIME_KEYS = ANCHOR_KEYS | {"gain", "notes", "until", "full"}
+# Shared metadata for validation, synthesis, and quiet mixing. This catalog needs no audio packages.
+SOUND_EFFECTS = {
+    "tap": {"description": "A short wooden tap.", "seconds": 0.14, "gain": 0.045},
+    "slide": {"description": "A soft brush that sweeps into motion.", "seconds": 0.32, "gain": 0.035},
+    "latch": {"description": "A two-part mechanical catch.", "seconds": 0.26, "gain": 0.05},
+    "resolve": {"description": "A rounded two-note resolution with a short tail.", "seconds": 0.76, "gain": 0.045},
+    "bell": {"description": "The original soft three-note bell.", "seconds": 5.0, "gain": 0.05},
+}
+EFFECT_KEYS = ANCHOR_KEYS | {"sound", "gain", "until"}
 
 # What each step reads beside film.json and script.json: the timing, the takes of the voice, and programs.
 # A build starts with the voice, so it does not need a timing. Its later steps do: "render" is the build
@@ -112,6 +121,7 @@ def check_anchor(spec, file, field, extra, report):
         "gain": (lambda v: number(v) and v > 0, "a number over 0, such as 0.11"),
         "notes": (lambda v: isinstance(v, list) and 1 <= len(v) <= 4 and all(number(n) and n > 0 for n in v), "one to four frequencies in hertz"),
         "full": (lambda v: isinstance(v, bool), "true or false"),
+        "sound": (lambda v: isinstance(v, str) and v in SOUND_EFFECTS, f"a sound name: {', '.join(SOUND_EFFECTS)}"),
     }
     for key, (valid, allowed) in rules.items():
         if key in spec and not valid(spec[key]):
@@ -119,6 +129,19 @@ def check_anchor(spec, file, field, extra, report):
     for key in ("until", "after"):
         if key in spec and key in extra:
             check_anchor(spec[key], file, f"{field}.{key}", set(), report)
+
+
+def check_effect_anchor(spec, file, field, report):
+    """Reject beat modifiers that would otherwise be ignored by an effect's time anchor."""
+    if not isinstance(spec, dict):
+        return
+    for key in ("beat", "word", "edge", "last"):
+        if key in spec and "scene" not in spec:
+            report.add(file, f"{field}.{key}", 'needs "scene"', "Give a scene anchor, or remove this key")
+    if "last" in spec and "word" not in spec:
+        report.add(file, f"{field}.last", 'needs "word"', "Give a spoken word, or remove this key")
+    if "word" in spec and "edge" in spec:
+        report.add(file, field, 'has both "word" and "edge"', "Give one reference within the beat")
 
 
 def check_film(given, root, looks, report):
@@ -167,7 +190,9 @@ def check_film(given, root, looks, report):
 def check_mix(mix, file, report):
     if not isinstance(mix, dict):
         return report.add(file, "mix", f"{shown(mix)} is not an object", 'Give { "seed": 7 }')
-    keys(mix, {"seed", "levels", "swells", "chimes"}, file, "mix.", report)
+    keys(mix, {"seed", "levels", "swells", "chimes", "effects"}, file, "mix.", report)
+    if "chimes" in mix and "effects" in mix:
+        report.add(file, "mix", 'has both "chimes" and "effects"', "Give only one of these lists")
     if "seed" in mix and not (whole(mix["seed"]) and mix["seed"] >= 0):
         report.add(file, "mix.seed", f"{shown(mix['seed'])} is not a seed", "Give a whole number, 0 or more, such as 7")
     levels = mix.get("levels", {})
@@ -178,13 +203,20 @@ def check_mix(mix, file, report):
         for key in LEVELS:
             if key in levels and not (number(levels[key]) and levels[key] <= 0):
                 report.add(file, f"mix.levels.{key}", f"{shown(levels[key])} is not a level", f"Give decibels under the voice, 0 or less, such as {LEVELS[key]:g}")
-    for name, extra in (("swells", {"width", "db", "after"}), ("chimes", {"gain", "notes", "until", "full"})):
+    for name, extra in (("swells", SWELL_KEYS - ANCHOR_KEYS), ("chimes", CHIME_KEYS - ANCHOR_KEYS), ("effects", EFFECT_KEYS - ANCHOR_KEYS)):
         entries = mix.get(name, [])
         if not isinstance(entries, list):
             report.add(file, f"mix.{name}", f"{shown(entries)} is not a list", "Give a list of times")
             continue
         for index, spec in enumerate(entries):
-            check_anchor(spec, file, f"mix.{name}[{index}]", extra, report)
+            field = f"mix.{name}[{index}]"
+            check_anchor(spec, file, field, extra, report)
+            if name == "effects" and isinstance(spec, dict):
+                if "sound" not in spec:
+                    report.add(file, f"{field}.sound", "is missing", f"Give a sound name: {', '.join(SOUND_EFFECTS)}")
+                check_effect_anchor(spec, file, field, report)
+                if "until" in spec:
+                    check_effect_anchor(spec["until"], file, f"{field}.until", report)
 
 
 def check_script(written, report):

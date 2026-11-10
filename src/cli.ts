@@ -39,7 +39,7 @@ import {
     checkFilmFile, filmFromModule, isLookName, parseFilmArgs, printFilmCheck, runFilmCommand, runLooksCommand,
     runNewCommand, runObjectsCommand, type FilmCheckFileReport,
 } from './film-cli'
-import { runNarratedCommand } from './narrated-cli'
+import { runNarratedCommand, runSoundsCommand } from './narrated-cli'
 import type { LookName } from './stage/look'
 
 interface FrameModule {
@@ -197,6 +197,8 @@ function usageText() {
                 [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--name <output name>] [--background <color|none>]
                 [--ffmpeg <path>] [--json]
   vizmatic looks [--json]
+  vizmatic sounds [list]
+  vizmatic sounds render <name> --out <file.wav>
   vizmatic objects [--json]
 
 Frames:
@@ -2168,7 +2170,9 @@ function describeThrown(error: unknown): string {
 async function main() {
     const args = process.argv.slice(2)
     const [command, ...rest] = args
-    if (rest.includes('--help') || rest.includes('-h')) {
+    if (command === 'sounds') {
+        runSoundsCommand(rest)
+    } else if (rest.includes('--help') || rest.includes('-h')) {
         help()
     } else if (command === 'render') {
         await renderCommand(rest)
