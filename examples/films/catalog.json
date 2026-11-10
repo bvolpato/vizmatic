@@ -148,5 +148,15 @@
     "posterTime": 16,
     "featured": false,
     "look": "paper"
+  },
+  {
+    "id": "beam-search",
+    "title": "A beam keeps more than one path",
+    "summary": "A tree grows one token at a time, keeps two prefixes, and adds the log probabilities along each path before choosing its best complete continuation.",
+    "topic": "Machine learning",
+    "duration": 17.2,
+    "posterTime": 14,
+    "featured": false,
+    "look": "midnight"
   }
 ]
