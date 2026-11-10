@@ -212,7 +212,7 @@ export class NumberLine extends Node {
     private readonly counts: boolean
     private readonly size: number
     private readonly font: TextOptions['font']
-    private readonly format: (value: number) => string
+    private readonly readoutFormat: Intl.NumberFormat | ((value: number) => string)
     private readonly levels: number
     private readonly radius: number
     /** The y of the middle of the numbers under the ticks, and the y under them. */
@@ -363,8 +363,9 @@ export class NumberLine extends Node {
         const points = options.points ?? []
         if (!Array.isArray(points)) throw new Error('numberLine: points is a list, such as [{ name: \'A\', value: 1.8 }]')
         const digits = Math.max(this.tickValues.reduce((maxDigits, tick) => Math.max(maxDigits, decimalsOf(tick)), 0), ...cuts.map((cut) => decimalsOf(cut.at)), ...points.map((point) => (typeof point?.value === 'number' ? decimalsOf(point.value) : 0)))
-        // A value of -0.001 with two decimals is 0.00, not -0.00.
-        this.format = options.format ?? ((value) => value.toFixed(digits).replace(/^-(0(?:\.0+)?)$/, '$1'))
+        this.readoutFormat = options.format ?? new Intl.NumberFormat('en-US', {
+            useGrouping: false, minimumFractionDigits: digits, maximumFractionDigits: 4,
+        })
 
         const staged = bands.length > 0 || options.points !== undefined || options.levels !== undefined
         if (bands.length > 0) {
@@ -1298,12 +1299,31 @@ export class NumberLine extends Node {
         return out
     }
 
+    /** Keep extra digits when rounding would hide a gap or put the cutoff on the wrong side of a point. */
+    private readout(value: number, thresholdTime?: number): string {
+        if (typeof this.readoutFormat === 'function') return this.readoutFormat(value)
+        // Like toFixed, keep very large values in exponential notation.
+        if (Math.abs(value) >= 1e21) return String(value)
+        const label = this.readoutFormat.format(value === 0 ? 0 : value)
+        const rounded = Number(label)
+        if (rounded === value) return label
+        if (rounded === 0) return String(value)
+        if (thresholdTime !== undefined) {
+            for (const point of this.entries) {
+                if (!point.alive.sample(thresholdTime)) continue
+                const score = point.at.track.sample(thresholdTime)
+                if (Math.sign(rounded - score) !== Math.sign(value - score)) return String(value)
+            }
+        }
+        return label
+    }
+
     /** The label of a threshold over its line: its word and its value at this time. Near an end of the line, it stays over the line. */
     private drawThresholdLabel(index: number, time: number): Node | null {
         const cut = this.cuts[index]
         if (!cut) return null
         const value = cut.at.track.sample(time)
-        const words = [cut.label, cut.readout ? String(this.format(value)) : undefined].filter((part) => part !== undefined && part !== '').join(' ')
+        const words = [cut.label, cut.readout ? String(this.readout(value, time)) : undefined].filter((part) => part !== undefined && part !== '').join(' ')
         if (words === '') return null
         const made = text(words, { size: this.size, font: this.font, color: cut.color })
         const half = made.bounds().width / 2, x = this.p(value)[0], end = this.length / 2
@@ -1329,7 +1349,7 @@ export class NumberLine extends Node {
             : -((this.extent ? this.topRoom(this.cuts.length) : this.radius + size * 1.9) + size * 0.4 + offset)
         // The two short ends point at the line, so the bracket reads as a measure of the values on it.
         const mark = new Node(polyPath([[x0, base - way * cap], [x0, base], [x1, base], [x1, base - way * cap]])).stroke(color, Math.max(2.5, size * 0.09))
-        const words = typeof label === 'function' ? label(Math.abs(b - a), a, b) : label ?? this.format(Math.abs(b - a))
+        const words = typeof label === 'function' ? label(Math.abs(b - a), a, b) : label ?? this.readout(Math.abs(b - a))
         if (words === undefined || words === null || String(words) === '') return [mark]
         return [mark, text(String(words), { size, font: this.font, color }).at((x0 + x1) / 2, base + way * size * 0.85)]
     }
