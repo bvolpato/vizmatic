@@ -424,6 +424,23 @@ s.play(log.mark((row) => row.state === 'new', 'stored'))
 s.play(log.mark(5, 'answered'))
 ```
 
+A table whose rows are the data of the example: the cases of an evaluation, the candidates of a choice, the records of a ledger. Do not build it from `grid` and texts, and do not show a table that stands still. `table` keeps the columns in line, gives each row an id and a node that it keeps, and gives a cell a state with a color and a mark (`pass`, `fail`, `warn`, `pending`, `skip`, or your own). `light` moves one marker to a row, a column or a cell, `setCell` changes a value or a state in place, `append` and `remove` change the rows, and `sort` and `moveRow` move them. A column with a `total` gives a total row that follows the rows. The text size is 28 by default. The columns are set from the first rows, so give a column a `sample` when it gets a longer value later, and give a table that grows its `maxRows`. A cloned table starts its own timeline and keeps the graphics attached to its cells, including when a group contains the table. Play one change of the rows at a time: two of `append`, `remove`, `sort` and `moveRow` whose times overlap are an error, and `setCell` and `light` play with any of them:
+
+```ts
+const results = s.add(table([
+    { key: 'name', label: 'incident case', total: () => 'passed' },
+    { key: 'old', label: 'old prompt', align: 'center', total: (rows) => `${rows.filter((row) => row.states.old === 'pass').length}/${rows.length}` },
+    { key: 'score', format: (value) => value.toFixed(2) },
+], [
+    { id: 'overdue', name: 'page is overdue', old: { state: 'pending' }, score: 0.4 },
+    { id: 'prior', name: 'a page was sent before', old: { state: 'pending' }, score: 0.93 },
+], { size: 36, maxRows: 3 }))
+s.play(results.light('overdue', 'old'), results.setCell('overdue', 'old', { state: 'fail' }))
+s.play(results.append({ id: 'first', name: 'first page is due', old: { state: 'pass' }, score: 0.62 }))
+s.play(results.sort('score', { descending: true }), results.light('prior'))
+s.add(arrow(start, results.region('prior', 'score').point('left')))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
@@ -440,6 +457,31 @@ Values that differ by more than about a hundred times, such as 100 ns beside 10 
 const time = (ns: number) => (ns >= 1e6 ? `${ns / 1e6} ms` : ns >= 1e3 ? `${ns / 1e3} µs` : `${ns} ns`)
 const chart = dotChart([{ label: 'system call', value: 100 }, { label: 'read from a spinning disk', value: 10_000_000 }], { scale: 'log', format: time, xLabel: 'time, logarithmic' })
 s.play(chart.enter())
+```
+
+A small distribution that the film acts on: the next-token probabilities of a model, the scores of a ranking, a teacher beside a student. Do not draw rectangles with no scale, and do not start a new chart in each scene. `barChart` with `max: 1` keeps the bars on one scale, and each verb starts from what the verb before it left. A state has its own mark, so color is not the only sign. The default text size is 20: give `labelSize: 28` or more at 1080p. In a layout, name `ticks`, `states`, `reference`, `cutAt` and `cutAfter` in the options, so the layout measures them:
+
+```ts
+const chart = s.add(barChart(tokens.map((label, i) => ({ label, value: probs[i]! })), { max: 1, ticks: [0, 0.5, 1], labelSize: 32, barColor: 'blue', states: true, format: (v) => v.toFixed(2) }))
+s.play(chart.update(flatter))                          // a temperature reshapes the same bars
+s.play(chart.cutAfter(3, { label: (count) => `top ${count}` }))
+s.play(chart.mask(chart.tail()))                       // the tail goes to 0, and the rest grows by one factor
+s.play(chart.mark('slept', 'chosen'))                  // target, chosen, masked, plain, or your own states
+s.play(chart.reference(teacher))                       // a second series as outlines. With no values, it holds the bars as they are
+s.play(chart.cutAt(0.1, { label: 'min p' }))           // a line at a value. chart.below() gives the bars under it
+s.play(chart.sort())                                   // into rank order, one bar at a time
+```
+
+To add a state and keep `mask()`, import `BAR_STATES` and spread it into the custom `states` table. To change a reference and bar values in one play, fix both ends of the scale with `min` and `max`, or use `ticks` with `max`. Sequence changes to the same bar state or cut. During motion, `below()` and `sides()` use the visible threshold, and `p(which)` and `region(which)` follow the bar. Animate the original chart or outline. For a complete example, see `examples/proofs/decoding-bars.ts`.
+
+Samples against a threshold, and two distributions on one axis. `histogram` counts the samples on each side of a line, and draws a second distribution as an outline on the same bins:
+
+```ts
+const chart = s.add(histogram(reference, { bins: 10, range: [0, 1], max: 110, labelSize: 30 }))
+const current = chart.outline(thisWeek, { color: 'orange' })
+s.play(current.fillUp())
+s.play(chart.cutAt(0.7, { label: 'limit', count: (count, total) => `${Math.round(100 * count / total)}%` }))
+const { below, above } = chart.sides()
 ```
 
 A word split into named fields: a virtual address and its table indexes, the flags of a register, the layout of a structure. Do not build it from boxes and texts in each film. `bitField` gives each box a width for its bits, numbers the bits, and keeps every text inside its box. `minWidth` or `scale: 'even'` gives a field of one bit room for a name, and `unused: true` marks reserved bits. For the layout of a structure, `numbers: 'offsets'` counts its bytes, and `wrap: 16` fills rows of 16 bytes. A field with a `value` shows it in its box, and `word.setValue('fd', '3')` changes it in place. `word.field('table')` is the node of one field, and `word.p('table')` is the point where a line from it starts:

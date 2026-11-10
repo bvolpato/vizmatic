@@ -12,9 +12,10 @@ import {
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
     lanes, smooth, eventLog, LogRowNode, LOG_STATES, row,
-    delay, par, retime, ringBuffer,
+    delay, par, retime, ringBuffer, overshoot,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
+    table, Table, TableCellNode, TableRowNode, TABLE_STATES, type TableColumn, type TableRow, type TableRowView,
     boxOf, fitted,
     circle, tangentLine, secantLine, areaUnder, band, valueAt, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
@@ -1703,6 +1704,962 @@ describe('charts', () => {
         expect(chart.cell(1, 1).get('y')).toBe(20)
         expect(chart.row(0)).toHaveLength(2)
         expect(() => chart.cell(2, 0)).toThrow(/2 by 2/)
+    })
+})
+
+describe('bar chart and histogram: states, a second series, cuts and a sort', () => {
+    // A chart at the middle of a 1920 by 1080 frame. Its columns are 200 wide, with middles at -200, 0 and 200.
+    // The baseline is at y 200, and a value v is at y 200 - 400 v. A frame draws a stage point at (960 + x, 540 + y).
+    const DATA = [{ label: 'sat', value: 0.5 }, { label: 'ran', value: 0.3 }, { label: 'ate', value: 0.2 }]
+    type Chart = ReturnType<typeof barChart>
+    const make = (options: Parameters<typeof barChart>[1] = {}, data = DATA) => barChart(data, { width: 600, height: 400, max: 1, labelSize: 30, barColor: 'blue', ...options })
+    const middle = (node: Node) => { const b = node.bounds(); return [b.x + b.width / 2, b.y + b.height / 2] as const }
+    /** True for a mark that a node drew, or that a drawing of the node made for this frame. */
+    const from = (op: PathOp, owner: Node | null | undefined): boolean => {
+        for (let node: Node | null | undefined = op.node; node; node = node.parent ?? node.drawer) if (node === owner) return true
+        return false
+    }
+    const drawn = (f: CompiledFilm, t: number, owner: Node | null | undefined) => paths(f, t).filter((op) => from(op, owner))
+    /** The texts that a node drew at a time, in the order in which it drew them. */
+    const said = (f: CompiledFilm, t: number, owner: Node | null | undefined) => [...new Set(drawn(f, t, owner).flatMap((op) => (op.node?.data['key'] !== undefined ? [op.node.parent as TextNode] : [])))].map((words) => words.source)
+    const boundsOf = (ops: readonly PathOp[]) => {
+        const boxes = ops.map((op) => pathBounds(op.path)!)
+        const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y))
+        return { x, y, right: Math.max(...boxes.map((b) => b.x + b.width)), bottom: Math.max(...boxes.map((b) => b.y + b.height)) }
+    }
+    // A histogram of ten samples in five bins of [0, 5): 2, 3, 4 and 1 samples in the bins of 1, 2, 3 and 4.
+    // The plot is 500 wide and 200 high, so a bin is 100 wide and one sample is 50 high.
+    const SAMPLES = [1.5, 1.5, 2.2, 2.4, 2.6, 3.1, 3.2, 3.3, 3.4, 4.5]
+    const bins = (options: Parameters<typeof histogram>[1] = {}) => histogram(SAMPLES, { bins: 5, range: [0, 5], width: 500, height: 200, labelSize: 30, gap: 0, ...options })
+    const fills = (f: CompiledFilm, t: number, owner: Node) => drawn(f, t, owner.children[0]).filter((op) => op.fill)
+    /** The marks of the states on the screen: the shape, the middle and the color of each. */
+    const stateMarks = (f: CompiledFilm, t: number) => paths(f, t).filter((op) => typeof op.node?.data['shape'] === 'string' && op.strokeAlpha + op.fillAlpha > 0.5).map((op) => {
+        const b = pathBounds(op.path)!
+        return { shape: op.node!.data['shape'] as string, x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2), color: op.stroke ?? op.fill }
+    })
+
+    it('leaves a chart that uses none of the new parts with the nodes that it had', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(barChart(DATA, { width: 600, height: 400 }))
+            s.play(chart.enter(), { duration: 1 })
+            s.play(chart.update([0.1, 0.9, 0.4]), { duration: 1 })
+        })
+        // Three bars, the baseline, three labels and three numbers: a film that fades the children one by one sees no other node.
+        expect(chart.children).toHaveLength(10)
+        expect(chart.children.slice(0, 4)).toEqual([...chart.bars, chart.baseline])
+        expect([chart.ticks, chart.valueCut, chart.rankCut, chart.referenceValues]).toEqual([null, null, null, null])
+        expect(chart.outlines).toEqual([])
+        expect(chart.order).toEqual([0, 1, 2])
+        expect(chart.cut).toEqual({ at: null, after: null })
+    })
+
+    it('gives a bar a state: the color of the bar, a mark under its label, and a bright label', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mark('ran', 'target'), { duration: 1 })
+            expect(chart.state('ran')).toBe('target')
+            s.play(chart.mark(1, 'chosen'), chart.mark(2, 'masked'), { duration: 1 })
+            s.play(chart.mark('ran', 'plain'), { duration: 1 })
+            expect([0, 1, 2].map((index) => chart.state(index))).toEqual(['plain', 'plain', 'masked'])
+        })
+        const fill = (index: number, t: number) => at(t, () => chart.bar(index).get('fill'))
+        const label = (index: number, t: number) => at(t, () => chart.labels[index]!.children[0]!.get('fill'))
+        expect(fill(1, 0)).toEqual(parseColor('blue'))
+        expect(fill(1, 1)).toEqual(parseColor('green'))
+        expect(fill(1, 2)).toEqual(parseColor('yellow'))
+        expect(fill(1, 3)).toEqual(parseColor('blue'))
+        expect(label(1, 0)).toEqual(parseColor('dim'))
+        expect(label(1, 1)).toEqual(parseColor('ink'))
+        expect(label(1, 3)).toEqual(parseColor('dim'))
+        // The mark is under the label, on the middle of the column: the label is at y 227, and the mark 1.2 sizes lower.
+        expect(stateMarks(f, 0.999)).toEqual([{ shape: 'ring', x: 960, y: 540 + 227 + 36, color: parseColor('green') }])
+        // A mark of another shape takes the place of the old one, and each bar has its own.
+        expect(stateMarks(f, 1.999).map((mark) => [mark.shape, mark.x])).toEqual([['check', 960], ['cross', 1160]])
+        expect(stateMarks(f, 1.999)[0]!.color).toEqual(parseColor('yellow'))
+        expect(stateMarks(f, 3).map((mark) => mark.shape)).toEqual(['cross'])
+        // A dim state: the bar, its label and its number are faint.
+        expect(at(2, () => chart.bar(2).get('fillOpacity'))).toBeCloseTo(0.3, 6)
+        expect(at(0, () => chart.bar(2).get('fillOpacity'))).toBeCloseTo(0.84, 6)
+        expect(label(2, 2)).toEqual(parseColor('faint'))
+        expect(drawn(f, 2, chart.readouts[2])[0]!.fillAlpha).toBeCloseTo(0.45, 6)
+        expect(drawn(f, 2, chart.readouts[1])[0]!.fillAlpha).toBeCloseTo(1, 6)
+    })
+
+    it('puts every bar back to plain, and changes only the bars that a call names', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mark(['sat', 2], 'chosen', { lag: 1 }), { duration: 2 })
+            s.play(chart.clearStates(), { duration: 1 })
+        })
+        // With a lag of 1, the second bar starts when the first one is done.
+        expect(stateMarks(f, 0.999).map((mark) => mark.x)).toEqual([760])
+        expect(stateMarks(f, 2).map((mark) => mark.x)).toEqual([760, 1160])
+        expect(at(2, () => chart.bar(1).get('fill'))).toEqual(parseColor('blue'))
+        expect(stateMarks(f, 3)).toEqual([])
+        expect(at(3, () => chart.bar(0).get('fill'))).toEqual(parseColor('blue'))
+        expect([0, 1, 2].map((index) => chart.state(index))).toEqual(['plain', 'plain', 'plain'])
+    })
+
+    it('keeps the room of the state marks from the start with `states`, and measures a mark from the first one without it', async () => {
+        await compileFilm(film((s) => {
+            const plain = make(), ready = make({ states: true })
+            // The mark of a state is 1.2 text sizes under the middle of the label, and 0.36 of a size in radius.
+            const bottom = 200 + 12 + 15 + 30 * 1.2 + 30 * 0.36
+            expect(boxOf(ready).bottom).toBeCloseTo(bottom, 6)
+            expect(boxOf(plain).bottom).toBeLessThan(bottom - 20)
+            // The room is not drawn: the chart on the screen is as high as before.
+            expect(ready.bounds().height).toBeCloseTo(plain.bounds().height, 6)
+            s.add(plain, ready)
+            s.play(plain.mark(0, 'target'), ready.mark(0, 'target'))
+            expect(boxOf(ready).bottom).toBeCloseTo(bottom, 6)
+            expect(boxOf(plain).bottom).toBeCloseTo(bottom, 6)
+        }))
+    })
+
+    it('takes a table of states, and refuses a state whose color is its only sign', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make({ states: { legal: { color: 'teal', mark: 'dot' }, masked: { mark: 'cross', dim: true } } }))
+            s.play(chart.mark(0, 'legal'), { duration: 1 })
+        })
+        expect(stateMarks(f, 1)).toEqual([{ shape: 'dot', x: 760, y: 803, color: parseColor('teal') }])
+        expect(() => chart.mark(0, 'target')).toThrow('barChart: mark(): no state "target". The states are plain, legal, masked')
+        expect(() => make({ states: { loud: { color: 'red' } as never } })).toThrow('the state "loud" has no mark, so its color is its only sign')
+        expect(() => make({ states: { odd: { mark: 'star' as never } } })).toThrow('the mark of the state "odd" is "star". A mark is \'dot\', \'ring\', \'check\' or \'cross\'')
+        expect(() => make({ states: { plain: { mark: 'dot' } } })).toThrow('a table of states cannot change `plain`')
+        expect(() => make({ states: { legal: { mark: 'dot' } } }).mask(0)).toThrow('mask(): no state "masked". The states are plain, legal. Add a state `masked` to the table')
+    })
+
+    it('masks bars and gives their share to the rest, with the same sum at every frame', async () => {
+        let chart!: Chart
+        const values = (t: number) => at(t, () => chart.values.map((value) => value.value))
+        await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mask('ate'), { duration: 1 })
+            expect(chart.state('ate')).toBe('masked')
+            // A second mask starts from what the first one left.
+            s.play(chart.mask(1), { duration: 1 })
+        })
+        expect(values(1)[0]).toBeCloseTo(0.625, 9)
+        expect(values(1)[1]).toBeCloseTo(0.375, 9)
+        expect(values(1)[2]).toBe(0)
+        for (const t of [0, 0.2, 0.5, 0.8, 1, 1.4, 2]) expect(values(t).reduce((sum, value) => sum + value, 0)).toBeCloseTo(1, 9)
+        expect(values(2)).toEqual([1, 0, 0])
+        // The bar is drawn to its value: a bar of 0.625 is 250 high.
+        expect(at(1, () => pathBounds(chart.bar(0).get('path')!)!.height)).toBeCloseTo(250, 6)
+        expect(at(1, () => pathBounds(chart.bar(2).get('path')!)!.height)).toBeCloseTo(0, 6)
+    })
+
+    it('masks without a new share on request, and refuses a share that cannot be given', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.mask([0, 1], { renormalize: false }), { duration: 1 })
+            expect(() => s.play(chart.mask(2))).toThrow('barChart: mask() leaves no bar with a value, so no bar can take the share of the masked ones')
+        })
+        expect(at(1, () => chart.values.map((value) => value.value))).toEqual([0, 0, 0.2])
+        await compile((s) => {
+            const signed = s.add(barChart([{ label: 'a', value: 0.5 }, { label: 'b', value: -0.5 }], { min: -1, max: 1 }))
+            expect(() => s.play(signed.mask(0))).toThrow('the value of bar 1 ("b") is -0.5. A share is 0 or more. For values that are not shares, use mask(bars, { renormalize: false })')
+            s.play(signed.mask(0, { renormalize: false }))
+        })
+    })
+
+    it('refuses a mask and another change of the values at one time, and takes them one after the other', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            expect(() => s.play(chart.mask(2), chart.update([0.2, 0.2, 0.6]), { duration: 1 })).toThrow('barChart: update() plays from 0 s to 1 s, and mask() plays from 0 s to 1 s. Both set the values of the bars')
+        })
+        await compile((s) => {
+            const chart = s.add(make())
+            expect(() => s.play(chart.update([0.2, 0.2, 0.6]), chart.mask(2), { duration: 1 })).toThrow('barChart: mask() plays from 0 s to 1 s, and update() plays from 0 s to 1 s')
+        })
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(make())
+            s.play(seq(chart.update([0.2, 0.2, 0.6]), chart.mask(2)), { duration: 2 })
+            // Two updates at one time are as they were before: the last one wins.
+            s.play(chart.update([0.5, 0.5, 0]), chart.update([0.25, 0.75, 0]), { duration: 1 })
+        })
+        expect(at(2, () => chart.values.map((value) => value.value))).toEqual([0.5, 0.5, 0])
+        expect(at(3, () => chart.values.map((value) => value.value))).toEqual([0.25, 0.75, 0])
+    })
+
+    it('refuses an update that overlaps a mask in another branch of a play', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            // The sequence schedules its update at 2 s before the other branch schedules its update at 0.5 s.
+            const sequence = seq(chart.mask(2, { duration: 2 }), chart.update([0.2, 0.3, 0.5], { duration: 1 }))
+            const duringMask = delay(chart.update([0.1, 0.1, 0.8], { duration: 0.5 }), 0.5)
+            expect(() => s.play(par(sequence, duringMask))).toThrow(/(?=.*\bmask\b)(?=.*\bupdate\b).*\bseq\b/i)
+        })
+    })
+
+    it.each([
+        ['both bounds', {}, 1, false],
+        ['the upper bound', { min: 0 }, 1, true],
+        ['the lower bound', { max: 0 }, -1, false],
+    ] as const)('refuses concurrent reference and update calls when the scale sets %s', async (_bounds, scale, start, referenceFirst) => {
+        await compile((s) => {
+            const chart = s.add(barChart([{ label: 'a', value: start }], scale))
+            const update = chart.update([3 * start], { duration: 2 })
+            const reference = chart.reference([5 * start], { duration: 1 })
+            const play = () => referenceFirst ? s.play(reference, update) : s.play(update, reference)
+            expect(play).toThrow(/(?=.*\bmin\b)(?=.*\bmax\b).*\bseq\b/i)
+        })
+    })
+
+    it('lets the bar finish its update after its reference reaches the top of a fixed scale', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(barChart([{ label: 'a', value: 1 }], { min: 0, max: 5, height: 100 }))
+            s.play(chart.update([3], { duration: 2 }), chart.reference([5], { duration: 1 }), { ease: linear })
+        })
+        const height = (part: Node, time: number) => pathBounds(drawn(f, time, part)[0]!.path)!.height
+        expect(height(chart.outlines[0]!, 1)).toBeCloseTo(100)
+        expect(height(chart.bar(0), 1)).toBeCloseTo(40)
+        expect(height(chart.outlines[0]!, 2)).toBeCloseTo(100)
+        expect(height(chart.bar(0), 2)).toBeCloseTo(60)
+        expect(at(2, () => chart.values[0]!.value)).toBe(3)
+    })
+
+    it('holds the values of the bars as outlines, so an update shows before and after', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.reference(), { duration: 1 })
+            expect(chart.referenceValues).toEqual([0.5, 0.3, 0.2])
+            s.play(chart.update([0.1, 0.8, 0.1]), { duration: 1 })
+            s.play(chart.reference(null), { duration: 1 })
+            expect(chart.referenceValues).toBeNull()
+        })
+        expect(chart.outlines).toHaveLength(3)
+        expect(drawn(f, 0, chart.outlines[0])).toEqual([])
+        // An outline is a line with no fill, around the bar as it was: 200 high for 0.5, on the first column.
+        const outline = (index: number, t: number) => drawn(f, t, chart.outlines[index])[0]!
+        expect(outline(0, 2).fill).toBeNull()
+        expect(outline(0, 2).stroke).toEqual(parseColor('ink'))
+        const b = pathBounds(outline(0, 2).path)!
+        expect([b.x, b.y, b.width, b.height].map(Math.round)).toEqual([960 - 200 - 72, 540, 144, 200])
+        expect(Math.round(pathBounds(outline(1, 2).path)!.height)).toBe(120)
+        // The bars moved, and the outlines did not.
+        expect(at(2, () => pathBounds(chart.bar(0).get('path')!)!.height)).toBeCloseTo(40, 6)
+        expect(drawn(f, 3, chart.outlines[0])).toEqual([])
+    })
+
+    it('moves the second series to new values, and brings it from the baseline when it does not show', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.reference([0.8, 0.1, 0.1]), { duration: 1 })
+            s.play(chart.reference([0.4, 0.3, 0.3]), { duration: 1 })
+        })
+        const height = (index: number, t: number) => pathBounds(drawn(f, t, chart.outlines[index])[0]!.path)!.height
+        expect(height(0, 0.5)).toBeGreaterThan(40)
+        expect(height(0, 0.5)).toBeLessThan(300)
+        expect(height(0, 1)).toBeCloseTo(320, 6)
+        expect(height(0, 1.5)).toBeCloseTo(240, 6)
+        expect(height(0, 2)).toBeCloseTo(160, 6)
+        expect(chart.referenceValues).toEqual([0.4, 0.3, 0.3])
+        expect(() => chart.reference([0.5, 0.5])).toThrow('barChart: reference() has 2 values, and the chart has 3 bars. Give one value for each bar')
+        expect(() => chart.reference([0.5, Number.NaN, 0.1])).toThrow('barChart: reference(): value 1 is NaN. Each value is a finite number')
+    })
+
+    it('draws the second series of the options from the start, holds it in the scale, and brings it in with the bars', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            // No fixed scale: the largest value of both series is at the top of the plot.
+            chart = s.add(barChart(DATA, { width: 600, height: 400, reference: [1, 0.25, 0.25], referenceColor: 'orange' }))
+            s.wait(1)
+            s.play(chart.enter(), { duration: 2 })
+        })
+        expect(Math.round(pathBounds(drawn(f, 0.5, chart.outlines[0])[0]!.path)!.height)).toBe(400)
+        expect(drawn(f, 0.5, chart.outlines[0])[0]!.stroke).toEqual(parseColor('orange'))
+        expect(at(0.5, () => pathBounds(chart.bar(0).get('path')!)!.height)).toBeCloseTo(200, 6)
+        // At the start of the enter the outlines are away, and at its end they stand.
+        expect(drawn(f, 1.05, chart.outlines[0])).toEqual([])
+        expect(Math.round(pathBounds(drawn(f, 3, chart.outlines[0])[0]!.path)!.height)).toBe(400)
+        // An update that passes the second series takes the scale with it, and the outline follows the scale.
+        let grown!: Chart
+        const g = await compile((s) => {
+            grown = s.add(barChart(DATA, { width: 600, height: 400, reference: [1, 0.25, 0.25] }))
+            s.play(grown.update([2, 0.3, 0.2]), { duration: 1 })
+        })
+        expect(Math.round(pathBounds(drawn(g, 1, grown.outlines[0])[0]!.path)!.height)).toBe(200)
+        // Bars that get smaller leave the scale to the second series, and it grows again when the second series goes.
+        let small!: Chart
+        const h = await compile((s) => {
+            small = s.add(barChart(DATA, { width: 600, height: 400, reference: [1, 0.25, 0.25] }))
+            s.play(small.update([0.1, 0.1, 0.1]), { duration: 1 })
+            s.play(small.reference(null), { duration: 1 })
+        })
+        expect(Math.round(pathBounds(drawn(h, 1, small.outlines[0])[0]!.path)!.height)).toBe(400)
+        expect(at(1, () => pathBounds(small.bar(0).get('path')!)!.height)).toBeCloseTo(40, 6)
+        expect(at(2, () => pathBounds(small.bar(0).get('path')!)!.height)).toBeCloseTo(400, 6)
+    })
+
+    it('puts the number of a bar past an outline that ends over the bar', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.wait(1)
+            s.play(chart.reference([0.2, 0.9, 0.2]), { duration: 1 })
+        })
+        const number = (index: number, t: number) => boundsOf(drawn(f, t, chart.readouts[index]))
+        // The number of "ran" is over its bar of 0.3, and then over the outline of 0.9: 240 higher.
+        expect(number(1, 2).bottom).toBeCloseTo(number(1, 1).bottom - 240, 3)
+        expect(number(1, 2).bottom).toBeLessThan(540 + 200 - 360)
+        // An outline that ends under the bar moves no number.
+        expect(number(0, 2).bottom).toBeCloseTo(number(0, 1).bottom, 6)
+    })
+
+    it('draws a line across the bars at a value, moves it, and takes it away', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.wait(1)
+            s.play(chart.cutAt(0.25, { label: (value) => `p >= ${value.toFixed(2)}` }), { duration: 1 })
+            expect(chart.cut).toEqual({ at: 0.25, after: null })
+            expect(chart.below()).toEqual([2])
+            s.play(chart.cutAt(0.45, { color: 'red' }), { duration: 1 })
+            expect(chart.below()).toEqual([1, 2])
+            expect(chart.below(0.6)).toEqual([0, 1, 2])
+            // A bar at the value is not under it.
+            expect(chart.below(0.3)).toEqual([2])
+            s.play(chart.cutAt(null), { duration: 1 })
+            expect(chart.cut.at).toBeNull()
+        })
+        expect(chart.valueCut).not.toBeNull()
+        expect(drawn(f, 0.5, chart.valueCut)).toEqual([])
+        const line = (t: number) => drawn(f, t, chart.valueCut).filter((op) => op.dash)[0]!
+        // The line is at the height of the value, from the left edge of the plot to a little past its right edge.
+        const b = pathBounds(line(2).path)!
+        expect([b.x, b.y, b.height].map(Math.round)).toEqual([660, 540 + 200 - 100, 0])
+        expect(b.x + b.width).toBeCloseTo(960 + 300 + 9, 6)
+        expect(line(1.99).stroke).toEqual(parseColor('ink'))
+        // While it draws, the line grows from the left, and its label is not there yet.
+        expect(pathBounds(line(1.3).path)!.width).toBeLessThan(400)
+        expect(said(f, 1.3, chart.valueCut)).toEqual([])
+        // The label is after the right end of the line, at its height, and it follows the value.
+        expect(said(f, 2, chart.valueCut)).toEqual(['p >= 0.25'])
+        const words = boundsOf(drawn(f, 2, chart.valueCut).filter((op) => !op.dash))
+        expect(words.x).toBeGreaterThan(1269 + 9)
+        expect((words.y + words.bottom) / 2).toBeGreaterThan(630)
+        expect((words.y + words.bottom) / 2).toBeLessThan(650)
+        expect(said(f, 2.5, chart.valueCut)).toEqual(['p >= 0.35'])
+        expect(Math.round(pathBounds(line(3).path)!.y)).toBe(540 + 200 - 180)
+        // A later call changes what it names: the color here, and the label stays.
+        expect(line(3).stroke).toEqual(parseColor('red'))
+        expect(said(f, 3, chart.valueCut)).toEqual(['p >= 0.45'])
+        expect(drawn(f, 4, chart.valueCut)).toEqual([])
+    })
+
+    it('refuses a cut that is not on the scale, and a label that is not a text', async () => {
+        const chart = make()
+        expect(() => chart.cutAt(1.2)).toThrow('barChart: cutAt(): the value 1.2 is outside the scale, which goes to 1. Give a value of the scale, or a wider `min` and `max`')
+        expect(() => chart.cutAt(Number.NaN)).toThrow('barChart: cutAt(): the value is NaN. It is a finite number of the scale')
+        expect(() => chart.cutAt(0.5, { label: (() => 5) as never })).toThrow('barChart: cutAt(): the label is a function that returned number. A label is a text')
+        expect(() => chart.cutAfter(4)).toThrow('barChart: cutAfter(): the count is 4. It is the number of bars before the line, a whole number from 0 to 3')
+        expect(() => chart.cutAfter(1.5)).toThrow('the count is 1.5')
+        expect(() => make({ cutAt: { value: 2 } })).toThrow('barChart: the option `cutAt`: the value 2 is outside the scale')
+        expect(() => chart.below()).toThrow('barChart: below() needs a value, or a cut that `cutAt()` drew')
+        expect(() => chart.tail()).toThrow('barChart: tail() needs a count, or a cut that `cutAfter()` drew')
+        // A chart whose scale follows the data takes a cut at any value.
+        expect(() => barChart(DATA).cutAt(7)).not.toThrow()
+    })
+
+    it('draws a line after a number of bars, between two columns, and gives the bars after it', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.play(chart.cutAfter(2, { label: (count) => `top ${count}` }), { duration: 1 })
+            expect(chart.cut).toEqual({ at: null, after: 2 })
+            expect(chart.tail()).toEqual([2])
+            expect(chart.tail(1)).toEqual([1, 2])
+            s.play(chart.cutAfter(1), { duration: 1 })
+            expect(chart.tail()).toEqual([1, 2])
+        })
+        const line = (t: number) => pathBounds(drawn(f, t, chart.rankCut).filter((op) => op.dash)[0]!.path)!
+        // The line is between the second and the third column, from the bottom of the plot to over the numbers of the bars.
+        expect([line(1).x, line(1).width, line(1).y + line(1).height].map(Math.round)).toEqual([960 + 100, 0, 740])
+        expect(line(1).y).toBeCloseTo(540 - 200 - 10 - 30 * 1.25, 6)
+        expect(said(f, 1, chart.rankCut)).toEqual(['top 2'])
+        const words = boundsOf(drawn(f, 1, chart.rankCut).filter((op) => !op.dash))
+        expect(words.bottom).toBeLessThan(line(1).y)
+        expect((words.x + words.right) / 2).toBeGreaterThan(1050)
+        expect((words.x + words.right) / 2).toBeLessThan(1070)
+        expect(Math.round(line(2).x)).toBe(960 - 100)
+        expect(said(f, 2, chart.rankCut)).toEqual(['top 1'])
+    })
+
+    it('shows the cuts of the options from the start, and lets a film hide one until its verb', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = make({ cutAt: { value: 0.4, label: 'mean' }, cutAfter: { count: 1, label: 'top 1' } })
+            // The label of a cut is a part of the measure of the chart from the start, also while it is hidden.
+            const right = boxOf(chart).right
+            expect(right).toBeGreaterThan(300 + 9 + 12 + 40)
+            chart.rankCut!.hide()
+            expect(boxOf(chart).right).toBe(right)
+            s.add(chart)
+            s.wait(1)
+            s.play(chart.cutAfter(1), { duration: 1 })
+        })
+        expect(said(f, 0.5, chart.valueCut)).toEqual(['mean'])
+        expect(drawn(f, 0.5, chart.rankCut)).toEqual([])
+        expect(said(f, 2, chart.rankCut)).toEqual(['top 1'])
+        // The line draws: it does not jump in.
+        const half = pathBounds(drawn(f, 1.5, chart.rankCut).filter((op) => op.dash)[0]!.path)!
+        expect(half.height).toBeGreaterThan(50)
+        expect(half.height).toBeLessThan(400)
+        // In an enter, a cut comes after the bars: it is away at the start, and whole at the end.
+        let entered!: Chart
+        const g = await compile((s) => {
+            entered = make({ cutAt: { value: 0.4, label: 'mean' } })
+            s.play(entered.enter(), { duration: 2 })
+        })
+        expect(drawn(g, 0.5, entered.valueCut)).toEqual([])
+        expect(pathBounds(drawn(g, 2, entered.valueCut).filter((op) => op.dash)[0]!.path)!.width).toBeCloseTo(609, 6)
+        expect(said(g, 2, entered.valueCut)).toEqual(['mean'])
+    })
+
+    it('puts the number of a bar past a line of a cut that would cross it', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make())
+            s.wait(1)
+            // The line at 0.35 is 20 px over the bar of 0.3, where its number is. It is far from the other two bars.
+            s.play(chart.cutAt(0.35), { duration: 1 })
+            s.play(chart.cutAt(0.9), { duration: 1 })
+        })
+        const number = (index: number, t: number) => boundsOf(drawn(f, t, chart.readouts[index]))
+        const line = 540 + 200 - 140
+        expect(number(1, 1).bottom).toBeGreaterThan(line - 30)
+        expect(number(1, 2).bottom).toBeLessThan(line - 9)
+        expect(number(1, 2).bottom).toBeCloseTo(number(1, 1).bottom - 20, 3)
+        expect(number(0, 2).bottom).toBeCloseTo(number(0, 1).bottom, 6)
+        // When the line is far again, the number is back over its bar.
+        expect(number(1, 3).bottom).toBeCloseTo(number(1, 1).bottom, 6)
+        // A line of the options that the film hides until its verb moves no number.
+        let hidden!: Chart, shown!: Chart
+        const g = await compile((s) => {
+            hidden = make({ cutAt: { value: 0.35 } })
+            hidden.valueCut!.hide()
+            shown = make({ cutAt: { value: 0.35 } }).at(0, 2000)
+            s.add(hidden, shown)
+        })
+        const top = (chart: Chart) => boundsOf(drawn(g, 0, chart.readouts[1])).bottom - at(0, () => chart.get('y'))
+        expect(top(hidden)).toBeCloseTo(number(1, 1).bottom, 6)
+        expect(top(shown)).toBeCloseTo(number(1, 2).bottom, 6)
+    })
+
+    it('ends each verb in its last picture when the play has no duration', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make({ states: true }))
+            s.play(chart.mark(0, 'target'), chart.mask(2), chart.reference([0.2, 0.2, 0.6]), chart.cutAt(0.4, { label: 'limit' }), chart.cutAfter(1), chart.sort('ascending'), { duration: 0 })
+            s.wait(1)
+        })
+        expect(chart.order).toEqual([2, 1, 0])
+        expect(at(0, () => chart.values.map((value) => Math.round(value.value * 1000) / 1000))).toEqual([0.625, 0.375, 0])
+        expect(stateMarks(f, 0).map((mark) => [mark.shape, mark.x])).toEqual([['ring', 1160], ['cross', 760]])
+        expect(at(0, () => Math.round(middle(chart.bar(0))[0]))).toBe(200)
+        expect(Math.round(pathBounds(drawn(f, 0, chart.outlines[2])[0]!.path)!.height)).toBe(240)
+        expect(said(f, 0, chart.valueCut)).toEqual(['limit'])
+        expect(drawn(f, 0, chart.rankCut).filter((op) => op.dash)).toHaveLength(1)
+        // A sort with no time has no bar on its way, so it adds no patch: the bars, the baseline, the labels,
+        // the numbers, what each bar carries, and the two cuts.
+        expect(chart.children).toHaveLength(3 + 1 + 3 + 3 + 3 + 2)
+    })
+
+    it('sorts the bars in steps: one bar goes to its column, and the bars that it passes make room', async () => {
+        let chart!: Chart
+        const data = [{ label: 'low', value: 0.2 }, { label: 'high', value: 0.5 }, { label: 'mid', value: 0.3 }]
+        const f = await compile((s) => {
+            chart = s.add(make({ states: true }, data))
+            s.play(chart.mark('low', 'target'), { duration: 1 })
+            s.play(chart.sort(), { duration: 2 })
+            expect(chart.order).toEqual([1, 2, 0])
+        })
+        const x = (node: Node, t: number) => at(t, () => Math.round(middle(node)[0]))
+        expect([0, 1, 2].map((index) => x(chart.bar(index), 1))).toEqual([-200, 0, 200])
+        // The first step takes half of the time: "high" goes to the first column, and "low" moves one on. "mid" waits.
+        expect([0, 1, 2].map((index) => x(chart.bar(index), 2))).toEqual([0, -200, 200])
+        expect([0, 1, 2].map((index) => x(chart.bar(index), 3))).toEqual([200, -200, 0])
+        // A bar keeps its index, and its label, its number and its mark go with it.
+        expect(chart.bar(1)).toBe(chart.bars[1])
+        expect([0, 1, 2].map((index) => x(chart.labels[index]!, 3) - x(chart.labels[index]!, 1))).toEqual([400, -200, -200])
+        const number = boundsOf(drawn(f, 3, chart.readouts[0]))
+        expect(Math.round((number.x + number.right) / 2)).toBe(960 + 200)
+        expect(stateMarks(f, 3).map((mark) => mark.x)).toEqual([960 + 200])
+        // A place on the column of a bar follows the bar.
+        expect(at(3, () => chart.p('low'))).toEqual([200, 200 - 80])
+        expect(at(3, () => chart.p('high', 1))).toEqual([-200, -200])
+    })
+
+    it('sorts by the values at the end of the sort, keeps bars with one value in their order, and takes a list', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = s.add(make())
+            // The update is named first, so the sort sees its values.
+            s.play(chart.update([0.1, 0.6, 0.3]), chart.sort(), { duration: 1 })
+            expect(chart.order).toEqual([1, 2, 0])
+            s.play(chart.sort('ascending'), { duration: 1 })
+            expect(chart.order).toEqual([0, 2, 1])
+            s.play(chart.sort(['ran', 0, 'ate']), { duration: 1 })
+            expect(chart.order).toEqual([1, 0, 2])
+            expect(chart.tail(1)).toEqual([0, 2])
+            s.play(chart.update([0.4, 0.4, 0.4]), { duration: 1 })
+            s.play(chart.sort(), { duration: 1 })
+            expect(chart.order).toEqual([1, 0, 2])
+        })
+        expect(() => chart.sort([0, 1])).toThrow('barChart: sort() names 2 bars, and the chart has 3. Name each bar one time, in the new order')
+        expect(() => chart.sort([0, 1, 1])).toThrow('barChart: sort() names bar 1 ("ran") two times')
+        expect(() => chart.sort('up' as never)).toThrow('barChart: sort() got "up". It takes \'descending\', \'ascending\', or a list of the bars in their new order')
+    })
+
+    it('refuses a sort that starts while another one moves the bars', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            expect(() => s.play(chart.sort('ascending'), chart.sort(), { duration: 1 })).toThrow('barChart: sort() plays from 0 s to 1 s, and the sort before it plays from 0 s to 1 s. A bar has one way to its column')
+        })
+    })
+
+    it('puts a patch behind a bar that passes others, and none with no backing', async () => {
+        let chart!: Chart, bare!: Chart
+        const data = [{ label: 'low', value: 0.2 }, { label: 'high', value: 0.5 }]
+        const f = await compile((s) => {
+            chart = s.add(make({}, data))
+            bare = s.add(make({ backing: null }, data).at(0, 2000))
+            s.play(chart.sort(), bare.sort(), { duration: 1 })
+        })
+        // Two bars, the baseline, two labels and two numbers. The sort adds one patch to the first chart.
+        expect(bare.children).toHaveLength(7)
+        expect(chart.children).toHaveLength(8)
+        const patch = chart.children[7]!
+        expect(drawn(f, 0.5, patch)[0]!.fill).toEqual(parseColor('bg'))
+        // The patch is as wide as one column, under the bar that moves and over the bar that it passes.
+        const b = pathBounds(drawn(f, 0.5, patch)[0]!.path)!
+        expect(b.width).toBeCloseTo(300, 6)
+        expect(Math.round(b.x + b.width / 2)).toBe(960)
+        const order = paths(f, 0.5).map((op) => (from(op, patch) ? 'patch' : from(op, chart.bar(1)) ? 'mover' : from(op, chart.bar(0)) ? 'passed' : ''))
+        expect(order.indexOf('passed')).toBeLessThan(order.indexOf('patch'))
+        expect(order.indexOf('patch')).toBeLessThan(order.indexOf('mover'))
+        // After the sort it is away, and the bars are in one layer again.
+        expect(drawn(f, 1, patch)).toEqual([])
+        expect(at(1, () => patch.get('visible'))).toBe(false)
+        expect(at(1, () => chart.bar(1).get('z'))).toBe(0)
+    })
+
+    it('lets a part that a bar gets while it moves join the move', async () => {
+        let chart!: Chart
+        const data = [{ label: 'low', value: 0.2 }, { label: 'mid', value: 0.3 }, { label: 'high', value: 0.5 }]
+        const f = await compile((s) => {
+            chart = s.add(make({}, data))
+            // "low" moves in the two steps of the sort. Its mark comes in the middle of the first step.
+            s.play(chart.sort('descending', { duration: 2 }), delay(chart.mark('low', 'target', { duration: 0.2 }), 0.5), chart.reference())
+        })
+        expect(chart.order).toEqual([2, 1, 0])
+        expect(stateMarks(f, 2).map((mark) => mark.x)).toEqual([960 + 200])
+        // The outline of the second series was made before the sort, and it is with its bar too.
+        const b = pathBounds(drawn(f, 2, chart.outlines[0])[0]!.path)!
+        expect(Math.round(b.x + b.width / 2)).toBe(960 + 200)
+        // In the first step the mark is where its bar is, between two columns.
+        const bar = at(0.9, () => middle(chart.bar(0))[0])
+        expect(stateMarks(f, 0.9)[0]!.x).toBeCloseTo(960 + bar, -1)
+        expect(bar).toBeGreaterThan(-200)
+        expect(bar).toBeLessThan(0)
+        // A part that a bar gets after a sort is in the column where the bar is now.
+        let later!: Chart
+        const g = await compile((s) => {
+            later = s.add(make({}, data))
+            s.play(later.sort(), { duration: 1 })
+            s.play(later.mark('low', 'target'), { duration: 1 })
+        })
+        expect(stateMarks(g, 2).map((mark) => mark.x)).toEqual([960 + 200])
+        // A part that the film gives a bar at a time before a sort that it named first goes with the bar too.
+        let early!: Chart
+        const h = await compile((s) => {
+            early = s.add(make({}, data))
+            s.wait(1)
+            s.play(early.sort(), { duration: 1 })
+            s.at(0.2, () => s.play(early.mark('low', 'target'), { duration: 0.2 }))
+        })
+        expect(stateMarks(h, 0.5).map((mark) => mark.x)).toEqual([960 - 200])
+        expect(stateMarks(h, 2).map((mark) => mark.x)).toEqual([960 + 200])
+    })
+
+    it('draws the lines of a fixed scale, and refuses a value that is not on it', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(make({ ticks: [0, 0.5, 1], format: (value) => value.toFixed(1) }))
+        })
+        expect(said(f, 0, chart.ticks)).toEqual(['0.0', '0.5', '1.0'])
+        const lines = drawn(f, 0, chart.ticks).filter((op) => op.stroke && !op.fill).map((op) => pathBounds(op.path)!)
+        expect(lines.map((b) => Math.round(b.y))).toEqual([740, 540, 340])
+        expect(lines.map((b) => [Math.round(b.x), Math.round(b.width)])).toEqual([[660, 600], [660, 600], [660, 600]])
+        // The values are before the left edge of the plot, so `fitted` gives the plot the width that is left.
+        const words = boundsOf(drawn(f, 0, chart.ticks).filter((op) => op.fill))
+        expect(words.right).toBeLessThan(660 - 10)
+        expect(() => make({ ticks: 3, max: undefined })).toThrow('barChart: ticks need a scale that does not change. Give `max` with them')
+        expect(() => make({ ticks: [0, 2] })).toThrow('barChart: the tick 2 is not on the scale, which goes from 0 to 1')
+        expect(() => chart.update([0.2, 1.4, 0.1])).toThrow('barChart: update(): the value of bar 1 ("ran") is 1.4, and the scale goes from 0 to 1. Give a `min` and a `max` that hold every value')
+        expect(() => chart.reference([0.2, 0.2, -0.1])).toThrow('barChart: reference(): the value of bar 2 ("ate") is -0.1, and the scale goes from 0 to 1')
+        expect(() => make({ ticks: 2 }, [{ label: 'a', value: 3 }])).toThrow('barChart: the data: the value of bar 0 ("a") is 3')
+        // Without ticks, a bar may pass the end of the plot, as it did before.
+        expect(() => make().update([0.2, 1.4, 0.1])).not.toThrow()
+    })
+
+    it('is as wide as its region with `fitted`, with the values of its scale and the label of a cut', async () => {
+        await compileFilm(film(() => {
+            const chart = fitted(900, (width) => make({ width, ticks: [0, 0.5, 1], cutAt: { value: 0.5, label: 'a limit with a long name' } }))
+            expect(boxOf(chart).width).toBeCloseTo(900, 0)
+            expect(chart.region().width).toBeLessThan(700)
+        }))
+    })
+
+    it('gives the box of a column and of the plot in stage pixels, where the chart is', async () => {
+        await compile((s) => {
+            const chart = s.add(make().at(100, 50))
+            expect(chart.region()).toMatchObject({ left: -200, right: 400, top: -150, bottom: 250 })
+            expect(chart.region('ran')).toMatchObject({ left: 0, right: 200, top: -150, bottom: 250 })
+            s.play(chart.sort('ascending'), { duration: 1 })
+            expect(chart.region('ran')).toMatchObject({ left: 0, right: 200 })
+            expect(chart.region('ate')).toMatchObject({ left: -200, right: 0 })
+            expect(chart.p(0)).toEqual([200, 0])
+        })
+    })
+
+    it('keeps a moving column and its connector anchor together in a rotated group', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = make()
+            s.add(group(chart).rotate(Math.PI / 4))
+            s.play(chart.sort([2, 0, 1]), { duration: 2, ease: linear })
+        })
+        for (const [time, x] of [[0, 200], [1, 0], [2, -200]] as const) {
+            at(time, () => {
+                expect(chart.p(2)[0]).toBeCloseTo(x)
+                const box = chart.region(2)
+                const [cx, cy] = chart.toWorld(x, 0)
+                expect(box.cx).toBeCloseTo(cx)
+                expect(box.cy).toBeCloseTo(cy)
+                expect(box.width).toBeCloseTo(600 / Math.sqrt(2))
+                expect(box.height).toBeCloseTo(600 / Math.sqrt(2))
+            })
+        }
+    })
+
+    it('reads the threshold and counts that are visible at the current frame', async () => {
+        let bars!: Chart, hist!: ReturnType<typeof histogram>
+        await compile((s) => {
+            bars = s.add(make({ cutAt: { value: 0.25 } }))
+            hist = s.add(bins({ cutAt: { value: 2 } }))
+            s.play(bars.cutAt(0.45), hist.cutAt(4), { duration: 2, ease: linear })
+            s.play(bars.cutAt(null), hist.cutAt(null))
+        })
+        expect(at(0, () => bars.below())).toEqual([2])
+        expect(at(1, () => bars.below())).toEqual([1, 2])
+        expect(at(1, () => hist.sides())).toEqual({ below: 5, above: 5 })
+    })
+
+    it('lays a chart of rows out the other way: marks at the left of the labels, and the two cuts turned', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(barChart([{ label: 'a long name', value: 0.5 }, { label: 'b', value: 0.2 }], { width: 600, height: 200, horizontal: true, max: 1, labelSize: 30, states: true, cutAt: { value: 0.75, label: 'limit' }, cutAfter: { count: 1, label: 'top 1' } }))
+            s.play(chart.mark([0, 1], 'chosen'), { duration: 1 })
+            s.play(chart.sort('ascending'), { duration: 1 })
+        })
+        // The marks are in one column, at the left of the longest label.
+        const marks = stateMarks(f, 1)
+        expect(marks.map((mark) => mark.y)).toEqual([490, 590])
+        expect(marks[0]!.x).toBe(marks[1]!.x)
+        const long = boundsOf(drawn(f, 1, chart.labels[0]))
+        expect(marks[0]!.x).toBeLessThan(long.x - 10)
+        // The line of a value runs down the plot, and its label is over the plot.
+        const value = pathBounds(drawn(f, 1, chart.valueCut).filter((op) => op.dash)[0]!.path)!
+        expect([value.x, value.width, value.y + value.height].map(Math.round)).toEqual([960 - 300 + 450, 0, 640])
+        expect(boundsOf(drawn(f, 1, chart.valueCut).filter((op) => !op.dash)).bottom).toBeLessThan(440)
+        // The line of a rank runs between two rows, and its label is after the plot.
+        const rank = pathBounds(drawn(f, 1, chart.rankCut).filter((op) => op.dash)[0]!.path)!
+        expect([rank.x, rank.y, rank.height].map(Math.round)).toEqual([660, 540, 0])
+        expect(boundsOf(drawn(f, 1, chart.rankCut).filter((op) => !op.dash)).x).toBeGreaterThan(1260)
+        // A sort moves the rows up and down.
+        expect(at(2, () => Math.round(middle(chart.bar(0))[1]))).toBe(50)
+        expect(stateMarks(f, 2).map((mark) => mark.y)).toEqual([590, 490])
+    })
+
+    it('names a bar by its index or its label, and says which bars there are', async () => {
+        const chart = make()
+        expect(chart.find('ran')).toBe(1)
+        expect(chart.find('none')).toBeNull()
+        expect(() => chart.mark('none', 'target')).toThrow('barChart: mark(): no bar has the label "none". The labels are "sat", "ran", "ate"')
+        expect(() => chart.mark(3, 'target')).toThrow('barChart: mark(): no bar 3. The chart has 3 bars, 0 to 2')
+        expect(() => chart.mask(1.5)).toThrow('barChart: mask(): no bar 1.5')
+        expect(() => chart.state(null as never)).toThrow('barChart: state(): a bar is named by its index or by its label, and it got null')
+        const twins = make({}, [{ label: 'a', value: 0.5 }, { label: 'a', value: 0.5 }])
+        expect(() => twins.mark('a', 'target')).toThrow('barChart: mark(): 2 bars have the label "a". Name the bar by its index: 0, 1')
+        expect(() => twins.find('a')).toThrow('2 bars have the label "a"')
+        expect(() => chart.update([1, 2, 3, 4])).toThrow('barChart: update() got 4 values, and the chart has 3 bars. Give one value for each bar')
+        expect(() => chart.update([1, Number.POSITIVE_INFINITY])).toThrow('barChart: update(): value 1 is Infinity. Each value is a finite number')
+    })
+
+    it('makes a copy that is a still picture, and refuses to act on it', async () => {
+        await compile((s) => {
+            const chart = s.add(make({ states: true }))
+            s.play(chart.sort('ascending'), chart.mark(0, 'target'), { duration: 1 })
+            const copy = chart.clone()
+            // The copy has the order and the states of its source at that time, and its own nodes.
+            expect(copy.order).toEqual([2, 1, 0])
+            expect(copy.state(0)).toBe('target')
+            expect(copy.bars[0]).not.toBe(chart.bars[0])
+            for (const act of [() => copy.mark(1, 'chosen'), () => copy.clearStates(), () => copy.mask(1), () => copy.reference(), () => copy.cutAt(0.5), () => copy.cutAfter(1), () => copy.sort()]) {
+                expect(act).toThrow(/^barChart: \w+\(\) is called on a copy of a chart\. Build a second chart from the data/)
+            }
+            // The source is as it was: a later change of its order leaves the copy alone.
+            s.play(chart.sort(), { duration: 1 })
+            expect(chart.order).toEqual([0, 1, 2])
+            expect(copy.order).toEqual([2, 1, 0])
+            const twin = bins().clone()
+            expect(() => twin.cutAt(2)).toThrow('histogram: cutAt() is called on a copy of a histogram')
+            expect(() => twin.outline([1])).toThrow('histogram: outline() is called on a copy of a histogram')
+        })
+    })
+
+    it('refuses to change a bar chart, a histogram, or its outline inside a cloned group', async () => {
+        let copies: Node[] = [], before = 0
+        const f = await compile((s) => {
+            const bars = make({ cutAt: { value: 0.25 }, cutAfter: { count: 1 } })
+            const hist = bins({ cutAt: { value: 2 } })
+            const outline = hist.outline([1, 4])
+            const original = s.add(group(group(bars, hist)))
+            s.play(bars.sort([2, 0, 1]), bars.mark(0, 'target'))
+            const first = s.add(original.clone())
+
+            // The second copy must take its order and state from the first copy.
+            s.play(bars.sort([1, 2, 0]), bars.mark(0, 'chosen'))
+            const second = s.add(first.clone())
+            copies = [first, second]
+            before = s.time
+            s.play(bars.update([0.4, 0.5, 0.1]), bars.cutAt(0.75), bars.cutAfter(2), hist.cutAt(4))
+
+            const nodes = [original, first, second].flatMap((root) => root.all())
+            expect(new Set(nodes).size).toBe(nodes.length)
+            for (const root of [first, second]) {
+                const parts = root.children[0]!.children
+                const barCopy = parts[0] as typeof bars, histCopy = parts[1] as typeof hist
+                const outlineCopy = histCopy.children[hist.children.indexOf(outline)] as typeof outline
+                for (const part of [barCopy.bar(0), barCopy.valueCut, barCopy.rankCut]) expect(barCopy.children).toContain(part)
+                expect(histCopy.children).toContain(histCopy.threshold)
+                expect(barCopy.order).toEqual([2, 0, 1])
+                expect(barCopy.state(0)).toBe('target')
+                expect(barCopy.cut).toEqual({ at: 0.25, after: 1 })
+                expect(histCopy.cut).toBe(2)
+                for (const change of [
+                    () => barCopy.mark(0, 'chosen'), () => barCopy.clearStates(), () => barCopy.mask(0),
+                    () => barCopy.reference(), () => barCopy.cutAt(0.5), () => barCopy.cutAfter(2),
+                    () => barCopy.sort(), () => histCopy.cutAt(3), () => outlineCopy.fillUp({ count: 1 }),
+                ]) expect(() => s.play(change())).toThrow(/copy|clone/i)
+                expect(() => histCopy.outline([2])).toThrow(/copy|clone/i)
+            }
+            expect(bars.order).toEqual([1, 2, 0])
+            expect(bars.state(0)).toBe('chosen')
+            expect(bars.cut).toEqual({ at: 0.75, after: 2 })
+            expect(hist.cut).toBe(4)
+            expect(outline.shown.value).toBe(2)
+        })
+        for (const copy of copies) {
+            const picture = (time: number) => drawn(f, time, copy).map((op) => [op.path, op.fillAlpha, op.strokeAlpha])
+            expect(picture(before).length).toBeGreaterThan(0)
+            expect(picture(f.duration)).toEqual(picture(before))
+        }
+    })
+
+    it('refuses overlapping state changes on one bar and recommends a sequence', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            const changes = ['target', 'chosen', 'target'].map((state) => chart.mark(0, state, { duration: 1 }))
+            expect(() => s.play(lagged(changes, { lag: 0.2 }))).toThrow(/(?=.*\b(?:mark|state)\b).*\bseq\b/i)
+        })
+    })
+
+    for (const [name, makeCut] of [
+        ['barChart.cutAt', () => { const chart = make({ max: 3 }); return chart.cutAt.bind(chart) }],
+        ['barChart.cutAfter', () => { const chart = make(); return chart.cutAfter.bind(chart) }],
+        ['histogram.cutAt', () => { const chart = bins(); return chart.cutAt.bind(chart) }],
+    ] as const) {
+        it(`refuses overlapping calls to ${name} and recommends a sequence`, async () => {
+            await compile((s) => {
+                const cut = makeCut()
+                expect(() => s.play(cut(1, { duration: 1 }), delay(cut(2, { duration: 1 }), 0.5))).toThrow(/\bseq\b/i)
+            })
+        })
+
+        it(`refuses disjoint calls to ${name} scheduled in reverse time order`, async () => {
+            await compile((s) => {
+                const cut = makeCut()
+                const late = delay(cut(2, { label: 'late', duration: 1 }), 2)
+                const early = cut(1, { label: 'early', duration: 1 })
+                expect(() => s.play(late, early)).toThrow(/chronolog|\border\b|earl(?:y|ier).*first/i)
+            })
+        })
+    }
+
+    it('refuses a color that the look does not have where the film names it', async () => {
+        expect(() => make({ referenceColor: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => make({ backing: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => make({ cutAt: { value: 0.5, color: 'nope' } })).toThrow('Unknown color: "nope"')
+        expect(() => make().cutAfter(1, { color: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => make({ states: { odd: { color: 'nope', mark: 'dot' } } })).toThrow('Unknown color: "nope"')
+        expect(() => bins().cutAt(2, { color: 'nope' })).toThrow('Unknown color: "nope"')
+        expect(() => bins().outline([1], { color: 'nope' })).toThrow('Unknown color: "nope"')
+    })
+
+    it('takes the changes of the state of a bar in the order of time', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            s.wait(2)
+            s.play(chart.mark(0, 'target'), { duration: 1 })
+            expect(() => s.at(1, () => s.play(chart.mark(0, 'chosen'), { duration: 0.5 }))).toThrow('barChart: mark() changes the state of bar 0 ("sat") at 1 s, and the film named a change of the same bar at 2 s before it')
+        })
+    })
+
+    it('reports nothing on its own layout, at a text gap of 0.3 and of 0.7', async () => {
+        const scene = film({ fps: 10 }, (s) => {
+            const chart = s.add(make({ states: true, ticks: [0, 0.5, 1], reference: [0.3, 0.4, 0.3], cutAt: { value: 0.35, label: 'limit 0.35' }, cutAfter: { count: 2, label: 'top 2' }, format: (value) => value.toFixed(2) }))
+            s.play(chart.mark(0, 'target'), chart.mark(1, 'chosen'), { duration: 0.5 })
+            s.play(chart.mask(2), { duration: 1 })
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(scene, { textGap })).diagnostics, `gap ${textGap}`).toEqual([])
+    })
+
+    it('draws a threshold on a histogram, with the count of the samples on each side', async () => {
+        let chart!: ReturnType<typeof histogram>
+        const f = await compile((s) => {
+            chart = s.add(bins())
+            s.wait(1)
+            s.play(chart.cutAt(2.5, { label: 'limit' }), { duration: 1 })
+            expect(chart.cut).toBe(2.5)
+            // A sample at the value is at or over it.
+            expect(chart.sides()).toEqual({ below: 4, above: 6 })
+            expect(chart.sides(2.6)).toEqual({ below: 4, above: 6 })
+            expect(chart.sides(2.61)).toEqual({ below: 5, above: 5 })
+            s.play(chart.cutAt(4), { duration: 1 })
+            expect(chart.sides()).toEqual({ below: 9, above: 1 })
+            s.play(chart.cutAt(null), { duration: 1 })
+            expect(chart.cut).toBeNull()
+        })
+        expect(drawn(f, 0.5, chart.threshold)).toEqual([])
+        // The line is at the value, from the baseline to over the plot.
+        const line = pathBounds(drawn(f, 2, chart.threshold).filter((op) => op.dash)[0]!.path)!
+        expect([line.x, line.width, line.y + line.height].map(Math.round)).toEqual([960, 0, 640])
+        expect(line.y).toBeLessThan(440 - 30)
+        expect(said(f, 2, chart.threshold)).toEqual(['4', '6', 'limit'])
+        // The count of the samples under the value is at the left of the line, and the other one at its right.
+        const texts = drawn(f, 2, chart.threshold).filter((op) => !op.dash)
+        const of = (source: string) => boundsOf(texts.filter((op) => (op.node!.parent as TextNode).source === source))
+        expect(of('4').right).toBeLessThan(960)
+        expect(of('6').x).toBeGreaterThan(960)
+        expect(of('4').bottom).toBeLessThan(440)
+        expect(of('limit').bottom).toBeLessThan(of('6').y)
+        // While the line moves, the counts follow it: at half of the way it is at 3.25.
+        expect(said(f, 2.5, chart.threshold).slice(0, 2)).toEqual(['7', '3'])
+        expect(said(f, 3, chart.threshold).slice(0, 2)).toEqual(['9', '1'])
+        expect(drawn(f, 4, chart.threshold)).toEqual([])
+    })
+
+    it('keeps one side of a threshold bright, and cuts the bar that the line is in', async () => {
+        let chart!: ReturnType<typeof histogram>, low!: ReturnType<typeof histogram>, both!: ReturnType<typeof histogram>
+        const f = await compile((s) => {
+            chart = s.add(bins({ cutAt: { value: 2.5 } }))
+            low = s.add(bins({ cutAt: { value: 2.5, keep: 'below' } }).at(0, 1000))
+            both = s.add(bins({ cutAt: { value: 2.5, keep: 'both' } }).at(0, 2000))
+        })
+        // The bins of 1 and of 2 are at the left, the bin of 2 is cut in two halves, and the bins of 3 and 4 are at the right.
+        const parts = fills(f, 0, chart).map((op) => { const b = pathBounds(op.path)!; return [Math.round(b.x - 960), Math.round(b.width), Math.round(b.height), Math.round(op.fillAlpha * 100) / 100] })
+        expect(parts).toEqual([[-150, 100, 100, 0.3], [-50, 50, 150, 0.3], [0, 50, 150, 1], [50, 100, 200, 1], [150, 100, 50, 1]])
+        expect(fills(f, 0, low).map((op) => Math.round(op.fillAlpha * 100) / 100)).toEqual([1, 1, 0.3, 0.3, 0.3])
+        // With both sides kept, the bars are one shape, as in a histogram with no threshold.
+        expect(fills(f, 0, both)).toHaveLength(1)
+        expect(fills(f, 0, both)[0]!.fillAlpha).toBe(1)
+        expect(said(f, 0, both.threshold)).toEqual(['4', '6'])
+        // A threshold of the options that the film hides until its verb leaves the bars as they are.
+        let hidden!: ReturnType<typeof histogram>
+        const g = await compile((s) => {
+            hidden = bins({ cutAt: { value: 2.5 } })
+            hidden.threshold!.hide()
+            s.add(hidden)
+            s.wait(1)
+            s.play(hidden.cutAt(2.5), { duration: 1 })
+        })
+        expect(fills(g, 0.5, hidden)).toHaveLength(1)
+        expect(fills(g, 2, hidden)).toHaveLength(5)
+    })
+
+    it('counts the samples that show, and writes a count as the film asks', async () => {
+        let chart!: ReturnType<typeof histogram>
+        const f = await compile((s) => {
+            chart = s.add(bins({ cutAt: { value: 3, count: (count, total) => `${count} of ${total}` } }))
+            s.play(chart.fillUp({ count: 5, ease: linear }), { duration: 1 })
+            expect(chart.sides()).toEqual({ below: 5, above: 0 })
+            expect(chart.counts()).toEqual([0, 2, 3, 0, 0])
+            s.play(chart.fillUp({ ease: linear }), { duration: 1 })
+            expect(chart.sides()).toEqual({ below: 5, above: 5 })
+            expect(chart.counts()).toEqual([0, 2, 3, 4, 1])
+        })
+        expect(said(f, 1, chart.threshold)).toEqual(['5 of 5', '0 of 5'])
+        expect(said(f, 2, chart.threshold)).toEqual(['5 of 10', '5 of 10'])
+        // A sample outside the range is in no bar and in no count.
+        const wide = histogram([-1, 1, 2, 9], { bins: 5, range: [0, 5] })
+        expect(wide.sides(1.5)).toEqual({ below: 1, above: 1 })
+    })
+
+    it('refuses a threshold that is not on the axis, and options that it cannot draw', async () => {
+        const chart = bins()
+        expect(() => chart.cutAt(6)).toThrow('histogram: cutAt(): the value 6 is outside the axis, which goes from 0 to 5. Give a value of the axis, or a wider `range`')
+        expect(() => chart.cutAt(Number.NaN)).toThrow('histogram: cutAt(): the value is NaN')
+        expect(() => chart.cutAt(2, { keep: 'left' as never })).toThrow('histogram: cutAt(): keep is "left". It is \'above\', \'below\' or \'both\'')
+        expect(() => chart.cutAt(2, { count: (() => 3) as never })).toThrow('histogram: cutAt(): count returned number. It returns a text')
+        expect(() => bins({ cutAt: { value: -1 } })).toThrow('histogram: the option `cutAt`: the value -1 is outside the axis')
+        expect(() => chart.sides()).toThrow('histogram: sides() needs a value, or a threshold that `cutAt()` drew')
+    })
+
+    it('draws a second distribution as one outline on the same bins, and fills it up', async () => {
+        let chart!: ReturnType<typeof histogram>, second!: ReturnType<ReturnType<typeof histogram>['outline']>
+        const f = await compile((s) => {
+            chart = s.add(bins())
+            second = chart.outline([0.5, 4.2, 4.8, 4.9], { color: 'orange' })
+            expect(second.counts()).toEqual([1, 0, 0, 0, 3])
+            expect(second.sides(4.5)).toEqual({ below: 2, above: 2 })
+            s.play(second.fillUp({ ease: linear }), { duration: 2 })
+        })
+        expect(second.parent).toBe(chart)
+        expect(drawn(f, 0, second)).toEqual([])
+        const line = drawn(f, 2, second)[0]!
+        expect(line.fill).toBeNull()
+        expect(line.stroke).toEqual(parseColor('orange'))
+        // One line from the baseline at the left end, over the top of each bin, to the baseline at the right end.
+        const points = line.path[0]!.p
+        const corners: number[][] = []
+        for (let i = 0; i < points.length; i += 6) corners.push([Math.round(points[i]! - 960), Math.round(points[i + 1]! - 540)])
+        expect(corners.slice(0, 4)).toEqual([[-250, 100], [-250, 50], [-150, 50], [-150, 100]])
+        expect(corners.slice(-3)).toEqual([[150, -50], [250, -50], [250, 100]])
+        // After one sample of four, only the first bin is up.
+        expect(pathBounds(drawn(f, 0.5, second)[0]!.path)!.height).toBeCloseTo(50, 6)
+        // The histogram under it is as it was: one shape for all its bars.
+        expect(fills(f, 2, chart)).toHaveLength(1)
+    })
+
+    it('refuses a second distribution that is higher than the scale, and says what scale holds it', async () => {
+        const chart = bins()
+        expect(() => chart.outline([1, 1, 1, 1, 1])).toThrow('histogram: outline(): one bin of the second distribution holds 5 samples, and the scale of the histogram ends at 4. Give the histogram `max: 5` or more, so that both distributions fit')
+        expect(() => bins({ max: 5 }).outline([1, 1, 1, 1, 1])).not.toThrow()
+        expect(() => chart.outline([1, Number.NaN])).toThrow('histogram: outline(): sample 1 is NaN. Each sample is a finite number')
+        expect(() => chart.outline([1]).fillUp({ count: 2 })).toThrow('histogram: outline: fillUp() got the count 2. It is from 0 to 1, the number of samples')
     })
 })
 
@@ -18318,6 +19275,909 @@ describe('passage', () => {
 })
 
 export type { Vec, Vec3 }
+
+describe('table', () => {
+    type Board = ReturnType<typeof table>
+    const words = (node: Node | null) => (node as unknown as { source: string }).source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    const wide = (content: string, options: Parameters<typeof text>[1]) => text(content, options).get('px') * 2
+    const right = (node: Node) => node.bounds().x + node.bounds().width
+    /** The text node of a cell that the table was made with. */
+    const first = (cell: TableCellNode) => cell.words.children[0] as TextNode
+    /** The x of the anchor of the text of a cell, in the table: where a text at the left starts, and where a number ends. */
+    const anchor = (cell: TableCellNode) => cell.get('x') + first(cell).get('x')
+    /** The texts that a cell shows at a time. */
+    const said = (cell: TableCellNode, time: number) => at(time, () => cell.words.children.filter((child) => shows(child) > 0.01).map(words))
+    /** The marks that a cell shows at a time: the shape and the color of each. */
+    const marksOf = (cell: TableCellNode, time: number) => at(time, () => cell.mark.children.filter((child) => shows(child) > 0.01).map((shape) => {
+        const leaf = shape.leaves()[0]!
+        return [shape.data['shape'], leaf.get('fill') ?? leaf.get('stroke')]
+    }))
+    /** Every row that the table has made, also those that left. */
+    const made = (board: Board) => board.all().filter((node): node is TableRowNode => node instanceof TableRowNode && node.rowId !== null)
+    /** The ids of the rows that a viewer sees at a time, from the top. */
+    const seen = (board: Board, time: number) => at(time, () => made(board).filter((row) => shows(row.content) > 0.99).sort((a, b) => a.get('y') - b.get('y')).map((row) => row.rowId))
+    /** What a cell of the total row says at a time: each text that shows. */
+    const totals = (board: Board, column: number, time: number) => at(time, () => board.totals!.cells[column]!.all().filter((node) => node instanceof TextNode && shows(node) > 0.99).map(words))
+    /** The middle and the size of the marker at a time, in the coordinates of the table. */
+    const markerAt = (board: Board, time: number) => at(time, () => {
+        const box = board.marker.bounds(), [x, y] = [board.get('x'), board.get('y')]
+        return { left: box.x - x, right: box.x + box.width - x, top: box.y - y, bottom: box.y + box.height - y, y: box.y + box.height / 2 - y, shows: shows(board.marker), line: board.marker.get('strokeOpacity') }
+    })
+
+    // The column of the cases keeps room for a longer text than its first rows have: a row that comes later, or a new name.
+    const COLS: TableColumn[] = [
+        { key: 'case', sample: 'a longer case' },
+        { key: 'score', total: 'sum' },
+        { key: 'verdict', align: 'center', marks: true, total: (rows) => `${rows.filter((row) => row.states['verdict'] === 'pass').length} of ${rows.length}` },
+    ]
+    const ROWS: TableRow[] = [
+        { id: 'a', case: 'first', score: 3, verdict: { state: 'pass' } },
+        { id: 'b', case: 'second', score: 1, verdict: { state: 'fail' } },
+        { id: 'c', case: 'third', score: 2, verdict: { state: 'pending' } },
+    ]
+    const D: TableRow = { id: 'd', case: 'fourth', score: 4, verdict: { state: 'fail' } }
+
+    it('counts the changed value when a row enters after a faster cell update', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table([{ key: 'score', total: 'sum' }], [], { maxRows: 1 }))
+            s.play(board.append({ id: 'new', score: 2 }, { duration: 2 }), board.setCell('new', 'score', 9, { duration: 0.2 }))
+            s.wait(1)
+        })
+        expect(totals(board, 0, 0.5)).toEqual(['0'])
+        expect(totals(board, 0, 2)).toEqual(['9'])
+        expect(board.totalOf('score')).toBe(9)
+    })
+
+    it('keeps the state of an id cell in a copy and uses it in the total', async () => {
+        await compile((s) => {
+            const board = s.add(table([{ key: 'id', marks: true, total: (rows) => rows.filter((row) => row.states.id === 'pass').length }], [{ id: 1 }]))
+            s.play(board.setCell(1, 'id', { state: 'pass' }))
+            const copy = board.clone()
+            expect(copy.stateOf(1, 'id')).toBe('pass')
+            expect(copy.totalOf('id')).toBe(1)
+            s.play(copy.setCell(1, 'id', { state: 'fail' }))
+            expect(board.totalOf('id')).toBe(1)
+        })
+    })
+
+    it('preserves exact integer counts in the total row', async () => {
+        await compile(() => {
+            const board = table([{ key: 'tokens', total: 'sum' }], [{ id: 'a', tokens: 1_234_567_890_120 }, { id: 'b', tokens: 3 }])
+            expect(board.totalOf('tokens')).toBe(1_234_567_890_123)
+            expect(totals(board, 0, 0)).toEqual(['1234567890123'])
+            const costs = table([{ key: 'cost', total: 'sum' }], [{ id: 'a', cost: 0.1 }, { id: 'b', cost: 0.2 }])
+            expect(costs.totalOf('cost')).toBe(0.3)
+            expect(totals(costs, 0, 0)).toEqual(['0.3'])
+        })
+    })
+
+    it('edits the table inside a copied group independently', async () => {
+        await compile((s) => {
+            const original = table([{ key: 'n', total: 'sum' }], [{ id: 1, n: 1 }], { maxRows: 2 })
+            const bar = rect(12, 4)
+            original.cell(1, 'n').add(bar)
+            const holder = s.add(Object.assign(group(original), { bar, heading: original.header('n') }))
+            const second = s.add(holder.clone())
+            const copy = second.children[0] as Table
+            s.play(copy.setCell(1, 'n', 2))
+            const third = s.add(second.clone())
+            const latest = third.children[0] as Table
+            s.play(latest.append({ id: 2, n: 3 }), latest.light(2))
+            expect(third.heading).toBe(latest.header('n'))
+            expect(third.bar.parent).toBe(latest.cell(1, 'n'))
+            expect(third.bar).not.toBe(second.bar)
+            expect([original, copy, latest].map((board) => totals(board, 0, 2))).toEqual([['1'], ['2'], ['5']])
+            expect([original, copy, latest].map((board) => board.ids)).toEqual([[1], [1], [1, 2]])
+            expect(markerAt(latest, 2).shows).toBe(1)
+        })
+    })
+
+    it('hands the marker to the next row while removing the previous row', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['id'], [{ id: 'a' }, { id: 'b' }]))
+            s.play(board.light('a'), { duration: 0 })
+            s.play(board.remove('a'), board.light('b'))
+        })
+        expect(board.lit).toEqual({ row: 'b', column: null })
+        expect(markerAt(board, 1).shows).toBe(1)
+    })
+
+    it('rejects a backdated cell change even if its value matches a later change', async () => {
+        await compile((s) => {
+            const board = s.add(table(['n'], [{ id: 1, n: 1 }]))
+            s.at(10, () => s.play(board.setCell(1, 'n', 2)))
+            expect(() => s.at(1, () => s.play(board.setCell(1, 'n', 2)))).toThrow(/Call .* before it/)
+        })
+    })
+
+    it('keeps a lit row visible when other rows exchange ranks around it', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['n'], [{ id: 'a', n: 3 }, { id: 'b', n: 2 }, { id: 'c', n: 1 }]))
+            s.play(board.light('b'), { duration: 0 })
+            s.play(board.sort('n'), { duration: 1 })
+        })
+        expect(at(0.5, () => shows(board.row('b').content))).toBe(1)
+        expect(markerAt(board, 0.5).shows).toBe(1)
+    })
+
+    it('keeps surviving rows apart when easing overshoots their final slots', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['name'], Array.from({ length: 8 }, (_, id) => ({ id, name: 'Agjpqy' }))))
+            s.play(board.remove([1, 2, 3, 4, 5, 6], { duration: 1, ease: overshoot() }))
+        })
+        expect(at(0.69, () => board.row(7).get('y') - board.row(0).get('y'))).toBeGreaterThanOrEqual(board.pitch - 1e-6)
+    })
+
+    it('keeps a delayed cell update with its original row when an id is reused', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table([{ key: 'score', total: 'sum' }], [{ id: 1, score: 2 }]))
+            s.play(board.setCell(1, 'score', 9, { duration: 4 }), seq(board.remove(1, { duration: 0.5 }), board.append({ id: 1, score: 3 }, { duration: 0.5 })))
+        })
+        expect(said(board.cell(1, 'score'), 4)).toEqual(['3'])
+        expect(totals(board, 0, 4)).toEqual(['3'])
+    })
+
+    it('measures the full cell after a parent rotates it', async () => {
+        await compile((s) => {
+            const board = table(['score'], [{ id: 1, score: 2 }])
+            const cell = board.region(1, 'score')
+            s.add(group(board).rotate(Math.PI / 4))
+            const rotated = board.region(1, 'score')
+            const span = (cell.width + cell.height) / Math.sqrt(2)
+            expect(rotated.width).toBeCloseTo(span)
+            expect(rotated.height).toBeCloseTo(span)
+        })
+    })
+
+    it('treats object property names as ordinary column keys in sparse records and copies', async () => {
+        await compile(() => {
+            const board = table(['constructor', '__proto__'], [{ id: 1, ['__proto__']: 'yes' }])
+            const query = (row: TableRowView) => row.values['constructor'] === null && row.values['__proto__'] === 'yes'
+            expect(board.find(query)).toEqual([1])
+            expect(board.clone().find(query)).toEqual([1])
+        })
+    })
+
+    it('centers the room of `maxRows` on its place, and draws the panel as high as its rows, with the header over them and the total row under them', async () => {
+        await compileFilm(film(() => {
+            const S = 20, P = S * 1.9
+            const board = table(COLS, ROWS, { size: S, maxRows: 5 }).at(100, 50)
+            // The room: the header, five rows and the total row, and 4 px over and under them. The layout measures it.
+            const room = boxOf(board)
+            expect([room.cx, room.cy, room.height]).toEqual([expect.closeTo(100, 6), expect.closeTo(50, 6), expect.closeTo(7 * P + 8, 6)])
+            // The panel starts at the top of the room, and ends under the three rows that the table has and the total row.
+            const frame = board.frame.bounds()
+            expect([frame.x, frame.y, frame.width, frame.height]).toEqual([expect.closeTo(room.left, 6), expect.closeTo(room.top, 6), expect.closeTo(room.width, 6), expect.closeTo(5 * P + 8, 6)])
+            expect(board.pitch).toBeCloseTo(P, 6)
+            // From the top: the header, a line, the rows, a line, the total row. Each is one row high.
+            const head = -(7 * P + 8) / 2 + 4 + P / 2
+            expect(board.headers.map((header) => header.get('y'))).toEqual([head, head, head].map((y) => expect.closeTo(y, 6)))
+            expect(board.rows.map((row) => row.get('y'))).toEqual([1, 2, 3].map((slot) => expect.closeTo(head + slot * P, 6)))
+            expect(board.rules.map((rule) => rule.get('y'))).toEqual([expect.closeTo(head + P / 2, 6), expect.closeTo(head + 3.5 * P, 6)])
+            expect(board.totals!.get('y')).toBeCloseTo(head + 4 * P, 6)
+            expect(board.lines).toHaveLength(4)
+            // A line between two rows shows when the table has the row under it: two lines for three rows.
+            expect(board.lines.map((line) => line.get('opacity'))).toEqual([1, 1, 0, 0])
+            // Without `maxRows`, the room is the room of the first rows. A table with no total has no total row and one line less.
+            const plain = table(['case', 'score'], ROWS.map((row) => ({ id: row.id, case: row['case']!, score: row['score']! })), { size: S })
+            expect(boxOf(plain).height).toBeCloseTo(4 * P + 8, 6)
+            expect(plain.totals).toBeNull()
+            expect(plain.rules).toHaveLength(1)
+            // The defaults: a text size of 28, which is over the 26 px that a viewer of a film at 1080p needs, and rows of 1.9 of it.
+            const usual = table(COLS, ROWS)
+            expect([(usual.headers[0] as TextNode).size, first(usual.rows[0]!.cells[0]!).size, first(usual.rows[0]!.cells[1]!).size]).toEqual([28, 28, 28])
+            expect(usual.pitch).toBeCloseTo(28 * 1.9, 6)
+        }))
+    })
+
+    it('sets the columns once: texts start at one x, numbers end at one x in mono, and a larger width spreads the columns', async () => {
+        await compileFilm(film(() => {
+            const S = 20, pad = 0.7 * S
+            const columns = [{ key: 'case' }, { key: 'units' }, { key: 'note' }]
+            const rows = [{ id: 1, case: 'a', units: 5, note: 'x' }, { id: 2, case: 'a much longer case', units: 12345, note: 'y' }]
+            const board = table(columns, rows, { size: S })
+            const needs = [wide('a much longer case', { size: S }), Math.max(wide('units', { size: S, weight: 600 }), wide('12345', { size: S, font: 'mono' })), Math.max(wide('note', { size: S, weight: 600 }), wide('x', { size: S }))]
+            const natural = needs.reduce((sum, need) => sum + need + pad * 2, 0)
+            expect(board.frame.bounds().width).toBeCloseTo(natural, 6)
+            const cells = (of: Board, column: number) => of.rows.map((row) => row.cells[column]!)
+            // A text starts 0.7 of the size from the left border, under the start of its header.
+            expect(cells(board, 0).map(anchor)).toEqual([-natural / 2 + pad, -natural / 2 + pad].map((x) => expect.closeTo(x, 6)))
+            expect(board.header('case').get('x')).toBeCloseTo(-natural / 2 + pad, 6)
+            // The numbers end at one x, under the end of their header, and they are in mono so that digits line up.
+            const end = -natural / 2 + needs[0]! + pad * 2 + pad + needs[1]!
+            expect(cells(board, 1).map(anchor)).toEqual([end, end].map((x) => expect.closeTo(x, 6)))
+            expect(right(first(cells(board, 1)[1]!))).toBeCloseTo(right(first(cells(board, 1)[0]!)), 6)
+            expect(board.header('units').get('x')).toBeCloseTo(end, 6)
+            expect([first(cells(board, 0)[0]!).font, first(cells(board, 1)[0]!).font, (board.header('units') as TextNode).font]).toEqual(['sans', 'mono', 'sans'])
+            // `mono: true` sets the texts of a column in mono, and `mono: false` sets its numbers in the font of the texts.
+            const fonts = table([{ key: 'case', mono: true }, { key: 'units', mono: false }], rows.map((row) => ({ id: row.id, case: row.case, units: row.units })), { size: S })
+            expect([first(fonts.rows[0]!.cells[0]!).font, first(fonts.rows[0]!.cells[1]!).font]).toEqual(['mono', 'sans'])
+            // A width of 300 more gives each of the three columns 100 more. A text keeps the left of its column, and a number the right.
+            const spread = table(columns, rows, { size: S, width: natural + 300 })
+            expect(spread.frame.bounds().width).toBeCloseTo(natural + 300, 6)
+            expect(anchor(cells(spread, 0)[0]!)).toBeCloseTo(-(natural + 300) / 2 + pad, 6)
+            expect(anchor(cells(spread, 1)[0]!)).toBeCloseTo(-(natural + 300) / 2 + needs[0]! + pad * 2 + 100 + needs[1]! + pad * 2 + 100 - pad, 6)
+            // All of the table is as wide as the region that the layout gives it.
+            expect(boxOf(fitted(900, (width) => table(columns, rows, { size: S, width }))).width).toBeCloseTo(900, 6)
+            expect(() => table(columns, rows, { size: S, width: 200 })).toThrow(new RegExp(`table: the columns need ${Math.ceil(natural)} px, and \`width\` is 200\\. Give a width of ${Math.ceil(natural)} or more, a smaller \`size\`, or shorter texts`))
+            // The `width` of a column is the room of its content. A text that comes later must fit it.
+            const fixed = table([{ key: 'case', width: 300 }, { key: 'units' }], rows.map((row) => ({ id: row.id, case: row.case, units: row.units })), { size: S })
+            expect(anchor(cells(fixed, 1)[0]!) - anchor(cells(fixed, 0)[0]!)).toBeCloseTo(300 + pad * 2 + Math.max(wide('units', { size: S, weight: 600 }), wide('12345', { size: S, font: 'mono' })), 6)
+        }))
+    })
+
+    it('draws a state as a color and a mark: before a text, after a number, and centered with the text of a centered column', async () => {
+        await compileFilm(film(() => {
+            const board = table([{ key: 'name', marks: true }, { key: 'value' }, { key: 'verdict', align: 'center' }, { key: 'only', align: 'center' }], [
+                { id: 1, name: { value: 'alpha', state: 'pass' }, value: { value: 0.5, state: 'fail' }, verdict: { value: 'held', state: 'warn' }, only: { state: 'pending' } },
+                { id: 2, name: 'beta', value: 0.25, verdict: 'kept', only: { state: 'skip' } },
+            ], { size: 30 })
+            const [one, two] = board.rows.map((row) => row.cells)
+            const ink = (cell: TableCellNode) => ({ mark: cell.mark.bounds(), text: cell.words.bounds() })
+            // The mark is at the outer side of the text, and near it.
+            const [name, value, verdict, only] = one!.map(ink)
+            expect(right(one![0]!.mark)).toBeLessThan(name!.text.x)
+            expect(name!.text.x - right(one![0]!.mark)).toBeLessThan(30 * 0.6)
+            expect(value!.mark.x).toBeGreaterThan(right(one![1]!.words))
+            expect(value!.mark.x - right(one![1]!.words)).toBeLessThan(30 * 0.6)
+            // In a centered column, the mark and the text are centered together, and a mark alone is in the middle.
+            expect(Math.abs((verdict!.mark.x + right(one![2]!.words)) / 2 - one![2]!.get('x'))).toBeLessThan(3)
+            expect(right(one![2]!.mark)).toBeLessThan(verdict!.text.x)
+            expect(only!.mark.x + only!.mark.width / 2).toBeCloseTo(one![3]!.get('x'), 6)
+            // A cell with no state keeps the room of the mark, so the texts of a column start at one x and the numbers end at one x.
+            expect(anchor(two![0]!)).toBeCloseTo(anchor(one![0]!), 6)
+            expect(anchor(two![1]!)).toBeCloseTo(anchor(one![1]!), 6)
+            // A text with no mark is in the middle of a centered column.
+            expect(anchor(two![2]!)).toBeCloseTo(two![2]!.get('x'), 6)
+            // Each state has its color, on the mark and on the text, and its own shape.
+            expect(one!.map((cell) => marksOf(cell, 0)[0])).toEqual([['check', parseColor('green')], ['cross', parseColor('red')], ['bang', parseColor('yellow')], ['ring', parseColor('dim')]])
+            expect(marksOf(two![3]!, 0)).toEqual([['dash', parseColor('dim')]])
+            expect([first(one![0]!), first(one![1]!), first(two![0]!)].map((made) => made.children[0]!.get('fill'))).toEqual([parseColor('green'), parseColor('red'), parseColor('ink')])
+            // Color is never the only sign: no two of the states of the library share a mark.
+            const shapes = Object.values(TABLE_STATES).map((state) => state.mark)
+            expect(new Set(shapes).size).toBe(shapes.length)
+            // A table takes its own states. A state with no mark has a dot.
+            const own = table(['lane', { key: 'state', marks: true }], [{ id: 1, lane: 'A', state: { value: 'kept', state: 'kept' } }], { states: { kept: { color: 'teal' }, dropped: { color: 'red', mark: 'dash' } } })
+            expect(marksOf(own.rows[0]!.cells[1]!, 0)).toEqual([['dot', parseColor('teal')]])
+            expect(() => table(['lane', 'state'], [{ id: 1, lane: 'A', state: { state: 'pass' } }], { states: { kept: { color: 'teal' } } })).toThrow(/table: no state "pass"\. The states are kept/)
+        }))
+    })
+
+    it('changes a cell in place: the old text and the old mark are gone before the new ones show, and a text that stays takes the new color', async () => {
+        let board!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table([{ key: 'case', sample: 'renamed' }, { key: 'score', format: (value) => value.toFixed(2) }, { key: 'verdict', marks: true }], [
+                { id: 'a', case: 'first', score: 3, verdict: { value: 'ok', state: 'pass' } },
+                { id: 'b', case: 'second', score: 1, verdict: { state: 'pending' } },
+            ], { size: 30 }))
+            s.wait(1)
+            s.play(board.setCell('a', 'case', 'renamed'), { duration: 1 })
+            expect(board.value('a', 'case')).toBe('renamed')
+            // 2 to 3: a mark of another shape, with no text.
+            s.play(board.setCell('b', 'verdict', { state: 'fail' }), { duration: 1 })
+            expect([board.value('b', 'verdict'), board.stateOf('b', 'verdict')]).toEqual([null, 'fail'])
+            // 3 to 4: the state changes and the text stays. A state alone keeps the value.
+            s.play(board.setCell('a', 'verdict', { state: 'fail' }), { duration: 1 })
+            expect([board.value('a', 'verdict'), board.stateOf('a', 'verdict')]).toEqual(['ok', 'fail'])
+            // 4 to 5: a number, written as the column writes it. A value alone keeps the state.
+            s.play(board.setCell('a', 'score', 7), board.setCell('a', 'verdict', 'bad'), { duration: 1 })
+            expect([board.value('a', 'score'), board.value('a', 'verdict'), board.stateOf('a', 'verdict')]).toEqual([7, 'bad', 'fail'])
+            // 5 to 6: the cell gets empty, and the state goes.
+            s.play(board.setCell('a', 'verdict', { value: null, state: null }), { duration: 1 })
+            expect([board.value('a', 'verdict'), board.stateOf('a', 'verdict')]).toEqual([null, null])
+            // A change to the value that the cell has takes no time of the cell, so it plays with another change.
+            s.play(board.setCell('a', 'case', 'renamed'), board.setCell('a', 'case', 'again'), { duration: 1 })
+            s.wait(1)
+        }))
+        const name = board.cell('a', 'case'), verdict = board.cell('a', 'verdict'), mark = board.cell('b', 'verdict')
+        expect(said(name, 0.5)).toEqual(['first'])
+        expect([said(name, 1.25), said(name, 1.5), said(name, 1.75), said(name, 2)]).toEqual([['first'], [], ['renamed'], ['renamed']])
+        // No moment of the film shows two texts in one cell, or two marks.
+        for (let time = 0; time <= 8; time += 0.05) {
+            for (const cell of [name, verdict, mark, board.cell('a', 'score')]) {
+                expect(said(cell, time).length, `texts at ${time}`).toBeLessThanOrEqual(1)
+                expect(marksOf(cell, time).length, `marks at ${time}`).toBeLessThanOrEqual(1)
+            }
+        }
+        expect([marksOf(mark, 2), marksOf(mark, 2.5), marksOf(mark, 3)]).toEqual([[['ring', parseColor('dim')]], [], [['cross', parseColor('red')]]])
+        // The text "ok" is one node from 3 to 4, and it goes from green to red with its mark.
+        expect([said(verdict, 3), said(verdict, 3.5), said(verdict, 4)]).toEqual([['ok'], ['ok'], ['ok']])
+        const ok = verdict.words.children[0]!.children[0]!
+        expect([at(3, () => ok.get('fill')), at(4, () => ok.get('fill'))]).toEqual([parseColor('green'), parseColor('red')])
+        expect(at(3.5, () => ok.get('fill'))).toEqual(mixColor(parseColor('green'), parseColor('red'), smooth(0.5)))
+        expect([said(board.cell('a', 'score'), 3), said(board.cell('a', 'score'), 5)]).toEqual([['3.00'], ['7.00']])
+        expect([said(verdict, 5), marksOf(verdict, 5)]).toEqual([['bad'], [['cross', parseColor('red')]]])
+        expect([said(verdict, 6), marksOf(verdict, 6)]).toEqual([[], []])
+        expect(said(name, 7)).toEqual(['again'])
+    })
+
+    it('writes the total row from the rows at every frame, in the order of time and not of the calls', async () => {
+        let board!: Board, late!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS, { size: 30, maxRows: 4 }))
+            late = s.add(table(COLS, ROWS, { size: 30 }))
+            expect([board.totalOf('score'), board.totalOf('verdict')]).toEqual([6, '1 of 3'])
+            s.wait(1)
+            s.play(board.setCell('b', 'score', 10), { duration: 1 })
+            // 2 to 3: two cells change in one play, and the total has one text at each time.
+            s.play(board.setCell('c', 'verdict', { state: 'pass' }), board.setCell('b', 'verdict', { state: 'pass' }), { duration: 1 })
+            s.play(board.append(D), { duration: 1 })
+            s.play(board.remove('a'), { duration: 1 })
+            expect([board.totalOf('score'), board.totalOf('verdict')]).toEqual([16, '2 of 3'])
+            expect(() => board.totalOf('case')).toThrow(/table: the column "case" has no total\. Give it one where the table is made/)
+            // A film may name a late change before an early one. The total at each time is of the rows at that time.
+            s.at(6, () => s.play(late.setCell('a', 'score', 100), { duration: 1 }))
+            s.at(2, () => s.play(late.setCell('b', 'score', 50), { duration: 1 }))
+            s.wait(3)
+            // A total that gets too wide for its column is an error where the film plays the change.
+            const narrow = s.add(table([{ key: 'n', total: (rows) => 'x'.repeat(rows.length * 6) }], [{ id: 1, n: 1 }], { size: 30, maxRows: 3 }))
+            expect(() => s.play(narrow.append({ id: 2, n: 2 }))).toThrow(/table: the text "x{12}" of the total of the column "n" is \d+ px wide, and the column has \d+ px for a text\. Give the column a `sample` where the table is made/)
+        }))
+        // The total changes when the new text of the cell comes: at the middle of the change.
+        expect([1, 1.45, 1.55, 2].map((time) => totals(board, 1, time))).toEqual([['6'], ['6'], ['15'], ['15']])
+        expect([2.45, 2.55].map((time) => totals(board, 2, time))).toEqual([['1 of 3'], ['3 of 3']])
+        // A row counts when it is half there, and a row that leaves counts until it is gone.
+        expect([3.45, 3.55].map((time) => [totals(board, 1, time), totals(board, 2, time)])).toEqual([[['15'], ['3 of 3']], [['19'], ['3 of 4']]])
+        expect([4.4, 4.5].map((time) => [totals(board, 1, time), totals(board, 2, time)])).toEqual([[['19'], ['3 of 4']], [['16'], ['2 of 3']]])
+        for (let time = 0; time <= 5; time += 0.05) expect([totals(board, 1, time).length, totals(board, 2, time).length], `at ${time}`).toEqual([1, 1])
+        expect([1, 3, 7].map((time) => totals(late, 1, time))).toEqual([['6'], ['55'], ['152']])
+        // The total row is under the last row at every frame: one row under it, or a little less for a row that still comes to its place.
+        for (let time = 0; time <= 5; time += 0.05) {
+            const last = at(time, () => Math.max(...made(board).filter((row) => shows(row) > 0.05).map((row) => row.get('y'))))
+            expect(at(time, () => board.totals!.get('y')) - last, `at ${time}`).toBeGreaterThanOrEqual(board.pitch * 0.79)
+        }
+        expect(at(5, () => board.totals!.get('y'))).toBeCloseTo(at(5, () => board.row('d').get('y')) + board.pitch, 6)
+    })
+
+    it('moves one marker to a row, a cell or a column, and says what is lit', async () => {
+        let board!: Board
+        const S = 30, P = S * 1.9, inset = S * 0.2, gap = 3
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // The table has three rows, and room for five.
+            board = s.add(table(COLS, ROWS, { size: S, maxRows: 5 }).at(40, -20))
+            expect(board.lit).toBeNull()
+            s.wait(1)
+            s.play(board.light('b'), { duration: 1 })
+            expect(board.lit).toEqual({ row: 'b', column: null })
+            s.play(board.light('c', 'score'), { duration: 1 })
+            expect(board.lit).toEqual({ row: 'c', column: 'score' })
+            s.play(board.light(null, 'verdict'), { duration: 1 })
+            expect(board.lit).toEqual({ row: null, column: 'verdict' })
+            s.play(board.light(null), { duration: 1 })
+            expect(board.lit).toBeNull()
+            s.wait(1)
+        }))
+        const half = at(0, () => board.frame.bounds().width / 2)
+        const rowY = (id: string) => at(0, () => board.row(id).get('y'))
+        expect(markerAt(board, 0.5).shows).toBe(0)
+        // On a row: the marker is as wide as the panel less a little, and as high as the row less a little.
+        expect(markerAt(board, 2)).toEqual({ left: expect.closeTo(-half + inset, 6), right: expect.closeTo(half - inset, 6), top: expect.closeTo(rowY('b') - P / 2 + gap, 6), bottom: expect.closeTo(rowY('b') + P / 2 - gap, 6), y: expect.closeTo(rowY('b'), 6), shows: 1, line: 1 })
+        // It comes in at its row, and does not travel there.
+        expect(markerAt(board, 1.5)).toMatchObject({ y: expect.closeTo(rowY('b'), 6), shows: expect.closeTo(smooth(0.5), 6), line: 1 })
+        // On a cell: the room of the cell, less the same.
+        const cell = board.cell('c', 'score'), [from, , to] = cell.box
+        expect(markerAt(board, 3)).toMatchObject({ left: expect.closeTo(cell.get('x') + from + inset, 6), right: expect.closeTo(cell.get('x') + to - inset, 6), y: expect.closeTo(rowY('c'), 6), shows: 1, line: 1 })
+        // On its way it is a faint fill with no line, so no line runs through the texts that it passes.
+        expect(markerAt(board, 2.5)).toMatchObject({ shows: 1, line: 0 })
+        expect(markerAt(board, 2.5).y).toBeGreaterThan(rowY('b'))
+        expect(markerAt(board, 2.5).y).toBeLessThan(rowY('c'))
+        expect([markerAt(board, 2.1).line, markerAt(board, 2.9).line]).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        // On a column: from the header to the last row that the table has, and not the total row or the room under it.
+        const head = board.header('verdict').get('y'), column = board.cell('a', 'verdict')
+        expect(markerAt(board, 4)).toMatchObject({ left: expect.closeTo(column.get('x') + column.box[0] + inset, 6), top: expect.closeTo(head - P / 2 + gap, 6), bottom: expect.closeTo(rowY('c') + P / 2 - gap, 6), shows: 1 })
+        expect(markerAt(board, 5).shows).toBe(0)
+        expect(at(5.5, () => board.marker.get('visible'))).toBe(false)
+        // The line of the marker has clear room from the ink of the row: 0.15 of the text size or more, for any ASCII text.
+        // In rows that are too low for that, the marker has no line, and its fill is stronger.
+        const tall = 'Agjpqy(|$_Q'
+        const looks: { leading: number; font: FontFamily; line: number; fill: number; room: number }[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // A film is built again when a font arrives, so the list starts empty at each build.
+            looks.length = 0
+            for (const font of ['sans', 'text-serif'] as const) {
+                for (const leading of [1.4, 1.6, 1.9, 2.4]) {
+                    const low = s.add(table(['name', 'value'], [{ id: 1, name: tall, value: 12345 }, { id: 2, name: tall, value: 67890 }], { size: S, leading, font }))
+                    s.play(low.light(2), { duration: 0 })
+                    const box = low.marker.bounds(), ink = low.row(2).cells.map((made) => made.words.bounds()), half = low.marker.get('strokeWidth') / 2
+                    const room = Math.min(...ink.map((made) => Math.min(made.y - (box.y + half), box.y + box.height - half - (made.y + made.height))))
+                    looks.push({ leading, font, line: low.marker.get('strokeOpacity'), fill: low.marker.get('fillOpacity'), room })
+                }
+            }
+            s.wait(0.5)
+        }))
+        expect(looks.map((look) => [look.font, look.leading, look.line, look.fill])).toEqual([
+            ['sans', 1.4, 0, 0.26], ['sans', 1.6, 0, 0.26], ['sans', 1.9, 1, 0.16], ['sans', 2.4, 1, 0.16],
+            ['text-serif', 1.4, 0, 0.26], ['text-serif', 1.6, 0, 0.26], ['text-serif', 1.9, 1, 0.16], ['text-serif', 2.4, 1, 0.16],
+        ])
+        for (const look of looks.filter((made) => made.line === 1)) expect(look.room, `${look.font} at ${look.leading}`).toBeGreaterThanOrEqual(S * 0.15)
+    })
+
+    it('keeps the marker with its row: through a sort, in with a row that arrives, and out with a row that leaves', async () => {
+        let board!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS, { size: 30, maxRows: 4 }))
+            s.play(board.light('c'), { duration: 0 })
+            s.wait(1)
+            // 1 to 2: the row with the light goes up one place, and the first row passes it on its way to the bottom.
+            s.play(board.sort('score'), { duration: 1 })
+            // 2 to 3: the light goes to a row of the same play.
+            s.play(board.append(D), board.light('d'), { duration: 1 })
+            // 3 to 4: the row with the light leaves.
+            s.play(board.remove('d'), { duration: 1 })
+            expect(board.lit).toBeNull()
+            s.wait(1)
+        }))
+        const c = board.row('c'), d = made(board).find((row) => row.rowId === 'd')!
+        for (let time = 1; time <= 2; time += 0.05) {
+            expect(markerAt(board, time).y, `at ${time}`).toBeCloseTo(at(time, () => c.get('y')), 6)
+            // The row with the light is the top card of the sort, also when another row goes a longer way. So the
+            // marker is never on a row that another one hides: the row shows whole at every frame.
+            expect(markerAt(board, time), `at ${time}`).toMatchObject({ shows: 1, line: 1 })
+            expect(at(time, () => shows(c.content)), `at ${time}`).toBe(1)
+        }
+        expect(at(2, () => c.get('y'))).toBeCloseTo(at(0, () => c.get('y')) - board.pitch, 6)
+        expect(at(1.5, () => c.get('z'))).toBeGreaterThan(at(1.5, () => Math.max(board.row('a').get('z'), board.row('b').get('z'))))
+        // The marker is at the new row when the move of the light ends, and it shows as much as the row does.
+        expect(markerAt(board, 3)).toMatchObject({ y: expect.closeTo(at(3, () => d.get('y')), 6), shows: 1, line: 1 })
+        for (const time of [3.1, 3.2, 3.3, 3.4]) {
+            expect(markerAt(board, time).shows, `at ${time}`).toBeCloseTo(at(time, () => d.get('opacity')), 6)
+            expect(markerAt(board, time).shows, `at ${time}`).toBeLessThan(1)
+        }
+        expect([markerAt(board, 3.5).shows, markerAt(board, 4).shows, markerAt(board, 5).shows]).toEqual([0, 0, 0])
+    })
+
+    it('brings rows under the last row, one after another, and makes room in the panel first', async () => {
+        let board!: Board, group!: Board
+        const S = 30, P = S * 1.9
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS.slice(0, 1), { size: S, maxRows: 4 }))
+            group = s.add(table(COLS, ROWS.slice(0, 1), { size: S, maxRows: 4 }))
+            s.wait(1)
+            s.play(board.append(ROWS.slice(1)), group.append(ROWS.slice(1), { lag: 0 }), { duration: 2 })
+            expect([board.ids, board.count]).toEqual([['a', 'b', 'c'], 3])
+            // A value of a row of the same play can change in it, when the film names the `append` first.
+            s.play(board.append(D), board.setCell('d', 'score', 9), { duration: 1 })
+            expect(board.value('d', 'score')).toBe(9)
+            expect(() => s.play(group.setCell('d', 'score', 9), group.append(D))).toThrow(/table: no row has the id "d"\. The table has the rows "a", "b", "c"\. When an `append` in the same play brings the row, name the `append` before this call/)
+            // The panel has room for four rows.
+            expect(() => s.play(board.append({ id: 'e', case: 'fifth' }))).toThrow(/table: append\(\["e"\]\) makes 5 rows, and the panel has room for 4\. Raise `maxRows` to 5 or more where the table is made, or remove a row first/)
+            expect(() => s.play(board.append({ id: 'a', case: 'again' }))).toThrow(/table: the table already has a row with the id "a"\. Give each row its own id/)
+            expect(() => board.append([{ id: 'x', case: 'one' }, { id: 'x', case: 'two' }])).toThrow(/table: two rows have the id "x"/)
+            s.wait(1)
+        }))
+        // One row for each second: "b" from 1 to 2, and "c" from 2 to 3. With `lag: 0`, both take the whole time.
+        expect([1, 2, 3].map((time) => seen(board, time))).toEqual([['a'], ['a', 'b'], ['a', 'b', 'c']])
+        expect([1, 2.4, 3].map((time) => seen(group, time))).toEqual([['a'], ['a'], ['a', 'b', 'c']])
+        const [together, other] = at(2.4, () => [shows(group.row('b')), shows(group.row('c'))])
+        expect(together).toBeGreaterThan(0.1)
+        expect(other).toBeCloseTo(together!, 6)
+        // Each row is at its place, one row under the row before it.
+        expect(at(4, () => board.rows.map((row) => row.get('y') - board.rows[0]!.get('y')))).toEqual([0, 1, 2, 3].map((slot) => expect.closeTo(slot * P, 6)))
+        // The panel is as high as the header, the rows and the total row. It grows before the row comes, so a row that shows is inside it.
+        expect([1, 2, 3, 4].map((time) => at(time, () => board.frame.bounds().height))).toEqual([3, 4, 5, 6].map((rows) => expect.closeTo(rows * P + 12, 6)))
+        for (let time = 1; time <= 4; time += 0.05) {
+            const [bottom, lowest] = at(time, () => [board.frame.bounds().y + board.frame.bounds().height, Math.max(...made(board).filter((row) => shows(row) > 0.01).map((row) => row.cells[0]!.words.bounds().y + row.cells[0]!.words.bounds().height))])
+            expect(lowest!, `at ${time}`).toBeLessThan(bottom! - S * 0.2)
+        }
+        // The line over a row comes with the row.
+        expect([1, 2, 3].map((time) => at(time, () => board.lines.map((line) => line.get('opacity'))))).toEqual([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    })
+
+    it('takes rows away: they fade, the rows under them move up, and the panel gets lower', async () => {
+        let board!: Board
+        const S = 30, P = S * 1.9
+        let old!: TableRowNode
+        const nodes: Record<string, TableRowNode> = {}
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, [...ROWS, D], { size: S }))
+            for (const id of board.ids) nodes[String(id)] = board.row(id)
+            old = board.row('b')
+            s.wait(1)
+            s.play(board.remove('b'), { duration: 1 })
+            expect([board.ids, board.count]).toEqual([['a', 'c', 'd'], 3])
+            expect(() => board.row('b')).toThrow(/table: no row has the id "b"\. The table has the rows "a", "c", "d"/)
+            // 2 to 3: a function picks the rows when the film plays the change, so it sees the rows that are left.
+            s.play(board.remove((row) => (row.values['score'] as number) > 2), { duration: 1 })
+            expect(board.ids).toEqual(['c'])
+            expect(board.find((row) => row.index === 0)).toEqual(['c'])
+            // 3 to 4: the id of a row that left is free again, and the new row has a node of its own.
+            s.play(board.append({ id: 'b', case: 'again', score: 5 }), { duration: 1 })
+            expect(board.row('b')).not.toBe(old)
+            // A function that picks no row changes nothing, and takes no time of the table.
+            s.play(board.remove(() => false), board.remove('c'), { duration: 1 })
+            expect(board.ids).toEqual(['b'])
+            s.wait(1)
+            // In one sequence, a row leaves and a row with its id arrives: the id is free when the second change plays.
+            s.play(seq(board.remove('b'), board.append({ id: 'b', case: 'a third' })), { duration: 1 })
+            expect(board.ids).toEqual(['b'])
+        }))
+        expect([1, 2, 3, 4, 5].map((time) => seen(board, time))).toEqual([['a', 'b', 'c', 'd'], ['a', 'c', 'd'], ['c'], ['c', 'b'], ['b']])
+        // The row that leaves is gone before a row comes to its place: at 45% of the time. It stays hidden.
+        expect([1.2, 1.45, 3, 6].map((time) => at(time, () => shows(old) > 0))).toEqual([true, false, false, false])
+        const top = at(0, () => nodes['a']!.get('y'))
+        expect(at(2, () => ['a', 'c', 'd'].map((id) => nodes[id]!.get('y')))).toEqual([0, 1, 2].map((slot) => expect.closeTo(top + slot * P, 6)))
+        // The rows under it wait until it is nearly gone.
+        expect(at(1.3, () => nodes['c']!.get('y'))).toBeCloseTo(top + 2 * P, 6)
+        expect([1, 2, 3, 4, 5].map((time) => at(time, () => board.frame.bounds().height))).toEqual([6, 5, 3, 4, 3].map((rows) => expect.closeTo(rows * P + 12, 6)))
+        // The lines between the rows have fixed places. They are away while rows move, and back when the rows are at rest.
+        expect([1, 1.7, 2].map((time) => at(time, () => board.lines.map((line) => line.get('opacity'))))).toEqual([[1, 1, 1], [0, 0, 0], [1, 1, 0]])
+    })
+
+    it('sorts and moves rows: each row keeps its node and goes to its new place', async () => {
+        let board!: Board
+        const nodes = new Map<number, TableRowNode>()
+        const orders: unknown[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // A film is built again when a font arrives, so the list starts empty at each build.
+            orders.length = 0
+            board = s.add(table(['id', 'score', 'name'], [{ id: 1, score: 5, name: 'e' }, { id: 2, score: null, name: 'b' }, { id: 3, score: 2, name: 'd' }, { id: 4, score: 5, name: 'a' }, { id: 5, score: 9, name: 'c' }], { size: 30 }))
+            for (const id of [1, 2, 3, 4, 5]) nodes.set(id, board.row(id))
+            s.wait(1)
+            for (const change of [board.sort('score'), board.sort('score', { descending: true }), board.sort('name'), board.sort((a, b) => Number(b.id) - Number(a.id)), board.moveRow(5, 4), board.moveRow(1, 0)]) {
+                s.play(change, { duration: 1 })
+                orders.push(board.ids)
+            }
+            // A sort that changes no place takes no time of the table, so it plays with another change.
+            s.play(board.sort((a, b) => a.index - b.index), board.moveRow(1, 1), { duration: 1 })
+            orders.push(board.ids)
+            expect(() => board.sort('none')).toThrow(/table: no column "none"\. The columns are "id", "score", "name"/)
+            expect(() => board.moveRow(1, 1.5)).toThrow(/table: moveRow\(1, 1\.5\): the place of a row is a whole number, 0 for the first row/)
+            expect(() => s.play(board.moveRow(1, 5))).toThrow(/table: moveRow\(1, 5\): the table has 5 rows, so the last place is 4/)
+            expect(() => s.play(board.sort(() => Number.NaN))).toThrow(/table: the function of sort\(\) returned NaN for the rows/)
+            s.wait(1)
+        }))
+        // Numbers by size, equal rows in the order that they had, and an empty cell last in both directions. Texts by their letters.
+        expect(orders).toEqual([[3, 1, 4, 5, 2], [5, 1, 4, 3, 2], [4, 2, 5, 3, 1], [5, 4, 3, 2, 1], [4, 3, 2, 1, 5], [1, 4, 3, 2, 5], [4, 1, 3, 2, 5]])
+        // A row is one node through every change, and it is at the place of its rank after each one.
+        expect([1, 2, 3, 4, 5].map((id) => board.row(id))).toEqual([1, 2, 3, 4, 5].map((id) => nodes.get(id)))
+        const top = at(0, () => nodes.get(1)!.get('y'))
+        orders.forEach((order, index) => {
+            expect(seen(board, 2 + index), `after change ${index}`).toEqual(order)
+            expect(at(2 + index, () => (order as number[]).map((id) => nodes.get(id)!.get('y'))), `after change ${index}`).toEqual([0, 1, 2, 3, 4].map((slot) => expect.closeTo(top + slot * board.pitch, 6)))
+        })
+        // The row shows its id in the column `id`, as a number: at the right, in mono.
+        expect(first(nodes.get(1)!.cells[0]!).source).toBe('1')
+    })
+
+    it('shows a row that a sort moves as a card over the others, and hides a row while a card is at its text', async () => {
+        let board!: Board
+        const S = 30
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(['case', 'score'], [{ id: 'a', case: 'first', score: 3 }, { id: 'b', case: 'second', score: 2 }, { id: 'c', case: 'third', score: 1 }], { size: S }))
+            s.wait(1)
+            // The first row and the last row trade places, and both pass the row between them.
+            s.play(board.sort('score'), { duration: 1 })
+            s.wait(1)
+        }))
+        const rows = ['a', 'b', 'c'].map((id) => board.row(id))
+        const card = (row: TableRowNode, time: number) => at(time, () => shows(row.backing!))
+        // At rest a row has no card. A row that moves has one for the time of the move.
+        expect(rows.map((row) => [card(row, 1), card(row, 1.2), card(row, 2)])).toEqual([[0, 1, 0], [0, 0, 0], [0, 1, 0]])
+        // At the middle, the three rows are at one place, and one of them shows.
+        expect(rows.map((row) => at(1.5, () => shows(row.content)))).toEqual([0, 0, 1])
+        // At every frame, a row whose text a card of another row has reached does not show at all.
+        const reach = board.pitch / 2 + S * 0.62
+        for (let time = 1; time <= 2; time += 0.025) {
+            at(time, () => {
+                for (const lower of rows) {
+                    for (const upper of rows) {
+                        const over = upper.get('z') > lower.get('z') || (upper.get('z') === lower.get('z') && rows.indexOf(upper) > rows.indexOf(lower))
+                        if (upper === lower || !over || shows(upper.backing!) < 0.5 || Math.abs(upper.get('y') - lower.get('y')) >= reach) continue
+                        expect(shows(lower.content), `row ${lower.rowId} under ${upper.rowId} at ${time}`).toBeLessThan(0.02)
+                    }
+                }
+            })
+        }
+        expect(seen(board, 2)).toEqual(['c', 'b', 'a'])
+    })
+
+    it('changes its rows one change at a time, and a cell one change at a time, and says how to play two', async () => {
+        /** A film of its own for each case, so that the times in a message are known. */
+        const scene = (build: (s: Stage, board: Board) => void) => compileFilm(film({ fps: 20 }, (s) => build(s, s.add(table(COLS, ROWS, { size: 30, maxRows: 5 })))))
+        await scene((s, board) => {
+            expect(() => s.play(board.remove('a'), board.sort('score', { descending: true }))).toThrow(/table: sort\("score"\) plays from 0 s to 1 s, and remove\(\["a"\]\) plays from 0 s to 0\.7 s\. The table changes its rows one change at a time: a change starts when the change before it is over\. Play the two in a `seq`: each then has its share of the time of the play/)
+        })
+        await scene((s, board) => {
+            expect(() => s.play(board.append(D), board.append({ id: 'e', case: 'fifth' }))).toThrow(/Give one `append` all the rows\. With `lag: 0`, they arrive together/)
+        })
+        await scene((s, board) => {
+            s.wait(1)
+            s.play(board.sort('score'), { duration: 2 })
+            expect(() => s.at(2, () => s.play(board.remove('a')))).toThrow(/table: remove\(\["a"\]\) plays from 2 s to 2\.7 s, and sort\("score"\) plays from 1 s to 3 s\..* sort\("score"\) takes 2 s, and remove\(\["a"\]\) starts 1 s after it\. Give sort\("score"\) a `duration` of 1 or less, or play the two in a `seq`/)
+        })
+        await scene((s, board) => {
+            s.wait(1)
+            s.play(board.sort('score'), { duration: 2 })
+            // The end of one change is the start of the next.
+            s.play(board.remove('a'), { duration: 1 })
+            s.play(board.append({ id: 'a', case: 'again' }), { duration: 1 })
+            expect(board.ids).toEqual(['b', 'c', 'a'])
+            expect(() => s.at(0.5, () => s.play(board.moveRow('a', 0)))).toThrow(/The table takes the changes of its rows in the order of time, and the film calls append\(\["a"\]\) first\. Call moveRow\("a", 0\) before it/)
+        })
+        await scene((s, board) => {
+            // A cell takes one change at a time.
+            expect(() => s.play(board.setCell('b', 'score', 5), board.setCell('b', 'score', 6))).toThrow(/table: setCell\("b", "score"\) plays from 0 s to 0\.5 s, and setCell\("b", "score"\) plays from 0 s to 0\.5 s\. A cell takes one change at a time: a change starts when the change before it is over\. Play the two in a `seq`, or give the first one a shorter `duration`/)
+        })
+        await scene((s, board) => {
+            // Two cells change together, and so do a cell, the rows and the light.
+            s.play(board.setCell('b', 'score', 5), board.setCell('c', 'score', 6), board.setCell('b', 'verdict', { state: 'pass' }), board.sort('score'), board.light('b'), { duration: 1 })
+            expect([board.value('b', 'score'), board.value('c', 'score'), board.ids]).toEqual([5, 6, ['a', 'b', 'c']])
+            // Two moves of the light whose times overlap give one marker: the last one that starts takes it from where it is.
+            s.play(board.light('a'), board.light('c'), { duration: 1 })
+            expect(board.lit).toEqual({ row: 'c', column: null })
+            expect(() => board.setCell('b', 'score', 5, { duration: -1 })).toThrow(/table: the duration of setCell\("b", "score"\) is -1\. Give a number, 0 or more/)
+            expect(() => board.append(D, { lag: Number.NaN })).toThrow(/table: the lag of append\(\["d"\]\) is NaN\. Give a number, 0 or more/)
+        })
+    })
+
+    it('names what is wrong with a column, a row, a cell or an option, and what to change', async () => {
+        await compileFilm(film(() => {
+            expect(() => table([])).toThrow(/table: give it at least one column, such as table\(\['case', 'score'\], rows\)/)
+            expect(() => table(['a', 'a'])).toThrow(/table: two columns have the key "a"\. Give each column its own key/)
+            expect(() => table([{ key: ' ' }])).toThrow(/table: column 0 has no key/)
+            expect(() => table([{ key: 'a', align: 'middle' as 'center' }])).toThrow(/table: the align of the column "a" is "middle"\. It is 'left', 'right' or 'center'/)
+            expect(() => table([{ key: 'a', total: 'mean' as 'sum' }])).toThrow(/table: the total of the column "a" is "mean"\. It is 'sum', or a function of the rows/)
+            expect(() => table([{ key: 'long header', width: 20 }], [], { maxRows: 1, size: 20 })).toThrow(/table: the width of the column "long header" is 20, and its header "long header" is \d+ px wide\. Give a width of \d+ or more, or a shorter label/)
+            expect(() => table(['a'], [{ id: 1, a: 'x' }, { id: '1', a: 'y' }])).toThrow(/table: two rows have the id "1"\. Give each row its own id/)
+            expect(() => table(['a'], [{ id: Number.NaN, a: 'x' }])).toThrow(/table: row 0 has the id null\. Give each row an `id`, a number or a text: the table knows a row by it/)
+            expect(() => table(['a'], [{ a: 'x' } as unknown as TableRow])).toThrow(/table: row 0 has the id undefined/)
+            // A field that names no column would not show, and nobody would know.
+            expect(() => table(['case', 'score'], [{ id: 1, case: 'x', scroe: 3 }])).toThrow(/table: row 1 has the field "scroe", and the table has no such column\. The columns are "case", "score"/)
+            expect(() => table(['a'], [{ id: 1, a: 'two\nlines' }])).toThrow(/table: the text of row 1 in the column "a" has a line break or a tab\. A cell holds one line of text/)
+            expect(() => table(['a'], [{ id: 1, a: true as unknown as string }])).toThrow(/table: the value of row 1 in the column "a" is true\. Give a text, a number, or null for an empty cell/)
+            expect(() => table(['a'], [{ id: 1, a: Number.POSITIVE_INFINITY }])).toThrow(/table: the value of row 1 in the column "a" is Infinity\. A number of a cell is finite/)
+            expect(() => table(['a'], [{ id: 1, a: { value: 'x', color: 'red' } as unknown as string }])).toThrow(/table: the cell of row 1 in the column "a" has the part "color"\. A cell is a value, or \{ value, state \}/)
+            expect(() => table(['a'], [{ id: 1, a: { state: 'done' } }])).toThrow(/table: no state "done"\. The states are pass, fail, warn, pending, skip/)
+            expect(() => table(['a'], [], { size: 0 })).toThrow(/table: size is a text size, more than 0/)
+            expect(() => table(['a'], [], { maxRows: 1, leading: 1 })).toThrow(/table: leading is 1\. It is the height of a row as a part of the text size, 1\.4 or more/)
+            expect(() => table(['a'], [])).toThrow(/table: maxRows is 0\. It is the most rows that the table holds, a whole number, 1 or more\. A table that starts with no row needs it/)
+            expect(() => table(['a'], [{ id: 1, a: 'x' }, { id: 2, a: 'y' }], { maxRows: 1 })).toThrow(/table: the table starts with 2 rows, and maxRows is 1\. Raise `maxRows` to 2 or more/)
+            expect(() => table(['a'], [], { maxRows: 1, states: {} })).toThrow(/table: give it at least one state/)
+            expect(() => table(['a'], [], { maxRows: 1, states: { done: { color: 'green', mark: 'star' as 'dot' } } })).toThrow(/table: the mark of the state "done" is "star"\. A mark is 'check', 'cross', 'ring', 'dot', 'dash', 'bang'/)
+            expect(() => table(['a'], [], { maxRows: 1, lightColor: 'no-such-color' })).toThrow(/table: lightColor is "no-such-color", which is not a color/)
+            expect(() => table([{ key: 'a', total: () => ({ state: 'done' }) }], [{ id: 1, a: 'x' }])).toThrow(/table: no state "done"/)
+
+            const board = table([{ key: 'case' }, { key: 'score' }, { key: 'verdict', marks: true }], [{ id: 'a', case: 'first', score: 3, verdict: 'ok' }], { size: 20, maxRows: 2 })
+            expect(() => board.setCell('a', 'none', 1)).toThrow(/table: no column "none"\. The columns are "case", "score", "verdict"/)
+            expect(() => board.setCell('a', 'verdict', { state: 'done' })).toThrow(/table: no state "done"\. The states are pass, fail, warn, pending, skip/)
+            // A text shows whole in the room of its column, or the change is refused, and the message names the sample that works.
+            expect(() => board.setCell('a', 'case', 'a text that is much too long for this column')).toThrow(/table: the text "a text that is much too long for this column" of row "a" in the column "case" is \d+ px wide, and the column has \d+ px for a text\. Give the column a `sample` where the table is made, the longest value that it gets, such as sample: "a text that is much too long for this column", or use a shorter text/)
+            expect(() => board.append({ id: 'b', case: 'a text that is much too long for this column' })).toThrow(/table: the text "a text that is much too long for this column" of row "b" in the column "case" is \d+ px wide/)
+            expect(() => board.setCell('a', 'score', 123456789)).toThrow(/Give the column a `sample` where the table is made, the longest value that it gets, such as sample: 123456789, or use a shorter text/)
+            // With the sample, the column has the room from the start, at any text size.
+            for (const size of [20, 44]) {
+                const roomy = table([{ key: 'case', sample: 'a text that is much too long for this column' }, { key: 'score', sample: 123456789 }], [{ id: 'a', case: 'first', score: 3 }], { size })
+                expect(() => [roomy.setCell('a', 'case', 'a text that is much too long for this column'), roomy.setCell('a', 'score', 123456789)]).not.toThrow()
+            }
+            // A column with a width in pixels names the width that works.
+            const fixed = table([{ key: 'case', width: 100 }], [{ id: 'a', case: 'first' }], { size: 20 })
+            expect(() => fixed.setCell('a', 'case', 'a text that is much too long for this column')).toThrow(/and the column has 100 px for a text\. Set the `width` of the column to (\d+) or more where the table is made, or use a shorter text/)
+            // A text that is a few pixels wider than the column goes a little into the room between two columns: 0.35 of the text size, 7 px here.
+            const base = wide('a text of the film', { size: 20 })
+            expect(() => table([{ key: 'case', width: base - 6 }], [{ id: 'a', case: 'first' }], { size: 20 }).setCell('a', 'case', 'a text of the film')).not.toThrow()
+            expect(() => table([{ key: 'case', width: base - 9 }], [{ id: 'a', case: 'first' }], { size: 20 }).setCell('a', 'case', 'a text of the film')).toThrow(/Set the `width` of the column/)
+            // A count keeps room for its other digits: "1 of 3" is narrower than "2 of 8".
+            const counts = table([{ key: 'count', label: 'n' }], [{ id: 'a', count: '1 of 1' }], { size: 20 })
+            expect(wide('2 of 8', { size: 20 }) - wide('1 of 1', { size: 20 })).toBeGreaterThan(8)
+            expect(() => counts.setCell('a', 'count', '2 of 8')).not.toThrow()
+            expect(() => table([{ key: 'a', sample: { value: 'x', state: 'pass' } as unknown as string }], [], { maxRows: 1 })).toThrow(/table: the sample of the column "a" has a state\. A sample is a value/)
+            // An empty text is an empty cell.
+            expect(table(['a'], [{ id: 1, a: '' }]).value(1, 'a')).toBeNull()
+            // A state needs a column that keeps room for a mark.
+            expect(() => board.setCell('a', 'case', { state: 'pass' })).toThrow(/table: row "a" in the column "case" gets the state "pass", and the column has no room for the mark of a state\. Give the column `marks: true` where the table is made, or give one of its first cells a state/)
+            expect(() => board.append({ id: 'b', case: { value: 'x', state: 'pass' } })).toThrow(/table: row "b" in the column "case" gets the state "pass", and the column has no room for the mark of a state/)
+            expect(() => board.light('a', 'none')).toThrow(/table: no column "none"/)
+            expect(() => board.p('a', null, 'middle' as 'center')).toThrow(/table: the side of p\(\) is "middle"\. It is 'left', 'right', 'top', 'bottom' or 'center'/)
+            expect(() => board.value('z', 'case')).toThrow(/table: no row has the id "z"\. The table has the rows "a"/)
+            // The column `id` shows the id of a row, which does not change.
+            const ids = table(['id', 'case'], [{ id: 7, case: 'x' }])
+            expect(() => ids.setCell(7, 'id', 8)).toThrow(/table: the column "id" shows the id of a row, and an id does not change/)
+        }))
+    })
+
+    it('gives the places of a row, a column and a cell, and a cell holds a node of the film that moves with its row', async () => {
+        let board!: Board
+        const extra = rect(40, 10, { fill: 'teal', stroke: null })
+        const S = 30, P = S * 1.9
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS, { size: S, maxRows: 4 }).at(200, 100))
+            const half = board.frame.bounds().width / 2, high = (6 * P + 12) / 2
+            const y = board.row('b').get('y'), cell = board.cell('b', 'score')
+            const [from, top, to, bottom] = cell.box
+            expect([top, bottom]).toEqual([-P / 2, P / 2])
+            // In the coordinates of the table: a row goes from border to border, and a column from the top of the room to its bottom.
+            expect(board.p('b')).toEqual([expect.closeTo(-half, 6), expect.closeTo(y, 6)])
+            expect(board.p('b', null, 'right')).toEqual([expect.closeTo(half, 6), expect.closeTo(y, 6)])
+            expect(board.p('b', 'score', 'center')).toEqual([expect.closeTo(cell.get('x'), 6), expect.closeTo(y, 6)])
+            expect(board.p('b', 'score', 'top')).toEqual([expect.closeTo(cell.get('x'), 6), expect.closeTo(y - P / 2, 6)])
+            expect(board.p(null, 'score', 'bottom')).toEqual([expect.closeTo(cell.get('x'), 6), expect.closeTo(high, 6)])
+            // In stage pixels, for the layout: the room of the table, of a row, of a column and of a cell.
+            const room = board.region(), one = board.region('b', 'score')
+            expect([room.cx, room.cy, room.width, room.height]).toEqual([200, 100, half * 2, high * 2].map((value) => expect.closeTo(value, 6)))
+            expect([one.left, one.right, one.cy, one.height]).toEqual([200 + cell.get('x') + from, 200 + cell.get('x') + to, 100 + y, P].map((value) => expect.closeTo(value, 6)))
+            expect([board.region('b').left, board.region('b').right, board.region(null, 'score').top]).toEqual([200 - half, 200 + half, 100 - high].map((value) => expect.closeTo(value, 6)))
+            // The row of an id and its cells are nodes: a connector can end on one, and a film can add a node of its own to a cell.
+            expect([board.row('b').rowId, board.row('b').cells[1]]).toEqual(['b', cell])
+            expect(board.header('score').get('y')).toBeLessThan(board.row('a').get('y'))
+            cell.add(extra)
+            s.wait(1)
+            // The row "b" has the lowest score, so it goes from the middle to the top.
+            s.play(board.sort('score'), { duration: 1 })
+            // A place is of the row after the changes so far: the top row now.
+            expect(board.p('b')[1]).toBeCloseTo(y - P, 6)
+            expect(board.region('b').cy).toBeCloseTo(100 + y - P, 6)
+            s.wait(1)
+        }))
+        const middle = (time: number) => at(time, () => extra.bounds().y + extra.bounds().height / 2)
+        expect(middle(2) - middle(1)).toBeCloseTo(-P, 6)
+        expect(middle(1.5)).toBeCloseTo(at(1.5, () => 100 + board.row('b').get('y')), 6)
+        // The rows are in one holder. A light of the library that stays inside it dims the other rows, and not the panel, the header or the total row.
+        let records!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            records = s.add(table(COLS, ROWS, { size: S }))
+            s.wait(0.5)
+            s.play(spotlight(records.find((row) => row.states['verdict'] !== 'fail').map((id) => records.row(id)), { within: records.body }), { duration: 0.5 })
+            s.wait(0.5)
+        }))
+        expect(records.rows.every((row) => row.parent === records.body)).toBe(true)
+        const dims = at(1.2, () => [records.row('a'), records.row('b'), records.row('c'), records.frame, records.headers[0]!, records.totals!, records.body].map((node) => node.get('dim')))
+        expect(dims.map((dim) => dim === 1)).toEqual([true, false, true, true, true, true, true])
+        expect(dims[1]).toBeLessThan(0.5)
+    })
+
+    it('enters with the panel and the header first and then the rows from the top, and keeps a row that arrives in the same play', async () => {
+        let board!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // The table is not on the stage: `enter()` brings it.
+            board = table(COLS, ROWS, { size: 30, maxRows: 4 })
+            s.wait(1)
+            s.play(board.enter(), board.append(D), { duration: 2 })
+            s.wait(1)
+        }))
+        expect(at(0.5, () => shows(board))).toBe(0)
+        const parts = (time: number) => at(time, () => [shows(board.frame), shows(board.headers[0]!), ...['a', 'b', 'c'].map((id) => shows(board.row(id).content)), shows(board.totals!.content)])
+        expect(parts(1)).toEqual([0, 0, 0, 0, 0, 0])
+        // The panel and the header are there after four tenths of the time.
+        expect(parts(1.8).slice(0, 2)).toEqual([1, 1])
+        // Each row starts after the row over it, and the total row is the last.
+        const order = parts(2.2).slice(2)
+        expect(order[0]).toBeGreaterThan(order[1]!)
+        expect(order[1]).toBeGreaterThan(order[2]!)
+        expect(order[2]).toBeGreaterThan(order[3]!)
+        expect(parts(3)).toEqual([1, 1, 1, 1, 1, 1].map((value) => expect.closeTo(value, 6)))
+        // The row of the `append` in the same play is not lost.
+        expect(seen(board, 3)).toEqual(['a', 'b', 'c', 'd'])
+    })
+
+    it('gives a copy with its own rows and its own bookkeeping, in the state that the table has', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const board = s.add(table(COLS, ROWS, { size: 30, maxRows: 4, lightColor: 'blue' }).at(50, 60))
+            s.play(board.setCell('a', 'score', 8), board.remove('b'), board.light('c', 'score'), { duration: 1 })
+            const copy = board.clone()
+            expect(copy).toBeInstanceOf(Table)
+            expect([copy.ids, copy.value('a', 'score'), copy.stateOf('c', 'verdict'), copy.totalOf('score'), copy.lit]).toEqual([['a', 'c'], 8, 'pending', 10, { row: 'c', column: 'score' }])
+            expect([copy.get('x'), copy.get('y'), copy.mounted]).toEqual([50, 60, false])
+            expect(boxOf(copy).width).toBeCloseTo(boxOf(board).width, 6)
+            expect(copy.row('a')).not.toBe(board.row('a'))
+            // A change of the copy does not change the table.
+            s.add(copy)
+            s.play(copy.setCell('a', 'score', 1), copy.append(D), { duration: 1 })
+            expect([copy.value('a', 'score'), copy.ids]).toEqual([1, ['a', 'c', 'd']])
+            expect([board.value('a', 'score'), board.ids, board.totalOf('score')]).toEqual([8, ['a', 'c'], 10])
+        }))
+    })
+
+    it.each([true, false])('clones the current cell values before future updates, with totals: %s', async (withTotal) => {
+        let copy!: Board
+        const movie = await compile((s) => {
+            const board = s.add(table([{ key: 'n', total: withTotal ? 'sum' : undefined, marks: true, sample: 3 }], [{ id: 1, n: { value: 1, state: 'pending' } }]))
+            s.at(10, () => s.play(board.setCell(1, 'n', { value: 2, state: 'pass' }), { duration: 1 }))
+            copy = s.add(board.clone())
+            expect(copy.value(1, 'n')).toBe(1)
+            expect(copy.stateOf(1, 'n')).toBe('pending')
+            if (withTotal) expect(copy.totalOf('n')).toBe(1)
+            s.play(copy.setCell(1, 'n', { value: 3, state: 'fail' }), { duration: 1 })
+            expect(board.value(1, 'n')).toBe(2)
+        })
+        expect(said(copy.cell(1, 'n'), 0)).toEqual(['1'])
+        expect(said(copy.cell(1, 'n'), 1)).toEqual(['3'])
+        expect(marksOf(copy.cell(1, 'n'), 1).map(([shape]) => shape)).toEqual(['cross'])
+        if (withTotal) {
+            const total = (time: number) => at(time, () => copy.totals!.cells[0]!.all().filter((node) => node instanceof TextNode && shows(node) > 0.01).map(words))
+            expect(total(0)).toEqual(['1'])
+            expect(total(1)).toEqual(['3'])
+        }
+        expectPure(movie, [0, 0.25, 0.75, 1, 10.5, 11])
+    })
+
+    it.each([true, false])('clones row membership, order, and light before future changes, with totals: %s', async (withTotal) => {
+        await compile((s) => {
+            const board = s.add(table([{ key: 'n', total: withTotal ? 'sum' : undefined, sample: 10 }], [{ id: 'a', n: 1 }, { id: 'b', n: 2 }], { maxRows: 3 }))
+            s.play(board.light('a'), { duration: 0 })
+            s.at(10, () => {
+                s.play(board.append({ id: 'c', n: 3 }), { duration: 1 })
+                s.play(board.sort('n', { descending: true }), { duration: 1 })
+                s.play(board.remove('a'), board.light('c'), { duration: 1 })
+            })
+            const copy = s.add(board.clone())
+            expect(copy.ids).toEqual(['a', 'b'])
+            expect(copy.lit).toEqual({ row: 'a', column: null })
+            if (withTotal) expect(copy.totalOf('n')).toBe(3)
+            s.play(copy.append({ id: 'c', n: 4 }), copy.setCell('a', 'n', 5), { duration: 1 })
+            expect(copy.ids).toEqual(['a', 'b', 'c'])
+            expect(copy.value('a', 'n')).toBe(5)
+            if (withTotal) expect(copy.totalOf('n')).toBe(11)
+            expect(board.ids).toEqual(['c', 'b'])
+        })
+    })
+
+    it('takes the font of the film for its header and its texts, keeps numbers in mono, and takes a font of its own', async () => {
+        const fonts = (board: Board) => [board.headers[0]!, first(board.rows[0]!.cells[0]!), first(board.rows[0]!.cells[1]!), ...board.totals!.cells[2]!.all().filter((node) => node instanceof TextNode)].map((node) => (node as TextNode).font)
+        let inFilm!: string[], own!: string[], late!: string
+        await compileFilm(film({ font: 'text-serif' }, (s) => {
+            const board = s.add(table(COLS, ROWS, { maxRows: 4 }))
+            inFilm = fonts(board)
+            own = fonts(table(COLS, ROWS, { font: 'sans' }))
+            // A row that comes later, and a text that changes, have the font of the first rows.
+            s.play(board.append(D), board.setCell('a', 'case', 'renamed'), { duration: 1 })
+            late = [first(board.row('d').cells[0]!).font, (board.cell('a', 'case').words.children[1] as TextNode).font].join(' ')
+        }))
+        expect(inFilm).toEqual(['text-serif', 'text-serif', 'mono', 'text-serif'])
+        expect(own).toEqual(['sans', 'sans', 'mono', 'sans'])
+        expect(late).toBe('text-serif text-serif')
+        // The total row is a summary: a label in a column of code is a text of the film, and a number is in mono.
+        await compileFilm(film(() => {
+            const ledger = table([{ key: 'key', mono: true, total: () => 'all' }, { key: 'units', total: 'sum' }, { key: 'plain', mono: false, total: 'sum' }], [{ id: 1, key: 'op-17', units: 3, plain: 3 }])
+            const fontOf = (cell: TableCellNode) => (cell.all().find((node) => node instanceof TextNode) as TextNode).font
+            expect(ledger.rows[0]!.cells.map(fontOf)).toEqual(['mono', 'mono', 'sans'])
+            expect(ledger.totals!.cells.map(fontOf)).toEqual(['sans', 'mono', 'sans'])
+        }))
+    })
+
+    it('keeps text off text and lines off text through every change, also for the rule of crowded text at 0.3 and at 0.7', async () => {
+        const film_ = film({ fps: 15 }, (s) => {
+            const board = s.add(table([{ key: 'case' }, { key: 'score', marks: true, format: (value) => value.toFixed(2), total: 'sum' }, { key: 'verdict', align: 'center', marks: true, total: (rows) => `${rows.filter((row) => row.states['verdict'] === 'pass').length} of ${rows.length}` }, { key: 'note', marks: true }], [
+                { id: 'a', case: 'first page is due', score: 0.62, verdict: { value: 'pending', state: 'pending' }, note: 'kept' },
+                { id: 'b', case: 'page is overdue', score: 0.4, verdict: { value: 'pass', state: 'pass' }, note: { value: 'checked', state: 'pass' } },
+                { id: 'c', case: 'no P1 was declared', score: 0.93, verdict: { value: 'fail', state: 'fail' }, note: { value: 'held', state: 'warn' } },
+            ], { size: 30, maxRows: 5 }))
+            s.play(board.enter(), { duration: 1 })
+            s.play(board.light('a', 'verdict'), board.setCell('a', 'verdict', { value: 'fail', state: 'fail' }), board.setCell('a', 'score', { value: 0.71, state: 'pass' }), { duration: 0.8 })
+            s.play(board.light('c'), { duration: 0.8 })
+            s.play(board.append([{ id: 'd', case: 'second incident', score: 0.88, verdict: { state: 'skip' }, note: 'new' }, { id: 'e', case: 'time is missing', score: 0.05, verdict: { value: 'fail', state: 'fail' }, note: 'new' }]), { duration: 1.6 })
+            s.play(board.sort('score', { descending: true }), board.light(null, 'score'), { duration: 1.2 })
+            s.play(board.moveRow('e', 0), board.light('e'), { duration: 1 })
+            s.play(board.remove(['a', 'e']), { duration: 1 })
+            s.play(board.sort('case'), board.light(null), { duration: 1 })
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(film_, { motion: true, readingSpeed: 0, textGap })).diagnostics, `text gap ${textGap}`).toEqual([])
+        // At rest, with the lowest rows and the longest texts that fit, and with the most room that the rule asks for.
+        const tight = film({ fps: 12 }, (s) => {
+            const rows = [{ id: 'a', name: 'Agjpqy(|', value: { value: 12345, state: 'pass' }, verdict: { value: 'Agjpqy', state: 'fail' } }, { id: 'b', name: 'Agjpqy(|', value: { value: 67890, state: 'warn' }, verdict: { state: 'pending' } }]
+            const columns: TableColumn[] = [{ key: 'name', total: () => 'Agjpqy(|' }, { key: 'value', total: 'sum' }, { key: 'verdict', align: 'center' }]
+            const low = s.add(table(columns, rows, { size: 26, leading: 1.4 }).at(-400, 0))
+            const high = s.add(table(columns, rows, { size: 44 }).at(400, 0))
+            s.play(low.light('a'), high.light('b', 'value'), { duration: 0 })
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7, 3]) expect((await checkFilm(tight, { textGap })).diagnostics, `at rest, text gap ${textGap}`).toEqual([])
+    })
+})
 
 describe('number line', () => {
     type Line = ReturnType<typeof numberLine>
