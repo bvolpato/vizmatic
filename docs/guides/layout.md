@@ -32,6 +32,7 @@ A scene types no x and no y. It cuts its area into regions, lets a container mea
 | `segmentedBar(...).region({ part, label, from, to, at })` | The box of a piece of a `segmentedBar`: one part, the label of a part, a stretch of amounts, one amount. |
 | `table(...).region(row, column)` | The box of a table row, column, or cell in stage pixels. Use `null` for the row to select a column. With no arguments, it measures the room for `maxRows` rows. |
 | `tokens(...).region({ from, to, row })` | The box of a run of token cells, or of their values in one named row. Read it again after a change moves the tokens. |
+| `heatmap(...).region({ row: 1 })` | The box of a tensor slice on the stage. After moving the grid or rearranging its cells, read the box again before placing a note. |
 
 An item is a node, a block that a container returned, or a list of nodes that keep their places and move as one. A container skips an item that is `null` or `false`, so `tag && chip(tag)` is an item. Containers nest. A node is in a layout one time: a node that is two times in a container, or in it with a group that holds it, stops the build.
 

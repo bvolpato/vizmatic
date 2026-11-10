@@ -398,6 +398,25 @@ s.play(pages.change([3, 4, 5, 40], 'dirty'))
 const count = text(`${pages.count('dirty')} dirty pages`, { font: 'text-serif', size: 40 })
 ```
 
+Use `heatmap` for a tensor that changes in place. Give `size: 28` or larger for a 1080p lesson. Name the dimensions with `axes`, select a row or window with `light`, and use `setValue` to change the selected numbers. With `values: 'lit'`, only the highlighted cells show numbers.
+
+```ts
+const x = s.add(heatmap([[1, 2], [3, 4]], { size: 32, values: true, axes: ['words', 'features'], domain: [0, 5] }))
+s.play(x.light({ row: 1 }))
+s.play(x.setValue({ row: 1 }, [4, 5], { lag: 0.5 }))
+```
+
+For a convolution, `image.windows(3)` lists the windows of a 3-by-3 kernel. `image.cut(2, 2, { unroll: true })` lays each patch in its own row. For attention, use `attentionMatrix(queries, keys, weights, { mask: 'causal' })`. Hatching marks future keys. For a matrix product, show one dot product slowly, then fill the remaining cells.
+
+```ts
+const product = s.add(matrixProduct([[1, 2], [3, 4]], [[5], [6]]))
+s.play(product.pair(0, 0))
+s.play(product.addTerm())
+s.play(product.addTerm())
+s.play(product.store())
+s.play(product.complete())
+```
+
 The output of a real program: the command, the lines that it printed with their exact characters, and where and when it ran. Do not build it from a box and a `codeBlock` in each film. `find` selects one number by its exact text, to light it when the voice says it. Expand tabs to spaces, and leave lines out with a note line such as `{ text: '[...]', kind: 'note' }`. A terminal shows all its lines unless it starts with `shown: false` or with `enter()`. `print()` brings one block: the lines up to the next command, with the command itself when the film did not type it:
 
 ```ts

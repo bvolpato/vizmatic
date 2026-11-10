@@ -6,7 +6,7 @@ import {
     segmentedBar, spring,
     quote, quotePair, readingSeconds,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
-    heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
+    heatmap, matrixProduct, CELL_STATES, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
     steps,
     fadeOut, indicate,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
@@ -2660,6 +2660,1020 @@ describe('bar chart and histogram: states, a second series, cuts and a sort', ()
         expect(() => bins({ max: 5 }).outline([1, 1, 1, 1, 1])).not.toThrow()
         expect(() => chart.outline([1, Number.NaN])).toThrow('histogram: outline(): sample 1 is NaN. Each sample is a finite number')
         expect(() => chart.outline([1]).fillUp({ count: 2 })).toThrow('histogram: outline: fillUp() got the count 2. It is from 0 to 1, the number of samples')
+    })
+})
+
+describe('heatmap as a tensor grid', () => {
+    type Grid = ReturnType<typeof heatmap>
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const source = (node: Node | null | undefined) => (node as (Node & { source?: string }) | null | undefined)?.source
+    const sizeOf = (node: Node) => (node as Node & { size?: number }).size
+    const half = expect.closeTo(0.5, 6)
+    /** The sign of the state of a cell: the last node that the grid ties to the cell, after its numbers. */
+    const signOf = (grid: Grid, row: number, col: number) => { const parts = grid.labelsOf(grid.cell(row, col)); return parts[parts.length - 1]! }
+    const inkOf = (label: Node) => label.children[0]!.get('fill')
+
+    it('draws as it did before it had a size: cells of 44, labels of 16, and a number of any width', async () => {
+        await compileFilm(film(() => {
+            const plain = heatmap([[0.123456, 1]], { values: true, rowLabels: ['a'], format: (value) => value.toFixed(6) })
+            expect(plain.cell(0, 0).bounds().width).toBe(44)
+            expect(sizeOf(plain.rowLabels[0]!)).toBe(16)
+            // The number is wider than its cell, and the grid still draws: a film from before `size` keeps its frames.
+            expect(plain.numbers[0]![0]!.bounds().width).toBeGreaterThan(44)
+            expect(plain.frame).toBeNull()
+            expect(plain.caption).toBeNull()
+        }))
+    })
+
+    describe('heatmap regressions', () => {
+        it('keeps shipped updates as simultaneous fill tweens and preserves the printed nodes', async () => {
+            let printed!: Node
+            const f = await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { values: true }))
+                const original = [...grid.numbers[0]!]
+                printed = original[0]!
+                s.play(grid.update([[1, 0]], { lag: 1 }), { duration: 1, ease: linear })
+                const low = grid.colorFor(0), high = grid.colorFor(1)
+                expect(at(0.5, () => grid.row(0).map((cell) => cell.get('fill')))).toEqual([mixColor(low, high, 0.5), mixColor(high, low, 0.5)])
+                s.play(grid.update([[0.5]]), grid.update([[0.25]]))
+                expect(grid.numbers[0]![0]).toBe(original[0])
+                expect(grid.numbers[0]![1]).toBe(original[1])
+                expect(grid.numbers[0]!.map(source)).toEqual(['0', '1'])
+                expect(grid.values()).toEqual([[0.25, 0]])
+                s.play(spotlight(grid.cell(0, 0)))
+            })
+            expect(at(f.duration, () => printed.get('dim'))).toBeLessThan(1)
+        })
+
+        it('keeps the cells, their signs, and the axis parts inside a cloned group', async () => {
+            await compile((s) => {
+                const grid = heatmap([[0, 1]], { values: true, axes: ['r', 'c'], initial: 'masked' })
+                const holder = s.add(group(grid))
+                const duplicate = s.add(holder.clone().at(0, 200))
+                const copy = duplicate.children[0] as Grid
+                s.play(copy.setValue({ col: 0 }, 1, { state: 'open' }))
+                const again = s.add(duplicate.clone().at(0, -200)).children[0] as Grid
+                s.play(again.setValue({ col: 1 }, 0, { state: 'open' }))
+                expect(grid.value(0, 0)).toBe(0)
+                expect(grid.stateOf(0, 0)).toBe('masked')
+                expect(grid.numbers[0]![0]!.parent).toBe(grid)
+                expect(copy.cell(0, 0).parent).toBe(copy)
+                expect(copy.numbers[0]![0]!.parent).toBe(copy)
+                expect(copy.axis('r').parent).toBe(copy)
+                expect(shows(signOf(grid, 0, 0))).toBe(1)
+                expect(shows(signOf(copy, 0, 0))).toBe(0)
+                expect(again.values()).toEqual([[1, 0]])
+                expect(copy.values()).toEqual([[1, 1]])
+                expect(grid.values()).toEqual([[0, 1]])
+                expect(again.cell(0, 1).parent).toBe(again)
+                expect(again.axis('c').parent).toBe(again)
+                expect(again.numbers[0]![1]!.parent).toBe(again)
+                expect(shows(again.numbers[0]![1]!)).toBe(1)
+                expect(shows(copy.numbers[0]![1]!)).toBe(0)
+                expect(shows(signOf(copy, 0, 1))).toBe(1)
+                expect(shows(signOf(again, 0, 1))).toBe(0)
+            })
+        })
+
+        it('bounds rotated cells and every cell of an unrolled slice that crosses patches', async () => {
+            await compile((s) => {
+                const square = heatmap([[0]], { size: 28, cell: 100, radius: 0 })
+                s.add(group(square).set('rotation', Math.PI / 4))
+                expect(square.region().width).toBeCloseTo(square.cell(0, 0).bounds().width)
+                const grid = s.add(heatmap(Array.from({ length: 4 }, () => [0, 1, 2, 3]), { size: 28, cell: 60, gap: 4 }))
+                s.play(grid.cut(2, 2, { unroll: true, gap: 20 }))
+                expect(grid.region({ row: [0, 2] })).toEqual(boxOf(grid.cells.slice(0, 3).flat()))
+            })
+        })
+
+        it('rejects overlapping writes before changing any cell of the rejected operation', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { size: 28 }))
+                expect(() => s.play(lagged([grid.mark({ col: 1 }, 'masked'), grid.mark({}, 'future')], { lag: 0.2 }))).toThrow(/cell.*seq/)
+                expect(grid.stateOf(0, 0)).toBe('open')
+                expect(grid.stateOf(0, 1)).toBe('masked')
+                expect(grid.labelsOf(grid.cell(0, 0))).toHaveLength(0)
+            })
+        })
+
+        it('checks function values for every selected cell before painting the slice', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { size: 28, values: true }))
+                expect(() => s.play(grid.setValue({}, (_row, col) => col === 0 ? 1 : NaN))).toThrow(/NaN/)
+                expect(grid.values()).toEqual([[0, 1]])
+                expect(grid.numbers[0]!.map(source)).toEqual(['0', '1'])
+            })
+        })
+
+        it('protects lit numbers and moving cells from concurrent changes', async () => {
+            await compile((s) => {
+                const lit = s.add(heatmap([[0, 1]], { values: 'lit' }))
+                expect(() => s.play(lit.light({ col: 0 }), lit.setValue({ col: 0 }, 1))).toThrow(/cell.*seq/)
+                const grid = s.add(heatmap([[0, 1]], { size: 28, values: true }))
+                expect(() => s.play(grid.setValue({ col: 0 }, 1), grid.cut(1, 1))).toThrow(/cell.*seq/)
+                const lights = s.add(heatmap([[0, 1]], { size: 28 }))
+                expect(() => s.play(lights.light({ col: 0 }), lights.light({ col: 1 }))).toThrow(/light.*seq/)
+            })
+        })
+
+        it('resolves the size of a patch when its cut plays and refreshes names on join', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0], [1]], { size: 28, rowLabels: ['a', 'b'] }))
+                s.play(grid.light({ row: 0 }))
+                s.play(seq(grid.cut(2, 1, { unroll: true }), grid.setValue({ patch: 0 }, [1, 0]), grid.join()))
+                expect(grid.values()).toEqual([[1], [0]])
+                expect(grid.lit).toBeNull()
+                expect(grid.rowLabels.map(inkOf)).toEqual([parseColor('dim'), parseColor('dim')])
+            })
+        })
+
+        it('keeps identical formatted text readable when the cell changes shade', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 0, 0.4]], { size: 28, values: true, colors: ['#000', '#fff'], format: (v) => v.toFixed(0), initial: (_r, c) => c === 1 ? 'masked' : 'open' }))
+                s.play(grid.update([[0.4, 0.4]]))
+                expect(shows(grid.numbers[0]![1]!)).toBe(0)
+                s.play(grid.mark({ col: 1 }, 'open'))
+                const reference = grid.numbers[0]![2]!
+                for (const label of grid.numbers[0]!) {
+                    expect(source(label)).toBe('0')
+                    expect(shows(label)).toBe(1)
+                    expect(inkOf(label)).toEqual(inkOf(reference))
+                }
+            })
+        })
+
+        it('rejects missing row values and heights that overlap the names of adjacent rows', async () => {
+            await compile((s) => {
+                expect(() => heatmap([null] as never, { size: 28 })).toThrow(/heatmap:.*rows/)
+                expect(() => heatmap([Array<number>(2)], { size: 28 })).toThrow(/heatmap:.*cell \(0, 0\)/)
+                expect(() => heatmap([[0], [1]], { size: 28, cellHeight: 5, rowLabels: ['WWW', 'WWW'] })).toThrow(/heatmap:.*row.*cellHeight/)
+                s.wait(0.1)
+            })
+        })
+
+        it.each([
+            { domain: [NaN, 1] as const }, { domain: [2, 1] as const }, { colors: [] }, { colors: [[0, 0, Infinity, 1] as const] },
+        ])('rejects invalid sized color options %# before drawing', async (options) => {
+            await compile(() => {
+                expect(() => heatmap([[0, 1]], { size: 28, ...options })).toThrow(/heatmap:.*(?:domain|colors)/)
+            })
+        })
+
+        it('selects the existing cells of a ragged legacy chart and explains why it cannot be cut', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0], [1, 2]]))
+                expect(grid.find(() => true)).toEqual([[0, 0], [1, 0], [1, 1]])
+                expect(grid.region({ row: 0 }).width).toBe(44)
+                s.play(grid.mark({}, 'masked'))
+                expect(grid.count('masked')).toBe(3)
+                expect(() => grid.cut(1, 1)).toThrow(/heatmap:.*rectangular/)
+            })
+        })
+
+        it('rejects an invalid lag before writing any cells', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { size: 28 }))
+                expect(() => s.play(grid.setValue({}, [1, 0], { lag: Infinity }))).toThrow(/heatmap:.*lag.*finite/)
+                expect(grid.values()).toEqual([[0, 1]])
+            })
+        })
+    })
+
+    it('with a size, makes a cell wide enough for the widest number, on whole pixels, and prints every text at that size', async () => {
+        await compileFilm(film(() => {
+            const grid = heatmap([[0.25, -0.75], [1, 0]], { size: 30, values: true, rowLabels: ['cat', 'sat'], columnLabels: ['d0', 'd1'] })
+            const widest = Math.max(...grid.numbers.flat().map((number) => number.bounds().width))
+            // The widest number has 0.45 of the text size at each side.
+            expect(grid.cell(0, 0).bounds().width).toBe(Math.ceil(widest + 27))
+            expect(grid.cell(0, 0).bounds().height).toBe(grid.cell(0, 0).bounds().width)
+            expect([...grid.numbers.flat(), ...grid.rowLabels, ...grid.columnLabels].map(sizeOf)).toEqual(Array.from({ length: 8 }, () => 30))
+            for (const cell of grid.cells.flat()) {
+                const box = cell.bounds()
+                expect([box.x, box.y]).toEqual([Math.round(box.x), Math.round(box.y)])
+            }
+            // Three cells of 75 with two gaps of 4 are 233 wide. The edges are on whole pixels, and the middle is half a pixel off.
+            const odd = heatmap([[1, 2, 3]], { size: 28, cell: 75, gap: 4 })
+            expect(odd.cells[0]!.map((cell) => cell.bounds().x)).toEqual([-116, -37, 42])
+            expect(odd.cell(0, 0).bounds().y).toBe(-37)
+            // An option of a tensor with no size gives text of 28. A cell with a short number has the room of four
+            // characters, so that a number such as 0.25 can take the place of a 1. A grid with no number has 2.6 of the size.
+            const named = heatmap([[1, 2]], { values: true, name: 'x', domain: [0, 2] })
+            expect([sizeOf(named.numbers[0]![0]!), sizeOf(named.caption!)]).toEqual([28, 28])
+            const four = text('0.00', { size: 28, font: 'mono' }).bounds().width
+            expect(named.cell(0, 0).bounds().width).toBe(Math.ceil(four + 25.2))
+            expect(named.setValue({ row: 0, col: 0 }, 0.25, { state: 'open' }).label).toBe('heatmap.setValue')
+            expect(heatmap([[1, 2]], { size: 28 }).cell(0, 0).bounds().width).toBe(73)
+        }))
+    })
+
+    it('gives the middle of a cell, the middle of an edge, and the box of a slice on the stage', async () => {
+        await compileFilm(film(() => {
+            const grid = heatmap([[1, 2, 3], [4, 5, 6]], { size: 28, cell: 100, gap: 4 }).at(200, 50)
+            expect(grid.p(0, 0)).toEqual([-104, -52])
+            expect(grid.p(1, 2)).toEqual([104, 52])
+            expect(grid.p(1, 2, 'top')).toEqual([104, 2])
+            expect(grid.p(1, 2, 'right')).toEqual([154, 52])
+            grid.cells.forEach((row, i) => row.forEach((cell, j) => expect([cell.get('x'), cell.get('y')]).toEqual(grid.p(i, j))))
+            const whole = grid.region(), row = grid.region({ row: 1 }), block = grid.region({ row: 0, col: [1, 2] })
+            expect([whole.left, whole.top, whole.right, whole.bottom]).toEqual([46, -52, 354, 152])
+            expect([row.left, row.top, row.right, row.bottom]).toEqual([46, 52, 354, 152])
+            expect([block.left, block.top, block.right, block.bottom]).toEqual([150, -52, 354, 48])
+            expect(grid.values({ row: 1, col: [0, 1] })).toEqual([[4, 5]])
+            expect(() => grid.p(2, 0)).toThrow(/no cell \(2, 0\)\. It is 2 by 3/)
+            expect(() => grid.p(0, 0, 'middle' as never)).toThrow(/the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/)
+            expect(() => grid.region({ row: 5 })).toThrow(/the row of a slice is 5\. Give one row, or the first and the last one, from 0 to 1/)
+            expect(() => grid.region({ rows: 1 } as never)).toThrow(/a slice has no part "rows"\. Its parts are: row, col, patch/)
+            expect(() => grid.region({ row: [1, 0] })).toThrow(/the row of a slice is \[1, 0\]/)
+        }))
+    })
+
+    it('stops for a text that does not fit and for values that are not a grid, and names the change that works', async () => {
+        await compileFilm(film(() => {
+            expect(() => heatmap([[0.123, 0.5]], { size: 30, values: true, cell: 40, format: (value) => value.toFixed(3) })).toThrow(/a cell is 40 px wide, and the widest number needs \d+ at size 30\. Give a cell of \d+ or more, a smaller size, or a format with fewer digits/)
+            expect(() => heatmap([[1, 2]], { size: 30, columnLabels: ['a very long name', 'b'] })).toThrow(/the column label "a very long name" is \d+ px wide at size 30, and a column is 82 px wide\. Give a cell of \d+ or more, a shorter label, a smaller labelSize, or columnLabelAngle/)
+            // Tilted, the same label fits.
+            expect(heatmap([[1, 2]], { size: 30, columnLabels: ['a very long name', 'b'], columnLabelAngle: -Math.PI / 4 }).columnLabels).toHaveLength(2)
+            let message = ''
+            try {
+                heatmap([[0.25, 0.5, 0.75]], { width: 120, values: true })
+            } catch (error) {
+                message = (error as Error).message
+            }
+            expect(message).toMatch(/a width of 120 gives each of the 3 columns 38 px, and the widest number needs \d+\. Give a width of \d+ or more, a smaller size, or a format with fewer digits/)
+            // The width of the message is enough, and the cells share it.
+            const enough = Number(/Give a width of (\d+)/.exec(message)![1])
+            const fits = heatmap([[0.25, 0.5, 0.75]], { width: enough, values: true })
+            expect(fits.region().width).toBeCloseTo(enough, 6)
+            expect(() => heatmap([[1, 2], [3]], { size: 28 })).toThrow(/row 1 has 1 values, and row 0 has 2\. Give every row the same number of values/)
+            expect(() => heatmap([[1, Number.NaN]], { size: 28 })).toThrow(/the value of cell \(0, 1\) is NaN\. A value is a number\. For a cell with no value yet, give a number and the state 'empty'/)
+            expect(() => heatmap([[1, 2]], { size: 28, rowLabels: ['a', 'b'] })).toThrow(/rowLabels has 2 names, and the grid has 1 rows/)
+            expect(() => heatmap([[1, 2]], { width: 300, cell: 60 })).toThrow(/width sets the width of a cell, and so does cell\. Give one of them/)
+            expect(() => heatmap([[1, 2]], { axes: ['batch', 'seq', 'd'] })).toThrow(/axes has 3 names, and a grid has 2 axes\. Give `depth` for the size of "batch"/)
+            expect(() => heatmap([[1, 2]], { axes: ['seq'] })).toThrow(/axes has 1 name, and the grid has 2 axes: its rows and its columns/)
+            expect(() => heatmap([[1, 2]], { initial: 'gone' })).toThrow(/initial gives cell \(0, 0\) the state "gone"\. The states are open, empty, masked, future, padding/)
+            expect(() => heatmap([[1, 2]], { states: { open: { mark: 'cross' } } })).toThrow(/states names the state 'open'\. Every grid has it/)
+            expect(() => heatmap([[1, 2]], { states: { odd: { mark: 'star' as never } } })).toThrow(/the mark of the state "odd" is "star"\. A mark is 'none', 'cross', 'hatch' or 'dash'/)
+            expect(() => heatmap([[1, 2]], { shown: { columns: 3 } })).toThrow(/shown\.columns is 3\. Give a whole number from 1 to 2/)
+        }))
+    })
+
+    it('update gives every cell its new shade and prints its new number, with one number in a cell at the end', async () => {
+        let grid!: Grid
+        const f = await compile((s) => {
+            grid = s.add(heatmap([[0, 1], [2, 3]], { size: 28, values: true }))
+            s.play(grid.update([[3, 2], [1, 0]]), { duration: 1 })
+        })
+        expect(grid.numbers.flat().map(source)).toEqual(['3', '2', '1', '0'])
+        expect(grid.values()).toEqual([[3, 2], [1, 0]])
+        expect(at(f.duration, () => grid.cells.flat().map((cell) => cell.get('fill')))).toEqual([3, 2, 1, 0].map((value) => grid.colorFor(value)))
+        // Each cell shows its new number, and the old one is gone.
+        const seen = at(f.duration, () => grid.children.filter((child) => source(child) !== undefined && shows(child) > 0).map(source))
+        expect(seen).toEqual(['3', '2', '1', '0'])
+    })
+
+    it('changes a number in place: the old one leaves, then the new one comes at the same place, and the shade follows', async () => {
+        let grid!: Grid, old!: Node
+        await compile((s) => {
+            grid = s.add(heatmap([[0.2, 0.8]], { size: 28, values: true, domain: [0, 1] }))
+            old = grid.numbers[0]![0]!
+            s.wait(1)
+            s.play(grid.setValue({ row: 0, col: 0 }, 0.9), { duration: 1, ease: linear })
+            s.wait(0.5)
+        })
+        const next = grid.numbers[0]![0]!
+        expect(next).not.toBe(old)
+        expect([source(old), source(next)]).toEqual(['0.2', '0.9'])
+        expect([next.get('x'), next.get('y')]).toEqual([old.get('x'), old.get('y')])
+        // No moment shows two numbers: the old one is gone at the half, and the new one starts there.
+        expect(at(1.25, () => [shows(old), shows(next)])).toEqual([half, 0])
+        expect(at(1.5, () => [shows(old), shows(next)])).toEqual([0, 0])
+        expect(at(1.75, () => [shows(old), shows(next)])).toEqual([0, half])
+        expect(at(2, () => [shows(old), shows(next)])).toEqual([0, 1])
+        expect(at(1, () => grid.cell(0, 0).get('fill'))).toEqual(grid.colorFor(0.2))
+        expect(at(2, () => grid.cell(0, 0).get('fill'))).toEqual(grid.colorFor(0.9))
+        expect([grid.value(0, 0), grid.value(0, 1)]).toEqual([0.9, 0.8])
+    })
+
+    it('sweeps a slice with a lag, one cell after the other, and takes its values as a list, a block, one number or a function', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(heatmap([[1, 2, 3], [4, 5, 6]], { size: 28, values: true, domain: [0, 20] }))
+            // With a lag of 1, each of the three cells has one second.
+            s.play(grid.setValue({ row: 0 }, [7, 8, 9], { lag: 1 }), { duration: 3, ease: linear })
+            expect(grid.values()).toEqual([[7, 8, 9], [4, 5, 6]])
+            s.play(grid.setValue({ row: [0, 1], col: [0, 1] }, [[10, 11], [12, 13]]), grid.setValue({ col: 2 }, 0), { duration: 1 })
+            expect(grid.values()).toEqual([[10, 11, 0], [12, 13, 0]])
+            s.play(grid.setValue((row) => row === 1, (_row, _col, value) => value + 1), { duration: 1 })
+            expect(grid.values()).toEqual([[10, 11, 0], [13, 14, 1]])
+            expect(() => grid.setValue({ row: 0 }, [1, 2])).toThrow(/setValue got 2 values for 3 cells\. Give one number for each cell of the slice, row by row, or one number for all of them/)
+            expect(() => grid.setValue({ row: 0 }, 'high' as never)).toThrow(/the values of setValue are "high"\. Give one number, a list of numbers, or a function/)
+            expect(() => grid.setValue({ row: 0 }, [1, Number.NaN, 2])).toThrow(/setValue got the value NaN\. A value is a number/)
+        })
+        const first = grid.children.filter((child) => ['7', '8', '9'].includes(source(child) ?? ''))
+        expect(first.map(source)).toEqual(['7', '8', '9'])
+        expect(at(1, () => first.map(shows))).toEqual([1, 0, 0])
+        expect(at(2, () => first.map(shows))).toEqual([1, 1, 0])
+        expect(at(3, () => first.map(shows))).toEqual([1, 1, 1])
+    })
+
+    it('stops for a value outside the range of its first values, and for a number that its cell cannot hold', async () => {
+        await compileFilm(film(() => {
+            const grid = heatmap([[0, 1]], { size: 28, values: true })
+            expect(() => grid.setValue({ row: 0, col: 0 }, 5)).toThrow(/setValue got the value 5, outside the range of the colors, 0 to 1, which comes from the first values\. Give the grid a `domain` that holds every value of the film, such as domain: \[0, 5\]/)
+            expect(() => grid.update([[0.5, -2]])).toThrow(/update got the value -2 for cell \(0, 1\), outside the range of the colors, 0 to 1.*domain: \[-2, 1\]/)
+            // A range that the film gave is its choice: a value outside it takes the color of the nearest end.
+            const ranged = heatmap([[0, 1]], { size: 28, values: true, domain: [0, 1] })
+            expect(ranged.setValue({ row: 0, col: 0 }, 5).label).toBe('heatmap.setValue')
+            expect(() => ranged.setValue({ row: 0, col: 0 }, 123456)).toThrow(/setValue got the value 123456, and its text "123456" needs \d+ px in a cell of \d+\. Give a cell of \d+ or more, a smaller size, or a format with fewer digits/)
+        }))
+    })
+
+    it('stops for two changes of one number at one time, and takes them in a seq', async () => {
+        await expect(compile((s) => {
+            const grid = s.add(heatmap([[0, 1]], { size: 28, values: true }))
+            s.play(grid.setValue({ row: 0, col: 0 }, 1), grid.setValue({ row: 0, col: 0 }, 0.5), { duration: 1 })
+        })).rejects.toThrow(/setValue changes the number of cell \(0, 0\) from 0 s to 1 s, and the change before it ends at 1 s\. A cell changes its number one change at a time\. Play the two in a `seq`, or give one change the last value/)
+        let grid!: Grid
+        const f = await compile((s) => {
+            grid = s.add(heatmap([[0, 1]], { size: 28, values: true }))
+            // Two cells change together, and one cell changes two times in a row.
+            s.play(grid.setValue({ row: 0, col: 0 }, 1), grid.setValue({ row: 0, col: 1 }, 0), { duration: 1 })
+            s.play(seq(grid.setValue({ row: 0, col: 0 }, 0.5), grid.setValue({ row: 0, col: 0 }, 0.25)), { duration: 1 })
+        })
+        expect(grid.values()).toEqual([[0.25, 0]])
+        expect(at(f.duration, () => grid.children.filter((child) => shows(child) > 0 && source(child) !== undefined).map(source))).toEqual(['0', '0.25'])
+    })
+
+    it('covers a cell with the sign of its state, hides its number under the sign, and brings both back with open', async () => {
+        let grid!: Grid, surface!: Rgba
+        await compile((s) => {
+            surface = parseColor('surface')
+            grid = s.add(heatmap([[0.2, 0.8], [0.5, 0.1]], { size: 28, values: true }))
+            expect(grid.count('open')).toBe(4)
+            s.wait(1)
+            s.play(grid.mark({ col: 1 }, 'future'), { duration: 1, ease: linear })
+            expect([grid.stateOf(0, 1), grid.stateOf(1, 1), grid.stateOf(0, 0)]).toEqual(['future', 'future', 'open'])
+            expect([grid.count('future'), grid.count('open')]).toEqual([2, 2])
+            expect(grid.find((_row, _col, _value, state) => state === 'future')).toEqual([[0, 1], [1, 1]])
+            s.wait(0.5)
+            s.play(grid.mark({ row: 0, col: 1 }, 'open'), { duration: 1, ease: linear })
+            expect([grid.stateOf(0, 1), grid.count('future')]).toEqual(['open', 1])
+            s.wait(0.5)
+        })
+        const number = grid.numbers[1]![1]!, sign = signOf(grid, 1, 1)
+        expect(sign).not.toBe(number)
+        // The number leaves in the first half of the time, and the sign comes in the second, so the sign is never over a number.
+        expect(at(1.25, () => [shows(number), shows(sign)])).toEqual([half, 0])
+        expect(at(1.75, () => [shows(number), shows(sign)])).toEqual([0, half])
+        expect(at(2, () => [shows(number), shows(sign)])).toEqual([0, 1])
+        expect(at(2, () => [grid.cell(1, 1).get('fill'), grid.cell(1, 1).get('fillOpacity')])).toEqual([surface, 0.4])
+        // The value stays under the sign, and the cell that opens again shows it with its shade.
+        expect(grid.value(0, 1)).toBe(0.8)
+        const back = grid.numbers[0]![1]!, gone = signOf(grid, 0, 1)
+        expect(at(2.75, () => [shows(back), shows(gone)])).toEqual([0, half])
+        expect(at(3.25, () => [shows(back), shows(gone)])).toEqual([half, 0])
+        expect(at(3.5, () => [shows(back), shows(gone), grid.cell(0, 1).get('fill'), grid.cell(0, 1).get('fillOpacity')])).toEqual([1, 0, grid.colorFor(0.8), 1])
+    })
+
+    it('picks the cells of a change when it plays, has a sign for each state, and takes the states of the film', async () => {
+        await compile((s) => {
+            const grid = s.add(heatmap([[1, 2, 3], [4, 5, 6], [7, 8, 9]], { size: 28, values: true }))
+            // The second change finds the cells that the first one covered.
+            s.play(seq(grid.mark((row, col) => col > row, 'future'), grid.mark((_row, _col, _value, state) => state === 'future', 'padding')))
+            expect([grid.count('future'), grid.count('padding'), grid.count('open')]).toEqual([0, 3, 6])
+            expect(() => grid.mark({ row: 0 }, 'gone')).toThrow(/no state "gone"\. The states are open, empty, masked, future, padding/)
+            // A cell that has the state already does not change and takes no time: the two other cells of the row share the two seconds.
+            const started = s.time
+            s.play(grid.mark({ row: 1 }, 'padding', { lag: 1 }), { duration: 2, ease: linear })
+            const last = grid.labelsOf(grid.cell(1, 1)).at(-1)!
+            expect(at(started + 1.75, () => last.get('opacity'))).toBeCloseTo(0.5, 6)
+            expect(() => grid.count('gone')).toThrow(/no state "gone"/)
+            expect(Object.keys(CELL_STATES)).toEqual(['empty', 'masked', 'future', 'padding'])
+            // The four signs differ in shape: an outline, a cross, lines, and dashes.
+            const signs = heatmap([[1, 2, 3, 4]], { size: 28, initial: (_row, col) => Object.keys(CELL_STATES)[col]! })
+            const rings = [0, 1, 2, 3].map((col) => signOf(signs, 0, col).get('path')!.length)
+            expect(rings[0]).toBe(1)
+            expect(rings[1]).toBe(3)
+            expect(rings[2]).toBeGreaterThan(3)
+            expect(rings[3]).toBeGreaterThan(8)
+            expect(new Set(rings).size).toBe(4)
+            const own = heatmap([[1, 2]], { values: true, states: { ignored: { mark: 'cross', color: 'red' } }, initial: (_row, col) => (col === 0 ? 'ignored' : 'open') })
+            expect([own.stateOf(0, 0), own.count('ignored')]).toEqual(['ignored', 1])
+            expect(signOf(own, 0, 0).get('stroke')).toEqual(parseColor('red'))
+            expect(() => own.mark({ col: 1 }, 'future')).toThrow(/no state "future"\. The states are open, ignored/)
+        })
+    })
+
+    it('fills an empty cell: one change writes its value and opens it', async () => {
+        let map!: Grid
+        await compile((s) => {
+            map = s.add(heatmap([[0, 0], [0, 0]], { size: 28, values: true, initial: 'empty', domain: [0, 9] }))
+            expect([map.count('empty'), map.count('open')]).toEqual([4, 0])
+            s.wait(1)
+            s.play(map.setValue({ row: 0, col: 1 }, 7, { state: 'open' }), { duration: 1, ease: linear })
+            expect([map.stateOf(0, 1), map.value(0, 1), map.count('empty')]).toEqual(['open', 7, 3])
+            expect(() => map.setValue({ row: 0, col: 0 }, 1, { state: 'gone' })).toThrow(/no state "gone"/)
+        })
+        const number = map.numbers[0]![1]!, sign = signOf(map, 0, 1)
+        expect(source(number)).toBe('7')
+        // The outline of the empty cell leaves first, and then the number comes.
+        expect([1, 1.25, 1.5, 1.75, 2].map((time) => at(time, () => [shows(sign), shows(number)]))).toEqual([[1, 0], [half, 0], [0, 0], [0, half], [0, 1]])
+        expect(at(2, () => [map.cell(0, 1).get('fill'), map.cell(0, 1).get('fillOpacity')])).toEqual([map.colorFor(7), 1])
+        expect(at(2, () => shows(map.numbers[0]![0]!))).toBe(0)
+    })
+
+    it('enters with the sign of each covered cell, and keeps a covered number and an unlit number hidden', async () => {
+        let grid!: Grid, lit!: Grid
+        await compile((s) => {
+            grid = heatmap([[1, 2], [3, 4]], { size: 28, values: true, axes: ['seq', 'd'], initial: (row, col) => (row === 0 && col === 1 ? 'future' : 'open') })
+            lit = heatmap([[1, 2]], { size: 28, values: 'lit' }).at(0, 300)
+            s.play(grid.enter(), lit.enter(), { duration: 1, ease: linear })
+        })
+        expect(at(0.01, () => [grid.cell(0, 0), grid.numbers[0]![0]!, signOf(grid, 0, 1), grid.caption!, grid.axis('seq')].map(shows))).toEqual([expect.closeTo(0.02, 6), expect.closeTo(0.02, 6), 0, expect.closeTo(0.025, 6), expect.closeTo(0.025, 6)])
+        expect(at(1, () => [grid.cell(0, 1), signOf(grid, 0, 1), grid.numbers[0]![1]!, grid.numbers[1]![1]!, grid.caption!, grid.axis('seq')].map(shows))).toEqual([1, 1, 0, 1, 1, 1])
+        expect(at(1, () => [...lit.cells[0]!, ...lit.numbers[0]!].map(shows))).toEqual([1, 1, 0, 0])
+    })
+
+    it('ties the number and the sign of a cell to the cell, so a light on the cell keeps them bright', async () => {
+        let grid!: Grid
+        const f = await compile((s) => {
+            grid = s.add(heatmap([[1, 2]], { size: 28, values: true, domain: [0, 9] }))
+            s.play(grid.setValue({ row: 0, col: 0 }, 5), { duration: 0.5 })
+            s.play(spotlight(grid.cell(0, 0)), { duration: 0.5 })
+        })
+        expect(grid.labelsOf(grid.cell(0, 0)).map(source)).toEqual(['1', '5'])
+        expect(grid.labelsOf(grid.numbers[0]![0]!)).toEqual([])
+        expect(at(f.duration, () => [grid.numbers[0]![0]!.get('dim'), grid.cell(0, 0).get('dim')])).toEqual([1, 1])
+        expect(at(f.duration, () => grid.numbers[0]![1]!.get('dim'))).toBeLessThan(1)
+    })
+
+    it('prints a number dark on a light cell and light on a dark one, with a contrast of 4 or more', async () => {
+        await compileFilm(film(() => {
+            const light = (color: Rgba) => { const channel = (value: number) => { const x = value / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4 }; return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2]) }
+            const grid = heatmap([Array.from({ length: 41 }, (_, index) => index)], { size: 28, values: true, cell: 60 })
+            const ratios = grid.numbers[0]!.map((number, col) => {
+                const ink = light(number.children[0]!.get('fill') as Rgba), cell = light(grid.cell(0, col).get('fill') as Rgba)
+                return (Math.max(ink, cell) + 0.05) / (Math.min(ink, cell) + 0.05)
+            })
+            expect(Math.min(...ratios)).toBeGreaterThan(4)
+        }))
+    })
+
+    it('puts one outline around a slice, slides it to the next slice, and makes the names of the slice bright', async () => {
+        let grid!: Grid, ink!: Rgba, dim!: Rgba
+        const lit: unknown[] = []
+        await compile((s) => {
+            ink = parseColor('ink')
+            dim = parseColor('dim')
+            grid = s.add(heatmap([[1, 2, 3], [4, 5, 6], [7, 8, 9]], { size: 28, cell: 100, gap: 4, rowLabels: ['a', 'b', 'c'], columnLabels: ['x', 'y', 'z'] }))
+            lit.push(grid.lit)
+            s.wait(1)
+            s.play(grid.light({ row: 0 }), { duration: 1, ease: linear })
+            lit.push(grid.lit)
+            s.play(grid.light({ row: 2, col: [1, 2] }), { duration: 1, ease: linear })
+            lit.push(grid.lit)
+            s.play(grid.light(null), { duration: 1, ease: linear })
+            lit.push(grid.lit)
+        })
+        expect(lit).toEqual([null, { row: [0, 0], col: [0, 2] }, { row: [2, 2], col: [1, 2] }, null])
+        const frame = grid.frame!
+        const box = (time: number) => at(time, () => pathBounds(frame.get('path')!)!)
+        // The outline is in the room around its cells: two pixels of the gap, and half of its line.
+        expect([box(2).x, box(2).y, box(2).width, box(2).height]).toEqual([-158, -158, 316, 108])
+        expect(at(1.5, () => frame.get('opacity'))).toBeCloseTo(0.5, 6)
+        // It slides: at the half of the move, it is half way.
+        expect([box(2.5).x, box(2.5).y, box(2.5).width]).toEqual([-106, -54, 264])
+        expect([box(3).x, box(3).y, box(3).width, box(3).height]).toEqual([-54, 50, 212, 108])
+        expect(at(4, () => frame.get('opacity'))).toBe(0)
+        // A slice that takes every column names no column.
+        expect(at(2, () => [...grid.rowLabels, ...grid.columnLabels].map(inkOf))).toEqual([ink, dim, dim, dim, dim, dim])
+        expect(at(3, () => [...grid.rowLabels, ...grid.columnLabels].map(inkOf))).toEqual([dim, dim, ink, dim, ink, ink])
+        expect(at(4, () => [...grid.rowLabels, ...grid.columnLabels].map(inkOf))).toEqual([dim, dim, dim, dim, dim, dim])
+    })
+
+    it('does not slide the outline over numbers: in a grid that prints them, it leaves one slice and comes in at the next', async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(heatmap([[1, 2], [3, 4], [5, 6]], { size: 28, cell: 100, gap: 4, values: true }))
+            s.play(grid.light({ row: 0 }), { duration: 1, ease: linear })
+            s.play(grid.light({ row: 2 }), { duration: 1, ease: linear })
+        })
+        const frame = grid.frame!
+        const top = (time: number) => at(time, () => pathBounds(frame.get('path')!)!.y)
+        expect([top(1), top(1.25), top(1.75), top(2)]).toEqual([-158, -158, 50, 50])
+        expect([1, 1.25, 1.5, 1.75, 2].map((time) => at(time, () => frame.get('opacity')))).toEqual([1, half, 0, half, 1])
+    })
+
+    it("with values: 'lit', prints the numbers of the lit slice only, and none under the outline while it moves", async () => {
+        let grid!: Grid
+        await compile((s) => {
+            grid = s.add(heatmap([[1, 2, 3, 4]], { size: 28, values: 'lit' }))
+            s.wait(1)
+            s.play(grid.light({ col: [0, 1] }), { duration: 1, ease: linear })
+            s.play(grid.light({ col: [2, 3] }), { duration: 1, ease: linear })
+        })
+        const seen = (time: number) => at(time, () => grid.numbers[0]!.map(shows))
+        expect(seen(0.5)).toEqual([0, 0, 0, 0])
+        expect(seen(2)).toEqual([1, 1, 0, 0])
+        // The numbers that leave are gone before the half of the move, and the ones that come start after it.
+        expect(seen(2.2)).toEqual([half, half, 0, 0])
+        expect(seen(2.5)).toEqual([0, 0, 0, 0])
+        expect(seen(2.8)).toEqual([0, 0, half, half])
+        expect(seen(3)).toEqual([0, 0, 1, 1])
+    })
+
+    it('draws a brace with the name and the size of each axis, sheets for the third axis, and the shape', async () => {
+        await compileFilm(film(() => {
+            const x = heatmap([[1, 2, 3], [4, 5, 6]], { values: true, axes: ['batch', 'seq', 'd'], depth: 3, name: 'x' })
+            expect(x.shape).toEqual([3, 2, 3])
+            expect(source(x.caption)).toBe('x [3, 2, 3]')
+            expect(['batch', 'seq', 'd'].map((name) => source(x.axis(name).children[1]))).toEqual(['batch = 3', 'seq = 2', 'd = 3'])
+            // The brace of the rows is at the right of the cells and of the sheets, and the brace of the columns is under them.
+            const cells = x.region()
+            expect(x.slabs).toHaveLength(2)
+            const sheets = Math.max(...x.slabs.map((slab) => slab.bounds().x + slab.bounds().width))
+            expect(sheets).toBeGreaterThan(cells.right)
+            expect(x.axis('seq').children[0]!.bounds().x).toBeGreaterThan(sheets)
+            expect(x.axis('d').children[0]!.bounds().y).toBeGreaterThan(Math.max(...x.slabs.map((slab) => slab.bounds().y + slab.bounds().height)))
+            expect(x.caption!.bounds().y).toBeGreaterThan(x.axis('d').bounds().y + x.axis('d').bounds().height)
+            // A deep tensor draws four sheets at the most, and its label gives the true size.
+            const deep = heatmap([[1, 2]], { axes: ['batch', 'seq', 'd'], depth: 32 })
+            expect(deep.slabs).toHaveLength(3)
+            expect([source(deep.axis('batch').children[1]), source(deep.caption), deep.shape]).toEqual(['batch = 32', '[32, 1, 2]', [32, 1, 2]])
+            // A name alone gives the shape and no brace.
+            const named = heatmap([[1, 2]], { name: 'W' })
+            expect(source(named.caption)).toBe('W [1, 2]')
+            expect(() => named.axis('seq')).toThrow(/no axis "seq"\. The grid has no `axes`/)
+            expect(() => x.axis('time')).toThrow(/no axis "time"\. The axes are "batch", "seq", "d"/)
+        }))
+    })
+
+    it('keeps the room of every row and column from the start, and grow() shows the next ones with their names and the new shape', async () => {
+        let grid!: Grid, room!: ReturnType<typeof boxOf>
+        const shapes: number[][] = []
+        const f = await compile((s) => {
+            grid = s.add(heatmap([[1, 0, 0], [0.4, 0.6, 0], [0.2, 0.3, 0.5]], {
+                size: 28, values: true, rowLabels: ['a', 'b', 'c'], columnLabels: ['a', 'b', 'c'], axes: ['queries', 'keys'], shown: { rows: 2, columns: 2 },
+            }))
+            // The layout measures the grid here, before it grows.
+            room = boxOf(grid)
+            shapes.push(grid.shape)
+            expect([grid.shownRows, grid.shownCols, grid.count('open')]).toEqual([2, 2, 4])
+            // A change is for the cells that wait too: the column of a padding token is padding in the row that comes later.
+            s.play(grid.mark({ col: 0 }, 'padding'), grid.setValue({ row: 2, col: 1 }, 0.9), { duration: 0.5 })
+            expect([grid.stateOf(2, 0), grid.value(2, 1), grid.count('padding')]).toEqual(['padding', 0.9, 2])
+            s.wait(0.5)
+            s.play(grid.grow({ rows: 1, columns: 1 }), { duration: 1 })
+            shapes.push(grid.shape)
+            expect([grid.shownRows, grid.shownCols, grid.count('open'), grid.count('padding')]).toEqual([3, 3, 6, 3])
+            expect(() => grid.grow({})).toThrow(/grow adds no row and no column\. Give a count, such as \{ columns: 1 \}/)
+            expect(() => grid.grow({ rows: 0.5 })).toThrow(/grow adds 0\.5 rows\. Give a whole number, 0 or more/)
+        })
+        expect(shapes).toEqual([[2, 2], [3, 3]])
+        // The cells that wait do not show, with what a change gave them, and the layout measures the grid with them and with its last braces.
+        expect(at(0.75, () => [grid.cell(2, 2), grid.numbers[2]![2]!, grid.rowLabels[2]!, grid.columnLabels[2]!, grid.numbers[2]![1]!, signOf(grid, 2, 0)].map(shows))).toEqual([0, 0, 0, 0, 0, 0])
+        expect(at(f.duration, () => [source(grid.numbers[2]![1]), shows(grid.numbers[2]![1]!), shows(signOf(grid, 2, 0)), shows(grid.numbers[2]![0]!)])).toEqual(['0.9', 1, 1, 0])
+        const after = at(f.duration, () => grid.bounds())
+        expect([room.left, room.top, room.right, room.bottom].map(Math.round)).toEqual([after.x, after.y, after.x + after.width, after.y + after.height].map(Math.round))
+        expect(at(0.5, () => grid.bounds().width)).toBeLessThan(room.width - 60)
+        expect(at(f.duration, () => [grid.cell(2, 2), grid.numbers[2]![2]!, grid.rowLabels[2]!, grid.columnLabels[2]!].map(shows))).toEqual([1, 1, 1, 1])
+        expect([source(grid.axis('queries').children.at(-1)), source(grid.axis('keys').children.at(-1)), source(grid.caption)]).toEqual(['queries = 3', 'keys = 3', '[3, 3]'])
+        // One label of each brace shows at the end, and the brace of the rows is at the right of the new column.
+        expect(at(f.duration, () => grid.axis('queries').children.slice(1).map(shows))).toEqual([0, 1])
+        expect(at(f.duration, () => grid.axis('queries').children[0]!.bounds().x)).toBeGreaterThan(grid.p(0, 2, 'right')[0])
+        expect(at(0.5, () => grid.axis('queries').children[0]!.bounds().x)).toBeLessThan(grid.p(0, 2)[0])
+        await expect(compile((s) => {
+            const full = s.add(heatmap([[1, 2]], { size: 28, shown: { columns: 1 } }))
+            s.play(seq(full.grow({ columns: 1 }), full.grow({ columns: 1 })))
+        })).rejects.toThrow(/grow would show 1 rows and 3 columns, and the grid has 1 by 2\. Make the grid with every row and column that it will have, and give `shown`/)
+        await expect(compile((s) => {
+            const full = s.add(heatmap([[1, 2]], { size: 28, shown: { columns: 1 } }))
+            s.play(full.light({ col: 1 }))
+        })).rejects.toThrow(/light names a cell that does not show yet: the grid shows 1 rows and 1 columns of its 1 by 2\. Play grow\(\) first/)
+    })
+
+    it('cuts into patches that move apart, unrolls each patch into one row of cells, and joins again', async () => {
+        let grid!: Grid
+        const first: [number, number][] = []
+        const f = await compile((s) => {
+            grid = s.add(heatmap(Array.from({ length: 4 }, (_, i) => Array.from({ length: 4 }, (_, j) => i * 4 + j)), { size: 26, cell: 60, gap: 4, values: true, name: 'image' }))
+            for (const [i, j] of [[0, 0], [0, 1], [0, 2], [3, 3]] as const) first.push(grid.p(i, j))
+            expect(grid.patchShape).toBeNull()
+            s.wait(1)
+            s.play(grid.cut(2, 2, { gap: 20 }), { duration: 1 })
+            expect(grid.patchShape).toEqual([2, 2])
+            // Two cells of one patch keep their distance, and two patches are apart by the gap more.
+            expect(grid.p(0, 1)[0] - grid.p(0, 0)[0]).toBe(64)
+            expect(grid.p(0, 2)[0] - grid.p(0, 1)[0]).toBe(84)
+            expect(grid.p(2, 0)[1] - grid.p(1, 0)[1]).toBe(84)
+            // The grid stays around its middle.
+            expect(grid.p(0, 0)[0]).toBe(-grid.p(0, 3)[0])
+            const patch = grid.region({ patch: 1 })
+            expect([patch.width, patch.height]).toEqual([124, 124])
+            s.wait(0.5)
+            s.play(grid.cut(2, 2, { gap: 20, unroll: true }), { duration: 1 })
+            // Patch 1 is the second row now: its four cells, row by row, from the left.
+            const row = [[0, 2], [0, 3], [1, 2], [1, 3]].map(([i, j]) => grid.p(i!, j!))
+            expect(row.map((place) => place[1])).toEqual([row[0]![1], row[0]![1], row[0]![1], row[0]![1]])
+            expect(row.map((place) => place[0] - row[0]![0])).toEqual([0, 64, 128, 192])
+            expect(grid.p(0, 2)[1] - grid.p(0, 0)[1]).toBe(80)
+            expect([grid.region({ patch: 1 }).width, grid.region({ patch: 1 }).height]).toEqual([252, 60])
+            s.wait(0.5)
+            s.play(grid.join(), { duration: 1 })
+            expect(grid.patchShape).toBeNull()
+            expect([[0, 0], [0, 1], [0, 2], [3, 3]].map(([i, j]) => grid.p(i!, j!))).toEqual(first)
+            expect(() => grid.cut(3, 2)).toThrow(/the grid has 4 rows, which do not cut into patches of 3\. Give a count that divides 4/)
+            expect(() => grid.cut(2, 0)).toThrow(/a patch of cut has 0 columns\. Give a whole number, 1 or more/)
+        })
+        // A cell, its number and the shape: the cell and its number are at the place of p() at the end of each move, and the shape leaves and comes back.
+        const cell = grid.cell(0, 2), number = grid.numbers[0]![2]!
+        expect(at(1, () => [cell.get('x'), cell.get('y')])).toEqual(first[2])
+        expect(at(2, () => [cell.get('x'), number.get('x')])).toEqual([first[2]![0] + 10, first[2]![0] + 10])
+        expect(at(f.duration, () => [cell.get('x'), cell.get('y'), number.get('x'), number.get('y')])).toEqual([...first[2]!, ...first[2]!])
+        expect([1, 2, 3.5, f.duration].map((time) => at(time, () => grid.caption!.get('opacity')))).toEqual([1, 0, 0, 1])
+        await expect(compile((s) => {
+            const whole = s.add(heatmap([[1, 2], [3, 4]], { size: 28 }))
+            s.play(whole.light({ patch: 0 }))
+        })).rejects.toThrow(/light names patch 0, and the grid is whole\. Play cut\(\) first/)
+        await expect(compile((s) => {
+            const cut = s.add(heatmap([[1, 2], [3, 4]], { size: 28 }))
+            s.play(seq(cut.cut(1, 2, { unroll: true }), cut.light({ row: 0 })))
+        })).rejects.toThrow(/light names rows and columns, and the grid is unrolled: each of its rows is a patch now\. Name a patch, such as \{ patch: 0 \}, or play join\(\) first/)
+        await expect(compile((s) => {
+            const cut = s.add(heatmap([[1, 2], [3, 4]], { size: 28 }))
+            s.play(seq(cut.cut(1, 2), cut.light({ patch: 2 })))
+        })).rejects.toThrow(/no patch 2\. The grid has 2 patches, 0 to 1/)
+    })
+
+    it('lists the places of a window, row by row, so their count is the size of the output', async () => {
+        await compileFilm(film(() => {
+            const grid = heatmap(Array.from({ length: 5 }, (_, i) => Array.from({ length: 6 }, (_, j) => i + j)), { size: 28 })
+            const places = grid.windows(3)
+            expect([places.length, places[0]!.length]).toEqual([3, 4])
+            expect(places[1]![2]).toEqual({ row: [1, 3], col: [2, 4] })
+            expect(grid.values(places[1]![2])).toEqual([[3, 4, 5], [4, 5, 6], [5, 6, 7]])
+            // A stride of 2 gives a pooling: the windows do not share a cell.
+            const pooled = grid.windows(2, { stride: 2 })
+            expect([pooled.length, pooled[0]!.length, pooled[1]![2]]).toEqual([2, 3, { row: [2, 3], col: [4, 5] }])
+            expect(grid.windows([1, 6]).map((line) => line.length)).toEqual([1, 1, 1, 1, 1])
+            expect(() => grid.windows(6)).toThrow(/a window of 6 by 6 is larger than the grid, which shows 5 by 6\. Give a smaller window/)
+            expect(() => grid.windows(0)).toThrow(/the size of windows is 0\. Give a whole number, 1 or more/)
+            expect(() => grid.windows(2, { stride: 0 })).toThrow(/the stride of windows is 0/)
+        }))
+    })
+
+    it('makes a copy with its own cells and its own record', async () => {
+        await compile((s) => {
+            const grid = s.add(heatmap([[0.2, 0.8]], { size: 28, values: true, domain: [0, 1] }))
+            const copy = s.add(grid.clone().at(0, 200))
+            expect(copy.cell(0, 0)).not.toBe(grid.cell(0, 0))
+            expect(copy.numbers[0]![0]).not.toBe(grid.numbers[0]![0])
+            expect(copy.children).toContain(copy.numbers[0]![0])
+            s.play(copy.setValue({ row: 0, col: 0 }, 1), copy.mark({ col: 1 }, 'masked'), { duration: 1 })
+            expect([grid.value(0, 0), grid.stateOf(0, 1), source(grid.numbers[0]![0])]).toEqual([0.2, 'open', '0.2'])
+            expect([copy.value(0, 0), copy.stateOf(0, 1), source(copy.numbers[0]![0])]).toEqual([1, 'masked', '1'])
+        })
+    })
+
+    it('takes its width from the layout, so that all of it, with its names, is as wide as a region', async () => {
+        await compileFilm(film(() => {
+            const rows = [[0.91, 0.12, 0.33], [0.05, 0.84, 0.47]]
+            const made = fitted(700, (width) => heatmap(rows, { width, values: true, rowLabels: ['statistics alone', 'chart image'], columnLabels: ['recall', 'precision', 'F1'] }))
+            expect(boxOf(made).width).toBeCloseTo(700, 0)
+            // The cells have what the names leave.
+            expect(made.region().width).toBeLessThan(600)
+            expect(made.cell(0, 0).bounds().width).toBeCloseTo((made.region().width - 6) / 3, 6)
+        }))
+    })
+
+    it('places its names, its braces and its shape so that the film check reports nothing, at a room of 0.3 and of 0.7', async () => {
+        for (const textGap of [0.3, 0.7]) {
+            const report = await checkFilm(film({ fps: 10 }, (s) => {
+                const grid = s.add(heatmap([[0.2, -0.4, 0.9, 0.1], [0.5, 0.3, -0.7, 0.6], [-0.1, 0.8, 0.4, -0.5]], {
+                    values: true, rowLabels: ['Birds', 'migrate', 'south'], columnLabels: ['f0', 'f1', 'f2', 'f3'], axes: ['batch', 'seq', 'd'], depth: 2, name: 'x', domain: [-1, 1],
+                    initial: (row, col) => (row === 2 && col > 1 ? 'future' : 'open'),
+                }))
+                s.wait(1.2)
+                s.play(grid.light({ row: 1 }), grid.mark({ row: 0, col: 3 }, 'padding'), { duration: 0.5 })
+                s.wait(1.2)
+            }), { textGap, motion: true })
+            expect(report.diagnostics).toEqual([])
+        }
+    })
+})
+
+describe('attention matrix', () => {
+    const shows = (node: Node) => (node.get('visible') ? node.get('opacity') : 0)
+    const source = (node: Node | null | undefined) => (node as (Node & { source?: string }) | null | undefined)?.source
+    const sizeOf = (node: Node) => (node as Node & { size?: number }).size
+    const words = ['The', 'garden', 'is', 'quiet']
+    const weights = [[1, 0, 0, 0], [0.4, 0.6, 0, 0], [0.2, 0.3, 0.5, 0], [0.1, 0.2, 0.3, 0.4]]
+
+    it('draws as it did before it had a size: cells of 42, labels of 18, and the colors up to the largest weight', async () => {
+        await compileFilm(film(() => {
+            const plain = attentionMatrix(words, words, weights.map((row) => row.map((weight) => weight / 2)))
+            expect(plain.cell(0, 0).bounds().width).toBe(42)
+            expect(sizeOf(plain.rowLabels[0]!)).toBe(18)
+            expect(plain.colorFor(0.5)).toEqual(plain.colorFor(1))
+            expect(plain.colorFor(0.25)).not.toEqual(plain.colorFor(0.5))
+            expect(plain.count('future')).toBe(0)
+        }))
+    })
+
+    it('starts with the mask of a decoder: a row reads its own column and the columns before it', async () => {
+        await compileFilm(film(() => {
+            const masked = attentionMatrix(words, words, weights, { size: 30, values: true, mask: 'causal' })
+            expect(masked.find((_row, _col, _value, state) => state === 'future')).toEqual([[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]])
+            expect([masked.count('future'), masked.count('open')]).toEqual([6, 10])
+            expect(masked.numbers.flat().map(sizeOf)).toEqual(Array.from({ length: 16 }, () => 30))
+            // A weight is a share: the colors go from 0 to 1, whatever the largest weight is.
+            const low = attentionMatrix(['a', 'b'], ['a', 'b'], [[0.2, 0.1], [0.1, 0.2]], { size: 30 })
+            expect(low.colorFor(0.2)).not.toEqual(low.colorFor(1))
+            const scores = [[2, 0], [0.5, 1]]
+            const weightsScale = attentionMatrix(['a', 'b'], ['a', 'b'], scores, { size: 30 })
+            expect(weightsScale.colorFor(2)).toEqual(weightsScale.colorFor(1))
+            const scoresScale = attentionMatrix(['a', 'b'], ['a', 'b'], scores, { size: 30, domain: [0, 2] })
+            expect(scoresScale.colorFor(2)).not.toEqual(scoresScale.colorFor(1))
+            expect(() => attentionMatrix(words, words, weights, { mask: 'causal', initial: 'empty' })).toThrow(/mask and initial both set the first states\. Give one of them/)
+            expect(() => attentionMatrix(words, words, weights, { mask: 'full' as never })).toThrow(/mask is 'causal', not "full"\. For another mask, give `initial`/)
+        }))
+    })
+
+    it('sweeps a row from scores to weights from the left, keeps the masked cells covered, and grows by one token', async () => {
+        let grid!: ReturnType<typeof attentionMatrix>
+        const scores = [[2, 0, 0, 0], [0.4, 1.8, 0, 0], [0.3, 1.2, 0.9, 0], [0.2, 1.4, 0.1, 1.1]]
+        const f = await compile((s) => {
+            grid = s.add(attentionMatrix(words, words, scores, { size: 30, values: true, mask: 'causal', domain: [0, 2], shown: { rows: 3, columns: 3 }, axes: ['queries', 'keys'] }))
+            expect(grid.shape).toEqual([3, 3])
+            // With a lag of 1, each of the four cells of the row has a quarter of the time.
+            s.play(grid.setValue({ row: 2 }, [0.2, 0.5, 0.3, 0], { lag: 1 }), { duration: 4, ease: linear })
+            expect(grid.values({ row: 2 })).toEqual([[0.2, 0.5, 0.3]])
+            s.play(grid.grow({ rows: 1, columns: 1 }), { duration: 1 })
+            expect([grid.shape, grid.count('future')]).toEqual([[4, 4], 6])
+        })
+        const row = [0, 1, 2].map((col) => grid.numbers[2]![col]!)
+        expect(row.map(source)).toEqual(['0.2', '0.5', '0.3'])
+        expect([1, 2, 3].map((time) => at(time, () => row.map(shows)))).toEqual([[1, 0, 0], [1, 1, 0], [1, 1, 1]])
+        // The new token is under the mask in the rows before it, and it reads every column.
+        expect(at(f.duration, () => [grid.stateOf(2, 3), grid.stateOf(3, 3), shows(grid.numbers[3]![3]!), shows(grid.numbers[2]![3]!)])).toEqual(['future', 'open', 1, 0])
+        expect(at(f.duration, () => [shows(grid.rowLabels[3]!), shows(grid.columnLabels[3]!)])).toEqual([1, 1])
+    })
+})
+
+describe('matrix product', () => {
+    type Product = ReturnType<typeof matrixProduct>
+    const shows = (node: Node) => { for (let up: Node | null = node; up; up = up.parent) if (!up.get('visible') || up.get('opacity') <= 0) return 0; return node.get('opacity') }
+    const source = (node: Node | null | undefined) => (node as (Node & { source?: string }) | null | undefined)?.source
+    const A = [[1, 2, 3], [4, 5, 6]], B = [[7, 8], [9, 10], [11, 12]]
+    /** The texts of the line of the sum that show, from the left. */
+    const lineAt = (product: Product, time: number) => at(time, () => product.line!.children.filter((part) => source(part) !== undefined && shows(part) > 0).sort((a, b) => a.get('x') - b.get('x')).map(source).join(' '))
+
+    it('draws the two operands and the result to one scale, with their names and their shapes', async () => {
+        await compileFilm(film(() => {
+            const product = matrixProduct(A, B)
+            expect(product.shape).toEqual([[2, 3], [3, 2], [2, 2]])
+            const cells = [product.a, product.b, product.c].map((grid) => grid.cell(0, 0).bounds().width)
+            expect(cells).toEqual([cells[0], cells[0], cells[0]])
+            // The widest number of the three grids, 154 of the result, sets the cell.
+            expect(cells[0]).toBe(Math.max(78, Math.ceil(product.c.numbers[1]![1]!.bounds().width + 27)))
+            expect(product.captions.map((caption) => caption.children.map(source).join(''))).toEqual(['A[2,3]', 'B[3,2]', 'C[2,2]'])
+            // The two inner sizes are in one color, and no other size has it.
+            const yellow = parseColor('yellow')
+            const tinted = product.captions.map((caption) => caption.children.map((part) => (part.children[0]!.get('fill') as Rgba).join() === yellow.join()))
+            expect(tinted).toEqual([[false, false, false, false, true, false], [false, false, true, false, false, false], [false, false, false, false, false, false]])
+            // The grids follow each other from the left, and the shapes are over them, on one line.
+            const boxes = [product.a, product.b, product.c].map((grid) => grid.bounds())
+            expect(boxes[0]!.x + boxes[0]!.width).toBeLessThan(boxes[1]!.x)
+            expect(boxes[1]!.x + boxes[1]!.width).toBeLessThan(boxes[2]!.x)
+            const tops = product.captions.map((caption) => caption.children[1]!.get('y'))
+            expect(tops).toEqual([tops[0], tops[0], tops[0]])
+            expect(tops[0]).toBeLessThan(Math.min(...boxes.map((box) => box.y)))
+            expect([product.result(0, 0), product.result(1, 1), product.filled, product.lit, product.terms, product.sum]).toEqual([58, 154, 0, null, 0, 0])
+            expect(matrixProduct(A, B, { filled: true }).filled).toBe(4)
+            expect(matrixProduct([[0.5, -1.5, 2]], [[2], [0.25], [-1]], { names: ['q', 'k', 'score'] }).shape).toEqual([[1, 3], [3, 1], [1, 1]])
+        }))
+    })
+
+    it('stops for operands that have no product, and says which sizes must be equal', async () => {
+        await compileFilm(film(() => {
+            expect(() => matrixProduct(A, A)).toThrow(/the first operand is 2 by 3 and the second is 2 by 3\. The columns of the first \(3\) must be as many as the rows of the second \(2\)\. The transpose of the second operand fits/)
+            expect(() => matrixProduct(A, [[1, 2]])).toThrow(/The columns of the first \(3\) must be as many as the rows of the second \(1\)\. Give operands whose inner sizes are equal/)
+            expect(() => matrixProduct([1, 2, 3] as never, B)).toThrow(/the first operand is not a matrix\. Give a list of rows.*A vector is one row, \[\[1, 2, 3\]\], or one column/)
+            expect(() => matrixProduct(A, [[7, 8], [9], [11, 12]])).toThrow(/the second operand is not a matrix/)
+            expect(() => matrixProduct(Array(1), [[3]])).toThrow(/the first operand is not a matrix/)
+            expect(() => matrixProduct([Array(2)], [[3], [4]])).toThrow(/the value \(0, 0\) of the first operand is undefined/)
+            expect(() => matrixProduct([[1, Number.NaN, 3]], B)).toThrow(/the value \(0, 1\) of the first operand is NaN\. A value is a number/)
+            expect(() => matrixProduct(A, B, { names: ['A', 'B'] as never })).toThrow(/names is \[A, B\]\. Give three names/)
+            const product = matrixProduct(A, B)
+            expect(() => product.pair(2, 0)).toThrow(/pair names the cell \(2, 0\) of the result, which is 2 by 2\. Give a row from 0 to 1 and a column from 0 to 1/)
+            expect(() => product.addTerm(0)).toThrow(/addTerm takes the number of terms to add, a whole number, 1 or more, and it got 0/)
+        }))
+    })
+
+    it('pairs a row with a column, takes the terms into a running sum one by one, and stores the sum in its cell', async () => {
+        let product!: Product
+        const seen: unknown[] = []
+        const state = () => [product.lit, product.terms, product.sum, product.filled, product.c.stateOf(0, 1)]
+        await compile((s) => {
+            product = s.add(matrixProduct(A, B))
+            s.wait(1)
+            s.play(product.pair(0, 1), { duration: 1, ease: linear })
+            seen.push(state())
+            expect([product.a.lit, product.b.lit, product.c.lit]).toEqual([{ row: [0, 0], col: [0, 2] }, { row: [0, 2], col: [1, 1] }, { row: [0, 0], col: [1, 1] }])
+            s.play(product.addTerm(), { duration: 1, ease: linear })
+            seen.push(state())
+            s.play(product.addTerm(2), { duration: 2, ease: linear })
+            seen.push(state())
+            s.play(product.store(), { duration: 1, ease: linear })
+            seen.push(state())
+            s.wait(0.5)
+        })
+        expect(seen).toEqual([[[0, 1], 0, 0, 0, 'empty'], [[0, 1], 1, 8, 0, 'empty'], [[0, 1], 3, 64, 0, 'empty'], [[0, 1], 3, 64, 1, 'open']])
+        // The line has every term of the pair from the start, and no sum. Each term then brings the sum so far.
+        expect(lineAt(product, 2)).toBe('1 × 8 + 2 × 10 + 3 × 12')
+        expect(lineAt(product, 3)).toBe('1 × 8 = 8')
+        expect(lineAt(product, 4)).toBe('1 × 8 + 2 × 10 = 28')
+        expect(lineAt(product, 5)).toBe('1 × 8 + 2 × 10 + 3 × 12 = 64')
+        // A term in the sum has the colors of its two operands, and its two cells have a tint.
+        const [first, , second] = product.line!.children
+        const blue = at(1, () => parseColor('blue')), orange = at(1, () => parseColor('orange'))
+        expect(at(3, () => [first!.children[0]!.get('fill'), second!.children[0]!.get('fill')])).toEqual([blue, orange])
+        expect(at(2, () => first!.children[0]!.get('fill'))).not.toEqual(blue)
+        expect(at(3, () => product.a.cell(0, 0).get('fill'))).not.toEqual(at(2, () => product.a.cell(0, 0).get('fill')))
+        expect(at(3, () => product.a.cell(0, 1).get('fill'))).toEqual(at(2, () => product.a.cell(0, 1).get('fill')))
+        // The sum lands on the place of the number of its cell, and the cell takes over there: one number arrives.
+        const total = product.line!.children.find((part) => source(part) === '64')!, number = product.c.numbers[0]![1]!
+        expect(at(5.79, () => shows(number))).toBe(0)
+        expect(at(5.79, () => shows(total))).toBe(1)
+        const landed = at(5.8, () => { const box = total.bounds(), own = number.bounds(); return [box.x - own.x, box.y - own.y, box.width - own.width] })
+        expect(landed.map((delta) => Math.abs(delta) < 1e-6)).toEqual([true, true, true])
+        expect(at(5.81, () => [shows(total), shows(number)])).toEqual([0, 1])
+        expect(lineAt(product, 6)).toBe('1 × 8 + 2 × 10 + 3 × 12')
+    })
+
+    it('keeps later grids hidden until their entrance starts', async () => {
+        let product!: Product
+        await compile((s) => {
+            product = matrixProduct(A, B)
+            s.play(product.enter(), { duration: 4, ease: linear })
+        })
+        expect(at(0.5, () => [shows(product.b.cell(0, 0)), shows(product.c.cell(0, 0))])).toEqual([0, 0])
+        expect(at(1.5, () => shows(product.b.cell(0, 0)))).toBeGreaterThan(0)
+        expect(at(1.5, () => shows(product.c.cell(0, 0)))).toBe(0)
+    })
+
+    it.each([
+        { layout: 'wide grids', a: A, b: B },
+        { layout: 'a wide subtotal', a: [[1, 1, 1]], b: [[1000], [1000], [-1999]] },
+    ])('keeps the fitted width through every subtotal with $layout', async ({ a, b }) => {
+        await compile((s) => {
+            const natural = matrixProduct(a, b, { size: 34 }), minimum = boxOf(natural).width
+            const target = Math.ceil(minimum) + 180
+            const product = fitted(target, (width) => matrixProduct(a, b, { width, size: 34 }))
+            const room = boxOf(product)
+            expect(room.width).toBeCloseTo(target, 6)
+            expect(product.a.cell(0, 0).bounds().width).toBe(natural.a.cell(0, 0).bounds().width)
+            expect(product.a.get('x')).toBeLessThan(natural.a.get('x'))
+            expect(product.c.get('x')).toBeGreaterThan(natural.c.get('x'))
+            expect(() => matrixProduct(a, b, { width: minimum - 1, size: 34 })).toThrow(/matrixProduct:.*width.*Give a width of/)
+            s.play(product.pair(0, b[0]!.length - 1))
+            for (let term = 0; term < b.length; term++) {
+                s.play(product.addTerm())
+                expect(boxOf(product).width).toBeCloseTo(target, 6)
+                for (const label of product.line!.children.filter((part) => shows(part) > 0)) {
+                    const box = label.bounds()
+                    expect(box.x).toBeGreaterThanOrEqual(room.left)
+                    expect(box.x + box.width).toBeLessThanOrEqual(room.right)
+                }
+            }
+            s.play(product.store())
+            expect(boxOf(product).width).toBeCloseTo(target, 6)
+        })
+    })
+
+    it('replays a saved pair and a saved computation from a fresh line', async () => {
+        await compile((s) => {
+            const product = s.add(matrixProduct(A, B))
+            const pair = product.pair(0, 0), compute = product.compute(0, 1)
+            s.play(seq(pair, product.addTerm(), pair))
+            expect([product.sum, lineAt(product, s.duration)]).toEqual([0, '1 × 7 + 2 × 9 + 3 × 11'])
+            s.play(seq(compute, compute))
+            expect([product.sum, product.filled, lineAt(product, s.duration)]).toEqual([64, 1, '1 × 8 + 2 × 10 + 3 × 12'])
+        })
+    })
+
+    it.each(['product', 'group'])('continues two generations of a partially computed %s independently', async (kind) => {
+        await compile((s) => {
+            const product = matrixProduct(A, B)
+            s.add(group(product))
+            s.play(seq(product.pair(0, 1), product.addTerm()))
+            const clone = (p: Product) => kind === 'product' ? s.add(p.clone()) : s.add(p.parent!.clone()).children[0] as Product
+            const child = clone(product)
+            s.play(child.addTerm())
+            const grandchild = clone(child)
+            s.play(seq(grandchild.addTerm(), grandchild.store()))
+            const state = (p: Product) => [p.sum, p.filled, lineAt(p, s.duration), shows(p.c.numbers[0]![1]!)]
+            expect(state(product)).toEqual([8, 0, '1 × 8 = 8', 0])
+            expect(state(child)).toEqual([28, 0, '1 × 8 + 2 × 10 = 28', 0])
+            expect(state(grandchild)).toEqual([64, 1, '1 × 8 + 2 × 10 + 3 × 12', 1])
+        })
+    })
+
+    it('lands the plate on the cell in a scaled and translated group', async () => {
+        let product!: Product
+        await compile((s) => {
+            product = matrixProduct([[1, 2]], [[3], [4]])
+            s.add(group(product).scale(2).at(100, 50))
+            s.play(product.pair(0, 0), { duration: 1 })
+            s.play(product.addTerm(2), { duration: 1 })
+            s.play(product.store(), { duration: 1, ease: linear })
+        })
+        at(2.8 - 1e-7, () => {
+            const plate = product.line!.children.find((part) => part.data['decoration'])!
+            const target = product.c.cell(0, 0).bounds(), bounds = plate.bounds()
+            expect(shows(plate)).toBeGreaterThan(0.99)
+            for (const key of ['x', 'y', 'width', 'height'] as const) expect(bounds[key]).toBeCloseTo(target[key], 3)
+        })
+    })
+
+    it('allows the suggested next step after a scheduling error', async () => {
+        await compile((s) => {
+            const product = s.add(matrixProduct(A, B))
+            expect(() => s.play(product.addTerm())).toThrow(/Play pair\(row, col\) first/)
+            s.play(product.pair(0, 0))
+            expect(() => s.play(product.store())).toThrow(/Play addTerm\(3\) first/)
+            s.play(seq(product.addTerm(3), product.store()))
+            expect(product.sum).toBe(58)
+        })
+    })
+
+    it('takes the steps of a product in their order, one at a time, and says which step is missing', async () => {
+        const run = (build: (product: Product, s: Stage) => void) => compile((s) => build(s.add(matrixProduct(A, B)), s))
+        await expect(run((product, s) => s.play(product.addTerm()))).rejects.toThrow(/addTerm\(\) has no pair to take a term of\. Play pair\(row, col\) first/)
+        await expect(run((product, s) => s.play(product.store()))).rejects.toThrow(/store\(\) has no pair to write the sum of\. Play pair\(row, col\) first/)
+        await expect(run((product, s) => s.play(seq(product.pair(0, 0), product.addTerm(2), product.store())))).rejects.toThrow(/store\(\) writes a sum, and the sum of the pair \(0, 0\) has 2 of its 3 terms\. Play addTerm\(1\) first, or compute\(0, 0\) for the whole cell/)
+        await expect(run((product, s) => s.play(seq(product.pair(0, 0), product.addTerm(2), product.addTerm(2))))).rejects.toThrow(/addTerm\(2\) would take 4 terms, and the pair \(0, 0\) has 3, with 2 in the sum\. Give addTerm\(1\) at the most/)
+        await expect(run((product, s) => s.play(seq(product.pair(0, 0), product.addTerm(3), product.addTerm())))).rejects.toThrow(/has 3, all in the sum\. Play store\(\) to write the sum, or pair\(\) for the next cell/)
+        await expect(run((product, s) => s.play(seq(product.compute(0, 0), product.store())))).rejects.toThrow(/the sum of the pair \(0, 0\) is in its cell already\. Play pair\(row, col\) for the next cell/)
+        await expect(run((product, s) => s.play(product.pair(0, 0), product.addTerm(), { duration: 1 }))).rejects.toThrow(/addTerm\(\) plays from 0 s to 1 s, and pair\(0, 0\) plays from 0 s to 1 s\. A product takes one step at a time\. Play the two in a `seq`, or one after the other/)
+        await expect(run((product, s) => s.play(lagged([product.enter(), product.pair(0, 0)], { lag: 0.5 })))).rejects.toThrow(/matrixProduct: pair\(0, 0\) plays from .* and enter\(\) plays from/)
+    })
+
+    it('computes one cell in one play, moves to the next pair, and completes the result', async () => {
+        let product!: Product
+        const f = await compile((s) => {
+            product = s.add(matrixProduct(A, B))
+            s.play(product.compute(0, 0), { duration: 3 })
+            expect([product.lit, product.terms, product.sum, product.filled]).toEqual([[0, 0], 3, 58, 1])
+            const first = product.line!
+            s.play(product.pair(1, 1), { duration: 1 })
+            expect([product.lit, product.terms, product.sum]).toEqual([[1, 1], 0, 0])
+            expect(product.line).not.toBe(first)
+            s.play(product.addTerm(3), { duration: 1 })
+            expect(product.sum).toBe(154)
+            s.play(product.complete(), { duration: 1 })
+            expect([product.lit, product.filled, product.a.lit, product.b.lit, product.c.lit]).toEqual([null, 4, null, null, null])
+            // A product can start again after it is complete.
+            s.play(product.pair(0, 0), { duration: 1 })
+            expect(product.lit).toEqual([0, 0])
+        })
+        expect(at(6, () => product.c.numbers.flat().map(shows))).toEqual([1, 1, 1, 1])
+        expect(product.c.numbers.flat().map(source)).toEqual(['58', '64', '139', '154'])
+        // The tint of the cells of a pair leaves with the pair.
+        expect(at(6, () => product.a.cell(1, 0).get('fill'))).toEqual(at(0, () => product.a.cell(1, 0).get('fill')))
+        expect(lineAt(product, f.duration)).toBe('1 × 7 + 2 × 9 + 3 × 11')
+    })
+
+    it('writes a negative number of a term in brackets, and keeps the room of its longest line for the layout', async () => {
+        let product!: Product, room!: ReturnType<typeof boxOf>
+        const f = await compile((s) => {
+            product = s.add(matrixProduct([[0.5, -1.5, 2]], [[2], [0.25], [-1]], { names: ['q', 'k', 'score'] }))
+            // The layout measures the object here, before its first pair.
+            room = boxOf(product)
+            s.play(product.compute(0, 0), { duration: 3 })
+        })
+        expect(lineAt(product, 2.2)).toBe('0.5 × 2 + (-1.5) × 0.25 + 2 × (-1) = -1.37')
+        expect(product.sum).toBeCloseTo(-1.375, 9)
+        // The box of the object, before its first pair, holds the line of the sum: no part of the line is outside it.
+        const line = at(2.2, () => product.line!.bounds())
+        expect(room.left).toBeLessThanOrEqual(line.x)
+        expect(room.right).toBeGreaterThanOrEqual(line.x + line.width)
+        expect(room.bottom).toBeGreaterThanOrEqual(line.y + line.height)
+        expect(room.bottom).toBeGreaterThan(at(f.duration, () => product.b.bounds().y + product.b.bounds().height) + 30)
+    })
+
+    it('places its signs, its shapes and its sum so that the film check reports nothing, at a room of 0.3 and of 0.7', async () => {
+        for (const textGap of [0.3, 0.7]) {
+            const report = await checkFilm(film({ fps: 10 }, (s) => {
+                const product = s.add(matrixProduct(A, B))
+                s.wait(0.5)
+                s.play(product.compute(0, 1), { duration: 4 })
+                s.wait(1.2)
+                s.play(product.compute(1, 0), { duration: 4 })
+                s.wait(1.2)
+            }), { textGap, motion: true })
+            expect(report.diagnostics).toEqual([])
+        }
     })
 })
 
