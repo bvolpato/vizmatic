@@ -26,14 +26,6 @@
     ]
   },
   {
-    "name": "aurora-incident",
-    "source": "examples/aurora-incident.tsx",
-    "outputs": [
-      "aurora-incident_dark.png",
-      "aurora-incident_light.png"
-    ]
-  },
-  {
     "name": "building-blocks",
     "source": "examples/building-blocks.tsx",
     "outputs": [
@@ -207,6 +199,14 @@
     "outputs": [
       "catalog-sequence_dark.png",
       "catalog-sequence_light.png"
+    ]
+  },
+  {
+    "name": "checkout-incident",
+    "source": "examples/checkout-incident.tsx",
+    "outputs": [
+      "checkout-incident_dark.png",
+      "checkout-incident_light.png"
     ]
   },
   {
