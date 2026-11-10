@@ -488,7 +488,7 @@ Each step also runs alone: `npx vizmatic narrated <step> .`
 | `voice` | The voice and `timing.json`. |
 | `draft` | A timing with estimated times and no sound, for a look at the scenes on a machine that has no voice model. It never replaces a measured timing: beside one, it writes `timing.draft.json`. |
 | `mix` | The sound mix. |
-| `check` | Run the layout check. Use `--text-size 26` for small labels or `--empty-space 0.5` for unused space. Add `--empty-seconds 2` to use a two-second window. The check also accepts `--motion`, `--json`, `--content-top`, `--text-margin`, `--text-gap`, `--reading-speed` and `--stepped`. |
+| `check` | Run the layout check. Use `--text-size 26` for small labels or `--empty-space 0.5` for unused space. Add `--empty-seconds 2` to use a two-second window. The check also accepts `--motion`, `--json`, `--content-top`, `--text-margin`, `--reading-speed` and `--stepped`. |
 | `stills` | One full-size still for each beat. `--scene <id,...>` builds only those scenes, which is fast. `--frame`, `--name` and `--width` choose the times, the folder and the size. |
 | `sheet` | Contact sheets. It takes `--every`, `--range`, `--frame`, `--columns`, `--width`, `--scene` and `--name`. |
 | `beats` | Where each beat starts and ends. `--words <scene>` prints the spoken words. |
