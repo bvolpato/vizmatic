@@ -1,4 +1,4 @@
-import { CLONE_STATE, Node, mountTree, ownLabels } from '../node'
+import { Node, mountTree, ownLabels, rebindCloneParts } from '../node'
 import { apply, circlePath, invert, linePath, parseSvgPath, pathBounds, polyPath, rectPath, transformPath, unionBounds, type Bounds, type Path, type Ring, type Vec } from '../geometry'
 import { text, type TextNode, type TextOptions } from '../text'
 import { ramp, toPaint, type ColorInput } from '../color'
@@ -522,18 +522,16 @@ export class TokenRow extends Node {
         return new Box(bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height)
     }
 
-    protected override [CLONE_STATE](): void {
-        // A list with no node in it is not copied with the tree, so give the copy lists of its own.
-        const own = this as unknown as { chips: TokenCell[]; rows: TokenValueRow[]; spans: TokenSpanNode[]; windowEnds: [number, number] }
-        own.chips = [...this.chips]
-        own.rows = [...this.rows]
-        own.spans = [...this.spans]
-        own.windowEnds = [...this.windowEnds]
-        for (const cell of this.chips) {
+    protected override [rebindCloneParts](copy: this): void {
+        // The tree remaps node references. Empty lists still belong to the original.
+        Object.assign(copy, { chips: [...copy.chips], rows: [...copy.rows], spans: [...copy.spans] })
+        copy.windowEnds = [...this.windowEnds]
+        for (const cell of copy.chips) {
+            cell.data['box'] = cell.box
             cell.signs = [...cell.signs]
             cell.settles = -Infinity
         }
-        for (const row of this.rows) row.values = [...row.values]
+        for (const row of copy.rows) row.values = [...row.values]
     }
 
     /** Chips arrive from left to right, each with its values. The names, the brackets and the window come with them. */

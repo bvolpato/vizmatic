@@ -14400,6 +14400,24 @@ describe('tokens', () => {
         })
     })
 
+    it('keeps the edits of a cloned strip independent across a second group clone', async () => {
+        await compile((s) => {
+            const original = tokens(['a'], { rows: { id: [1] } })
+            const parent = s.add(group(original))
+            const copy = s.add(parent.clone())
+            const second = copy.children[0] as Strip
+            s.play(second.append({ text: 'b', values: { id: 2 } }))
+            s.play(second.span('pair', 0, 1), second.window(0, 1))
+            const third = s.add(copy.clone()).children[0] as Strip
+            s.play(third.merge(0, 1, { values: { id: 3 } }))
+            expect([original.texts, second.texts, third.texts]).toEqual([['a'], ['a', 'b'], ['ab']])
+            expect([second.spanRange('pair'), third.spanRange('pair')]).toEqual([[0, 1], [0, 0]])
+            expect([second.windowRange, third.windowRange]).toEqual([[0, 1], [0, 0]])
+            expect([second.value('id', 1), third.value('id', 0)]).toEqual(['2', '3'])
+            expect(second.token(0).data['box']).toBe(second.token(0).box)
+        })
+    })
+
     it('lets a grouped clone change cells whose source is still arriving', async () => {
         expect(await failure((s) => {
             const strip = tokens(['r'], { size: 40 })

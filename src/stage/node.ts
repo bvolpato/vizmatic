@@ -10,8 +10,8 @@ import type { DrawOp } from './display'
 import type { ImageAsset, ImageCrop } from './image'
 import type { Block } from './layout'
 
-/** @internal Reset clone state without reserving a method name on consumer subclasses. */
-export const CLONE_STATE: unique symbol = Symbol('cloneState')
+/** Internal hook used by stage objects that store state outside their child nodes. */
+export const rebindCloneParts = Symbol('rebindCloneParts')
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay'
 export type Edge = 'left' | 'right' | 'top' | 'bottom'
@@ -140,6 +140,9 @@ function boundsOfTarget(what: string, target: unknown): Bounds {
  * same calls set up a node before it appears and change it afterwards.
  */
 export class Node {
+    /** A returned callback connects objects after each clone has prepared its own state. */
+    protected [rebindCloneParts]?(copy: this, copies: ReadonlyMap<Node, Node>): void | (() => void)
+
     readonly id = nextId++
     parent: Node | null = null
     children: Node[] = []
@@ -290,12 +293,14 @@ export class Node {
                 }
             }
         }
-        for (const node of copies.values()) node[CLONE_STATE]()
+        let connections: (() => void)[] | undefined
+        for (const [from, to] of copies) {
+            const connect = from[rebindCloneParts]?.(to, copies)
+            if (connect) (connections ??= []).push(connect)
+        }
+        for (const connect of connections ?? []) connect()
         return copy
     }
-
-    /** Reset state that belongs to the source timeline after all parts point to their copies. */
-    protected [CLONE_STATE](): void {}
 
     private copyTree(copies: Map<Node, Node>): this {
         const copy = Object.create(Object.getPrototypeOf(this)) as this
