@@ -18,7 +18,7 @@ import {
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
-    pipeline, PipelineItemNode, beside,
+    pipeline, PipelineItemNode,
     passage, shift, type Value,
     TOKEN_STATES, Node as StageNode, rectPath, ramp, boxOf, fitted, place as placeIn, Box as LayoutBox,
     layerStack, STACK_STATES, beside, type StackLayer,
@@ -17056,6 +17056,22 @@ describe('pipeline', () => {
         expect(counted(flow, 2, 1.89)).toEqual(['0'])
         expect(counted(flow, 3, 1.89)).toEqual(['0'])
         expect(counted(flow, 3, 2)).toEqual(['1'])
+    })
+
+    it('counts first visits as an item crosses stages on a backward move', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, counts: true }))
+            s.play(flow.put({ id: 'a', at: 3 }), { duration: 1 })
+            s.play(flow.move('a', 0), { duration: 3, ease: (t) => t * t })
+            expect(GATES.map((gate) => flow.reached(gate))).toEqual([1, 1, 1, 1])
+        })
+        // The move crosses the gates at one third and two thirds of the distance.
+        const crossing = (distance: number) => 1 + 3 * Math.sqrt(distance)
+        for (const [stage, distance] of [[2, 1 / 3], [1, 2 / 3]] as const) {
+            expect(counted(flow, stage, crossing(distance) - 0.01)).toEqual(['0'])
+            expect(counted(flow, stage, crossing(distance) + 0.01)).toEqual(['1'])
+        }
     })
 
     it('encloses all four corners of a region inside a rotated parent', async () => {

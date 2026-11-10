@@ -573,18 +573,18 @@ export class Pipeline extends Node {
                         throw new Error(`pipeline: ${call}: item ${shown(rec.id)} is stopped at ${JSON.stringify(this.stages[from]!.name)}, so it does not move on. Let it through first with pass(${shown(rec.id)}), send it to the tray with eject(${shown(rec.id)}), or move it back to an earlier stage`)
                     }
                     const span = t1 - t0, turn = t0 + span * 0.35
-                    if (next > from) {
+                    const step = next > from ? 1 : -1
+                    if (step > 0) {
                         this.trail(rec.lane, from, this.behind(rec, true), t0, turn, ctx.ease)
-                        // The item goes through each stage on its way: it reaches the stage, and goes on. The mark
-                        // changes while the item is over it, so the viewer sees it when the item has passed.
-                        for (let index = from + 1; index < next; index++) {
-                            const at = t0 + reaches(ctx.ease, (index - from) / (next - from)) * span
-                            this.trail(rec.lane, index, this.stages[index]!.gate ? 'passed' : 'visited', at, Math.min(t1, at + span * 0.1), ctx.ease)
-                            this.arrive(rec, index, at)
-                        }
                     } else {
                         // A second run starts from marks that say nothing yet.
                         for (let index = next; index <= from; index++) this.trail(rec.lane, index, 'open', t0, turn, ctx.ease)
+                    }
+                    // A crossing counts in either direction. Only forward travel leaves a verdict on the path.
+                    for (let index = from + step; index !== next; index += step) {
+                        const at = t0 + reaches(ctx.ease, (index - from) / (next - from)) * span
+                        if (step > 0) this.trail(rec.lane, index, this.stages[index]!.gate ? 'passed' : 'visited', at, Math.min(t1, at + span * 0.1), ctx.ease)
+                        this.arrive(rec, index, at)
                     }
                     // The verdict of a stage stays at that stage. The reason of a stop goes with the stop.
                     this.dress(rec, 'waiting', rec.reason ? undefined : rec.badge, false, t0, turn, ctx.ease)
