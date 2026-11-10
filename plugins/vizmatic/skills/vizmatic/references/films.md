@@ -402,6 +402,20 @@ s.play(chat.mark(prompt, 'masked'), ...prompt.map((index) => chat.setValue('targ
 
 Use `split` and `merge` to show how a tokenizer changes its pieces. Each change reads its indexes when it plays. Merge disjoint pairs from right to left so earlier indexes stay valid. Reserve space with `width` when a strip will grow. Use `strip.p(index)` for a line endpoint and `strip.region({ from, to })` to place a note beside a range. Read these positions again after moving the tokens.
 
+Requests that wait for a server: a queue in front of the seats of a batch, the workers of a pool, a gate with a budget. Do not move chips by hand. `requestQueue` keeps each request as one item with its id, moves it from its line into a free slot on a way that meets no other item, and counts what waits, runs, is done and is rejected. `work` gives an item a bar and a number of units that are left, `lines` adds a second line or a priority, and `pool` adds fixed blocks, such as KV pages, that an item takes while it runs:
+
+```ts
+const queue = s.add(requestQueue([{ id: 'A', work: 2 }, { id: 'B', work: 4 }, { id: 'C', work: 6 }, { id: 'D', work: 4 }], { slots: 3, deadline: 250, names: { slots: 'GPU batch' } }))
+s.play(queue.admit(queue.next(3)))       // the heads of the line go to the free slots, one after another
+s.play(queue.run(2))                     // each bar grows, and each number of units that are left counts down
+s.play(queue.finish(), queue.admit())    // A leaves and D takes its seat, in one play: name the finish first
+s.play(queue.arrive({ id: 'E', work: 2 }))
+s.play(queue.wait('E', 310))             // the wait of E runs as a number, and turns red at the deadline
+s.play(queue.reject((item) => item.late, '503'))
+```
+
+A line serves its head first, and the slots take one `admit` at a time: give one `admit` a list, and do not play two. `finish` with no argument takes the items that have no work left. `queue.stateOf(id)`, `queue.count('waiting')`, `queue.next()`, `queue.freeSlots` and `queue.freeBlocks` read the state after the animations that the film has played, so a film can say why a request waits before it plays the next step. An `admit` with no free slot or too few free blocks is an error. A line with more items than places draws the first ones and three dots. For a ring with a head and a tail that wrap, use `ringBuffer`.
+
 A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
 
 ```ts
