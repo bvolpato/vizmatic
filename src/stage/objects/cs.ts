@@ -4,7 +4,7 @@ import { line } from '../shapes'
 import { filmFont, text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { fontFor, glyphPath } from '../font'
-import { ramp, toPaint, type ColorInput } from '../color'
+import { toPaint, type ColorInput } from '../color'
 import { morphMatching, par, pulse, recolor, seq, type Anim, type AnimOptions } from '../anim'
 import { matchSequence } from '../morph'
 import { Heatmap } from './charts'
@@ -1183,123 +1183,7 @@ export function neuralNet(layers: readonly number[], options: NeuralNetOptions =
     return new NeuralNet(layers, options)
 }
 
-// ── Tokens and attention ────────────────────────────────────────────────────
-
-export interface TokenSpec {
-    text: string
-    /** Small line under the chip, such as an id or a probability. */
-    sub?: string
-    color?: ColorInput
-}
-
-export interface TokensOptions {
-    size?: number
-    /** Wrap to this width. */
-    maxWidth?: number
-    gap?: number
-    color?: ColorInput
-    /** Ramp of colors across the row. */
-    colors?: readonly ColorInput[]
-    /** The font of the tokens. Defaults to mono. The line under a chip is in mono. */
-    font?: TextOptions['font']
-    subSize?: number
-    radius?: number
-}
-
-/** A sequence of token chips, as in a tokenizer's output. Small type by default. */
-export class TokenRow extends Node {
-    readonly chips: Node[] = []
-
-    constructor(items: readonly (string | TokenSpec)[], options: TokensOptions = {}) {
-        super()
-        const size = options.size ?? 22
-        const gap = options.gap ?? size * 0.28
-        const subSize = options.subSize ?? size * 0.62
-        const padX = size * 0.42, padY = size * 0.3
-        const specs = items.map((item) => typeof item === 'string' ? { text: item } as TokenSpec : item)
-        const palette = options.colors ? ramp(specs.length, ...options.colors) : null
-        let x = 0, y = 0
-        const placed: { node: Node; x: number; y: number; w: number }[] = []
-        const rowHeight = size + padY * 2 + (specs.some((s) => s.sub) ? subSize * 1.4 : 0)
-        for (let i = 0; i < specs.length; i++) {
-            const spec = specs[i]!
-            const color = spec.color ?? (palette ? palette[i]! : options.color ?? 'blue')
-            const label = text(spec.text.replace(/ /g, '·'), { size, font: options.font ?? 'mono', color: 'ink' })
-            const w = Math.max(label.width, size * 0.5) + padX * 2
-            const h = size + padY * 2
-            if (options.maxWidth !== undefined && x > 0 && x + w > options.maxWidth) {
-                x = 0
-                y += rowHeight + gap
-            }
-            const chip = new Node()
-            const box = new Node(rectPath(-w / 2, -h / 2, w, h, options.radius ?? 4)).fill(color, 0.18).stroke(color, 1.5)
-            chip.add(box, label.at(0, 0))
-            if (spec.sub) chip.add(text(spec.sub, { size: subSize, font: 'mono', color: 'dim' }).at(0, h / 2 + subSize * 0.82))
-            chip.data['box'] = box
-            placed.push({ node: chip, x: x + w / 2, y, w })
-            x += w + gap
-        }
-        const maxX = Math.max(...placed.map((p) => p.x + p.w / 2), 0)
-        const maxY = Math.max(...placed.map((p) => p.y), 0)
-        for (const entry of placed) {
-            entry.node.at(entry.x - maxX / 2, entry.y - maxY / 2)
-            this.chips.push(entry.node)
-            this.add(entry.node)
-        }
-        ownLabels(this, { name: 'row of tokens' })
-    }
-
-    token(index: number): Node {
-        const found = this.chips[index]
-        if (!found) throw new Error(`Token row has no token ${index}.`)
-        return found
-    }
-
-    /** Chips arrive from left to right. */
-    enter(options: AnimOptions = {}): Anim {
-        const lag = options.lag ?? 0.16
-        return {
-            label: 'tokens.enter', duration: options.duration ?? 1.2, ease: options.ease,
-            schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
-                const windows = staggered(this.chips.length, lag, ctx.t0, ctx.t1)
-                this.chips.forEach((chip, i) => {
-                    const [start, end] = windows[i]!
-                    const y = chip.get('y')
-                    stepAt(chip, 'opacity', 0, ctx.t0)
-                    stepAt(chip, 'y', y + 16, ctx.t0)
-                    chip.tween('opacity', 1, start, end, ctx.ease)
-                    chip.tween('y', y, start, end, ctx.ease)
-                })
-            },
-        }
-    }
-
-    /**
-     * Curved links from one token to others, brighter for stronger weights.
-     * Add the result to the stage after this row is in place.
-     */
-    arcs(from: number, weights: readonly number[], options: { color?: ColorInput; maxWidth?: number; lift?: number } = {}): Node {
-        const source = this.token(from).bounds()
-        const made = new Node()
-        const startX = source.x + source.width / 2, startY = source.y - 3
-        weights.forEach((weight, j) => {
-            if (j === from || weight <= 0.01) return
-            const target = this.token(j).bounds()
-            const endX = target.x + target.width / 2, endY = target.y - 3
-            const lift = options.lift ?? 40 + Math.abs(endX - startX) * 0.22
-            const path = parseSvgPath(`M${startX} ${startY}C${startX} ${startY - lift} ${endX} ${endY - lift} ${endX} ${endY}`)
-            const node = new Node(path).stroke(options.color ?? 'yellow', 0.8 + weight * (options.maxWidth ?? 6))
-            node.set('strokeOpacity', 0.2 + weight * 0.8)
-            made.add(node)
-        })
-        return made
-    }
-}
-
-export function tokens(items: readonly (string | TokenSpec)[], options: TokensOptions = {}): TokenRow {
-    return new TokenRow(items, options)
-}
+// ── Attention ───────────────────────────────────────────────────────────────
 
 export interface AttentionMatrixOptions {
     cell?: number
