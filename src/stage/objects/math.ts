@@ -1,7 +1,7 @@
 import { Axes, NumberPlane, curveOf, endOf, sampleXs, type Curve, type PlaneOptions, type Reactive, type Sampled } from '../objects'
 import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, ring, type Path, type Ring, type Vec } from '../geometry'
 import { dynamic, Node, ownLabels, type Side, direction, objectName } from '../node'
-import { arrow, brace, dot, line, rect, type ShapeStyle } from '../shapes'
+import { brace, dot, line, rect, type ShapeStyle } from '../shapes'
 import { tex, TexNode } from '../tex'
 import type { TextOptions } from '../text'
 import { ramp, sampleStops, toPaint, type ColorInput, type Rgba } from '../color'
@@ -11,99 +11,6 @@ import { labelNode, polylineRing, seededRandom, stepsBetween } from './util'
 import { nodesFor, oneObject, type Block } from '../layout'
 
 const read = (value: Reactive): number => typeof value === 'function' ? value() : value
-
-// ── Number line ─────────────────────────────────────────────────────────────
-
-export interface NumberLineOptions {
-    range?: readonly [number, number]
-    /** On-screen length in stage pixels. */
-    length?: number
-    step?: number
-    labels?: boolean
-    labelSize?: number
-    color?: ColorInput
-    tips?: boolean
-    width?: number
-}
-
-export class NumberLine extends Node {
-    readonly range: readonly [number, number]
-    readonly length: number
-    readonly line: Node
-    readonly ticks = new Node()
-    readonly numbers = new Node()
-
-    constructor(options: NumberLineOptions = {}) {
-        super()
-        this.range = options.range ?? [-5, 5]
-        this.length = options.length ?? 1200
-        const color = options.color ?? 'dim'
-        const width = options.width ?? 2
-        const half = this.length / 2
-        const tips = options.tips ?? true
-        this.line = tips
-            ? arrow([-half - 36, 0], [half + 36, 0], { stroke: color, width, tip: 14, both: true })
-            : line([-half, 0], [half, 0], { stroke: color, width })
-        const step = options.step ?? 1
-        for (const value of stepsBetween(this.range[0], this.range[1], step)) {
-            const [x] = this.p(value)
-            this.ticks.add(line([x, -7], [x, 7], { stroke: color, width }))
-            if (options.labels ?? true) {
-                const size = options.labelSize ?? 24
-                const label = tex(String(Math.round(value * 1000) / 1000), { size, color: 'dim', display: false })
-                label.set('py', -size * 0.25)
-                this.numbers.add(label.at(x, 34))
-            }
-        }
-        this.add(this.line, this.ticks, this.numbers)
-        ownLabels(this, { name: 'number line', plot: true })
-    }
-
-    /** Value to local stage coordinates. */
-    p(value: number): [number, number] {
-        const [min, max] = this.range
-        return [((value - min) / (max - min) - 0.5) * this.length, 0]
-    }
-
-    world(value: number): [number, number] {
-        const [x, y] = this.p(value)
-        return this.toWorld(x, y)
-    }
-
-    /** A point on the line. Pass a function to follow a Value over time. */
-    marker(value: Reactive, options: { color?: ColorInput; label?: string; radius?: number; labelSize?: number } = {}): Node {
-        const color = options.color ?? 'yellow'
-        const size = options.labelSize ?? 28
-        const build = (): Node[] => {
-            const [x] = this.p(read(value))
-            const parts: Node[] = [dot(options.radius ?? 9, color).at(x, 0)]
-            if (options.label) parts.push(tex(options.label, { size, color, display: false }).at(x, -size * 1.15))
-            return parts
-        }
-        const node = typeof value === 'function' ? dynamic(build) : new Node().add(...build())
-        this.add(node)
-        ownLabels(this, { labels: [node] })
-        return node
-    }
-
-    /** A highlighted span, with open or closed endpoints. */
-    interval(from: number, to: number, options: { color?: ColorInput; width?: number; offset?: number; openLeft?: boolean; openRight?: boolean } = {}): Node {
-        const color = options.color ?? 'blue'
-        const offset = options.offset ?? 0
-        const [a] = this.p(from), [b] = this.p(to)
-        const band = line([a, offset], [b, offset], { stroke: color, width: options.width ?? 7 })
-        const end = (x: number, open?: boolean) => open
-            ? dot(9, 'bg').stroke(color, 4).at(x, offset)
-            : dot(9, color).at(x, offset)
-        const node = new Node().add(band, end(a, options.openLeft), end(b, options.openRight))
-        this.add(node)
-        return node
-    }
-}
-
-export function numberLine(options: NumberLineOptions = {}): NumberLine {
-    return new NumberLine(options)
-}
 
 // ── Complex plane ───────────────────────────────────────────────────────────
 

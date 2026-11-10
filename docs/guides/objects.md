@@ -26,7 +26,7 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-`riemann`, `areaUnder`, `tangentLine`, and `secantLine` work with an `Axes`. `numberLine` draws one axis alone.
+`riemann`, `areaUnder`, `tangentLine`, and `secantLine` work with an `Axes`. `numberLine` draws one axis alone: see [Number lines](#number-lines).
 
 ```film paired label="Rectangles under a curve grow more numerous and approach the area"
 import { axes, draw, fadeIn, film, morph, riemann } from 'vizmatic/stage'
@@ -170,7 +170,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Charts
 
-`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation. A film can also act on a `barChart` and on a `histogram`: see [Bars that a film acts on](#bars-that-a-film-acts-on) and [A threshold and a second distribution on a histogram](#a-threshold-and-a-second-distribution-on-a-histogram).
+`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation. Films can act on `barChart` and `histogram` objects. See [Bars that a film acts on](#bars-that-a-film-acts-on) and [A threshold and a second distribution on a histogram](#a-threshold-and-a-second-distribution-on-a-histogram). The `scatter` chart also supports named points, nearest-point searches, and shaded areas. See [Scatter planes](#scatter-planes). For `numberLine`, see [Number lines](#number-lines).
 
 ```film paired label="Bars grow up from an axis"
 import { barChart, film, grow, lagged } from 'vizmatic/stage'
@@ -497,7 +497,7 @@ The object places the labels. The label of a span is inside its bar, at the star
 
 When the object cannot settle a case, the film can: an event takes `labelSide`. For a span, `'over'` and `'under'` are over and under the bar, and `'left'` and `'right'` are beside the bar, on the lane. A short span at the foot of an arrow has no room for a label over it, and `labelSide: 'under'` or `'right'` gives it one. For a handoff, `'left'` and `'right'` are the two sides of its arrow, and `'over'` and `'under'` are the two sides of the boundary that it crosses first. For a mark, the four sides are around its dot. A label with a `labelSide` has that place or none: when the place is taken, `lanes()` throws.
 
-Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
+Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A span that is a part of another span is a child span, with `inside`: see "Child spans" below. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
 
 With `ticks`, the object draws a time axis under the lanes, and one lane makes a chart of durations:
 
@@ -538,9 +538,176 @@ export default film((s) => {
 
 Two such objects side by side compare two designs by their crossings: ten against two. The label and the number of a boundary need room at the right of the object, so a handoff can be at any time, to the last end of the domain. The labels of all boundaries start at one x, and the numbers end at one x. The two lanes of a boundary are further apart, by 1.25 of the text size, for the line. The label of a handoff is then over the line or under it, beside the lane that the handoff leaves. `flow.boundaries` holds one node per boundary, and `flow.counters` the number of each boundary that counts, or null.
 
-`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, and `flow.marks` hold the same events by kind. An event has a `shape` (its bar, its arrow, or its dot), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), and an `edge` (the outline of an idle span, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
+`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, `flow.marks`, `flow.links`, and `flow.brackets` hold the same events by kind. An event has a `shape` (its bar, its arrow, its dot, or the line of its bracket), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), an `edge` (the outline of an idle span or the hatch of a down span, or null), a `sign` (the sign of its outcome, or null), and an `eventId` (its `id`, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
 
-The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+The object draws rails and ordinary bars first, followed by brackets, boundaries, deadlines, arrows, and links. A span with an outcome draws above the bar that starts at its end, so the whole outcome sign stays visible. Marks draw last. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+
+### A deadline, and the time that is left
+
+`deadline` draws a line of dashes at one time, over all lanes: the time that a request must beat. Its `label` is over the top of the line. With `drain: true`, a bar over the lanes shows the time that is left. The bar ends at the deadline. While its clock runs, the other end follows the cursor. The bar empties at the deadline. A `label` that is a function gets the time that is left and returns the text, so the text counts down.
+
+```film paired label="Two failed attempts and a backoff leave 3.5 seconds for a proposed six-second retry"
+import { assertEqual, beside, fadeIn, film, lanes, place, sceneArea, text } from 'vizmatic/stage'
+
+export default film({ title: 'Can the caller afford another retry?', fps: 30 }, (s) => {
+    const budget = 20, attempt = 6, backoff = 2
+    const firstStart = 0.5, firstEnd = firstStart + attempt
+    const secondStart = firstEnd + backoff, secondEnd = secondStart + attempt
+    const retryAt = secondEnd + backoff, wouldFinish = retryAt + attempt
+    const flow = place(lanes(['caller', { name: 'provider', color: 'teal' }], [
+        { lane: 'caller', start: 0, end: retryAt, idle: true, label: 'waiting for an answer', outcome: 'cancelled' },
+        { from: 'caller', to: 'provider', at: firstStart, label: 'request' },
+        { lane: 'provider', start: firstStart, end: firstEnd, id: 'first', label: 'attempt 1', outcome: 'failed' },
+        { from: 'provider', to: 'provider', at: [firstEnd, secondStart], label: 'retry' },
+        { lane: 'provider', start: secondStart, end: secondEnd, id: 'second', label: 'attempt 2', outcome: 'failed' },
+        { lane: 'provider', start: secondEnd, end: retryAt, idle: true, id: 'backoff', label: 'wait' },
+        { bracket: [retryAt, wouldFinish], lane: 'provider', labelSide: 'under', id: 'next', label: `retry (${attempt} s)` },
+    ], {
+        domain: [0, 24], width: 1440, pitch: 180, barHeight: 60, size: 32,
+        ticks: [0, 4, 8, 12, 16, 20, 24], format: (t) => `${t} s`,
+        deadline: { at: budget, drain: true, label: (left) => left > 0 ? `${left.toFixed(1)} s left` : 'deadline' },
+    }), sceneArea())
+    s.add(beside(text('Can the caller afford another retry?', { size: 64 }), flow, 'above', 'loose'))
+    s.play(flow.enter())
+    s.play(flow.advance('first'), { duration: 2.4 })
+    s.wait(1)
+    s.play(flow.advance('second'), { duration: 2.8 })
+    s.wait(1)
+    s.play(flow.advance('backoff'), { duration: 1.2 })
+    const left = flow.remaining()
+    assertEqual(left, 3.5, 'time left after backoff')
+    const note = beside(text(`At ${retryAt} s, the caller has ${left} s left for a ${attempt} s retry.`, { size: 38 }), flow, 'under', 'loose')
+    s.play(fadeIn(note), { duration: 0.4 })
+    s.wait(2)
+    // Only the bracket advances through the proposed attempt.
+    s.play(flow.advance('next'), { duration: 2.8 })
+    assertEqual(flow.remaining(), -2.5, 'time past the deadline if the caller retries')
+    s.wait(2.5)
+})
+```
+
+`flow.remaining()` is the time that is left to the deadline at the time of the cursor. After the deadline it is less than 0, and so is the value that a `label` function gets. `drain: { from: 4 }` starts the clock of the bar at a time that is not the first end of the domain. `deadline` also takes a list, such as a timeout and a later limit. Then `flow.remaining(1)` or `flow.remaining('give up')` names one deadline, by its index or by its label. Drain bars share one row, so give them separate time windows when several deadlines have bars. Keep the countdown text short at every value, including negative values. Deadline labels share a row. If two labels touch, use shorter text or move the deadlines farther apart. The line defaults to red. Without a `domain`, the domain holds the deadlines. A deadline comes in with `flow.enter()`. `flow.deadlines` holds one node per deadline: its line, then the two bars when it drains, then its text.
+
+The line starts over the room that a label takes over the first lane. No label of an event is on the line: a label takes a place that is clear of the line, and when it has none, `lanes()` throws. The drain follows the horizontal position of the cursor. The cursor stops below the labels over the first lane. A line with no `drain` serves any time that matters, such as a cutoff or a kill time. Use a bracket to compare a proposed attempt with the deadline. In the film above, the caller stops after the backoff. The bracket shows when another attempt would finish.
+
+### Outcomes, and a lane that is down
+
+An event that does not end well takes `outcome`. `'failed'` is an error or a timeout, and its sign is a cross on a red disc. `'cancelled'` is a stop on purpose, and its sign is a square on an orange disc. The shape says the outcome, so the sign reads without its color. A span has the sign on its end, and the sign arrives when the cursor reaches that end. A mark with an outcome is the sign, in place of the dot. A handoff with an outcome shows a lost message. Its line ends at the sign on the sending side of the boundary. The lanes leave enough room for the shaft and sign at small pitches. It crosses no boundary, so no counter counts it. An `idle` span with `outcome: 'failed'` is a wait that runs out. An `open` span has no end, so it takes no outcome.
+
+`down: true` is a span where the lane is not there: an outage, a GPU that is lost, a worker in quarantine. It is a hatched block with a faint fill, in red unless it has a `color`. The hatch says the state without the color. Its label is over the block, because the hatch would cross a text inside it. A lane that is down does no work, so a down span and a work span that overlap are an error, and a down span takes no `outcome` and no `inside`. With `open`, the lane stays down to the end.
+
+### Links and brackets
+
+A link is an arrow from a time on one lane to another time on a lane: `{ from: 'R3', to: 'R1', at: [50, 40] }`. `at` has two times, the time on `from` and the time on `to`. Use it for a retry, for a cache hit that points at the write that made the entry, or for one record on two clocks. The arrow can point back in time. The link shows when the cursor reaches the later of its two times. Between two lanes it is a straight line. On one lane it is an arc above the top row, with its label over the arc. If a bracket would cross that arc, put the bracket below the lane with `labelSide: 'under'`. The endpoints refer to lanes. Use a mark with `inside` to point to a particular child span. An end of a link is on the edge of the bar that the lane has at that time. With no bar there, it is near the line of the lane, where a dot would be. No control passes with a link, so it crosses no boundary. `dashed: true` draws it with dashes.
+
+A bracket names a window of time: `{ bracket: [0, 280], label: 'time to first token: 280 ms' }`. It is over its `lane`, or under it with `labelSide: 'under'`. Without a lane, it is over the first lane or under the last one. It starts when the cursor leaves its first time, its line grows with the cursor, and it gets its second end and its name when the cursor reaches its last time. A name that is wider than its bracket stays at the middle. Beside a line at one end of the bracket, such as a deadline, the name starts a little after that end. Two brackets at one side of a lane may meet at one time, as the gaps between tokens do. Two that overlap are an error: put one of them at the other side, or on another lane.
+
+```film paired label="A GPU fails. The process and its requests end with their signs, the reply is lost, one request runs again on the other GPU, and the first GPU stays out"
+import { beside, fadeIn, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const fleet = lanes(
+        [{ name: 'router', color: 'dim' }, { name: 'GPU-0', color: 'blue' }, { name: 'GPU-1', color: 'teal' }],
+        [
+            { lane: 'GPU-0', start: 0, end: 22, id: 'process', label: 'process 4117', outcome: 'failed' },
+            { lane: 'GPU-0', start: 2, end: 22, inside: 'process', label: 'R1', outcome: 'cancelled' },
+            { lane: 'GPU-0', start: 8, end: 22, inside: 'process', label: 'R2', outcome: 'failed' },
+            { from: 'GPU-0', to: 'router', at: 22, label: 'reply', outcome: 'failed' },
+            { lane: 'GPU-0', start: 22, end: 50, down: true, label: 'quarantine' },
+            { lane: 'GPU-0', start: 50, end: 60, open: true, label: 'readmitted' },
+            { lane: 'GPU-1', start: 4, end: 18, label: 'R3' },
+            { from: 'GPU-0', to: 'GPU-1', at: [22, 27], id: 'retry', label: 'R2 again' },
+            { lane: 'GPU-1', start: 27, end: 41, label: 'R2' },
+            { lane: 'GPU-1', start: 44, end: 56, label: 'R4' },
+            { bracket: [22, 50], lane: 'GPU-1', labelSide: 'under', label: 'GPU-0 out for 28 min' },
+        ],
+        { width: 1400, size: 30, barHeight: 52, pitch: 190, ticks: [0, 10, 20, 30, 40, 50, 60], format: (time) => `${time} min`, domain: [0, 60] },
+    ).at(110, 0)
+    s.play(fleet.enter(), { duration: 1 })
+    // The cursor stops where the process fails, and a note names the cause over that time.
+    s.play(fleet.advance('process'), { duration: 2.6 })
+    const note = beside(text('a CUDA error: the process is not safe', { size: 30, color: 'yellow' }), fleet, 'above', 'normal', fleet.region({ lane: 'GPU-0', at: 22 }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(1.8)
+    s.play(fleet.advance('retry'), { duration: 1.6 })
+    s.wait(1)
+    s.play(fleet.showAll(), { duration: 3.2 })
+    s.wait(2)
+})
+```
+
+One lane for each clock makes a timeline of two clocks: the time of an event, and the time when its record became readable. A link joins the two marks of one record, a deadline with no bar is the cutoff, and a bracket is the window:
+
+```ts
+import { film, lanes } from 'vizmatic/stage'
+
+export default film((s) => {
+    const clocks = lanes(['event time', 'readable at'], [
+        { lane: 'event time', at: 8, label: 'H1', labelSide: 'right' },
+        { lane: 'readable at', at: 8.2, label: 'H1', labelSide: 'under' },
+        { from: 'event time', to: 'readable at', at: [8, 8.2] },
+        { lane: 'event time', at: 8.5, label: 'H2', labelSide: 'right' },
+        { lane: 'readable at', at: 10.5, label: 'H2', labelSide: 'under' },
+        { from: 'event time', to: 'readable at', at: [8.5, 10.5], label: 'arrives 2 h late' },
+        { bracket: [8, 9], lane: 'event time', label: 'window 08:00 to 09:00' },
+    ], { width: 1300, pitch: 200, domain: [7.5, 11], ticks: [8, 9, 10, 11], format: (time) => `${time}:00`, deadline: { at: 9, label: 'predict now' } })
+    s.play(clocks.enter())
+    // At the cutoff, H2 happened and is not readable yet.
+    s.play(clocks.advance(9))
+    s.play(clocks.showAll())
+})
+```
+
+### Child spans: the trace of a request
+
+A span with `inside` is a child of the span with that `id`, on the same lane: retrieval inside an answer, a tool call inside a turn. A child has a row of its own under its parent, as high as the parent and close under it, so the lane reads as the trace of a request. Each child takes the first free row below its parent. Children that overlap in time need separate rows, so the row number can exceed the nesting depth. The lanes under a lane with children move down by its rows.
+
+```film paired label="The trace of request 205: retrieval, generation and a tool call inside the answer. The cursor stops at the first token"
+import { beside, fadeIn, fadeOut, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const trace = lanes(
+        [{ name: 'request 205', color: 'blue' }, { name: 'model API', color: 'purple' }],
+        [
+            { lane: 'request 205', start: 0, end: 430, id: 'answer', label: 'answer' },
+            { lane: 'request 205', start: 0, end: 90, inside: 'answer', id: 'retrieval', label: 'retrieval', color: 'teal' },
+            { lane: 'request 205', start: 90, end: 380, inside: 'answer', id: 'generation', label: 'generation', color: 'purple' },
+            { lane: 'request 205', start: 150, end: 230, inside: 'generation', id: 'tool', label: 'tool call', color: 'orange' },
+            { lane: 'request 205', at: 280, inside: 'generation', id: 'first-token', label: 'first token' },
+            { lane: 'request 205', start: 380, end: 430, inside: 'answer', label: 'gate', color: 'green' },
+            { from: 'request 205', to: 'model API', at: 90, label: 'prompt' },
+            { lane: 'model API', start: 90, end: 380, label: 'streams 120 tokens' },
+            { bracket: [0, 280], label: 'time to first token: 280 ms' },
+        ],
+        { width: 1400, size: 30, barHeight: 52, ticks: [0, 100, 200, 300, 400], format: (time) => `${time} ms`, domain: [0, 440] },
+    ).at(120, 20)
+    s.play(trace.enter(), { duration: 1 })
+    s.play(trace.advance('retrieval'), { duration: 1.6 })
+    s.wait(0.6)
+    s.play(trace.advance('tool'), { duration: 2 })
+    s.wait(0.6)
+    // The cursor stops at the first token, and a note points at it.
+    s.play(trace.advance('first-token'), { duration: 1.4 })
+    const note = beside(text('the user sees nothing before this', { size: 30, color: 'yellow' }), trace, 'above', 'normal', trace.region({ event: 'first-token' }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(2)
+    s.play(fadeOut(note), { duration: 0.4 })
+    s.play(trace.showAll(), { duration: 2.2 })
+    s.wait(2)
+})
+```
+
+A child is in the time of its parent and on the lane of its parent: a child that is outside either one is an error, and so is an `inside` that names no span. The label of a child is in its bar, or beside its bar in its row, because its parent is over it. A mark with `inside` is on the bar of that span, and its label can be on that bar, beside the dot. A handoff between a lane with children and a lane under it meets the lowest bar that the lane has at that time, so its arrow passes through no child. `flow.y(lane)` is the middle of the first row of a lane, and `flow.region({ lane })` holds all its rows.
+
+### Stop at an event, and point at it
+
+An event takes an `id`. `flow.advance('first-token')` moves the cursor to the time of that event and stops there: the end of a span or a bracket, the time of a mark or a handoff, the later time of a link. Events through that time appear together. Use consecutive plays or `seq` for advances on one cursor. A clone starts at the visible cursor position and can advance independently. `flow.region({ event: id })` is the box of the event on the stage, for a note: `beside(note, flow, 'above', 'normal', flow.region({ event: 'first-token' }))` puts the note over the whole object, at the x of the event. `flow.p(id)` is the middle of the top of the event, in the coordinates of the object, for the end of an arrow from a note. It takes `'bottom'`, `'left'`, or `'right'` for another edge, and `flow.toWorld(...flow.p(id))` is that point on the stage. Both give the place of the complete event, also before the cursor reaches it.
+
+`flow.find(id)` is the node of an event, so `spotlight(flow.find('retrieval').shape)` lights one bar with its label. `flow.timeOf(id)` is the time where `advance(id)` stops, and `flow.timeOf(id, 'start')` is the start of a span or a bracket. `flow.stateOf(id)` says where the event is at the time of the cursor: `'ahead'`, `'running'` for a span or a bracket that the cursor is in, and `'done'`. An event with an outcome is `'failed'` or `'cancelled'` in place of `'done'`. `find`, `timeOf`, `stateOf`, `region`, and `p` also take the index of the event in the list in place of an id. A number is a time for `advance`. Two events with one id are an error, and so is an id that no event has. The message lists the ids.
+
+For a typed list of the original spans, handoffs, and marks, use `LaneEvent[]`. Use `LaneTimelineEvent[]` for a list that also contains links or brackets. Both lists work with `lanes()`.
+
+Every text of the object has the size `size`, 26 by default: the names of the lanes, the labels, the ticks, the text of a deadline, and the name of a bracket. A mark or handoff uses a sign as wide as `size`. A span with a short bar uses a smaller sign.
 
 ## Ring buffers
 
@@ -808,6 +975,139 @@ export default film((s) => {
 ```
 
 `record.events` holds one node per event, in the order of the list, with its `mark`, its `stem`, its `text`, its `note`, and its `halo`, the ring of the lit event. The stem and the text are null for an event with no label. `record.axis` is the line with its ticks and their texts, `record.cursor` is the cursor, and `record.unit` is the unit of the ticks. `record.x(date)` gives the x of a date, and `record.p(index)` the place of the mark of an event. Both are in the coordinates of the object, as `extent` is: the middle of the line is at (0, 0). `record.toWorld(...record.p(index))` gives the place on the stage, for a brace or a line to a picture. `size` is the text size of the labels. The notes and the texts under the line are a little smaller. `font` is the font of every text of the object.
+
+## Number lines
+
+`numberLine(options)` places values on a single axis. `range` sets the endpoints and `length` sets the distance between them in stage pixels. Use `step` for regular ticks or `ticks` for a list of representable values.
+
+```film paired label="Unequal ticks show the rounding error for two inputs"
+import { assertEqual, fadeIn, film, numberLine, sceneKit } from 'vizmatic/stage'
+
+const GRID = [1, 2, 4].flatMap((power) => Array.from({ length: 8 }, (_, k) => power * (1 + k / 8))).concat(8)
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('The distance to the nearest tick is the rounding error'), source('Three fraction bits give eight steps between each power of two and the next.'))
+    const ruler = numberLine({
+        ticks: GRID, tickLabels: [1, 2, 4, 5.5, 8], length: 1600, size: 40,
+        points: [{ name: 'a', value: 1.04, label: 'input a: 1.04', color: 'teal' }, { name: 'b', value: 5.3, label: 'input b: 5.30', color: 'orange' }],
+    }).at(0, 20)
+    s.play(ruler.enter(), { duration: 1.5 })
+    s.wait(2.5)
+    for (const name of ['a', 'b']) {
+        const lost = ruler.bracket(ruler.value(name), name, { label: (gap) => `error: ${gap.toFixed(2)}` })
+        s.play(ruler.snap(name), fadeIn(lost), { duration: 1.5 })
+        s.wait(2.5)
+    }
+    assertEqual(ruler.value('a'), 1, 'rounded a')
+    assertEqual(ruler.value('b'), 5.5, 'rounded b')
+    s.wait(2)
+})
+```
+
+With two or more custom `ticks`, the smallest and largest values set the range unless you supply `range`. Set `labels: false` to hide every tick label. Use `tickLabels` to label selected ticks when the full set would be too dense. Ticks outside that selection are shorter. If the labels on a custom tick list touch, the error suggests ticks with room for labels. `format` writes a value: under a tick, at a threshold, and in a bracket. With `format`, the numbers under the ticks are plain text in the font of the film, so a function such as `(value) => value + ' ms'` adds a unit. Without it, they are math, as the numbers of `axes` are.
+
+`size` sets the point names, threshold labels, band names, and brackets. The default is 28 px. Tick labels default to 6/7 of that size (24 px), and `labelSize` overrides it. For text of at least 26 px at 1080p, set `size: 32` or larger. Plain text uses `font` or the film font.
+
+Give each point a unique `name` and a `value`. `line.move('a', 2.4)` moves one point. `line.move({ a: 2.4, b: 1.3 })` moves several together. `line.insert(point, { from })` brings a new point from an optional stage position or node, and `line.remove(name)` takes it away.
+
+`line.snap('a')` moves a point to `line.nearestTick(value)`. Omit the name to snap every point. A ring marks the original position and a red segment shows the distance to the tick until the next move. Pass `{ trace: false }` as the second argument to omit the trace. At a midpoint, `nearestTick` chooses the tick with the even index in the sorted `tickValues` list.
+
+A point label defaults to its name. Set `label: false` to draw just the mark. `levels` sets how many rows of names the line can use (two by default). When names cannot fit, the error suggests more room or another row.
+
+```film paired label="A moving cutoff changes which requests need review"
+import { assertEqual, film, numberLine, sceneKit } from 'vizmatic/stage'
+
+const SCORES = [0.48, 0.56, 0.63, 0.69, 0.74, 0.81, 0.87, 0.94]
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('A stricter cutoff sends more cases to review'), source('Eight fixed scores. Rings wait for a person. Dots pass the gate.'))
+    const strip = numberLine({
+        range: [0.4, 1], step: 0.1, length: 1600, size: 40, format: (score) => score.toFixed(2),
+        points: SCORES.map((value, i) => ({ name: `request ${i + 1}`, value, label: i === 3 ? 'request 4' : false as const })),
+        thresholds: [{ at: 0.7, label: 'cutoff' }],
+        bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'served at once', color: 'teal' }], counts: true,
+    }).at(0, 40)
+    s.play(strip.enter(), { duration: 1.5 })
+    s.wait(2.5)
+    for (const cutoff of [0.9, 0.5, 0.7]) {
+        s.play(strip.moveThreshold(cutoff), { duration: 1.5 })
+        const expected = SCORES.filter((score) => score < cutoff).length
+        assertEqual(strip.count(0), expected, 'requests in review')
+        assertEqual(strip.count(1), SCORES.length - expected, 'requests served')
+        s.wait(2.5)
+    }
+})
+```
+
+Supply `thresholds` in increasing order. Each cut is a number or an object with `at`, `label`, `color`, `ties`, and `readout`. The label follows the moving cut and shows its current value unless `readout` is false. The cuts divide the line into bands. Each band can have a name and color. `hollow: true` uses rings for its points. Set `counts: true` to show each population under the line.
+
+`line.moveThreshold(to, { which })` moves a cut. Use its index or label for `which`, or omit it for the first cut. A point that meets the cut belongs to the upper band by default. Set `ties: 'under'` for the lower band. The fill, point marks, and counts follow the crossing as it happens. Thresholds must stay in increasing order throughout the motion.
+
+Use `line.value(name)`, `line.bandOf(name)`, `line.count(band)`, and `line.find(test)` to read the state after a scheduled change. `line.names` lists active points and `line.thresholds` lists the current cut values.
+
+`line.bracket(from, to)` follows two values or named points. By default, it shows the gap below the axis. `label` accepts text or a function of the gap and both values. Set `side: 'over'` or use `offset` to make room for another bracket. A bracket, marker, or interval joins the line when you create it. Use `fadeIn` to introduce it later. `line.marker(value)` also accepts a function for a continuously changing value.
+
+Sequence changes to the same point. Changes to distinct points can run together, and a point can move while a threshold moves.
+
+`.at()` places the center of the axis. `line.p(value)` gives a local coordinate and `line.world(value)` gives a stage coordinate. `line.point(name)` and `line.threshold(which)` return nodes for connectors or emphasis. `line.region({ at })`, `line.region({ from, to })`, and `line.region({ band })` give stage boxes for layout. Use `fitted(region, (length) => numberLine({ length, points }))` to include the arrow tips and text when fitting the line.
+
+## Scatter planes
+
+`scatter(points, options)` draws points on two axes. Each point needs `x` and `y`. Give it a `name` to move it by name and a `group` to share a color and shape. A search grows a ring from a point to its nearest points, and a hull, a cell, or a span of the axes is an area that shades. Use it for an embedding plane, a nearest neighbor search, an index of cells, k-means, or a decision region.
+
+```film paired label="A second probe finds a nearer vector across a cell border"
+import { assertEqual, fadeIn, film, scatter, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('The nearest vector can be across a cell border'), source('One probe misses B. Two probes recover the true nearest pair A and B.'))
+    const plane = scatter([
+        { x: 1, y: 1, group: 'left' }, { x: 1.5, y: 7, group: 'left' }, { x: 3, y: 8, group: 'left' },
+        { x: 8, y: 1, group: 'right' }, { x: 8.5, y: 7, group: 'right' }, { x: 7, y: 8, group: 'right' },
+        { x: 4.4, y: 5.6, name: 'A', group: 'left', side: 'over' },
+        { x: 5.2, y: 4.6, name: 'B', group: 'right', side: 'right' },
+        { x: 2.5, y: 5, name: 'c1', group: 'centers', side: 'left' },
+        { x: 7.5, y: 5, name: 'c2', group: 'centers', side: 'right' },
+    ], {
+        x: [0, 10], y: [0, 10], width: 760, height: 760, labelSize: 26, nameSize: 32, radius: 9, groupLabels: false,
+        groups: { left: { color: 'blue', shape: 'dot' }, right: { color: 'purple', shape: 'square' }, centers: { color: 'ink', shape: 'ring' }, found: { color: 'green', shape: 'diamond' } },
+    }).at(0, 10)
+    s.play(plane.enter(), { duration: 1.5 })
+    s.wait(1.5)
+    const cells = plane.cells(['c1', 'c2'])
+    s.play(fadeIn(cells), { duration: 0.6 })
+    s.play(plane.insert({ x: 4.8, y: 5, name: 'q', query: true, side: 'under' }), { duration: 0.9 })
+    const first = cells.find((cell) => cell.holds('q'))!, other = cells.find((cell) => !cell.holds('q'))!
+    s.play(first.shade(), plane.nearest('q', 2, { among: first.points }), { duration: 1.5 })
+    assertEqual(plane.neighbors.includes(plane.indexOf('B')), false, 'one probe finds B')
+    s.wait(3)
+    s.play(other.shade(), plane.nearest('q', 2, { among: [...first.points, ...other.points] }), { duration: 1.5 })
+    assertEqual(plane.neighbors[0], plane.indexOf('B'), 'nearest vector')
+    assertEqual(plane.neighbors[1], plane.indexOf('A'), 'second nearest vector')
+    s.play(plane.assign(plane.neighbors, 'found'), { duration: 0.8 })
+    s.wait(3.5)
+})
+```
+
+`width` and `height` set the plot dimensions. Axis numbers sit outside the plot. By default, `x` and `y` span the initial points. When starting empty, give both ranges to draw labeled axes for points that will arrive later.
+
+A point label defaults to its name. Set `label` for different text or `label: false` to hide it. The chart chooses a place inside the plot. Set `side` to `right`, `left`, `over`, or `under` to request a particular place. The default `nameSize` is 26 px. Axis numbers default to 18 px. Use `labelSize: 26` for a lesson at 1080p.
+
+Points in one group share a color and a label. Set `groups` to give each group a color or `{ color, shape, label }`. The shapes are `dot`, `ring`, `square`, `diamond`, and `triangle`. Set `label: false` to hide that group name. Declare groups with no initial members before assigning points to them. `query: true` draws a target and excludes that point from search results.
+
+`chart.move('q', [4, 5])` moves a point in data units. Use `chart.move({ q: [4, 5], c1: [2, 3] })` to move several at once. `insert(point, { from })` brings in a new point from an optional stage position or node. `remove(which)` takes points away. `assign(which, group)` changes the color and shape of the selected marks. Choose points by index, name, a list of either, or a predicate such as `(point) => point.group === 'left'`.
+
+`chart.nearest('q', 3)` draws a ring to the third nearest neighbor and links the query to the selected points. Distances are Euclidean in data units, so the ring looks circular when the axes use the same number of pixels per unit. The search follows later point movements. Use `among` to restrict candidates, change `k` to resize the search, or set `k` to zero to end it.
+
+`chart.hull(group)` follows the outline of a group as its membership changes. `chart.cells(centers)` partitions the plot by distance to each center. Give a point index, a name, or a coordinate pair for each center. `chart.span({ x: [0, 3.35] })` selects a vertical strip. Add a `y` range for a rectangle. Infinity denotes the corresponding edge of the axis. Each area joins the chart when you create it.
+
+`area.shade()` adds fill and emphasizes the outline. `area.shade(false)` returns to the resting appearance. A hull starts shaded. `area.points` returns the indexes of data points in the area. It excludes queries and, for a cell, the listed center points. `area.holds('q')` tests the location of a query too.
+
+`positionOf(which)`, `groupOf(which)`, `count(group)`, and `find(test)` read the state after the changes played so far. `nearestTo('q', 2)` returns neighbors with their distances. `neighbors` returns the indexes selected by the active search.
+
+A point can move and change group together. Sequence two position changes to the same point, two changes to its group, or two changes to the search. Moves and inserts need coordinates inside the axes.
+
+`chart.point(which)` returns a mark for a connector or emphasis. `chart.p(x, y)` gives local coordinates. `chart.region({ x: [0, 5] })` gives a stage box for part of the plot. `fitted(region, (width) => scatter(points, { width, height }))` includes axis labels in the measured width. The chart exposes `dots`, `nameLabels`, `groupLabels`, `areas`, and `axis` for animation.
 
 ## Pictograms
 
@@ -1758,7 +2058,7 @@ The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`
 | The label of a `connector`, and the label of an edge of a `graph`. | The font that the film names. Mono in a film with no `font`, as before. |
 | The text of an SVG from `fromSvg`. | The font that the film names, and mono for text that the SVG sets in a monospace family. Sans in a film with no `font`, as before. |
 | The words and the source line of a `quote`. | The serif text font, in every film. |
-| `tex`, and each label that is math: the numbers and the labels of `axes` and `numberLine`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
+| `tex`, and each label that is math: the numbers and the labels of `axes`, the numbers of a `numberLine` with no `format` and the label of its `marker`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
 | The center label of a `donut`. | The display serif. |
 
 Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. In a strip of `tokens`, `font` is the font of the tokens: the values of its rows stay in mono, and the names of its rows and the labels of its brackets are in the font of the film. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
