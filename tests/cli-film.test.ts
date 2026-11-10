@@ -43,6 +43,30 @@ export default film({ title: 'Short', fps: 10 }, (s) => {
 `
 
 describe('vizmatic film', () => {
+    it.skipIf(!hasFfmpeg).each(['narration', 'narrated'])('renders intact synthetic %s captions into WebVTT and MP4', async (caller) => {
+        const directory = await tempDirectory()
+        const samples = [
+            'Acme.io ships Nova.js 22.23.4 with OrbitDB 1.25.0.',
+            'Values: 3.8, 0.17, and .5! Northstar.dev starts Comet.js.',
+            "In the '80s... Keep 0.17 and 4.6 intact.",
+        ]
+        const timing = { lead: 0, gap: 0, scenes: [{ id: 'captions', beats: samples.map((say) => ({ say, duration: 1 })) }] }
+        const definition = caller === 'narration'
+            ? `film({ fps: 10 }, (s) => { narration(s, timing) })`
+            : `narrated({ fps: 10, timing, scenes: { captions: () => {} } })`
+        await writeFile(join(directory, 'captions.ts'), `import { film, narration, narrated } from 'vizmatic/stage'\nconst timing = ${JSON.stringify(timing)}\nexport default ${definition}\n`)
+        const out = join(directory, 'out')
+        const result = cli(['film', 'captions.ts', '--out', out, '--width', '160', '--quality', 'draft', '--workers', '1', '--json'], directory)
+        expect(result.status, result.stderr).toBe(0)
+        // Read the subtitles from the encoded movie, as well as the sidecar that the CLI writes.
+        const embedded = spawnSync('ffmpeg', ['-v', 'error', '-i', join(out, 'captions.mp4'), '-map', '0:s:0', '-f', 'srt', '-'], { encoding: 'utf8' })
+        expect(embedded.status, embedded.stderr).toBe(0)
+        for (const subtitles of [await readFile(join(out, 'captions.vtt'), 'utf8'), embedded.stdout]) {
+            const text = subtitles.split(/\r?\n/).filter((line) => line && line !== 'WEBVTT' && !/^\d+$/.test(line) && !line.includes(' --> ')).join(' ')
+            expect(text.split(' ')).toEqual(samples.flatMap((sample) => sample.split(' ')))
+        }
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg)('renders every format with a manifest, captions, and a look suffix for several looks', async () => {
         const directory = await tempDirectory()
         await writeFile(join(directory, 'short.ts'), shortFilm)

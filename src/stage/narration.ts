@@ -97,8 +97,8 @@ const tokens = (text: string): string[] => text.toLowerCase().replace(/[^\p{L}\p
 /** Split spoken text into caption lines: by sentence, then by length. */
 export function captionLines(text: string, length = 74): string[] {
     const lines: string[] = []
-    // A period inside a number, such as 3.8, does not end a sentence.
-    for (const sentence of text.match(/[^.?!]+(?:[.?!]+(?=\s|$)|\.\d[^.?!]*[.?!]?|$)/g) ?? []) {
+    // Split only at whitespace after sentence punctuation, so dots inside tokens stay intact.
+    for (const sentence of text.split(/(?<=[.?!])\s+/)) {
         let line = ''
         for (const word of sentence.split(/\s+/).filter(Boolean)) {
             if (line && line.length + word.length + 1 > length) {
