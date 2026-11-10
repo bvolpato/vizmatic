@@ -1049,7 +1049,7 @@ export default film({ fps: 30 }, (s) => {
             { branch: [{ label: 'norm', id: 'norm 1', color: 'yellow' }, { label: 'attention', color: 'orange' }] },
             { branch: [{ label: 'norm', id: 'norm 2', color: 'yellow' }, { label: 'feed forward', color: 'blue' }] },
         ] },
-        { label: 'unembed', color: 'green', shape: '6 scores' },
+        { label: 'unembed', color: 'green', shape: '4 scores' },
     ], { shape: 'token "the"', size: 30 })
     s.play(model.enter(), { duration: 1.6 })
     s.play(model.feed([0.6, -0.2, 0.1, 0.4]))
@@ -1147,6 +1147,8 @@ export default film((s) => {
 `stack.block(ref)` is the node of a block, for `beside`, a `connector`, or a `spotlight`. `stack.p(ref, edge)` is the middle of an edge of a block, `'right'` by default, and `stack.foot` and `stack.head` are the two ends of the stream: a row of tokens goes under the foot, and the bars of the output go over the head. These points are in the coordinates of the object, and `stack.toWorld(x, y)` gives the place on the stage. `stack.region()` is the box of the object in stage pixels, and `stack.region(ref)` the box of one block. `stack.enter()` builds the stack from the foot up: the stream grows, and each part arrives when the stream reaches its height. `stack.blocks`, `stack.boxes`, `stack.labels`, `stack.stream`, `stack.taps`, `stack.adds`, `stack.reads`, `stack.writes`, `stack.chains`, `stack.frames`, `stack.vector`, `stack.copy`, `stack.tag` and `stack.zoom` are the parts. `stack.count` is the number of blocks, `stack.ids` their ids, and `stack.depth` the number of layers.
 
 `neuralNet` draws neurons and the weights between them, and its motion is an activation. `steps` lights one box of a row, and nothing joins its boxes. A layer stack knows the order of its layers and what each one does to the stream, so it can send one vector through them and keep its values.
+
+The complete proof films are in [`examples/_teaching/layer-stack-transformer.ts`](../../examples/_teaching/layer-stack-transformer.ts), [`layer-stack-connector.ts`](../../examples/_teaching/layer-stack-connector.ts), and [`layer-stack-tiny-gpt.ts`](../../examples/_teaching/layer-stack-tiny-gpt.ts). The cells show illustrative values. A shape label describes the full tensor, so its dimensions can exceed the number of cells drawn. The film supplies the new values. The stack does not compute a model's output or unroll a recurrent cell over time.
 
 ## Code and tokens
 
