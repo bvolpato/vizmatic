@@ -276,6 +276,8 @@ Both objects change while the film plays. Each change is an animation, each leav
 
 ### A search tree: grow, light a path, prune
 
+The [beam search film](../film/beam-search.html) shows a second-place prefix finish first. Edge labels give log probabilities, and each node adds them along its path.
+
 A node of a tree with a `value` is a box with a name and a number, and all boxes have one size. `edge` is the label of the edge from the parent: a condition, a probability. `weight` is the number of that edge, and with `score: 'product'` or `score: 'sum'` each node shows the product or the sum of the weights on its way from the root. `t.score(id)` reads it. So a tree of continuations shows how the probability of a sentence is made, one edge at a time.
 
 ```film paired label="Greedy takes the best word, and a beam of two finds a better sentence"
@@ -325,7 +327,7 @@ A tree with a value or a score has box nodes, with a `labelSize` of 28 and a `va
 
 ### States of a node, and a token for a state machine
 
-A node of a graph or of a tree is in one of five states. Each state has a sign beside its color, so a viewer who cannot tell red from green reads it too.
+Schedule state changes for the same node in time order, including calls inside `s.at`. Changes on separate nodes can run together. A node of a graph or of a tree is in one of five states. Each state has a sign beside its color, so a viewer who cannot tell red from green reads it too.
 
 | State | Color | Sign |
 |---|---|---|
@@ -411,13 +413,13 @@ export default film((s) => {
 })
 ```
 
-In a tree, the same `send` computes the value of a node from its children: `t.send('home', 'ran', { value: '0.21' })`.
+For a reduction on a tree, calculate the parent value in the film and pass the formatted result to `send`. For example, a film can display a result of 0.21 with `t.send('home', 'ran', { value: '0.21' })`.
 
 ### A graph that fills a region, and a graph that is built
 
 With `fit: true` and the default layout, `width` and `height` are the size of the graph, from the outline of its first node to the outline of its last one. The layout keeps its order and moves the nodes apart or together, so `fitted(region, (width) => graph(nodes, edges, { fit: true, width }))` fills a region and a film types no place for a node. A size with no room between two nodes, or for the label of their edge, is an error that names the least size. Without `fit: true`, the default layout ignores `width` and `height`, as it did before. With the force and the circle layout, `width` and `height` are the bounding size, as before.
 
-With `shown`, only the nodes that it names show at the start. `g.grow(ids)` brings the others one after another, each with the edges that join it to the nodes that show: an edge that comes to the new node draws first, and the node pops in at its end. `g.isShown(id)` reads it. So a film builds a knowledge graph from the sentences that it reads.
+With `shown`, only the nodes that it names show at the start. `g.grow(ids)` brings the others one after another, each with the edges that join it to the nodes that show: an edge that comes to the new node draws first, and the node pops in at its end. `g.isShown(id)` reads it. Define the nodes and edges before playback. To reveal another relation between two visible nodes later, animate its edge separately.
 
 `g.p(id, 'bottom')` is the middle of an edge of a node, in the coordinates of the graph, for a line of the film. `g.node(id)` is the node, for `beside(note, g, 'right', 'wide', g.node(id))` of the layout, and `g.edge(from, to)` is the edge, with its `shaft`, its `tip` and its `caption`. `labelAt` on an edge moves its label along the line, from 0 at the start to 1 at the end.
 

@@ -447,7 +447,7 @@ describe('graph and tree that change', () => {
     })
 
     it('lets a clone continue a tree search independently after the original tree has changed', async () => {
-        let source!: T, copy!: T
+        let source!: T, copy!: T, next!: T
         await compile((s) => {
             source = words({ shown: 1, token: 'the' })
             const holder = s.add(group(source))
@@ -459,7 +459,12 @@ describe('graph and tree that change', () => {
             s.play(copy.go('home'), copy.setValue('ran', '0.58'))
             s.play(copy.prune('slept'))
             s.play(copy.path('home'))
+            next = s.add(copy.clone())
+            s.play(next.go('ran'), next.setValue('ran', '0.57'))
+            s.play(next.path('ran'))
         })
+        expect([next.current, next.valueOf('ran'), next.litPath]).toEqual(['ran', '0.57', ['the', 'ran']])
+        expect(next.node('ran')).not.toBe(copy.node('ran'))
         expect(copy.node('ran')).not.toBe(source.node('ran'))
         expect(copy.nodeLayer.children).toContain(copy.node('ran'))
         expect([source.current, copy.current]).toEqual(['ran', 'home'])
@@ -613,6 +618,46 @@ describe('graph and tree that change', () => {
             expect(at(0.5, () => edge.caption!.get('y'))).toBeGreaterThan(30)
             expect(at(1, () => g.node('b').ring!.get('opacity'))).toBe(1)
         }
+    })
+
+    it('gives an arriving value the state color in either scheduling order', async () => {
+        for (const sendFirst of [true, false]) {
+            let g!: G
+            await compile((s) => {
+                g = s.add(graph([{ id: 'a' }, { id: 'b', value: '', width: 120 }], [{ from: 'a', to: 'b' }]))
+                const send = g.send('a', 'b', { value: '2' }), off = g.setState('b', 'off')
+                s.play(...(sendFirst ? [send, off] : [off, send]), { duration: 1 })
+            })
+            expect(g.stateOf('b')).toBe('off')
+            const value = g.node('b').value!
+            expect(rgb(at(1, () => value.leaves()[0]!.get('fill')))).toEqual(color('dim'))
+        }
+    })
+
+    it('explains the order when a later state change was already scheduled', async () => {
+        expect(await fails((s) => {
+            const g = s.add(chain())
+            s.at(2, () => s.play(g.setState('a', 'done')))
+            s.at(0, () => s.play(g.setState('a', 'active')))
+        })).toMatch(/schedule changes to the look of node "a" in time order/)
+    })
+
+    it('keeps parent links acyclic when a tree mixes named and unnamed nodes', async () => {
+        let t!: T
+        await compile((s) => {
+            t = s.add(tree({ id: 'n0', children: [{ label: 'leaf' }] }))
+            s.play(t.path('n1'))
+        })
+        expect(t.litPath).toEqual(['n0', 'n1'])
+        expect(await fails((s) => { s.add(tree({ id: 'r', children: [{ id: 'r' }] })) })).toMatch(/two nodes have the id "r"/)
+    })
+
+    it('keeps a hidden pruned branch off when a later call tries to reopen it', async () => {
+        expect(await fails((s) => {
+            const t = s.add(words({ shown: 0 }))
+            s.play(t.prune('ran'))
+            s.play(t.setState('home', 'idle'))
+        })).toMatch(/"home" is in a pruned branch/)
     })
 
     it('go follows the arrows: a step with no edge is an error that names the steps that work', async () => {

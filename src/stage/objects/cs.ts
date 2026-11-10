@@ -1,5 +1,5 @@
 import { polyPath, rectPath, circlePath, parseSvgPath, smoothPath, tangentAt, pointAt, pathLength, trimPath, concat, type Path, type Vec } from '../geometry'
-import { Node, ownLabels, objectName } from '../node'
+import { Node, ownLabels, objectName, rebindCloneParts } from '../node'
 import { line } from '../shapes'
 import { filmFont, text, type TextOptions } from '../text'
 import { tex } from '../tex'
@@ -449,6 +449,7 @@ export class Graph extends Node {
                 view.add(view.caption.at(0, valued ? -lines / 2 + (labelSize * NODE_LINE) / 2 : 0))
             }
             if (valued) {
+                view.fill('ink')
                 view.value = this.word(spec.value!, 'value').at(0, lines / 2 - (valueSize * NODE_LINE) / 2)
                 view.add(view.value)
             }
@@ -467,6 +468,7 @@ export class Graph extends Node {
             if (!GRAPH_STATES.includes(state)) throw new Error(`${what}: the state of the node ${quoted(spec.id)} is ${quoted(state)}. The states are ${GRAPH_STATES.join(', ')}`)
             this.states.set(spec.id, state)
             if (state !== 'idle') this.paint(spec.id, this.look(spec.id, state), null)
+            if (view.value) this.bindValueInk(view, view.value)
         })
         const directed = options.directed ?? true
         const edgeColor = options.edgeColor ?? 'dim'
@@ -546,7 +548,7 @@ export class Graph extends Node {
         ownLabels(this, { name: 'graph' })
     }
 
-    protected override copyStateTo(copy: this, parts: ReadonlyMap<Node, Node>): void {
+    protected override [rebindCloneParts](copy: this, parts: ReadonlyMap<Node, Node>): void {
         Object.assign(copy, {
             nodes: new Map([...this.nodes].map(([id, node]) => [id, parts.get(node) as GraphNode])),
             states: new Map(this.states),
@@ -556,6 +558,7 @@ export class Graph extends Node {
             lookMoves: new Map(),
             tokenMove: null,
         })
+        for (const view of copy.nodes.values()) if (view.value) copy.bindValueInk(view, view.value)
     }
 
     node(id: string): GraphNode {
@@ -926,6 +929,9 @@ export class Graph extends Node {
      */
     protected claimLook(id: string, call: string, ctx: AnimContext): void {
         const last = this.lookMoves.get(id)
+        if (last && last.ctx !== ctx && ctx.t1 <= last.t0 && ctx.t0 < last.t0) {
+            throw new Error(`${this.kind}: schedule changes to the look of node ${quoted(id)} in time order. Put ${call} at ${secondsOf(ctx.t0)} before ${last.call} at ${secondsOf(last.t0)}`)
+        }
         if (last && last.ctx !== ctx && ctx.t0 < last.t1 - 1e-6) {
             throw new Error(`${this.kind}: ${call} plays from ${secondsOf(ctx.t0)} to ${secondsOf(ctx.t1)}, and ${last.call} plays from ${secondsOf(last.t0)} to ${secondsOf(last.t1)}. Both change the look of the node ${quoted(id)}, and a node takes one look at a time. Play the two in a \`seq\`, or in two calls of \`s.play\``)
         }
@@ -968,7 +974,8 @@ export class Graph extends Node {
     /** Give a node a look: over a time, or at once with `null` while the graph is built. */
     protected paint(id: string, look: NodeLook, when: Pick<AnimContext, 't0' | 't1' | 'ease'> | null): void {
         const view = this.nodes.get(id)!, shape = view.shape
-        const texts = [view.caption, view.value].flatMap((part) => part?.leaves() ?? []).filter((leaf) => leaf.get('fill') !== null)
+        const texts = (view.caption?.leaves() ?? []).filter((leaf) => leaf.get('fill') !== null)
+        if (view.value) texts.push(view)
         if (!when) {
             shape.set('stroke', look.paint).set('fill', look.paint).set('fillOpacity', look.fillOpacity).set('strokeWidth', look.width).set('dash', look.dash)
             for (const leaf of texts) leaf.set('fill', look.ink)
@@ -1039,6 +1046,16 @@ export class Graph extends Node {
         return box.width > 0 ? rectPath(box.x - pad, box.y - pad * 0.5, box.width + pad * 2, box.height + pad, 4) : []
     }
 
+    /** Every value on this node follows one ink track, including a value that arrives during a state change. */
+    private bindValueInk(view: GraphNode, value: Node): void {
+        const ink = view.track('fill')
+        for (const leaf of value.leaves()) {
+            if (leaf.get('fill') === null) continue
+            leaf.tracks ??= new Map()
+            leaf.tracks.set('fill', ink)
+        }
+    }
+
     /** The text of a value or of a note. A value is in ink and strong, because it is the part that changes. */
     private word(content: string, what: 'value' | 'note'): Node {
         return what === 'value'
@@ -1091,7 +1108,7 @@ export class Graph extends Node {
             stepAt(next, 'visible', true, t0)
             stepAt(next, 'opacity', 0, t0)
             // A value in a node that is off is dim, as the label of the node is.
-            if (what === 'value') for (const leaf of next.leaves()) stepAt(leaf, 'fill', toPaint(this.states.get(id) === 'off' ? 'dim' : 'ink'), t0)
+            if (what === 'value') this.bindValueInk(view, next)
             old.tween('opacity', 0, t0, turn, ease)
             // The old text is hidden from the turn on. So when a film changes one text twice at one time, the text of the first change does not arrive under the text of the second.
             stepAt(old, 'visible', false, turn)
@@ -1294,14 +1311,15 @@ export class TreeGraph extends Graph {
     private readonly scored: 'product' | 'sum' | null
     /** The nodes on a lit path, each with the color of its light. */
     private lit = new Map<string, Paint>()
+    private pruned = new Set<string>()
 
     protected override get kind(): string {
         return 'tree'
     }
 
-    protected override copyStateTo(copy: this, parts: ReadonlyMap<Node, Node>): void {
-        super.copyStateTo(copy, parts)
-        Object.assign(copy, { depths: new Map(this.depths), lit: new Map(this.lit) })
+    protected override [rebindCloneParts](copy: this, parts: ReadonlyMap<Node, Node>): void {
+        super[rebindCloneParts](copy, parts)
+        Object.assign(copy, { depths: new Map(this.depths), lit: new Map(this.lit), pruned: new Set(this.pruned) })
     }
 
     constructor(root: TreeSpec, options: TreeOptions = {}) {
@@ -1319,7 +1337,12 @@ export class TreeGraph extends Graph {
         const texts: { label?: string; math?: boolean; value?: string }[] = [], edgeLabels: string[] = []
         // The score of each node, in the order of the tree: the layout walks the tree in that order too.
         const running: number[] = []
+        const namedIds = new Set<string>()
         const read = (node: TreeSpec, depth: number, above: number): void => {
+            if (node.id !== undefined) {
+                if (namedIds.has(node.id)) throw new Error(`tree: two nodes have the id ${quoted(node.id)}. Give each node its own id`)
+                namedIds.add(node.id)
+            }
             if (node.value !== undefined) valued = true
             if (node.weight !== undefined && !Number.isFinite(node.weight)) throw new Error(`tree: the weight of the node ${quoted(node.id ?? node.label ?? '')} is ${quoted(node.weight)}. A weight is a number`)
             if (depth > 0 && score !== null && node.weight === undefined) throw new Error(`tree: with score: '${score}', each node under the root has a weight, and the node ${quoted(node.id ?? node.label ?? '')} has none. Give it a weight, such as weight: 0.5`)
@@ -1391,8 +1414,8 @@ export class TreeGraph extends Graph {
         let counter = 0
         let leafCursor = 0
         const place = (node: TreeSpec, depth: number): { id: string; position: number } => {
+            while (node.id === undefined && namedIds.has(`n${counter}`)) counter++
             const id = node.id ?? `n${counter++}`
-            if (depthOf.has(id) && (boxed || labelled || options.shown !== undefined)) throw new Error(`tree: two nodes have the id ${quoted(id)}. Give each node its own id`)
             depthOf.set(id, depth)
             // The nodes are placed in the order in which they were read, so this node is the next one of the list.
             const own = running[specs.length]!
@@ -1613,8 +1636,7 @@ export class TreeGraph extends Graph {
 
     /** A pruned branch stays off: its edges keep their dashes, so a node of it with another state would be a wrong picture. */
     protected override settable(id: string, state: GraphState): void {
-        const parent = this.parents.get(id)
-        if (state !== 'off' && parent !== undefined && this.states.get(id) === 'off' && sampleAt(this.edgeTo(id).shaft, 'dash', Infinity) !== null) {
+        if (state !== 'off' && this.pruned.has(id)) {
             throw new Error(`tree: setState: ${quoted(id)} is in a pruned branch, and a pruned branch stays off. Prune later, or leave the node out of the prune`)
         }
     }
@@ -1706,7 +1728,7 @@ export class TreeGraph extends Graph {
             for (const child of this.kids.get(id)!) walk(child)
         }
         for (const top of tops) walk(top)
-        const showing = branch.filter((id) => !this.waiting.has(id) && this.states.get(id) !== 'off')
+        const showing = branch.filter((id) => !this.waiting.has(id) && !this.pruned.has(id))
         const depths = [...new Set(showing.map((id) => this.depths.get(id)!))].sort((a, b) => a - b)
         const windows = staggered(depths.length, 0.5, ctx.t0, ctx.t1)
         const off = toPaint('faint'), dim = toPaint('dim')
@@ -1722,6 +1744,7 @@ export class TreeGraph extends Graph {
         }
         // A node of the branch that waits is off too, so the branch does not grow.
         for (const id of branch) {
+            this.pruned.add(id)
             this.states.set(id, 'off')
             this.lit.delete(id)
         }

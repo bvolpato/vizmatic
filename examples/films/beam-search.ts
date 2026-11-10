@@ -3,7 +3,7 @@
  * Each weight is a log probability. Scores add along a path, and a larger score is better.
  * Yellow marks the beam. Green marks its best complete continuation. Dashed branches have been pruned.
  */
-import { assertEqual, fadeIn, film, fitted, place, sceneKit, tree } from 'vizmatic/stage'
+import { assertEqual, fadeIn, fadeOut, film, fitted, place, sceneKit, tree } from 'vizmatic/stage'
 
 export default film({ title: 'A beam keeps more than one path', fps: 60 }, (s) => {
     const { area, heading, label } = sceneKit()
@@ -22,7 +22,8 @@ export default film({ title: 'A beam keeps more than one path', fps: 60 }, (s) =
             { id: 'n-user', label: 'user', weight: -0.36 },
         ] },
     ] }, { width, direction: 'right', score: 'sum', shown: 0 })), picture)
-    s.add(heading('A beam of two keeps two prefixes'), lattice)
+    const rule = place(label('Add the log probabilities along each path. Keep the two largest totals.'), result)
+    s.add(heading('The second-best prefix can finish first'), lattice, rule)
 
     s.chapter('Expand the first prefixes')
     s.wait(1)
@@ -40,7 +41,7 @@ export default film({ title: 'A beam keeps more than one path', fps: 60 }, (s) =
     s.chapter('Choose the best complete path')
     assertEqual(Math.round(lattice.score('r-key') * 100), -131)
     assertEqual(Math.round(lattice.score('c-key') * 100), -143)
-    s.play(lattice.path('r-key', { color: 'green' }))
+    s.play(lattice.path('r-key', { color: 'green' }), fadeOut(rule))
     s.play(lattice.setState('r-key', 'done'))
     const best = lattice.score('r-key').toFixed(2)
     const other = lattice.score('c-key').toFixed(2)
