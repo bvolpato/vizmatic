@@ -7628,6 +7628,40 @@ describe('segmented bar', () => {
         expect(label(copy.part('a'), 5)?.amount).toBe('4')
     })
 
+    it('freezes one travelling segment when its group is cloned during a send', async () => {
+        let blue!: Rgba
+        const compiled = await compile((s) => {
+            blue = parseColor('blue')
+            const options = { capacity: 10, width: 500, labels: false, readout: false }
+            const source = segmentedBar([{ name: 'cache', value: 6, color: 'blue' }], options)
+            const target = segmentedBar([], options)
+            const bars = s.add(group(group(source).at(-400, 0).opacity(0.4), group(target).at(400, 0).opacity(0.8)).at(0, -300).opacity(0.5))
+            s.play(source.send('cache', target), { duration: 1, ease: linear })
+            s.at(0.5, () => {
+                const snapshot = s.add(bars.clone().shift(0, 200))
+                s.add(snapshot.clone().shift(0, 200))
+                // An endpoint alone has no copy of the transfer between the two groups.
+                s.add(source.clone(), target.clone())
+            })
+            s.add(bars.clone().shift(0, 600))
+            s.wait(1)
+        })
+        const marks = (t: number) => paths(compiled, t).filter((op) => same(op.fill, blue) && op.fillAlpha > 0)
+            .map((op) => ({ ...pathBounds(op.path)!, alpha: op.fillAlpha })).sort((a, b) => a.y - b.y)
+        const middle = marks(0.5)
+        expect(middle).toHaveLength(3)
+        for (const [i, mark] of middle.entries()) {
+            expect(mark).toEqual({ ...middle[0], y: expect.closeTo(middle[0]!.y + 200 * i, 6) })
+        }
+        const later = marks(1.5)
+        expect(later).toHaveLength(4)
+        expect(middle[0]!.alpha).toBeCloseTo((marks(0)[0]!.alpha + later[0]!.alpha) / 2)
+        expect(later.slice(1, 3)).toEqual(middle.slice(1))
+        expect(later[0]!.x).toBeGreaterThan(middle[0]!.x)
+        expect(later[3]).toEqual({ ...later[0], y: expect.closeTo(later[0]!.y + 600, 6) })
+        expect(marks(0.5)).toEqual(middle)
+    })
+
     it('keeps the shape and opacity of a part at both ends of a rotated transfer', async () => {
         let teal!: Rgba
         const compiled = await compile((s) => {

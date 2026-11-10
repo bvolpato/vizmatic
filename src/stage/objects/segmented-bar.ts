@@ -195,6 +195,17 @@ function hatch(left: number, top: number, width: number, height: number, step: n
     return rings
 }
 
+/** The original follows both bars. A clone keeps the path and opacity at the snapshot time. */
+class TravellingSegment extends Node {
+    declare draw: ((time: number) => Node | null) | null
+
+    protected override [rebindCloneParts](copy: this): void {
+        const mark = this.get('visible') ? this.draw?.(clock.now) : null
+        copy.draw = null
+        if (mark) copy.add(mark)
+    }
+}
+
 /**
  * One bar in named parts, drawn to scale: a budget against a capacity, such as a context window in tokens or
  * the memory of a device, or shares that add up to one. A part keeps its name and its color while its amount
@@ -682,16 +693,21 @@ export class SegmentedBar extends Node {
                 entry.value = value
                 entry.last = { call: `send(${JSON.stringify(name)})`, t0: ctx.t0, t1: ctx.t1 }
 
-                // The carrier is under the stage root, so inherit each part's opacity up to that root once.
+                // A group containing both bars owns the transfer, so a snapshot includes it exactly once.
+                const ancestors = new Set<Node>()
+                for (let own: Node | null = this; own; own = own.parent) ancestors.add(own)
+                let owner: Node = to
+                while (owner.parent && !ancestors.has(owner)) owner = owner.parent
+                // The shared ancestor supplies its own opacity when the renderer visits the carrier.
                 const opacityOf = (box: Node): number => {
                     let alpha = 1
-                    for (let own: Node | null = box; own && own !== ctx.stage.root; own = own.parent) {
+                    for (let own: Node | null = box; own && own !== owner; own = own.parent) {
                         if (!own.get('visible')) return 0
                         alpha *= own.get('opacity')
                     }
                     return alpha
                 }
-                const carrier = new Node()
+                const carrier = new TravellingSegment().set('visible', false)
                 // The box is on its way from one bar to the other. The film check does not take it as a mark beside a text.
                 carrier.data['decoration'] = true
                 carrier.draw = (time) => {
@@ -708,7 +724,8 @@ export class SegmentedBar extends Node {
                     const path = transformPath(lerpSame(a, b)(share), invert(carrier.worldMatrix()))
                     return new Node(path).fill(from.color, FILL).opacity(alpha + (beta - alpha) * share)
                 }
-                ctx.stage.mountAt(carrier, ctx.t0)
+                owner.add(carrier)
+                carrier.track('visible').step(ctx.t0, true)
                 carrier.track('visible').step(ctx.t1, false)
                 // For the lights of the film: the box is as bright as the part that it becomes.
                 ctx.stage.marks.set(carrier, node)

@@ -1097,6 +1097,8 @@ Each verb is an animation that changes the parts:
 
 The parts at the right of a part that changes move with it. The amounts under the parts count, and so do the readout and the free room. `cut` is a renormalization, such as top-k on a distribution: the cut parts shrink first, so the viewer sees the room that they leave, and then the rest grow. With `send`, the part keeps its name, its amount, and its color. The first bar closes the room of the part, and the second bar makes room before the box lands.
 
+To freeze a transfer, clone the group that contains both bars. The snapshot keeps the travelling box at its current position as the original continues. Cloning a single endpoint captures only that bar.
+
 Changes to different parts can play together. Schedule changes to the same part in time order, with each change ending before the next begins. Use `seq` to remove and replace a part with the same name, or to send a part to an archive and back. The bar resolves part names when each animation plays.
 
 `bar.names`, `bar.count`, `bar.total`, `bar.free`, and `bar.over` read the state after the changes that the film has played so far. `bar.amount(name)` is the amount of one part, `bar.range(name)` holds its two ends as amounts, and `bar.has(name)` says if the bar has the part. `bar.find(test)` gives the names of the parts that a function picks. The function gets a part with its `name`, its `value`, its `share` of the total, its two ends `from` and `to`, and its `index`. If the parts are sorted by decreasing probability, `bar.cut(bar.find((part) => part.index >= 2))` keeps the two most probable outcomes. `bar.find((part) => part.from <= u && u < part.to)` locates a draw on the cumulative scale.
