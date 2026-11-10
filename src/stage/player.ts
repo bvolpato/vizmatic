@@ -111,7 +111,7 @@ export class FilmPlayer {
 
     /** Jump to the next chapter boundary, or to the end. */
     next(): void {
-        const after = this.film.chapters.find((chapter) => chapter.time > this.currentTime + 1e-3)
+        const after = this.film.chapters.find((chapter) => chapter.time > this.currentTime)
         this.seek(after ? after.time : this.film.duration)
     }
 
@@ -134,7 +134,7 @@ export class FilmPlayer {
         const before = this.currentTime
         let next = before + delta * this.speed
         if (this.options.stepped) {
-            const boundary = this.film.chapters.find((chapter) => chapter.time > before + 1e-3 && chapter.time <= next)
+            const boundary = this.film.chapters.find((chapter) => chapter.time > before && chapter.time <= next)
             if (boundary) {
                 this.currentTime = boundary.time
                 this.paint()
