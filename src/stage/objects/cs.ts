@@ -1332,7 +1332,7 @@ export function attentionMatrix(rows: readonly string[], columns: readonly strin
         gap: options.gap ?? (sized ? undefined : 2),
         colors: options.colors ?? ['surface', 'teal', 'yellow'],
         // A weight is a share, from 0 to 1. A matrix as it was before `size` keeps the range of its first weights.
-        domain: options.domain ?? [0, sized ? Math.max(1, ...weights.flat()) : Math.max(...weights.flat())],
+        domain: options.domain ?? [0, sized ? 1 : Math.max(...weights.flat())],
         values: options.values,
         rowLabels: rows,
         columnLabels: columns,

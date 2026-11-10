@@ -1,5 +1,6 @@
-import { Node, ownLabels } from '../node'
-import { rectPath } from '../geometry'
+import { Node, ownLabels, rebindCloneParts } from '../node'
+import { mul, rectPath, transformPath } from '../geometry'
+import { boxOf } from '../layout'
 import { text, type TextOptions } from '../text'
 import { mixColor, parseColor, toPaint, type ColorInput, type Paint } from '../color'
 import type { Ease } from '../ease'
@@ -8,6 +9,8 @@ import { Heatmap } from './heatmap'
 import { lerpSame, reveal, solidColor, staggered, stepAt } from './util'
 
 export interface MatrixProductOptions {
+    /** The width of the whole product. Extra room goes between the grids. The text and cells keep their size. */
+    width?: number
     /** The text size of the numbers, the names, the shapes and the sum. Defaults to 30. */
     size?: number
     /** The side of one cell. The three grids have one cell, so a viewer compares their shapes. Defaults to the room of the widest number. */
@@ -42,7 +45,11 @@ interface Term {
     plus: Node | null
     /** The sum after this term. */
     total: Node
+    /** The place of the equals sign immediately after this term. */
+    equalsX: number
 }
+
+const termParts = (term: Term): Node[] => term.plus ? [term.plus, term.left, term.times, term.right] : [term.left, term.times, term.right]
 
 /** The line under the grids for one cell of the result: its terms, the equals sign, and the sum so far. */
 interface Line {
@@ -94,10 +101,14 @@ export class MatrixProduct extends Node {
         super()
         const operands: [string, readonly (readonly number[])[]][] = [['first', a], ['second', b]]
         for (const [name, rows] of operands) {
-            if (!Array.isArray(rows) || rows.length === 0 || !rows.every((row) => Array.isArray(row) && row.length === rows[0]!.length && row.length > 0)) throw new Error(`matrixProduct: the ${name} operand is not a matrix. Give a list of rows with the same number of values, such as [[1, 2], [3, 4]]. A vector is one row, [[1, 2, 3]], or one column, [[1], [2], [3]]`)
-            rows.forEach((row: readonly number[], i: number) => row.forEach((value: number, j: number) => {
-                if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`matrixProduct: the value (${i}, ${j}) of the ${name} operand is ${shown(value)}. A value is a number`)
-            }))
+            const invalidMatrix = () => new Error(`matrixProduct: the ${name} operand is not a matrix. Give a list of rows with the same number of values, such as [[1, 2], [3, 4]]. A vector is one row, [[1, 2, 3]], or one column, [[1], [2], [3]]`)
+            if (!Array.isArray(rows) || !Array.isArray(rows[0]) || rows[0].length === 0) throw invalidMatrix()
+            for (const [i, row] of rows.entries()) {
+                if (!Array.isArray(row) || row.length !== rows[0].length) throw invalidMatrix()
+                for (const [j, value] of row.entries()) {
+                    if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`matrixProduct: the value (${i}, ${j}) of the ${name} operand is ${shown(value)}. A value is a number`)
+                }
+            }
         }
         const m = a.length, n = a[0]!.length, p = b[0]!.length
         // The picture of a product that does not exist would teach a wrong rule.
@@ -171,9 +182,41 @@ export class MatrixProduct extends Node {
         this.add(this.a, this.b, this.c, ...this.signs, ...this.captions)
         // The sum has its room from the start, so the layout measures the object with it.
         const longest = Math.max(...this.out.flatMap((row, i) => row.map((_, j) => this.lineWidth(i, j))))
-        // The room holds the plate that carries the sum away, which is a little larger than the sum.
-        this.add(new Node(rectPath(-longest / 2 - size * 0.35, this.lineY - size * 0.75, longest + size * 0.7, size * 1.5)).hide())
+        // Reserve the travelling plate and the selection outlines before any of them appears.
+        const sumEdge = longest / 2 + size * 0.35
+        const outlineRoom = Math.max(5, size * 0.35)
+        const left = Math.min(-sumEdge, this.a.bounds().x - outlineRoom)
+        const resultBox = this.c.bounds()
+        const right = Math.max(sumEdge, resultBox.x + resultBox.width + outlineRoom)
+        const reserve = new Node(rectPath(left, this.lineY - size * 0.75, right - left, size * 1.5)).hide()
+        this.add(reserve)
+        if (options.width !== undefined) {
+            const natural = boxOf(this), width = options.width
+            if (!Number.isFinite(width) || width < natural.width) throw new Error(`matrixProduct: width is ${shown(width)}, and the grids, captions and sum need ${Math.ceil(natural.width)} px at size ${size}. Give a width of ${Math.ceil(natural.width)} or more, a smaller text size, or shorter names and numbers`)
+            const extra = (width - natural.width) / 2
+            this.a.shift(-extra, 0)
+            this.c.shift(extra, 0)
+            this.captions[0]!.shift(-extra, 0)
+            this.captions[2]!.shift(extra, 0)
+            this.signs[0]!.shift(-extra / 2, 0)
+            this.signs[1]!.shift(extra / 2, 0)
+            reserve.set('path', rectPath(natural.left - extra, natural.top, width, natural.height))
+        }
         ownLabels(this, { name: 'matrix product', labels: [...this.signs, ...this.captions.flatMap((caption) => caption.children)] })
+    }
+
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        copy.last = null
+        const line = this.now
+        if (!line) return
+        const part = (node: Node) => copies.get(node)!
+        copy.now = {
+            ...line, holder: part(line.holder), equals: part(line.equals),
+            terms: line.terms.map((term) => ({
+                ...term, left: part(term.left), times: part(term.times), right: part(term.right),
+                plus: term.plus && part(term.plus), total: part(term.total),
+            })),
+        }
     }
 
     /** The rows and the columns of the two operands and of the result: `[[2, 3], [3, 2], [2, 2]]`. */
@@ -217,10 +260,15 @@ export class MatrixProduct extends Node {
         return {
             label: 'matrixProduct.enter', duration: options.duration ?? 1.6, ease: options.ease,
             schedule: (ctx) => {
+                this.claim('enter()', ctx)
                 reveal(this, ctx.t0, ctx.stage)
                 const windows = staggered(3, Math.max(0, options.lag ?? 0.5), ctx.t0, ctx.t1)
                 ;[this.a, this.b, this.c].forEach((part, index) => {
                     const [start, end] = windows[index]!
+                    if (start > ctx.t0) {
+                        stepAt(part, 'visible', false, ctx.t0)
+                        stepAt(part, 'visible', true, start)
+                    }
                     part.enter().schedule({ ...ctx, t0: start, t1: end })
                     for (const node of [this.captions[index]!, ...(index > 0 ? [this.signs[index - 1]!] : [])]) {
                         stepAt(node, 'opacity', 0, ctx.t0)
@@ -238,11 +286,11 @@ export class MatrixProduct extends Node {
     pair(row: number, col: number, options: AnimOptions = {}): Anim {
         this.cellOf(row, col, 'pair')
         const call = `pair(${row}, ${col})`
-        const next = this.lineOf(row, col)
         return {
             label: 'matrixProduct.pair', duration: options.duration ?? 0.7, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = this.claim(call, ctx)
+                const next = this.lineOf(row, col)
                 reveal(this, t0, ctx.stage)
                 const turn = (t0 + t1) / 2
                 const before = this.now
@@ -264,7 +312,7 @@ export class MatrixProduct extends Node {
 
     /**
      * Take the next term of the lit pair into the sum: its two numbers take the colors of their operands, their
-     * cells take a tint, and the sum after the equals sign changes. `add(3)` takes three terms, one after another.
+     * cells take a tint, and the line shows only the terms in the sum. `addTerm(3)` takes three terms in order.
      */
     addTerm(count = 1, options: AnimOptions = {}): Anim {
         if (!Number.isInteger(count) || count < 1) throw new Error(`matrixProduct: addTerm takes the number of terms to add, a whole number, 1 or more, and it got ${shown(count)}`)
@@ -272,11 +320,11 @@ export class MatrixProduct extends Node {
         return {
             label: 'matrixProduct.addTerm', duration: options.duration ?? 0.6 * count, ease: options.ease,
             schedule: (ctx) => {
-                const [t0, t1] = this.claim(call, ctx)
                 const line = this.now
                 if (!line) throw new Error(`matrixProduct: ${call} has no pair to take a term of. Play pair(row, col) first`)
                 const length = line.terms.length
                 if (this.taken + count > length) throw new Error(`matrixProduct: ${call} would take ${this.taken + count} terms, and the pair (${line.row}, ${line.col}) has ${length}${this.taken === length ? ', all in the sum. Play store() to write the sum, or pair() for the next cell' : `, with ${this.taken} in the sum. Give addTerm(${length - this.taken}) at the most`}`)
+                const [t0, t1] = this.claim(call, ctx)
                 const windows = staggered(count, 1, t0, t1)
                 for (let step = 0; step < count; step++) {
                     const k = this.taken + step, term = line.terms[k]!, [start, end] = windows[step]!
@@ -286,9 +334,18 @@ export class MatrixProduct extends Node {
                     for (const part of [term.times, term.plus]) if (part) this.tint(part, toPaint('ink'), start, turn, ctx.ease)
                     this.a.cell(line.row, k).tween('fill', this.tints[0], start, turn, ctx.ease)
                     this.b.cell(k, line.col).tween('fill', this.tints[1], start, turn, ctx.ease)
-                    // The sum so far leaves, then the sum with this term comes, so no moment shows two sums.
-                    if (k === 0) line.equals.tween('opacity', 1, start, turn, ctx.ease)
-                    else line.terms[k - 1]!.total.tween('opacity', 0, start, turn, ctx.ease)
+                    // Clear the preview or the previous equality before showing the next one.
+                    if (k === 0) {
+                        for (const future of line.terms.slice(1)) {
+                            for (const part of termParts(future)) part.tween('opacity', 0, start, turn, ctx.ease)
+                        }
+                    } else {
+                        line.equals.tween('opacity', 0, start, turn, ctx.ease)
+                        line.terms[k - 1]!.total.tween('opacity', 0, start, turn, ctx.ease)
+                        for (const part of termParts(term)) part.tween('opacity', 1, turn, end, ctx.ease)
+                    }
+                    stepAt(line.equals, 'x', term.equalsX, turn)
+                    line.equals.tween('opacity', 1, turn, end, ctx.ease)
                     term.total.tween('opacity', 1, turn, end, ctx.ease)
                 }
                 this.taken += count
@@ -304,14 +361,15 @@ export class MatrixProduct extends Node {
         return {
             label: 'matrixProduct.store', duration: options.duration ?? 0.8, ease: options.ease,
             schedule: (ctx) => {
-                const [t0, t1] = this.claim('store()', ctx)
                 const line = this.now
                 if (!line) throw new Error('matrixProduct: store() has no pair to write the sum of. Play pair(row, col) first')
                 const length = line.terms.length
                 if (this.taken < length) throw new Error(`matrixProduct: store() writes a sum, and the sum of the pair (${line.row}, ${line.col}) has ${this.taken} of its ${length} terms. Play addTerm(${length - this.taken}) first, or compute(${line.row}, ${line.col}) for the whole cell`)
                 if (line.stored) throw new Error(`matrixProduct: the sum of the pair (${line.row}, ${line.col}) is in its cell already. Play pair(row, col) for the next cell`)
+                const [t0, t1] = this.claim('store()', ctx)
                 line.stored = true
                 const span = t1 - t0, lands = t0 + span * 0.8
+                line.equals.tween('opacity', 0, t0, t0 + span * 0.12, ctx.ease)
                 // The outline of the cell leaves first, so the number does not cross a line on its way in.
                 this.c.light(null).schedule({ ...ctx, t1: t0 + span * 0.3 })
                 // The sum itself goes to the cell. It lands on the place of the number of the cell, and the cell
@@ -325,10 +383,10 @@ export class MatrixProduct extends Node {
                 stepAt(total, 'opacity', 0, lands)
                 // The sum travels on a plate, which grows from the size of the number to the size of the cell. So
                 // the number is never over a line or over another number on its way: the plate hides them.
-                const box = this.c.cell(line.row, line.col).bounds()
+                const cell = this.c.cell(line.row, line.col)
                 const radius = Math.round(this.size * 0.15)
                 const start = rectPath(from[0] - wide / 2 - this.size * 0.35, from[1] - this.size * 0.75, wide + this.size * 0.7, this.size * 1.5, radius)
-                const end = rectPath(to[0] - box.width / 2, to[1] - box.height / 2, box.width, box.height, radius)
+                const end = transformPath(cell.get('path')!, mul(this.c.localMatrix(), cell.localMatrix()))
                 const plate = new Node(start).fill(this.plain).opacity(0).zIndex(-1)
                 plate.data['decoration'] = true
                 line.holder.add(plate)
@@ -440,15 +498,14 @@ export class MatrixProduct extends Node {
             return node
         })
         const equals = nodes[nodes.length - 1]!.opacity(0)
-        const totals = this.totals(row, col).map((total) => {
-            const node = text(total, { size, font: 'mono', color: 'ink', anchor: 'left' }).at(x, y).opacity(0)
-            holder.add(node)
-            return node
-        })
-        const terms: Term[] = totals.map((total, k) => {
-            // A term is three texts, and each one after the first has a plus before it.
-            const first = k === 0 ? 0 : k * 4 - 1
-            return k === 0 ? { left: nodes[0]!, times: nodes[1]!, right: nodes[2]!, plus: null, total } : { plus: nodes[first]!, left: nodes[first + 1]!, times: nodes[first + 2]!, right: nodes[first + 3]!, total }
+        const equalsRoom = x - equals.get('x')
+        const terms: Term[] = this.totals(row, col).map((sum, k) => {
+            const first = k * 4
+            // Put the equals sign in the space for the next plus sign.
+            const equalsX = nodes[first + 3]!.get('x')
+            const total = text(sum, { size, font: 'mono', color: 'ink', anchor: 'left' }).at(equalsX + equalsRoom, y).opacity(0)
+            holder.add(total)
+            return { left: nodes[first]!, times: nodes[first + 1]!, right: nodes[first + 2]!, plus: k > 0 ? nodes[first - 1]! : null, total, equalsX }
         })
         return { row, col, holder, terms, equals, stored: false }
     }

@@ -1,5 +1,5 @@
-import { Node, ownLabels } from '../node'
-import { linePath, pathBounds, polyPath, rectPath, unionBounds, type Bounds, type Path, type Ring } from '../geometry'
+import { Node, ownLabels, rebindCloneParts } from '../node'
+import { apply, IDENTITY, linePath, pathBounds, polyPath, rectPath, unionBounds, type Bounds, type Mat, type Path, type Ring } from '../geometry'
 import { brace } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
@@ -149,7 +149,10 @@ interface Furniture {
 }
 
 /** The time of each item of a change. With no lag, each one has the whole time, with its exact ends. */
-const spread = (count: number, lag: number, t0: number, t1: number): [number, number][] => (lag > 0 ? staggered(count, lag, t0, t1) : Array.from({ length: count }, () => [t0, t1] as [number, number]))
+function spread(count: number, lag: number, t0: number, t1: number): [number, number][] {
+    if (!Number.isFinite(lag) || lag < 0) throw new Error(`heatmap: lag is ${shown(lag)}. Give a finite fraction of one item's duration, 0 or more`)
+    return lag > 0 ? staggered(count, lag, t0, t1) : Array.from({ length: count }, (): [number, number] => [t0, t1])
+}
 
 const shown = (value: unknown): string => (typeof value === 'string' ? JSON.stringify(value) : typeof value === 'function' ? 'a function' : Array.isArray(value) ? `[${value.join(', ')}]` : String(value))
 const seconds = (time: number): string => `${Math.round(time * 1000) / 1000} s`
@@ -213,6 +216,7 @@ export class Heatmap extends Node {
     private readonly fixedDomain: boolean
     /** True for a grid with text of one size that a viewer can read. False for a grid as `heatmap` drew it before it had `size`. */
     private readonly sized: boolean
+    private readonly rectangular: boolean
     private readonly w: number
     private readonly h: number
     private readonly gap: number
@@ -229,7 +233,7 @@ export class Heatmap extends Node {
     private readonly depth: number | null
     private readonly tensor: string | null
     private readonly looks = new Map<string, Look>()
-    private readonly axisParts: AxisPart[] = []
+    private axisParts: AxisPart[] = []
     /** The name of each axis, or null for an axis that the film did not name. */
     private readonly axisNames: { rows: string | null; cols: string | null; depth: string | null }
     /** The value of each cell, after the changes that are scheduled so far. */
@@ -239,8 +243,10 @@ export class Heatmap extends Node {
     private overlays: Map<string, Node>[][]
     /** Every number that a cell had. A light on the cell keeps each of them bright. */
     private history: Node[][][]
-    /** The time at which the last change of the number of each cell is over. */
+    /** The end of the last scheduled change to each cell or its visible parts. */
     private busy: number[][]
+    /** The outline, labels and arrangement share one layout timeline. */
+    private layoutEnd = -Infinity
     private rowsShown: number
     private colsShown: number
     private litNow: Span | null = null
@@ -248,10 +254,11 @@ export class Heatmap extends Node {
 
     constructor(values: readonly (readonly number[])[], options: HeatmapOptions = {}) {
         super()
-        this.rowCount = values.length
-        this.colCount = Math.max(0, ...values.map((row) => row.length))
         const sized = this.sized = SIZED.some((name) => options[name] !== undefined) || options.values === 'lit'
         if (sized) this.checkInput(values, options)
+        this.rowCount = values.length
+        this.colCount = Math.max(0, ...values.map((row) => row.length))
+        this.rectangular = values.every((row) => row.length === this.colCount)
         const size = this.size = sized ? options.size ?? TEXT_SIZE : options.labelSize ?? 16
         const gap = this.gap = options.gap ?? (sized ? Math.max(2, Math.round(size * 0.12)) : 2)
         const format = this.format = options.format ?? ((v: number) => (Math.round(v * 100) / 100).toString())
@@ -296,7 +303,16 @@ export class Heatmap extends Node {
         const flat = values.flat()
         this.fixedDomain = options.domain !== undefined
         this.domain = options.domain ?? [Math.min(...flat), Math.max(...flat)]
-        const palette = (options.colors ?? ['surface', 'blue', 'yellow']).map((c) => solidColor(c))
+        const palette = Array.from(options.colors ?? ['surface', 'blue', 'yellow'], (input, i) => {
+            if (!sized) return solidColor(input)
+            try {
+                const color = solidColor(input)
+                if (color.length === 4 && [...color].every((channel, k) => Number.isFinite(channel) && channel >= 0 && channel <= (k === 3 ? 1 : 255))) return color
+            } catch (cause) {
+                throw new Error(`heatmap: colors[${i}] is invalid. Give a look token, CSS color, RGBA value, or gradient with a color stop`, { cause })
+            }
+            throw new Error(`heatmap: colors[${i}] is invalid. Give RGB channels from 0 to 255 and alpha from 0 to 1`)
+        })
         this.stops = palette.map((c, i) => [palette.length === 1 ? 0 : i / (palette.length - 1), c] as const)
         const totalW = this.colCount * w + (this.colCount - 1) * gap
         const totalH = this.rowCount * h + (this.rowCount - 1) * gap
@@ -355,6 +371,11 @@ export class Heatmap extends Node {
             const label = text(name, { size: labelSize, color: 'dim', font: options.font })
             const y = this.y0 + i * (h + gap) + h / 2
             label.at(this.x0 - labelGap - label.width / 2, y)
+            if (sized && i > 0) {
+                const previous = this.rowLabels[i - 1]!.bounds(), current = label.bounds()
+                const overlap = previous.y + previous.height - current.y
+                if (previous.width > 0 && current.width > 0 && overlap > 0) throw new Error(`heatmap: the row labels ${JSON.stringify(options.rowLabels![i - 1])} and ${JSON.stringify(name)} overlap. Give a cellHeight of ${Math.ceil(h + overlap)} or more, a larger gap, or a smaller labelSize`)
+            }
             this.rowLabels.push(label)
             this.add(label)
         })
@@ -463,7 +484,7 @@ export class Heatmap extends Node {
         if (typeof test !== 'function') throw new Error(`heatmap: find takes a function of the row, the column, the value and the state of a cell, and it got ${shown(test)}`)
         const out: [number, number][] = []
         for (let i = 0; i < this.rowsShown; i++) {
-            for (let j = 0; j < this.colsShown; j++) if (test(i, j, this.held[i]![j]!, this.states[i]![j]!)) out.push([i, j])
+            for (let j = 0; j < Math.min(this.colsShown, this.cells[i]!.length); j++) if (test(i, j, this.held[i]![j]!, this.states[i]![j]!)) out.push([i, j])
         }
         return out
     }
@@ -538,9 +559,7 @@ export class Heatmap extends Node {
      * Without a slice, the box of the cells that show. The box is where the grid is now, so ask for it after the grid has its place.
      */
     region(slice: GridSlice = {}): Box {
-        const [x0, y0, x1, y1] = this.edges(this.resolve(this.span(slice, 'region'), 'region'))
-        const [ax, ay] = this.toWorld(x0, y0), [bx, by] = this.toWorld(x1, y1)
-        return new Box(Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by))
+        return new Box(...this.edges(this.resolve(this.span(slice, 'region'), 'region'), this.worldMatrix()))
     }
 
     /** The brace and the label of an axis, by its name, to light it or to point at it. */
@@ -554,35 +573,31 @@ export class Heatmap extends Node {
     override labelsOf(part: Node): readonly Node[] {
         for (let i = 0; i < this.rowCount; i++) {
             const j = this.cells[i]!.indexOf(part)
-            if (j >= 0) return [...this.history[i]![j]!, ...this.overlays[i]![j]!.values()]
+            if (j < 0) continue
+            const numbers = this.history[i]![j]!, signs = this.overlays[i]![j]!
+            // The original chart treated its printed numbers as separate targets for spotlight.
+            if (!this.sized && numbers.length <= 1 && signs.size === 0) return []
+            return [...numbers, ...signs.values()]
         }
         return []
     }
 
     /** A copy with its own cells and its own record of values and states, so a change of the copy does not change the grid. */
-    override clone(): this {
-        const mine = this.all()
-        const copy = super.clone()
-        const theirs = copy.all()
-        const twin = new Map<Node, Node>()
-        mine.forEach((node, index) => twin.set(node, theirs[index]!))
-        const of = (node: Node): Node => twin.get(node) ?? node
-        const own = copy as unknown as {
-            cells: Node[][]; numbers: Node[][]; held: number[][]; states: string[][]; overlays: Map<string, Node>[][]; history: Node[][][]; busy: number[][]
-            axisParts: AxisPart[]; litNow: Span | null; patches: Patches | null
-        }
-        own.cells = this.cells.map((row) => row.map(of))
-        own.numbers = this.numbers.map((row) => row.map(of))
-        own.held = this.held.map((row) => [...row])
-        own.states = this.states.map((row) => [...row])
-        own.overlays = this.overlays.map((row) => row.map((signs) => new Map([...signs].map(([state, node]) => [state, of(node)]))))
-        own.history = this.history.map((row) => row.map((list) => list.map(of)))
-        // The copy is a still of the grid, so it can change its numbers at any time.
-        own.busy = this.busy.map((row) => row.map(() => -Infinity))
-        own.axisParts = this.axisParts.map((part) => ({ ...part, mark: of(part.mark), label: of(part.label), group: of(part.group) }))
-        own.litNow = this.litNow ? { ...this.litNow } : null
-        own.patches = this.patches ? { ...this.patches } : null
-        return copy
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        const of = (node: Node): Node => copies.get(node) ?? node
+        Object.assign(copy, {
+            cells: this.cells.map((row) => row.map(of)),
+            numbers: this.numbers.map((row) => row.map(of)),
+        })
+        copy.held = this.held.map((row) => [...row])
+        copy.states = this.states.map((row) => [...row])
+        copy.overlays = this.overlays.map((row) => row.map((signs) => new Map([...signs].map(([state, node]) => [state, of(node)]))))
+        copy.history = this.history.map((row) => row.map((list) => list.map(of)))
+        copy.busy = this.busy.map((row) => row.map(() => -Infinity))
+        copy.layoutEnd = -Infinity
+        copy.axisParts = this.axisParts.map((part) => ({ ...part, mark: of(part.mark), label: of(part.label), group: of(part.group) }))
+        copy.litNow = this.litNow ? { ...this.litNow } : null
+        copy.patches = this.patches ? { ...this.patches } : null
     }
 
     /** Cells fade in along the diagonal. */
@@ -590,6 +605,7 @@ export class Heatmap extends Node {
         return {
             label: 'heatmap.enter', duration: options.duration ?? 1.6, ease: options.ease,
             schedule: (ctx) => {
+                if (this.sized) this.reserveLayout('enter', ctx.t0, ctx.t1, this.allCells())
                 reveal(this, ctx.t0, ctx.stage)
                 const span = ctx.t1 - ctx.t0
                 const diagonals = this.rowCount + this.colCount - 1
@@ -620,19 +636,29 @@ export class Heatmap extends Node {
     }
 
     /**
-     * Give every cell a new value. The shade of each cell changes, and a grid that prints its numbers prints
-     * the new ones. A cell with no value in `values` keeps its own. `lag` makes the cells change one after
-     * another, row by row.
+     * Recolor the cells that have a new value. A sized grid also updates its printed numbers and accepts
+     * a lag between cells. An unsized chart recolors all selected cells together and keeps its original labels.
      */
     update(values: readonly (readonly number[])[], options: AnimOptions = {}): Anim {
         if (this.sized) values.forEach((row, i) => row.forEach((value, j) => { if (this.cells[i]?.[j]) this.checkValue(value, i, j, 'update') }))
         return {
             label: 'heatmap.update', duration: options.duration ?? 1, ease: options.ease,
             schedule: (ctx) => {
+                if (!this.sized) {
+                    // The shipped chart recolors its existing cells together. Its printed nodes keep their text and ink.
+                    values.forEach((row, i) => row.forEach((value, j) => {
+                        const cell = this.cells[i]?.[j]
+                        if (!cell) return
+                        this.held[i]![j] = value
+                        if (this.states[i]![j] === 'open') cell.tween('fill', this.colorFor(value), ctx.t0, ctx.t1, ctx.ease)
+                    }))
+                    return
+                }
                 const changes: [number, number, number][] = []
                 values.forEach((row, i) => row.forEach((value, j) => { if (this.cells[i]?.[j]) changes.push([i, j, value]) }))
                 const windows = spread(changes.length, options.lag ?? 0, ctx.t0, ctx.t1)
-                changes.forEach(([i, j, value], index) => this.paint(i, j, windows[index]![0], windows[index]![1], ctx.ease, 'update', { value }))
+                this.reserveCells('update', changes, windows)
+                changes.forEach(([i, j, value], index) => this.paint(i, j, windows[index]![0], windows[index]![1], ctx.ease, { value }))
             },
         }
     }
@@ -650,7 +676,7 @@ export class Heatmap extends Node {
         if (typeof values !== 'function' && typeof values !== 'number' && !Array.isArray(values)) throw new Error(`heatmap: the values of setValue are ${shown(values)}. Give one number, a list of numbers, or a function of the row, the column and the old value`)
         const given = typeof values === 'function' || typeof values === 'number' ? null : (values as readonly (number | readonly number[])[]).flat()
         // Find a wrong list now, where the film names it. A function picks its cells when the change plays.
-        if (given && typeof cells !== 'function') {
+        if (given && typeof cells !== 'function' && cells.patch === undefined) {
             const count = pick().length
             if (given.length !== count) throw new Error(`heatmap: setValue got ${given.length} value${given.length === 1 ? '' : 's'} for ${count} cell${count === 1 ? '' : 's'}. Give one number for each cell of the slice, row by row, or one number for all of them`)
         }
@@ -659,15 +685,17 @@ export class Heatmap extends Node {
         return {
             label: 'heatmap.setValue', duration: options.duration ?? 0.6, ease: options.ease,
             schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
                 const chosen = pick()
-                if (given && given.length !== chosen.length) throw new Error(`heatmap: setValue got ${given.length} values, and its function picked ${chosen.length} cells. Give one number for each cell that the function picks, row by row`)
+                if (given && given.length !== chosen.length) throw new Error(`heatmap: setValue got ${given.length} values for ${chosen.length} selected cells. Give one number for each selected cell, row by row`)
                 const windows = spread(chosen.length, options.lag ?? 0, ctx.t0, ctx.t1)
-                chosen.forEach(([i, j], index) => {
+                const next = chosen.map(([i, j], index) => {
                     const value = typeof values === 'function' ? values(i, j, this.held[i]![j]!) : given ? given[index]! : values as number
                     if (typeof values === 'function') this.checkValue(value, i, j, 'setValue')
-                    this.paint(i, j, windows[index]![0], windows[index]![1], ctx.ease, 'setValue', { value, state: options.state })
+                    return value
                 })
+                this.reserveCells('setValue', chosen, windows)
+                reveal(this, ctx.t0, ctx.stage)
+                chosen.forEach(([i, j], index) => this.paint(i, j, windows[index]![0], windows[index]![1], ctx.ease, { value: next[index]!, state: options.state }))
             },
         }
     }
@@ -684,10 +712,11 @@ export class Heatmap extends Node {
         return {
             label: 'heatmap.mark', duration: options.duration ?? 0.6, ease: options.ease,
             schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
                 const chosen = pick().filter(([i, j]) => this.states[i]![j] !== state)
                 const windows = spread(chosen.length, options.lag ?? 0, ctx.t0, ctx.t1)
-                chosen.forEach(([i, j], index) => this.paint(i, j, windows[index]![0], windows[index]![1], ctx.ease, 'mark', { state }))
+                this.reserveCells('mark', chosen, windows)
+                reveal(this, ctx.t0, ctx.stage)
+                chosen.forEach(([i, j], index) => this.paint(i, j, windows[index]![0], windows[index]![1], ctx.ease, { state }))
             },
         }
     }
@@ -702,19 +731,21 @@ export class Heatmap extends Node {
     light(slice: GridSlice | null, options: AnimOptions & { color?: ColorInput } = {}): Anim {
         const span = slice === null ? null : this.span(slice, 'light')
         const paint = toPaint(options.color ?? 'ink')
-        const frame = this.frame ?? this.makeFrame()
         return {
             label: 'heatmap.light', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
                 const { t0, t1, ease } = ctx
                 const before = this.litNow
                 const next = span ? this.resolve(span, 'light', true) : null
+                const path = next ? this.framePath(next) : null
+                const retold = this.printed === 'lit' ? this.allCells().filter(([i, j]) => this.inside(before, i, j) !== this.inside(next, i, j)) : []
+                this.reserveLayout('light', t0, t1, retold)
+                reveal(this, t0, ctx.stage)
+                const frame = this.frame ?? this.makeFrame()
                 const told = this.printed === 'lit' ? this.shownNumbers() : null
                 const [rowsBefore, colsBefore] = this.brightNames(before)
                 this.litNow = next
-                if (next) {
-                    const path = this.framePath(next)
+                if (path) {
                     if (sampleAt(frame, 'opacity', t0) <= 0.002) {
                         // The outline comes in at its slice. It does not fly in from the place of the last light.
                         stepAt(frame, 'path', path, t0)
@@ -760,21 +791,23 @@ export class Heatmap extends Node {
         return {
             label: 'heatmap.grow', duration: options.duration ?? 0.8, ease: options.ease,
             schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
                 const { t0, t1, ease } = ctx
                 const rows0 = this.rowsShown, cols0 = this.colsShown, rows1 = rows0 + rows, cols1 = cols0 + cols
                 if (rows1 > this.rowCount || cols1 > this.colCount) throw new Error(`heatmap: grow would show ${rows1} rows and ${cols1} columns, and the grid has ${this.rowCount} by ${this.colCount}. Make the grid with every row and column that it will have, and give \`shown\` for the ones that are there at the start`)
                 if (this.patches) throw new Error('heatmap: grow needs a grid that is whole, and this one is cut into patches. Play join() first')
                 const told = this.printed === 'lit' ? this.shownNumbers() : null
-                this.rowsShown = rows1
-                this.colsShown = cols1
+                const [rowsBefore, colsBefore] = this.brightNames(this.litNow)
                 // The new columns arrive from the top, and then the new rows from the left.
                 const fresh: [number, number][] = []
                 for (let j = cols0; j < cols1; j++) for (let i = 0; i < rows1; i++) fresh.push([i, j])
                 for (let i = rows0; i < rows1; i++) for (let j = 0; j < cols0; j++) fresh.push([i, j])
+                const windows = spread(fresh.length, options.lag ?? 0.3, t0 + (t1 - t0) * 0.25, t1)
+                this.reserveLayout('grow', t0, t1, fresh)
+                reveal(this, t0, ctx.stage)
+                this.rowsShown = rows1
+                this.colsShown = cols1
                 // The braces move out in the first part of the time, and the cells arrive after them, so no brace crosses a cell.
                 const moved = t0 + (t1 - t0) * 0.35
-                const windows = spread(fresh.length, options.lag ?? 0.3, t0 + (t1 - t0) * 0.25, t1)
                 fresh.forEach(([i, j], index) => {
                     const [start, end] = windows[index]!
                     for (const part of this.partsOf(i, j)) part.track('visible').step(start, true)
@@ -808,6 +841,9 @@ export class Heatmap extends Node {
                     const path = this.framePath(lit)
                     this.frame.track('path').add({ t0, t1, ease, to: path, at: lerpSame(sampleAt(this.frame, 'path', t0)!, path) })
                 }
+                const [rowsAfter, colsAfter] = this.brightNames(this.litNow)
+                this.rowLabels.forEach((label, i) => { if (rowsBefore.has(i) !== rowsAfter.has(i)) this.tint(label, rowsAfter.has(i) ? 'ink' : 'dim', t0, t1, ease) })
+                this.columnLabels.forEach((label, j) => { if (colsBefore.has(j) !== colsAfter.has(j)) this.tint(label, colsAfter.has(j) ? 'ink' : 'dim', t0, t1, ease) })
                 if (told) this.retell(told, t0, t1, ease)
             },
         }
@@ -820,6 +856,7 @@ export class Heatmap extends Node {
      * and the shape leave, because they name the whole grid. `join()` brings the grid back.
      */
     cut(rows: number, cols: number, options: AnimOptions & { gap?: number; unroll?: boolean } = {}): Anim {
+        if (!this.rectangular || this.rowCount === 0 || this.colCount === 0) throw new Error('heatmap: cut needs a nonempty rectangular grid. Give every row the same number of cells')
         for (const [name, count, all] of [['rows', rows, this.rowCount], ['columns', cols, this.colCount]] as const) {
             if (!Number.isInteger(count) || count < 1) throw new Error(`heatmap: a patch of cut has ${shown(count)} ${name}. Give a whole number, 1 or more`)
             if (all % count !== 0) throw new Error(`heatmap: the grid has ${all} ${name}, which do not cut into patches of ${count}. Give a count that divides ${all}`)
@@ -837,18 +874,22 @@ export class Heatmap extends Node {
     // ── What the film gave ──────────────────────────────────────────────────
 
     private checkInput(values: readonly (readonly number[])[], options: HeatmapOptions): void {
-        if (!Array.isArray(values) || values.length === 0 || !values.every((row) => Array.isArray(row))) throw new Error('heatmap: give the values as a list of rows, with one row at least, such as [[1, 2], [3, 4]]')
-        values.forEach((row, i) => {
+        if (!Array.isArray(values) || values.length === 0) throw new Error('heatmap: give the values as a list of rows, with one row at least, such as [[1, 2], [3, 4]]')
+        for (const [i, row] of values.entries()) {
+            if (!Array.isArray(row)) throw new Error(`heatmap: give the values as a list of rows. Row ${i} is ${shown(row)}`)
             if (row.length === 0 || row.length !== values[0]!.length) throw new Error(`heatmap: row ${i} has ${row.length} values, and row 0 has ${values[0]!.length}. Give every row the same number of values, one at least`)
-            row.forEach((value, j) => {
+            for (const [j, value] of row.entries()) {
                 if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`heatmap: the value of cell (${i}, ${j}) is ${shown(value)}. A value is a number. For a cell with no value yet, give a number and the state 'empty'`)
-            })
-        })
+            }
+        }
         for (const name of ['size', 'width', 'cell', 'cellWidth', 'cellHeight', 'valueSize', 'labelSize'] as const) {
             const value = options[name]
             if (value !== undefined && !(Number.isFinite(value) && value > 0)) throw new Error(`heatmap: ${name} is ${shown(value)}. Give a number of stage pixels, more than 0`)
         }
         if (options.gap !== undefined && !(Number.isFinite(options.gap) && options.gap >= 0)) throw new Error(`heatmap: gap is ${shown(options.gap)}. It is the room between two cells, 0 or more`)
+        const domain = options.domain
+        if (domain !== undefined && (!Array.isArray(domain) || domain.length !== 2 || !Number.isFinite(domain[0]) || !Number.isFinite(domain[1]) || domain[0] > domain[1])) throw new Error(`heatmap: domain is ${shown(domain)}. Give two finite numbers, the lower end of the color range first`)
+        if (options.colors !== undefined && (!Array.isArray(options.colors) || options.colors.length === 0)) throw new Error('heatmap: colors needs at least one color. Give a list such as [\'surface\', \'blue\']')
         if (options.width !== undefined && (options.cell !== undefined || options.cellWidth !== undefined)) throw new Error('heatmap: width sets the width of a cell, and so does cell. Give one of them')
         if (options.values !== undefined && options.values !== true && options.values !== false && options.values !== 'lit') throw new Error(`heatmap: values is true, false or 'lit', not ${shown(options.values)}`)
         const rows = values.length, cols = values[0]!.length
@@ -948,19 +989,18 @@ export class Heatmap extends Node {
             return () => {
                 const out: [number, number][] = []
                 for (let i = 0; i < this.rowCount; i++) {
-                    for (let j = 0; j < this.colCount; j++) if (cells(i, j, this.held[i]![j]!, this.states[i]![j]!)) out.push([i, j])
+                    for (let j = 0; j < this.cells[i]!.length; j++) if (cells(i, j, this.held[i]![j]!, this.states[i]![j]!)) out.push([i, j])
                 }
                 return out
             }
         }
         const span = this.span(cells, call)
         // A patch has its cells only after the cut, and a film may name it before the cut plays.
-        if (span.patch === null || this.patches) this.resolve(span, call)
         return () => {
             // A change is for the hidden cells of its rows too, so a column that is padding is padding in a row that comes later.
             const { r0, r1, c0, c1 } = span.patch === null ? span : this.resolve(span, call)
             const out: [number, number][] = []
-            for (let i = r0; i <= r1; i++) for (let j = c0; j <= c1; j++) out.push([i, j])
+            for (let i = r0; i <= r1; i++) for (let j = c0; j <= c1 && j < this.cells[i]!.length; j++) out.push([i, j])
             return out
         }
     }
@@ -985,21 +1025,58 @@ export class Heatmap extends Node {
     }
 
     /** The left, top, right and bottom edge of the cells of a slice, where they are now. */
-    private edges(span: Span, patches: Patches | null = this.patches): [number, number, number, number] {
+    private edges(span: Span, matrix: Mat = IDENTITY): [number, number, number, number] {
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
-        for (const [i, j] of [[span.r0, span.c0], [span.r0, span.c1], [span.r1, span.c0], [span.r1, span.c1]] as const) {
-            const [x, y] = this.place(i, j, patches)
-            x0 = Math.min(x0, x - this.w / 2)
-            y0 = Math.min(y0, y - this.h / 2)
-            x1 = Math.max(x1, x + this.w / 2)
-            y1 = Math.max(y1, y + this.h / 2)
+        // Project the two half-edges of a cell onto each stage axis.
+        const dx = (Math.abs(matrix[0]) * this.w + Math.abs(matrix[2]) * this.h) / 2
+        const dy = (Math.abs(matrix[1]) * this.w + Math.abs(matrix[3]) * this.h) / 2
+        const include = (i: number, j: number) => {
+            const [x, y] = apply(matrix, ...this.place(i, j))
+            x0 = Math.min(x0, x - dx)
+            y0 = Math.min(y0, y - dy)
+            x1 = Math.max(x1, x + dx)
+            y1 = Math.max(y1, y + dy)
         }
+        if (!this.rectangular || (this.patches?.unrolled && span.patch === null)) {
+            // A slice can cross a patch boundary. An interior cell can then be furthest left or right.
+            for (let i = span.r0; i <= span.r1; i++) for (let j = span.c0; j <= span.c1 && j < this.cells[i]!.length; j++) include(i, j)
+        } else if (span.r0 <= span.r1 && span.c0 <= span.c1) {
+            include(span.r0, span.c0)
+            include(span.r0, span.c1)
+            include(span.r1, span.c0)
+            include(span.r1, span.c1)
+        }
+        if (x0 === Infinity) throw new Error('heatmap: the slice contains no cells. Give a row or column with values')
         return [x0, y0, x1, y1]
     }
 
     /** The cell, its number and its signs: the nodes that are at the place of a cell. */
     private partsOf(row: number, col: number): Node[] {
         return [this.cells[row]![col]!, ...this.history[row]![col]!, ...this.overlays[row]![col]!.values()]
+    }
+
+    private allCells(): [number, number][] {
+        return this.cells.flatMap((row, i) => row.map((_, j): [number, number] => [i, j]))
+    }
+
+    /** Check the entire slice before writing any keys or changing its record. */
+    private reserveCells(call: string, cells: readonly (readonly [number, number, ...number[]])[], windows: readonly (readonly [number, number])[]): void {
+        cells.forEach(([i, j], k) => {
+            const [start, end] = windows[k]!, previous = this.busy[i]![j]!
+            if (start >= previous - SOON) return
+            const valueChange = call === 'setValue' || call === 'update'
+            const part = valueChange ? 'the number of cell' : 'cell'
+            const advice = valueChange ? 'A cell changes its number one change at a time. Play the two in a `seq`, or give one change the last value' : 'Play the two in a `seq`, or select different cells'
+            throw new Error(`heatmap: ${call} changes ${part} (${i}, ${j}) from ${seconds(start)} to ${seconds(end)}, and the change before it ends at ${seconds(previous)}. ${advice}`)
+        })
+        cells.forEach(([i, j], k) => { this.busy[i]![j] = windows[k]![1] })
+    }
+
+    private reserveLayout(call: string, t0: number, t1: number, cells: readonly (readonly [number, number])[]): void {
+        if (t0 < this.layoutEnd - SOON) throw new Error(`heatmap: ${call} starts at ${seconds(t0)}, and the previous change to the outline or layout ends at ${seconds(this.layoutEnd)}. Play the two in a \`seq\``)
+        const window = [t0, t1] as const
+        this.reserveCells(call, cells, cells.map(() => window))
+        this.layoutEnd = t1
     }
 
     // ── Numbers and states ──────────────────────────────────────────────────
@@ -1009,18 +1086,24 @@ export class Heatmap extends Node {
     }
 
     private numberNode(value: number, x: number, y: number): Node {
-        const color = this.colorFor(value)
+        return text(this.format(value), { size: this.valueSize, font: 'mono', color: this.numberInk(value) }).at(x, y)
+    }
+
+    private numberInk(value: number): string {
         // A number is dark on a light cell and light on a dark one. At a luminance of 0.18, the two have the same
         // contrast with the cell, a little over 4. A grid from before `size` keeps its limit, and so its frames.
-        return text(this.format(value), { size: this.valueSize, font: 'mono', color: luminance(color) > (this.sized ? 0.18 : 0.32) ? '#101114' : '#f2efe6' }).at(x, y)
+        return luminance(this.colorFor(value)) > (this.sized ? 0.18 : 0.32) ? '#101114' : '#f2efe6'
+    }
+
+    private inside(span: Span | null, row: number, col: number): boolean {
+        return !!span && row >= span.r0 && row <= span.r1 && col >= span.c0 && col <= span.c1
     }
 
     /** True when a cell shows its number: it prints one, no sign covers it, and with `values: 'lit'` it is in the lit slice. */
     private showsNumber(row: number, col: number): boolean {
         if (!this.printed || this.states[row]![col] !== 'open') return false
         if (this.printed !== 'lit') return true
-        const lit = this.litNow
-        return !!lit && row >= lit.r0 && row <= lit.r1 && col >= lit.c0 && col <= lit.c1
+        return this.inside(this.litNow, row, col)
     }
 
     /** The cells that show their number now, for a change that moves the light. */
@@ -1066,11 +1149,12 @@ export class Heatmap extends Node {
      * Write the look of a cell over a time: its shade, the sign of its state, and its number. `change` gives
      * the new value, the new state, or both. The record of the grid changes here, when the change plays.
      */
-    private paint(row: number, col: number, t0: number, t1: number, ease: Ease, call: string, change: { value?: number; state?: string }): void {
+    private paint(row: number, col: number, t0: number, t1: number, ease: Ease, change: { value?: number; state?: string }): void {
         const cell = this.cells[row]![col]!
         const before = this.states[row]![col]!, after = change.state ?? before
         const old = this.numbers[row]?.[col]
         const was = this.showsNumber(row, col)
+        const previousValue = this.held[row]![col]!
         if (change.value !== undefined) this.held[row]![col] = change.value
         this.states[row]![col] = after
         const look = this.looks.get(after)
@@ -1096,15 +1180,12 @@ export class Heatmap extends Node {
         }
         if (!old) return
         const shows = this.showsNumber(row, col)
-        const next = change.value !== undefined && this.format(change.value) !== (old as Node & { source?: string }).source ? this.numberNode(change.value, ...this.place(row, col)).opacity(0) : null
+        const next = change.value !== undefined && (this.format(change.value) !== (old as Node & { source?: string }).source || (this.sized && this.numberInk(change.value) !== this.numberInk(previousValue))) ? this.numberNode(change.value, ...this.place(row, col)).opacity(0) : null
         if (!next) {
             if (shows && !was) old.tween('opacity', 1, turn, t1, ease)
             if (was && !shows) old.tween('opacity', 0, t0, turn, ease)
             return
         }
-        // Each change of a number writes two fades. Two changes at one time would leave both of their numbers in the cell.
-        if (t0 < this.busy[row]![col]! - SOON) throw new Error(`heatmap: ${call} changes the number of cell (${row}, ${col}) from ${seconds(t0)} to ${seconds(t1)}, and the change before it ends at ${seconds(this.busy[row]![col]!)}. A cell changes its number one change at a time. Play the two in a \`seq\`, or give one change the last value`)
-        this.busy[row]![col] = t1
         this.add(waits ? next.hide() : next)
         ownLabels(this, { labels: [next] })
         old.tween('opacity', 0, t0, turn, ease)
@@ -1115,10 +1196,13 @@ export class Heatmap extends Node {
 
     // ── The light ───────────────────────────────────────────────────────────
 
+    private frameWeight(): number {
+        return this.sized ? Math.max(3, Math.round(this.size * 0.14)) : Math.max(2.5, Math.min(this.w, this.h) * 0.07)
+    }
+
     private makeFrame(): Node {
-        const weight = this.sized ? Math.max(3, Math.round(this.size * 0.14)) : Math.max(2.5, Math.min(this.w, this.h) * 0.07)
         // The outline is over the cells, their numbers and their signs, whenever those were made.
-        const frame = new Node(this.framePath({ r0: 0, r1: 0, c0: 0, c1: 0, patch: null, rows: true, cols: true })).stroke('ink', weight).opacity(0).zIndex(1)
+        const frame = new Node().stroke('ink', this.frameWeight()).opacity(0).zIndex(1)
         this.frame = frame
         this.add(frame)
         return frame
@@ -1127,7 +1211,7 @@ export class Heatmap extends Node {
     /** The outline of a slice: around its cells, in the room between them and their neighbors. */
     private framePath(span: Span): Path {
         const [x0, y0, x1, y1] = this.edges(span)
-        const out = this.gap / 2 + (this.frame?.get('strokeWidth') ?? 0) / 2
+        const out = this.gap / 2 + (this.frame?.get('strokeWidth') ?? this.frameWeight()) / 2
         return rectPath(x0 - out, y0 - out, x1 - x0 + out * 2, y1 - y0 + out * 2, this.corner + out)
     }
 
@@ -1243,11 +1327,12 @@ export class Heatmap extends Node {
         return {
             label: `heatmap.${call}`, duration: options.duration ?? 1.2, ease: options.ease,
             schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
                 const { t0, t1, ease } = ctx
                 if (to && (this.rowsShown < this.rowCount || this.colsShown < this.colCount)) throw new Error(`heatmap: cut needs every row and column on the stage, and the grid shows ${this.rowsShown} by ${this.colsShown} of its ${this.rowCount} by ${this.colCount}. Play grow() first`)
                 const from = this.patches
                 if (!from && !to) return
+                // A new cut keeps the lit patch by index. Check that the patch exists before moving anything.
+                if (to && this.litNow?.patch != null && this.litNow.patch >= (this.rowCount / to.rows) * (this.colCount / to.cols)) throw new Error(`heatmap: ${call} would remove lit patch ${this.litNow.patch}. Play light(null) before changing the cut`)
                 const told = this.printed === 'lit' ? this.shownNumbers() : null
                 // The names and the braces are for the whole grid, so they leave before the cells move and come back after.
                 const span = t1 - t0
@@ -1256,6 +1341,12 @@ export class Heatmap extends Node {
                 // The outline leaves too, and comes back at the new place of its cells: a line that moves with
                 // the cells would cross the numbers of the cells that pass it.
                 const leave = (!from && around.length > 0) || lit ? t0 + span * 0.2 : t0, arrive = (!to && around.length > 0) || lit ? t1 - span * 0.2 : t1
+                const groups = to ?? from!
+                const across = this.colCount / groups.cols, count = across * (this.rowCount / groups.rows)
+                const unrolls = (to?.unrolled ?? false) !== (from?.unrolled ?? false)
+                const windows = spread(count, options.lag ?? (unrolls ? 0.25 : 0), leave, arrive)
+                this.reserveLayout(call, t0, t1, this.allCells())
+                reveal(this, t0, ctx.stage)
                 if (!from) for (const node of around) node.tween('opacity', 0, t0, leave, ease)
                 if (!to) for (const node of around) node.tween('opacity', 1, arrive, t1, ease)
                 if (lit && this.frame) this.frame.tween('opacity', 0, t0, leave, ease)
@@ -1266,11 +1357,6 @@ export class Heatmap extends Node {
                     // A whole grid has no patch. The light stays on the cells that the patch had.
                     this.litNow = { ...lit, patch: null }
                 }
-                // The patches move one after another, row by row. A plain cut moves them together.
-                const groups = to ?? from!
-                const across = this.colCount / groups.cols, count = across * (this.rowCount / groups.rows)
-                const unrolls = (to?.unrolled ?? false) !== (from?.unrolled ?? false)
-                const windows = spread(count, options.lag ?? (unrolls ? 0.25 : 0), leave, arrive)
                 this.patches = to
                 for (let i = 0; i < this.rowCount; i++) {
                     for (let j = 0; j < this.colCount; j++) {
@@ -1287,6 +1373,11 @@ export class Heatmap extends Node {
                     if (this.litNow.patch !== null) this.litNow = this.resolve(this.litNow, call)
                     stepAt(this.frame, 'path', this.framePath(this.litNow), arrive)
                     this.frame.tween('opacity', 1, arrive, t1, ease)
+                }
+                if (!to) {
+                    const [rows, cols] = this.brightNames(this.litNow)
+                    this.rowLabels.forEach((label, i) => this.tint(label, rows.has(i) ? 'ink' : 'dim', arrive, t1, ease))
+                    this.columnLabels.forEach((label, j) => this.tint(label, cols.has(j) ? 'ink' : 'dim', arrive, t1, ease))
                 }
                 if (told) this.retell(told, t0, t1, ease)
             },

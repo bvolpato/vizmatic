@@ -13470,6 +13470,160 @@ describe('heatmap as a tensor grid', () => {
         }))
     })
 
+    describe('heatmap regressions', () => {
+        it('keeps shipped updates as simultaneous fill tweens and preserves the printed nodes', async () => {
+            let printed!: Node
+            const f = await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { values: true }))
+                const original = [...grid.numbers[0]!]
+                printed = original[0]!
+                s.play(grid.update([[1, 0]], { lag: 1 }), { duration: 1, ease: linear })
+                const low = grid.colorFor(0), high = grid.colorFor(1)
+                expect(at(0.5, () => grid.row(0).map((cell) => cell.get('fill')))).toEqual([mixColor(low, high, 0.5), mixColor(high, low, 0.5)])
+                s.play(grid.update([[0.5]]), grid.update([[0.25]]))
+                expect(grid.numbers[0]![0]).toBe(original[0])
+                expect(grid.numbers[0]![1]).toBe(original[1])
+                expect(grid.numbers[0]!.map(source)).toEqual(['0', '1'])
+                expect(grid.values()).toEqual([[0.25, 0]])
+                s.play(spotlight(grid.cell(0, 0)))
+            })
+            expect(at(f.duration, () => printed.get('dim'))).toBeLessThan(1)
+        })
+
+        it('keeps the cells, their signs, and the axis parts inside a cloned group', async () => {
+            await compile((s) => {
+                const grid = heatmap([[0, 1]], { values: true, axes: ['r', 'c'], initial: 'masked' })
+                const holder = s.add(group(grid))
+                const duplicate = s.add(holder.clone().at(0, 200))
+                const copy = duplicate.children[0] as Grid
+                s.play(copy.setValue({ col: 0 }, 1, { state: 'open' }))
+                const again = s.add(duplicate.clone().at(0, -200)).children[0] as Grid
+                s.play(again.setValue({ col: 1 }, 0, { state: 'open' }))
+                expect(grid.value(0, 0)).toBe(0)
+                expect(grid.stateOf(0, 0)).toBe('masked')
+                expect(grid.numbers[0]![0]!.parent).toBe(grid)
+                expect(copy.cell(0, 0).parent).toBe(copy)
+                expect(copy.numbers[0]![0]!.parent).toBe(copy)
+                expect(copy.axis('r').parent).toBe(copy)
+                expect(shows(signOf(grid, 0, 0))).toBe(1)
+                expect(shows(signOf(copy, 0, 0))).toBe(0)
+                expect(again.values()).toEqual([[1, 0]])
+                expect(copy.values()).toEqual([[1, 1]])
+                expect(grid.values()).toEqual([[0, 1]])
+                expect(again.cell(0, 1).parent).toBe(again)
+                expect(again.axis('c').parent).toBe(again)
+                expect(again.numbers[0]![1]!.parent).toBe(again)
+                expect(shows(again.numbers[0]![1]!)).toBe(1)
+                expect(shows(copy.numbers[0]![1]!)).toBe(0)
+                expect(shows(signOf(copy, 0, 1))).toBe(1)
+                expect(shows(signOf(again, 0, 1))).toBe(0)
+            })
+        })
+
+        it('bounds rotated cells and every cell of an unrolled slice that crosses patches', async () => {
+            await compile((s) => {
+                const square = heatmap([[0]], { size: 28, cell: 100, radius: 0 })
+                s.add(group(square).set('rotation', Math.PI / 4))
+                expect(square.region().width).toBeCloseTo(square.cell(0, 0).bounds().width)
+                const grid = s.add(heatmap(Array.from({ length: 4 }, () => [0, 1, 2, 3]), { size: 28, cell: 60, gap: 4 }))
+                s.play(grid.cut(2, 2, { unroll: true, gap: 20 }))
+                expect(grid.region({ row: [0, 2] })).toEqual(boxOf(grid.cells.slice(0, 3).flat()))
+            })
+        })
+
+        it('rejects overlapping writes before changing any cell of the rejected operation', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { size: 28 }))
+                expect(() => s.play(lagged([grid.mark({ col: 1 }, 'masked'), grid.mark({}, 'future')], { lag: 0.2 }))).toThrow(/cell.*seq/)
+                expect(grid.stateOf(0, 0)).toBe('open')
+                expect(grid.stateOf(0, 1)).toBe('masked')
+                expect(grid.labelsOf(grid.cell(0, 0))).toHaveLength(0)
+            })
+        })
+
+        it('checks function values for every selected cell before painting the slice', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { size: 28, values: true }))
+                expect(() => s.play(grid.setValue({}, (_row, col) => col === 0 ? 1 : NaN))).toThrow(/NaN/)
+                expect(grid.values()).toEqual([[0, 1]])
+                expect(grid.numbers[0]!.map(source)).toEqual(['0', '1'])
+            })
+        })
+
+        it('protects lit numbers and moving cells from concurrent changes', async () => {
+            await compile((s) => {
+                const lit = s.add(heatmap([[0, 1]], { values: 'lit' }))
+                expect(() => s.play(lit.light({ col: 0 }), lit.setValue({ col: 0 }, 1))).toThrow(/cell.*seq/)
+                const grid = s.add(heatmap([[0, 1]], { size: 28, values: true }))
+                expect(() => s.play(grid.setValue({ col: 0 }, 1), grid.cut(1, 1))).toThrow(/cell.*seq/)
+                const lights = s.add(heatmap([[0, 1]], { size: 28 }))
+                expect(() => s.play(lights.light({ col: 0 }), lights.light({ col: 1 }))).toThrow(/light.*seq/)
+            })
+        })
+
+        it('resolves the size of a patch when its cut plays and refreshes names on join', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0], [1]], { size: 28, rowLabels: ['a', 'b'] }))
+                s.play(grid.light({ row: 0 }))
+                s.play(seq(grid.cut(2, 1, { unroll: true }), grid.setValue({ patch: 0 }, [1, 0]), grid.join()))
+                expect(grid.values()).toEqual([[1], [0]])
+                expect(grid.lit).toBeNull()
+                expect(grid.rowLabels.map(inkOf)).toEqual([parseColor('dim'), parseColor('dim')])
+            })
+        })
+
+        it('keeps identical formatted text readable when the cell changes shade', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 0, 0.4]], { size: 28, values: true, colors: ['#000', '#fff'], format: (v) => v.toFixed(0), initial: (_r, c) => c === 1 ? 'masked' : 'open' }))
+                s.play(grid.update([[0.4, 0.4]]))
+                expect(shows(grid.numbers[0]![1]!)).toBe(0)
+                s.play(grid.mark({ col: 1 }, 'open'))
+                const reference = grid.numbers[0]![2]!
+                for (const label of grid.numbers[0]!) {
+                    expect(source(label)).toBe('0')
+                    expect(shows(label)).toBe(1)
+                    expect(inkOf(label)).toEqual(inkOf(reference))
+                }
+            })
+        })
+
+        it('rejects missing row values and heights that overlap the names of adjacent rows', async () => {
+            await compile((s) => {
+                expect(() => heatmap([null] as never, { size: 28 })).toThrow(/heatmap:.*rows/)
+                expect(() => heatmap([Array<number>(2)], { size: 28 })).toThrow(/heatmap:.*cell \(0, 0\)/)
+                expect(() => heatmap([[0], [1]], { size: 28, cellHeight: 5, rowLabels: ['WWW', 'WWW'] })).toThrow(/heatmap:.*row.*cellHeight/)
+                s.wait(0.1)
+            })
+        })
+
+        it.each([
+            { domain: [NaN, 1] as const }, { domain: [2, 1] as const }, { colors: [] }, { colors: [[0, 0, Infinity, 1] as const] },
+        ])('rejects invalid sized color options %# before drawing', async (options) => {
+            await compile(() => {
+                expect(() => heatmap([[0, 1]], { size: 28, ...options })).toThrow(/heatmap:.*(?:domain|colors)/)
+            })
+        })
+
+        it('selects the existing cells of a ragged legacy chart and explains why it cannot be cut', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0], [1, 2]]))
+                expect(grid.find(() => true)).toEqual([[0, 0], [1, 0], [1, 1]])
+                expect(grid.region({ row: 0 }).width).toBe(44)
+                s.play(grid.mark({}, 'masked'))
+                expect(grid.count('masked')).toBe(3)
+                expect(() => grid.cut(1, 1)).toThrow(/heatmap:.*rectangular/)
+            })
+        })
+
+        it('rejects an invalid lag before writing any cells', async () => {
+            await compile((s) => {
+                const grid = s.add(heatmap([[0, 1]], { size: 28 }))
+                expect(() => s.play(grid.setValue({}, [1, 0], { lag: Infinity }))).toThrow(/heatmap:.*lag.*finite/)
+                expect(grid.values()).toEqual([[0, 1]])
+            })
+        })
+    })
+
     it('with a size, makes a cell wide enough for the widest number, on whole pixels, and prints every text at that size', async () => {
         await compileFilm(film(() => {
             const grid = heatmap([[0.25, -0.75], [1, 0]], { size: 30, values: true, rowLabels: ['cat', 'sat'], columnLabels: ['d0', 'd1'] })
@@ -13551,7 +13705,7 @@ describe('heatmap as a tensor grid', () => {
     it('update gives every cell its new shade and prints its new number, with one number in a cell at the end', async () => {
         let grid!: Grid
         const f = await compile((s) => {
-            grid = s.add(heatmap([[0, 1], [2, 3]], { values: true }))
+            grid = s.add(heatmap([[0, 1], [2, 3]], { size: 28, values: true }))
             s.play(grid.update([[3, 2], [1, 0]]), { duration: 1 })
         })
         expect(grid.numbers.flat().map(source)).toEqual(['3', '2', '1', '0'])
@@ -14020,6 +14174,11 @@ describe('attention matrix', () => {
             // A weight is a share: the colors go from 0 to 1, whatever the largest weight is.
             const low = attentionMatrix(['a', 'b'], ['a', 'b'], [[0.2, 0.1], [0.1, 0.2]], { size: 30 })
             expect(low.colorFor(0.2)).not.toEqual(low.colorFor(1))
+            const scores = [[2, 0], [0.5, 1]]
+            const weightsScale = attentionMatrix(['a', 'b'], ['a', 'b'], scores, { size: 30 })
+            expect(weightsScale.colorFor(2)).toEqual(weightsScale.colorFor(1))
+            const scoresScale = attentionMatrix(['a', 'b'], ['a', 'b'], scores, { size: 30, domain: [0, 2] })
+            expect(scoresScale.colorFor(2)).not.toEqual(scoresScale.colorFor(1))
             expect(() => attentionMatrix(words, words, weights, { mask: 'causal', initial: 'empty' })).toThrow(/mask and initial both set the first states\. Give one of them/)
             expect(() => attentionMatrix(words, words, weights, { mask: 'full' as never })).toThrow(/mask is 'causal', not "full"\. For another mask, give `initial`/)
         }))
@@ -14086,6 +14245,8 @@ describe('matrix product', () => {
             expect(() => matrixProduct(A, [[1, 2]])).toThrow(/The columns of the first \(3\) must be as many as the rows of the second \(1\)\. Give operands whose inner sizes are equal/)
             expect(() => matrixProduct([1, 2, 3] as never, B)).toThrow(/the first operand is not a matrix\. Give a list of rows.*A vector is one row, \[\[1, 2, 3\]\], or one column/)
             expect(() => matrixProduct(A, [[7, 8], [9], [11, 12]])).toThrow(/the second operand is not a matrix/)
+            expect(() => matrixProduct(Array(1), [[3]])).toThrow(/the first operand is not a matrix/)
+            expect(() => matrixProduct([Array(2)], [[3], [4]])).toThrow(/the value \(0, 0\) of the first operand is undefined/)
             expect(() => matrixProduct([[1, Number.NaN, 3]], B)).toThrow(/the value \(0, 1\) of the first operand is NaN\. A value is a number/)
             expect(() => matrixProduct(A, B, { names: ['A', 'B'] as never })).toThrow(/names is \[A, B\]\. Give three names/)
             const product = matrixProduct(A, B)
@@ -14115,8 +14276,8 @@ describe('matrix product', () => {
         expect(seen).toEqual([[[0, 1], 0, 0, 0, 'empty'], [[0, 1], 1, 8, 0, 'empty'], [[0, 1], 3, 64, 0, 'empty'], [[0, 1], 3, 64, 1, 'open']])
         // The line has every term of the pair from the start, and no sum. Each term then brings the sum so far.
         expect(lineAt(product, 2)).toBe('1 × 8 + 2 × 10 + 3 × 12')
-        expect(lineAt(product, 3)).toBe('1 × 8 + 2 × 10 + 3 × 12 = 8')
-        expect(lineAt(product, 4)).toBe('1 × 8 + 2 × 10 + 3 × 12 = 28')
+        expect(lineAt(product, 3)).toBe('1 × 8 = 8')
+        expect(lineAt(product, 4)).toBe('1 × 8 + 2 × 10 = 28')
         expect(lineAt(product, 5)).toBe('1 × 8 + 2 × 10 + 3 × 12 = 64')
         // A term in the sum has the colors of its two operands, and its two cells have a tint.
         const [first, , second] = product.line!.children
@@ -14132,7 +14293,103 @@ describe('matrix product', () => {
         const landed = at(5.8, () => { const box = total.bounds(), own = number.bounds(); return [box.x - own.x, box.y - own.y, box.width - own.width] })
         expect(landed.map((delta) => Math.abs(delta) < 1e-6)).toEqual([true, true, true])
         expect(at(5.81, () => [shows(total), shows(number)])).toEqual([0, 1])
-        expect(lineAt(product, 6)).toBe('1 × 8 + 2 × 10 + 3 × 12 =')
+        expect(lineAt(product, 6)).toBe('1 × 8 + 2 × 10 + 3 × 12')
+    })
+
+    it('keeps later grids hidden until their entrance starts', async () => {
+        let product!: Product
+        await compile((s) => {
+            product = matrixProduct(A, B)
+            s.play(product.enter(), { duration: 4, ease: linear })
+        })
+        expect(at(0.5, () => [shows(product.b.cell(0, 0)), shows(product.c.cell(0, 0))])).toEqual([0, 0])
+        expect(at(1.5, () => shows(product.b.cell(0, 0)))).toBeGreaterThan(0)
+        expect(at(1.5, () => shows(product.c.cell(0, 0)))).toBe(0)
+    })
+
+    it.each([
+        { layout: 'wide grids', a: A, b: B },
+        { layout: 'a wide subtotal', a: [[1, 1, 1]], b: [[1000], [1000], [-1999]] },
+    ])('keeps the fitted width through every subtotal with $layout', async ({ a, b }) => {
+        await compile((s) => {
+            const natural = matrixProduct(a, b, { size: 34 }), minimum = boxOf(natural).width
+            const target = Math.ceil(minimum) + 180
+            const product = fitted(target, (width) => matrixProduct(a, b, { width, size: 34 }))
+            const room = boxOf(product)
+            expect(room.width).toBeCloseTo(target, 6)
+            expect(product.a.cell(0, 0).bounds().width).toBe(natural.a.cell(0, 0).bounds().width)
+            expect(product.a.get('x')).toBeLessThan(natural.a.get('x'))
+            expect(product.c.get('x')).toBeGreaterThan(natural.c.get('x'))
+            expect(() => matrixProduct(a, b, { width: minimum - 1, size: 34 })).toThrow(/matrixProduct:.*width.*Give a width of/)
+            s.play(product.pair(0, b[0]!.length - 1))
+            for (let term = 0; term < b.length; term++) {
+                s.play(product.addTerm())
+                expect(boxOf(product).width).toBeCloseTo(target, 6)
+                for (const label of product.line!.children.filter((part) => shows(part) > 0)) {
+                    const box = label.bounds()
+                    expect(box.x).toBeGreaterThanOrEqual(room.left)
+                    expect(box.x + box.width).toBeLessThanOrEqual(room.right)
+                }
+            }
+            s.play(product.store())
+            expect(boxOf(product).width).toBeCloseTo(target, 6)
+        })
+    })
+
+    it('replays a saved pair and a saved computation from a fresh line', async () => {
+        await compile((s) => {
+            const product = s.add(matrixProduct(A, B))
+            const pair = product.pair(0, 0), compute = product.compute(0, 1)
+            s.play(seq(pair, product.addTerm(), pair))
+            expect([product.sum, lineAt(product, s.duration)]).toEqual([0, '1 × 7 + 2 × 9 + 3 × 11'])
+            s.play(seq(compute, compute))
+            expect([product.sum, product.filled, lineAt(product, s.duration)]).toEqual([64, 1, '1 × 8 + 2 × 10 + 3 × 12'])
+        })
+    })
+
+    it.each(['product', 'group'])('continues two generations of a partially computed %s independently', async (kind) => {
+        await compile((s) => {
+            const product = matrixProduct(A, B)
+            s.add(group(product))
+            s.play(seq(product.pair(0, 1), product.addTerm()))
+            const clone = (p: Product) => kind === 'product' ? s.add(p.clone()) : s.add(p.parent!.clone()).children[0] as Product
+            const child = clone(product)
+            s.play(child.addTerm())
+            const grandchild = clone(child)
+            s.play(seq(grandchild.addTerm(), grandchild.store()))
+            const state = (p: Product) => [p.sum, p.filled, lineAt(p, s.duration), shows(p.c.numbers[0]![1]!)]
+            expect(state(product)).toEqual([8, 0, '1 × 8 = 8', 0])
+            expect(state(child)).toEqual([28, 0, '1 × 8 + 2 × 10 = 28', 0])
+            expect(state(grandchild)).toEqual([64, 1, '1 × 8 + 2 × 10 + 3 × 12', 1])
+        })
+    })
+
+    it('lands the plate on the cell in a scaled and translated group', async () => {
+        let product!: Product
+        await compile((s) => {
+            product = matrixProduct([[1, 2]], [[3], [4]])
+            s.add(group(product).scale(2).at(100, 50))
+            s.play(product.pair(0, 0), { duration: 1 })
+            s.play(product.addTerm(2), { duration: 1 })
+            s.play(product.store(), { duration: 1, ease: linear })
+        })
+        at(2.8 - 1e-7, () => {
+            const plate = product.line!.children.find((part) => part.data['decoration'])!
+            const target = product.c.cell(0, 0).bounds(), bounds = plate.bounds()
+            expect(shows(plate)).toBeGreaterThan(0.99)
+            for (const key of ['x', 'y', 'width', 'height'] as const) expect(bounds[key]).toBeCloseTo(target[key], 3)
+        })
+    })
+
+    it('allows the suggested next step after a scheduling error', async () => {
+        await compile((s) => {
+            const product = s.add(matrixProduct(A, B))
+            expect(() => s.play(product.addTerm())).toThrow(/Play pair\(row, col\) first/)
+            s.play(product.pair(0, 0))
+            expect(() => s.play(product.store())).toThrow(/Play addTerm\(3\) first/)
+            s.play(seq(product.addTerm(3), product.store()))
+            expect(product.sum).toBe(58)
+        })
     })
 
     it('takes the steps of a product in their order, one at a time, and says which step is missing', async () => {
@@ -14144,6 +14401,7 @@ describe('matrix product', () => {
         await expect(run((product, s) => s.play(seq(product.pair(0, 0), product.addTerm(3), product.addTerm())))).rejects.toThrow(/has 3, all in the sum\. Play store\(\) to write the sum, or pair\(\) for the next cell/)
         await expect(run((product, s) => s.play(seq(product.compute(0, 0), product.store())))).rejects.toThrow(/the sum of the pair \(0, 0\) is in its cell already\. Play pair\(row, col\) for the next cell/)
         await expect(run((product, s) => s.play(product.pair(0, 0), product.addTerm(), { duration: 1 }))).rejects.toThrow(/addTerm\(\) plays from 0 s to 1 s, and pair\(0, 0\) plays from 0 s to 1 s\. A product takes one step at a time\. Play the two in a `seq`, or one after the other/)
+        await expect(run((product, s) => s.play(lagged([product.enter(), product.pair(0, 0)], { lag: 0.5 })))).rejects.toThrow(/matrixProduct: pair\(0, 0\) plays from .* and enter\(\) plays from/)
     })
 
     it('computes one cell in one play, moves to the next pair, and completes the result', async () => {
