@@ -403,6 +403,8 @@ The object draws by kind, whatever the order of the list: the lines of the lanes
 
 `pipeline(stages, options)` follows an item through a sequence of named stages. A request, tool call, or data row keeps its ID as it moves, receives a verdict, or leaves the path. Use `steps` for a recap with one step highlighted, `lanes` for actors over time, and `graph` for branches with different stages.
 
+From a built checkout, run `node dist/cli.js film examples/proofs/pipeline.ts --out out/pipeline` to render two tool calls passing through the host gates.
+
 ```film paired label="A tool call passes the four gates of the host and takes a stamp at each, and a call with a wrong argument stops at the schema gate"
 import { film, pipeline } from 'vizmatic/stage'
 
