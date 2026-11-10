@@ -8,13 +8,13 @@ interface PackResult {
     entryCount?: number
 }
 
-// The full course component build packs to 7,346,603 bytes, or 21,157,943 bytes unpacked.
-// Its 232 files include the new component examples. The growth is in the stage runtime,
-// type declarations, examples and narration tools. The offline assets are unchanged.
+// Retain the full course component budget and allow for the passage runtime code,
+// type declarations, and three additional film examples. These limits guard against
+// accidental package growth while preserving both sets of features.
 const limits = {
-    size: 7_400_000,
-    unpackedSize: 21_200_000,
-    entryCount: 232,
+    size: 7_500_000,
+    unpackedSize: 21_600_000,
+    entryCount: 235,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.
