@@ -13757,7 +13757,7 @@ describe('passage', () => {
             expect(() => s.play(page.cut(['If the error rate', 'error rate stays', 'rate stays above']))).toThrow(/cut: chunks 0, 1 and 2 share the word "rate"\. A word is in two chunks at the most: give a smaller overlap/)
             expect(() => s.play(page.cut([]))).toThrow(/cut: the list of chunks is empty/)
             expect(() => s.play(page.cut({ by: 'word' as never }))).toThrow(/cut: by is 'sentence' or 'paragraph', not "word"/)
-            expect(() => s.play(page.cut('sentence' as never))).toThrow(/cut takes \{ size, overlap \}, \{ by: 'sentence' \} or \{ by: 'paragraph' \}, the words of each chunk, or null, not "sentence"/)
+            expect(() => s.play(page.cut('sentence' as never))).toThrow(/cut takes \{ size, overlap \}, \{ tokens: budget \}, \{ by: 'sentence' \} or \{ by: 'paragraph' \}, the words of each chunk, or null, not "sentence"/)
             expect(() => s.play(page.cut({ size: 7 }, { colors: ['blue'] as never }))).toThrow(/the colors of cut\(\) are two colors/)
         }))
         // The chunks are bands of two colors in turn, as high as a line. Two chunks on one line have a gap between them.
@@ -14107,6 +14107,19 @@ describe('passage', () => {
             expect(page.spans).toEqual([{ words: 'two', kind: 'mark' }])
             s.play(seq(page.diff('one six'), page.accept()))
             expect(page.span('six').words).toBe('six')
+        })
+    })
+
+    it('uses the tokenizer on the whole candidate when cutting to a budget', async () => {
+        await compile((s) => {
+            // The pair "New York" has one token in this vocabulary.
+            const tokens = (part: string) => part.replaceAll('New York', 'NY').match(/\w+|[^\w\s]/g)!.length
+            const page = s.add(passage('New York costs $5. Paris costs $7.', { tokens }))
+            s.play(page.cut({ tokens: 3 }))
+            expect(page.chunks).toEqual(['New York costs', '$5.', 'Paris costs', '$7.'])
+            expect(page.chunks.map((_, chunk) => page.measure({ chunk }).tokens)).toEqual([2, 3, 2, 3])
+            expect(() => s.play(page.cut({ tokens: 2 }))).toThrow(/word "\$5\." exceeds the budget/)
+            expect(() => s.play(passage('one two').cut({ tokens: 3 }))).toThrow(/tokens function/)
         })
     })
 

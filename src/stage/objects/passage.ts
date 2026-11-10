@@ -64,10 +64,10 @@ export interface PassageMeasure {
 export type PassageRef = string | { words: string; occurrence?: number } | { chunk: number } | PassageSpan
 
 /**
- * How to cut a passage: windows of `size` words that share `overlap` words, one chunk for each sentence or
- * each paragraph, or the words of each chunk.
+ * Cut a passage by word count, token budget, sentence, paragraph, or an explicit list of excerpts.
+ * A token budget uses the tokenizer supplied to the passage.
  */
-export type PassageCut = { size: number; overlap?: number } | { by: 'sentence' | 'paragraph' } | readonly string[]
+export type PassageCut = { size: number; overlap?: number } | { tokens: number } | { by: 'sentence' | 'paragraph' } | readonly string[]
 
 export interface PassageOptions {
     /**
@@ -388,7 +388,7 @@ function checkTiming(call: string, options: AnimOptions): void {
 
 /**
  * A passage of real text: a source page, a prompt, one turn of a chat, or the sentences of an answer. The
- * words wrap at `width`, and the text is what the film gives, letter for letter. A film marks parts of the
+ * words wrap at `width` and retain their line and paragraph breaks. A film marks parts of the
  * text by their words (`mark`), cuts the text into chunks (`cut`), moves one selection with a count that
  * follows it (`select`, `counter`), lifts a part out as a passage of its own (`slip`, `lift`), ties a part to
  * a node or to a span of another passage (`link`), and changes the text to its next version (`diff`,
@@ -1695,6 +1695,22 @@ export class Passage extends Node {
                 chunks.push(ends(from, index))
                 from = index + 1
             })
+        } else if (typeof how === 'object' && how !== null && 'tokens' in how) {
+            const budget = how.tokens
+            if (!Number.isSafeInteger(budget) || budget < 1) throw new Error('passage: cut: give a token budget of at least one whole token')
+            if (!this.counted) throw new Error(this.noTokens('cut({ tokens })'))
+            chunks = []
+            let start = 0
+            for (let index = 0; index < tokens.length; index++) {
+                const [first, last] = ends(start, index)
+                // Tokenization can change across a word boundary. Count the candidate as a whole.
+                if (this.sizeOf(this.wordsIn({ first, last })).tokens! <= budget) continue
+                if (start < index) chunks.push(ends(start, index - 1))
+                const word = tokens[index]!.text
+                if (this.sizeOf(word).tokens! > budget) throw new Error(`passage: cut: the word ${short(word)} exceeds the budget of ${budget} tokens. Increase the budget or split the word in the source text`)
+                start = index
+            }
+            chunks.push(ends(start, tokens.length - 1))
         } else if (typeof how === 'object' && how !== null && 'size' in how) {
             const size = how.size, overlap = how.overlap ?? 0
             if (!(Number.isInteger(size) && size >= 1)) throw new Error(`passage: cut: size is the number of words of a chunk, a whole number, 1 or more, not ${shown(size)}`)
@@ -1706,7 +1722,7 @@ export class Passage extends Node {
                 if (from + size >= tokens.length) break
             }
         } else {
-            throw new Error(`passage: cut takes { size, overlap }, { by: 'sentence' } or { by: 'paragraph' }, the words of each chunk, or null, not ${shown(how)}`)
+            throw new Error(`passage: cut takes { size, overlap }, { tokens: budget }, { by: 'sentence' } or { by: 'paragraph' }, the words of each chunk, or null, not ${shown(how)}`)
         }
         chunks.forEach(([first, last], index) => {
             const before = chunks[index - 1], far = chunks[index - 2]

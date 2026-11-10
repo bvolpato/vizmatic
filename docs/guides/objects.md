@@ -877,6 +877,8 @@ For another subject, give your own record, such as `kinds: { rule: { color: 'tea
 
 `page.cut(how)` cuts the text into chunks. `{ size: 12, overlap: 3 }` makes windows of 12 words, and each window shares 3 words with the next. `{ by: 'paragraph' }` starts a chunk at each blank line. `{ by: 'sentence' }` also starts a chunk after a word that ends in a period, exclamation point, or question mark. Use an explicit list of chunks for abbreviations or other language-specific boundaries. The chunks arrive one after another as bands of two colors in turn, as high as a line, with a gap between two chunks. Over the words that two chunks share, the first chunk has the upper half of the line and the next chunk has the lower half, so the overlap shows both. A word is in two chunks at the most: an overlap of more than half of `size` is an error.
 
+For a token budget, pass the tokenizer as the `tokens` option of `passage`, then play `page.cut({ tokens: 128 })`. The passage appends whole words and counts each candidate chunk as one string. It starts a new chunk when the next word would exceed the budget. If one word exceeds the budget on its own, the cut reports that word. For an estimated token count, label the budget as an estimate in the film.
+
 A new cut takes the place of the old one, so each way to cut is an operation on the same page. `page.cut(null)` takes the chunks away. `page.chunks` holds the words of each chunk. `colors` gives the two colors, which are purple and orange by default. Keep them apart from the colors of the kinds that the film uses.
 
 ### The selection and its count
@@ -904,6 +906,8 @@ The film in `examples/films/passage/evidence.ts` compares four claims with two s
 A word that stays on its line slides to its place. A word that goes to another line fades out where it is and comes back at its place, so that no word flies across the lines between the two. A replacement inside one span stays in that span. When one replacement covers several entire spans, `accept()` removes those spans. Links follow the words that remain.
 
 The frame is as high as its text, so a `diff` that adds a line makes the frame higher. `lines` is the least number of lines that the frame holds. With it, the frame has one height from the start, and a `diff` that needs more lines is an error that gives the number. One change is on the screen at a time: a second `diff` before `accept` is an error, and so is a `diff` of a passage with chunks, because a chunk is a part of one version. The words move in one change at a time. A `diff` and an `accept` whose times overlap are an error, and so is a `mark`, a `cut`, a `select` or a `lift` that plays while the words move. Play them in a `seq`, or one after the other.
+
+To display a version number beside an edit, place a `tagTrack` beside the passage and start its next state when the edit is accepted.
 
 The film in `examples/films/passage/prompt.ts` links a prompt to two JSON fields. When the prompt specifies a deadline, `diff()` marks the edit and `morphCode()` updates the reply. The unchanged deploy identifier stays visible.
 
