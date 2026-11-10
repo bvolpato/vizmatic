@@ -129,6 +129,10 @@ export interface AxisMarkerOptions {
 
 /** The last pixels before an end of a range that moves, over which a tick fades. */
 const TICK_FADE = 40
+/** How far a tick goes to each side of its axis. */
+const TICK_SIZE = 6
+/** The least room between a number and the end of its tick: enough to see that the two do not touch. */
+const TICK_ROOM = 4
 /** The most ticks of one axis with a range that moves. Such axes draw each tick again on every frame. */
 const MOST_TICKS = 200
 
@@ -240,16 +244,15 @@ export class Axes extends Node {
             axis(this.p(xRange[0], originY), this.p(xRange[1], originY)),
             axis(this.p(originX, yRange[0]), this.p(originX, yRange[1])),
         ]
-        const tickSize = 6
         for (const x of xs) {
             if (x === originX) continue
             const [px, py] = this.p(x, originY)
-            out.push(faded(line([px, py - tickSize], [px, py + tickSize], { stroke: color, width: 2 }), this.shown('x', x)))
+            out.push(faded(line([px, py - TICK_SIZE], [px, py + TICK_SIZE], { stroke: color, width: 2 }), this.shown('x', x)))
         }
         for (const y of ys) {
             if (y === originY) continue
             const [px, py] = this.p(originX, y)
-            out.push(faded(line([px - tickSize, py], [px + tickSize, py], { stroke: color, width: 2 }), this.shown('y', y)))
+            out.push(faded(line([px - TICK_SIZE, py], [px + TICK_SIZE, py], { stroke: color, width: 2 }), this.shown('y', y)))
         }
         return out.filter((mark): mark is Node => mark !== null)
     }
@@ -257,19 +260,26 @@ export class Axes extends Node {
     private numberMarks(): Node[] {
         const { xs, ys, originX, originY } = this.steps()
         const size = this.style.labelSize
-        // The room between a number and its axis grows with the size of the numbers: 26 and 28 pixels at the default size of 20.
-        const under = 26 * size / 20, beside = 28 * size / 20
+        // The middle of a number is 26 pixels under the x axis, or 28 beside the y axis. On fixed axes that is so at
+        // every size of the numbers: films place what is beside the axes by it, so a number must not move there.
+        // Axes with a range that moves are newer, and their room grows with the size of the numbers.
+        const grown = this.moving ? size / 20 : 1
+        const under = 26 * grown, beside = 28 * grown
+        // A large or a wide number would touch its tick at that place. It moves away as far as it must to clear the tick, and no further.
+        const clear = TICK_SIZE + TICK_ROOM
         const out: (Node | null)[] = []
         for (const x of xs) {
             if (x === originX) continue
             const [px, py] = this.p(x, originY)
-            const number = tex(formatTick(x), { size, color: 'dim', display: false }).moveTo([px, py + under])
+            const number = tex(formatTick(x), { size, color: 'dim', display: false })
+            number.moveTo([px, py + Math.max(under, clear + number.height / 2)])
             out.push(faded(number, this.shown('x', x, this.moving ? number.width / 2 : 0)))
         }
         for (const y of ys) {
             if (y === originY) continue
             const [px, py] = this.p(originX, y)
-            const number = tex(formatTick(y), { size, color: 'dim', display: false }).moveTo([px - beside, py])
+            const number = tex(formatTick(y), { size, color: 'dim', display: false })
+            number.moveTo([px - Math.max(beside, clear + number.width / 2), py])
             out.push(faded(number, this.shown('y', y, this.moving ? number.height / 2 : 0)))
         }
         return out.filter((mark): mark is Node => mark !== null)
