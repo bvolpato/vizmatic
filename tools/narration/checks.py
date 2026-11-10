@@ -4,6 +4,7 @@ Every step runs them before it does anything, so a mistake in a file is one line
 the field, what is wrong and what is allowed, and never a stack of the tool that met it first."""
 import hashlib
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -60,7 +61,7 @@ class Report:
 
 
 def number(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def whole(value):
@@ -218,6 +219,11 @@ def check_timeline(line, file, report):
             report.add(file, f"timeline.{key}", f"{shown(line[key])} is not a time", "Give seconds, 0 or more")
 
 
+def plain(text):
+    """The text without the phoneme notes of the voice engine: "[Toto](/tˈOtO/)" becomes "Toto"."""
+    return re.sub(r"\[([^\]]+)\]\(/[^)]*/\)", r"\1", text)
+
+
 def words_of(text):
     """The words of a text as a cue of the film reads them: its letters and its digits, without case and
     punctuation. A period stays inside a number, such as 3.8."""
@@ -253,7 +259,7 @@ def check_cues(cues, beat, where, ids, pronounce, file, report):
             report.add(file, f"{at}.phrase", "is missing" if "phrase" not in cue else f"{shown(phrase)} has no word", "Give words of the beat that the voice says")
         elif isinstance(say, str):
             # The film finds a cue in the words that the voice says: the spoken form of the beat.
-            said = spoken(say, pronounce)
+            said = plain(spoken(say, pronounce))
             times = says(said, phrase)
             heard = f', which the voice says as "{said}"' if said != say else ""
             if times == 0:
@@ -330,10 +336,13 @@ def fingerprint(header, scenes):
     return hashlib.sha1(json.dumps([header, scenes], sort_keys=True).encode()).hexdigest()[:16]
 
 
+def cue_record(beat):
+    """Compare the JSON types in cue data. Python otherwise treats false as equal to zero."""
+    return json.dumps(beat.get("cues", []), sort_keys=True)
+
+
 def changes(header, scenes, measured):
     """What the script and film.json say now that the timing does not have. An empty list: the timing is current."""
-    if measured.get("fingerprint") == fingerprint(header, scenes):
-        return []
     found = [f"{key} ({header[key]} now, {measured.get(key)} in the timing)" for key in header if measured.get(key) != header[key]]
     old = {scene.get("id"): scene for scene in measured.get("scenes", []) if isinstance(scene, dict)}
     if [scene["id"] for scene in scenes] != list(old):
@@ -349,7 +358,9 @@ def changes(header, scenes, measured):
             found.append(f"{scene['id']} ({len(scene['beats'])} beats now, {len(takes)} in the timing)")
             continue
         for index, (beat, take) in enumerate(zip(scene["beats"], takes)):
-            what = [name for key, name in (("say", "the text"), ("text", "the spoken form"), ("hold", "the hold"), ("cues", "the cues")) if take.get(key) != beat.get(key)]
+            what = [name for key, name in (("say", "the text"), ("text", "the spoken form"), ("hold", "the hold")) if take.get(key) != beat.get(key)]
+            if cue_record(take) != cue_record(beat):
+                what.append("the cues")
             if what:
                 # A change of the text is also a change of its spoken form, and one name is enough.
                 found.append(f"{scene['id']}/{index} ({' and '.join(name for name in what if not (name == 'the spoken form' and 'the text' in what))})")
@@ -381,6 +392,8 @@ def timing_defect(measured):
         if "start" in scene and ended is not None and scene["start"] < ended - 1e-6:
             return f"scenes[{at}].start", f"{shown(scene['start'])} is before the end of the scene before it, at {round(ended, 3)} s"
         now = scene["start"] if "start" in scene else measured["lead"] if ended is None else ended + measured["gap"]
+        if at == 0 and now < measured.get("intro", 0):
+            return "scenes[0].start" if "start" in scene else "lead", "starts the voice before the title card ends"
         beats = scene.get("beats")
         if not isinstance(beats, list) or not beats:
             return f"scenes[{at}].beats", "is missing or empty"
@@ -397,6 +410,28 @@ def timing_defect(measured):
             words = beat.get("words")
             if not isinstance(words, list) or not all(isinstance(word, dict) and isinstance(word.get("text"), str) and number(word.get("start")) and number(word.get("end")) for word in words):
                 return f"{where}.words", "is not a list of words with their times"
+            for i, word in enumerate(words):
+                if word["start"] < 0:
+                    return f"{where}.words[{i}].start", "is before the start of the beat"
+                if not word["start"] <= word["end"] <= beat["duration"] + 0.001:
+                    return f"{where}.words[{i}].end", "is outside the word or past the end of the beat"
+                if i and word["start"] < words[i - 1]["start"]:
+                    return f"{where}.words[{i}].start", "precedes the previous word's start"
+                if i and word["end"] < words[i - 1]["end"]:
+                    return f"{where}.words[{i}].end", "precedes the previous word's end"
+            cues = beat.get("cues", [])
+            if not isinstance(cues, list):
+                return f"{where}.cues", "is not a list"
+            if cues:
+                timed = " ".join(word["text"] for word in words)
+                for i, cue in enumerate(cues):
+                    field = f"{where}.cues[{i}].phrase"
+                    phrase = cue.get("phrase") if isinstance(cue, dict) else None
+                    if not isinstance(phrase, str) or not words_of(phrase):
+                        return field, "has no words"
+                    count = says(timed, phrase)
+                    if count != 1:
+                        return field, f"{shown(phrase)} matches the timed words {count} times (expected once)"
             now += beat["duration"] + beat["hold"]
         ended = now
     return None
