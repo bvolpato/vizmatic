@@ -688,6 +688,23 @@ describe('a block of the layout where a call takes a node', () => {
         beside: () => expect(beside(made(), [0, 0], 'right', 'none').box.left).toBe(0),
         between: () => expect(between(made(), place(made(), upper)).height).toBe(340),
         fitted: () => expect(boxOf(fitted(made(), (width) => rect(width, 10))).width).toBe(120),
+        // An end of a connector can be a block: the line meets the middle of the edge of its box that faces the other end.
+        // The block is 120 by 60 around the middle of the stage, and the node is 400 to its right.
+        connector: () => {
+            const block = made()
+            const line = V.connector(block, rect(60, 60).at(400, 0), { route: 'straight', gap: 0 })
+            expect(line.pointNow(0)).toEqual([60, 0])
+            expect(line.pointNow(1)).toEqual([370, 0])
+            // The line follows the block when the layout moves it.
+            V.place(block, new V.Box(-400, -300, 400, 300), 'left')
+            expect(line.pointNow(0)).toEqual([-280, 0])
+        },
+        'connector, the second end': () => {
+            const line = V.connector(rect(60, 60).at(0, -400), made(), { route: 'straight', gap: 4 })
+            expect(line.pointNow(1)).toEqual([0, -34])
+            // The line is tied to each node of the block, so the film check does not judge their text against it.
+            expect(line.data['attached']).toHaveLength(3)
+        },
         draw: (s) => s.play(V.draw(any(made()))),
         write: (s) => s.play(V.write(any(made()))),
         erase: (s) => { const b = made(); s.add(b); s.play(V.erase(any(b))) },
@@ -741,8 +758,6 @@ describe('a block of the layout where a call takes a node', () => {
         spin: () => V.spin(any(made()), 1),
         swap: () => V.swap(any(made()), rect(10, 10)),
         'swap, the second': () => V.swap(rect(10, 10), any(made())),
-        connector: () => V.connector(any(made()), rect(10, 10)),
-        'connector, the second end': () => V.connector(rect(10, 10), any(made())),
         callout: () => V.callout(any(made()), 'words'),
         label3d: () => V.label3d(any(made()), [0, 0, 0]),
         card: () => V.card({ title: 'card', figure: any(made()) }),
@@ -776,7 +791,8 @@ describe('a block of the layout where a call takes a node', () => {
                 expect(() => call(s), name).toThrow(name === 'buildOps' ? 'buildOps: the root is not a node. Give one node' : /^[a-zA-Z.3]+: [a-z0-9 ]+ is a block of the layout[,.]/)
             }
             // The message names the call, the argument, and what to give.
-            expect(() => V.connector(any(made()), rect(10, 10))).toThrow("connector: the first end is a block of the layout, and here connector takes one node or a point. Give one node of the block, such as block.nodes[0], or a point of its box, such as boxOf(block).point('right')")
+            // An end of a connector is a node, a block or a point, and another value has a message.
+            expect(() => V.connector(any('title'), rect(10, 10))).toThrow('connector: the first end is the string "title". Give a node, a block of the layout, or a point [x, y] of the stage')
             expect(() => V.spin(any(made()), 1)).toThrow('spin: the first argument is a block of the layout, and here spin takes one node. Give one node of the block, such as block.nodes[0], or the block as one group: group(block)')
             expect(() => V.riemann(any(made()), (x) => x)).toThrow('riemann: the first argument is a block of the layout. Give a pair of axes, such as axes()')
             expect(() => s.play(any(made()))).toThrow('s.play: argument 0 is a block of the layout, and play takes animations. Give an animation of it, such as fadeIn(block), or put it on the stage with s.add')
@@ -1132,7 +1148,7 @@ describe('the clock of a scene: show, hide and swap', () => {
         await expect(onClock((c) => { c.show(7, mark) })).rejects.toThrow('scene "one" has no beat 7. A cue is a spoken phrase, or the index of a beat from 0 to 1')
         await expect(onClock((c) => { c.show('Latency', [mark, undefined as unknown as Node]) })).rejects.toThrow('scene "one": show: item 1 is undefined. Give a node, a block of the layout, an animation, or a list of them')
         await expect(onClock((c) => { c.hide('Latency', []) })).rejects.toThrow('scene "one": hide has nothing to change. Give it at least one node')
-        await expect(onClock((c) => { c.show('Latency', mark, { delay: 1 } as object) })).rejects.toThrow('scene "one": show has no option "delay". Its options are: beat, lead, fade, stagger, skipShown. For another change at a phrase, use on')
+        await expect(onClock((c) => { c.show('Latency', mark, { delay: 1 } as object) })).rejects.toThrow('scene "one": show has no option "delay". Its options are: beat, lead, fade, stagger, skipShown, after. For another change at a phrase, use on')
         await expect(onClock((c) => { c.swap('Latency', mark, mark, { fade: 0 }) })).rejects.toThrow('scene "one": swap: fade is 0, and it is the seconds of the fade, more than 0')
         await expect(onClock((c) => { c.show('Latency', mark, { stagger: -1 }) })).rejects.toThrow('stagger is -1, and it is true, or the seconds between two items')
         // The cue comes first.

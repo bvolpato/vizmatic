@@ -211,6 +211,7 @@ describe('the steps of vizmatic narrated', () => {
 
     it('gives the options and the words of a single step to its tool', () => {
         expect(words(plan(['check', '.', '--motion', '--json', '--content-top', '200'], { check: ['--text-margin', '30'] }))).toEqual(['vizmatic check film.ts --look midnight --text-margin 30 --motion --json --content-top 200'])
+        expect(words(plan(['check', '.', '--text-size', '26', '--empty-space', '0.5', '--empty-seconds', '2']))).toEqual(['vizmatic check film.ts --look midnight --text-size 26 --empty-space 0.5 --empty-seconds 2'])
         expect(words(plan(['beats', '.', '--words', 'hook', '1']))).toEqual(['uv run tools/narration/beats.py . hook 1 --words'])
         expect(words(plan(['voice', '.']))).toEqual(['uv run tools/narration/voice.py .'])
         expect(words(plan(['resound', '.', '--draft']))).toEqual(['uv run tools/narration/resound.py . --draft'])

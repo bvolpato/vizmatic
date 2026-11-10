@@ -616,6 +616,139 @@ To write several entries at once, pass the pushes to `lagged`, to `par`, or to o
 
 The bounds of a ring hold the outside name at every slot, with a count of two digits. So a `zone` or a `card` around a ring has room for the name wherever the pointer goes, and `nextTo` keeps two rings apart. `ring.p(slot)` gives the middle of a slot in the coordinates of the ring, to fly an entry in from another place. The slot wraps, so `ring.p(ring.tail)` is the slot that the next `push()` fills. `ring.enter()` draws the band slot by slot, then brings the pointers and the caption. `ring.slots`, `ring.entries`, `ring.numbers`, `ring.headPointer`, `ring.tailPointer`, `ring.writeMarker`, and `ring.caption` are the parts. A ring has 2 to 64 slots.
 
+## Request queues
+
+`requestQueue(items, options)` moves identifiable requests from waiting lines into server slots. Use it to show how a batch refills, why a request misses its deadline, or what happens when two tenants share a block pool.
+
+```film paired label="Five requests share three batch slots across six decode steps"
+import { beside, countUp, counter, film, fitted, linear, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+// Work is the number of decode iterations the request needs.
+const REQUESTS = [
+    { id: 'A', work: 2, color: 'blue' }, { id: 'B', work: 4, color: 'teal' }, { id: 'C', work: 6, color: 'purple' },
+    { id: 'D', work: 4, color: 'orange' }, { id: 'E', work: 2, color: 'green' },
+]
+
+export default film({ fps: 30, font: 'text-serif', title: 'Continuous batching refills each free slot' }, (s) => {
+    const { area, heading } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue(REQUESTS, { width, slots: 3, size: 36, names: { slots: 'batch slots' } })), area)
+    // Count completed work across all requests, including those that have left the batch.
+    const totalWork = REQUESTS.reduce((sum, request) => sum + request.work, 0)
+    const done = () => queue.ids.reduce<number>((sum, id) => sum + queue.stateOf(id).work! - queue.stateOf(id).left!, 0)
+    const steps = beside(counter(0, { size: 40, font: 'text-serif', suffix: ` of ${totalWork} decode steps complete` }), queue, 'under', 'loose')
+    s.add(heading('Continuous batching refills each free slot'))
+    s.play(queue.enter(), { duration: 1 })
+    s.play(queue.admit(queue.next(3)), { duration: 2.4 })
+    s.add(steps)
+    s.wait(0.4)
+    // Refill the first free slot after each pair of iterations.
+    for (let round = 0; round < 3; round++) {
+        const units = queue.find((item) => item.state === 'running').reduce<number>((sum, id) => sum + Math.min(2, queue.stateOf(id).left!), 0)
+        s.play(queue.run(2), countUp(steps, done() + units), { duration: 1.6, ease: linear })
+        s.play(queue.finish(), ...(queue.count('waiting') > 0 ? [queue.admit()] : []), { duration: 1.2 })
+        s.wait(0.4)
+    }
+    s.wait(1)
+})
+```
+
+An item has an `id`, a text or a number, and an id is in the queue once. The queue knows an id by its text, so `7` and `'7'` are one id. `work` is the size of the item in units of work: decode steps, tokens, seconds. It is a whole number. An item with `work` shows the units that are left at its right end, and a bar fills it from the left as it runs. An item with no `work` has no number and no bar, and its id is in the middle. `color` sets the color of the border and the bar. `running: true` on an item of the first list puts it in a slot from the start.
+
+The texts are large enough for a lesson at 1080p. With the default `size` of 28, an id is 28 px and bold, and the names, the counts, the numbers of work, the waits and the statuses are 26 px. All of them follow `size`, and they are in the font of the film. `idFont: 'mono'` sets the ids in mono. All items have one width, `itemWidth`. Without it, the width has room for the longest id of the first items with its number, and it is 4.3 text sizes at the least. An id that is too wide for an item is set smaller, down to 0.6 of `size`. An id that is still too wide is an error that gives the `itemWidth` to set.
+
+`width` is the width of the whole object, and `.at()` places its middle. The slots are one column at the right, and the lines get the places that fit: `queue.places`. An item enters from behind the items already in line, and an item that leaves a slot goes out at the right by one place, so the object has that room at its two ends. The layout measures the object at its full `width`, also while no item is there, so `fitted(region, (width) => requestQueue(items, { width }))` fills a region. A line with more items than places draws the first ones, and three dots at its far end stand for the others. The count over the line is of all its items. A width with no room for one place is an error that gives the least width.
+
+Each line has its name and its count over its head, such as "waiting 4". The slots have theirs over the first slot, such as "running 2 / 3". Two more counts come with the first item that they count: "done" under the slots, and "rejected" under the lines. `names` sets the three words, and `null` for `done` or `rejected` draws no count there. `counts: false` leaves the names alone. `queue.enter()` brings the lines, the slots and the names, and then the items.
+
+`queue.admit()` takes the head of the first line that has an item, and gives it the first free slot. The item leaves its line by one place, crosses to the height of its slot, and comes into the slot by one place. It changes its height only in the room between the lines and the slots, so it meets no item of another line and no item in a slot. Its line closes up behind it. With an id, `admit` takes that item, and with a list it takes the items one after another, each in its own part of the time. `queue.next(count)` gives the ids that `admit()` takes next, so `queue.admit(queue.next(queue.freeSlots))` fills the free slots. A line serves its head first: an id that is not the head of its line is an error, and so is an `admit` with no free slot.
+
+`queue.run(units)` lets every item in a slot work for a number of units. The bar grows and the number counts down, at one speed. An item never does more than its work. `queue.finish()` drains the slots: with no argument, each item that has no work left goes out at the right and fades, and its slot shows its outline again. `queue.finish(which)` takes an id, a list of ids, or a function of an item. Use it for an item with no `work`. An item that has work left is an error: `run` it first.
+
+A batch that refills is one play: `s.play(queue.finish(), queue.admit())`. Name the `finish` first. The slot that the item leaves is then free for the next one, and the new item comes in behind the one that leaves: it is never nearer to the slot than that one is to its way out. The `finish` must end no later than the `admit`.
+
+`queue.reject(which, status)` sends waiting items away with a status, such as `'503'`, `'429'` or `'timeout'`. In the first fifth of the time the border of the item turns red with dashes, and a cross and the status show under it. The item stays for the viewer to read it. It fades from 0.6 to 0.8 of the time, and its line closes up in the last fifth, when the place is empty. `which` is an id, a list of ids, or a function of an item, which the queue calls when the film plays the change: `queue.reject((item) => item.late, 'timeout')`. Only an item that waits can be rejected. A status that is wider than the room under an item is an error.
+
+`queue.wait(which, value)` runs the wait of waiting items to a value, as a number under each item. The value is in the unit of the film, and `format` writes it. With a `deadline`, the number turns red and bold when the wait reaches it, and the border of the item turns red with dashes. `queue.stateOf(id).late` is true while the item waits at or past its deadline. When the item leaves the line, the flag clears and `stateOf(id).wait` retains its last wait.
+
+```film paired label="Request R-105 exceeds its wait budget and receives a 503"
+import { beside, fadeIn, film, fitted, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif', title: 'R-105 runs out of time in the queue' }, (s) => {
+    const { area, heading, note } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue([
+        { id: 'R-103', work: 4, running: true }, { id: 'R-104', work: 5 },
+    ], { width, slots: 1, size: 36, idFont: 'mono', deadline: 250, format: (ms) => `${Math.round(ms)} ms`, names: { slots: 'model worker', rejected: 'refused' } })), area)
+    const budget = beside(note('Queue wait budget: 250 ms'), queue, 'above', 'loose', queue.region({ line: 0 }))
+    s.add(heading('R-105 runs out of time in the queue'))
+    s.play(queue.enter(), fadeIn(budget), { duration: 1 })
+    s.play(queue.arrive([{ id: 'R-105', work: 3 }, { id: 'R-106', work: 2 }]), { duration: 1.2 })
+    s.wait(0.4)
+    // The worker is busy, and the two waits run.
+    s.play(queue.run(4), queue.wait('R-104', 190), queue.wait('R-105', 130), { duration: 2.4 })
+    // R-104 is in time: the worker is free 60 ms before its budget ends.
+    s.play(queue.finish(), queue.admit(), { duration: 1.2 })
+    s.wait(0.4)
+    // R-105 crosses its deadline while R-104 is still running.
+    s.play(queue.run(3), queue.wait('R-105', 310), { duration: 2.6 })
+    s.wait(0.6)
+    s.play(queue.reject((item) => item.late, '503'), { duration: 2 })
+    s.wait(1.2)
+})
+```
+
+`lines` gives the queue more than one waiting line, from the top: a line is a name, or `{ name, color }`. Use it for a second tenant, or for a priority. An item names its line by its name or its index, and takes the color of its line. `queue.admit()` serves the first line that has an item, so the order of the lines is their priority. A scheduler of the film that picks another line names the head of that line: `queue.admit('B-1')`. With two lines or more, two slots are as far apart as half of two lines, so a line is at the height of a slot or in the middle between two slots.
+
+`pool` adds a pool of fixed blocks under the slots, such as the pages of a KV cache: a number of blocks, or `{ blocks, name, columns }`. An item with `blocks` takes that many when it comes into its slot, and gives them back when it finishes. `queue.take(id, count)` gives an item in a slot more blocks, as a request whose cache grows with each token. An item takes the first free blocks by index, so the next item uses again the blocks that another gave back. A free block is an outline of dashes, and a block that is taken has the color of its owner. The name over the pool shows the count, such as "KV blocks 6 / 8", and `queue.freeBlocks` gives the free ones. An `admit` or a `take` for more blocks than are free is an error. So a film reads the state first, and shows why a request waits:
+
+```film paired label="Tenant B gets a slot when tenant A releases its KV blocks"
+import { beside, fadeIn, fadeOut, film, fitted, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif', title: 'A free GPU slot still needs KV blocks' }, (s) => {
+    const { area, heading, note } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue([
+        { id: 'A-1', line: 'tenant A', work: 2, blocks: 3, running: true },
+        { id: 'A-2', line: 'tenant A', work: 3, blocks: 2 },
+        { id: 'B-1', line: 'tenant B', work: 2, blocks: 4 }, { id: 'B-2', line: 'tenant B', work: 2, blocks: 2 },
+    ], { width, slots: 3, size: 34, lines: [{ name: 'tenant A', color: 'teal' }, { name: 'tenant B', color: 'orange' }], names: { slots: 'GPU slots' }, pool: { blocks: 8, name: 'KV blocks' } })), area)
+    s.add(heading('A free GPU slot still needs KV blocks'))
+    s.play(queue.enter(), { duration: 1 })
+    s.play(queue.admit('A-2'), { duration: 1.2 })
+    s.wait(0.4)
+    // A seat is free for B-1, and the pool is short: the film reads both from the queue.
+    const needs = queue.stateOf('B-1').blocks, free = queue.freeBlocks
+    const short = beside(note(`B-1 needs ${needs} blocks, and ${free} are free`, { color: 'ink' }), queue, 'under', 'normal', queue.region({ line: 'tenant B' }))
+    s.play(fadeIn(short), { duration: 0.5 })
+    s.wait(1)
+    s.play(queue.run(2), { duration: 1.4 })
+    // A-1 ends. Its three blocks go back to the pool, and B-1 takes them and one more.
+    s.play(queue.finish(), queue.admit('B-1'), fadeOut(short), { duration: 1.6 })
+    s.wait(0.6)
+    // The cache of A-2 grows by two blocks, and the pool is full.
+    s.play(queue.take('A-2', 2), { duration: 0.8 })
+    s.wait(1.6)
+})
+```
+
+`queue.arrive(items)` takes one item or a list. The items of a list arrive one after another, and `lag` sets how much later each one starts, as a part of the time of one. An id that the queue has is an error. An item is all there at the middle of its way in.
+
+Each animation leaves the queue in the state that the next one starts from, and the queue changes its bookkeeping when the film plays an animation. So in `seq(queue.arrive({ id: 'N' }), queue.admit('N'))` the second call finds the item of the first. `queue.stateOf(id)` gives what an item is and where: its `state` (`'waiting'`, `'running'`, `'done'` or `'rejected'`), its `line`, its `place` in the line from 0 at the head, its `slot`, its `work` and the units that are `left`, its `blocks`, its `wait`, `late`, and the `status` that it left with. `queue.find(test)` gives the ids that a function picks, `queue.count(state, line)` counts the items in a state, and `queue.ids` holds all ids in the order of arrival. `queue.freeSlots` is the number of free slots.
+
+A rejected call leaves the queue ready to retry. The queue takes the calls of one play in their order, and the calls of a film in the order of their times: a call that starts before a call that the film made earlier is an error. Some calls cannot share their time:
+
+- An item takes one change of its state at a time: it arrives, then it goes to a slot, then it leaves.
+- The slots take one `admit` at a time, so that no two items cross. Give one `admit` all the items, as a list.
+- A line takes one change of its order at a time: an `admit` from it, or a `reject` from it.
+- An `arrive` can share its time with an `admit` or a `reject` of its line, and with another `arrive`. The item that arrives stays behind the items that move, so it must be in its place no sooner than they are.
+- Call `run` or `take` after the request reaches its slot. Wait for its work and block allocation to end before calling `finish` on it. A `wait` in the line can run alongside work in a slot.
+
+A call that breaks one of these is an error that names the two calls and their times, and says what to change. An ease that goes back, or past its end, does not move an item back: the queue takes the furthest point that the ease has reached.
+
+`queue.item(id)` is the node of one item: its box, its bar, its id and its numbers. Fade it, light it or circle it as one node, and a connector to it follows the item. The queue moves the item, so do not move that node. `queue.p(part, edge)` is a point of a part in the coordinates of the object, and `queue.region(part)` is its box on the stage, for `place` and `beside` of the layout. A region encloses all four corners, including when a parent rotates or scales the queue. A part is `{ line }` for the row of a line, `{ line, place }` for one place, `{ slot }`, `{ block }`, `'slots'` or `'pool'`. `queue.rails` (the line of each waiting line), `queue.captions`, `queue.more` (the three dots), `queue.seats`, `queue.slotsCaption`, `queue.doneTally`, `queue.rejectedTally`, `queue.blocks`, `queue.poolCaption` and `queue.chips` are the parts. A queue has 1 to 12 slots, 1 to 4 lines, and a pool of 256 blocks at the most.
+
+Each state has a sign beside its color. An item that waits is in a line, and one that runs is in a slot with its bar. A late item has dashes and a red number, and a rejected one has dashes, a cross and its status. A free slot and a free block are outlines of dashes.
+
+Use `ringBuffer` where the lesson is about the ring: two indexes that wrap. Use `requestQueue` for admission, batching and scheduling. For a population of a hundred requests or more, draw one mark for each with `unitChart` or `stateGrid`, and keep the queue for the few that the viewer follows.
+
 ## Date lines
 
 `dateLine(events, options)` draws a line of time with events at their dates: the history of a project, the releases of a kernel, or the documents of a source in the order in which they came. An event has its date in `at`, a `label`, and a `color`. Each event is a mark on the line, with a stem to its label. An event with no label is a mark only.
@@ -1307,6 +1440,125 @@ export default film({ fps: 30 }, (s) => {
 ```
 
 `word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
+
+## Layer stacks
+
+`layerStack(layers, options)` draws a model from its input at the bottom to its output at the top. A block transforms values on the main path. A branch reads those values and joins the main path at a plus sign. Use the same diagram across scenes to show where each step happens.
+
+```film paired label="A token goes up one decoder block: each branch reads the stream, and its add puts the result back"
+import { film, layerStack } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const model = layerStack([
+        { label: 'embed', color: 'purple', shape: '4 numbers' },
+        { repeat: 'N', label: 'block', layers: [
+            { branch: [{ label: 'norm', id: 'norm 1', color: 'yellow' }, { label: 'attention', color: 'orange' }] },
+            { branch: [{ label: 'norm', id: 'norm 2', color: 'yellow' }, { label: 'feed forward', color: 'blue' }] },
+        ] },
+        { label: 'unembed', color: 'green', shape: '4 scores' },
+    ], { shape: 'token "the"', size: 30 })
+    s.play(model.enter(), { duration: 1.6 })
+    s.play(model.feed([0.6, -0.2, 0.1, 0.4]))
+    s.play(model.pass('embed', [0.3, 0.7, -0.5, 0.1]))
+    s.play(model.light('attention'))
+    s.play(model.pass('attention', [0.5, 0.2, -0.1, 0.8]), { duration: 3 })
+    s.play(model.light('feed forward'))
+    s.play(model.pass('feed forward', [0.9, 0.1, -0.6, 0.6]), { duration: 3 })
+    s.play(model.light(null), model.pass('unembed', [-0.4, 0.2, 0.9, 0.1]))
+    s.wait(0.8)
+})
+```
+
+The layers are a list from the foot of the stream up. A layer is one of three things. A block is a label, or `{ label, id, color, state, shape }`: it is on the stream, and the data passes through it. A branch is `{ branch: [blocks] }`: its blocks are beside the stream, from the lowest one. A line leaves the stream under the first block, goes through the blocks, and ends at an add on the stream over the last block. That is a residual connection, and `{ branch: ['norm', 'attention'] }` is a pre-norm attention layer. A group is `{ layers, repeat, label }`: a frame around its layers, for a block that repeats. `repeat` is a count, 2 or more, or a name such as `'N'`, and the frame then says "× 12" or "block × N" on its top line. A group holds blocks and branches, and no other group.
+
+A branch can go around a block on the stream: `{ branch: ['A', 'B'], around: 'W' }`. The stream then passes through `W`, and the branch adds to what `W` writes. That is LoRA beside a frozen weight, or a shortcut with a projection in a residual network. `shown: false` gives a branch its place from the start and does not draw it, and `stack.show('A')` brings it in later: the line leaves the stream, the blocks arrive, and the add lands on the stream.
+
+A block has an `id`, which is its label unless the film gives another. The film names a block by its id or by its index. The blocks count from the foot of the stream up. A branch counts from its first block, and the block that a branch goes around comes before the blocks of that branch. Two blocks can have one label, such as "norm". A name that two blocks have is an error that lists their indexes, so give one of them an id, or name it by its index.
+
+`stack.feed(values)` puts a vector at the foot of the stream: a row of cells, one for each value. A cell is teal for a value over 0 and orange for a value under 0, and it is stronger for a larger value, up to 1. `stack.pass('attention', values)` sends the vector up through the layer of a block, and it leaves that layer with the new values. In a block on the stream, the vector goes behind the block and comes out changed, and the block lights for a moment. At a branch, the vector stays on the stream, and a copy of it goes through the blocks of the branch. The copy comes back with what the branch adds, which is the new values less the old ones, and stops at the add. Then the add takes the copy, and the vector goes through the add and takes the sum. So a viewer sees that a layer adds to the stream and does not replace it.
+
+Name any block of a branch to pass the branch. A pass to a later block goes through each layer before it, and gives each one its share of the time. Without values, the vector keeps its values. When you create a pass, the destination sets its default duration. A visible branch gets 2.6 s. A block or hidden branch gets 1 s. A pass across several layers shares that duration among them. The vector does not go back: `feed` starts again at the foot, and the vector that is on the stream leaves first. Schedule changes to the same part in timeline order. Use `seq` for two operations that move the vector. Finish revealing a branch before the vector reaches it. Changes to separate parts can run together, such as lighting attention while a vector passes it. `stack.passed` is the number of layers that the vector passed, `stack.values` its values, and `stack.shape` the shape beside it. All of these follow the changes that the film has played so far.
+
+`cells` is the number of cells, 4 by default. With `digits`, each cell shows its value with that many decimals, and a cell is as wide as a value under 10 needs:
+
+```ts
+import { barChart, film, layerStack } from 'vizmatic/stage'
+
+export default film((s) => {
+    const model = s.add(layerStack([
+        { label: 'token + position', color: 'purple', shape: '4 numbers' },
+        { branch: [{ label: 'masked attention', color: 'orange' }] },
+        { branch: [{ label: 'MLP', color: 'blue' }] },
+        { label: 'scores', color: 'green', shape: '4 scores' },
+    ], { digits: 1, shape: '"Birds"' }).at(-420, 0))
+    const scores = [2.1, 1.4, 0.2, 0.6]
+    const bars = barChart(['fly', 'sing', 'swim', 'sleep'].map((label, index) => ({ label, value: scores[index]! })), { width: 620, height: 400, labelSize: 34 }).at(480, 0)
+    s.play(model.feed([0, 0, 0, 0]))
+    s.play(model.pass('token + position', [0.5, -1.2, 0.3, 0.9]))
+    // The copy comes back with 0.4, 0.7, 0.0 and 0.5, and the add makes 0.9, -0.5, 0.3 and 1.4 of them.
+    s.play(model.pass('masked attention', [0.9, -0.5, 0.3, 1.4]), { duration: 3.4 })
+    s.play(model.pass('MLP', [1.6, -0.5, -0.4, 1.4]), { duration: 3.4 })
+    s.play(model.pass('scores', scores))
+    s.play(model.light('scores'), bars.enter())
+})
+```
+
+The copy shows the numbers that the branch adds while it stops at the add, so give a branch three seconds or more when the viewer must read them. The numbers of the vector fade before the vector goes behind a block, and come back when it is clear of the block, so the edge of a block never cuts a number. A value that is too wide for its cell is an error that names the value. A `shape` is a short text for the data on the stream, such as `'(T, 768)'`. The option `shape` is the shape at the foot of the stream, and the `shape` of a block is the shape after that block. The shape is beside the vector, at the left of the blocks, and goes up with it. It changes when the vector passes a block that has one, so a projector that keeps 576 tokens and makes each one wider changes "576 x 1024" to "576 x 4096". Only a block on the stream has a shape, because the add of a branch keeps the shape of the stream.
+
+`stack.light('attention')` lights the block that a scene is about: a thick border and a stronger fill. One block is lit at a time, `stack.light(null)` puts the light off, and `stack.current` is the index of the lit block. `stack.mark(which, state)` moves blocks to another state. `which` is a block, a list of blocks, or a function of a block, which the stack calls when the film plays the change. Without `states`, a block is `live` or `frozen`, from `STACK_STATES`. A frozen block is dim and has a lock at its right end, so color is not the only sign of the state. `stack.replace('norm', 'RMSNorm')` puts another block in the place of a block: the label fades out and the new one fades in. The block keeps its id, its place and its state, and `{ label, color }` gives it a new color too.
+
+```ts
+import { beside, fadeIn, film, layerStack, text } from 'vizmatic/stage'
+
+export default film((s) => {
+    const model = s.add(layerStack([
+        { label: 'patch embed', color: 'purple', shape: '576 x 1024' },
+        { label: 'vision encoder', color: 'purple' },
+        { label: 'projector', color: 'orange', shape: '576 x 4096' },
+        { branch: [{ label: 'LoRA', color: 'orange' }], around: 'LLM', shown: false },
+        { label: 'answer head', color: 'green' },
+    ], { shape: '576 patches' }))
+    // A note beside the whole stack, at the height of one block.
+    const note = beside(text('the projector trains', { size: 30, color: 'orange' }), model, 'right', 'wide', model.block('projector'))
+    s.play(model.mark(['patch embed', 'vision encoder', 'LLM'], 'frozen'))
+    s.play(model.feed([0.4, -0.3, 0.8, 0.1]))
+    s.play(model.pass('projector', [-0.2, 0.9, 0.3, -0.6]), model.light('projector'), fadeIn(note), { duration: 2.4 })
+    // The branch arrives beside the frozen model, and adds to what the model writes.
+    s.play(model.show('LoRA'))
+    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3], { aroundValues: [0, 0.7, 0.5, -0.2] }), { duration: 3 })
+})
+```
+
+For another subject, give your own states: `states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } }` makes the layers of a container image. A state can set a `color` to override the block color, `dim` for a block that does not run, `dash` for a border of dashes, and a `mark` at the right end of the block: `'lock'`, `'check'`, `'cross'` or `'dot'`. A block with no state starts in the first state of the record. `stack.stateOf(ref)`, `stack.labelOf(ref)` and `stack.find((block) => block.state === 'frozen')` read the blocks after the changes that the film has played so far. If the film uses only block states, it can use a small `gap`, such as 14.
+
+`stack.open('attention', inside)` joins a block to a close-up of its inside: two lines go from the block to a frame around `inside`, and `inside` fades in. `inside` is a node of the film, a block of the layout, or a list: another stack, a grid of numbers, a formula. The film places it at the right or at the left of the stack first. One block is open at a time: `open` of another block closes the first one, and `stack.close()` closes the open block and fades its close-up out. The lines use the positions of the stack and the close-up when `open` plays. Close and reopen the detail after moving it. A clone starts closed with its own timeline, including when you clone the group that contains the stack. A close-up over the stack or under it is an error, and so is a side where the lines would cross a part of the stack: a block on the stream that has a branch beside it opens to the left, and a block of a branch opens to the right.
+
+```ts
+import { film, heatmap, layerStack, place, sceneArea } from 'vizmatic/stage'
+
+export default film((s) => {
+    const [left, right] = sceneArea().columns(2)
+    const model = s.add(place(layerStack(['embed', { branch: ['norm', { label: 'attention', color: 'orange' }] }, 'unembed']), left!))
+    const weights = place(heatmap([[0.2, 0.3, 0.5]], { cell: 150, values: true, valueSize: 40, labelSize: 34, rowLabels: ['the'], columnLabels: ['function', 'returns', 'the'], colors: ['surface', 'orange'], domain: [0, 1] }), right!)
+    s.play(model.light('attention'), model.open('attention', weights))
+    s.wait(2)
+    s.play(model.close(), model.light(null))
+})
+```
+
+`width` is the width of the whole object: the blocks, the frames of the groups, and the room of the shapes at the left. The layout measures that same box, also before the vector, a shape or a branch shows, so `place(stack, region)` and `fitted(region, (width) => layerStack(layers, { width }))` work with no other number. Without `width`, the stack is as wide as its labels need. A label is never set smaller: a `width` with no room for a label is an error that names the label and the least width. `.at()` places the middle of that box. In a stack with a branch, the stream is at the left, in a free way that is as wide as the vector, and the blocks of the branches are at the right. A block on the stream is as wide as both. In a stack with no branch, the blocks are around the stream.
+
+`size` is the size of every text of the stack: the labels, the shapes, the label of a group, and the numbers. It is 28 by default, which is over the 26 px that a film of 1920 by 1080 needs. Each measure follows it. `blockHeight` is the height of a block, 1.9 of `size` by default, and `gap` is the room on the stream between two layers, where the vector rests. The default gap holds the vector with room around it. A `feed` on a stack whose `gap` is lower than the vector is an error that gives the least gap. A decoder with two branches of two blocks is about 800 px high at the default size, so give a tall model `size: 26`, or put the layers that the lesson does not name in one block. `color` is the color of a block that has none, `font` the font of every text, and `backing` the color behind the blocks, which hides the stream and the vector there. It is the background of the look by default. On a panel of another color, give the color of the panel.
+
+`stack.block(ref)` is the node of a block, for `beside`, a `connector`, or a `spotlight`. `stack.p(ref, edge)` is the middle of an edge of a block, `'right'` by default, and `stack.foot` and `stack.head` are the two ends of the stream: a row of tokens goes under the foot, and the bars of the output go over the head. These points are in the coordinates of the object, and `stack.toWorld(x, y)` gives the place on the stage. `stack.region()` is the box of the object in stage pixels, and `stack.region(ref)` the box of one block. `stack.enter()` builds the stack from the foot up: the stream grows, and each part arrives when the stream reaches its height. `stack.blocks`, `stack.boxes`, `stack.labels`, `stack.stream`, `stack.taps`, `stack.adds`, `stack.reads`, `stack.writes`, `stack.chains`, `stack.frames`, `stack.vector`, `stack.copy`, `stack.tag` and `stack.zoom` are the parts. `stack.count` is the number of blocks, `stack.ids` their ids, and `stack.depth` the number of layers.
+
+`neuralNet` draws neurons and the weights between them, and its motion is an activation. `steps` lights one box of a row, and nothing joins its boxes. A layer stack knows the order of its layers and what each one does to the stream, so it can send one vector through them and keep its values.
+
+The film supplies the values at each step. The cells can show a sample of a larger tensor. The shape label describes the full tensor and travels with the sample.
+
+For a branch around a block, pass the output of that block as `aroundValues`. The branch returns the final values minus that output. For example, if the input is 2, the frozen block produces 6, and the final value is 7, the adapter adds 1. Without `aroundValues`, the example carries the input values along the main path. A pass that keeps those values shows a zero contribution at the add.
+
+The runnable examples in `examples/_teaching` cover a decoder block, a multimodal projector with LoRA, and a tiny GPT forward pass. In `layer-stack-recurrence.ts`, a repeated cell opens onto a second stack with one block per word. Each pass applies the same recurrence to the hidden state.
 
 ## Token strips
 
