@@ -20,6 +20,7 @@ import {
     decimal, label3d, TextNode, type FontFamily,
     passage, shift, type Value,
     TOKEN_STATES, Node as StageNode, rectPath, ramp, boxOf, fitted, place as placeIn, Box as LayoutBox,
+    layerStack, STACK_STATES, beside, type StackLayer,
 } from '../src/stage/index'
 import { encode } from 'fast-png'
 import { Resvg } from '@resvg/resvg-js'
@@ -13474,6 +13475,732 @@ describe('named box', () => {
             expect(own.name.children[0]!.get('fill')).not.toEqual(own.frame.get('stroke'))
             expect(namedBox('guest', { width: 300, height: 120, fill: 'red', fillOpacity: 0.12 }).frame.get('fillOpacity')).toBe(0.12)
             expect(namedBox('guest', { width: 300, height: 120, fill: null }).frame.get('fill')).toBeNull()
+        }))
+    })
+})
+
+describe('layer stack', () => {
+    type Stack = ReturnType<typeof layerStack>
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] }
+    /** How much of a node a viewer sees: 0 when it or a group that holds it is hidden. */
+    const shows = (node: Node): number => {
+        let opacity = 1
+        for (let up: Node | null = node; up; up = up.parent) {
+            if (!up.get('visible')) return 0
+            opacity *= up.get('opacity')
+        }
+        return opacity
+    }
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const sourceOf = (node: Node | undefined) => (node as unknown as { source?: string } | undefined)?.source
+    /** The cells of a vector: its parts but the plate, which is the first, and the holder of the numbers, which is the last. */
+    const cells = (vector: Node) => vector.children.slice(1, -1)
+    const looks = (vector: Node) => cells(vector).map((cell) => [cell.get('fill'), cell.get('fillOpacity')])
+    /** The numbers that a vector shows, and how much of them a viewer sees. */
+    const numbers = (vector: Node) => vector.children[vector.children.length - 1]!.children.filter((made) => made.get('visible')).map(sourceOf)
+    const numbersShow = (vector: Node) => shows(vector.children[vector.children.length - 1]!)
+    const MODEL: readonly StackLayer[] = ['embed', { branch: ['norm', 'attention'] }, 'unembed']
+    // The places of MODEL at size 28. The vector is 95 wide and 26 high, a block is 53 high, and the room between two layers is 48.
+    const STREAM = -105
+
+    it('shows the residual relative to the output of the parallel block and zero when a pass keeps its values', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([{ branch: ['adapter'], around: 'base' }, { branch: ['attention'] }], { cells: 1, digits: 0 }))
+            s.play(stack.feed([2]), { duration: 0 })
+            s.play(stack.pass('adapter', [5], { aroundValues: [4] }), { duration: 10 })
+            s.play(stack.pass('attention'), { duration: 10 })
+        })
+        expect(at(8, () => numbers(stack.copy))).toEqual(['1'])
+        expect(at(8, () => numbers(stack.vector))).toEqual(['4'])
+        expect(at(18, () => numbers(stack.copy))).toEqual(['0'])
+        expect(stack.values).toEqual([5])
+    })
+
+    it('rejects a residual that will not fit before scheduling the pass, so the author can retry', async () => {
+        await compile((s) => {
+            const stack = s.add(layerStack([{ branch: ['adapter'] }], { cells: 1, digits: 0, font: 'mono' }))
+            s.play(stack.feed([9]))
+            expect(() => s.play(stack.pass('adapter', [-9]))).toThrow(/residual.*-18/)
+            expect(stack.passed).toBe(0)
+            s.play(stack.pass('adapter', [8]))
+            expect(stack.values).toEqual([8])
+        })
+    })
+
+    it('measures the region of a stack and its block inside a rotated parent', async () => {
+        await compile((s) => {
+            const stack = layerStack(['encoder'])
+            s.add(group(stack).rotate(Math.PI / 4))
+            expect(stack.region()).toEqual(boxOf(stack))
+            const block = stack.region('encoder')
+            expect(block.width).toBeCloseTo(block.height)
+        })
+    })
+
+    it('puts the layers on one stream from the foot up, with a block on the stream as wide as the way of the vector and the blocks of a branch together', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(MODEL)
+            expect(stack.ids).toEqual(['embed', 'norm', 'attention', 'unembed'])
+            expect([stack.count, stack.depth]).toEqual([4, 3])
+            expect(stack.ids.map((id) => stack.layerOf(id))).toEqual([0, 1, 1, 2])
+            // The first block is the lowest. The way of the vector is 68 wide at each side of the stream, and the
+            // blocks of the branch start where it ends. A block on the stream is as wide as both.
+            expect(stack.boxes.map(edges)).toEqual([[-173, 148, 173, 201], [-37, 20, 173, 73], [-37, -50, 173, 3], [-173, -185, 173, -132]])
+            expect([stack.foot, stack.head]).toEqual([[STREAM, 255], [STREAM, -255]])
+            expect(stack.labels.map(sourceOf)).toEqual(['embed', 'norm', 'attention', 'unembed'])
+            expect(stack.labels.map((label) => label.data['size'])).toEqual([28, 28, 28, 28])
+            stack.labels.forEach((label, index) => {
+                const [x0, , x1] = edges(label), [left, top, right, bottom] = edges(stack.boxes[index]!)
+                expect(Math.abs((x0! + x1!) / 2 - (left! + right!) / 2)).toBeLessThan(2)
+                expect(label.get('y') + stack.blocks[index]!.get('y')).toBe((top! + bottom!) / 2)
+            })
+            // The points of the edges of a block, for a line or a note. They are in the coordinates of the object.
+            expect(stack.p('attention')).toEqual([173, -23.5])
+            expect(stack.p('attention', 'right')).toEqual([173, -23.5])
+            expect(stack.p('attention', 'left')).toEqual([-37, -23.5])
+            expect(stack.p(2, 'top')).toEqual([68, -50])
+            expect(stack.p('embed', 'bottom')).toEqual([0, 201])
+            expect(stack.block('norm')).toBe(stack.blocks[1])
+            const moved = layerStack(MODEL).at(100, 50)
+            expect(moved.p('attention')).toEqual([173, -23.5])
+            expect(moved.toWorld(...moved.p('attention'))).toEqual([273, 26.5])
+            // In a stack with no branch, the blocks are around the stream.
+            const plain = layerStack(['conv', 'pool'])
+            expect(plain.boxes.map(edges)).toEqual([[-105, 32, 105, 85], [-105, -69, 105, -16]])
+            expect(plain.foot[0]).toBe(0)
+            // Another size gives the same picture: each measure follows the text size, and is a whole number of pixels.
+            const large = layerStack(MODEL, { size: 56 })
+            large.boxes.forEach((box, index) => edges(box).forEach((edge, side) => expect(Math.abs(edge - edges(stack.boxes[index]!)[side]! * 2)).toBeLessThanOrEqual(5)))
+            expect(Math.abs(large.foot[0] - STREAM * 2)).toBeLessThanOrEqual(5)
+            expect(large.labels[0]!.data['size']).toBe(56)
+        }))
+    })
+
+    it('measures as its whole width for the layout, with the room of its shapes and of the parts that do not show yet', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(MODEL)
+            expect(stack.layoutBox).toEqual([-173, -255, 173, 255])
+            const box = boxOf(stack)
+            expect([box.left, box.top, box.right, box.bottom]).toEqual([-173, -255, 173, 255])
+            // `width` is the width of the whole object: the blocks of the branch take what the way of the vector leaves.
+            const wide = layerStack(MODEL, { width: 700 })
+            expect(boxOf(wide).width).toBe(700)
+            expect(edges(wide.boxes[0]!)).toEqual([-350, 148, 350, 201])
+            expect(edges(wide.boxes[2]!)).toEqual([-214, -50, 350, 3])
+            // A shape has its room at the left, outside the blocks, and a group has the room of its frame at the two sides.
+            const shaped = layerStack(['embed', { repeat: 2, layers: [{ branch: ['attention'], shown: false }] }], { width: 700, shape: '(T, 768)' })
+            expect(boxOf(shaped).width).toBe(700)
+            expect(shaped.boxes[0]!.bounds().width).toBeLessThan(700 - 34 - 100)
+            // The measure does not change with what shows: the shape, the vector and the branch are not there yet.
+            expect(shaped.bounds().x).toBeGreaterThan(boxOf(shaped).left + 100)
+            const built = fitted(640, (width) => layerStack(MODEL, { width, shape: '(T, 768)' }))
+            expect(boxOf(built).width).toBeCloseTo(640, 6)
+            // `place` puts the middle of the measure in the middle of a region, and `region()` gives the same box.
+            const placed = placeIn(layerStack(MODEL), rect(1000, 900).at(300, -100))
+            const region = placed.region()
+            expect([region.left, region.top, region.right, region.bottom]).toEqual([127, -355, 473, 155])
+            const block = placed.region('norm')
+            expect([block.left, block.top, block.right, block.bottom]).toEqual([263, -80, 473, -27])
+            // A note beside the stack, at the height of one block.
+            const note = beside(text('trains', { size: 30 }), placed, 'right', 'wide', placed.block('norm'))
+            expect(boxOf(note).left).toBe(473 + 48)
+            expect(boxOf(note).cy).toBeCloseTo(-53.5, 6)
+        }))
+    })
+
+    it('draws a branch beside the stream: a line from a point of the stream into its first block, lines between its blocks, and a line from its last block to an add on the stream', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(MODEL)
+            // The point where the branch leaves the stream is under its first block, and the add is over its last one.
+            expect(edges(stack.taps[0]!)).toEqual([STREAM - 6, 88, STREAM + 6, 100])
+            expect([stack.adds[0]!.get('x'), stack.adds[0]!.get('y')]).toEqual([STREAM, -71])
+            const [read, write, chain] = [edges(stack.reads[0]!), edges(stack.writes[0]!), edges(stack.chains[0]!)]
+            // The line in starts on the stream at that point and ends at the bottom edge of "norm", under its middle.
+            expect([read[0], read[1], read[3]]).toEqual([STREAM, 73, 94])
+            expect(read[2]).toBeGreaterThan(68)
+            expect(read[2]).toBeLessThan(68 + 6)
+            // The line out starts at the top edge of "attention" and ends at the ring of the add, which is 13 wide.
+            expect([write[0], write[3]]).toEqual([STREAM + 13, -50])
+            expect(write[1]).toBeGreaterThan(-71 - 6)
+            // The line between the two blocks goes from the top edge of "norm" to the bottom edge of "attention".
+            expect([chain[1], chain[3]]).toEqual([3, 20])
+            expect([stack.taps.length, stack.adds.length, stack.reads.length, stack.writes.length, stack.chains.length]).toEqual([1, 1, 1, 1, 1])
+            // The stream is one line from the foot to the arrow head, and the blocks and the add are drawn over it.
+            const order = (node: Node) => stack.all().indexOf(node)
+            expect(order(stack.stream)).toBeLessThan(order(stack.adds[0]!))
+            expect(order(stack.adds[0]!)).toBeLessThan(order(stack.blocks[0]!))
+            expect(stack.adds[0]!.children[0]!.get('fill')).toEqual(paint('bg'))
+
+            // A branch around a block on the stream: the block is on the stream, at the middle height of the blocks of the branch.
+            const lora = layerStack(['embed', { branch: ['A', 'B'], around: 'W' }])
+            expect(lora.ids).toEqual(['embed', 'W', 'A', 'B'])
+            const [, w, a, b] = lora.boxes.map(edges)
+            expect((w![0]! + w![2]!) / 2).toBe(lora.foot[0])
+            expect((w![1]! + w![3]!) / 2).toBe((a![3]! + b![1]!) / 2)
+            // It is clear of the blocks of the branch, and it is wider than the vector, which goes behind it.
+            expect(a![0]! - w![2]!).toBe(14)
+            expect(w![2]! - w![0]!).toBeGreaterThan(95)
+            expect(lora.layerOf('W')).toBe(lora.layerOf('B'))
+        }))
+    })
+
+    it('puts the layers of a group in a frame with its label on the top line, and leaves the place where the vector rests outside the frame', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([
+                { repeat: 12, layers: [{ branch: ['attention'] }, 'norm'] },
+                { label: 'decoder', repeat: 'N', layers: ['MLP'] },
+                { label: 'head', layers: ['linear'] },
+                { layers: ['softmax'] },
+            ]))
+            s.play(stack.feed([1, 1, 1, 1]), { duration: 0.5 })
+            s.play(stack.pass('norm'), { duration: 1 })
+            s.wait(0.5)
+        })
+        const said = (frame: Node) => frame.children.map(sourceOf).filter((words) => words !== undefined)
+        expect(stack.frames.map(said)).toEqual([['× 12'], ['decoder × N'], ['head'], []])
+        const [first, second] = stack.frames.map((frame) => edges(frame.children[0]!))
+        // The frame is around the blocks of its layers, with room at each side.
+        for (const index of [0, 1]) {
+            const box = edges(stack.boxes[index]!)
+            expect(first![0]).toBeLessThan(box[0]! - 10)
+            expect(first![2]).toBeGreaterThan(box[2]! + 10)
+            expect(first![1]).toBeLessThan(box[1]! - 10)
+            expect(first![3]).toBeGreaterThan(box[3]! + 10)
+        }
+        expect(second![3]).toBeLessThan(first![1]!)
+        // The label is on the top line of its frame, and it ends before the right edge of the blocks.
+        const label = stack.frames[0]!.children[1]!
+        expect(label.get('y')).toBe(first![1])
+        expect(edges(label)[2]).toBeLessThan(edges(stack.boxes[1]!)[2]!)
+        // At the foot, the vector is under the first frame. After the last layer of the group, it is between the two frames.
+        const height = at(0.4, () => stack.vector.bounds().height)
+        expect(at(0.5, () => stack.vector.get('y')) - height / 2).toBeGreaterThan(first![3]! + 5)
+        expect(at(1.9, () => stack.vector.get('y')) + height / 2).toBeLessThan(first![1]! - 5)
+        expect(at(1.9, () => stack.vector.get('y')) - height / 2).toBeGreaterThan(second![3]! + 5)
+        expect(stack.passed).toBe(2)
+    })
+
+    it('names a block by its id or its index, and says what to do with a name that two blocks have', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(['embed', { branch: ['norm', 'attention'] }, { branch: [{ label: 'norm', id: 'norm 2' }, 'MLP'] }, 'norm'])
+            expect(stack.ids).toEqual(['embed', 'norm', 'attention', 'norm 2', 'MLP', 'norm'])
+            expect(stack.block('norm 2')).toBe(stack.blocks[3])
+            expect(stack.block(5)).toBe(stack.blocks[5])
+            expect(stack.labelOf(3)).toBe('norm')
+            expect(() => stack.block('norm')).toThrow(/layerStack: "norm" names the blocks 1, 5\. Name one by its index, or give each block its own id, such as \{ label: "norm", id: "norm 2" \}/)
+            expect(() => stack.p('softmax')).toThrow(/layerStack: no block "softmax"\. The blocks are 0 \("embed"\), 1 \("norm"\), 2 \("attention"\), 3 \("norm 2"\), 4 \("MLP"\), 5 \("norm"\)/)
+            expect(() => stack.light(6)).toThrow(/layerStack: no block 6\. The blocks are 0 \("embed"\)/)
+            expect(() => stack.stateOf(1.5)).toThrow(/layerStack: no block 1\.5\./)
+            expect(() => stack.block(null as never)).toThrow(/layerStack: a block is named by its id or by its index, and null is neither/)
+            expect(() => stack.p('embed', 'under' as never)).toThrow(/layerStack: edge is 'left', 'right', 'top' or 'bottom', not "under"/)
+        }))
+    })
+
+    it('refuses a layer, an option or a size that gives no right picture, and says what works', async () => {
+        await compileFilm(film(() => {
+            expect(() => layerStack([])).toThrow(/layerStack: give it at least one layer, such as \['embed', \{ branch: \['attention'\] \}, 'unembed'\]/)
+            expect(() => layerStack(['embed', 7 as never])).toThrow(/layerStack: layer 1 is 7\. A block is a label, or \{ label, id, color, state, shape \}/)
+            expect(() => layerStack(['embed', { label: ' ' }])).toThrow(/layerStack: layer 1 has no label\. Give each block a label/)
+            expect(() => layerStack(['two\nlines'])).toThrow(/layerStack: the label of layer 0 \("two\\nlines"\) has a line break or a tab\. A label is one line/)
+            expect(() => layerStack([{ branch: [] }])).toThrow(/layerStack: layer 0 has the branch \[\]\. A branch is a list of one block or more, such as \{ branch: \['norm', 'attention'\] \}/)
+            expect(() => layerStack([{ layers: [] }])).toThrow(/layerStack: layer 0 is a group with no layers/)
+            expect(() => layerStack([{ layers: [{ layers: ['a'] } as never] }])).toThrow(/layerStack: layer 0 of the group of layer 0 is a group inside a group\. A group holds blocks and branches\. Give the two groups one after the other/)
+            expect(() => layerStack([{ repeat: 1, layers: ['a'] }])).toThrow(/layerStack: the repeat of layer 0 is 1\. Give a count, 2 or more, or a name such as 'N'/)
+            expect(() => layerStack([{ label: 'a', state: 'cold' }])).toThrow(/layerStack: layer 0 \("a"\) has the state "cold"\. The states are live, frozen/)
+            expect(() => layerStack([{ label: 'a', color: 'no such color' }])).toThrow(/layerStack: the color of layer 0 \("a"\) is "no such color", which is not a color\. Use a color of the look, such as 'orange', or a CSS color/)
+            // The add of a branch needs two values of one shape, so a block of a branch has no shape of its own.
+            expect(() => layerStack([{ branch: [{ label: 'MLP', shape: '(T, 3072)' }] }])).toThrow(/layerStack: block 0 of layer 0 \("MLP"\) has a shape, and it is in a branch\. The add of a branch keeps the shape of the stream\. Give the shape to a block on the stream/)
+            expect(() => layerStack(['a'], { states: { odd: { mark: 'star' as never } } })).toThrow(/layerStack: the mark of the state "odd" is "star"\. A mark is 'lock', 'check', 'cross', 'dot'/)
+            expect(() => layerStack(['a'], { cells: 0 })).toThrow(/layerStack: cells is 0\. Give the number of cells of the vector, a whole number from 1 to 16/)
+            expect(() => layerStack(['a'], { states: { broken: null as never } })).toThrow(/give the state "broken" a look/)
+            expect(() => layerStack([{ branch: ['a'], shown: 'false' as never }])).toThrow(/set shown to true or false/)
+            expect(() => layerStack([{ branch: Array(1) }])).toThrow(/block 0 of layer 0 is undefined/)
+            expect(() => layerStack(['a'], { digits: 1.5 })).toThrow(/layerStack: digits is 1\.5\. Give the number of decimals of a value in a cell, a whole number from 0 to 3/)
+            expect(() => layerStack(['a'], { size: 0 })).toThrow(/layerStack: size is a text size, more than 0/)
+            expect(() => layerStack(['a'], { blockHeight: 30 })).toThrow(/layerStack: a blockHeight of 30 has no room for a label of size 28: a letter with a tail would touch the border\. Give a blockHeight of \d+ or more/)
+            // A width with no room for a label is an error that names the label and the least width. That width works.
+            const narrow = () => layerStack(['embed', { branch: ['multi-head attention'] }], { width: 300 })
+            expect(narrow).toThrow(/layerStack: a width of 300 has no room for the label "multi-head attention", which is \d+ px wide at size 28\. Give a width of (\d+) or more, shorter labels, or a smaller size/)
+            let least = 0
+            try { narrow() } catch (error) { least = Number(/Give a width of (\d+)/.exec((error as Error).message)![1]) }
+            expect(() => layerStack(['embed', { branch: ['multi-head attention'] }], { width: least })).not.toThrow()
+            expect(() => layerStack(['embed', { branch: ['multi-head attention'] }], { width: least - 1 })).toThrow(/has no room for the label/)
+            // With short labels, the vector sets the least width: a block hides the vector that is in it.
+            expect(() => layerStack(['a'], { width: 100, cells: 8 })).toThrow(/layerStack: a width of 100 has no room for the vector of 8 cells, which is 187 px wide and must fit behind a block\. Give a width of 201 or more, fewer cells, or a smaller size/)
+            // Without a width, the stack is as wide as its labels need, so a long label is never an error.
+            const long = layerStack(['embed', { branch: ['a label of a block that is very long'] }])
+            const [box, label] = [edges(long.boxes[1]!), edges(long.labels[1]!)]
+            expect(label[0]! - box[0]!).toBeGreaterThan(15)
+            expect(box[2]! - label[2]!).toBeGreaterThan(15)
+            expect(() => layerStack([{ label: 'a very long name of a group of layers', layers: ['a'] }])).toThrow(/layerStack: the label "a very long name of a group of layers" of a group is \d+ px wide, and the top line of its frame has \d+ px for it\. Use a shorter label, or a wider stack/)
+        }))
+    })
+
+    it('enters from the foot of the stream up, with each part when the stream reaches its height, and never shows the stream through a block', async () => {
+        let stack!: Stack
+        const compiled = await compile((s) => {
+            stack = layerStack(['embed', { branch: ['attention'] }, { branch: ['LoRA'], around: 'W', shown: false }, 'unembed'], { shape: '(T)' })
+            s.wait(1)
+            s.play(stack.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }, { fps: 20 })
+        // The stack is not on the stage before its animation.
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        const [line, head] = stack.stream.children as [Node, Node]
+        expect([1, 1.5, 2, 3].map((time) => at(time, () => line.get('trimTo')))).toEqual([0, 0.25, 0.5, 1])
+        // The time at which the growing end of the stream is at a height. A part starts 0.16 s before that, and takes 0.5 s.
+        const reached = (y: number) => 1 + 2 * (stack.foot[1] - y) / (stack.foot[1] - stack.head[1])
+        const body = (index: number) => stack.blocks[index]!.children[1]!
+        const arrives = (node: Node, y: number) => [-0.16, 0.09, 0.34].map((after) => at(reached(y) + after, () => shows(node)))
+        // "embed" is low and comes early. "unembed" is high and comes late.
+        expect(reached(stack.p('embed', 'bottom')[1])).toBeLessThan(1.3)
+        expect(reached(stack.p('unembed', 'bottom')[1])).toBeGreaterThan(2.5)
+        expect(arrives(body(0), stack.p('embed', 'bottom')[1])).toEqual([0, expect.closeTo(0.5, 6), expect.closeTo(1, 6)])
+        expect(arrives(body(4), stack.p('unembed', 'bottom')[1])).toEqual([0, expect.closeTo(0.5, 6), expect.closeTo(1, 6)])
+        // The add of a branch comes when the stream is at the add, after the block of the branch.
+        expect(arrives(stack.adds[0]!, stack.adds[0]!.get('y'))).toEqual([0, expect.closeTo(0.5, 6), expect.closeTo(1, 6)])
+        expect(at(reached(stack.adds[0]!.get('y')) - 0.16, () => shows(body(1)))).toBeGreaterThan(0.4)
+        expect(at(3, () => [shows(stack.adds[0]!), shows(stack.reads[0]!), shows(stack.taps[0]!), shows(head)])).toEqual([1, 1, 1, 1])
+        // The backing of a block shows from the start, so the stream that grows behind a block never shows through its label.
+        const backing = stack.blocks[0]!.children[0]!
+        expect(at(1.2, () => [shows(backing), backing.get('fill'), backing.get('fillOpacity')])).toEqual([1, paint('bg'), 1])
+        // The branch that waits for `show()`, the vector and the shape stay away. The block on the stream beside that branch enters.
+        expect(at(3.4, () => [shows(stack.blocks[3]!), shows(stack.adds[1]!), shows(stack.reads[1]!), shows(stack.vector), shows(stack.tag!), shows(stack.copy), shows(stack.zoom)])).toEqual([0, 0, 0, 0, 0, 0, 0])
+        expect(at(3.4, () => shows(body(2)))).toBe(1)
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            const model = layerStack(['embed', { branch: ['LoRA'], around: 'LLM' }, 'unembed'], { shape: '(T)' })
+            s.play(model.enter(), { duration: 1.5 })
+            s.wait(0.5)
+        }), { motion: true, textGap: 0.7 })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('feeds a vector at the foot of the stream and sends it through a block, behind which it takes its new values and its new shape', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([{ label: 'embed', shape: '(T, 768)' }, 'norm', { label: 'unembed', shape: '(T, 50257)' }], { shape: '(T)' }))
+            expect([stack.passed, stack.values, stack.shape]).toEqual([null, null, null])
+            s.wait(1)
+            s.play(stack.feed([0.5, -0.5, 0, 2]), { duration: 1, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([0, [0.5, -0.5, 0, 2], '(T)'])
+            s.play(stack.pass('embed', [1, 1, -1, 0.25]), { duration: 2, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([1, [1, 1, -1, 0.25], '(T, 768)'])
+            // A pass to a later block goes through each layer before it. Without values, the vector keeps its values.
+            s.play(stack.pass('unembed'), { duration: 2, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([3, [1, 1, -1, 0.25], '(T, 50257)'])
+            s.wait(0.5)
+        }, { fps: 20 })
+        const vector = stack.vector, [x] = stack.foot
+        const rest = (layer: number) => (layer === 0 ? stack.foot[1] - 6 - 24 : stack.p(layer - 1, 'top')[1] - 24)
+        // It comes in at the foot: under the first block, in the middle of the free room of the stream.
+        expect(at(0.9, () => shows(vector))).toBe(0)
+        expect([1.5, 2].map((time) => at(time, () => [shows(vector), vector.get('x'), vector.get('y')]))).toEqual([[0.5, x, rest(0) + 7], [1, x, rest(0)]])
+        // A cell has teal for a value over 0 and orange for one under 0, stronger for a larger value, and full from 1 on.
+        expect(at(2, () => looks(vector))).toEqual([[paint('teal'), expect.closeTo(0.545, 6)], [paint('orange'), expect.closeTo(0.545, 6)], [paint('dim'), 0.14], [paint('teal'), 0.95]])
+        // It goes up with the ease of the play, and it is behind the block at the half of its way.
+        expect([2.5, 3, 4].map((time) => at(time, () => vector.get('y')))).toEqual([rest(0) + (rest(1) - rest(0)) / 4, stack.p('embed')[1], rest(1)])
+        expect(stack.all().indexOf(vector)).toBeLessThan(stack.all().indexOf(stack.blocks[0]!))
+        const [inside, around] = at(3, () => [edges(vector), edges(stack.boxes[0]!)])
+        expect(inside![0]! > around![0]! && inside![1]! > around![1]! && inside![2]! < around![2]! && inside![3]! < around![3]!).toBe(true)
+        // It changes there, where no viewer sees the change, and the block lights for a moment.
+        expect(at(2.95, () => looks(vector)[2])).toEqual([paint('dim'), 0.14])
+        expect(at(3, () => looks(vector))).toEqual([[paint('teal'), 0.95], [paint('teal'), 0.95], [paint('orange'), 0.95], [paint('teal'), expect.closeTo(0.3425, 6)]])
+        const wash = stack.blocks[0]!.children[1]!.children[1]!
+        expect([2.6, 2.85, 3, 3.4].map((time) => at(time, () => wash.get('opacity')))).toEqual([0, expect.closeTo(0.4 * Math.SQRT1_2, 6), expect.closeTo(0.4, 6), 0])
+        // The shape is beside the vector, at its height, outside the blocks, and it changes with the vector.
+        const tag = stack.tag!
+        const says = () => tag.children.filter((made) => made.get('visible')).map(sourceOf)
+        expect([2, 2.9, 3, 4.9, 5.4, 5.6].map((time) => at(time, says))).toEqual([['(T)'], ['(T)'], ['(T, 768)'], ['(T, 768)'], ['(T, 768)'], ['(T, 50257)']])
+        expect([2, 2.5, 4].map((time) => at(time, () => tag.get('y')))).toEqual([2, 2.5, 4].map((time) => at(time, () => vector.get('y'))))
+        expect(at(4, () => edges(tag)[2])).toBeLessThan(edges(stack.boxes[0]!)[0]! - 10)
+        // The second pass takes the two layers one after the other, each in half of the time.
+        expect([4, 5, 6].map((time) => at(time, () => vector.get('y')))).toEqual([rest(1), rest(2), rest(3)])
+        expect(at(6.5, () => vector.get('y'))).toBeLessThan(stack.p('unembed', 'top')[1])
+        expect(at(6.5, () => vector.get('y'))).toBeGreaterThan(stack.head[1] + 16)
+    })
+
+    it('sends a copy of the vector through a branch while the vector stays on the stream, and the add puts on the stream what the branch adds', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(MODEL))
+            s.play(stack.feed([1, 1, 1, 1]), { duration: 1 })
+            s.play(stack.pass('embed'), { duration: 1 })
+            // The whole branch is one layer: any of its blocks names it.
+            s.play(stack.pass('norm', [0.5, 0, 1, -1]), { duration: 10 })
+            expect([stack.passed, stack.values]).toEqual([2, [0.5, 0, 1, -1]])
+            s.wait(1)
+        }, { fps: 20 })
+        const { vector, copy } = stack
+        const tap = 94, add = -71
+        // The vector never leaves the stream.
+        for (const time of [2, 3, 4.5, 6, 8.5, 10, 11.9, 12.5]) expect(at(time, () => vector.get('x'))).toBe(STREAM)
+        // It goes to the point where the branch leaves the stream. The copy leaves from there, with the values of the vector.
+        expect(at(3.2, () => [vector.get('y'), shows(copy), copy.get('x'), copy.get('y')])).toEqual([tap, 1, STREAM, tap])
+        expect(at(3.2, () => looks(copy))).toEqual(at(3.2, () => looks(vector)))
+        expect(at(3.1, () => shows(copy))).toBe(0)
+        // The copy goes into the first block of the branch, and is behind the last one when it changes.
+        expect(at(6, () => [copy.get('x'), copy.get('y')])).toEqual(stack.p('norm', 'top').map((value, index) => value + (index === 1 ? 26.5 : 0)))
+        expect(stack.all().indexOf(copy)).toBeLessThan(stack.all().indexOf(stack.blocks[1]!))
+        expect(at(6.8, () => [copy.get('x'), copy.get('y')])).toEqual([68, -23.5])
+        // It comes back with what the branch adds: the new values less the old ones.
+        expect(at(6.8, () => looks(copy))).toEqual([[paint('orange'), expect.closeTo(0.545, 6)], [paint('orange'), 0.95], [paint('dim'), 0.14], [paint('orange'), 0.95]])
+        // The blocks of the branch light one after the other while the copy is in them.
+        const wash = (index: number) => stack.blocks[index]!.children[1]!.children[1]!
+        expect(at(6.35, () => [wash(1).get('opacity'), wash(2).get('opacity')])).toEqual([expect.closeTo(0.4, 6), 0])
+        expect(at(7.25, () => [wash(1).get('opacity'), wash(2).get('opacity')])).toEqual([0, expect.closeTo(0.4, 6)])
+        // It stops at the ring of the add, on the line of the branch, and the vector waits under it.
+        expect(at(10, () => [shows(copy), copy.get('x'), copy.get('y'), copy.get('sx')])).toEqual([1, STREAM + 13 + 47.5, add, 1])
+        const [waiting, coming] = at(10, () => [edges(vector), edges(copy)])
+        expect(waiting![1]).toBeGreaterThan(coming![3]! + 2)
+        expect(at(10, () => looks(vector))).toEqual([[paint('teal'), 0.95], [paint('teal'), 0.95], [paint('teal'), 0.95], [paint('teal'), 0.95]])
+        // The add takes the copy: it gets small under the ring, and the ring swells.
+        expect(stack.all().indexOf(copy)).toBeLessThan(stack.all().indexOf(stack.adds[0]!))
+        expect(at(10.8, () => [shows(copy) > 0, copy.get('sx') < 0.6, copy.get('x') < STREAM + 30])).toEqual([true, true, true])
+        expect(at(11, () => [shows(copy), copy.get('x')])).toEqual([0, STREAM])
+        expect([10, 11, 11.9].map((time) => at(time, () => stack.adds[0]!.get('sx')))).toEqual([1, expect.closeTo(1.3, 6), 1])
+        // The vector goes through the add and takes the sum. It rests over the add.
+        expect(at(12, () => looks(vector))).toEqual([[paint('teal'), expect.closeTo(0.545, 6)], [paint('dim'), 0.14], [paint('teal'), 0.95], [paint('orange'), 0.95]])
+        expect(at(12, () => vector.get('y'))).toBe(add - 13 - 24)
+        expect(at(12.5, () => [shows(copy), copy.get('sx')])).toEqual([0, 1])
+    })
+
+    it('lets the vector do one thing at a time, chains the changes of one sequence, and says what a wrong pass needs', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(MODEL, { shape: '(T)' }))
+            // Each call of a sequence starts from the state that the call before it left.
+            s.play(seq(stack.feed([1, 0, 0, 0]), stack.pass('embed', [0, 1, 0, 0]), stack.pass('attention', [0, 0, 1, 0]), stack.pass('unembed')))
+            expect([stack.passed, stack.values]).toEqual([3, [0, 0, 1, 0]])
+            // A second vector starts at the foot again. The one that is on the stream leaves first, where it is.
+            s.play(stack.feed([0, 0, 0, 1]), { duration: 1, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([0, [0, 0, 0, 1], '(T)'])
+        }, { fps: 20 })
+        // A pass with no duration takes the time of its last layer: 1 s for a block, 2.6 s for a branch.
+        expect([stack.feed([1, 1, 1, 1]).duration, stack.pass('embed').duration, stack.pass('attention').duration]).toEqual([0.6, 1, 2.6])
+        const start = 0.6 + 1 + 2.6 + 1
+        const top = at(start, () => stack.vector.get('y'))
+        expect(at(start + 0.2, () => [shows(stack.vector), stack.vector.get('y')])).toEqual([expect.closeTo(0.5, 6), top])
+        expect(at(start + 0.4, () => stack.vector.get('y'))).toBeGreaterThan(stack.p('embed', 'bottom')[1])
+        expect(at(start + 1, () => [shows(stack.vector), stack.vector.get('y')])).toEqual([1, stack.foot[1] - 30])
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(MODEL))
+            expect(() => s.play(model.pass('embed'))).toThrow(/layerStack: pass\("embed"\) has no vector to send\. Call feed\(\) first: it puts a vector at the foot of the stream/)
+            expect(() => model.feed([1, 2, 3])).toThrow(/layerStack: feed\(\) has 3 values, and the vector has 4 cells\. Give one value for each cell, or build the stack with `cells: 3`/)
+            expect(() => model.pass('embed', [1, 2, 3, Number.NaN])).toThrow(/layerStack: value 3 of pass\("embed"\) is NaN\. A value is a number/)
+            expect(() => model.feed([1, 1, 1, 1], { duration: -1 })).toThrow(/layerStack: the duration of feed\(\) is -1\. Give a number, 0 or more/)
+            // Two changes of the vector whose times overlap are refused, with the two calls and their times.
+            expect(() => s.play(model.feed([1, 1, 1, 1]), model.pass('embed'))).toThrow(/layerStack: pass\("embed"\) plays from 0 s to 1 s, and feed\(\) plays from 0 s to 0\.6 s\. The vector does one thing at a time\. Play the two in a `seq`, or give feed\(\) a duration of 0 or less/)
+            // The play that was refused did not move the time of the film, so the next change waits for the feed to end.
+            s.wait(1)
+            s.play(model.pass('attention'))
+            expect(() => s.play(model.pass('embed'))).toThrow(/layerStack: pass\("embed"\): the vector passed block 0 \("embed"\) already\. It does not go back\. feed\(\) starts again at the foot of the stream/)
+            // A room between two layers that is lower than the vector is refused when the film feeds a vector, with the least room.
+            const tight = layerStack(['a', 'b'], { gap: 12 })
+            expect(() => tight.feed([1, 1, 1, 1])).toThrow(/layerStack: a gap of 12 has no room for the vector, which is 26 px high and rests on the stream between two layers\. Give a gap of 38 or more, or leave the gap out/)
+            expect(() => layerStack(['a', 'b'], { gap: 38 }).feed([1, 1, 1, 1])).not.toThrow()
+        }))
+    })
+
+    it('lights one block at a time, and gives the lit block a thick border', async () => {
+        let stack!: Stack
+        const compiled = await compile((s) => {
+            stack = layerStack(MODEL)
+            s.wait(0.5)
+            // A light on a stack that is not on the stage brings the stack.
+            s.play(stack.light('attention'), { duration: 1, ease: linear })
+            expect(stack.current).toBe(2)
+            s.play(seq(stack.light('embed'), stack.light(null), stack.light(3)), { duration: 3, ease: linear })
+            expect(stack.current).toBe(3)
+            s.wait(0.5)
+        }, { fps: 20 })
+        expect(compiled.frame(0.25).ops).toHaveLength(0)
+        const halo = (index: number) => stack.blocks[index]!.children[1]!.children[2]!
+        const lit = (time: number) => at(time, () => [0, 1, 2, 3].map((index) => halo(index).get('opacity')))
+        expect(lit(0.5)).toEqual([0, 0, 0, 0])
+        expect(lit(1)).toEqual([0, 0, 0.5, 0])
+        expect(lit(1.5)).toEqual([0, 0, 1, 0])
+        // The light leaves one block while it comes to the next.
+        expect(lit(2)).toEqual([0.5, 0, 0.5, 0])
+        expect(lit(3)).toEqual([0.5, 0, 0, 0])
+        expect(lit(4.5)).toEqual([0, 0, 0, 1])
+        // The border of a lit block is wider than the border of the block, in the color of the block.
+        expect(halo(3).get('strokeWidth')).toBeGreaterThan(stack.boxes[3]!.get('strokeWidth') * 1.8)
+        expect(halo(3).get('stroke')).toEqual(stack.boxes[3]!.get('stroke'))
+        // In one play, the last light wins, and the state says so.
+        let both!: Stack
+        await compile((s) => {
+            both = s.add(layerStack(MODEL))
+            s.play(both.light('embed'), both.light('unembed'), { duration: 1 })
+        })
+        expect(both.current).toBe(3)
+        expect(at(1, () => [both.blocks[0]!, both.blocks[3]!].map((block) => block.children[1]!.children[2]!.get('opacity')))).toEqual([0, 1])
+    })
+
+    it('marks blocks with a state that has its own sign, and reads the states back', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(['embed', { branch: [{ label: 'attention', color: 'orange' }] }, { label: 'head', state: 'frozen' }]))
+            expect(stack.ids.map((id) => stack.stateOf(id))).toEqual(['live', 'live', 'frozen'])
+            s.wait(1)
+            // In a sequence, the function of the second change sees the states that the first one left.
+            s.play(seq(stack.mark(['embed', 'attention'], 'frozen'), stack.mark((block) => block.state === 'frozen' && block.layer > 0, 'live')), { duration: 2, ease: linear })
+            expect(stack.ids.map((id) => stack.stateOf(id))).toEqual(['frozen', 'live', 'live'])
+            expect(stack.find((block) => block.state === 'frozen')).toEqual([0])
+            expect(stack.find((block) => block.label === 'head')).toEqual([2])
+            s.wait(0.5)
+        }, { fps: 20 })
+        const box = (index: number) => stack.boxes[index]!
+        const look = (index: number) => [box(index).get('stroke'), box(index).get('strokeOpacity'), box(index).get('fillOpacity'), stack.labels[index]!.children[0]!.get('fill')]
+        // A frozen block keeps its color and is dim, with a dim label. It has a lock, so the color is not its only sign.
+        expect(at(0.5, () => look(2))).toEqual([paint('blue'), 0.45, 0.06, paint('dim')])
+        expect(at(0.5, () => look(1))).toEqual([paint('orange'), 1, 0.16, paint('ink')])
+        const marks = (index: number) => stack.blocks[index]!.children[1]!.children.slice(4)
+        expect(STACK_STATES.frozen.mark).toBe('lock')
+        expect(at(0.5, () => [0, 1, 2].map((index) => marks(index).map(shows)))).toEqual([[0], [0], [1]])
+        // The mark is inside the block, at its right end, clear of the label.
+        const [lock, frame, name] = at(0.5, () => [edges(marks(2)[0]!), edges(box(2)), edges(stack.labels[2]!)])
+        expect(lock![2]).toBeLessThan(frame![2]! - 10)
+        expect(lock![0]).toBeGreaterThan(name![2]! + 5)
+        // Half way: the first two blocks are between their two looks.
+        const near = (color: unknown) => (color as number[]).map((channel) => expect.closeTo(channel, 3))
+        expect(at(1.5, () => look(1))).toEqual([near(paint('orange')), expect.closeTo(0.725, 6), expect.closeTo(0.11, 6), near(mixColor(parseColor('ink'), parseColor('dim'), 0.5))])
+        expect(at(1.5, () => marks(1).map(shows))).toEqual([0.5])
+        expect(at(2, () => [look(0), look(1), look(2)])).toEqual([[paint('blue'), 0.45, 0.06, paint('dim')], [paint('orange'), 0.45, 0.06, paint('dim')], [paint('blue'), 0.45, 0.06, paint('dim')]])
+        expect(at(3, () => [look(0), look(1), look(2)])).toEqual([[paint('blue'), 0.45, 0.06, paint('dim')], [paint('orange'), 1, 0.16, paint('ink')], [paint('blue'), 1, 0.16, paint('ink')]])
+        expect(at(3, () => [0, 1, 2].map((index) => marks(index).map(shows)))).toEqual([[1], [0], [0]])
+
+        await compileFilm(film(() => {
+            // The states of a film: a color of the state, a border of dashes, and each mark.
+            const image = layerStack([{ label: 'FROM', state: 'cached' }, { label: 'COPY', state: 'skipped' }, 'RUN'], { states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } } })
+            expect(image.ids.map((id) => image.stateOf(id))).toEqual(['cached', 'skipped', 'fresh'])
+            expect(image.boxes.map((made) => made.get('stroke'))).toEqual([paint('dim'), paint('blue'), paint('blue')])
+            expect(image.boxes.map((made) => made.get('dash') !== null)).toEqual([false, true, false])
+            expect(() => image.mark('RUN', 'frozen')).toThrow(/layerStack: no state "frozen"\. The states are fresh, cached, failed, skipped/)
+            expect(() => image.mark('ADD', 'failed')).toThrow(/layerStack: no block "ADD"/)
+            expect(() => image.find('cached' as never)).toThrow(/layerStack: find takes a function of a block/)
+        }))
+    })
+
+    it('replaces a block with another: the labels change with no moment that shows two, and the block keeps its id and its state', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(['embed', { branch: [{ label: 'norm', color: 'yellow', state: 'frozen' }, 'attention'] }], { width: 440 }))
+            s.wait(1)
+            s.play(stack.replace('norm', { label: 'RMSNorm', color: 'green' }), { duration: 2, ease: linear })
+            expect([stack.labelOf('norm'), stack.ids[1], stack.stateOf('norm')]).toEqual(['RMSNorm', 'norm', 'frozen'])
+            s.play(stack.replace(1, 'norm'), { duration: 1 })
+            expect(stack.labelOf(1)).toBe('norm')
+            s.wait(0.5)
+        }, { fps: 20 })
+        const texts = stack.blocks[1]!.children[1]!.children.filter((part) => sourceOf(part) !== undefined)
+        expect(texts.map(sourceOf)).toEqual(['norm', 'RMSNorm', 'norm'])
+        const [old, made] = texts
+        expect(sourceOf(stack.labels[1])).toBe('norm')
+        expect(stack.labels[1]).toBe(texts[2])
+        // The old label is gone at 0.45 of the time, and the new one starts at 0.55, in the middle of the block.
+        expect([1, 1.45, 1.9, 2, 2.1, 2.55, 3].map((time) => at(time, () => [shows(old!), shows(made!)]))).toEqual([[1, 0], [expect.closeTo(0.5, 6), 0], [0, 0], [0, 0], [0, 0], [0, expect.closeTo(0.5, 6)], [0, 1]])
+        const [box, label] = at(3, () => [edges(stack.boxes[1]!), edges(made!)])
+        expect(Math.abs((label![0]! + label![2]!) / 2 - (box![0]! + box![2]!) / 2)).toBeLessThan(2)
+        // The block takes the new color, in its state: it is frozen, so its label stays dim.
+        const near = (color: unknown) => (color as number[]).map((channel) => expect.closeTo(channel, 3))
+        expect([1, 2, 3].map((time) => at(time, () => stack.boxes[1]!.get('stroke')))).toEqual([paint('yellow'), near(mixColor(parseColor('yellow'), parseColor('green'), 0.5)), paint('green')])
+        expect(at(3, () => made!.children[0]!.get('fill'))).toEqual(paint('dim'))
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(['embed', { branch: ['norm'] }], { width: 400 }))
+            expect(() => model.replace('norm', 'a normalization layer with a long name')).toThrow(/layerStack: replace: the label "a normalization layer with a long name" is \d+ px wide at size 28, and block 1 \("norm"\) has \d+ px for it\. Use a shorter label, or build the stack with a width of \d+ or more/)
+            expect(() => model.replace('norm', '')).toThrow(/layerStack: replace: the new block of block 1 \("norm"\) is ""\. Give a label, or \{ label, color \}/)
+            expect(() => model.replace('norm', { label: 'RMS', color: 'no such color' })).toThrow(/layerStack: the color of the new block of block 1 \("norm"\) is "no such color", which is not a color/)
+            // Two changes of one block whose times overlap are refused. Two blocks change together.
+            expect(() => s.play(model.replace('norm', 'RMS'), model.replace('norm', 'L2'))).toThrow(/layerStack: replace\("norm"\) plays from 0 s to 0\.8 s, and replace\("norm"\) plays from 0 s to 0\.8 s\. A block has one label at a time\. Play the two in a `seq`, or give the first a shorter duration/)
+            expect(() => s.play(model.replace('embed', 'tokens'))).not.toThrow()
+        }))
+    })
+
+    it('keeps the place of a branch that waits, brings it in with show(), and passes the stream there as a plain line before that', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(['embed', { branch: ['LoRA'], around: 'W', shown: false }, { branch: ['adapter'], shown: false }, 'head']))
+            expect(stack.find((block) => !block.shown)).toEqual([2, 3])
+            s.play(stack.feed([1, 1, 1, 1]), { duration: 1 })
+            // The branch does not show: the vector goes through the block on the stream alone, and no copy leaves.
+            s.play(stack.pass('LoRA', [0.5, 0.5, 0.5, 0.5]), { duration: 2, ease: linear })
+            expect(stack.passed).toBe(2)
+            s.play(stack.show('adapter'), { duration: 2, ease: linear })
+            expect(stack.find((block) => !block.shown)).toEqual([2])
+            s.play(stack.pass('adapter', [1, 0, 0, 0]), { duration: 4 })
+            s.wait(0.5)
+        }, { fps: 20 })
+        const parts = (branch: number) => [stack.taps[branch]!, stack.reads[branch]!, stack.writes[branch]!, stack.adds[branch]!]
+        // A branch that waits has its place: the room beside the block on the stream is empty.
+        expect(at(0.5, () => [shows(stack.blocks[2]!), ...parts(0).map(shows), shows(stack.blocks[3]!), ...parts(1).map(shows)])).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        expect(edges(stack.boxes[2]!)[0]).toBeGreaterThan(edges(stack.boxes[1]!)[2]!)
+        // The first pass takes "embed" in its first second and the layer of "W" in the next. The vector changes
+        // behind "W", and the copy never shows.
+        const [from, to] = [at(2, () => stack.vector.get('y')), at(3, () => stack.vector.get('y'))]
+        const behind = 2 + (stack.p('W')[1] - from) / (to - from)
+        expect(behind).toBeGreaterThan(2.3)
+        expect(behind).toBeLessThan(2.7)
+        expect(at(behind, () => stack.vector.get('y'))).toBeCloseTo(stack.p('W')[1], 6)
+        expect(at(behind - 0.01, () => looks(stack.vector)[0])).toEqual([paint('teal'), 0.95])
+        expect(at(behind + 0.01, () => looks(stack.vector)[0])).toEqual([paint('teal'), expect.closeTo(0.545, 6)])
+        expect([1.2, 2, 2.5, 2.8].map((time) => at(time, () => shows(stack.copy)))).toEqual([0, 0, 0, 0])
+        // show(): the point, the line in, the block, the line out and the add arrive in the order of the data.
+        const [line, head] = stack.reads[1]!.children as [Node, Node]
+        expect(at(3.2, () => [shows(stack.taps[1]!), line.get('trimTo'), shows(head), shows(stack.blocks[3]!), shows(stack.adds[1]!)])).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.25, 6), 0, 0, 0])
+        expect(at(4, () => [shows(stack.blocks[3]!), stack.writes[1]!.children[0]!.get('trimTo'), shows(stack.adds[1]!)])).toEqual([expect.closeTo(0.5, 6), 0, 0])
+        expect(at(5, () => [shows(stack.blocks[3]!), ...parts(1).map(shows), line.get('trimTo'), shows(head)])).toEqual([1, 1, 1, 1, 1, 1, 1])
+        expect(at(5, () => [shows(stack.blocks[2]!), ...parts(0).map(shows)])).toEqual([0, 0, 0, 0, 0])
+        // After that, a pass sends a copy through the branch.
+        expect(at(7, () => shows(stack.copy))).toBe(1)
+        expect(stack.values).toEqual([1, 0, 0, 0])
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(['embed', { branch: ['adapter'], shown: false }, 'head']))
+            expect(() => model.show('embed')).toThrow(/layerStack: show: block 0 \("embed"\) is not in a branch\. show\(\) brings in a branch that was made with shown: false/)
+            expect(() => s.play(model.light('adapter'))).toThrow(/layerStack: light: block 1 \("adapter"\) is in a branch that does not show\. Call show\(\) first/)
+            expect(() => s.play(model.open('adapter', rect(100, 100).at(600, 0)))).toThrow(/layerStack: open: block 1 \("adapter"\) is in a branch that does not show\. Call show\(\) first/)
+            s.play(model.feed([1, 1, 1, 1]))
+            // Nothing changes a vector on a plain line.
+            expect(() => s.play(model.pass('adapter', [0, 0, 0, 0]))).toThrow(/layerStack: pass\("adapter"\) has values, and the branch of block 1 \("adapter"\) does not show, so nothing changes the vector there\. Call show\(\) first, or give no values/)
+            s.play(model.pass('adapter'))
+            expect(model.passed).toBe(2)
+            // With no block, it is the show() of a node.
+            expect(model.hide().show()).toBe(model)
+        }))
+    })
+
+    it('opens a block to a close-up of the film: two lines from the block to a frame around it, at the side where the close-up is', async () => {
+        let stack!: Stack, grid!: Node, formula!: Node
+        const compiled = await compile((s) => {
+            stack = s.add(layerStack(MODEL).at(-400, 0))
+            grid = rect(300, 200, { fill: 'surface', stroke: 'grid' }).at(300, -100)
+            formula = text('y = W x', { size: 40 }).at(-800, 150)
+            s.wait(1)
+            s.play(stack.open('attention', grid), { duration: 2, ease: linear })
+            expect(stack.opened).toBe(2)
+            s.wait(1)
+            // Another block opens: the first one closes in the first part of the time.
+            s.play(stack.open('embed', formula), { duration: 2, ease: linear })
+            expect(stack.opened).toBe(0)
+            s.wait(1)
+            s.play(stack.close(), { duration: 1, ease: linear })
+            expect(stack.opened).toBeNull()
+            s.wait(0.5)
+        }, { fps: 20 })
+        const [wedge, upper, lower, frame] = stack.zoom.children as [Node, Node, Node, Node]
+        expect(at(0.5, () => [shows(stack.zoom), shows(grid)])).toEqual([0, 0])
+        expect(compiled.frame(0.5).ops.some((op) => op.node === grid)).toBe(false)
+        // The frame is around the close-up, with room, in the coordinates of the stack. The close-up is at the right,
+        // so the lines leave from the right edge of the block: from its two corners to the two near corners of the frame.
+        expect(at(3, () => edges(frame))).toEqual([150 - 17, -200 - 17, 450 + 17, 17])
+        const corner = stack.toWorld(...stack.p('attention', 'right'))
+        expect(at(3, () => edges(upper))).toEqual([corner[0], -217, 133, corner[1] - 26.5])
+        expect(at(3, () => edges(lower))).toEqual([corner[0], corner[1] + 26.5, 133, 17])
+        expect(at(3, () => edges(wedge))).toEqual([corner[0], -217, 133, 17])
+        // They take the color of the block. They are a decoration, so the film check does not judge the close-up against them.
+        expect(at(3, () => frame.get('stroke'))).toEqual(paint('blue'))
+        expect(stack.zoom.data['decoration']).toBe(true)
+        // The lines come first, and the close-up fades in after them.
+        expect([1.6, 2.2, 3].map((time) => at(time, () => [shows(stack.zoom), shows(grid)]))).toEqual([[0.5, 0], [1, expect.closeTo(1 / 3, 6)], [1, 1]])
+        // The second close-up is at the left: the lines leave from the left edge of "embed". The first one fades out.
+        expect([4.35, 4.7].map((time) => at(time, () => [shows(stack.zoom), shows(grid)]))).toEqual([[expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)], [0, 0]])
+        const left = stack.toWorld(...stack.p('embed', 'left'))
+        expect(at(6, () => edges(upper)[2])).toBe(left[0])
+        expect(at(6, () => edges(frame)[2])).toBeLessThan(left[0] - 50)
+        expect(at(6, () => [shows(stack.zoom), shows(grid), shows(formula)])).toEqual([1, 0, 1])
+        // close(): the lines and the close-up leave.
+        expect([7.5, 8, 8.4].map((time) => at(time, () => [shows(stack.zoom), shows(formula)]))).toEqual([[0.5, 0.5], [0, 0], [0, 0]])
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(['embed', { branch: ['LoRA'], around: 'W' }]))
+            const over = rect(100, 100).at(0, -500), right = rect(100, 100).at(600, 0), far = rect(100, 100).at(-600, 0)
+            expect(() => s.play(model.open('embed', over))).toThrow(/layerStack: open\("embed"\): the inside is over the stack or under it\. Place it at the right or at the left of the stack/)
+            expect(() => s.play(model.open('W', right))).toThrow(/layerStack: open\("W"\): block 1 \("W"\) has a branch at its right, and the lines to the inside would cross it\. Place the inside at the left of the stack, or open a block of the branch/)
+            expect(() => s.play(model.open('LoRA', far))).toThrow(/layerStack: open\("LoRA"\): block 2 \("LoRA"\) is at the right of the stream, and the lines to the inside would cross the stream\. Place the inside at the right of the stack/)
+            expect(() => model.open('embed', model.blocks[1]!)).toThrow(/layerStack: open: the inside is the stack or a part of it/)
+            expect(() => model.open('embed', 'grid' as never)).toThrow(/layerStack\.open: the inside is the string "grid"\. Give a node, a block of the layout, or a list of them/)
+            s.play(model.open('W', far))
+            // With no open block, close() changes nothing.
+            const fresh = s.add(layerStack(MODEL))
+            expect(() => s.play(fresh.close())).not.toThrow()
+            expect(fresh.opened).toBeNull()
+        }))
+    })
+
+    it('writes the value of each cell with `digits`, in cells that hold it, and hides the numbers while the edge of a block would cut them', async () => {
+        let stack!: Stack
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            stack = s.add(layerStack(['embed', { branch: ['attention'] }, 'scores'], { digits: 1, cells: 3 }))
+            s.play(stack.feed([0.5, -1.25, 0]), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(stack.pass('embed', [1, -0.04, 9.9]), { duration: 2, ease: linear })
+            s.wait(1)
+            s.play(stack.pass('attention', [1.5, 0.96, 9.9]), { duration: 10 })
+            s.wait(1)
+        }), { motion: true, textGap: 0.7 })
+        // No number is cut by the edge of a block, and none touches a mark of the stack.
+        expect(report.diagnostics).toEqual([])
+        const { vector, copy } = stack
+        // A value that rounds to zero has no sign.
+        expect(at(1.5, () => numbers(vector))).toEqual(['0.5', '-1.3', '0.0'])
+        expect(at(4.5, () => numbers(vector))).toEqual(['1.0', '0.0', '9.9'])
+        // A number is in the middle of its cell, and the cell is wider than the widest number that it may hold.
+        const cell = cells(vector)[1]!, number = at(1.5, () => vector.children[vector.children.length - 1]!.children[1]!)
+        const [box, ink] = at(1.5, () => [edges(cell), edges(number)])
+        expect(Math.abs((ink![0]! + ink![2]!) / 2 - (box![0]! + box![2]!) / 2)).toBeLessThan(2)
+        expect(ink![0]! - box![0]!).toBeGreaterThan(4)
+        expect(number.data['size']).toBe(28)
+        // With numbers, the fill of a cell stays under a half, so a number in ink reads on it.
+        expect(at(1.5, () => looks(vector).map(([, fill]) => fill))).toEqual([expect.closeTo(0.3, 6), 0.5, 0.1])
+        // The numbers are away while the vector is behind "embed", and back when it is clear of the block.
+        expect([2, 2.4, 3, 3.6, 4].map((time) => at(time, () => numbersShow(vector)))).toEqual([1, 0, 0, 0, 1])
+        // The copy has no numbers on its way in. On its way out, it shows what the branch adds, and it stops at the add with them.
+        expect(at(7, () => [shows(copy), numbersShow(copy)])).toEqual([1, 0])
+        expect(at(13, () => [numbersShow(copy), numbers(copy)])).toEqual([1, ['0.5', '1.0', '0.0']])
+        expect(at(13, () => numbers(vector))).toEqual(['1.0', '0.0', '9.9'])
+        // A vector with numbers is higher than one with none. The copy at the add is clear of the block under it, and
+        // the vector that waits is clear of the copy.
+        const [coming, block, waiting] = at(13, () => [edges(copy), edges(stack.boxes[1]!), edges(vector)])
+        expect(coming![3]).toBeLessThan(block![1]! - 2)
+        expect(waiting![1]).toBeGreaterThan(coming![3]! + 2)
+        expect(at(16.5, () => [numbers(vector), numbersShow(vector)])).toEqual([['1.5', '1.0', '9.9'], 1])
+        await compileFilm(film(() => {
+            expect(() => stack.pass('scores', [100, 0, 0])).toThrow(/layerStack: value 0 of pass\("scores"\) is 100, which a cell writes as "100\.0"\. A cell has room for a number as wide as "-8\.8"\. Give smaller values, such as a tenth of each, or fewer digits/)
+            expect(() => stack.pass('scores', [-8.8, 9.9, 0])).not.toThrow()
+            // Without `digits`, a cell is a small square with no number.
+            const plain = layerStack(MODEL)
+            expect(cells(plain.vector).map((made) => [made.bounds().width, made.bounds().height])).toEqual([[20, 20], [20, 20], [20, 20], [20, 20]])
+            expect(cells(layerStack(MODEL, { cells: 7 }).vector)).toHaveLength(7)
+        }))
+    })
+
+    it('gives a copy its own state, and takes the font of the film and a backing of another color', async () => {
+        let stack!: Stack, copy!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(MODEL, { shape: '(T)' }).at(-300, 0))
+            s.play(stack.feed([1, 0, 0, 0]), stack.mark('embed', 'frozen'), stack.light('norm'), { duration: 1 })
+            copy = s.add(stack.clone().at(300, 0))
+            // A change of the copy does not change the stack, and the copy goes on from the state that it was made with.
+            s.play(copy.pass('embed', [0, 1, 0, 0]), copy.mark('unembed', 'frozen'), copy.light('attention'), { duration: 1 })
+            expect([stack.passed, stack.values, stack.current, stack.stateOf('unembed')]).toEqual([0, [1, 0, 0, 0], 1, 'live'])
+            expect([copy.passed, copy.values, copy.current, copy.stateOf('unembed'), copy.stateOf('embed')]).toEqual([1, [0, 1, 0, 0], 2, 'frozen', 'frozen'])
+        })
+        expect(copy.blocks[0]).not.toBe(stack.blocks[0])
+        expect(copy.vector.parent).toBe(copy)
+        expect(at(2, () => [stack.vector.get('y'), copy.vector.get('y')])).toEqual([225, 124])
+        expect(at(2, () => looks(copy.vector)[1])).toEqual([paint('teal'), 0.95])
+        expect(at(2, () => looks(stack.vector)[1])).toEqual([paint('dim'), 0.14])
+        await compileFilm(film({ font: 'text-serif' }, () => {
+            const inFilm = layerStack(MODEL)
+            expect((inFilm.labels[0] as TextNode).font).toBe('text-serif')
+            expect((layerStack(MODEL, { font: 'mono' }).labels[0] as TextNode).font).toBe('mono')
+            const onPanel = layerStack(MODEL, { backing: 'surface' })
+            expect(onPanel.blocks[0]!.children[0]!.get('fill')).toEqual(paint('surface'))
+            expect(() => layerStack(MODEL, { backing: 'no such color' })).toThrow(/layerStack: backing is "no such color", which is not a color/)
         }))
     })
 })

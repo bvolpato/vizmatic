@@ -387,6 +387,26 @@ s.play(sq.pop())                                    // the consumer reads at the
 
 For the submission queue of io_uring, use `tailFollows: 'publish'`: the program stores the tail once for several entries, and a tail that counts up at each write teaches the opposite. The bounds of a ring hold the outside name at every slot, so place a ring by its bounds. `ring.length === 0` is an empty ring and `ring.length === ring.size` is a full ring: both pointers are then at one slot, and a text for the state is the work of the film. A `push()` on a full ring, a `pop()` on an empty ring, and a `pop()` of a pending entry are errors. For several pushes at once, pass them to `lagged`.
 
+A model as a block diagram: the layers of a transformer, of a vision model, or of a residual network. Do not build it from boxes and connectors in each film. `layerStack` puts the layers on one stream, with the data flowing up, and it knows what each layer does to the stream. A block is on the stream. `{ branch: [...] }` is beside the stream, and an add puts its result back, which is a residual connection. `{ repeat: 12, layers: [...] }` is a frame for layers that repeat. `feed(values)` puts a vector at the foot of the stream, and `pass(block, values)` sends it through a layer: at a branch, a copy goes through the blocks, and the add puts on the stream what the branch adds. `light(block)` lights the block that the scene is about, `mark(blocks, 'frozen')` changes states, `replace(block, label)` swaps a block, and `open(block, closeUp)` joins a block to a close-up that the film placed beside the stack. A branch with `shown: false` has its place and arrives with `show(block)`, and `around: 'W'` puts a branch around a block on the stream, for LoRA beside a frozen weight. `digits: 1` writes the values in the cells, and a `shape` on a block changes the shape beside the vector. Play one `feed` or `pass` at a time. Give a branch about three seconds:
+
+```ts
+const model = s.add(layerStack([
+    { label: 'embed', color: 'purple', shape: '(T, 768)' },
+    { repeat: 12, layers: [
+        { branch: [{ label: 'norm', id: 'norm 1' }, { label: 'attention', color: 'orange' }] },
+        { branch: [{ label: 'norm', id: 'norm 2' }, { label: 'MLP', color: 'teal' }] },
+    ] },
+    { label: 'unembed', color: 'green', shape: '(T, 50257)' },
+], { shape: '(T)', size: 26 }).at(-500, 0))
+s.play(model.enter())
+s.play(model.feed([0.6, -0.2, 0.1, 0.4]))
+s.play(model.pass('embed', [0.3, 0.7, -0.5, 0.1]))
+s.play(model.light('attention'), model.pass('attention', [0.5, 0.2, -0.1, 0.8]), { duration: 3 })
+s.play(model.mark(['embed', 'attention'], 'frozen'))
+```
+
+The stack measures as its `width`, with the room of its shapes, so `place` and `fitted` work on it. `model.block('MLP')` is the node of a block for `beside` or a connector, and `model.foot` and `model.head` are the two ends of the stream. A label is never set smaller: a `width` with no room for a label is an error that gives the least width.
+
 3D:
 
 ```ts
