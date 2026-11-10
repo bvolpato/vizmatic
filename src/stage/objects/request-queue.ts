@@ -1,4 +1,4 @@
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { parseSvgPath, polyPath, rectPath, type Path } from '../geometry'
 import { mixPaint, toPaint, type ColorInput, type Paint } from '../color'
 import { dot, line, rect } from '../shapes'
@@ -59,7 +59,7 @@ export interface QueueItemState {
     blocks: number
     /** The wait of the item: the value of the last `wait()`, or 0. */
     wait: number
-    /** The wait is at the `deadline` of the queue, or past it. */
+    /** True while the item waits at or past the queue's `deadline`. */
     late: boolean
     /** The status that the item left with, or undefined. */
     status: string | undefined
@@ -174,6 +174,8 @@ interface Rec {
     marked: Seg | null
     /** The last change of the state of the item, with the time at which it is over. */
     busy: { call: string; t1: number } | null
+    /** Work or block allocation must finish before the item leaves its slot. */
+    activeUntil: number
 }
 
 interface Row {
@@ -182,7 +184,7 @@ interface Row {
     /** The items that wait, from the head. */
     order: Rec[]
     lastArrive: Seg | null
-    lastShift: { seg: Seg; call: string } | null
+    shifts: { seg: Seg; call: string; places: number }[]
     waiting: Counter
     /** The items that have no place in the picture: the line has more items than places. */
     hidden: Counter
@@ -403,7 +405,6 @@ export class RequestQueue extends Node {
     private running: Counter = { base: 0, steps: [] }
     private finished: Counter = { base: 0, steps: [] }
     private refused: Counter = { base: 0, steps: [] }
-    private used: Counter = { base: 0, steps: [] }
     /** The last `admit`. The slots take one item at a time, so the next one starts when it is over. */
     private lastAdmit: { call: string; t1: number } | null = null
     /** The change that starts last, of those that the film has played. The next change starts at that time or later. */
@@ -428,11 +429,12 @@ export class RequestQueue extends Node {
         this.red = toPaint('red')
         this.free = toPaint('faint')
 
+        if (options.lines !== undefined && !Array.isArray(options.lines)) throw new Error('requestQueue: lines must be a list of names or line objects')
         const lines = (options.lines ?? ['waiting']).map((entry) => (typeof entry === 'string' ? { name: entry } : entry))
         if (lines.length < 1 || lines.length > LINES) throw new Error(`requestQueue: lines has ${lines.length} lines. A queue has 1 to ${LINES} waiting lines`)
         this.rows = lines.map((entry, index) => {
             const name = oneLine(`the name of line ${index}`, entry?.name)
-            return { name, color: entry.color === undefined ? base : paintOf(entry.color, `the color of the line ${JSON.stringify(name)}`), order: [], lastArrive: null, lastShift: null, waiting: { base: 0, steps: [] }, hidden: { base: 0, steps: [] } }
+            return { name, color: entry.color === undefined ? base : paintOf(entry.color, `the color of the line ${JSON.stringify(name)}`), order: [], lastArrive: null, shifts: [], waiting: { base: 0, steps: [] }, hidden: { base: 0, steps: [] } }
         })
         this.rows.forEach((row, index) => {
             if (this.rows.findIndex((other) => other.name === row.name) !== index) throw new Error(`requestQueue: two lines have the name ${JSON.stringify(row.name)}. Give each line its own name`)
@@ -510,7 +512,6 @@ export class RequestQueue extends Node {
                 for (const block of blocks) Object.assign(this.cells[block]!, { owner: rec, base: rec.color })
                 rec.held = blocks
                 this.running.base += 1
-                this.used.base += blocks.length
             } else {
                 const row = this.rows[rec.line]!
                 Object.assign(rec, { place: row.order.length, x0: this.placeX(row.order.length), y0: geo.lineY[rec.line]! })
@@ -605,8 +606,7 @@ export class RequestQueue extends Node {
     }
 
     /** A copy with its own items and its own bookkeeping, at rest in the state that the queue has now. */
-    override clone(): this {
-        const copy = super.clone()
+    protected override [rebindCloneParts](copy: this): void {
         // A list with no node is not copied with the nodes, so the copy would add its items to the list of this queue.
         const lists = copy as unknown as Record<string, Node[]>, mine = this as unknown as Record<string, Node[]>
         for (const name of ['chips', 'outers', 'bodies', 'bars', 'numbers', 'unders']) if (lists[name] === mine[name]) lists[name] = []
@@ -616,23 +616,21 @@ export class RequestQueue extends Node {
             const [x, y] = this.placeOf(rec, Infinity)
             const twin: Rec = {
                 ...rec, held: [...rec.held], x0: x, y0: y, moves: [], born: null, gone: rec.gone ? OVER : null, done0: rec.done, runs: [],
-                wait0: rec.wait, waits: [], clocked: rec.clocked === null ? null : -Infinity, quiet: rec.quiet ? OVER : null, marked: rec.marked ? OVER : null, busy: null,
+                wait0: rec.wait, waits: [], clocked: rec.clocked === null ? null : -Infinity, quiet: rec.quiet ? OVER : null, marked: rec.marked ? OVER : null, busy: null, activeUntil: -Infinity,
             }
             twins.set(rec, twin)
             return twin
         })
         copy.byId = new Map(copy.recs.map((rec) => [String(rec.id), rec]))
-        copy.rows = this.rows.map((row) => ({ ...row, order: row.order.map((rec) => twins.get(rec)!), lastArrive: null, lastShift: null, waiting: rest(row.waiting), hidden: rest(row.hidden) }))
+        copy.rows = this.rows.map((row) => ({ ...row, order: row.order.map((rec) => twins.get(rec)!), lastArrive: null, shifts: [], waiting: rest(row.waiting), hidden: rest(row.hidden) }))
         copy.taken = this.taken.map((seat) => ({ owner: seat.owner ? twins.get(seat.owner)! : null, leaving: null, base: seat.owner ? 0 : 1, changes: [] }))
         copy.cells = this.cells.map((cell) => ({ owner: cell.owner ? twins.get(cell.owner)! : null, base: cell.owner ? cell.owner.color : null, changes: [] }))
         copy.running = rest(this.running)
         copy.finished = rest(this.finished)
         copy.refused = rest(this.refused)
-        copy.used = rest(this.used)
         copy.lastAdmit = null
         copy.latest = null
         copy.wireAll()
-        return copy
     }
 
     /** The lines, the slots, the names and the pool arrive, and then the items that are there. */
@@ -682,24 +680,35 @@ export class RequestQueue extends Node {
                 for (const item of given) {
                     if (this.byId.has(String(item.id))) throw new Error(`requestQueue: ${call}: the queue has an item with the id ${shown(item.id)}. Give each item its own id`)
                 }
-                reveal(this, t0, ctx.stage)
                 const windows = staggered(given.length, lag, t0, t1)
-                given.forEach((item, index) => {
+                const arrivals = this.rows.map((row) => row.lastArrive)
+                const ease = forwardOnly(ctx.ease)
+                const plan = given.map((item, index) => {
                     const [start, end] = windows[index]!
                     const row = this.rows[item.line]!
-                    const seg: Seg = { t0: start, t1: end, ease: forwardOnly(ctx.ease), leads: [] }
+                    const seg: Seg = { t0: start, t1: end, ease, leads: [] }
                     // An item that arrives never passes what moves in its line: the item before it, and a line that closes up.
-                    for (const [lead, what] of [[row.lastArrive, 'an item that arrives before it'], [row.lastShift?.seg ?? null, row.lastShift?.call ?? '']] as const) {
+                    const lastShift = row.shifts.at(-1)
+                    for (const [lead, what] of [[arrivals[item.line] ?? null, 'an item that arrives before it'], [lastShift?.seg ?? null, lastShift?.call ?? '']] as const) {
                         if (!lead || lead.t1 <= start + SOON) continue
                         if (lead.t1 > end + SOON) throw new Error(`requestQueue: ${call}: ${shown(item.id)} is in its place at ${seconds(end)}, and ${what} moves in the line ${JSON.stringify(row.name)} until ${seconds(lead.t1)}. An item takes its place behind the items before it. Give this arrival a duration that ends at ${seconds(lead.t1)} or later, or play it after the other change, in a \`seq\``)
                         seg.leads.push(lead)
                     }
+                    arrivals[item.line] = seg
+                    return { item, seg }
+                })
+                this.latest = { call, t0 }
+                reveal(this, t0, ctx.stage)
+                plan.forEach(({ item, seg }) => {
+                    const { t0: start, t1: end } = seg
+                    const row = this.rows[item.line]!
                     clock.now = start
                     const rec = this.make(item)
                     const place = row.order.length
-                    // The item comes in from one place behind its own.
-                    Object.assign(rec, { place, x0: this.placeX(place + 1), y0: this.geo.lineY[rec.line]!, born: seg, busy: { call, t1: end } })
-                    rec.moves.push(slide(seg, this.geo.pitch, 0))
+                    // Start behind the old tail while a batch ahead of this item is leaving the line.
+                    const travel = Math.max(1, row.shifts.reduce((sum, shift) => sum + (shift.seg.t1 > start + SOON ? shift.places : 0), 0))
+                    Object.assign(rec, { place, x0: this.placeX(place + travel), y0: this.geo.lineY[rec.line]!, born: seg, busy: { call, t1: end } })
+                    rec.moves.push(slide(seg, travel * this.geo.pitch, 0))
                     row.order.push(rec)
                     row.lastArrive = seg
                     // The count follows an item when the item is half there.
@@ -730,23 +739,29 @@ export class RequestQueue extends Node {
                 const [t0, t1] = this.times(ctx, call)
                 const ids = list ?? this.next(1)
                 if (list === null && ids.length === 0) throw new Error(`requestQueue: ${call}: no item waits. \`arrive\` an item first. When an \`arrive\` in the same play brings it, name the \`arrive\` before this call`)
-                if (ids.length === 0) return
+                if (ids.length === 0) {
+                    this.latest = { call, t0 }
+                    return
+                }
                 if (this.lastAdmit && t0 < this.lastAdmit.t1 - SOON) throw new Error(`requestQueue: ${call} starts at ${seconds(t0)}, and ${this.lastAdmit.call} ends at ${seconds(this.lastAdmit.t1)}. The slots take one item at a time, so that no two items cross. Give one \`admit\` all the items, as a list: they go one after another. Or play the two in a \`seq\``)
-                reveal(this, t0, ctx.stage)
                 const geo = this.geo, ease = forwardOnly(ctx.ease)
+                // Reserve places, slots and blocks without changing the queue.
+                const orders = this.rows.map((row) => [...row.order])
+                const slots = this.taken.flatMap((seat, index) => seat.owner === null ? [index] : [])
+                const free = this.cells.flatMap((cell, index) => cell.owner === null ? [index] : [])
                 // The items go one after another: each one has its own part of the time.
                 const windows = staggered(ids.length, 1, t0, t1)
-                ids.forEach((id, index) => {
+                const plan = ids.map((id, index) => {
                     const [start, end] = windows[index]!
                     const rec = this.rec(id, call, true)
                     if (rec.state !== 'waiting') throw new Error(`requestQueue: ${call}: ${shown(id)} is ${rec.state}. \`admit\` takes an item that waits`)
-                    const row = this.rows[rec.line]!
-                    if (row.order[0] !== rec) throw new Error(`requestQueue: ${call}: ${shown(id)} is at place ${rec.place} of the line ${JSON.stringify(row.name)}, behind ${shown(row.order[0]!.id)}. A line serves its head first. Admit ${shown(row.order[0]!.id)} first, or reject the items before ${shown(id)}. For an item that may pass others, give it a line of its own with \`lines\``)
-                    this.claim(rec, call, start, end)
+                    const row = this.rows[rec.line]!, order = orders[rec.line]!
+                    if (order[0] !== rec) throw new Error(`requestQueue: ${call}: ${shown(id)} is at place ${order.indexOf(rec)} of the line ${JSON.stringify(row.name)}, behind ${shown(order[0]!.id)}. A line serves its head first. Admit ${shown(order[0]!.id)} first, or reject the items before ${shown(id)}. For an item that may pass others, give it a line of its own with \`lines\``)
+                    this.checkClaim(rec, call, start)
                     this.still(row, call, start)
-                    const slot = this.taken.findIndex((seat) => seat.owner === null)
-                    if (slot < 0) throw new Error(`requestQueue: ${call}: no slot is free for ${shown(id)}: ${this.slots} of ${this.slots} run. \`finish\` an item first. When a \`finish\` in the same play frees the slot, name the \`finish\` before the \`admit\``)
-                    const blocks = this.spare(rec.need, `requestQueue: ${call}: ${shown(id)}`)
+                    const slot = slots.shift()
+                    if (slot === undefined) throw new Error(`requestQueue: ${call}: no slot is free for ${shown(id)}: ${this.slots} of ${this.slots} run. \`finish\` an item first. When a \`finish\` in the same play frees the slot, name the \`finish\` before the \`admit\``)
+                    const blocks = this.spare(rec.need, `requestQueue: ${call}: ${shown(id)}`, free)
                     const seat = this.taken[slot]!
                     const seg: Seg = { t0: start, t1: end, ease, leads: [] }
                     const handoff = seat.leaving !== null && seat.leaving.t1 > start + SOON
@@ -755,6 +770,16 @@ export class RequestQueue extends Node {
                         if (seat.leaving.t1 > end + SOON) throw new Error(`requestQueue: ${call}: ${shown(id)} is in slot ${slot} at ${seconds(end)}, and the item before it leaves that slot until ${seconds(seat.leaving.t1)}. Give the \`finish\` a duration that ends at ${seconds(end)} or sooner, or play the \`admit\` after it, in a \`seq\``)
                         seg.leads.push(seat.leaving)
                     }
+                    order.shift()
+                    free.splice(0, blocks.length)
+                    return { rec, row, slot, blocks, seg, handoff }
+                })
+                this.latest = { call, t0 }
+                reveal(this, t0, ctx.stage)
+                plan.forEach(({ rec, row, slot, blocks, seg, handoff }) => {
+                    const { t0: start, t1: end } = seg
+                    rec.busy = { call, t1: end }
+                    const seat = this.taken[slot]!
                     const y = geo.lineY[rec.line]!, to = geo.seatY[slot]!
                     // Out of the line, across to the height of the slot, and into the slot. The item changes its height
                     // only in the room between the lines and the slots, so it meets no item of another line or slot.
@@ -773,7 +798,7 @@ export class RequestQueue extends Node {
                         other.place = place
                         other.moves.push(slide(seg, geo.pitch, 0))
                     })
-                    row.lastShift = { seg, call }
+                    row.shifts.push({ seg, call, places: 1 })
                     const middle = (start + end) / 2
                     row.waiting.steps.push({ time: middle, delta: -1 })
                     this.running.steps.push({ time: middle, delta: 1 })
@@ -797,15 +822,18 @@ export class RequestQueue extends Node {
             // Work goes at one speed, so the bar and the number run with no ease unless the film gives one.
             label: 'requestQueue.run', duration: options.duration ?? 0.8, ease: options.ease ?? linear,
             schedule: (ctx) => {
-                const [t0, t1] = this.times(ctx, `run(${units})`)
-                reveal(this, t0, ctx.stage)
+                const call = `run(${units})`
+                const [t0, t1] = this.times(ctx, call)
+                const running = this.recs.filter((rec) => rec.state === 'running' && rec.work !== undefined && rec.done < rec.work)
+                for (const rec of running) this.checkSeated(rec, call, t0)
                 const seg: Seg = { t0, t1, ease: forwardOnly(ctx.ease), leads: [] }
-                for (const rec of this.recs) {
-                    if (rec.state !== 'running' || rec.work === undefined) continue
-                    const step = Math.min(units, rec.work - rec.done)
-                    if (step <= 0) continue
+                this.latest = { call, t0 }
+                reveal(this, t0, ctx.stage)
+                for (const rec of running) {
+                    const step = Math.min(units, rec.work! - rec.done)
                     rec.runs.push({ seg, units: step })
                     rec.done += step
+                    rec.activeUntil = Math.max(rec.activeUntil, t1)
                 }
             },
         }
@@ -830,13 +858,23 @@ export class RequestQueue extends Node {
                 for (const rec of chosen) {
                     if (rec.work !== undefined && rec.done < rec.work) throw new Error(`requestQueue: ${call}: ${shown(rec.id)} has ${rec.work - rec.done} of ${rec.work} units of work left. Call run(${rec.work - rec.done}) first. For an item with no bar, leave out \`work\``)
                 }
-                if (chosen.length === 0) return
-                reveal(this, t0, ctx.stage)
                 const windows = staggered(chosen.length, Math.max(0, options.lag ?? 0), t0, t1)
+                for (const [index, rec] of chosen.entries()) {
+                    const start = windows[index]![0]
+                    this.checkClaim(rec, call, start)
+                    if (start < rec.activeUntil - SOON) throw new Error(`requestQueue: ${call}: ${shown(rec.id)} is doing work or taking blocks until ${seconds(rec.activeUntil)}. Play finish after that animation ends`)
+                }
+                if (chosen.length === 0) {
+                    this.latest = { call, t0 }
+                    return
+                }
+                const ease = forwardOnly(ctx.ease)
+                this.latest = { call, t0 }
+                reveal(this, t0, ctx.stage)
                 chosen.forEach((rec, index) => {
                     const [start, end] = windows[index]!
-                    this.claim(rec, call, start, end)
-                    const seg: Seg = { t0: start, t1: end, ease: forwardOnly(ctx.ease), leads: [] }
+                    rec.busy = { call, t1: end }
+                    const seg: Seg = { t0: start, t1: end, ease, leads: [] }
                     const seat = this.taken[rec.slot!]!
                     rec.moves.push(slide(seg, this.geo.pitch, 0))
                     seat.owner = null
@@ -872,15 +910,24 @@ export class RequestQueue extends Node {
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, call)
                 const chosen = pick(this.rows.flatMap((row) => row.order), call, 'waiting')
-                if (chosen.length === 0) return
-                reveal(this, t0, ctx.stage)
+                for (const rec of chosen) this.checkClaim(rec, call, t0)
+                const lines = new Set(chosen.map((rec) => rec.line))
+                for (const [index, row] of this.rows.entries()) {
+                    if (lines.has(index)) this.still(row, call, t0)
+                }
+                if (chosen.length === 0) {
+                    this.latest = { call, t0 }
+                    return
+                }
                 const span = t1 - t0, ease = forwardOnly(ctx.ease)
+                this.latest = { call, t0 }
+                reveal(this, t0, ctx.stage)
                 const mark: Seg = { t0, t1: t0 + span * MARKED, ease, leads: [] }
                 const fade: Seg = { t0: t0 + span * FADES, t1: t0 + span * CLOSES, ease, leads: [] }
                 // The line closes up when the item is gone, so no item moves into a place that still shows another.
                 const close: Seg = { t0: t0 + span * CLOSES, t1, ease, leads: [] }
                 for (const rec of chosen) {
-                    this.claim(rec, call, t0, t1)
+                    rec.busy = { call, t1 }
                     Object.assign(rec, { state: 'rejected', place: null, status: word, marked: mark, gone: fade })
                     this.refused.steps.push({ time: (fade.t0 + fade.t1) / 2, delta: 1 })
                 }
@@ -888,13 +935,12 @@ export class RequestQueue extends Node {
                     const before = row.order.length
                     const stays = row.order.filter((rec) => rec.state === 'waiting')
                     if (stays.length === before) continue
-                    this.still(row, call, t0)
                     row.order = stays
                     stays.forEach((rec, place) => {
                         if (rec.place !== place) rec.moves.push(slide(close, (rec.place! - place) * this.geo.pitch, 0))
                         rec.place = place
                     })
-                    row.lastShift = { seg: close, call }
+                    row.shifts.push({ seg: close, call, places: before - stays.length })
                     row.waiting.steps.push({ time: (fade.t0 + fade.t1) / 2, delta: stays.length - before })
                     const hidden = Math.max(0, stays.length - this.geo.places) - Math.max(0, before - this.geo.places)
                     if (hidden !== 0) row.hidden.steps.push({ time: (close.t0 + close.t1) / 2, delta: hidden })
@@ -924,11 +970,17 @@ export class RequestQueue extends Node {
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, call)
                 const chosen = pick(this.rows.flatMap((row) => row.order), call, 'waiting')
-                if (chosen.length === 0) return
-                reveal(this, t0, ctx.stage)
-                const seg: Seg = { t0, t1, ease: forwardOnly(ctx.ease), leads: [] }
                 for (const rec of chosen) {
                     if (to < rec.wait) throw new Error(`requestQueue: ${call}: the wait of ${shown(rec.id)} is ${rec.wait}, and a wait does not go back. Give a value of ${rec.wait} or more`)
+                }
+                if (chosen.length === 0) {
+                    this.latest = { call, t0 }
+                    return
+                }
+                const seg: Seg = { t0, t1, ease: forwardOnly(ctx.ease), leads: [] }
+                this.latest = { call, t0 }
+                reveal(this, t0, ctx.stage)
+                for (const rec of chosen) {
                     rec.waits.push({ seg, delta: to - rec.wait })
                     rec.wait = to
                     rec.clocked = Math.min(rec.clocked ?? Infinity, t0)
@@ -955,8 +1007,12 @@ export class RequestQueue extends Node {
                 const rec = this.rec(id, call, true)
                 if (rec.state !== 'running') throw new Error(`requestQueue: ${call}: ${shown(id)} is ${rec.state}. An item holds blocks while it is in a slot: \`admit\` it first`)
                 const taken = this.spare(blocks, `requestQueue: ${call}: ${shown(id)}`)
+                this.checkSeated(rec, call, t0)
+                const ease = forwardOnly(ctx.ease)
+                this.latest = { call, t0 }
                 reveal(this, t0, ctx.stage)
-                this.change(taken, rec, t0, t1, forwardOnly(ctx.ease))
+                this.change(taken, rec, t0, t1, ease)
+                rec.activeUntil = Math.max(rec.activeUntil, t1)
             },
         }
     }
@@ -1107,7 +1163,7 @@ export class RequestQueue extends Node {
     private snapshot(rec: Rec): QueueItemState {
         return {
             id: rec.id, state: rec.state, line: rec.line, place: rec.place, slot: rec.slot, work: rec.work, left: rec.work === undefined ? undefined : rec.work - rec.done,
-            blocks: rec.state === 'running' ? rec.held.length : rec.state === 'waiting' ? rec.need : 0, wait: rec.wait, late: this.deadline !== undefined && rec.wait >= this.deadline, status: rec.status,
+            blocks: rec.state === 'running' ? rec.held.length : rec.state === 'waiting' ? rec.need : 0, wait: rec.wait, late: rec.state === 'waiting' && this.deadline !== undefined && rec.wait >= this.deadline, status: rec.status,
         }
     }
 
@@ -1137,31 +1193,34 @@ export class RequestQueue extends Node {
      * The times of an animation. A time that is not a number would write keys that no frame finds. A change
      * of the state starts from the state that the changes before it left, so the film calls the changes in
      * the order of their times: a change that starts before one that the film called earlier is an error.
+     * The caller records the time after its validation succeeds.
      */
     private times(ctx: AnimContext, call: string, change = true): [number, number] {
         if (!(Number.isFinite(ctx.t0) && Number.isFinite(ctx.t1) && ctx.t1 >= ctx.t0)) throw new Error(`requestQueue: ${call} plays from ${String(ctx.t0)} to ${String(ctx.t1)}. Give the play a duration that is a number, 0 or more`)
         if (!change) return [ctx.t0, ctx.t1]
         if (this.latest && ctx.t0 < this.latest.t0 - SOON) throw new Error(`requestQueue: ${call} starts at ${seconds(ctx.t0)}, and the film called ${this.latest.call} before it, which starts at ${seconds(this.latest.t0)}. The queue takes its changes in the order of time: each one starts from the state that the one before it left. Call ${call} before ${this.latest.call}`)
-        this.latest = { call, t0: ctx.t0 }
         return [ctx.t0, ctx.t1]
     }
 
-    /** An item changes its state one change at a time: it arrives, then it goes to a slot, then it leaves. */
-    private claim(rec: Rec, call: string, t0: number, t1: number): void {
+    /** An item can use its slot after it finishes moving there. */
+    private checkSeated(rec: Rec, call: string, t0: number): void {
+        if (rec.quiet && t0 < rec.quiet.t1 - SOON) throw new Error(`requestQueue: ${call}: ${shown(rec.id)} reaches its slot at ${seconds(rec.quiet.t1)}. Play ${call} after its admission ends`)
+    }
+
+    private checkClaim(rec: Rec, call: string, t0: number): void {
         if (rec.busy && t0 < rec.busy.t1 - SOON) throw new Error(`requestQueue: ${call} starts at ${seconds(t0)}, and ${rec.busy.call} moves ${shown(rec.id)} until ${seconds(rec.busy.t1)}. An item takes one change at a time. Play the two in a \`seq\`, or give the first one a shorter duration`)
-        rec.busy = { call, t1 }
     }
 
     /** A line closes up one change at a time: each change starts from the places that the change before it left. */
     private still(row: Row, call: string, t0: number): void {
-        const last = row.lastShift
+        const last = row.shifts.at(-1)
         if (last && t0 < last.seg.t1 - SOON) throw new Error(`requestQueue: ${call} starts at ${seconds(t0)}, and the line ${JSON.stringify(row.name)} closes up after ${last.call} until ${seconds(last.seg.t1)}. A line takes one change of its order at a time. Play the two in a \`seq\`, or give one call all the items`)
     }
 
     /** The first free blocks, by index. Fewer free blocks than an item needs is an error that says what to do. */
-    private spare(count: number, who: string): number[] {
+    private spare(count: number, who: string, available?: readonly number[]): number[] {
         if (count === 0) return []
-        const free = this.cells.flatMap((cell, index) => (cell.owner === null ? [index] : []))
+        const free = available ?? this.cells.flatMap((cell, index) => (cell.owner === null ? [index] : []))
         if (free.length < count) {
             const advice = count > this.cells.length || who.startsWith('requestQueue: the first items') ? 'Raise `pool`, or lower the blocks of the items' : '`finish` an item first, to get its blocks back. When a `finish` in the same play frees them, name the `finish` before this call'
             throw new Error(`${who} needs ${count} ${count === 1 ? 'block' : 'blocks'}, and the pool has ${free.length} free of ${this.cells.length}. ${advice}`)
@@ -1177,7 +1236,6 @@ export class RequestQueue extends Node {
             const cell = this.cells[block]!
             cell.owner = owner
             cell.changes.push({ seg: { t0: windows[index]![0], t1: windows[index]![1], ease, leads: [] }, paint: owner ? owner.color : null })
-            this.used.steps.push({ time: (windows[index]![0] + windows[index]![1]) / 2, delta: owner ? 1 : -1 })
         })
         if (owner) owner.held.push(...blocks)
     }
@@ -1188,7 +1246,7 @@ export class RequestQueue extends Node {
         const color = item.paint ?? row.color
         const rec: Rec = {
             id: item.id, index: this.recs.length, color, line: item.line, state: 'waiting', place: null, slot: null, work: item.work, done: 0, need: item.blocks ?? 0, held: [],
-            wait: 0, status: undefined, x0: 0, y0: 0, moves: [], born: null, gone: null, hold: 0, done0: 0, runs: [], wait0: 0, waits: [], clocked: null, quiet: null, marked: null, busy: null,
+            wait: 0, status: undefined, x0: 0, y0: 0, moves: [], born: null, gone: null, hold: 0, done0: 0, runs: [], wait0: 0, waits: [], clocked: null, quiet: null, marked: null, busy: null, activeUntil: -Infinity,
         }
         const stroke = Math.max(2, size * 0.085)
         const body = new Node(rectPath(-geo.w / 2, -geo.h / 2, geo.w, geo.h, this.radius())).fill('surface').stroke(color, stroke)
@@ -1282,7 +1340,11 @@ export class RequestQueue extends Node {
         // A count of 0 draws nothing: the word shows with the first item that it counts.
         if (this.doneTally) this.write(this.doneTally, (time) => (countAt(this.finished, time) > 0 ? `${this.words.done} ${countAt(this.finished, time)}` : null), { anchor: 'left' })
         if (this.rejectedTally) this.write(this.rejectedTally, (time) => (countAt(this.refused, time) > 0 ? `${this.words.rejected} ${countAt(this.refused, time)}` : null), { anchor: 'right', color: 'red' })
-        if (this.poolCaption) this.write(this.poolCaption, words(this.words.pool, () => this.used, this.cells.length), { anchor: 'left' })
+        if (this.poolCaption) this.write(this.poolCaption, (time) => {
+            if (!this.showCounts) return this.words.pool
+            const used = this.cells.reduce((sum, _, index) => sum + Number(!this.blockLook(index, time).free), 0)
+            return `${this.words.pool} ${used} / ${this.cells.length}`
+        }, { anchor: 'left' })
         this.rails.forEach((rail, index) => (rail.draw = (time) => this.railAt(index, time)))
         this.more.forEach((dots, index) => dots.children[0]!.track('opacity').add(always((time) => (countAt(this.rows[index]!.hidden, time) > 0 ? 1 : 0), 0)))
         this.seats.forEach((seat, index) => seat.children[0]!.track('opacity').add(always((time) => this.seatAt(index, time), 0)))

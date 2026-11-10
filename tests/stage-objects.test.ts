@@ -13891,6 +13891,8 @@ describe('request queue', () => {
         })
         expect([1, 1.3, 1.7, 3].map((time) => said(parts(served, 'A').under, time))).toEqual([['150'], ['150'], [], []])
         expect([1, 1.01].map((time) => at(time, () => parts(served, 'A').body.get('dash') !== null))).toEqual([true, false])
+        expect(served.stateOf('A')).toMatchObject({ wait: 150, late: false })
+        expect(served.find((item) => item.late)).toEqual([])
         const one = (build: (made: Queue, s: Stage) => void, options = {}) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'R', running: true }], options)), s))
         await one((q, s) => {
             s.play(q.wait('A', 99))
@@ -14075,6 +14077,89 @@ describe('request queue', () => {
         // An item that leaves its line for a slot takes its gap with it, while it is at the height of the line.
         expect([11, 11.2].map((time) => drawn(time, where(made, 'A', time)[0]))).toEqual([false, false])
         expect(drawn(13, a)).toBe(true)
+    })
+
+    it.each(['admit', 'reject'] as const)('keeps an arrival behind a line that loses two items to %s', async (verb) => {
+        let q!: Queue
+        await compile((s) => {
+            q = s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'C' }], { slots: 2 }))
+            s.play(verb === 'admit' ? q.admit(['A', 'B']) : q.reject(['A', 'B'], '429'), q.arrive({ id: 'D' }), { duration: 1, ease: linear })
+        })
+        for (let frame = 1; frame <= 30; frame++) {
+            const time = frame / 30
+            if (seen(q, 'D', time) > 0) expect(apart(box(q, 'C', time), box(q, 'D', time))).toBe(true)
+        }
+        expect(where(q, 'D', 1)).toEqual(q.p({ line: 0, place: 1 }))
+    })
+
+    it.each(['take', 'run'] as const)('finishes an item only after its %s animation ends', async (verb) => {
+        await expect(compile((s) => {
+            const q = s.add(requestQueue([{ id: 'A', running: true, work: verb === 'run' ? 1 : undefined }], { pool: 1 }))
+            const activity = verb === 'run' ? q.run(1, { duration: 2 }) : q.take('A', 1, { duration: 2 })
+            s.play(activity, q.finish('A', { duration: 0.5 }))
+        })).rejects.toThrow(/finish.*A.*until 2 s/)
+    })
+
+    it.each(['take', 'run'] as const)('starts %s after an item reaches its slot', async (verb) => {
+        await expect(compile((s) => {
+            const q = s.add(requestQueue([{ id: 'A', work: 1 }], { pool: 1 }))
+            s.play(q.admit(), verb === 'run' ? q.run(1) : q.take('A', 1))
+        })).rejects.toThrow(/A.*reaches its slot/)
+    })
+
+    it('keeps the pool count in step with the block outlines during a handoff', async () => {
+        let q!: Queue
+        await compile((s) => {
+            q = s.add(requestQueue([{ id: 'A', running: true, blocks: 1 }, { id: 'B', running: true }], { pool: 1, slots: 2 }))
+            s.play(q.finish('A', { duration: 2 }), q.take('B', 1, { duration: 0.5 }))
+        })
+        for (const time of [0, 0.3, 0.5, 1, 1.5, 2]) {
+            const used = at(time, () => q.blocks[0]!.get('dash') === null ? 1 : 0)
+            expect(said(q.poolCaption!, time)).toEqual([`blocks ${used} / 1`])
+        }
+    })
+
+    it('can retry a batch after a refused admission', async () => {
+        await compile((s) => {
+            const q = s.add(requestQueue([{ id: 'R', running: true }, { id: 'A' }, { id: 'B' }], { slots: 2 }))
+            expect(() => s.play(q.admit(['A', 'B']))).toThrow(/no slot is free/)
+            expect(q.next(2)).toEqual(['A', 'B'])
+            s.play(q.finish('R'), q.admit(['A', 'B']))
+            expect(q.count('running')).toBe(2)
+        })
+    })
+
+    it('preserves every wait and the scheduling time when one requested wait goes backward', async () => {
+        await compile((s) => {
+            const q = s.add(requestQueue([{ id: 'A' }, { id: 'B' }]))
+            s.play(q.wait('B', 10), { duration: 0 })
+            s.at(5, () => {
+                expect(() => s.play(q.wait(['A', 'B'], 8))).toThrow(/wait does not go back/)
+            })
+            expect(q.stateOf('A').wait).toBe(0)
+            s.play(q.wait('A', 4))
+            expect(q.stateOf('B').wait).toBe(10)
+        })
+    })
+
+    it('animates the queue in a copied group independently', async () => {
+        await compile((s) => {
+            const original = requestQueue([{ id: 'A' }])
+            const groupCopy = group(original).clone()
+            const copy = groupCopy.children[0] as Queue
+            s.add(groupCopy)
+            s.play(copy.admit())
+            expect(original.stateOf('A').state).toBe('waiting')
+            expect(copy.stateOf('A').state).toBe('running')
+            expect(where(copy, 'A', s.time)).toEqual(copy.p({ slot: 0 }))
+            const secondGroup = groupCopy.clone()
+            const second = secondGroup.children[0] as Queue
+            s.add(secondGroup)
+            s.play(second.finish('A'))
+            expect(second.stateOf('A').state).toBe('done')
+            expect(copy.stateOf('A').state).toBe('running')
+            expect(original.stateOf('A').state).toBe('waiting')
+        })
     })
 
     it('keeps its own bookkeeping in a copy, at rest in the state of the queue', async () => {
