@@ -1,7 +1,7 @@
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { apply, circlePath, invert, linePath, parseSvgPath, pathLength, pointAt, polyPath, rectPath, type Path } from '../geometry'
 import { rect } from '../shapes'
-import { filmFont, text, type TextOptions } from '../text'
+import { filmFont, text, TextNode, type TextOptions } from '../text'
 import { toPaint, type ColorInput, type Paint } from '../color'
 import { smooth, type Ease } from '../ease'
 import type { Anim, AnimContext, AnimOptions } from '../anim'
@@ -50,6 +50,11 @@ export interface StackGroup {
 }
 
 export type StackLayer = string | StackBlock | StackBranch | StackGroup
+
+export interface StackPassOptions extends AnimOptions {
+    /** The output of the block on the main path before a visible branch adds its contribution. Defaults to the incoming values. */
+    aroundValues?: readonly number[]
+}
 
 export interface StackState {
     /** The color of a block in this state. Without it, the block keeps its own color. */
@@ -146,6 +151,34 @@ interface Claim {
     call: string
     t0: number
     t1: number
+}
+
+/** A static clone starts with its own timeline and no claims from its source. */
+interface StackTiming {
+    light?: Claim
+    selection?: Claim
+    marks: Map<number, Claim & { ease: Ease }>
+    stateReads: Map<number, Claim>
+    opens: Map<number, Claim>
+    reveals: Map<number, Claim>
+    hiddenPasses: Map<number, Claim>
+}
+const stackTimings = new WeakMap<LayerStack, StackTiming>()
+
+function timingOf(stack: LayerStack): StackTiming {
+    let timing = stackTimings.get(stack)
+    if (!timing) {
+        timing = { marks: new Map(), stateReads: new Map(), opens: new Map(), reveals: new Map(), hiddenPasses: new Map() }
+        stackTimings.set(stack, timing)
+    }
+    return timing
+}
+
+/** A light may interrupt another light. A pass through a branch needs its reveal to finish first. */
+function checkTime(call: string, start: number, previous: Claim | null | undefined, boundary: 't0' | 't1', part: string): void {
+    if (!previous || start >= previous[boundary]) return
+    const limit = boundary === 't0' ? 'starts' : 'ends'
+    throw new Error(`layerStack: ${call} at ${seconds(start)} needs ${part} before ${previous.call} ${limit} at ${seconds(previous[boundary])}. Schedule the calls in timeline order, or play them one after the other in a \`seq\``)
 }
 
 interface Look {
@@ -323,6 +356,7 @@ export class LayerStack extends Node {
     constructor(layers: readonly StackLayer[], options: LayerStackOptions = {}) {
         super()
         if (!Array.isArray(layers) || layers.length === 0) throw new Error("layerStack: give it at least one layer, such as ['embed', { branch: ['attention'] }, 'unembed']")
+        if (options === null || typeof options !== 'object' || Array.isArray(options)) throw new Error('layerStack: give the options as an object, such as { size: 28 }')
         const size = this.size = options.size ?? 28
         if (!(Number.isFinite(size) && size > 0)) throw new Error('layerStack: size is a text size, more than 0')
         const font = this.font = options.font ?? filmFont() ?? 'sans'
@@ -331,10 +365,12 @@ export class LayerStack extends Node {
         const digits = this.digits = options.digits ?? null
         if (digits !== null && (!Number.isInteger(digits) || digits < 0 || digits > 3)) throw new Error(`layerStack: digits is ${shown(options.digits)}. Give the number of decimals of a value in a cell, a whole number from 0 to 3`)
         const states: Record<string, StackState> = options.states ?? STACK_STATES
+        if (!isObject(states)) throw new Error('layerStack: give states as a record of names and their looks, such as { live: {}, frozen: { dim: true } }')
         this.stateNames = Object.keys(states)
         if (this.stateNames.length === 0) throw new Error('layerStack: give it at least one state')
         for (const name of this.stateNames) {
             const state = states[name]!
+            if (state === null || typeof state !== 'object' || Array.isArray(state)) throw new Error(`layerStack: give the state ${shown(name)} a look, such as { dim: true }`)
             if (state.mark !== undefined && !MARKS.includes(state.mark)) throw new Error(`layerStack: the mark of the state ${shown(name)} is ${shown(state.mark)}. A mark is ${MARKS.map((mark) => `'${mark}'`).join(', ')}`)
             if (state.color !== undefined) this.paintOf(state.color, `the color of the state ${shown(name)}`)
         }
@@ -372,14 +408,15 @@ export class LayerStack extends Node {
                 const list = value['branch']
                 if (!Array.isArray(list) || list.length === 0) throw new Error(`layerStack: ${where} has the branch ${shown(list)}. A branch is a list of one block or more, such as { branch: ['norm', 'attention'] }`)
                 const around = value['around'] === undefined ? -1 : blockOf(value['around'], `the block that ${where} goes around`, 'around', layer)
-                const blocks = list.map((item, index) => blockOf(item, `block ${index} of ${where}`, 'side', layer))
+                if (value['shown'] !== undefined && typeof value['shown'] !== 'boolean') throw new Error(`layerStack: set shown to true or false for ${where}`)
+                const blocks = Array.from(list, (item, index) => blockOf(item, `block ${index} of ${where}`, 'side', layer))
                 layerSpecs.push({ branch: true, blocks, around, group, shown: value['shown'] !== false })
                 return
             }
             if (isObject(value) && 'layers' in value) throw new Error(`layerStack: ${where} is a group inside a group. A group holds blocks and branches. Give the two groups one after the other`)
             layerSpecs.push({ branch: false, blocks: [blockOf(value, where, 'stream', layer)], around: -1, group, shown: true })
         }
-        layers.forEach((value, index) => {
+        Array.from(layers).forEach((value, index) => {
             if (!(isObject(value) && 'layers' in value)) return layerOf(value, `layer ${index}`, -1)
             const list = value['layers'], repeat = value['repeat'], label = value['label']
             if (!Array.isArray(list) || list.length === 0) throw new Error(`layerStack: layer ${index} is a group with no layers. Give it a list, such as { repeat: 12, layers: [{ branch: ['attention'] }, { branch: ['MLP'] }] }`)
@@ -387,7 +424,7 @@ export class LayerStack extends Node {
             if (label !== undefined && (typeof label !== 'string' || /[\n\r\t]/.test(label))) throw new Error(`layerStack: the label of the group of layer ${index} is ${shown(label)}. A label is one line of text`)
             const name = typeof label === 'string' && label.trim() !== '' ? label.trim() : null, times = repeat === undefined ? null : `× ${typeof repeat === 'string' ? repeat.trim() : repeat}`
             groupSpecs.push({ text: name && times ? `${name} ${times}` : name ?? times })
-            list.forEach((item, at) => layerOf(item, `layer ${at} of the group of layer ${index}`, groupSpecs.length - 1))
+            Array.from(list).forEach((item, at) => layerOf(item, `layer ${at} of the group of layer ${index}`, groupSpecs.length - 1))
         })
         const named = (index: number) => `block ${index} (${shown(specs[index]!.label)})`
         if (options.shape !== undefined && (typeof options.shape !== 'string' || options.shape.trim() === '' || /[\n\r\t]/.test(options.shape))) throw new Error(`layerStack: shape is ${shown(options.shape)}. It is the shape of the data at the foot of the stream, one line of text, such as '(T)'`)
@@ -642,6 +679,7 @@ export class LayerStack extends Node {
             // The backing is apart from the rest. It shows while the rest fades in, so the stream never shows through a label.
             const body = new Node().add(box, wash, halo, label)
             const block = new Node().add(new Node(shape()).fill(backing), body).at(plan.x, plan.y)
+            block.layoutBox = [-plan.width / 2, -height / 2, plan.width / 2, height / 2]
             for (const name of this.stateNames) {
                 const kind = states[name]!.mark
                 const icon = kind === undefined ? null : markOf(kind, iconSide).at(plan.width / 2 - edge - iconSide / 2, 0)
@@ -696,6 +734,16 @@ export class LayerStack extends Node {
         // The stack places each label in its block, the label of a group on its frame, and the shape beside the
         // vector. The film check does not judge that room.
         ownLabels(this, { name: 'layer stack' })
+    }
+
+    /** A copy keeps the stack state, but starts a new timeline. A close-up uses film nodes outside the stack, so the copy starts closed and leaves those nodes to the original stack. */
+    protected override [rebindCloneParts](copy: this): void {
+        copy.openAt = null
+        copy.inside = []
+        copy.zoom.base.visible = false
+        copy.vectorBusy = null
+        copy.zoomBusy = null
+        copy.replacing = this.replacing.map(() => null)
     }
 
     /** The number of blocks. */
@@ -797,13 +845,7 @@ export class LayerStack extends Node {
      * The box is where the object is now, so ask for it after the object has its place.
      */
     region(ref?: StackBlockRef): Box {
-        let edges = this.layoutBox!
-        if (ref !== undefined) {
-            const plan = this.plans[this.index(ref)]!
-            edges = [plan.x - plan.width / 2, plan.y - this.blockHeight / 2, plan.x + plan.width / 2, plan.y + this.blockHeight / 2]
-        }
-        const [x0, y0] = this.toWorld(edges[0], edges[1]), [x1, y1] = this.toWorld(edges[2], edges[3])
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        return boxOf(ref === undefined ? this : this.block(ref))
     }
 
     /** The label of a block belongs to its box, so a light on the box keeps the label bright. */
@@ -877,7 +919,9 @@ export class LayerStack extends Node {
                 stepAt(this.vector, 'x', this.streamX, start)
                 this.paintCells(this.vectorCells, next, start, start)
                 this.vectorNumbers = this.number(this.vectorDigits, this.vectorCells, this.vectorNumbers, next, start)
-                stepAt(this.vectorDigits, 'opacity', 1, start)
+                // The stream can show through the plate while it fades. Reveal the numbers once the plate covers it.
+                stepAt(this.vectorDigits, 'opacity', 0, t0)
+                stepAt(this.vectorDigits, 'opacity', 1, t1)
                 this.shapeNow = this.startShape
                 this.tagTexts.forEach((made, index) => stepAt(made, 'visible', index === this.shapeNow, start))
                 this.where = 0
@@ -896,10 +940,12 @@ export class LayerStack extends Node {
      * branch adds, which is the new values less the old ones, and the add puts it on the stream. So the film
      * shows the stream as the line that every layer adds to.
      */
-    pass(through: StackBlockRef, values?: readonly number[] | null, options: AnimOptions = {}): Anim {
+    pass(through: StackBlockRef, values?: readonly number[] | null, options: StackPassOptions = {}): Anim {
         const target = this.plans[this.index(through)]!.layer
         const call = `pass(${shown(through)})`
         const next = values === undefined || values === null ? null : this.checkedValues(values, call)
+        const around = options.aroundValues === undefined ? null : this.checkedValues(options.aroundValues, `aroundValues of ${call}`)
+        if (around && (next === null || this.layers[target]!.around < 0)) throw new Error(`layerStack: ${call} needs final values and a branch around a block to use aroundValues`)
         this.timed(call, options)
         // Each layer on the way has a share of the time: a branch takes longer than a block.
         const own = (at: number) => (this.layers[at]!.branch && this.showing[at] ? BRANCH_TIME : BLOCK_TIME)
@@ -913,18 +959,30 @@ export class LayerStack extends Node {
                 if (target < from) throw new Error(`layerStack: ${call}: the vector passed ${this.called(this.layers[target]!.blocks[0]!)} already. It does not go back. feed() starts again at the foot of the stream`)
                 const last = this.layers[target]!
                 if (next !== null && last.branch && !this.showing[target] && last.around < 0) throw new Error(`layerStack: ${call} has values, and the branch of ${this.called(last.blocks[0]!)} does not show, so nothing changes the vector there. Call show() first, or give no values`)
-                this.claim(call, t0, t1)
-                reveal(this, t0, ctx.stage)
+                if (around && !this.showing[target]) throw new Error(`layerStack: show the branch before using aroundValues in ${call}`)
+                // Validate the derived values before writing any tracks. A difference can exceed the cell width even when both inputs fit.
+                const main = around ?? this.now
+                const residual = last.branch && this.showing[target] && next
+                    ? this.checkedValues(next.map((value, i) => value - main[i]!), `residual of ${call}`) : null
+                const timing = timingOf(this)
                 let natural = 0
                 for (let at = from; at <= target; at++) natural += own(at)
                 let start = t0
+                const windows: Claim[] = []
                 for (let at = from; at <= target; at++) {
-                    const layer = this.layers[at]!
                     const end = at === target ? t1 : start + (t1 - t0) * (own(at) / natural)
-                    const to = at === target ? next : null
-                    if (layer.branch && this.showing[at]) this.throughBranch(at, to, start, end)
-                    else this.throughBlock(at, to, start, end, ctx.ease)
+                    checkTime(call, start, timing.reveals.get(at), 't1', 'the visible branch')
+                    windows.push({ call, t0: start, t1: end })
                     start = end
+                }
+                this.claim(call, t0, t1)
+                reveal(this, t0, ctx.stage)
+                for (let at = from; at <= target; at++) {
+                    const layer = this.layers[at]!, window = windows[at - from]!
+                    if (layer.branch && !this.showing[at]) timing.hiddenPasses.set(at, window)
+                    const to = at === target ? next : null
+                    if (layer.branch && this.showing[at]) this.throughBranch(at, to, at === target ? around : null, at === target ? residual : null, window.t0, window.t1)
+                    else this.throughBlock(at, to, window.t0, window.t1, ctx.ease)
                 }
                 this.where = target + 1
                 if (next !== null) this.now = next
@@ -944,6 +1002,10 @@ export class LayerStack extends Node {
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, 'light()')
                 if (next !== null && !this.visibleAt(next)) throw new Error(`layerStack: light: ${this.called(next)} is in a branch that does not show. Call show() first`)
+                const timing = timingOf(this), call = `light(${shown(ref)})`
+                checkTime(call, t0, timing.light, 't0', 'the light')
+                if (next !== null) this.checkReveal(next, call, t0, 't0')
+                timing.light = { call, t0, t1 }
                 reveal(this, t0, ctx.stage)
                 const before = this.lit
                 this.lit = next
@@ -967,14 +1029,37 @@ export class LayerStack extends Node {
             label: 'layerStack.mark', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, 'mark()')
-                const chosen = (listed ?? this.find(which as (block: StackBlockInfo) => boolean)).filter((index) => this.states[index] !== state)
+                const timing = timingOf(this), call = `mark(..., ${shown(state)})`
+                const candidates = listed === null ? this.plans.map((_, index) => index) : [...new Set(listed)]
+                for (const index of candidates) {
+                    checkTime(call, t0, timing.marks.get(index), 't0', this.called(index))
+                    if (listed === null) {
+                        checkTime(call, t0, this.replacing[index], 't0', 'the block label for the predicate')
+                        this.checkReveal(index, call, t0, 't0')
+                    }
+                }
+                const chosen = (listed === null ? this.find(which as (block: StackBlockInfo) => boolean) : candidates).filter((index) => this.states[index] !== state)
+                const windows = staggered(chosen.length, Math.max(0, options.lag ?? 0), t0, t1)
+                chosen.forEach((index, order) => {
+                    const [start] = windows[order]!
+                    checkTime(call, start, timing.marks.get(index), 't1', this.called(index))
+                    checkTime(call, start, timing.stateReads.get(index), 't0', 'the requested state of the block')
+                    checkTime(call, start, this.replacing[index], 't0', this.called(index))
+                    checkTime(call, start, timing.opens.get(index), 't0', 'the color of the open block')
+                    checkTime(call, start, timing.selection, 't0', 'the block state read by a predicate')
+                })
+                if (listed === null && (!timing.selection || timing.selection.t0 < t0)) timing.selection = { call, t0, t1: t0 }
+                // A later request for the current state can skip its animation only if an earlier mark keeps that state.
+                if (listed !== null) for (const index of candidates) {
+                    if (this.states[index] === state && t0 > (timing.stateReads.get(index)?.t0 ?? -Infinity)) timing.stateReads.set(index, { call, t0, t1: t0 })
+                }
                 if (chosen.length === 0) return
                 const before = this.states, next = [...before]
                 for (const index of chosen) next[index] = state
                 this.states = next
-                const windows = staggered(chosen.length, Math.max(0, options.lag ?? 0), t0, t1)
                 chosen.forEach((index, order) => {
-                    const [start, end] = windows[order]!
+                    const [start, finish] = windows[order]!, end = Math.min(finish, t1)
+                    timing.marks.set(index, { call, t0: start, t1: end, ease: ctx.ease })
                     this.paint(index, state, this.paints[index]!, start, end, ctx.ease)
                     // The mark of the old state leaves, and the mark of the new one comes.
                     const from = this.icons[index * this.stateNames.length + this.stateNames.indexOf(before[index]!)], to = this.icons[index * this.stateNames.length + this.stateNames.indexOf(state)]
@@ -1013,11 +1098,24 @@ export class LayerStack extends Node {
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, call)
                 const last = this.replacing[index]
+                const timing = timingOf(this)
+                checkTime(call, t0, timing.marks.get(index), 't0', this.called(index))
+                checkTime(call, t0, timing.selection, 't0', 'the block label read by a predicate')
+                if (paint) checkTime(call, t0, timing.opens.get(index), 't0', 'the color of the open block')
                 if (last && t0 < last.t1 - SOON) throw new Error(`layerStack: ${call} plays from ${seconds(t0)} to ${seconds(t1)}, and ${last.call} plays from ${seconds(last.t0)} to ${seconds(last.t1)}. A block has one label at a time. Play the two in a \`seq\`, or give the first a shorter duration`)
                 this.replacing = this.replacing.map((claim, at) => (at === index ? { call, t0, t1 } : claim))
                 reveal(this, t0, ctx.stage)
-                const old = this.labels[index]!, middle = (t0 + t1) / 2
-                const made = text(label, { size: this.size, font: this.font, color: this.lookOf(this.states[index]!, paint ?? this.paints[index]!).label })
+                const old = this.labels[index] as TextNode, middle = (t0 + t1) / 2
+                const color = this.lookOf(this.states[index]!, paint ?? this.paints[index]!).label
+                const made = text(label, { size: this.size, font: this.font, color })
+                const mark = timing.marks.get(index)
+                if (mark && t0 < mark.t1 && old.chars[0]) {
+                    const initial = sampleAt(old.chars[0], 'fill', mark.t0)
+                    for (const glyph of made.chars) {
+                        glyph.base.fill = initial
+                        glyph.tween('fill', toPaint(color), mark.t0, mark.t1, mark.ease)
+                    }
+                }
                 made.base.visible = false
                 this.bodies[index]!.add(made)
                 ownLabels(this, { labels: [made] })
@@ -1030,7 +1128,7 @@ export class LayerStack extends Node {
                 this.names = this.names.map((name, at) => (at === index ? label : name))
                 if (paint) {
                     this.paints = this.paints.map((own, at) => (at === index ? paint : own))
-                    this.paint(index, this.states[index]!, paint, t0, t1, ctx.ease)
+                    this.paintColor(index, this.lookOf(this.states[index]!, paint).paint, t0, t1, ctx.ease)
                 }
                 this.pulse(index, t0, t1)
             },
@@ -1054,8 +1152,15 @@ export class LayerStack extends Node {
             label: 'layerStack.show', duration: options.duration ?? 1, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, 'show()')
+                const timing = timingOf(this), call = `show(${shown(ref)})`
+                checkTime(call, t0, timing.reveals.get(plan.layer), 't0', 'the branch')
+                if (!this.showing[plan.layer]) {
+                    checkTime(call, t0, timing.hiddenPasses.get(plan.layer), 't1', 'the branch while the vector passes it')
+                    checkTime(call, t0, timing.selection, 't0', 'the branch visibility read by a predicate')
+                }
                 reveal(this, t0, ctx.stage)
                 if (this.showing[plan.layer]) return
+                timing.reveals.set(plan.layer, { call, t0, t1 })
                 this.showing = this.showing.map((flag, at) => (at === plan.layer ? true : flag))
                 const layer = this.layers[plan.layer]!, span = t1 - t0
                 const fadeIn = (node: Node, start: number, end: number) => {
@@ -1102,12 +1207,16 @@ export class LayerStack extends Node {
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, call)
                 if (!this.visibleAt(index)) throw new Error(`layerStack: open: ${this.called(index)} is in a branch that does not show. Call show() first`)
-                reveal(this, t0, ctx.stage)
+                const timing = timingOf(this)
+                this.checkReveal(index, call, t0, 't1')
+                checkTime(call, t0, timing.marks.get(index), 't0', 'the color of the open block')
+                checkTime(call, t0, this.replacing[index], 't0', 'the appearance of the open block')
                 // The box of the close-up, in the coordinates of the stack.
                 const box = boxOf(nodes), inverse = invert(this.worldMatrix())
-                const [ax, ay] = apply(inverse, box.left, box.top), [bx, by] = apply(inverse, box.right, box.bottom)
+                const corners = (['top left', 'top right', 'bottom left', 'bottom right'] as const).map(side => apply(inverse, ...box.point(side)))
+                const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y)
                 const pad = Math.round(this.size * 0.6)
-                const x0 = Math.min(ax, bx) - pad, x1 = Math.max(ax, bx) + pad, y0 = Math.min(ay, by) - pad, y1 = Math.max(ay, by) + pad
+                const x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad
                 const plan = this.plans[index]!, half = this.blockHeight / 2
                 const atRight = x0 + pad >= this.drawn[1] - 0.5, atLeft = x1 - pad <= this.drawn[0] + 0.5
                 if (!atRight && !atLeft) throw new Error(`layerStack: ${call}: the inside is over the stack or under it. Place it at the right or at the left of the stack, such as place(inside, area.columns(2)[1]), and then play open()`)
@@ -1116,6 +1225,8 @@ export class LayerStack extends Node {
                 if (atLeft && plan.role === 'side') throw new Error(`layerStack: ${call}: ${this.called(index)} is at the right of the stream, and the lines to the inside would cross the stream. Place the inside at the right of the stack`)
                 // A call that is refused above does not take the time of the lines.
                 this.claimZoom(call, t0, t1)
+                timing.opens.set(index, { call, t0, t1: t0 })
+                reveal(this, t0, ctx.stage)
                 const edge = plan.x + (atRight ? plan.width / 2 : -plan.width / 2), near = atRight ? x0 : x1
                 const [wedge, upper, lower, frame] = this.zoom.children as [Node, Node, Node, Node]
                 const was = this.openAt !== null && sampleAt(this.zoom, 'visible', t0)
@@ -1157,7 +1268,11 @@ export class LayerStack extends Node {
             label: 'layerStack.close', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = this.times(ctx, 'close()')
-                if (this.openAt === null) return
+                if (this.openAt === null) {
+                    checkTime('close()', t0, this.zoomBusy, 't0', 'the close-up')
+                    if (!this.zoomBusy || t0 >= this.zoomBusy.t1) this.zoomBusy = { call: 'close()', t0, t1: t0 }
+                    return
+                }
                 this.claimZoom('close()', t0, t1)
                 this.zoom.tween('opacity', 0, t0, t1, ctx.ease)
                 stepAt(this.zoom, 'visible', false, t1)
@@ -1177,6 +1292,11 @@ export class LayerStack extends Node {
     private visibleAt(index: number): boolean {
         const plan = this.plans[index]!
         return plan.role !== 'side' || this.showing[plan.layer]!
+    }
+
+    private checkReveal(index: number, call: string, time: number, boundary: 't0' | 't1'): void {
+        const plan = this.plans[index]!
+        if (plan.role === 'side') checkTime(call, time, timingOf(this).reveals.get(plan.layer), boundary, 'the branch visibility')
     }
 
     /** What an error calls a block: block 2 ("attention"). */
@@ -1225,18 +1345,23 @@ export class LayerStack extends Node {
     /** A block takes the look of a state and a color. */
     private paint(index: number, state: string, own: Paint, t0: number, t1: number, ease: Ease): void {
         const look = this.lookOf(state, own), box = this.boxes[index]!
-        box.tween('stroke', look.paint, t0, t1, ease)
-        box.tween('fill', look.paint, t0, t1, ease)
+        this.paintColor(index, look.paint, t0, t1, ease)
         box.tween('strokeOpacity', look.line, t0, t1, ease)
         box.tween('fillOpacity', look.fill, t0, t1, ease)
         // Dashes cannot fade to a line, so they switch when the colors are half way.
         stepAt(box, 'dash', look.dash ? this.dashes() : null, (t0 + t1) / 2)
-        for (const part of [this.washes[index]!, this.halos[index]!]) {
-            part.tween('fill', look.paint, t0, t1, ease)
-            if (part.get('stroke')) part.tween('stroke', look.paint, t0, t1, ease)
+        for (const label of this.bodies[index]!.children) {
+            if (!(label instanceof TextNode) || (label !== this.labels[index] && !sampleAt(label, 'visible', t0))) continue
+            for (const glyph of label.chars) glyph.tween('fill', toPaint(look.label), t0, t1, ease)
         }
-        const label = this.labels[index] as Node & { chars?: Node[] }
-        for (const glyph of label.chars ?? []) glyph.tween('fill', toPaint(look.label), t0, t1, ease)
+    }
+
+    /** A replacement can change color while a state change controls the dashes, opacity, and label. */
+    private paintColor(index: number, paint: Paint, t0: number, t1: number, ease: Ease): void {
+        for (const part of [this.boxes[index]!, this.washes[index]!, this.halos[index]!]) {
+            part.tween('fill', paint, t0, t1, ease)
+            if (part.get('stroke')) part.tween('stroke', paint, t0, t1, ease)
+        }
     }
 
     /** The fill of a block lights and goes back, while the data is in it. It ends where it began, so two pulses that overlap leave no trace. */
@@ -1283,11 +1408,11 @@ export class LayerStack extends Node {
 
     private checkedValues(values: unknown, call: string): number[] {
         if (!Array.isArray(values) || values.length !== this.cellCount) throw new Error(`layerStack: ${call} has ${Array.isArray(values) ? `${values.length} values` : shown(values)}, and the vector has ${this.cellCount} cells. Give one value for each cell, or build the stack with \`cells: ${Array.isArray(values) && values.length > 0 ? values.length : this.cellCount}\``)
-        values.forEach((value, index) => {
+        for (const [index, value] of values.entries()) {
             if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`layerStack: value ${index} of ${call} is ${shown(value)}. A value is a number`)
             // A number has a fifth of the text size of room at each side of its cell, at the least.
             if (this.digits !== null && text(this.written(value), { size: this.size, font: this.font }).get('px') * 2 > this.cellWidth - this.size * 0.4) throw new Error(`layerStack: value ${index} of ${call} is ${value}, which a cell writes as ${shown(this.written(value))}. A cell has room for a number as wide as ${shown(this.widest)}. Give smaller values, such as a tenth of each, or fewer digits`)
-        })
+        }
         return [...values] as number[]
     }
 
@@ -1388,11 +1513,10 @@ export class LayerStack extends Node {
      * the branch adds and stops at the add, where a viewer can read it. Then the add takes it, and the vector
      * goes through the add and takes its new values.
      */
-    private throughBranch(at: number, values: readonly number[] | null, t0: number, t1: number): void {
+    private throughBranch(at: number, values: readonly number[] | null, around: readonly number[] | null, residual: readonly number[] | null, t0: number, t1: number): void {
         const layer = this.layers[at]!, span = t1 - t0, moment = (share: number) => t0 + span * share
         const before = this.now!
-        // What the branch adds: the new values less the old ones. With no new values, the copy comes back as it left.
-        const added = values ? values.map((value, index) => value - before[index]!) : before
+        const added = residual ?? before.map(() => 0)
         const last = this.plans[layer.blocks[layer.blocks.length - 1]!]!
         // Under the add and under the copy that comes to it, with a little room. With a block on the stream
         // beside the branch, the vector waits behind that block.
@@ -1402,6 +1526,10 @@ export class LayerStack extends Node {
         this.ride(wait, moment(0.12), moment(0.78), smooth)
         this.ride(stop, moment(0.86), t1, smooth)
         if (layer.around >= 0) {
+            if (around) {
+                this.paintCells(this.vectorCells, around, moment(0.78), moment(0.78))
+                this.vectorNumbers = this.number(this.vectorDigits, this.vectorCells, this.vectorNumbers, around, moment(0.78))
+            }
             // The vector goes behind the block on the stream on its way from the point of the branch, and leaves it on its way to its next place.
             const rise = (from: number, to: number, start: number, end: number) => (y: number) => start + reaches(smooth, clamp((y - from) / (to - from))) * (end - start)
             this.hideNumbers(layer.around, moment(0.12), rise(layer.tapY, wait, moment(0.12), moment(0.78)), moment(0.78))

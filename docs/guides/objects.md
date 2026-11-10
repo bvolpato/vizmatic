@@ -1039,7 +1039,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Layer stacks
 
-`layerStack(layers, options)` draws a model as a stack of named layers on one stream, with the data flowing up: the block diagram of a transformer, of a vision model, or of a residual network. A block on the stream changes the data. A branch is beside the stream: it reads the stream, and an add puts its result back. So the stream is the line that every layer adds to. Use it when a lesson needs its machine on the screen, and a viewer must see where in the model each step happens.
+`layerStack(layers, options)` draws a model from its input at the bottom to its output at the top. A block transforms values on the main path. A branch reads those values and joins the main path at a plus sign. Use the same diagram across scenes to show where each step happens.
 
 ```film paired label="A token goes up one decoder block: each branch reads the stream, and its add puts the result back"
 import { film, layerStack } from 'vizmatic/stage'
@@ -1073,7 +1073,7 @@ A block has an `id`, which is its label unless the film gives another. The film 
 
 `stack.feed(values)` puts a vector at the foot of the stream: a row of cells, one for each value. A cell is teal for a value over 0 and orange for a value under 0, and it is stronger for a larger value, up to 1. `stack.pass('attention', values)` sends the vector up through the layer of a block, and it leaves that layer with the new values. In a block on the stream, the vector goes behind the block and comes out changed, and the block lights for a moment. At a branch, the vector stays on the stream, and a copy of it goes through the blocks of the branch. The copy comes back with what the branch adds, which is the new values less the old ones, and stops at the add. Then the add takes the copy, and the vector goes through the add and takes the sum. So a viewer sees that a layer adds to the stream and does not replace it.
 
-Name any block of a branch to pass the branch. A pass to a later block goes through each layer before it, and gives each one its share of the time. Without values, the vector keeps its values. A pass takes 1 s for a block and 2.6 s for a branch unless the film gives a `duration`. The vector does not go back: `feed` starts again at the foot, and the vector that is on the stream leaves first. The vector does one thing at a time, so a `feed` and a `pass` whose times overlap are an error that names the two calls: play them in a `seq`. `stack.passed` is the number of layers that the vector passed, `stack.values` its values, and `stack.shape` the shape beside it. All of these follow the changes that the film has played so far.
+Name any block of a branch to pass the branch. A pass to a later block goes through each layer before it, and gives each one its share of the time. Without values, the vector keeps its values. When you create a pass, the destination sets its default duration. A visible branch gets 2.6 s. A block or hidden branch gets 1 s. A pass across several layers shares that duration among them. The vector does not go back: `feed` starts again at the foot, and the vector that is on the stream leaves first. Schedule changes to the same part in timeline order. Use `seq` for two operations that move the vector. Finish revealing a branch before the vector reaches it. Changes to separate parts can run together, such as lighting attention while a vector passes it. `stack.passed` is the number of layers that the vector passed, `stack.values` its values, and `stack.shape` the shape beside it. All of these follow the changes that the film has played so far.
 
 `cells` is the number of cells, 4 by default. With `digits`, each cell shows its value with that many decimals, and a cell is as wide as a value under 10 needs:
 
@@ -1115,19 +1115,19 @@ export default film((s) => {
         { label: 'answer head', color: 'green' },
     ], { shape: '576 patches' }))
     // A note beside the whole stack, at the height of one block.
-    const note = beside(text('the only part that trains', { size: 30, color: 'orange' }), model, 'right', 'wide', model.block('projector'))
+    const note = beside(text('the projector trains', { size: 30, color: 'orange' }), model, 'right', 'wide', model.block('projector'))
     s.play(model.mark(['patch embed', 'vision encoder', 'LLM'], 'frozen'))
     s.play(model.feed([0.4, -0.3, 0.8, 0.1]))
     s.play(model.pass('projector', [-0.2, 0.9, 0.3, -0.6]), model.light('projector'), fadeIn(note), { duration: 2.4 })
     // The branch arrives beside the frozen model, and adds to what the model writes.
     s.play(model.show('LoRA'))
-    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3]), { duration: 3 })
+    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3], { aroundValues: [0, 0.7, 0.5, -0.2] }), { duration: 3 })
 })
 ```
 
-For another subject, give your own states: `states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } }` makes the layers of a container image. A state has a `color`, which a block takes in place of its own, `dim` for a block that does not run, `dash` for a border of dashes, and a `mark` at the right end of the block: `'lock'`, `'check'`, `'cross'` or `'dot'`. A block with no state starts in the first state of the record. `stack.stateOf(ref)`, `stack.labelOf(ref)` and `stack.find((block) => block.state === 'frozen')` read the blocks after the changes that the film has played so far. A stack of that kind has no vector, so it can take a small `gap`, such as 14.
+For another subject, give your own states: `states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } }` makes the layers of a container image. A state can set a `color` to override the block color, `dim` for a block that does not run, `dash` for a border of dashes, and a `mark` at the right end of the block: `'lock'`, `'check'`, `'cross'` or `'dot'`. A block with no state starts in the first state of the record. `stack.stateOf(ref)`, `stack.labelOf(ref)` and `stack.find((block) => block.state === 'frozen')` read the blocks after the changes that the film has played so far. If the film uses only block states, it can use a small `gap`, such as 14.
 
-`stack.open('attention', inside)` joins a block to a close-up of its inside: two lines go from the block to a frame around `inside`, and `inside` fades in. `inside` is a node of the film, a block of the layout, or a list: another stack, a grid of numbers, a formula. The film places it at the right or at the left of the stack first. One block is open at a time: `open` of another block closes the first one, and `stack.close()` closes the open block and fades its close-up out. The lines are for the places that the stack and the close-up have when `open` plays, and they do not follow a later move. A close-up over the stack or under it is an error, and so is a side where the lines would cross a part of the stack: a block on the stream that has a branch beside it opens to the left, and a block of a branch opens to the right.
+`stack.open('attention', inside)` joins a block to a close-up of its inside: two lines go from the block to a frame around `inside`, and `inside` fades in. `inside` is a node of the film, a block of the layout, or a list: another stack, a grid of numbers, a formula. The film places it at the right or at the left of the stack first. One block is open at a time: `open` of another block closes the first one, and `stack.close()` closes the open block and fades its close-up out. The lines use the positions of the stack and the close-up when `open` plays. Close and reopen the detail after moving it. A clone starts closed with its own timeline, including when you clone the group that contains the stack. A close-up over the stack or under it is an error, and so is a side where the lines would cross a part of the stack: a block on the stream that has a branch beside it opens to the left, and a block of a branch opens to the right.
 
 ```ts
 import { film, heatmap, layerStack, place, sceneArea } from 'vizmatic/stage'
@@ -1150,7 +1150,11 @@ export default film((s) => {
 
 `neuralNet` draws neurons and the weights between them, and its motion is an activation. `steps` lights one box of a row, and nothing joins its boxes. A layer stack knows the order of its layers and what each one does to the stream, so it can send one vector through them and keep its values.
 
-The complete proof films are in [`examples/_teaching/layer-stack-transformer.ts`](../../examples/_teaching/layer-stack-transformer.ts), [`layer-stack-connector.ts`](../../examples/_teaching/layer-stack-connector.ts), and [`layer-stack-tiny-gpt.ts`](../../examples/_teaching/layer-stack-tiny-gpt.ts). The cells show illustrative values. A shape label describes the full tensor, so its dimensions can exceed the number of cells drawn. The film supplies the new values. The stack does not compute a model's output or unroll a recurrent cell over time.
+The film supplies the values at each step. The cells can show a sample of a larger tensor. The shape label describes the full tensor and travels with the sample.
+
+For a branch around a block, pass the output of that block as `aroundValues`. The branch returns the final values minus that output. For example, if the input is 2, the frozen block produces 6, and the final value is 7, the adapter adds 1. Without `aroundValues`, the example carries the input values along the main path. A pass that keeps those values shows a zero contribution at the add.
+
+The runnable examples in `examples/_teaching` cover a decoder block, a multimodal projector with LoRA, and a tiny GPT forward pass. In `layer-stack-recurrence.ts`, a repeated cell opens onto a second stack with one block per word. Each pass applies the same recurrence to the hidden state.
 
 ## Code and tokens
 

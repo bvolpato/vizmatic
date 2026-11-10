@@ -13470,6 +13470,41 @@ describe('layer stack', () => {
     // The places of MODEL at size 28. The vector is 95 wide and 26 high, a block is 53 high, and the room between two layers is 48.
     const STREAM = -105
 
+    it('shows the residual relative to the output of the parallel block and zero when a pass keeps its values', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([{ branch: ['adapter'], around: 'base' }, { branch: ['attention'] }], { cells: 1, digits: 0 }))
+            s.play(stack.feed([2]), { duration: 0 })
+            s.play(stack.pass('adapter', [5], { aroundValues: [4] }), { duration: 10 })
+            s.play(stack.pass('attention'), { duration: 10 })
+        })
+        expect(at(8, () => numbers(stack.copy))).toEqual(['1'])
+        expect(at(8, () => numbers(stack.vector))).toEqual(['4'])
+        expect(at(18, () => numbers(stack.copy))).toEqual(['0'])
+        expect(stack.values).toEqual([5])
+    })
+
+    it('rejects a residual that will not fit before scheduling the pass, so the author can retry', async () => {
+        await compile((s) => {
+            const stack = s.add(layerStack([{ branch: ['adapter'] }], { cells: 1, digits: 0, font: 'mono' }))
+            s.play(stack.feed([9]))
+            expect(() => s.play(stack.pass('adapter', [-9]))).toThrow(/residual.*-18/)
+            expect(stack.passed).toBe(0)
+            s.play(stack.pass('adapter', [8]))
+            expect(stack.values).toEqual([8])
+        })
+    })
+
+    it('measures the region of a stack and its block inside a rotated parent', async () => {
+        await compile((s) => {
+            const stack = layerStack(['encoder'])
+            s.add(group(stack).rotate(Math.PI / 4))
+            expect(stack.region()).toEqual(boxOf(stack))
+            const block = stack.region('encoder')
+            expect(block.width).toBeCloseTo(block.height)
+        })
+    })
+
     it('puts the layers on one stream from the foot up, with a block on the stream as wide as the way of the vector and the blocks of a branch together', async () => {
         await compileFilm(film(() => {
             const stack = layerStack(MODEL)
@@ -13646,6 +13681,9 @@ describe('layer stack', () => {
             expect(() => layerStack([{ branch: [{ label: 'MLP', shape: '(T, 3072)' }] }])).toThrow(/layerStack: block 0 of layer 0 \("MLP"\) has a shape, and it is in a branch\. The add of a branch keeps the shape of the stream\. Give the shape to a block on the stream/)
             expect(() => layerStack(['a'], { states: { odd: { mark: 'star' as never } } })).toThrow(/layerStack: the mark of the state "odd" is "star"\. A mark is 'lock', 'check', 'cross', 'dot'/)
             expect(() => layerStack(['a'], { cells: 0 })).toThrow(/layerStack: cells is 0\. Give the number of cells of the vector, a whole number from 1 to 16/)
+            expect(() => layerStack(['a'], { states: { broken: null as never } })).toThrow(/give the state "broken" a look/)
+            expect(() => layerStack([{ branch: ['a'], shown: 'false' as never }])).toThrow(/set shown to true or false/)
+            expect(() => layerStack([{ branch: Array(1) }])).toThrow(/block 0 of layer 0 is undefined/)
             expect(() => layerStack(['a'], { digits: 1.5 })).toThrow(/layerStack: digits is 1\.5\. Give the number of decimals of a value in a cell, a whole number from 0 to 3/)
             expect(() => layerStack(['a'], { size: 0 })).toThrow(/layerStack: size is a text size, more than 0/)
             expect(() => layerStack(['a'], { blockHeight: 30 })).toThrow(/layerStack: a blockHeight of 30 has no room for a label of size 28: a letter with a tail would touch the border\. Give a blockHeight of \d+ or more/)

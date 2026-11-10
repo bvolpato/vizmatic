@@ -30,7 +30,7 @@ export default film({ fps: 30, font: 'text-serif', title: 'A connector between t
 
     // A branch beside the frozen language model adds a small change to what the model writes.
     s.play(model.light(null), model.show('LoRA'), fadeIn(small), { duration: 1 })
-    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3]), { duration: 3 })
+    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3], { aroundValues: [0, 0.7, 0.5, -0.2] }), { duration: 3 })
     s.play(model.pass('answer head', [0.9, -0.1, 0.2, 0.3]), { duration: 1.1 })
     s.wait(1)
 })
