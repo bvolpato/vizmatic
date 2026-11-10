@@ -651,7 +651,7 @@ describe('layout: place and beside', () => {
             // A time that the lanes do not have is outside the object, and so is a part with a name that the call does not have.
             expect(() => flow.region({ at: 500 })).toThrow('lanes: region: a time is 500. `from`, `to` and `at` are times of the domain, 0 to 10')
             expect(() => flow.region({ from: 8, to: 2 })).toThrow('lanes: region: `from` is 8 and `to` is 2. Give a `from` that is not after `to`')
-            expect(() => flow.region({ lanes: 'a' } as object)).toThrow('lanes: region has no part "lanes". Its parts are: lane, between, from, to, at')
+            expect(() => flow.region({ lanes: 'a' } as object)).toThrow('lanes: region has no part "lanes". Its parts are: lane, between, from, to, at, event')
             expect(() => flow.region({ at: 4, to: 6 })).toThrow('lanes: region takes `at` for one time, or `from` and `to` for a stretch of time, not both')
         })
     })
