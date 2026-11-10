@@ -4,6 +4,7 @@ Every step runs them before it does anything, so a mistake in a file is one line
 the field, what is wrong and what is allowed, and never a stack of the tool that met it first."""
 import hashlib
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -11,6 +12,8 @@ from pathlib import Path
 # A scene id goes into the names of files, so it has letters, digits and hyphens only.
 SCENE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*\Z")
 MOVIE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+# A cue id is a name that a scene types.
+CUE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
 # The voice step speaks American English, and these are the two families of Kokoro voices for it.
 VOICE_NAME = re.compile(r"a[fm]_[a-z]+\Z")
 
@@ -58,7 +61,7 @@ class Report:
 
 
 def number(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def whole(value):
@@ -196,12 +199,13 @@ def check_script(written, report):
     pronounce = written.get("pronounce", {})
     if not isinstance(pronounce, dict) or not all(isinstance(word, str) and word and isinstance(sub, str) and sub for word, sub in pronounce.items()):
         report.add(file, "pronounce", "is not a map from a word to its spoken form", 'Give an object such as { "800": "eight hundred" }')
+        pronounce = {}
     scenes = written.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         return report.add(file, "scenes", "is missing or empty", "Give a list with one scene or more")
     seen = set()
     for index, scene in enumerate(scenes):
-        check_scene(scene, f"scenes[{index}]", seen, file, report)
+        check_scene(scene, f"scenes[{index}]", seen, file, report, pronounce)
 
 
 def check_timeline(line, file, report):
@@ -215,7 +219,56 @@ def check_timeline(line, file, report):
             report.add(file, f"timeline.{key}", f"{shown(line[key])} is not a time", "Give seconds, 0 or more")
 
 
-def check_scene(scene, field, seen, file, report):
+def plain(text):
+    """The text without the phoneme notes of the voice engine: "[Toto](/tˈOtO/)" becomes "Toto"."""
+    return re.sub(r"\[([^\]]+)\]\(/[^)]*/\)", r"\1", text)
+
+
+def words_of(text):
+    """The words of a text as a cue of the film reads them: its letters and its digits, without case and
+    punctuation. A period stays inside a number, such as 3.8."""
+    return [word.strip(".") for word in re.sub(r"[^\w.]|_", " ", text.lower()).split() if word.strip(".")]
+
+
+def says(text, phrase):
+    """How many times a text has the words of a phrase, one after another."""
+    words, wanted = words_of(text), words_of(phrase)
+    return sum(words[at:at + len(wanted)] == wanted for at in range(len(words) - len(wanted) + 1)) if wanted else 0
+
+
+def check_cues(cues, beat, where, ids, pronounce, file, report):
+    """The cues that a beat declares: a name for a moment of the voice, which a scene of the film uses."""
+    example = '[{ "id": "result", "phrase": "one hundred and sixty times" }]'
+    if not isinstance(cues, list):
+        return report.add(file, f"{where}.cues", f"{shown(cues)} is not a list", f"Give a list of cues, such as {example}")
+    for index, cue in enumerate(cues):
+        at = f"{where}.cues[{index}]"
+        if not isinstance(cue, dict):
+            report.add(file, at, f"{shown(cue)} is not an object", f"Give an id and a phrase, such as {example}")
+            continue
+        keys(cue, {"id", "phrase", "data"}, file, f"{at}.", report)
+        cue_id = cue.get("id")
+        if not (isinstance(cue_id, str) and CUE_ID.match(cue_id)):
+            report.add(file, f"{at}.id", "is missing" if "id" not in cue else f"{shown(cue_id)} is not an id", 'Give the name that a scene uses for the cue, with letters, digits, hyphens and underscores, such as "result"')
+        elif cue_id in ids:
+            report.add(file, f"{at}.id", f'"{cue_id}" is the id of two cues of the scene', "Give each cue of a scene its own id")
+        else:
+            ids.add(cue_id)
+        phrase, say = cue.get("phrase"), beat.get("say")
+        if not (isinstance(phrase, str) and words_of(phrase)):
+            report.add(file, f"{at}.phrase", "is missing" if "phrase" not in cue else f"{shown(phrase)} has no word", "Give words of the beat that the voice says")
+        elif isinstance(say, str):
+            # The film finds a cue in the words that the voice says: the spoken form of the beat.
+            said = plain(spoken(say, pronounce))
+            times = says(said, phrase)
+            heard = f', which the voice says as "{said}"' if said != say else ""
+            if times == 0:
+                report.add(file, f"{at}.phrase", f'the beat does not say "{phrase}"', f'Give words of the beat, one after another. The beat is "{say}"{heard}')
+            elif times > 1:
+                report.add(file, f"{at}.phrase", f'the beat says "{phrase}" {times} times', f'Give a longer phrase, which the beat says one time. The beat is "{say}"{heard}')
+
+
+def check_scene(scene, field, seen, file, report, pronounce=None):
     if not isinstance(scene, dict):
         return report.add(file, field, f"{shown(scene)} is not an object", 'Give { "id": ..., "title": ..., "beats": [...] }')
     keys(scene, {"id", "title", "beats"}, file, f"{field}.", report)
@@ -231,12 +284,15 @@ def check_scene(scene, field, seen, file, report):
     beats = scene.get("beats")
     if not isinstance(beats, list) or not beats:
         return report.add(file, f"{field}.beats", "is missing or empty", 'Give a list with one beat or more, such as [{ "say": "One sentence." }]')
+    cue_ids = set()
     for index, beat in enumerate(beats):
         where = f"{field}.beats[{index}]"
         if not isinstance(beat, dict):
             report.add(file, where, f"{shown(beat)} is not an object", 'Give { "say": "One sentence." }')
             continue
-        keys(beat, {"say", "hold"}, file, f"{where}.", report)
+        keys(beat, {"say", "hold", "cues"}, file, f"{where}.", report)
+        if "cues" in beat:
+            check_cues(beat["cues"], beat, where, cue_ids, pronounce or {}, file, report)
         if not (isinstance(beat.get("say"), str) and beat["say"].strip()):
             report.add(file, f"{where}.say", "is missing" if "say" not in beat else f"{shown(beat['say'])} is not a text", "Give the words that the voice says")
         if "hold" in beat and not (number(beat["hold"]) and beat["hold"] >= 0):
@@ -269,7 +325,8 @@ def outline(written, voice):
     header = {"voice": voice["name"], "speed": voice["speed"], "intro": line["intro"], "lead": line["intro"] + line["pause"], "gap": line["gap"], "tail": line["tail"]}
     scenes = [{
         "id": scene["id"], "title": scene["title"],
-        "beats": [{"say": beat["say"], "text": spoken(beat["say"], pronounce), "hold": beat.get("hold", HOLD)} for beat in scene["beats"]],
+        # A beat that declares cues has them here. A beat with none has no key, so the fingerprint of a script without cues is as it was.
+        "beats": [{"say": beat["say"], "text": spoken(beat["say"], pronounce), "hold": beat.get("hold", HOLD), **({"cues": beat["cues"]} if beat.get("cues") else {})} for beat in scene["beats"]],
     } for scene in written["scenes"]]
     return header, scenes
 
@@ -279,10 +336,13 @@ def fingerprint(header, scenes):
     return hashlib.sha1(json.dumps([header, scenes], sort_keys=True).encode()).hexdigest()[:16]
 
 
+def cue_record(beat):
+    """Compare the JSON types in cue data. Python otherwise treats false as equal to zero."""
+    return json.dumps(beat.get("cues", []), sort_keys=True)
+
+
 def changes(header, scenes, measured):
     """What the script and film.json say now that the timing does not have. An empty list: the timing is current."""
-    if measured.get("fingerprint") == fingerprint(header, scenes):
-        return []
     found = [f"{key} ({header[key]} now, {measured.get(key)} in the timing)" for key in header if measured.get(key) != header[key]]
     old = {scene.get("id"): scene for scene in measured.get("scenes", []) if isinstance(scene, dict)}
     if [scene["id"] for scene in scenes] != list(old):
@@ -298,7 +358,9 @@ def changes(header, scenes, measured):
             found.append(f"{scene['id']} ({len(scene['beats'])} beats now, {len(takes)} in the timing)")
             continue
         for index, (beat, take) in enumerate(zip(scene["beats"], takes)):
-            what = [name for key, name in (("say", "the text"), ("text", "the spoken form"), ("hold", "the hold")) if take.get(key) != beat[key]]
+            what = [name for key, name in (("say", "the text"), ("text", "the spoken form"), ("hold", "the hold")) if take.get(key) != beat.get(key)]
+            if cue_record(take) != cue_record(beat):
+                what.append("the cues")
             if what:
                 # A change of the text is also a change of its spoken form, and one name is enough.
                 found.append(f"{scene['id']}/{index} ({' and '.join(name for name in what if not (name == 'the spoken form' and 'the text' in what))})")
@@ -318,11 +380,20 @@ def timing_defect(measured):
     scenes = measured.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         return "scenes", "is missing or empty"
+    ended = None
     for at, scene in enumerate(scenes):
         if not isinstance(scene, dict):
             return f"scenes[{at}]", "is not an object"
         if not isinstance(scene.get("id"), str):
             return f"scenes[{at}].id", "is missing"
+        if "start" in scene and not (number(scene["start"]) and scene["start"] >= 0):
+            return f"scenes[{at}].start", f"{shown(scene['start'])} is not a time"
+        # A scene with a start of its own starts when the scene before it has ended, as in the film.
+        if "start" in scene and ended is not None and scene["start"] < ended - 1e-6:
+            return f"scenes[{at}].start", f"{shown(scene['start'])} is before the end of the scene before it, at {round(ended, 3)} s"
+        now = scene["start"] if "start" in scene else measured["lead"] if ended is None else ended + measured["gap"]
+        if at == 0 and now < measured.get("intro", 0):
+            return "scenes[0].start" if "start" in scene else "lead", "starts the voice before the title card ends"
         beats = scene.get("beats")
         if not isinstance(beats, list) or not beats:
             return f"scenes[{at}].beats", "is missing or empty"
@@ -339,6 +410,30 @@ def timing_defect(measured):
             words = beat.get("words")
             if not isinstance(words, list) or not all(isinstance(word, dict) and isinstance(word.get("text"), str) and number(word.get("start")) and number(word.get("end")) for word in words):
                 return f"{where}.words", "is not a list of words with their times"
+            for i, word in enumerate(words):
+                if word["start"] < 0:
+                    return f"{where}.words[{i}].start", "is before the start of the beat"
+                if not word["start"] <= word["end"] <= beat["duration"] + 0.001:
+                    return f"{where}.words[{i}].end", "is outside the word or past the end of the beat"
+                if i and word["start"] < words[i - 1]["start"]:
+                    return f"{where}.words[{i}].start", "precedes the previous word's start"
+                if i and word["end"] < words[i - 1]["end"]:
+                    return f"{where}.words[{i}].end", "precedes the previous word's end"
+            cues = beat.get("cues", [])
+            if not isinstance(cues, list):
+                return f"{where}.cues", "is not a list"
+            if cues:
+                timed = " ".join(word["text"] for word in words)
+                for i, cue in enumerate(cues):
+                    field = f"{where}.cues[{i}].phrase"
+                    phrase = cue.get("phrase") if isinstance(cue, dict) else None
+                    if not isinstance(phrase, str) or not words_of(phrase):
+                        return field, "has no words"
+                    count = says(timed, phrase)
+                    if count != 1:
+                        return field, f"{shown(phrase)} matches the timed words {count} times (expected once)"
+            now += beat["duration"] + beat["hold"]
+        ended = now
     return None
 
 

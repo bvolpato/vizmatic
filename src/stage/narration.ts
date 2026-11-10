@@ -16,6 +16,20 @@ export interface NarrationWord {
     end: number
 }
 
+/**
+ * A cue that the script declares for a beat: a name for a moment of the voice. A scene names the id where
+ * it can name a phrase, such as `c.show('brier-result', nodes)`. A declared cue that no scene uses stops
+ * the build, so the script and the film cannot drift apart.
+ */
+export interface NarrationCue {
+    /** The name that a scene uses. It is unique in its scene. */
+    id: string
+    /** The words of the beat that the cue stands for. The voice says them one time in the beat. */
+    phrase: string
+    /** What the script wants the film to know about the cue, such as a color or the name of a part. `c.cue(id).data` gives it. */
+    data?: unknown
+}
+
 /** One take of the voice: a sentence or a short paragraph. */
 export interface NarrationBeat {
     /** The text that the voice speaks. Captions use it. */
@@ -26,12 +40,20 @@ export interface NarrationBeat {
     hold?: number
     /** Word times, from the speech engine or from a transcription. Cues need them. */
     words?: readonly NarrationWord[]
+    /** The cues that the script declares for this beat. */
+    cues?: readonly NarrationCue[]
 }
 
 export interface NarrationScene {
     id: string
     /** Chapter title. A scene without one does not start a chapter. */
     title?: string
+    /**
+     * When the voice says the first word of the scene, in film seconds. Without it, the scene starts one gap
+     * after the end of the scene before it, and the first scene starts at the lead. A tool that lays out its
+     * own sound gives each scene its start. A scene cannot start before the scene before it ends.
+     */
+    start?: number
     beats: readonly NarrationBeat[]
 }
 
@@ -68,8 +90,9 @@ export interface PlacedBeat {
     words: readonly NarrationWord[]
 }
 
+// The words of a text: its letters and its digits, of any script, without case and punctuation.
 // A period stays only inside a number, such as 3.8, so "model." matches "model".
-const tokens = (text: string): string[] => text.toLowerCase().replace(/[^a-z0-9.]+/g, ' ').split(' ').map((token) => token.replace(/^\.+|\.+$/g, '')).filter(Boolean)
+const tokens = (text: string): string[] => text.toLowerCase().replace(/[^\p{L}\p{N}.]+/gu, ' ').split(' ').map((token) => token.replace(/^\.+|\.+$/g, '')).filter(Boolean)
 
 /** Split spoken text into caption lines: by sentence, then by length. */
 export function captionLines(text: string, length = 74): string[] {
@@ -112,19 +135,46 @@ const CUE_SEEN = 0.5
 const SWAP_WAIT = 0.2
 /** The picture of a scene starts to leave this long before the end of the scene: `clear` starts its fade then, and so does the shell of `narrated()`. */
 const LEAVE_LEAD = 0.24
-const CUE_OPTIONS = ['beat', 'lead', 'fade', 'stagger', 'skipShown']
+const CUE_OPTIONS = ['beat', 'lead', 'fade', 'stagger', 'skipShown', 'after']
 /** A node with less opacity than this is not on the screen for a viewer. */
 const SEEN_LEAST = 0.01
 /** Two times that are nearer than this are one time. */
 const SAME_TIME = 1e-6
+const clearClips = new WeakSet<Stage['clips'][number]>()
 
-/** A spoken phrase, or the index of a beat for the moment that the beat starts. */
+/** A scene clear can finish with the shell fade, just after the scene ends. */
+export function isClearClip(clip: Stage['clips'][number]): boolean {
+    return clearClips.has(clip)
+}
+
+/** A spoken phrase, the id of a cue that the script declares, or the index of a beat for the moment that the beat starts. */
 export type Cue = string | number
+
+/** When the voice says a cue. A cue that the script declares also has its id, its phrase, its beat and its data. */
+export interface CueTime {
+    start: number
+    end: number
+    id?: string
+    phrase?: string
+    beat?: number
+    data?: unknown
+}
+
+/** A cue that the script declares for a scene, with the beat that it is in. */
+export interface DeclaredCue extends NarrationCue {
+    beat: number
+}
 
 export interface CueOptions {
     /** Search the phrase in this beat only. Use it when the voice says the phrase in two beats. */
     beat?: number
-    /** Seconds before the phrase. Defaults to 0.1. A negative lead is after the start of the phrase. */
+    /**
+     * Start when the voice has said the phrase, and not as it starts to say it: for a result that the voice
+     * computes, which must not be on the screen before the voice gets there. The lead is then 0. With the
+     * index of a beat as the cue, the change starts when the voice of the beat ends.
+     */
+    after?: boolean
+    /** Seconds before the phrase. Defaults to 0.1, and to 0 with `after`. A negative lead is later. */
     lead?: number
     /** Seconds of the fade. Defaults to 0.3. */
     fade?: number
@@ -192,6 +242,10 @@ export class SceneClock {
     window: { from: number; to: number }
     /** What `show`, `hide` and `swap` did to each node, in the order of the calls. A second change of a node is checked against it. */
     private readonly changes = new Map<Node, Change[]>()
+    /** The cues that the script declares for this scene, in the order of the script. A scene names one by its id. */
+    readonly cues: readonly DeclaredCue[]
+    /** The ids of the declared cues that the scene used. The narration reads them when the film is built. */
+    readonly usedCues = new Set<string>()
 
     constructor(
         /** The stage of the film. A helper that takes the clock, such as the claim tag of a kit, adds its node there. */
@@ -203,19 +257,40 @@ export class SceneClock {
         next: number = end,
         /** When the scene before this one is gone. 0 for the first scene. */
         opens = 0,
+        cues: readonly DeclaredCue[] = [],
+        /** The chapter title, when the timing supplies one. */
+        readonly title?: string,
     ) {
         this.next = next
         this.window = { from: opens, to: Math.max(opens, end - LEAVE_LEAD) }
+        this.cues = cues
     }
 
     /**
-     * When the voice says a phrase. Pass a beat index to search one beat only. Throws if the phrase is not
-     * spoken, and if it is spoken two times: the message names the beats, and says how to pick one.
+     * When the voice says a phrase, or a cue that the script declares: `c.cue('brier-result')`. Pass a beat
+     * index to search one beat only. Throws if the phrase is not spoken, and if it is spoken two times: the
+     * message names the beats, and says how to pick one. A declared cue also gives its phrase, its beat and
+     * its data. In a scene that declares cues, a string that is the id of a cue is that cue, also when the
+     * voice says the same words.
      */
-    cue(phrase: string, beat?: number): { start: number; end: number } {
+    cue(phrase: string, beat?: number): CueTime {
         if (typeof phrase !== 'string') throw new Error(`narration: scene "${this.id}": a cue is a spoken phrase, and it is ${phrase === null ? 'null' : typeof phrase === 'object' ? 'an object' : String(phrase)}`)
+        const declared = this.cues.find((cue) => cue.id === phrase)
+        if (declared) {
+            if (beat !== undefined && beat !== declared.beat) throw new Error(`narration: scene "${this.id}": the script declares the cue "${phrase}" for beat ${declared.beat}, and the call names beat ${beat}. A declared cue has its beat: leave the beat out`)
+            this.usedCues.add(declared.id)
+            return { ...this.spoken(declared.phrase, declared.beat), id: declared.id, phrase: declared.phrase, beat: declared.beat, ...(declared.data === undefined ? {} : { data: declared.data }) }
+        }
+        return this.spoken(phrase, beat)
+    }
+
+    /** When the voice says a phrase, in film seconds. */
+    private spoken(phrase: string, beat?: number): { start: number; end: number } {
         const want = tokens(phrase)
-        if (want.length === 0) throw new Error(`narration: scene "${this.id}": a cue needs at least one word`)
+        if (want.length === 0) {
+            const ids = this.cues.length > 0 ? ` The cues that the script declares for this scene are: ${this.cues.map((cue) => cue.id).join(', ')}` : ''
+            throw new Error(`narration: scene "${this.id}": the cue ${JSON.stringify(phrase)} has no letter and no digit, so it names no word of the voice. A cue is a word or a number that the voice says: write the words that the voice says for a symbol, such as "percent" for "%".${ids}`)
+        }
         if (beat !== undefined && !this.beats[beat]) throw new Error(`narration: scene "${this.id}" has no beat ${beat}`)
         // One timed word can hold several spoken tokens, such as "twenty seven".
         const spoken = this.beats.map((placed) => placed.words.flatMap((word) => tokens(word.text).map((token) => ({ token, start: word.start, end: word.end }))))
@@ -228,7 +303,11 @@ export class SceneClock {
         })
         const found = places(want)
         const where = beat === undefined ? '' : ` in beat ${beat}`
-        if (found.length === 0) throw new Error(`narration: scene "${this.id}": the voice never says "${phrase}"${where}`)
+        if (found.length === 0) {
+            const ids = this.cues.map((cue) => cue.id)
+            const help = ids.length ? `. Use a spoken phrase or one of the declared ids: ${ids.join(', ')}` : ''
+            throw new Error(`narration: scene "${this.id}": the voice never says "${phrase}"${where}${help}`)
+        }
         const time = (one: { beat: number; at: number }) => ({ start: this.beats[one.beat]!.start + spoken[one.beat]![one.at]!.start, end: this.beats[one.beat]!.start + spoken[one.beat]![one.at + want.length - 1]!.end })
         if (found.length > 1) {
             const said = found.map((one) => `in beat ${one.beat} at ${stamp(time(one).start)}`)
@@ -352,20 +431,24 @@ export class SceneClock {
         const names = what === 'hide' ? CUE_OPTIONS.filter((name) => name !== 'skipShown') : CUE_OPTIONS
         const unknown = Object.keys(options).filter((name) => !names.includes(name))
         if (unknown.length > 0) throw new Error(`${where} has no option "${unknown[0]}". Its options are: ${names.join(', ')}. For another change at a phrase, use on`)
-        const lead = options.lead ?? CUE_LEAD, length = options.fade ?? CUE_FADE
+        const lead = options.lead ?? (options.after === true ? 0 : CUE_LEAD), length = options.fade ?? CUE_FADE
         if (!Number.isFinite(lead)) throw new Error(`${where}: lead is ${JSON.stringify(options.lead)}, and it is the seconds before the phrase, such as 0.4`)
         if (!(Number.isFinite(length) && length > 0)) throw new Error(`${where}: fade is ${JSON.stringify(options.fade)}, and it is the seconds of the fade, more than 0`)
         const { stagger } = options
         if (!(stagger === undefined || typeof stagger === 'boolean' || (Number.isFinite(stagger) && stagger >= 0))) throw new Error(`${where}: stagger is ${JSON.stringify(stagger)}, and it is true, or the seconds between two items`)
         if (options.skipShown !== undefined && typeof options.skipShown !== 'boolean') throw new Error(`${where}: skipShown is ${JSON.stringify(options.skipShown)}, and it is true or false`)
+        if (options.after !== undefined && typeof options.after !== 'boolean') throw new Error(`${where}: after is ${JSON.stringify(options.after)}, and it is true, for a change that starts when the voice has said the phrase`)
+        // With `after`, the change waits for the end of the phrase, or for the end of the voice of the beat.
+        const after = options.after === true
         let start: number
         if (typeof cue === 'number') {
             const beat = this.beats[cue]
             if (!beat) throw new Error(`narration: scene "${this.id}" has no beat ${cue}. A cue is a spoken phrase, or the index of a beat from 0 to ${this.beats.length - 1}`)
             if (options.beat !== undefined) throw new Error(`${where}: the cue is the beat ${cue}, so the option \`beat\` has no job. It picks the beat of a spoken phrase`)
-            start = beat.start
+            start = after ? beat.end : beat.start
         } else {
-            start = this.cue(cue, options.beat).start
+            const said = this.cue(cue, options.beat)
+            start = after ? said.end : said.start
         }
         const name = typeof cue === 'number' ? `beat ${cue}` : `"${cue}"`
         // A change with the lead of the library starts when the picture of the scene opens, at the earliest.
@@ -527,6 +610,7 @@ export class SceneClock {
         })
         if (list.length === 0) return this
         this.stage.at(this.end - lead, () => this.stage.play(...list.map((target) => (target instanceof Value ? target.to(0, { duration }) : fade(target, 0, { duration })))))
+        clearClips.add(this.stage.clips[this.stage.clips.length - 1]!)
         return this
     }
 
@@ -564,6 +648,58 @@ export class SceneClock {
     }
 }
 
+/** The cues that the script declares for a scene, each with its beat. A cue that is not whole stops with the name of its scene and its beat. */
+function declaredCues(scene: NarrationScene): DeclaredCue[] {
+    const found: DeclaredCue[] = []
+    scene.beats.forEach((beat, index) => {
+        if (beat.cues === undefined) return
+        const where = `narration: scene "${scene.id}": beat ${index}`
+        if (!Array.isArray(beat.cues)) throw new Error(`${where}: cues is ${JSON.stringify(beat.cues)}, and it is a list such as [{ id: 'result', phrase: 'one hundred and sixty times' }]`)
+        beat.cues.forEach((cue: NarrationCue, at: number) => {
+            if (typeof cue !== 'object' || cue === null) throw new Error(`${where}: cue ${at} is ${JSON.stringify(cue)}, and a cue is an object such as { id: 'result', phrase: 'one hundred and sixty times' }`)
+            if (typeof cue.id !== 'string' || cue.id.trim() === '') throw new Error(`${where}: cue ${at} needs an id, the name that a scene uses for it, such as { id: 'result', phrase: ${JSON.stringify(cue.phrase ?? 'the words')} }`)
+            if (typeof cue.phrase !== 'string' || cue.phrase.trim() === '') throw new Error(`${where}: the cue "${cue.id}" needs a phrase, the words of the beat that it stands for`)
+            const twice = found.find((other) => other.id === cue.id)
+            if (twice) throw new Error(`narration: scene "${scene.id}": two cues have the id "${cue.id}", in beat ${twice.beat} and in beat ${index}. An id names one cue of its scene`)
+            found.push({ ...cue, beat: index })
+        })
+    })
+    return found
+}
+
+/** Stop when the voice does not say the phrase of a declared cue one time in its beat. The script is wrong then, whatever the film does. */
+function checkCues(clock: SceneClock): void {
+    for (const cue of clock.cues) {
+        try {
+            clock.cue(cue.id)
+        } catch (error) {
+            if (!(error instanceof Error)) throw error
+            throw new Error(`${error.message.replace(`narration: scene "${clock.id}": `, `narration: scene "${clock.id}": the cue "${cue.id}" that the script declares for beat ${cue.beat}: `)}`)
+        }
+    }
+    // The check asked for each cue. Only what the scene asks for counts as a use.
+    clock.usedCues.clear()
+}
+
+/** Check external word boundaries before using them to place cues and captions. */
+function checkBeat(beat: NarrationBeat, field: string): void {
+    if (!beat || typeof beat !== 'object') throw new Error(`${field} must be a beat with say and duration`)
+    if (typeof beat.say !== 'string') throw new Error(`${field}.say must be the spoken text of the beat`)
+    if (!Number.isFinite(beat.duration) || beat.duration <= 0) throw new Error(`${field}.duration must be a finite number of seconds greater than zero`)
+    if (beat.hold !== undefined && (!Number.isFinite(beat.hold) || beat.hold < 0)) throw new Error(`${field}.hold must be a finite number of seconds, zero or more`)
+    if (beat.words !== undefined && !Array.isArray(beat.words)) throw new Error(`${field}.words must be a list of timed words`)
+    for (const [at, word] of (beat.words ?? []).entries()) {
+        const entry = `${field}.words[${at}]`
+        if (typeof word?.text !== 'string') throw new Error(`${entry}.text must be a spoken word`)
+        if (!Number.isFinite(word.start) || word.start < 0) throw new Error(`${entry}.start must be a time in seconds from the start of the beat`)
+        // Speech engines can round a word time to the nearest millisecond.
+        if (!Number.isFinite(word.end) || word.end < word.start || word.end > beat.duration + 0.001) throw new Error(`${entry}.end must fall between its start and the end of the beat at ${beat.duration} seconds`)
+        const previous = beat.words![at - 1]
+        if (previous && word.start < previous.start) throw new Error(`${entry}.start precedes the previous word's start. Give word times in spoken order`)
+        if (previous && word.end < previous.end) throw new Error(`${entry}.end precedes the previous word's end. Give word times in spoken order`)
+    }
+}
+
 /** The timeline of a whole narration. */
 export class Narration {
     readonly scenes: readonly SceneClock[]
@@ -572,27 +708,50 @@ export class Narration {
     readonly lead: number
     readonly gap: number
 
+    private readonly requested = new Set<SceneClock>()
+
     constructor(stage: Stage, timing: NarrationTiming, options: NarrationOptions = {}) {
         this.lead = options.lead ?? timing.lead ?? 0.6
         this.gap = options.gap ?? timing.gap ?? 0.4
-        if (!(this.lead >= 0) || !(this.gap >= 0)) throw new Error('narration: lead and gap must be zero or more seconds')
+        if (!Number.isFinite(this.lead) || this.lead < 0) throw new Error('narration: lead must be a finite number of seconds, zero or more')
+        if (!Number.isFinite(this.gap) || this.gap < 0) throw new Error('narration: gap must be a finite number of seconds, zero or more')
         const seen = new Set<string>()
-        const scenes: SceneClock[] = []
+        // First the place of each scene: its first word, the place of each beat, and the end of its last hold.
+        const placed: { scene: NarrationScene; start: number; end: number; beats: PlacedBeat[] }[] = []
         let now = this.lead
-        let last = now
         for (const scene of timing.scenes) {
             if (seen.has(scene.id)) throw new Error(`narration: two scenes are named "${scene.id}"`)
             seen.add(scene.id)
+            if (scene.start !== undefined) {
+                // A tool that lays out its own sound says when each scene starts.
+                const before = placed[placed.length - 1]
+                if (!(Number.isFinite(scene.start) && scene.start >= 0)) throw new Error(`narration: scene "${scene.id}": start is ${JSON.stringify(scene.start)}, and it is the time of the first word of the scene, in film seconds, 0 or more`)
+                if (before && scene.start < before.end - SAME_TIME) {
+                    throw new Error(`narration: scene "${scene.id}" starts at ${stamp(scene.start)}, and the scene before it, "${before.scene.id}", ends at ${stamp(before.end)} with the hold of its last beat. A scene starts when the scene before it has ended: give it a later start, or give the last beat of "${before.scene.id}" a shorter hold`)
+                }
+                now = scene.start
+            }
             const start = now
             const beats: PlacedBeat[] = []
-            for (const beat of scene.beats) {
-                if (!(beat.duration > 0)) throw new Error(`narration: scene "${scene.id}" has a beat without a measured duration: "${beat.say}"`)
+            for (const [index, beat] of scene.beats.entries()) {
+                const field = `narration: scene "${scene.id}": beats[${index}]`
+                checkBeat(beat, field)
                 const hold = beat.hold ?? 0
                 beats.push({ start: now, end: now + beat.duration, until: now + beat.duration + hold, text: beat.say, words: beat.words ?? [] })
                 now += beat.duration + hold
             }
-            // The scene before this one is gone one gap before the first word of this one.
-            scenes.push(new SceneClock(stage, scene.id, start, now, beats, now + this.gap, scenes.length === 0 ? 0 : start - this.gap))
+            placed.push({ scene, start, end: now, beats })
+            now += this.gap
+        }
+        const scenes: SceneClock[] = []
+        placed.forEach(({ scene, start, end, beats }, index) => {
+            const before = placed[index - 1], after = placed[index + 1]
+            // The scene before this one is gone at its end, which is one gap before the first word of this one
+            // in a timing with no start of its own. The next scene starts at its first word.
+            const gone = !before ? 0 : scene.start === undefined ? start - this.gap : before.end
+            const clock = new SceneClock(stage, scene.id, start, end, beats, after ? after.start : end + this.gap, gone, declaredCues(scene), scene.title)
+            scenes.push(clock)
+            checkCues(clock)
             if (options.chapters !== false && scene.title) stage.chapters.push({ title: scene.title, time: scenes.length === 1 ? 0 : start })
             if (options.captions !== false) {
                 for (const beat of beats) {
@@ -607,19 +766,37 @@ export class Narration {
                     }
                 }
             }
-            last = now
-            now += this.gap
-        }
+        })
+        const last = placed.length > 0 ? placed[placed.length - 1]!.end : this.lead
         this.scenes = scenes
         this.duration = last
         // The film must last until the voice ends, even if no picture changes there.
         stage.at(last, () => {})
+        // When the film is built, each cue that the script declares must drive something.
+        if (scenes.some((scene) => scene.cues.length > 0)) stage.checks.push(() => this.checkUsed())
+    }
+
+    /**
+     * Stop when a cue that the script declares drives nothing in the film: the script and the film have
+     * drifted apart. A partial draft checks the scenes selected for that draft.
+     */
+    private checkUsed(): void {
+        const scenes = this.scenes.filter((scene) => this.requested.has(scene) || scene.usedCues.size > 0)
+        const unused = scenes.map((scene) => ({
+            id: scene.id,
+            cues: scene.cues.filter((cue) => !scene.usedCues.has(cue.id)).map((cue) => cue.id),
+        })).filter((scene) => scene.cues.length > 0)
+        if (unused.length === 0) return
+        const count = unused.reduce((sum, scene) => sum + scene.cues.length, 0)
+        const list = unused.map((scene) => `scene "${scene.id}": ${scene.cues.join(', ')}`).join('; ')
+        throw new Error(`narration: ${count} ${count === 1 ? 'cue that the script declares drives' : 'cues that the script declares drive'} nothing in the film: ${list}. Use each one in its scene, such as c.show('${unused[0]!.cues[0]}', nodes), or remove it from the script`)
     }
 
     /** The clock of one scene. */
     scene(id: string): SceneClock {
         const found = this.scenes.find((scene) => scene.id === id)
         if (!found) throw new Error(`narration: no scene "${id}". The scenes are: ${this.scenes.map((scene) => scene.id).join(', ')}`)
+        this.requested.add(found)
         return found
     }
 
