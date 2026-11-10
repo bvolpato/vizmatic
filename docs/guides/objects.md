@@ -817,7 +817,7 @@ export default film((s) => {
 
 ## Passages
 
-`passage(text, options)` draws a passage of real text that a film works on: a source page, a prompt, one turn of a chat, or the sentences of an answer. The words wrap at `width`, and the text is what the film gives, letter for letter. A film marks parts of the text by their words, cuts the text into chunks, moves one selection with a count that follows it, lifts a part out as a passage of its own, ties a part to its source with a line, and changes the text to its next version. Use it to show the real page, prompt or reply where a card would only name it.
+`passage(text, options)` displays prose that a film can annotate and revise. It wraps words at `width`, collapses consecutive spaces and tabs, and preserves line and paragraph breaks. Use a passage to cut a document into chunks, connect claims to evidence, or show how a prompt revision changes a reply. The runnable films in `examples/films/passage/` demonstrate all three uses.
 
 ```film paired label="A runbook is cut into windows of words, then with an overlap, then by sentence, and the first chunk lifts out"
 import { film, passage } from 'vizmatic/stage'
@@ -842,7 +842,7 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-A passage is not a `quote`, a `codeBlock` or a row of `tokens`. A `quote` shows the exact words of one source with who said them, and it does not change. A `codeBlock` keeps the columns of code and data, and `morphCode` changes it token by token. `tokens` draws the cells of a tokenizer, with a value under each. A passage is prose that wraps, and it keeps its identity while the film marks it, cuts it, and changes it. It shares the rule for finding words with `quote`: a part is whole words, and `page.find(part)` gives its glyphs.
+Use `quote` for a fixed quotation with attribution, `codeBlock` when columns and spacing matter, and `tokens` for tokenizer output. A passage keeps the same words on screen as annotations change.
 
 `width` is the width of the object, and no letter passes it. Without a width, the text is on one line and the object is as wide as that line needs, 900 at the most. A line breaks at a space. A line break in the text starts a line, and an empty line starts a paragraph, with half a line of room. A no-break space (` `) keeps two words on one line. A word that is wider than the passage is an error, and the message gives the width that is enough. `size` is the text size, 32 by default, and `leading` is the height of a line as a multiple of it, 1.6 by default. The bands and the links need that room: a smaller `leading` is an error when a band does not fit. The words are in the font of the film, or in `font`.
 
@@ -875,7 +875,7 @@ For another subject, give your own record, such as `kinds: { rule: { color: 'tea
 
 ### Chunks
 
-`page.cut(how)` cuts the text into chunks. `{ size: 12, overlap: 3 }` makes windows of 12 words, and each window shares 3 words with the next. `{ by: 'sentence' }` makes one chunk for each sentence, and `{ by: 'paragraph' }` one for each line of the text. A list gives the words of each chunk, for a cut of your own. The chunks arrive one after another as bands of two colors in turn, as high as a line, with a gap between two chunks. Over the words that two chunks share, the first chunk has the upper half of the line and the next chunk has the lower half, so the overlap shows both. A word is in two chunks at the most: an overlap of more than half of `size` is an error.
+`page.cut(how)` cuts the text into chunks. `{ size: 12, overlap: 3 }` makes windows of 12 words, and each window shares 3 words with the next. `{ by: 'paragraph' }` starts a chunk at each blank line. `{ by: 'sentence' }` also starts a chunk after a word that ends in a period, exclamation point, or question mark. Use an explicit list of chunks for abbreviations or other language-specific boundaries. The chunks arrive one after another as bands of two colors in turn, as high as a line, with a gap between two chunks. Over the words that two chunks share, the first chunk has the upper half of the line and the next chunk has the lower half, so the overlap shows both. A word is in two chunks at the most: an overlap of more than half of `size` is an error.
 
 A new cut takes the place of the old one, so each way to cut is an operation on the same page. `page.cut(null)` takes the chunks away. `page.chunks` holds the words of each chunk. `colors` gives the two colors, which are purple and orange by default. Keep them apart from the colors of the kinds that the film uses.
 
@@ -895,89 +895,23 @@ A new cut takes the place of the old one, so each way to cut is an operation on 
 
 `link.enter()` draws the line from the part to the target. `link.break()` is for a tie that does not hold: a gap opens between the two with a cross in it, the line becomes dashes, and it turns red. `link.broken` says so. For a claim that no source supports, play no link, and mark the claim `unsupported`. The line goes up or down in the middle of the room between the two, and `shift` moves that part sideways by so many pixels, so that two links do not share it. For a target over or under the passage, the line goes around both by the right side, or by the left one with `side: 'left'`. Two links that leave under one line of text share the room under it: let one of them leave by the other side, or mark parts on two lines. A node that arrives later is drawn over a link, so call `link.zIndex(1)` for a line that must stay over a panel.
 
-```ts
-import { column, decimal, film, fitted, passage, place, sceneArea, Value } from 'vizmatic/stage'
-
-const ANSWER = 'Returns are free for 30 days.\nThe shop is closed on Sunday.\nRefunds arrive immediately.\nStaff answer within one hour.'
-const SOURCE_A = 'Returns: free within 30 days of delivery, with the receipt.'
-const SOURCE_B = 'Opening hours: Monday to Saturday, 9 to 18. Closed on Sunday.\nA refund is paid on the next business day.'
-
-export default film({ fps: 30 }, (s) => {
-    const [left, right] = sceneArea().columns([4, 5], 'loose')
-    // Each passage is as wide as its column: the layout gives the width.
-    const answer = place(fitted(left!, (width) => passage(ANSWER, { width, size: 36, title: 'answer' })), left!, 'top')
-    const a = fitted(right!, (width) => passage(SOURCE_A, { width, size: 36, title: 'source A' }))
-    const b = fitted(right!, (width) => passage(SOURCE_B, { width, size: 36, title: 'source B' }))
-    place(column([a, b], { gap: 'wide' }), right!, 'top')
-    s.play(answer.enter(), a.enter(), b.enter(), { duration: 1.2 })
-    // The count of the claims that a source supports. It reads the state of the answer after each change.
-    const supported = new Value(0)
-    s.add(place(decimal(() => supported.value, { digits: 0, size: 40, suffix: ' of 4 claims have a source' }), left!, 'bottom'))
-    const claims = ANSWER.split('\n')
-    s.play(...claims.map((claim) => answer.mark(claim, 'claim')), { duration: 0.8 })
-
-    // A claim that holds: the span of its source, a line to it, and the kind of the claim.
-    s.play(a.mark('free within 30 days'), b.mark('Closed on Sunday.'), b.mark('on the next business day'), { duration: 0.5 })
-    const first = answer.link(claims[0]!, a.span('free within 30 days'), { color: 'green', shift: 20 })
-    const second = answer.link(claims[1]!, b.span('Closed on Sunday.'), { color: 'green' })
-    s.play(first.enter(), second.enter(), answer.mark(claims[0]!, 'supported'), answer.mark(claims[1]!, 'supported'), { duration: 0.8 })
-    s.play(supported.to(answer.count('supported')), { duration: 0.3 })
-    // The third claim has a source that says another thing: the line breaks, and the count does not move.
-    const third = answer.link(claims[2]!, b.span('on the next business day'), { shift: -20 })
-    s.play(third.enter(), { duration: 0.8 })
-    s.play(third.break(), answer.mark(claims[2]!, 'contradicted'), b.mark('on the next business day', 'contradicted'), { duration: 0.7 })
-    // No source says the fourth claim.
-    s.play(answer.mark(claims[3]!, 'unsupported'), { duration: 0.6 })
-    s.wait(3)
-})
-```
+The film in `examples/films/passage/evidence.ts` compares four claims with two sources. It draws a solid link for each supported claim, breaks the link for a contradicted claim, and leaves the unsupported claim unlinked.
 
 ### The next version
 
 `page.diff(next)` changes the text to its next version. The film gives the whole next text, and the passage finds the words that differ. The words that go get a line through them and turn dim, the rest of the text moves, and the words that come arrive beside the words that they replace, with two lines under them. Both versions are then on the screen, and `page.text` is the next version. `page.changes` is the number of places that show a change. `page.accept()` takes the old words away, and the text closes up: the passage is then laid out as a new passage of the next version.
 
-A word that stays on its line slides to its place. A word that goes to another line fades out where it is and comes back at its place, so that no word flies across the lines between the two. A span keeps its words: a word that replaces the last word of a span is a part of the span, and a span with no word left goes with its words at `accept`. A link follows.
+A word that stays on its line slides to its place. A word that goes to another line fades out where it is and comes back at its place, so that no word flies across the lines between the two. A replacement inside one span stays in that span. When one replacement covers several entire spans, `accept()` removes those spans. Links follow the words that remain.
 
 The frame is as high as its text, so a `diff` that adds a line makes the frame higher. `lines` is the least number of lines that the frame holds. With it, the frame has one height from the start, and a `diff` that needs more lines is an error that gives the number. One change is on the screen at a time: a second `diff` before `accept` is an error, and so is a `diff` of a passage with chunks, because a chunk is a part of one version. The words move in one change at a time. A `diff` and an `accept` whose times overlap are an error, and so is a `mark`, a `cut`, a `select` or a `lift` that plays while the words move. Play them in a `seq`, or one after the other.
 
-```ts
-import { codeBlock, column, fadeIn, film, fitted, morphCode, passage, place, sceneArea } from 'vizmatic/stage'
-
-const SYSTEM = 'You are the incident assistant. Reply in JSON. Deadline: in minutes.'
-const SYSTEM_NEXT = 'You are the incident assistant. Reply in JSON. Deadline: 15 minutes, by runbook IR-7.'
-const USER = 'The error rate is 4% after deploy D-42. What do we do?'
-const reply = (minutes: number) => `{\n  "action": "roll back",\n  "deadline_minutes": ${minutes},\n  "deploy": "D-42"\n}`
-
-export default film({ fps: 30 }, (s) => {
-    const [left, right] = sceneArea().columns([5, 4], 'loose')
-    // One passage for each section of the prompt, with its role as the title.
-    const system = fitted(left!, (width) => passage(SYSTEM, { width, size: 36, title: 'system', color: 'purple' }))
-    const user = fitted(left!, (width) => passage(USER, { width, size: 36, title: 'user', color: 'teal' }))
-    place(column([system, user], { gap: 'normal' }), left!, 'top')
-    s.play(system.enter(), user.enter(), { duration: 1.2 })
-    const first = place(codeBlock(reply(90), { language: 'json', size: 34 }), right!, 'right'), second = place(codeBlock(reply(15), { language: 'json', size: 34 }), right!, 'right')
-    s.play(fadeIn(first), { duration: 0.6 })
-
-    // Each phrase of the prompt is tied to the field of the reply that follows from it.
-    s.play(system.mark('Deadline: in minutes.', 'mark'), user.mark('deploy D-42', 'claim'), { duration: 0.6 })
-    // The next version of the reply arrives later, over what is on the stage. The two lines stay over it.
-    const deadline = system.link('Deadline: in minutes.', first.line(2), { color: 'blue', shift: -24 }).zIndex(1)
-    const deploy = user.link('deploy D-42', first.line(3), { color: 'purple', shift: 24 }).zIndex(1)
-    s.play(deadline.enter(), deploy.enter(), { duration: 0.9 })
-    s.wait(1.6)
-
-    // One phrase changes to an exact reference. The span keeps its words, and the field of the reply follows.
-    s.play(system.diff(SYSTEM_NEXT), { duration: 1.6 })
-    s.play(morphCode(first, second), { duration: 1 })
-    s.wait(1.4)
-    s.play(system.accept(), { duration: 1 })
-    s.wait(3)
-})
-```
+The film in `examples/films/passage/prompt.ts` links a prompt to two JSON fields. When the prompt specifies a deadline, `diff()` marks the edit and `morphCode()` updates the reply. The unchanged deploy identifier stays visible.
 
 ### Places, parts and time
 
 `page.span(words)` is the node of a span, and `page.chunk(index)` the node of a chunk: the bands behind the words. Give one to `beside` as the part of an object, to a light, or to `link` as a target. `page.region(part)` is the box of the band of a part on the stage, for `place` and `beside`. With no part it is the room of the text, and `{ line: 1 }` is the row of one line. `page.p(part, edge)` is a point on the band in the coordinates of the object: the middle of the bottom of its last line by default, or `'top'`, `'left'` and `'right'`. `page.leader(part, side)` gives the three points of the way of a line out of the passage, for a line of your own. These places are for the text after the changes that the film has played so far, and they do not follow a later change. `page.find(words)` gives the glyphs of some words, to color them with `recolor`. `page.frame`, `page.title` and `page.words` are the parts, `page.text` is the text of now, and `page.lineCount` is the number of its lines.
+
+A clone has its own text, spans, selection, and counters. In a `seq`, each verb resolves its words and chunks when it plays. For example, `seq(page.cut({ size: 7 }), page.select({ chunk: 0 }))` selects the first chunk created by that cut.
 
 `page.enter()` brings the frame and the title, and then the words in the order of the text. With a long duration, the words arrive as a reply that a model writes. A verb that is played on a passage that is not on the stage brings the passage. A viewer reads about 20 characters in one second, and the film check reads a passage as one text. So a passage of 160 characters stays up for 8 seconds: `readingSeconds(page.text)` gives that time. A slip is a text of its own for the check.
 
