@@ -4,7 +4,7 @@ import { line } from '../shapes'
 import { filmFont, text, type TextOptions } from '../text'
 import { tex } from '../tex'
 import { fontFor, glyphPath } from '../font'
-import { ramp, toPaint, type ColorInput } from '../color'
+import { toPaint, type ColorInput } from '../color'
 import { morphMatching, par, pulse, recolor, seq, type Anim, type AnimOptions } from '../anim'
 import { matchSequence } from '../morph'
 import { Heatmap } from './charts'
@@ -630,6 +630,8 @@ export type TokenKind = 'keyword' | 'string' | 'number' | 'comment' | 'function'
 export interface CodeToken {
     text: string
     kind: TokenKind
+    /** A data key keeps its lexical kind and can have a separate color. */
+    role?: 'key'
     line: number
     glyphs: Node[]
 }
@@ -654,6 +656,11 @@ interface LanguageRule {
     number?: RegExp
     /** The word after an opening parenthesis names a function, as in Lisp. */
     headIsFunction?: boolean
+    /**
+     * For a data format: what follows a key, such as the colon of `"name": 1`. A string or a word with this
+     * after it is a key. Every other word is a keyword or plain: no word names a function or a type.
+     */
+    keyBefore?: RegExp
 }
 
 const words = (list: string): ReadonlySet<string> => new Set(list.split(' '))
@@ -689,12 +696,17 @@ const LANGUAGES: Record<string, LanguageRule> = {
         word: /^[A-Za-z_~!@$%^&*+=<>.?/-][\w~!@$%^&*+=<>.?/-]*/, number: /^(#x[\da-fA-F]+|#b[01]+)/,
         keywords: words('assert check-sat check-sat-assuming declare-const declare-datatypes declare-fun declare-sort define-const define-fun define-fun-rec define-sort echo exit get-info get-model get-option get-proof get-unsat-core get-value pop push reset set-info set-logic set-option exists forall let match par as _ !'),
     },
+    // Data formats. A key has its own color, so a reader tells the names from the values.
+    json: { lineComments: [], quotes: '"', keyBefore: /^\s*:/, number: /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/, keywords: words('true false null') },
+    // In YAML, a colon ends a key when a space or the end of the line follows it: `image: nginx:1.27` has one key.
+    yaml: { lineComments: ['#'], quotes: '"\'', insensitive: true, keyBefore: /^\s*:(?:\s|$)/, keywords: words('true false null yes no on off') },
     plain: { lineComments: [], quotes: '', keywords: new Set() },
 }
 
 const ALIASES: Record<string, string> = {
     js: 'ts', jsx: 'ts', tsx: 'ts', typescript: 'ts', javascript: 'ts', py: 'python', rs: 'rust', golang: 'go', sh: 'bash', shell: 'bash',
     'tla+': 'tla', tlaplus: 'tla', dfy: 'dafny', lean4: 'lean', smt2: 'smt', smtlib: 'smt', 'smt-lib': 'smt', cpp: 'c', 'c++': 'c', h: 'c', text: 'plain',
+    yml: 'yaml', jsonl: 'json',
 }
 
 /** The languages that `tokenize` and `codeBlock` color. An unknown name falls back to TypeScript. */
@@ -704,6 +716,7 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 function stringPattern(rule: LanguageRule): RegExp | null {
     const forms = [...rule.quotes].map((quote) => {
+        if (rule === LANGUAGES['yaml'] && quote === "'") return "'(?:[^']|'')*'?"
         const q = escapeRegExp(quote)
         return `${q}(?:[^${q}\\\\]|\\\\.)*${q}?`
     })
@@ -712,10 +725,19 @@ function stringPattern(rule: LanguageRule): RegExp | null {
     return forms.length > 0 ? new RegExp(`^(?:${forms.join('|')})`) : null
 }
 
+// A single-line plain key at a block or flow entry. Complex keys, block scalar bodies,
+// tags and multiline flow context need a YAML parser and are outside this highlighter.
+function yamlKeyLength(rest: string): number {
+    if (/^[\s'"#,\[\]{}&*!|>@%\x60]|^[-?:](?:\s|$)/.test(rest)) return 0
+    const separator = /:(?=\s|$)|[ \t]+#|[\[\]{},]/.exec(rest)
+    return separator?.[0] === ':' ? separator.index : 0
+}
+
 /** A small tokenizer for film code. It colors the common cases and never blocks on odd input. */
 export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyphs'>[] {
     const name = language.toLowerCase()
     const rule = LANGUAGES[ALIASES[name] ?? name] ?? LANGUAGES['ts']!
+    const yaml = rule === LANGUAGES['yaml']
     const string = stringPattern(rule)
     const word = rule.word ?? /^[A-Za-z_$][\w$]*/
     const out: Omit<CodeToken, 'glyphs'>[] = []
@@ -724,10 +746,14 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
     source.split('\n').forEach((row, line) => {
         let i = 0
         let afterOpen = false
+        let entryStart = true
+        let keyEnd = 0
         while (i < row.length) {
             const rest = row.slice(i)
-            const push = (value: string, kind: TokenKind) => {
-                out.push({ text: value, kind, line })
+            const push = (value: string, kind: TokenKind, key = false) => {
+                const token = { text: value, kind, line }
+                out.push(key || (kind !== 'space' && i < keyEnd) ? { ...token, role: 'key' } : token)
+                if (yaml && kind !== 'space') entryStart = value === '{' || value === ',' || (entryStart && value === '-')
                 i += value.length
             }
             const space = /^\s+/.exec(rest)
@@ -741,7 +767,8 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 push(close < 0 ? rest : rest.slice(0, close + rule.blockComment![1].length), 'comment')
                 continue
             }
-            if (rule.lineComments.some((marker) => rest.startsWith(marker))) {
+            if (yaml && entryStart) keyEnd = i + yamlKeyLength(rest)
+            if ((!yaml || i === 0 || /\s/.test(row[i - 1]!)) && rule.lineComments.some((marker) => rest.startsWith(marker))) {
                 push(rest, 'comment')
                 continue
             }
@@ -755,7 +782,7 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
             afterOpen = rest[0] === '('
             const quoted = string?.exec(rest)
             if (quoted) {
-                push(quoted[0], 'string')
+                push(quoted[0], 'string', yaml && entryStart && rule.keyBefore!.test(rest.slice(quoted[0].length)))
                 continue
             }
             const number = rule.number?.exec(rest) ?? /^(0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:e[-+]?\d+)?)/.exec(rest)
@@ -773,26 +800,38 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 const value = found[0]
                 const after = rest.slice(value.length)
                 const isKeyword = rule.keywords.has(rule.insensitive ? value.toLowerCase() : value)
+                // A data format has no function or type names.
                 const kind: TokenKind = isKeyword ? 'keyword'
-                    : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
-                        : /^[A-Z]/.test(value) ? 'type'
-                            : 'plain'
+                    : rule.keyBefore ? 'plain'
+                        : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
+                            : /^[A-Z]/.test(value) ? 'type'
+                                : 'plain'
                 push(value, kind)
                 continue
             }
             push(rest[0]!, 'punctuation')
         }
     })
+    if (rule === LANGUAGES['json']) {
+        // JSON permits a line break between a key and its colon.
+        let previous: Omit<CodeToken, 'glyphs'> | undefined
+        for (const token of out) {
+            if (token.kind === 'space') continue
+            if (token.text === ':' && previous?.kind === 'string') previous.role = 'key'
+            previous = token
+        }
+    }
     return out
 }
 
-const CODE_COLORS: Record<Exclude<TokenKind, 'space'>, string> = {
+type CodeColor = Exclude<TokenKind, 'space'> | 'key'
+const CODE_COLORS: Record<CodeColor, string> = {
     keyword: 'purple', string: 'green', number: 'orange', comment: 'faint',
-    function: 'blue', type: 'teal', punctuation: 'dim', plain: 'ink',
+    function: 'blue', type: 'teal', key: 'blue', punctuation: 'dim', plain: 'ink',
 }
 
 export interface CodeBlockOptions {
-    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, or `smt2`. Defaults to TypeScript. */
+    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, `smt2`, or `yml`. Defaults to TypeScript. */
     language?: string
     size?: number
     /** Line height as a multiple of size. */
@@ -803,7 +842,7 @@ export interface CodeBlockOptions {
     padding?: number
     /** Minimum panel width, so versions of a snippet can share one frame. */
     minWidth?: number
-    colors?: Partial<Record<Exclude<TokenKind, 'space'>, ColorInput>>
+    colors?: Partial<Record<CodeColor, ColorInput>>
 }
 
 /**
@@ -872,7 +911,7 @@ export class CodeBlock extends Node {
             const entry: CodeToken = { ...token, glyphs: [] }
             this.tokens.push(entry)
             if (token.kind === 'space') continue
-            const color = colors[token.kind]
+            const color = colors[token.role ?? token.kind]
             ;[...token.text].forEach((char, offset) => {
                 const leaf = makeGlyph(font, char, size, color, left + (start + offset) * advance, top + token.line * rowHeight)
                 entry.glyphs.push(leaf)
@@ -1183,123 +1222,7 @@ export function neuralNet(layers: readonly number[], options: NeuralNetOptions =
     return new NeuralNet(layers, options)
 }
 
-// ── Tokens and attention ────────────────────────────────────────────────────
-
-export interface TokenSpec {
-    text: string
-    /** Small line under the chip, such as an id or a probability. */
-    sub?: string
-    color?: ColorInput
-}
-
-export interface TokensOptions {
-    size?: number
-    /** Wrap to this width. */
-    maxWidth?: number
-    gap?: number
-    color?: ColorInput
-    /** Ramp of colors across the row. */
-    colors?: readonly ColorInput[]
-    /** The font of the tokens. Defaults to mono. The line under a chip is in mono. */
-    font?: TextOptions['font']
-    subSize?: number
-    radius?: number
-}
-
-/** A sequence of token chips, as in a tokenizer's output. Small type by default. */
-export class TokenRow extends Node {
-    readonly chips: Node[] = []
-
-    constructor(items: readonly (string | TokenSpec)[], options: TokensOptions = {}) {
-        super()
-        const size = options.size ?? 22
-        const gap = options.gap ?? size * 0.28
-        const subSize = options.subSize ?? size * 0.62
-        const padX = size * 0.42, padY = size * 0.3
-        const specs = items.map((item) => typeof item === 'string' ? { text: item } as TokenSpec : item)
-        const palette = options.colors ? ramp(specs.length, ...options.colors) : null
-        let x = 0, y = 0
-        const placed: { node: Node; x: number; y: number; w: number }[] = []
-        const rowHeight = size + padY * 2 + (specs.some((s) => s.sub) ? subSize * 1.4 : 0)
-        for (let i = 0; i < specs.length; i++) {
-            const spec = specs[i]!
-            const color = spec.color ?? (palette ? palette[i]! : options.color ?? 'blue')
-            const label = text(spec.text.replace(/ /g, '·'), { size, font: options.font ?? 'mono', color: 'ink' })
-            const w = Math.max(label.width, size * 0.5) + padX * 2
-            const h = size + padY * 2
-            if (options.maxWidth !== undefined && x > 0 && x + w > options.maxWidth) {
-                x = 0
-                y += rowHeight + gap
-            }
-            const chip = new Node()
-            const box = new Node(rectPath(-w / 2, -h / 2, w, h, options.radius ?? 4)).fill(color, 0.18).stroke(color, 1.5)
-            chip.add(box, label.at(0, 0))
-            if (spec.sub) chip.add(text(spec.sub, { size: subSize, font: 'mono', color: 'dim' }).at(0, h / 2 + subSize * 0.82))
-            chip.data['box'] = box
-            placed.push({ node: chip, x: x + w / 2, y, w })
-            x += w + gap
-        }
-        const maxX = Math.max(...placed.map((p) => p.x + p.w / 2), 0)
-        const maxY = Math.max(...placed.map((p) => p.y), 0)
-        for (const entry of placed) {
-            entry.node.at(entry.x - maxX / 2, entry.y - maxY / 2)
-            this.chips.push(entry.node)
-            this.add(entry.node)
-        }
-        ownLabels(this, { name: 'row of tokens' })
-    }
-
-    token(index: number): Node {
-        const found = this.chips[index]
-        if (!found) throw new Error(`Token row has no token ${index}.`)
-        return found
-    }
-
-    /** Chips arrive from left to right. */
-    enter(options: AnimOptions = {}): Anim {
-        const lag = options.lag ?? 0.16
-        return {
-            label: 'tokens.enter', duration: options.duration ?? 1.2, ease: options.ease,
-            schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
-                const windows = staggered(this.chips.length, lag, ctx.t0, ctx.t1)
-                this.chips.forEach((chip, i) => {
-                    const [start, end] = windows[i]!
-                    const y = chip.get('y')
-                    stepAt(chip, 'opacity', 0, ctx.t0)
-                    stepAt(chip, 'y', y + 16, ctx.t0)
-                    chip.tween('opacity', 1, start, end, ctx.ease)
-                    chip.tween('y', y, start, end, ctx.ease)
-                })
-            },
-        }
-    }
-
-    /**
-     * Curved links from one token to others, brighter for stronger weights.
-     * Add the result to the stage after this row is in place.
-     */
-    arcs(from: number, weights: readonly number[], options: { color?: ColorInput; maxWidth?: number; lift?: number } = {}): Node {
-        const source = this.token(from).bounds()
-        const made = new Node()
-        const startX = source.x + source.width / 2, startY = source.y - 3
-        weights.forEach((weight, j) => {
-            if (j === from || weight <= 0.01) return
-            const target = this.token(j).bounds()
-            const endX = target.x + target.width / 2, endY = target.y - 3
-            const lift = options.lift ?? 40 + Math.abs(endX - startX) * 0.22
-            const path = parseSvgPath(`M${startX} ${startY}C${startX} ${startY - lift} ${endX} ${endY - lift} ${endX} ${endY}`)
-            const node = new Node(path).stroke(options.color ?? 'yellow', 0.8 + weight * (options.maxWidth ?? 6))
-            node.set('strokeOpacity', 0.2 + weight * 0.8)
-            made.add(node)
-        })
-        return made
-    }
-}
-
-export function tokens(items: readonly (string | TokenSpec)[], options: TokensOptions = {}): TokenRow {
-    return new TokenRow(items, options)
-}
+// ── Attention ───────────────────────────────────────────────────────────────
 
 export interface AttentionMatrixOptions {
     cell?: number

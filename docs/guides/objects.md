@@ -948,6 +948,110 @@ export default film((s) => {
 })
 ```
 
+## Passages
+
+`passage(text, options)` displays prose that a film can annotate and revise. It wraps words at `width`, collapses consecutive spaces and tabs, and preserves line and paragraph breaks. Use a passage to cut a document into chunks, connect claims to evidence, or show how a prompt revision changes a reply. The runnable films in `examples/films/passage/` demonstrate all three uses.
+
+```film paired label="A runbook is cut into windows of words, then with an overlap, then by sentence, and the first chunk lifts out"
+import { film, passage } from 'vizmatic/stage'
+
+const RUNBOOK = 'If the error rate stays above 2% after a deploy, roll back within 15 minutes. Then page the incident commander. Write the deploy ID in the incident channel.'
+
+export default film({ fps: 30 }, (s) => {
+    const page = passage(RUNBOOK, { width: 1500, size: 44, title: 'runbook.md' }).at(-750, -330)
+    s.play(page.enter(), { duration: 1 })
+    // The fact that a chunk must hold whole.
+    s.play(page.mark('within 15 minutes'), { duration: 0.5 })
+    // Windows of 7 words cut the fact in two. With an overlap of 2 words, one chunk holds it whole.
+    s.play(page.cut({ size: 7 }), { duration: 1.2 })
+    s.wait(0.8)
+    s.play(page.cut({ size: 7, overlap: 2 }), { duration: 1.2 })
+    s.wait(0.8)
+    s.play(page.cut({ by: 'sentence' }), { duration: 1.2 })
+    // The first chunk is selected, and it leaves the page as a passage of its own.
+    const chunk = page.slip({ chunk: 0 }, { title: 'chunk 1 of 3', width: 820 }).at(-410, 130)
+    s.play(page.select({ chunk: 0 }), page.lift(chunk), { duration: 1.2 })
+    s.wait(1.2)
+})
+```
+
+Use `quote` for a fixed quotation with attribution, `codeBlock` when columns and spacing matter, and `tokens` for tokenizer output. A passage keeps the same words on screen as annotations change.
+
+`width` is the width of the object, and no letter passes it. Without a width, the text is on one line and the object is as wide as that line needs, 900 at the most. A line breaks at a space. A line break in the text starts a line, and an empty line starts a paragraph, with half a line of room. A no-break space (` `) keeps two words on one line. A word that is wider than the passage is an error, and the message gives the width that is enough. `size` is the text size, 32 by default, and `leading` is the height of a line as a multiple of it, 1.6 by default. The bands and the links need that room: a smaller `leading` is an error when a band does not fit. The words are in the font of the film, or in `font`.
+
+`title` is one line over the words: the name of a file, or a role such as `user`. It is 0.8 of `size`, and 26 px at the least when `size` is 26 or more. `color` is the color of the border and of the title, so the sections of a prompt can each have their own. `panel: false` draws no frame, for one sentence in a picture. `.at(x, y)` places the top left corner, so passages of different lengths start at one corner. The layout measures a passage as its width and its height, with or without a frame, so it is an item of `row`, `column` and `place`, and `fitted(region, (width) => passage(text, { width }))` makes it as wide as a region.
+
+### Parts of the text
+
+A film names a part of the text by its words: `'within 15 minutes'`. The words are matched letter for letter, spaces do not count, and a part may run over the end of a line or of a sentence. A part starts and ends at the borders of words: `'day'` is not a part of "days". Words that are at two places name no part, and the error says so: give more of the words around the place, or `{ words: 'days', occurrence: 1 }` for the second place. `{ chunk: 0 }` is the first chunk of the last cut, and the node of a span or a chunk names its own words. Words that are not in the text are an error that shows how the text starts.
+
+### Spans and kinds
+
+`page.mark(words, kind)` gives a part a kind. A band in the color of the kind grows behind the words in the order of the text, with the sign of the kind. A second `mark` of the same words changes the kind: the color changes, and the old sign gives way to the new one. `page.mark(words, null)` takes the span away. A word is in one span, so words that share a word with another span are an error. Without a kind, a part takes the first kind of the passage.
+
+A kind has a color and a sign, so that color is never the only sign. Without `kinds`, a passage has the kinds of `PASSAGE_KINDS`:
+
+| Kind | Color | Sign | Use |
+|---|---|---|---|
+| `mark` | blue | a plain band | A part that the film points at: a clause, a name, a number |
+| `claim` | purple | a frame around the band | A statement of an answer that is not checked yet |
+| `supported` | green | a line under the words | A source says the same |
+| `unsupported` | yellow | dashes under the words | No source says it |
+| `contradicted` | red | a wave under the words | A source says another thing |
+| `external` | orange | diagonal lines over the band | Text that came from outside, such as a web page in a prompt |
+| `removed` | dim | a line through the words, which are dim | Words that the next version does not have |
+| `added` | teal | two lines under the words | Words that the next version brings |
+
+For another subject, give your own record, such as `kinds: { rule: { color: 'teal', sign: 'underline' }, fact: { color: 'blue' } }`. A sign is `'band'`, `'box'`, `'underline'`, `'double'`, `'dashed'`, `'wavy'`, `'hatch'` or `'strike'`, and a kind with none has a band. Each kind of a passage has its own sign: two kinds with one sign would differ by their color only, so they are an error that lists the signs that are free. `dim: true` sets the words of a span in dim.
+
+`page.spans` lists the spans in the order of the text, with the words and the kind of each. `page.kindOf(words)` is the kind of a span, or null, and `page.count('supported')` counts the spans of a kind, so a label can show a true share. All of them read the state after the changes that the film has played so far.
+
+### Chunks
+
+`page.cut(how)` cuts the text into chunks. `{ size: 12, overlap: 3 }` makes windows of 12 words, and each window shares 3 words with the next. `{ by: 'paragraph' }` starts a chunk at each blank line. `{ by: 'sentence' }` also starts a chunk after a word that ends in a period, exclamation point, or question mark. Use an explicit list of chunks for abbreviations or other language-specific boundaries. The chunks arrive one after another as bands of two colors in turn, as high as a line, with a gap between two chunks. Over the words that two chunks share, the first chunk has the upper half of the line and the next chunk has the lower half, so the overlap shows both. A word is in two chunks at the most: an overlap of more than half of `size` is an error.
+
+For a token budget, pass the tokenizer as the `tokens` option of `passage`, then play `page.cut({ tokens: 128 })`. The passage appends whole words and counts each candidate chunk as one string. It starts a new chunk when the next word would exceed the budget. If one word exceeds the budget on its own, the cut reports that word. For an estimated token count, label the budget as an estimate in the film.
+
+A new cut takes the place of the old one, so each way to cut is an operation on the same page. `page.cut(null)` takes the chunks away. `page.chunks` holds the words of each chunk. `colors` gives the two colors, which are purple and orange by default. Keep them apart from the colors of the kinds that the film uses.
+
+### The selection and its count
+
+`page.select(part)` moves the selection, which is one frame around some words. A passage has one selection. It grows and shrinks line by line, as a selection in an editor does, and `page.select(null)` takes it away. `page.selection` is its size: `{ words, characters }`, and `tokens` when the passage has a `tokens` function. `page.measure(part)` gives the same for any part, and for the whole text with no part.
+
+`page.counter('words')` is a number that follows the selection. It is 0 with no selection, and it runs to the new count while `select` plays. Show it with `decimal(() => page.counter('words').value, { digits: 0, suffix: ' words' })`, or give it to a bar. A passage has no tokenizer of its own. For tokens, give `passage(text, { tokens })` the function of the film that counts them, or an estimate such as `(text) => Math.ceil(text.length / 4)`, and say on the screen that it is an estimate.
+
+### A part that lifts out
+
+`page.slip(part, options)` makes a passage of its own from a span, a chunk or any words, with the same size and font. It is not on the stage yet. Give it its place, and play `page.lift(slip)`: a copy of each letter leaves the page and lands in the slip, and the frame of the slip arrives. The words stay in the page too. The options are those of `passage`, such as a `title` and a `width`. Without a width, a slip is as wide as its words need, and as wide as the page at the most. A slip is a passage, so a film can mark it, link it, and lift a part out of it.
+
+### Links
+
+`answer.link(words, target)` makes a line from a part of a passage to a node: the span of another passage (`source.span('Closed on Sunday.')`), a slip, or any node of the film. The line leaves under the end of the part, runs in the room between two lines of text to the side of the passage, goes up or down between the passage and the target, and reaches the span of the target the same way. So it crosses no word. A part on two lines has an end on each, and the line takes the end that is nearest to its side. The line is drawn on every frame: it follows the two when they move, and it follows a span whose words a `diff` changes.
+
+`link.enter()` draws the line from the part to the target. `link.break()` is for a tie that does not hold: a gap opens between the two with a cross in it, the line becomes dashes, and it turns red. `link.broken` says so. For a claim that no source supports, play no link, and mark the claim `unsupported`. The line goes up or down in the middle of the room between the two, and `shift` moves that part sideways by so many pixels, so that two links do not share it. For a target over or under the passage, the line goes around both by the right side, or by the left one with `side: 'left'`. Two links that leave under one line of text share the room under it: let one of them leave by the other side, or mark parts on two lines. A node that arrives later is drawn over a link, so call `link.zIndex(1)` for a line that must stay over a panel.
+
+The film in `examples/films/passage/evidence.ts` compares four claims with two sources. It draws a solid link for each supported claim, breaks the link for a contradicted claim, and leaves the unsupported claim unlinked.
+
+### The next version
+
+`page.diff(next)` changes the text to its next version. The film gives the whole next text, and the passage finds the words that differ. The words that go get a line through them and turn dim, the rest of the text moves, and the words that come arrive beside the words that they replace, with two lines under them. Both versions are then on the screen, and `page.text` is the next version. `page.changes` is the number of places that show a change. `page.accept()` takes the old words away, and the text closes up: the passage is then laid out as a new passage of the next version.
+
+A word that stays on its line slides to its place. A word that goes to another line fades out where it is and comes back at its place, so that no word flies across the lines between the two. A replacement inside one span stays in that span. When one replacement covers several entire spans, `accept()` removes those spans. Links follow the words that remain.
+
+The frame is as high as its text, so a `diff` that adds a line makes the frame higher. `lines` is the least number of lines that the frame holds. With it, the frame has one height from the start, and a `diff` that needs more lines is an error that gives the number. One change is on the screen at a time: a second `diff` before `accept` is an error, and so is a `diff` of a passage with chunks, because a chunk is a part of one version. The words move in one change at a time. A `diff` and an `accept` whose times overlap are an error, and so is a `mark`, a `cut`, a `select` or a `lift` that plays while the words move. Play them in a `seq`, or one after the other.
+
+To display a version number beside an edit, place a `tagTrack` beside the passage and start its next state when the edit is accepted.
+
+The film in `examples/films/passage/prompt.ts` links a prompt to two JSON fields. When the prompt specifies a deadline, `diff()` marks the edit and `morphCode()` updates the reply. The unchanged deploy identifier stays visible.
+
+### Places, parts and time
+
+`page.span(words)` is the node of a span, and `page.chunk(index)` the node of a chunk: the bands behind the words. Give one to `beside` as the part of an object, to a light, or to `link` as a target. `page.region(part)` is the box of the band of a part on the stage, for `place` and `beside`. With no part it is the room of the text, and `{ line: 1 }` is the row of one line. `page.p(part, edge)` is a point on the band in the coordinates of the object: the middle of the bottom of its last line by default, or `'top'`, `'left'` and `'right'`. `page.leader(part, side)` gives the three points of the way of a line out of the passage, for a line of your own. These places are for the text after the changes that the film has played so far, and they do not follow a later change. `page.find(words)` gives the glyphs of some words, to color them with `recolor`. `page.frame`, `page.title` and `page.words` are the parts, `page.text` is the text of now, and `page.lineCount` is the number of its lines.
+
+A clone has its own text, spans, selection, and counters. In a `seq`, each verb resolves its words and chunks when it plays. For example, `seq(page.cut({ size: 7 }), page.select({ chunk: 0 }))` selects the first chunk created by that cut.
+
+`page.enter()` brings the frame and the title, and then the words in the order of the text. With a long duration, the words arrive as a reply that a model writes. A verb that is played on a passage that is not on the stage brings the passage. A viewer reads about 20 characters in one second, and the film check reads a passage as one text. So a passage of 160 characters stays up for 8 seconds: `readingSeconds(page.text)` gives that time. A slip is a text of its own for the check.
+
 ## Chips and named boxes
 
 `chip(label, options)` draws a short label in a box that fits it: a name, a state, a unit. The box takes its width from the label, with room on every side, so a chip is never smaller than its text. `.at(x, y)` places the left end of the box, as for a tag and a row of chips: the three take their width from their text, and they have one rule. `anchor: 'center'` places the middle of the box, and `anchor: 'right'` its right end. `minWidth` gives the chips of a column one width, `round` makes a pill, `room` sets the room at the sides of the label, and `dash` is for a thing that is absent or only planned.
@@ -1170,9 +1274,120 @@ export default film({ fps: 30 }, (s) => {
 
 `word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
 
+## Token strips
+
+`tokens(items, options)` draws a strip of cells, one for each token, word, character or byte: the text as a language model reads it. Put IDs or training targets in rows below the tokens. Use a bracket to name a span, or slide a window across the strip. When you split or merge tokens, their values, brackets, and window move with them.
+
+```film paired label="Shift next-token targets left and exclude the four prompt targets from the loss"
+import { fadeIn, film, lagged, text, tokens } from 'vizmatic/stage'
+
+const WORDS = ['<s>', 'user', 'Sit', '!', 'bot', 'Good', 'dog', '</s>']
+
+export default film({ fps: 30 }, (s) => {
+    const chat = tokens(WORDS, {
+        size: 44, even: true, label: 'input',
+        rows: { position: WORDS.map((_, index) => index), target: WORDS },
+        spans: [{ from: 1, to: 3, label: 'user turn', color: 'orange' }, { from: 4, to: 7, label: 'assistant turn', color: 'green' }],
+    }).at(90, -70)
+    s.play(chat.enter(), { duration: 1.6 })
+    s.wait(0.6)
+    // Each position predicts the token after it, so the row of targets moves one cell to the left.
+    s.play(chat.shiftRow('target', -1), { duration: 1.4 })
+    s.wait(1)
+    // The loss counts what the assistant writes. The four targets that the prompt gives get the label -100.
+    const prompt = [0, 1, 2, 3]
+    s.play(chat.mark(prompt, 'masked'), lagged(prompt.map((index) => chat.setValue('target', index, '-100')), { lag: 0.5 }), { duration: 1.8 })
+    s.play(fadeIn(text(`the loss counts ${chat.count - 1 - prompt.length} of ${chat.count - 1} targets`, { size: 44 }).at(0, 260)), { duration: 0.5 })
+    s.wait(1.5)
+})
+```
+
+A token is a text, or an object with its `text`: `{ text: ' cat', state: 'generated', color: 'teal', values: { id: 3797 } }`. A space in a token shows as a middle dot, as a tokenizer shows it. An empty string leaves a cell blank. For a line break in an annotated strip, use a visible token such as `\\n`. `color` is the color of the cells, `colors` a ramp of colors across the strip, `gap` the room between two cells, and `radius` the corners.
+
+`size` is the text size of the tokens. It is 22 when the film gives none, as it always was: a size for a figure in a document. For a film at 1080p, give `size: 32` or more. The values of the rows, the names of the rows and the labels of the brackets are 0.82 of `size`, which is 26 px at `size: 32`, and `rowSize` sets them. The tokens and the values are in mono, and `font` is the font of the tokens. The names and the labels are in the font of the film.
+
+A cell is as wide as its text and its values need. `minWidth` is the least width of a cell, and `even: true` gives every cell the width of the widest one, so the columns are a grid. `width` is the room of the strip on one line: the first token is at the left end of the room, `.at()` places the middle of the room, and the layout measures the room, so `fitted(region, (width) => tokens(words, { width }))` fills a region. Tokens that do not fit in the room are an error that names the width that fits. Without `width`, the strip is as wide as its tokens, and `.at()` places their middle. The left edge stays fixed as the strip grows or shrinks. A split or merge can move a token center when its width changes.
+
+A token has one of the states of `TOKEN_STATES`: `kept`, `masked`, `generated`, `cached`, and `dropped`. A kept token has a plain outline. Hatching marks a masked cell, a bottom bar marks a generated token, and a corner dot marks a cached token. A dropped token has a dashed outline and a line through its text. For another subject, give your own record, such as `states: { ...TOKEN_STATES, accepted: { color: 'green', mark: 'check' }, rejected: { color: 'red', mark: 'cross', dim: true } }`. A state has a `color` (without one, the cell keeps its own color), a `fill` opacity, a `dash` outline, a `dim` text, and a `mark`: `'hatch'`, `'strike'`, `'bar'`, `'dot'`, `'check'`, or `'cross'`. A token with no state is in the first state of the record.
+
+`strip.mark(which, state)` changes the state of tokens, one after another from the left. `which` is an index, a list of indexes, or a function of a token and its index. The strip calls the function when the film plays the change, so in `seq(strip.mark([0, 1], 'cached'), strip.mark((token) => token.state === 'cached', 'dropped'))` the second change finds the tokens of the first. `strip.stateOf(index)`, `strip.count`, `strip.texts`, and `strip.find(test)` read the strip after the changes that the film has played so far. `find` takes the text of a token, or a function, and gives indexes: `strip.find('the')`, `strip.find((token) => token.state === 'masked')`.
+
+`rows` gives the rows of values under the cells, by name: `rows: { position: [0, 1, 2], id: [464, 3797, 3332] }`. A value is a text or a number, and each value is under the middle of its token. The name of a row is at its left, and `label` names the line of cells in the same way. `strip.setValue(row, index, value)` changes one value in place: the old text fades out, then the new one fades in. `strip.shiftRow(row, by)` moves the values of a row by whole cells: with -1, each value goes under the token before its own, as the targets of a language model are under its inputs, and the value that leaves the strip fades out. A value that is too wide for its cell is an error that names the `minWidth` that fits, so give `even: true` to a strip whose values change cells. `strip.value(row, index)` reads a value. `strip.row(name)` is the node of a row, with its `name` and its `values`, and `strip.column(index)` is the cell of a token with its value in each row, so `indicate(strip.column(5))` lights one column through all rows. A strip with rows has no `sub` under a chip: `sub` is the one line of the old row of chips, and a row takes its place.
+
+`spans` gives the brackets over runs of tokens: `spans: [{ from: 0, to: 4, label: 'system prompt', color: 'purple' }]`. A bracket goes from the first cell of its run to the last, with its label over its middle. A bracket whose line or label would meet another one is a level higher. `strip.span(id, from, to, { label, color })` draws a new bracket by its id, with the id as its label unless `label` gives another. A later call with the same id slides the bracket to other tokens, and a new `label` takes the place of the old one. `strip.span(id, null)` takes it away. A bracket that would move onto another one is an error that names the two. `strip.window(from, to)` puts one outline around a run of cells. The next call slides it and changes its size, and `strip.window(null)` takes it away. `strip.windowRange` and `strip.spanRange(id)` give the first and the last token of each.
+
+```film paired label="Split two words into ASCII bytes and merge a repeated pair in both words"
+import { fadeIn, film, text, tokens } from 'vizmatic/stage'
+
+// Each character in these two ASCII words occupies one byte.
+const bytes = (ascii: string) => [...ascii].map((letter) => ({ text: letter, values: { id: letter.charCodeAt(0) } }))
+
+export default film({ fps: 30 }, (s) => {
+    // The room is for the ten bytes: the strip is at its widest after the split.
+    const strip = tokens(['rain', ' train'], { size: 56, width: 1100, rows: { id: [] } }).at(40, -80)
+    s.play(strip.enter(), { duration: 0.8 })
+    s.wait(0.6)
+    // The later word splits first, so the index of the first one stays.
+    s.play(strip.split(1, bytes(' train')), strip.split(0, bytes('rain')), { duration: 1.2 })
+    s.wait(0.5)
+    const byteCount = strip.count
+    // Count each pair of neighbors: a window of two cells goes along the strip.
+    for (let index = 0; index + 1 < strip.count; index++) s.play(strip.window(index, index + 1), { duration: index === 0 ? 0.4 : 0.22 })
+    s.play(strip.window(null), { duration: 0.3 })
+    // Merge each occurrence of the chosen pair and assign the same ID to both results.
+    const mergeAll = (left: string, right: string, id: number) => {
+        const starts = strip.find((token, index) => token.text === left && strip.texts[index + 1] === right)
+        // From the right, so that a merge does not change the index of a pair that is still to come.
+        s.play(...starts.reverse().map((index) => strip.merge(index, index + 1, { values: { id } })), { duration: 1.1 })
+    }
+    mergeAll('r', 'a', 256)
+    mergeAll('ra', 'i', 257)
+    mergeAll('rai', 'n', 258)
+    s.play(fadeIn(text(`${byteCount} bytes become ${strip.count} tokens`, { size: 44 }).at(0, 200)))
+    s.wait(2)
+})
+```
+
+`strip.append(token)` adds a token at the end, or a list of tokens one after another, and the tokens that are there do not move. `from` is a node or a point of the stage: the token starts there and flies to its place, such as the bar of the candidate that the model picked. `strip.split(index, pieces)` cuts one token into two pieces or more, and `strip.merge(from, to, token)` joins the tokens from `from` to `to` into one. Without `token`, the new text is the old texts, joined. A piece has the state and the color of its token unless it names its own, and the new token of a merge has the color of the first old one, and their state when they share one. A piece and a new token give their `values`, and the values of the old tokens leave. When the pieces spell the token, each letter keeps its place and moves to its piece, and the box is cut between two letters. With another text, such as a character that becomes its bytes, the old text leaves before the new one comes.
+
+The indexes of a change are those of the strip when the film plays the change: after the changes before it in the same play. So merge pairs from the right, as the example does, or play one change after another. An index that the strip does not have then is an error that names the tokens that it has. Changes to different tokens can share one play. Schedule marks on the same token in time order. Each mark must finish before the next one starts. Use `seq` or separate calls to `s.play` if their times overlap. A `split` or a `merge` of a token that the change before it still brings in is an error that says to play them one after the other. A strip with `maxWidth` wraps and is a plain row of chips: its tokens take states, and it takes no rows, brackets, window, or change of its tokens.
+
+`strip.token(index)` is the cell of a token, with its `box`, its `text` and the marks of its state. `strip.p(index, edge)` is the middle of an edge of the cell, in the coordinates of the strip: `'bottom'` by default, and `'top'`, `'left'` or `'right'`. The bottom point is under the rows of values and the top point is over the brackets, so a line from it crosses no text of the strip. `strip.region({ from, to, row })` is the box of a run of cells in stage pixels, or of the part of a row under them, for `place` and `beside` of the layout. These places are fixed: read them again after a change moves a token. `strip.arcs(from, weights)` draws curved lines from one token to others of the same strip, for attention. `strip.links(other, pairs)` draws lines to the tokens of another strip, one for each pair of indexes, from under the upper token to over the lower one: a source and its translation, a question and the words of a passage. A pair with a third number, a weight from 0 to 1, has a wider and brighter line for a weight near 1. Create the lines after placing both strips. Recreate the lines after moving their endpoints. The two strips are one over the other, with a room of 1.5 of `size` or more from under the values of the upper one to over the brackets of the lower one: with less, the call is an error that says to move the strips apart.
+
+```film paired label="Reuse a cached prefix and append the generated answer one token at a time"
+import { draw, fade, fadeIn, film, namedBox, tokens } from 'vizmatic/stage'
+
+const SYSTEM = ['You', ' are', ' a', ' helpful', ' bot', '.']
+
+export default film({ fps: 30 }, (s) => {
+    const first = tokens([...SYSTEM, ' Hi'], { size: 40, label: 'request 1', width: 1300 }).at(110, -300)
+    const second = tokens([...SYSTEM, ' Bye'], { size: 40, label: 'request 2', width: 1300, color: 'purple' }).at(110, 0)
+    s.play(first.enter(), { duration: 1 })
+    s.play(second.enter(), { duration: 1 })
+    // A line joins each pair of tokens that are the same, from the left.
+    const same = first.links(second, SYSTEM.map((_, index) => [index, index] as const), { color: 'yellow' })
+    s.play(draw(same, { lag: 0.35 }), { duration: 1.8 })
+    s.wait(0.6)
+    // The model has the state of these tokens: it reads them from the cache.
+    s.play(second.mark((_, index) => index < SYSTEM.length, 'cached'), fade(same, 0), fade(first, 0.35), { duration: 1.2 })
+    s.play(second.span('prefix', 0, SYSTEM.length - 1, { label: 'read from the cache', color: 'yellow' }), { duration: 0.7 })
+    // The model writes the answer one token at a time. Each token flies from over the model to the end of the strip.
+    const model = namedBox('model', { width: 260, height: 110, color: 'green' }).at(540, 300)
+    s.play(fadeIn(model), { duration: 0.4 })
+    for (const word of [' See', ' you', '!']) {
+        s.play(second.append({ text: word, state: 'generated' }, { from: [model.top[0], model.top[1] - 50] }), { duration: 0.8 })
+        s.wait(0.25)
+    }
+    s.play(second.span('answer', SYSTEM.length + 1, second.count - 1, { label: 'written by the model', color: 'green' }), { duration: 0.7 })
+    s.wait(1.5)
+})
+```
+
+`strip.enter()` brings the chips in from the left, each with its values, and the names, the brackets and the window with them. `strip.chips`, `strip.rows`, `strip.spans`, `strip.frame` (the outline of the window) and `strip.caption` (the name of the line of cells) are the parts, after the changes that the film has played so far. While a window slides, its outline passes over the token text. A motion scan can report these frames as `film.text_crossed`. Check that the outline clears the text when the window settles.
+
 ## Code and tokens
 
-`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
+`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a strip of cells for the tokens of a language model: see [Token strips](#token-strips). `attentionMatrix` draws a heatmap with labels.
 
 `block.find(fragment)` returns the glyphs of a piece of the code, to color them or to move them. A fragment that is one token, such as `lo`, matches every such token. Any other fragment, such as `lo + hi`, matches as text inside a line, and spaces do not count. Pass a line, counted from 0, as the second argument to search that line only.
 
@@ -1199,6 +1414,20 @@ export default film({ fps: 30 }, (s) => {
 ```
 
 The `language` option names the syntax. The languages are `ts`, `python`, `rust`, `go`, `java`, `c`, `sql`, `bash`, and `plain`, and four languages for specifications and proofs: `tla` for TLA+, `dafny`, `lean`, and `smt` for SMT-LIB. In those four, a prime such as the one in `x'` is part of the code and does not start a string. An unknown name uses the TypeScript rules.
+
+Use `json` or `yaml` to color the fields of a tool call, model reply, or configuration file. The aliases are `jsonl` and `yml`. A key keeps its lexical `kind` and gains an optional `role: 'key'`. Set `colors: { key: 'teal' }` to change its color. YAML highlighting covers simple keys on a single line, including quoted keys, numeric keys, and keys with spaces. Complex keys, block scalars, tags, and flow collections across lines require a YAML parser. Use `language: 'ts'` explicitly to reproduce the earlier fallback coloring for these language names.
+
+```ts
+import { codeBlock, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    // A tool call as the model wrote it. The line of one argument is lit.
+    const call = s.add(codeBlock('{\n  "name": "get_weather",\n  "arguments": { "city": "Paris", "days": 3 }\n}', { language: 'json', size: 40 }))
+    s.wait(0.6)
+    s.play(call.focus(2))
+    s.wait(1.2)
+})
+```
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
 
@@ -1270,7 +1499,7 @@ The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`
 | `tex`, and each label that is math: the numbers and the labels of `axes`, the numbers of a `numberLine` with no `format` and the label of its `marker`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
 | The center label of a `donut`. | The display serif. |
 
-Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
+Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. In a strip of `tokens`, `font` is the font of the tokens: the values of its rows stay in mono, and the names of its rows and the labels of its brackets are in the font of the film. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
 
 The layout follows the font. A text measures its glyphs when it is made, so a card wraps its caption and a zone opens its border for the title with the widths of the font of the film. `'sans'` and `'text-serif'` have a semibold for `weight: 600`, so the title of an `infoBox` or of a `callout` is heavier than its body in both. `'serif'`, `'mono'` and `'noto'` have one weight, and such a title is regular there.
 
