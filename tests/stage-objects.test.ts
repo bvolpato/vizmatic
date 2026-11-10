@@ -10,7 +10,7 @@ import {
     fadeOut, indicate,
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
-    lanes, smooth, eventLog, LogRowNode, LOG_STATES,
+    lanes, smooth, eventLog, LogRowNode, LOG_STATES, row,
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
@@ -873,6 +873,167 @@ describe('system objects', () => {
         expect(lineIndex).toBeLessThan(plateIndex)
     })
 
+    describe('connector.send', () => {
+        // Two boxes with their near edges at -400 and 400, and a straight line between them, which ends 3 from each box.
+        const wire = (s: Stage) => {
+            const a = s.add(rect(100, 100, { stroke: 'ink' }).at(-450, 0)), b = s.add(rect(100, 100, { stroke: 'ink' }).at(450, 0))
+            return s.add(connector(a, b, { route: 'straight', tip: false }))
+        }
+        // A mark that is 60 wide and 40 high. With the room of 8 at each end, its middle goes from -359 to 359.
+        const message = () => rect(60, 40, { fill: 'teal', stroke: null })
+        const middle = (node: Node, time: number) => at(time, () => node.center.map((value) => Math.round(value * 10) / 10))
+        /** The middle of the red cross in a frame, or null when the frame has none. */
+        const crossAt = (f: CompiledFilm, time: number) => {
+            const red = parseColor('red')
+            const boxes = paths(f, time).filter((op) => op.stroke && (op.stroke as Rgba).every((value, index) => value === red[index])).map((op) => pathBounds(op.path)!)
+            if (boxes.length === 0) return null
+            const left = Math.min(...boxes.map((b) => b.x)), right = Math.max(...boxes.map((b) => b.x + b.width))
+            return Math.round(((left + right) / 2 - f.width / 2) * 10) / 10
+        }
+
+        it('carries a mark from the first node to the second at one speed, clear of both, and takes it away', async () => {
+            const mark = message()
+            const f = await compile((s) => {
+                const link = wire(s)
+                s.wait(1)
+                s.play(link.send(mark, { duration: 2 }))
+                expect(s.time).toBeCloseTo(3.12, 6)
+                s.wait(0.5)
+            })
+            // Before its turn the mark is not in the picture: the two boxes and the line are.
+            expect(paths(f, 0.5)).toHaveLength(3)
+            expect([1.5, 2, 2.5, 3].map((time) => middle(mark, time))).toEqual([[-179.5, 0], [0, 0], [179.5, 0], [359, 0]])
+            // It grows in at the start, and it has its size on the way.
+            expect(at(1.01, () => mark.bounds().width)).toBeLessThan(10)
+            expect(at(2, () => mark.bounds().width)).toBeCloseTo(60, 6)
+            // It never fades, so a line under it does not show through.
+            expect([1.05, 2, 3.05].map((time) => at(time, () => mark.get('opacity')))).toEqual([1, 1, 1])
+            // It goes into the node at the end: it shrinks there, and it is gone after that with its own size again.
+            expect(at(3.08, () => mark.bounds().width)).toBeLessThan(40)
+            expect(at(3.2, () => [mark.get('visible'), mark.get('sx')])).toEqual([false, 1])
+            expect(crossAt(f, 3.05)).toBeNull()
+            expectPure(f, [0.5, 1.2, 2, 3.05, 3.4])
+        })
+
+        it('sends an answer from the second node to the first', async () => {
+            const mark = message()
+            await compile((s) => {
+                const link = wire(s)
+                s.play(link.send(mark, { duration: 2, reverse: true }))
+            })
+            expect([0.5, 1, 2].map((time) => middle(mark, time))).toEqual([[179.5, 0], [0, 0], [-359, 0]])
+        })
+
+        it('stops a lost message on the way, with a cross ahead of it, and holds both', async () => {
+            const mark = message()
+            const f = await compile((s) => {
+                const link = wire(s)
+                s.play(link.send(mark, { duration: 2, lost: 0.4, hold: 1 }))
+                expect(s.time).toBeCloseTo(3.12, 6)
+                s.wait(0.5)
+            })
+            // The way of a message that stops goes from -359 to 314, where a refused one stops. The time is the time to 0.4 of it.
+            expect([1, 2, 2.9].map((time) => middle(mark, time))).toEqual([[-224.4, 0], [-89.8, 0], [-89.8, 0]])
+            // The cross is 37 wide, and it is ahead of the mark by the room of 8.
+            expect([1.9, 2.5, 2.9, 3.2].map((time) => crossAt(f, time))).toEqual([null, -33.3, -33.3, null])
+            expect(at(3.2, () => mark.get('visible'))).toBe(false)
+        })
+
+        it.each([[1, false], [1, true], [0.97, false], [0.97, true], [0, false]] as const)('keeps the cross of a message that is lost at %s of its way clear of the node and of the mark (reverse: %s)', async (lost, reverse) => {
+            const mark = message()
+            const f = await compile((s) => {
+                const link = wire(s)
+                s.play(link.send(mark, { duration: 1, lost, reverse }))
+            })
+            // Along the way of the message: the line ends at 397, the mark is 60 wide, the cross is 37 wide, and the room is 8.
+            const way = reverse ? -1 : 1
+            const markAt = middle(mark, 1.5)[0]! * way, cross = crossAt(f, 1.5)! * way
+            expect(cross + 18.5).toBeLessThanOrEqual(397 - 8 + 0.05)
+            expect(cross - 18.5).toBeGreaterThanOrEqual(markAt + 30 + 8 - 0.05)
+            // At the end of its way, it stops where a refused message stops.
+            if (lost === 1) expect([markAt, cross]).toEqual([314, 370.5])
+        })
+
+        it('stops a refused message before the node, with the cross between the two', async () => {
+            const mark = message()
+            const f = await compile((s) => {
+                const link = wire(s)
+                s.play(link.send(mark, { duration: 2, refused: true, stopColor: 'red' }))
+                s.wait(0.5)
+            })
+            // The cross ends 8 before the end of the line, and the mark ends 8 before the cross.
+            expect(middle(mark, 2.5)).toEqual([314, 0])
+            expect(crossAt(f, 2.5)).toBe(370.5)
+            // An answer that is refused stops before the first node.
+            const back = message()
+            const g = await compile((s) => {
+                const link = wire(s)
+                s.play(link.send(back, { duration: 2, refused: true, reverse: true }))
+            })
+            expect(middle(back, 2.5)).toEqual([-314, 0])
+            expect(crossAt(g, 2.5)).toBe(-370.5)
+        })
+
+        it('keeps the place of the mark with a mark that is in a group, and with a stretched play', async () => {
+            const mark = message()
+            await compile((s) => {
+                const link = wire(s)
+                s.add(group(mark).at(0, 200))
+                // The whole animation is 0.9 + 0.12 long, and the play gives it twice that.
+                s.play(link.send(mark), { duration: 2.04 })
+            })
+            expect(middle(mark, 0.9)).toEqual([0, 0])
+            expect(middle(mark, 1.8)).toEqual([359, 0])
+        })
+
+        it('refuses a time and a room that are not numbers, or that are under 0', async () => {
+            const sent = (options: Parameters<ReturnType<typeof connector>['send']>[1]) => compile((s) => { s.play(wire(s).send(message(), options)) })
+            for (const duration of [NaN, -1, 0, Infinity]) {
+                await expect(sent({ duration })).rejects.toThrow(`connector.send: duration is the time of the message on its way, in seconds, more than 0, and it is ${duration}`)
+            }
+            for (const hold of [NaN, -0.5, Infinity]) {
+                await expect(sent({ lost: 0.5, hold })).rejects.toThrow(`connector.send: hold is how long a message that is lost or refused stays with its cross, in seconds, 0 or more, and it is ${hold}`)
+            }
+            for (const gap of [NaN, -8]) await expect(sent({ gap })).rejects.toThrow(`connector.send: gap is the room between the mark and a node, in pixels, 0 or more, and it is ${gap}`)
+            // A hold of 0 is a message that goes at once.
+            await expect(sent({ refused: true, hold: 0 })).resolves.toBeDefined()
+        })
+
+        it('stops a film that sends one mark two times at once, and sends a mark again when it has arrived', async () => {
+            const twice = compile((s) => {
+                const link = wire(s), mark = message()
+                s.play(link.send(mark, { duration: 1 }), link.send(mark, { duration: 2, reverse: true }))
+            })
+            await expect(twice).rejects.toThrow('connector.send: the mark is on its way from 0 s to 1.12 s, and this message is from 0 s to 2.12 s. One mark is at one place at a time. Send a copy of it, such as link.send(mark.clone()), or a new mark for each message')
+            // Two messages whose times overlap in part, on two lines.
+            const later = compile((s) => {
+                const link = wire(s), other = wire(s), mark = message()
+                s.at(0.5, () => s.play(other.send(mark, { duration: 1 })))
+                s.play(link.send(mark, { duration: 1 }))
+            })
+            await expect(later).rejects.toThrow(/the mark is on its way from 0.5 s to 1.62 s, and this message is from 0 s to 1.12 s/)
+            // A copy of the mark travels at the same time.
+            const mark = message(), copy = mark.clone()
+            await compile((s) => {
+                const link = wire(s)
+                s.play(link.send(mark, { duration: 1 }), link.send(copy, { duration: 1, reverse: true }))
+                // The mark has arrived, so it can be the answer.
+                s.play(link.send(mark, { duration: 1, reverse: true }))
+            })
+            expect([middle(mark, 0.25), middle(copy, 0.25)]).toEqual([[-179.5, 0], [179.5, 0]])
+            expect(at(1.37, () => [mark.get('visible'), mark.get('sx'), ...mark.center.map((value) => Math.round(value * 10) / 10)])).toEqual([true, 1, 179.5, 0])
+            expect(middle(mark, 2.12)).toEqual([-359, 0])
+        })
+
+        it('says what is wrong with a message that cannot be sent', async () => {
+            const sent = (options: Parameters<ReturnType<typeof connector>['send']>[1], mark = message()) => compile((s) => { s.play(wire(s).send(mark, options)) })
+            await expect(sent({ lost: 1.5 })).rejects.toThrow(/lost is the part of the way where the message is lost, from 0 to 1, and it is 1.5/)
+            await expect(sent({ lost: 0.5, refused: true })).rejects.toThrow(/lost on the way or refused at the end/)
+            await expect(sent({}, rect(900, 40))).rejects.toThrow(/the line is 794 long, and a mark that is 900 by 40 needs more to travel/)
+            await expect(compile((s) => { s.play(wire(s).send(row([message()]) as never)) })).rejects.toThrow(/connector.send: the mark is a block/)
+        })
+    })
+
     it('infoBox grows to fit its text and exposes ports on its edges', async () => {
         let box!: ReturnType<typeof infoBox>
         await compile((s) => {
@@ -1531,6 +1692,10 @@ describe('animations that bring their own object to the stage', () => {
         'connector.pulse': () => {
             const a = rect(40, 40).at(-100, 0), b = rect(40, 40).at(100, 0), link = connector(a, b)
             return { nodes: [a, b, link], anim: link.pulse() }
+        },
+        'connector.send': () => {
+            const a = rect(40, 40).at(-200, 0), b = rect(40, 40).at(200, 0), link = connector(a, b)
+            return { nodes: [a, b, link, rect(30, 30)], anim: link.send(rect(30, 30), { refused: true }) }
         },
         'callout.enter': () => one(callout([0, 0], 'A note', { side: 'right', width: 200 }), (note) => note.enter()),
         typewriter: () => one(text('abc', { font: 'mono', size: 30 }), (line) => typewriter(line)),

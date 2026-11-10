@@ -272,6 +272,44 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+## Messages on a line
+
+`connector(a, b)` draws a line between two nodes, and `link.send(mark)` sends a mark along it: a request, an answer, a packet. Use it for a protocol between parts, where a message takes time, and can arrive late or not at all.
+
+```film paired label="A request arrives, its answer comes back, one request is lost on the way, and one is refused at the server"
+import { chip, connector, film, namedBox } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const look = { width: 340, height: 170, size: 56 } as const
+    const client = s.add(namedBox('client', look).at(-620, 0))
+    const server = s.add(namedBox('server', look).at(620, 0))
+    const link = s.add(connector(client, server, { route: 'straight', tip: false, color: 'gridStrong', width: 4 }))
+    // A new mark for each message. Any node is a mark: a chip, a pictogram, a group.
+    const message = (word: string) => chip(word, { size: 44, round: true, anchor: 'center', stroke: 'dim' })
+    s.play(link.send(message('request'), { duration: 1.2 }))
+    s.play(link.send(message('answer'), { duration: 1.2, reverse: true }))
+    s.play(link.send(message('request'), { duration: 0.8, lost: 0.6 }))
+    s.play(link.send(message('request'), { duration: 1.2, refused: true }))
+    s.wait(0.4)
+})
+```
+
+The mark grows in beside the first node and travels to the second one at one speed. `reverse: true` sends it from the second node to the first, as an answer. `duration` is the time on the way, so a slow message has a long `duration`. The mark starts and stops clear of the two nodes, and `gap` is that room: 8 by default.
+
+A message has one of three ends:
+
+- It arrives. The mark goes into the node at the end of the line: it shrinks there, and it is gone.
+- `lost: 0.6` loses it at that part of the way, from 0 to 1. The mark stops there, and a cross shows ahead of it. With `lost`, `duration` is the time to that place.
+- `refused: true` is a message that arrives, and that the receiver does not take. The mark stops before the node, with the cross between the two.
+
+The way of a message that stops ends before the node, with room for the cross. So the cross is never on the node or on the mark, and `lost: 1` stops the mark where a refused message stops.
+
+A message that is lost or refused stays with its cross for `hold` seconds, 0.8 by default, and then both go. `stopColor` is the color of the cross, red by default. The cross is as high as the mark.
+
+The animation lasts for the way and for what comes after it: 0.12 seconds for a mark that arrives, and `hold` more for one that stops. So `s.play(link.send(mark))` ends when the mark is gone. A film that has the times of its messages, such as the trace of a simulation, plays each one at its time: `s.at(sent, () => s.play(link.send(mark, { duration: arrives - sent })))`. Several marks can be on one line at one time. Each message has its own mark: one mark is at one place at a time, so a mark that is sent again while it is on its way is an error. Send a copy, `link.send(mark.clone())`, or make a new mark for each message. A mark that has arrived can go again, as the answer.
+
+The mark never fades: it grows in and shrinks out. So the line under it does not show through a text on it. The mark follows the line as it is when the message leaves: when a node at an end moves while the message is on its way, the mark arrives at the place where the node was. A line that is too short for the mark, a `lost` outside 0 to 1, a message that is both lost and refused, and a `duration`, a `hold`, or a `gap` that is not a number or is under 0 are errors. A `duration` is more than 0. `send` works with any `route` of the connector, and it puts the line on the stage when the film did not.
+
 ## Lanes
 
 `lanes(names, events)` shows who runs when. Each actor has one lane, and time runs from left to right. A span is a bar: the lane works from `start` to `end`. A handoff is an arrow from one lane to another at a time. A mark is a dot at one instant on one lane. Use it for a system call, a VM exit, an interrupt, or a request that passes through several services.
