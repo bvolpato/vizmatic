@@ -21411,6 +21411,30 @@ describe('number line', () => {
         expect(line.threshold('limit')).toBe(line.thresholdNodes[1])
     })
 
+    it('shows which side of a fixed point the moving cutoff is on when the band counts change', async () => {
+        const f = await compile((s) => {
+            const line = s.add(numberLine({
+                ticks: [4, 6, 8], points: [{ name: 'A', value: 5 }, { name: 'B', value: 8 }],
+                thresholds: [{ at: 4, label: 'cutoff' }], bands: ['below', 'above'], counts: true,
+            }))
+            s.play(line.moveThreshold(6), { duration: 2, ease: linear })
+        })
+        expect(words(f, 0.96)).toEqual(expect.arrayContaining(['cutoff 4.96', '0', '2']))
+        expect(words(f, 1)).toEqual(expect.arrayContaining(['cutoff 5', '0', '2']))
+        expect(words(f, 1.000001)).toEqual(expect.arrayContaining(['cutoff 5.000001', '1']))
+        expect(words(f, 1.04)).toEqual(expect.arrayContaining(['cutoff 5.04', '1']))
+    })
+
+    it('shows fractional bracket gaps as points move on an integer grid', async () => {
+        const f = await compile((s) => {
+            const line = s.add(numberLine({ ticks: [0, 1, 2], labels: false, points: [{ name: 'A', value: 1 }] }))
+            line.bracket(0, 'A')
+            line.bracket(0, 0.000001, { side: 'over' })
+            s.play(line.move('A', 2), { duration: 1, ease: linear })
+        })
+        expect(words(f, 0.25)).toEqual(expect.arrayContaining(['1.25', '0.000001']))
+    })
+
     it('keeps the thresholds in their order', async () => {
         await expect(compile((s) => {
             const line = s.add(numberLine({ range: [0, 10], thresholds: [3, 6] }))

@@ -1286,11 +1286,12 @@ A point label defaults to its name. Set `label: false` to draw just the mark. `l
 import { assertEqual, film, numberLine, sceneKit } from 'vizmatic/stage'
 
 const SCORES = [0.48, 0.56, 0.63, 0.69, 0.74, 0.81, 0.87, 0.94]
+const scoreLabel = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
 export default film({ fps: 24 }, (s) => {
     const { heading, source } = sceneKit({ size: 40 })
     s.add(heading('A stricter cutoff sends more cases to review'), source('Eight fixed scores. Rings wait for a person. Dots pass the gate.'))
     const strip = numberLine({
-        range: [0.4, 1], step: 0.1, length: 1600, size: 40, format: (score) => score.toFixed(2),
+        range: [0.4, 1], step: 0.1, length: 1600, size: 40, format: scoreLabel.format,
         points: SCORES.map((value, i) => ({ name: `request ${i + 1}`, value, label: i === 3 ? 'request 4' : false as const })),
         thresholds: [{ at: 0.7, label: 'cutoff' }],
         bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'served at once', color: 'teal' }], counts: true,
@@ -1308,6 +1309,8 @@ export default film({ fps: 24 }, (s) => {
 ```
 
 Supply `thresholds` in increasing order. Each cut is a number or an object with `at`, `label`, `color`, `ties`, and `readout`. The label follows the moving cut and shows its current value unless `readout` is false. The cuts divide the line into bands. Each band can have a name and color. `hollow: true` uses rings for its points. Set `counts: true` to show each population under the line.
+
+By default, threshold and bracket labels show up to four decimal places. They show extra digits when rounding would hide a nonzero gap or change where a cutoff appears relative to a point. If you supply `format`, it controls the displayed precision even during motion.
 
 `line.moveThreshold(to, { which })` moves a cut. Use its index or label for `which`, or omit it for the first cut. A point that meets the cut belongs to the upper band by default. Set `ties: 'under'` for the lower band. The fill, point marks, and counts follow the crossing as it happens. Thresholds must stay in increasing order throughout the motion.
 
