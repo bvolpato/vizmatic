@@ -256,6 +256,28 @@ s.play(said.enter())
 s.wait(readingSeconds(said.reading))
 ```
 
+Use `passage` for prose that a viewer follows through an edit. Name a span by its words. Mark a claim with `mark(words, kind)`, connect it to its source with `link()`, and call `break()` on the link when the source contradicts the claim. Each kind has a color and a distinct sign. `diff(next)` displays the revision and `accept()` removes the deleted words.
+
+For document chunking, `cut({ size: 12, overlap: 3 })` makes windows of words. Use `select({ chunk: 0 })` to move the selection, `counter('words')` for a readout, and `slip()` with `lift()` to pull a copy out. The films in `examples/films/passage/` show how to lay out a runbook, an answer with supporting sources, and a prompt with a JSON reply.
+
+```ts
+const answer = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 700, title: 'answer' }).at(-800, -300))
+const source = s.add(passage('Closed on Sunday. A refund is paid on the next business day.', { width: 700, title: 'source' }).at(100, -300))
+s.play(answer.mark('The shop is closed on Sunday.', 'claim'), source.mark('Closed on Sunday.'))
+const tie = answer.link('The shop is closed on Sunday.', source.span('Closed on Sunday.'), { color: 'green' })
+s.play(tie.enter(), answer.mark('The shop is closed on Sunday.', 'supported'))
+s.play(answer.mark('Refunds arrive immediately.', 'contradicted'))
+s.play(source.diff('Closed on Sunday and on Monday. A refund is paid on the next business day.'))
+s.play(source.accept())
+```
+
+A tool call, the reply of a model, or a configuration file as data. `codeBlock` colors `json` and `yaml` with the keys in one color, so a viewer tells the names from the values:
+
+```ts
+const call = s.add(codeBlock('{\n  "name": "get_weather",\n  "arguments": { "city": "Paris", "days": 3 }\n}', { language: 'json', size: 40 }))
+s.play(call.focus(2))
+```
+
 The labels and the frame that the scenes of one film share. Do not copy label helpers from film to film. `sceneKit` makes them in one font, with the heading, the source line, and the area for content at their places in the frame. Its one `size` sets every size: the heading, the source line, the claim tag, the chips and the names of the boxes follow it. `claimTag(c, { word: 'MEASURED', note: 'our run' })` puts a tag for the kind of the claim at the right end of the source line:
 
 ```ts
@@ -364,6 +386,19 @@ const word = s.add(bitField([
 ], { width: 1400 }).at(0, -200))
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
+
+Use `tokens` for a sentence, a sequence of bytes, or the parts of a prompt. Put IDs, positions, or targets in named rows under the cells. Mark prompt tokens as masked, or append generated tokens as they arrive. A bracket names a span, and a window highlights a range. Give the strip `size: 32` or larger for a 1080p film. The default token size is 22, and the row values use 0.82 of the token size.
+
+```ts
+const words = ['<s>', 'user', 'Sit', '!', 'bot', 'Good', 'dog', '</s>']
+const chat = tokens(words, { size: 44, even: true, label: 'input', rows: { target: words } })
+s.play(chat.enter())
+s.play(chat.shiftRow('target', -1))
+const prompt = [0, 1, 2, 3]
+s.play(chat.mark(prompt, 'masked'), ...prompt.map((index) => chat.setValue('target', index, -100)))
+```
+
+Use `split` and `merge` to show how a tokenizer changes its pieces. Each change reads its indexes when it plays. Merge disjoint pairs from right to left so earlier indexes stay valid. Reserve space with `width` when a strip will grow. Use `strip.p(index)` for a line endpoint and `strip.region({ from, to })` to place a note beside a range. Read these positions again after moving the tokens.
 
 A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
 
