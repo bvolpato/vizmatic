@@ -1,7 +1,8 @@
-import { isGradient, parseColor, sampleStops, type Paint, type Rgba } from './color'
+import { isGradient, luminance, over, parseColor, sampleStops, type Paint, type Rgba } from './color'
 import type { DrawOp, Frame, PathOp } from './display'
 import { imageOpBounds } from './display'
 import { imageHasVisiblePixels, ImageAssetError } from './image'
+import { CURVE_PIECES, encloses, pieces } from './enclose'
 import { apply, pathBounds, polyPath, signedArea, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
@@ -178,7 +179,7 @@ const MIN_OVERLAP = 0.12
 const GLYPH_INSET = 0.12
 const MIN_RESTING_MOMENTS = 5
 const AUTO_SAMPLES = 12
-const CUBIC_STEPS = 6
+const CUBIC_STEPS = CURVE_PIECES
 const CROSSING_ERROR_WIDTH = 2
 // A mark under this opacity is still fading in or out, so a viewer cannot read it.
 const BLANK_ALPHA = 0.25
@@ -208,25 +209,6 @@ const OPAQUE = 0.9
 
 function solid(paint: Paint): Rgba {
     return isGradient(paint) ? sampleStops(paint.stops, 0.5) : paint as Rgba
-}
-
-function luminance(color: Rgba): number {
-    const channel = (value: number) => {
-        const x = value / 255
-        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
-    }
-    return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
-}
-
-/** The color that a viewer sees where a translucent mark is over a background. */
-function over(color: Rgba, alpha: number, background: Rgba): Rgba {
-    const a = color[3] * alpha
-    return [
-        color[0] * a + background[0] * (1 - a),
-        color[1] * a + background[1] * (1 - a),
-        color[2] * a + background[2] * (1 - a),
-        1,
-    ]
 }
 
 /** Contrast of a translucent mark against the background, as WCAG defines the ratio. */
@@ -345,41 +327,6 @@ function segmentBoxGap(x0: number, y0: number, x1: number, y1: number, box: Boun
         pointSegmentGap(box.x, box.y, x0, y0, x1, y1), pointSegmentGap(right, box.y, x0, y0, x1, y1),
         pointSegmentGap(box.x, bottom, x0, y0, x1, y1), pointSegmentGap(right, bottom, x0, y0, x1, y1),
     )
-}
-
-/** The points of a curve between two anchors, as straight pieces. A ring of straight lines needs one piece for each. */
-function pieces(r: Path[number], o: number, visit: (x0: number, y0: number, x1: number, y1: number) => boolean): boolean {
-    const p = r.p
-    const x0 = p[o]!, y0 = p[o + 1]!, x3 = p[o + 6]!, y3 = p[o + 7]!
-    if (r.straight) return visit(x0, y0, x3, y3)
-    const x1 = p[o + 2]!, y1 = p[o + 3]!, x2 = p[o + 4]!, y2 = p[o + 5]!
-    let lastX = x0, lastY = y0
-    for (let k = 1; k <= CUBIC_STEPS; k++) {
-        const t = k / CUBIC_STEPS, u = 1 - t
-        const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t
-        const x = a * x0 + b * x1 + c * x2 + d * x3
-        const y = a * y0 + b * y1 + c * y2 + d * y3
-        if (visit(lastX, lastY, x, y)) return true
-        lastX = x
-        lastY = y
-    }
-    return false
-}
-
-/** True when a point is inside an outline, by the even-odd rule. An open outline counts as closed by a straight line. */
-function encloses(path: Path, px: number, py: number): boolean {
-    let inside = false
-    const edge = (x0: number, y0: number, x1: number, y1: number) => {
-        if ((y0 > py) !== (y1 > py) && px < x0 + (x1 - x0) * (py - y0) / (y1 - y0)) inside = !inside
-        return false
-    }
-    for (const r of path) {
-        const p = r.p
-        if (p.length < 8) continue
-        for (let o = 0; o + 7 < p.length; o += 6) pieces(r, o, edge)
-        edge(p[p.length - 2]!, p[p.length - 1]!, p[0]!, p[1]!)
-    }
-    return inside
 }
 
 /** A filled shape or an image that hides what is under it. */

@@ -18,14 +18,23 @@ MP4 export needs FFmpeg with `libx264`. WebM also needs `libvpx-vp9`. The CLI wr
 
 ## Quality
 
-| Quality | Use | H.264 CRF | Motion blur |
-|---|---|---|---|
-| `draft` | Checking timing. | 26 | off |
-| `standard` | The default. | 18 | off |
-| `high` | Publishing. | 15 | 4 samples |
-| `master` | Archiving and re-encoding. | 11 | 8 samples |
+| Quality | Use | H.264 CRF | Motion blur | Bloom dither |
+|---|---|---|---|---|
+| `draft` | Checking timing. | 26 | off | off |
+| `standard` | The default. | 18 | off | off |
+| `high` | Publishing. | 15 | 4 samples | on |
+| `master` | Archiving and re-encoding. | 11 | 8 samples | on |
 
 Motion blur evaluates every sampled time and averages real sub-frames across the shutter. `--motion-blur` and `--shutter` set these directly.
+
+The bloom dither is for soft light on a dark look. Without it, the halo of a bright mark is cut to whole levels, and it shows faint contour lines. With it, the halo is smooth, with fine grain of one level. `high` and `master` have the dither, because they make the copy that you publish. `draft` and `standard` do not, because they are for work on a film, and the dither costs time. Measured at 1080p on a loaded laptop, with the dither against without:
+
+| | `standard` | `high` |
+|---|---|---|
+| Frames per second of the export | 8% to 25% fewer | 1% to 11% fewer |
+| Size of the MP4 | 7% smaller to 27% larger | 2% to 20% larger |
+
+`--dither` turns the dither on at any quality, and `--no-dither` turns it off. From code, the option is `dither: true` or `dither: false`. A film in a look with no bloom, such as `paper`, has no dither to turn on. [Bloom](#bloom) says what each output format keeps of the grain.
 
 MP4 files stay at H.264 level 4.2 at 1080p60, so they play in QuickTime, Quick Look, and on Apple devices. To join another clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`. QuickTime reads one set of decoder settings from the start of a file, and it stops at a clip that uses different ones.
 
@@ -97,11 +106,28 @@ export async function render(): Promise<void> {
 
 Bloom is part of a look, and export applies it after rasterizing. Pass `bloom` on the film to change it. Set it to `0` for line art that needs exact colors.
 
+Bloom is smooth light over a few of the 256 levels of a channel. Cut to whole levels, it shows contour lines on a dark page. So the export dithers the bloom: a fixed pattern rounds each pixel up or down, and a line becomes fine grain of one level. A pixel that the light does not reach keeps its exact color. A pixel with alpha 0 gets no grain. The pattern depends on the place of a pixel only, so a still picture has the same grain in every frame and on every run. With motion blur, the dither comes once, after the average of the shutter samples.
+
+Each output keeps a different part of the grain:
+
+| Output | How the light is written |
+|---|---|
+| PNG | Dithered, unless the option turns it off. The file holds each pixel as rendered. |
+| MP4 at `high`, `master` | Dithered, unless the option turns it off. The encoder keeps the grain in the flat dark parts, and not every pixel of it. |
+| MP4 at `draft`, `standard` | Cut to whole levels, unless the option turns the dither on. |
+| WebM | Dithered or not as an MP4 of the same quality. The VP9 encoder keeps part of the grain, less than H.264 does. |
+| GIF | Cut to whole levels, with any option. A palette of 256 colors cannot hold the grain. |
+| Preview in the browser | Cut to whole levels. |
+
+With the settings of a film alone, the H.264 encoder drops the grain and leaves squares of 16 px in its place. So an MP4 with the dither gets more x264 settings: `subme=6:trellis=0` at `high` and `master`, `aq-strength=1.0:subme=6:trellis=0` at `standard`, and `aq-strength=2.0` at `draft`. They do not change the decoder settings of the file, so a clip with `filmEncoderSettings(quality)` still joins. On a picture with no dither, these settings alone cost 0.6 to 0.7 dB of luma PSNR at `high` and 1.2 to 1.7 dB at `standard`, with the same SSIM. A movie with no dither gets the settings of a film alone.
+
+A PNG still with bloom was about three times as large with the dither. A `draft` with the dither was about half as large again.
+
 ## Speed
 
 Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
 
-A movie or GIF export compares each frame with the frame before it, on the main thread. A frame that is equal takes the pixels of that frame, and no worker rasterizes it. Two frames are equal when every SVG sample, the dimensions, the bloom setting, and the background value are identical. This applies to generated frames with prepared, embedded image assets. A frame with an unresolved image reference always rasterizes again, because the file can change between two frames. Updaters and every shutter sample still run before this comparison.
+A movie or GIF export compares each frame with the frame before it, on the main thread. A frame that is equal takes the pixels of that frame, and no worker rasterizes it. Two frames are equal when every SVG sample, the dimensions, the bloom and dither settings, and the background value are identical. This applies to generated frames with prepared, embedded image assets. A frame with an unresolved image reference always rasterizes again, because the file can change between two frames. Updaters and every shutter sample still run before this comparison.
 
 With motion blur, shutter samples next to each other with the same SVG share one raster inside a frame. This applies to every frame, with any image, because one frame is one render.
 

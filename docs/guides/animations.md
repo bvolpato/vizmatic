@@ -137,6 +137,8 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+A verb that scales or turns the node about a point plays with `along` in one `s.play`, in any order: `s.play(grow(mark), along(mark, road))` and `s.play(along(mark, road), grow(mark))` are the same film. Such verbs are `grow`, `fadeIn` with a `scale`, `scaleBy`, `rotate`, `spin`, `shake`, and `indicate`. For a message that travels between two nodes, [`connector.send`](objects.md#messages-on-a-line) does both.
+
 ### morph
 
 `morph` turns one shape into another. Afterwards the target is on stage and the source is hidden, so later code always refers to the node you can see.
@@ -212,6 +214,38 @@ export default film({ fps: 30 }, (s) => {
     s.wait(0.6)
 })
 ```
+
+`indicate` swells a target and tints it for a moment. A fill that another part of the target is drawn on is a backing, and a backing and its content never take the tint together: the tint goes to the one of the two that leaves more contrast between them.
+
+That gives two pictures:
+
+- **On a dark panel, the border and the text light up.** The panel keeps its color. This is a numbered ring, a box or a card in the `midnight` look with a yellow tint.
+- **On a light panel, the panel lights up under its dark text.** The text keeps its color. This is a solid badge under a dark number. It is also the same ring, box or card in the `paper` look with a yellow tint, when each text on it is dark: yellow has no contrast on a light panel, so the panel takes it.
+
+The least readable part on the panel decides. A card in `paper` with an ink caption becomes a yellow panel. The same card with a `dim` caption gets only a lit border: the caption is hard to read on yellow, and yellow text is hard to read on the panel, so the panel and its texts keep their colors.
+
+So pass a shape together with what is on it, as one group or a list: `indicate([ring, number])`. A shape with nothing on it, such as a dot or a bar, takes the tint in full.
+
+What is a part, and what is on a fill:
+
+- A part is on a fill when the stage draws it after the fill, it is smaller than the fill, and its middle is inside the shape of the fill. The order of the list does not count. A label in the box of a triangle and outside the triangle is beside it, and a number in the hole of a donut is on no wedge.
+- A text, a formula and a pictogram are one part each. So the integral sign and the root sign of a formula take the tint with the rest, and no glyph is the backing of the next.
+- A part that does not show, hidden or at opacity 0, is not counted.
+- An object with a `color()` of its own gets that call. A `tag` tints the border of its pill and its word, and its note keeps its color.
+- The choice is made when the animation starts, from the places and the colors of that moment. So `seq(moveTo(number, ring), indicate([ring, number]))` sees the number on its ring.
+- `fill: true` is `node.color(color)` for the whole target, with no choice: every paint takes the tint.
+
+The limits:
+
+- A pair keeps its colors when no tint leaves it readable and it is more readable as it is. Readable is a contrast of 3 to 1 between a part and its fill. Only the border of the fill lights up then, and a target with no border only swells. A light number on a light badge is such a pair: give the number a dark color.
+- With a tint that is near the page color, such as yellow in `paper`, expect lit borders more often than lit panels. A chip, a named box, and a panel under a `dim` or a colored word get only a lit border there. For a stronger emphasis, use a tint with contrast to the page, such as `red` in `paper`.
+- The limit of 3 to 1 is a line, so two colors that look alike can get two pictures. In `paper` with a yellow tint, a white number on a blue badge has 3.3 to 1 on a yellow badge, and the badge takes the tint. A number in the `bg` color has a little less than 3 to 1, and that pair keeps its colors.
+- A fill that is not opaque keeps its alpha under the tint, and it counts as the color that a viewer sees through it. On a wash, the content takes the tint when that is readable, because a wash hardly shows a tint. With `fill: true`, as before, the fill takes the tint and loses its alpha.
+- A gradient counts as the color of its middle. When it takes the tint, it becomes one color.
+- A `counter`, and any drawing that a function makes again on each frame, cannot take a tint. It is one part: its ring keeps its color under it when that is more readable, and takes the tint when not.
+- A part whose middle is off its fill, such as a number at the edge of a disc, is not on the fill: both take the tint.
+- The tint `ink` on a target in the ink color changes no color. The target only swells.
+- The choice takes about a quarter of a second for 10,000 parts, at the start of the animation.
 
 ### shake
 
