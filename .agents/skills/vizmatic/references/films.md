@@ -443,6 +443,23 @@ s.play(log.mark((row) => row.state === 'new', 'stored'))
 s.play(log.mark(5, 'answered'))
 ```
 
+A table whose rows are the data of the example: the cases of an evaluation, the candidates of a choice, the records of a ledger. Do not build it from `grid` and texts, and do not show a table that stands still. `table` keeps the columns in line, gives each row an id and a node that it keeps, and gives a cell a state with a color and a mark (`pass`, `fail`, `warn`, `pending`, `skip`, or your own). `light` moves one marker to a row, a column or a cell, `setCell` changes a value or a state in place, `append` and `remove` change the rows, and `sort` and `moveRow` move them. A column with a `total` gives a total row that follows the rows. The text size is 28 by default. The columns are set from the first rows, so give a column a `sample` when it gets a longer value later, and give a table that grows its `maxRows`. A cloned table starts its own timeline and keeps the graphics attached to its cells, including when a group contains the table. Play one change of the rows at a time: two of `append`, `remove`, `sort` and `moveRow` whose times overlap are an error, and `setCell` and `light` play with any of them:
+
+```ts
+const results = s.add(table([
+    { key: 'name', label: 'incident case', total: () => 'passed' },
+    { key: 'old', label: 'old prompt', align: 'center', total: (rows) => `${rows.filter((row) => row.states.old === 'pass').length}/${rows.length}` },
+    { key: 'score', format: (value) => value.toFixed(2) },
+], [
+    { id: 'overdue', name: 'page is overdue', old: { state: 'pending' }, score: 0.4 },
+    { id: 'prior', name: 'a page was sent before', old: { state: 'pending' }, score: 0.93 },
+], { size: 36, maxRows: 3 }))
+s.play(results.light('overdue', 'old'), results.setCell('overdue', 'old', { state: 'fail' }))
+s.play(results.append({ id: 'first', name: 'first page is due', old: { state: 'pass' }, score: 0.62 }))
+s.play(results.sort('score', { descending: true }), results.light('prior'))
+s.add(arrow(start, results.region('prior', 'score').point('left')))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
@@ -495,6 +512,22 @@ const word = s.add(bitField([
     { bits: 12, label: 'offset', color: 'purple' },
 ], { width: 1400 }).at(0, -200))
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
+```
+
+Use `segmentedBar` for a budget against a limit or for shares of a whole. Each part keeps its name and color as its value changes. Set `capacity` to draw a limit and `max` to reserve space for a red hatch over any excess. The labels and readout default to 28 px. Use `resize`, `insert`, and `remove` to change parts. `cut` removes selected parts and scales the others to restore the total. `send` moves one part between bars. Use `bar.region({ label: name })` to place a note under the label of a narrow part.
+
+```ts
+const context = s.add(segmentedBar([
+    { name: 'system', value: 1200 },
+    { name: 'tool schemas', value: 2400 },
+    { name: 'trace export', value: 8200, color: 'orange' },
+], { capacity: 8192, max: 12436, title: 'context window, in tokens', free: 'free', width: 1700 }).at(0, -200))
+const archive = s.add(segmentedBar([], { capacity: 12436, title: 'archive', readout: false, width: 1700 }).at(0, 200))
+s.play(context.send('trace export', archive))                              // the raw trace moves to the other bar
+s.play(context.insert({ name: 'finding', value: 186, color: 'orange' }))   // one finding of it arrives
+s.play(context.resize('tool schemas', 1324))                               // the tools shrink, and the total counts down
+const next = segmentedBar([{ name: 'create', value: 0.5 }, { name: 'revoke', value: 0.25 }, { name: 'rename', value: 0.15 }, { name: 'quota', value: 0.1 }])
+s.play(next.cut(next.find((part) => part.index >= 2)))                     // top-k with k = 2: the two that stay take the whole bar
 ```
 
 Use `tokens` for a sentence, a sequence of bytes, or the parts of a prompt. Put IDs, positions, or targets in named rows under the cells. Mark prompt tokens as masked, or append generated tokens as they arrive. A bracket names a span, and a window highlights a range. Give the strip `size: 32` or larger for a 1080p film. The default token size is 22, and the row values use 0.82 of the token size.

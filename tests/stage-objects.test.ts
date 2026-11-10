@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough, chip, chipRow,
     bitField,
+    segmentedBar, spring,
     quote, quotePair, readingSeconds,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, matrixProduct, CELL_STATES, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
@@ -11,9 +12,10 @@ import {
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
     lanes, smooth, eventLog, LogRowNode, LOG_STATES, row,
-    delay, par, retime, ringBuffer,
+    delay, par, retime, ringBuffer, overshoot,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
+    table, Table, TableCellNode, TableRowNode, TABLE_STATES, type TableColumn, type TableRow, type TableRowView,
     boxOf, fitted,
     circle, tangentLine, secantLine, areaUnder, band, valueAt, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
@@ -10392,6 +10394,876 @@ describe('bit field', () => {
     })
 })
 
+describe('segmented bar', () => {
+    type Bar = ReturnType<typeof segmentedBar>
+    // The room between two parts, at the default text size of 28.
+    const SEAM = 28 * 0.12
+    // A bar of 10 units that is 1000 wide: one unit is 100 px, and the left end is at -500.
+    const two = (options: Parameters<typeof segmentedBar>[1] = {}) => segmentedBar([{ name: 'a', value: 2 }, { name: 'b', value: 6 }], { capacity: 10, width: 1000, ...options })
+    const shares = () => segmentedBar([{ name: 'create', value: 0.5 }, { name: 'revoke', value: 0.25 }, { name: 'rename', value: 0.15 }, { name: 'quota', value: 0.1 }], { width: 1000 })
+    const crowded = [['instructions', 2], ['authorization', 1], ['retrieved passages', 1], ['answer reserve', 20], ['task', 1], ['tool results', 1]].map(([name, value]) => ({ name: name as string, value: value as number }))
+    /** The left and the right end of the box of a part at a time, on the stage. Null when the part draws no box. */
+    const ends = (part: Node, t: number): [number, number] | null => at(t, () => {
+        const box = part.children[0]!.bounds()
+        return box.width > 0 ? [box.x, box.x + box.width] : null
+    })
+    /** What a label draws at a time: its two texts, the x of its middle, its two ends, its opacity, and the box of its line to the part. Null when it draws nothing. */
+    const drawn = (node: Node, t: number) => at(t, () => {
+        const made = node.draw!(t) as Node | null
+        if (!made) return null
+        const [leader, name, amount] = made.children as unknown as [Node, TextNode, TextNode]
+        const boxes = [name.bounds(), amount.bounds()], line = pathBounds(leader.get('path')!)!
+        return {
+            name: name.source, amount: amount.source, x: name.get('x'), y: [name.get('y'), amount.get('y')], opacity: made.get('opacity'), sizes: [name.size, amount.size], fonts: [name.font, amount.font],
+            left: Math.min(...boxes.map((box) => box.x)), right: Math.max(...boxes.map((box) => box.x + box.width)),
+            leader: { left: line.x, right: line.x + line.width, top: line.y, bottom: line.y + line.height, stroke: leader.get('stroke') },
+        }
+    })
+    const label = (part: Node, t: number) => drawn(part.children[1]!, t)
+    const readout = (bar: Bar, t: number) => at(t, () => bar.readout!.draw!(t) as unknown as TextNode)
+    /** The label of the free room. */
+    const rest = (bar: Bar, t: number) => drawn((bar as unknown as { rest: Node }).rest, t)
+    const message = (run: () => unknown) => { try { run() } catch (error) { return (error as Error).message } return '' }
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+    /** The filled shapes of a color at a time, on the canvas. A letter is not one of them. */
+    const filled = (f: CompiledFilm, t: number, color: Rgba) => paths(f, t).filter((op) => same(op.fill, color) && op.node?.data['key'] === undefined).map((op) => pathBounds(op.path)!)
+
+    it('draws each part to scale from the left end, and places the middle of the bar from 0 to max', async () => {
+        await compileFilm(film(() => {
+            const bar = two().at(100, 50)
+            expect([bar.x(0), bar.x(2.5), bar.x(10)]).toEqual([-500, -250, 500])
+            // Part a holds 2 of the 10 units, so it is a fifth of the width. Two parts have a little room between them.
+            const a = ends(bar.part('a'), 0)!, b = ends(bar.part('b'), 0)!
+            expect(a[0]).toBeCloseTo(100 - 500 + SEAM / 2, 6)
+            expect(a[1]).toBeCloseTo(100 - 300 - SEAM / 2, 6)
+            expect(b[0]).toBeCloseTo(100 - 300 + SEAM / 2, 6)
+            expect(b[1]).toBeCloseTo(100 + 300 - SEAM / 2, 6)
+            // The frame goes from 0 to the capacity, around the place of the object.
+            const frame = bar.frame.bounds()
+            expect(frame.x).toBeCloseTo(-400, 6)
+            expect(frame.x + frame.width).toBeCloseTo(600, 6)
+            expect(frame.y + frame.height / 2).toBeCloseTo(50, 6)
+            expect(frame.height).toBe(67)
+            // With room for an amount over the capacity, the frame ends at the capacity, and a part has the scale of `max`.
+            const roomy = segmentedBar([{ name: 'a', value: 5 }], { capacity: 10, max: 20, width: 1000 })
+            expect(roomy.frame.bounds().width).toBeCloseTo(500, 6)
+            expect(ends(roomy.part('a'), 0)![1]).toBeCloseTo(-250 - SEAM / 2, 6)
+            expect([roomy.capacity, roomy.max]).toEqual([10, 20])
+            // The line of the capacity stands at the end of the frame, and the region with no piece is the frame.
+            const post = roomy.limit!.bounds()
+            expect(post.x + post.width / 2).toBeCloseTo(0, 6)
+            expect([roomy.region().left, roomy.region().right]).toEqual([-500, 0])
+            // The title starts at the left end of the bar, and the readout ends at the line of the capacity.
+            const titled = segmentedBar([{ name: 'a', value: 5 }], { capacity: 10, max: 20, width: 1000, title: 'window' })
+            expect(Math.abs(titled.title!.bounds().x + 500)).toBeLessThan(3)
+            const words = readout(titled, 0).bounds()
+            expect(Math.abs(words.x + words.width)).toBeLessThan(3)
+            // `height` sets the height of the bar, and a bar with no `width` is 1200 wide.
+            expect(two({ height: 100 }).frame.bounds().height).toBe(100)
+            expect(segmentedBar([{ name: 'a', value: 1 }]).frame.bounds().width).toBeCloseTo(1200, 6)
+            // Without a capacity, the parts are shares of the whole bar: the last one ends at the right end.
+            const whole = shares()
+            expect(whole.capacity).toBeCloseTo(1, 12)
+            expect(whole.limit).toBeNull()
+            expect(ends(whole.part('quota'), 0)![1]).toBeCloseTo(500 - SEAM / 2, 6)
+        }))
+    })
+
+    it('gives the places of a part and of an amount: p(), region(), range() and x()', async () => {
+        await compileFilm(film(() => {
+            const bar = two().at(100, 50)
+            expect(bar.range('a')).toEqual([0, 2])
+            expect(bar.range('b')).toEqual([2, 8])
+            // The points are in the coordinates of the object. The bar is 67 high.
+            expect(bar.p('b')).toEqual([0, -33.5])
+            expect(bar.p('b', 'bottom')).toEqual([0, 33.5])
+            expect(bar.p('b', 'left')).toEqual([-300, 0])
+            expect(bar.p('b', 'right')).toEqual([300, 0])
+            // A region is a box of the stage, where the object is now.
+            const part = bar.region({ part: 'b' })
+            expect([part.left, part.right, part.top, part.bottom]).toEqual([-200, 400, 16.5, 83.5])
+            const frame = bar.region()
+            expect([frame.left, frame.right]).toEqual([-400, 600])
+            const stretch = bar.region({ from: 1, to: 3 })
+            expect([stretch.left, stretch.right]).toEqual([-300, -100])
+            expect(bar.region({ at: 7 }).point('top')).toEqual([300, 16.5])
+            expect(message(() => bar.p('zz'))).toBe('segmentedBar: range: no part "zz". The parts are "a", "b"')
+            expect(message(() => bar.p('a', 'middle' as never))).toMatch(/the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/)
+            expect(message(() => bar.x(11))).toMatch(/x: the amount is 11\. The bar goes from 0 to 10/)
+            expect(message(() => bar.region({ part: 'a', at: 2 }))).toMatch(/`part` for one part, or amounts .* not both/)
+            expect(message(() => bar.region({ from: 3, to: 1 }))).toMatch(/`from` is 3 and `to` is 1/)
+            expect(message(() => bar.region({ lane: 'a' } as never))).toMatch(/region has no piece "lane"\. Its pieces are: part, label, from, to, at/)
+            // The label of a part: its two lines under the bar, around the middle of the label. The room of a label is as wide as the widest amount at least.
+            const under = bar.region({ label: 'b' }), words = label(bar.part('b'), 0)!
+            expect((under.left + under.right) / 2).toBeCloseTo(100 + words.x, 6)
+            expect(under.left).toBeLessThanOrEqual(100 + words.left)
+            expect(under.right).toBeGreaterThanOrEqual(100 + words.right)
+            expect(under.top).toBeGreaterThan(part.bottom)
+            expect(under.top).toBeLessThan(50 + words.y[0]!)
+            expect(under.bottom).toBeGreaterThan(50 + words.y[1]!)
+            expect(under.bottom).toBeCloseTo(boxOf(bar).bottom, 6)
+            // The label of a narrow part is not under its box: its region follows the label.
+            const tight = segmentedBar(crowded, { capacity: 32, width: 1400, free: 'free' })
+            const pushed = tight.region({ label: 'retrieved passages' })
+            expect((pushed.left + pushed.right) / 2).toBeCloseTo(label(tight.part('retrieved passages'), 0)!.x, 6)
+            expect(pushed.left).toBeGreaterThan(tight.region({ part: 'retrieved passages' }).right)
+            expect(message(() => bar.region({ label: 'a', at: 2 }))).toBe('segmentedBar: region takes `label` for the label of one part, with no other piece')
+            expect(message(() => bar.region({ label: 'zz' }))).toBe('segmentedBar: region: no part "zz". The parts are "a", "b"')
+            expect(message(() => two({ labels: false }).region({ label: 'a' }))).toBe('segmentedBar: region: the bar draws no labels (labels: false), so the label of "a" has no place. Use { part: "a" } for the box of the part')
+        }))
+    })
+
+    it('reads its state: the names, the count, the total, the free room, the amount over, and the parts that a function picks', async () => {
+        await compileFilm(film(() => {
+            const bar = segmentedBar([{ name: 'system', value: 1200 }, { name: 'tools', value: 2400 }, { name: 'trace', value: 8200 }], { capacity: 16000 })
+            expect(bar.names).toEqual(['system', 'tools', 'trace'])
+            expect([bar.count, bar.total, bar.free, bar.over]).toEqual([3, 11800, 4200, 0])
+            expect(bar.amount('tools')).toBe(2400)
+            expect([bar.has('trace'), bar.has('zz')]).toEqual([true, false])
+            expect(bar.find((part) => part.share > 0.2)).toEqual(['tools', 'trace'])
+            // The function gets each part with its two ends and its index, from the left.
+            const seen: unknown[] = []
+            bar.find((part) => { seen.push([part.name, part.value, part.from, part.to, part.index]); return false })
+            expect(seen).toEqual([['system', 1200, 0, 1200, 0], ['tools', 2400, 1200, 3600, 1], ['trace', 8200, 3600, 11800, 2]])
+            expect(bar.find((part) => part.from <= 3000 && 3000 < part.to)).toEqual(['tools'])
+            // A bar that holds more than its capacity is over, and has no free room.
+            const full = segmentedBar([{ name: 'cache', value: 30 }], { capacity: 24, max: 34 })
+            expect([full.over, full.free]).toEqual([6, 0])
+            // In floating point, these two amounts add up to a little less than 0.8. The bar is full, with no free room.
+            expect(0.7 + 0.1).toBeLessThan(0.8)
+            expect(segmentedBar([{ name: 'p', value: 0.7 }, { name: 'q', value: 0.1 }], { capacity: 0.8 }).free).toBe(0)
+            expect(message(() => bar.amount('zz'))).toBe('segmentedBar: amount: no part "zz". The parts are "system", "tools", "trace"')
+        }))
+    })
+
+    it('resizes a part in place: its box follows the amount, the parts at its right move, and the amounts count', async () => {
+        let bar!: Bar
+        await compile((s) => {
+            bar = s.add(two())
+            s.play(bar.resize('a', 4), { duration: 1, ease: linear })
+            expect(bar.amount('a')).toBe(4)
+            expect(bar.total).toBe(10)
+            expect(bar.range('b')).toEqual([4, 10])
+            // The places are read after the change: part b is from -100 to 500 now, and its label is under its middle.
+            expect([bar.region({ part: 'b' }).left, bar.region({ part: 'b' }).right]).toEqual([-100, 500])
+            expect(bar.region({ label: 'b' }).point('top')[0]).toBeCloseTo(200, 6)
+            expect(bar.p('b')[0]).toBe(200)
+        })
+        const a = bar.part('a'), b = bar.part('b')
+        // Half way, part a holds 3 units: it ends at -200, and part b starts there and keeps its width of 600.
+        expect(ends(a, 0.5)![1]).toBeCloseTo(-200 - SEAM / 2, 6)
+        expect(ends(b, 0.5)![0]).toBeCloseTo(-200 + SEAM / 2, 6)
+        expect(ends(b, 0.5)![1]).toBeCloseTo(400 - SEAM / 2, 6)
+        expect(ends(a, 1)![1]).toBeCloseTo(-100 - SEAM / 2, 6)
+        expect(ends(b, 1)![1]).toBeCloseTo(500 - SEAM / 2, 6)
+        // The amount under the part and the total over the bar count with it.
+        expect([label(a, 0)!.amount, label(a, 0.5)!.amount, label(a, 1)!.amount]).toEqual(['2', '3', '4'])
+        expect([readout(bar, 0).source, readout(bar, 0.5).source, readout(bar, 1).source]).toEqual(['8 / 10', '9 / 10', '10 / 10'])
+    })
+
+    it('resizes several parts at one time, and a second change in a sequence starts from the first', async () => {
+        let bar!: Bar
+        const compiled = await compile((s) => {
+            bar = s.add(two())
+            s.play(bar.resize({ a: 1, b: 9 }), { duration: 1, ease: linear })
+            expect([bar.amount('a'), bar.amount('b')]).toEqual([1, 9])
+            s.play(seq(bar.resize('a', 3, { duration: 1 }), bar.resize('a', 0, { duration: 1 })), bar.resize('b', 4, { duration: 2 }), { ease: linear })
+            expect([bar.amount('a'), bar.amount('b'), bar.total]).toEqual([0, 4, 4])
+        })
+        // Half way through the first change, part a holds 1.5 and part b holds 7.5.
+        expect(ends(bar.part('a'), 0.5)![1]).toBeCloseTo(-350 - SEAM / 2, 6)
+        expect(ends(bar.part('b'), 0.5)![1]).toBeCloseTo(400 - SEAM / 2, 6)
+        // From 1 to 2 part a grows to 3, and from 2 to 3 it shrinks to nothing. Part b shrinks over the two seconds.
+        expect(ends(bar.part('a'), 2)![1]).toBeCloseTo(-200 - SEAM / 2, 6)
+        expect(ends(bar.part('a'), 2.5)![1]).toBeCloseTo(-350 - SEAM / 2, 6)
+        expect(ends(bar.part('b'), 2.5)).toEqual([expect.closeTo(-350 + SEAM / 2, 6), expect.closeTo(-350 + 525 - SEAM / 2, 6)])
+        expect(ends(bar.part('a'), 3)).toBeNull()
+        // A part of no amount keeps its label: it is still a part of the bar.
+        expect(label(bar.part('a'), 3)).toMatchObject({ name: 'a', amount: '0', opacity: 1 })
+        // A frame is a function of its time: the bar draws the same picture in any order of the frames.
+        expectPure(compiled, [0.2, 0.5, 1.4, 2.5, 3])
+    })
+
+    it('brings a part with insert: it grows from nothing at its place, and its label comes early with its name', async () => {
+        let bar!: Bar, orange!: Rgba
+        await compile((s) => {
+            orange = parseColor('orange')
+            bar = s.add(two())
+            s.play(bar.insert({ name: 'new', value: 2, color: 'orange' }, { before: 'b' }), { duration: 1, ease: linear })
+            expect(bar.names).toEqual(['a', 'new', 'b'])
+            expect([bar.amount('new'), bar.total, bar.free]).toEqual([2, 10, 0])
+            // Without `before`, a part goes to the right end.
+            s.play(bar.insert({ name: 'last', value: 0 }), { duration: 0.5 })
+            expect(bar.names).toEqual(['a', 'new', 'b', 'last'])
+        })
+        // A part with no color takes the next color of the list: the fourth part is purple, and the line to its label shows it.
+        expect(label(bar.part('last'), 1.5)!.leader.stroke).toEqual(parseColor('purple'))
+        const added = bar.part('new')
+        expect(ends(added, 0)).toBeNull()
+        // Half way it holds 1 unit, between part a and part b, and part b starts where it ends.
+        expect(ends(added, 0.5)).toEqual([expect.closeTo(-300 + SEAM / 2, 6), expect.closeTo(-200 - SEAM / 2, 6)])
+        expect(ends(bar.part('b'), 0.5)![0]).toBeCloseTo(-200 + SEAM / 2, 6)
+        expect(ends(added, 1)).toEqual([expect.closeTo(-300 + SEAM / 2, 6), expect.closeTo(-100 - SEAM / 2, 6)])
+        expect(at(1, () => added.children[0]!.draw!(1) as Node).get('fill')).toEqual(orange)
+        // The room of the label opens in the first four tenths of the time, and the label shows at the end of that.
+        expect(label(added, 0.1)).toBeNull()
+        expect(label(added, 0.5)).toMatchObject({ name: 'new', amount: '1', opacity: 1 })
+        expect(label(added, 1)).toMatchObject({ name: 'new', amount: '2', opacity: 1 })
+    })
+
+    it('takes parts out with remove: a box shrinks to nothing, the rest close the room, and the name stays while it shrinks', async () => {
+        let bar!: Bar, a!: Node, c!: Node
+        await compile((s) => {
+            bar = s.add(segmentedBar([{ name: 'a', value: 2 }, { name: 'b', value: 6 }, { name: 'c', value: 1 }], { capacity: 10, width: 1000 }))
+            a = bar.part('a')
+            c = bar.part('c')
+            s.play(bar.remove('a'), { duration: 1, ease: linear })
+            expect(bar.names).toEqual(['b', 'c'])
+            expect([bar.total, bar.free, bar.has('a')]).toEqual([7, 3, false])
+            expect(message(() => bar.part('a'))).toBe('segmentedBar: part: no part "a". The parts are "b", "c"')
+            // A list takes several parts out at one time.
+            s.play(bar.remove(['b', 'c']), { duration: 1, ease: linear })
+            expect([bar.count, bar.total, bar.free]).toEqual([0, 0, 10])
+        })
+        expect(ends(a, 0.5)).toEqual([expect.closeTo(-500 + SEAM / 2, 6), expect.closeTo(-400 - SEAM / 2, 6)])
+        expect(ends(a, 1)).toBeNull()
+        // Part c was at 800 to 900 of the 1000 px. It moves left by the room of part a.
+        expect(ends(c, 0)![0]).toBeCloseTo(300 + SEAM / 2, 6)
+        expect(ends(c, 0.5)![0]).toBeCloseTo(200 + SEAM / 2, 6)
+        expect(ends(c, 1)![0]).toBeCloseTo(100 + SEAM / 2, 6)
+        expect(label(a, 0.5)).toMatchObject({ name: 'a', amount: '1', opacity: 1 })
+        expect(label(a, 1)).toBeNull()
+        expect(ends(c, 2)).toBeNull()
+        expect(label(c, 2)).toBeNull()
+    })
+
+    it('cuts parts and gives their room to the rest in proportion, so the total stays: first the cut parts go, and then the rest grow', async () => {
+        let bar!: Bar, rename!: Node
+        await compile((s) => {
+            bar = s.add(shares())
+            rename = bar.part('rename')
+            // Top-k with k = 2: the parts after the second one.
+            s.play(bar.cut(bar.find((part) => part.index >= 2)), { duration: 1, ease: linear })
+            expect(bar.names).toEqual(['create', 'revoke'])
+            expect(bar.amount('create')).toBeCloseTo(2 / 3, 12)
+            expect(bar.amount('revoke')).toBeCloseTo(1 / 3, 12)
+            expect(bar.total).toBeCloseTo(1, 12)
+        })
+        const create = bar.part('create'), revoke = bar.part('revoke')
+        // The cut parts shrink in the first 0.45 of the time, and the parts that stay do not change yet.
+        expect(ends(rename, 0.225)![1] - ends(rename, 0.225)![0]).toBeCloseTo(75 - SEAM, 6)
+        expect(ends(create, 0.45)![1]).toBeCloseTo(0 - SEAM / 2, 6)
+        expect(ends(revoke, 0.45)![1]).toBeCloseTo(250 - SEAM / 2, 6)
+        expect(ends(rename, 0.45)).toBeNull()
+        // Then the two that stay grow by one factor, to the whole bar.
+        expect(ends(create, 1)![1]).toBeCloseTo(-500 + 2000 / 3 - SEAM / 2, 6)
+        expect(ends(revoke, 1)![1]).toBeCloseTo(500 - SEAM / 2, 6)
+        // A cut that leaves no part has nothing to give the room to.
+        await expect(compile((s) => { s.play(s.add(two()).cut(['a', 'b'])) })).rejects.toThrow('segmentedBar: cut: no part stays, so nothing can take the room of the parts that go. Use remove() to take parts out and leave their room free')
+    })
+
+    it('sends a part to another bar: it leaves, travels as one box, and lands at its place to the scale of the other bar', async () => {
+        let from!: Bar, to!: Bar, teal!: Rgba, y!: Node
+        const compiled = await compile((s) => {
+            teal = parseColor('teal')
+            from = s.add(segmentedBar([{ name: 'x', value: 2 }, { name: 'y', value: 4 }], { capacity: 10, width: 1000 }).at(0, -200))
+            to = s.add(segmentedBar([{ name: 'z', value: 5 }], { capacity: 20, width: 1000 }).at(0, 200))
+            y = from.part('y')
+            s.play(from.send('y', to), { duration: 1, ease: linear })
+            expect([from.names, to.names]).toEqual([['x'], ['z', 'y']])
+            expect([from.total, to.total, to.amount('y'), from.has('y')]).toEqual([2, 9, 4, false])
+            s.wait(0.5)
+        })
+        // One box has the color of the part at each time: in the first bar, on its way, and in the second bar.
+        const boxes = [0, 0.5, 0.999, 1.2].map((t) => filled(compiled, t, teal))
+        expect(boxes.map((list) => list.length)).toEqual([1, 1, 1, 1])
+        const [start, middle, near, end] = boxes.map((list) => list[0]!)
+        // The canvas has the stage point 0, 0 at 960, 540. In the first bar the part is 400 wide, from -300 to 100.
+        expect([start!.x, start!.x + start!.width, start!.y + start!.height / 2]).toEqual([expect.closeTo(960 - 300 + SEAM / 2, 6), expect.closeTo(960 + 100 - SEAM / 2, 6), expect.closeTo(540 - 200, 6)])
+        // In the second bar one unit is 50 px, so the part is 200 wide, after part z: from -250 to -50.
+        expect([end!.x, end!.x + end!.width, end!.y + end!.height / 2]).toEqual([expect.closeTo(960 - 250 + SEAM / 2, 6), expect.closeTo(960 - 50 - SEAM / 2, 6), expect.closeTo(540 + 200, 6)])
+        // Half way, the box is half way between the two places, and it has a width between the two.
+        expect([middle!.x, middle!.x + middle!.width, middle!.y + middle!.height / 2]).toEqual([expect.closeTo(960 - 275 + SEAM / 2, 6), expect.closeTo(960 + 25 - SEAM / 2, 6), expect.closeTo(540, 6)])
+        // It lands on the place of the part, so the picture does not jump when the box of the part takes its place.
+        expect(Math.abs(near!.x - end!.x)).toBeLessThan(0.2)
+        expect(Math.abs(near!.y - end!.y)).toBeLessThan(0.5)
+        // The first bar closes the room, and the second bar has the part with its label.
+        expect(ends(y, 1)).toBeNull()
+        expect(label(y, 1)).toBeNull()
+        expect(label(to.part('y'), 1.2)).toMatchObject({ name: 'y', amount: '4', opacity: 1 })
+        expect([readout(from, 1.2).source, readout(to, 1.2).source]).toEqual(['2 / 10', '9 / 20'])
+        // `before` names the part of the other bar that the part goes in front of.
+        await compile((s) => {
+            const first = s.add(two().at(0, -200)), second = s.add(segmentedBar([{ name: 'z', value: 5 }], { capacity: 20, width: 1000 }).at(0, 200))
+            s.play(first.send('b', second, { before: 'z' }))
+            expect(second.names).toEqual(['b', 'z'])
+            expect(second.range('z')).toEqual([6, 11])
+        })
+        // The place where the box lands follows the other bar: part z shrinks to 1 unit while the box is on its way.
+        const moving = await compile((s) => {
+            const first = s.add(segmentedBar([{ name: 'x', value: 2 }, { name: 'y', value: 4 }], { capacity: 10, width: 1000 }).at(0, -200))
+            const second = s.add(segmentedBar([{ name: 'z', value: 5 }], { capacity: 20, width: 1000 }).at(0, 200))
+            s.play(first.send('y', second), second.resize('z', 1), { duration: 1, ease: linear })
+            s.wait(0.5)
+        })
+        const [landing, landed] = [0.999, 1.2].map((t) => filled(moving, t, teal)[0]!)
+        expect(landed!.x).toBeCloseTo(960 - 450 + SEAM / 2, 6)
+        expect(Math.abs(landing!.x - landed!.x)).toBeLessThan(0.5)
+    })
+
+    it('shows the amount over the capacity at the right of the frame, in red with a hatch, and says it in the readout', async () => {
+        let bar!: Bar, red!: Rgba, backdrop!: Rgba
+        const compiled = await compile((s) => {
+            red = parseColor('red')
+            backdrop = parseColor('bg')
+            // One unit is 30 px, the left end is at -510, and the line of the capacity is at 210.
+            bar = s.add(segmentedBar([{ name: 'weights', value: 8 }, { name: 'cache', value: 4 }], { capacity: 24, max: 34, width: 1020, format: (value) => `${value.toFixed(1)} GB` }))
+            s.play(bar.resize('cache', 24), { duration: 1, ease: linear })
+            expect([bar.total, bar.over, bar.free]).toEqual([32, 8, 0])
+        })
+        expect(filled(compiled, 0, red)).toEqual([])
+        expect(readout(bar, 0).source).toBe('12.0 GB / 24.0 GB')
+        // At 0.5 the cache holds 14 and the total is 22: under the capacity.
+        expect(filled(compiled, 0.5, red)).toEqual([])
+        // At 0.8 the cache holds 20 and the total is 28: 4 over, which is 120 px from the line on.
+        const marks = filled(compiled, 0.8, red)
+        expect(marks).toHaveLength(1)
+        expect(marks[0]!.x).toBeCloseTo(960 + 210, 6)
+        expect(marks[0]!.x + marks[0]!.width).toBeCloseTo(960 + 330 - SEAM / 2, 6)
+        // The hatch is the second sign beside the color: lines in the background color, inside the red box.
+        const lines = paths(compiled, 0.8).filter((op) => op.fill === null && same(op.stroke, backdrop))
+        expect(lines).toHaveLength(1)
+        const hatch = pathBounds(lines[0]!.path)!
+        expect(hatch.x).toBeGreaterThanOrEqual(marks[0]!.x - 1e-6)
+        expect(hatch.x + hatch.width).toBeLessThanOrEqual(marks[0]!.x + marks[0]!.width + 1e-6)
+        expect(lines[0]!.path.length).toBeGreaterThan(5)
+        // The readout says the amount, with the word, in red.
+        expect(readout(bar, 0.8).source).toBe('28.0 GB / 24.0 GB  over 4.0 GB')
+        expect(readout(bar, 0.8).children[0]!.get('fill')).toEqual(red)
+        expect(readout(bar, 0.5).children[0]!.get('fill')).toEqual(parseColor('ink'))
+        expect(readout(bar, 1).source).toBe('32.0 GB / 24.0 GB  over 8.0 GB')
+        await compileFilm(film(() => {
+            // `over` sets the word.
+            expect(readout(segmentedBar([{ name: 'a', value: 8 }], { capacity: 5, max: 10, over: 'too much' }), 0).source).toBe('8 / 5  too much 3')
+            // An amount over the capacity that the format writes as 0 is not said.
+            expect(readout(segmentedBar([{ name: 'a', value: 8.3 }], { capacity: 8, max: 10, format: (value) => String(Math.round(value)) }), 0).source).toBe('8 / 8')
+        }))
+    })
+
+    it('keeps the room between two parts that are over the capacity, and does not call a sum with a rounding error over', async () => {
+        let red!: Rgba
+        const compiled = await compile((s) => {
+            red = parseColor('red')
+            // The line of the capacity is at 0. Part b is over from the line on, and part c is over as a whole.
+            s.add(segmentedBar([{ name: 'a', value: 4 }, { name: 'b', value: 2 }, { name: 'c', value: 2 }], { capacity: 5, max: 10, width: 1000, over: 'too much' }))
+            // In floating point, these three shares add up to a little more than 1.
+            expect(0.34 + 0.56 + 0.1).toBeGreaterThan(1)
+            const whole = s.add(segmentedBar([{ name: 'p', value: 0.34 }, { name: 'q', value: 0.56 }, { name: 'r', value: 0.1 }], { capacity: 1, width: 1000 }).at(0, 300))
+            expect(whole.over).toBe(0)
+            expect(readout(whole, 0).source).toBe('1.00 / 1.00')
+            s.wait(1)
+        })
+        const marks = filled(compiled, 0.5, red)
+        expect(marks.map((box) => [box.x - 960, box.x + box.width - 960])).toEqual([
+            [expect.closeTo(0, 6), expect.closeTo(100 - SEAM / 2, 6)],
+            [expect.closeTo(100 + SEAM / 2, 6), expect.closeTo(300 - SEAM / 2, 6)],
+        ])
+    })
+
+    it('draws the amount over the capacity as a piece of the box of its part, so a light on the part keeps its mark bright', async () => {
+        let bar!: Bar, red!: Rgba
+        const compiled = await compile((s) => {
+            red = parseColor('red')
+            // The line of the capacity is at 0. Part b is over from the line on, and part c is over as a whole.
+            bar = s.add(segmentedBar([{ name: 'a', value: 4 }, { name: 'b', value: 2 }, { name: 'c', value: 2 }], { capacity: 5, max: 10, width: 1000 }))
+            s.play(spotlight(bar.part('c'), { within: bar, dim: 0.2 }), { duration: 0.5 })
+            s.wait(0.5)
+        })
+        const marks = (t: number) => paths(compiled, t).filter((op) => same(op.fill, red) && op.node?.data['key'] === undefined).map((op) => op.node!.drawer)
+        // Each red mark is drawn by the box of its part, so it is in the node that `part()` gives.
+        expect(marks(0)).toEqual([bar.part('b').children[0], bar.part('c').children[0]])
+        // With the light on part c, its mark keeps its red, and the mark of part b goes toward the background.
+        expect(marks(0.9)).toEqual([bar.part('c').children[0]])
+    })
+
+    it('has no limit without a capacity: with a max, the frame goes to the right end, and a part that grows is not over', async () => {
+        let bar!: Bar, red!: Rgba
+        const compiled = await compile((s) => {
+            red = parseColor('red')
+            bar = s.add(segmentedBar([{ name: 'input', value: 2 }, { name: 'output', value: 1 }], { max: 10, width: 1000, readout: true }))
+            expect([bar.capacity, bar.max, bar.limit]).toEqual([10, 10, null])
+            // One unit is 100 px, and the frame holds the room that the parts can grow to.
+            expect(bar.frame.bounds().width).toBeCloseTo(1000, 6)
+            expect(ends(bar.part('output'), 0)![1]).toBeCloseTo(-200 - SEAM / 2, 6)
+            s.play(bar.resize('output', 7), { duration: 1, ease: linear })
+            expect([bar.total, bar.over, bar.free]).toEqual([9, 0, 1])
+        })
+        expect(ends(bar.part('output'), 1)![1]).toBeCloseTo(400 - SEAM / 2, 6)
+        expect(filled(compiled, 1, red)).toEqual([])
+        // The readout of a bar with no capacity is the total alone, and it does not turn red.
+        expect(readout(bar, 1).source).toBe('9')
+        expect(readout(bar, 1).children[0]!.get('fill')).toEqual(parseColor('ink'))
+    })
+
+    it('names the free room and counts it, and takes its label away when no room is left', async () => {
+        let bar!: Bar
+        await compile((s) => {
+            bar = s.add(two({ free: 'free' }))
+            s.play(bar.resize('b', 8), { duration: 1, ease: linear })
+            expect(bar.free).toBe(0)
+        })
+        // The free room is from 300 to 500, and its label is under its middle.
+        expect(rest(bar, 0)).toMatchObject({ name: 'free', amount: '2', opacity: 1 })
+        expect(rest(bar, 0)!.x).toBeCloseTo(400, 6)
+        expect(rest(bar, 0.5)).toMatchObject({ amount: '1' })
+        expect(rest(bar, 0.5)!.x).toBeCloseTo(450, 6)
+        expect(rest(bar, 1)).toBeNull()
+        // A bar with no name for the free room draws no label for it.
+        await compileFilm(film(() => { expect((two() as unknown as { rest: Node | null }).rest).toBeNull() }))
+    })
+
+    it('keeps the labels of narrow parts apart, in the order of the parts, and inside the width of the bar', async () => {
+        await compileFilm(film(() => {
+            const bar = segmentedBar(crowded, { capacity: 32, width: 1400, free: 'free' })
+            const labels = [...bar.names.map((name) => label(bar.part(name), 0)!), rest(bar, 0)!]
+            expect(labels.map((own) => own.name)).toEqual([...crowded.map((part) => part.name), 'free'])
+            // Each label has the room that a text needs to the next one, 0.3 of the text size, and more.
+            labels.slice(1).forEach((own, index) => expect(own.left - labels[index]!.right).toBeGreaterThan(28 * 0.3))
+            expect(labels[0]!.left).toBeGreaterThanOrEqual(-700)
+            expect(labels[labels.length - 1]!.right).toBeLessThanOrEqual(700)
+            // The three narrow parts at the left are 43.75 px each: their labels cannot all be under their middles.
+            const middle = (name: string) => (bar.x(bar.range(name)[0]) + bar.x(bar.range(name)[1])) / 2
+            expect(label(bar.part('retrieved passages'), 0)!.x).toBeGreaterThan(middle('retrieved passages') + 100)
+            // A label with room is under the middle of its part.
+            const wide = segmentedBar([{ name: 'a', value: 5 }, { name: 'b', value: 5 }], { width: 1000 })
+            expect([label(wide.part('a'), 0)!.x, label(wide.part('b'), 0)!.x]).toEqual([-250, 250])
+        }))
+    })
+
+    it('writes the name over the amount under the bar, and joins each label to its part with a line', async () => {
+        await compileFilm(film(() => {
+            const bar = segmentedBar(crowded, { capacity: 32, width: 1400, free: 'free' })
+            // The bar is 67 high, and its border is 2.24 wide. The line goes from the border to 1.4 text sizes under the bar.
+            const reserve = label(bar.part('answer reserve'), 0)!
+            expect(reserve.leader.top).toBeCloseTo(33.5 + 1.12, 6)
+            expect(reserve.leader.bottom).toBeCloseTo(33.5 + 28 * 1.4, 6)
+            // The name is under the line, and the amount is one line of text under the name.
+            expect(reserve.y[0]!).toBeGreaterThan(reserve.leader.bottom)
+            expect(reserve.y[1]! - reserve.y[0]!).toBeCloseTo(28 * 1.25, 6)
+            // A label whose middle is under its part has a straight line.
+            expect([reserve.leader.left, reserve.leader.right]).toEqual([expect.closeTo(reserve.x, 6), expect.closeTo(reserve.x, 6)])
+            // A label that the others pushed away has a line that starts inside its part and ends over the middle of the label.
+            const pushed = label(bar.part('retrieved passages'), 0)!
+            const [from, to] = bar.range('retrieved passages').map((value) => bar.x(value)) as [number, number]
+            expect(pushed.leader.left).toBeGreaterThan(from)
+            expect(pushed.leader.left).toBeLessThan(to)
+            expect(pushed.leader.right).toBeCloseTo(pushed.x, 6)
+        }))
+    })
+
+    it('writes its names, its amounts, its title and its readout at 28 px by default, in the font of the film and in mono', async () => {
+        await compile(() => {
+            const bar = two({ title: 'window', free: 'free' })
+            const part = label(bar.part('a'), 0)!
+            expect(part.sizes).toEqual([28, 28])
+            expect(part.fonts).toEqual(['text-serif', 'mono'])
+            expect(rest(bar, 0)!.sizes).toEqual([28, 28])
+            expect([(bar.title as TextNode).size, (bar.title as TextNode).font, (bar.title as TextNode).source]).toEqual([28, 'text-serif', 'window'])
+            expect([readout(bar, 0).size, readout(bar, 0).font]).toEqual([28, 'mono'])
+            // `size` sets all of them, and `font` names the font of the names when it is not the font of the film.
+            const large = two({ size: 40, font: 'sans' })
+            expect(label(large.part('a'), 0)!.sizes).toEqual([40, 40])
+            expect(label(large.part('a'), 0)!.fonts).toEqual(['sans', 'mono'])
+            expect(large.frame.bounds().height).toBe(96)
+        }, { font: 'text-serif' })
+    })
+
+    it('writes an amount with the decimals of its values and with commas, or with the format of the film', async () => {
+        await compileFilm(film(() => {
+            const tokens = segmentedBar([{ name: 'history', value: 8200 }], { capacity: 16000 })
+            expect(label(tokens.part('history'), 0)!.amount).toBe('8,200')
+            expect(readout(tokens, 0).source).toBe('8,200 / 16,000')
+            // One value with one decimal gives every amount one decimal, so a count that runs keeps its width.
+            const memory = segmentedBar([{ name: 'weights', value: 7.6 }, { name: 'workspace', value: 2 }], { capacity: 24 })
+            expect(label(memory.part('workspace'), 0)!.amount).toBe('2.0')
+            expect(readout(memory, 0).source).toBe('9.6 / 24.0')
+            const percent = segmentedBar([{ name: 'birds', value: 0.62 }, { name: 'sing', value: 0.38 }], { format: (share) => `${Math.round(share * 100)}%`, readout: true })
+            expect(label(percent.part('birds'), 0)!.amount).toBe('62%')
+            // Without a capacity the readout is the total alone, and a bar draws one only when the film asks for it.
+            expect(readout(percent, 0).source).toBe('100%')
+            expect(shares().readout).toBeNull()
+            expect(two({ readout: false }).readout).toBeNull()
+            // A format that writes more than the widest amount of the bar gets a smaller text, in the label and in the readout.
+            const wordy = segmentedBar([{ name: 'a', value: 2 }], { capacity: 10, width: 400, title: 'window', format: (value) => (value === 2 ? 'two units of the whole' : String(value)) })
+            expect(label(wordy.part('a'), 0)!.sizes).toEqual([28, expect.any(Number)])
+            expect(label(wordy.part('a'), 0)!.sizes[1]!).toBeLessThan(10)
+            expect(readout(wordy, 0).source).toBe('two units of the whole / 10')
+            expect(readout(wordy, 0).size).toBeLessThan(28)
+        }))
+    })
+
+    it('measures as the room that it can take at any time, so the layout gives an empty bar the place of a full one', async () => {
+        await compileFilm(film(() => {
+            const empty = boxOf(segmentedBar([], { capacity: 10, width: 1000 })), full = boxOf(two())
+            expect([empty.left, empty.right, empty.top, empty.bottom]).toEqual([full.left, full.right, full.top, full.bottom])
+            // The measure is the width of the bar and the two halves of its border.
+            expect(full.width).toBeCloseTo(1000 + 2.24, 6)
+            // The labels of the parts are a part of the measure, and so is the row of the readout.
+            expect(full.bottom).toBeGreaterThan(33.5 + 28 * 2)
+            expect(full.top).toBeLessThan(-33.5 - 28)
+            const bare = boxOf(two({ labels: false, readout: false }))
+            expect([bare.top, bare.bottom]).toEqual([expect.closeTo(-33.5 - 7, 6), expect.closeTo(33.5 + 7, 6)])
+            // `fitted` builds a bar whose measure is as wide as a region.
+            const made = fitted(800, (width) => two({ width }))
+            expect(boxOf(made).width).toBeCloseTo(800, 6)
+            // No label and no box leaves the measure, also for a bar that is over its capacity with ten parts.
+            const many = segmentedBar(Array.from({ length: 10 }, (_, index) => ({ name: `request ${index + 1}`, value: index === 9 ? 6 : 3 })), { capacity: 24, max: 33, width: 1700, free: 'free', title: 'pool' })
+            const ink = at(0, () => many.bounds()), measure = boxOf(many)
+            expect(ink.x).toBeGreaterThanOrEqual(measure.left)
+            expect(ink.x + ink.width).toBeLessThanOrEqual(measure.right)
+            expect(ink.y).toBeGreaterThanOrEqual(measure.top)
+            expect(ink.y + ink.height).toBeLessThanOrEqual(measure.bottom)
+        }))
+    })
+
+    it('enters with its frame first, and then its parts grow from the left, one after another, while the total counts up', async () => {
+        let bar!: Bar
+        await compile((s) => {
+            bar = two()
+            // The animation brings the bar to the stage.
+            s.play(bar.enter(), { duration: 1, ease: linear })
+            expect(bar.mounted).toBe(true)
+            expect(bar.total).toBe(8)
+        })
+        const a = bar.part('a'), b = bar.part('b')
+        expect([ends(a, 0), ends(b, 0)]).toEqual([null, null])
+        expect(readout(bar, 0).source).toBe('0 / 10')
+        expect(at(0, () => bar.frame.get('opacity'))).toBe(0)
+        expect(at(0.3, () => bar.frame.get('opacity'))).toBeCloseTo(1, 6)
+        // Part a grows from 0.15 on, and part b starts later.
+        expect(ends(a, 0.3)).not.toBeNull()
+        expect(ends(b, 0.3)).toBeNull()
+        expect(ends(a, 1)![1]).toBeCloseTo(-300 - SEAM / 2, 6)
+        expect(ends(b, 1)![1]).toBeCloseTo(300 - SEAM / 2, 6)
+        expect(label(a, 1)).toMatchObject({ name: 'a', amount: '2', opacity: 1 })
+        expect(readout(bar, 1).source).toBe('8 / 10')
+    })
+
+    it('lays the parts out from all their changes, when changes of two parts overlap in time', async () => {
+        let bar!: Bar
+        await compile((s) => {
+            bar = s.add(two())
+            // Part a grows from 0 to 1 s, and part b shrinks from 0.5 to 1 s.
+            s.play(bar.resize('a', 4, { duration: 1, ease: linear }), delay(bar.resize('b', 2, { duration: 0.5, ease: linear }), 0.5))
+            expect(bar.total).toBe(6)
+        })
+        // At 0.75 part a holds 3.5 and part b holds 4.
+        expect(ends(bar.part('a'), 0.75)![1]).toBeCloseTo(-150 - SEAM / 2, 6)
+        expect(ends(bar.part('b'), 0.75)).toEqual([expect.closeTo(-150 + SEAM / 2, 6), expect.closeTo(250 - SEAM / 2, 6)])
+        expect(readout(bar, 0.75).source).toBe('8 / 10')
+    })
+
+    it('refuses two changes of one part at one time, and says how to play them', async () => {
+        await expect(compile((s) => {
+            const bar = s.add(two())
+            s.play(bar.resize('a', 1), bar.resize('a', 3), { duration: 1 })
+        })).rejects.toThrow('segmentedBar: resize("a") plays from 0 s to 1 s, and resize("a") plays from 0 s to 1 s. Both change the part "a", and a part takes one change at a time. Play the two one after the other: in a seq(), or in two calls of s.play. For two new values of one part at one time, give resize() the last value')
+        // A cut changes every part, so it cannot play with a change of a part that stays.
+        await expect(compile((s) => {
+            const bar = s.add(shares())
+            s.play(bar.cut('quota'), bar.resize('create', 0.4), { duration: 1 })
+        })).rejects.toThrow(/resize\("create"\) plays from 0 s to 1 s, and cut\(\) plays from 0 s to 1 s\. Both change the part "create"/)
+        // A change that the film writes at an earlier time, after a later one, is named as that.
+        await expect(compile((s) => {
+            const bar = s.add(two())
+            s.at(5, () => s.play(bar.resize('a', 1), { duration: 1 }))
+            s.play(bar.resize('a', 3), { duration: 1 })
+        })).rejects.toThrow(/The bar takes the changes of a part in the order of time, and the film calls resize\("a"\) first\. Call resize\("a"\) before it/)
+        // An ease that passes its end gives a part no width under 0: the part is gone, and the next one starts at the left end.
+        let bar!: Bar
+        await compile((s) => {
+            bar = s.add(two())
+            s.play(bar.resize('a', 0), { duration: 1, ease: (share) => share * 1.5 })
+        })
+        expect(ends(bar.part('a'), 0.9)).toBeNull()
+        expect(ends(bar.part('b'), 0.9)![0]).toBeCloseTo(-500 + SEAM / 2, 6)
+    })
+
+    it('preserves earlier frames when the film replays an insertion', async () => {
+        let first!: Node, second!: Node
+        await compile((s) => {
+            const bar = s.add(two())
+            const insert = bar.insert({ name: 'cache', value: 1 })
+            s.play(insert, { duration: 1 })
+            first = bar.part('cache')
+            s.play(bar.remove('cache'), { duration: 1 })
+            s.play(insert, { duration: 1 })
+            second = bar.part('cache')
+        })
+        expect(label(first, 1)?.amount).toBe('1')
+        expect(ends(first, 1)).toEqual(ends(second, 3))
+        expect(ends(second, 1)).toBeNull()
+    })
+
+    it('resolves part names when each step of a sequence plays', async () => {
+        await compile((s) => {
+            const bar = s.add(two()), archive = s.add(segmentedBar([], { capacity: 10 }))
+            s.play(seq(bar.remove('a'), bar.insert({ name: 'a', value: 3 })))
+            s.play(seq(bar.send('a', archive), archive.send('a', bar, { before: 'b' })))
+            expect(bar.names).toEqual(['a', 'b'])
+            expect(bar.amount('a')).toBe(3)
+            expect(archive.count).toBe(0)
+        })
+    })
+
+    it('refuses a replacement while the previous part is leaving', async () => {
+        await expect(compile((s) => {
+            const bar = s.add(two())
+            s.play(bar.remove('a'), bar.insert({ name: 'a', value: 1 }), { duration: 1 })
+        })).rejects.toThrow(/previous.*ends at 1 s/)
+    })
+
+    it('knows in one sequence a part that an insert before it brings, and refuses a part that is not there', async () => {
+        let bar!: Bar
+        await compile((s) => {
+            bar = s.add(two())
+            s.play(seq(bar.insert({ name: 'n', value: 1 }), bar.resize('n', 2), bar.remove('a')))
+            expect(bar.names).toEqual(['b', 'n'])
+            expect(bar.amount('n')).toBe(2)
+        })
+        await compileFilm(film((s) => {
+            const made = two()
+            expect(message(() => s.play(made.resize('zz', 1)))).toBe('segmentedBar: resize: no part "zz". The parts are "a", "b"')
+            expect(message(() => made.resize('a', -1))).toBe('segmentedBar: resize: the new value of "a" is -1. An amount is a number, 0 or more')
+            expect(message(() => made.resize('a', '3' as never))).toMatch(/the new value of "a" is "3"\. An amount is a number/)
+            expect(message(() => made.resize({}))).toMatch(/resize got no part/)
+            expect(message(() => made.resize(['a'] as never))).toMatch(/resize takes the name of a part and its new value, or an object of names and values/)
+            expect(message(() => s.play(made.remove('zz')))).toBe('segmentedBar: remove: no part "zz". The parts are "a", "b"')
+            expect(message(() => made.remove([]))).toMatch(/remove takes the name of a part, or a list of names with one name at least/)
+            expect(message(() => s.play(made.cut('zz')))).toMatch(/cut: no part "zz"/)
+            expect(message(() => s.play(made.insert({ name: 'a', value: 1 })))).toBe('segmentedBar: insert: the bar has a part "a" already. A name is the identity of a part: give the part that arrives another name, or change the part with resize()')
+            expect(message(() => s.play(made.insert({ name: 'c', value: 1 }, { before: 'zz' })))).toMatch(/insert: no part "zz"/)
+            expect(message(() => made.insert({ name: '', value: 1 }))).toMatch(/insert: the part has no name/)
+            expect(message(() => made.insert({ name: 'c', value: 1, color: 'no-color' }))).toMatch(/the color of "c" is "no-color", which is not a color/)
+            expect(message(() => made.send('a', made))).toBe('segmentedBar: send: the part is in this bar already. Give the other bar')
+            expect(message(() => made.send('a', {} as never))).toMatch(/send: the second argument is the bar that takes the part/)
+            expect(message(() => s.play(made.send('a', two())))).toMatch(/send: the bar has a part "a" already/)
+            expect(message(() => made.find('a' as never))).toMatch(/find takes a function of a part/)
+        }))
+        // A film that plays one insert two times would bring two parts of one name.
+        await expect(compile((s) => {
+            const made = s.add(two())
+            const arrive = made.insert({ name: 'c', value: 1 })
+            s.play(arrive)
+            s.play(arrive)
+        })).rejects.toThrow(/insert: the bar has a part "c" already/)
+    })
+
+    it('checks for overflow on the frames of a spring animation', async () => {
+        await expect(compile((s) => {
+            const bar = s.add(segmentedBar([{ name: 'cache', value: 0 }], { capacity: 10 }))
+            s.play(bar.resize('cache', 9), { duration: 1, ease: spring({ frequency: 8 }) })
+        }, { fps: 30 })).rejects.toThrow(/add up to .* and the bar ends at 10/)
+    })
+
+    it('refuses parts that add up to more than the bar holds, and says which max has room for them', async () => {
+        await compileFilm(film(() => {
+            expect(message(() => segmentedBar([{ name: 'a', value: 8 }, { name: 'b', value: 4 }], { capacity: 10 }))).toBe('segmentedBar: the parts "a", "b" add up to 12, and the bar ends at 10. Give the bar max: 12 or more: the amount over the capacity of 10 then has room at the right of the frame')
+            expect(() => segmentedBar([{ name: 'a', value: 8 }, { name: 'b', value: 4 }], { capacity: 10, max: 12 })).not.toThrow()
+        }))
+        // The bar looks at the whole film when it is built. The message has the largest sum, its parts, and the time of it.
+        await expect(compile((s) => { s.play(s.add(two()).resize('b', 12)) })).rejects.toThrow(/the parts "a", "b" add up to 14 at 0\.9 s, and the bar ends at 10\. Give the bar max: 14 or more/)
+        await expect(compile((s) => { s.play(s.add(two()).insert({ name: 'c', value: 3 })) })).rejects.toThrow(/the parts "a", "b", "c" add up to 11 at 0\.8 s, and the bar ends at 10\. Give the bar max: 11 or more/)
+        // A part that arrives before another one leaves passes the end for a moment.
+        await expect(compile((s) => {
+            const bar = s.add(two())
+            s.play(bar.insert({ name: 'c', value: 4 }, { duration: 0.5 }), delay(bar.remove('a', { duration: 0.5 }), 0.5))
+        })).rejects.toThrow(/the parts "a", "b", "c" add up to 12 at 0\.5 s, and the bar ends at 10/)
+        // With two eases, the sum passes the end between the starts and the ends of the two changes, and is under it at each of them.
+        await expect(compile((s) => {
+            const bar = s.add(two())
+            s.play(bar.insert({ name: 'c', value: 4 }, { ease: linear }), bar.remove('a', { ease: (share) => share ** 3 }), { duration: 1 })
+        })).rejects.toThrow(/the parts "a", "b", "c" add up to 10\.\d+ at 0\.\d+ s, and the bar ends at 10/)
+        // A part may arrive while another one leaves, in any order of the two calls: the sum is never over the end.
+        let swapped!: Bar
+        await compile((s) => {
+            swapped = s.add(two())
+            s.play(swapped.insert({ name: 'c', value: 4 }), swapped.remove('a'), swapped.resize('b', 5), { duration: 1, ease: linear })
+            expect([swapped.names, swapped.total]).toEqual([['b', 'c'], 9])
+        })
+        expect(readout(swapped, 0.5).source).toBe('9 / 10')
+        // A bar that takes a part from another bar must have room for it.
+        await expect(compile((s) => {
+            const bar = s.add(two()), small = s.add(segmentedBar([{ name: 'z', value: 3 }], { capacity: 4 }))
+            s.play(bar.send('b', small))
+        })).rejects.toThrow(/the parts "z", "b" add up to 9 at 0\.9 s, and the bar ends at 4/)
+    })
+
+    it('says what is wrong with a bar that it cannot build', async () => {
+        await compileFilm(film(() => {
+            expect(message(() => segmentedBar([{ name: 'a', value: 1 }, { name: 'a', value: 2 }]))).toBe('segmentedBar: two parts have the name "a". A name is the identity of a part: give each part its own name')
+            expect(message(() => segmentedBar([{ name: 'a', value: -1 }]))).toBe('segmentedBar: the value of "a" is -1. An amount is a number, 0 or more')
+            expect(message(() => segmentedBar([{ name: 'a', value: Number.NaN }]))).toMatch(/the value of "a" is NaN/)
+            expect(message(() => segmentedBar([{ name: 'a\nb', value: 1 }]))).toMatch(/the name "a\\nb" has a line break\. A name is one line/)
+            expect(message(() => segmentedBar([{ value: 1 } as never]))).toMatch(/part 0 has no name/)
+            expect(message(() => segmentedBar('a' as never))).toMatch(/the first argument is the list of the parts/)
+            expect(message(() => segmentedBar([]))).toBe('segmentedBar: the parts add up to 0, so the bar has no scale. Give a capacity, or a part with a value')
+            expect(message(() => segmentedBar([{ name: 'a', value: 1 }], { capacity: 0 }))).toMatch(/capacity is 0\. Give the amount that the bar holds, more than 0/)
+            expect(message(() => segmentedBar([{ name: 'a', value: 1 }], { capacity: 10, max: 5 }))).toMatch(/max is 5, and the capacity is 10/)
+            expect(message(() => segmentedBar([{ name: 'a', value: 1 }], { max: -1 }))).toBe('segmentedBar: max is -1. Give the amount at the right end of the object, more than 0')
+            // A format that gives a number is named, and does not stop the film with an error of the text.
+            expect(message(() => two({ format: ((value: number) => value) as never }))).toBe('segmentedBar: format gave 10 for the amount 10. A format gives a text, such as (value) => `${value} GB`')
+            expect(message(() => two({ format: 'GB' as never }))).toMatch(/format is a function that writes an amount/)
+            expect(message(() => two({ width: 0 }))).toMatch(/width is the width of the bar, more than 0/)
+            expect(message(() => two({ size: -2 }))).toMatch(/size is a text size, more than 0/)
+            expect(message(() => two({ title: 'a\nb' }))).toMatch(/title is "a\\nb"\. Give one line of text/)
+            // The labels stand in one row under the bar. The message gives a width that has room for them.
+            const narrow = message(() => segmentedBar(crowded, { capacity: 32, width: 700, free: 'free' }))
+            const need = Number(/Give a width of (\d+) or more/.exec(narrow)?.[1])
+            expect(narrow).toMatch(/^segmentedBar: the labels of 6 parts and of the free room need \d+ px in one row, and the bar is 700 px wide\. Give a width of \d+ or more, a smaller size, shorter names, fewer parts, or labels: false$/)
+            expect(() => segmentedBar(crowded, { capacity: 32, width: need, free: 'free' })).not.toThrow()
+            expect(() => segmentedBar(crowded, { capacity: 32, width: need - 2, free: 'free' })).toThrow(/the labels of 6 parts/)
+            expect(() => segmentedBar(crowded, { capacity: 32, width: 700, labels: false })).not.toThrow()
+            // The title and the readout share the row over the frame.
+            expect(message(() => two({ width: 300, readout: false, title: 'the context window of the run' }))).toMatch(/^segmentedBar: the title is \d+ px wide, and the bar is 300 px wide\. Give a shorter title, a larger width, or a smaller size$/)
+            expect(message(() => two({ width: 300, title: 'the context window of the run' }))).toMatch(/the title and the readout need \d+ px over the bar, and the bar is 300 px wide up to its capacity\. Give a larger width, a smaller size, a shorter title, or readout: false/)
+        }))
+        // A part that arrives needs room for its label too.
+        await expect(compile((s) => {
+            const bar = s.add(segmentedBar(crowded.slice(0, 5), { capacity: 32, width: 960 }))
+            s.play(bar.insert({ name: 'tool results of the run', value: 1 }))
+        })).rejects.toThrow(/the labels of 6 parts need \d+ px in one row at 0\.32 s, and the bar is 960 px wide\. Give a width of \d+ or more, a smaller size, shorter names, fewer parts at one time, or labels: false/)
+    })
+
+    it('gives a copy its own parts, which do not follow the bar', async () => {
+        let bar!: Bar, copy!: Bar
+        await compile((s) => {
+            bar = s.add(two())
+            copy = s.add(bar.clone().at(0, 300))
+            s.play(bar.resize('a', 4), { duration: 1, ease: linear })
+            expect([bar.amount('a'), copy.amount('a')]).toEqual([4, 2])
+            s.play(copy.remove('b'), { duration: 1, ease: linear })
+            expect([bar.names, copy.names]).toEqual([['a', 'b'], ['a']])
+        })
+        expect(ends(bar.part('a'), 1)![1]).toBeCloseTo(-100 - SEAM / 2, 6)
+        expect(ends(copy.part('a'), 1)![1]).toBeCloseTo(-300 - SEAM / 2, 6)
+        expect(ends(bar.part('b'), 2)![1]).toBeCloseTo(500 - SEAM / 2, 6)
+        expect([label(bar.part('a'), 2)!.amount, label(copy.part('a'), 2)!.amount]).toEqual(['4', '2'])
+    })
+
+    it('takes an independent snapshot of the current values and parts when cloning a group', async () => {
+        let original!: Bar, copy!: Bar
+        await compile((s) => {
+            original = two()
+            const parent = s.add(group(original))
+            s.at(4, () => s.play(original.remove('b'), original.resize('a', 3), original.insert({ name: 'future', value: 0 })))
+            copy = s.add(parent.clone().shift(0, 200)).children[0] as Bar
+            expect(copy.names).toEqual(['a', 'b'])
+            expect(copy.amount('a')).toBe(2)
+            expect(copy.part('a')).not.toBe(original.part('a'))
+            s.play(copy.resize('a', 4))
+            const again = s.add(copy.clone())
+            s.play(again.remove('b'))
+            expect(again.names).toEqual(['a'])
+            expect(copy.names).toEqual(['a', 'b'])
+        })
+        expect(original.names).toEqual(['a', 'future'])
+        expect(original.amount('a')).toBe(3)
+        expect(label(original.part('a'), 1)?.amount).toBe('2')
+        expect(label(copy.part('a'), 5)?.amount).toBe('4')
+    })
+
+    it('freezes one travelling segment when its group is cloned during a send', async () => {
+        let blue!: Rgba
+        const compiled = await compile((s) => {
+            blue = parseColor('blue')
+            const options = { capacity: 10, width: 500, labels: false, readout: false }
+            const source = segmentedBar([{ name: 'cache', value: 6, color: 'blue' }], options)
+            const target = segmentedBar([], options)
+            const bars = s.add(group(group(source).at(-400, 0).opacity(0.4), group(target).at(400, 0).opacity(0.8)).at(0, -300).opacity(0.5))
+            s.play(source.send('cache', target), { duration: 1, ease: linear })
+            s.at(0.5, () => {
+                const snapshot = s.add(bars.clone().shift(0, 200))
+                s.add(snapshot.clone().shift(0, 200))
+                // An endpoint alone has no copy of the transfer between the two groups.
+                s.add(source.clone(), target.clone())
+            })
+            s.add(bars.clone().shift(0, 600))
+            s.wait(1)
+        })
+        const marks = (t: number) => paths(compiled, t).filter((op) => same(op.fill, blue) && op.fillAlpha > 0)
+            .map((op) => ({ ...pathBounds(op.path)!, alpha: op.fillAlpha })).sort((a, b) => a.y - b.y)
+        const middle = marks(0.5)
+        expect(middle).toHaveLength(3)
+        for (const [i, mark] of middle.entries()) {
+            expect(mark).toEqual({ ...middle[0], y: expect.closeTo(middle[0]!.y + 200 * i, 6) })
+        }
+        const later = marks(1.5)
+        expect(later).toHaveLength(4)
+        expect(middle[0]!.alpha).toBeCloseTo((marks(0)[0]!.alpha + later[0]!.alpha) / 2)
+        expect(later.slice(1, 3)).toEqual(middle.slice(1))
+        expect(later[0]!.x).toBeGreaterThan(middle[0]!.x)
+        expect(later[3]).toEqual({ ...later[0], y: expect.closeTo(later[0]!.y + 600, 6) })
+        expect(marks(0.5)).toEqual(middle)
+    })
+
+    it('keeps the shape and opacity of a part at both ends of a rotated transfer', async () => {
+        let teal!: Rgba
+        const compiled = await compile((s) => {
+            teal = parseColor('teal')
+            const source = two(), target = segmentedBar([], { capacity: 20 })
+            s.add(group(source.at(-200, 0), target.at(200, 0)).rotate(Math.PI / 4).opacity(0.4))
+            const region = source.region({ part: 'b' })
+            const corners = [-300, 300].flatMap((x) => [-33.5, 33.5].map((y) => source.toWorld(x, y)))
+            expect(region.left).toBeCloseTo(Math.min(...corners.map(([x]) => x)))
+            expect(region.right).toBeCloseTo(Math.max(...corners.map(([x]) => x)))
+            s.wait(1)
+            s.play(source.send('b', target), { duration: 1, ease: linear })
+            s.wait(1)
+        })
+        const box = (t: number) => paths(compiled, t).find((op) => same(op.fill, teal) && op.node?.data['key'] === undefined)!
+        for (const t of [1, 2]) {
+            const previous = box(t - 1e-8), next = box(t)
+            expect(next.fillAlpha).toBeCloseTo(previous.fillAlpha)
+            const before = pathBounds(previous.path)!, after = pathBounds(next.path)!
+            for (const key of ['x', 'y', 'width', 'height'] as const) expect(after[key]).toBeCloseTo(before[key], 3)
+        }
+        expect(box(1.5).fillAlpha).toBeCloseTo(box(0.9).fillAlpha)
+    })
+
+    it('places its own labels, so the film check reports nothing on a crowded bar while its parts change', async () => {
+        const report = await checkFilm(film({ fps: 10 }, (s) => {
+            const bar = s.add(segmentedBar(crowded, { capacity: 32, max: 40, width: 1700, free: 'free', title: 'context window' }).at(0, -200))
+            const shelf = s.add(segmentedBar([{ name: 'old run', value: 6 }], { capacity: 40, width: 1700, free: 'free', title: 'archive' }).at(0, 250))
+            s.play(bar.resize('task', 4), { duration: 1 })
+            // A part that arrives has its label among the labels that push each other: with insert, and from another bar. The bar is then over its capacity.
+            s.play(bar.insert({ name: 'notes', value: 3 }, { before: 'task' }), { duration: 1 })
+            s.wait(1)
+            s.play(shelf.send('old run', bar, { before: 'task' }), { duration: 1 })
+            s.wait(1.5)
+            // The box of a part on its way is over the title of the other bar for more than a second.
+            s.play(bar.send('answer reserve', shelf), { duration: 4 })
+            s.wait(1)
+        }), { motion: true, textGap: 0.7 })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('says which label belongs to the box of a part, so a light on the box keeps its label bright', async () => {
+        let bar!: Bar
+        const compiled = await compile((s) => {
+            bar = s.add(two())
+            expect(bar.labelsOf(bar.part('a').children[0]!)).toEqual([bar.part('a').children[1]])
+            expect(bar.labelsOf(bar.frame)).toEqual([])
+            s.play(spotlight(bar.part('a').children[0]!, { within: bar, dim: 0.2 }), { duration: 0.5 })
+            s.wait(0.5)
+        })
+        // The name of the lit part keeps its color, and the name of the other part goes toward the background.
+        const inkOf = (word: string) => paths(compiled, 0.9).find((op) => op.node?.parent instanceof TextNode && op.node.parent.source === word)!.fill
+        expect(inkOf('a')).toEqual(parseColor('ink'))
+        expect(inkOf('b')).not.toEqual(parseColor('ink'))
+    })
+})
+
 describe('terminal', () => {
     const lines = [
         { text: './one-byte', kind: 'command' as const },
@@ -19417,6 +20289,909 @@ describe('passage', () => {
 })
 
 export type { Vec, Vec3 }
+
+describe('table', () => {
+    type Board = ReturnType<typeof table>
+    const words = (node: Node | null) => (node as unknown as { source: string }).source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    const wide = (content: string, options: Parameters<typeof text>[1]) => text(content, options).get('px') * 2
+    const right = (node: Node) => node.bounds().x + node.bounds().width
+    /** The text node of a cell that the table was made with. */
+    const first = (cell: TableCellNode) => cell.words.children[0] as TextNode
+    /** The x of the anchor of the text of a cell, in the table: where a text at the left starts, and where a number ends. */
+    const anchor = (cell: TableCellNode) => cell.get('x') + first(cell).get('x')
+    /** The texts that a cell shows at a time. */
+    const said = (cell: TableCellNode, time: number) => at(time, () => cell.words.children.filter((child) => shows(child) > 0.01).map(words))
+    /** The marks that a cell shows at a time: the shape and the color of each. */
+    const marksOf = (cell: TableCellNode, time: number) => at(time, () => cell.mark.children.filter((child) => shows(child) > 0.01).map((shape) => {
+        const leaf = shape.leaves()[0]!
+        return [shape.data['shape'], leaf.get('fill') ?? leaf.get('stroke')]
+    }))
+    /** Every row that the table has made, also those that left. */
+    const made = (board: Board) => board.all().filter((node): node is TableRowNode => node instanceof TableRowNode && node.rowId !== null)
+    /** The ids of the rows that a viewer sees at a time, from the top. */
+    const seen = (board: Board, time: number) => at(time, () => made(board).filter((row) => shows(row.content) > 0.99).sort((a, b) => a.get('y') - b.get('y')).map((row) => row.rowId))
+    /** What a cell of the total row says at a time: each text that shows. */
+    const totals = (board: Board, column: number, time: number) => at(time, () => board.totals!.cells[column]!.all().filter((node) => node instanceof TextNode && shows(node) > 0.99).map(words))
+    /** The middle and the size of the marker at a time, in the coordinates of the table. */
+    const markerAt = (board: Board, time: number) => at(time, () => {
+        const box = board.marker.bounds(), [x, y] = [board.get('x'), board.get('y')]
+        return { left: box.x - x, right: box.x + box.width - x, top: box.y - y, bottom: box.y + box.height - y, y: box.y + box.height / 2 - y, shows: shows(board.marker), line: board.marker.get('strokeOpacity') }
+    })
+
+    // The column of the cases keeps room for a longer text than its first rows have: a row that comes later, or a new name.
+    const COLS: TableColumn[] = [
+        { key: 'case', sample: 'a longer case' },
+        { key: 'score', total: 'sum' },
+        { key: 'verdict', align: 'center', marks: true, total: (rows) => `${rows.filter((row) => row.states['verdict'] === 'pass').length} of ${rows.length}` },
+    ]
+    const ROWS: TableRow[] = [
+        { id: 'a', case: 'first', score: 3, verdict: { state: 'pass' } },
+        { id: 'b', case: 'second', score: 1, verdict: { state: 'fail' } },
+        { id: 'c', case: 'third', score: 2, verdict: { state: 'pending' } },
+    ]
+    const D: TableRow = { id: 'd', case: 'fourth', score: 4, verdict: { state: 'fail' } }
+
+    it('counts the changed value when a row enters after a faster cell update', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table([{ key: 'score', total: 'sum' }], [], { maxRows: 1 }))
+            s.play(board.append({ id: 'new', score: 2 }, { duration: 2 }), board.setCell('new', 'score', 9, { duration: 0.2 }))
+            s.wait(1)
+        })
+        expect(totals(board, 0, 0.5)).toEqual(['0'])
+        expect(totals(board, 0, 2)).toEqual(['9'])
+        expect(board.totalOf('score')).toBe(9)
+    })
+
+    it('keeps the state of an id cell in a copy and uses it in the total', async () => {
+        await compile((s) => {
+            const board = s.add(table([{ key: 'id', marks: true, total: (rows) => rows.filter((row) => row.states.id === 'pass').length }], [{ id: 1 }]))
+            s.play(board.setCell(1, 'id', { state: 'pass' }))
+            const copy = board.clone()
+            expect(copy.stateOf(1, 'id')).toBe('pass')
+            expect(copy.totalOf('id')).toBe(1)
+            s.play(copy.setCell(1, 'id', { state: 'fail' }))
+            expect(board.totalOf('id')).toBe(1)
+        })
+    })
+
+    it('preserves exact integer counts in the total row', async () => {
+        await compile(() => {
+            const board = table([{ key: 'tokens', total: 'sum' }], [{ id: 'a', tokens: 1_234_567_890_120 }, { id: 'b', tokens: 3 }])
+            expect(board.totalOf('tokens')).toBe(1_234_567_890_123)
+            expect(totals(board, 0, 0)).toEqual(['1234567890123'])
+            const costs = table([{ key: 'cost', total: 'sum' }], [{ id: 'a', cost: 0.1 }, { id: 'b', cost: 0.2 }])
+            expect(costs.totalOf('cost')).toBe(0.3)
+            expect(totals(costs, 0, 0)).toEqual(['0.3'])
+        })
+    })
+
+    it('edits the table inside a copied group independently', async () => {
+        await compile((s) => {
+            const original = table([{ key: 'n', total: 'sum' }], [{ id: 1, n: 1 }], { maxRows: 2 })
+            const bar = rect(12, 4)
+            original.cell(1, 'n').add(bar)
+            const holder = s.add(Object.assign(group(original), { bar, heading: original.header('n') }))
+            const second = s.add(holder.clone())
+            const copy = second.children[0] as Table
+            s.play(copy.setCell(1, 'n', 2))
+            const third = s.add(second.clone())
+            const latest = third.children[0] as Table
+            s.play(latest.append({ id: 2, n: 3 }), latest.light(2))
+            expect(third.heading).toBe(latest.header('n'))
+            expect(third.bar.parent).toBe(latest.cell(1, 'n'))
+            expect(third.bar).not.toBe(second.bar)
+            expect([original, copy, latest].map((board) => totals(board, 0, 2))).toEqual([['1'], ['2'], ['5']])
+            expect([original, copy, latest].map((board) => board.ids)).toEqual([[1], [1], [1, 2]])
+            expect(markerAt(latest, 2).shows).toBe(1)
+        })
+    })
+
+    it('hands the marker to the next row while removing the previous row', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['id'], [{ id: 'a' }, { id: 'b' }]))
+            s.play(board.light('a'), { duration: 0 })
+            s.play(board.remove('a'), board.light('b'))
+        })
+        expect(board.lit).toEqual({ row: 'b', column: null })
+        expect(markerAt(board, 1).shows).toBe(1)
+    })
+
+    it('rejects a backdated cell change even if its value matches a later change', async () => {
+        await compile((s) => {
+            const board = s.add(table(['n'], [{ id: 1, n: 1 }]))
+            s.at(10, () => s.play(board.setCell(1, 'n', 2)))
+            expect(() => s.at(1, () => s.play(board.setCell(1, 'n', 2)))).toThrow(/Call .* before it/)
+        })
+    })
+
+    it('keeps a lit row visible when other rows exchange ranks around it', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['n'], [{ id: 'a', n: 3 }, { id: 'b', n: 2 }, { id: 'c', n: 1 }]))
+            s.play(board.light('b'), { duration: 0 })
+            s.play(board.sort('n'), { duration: 1 })
+        })
+        expect(at(0.5, () => shows(board.row('b').content))).toBe(1)
+        expect(markerAt(board, 0.5).shows).toBe(1)
+    })
+
+    it('keeps surviving rows apart when easing overshoots their final slots', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['name'], Array.from({ length: 8 }, (_, id) => ({ id, name: 'Agjpqy' }))))
+            s.play(board.remove([1, 2, 3, 4, 5, 6], { duration: 1, ease: overshoot() }))
+        })
+        expect(at(0.69, () => board.row(7).get('y') - board.row(0).get('y'))).toBeGreaterThanOrEqual(board.pitch - 1e-6)
+    })
+
+    it('keeps a delayed cell update with its original row when an id is reused', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table([{ key: 'score', total: 'sum' }], [{ id: 1, score: 2 }]))
+            s.play(board.setCell(1, 'score', 9, { duration: 4 }), seq(board.remove(1, { duration: 0.5 }), board.append({ id: 1, score: 3 }, { duration: 0.5 })))
+        })
+        expect(said(board.cell(1, 'score'), 4)).toEqual(['3'])
+        expect(totals(board, 0, 4)).toEqual(['3'])
+    })
+
+    it('measures the full cell after a parent rotates it', async () => {
+        await compile((s) => {
+            const board = table(['score'], [{ id: 1, score: 2 }])
+            const cell = board.region(1, 'score')
+            s.add(group(board).rotate(Math.PI / 4))
+            const rotated = board.region(1, 'score')
+            const span = (cell.width + cell.height) / Math.sqrt(2)
+            expect(rotated.width).toBeCloseTo(span)
+            expect(rotated.height).toBeCloseTo(span)
+        })
+    })
+
+    it('treats object property names as ordinary column keys in sparse records and copies', async () => {
+        await compile(() => {
+            const board = table(['constructor', '__proto__'], [{ id: 1, ['__proto__']: 'yes' }])
+            const query = (row: TableRowView) => row.values['constructor'] === null && row.values['__proto__'] === 'yes'
+            expect(board.find(query)).toEqual([1])
+            expect(board.clone().find(query)).toEqual([1])
+        })
+    })
+
+    it('centers the room of `maxRows` on its place, and draws the panel as high as its rows, with the header over them and the total row under them', async () => {
+        await compileFilm(film(() => {
+            const S = 20, P = S * 1.9
+            const board = table(COLS, ROWS, { size: S, maxRows: 5 }).at(100, 50)
+            // The room: the header, five rows and the total row, and 4 px over and under them. The layout measures it.
+            const room = boxOf(board)
+            expect([room.cx, room.cy, room.height]).toEqual([expect.closeTo(100, 6), expect.closeTo(50, 6), expect.closeTo(7 * P + 8, 6)])
+            // The panel starts at the top of the room, and ends under the three rows that the table has and the total row.
+            const frame = board.frame.bounds()
+            expect([frame.x, frame.y, frame.width, frame.height]).toEqual([expect.closeTo(room.left, 6), expect.closeTo(room.top, 6), expect.closeTo(room.width, 6), expect.closeTo(5 * P + 8, 6)])
+            expect(board.pitch).toBeCloseTo(P, 6)
+            // From the top: the header, a line, the rows, a line, the total row. Each is one row high.
+            const head = -(7 * P + 8) / 2 + 4 + P / 2
+            expect(board.headers.map((header) => header.get('y'))).toEqual([head, head, head].map((y) => expect.closeTo(y, 6)))
+            expect(board.rows.map((row) => row.get('y'))).toEqual([1, 2, 3].map((slot) => expect.closeTo(head + slot * P, 6)))
+            expect(board.rules.map((rule) => rule.get('y'))).toEqual([expect.closeTo(head + P / 2, 6), expect.closeTo(head + 3.5 * P, 6)])
+            expect(board.totals!.get('y')).toBeCloseTo(head + 4 * P, 6)
+            expect(board.lines).toHaveLength(4)
+            // A line between two rows shows when the table has the row under it: two lines for three rows.
+            expect(board.lines.map((line) => line.get('opacity'))).toEqual([1, 1, 0, 0])
+            // Without `maxRows`, the room is the room of the first rows. A table with no total has no total row and one line less.
+            const plain = table(['case', 'score'], ROWS.map((row) => ({ id: row.id, case: row['case']!, score: row['score']! })), { size: S })
+            expect(boxOf(plain).height).toBeCloseTo(4 * P + 8, 6)
+            expect(plain.totals).toBeNull()
+            expect(plain.rules).toHaveLength(1)
+            // The defaults: a text size of 28, which is over the 26 px that a viewer of a film at 1080p needs, and rows of 1.9 of it.
+            const usual = table(COLS, ROWS)
+            expect([(usual.headers[0] as TextNode).size, first(usual.rows[0]!.cells[0]!).size, first(usual.rows[0]!.cells[1]!).size]).toEqual([28, 28, 28])
+            expect(usual.pitch).toBeCloseTo(28 * 1.9, 6)
+        }))
+    })
+
+    it('sets the columns once: texts start at one x, numbers end at one x in mono, and a larger width spreads the columns', async () => {
+        await compileFilm(film(() => {
+            const S = 20, pad = 0.7 * S
+            const columns = [{ key: 'case' }, { key: 'units' }, { key: 'note' }]
+            const rows = [{ id: 1, case: 'a', units: 5, note: 'x' }, { id: 2, case: 'a much longer case', units: 12345, note: 'y' }]
+            const board = table(columns, rows, { size: S })
+            const needs = [wide('a much longer case', { size: S }), Math.max(wide('units', { size: S, weight: 600 }), wide('12345', { size: S, font: 'mono' })), Math.max(wide('note', { size: S, weight: 600 }), wide('x', { size: S }))]
+            const natural = needs.reduce((sum, need) => sum + need + pad * 2, 0)
+            expect(board.frame.bounds().width).toBeCloseTo(natural, 6)
+            const cells = (of: Board, column: number) => of.rows.map((row) => row.cells[column]!)
+            // A text starts 0.7 of the size from the left border, under the start of its header.
+            expect(cells(board, 0).map(anchor)).toEqual([-natural / 2 + pad, -natural / 2 + pad].map((x) => expect.closeTo(x, 6)))
+            expect(board.header('case').get('x')).toBeCloseTo(-natural / 2 + pad, 6)
+            // The numbers end at one x, under the end of their header, and they are in mono so that digits line up.
+            const end = -natural / 2 + needs[0]! + pad * 2 + pad + needs[1]!
+            expect(cells(board, 1).map(anchor)).toEqual([end, end].map((x) => expect.closeTo(x, 6)))
+            expect(right(first(cells(board, 1)[1]!))).toBeCloseTo(right(first(cells(board, 1)[0]!)), 6)
+            expect(board.header('units').get('x')).toBeCloseTo(end, 6)
+            expect([first(cells(board, 0)[0]!).font, first(cells(board, 1)[0]!).font, (board.header('units') as TextNode).font]).toEqual(['sans', 'mono', 'sans'])
+            // `mono: true` sets the texts of a column in mono, and `mono: false` sets its numbers in the font of the texts.
+            const fonts = table([{ key: 'case', mono: true }, { key: 'units', mono: false }], rows.map((row) => ({ id: row.id, case: row.case, units: row.units })), { size: S })
+            expect([first(fonts.rows[0]!.cells[0]!).font, first(fonts.rows[0]!.cells[1]!).font]).toEqual(['mono', 'sans'])
+            // A width of 300 more gives each of the three columns 100 more. A text keeps the left of its column, and a number the right.
+            const spread = table(columns, rows, { size: S, width: natural + 300 })
+            expect(spread.frame.bounds().width).toBeCloseTo(natural + 300, 6)
+            expect(anchor(cells(spread, 0)[0]!)).toBeCloseTo(-(natural + 300) / 2 + pad, 6)
+            expect(anchor(cells(spread, 1)[0]!)).toBeCloseTo(-(natural + 300) / 2 + needs[0]! + pad * 2 + 100 + needs[1]! + pad * 2 + 100 - pad, 6)
+            // All of the table is as wide as the region that the layout gives it.
+            expect(boxOf(fitted(900, (width) => table(columns, rows, { size: S, width }))).width).toBeCloseTo(900, 6)
+            expect(() => table(columns, rows, { size: S, width: 200 })).toThrow(new RegExp(`table: the columns need ${Math.ceil(natural)} px, and \`width\` is 200\\. Give a width of ${Math.ceil(natural)} or more, a smaller \`size\`, or shorter texts`))
+            // The `width` of a column is the room of its content. A text that comes later must fit it.
+            const fixed = table([{ key: 'case', width: 300 }, { key: 'units' }], rows.map((row) => ({ id: row.id, case: row.case, units: row.units })), { size: S })
+            expect(anchor(cells(fixed, 1)[0]!) - anchor(cells(fixed, 0)[0]!)).toBeCloseTo(300 + pad * 2 + Math.max(wide('units', { size: S, weight: 600 }), wide('12345', { size: S, font: 'mono' })), 6)
+        }))
+    })
+
+    it('draws a state as a color and a mark: before a text, after a number, and centered with the text of a centered column', async () => {
+        await compileFilm(film(() => {
+            const board = table([{ key: 'name', marks: true }, { key: 'value' }, { key: 'verdict', align: 'center' }, { key: 'only', align: 'center' }], [
+                { id: 1, name: { value: 'alpha', state: 'pass' }, value: { value: 0.5, state: 'fail' }, verdict: { value: 'held', state: 'warn' }, only: { state: 'pending' } },
+                { id: 2, name: 'beta', value: 0.25, verdict: 'kept', only: { state: 'skip' } },
+            ], { size: 30 })
+            const [one, two] = board.rows.map((row) => row.cells)
+            const ink = (cell: TableCellNode) => ({ mark: cell.mark.bounds(), text: cell.words.bounds() })
+            // The mark is at the outer side of the text, and near it.
+            const [name, value, verdict, only] = one!.map(ink)
+            expect(right(one![0]!.mark)).toBeLessThan(name!.text.x)
+            expect(name!.text.x - right(one![0]!.mark)).toBeLessThan(30 * 0.6)
+            expect(value!.mark.x).toBeGreaterThan(right(one![1]!.words))
+            expect(value!.mark.x - right(one![1]!.words)).toBeLessThan(30 * 0.6)
+            // In a centered column, the mark and the text are centered together, and a mark alone is in the middle.
+            expect(Math.abs((verdict!.mark.x + right(one![2]!.words)) / 2 - one![2]!.get('x'))).toBeLessThan(3)
+            expect(right(one![2]!.mark)).toBeLessThan(verdict!.text.x)
+            expect(only!.mark.x + only!.mark.width / 2).toBeCloseTo(one![3]!.get('x'), 6)
+            // A cell with no state keeps the room of the mark, so the texts of a column start at one x and the numbers end at one x.
+            expect(anchor(two![0]!)).toBeCloseTo(anchor(one![0]!), 6)
+            expect(anchor(two![1]!)).toBeCloseTo(anchor(one![1]!), 6)
+            // A text with no mark is in the middle of a centered column.
+            expect(anchor(two![2]!)).toBeCloseTo(two![2]!.get('x'), 6)
+            // Each state has its color, on the mark and on the text, and its own shape.
+            expect(one!.map((cell) => marksOf(cell, 0)[0])).toEqual([['check', parseColor('green')], ['cross', parseColor('red')], ['bang', parseColor('yellow')], ['ring', parseColor('dim')]])
+            expect(marksOf(two![3]!, 0)).toEqual([['dash', parseColor('dim')]])
+            expect([first(one![0]!), first(one![1]!), first(two![0]!)].map((made) => made.children[0]!.get('fill'))).toEqual([parseColor('green'), parseColor('red'), parseColor('ink')])
+            // Color is never the only sign: no two of the states of the library share a mark.
+            const shapes = Object.values(TABLE_STATES).map((state) => state.mark)
+            expect(new Set(shapes).size).toBe(shapes.length)
+            // A table takes its own states. A state with no mark has a dot.
+            const own = table(['lane', { key: 'state', marks: true }], [{ id: 1, lane: 'A', state: { value: 'kept', state: 'kept' } }], { states: { kept: { color: 'teal' }, dropped: { color: 'red', mark: 'dash' } } })
+            expect(marksOf(own.rows[0]!.cells[1]!, 0)).toEqual([['dot', parseColor('teal')]])
+            expect(() => table(['lane', 'state'], [{ id: 1, lane: 'A', state: { state: 'pass' } }], { states: { kept: { color: 'teal' } } })).toThrow(/table: no state "pass"\. The states are kept/)
+        }))
+    })
+
+    it('changes a cell in place: the old text and the old mark are gone before the new ones show, and a text that stays takes the new color', async () => {
+        let board!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table([{ key: 'case', sample: 'renamed' }, { key: 'score', format: (value) => value.toFixed(2) }, { key: 'verdict', marks: true }], [
+                { id: 'a', case: 'first', score: 3, verdict: { value: 'ok', state: 'pass' } },
+                { id: 'b', case: 'second', score: 1, verdict: { state: 'pending' } },
+            ], { size: 30 }))
+            s.wait(1)
+            s.play(board.setCell('a', 'case', 'renamed'), { duration: 1 })
+            expect(board.value('a', 'case')).toBe('renamed')
+            // 2 to 3: a mark of another shape, with no text.
+            s.play(board.setCell('b', 'verdict', { state: 'fail' }), { duration: 1 })
+            expect([board.value('b', 'verdict'), board.stateOf('b', 'verdict')]).toEqual([null, 'fail'])
+            // 3 to 4: the state changes and the text stays. A state alone keeps the value.
+            s.play(board.setCell('a', 'verdict', { state: 'fail' }), { duration: 1 })
+            expect([board.value('a', 'verdict'), board.stateOf('a', 'verdict')]).toEqual(['ok', 'fail'])
+            // 4 to 5: a number, written as the column writes it. A value alone keeps the state.
+            s.play(board.setCell('a', 'score', 7), board.setCell('a', 'verdict', 'bad'), { duration: 1 })
+            expect([board.value('a', 'score'), board.value('a', 'verdict'), board.stateOf('a', 'verdict')]).toEqual([7, 'bad', 'fail'])
+            // 5 to 6: the cell gets empty, and the state goes.
+            s.play(board.setCell('a', 'verdict', { value: null, state: null }), { duration: 1 })
+            expect([board.value('a', 'verdict'), board.stateOf('a', 'verdict')]).toEqual([null, null])
+            // A change to the value that the cell has takes no time of the cell, so it plays with another change.
+            s.play(board.setCell('a', 'case', 'renamed'), board.setCell('a', 'case', 'again'), { duration: 1 })
+            s.wait(1)
+        }))
+        const name = board.cell('a', 'case'), verdict = board.cell('a', 'verdict'), mark = board.cell('b', 'verdict')
+        expect(said(name, 0.5)).toEqual(['first'])
+        expect([said(name, 1.25), said(name, 1.5), said(name, 1.75), said(name, 2)]).toEqual([['first'], [], ['renamed'], ['renamed']])
+        // No moment of the film shows two texts in one cell, or two marks.
+        for (let time = 0; time <= 8; time += 0.05) {
+            for (const cell of [name, verdict, mark, board.cell('a', 'score')]) {
+                expect(said(cell, time).length, `texts at ${time}`).toBeLessThanOrEqual(1)
+                expect(marksOf(cell, time).length, `marks at ${time}`).toBeLessThanOrEqual(1)
+            }
+        }
+        expect([marksOf(mark, 2), marksOf(mark, 2.5), marksOf(mark, 3)]).toEqual([[['ring', parseColor('dim')]], [], [['cross', parseColor('red')]]])
+        // The text "ok" is one node from 3 to 4, and it goes from green to red with its mark.
+        expect([said(verdict, 3), said(verdict, 3.5), said(verdict, 4)]).toEqual([['ok'], ['ok'], ['ok']])
+        const ok = verdict.words.children[0]!.children[0]!
+        expect([at(3, () => ok.get('fill')), at(4, () => ok.get('fill'))]).toEqual([parseColor('green'), parseColor('red')])
+        expect(at(3.5, () => ok.get('fill'))).toEqual(mixColor(parseColor('green'), parseColor('red'), smooth(0.5)))
+        expect([said(board.cell('a', 'score'), 3), said(board.cell('a', 'score'), 5)]).toEqual([['3.00'], ['7.00']])
+        expect([said(verdict, 5), marksOf(verdict, 5)]).toEqual([['bad'], [['cross', parseColor('red')]]])
+        expect([said(verdict, 6), marksOf(verdict, 6)]).toEqual([[], []])
+        expect(said(name, 7)).toEqual(['again'])
+    })
+
+    it('writes the total row from the rows at every frame, in the order of time and not of the calls', async () => {
+        let board!: Board, late!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS, { size: 30, maxRows: 4 }))
+            late = s.add(table(COLS, ROWS, { size: 30 }))
+            expect([board.totalOf('score'), board.totalOf('verdict')]).toEqual([6, '1 of 3'])
+            s.wait(1)
+            s.play(board.setCell('b', 'score', 10), { duration: 1 })
+            // 2 to 3: two cells change in one play, and the total has one text at each time.
+            s.play(board.setCell('c', 'verdict', { state: 'pass' }), board.setCell('b', 'verdict', { state: 'pass' }), { duration: 1 })
+            s.play(board.append(D), { duration: 1 })
+            s.play(board.remove('a'), { duration: 1 })
+            expect([board.totalOf('score'), board.totalOf('verdict')]).toEqual([16, '2 of 3'])
+            expect(() => board.totalOf('case')).toThrow(/table: the column "case" has no total\. Give it one where the table is made/)
+            // A film may name a late change before an early one. The total at each time is of the rows at that time.
+            s.at(6, () => s.play(late.setCell('a', 'score', 100), { duration: 1 }))
+            s.at(2, () => s.play(late.setCell('b', 'score', 50), { duration: 1 }))
+            s.wait(3)
+            // A total that gets too wide for its column is an error where the film plays the change.
+            const narrow = s.add(table([{ key: 'n', total: (rows) => 'x'.repeat(rows.length * 6) }], [{ id: 1, n: 1 }], { size: 30, maxRows: 3 }))
+            expect(() => s.play(narrow.append({ id: 2, n: 2 }))).toThrow(/table: the text "x{12}" of the total of the column "n" is \d+ px wide, and the column has \d+ px for a text\. Give the column a `sample` where the table is made/)
+        }))
+        // The total changes when the new text of the cell comes: at the middle of the change.
+        expect([1, 1.45, 1.55, 2].map((time) => totals(board, 1, time))).toEqual([['6'], ['6'], ['15'], ['15']])
+        expect([2.45, 2.55].map((time) => totals(board, 2, time))).toEqual([['1 of 3'], ['3 of 3']])
+        // A row counts when it is half there, and a row that leaves counts until it is gone.
+        expect([3.45, 3.55].map((time) => [totals(board, 1, time), totals(board, 2, time)])).toEqual([[['15'], ['3 of 3']], [['19'], ['3 of 4']]])
+        expect([4.4, 4.5].map((time) => [totals(board, 1, time), totals(board, 2, time)])).toEqual([[['19'], ['3 of 4']], [['16'], ['2 of 3']]])
+        for (let time = 0; time <= 5; time += 0.05) expect([totals(board, 1, time).length, totals(board, 2, time).length], `at ${time}`).toEqual([1, 1])
+        expect([1, 3, 7].map((time) => totals(late, 1, time))).toEqual([['6'], ['55'], ['152']])
+        // The total row is under the last row at every frame: one row under it, or a little less for a row that still comes to its place.
+        for (let time = 0; time <= 5; time += 0.05) {
+            const last = at(time, () => Math.max(...made(board).filter((row) => shows(row) > 0.05).map((row) => row.get('y'))))
+            expect(at(time, () => board.totals!.get('y')) - last, `at ${time}`).toBeGreaterThanOrEqual(board.pitch * 0.79)
+        }
+        expect(at(5, () => board.totals!.get('y'))).toBeCloseTo(at(5, () => board.row('d').get('y')) + board.pitch, 6)
+    })
+
+    it('moves one marker to a row, a cell or a column, and says what is lit', async () => {
+        let board!: Board
+        const S = 30, P = S * 1.9, inset = S * 0.2, gap = 3
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // The table has three rows, and room for five.
+            board = s.add(table(COLS, ROWS, { size: S, maxRows: 5 }).at(40, -20))
+            expect(board.lit).toBeNull()
+            s.wait(1)
+            s.play(board.light('b'), { duration: 1 })
+            expect(board.lit).toEqual({ row: 'b', column: null })
+            s.play(board.light('c', 'score'), { duration: 1 })
+            expect(board.lit).toEqual({ row: 'c', column: 'score' })
+            s.play(board.light(null, 'verdict'), { duration: 1 })
+            expect(board.lit).toEqual({ row: null, column: 'verdict' })
+            s.play(board.light(null), { duration: 1 })
+            expect(board.lit).toBeNull()
+            s.wait(1)
+        }))
+        const half = at(0, () => board.frame.bounds().width / 2)
+        const rowY = (id: string) => at(0, () => board.row(id).get('y'))
+        expect(markerAt(board, 0.5).shows).toBe(0)
+        // On a row: the marker is as wide as the panel less a little, and as high as the row less a little.
+        expect(markerAt(board, 2)).toEqual({ left: expect.closeTo(-half + inset, 6), right: expect.closeTo(half - inset, 6), top: expect.closeTo(rowY('b') - P / 2 + gap, 6), bottom: expect.closeTo(rowY('b') + P / 2 - gap, 6), y: expect.closeTo(rowY('b'), 6), shows: 1, line: 1 })
+        // It comes in at its row, and does not travel there.
+        expect(markerAt(board, 1.5)).toMatchObject({ y: expect.closeTo(rowY('b'), 6), shows: expect.closeTo(smooth(0.5), 6), line: 1 })
+        // On a cell: the room of the cell, less the same.
+        const cell = board.cell('c', 'score'), [from, , to] = cell.box
+        expect(markerAt(board, 3)).toMatchObject({ left: expect.closeTo(cell.get('x') + from + inset, 6), right: expect.closeTo(cell.get('x') + to - inset, 6), y: expect.closeTo(rowY('c'), 6), shows: 1, line: 1 })
+        // On its way it is a faint fill with no line, so no line runs through the texts that it passes.
+        expect(markerAt(board, 2.5)).toMatchObject({ shows: 1, line: 0 })
+        expect(markerAt(board, 2.5).y).toBeGreaterThan(rowY('b'))
+        expect(markerAt(board, 2.5).y).toBeLessThan(rowY('c'))
+        expect([markerAt(board, 2.1).line, markerAt(board, 2.9).line]).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        // On a column: from the header to the last row that the table has, and not the total row or the room under it.
+        const head = board.header('verdict').get('y'), column = board.cell('a', 'verdict')
+        expect(markerAt(board, 4)).toMatchObject({ left: expect.closeTo(column.get('x') + column.box[0] + inset, 6), top: expect.closeTo(head - P / 2 + gap, 6), bottom: expect.closeTo(rowY('c') + P / 2 - gap, 6), shows: 1 })
+        expect(markerAt(board, 5).shows).toBe(0)
+        expect(at(5.5, () => board.marker.get('visible'))).toBe(false)
+        // The line of the marker has clear room from the ink of the row: 0.15 of the text size or more, for any ASCII text.
+        // In rows that are too low for that, the marker has no line, and its fill is stronger.
+        const tall = 'Agjpqy(|$_Q'
+        const looks: { leading: number; font: FontFamily; line: number; fill: number; room: number }[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // A film is built again when a font arrives, so the list starts empty at each build.
+            looks.length = 0
+            for (const font of ['sans', 'text-serif'] as const) {
+                for (const leading of [1.4, 1.6, 1.9, 2.4]) {
+                    const low = s.add(table(['name', 'value'], [{ id: 1, name: tall, value: 12345 }, { id: 2, name: tall, value: 67890 }], { size: S, leading, font }))
+                    s.play(low.light(2), { duration: 0 })
+                    const box = low.marker.bounds(), ink = low.row(2).cells.map((made) => made.words.bounds()), half = low.marker.get('strokeWidth') / 2
+                    const room = Math.min(...ink.map((made) => Math.min(made.y - (box.y + half), box.y + box.height - half - (made.y + made.height))))
+                    looks.push({ leading, font, line: low.marker.get('strokeOpacity'), fill: low.marker.get('fillOpacity'), room })
+                }
+            }
+            s.wait(0.5)
+        }))
+        expect(looks.map((look) => [look.font, look.leading, look.line, look.fill])).toEqual([
+            ['sans', 1.4, 0, 0.26], ['sans', 1.6, 0, 0.26], ['sans', 1.9, 1, 0.16], ['sans', 2.4, 1, 0.16],
+            ['text-serif', 1.4, 0, 0.26], ['text-serif', 1.6, 0, 0.26], ['text-serif', 1.9, 1, 0.16], ['text-serif', 2.4, 1, 0.16],
+        ])
+        for (const look of looks.filter((made) => made.line === 1)) expect(look.room, `${look.font} at ${look.leading}`).toBeGreaterThanOrEqual(S * 0.15)
+    })
+
+    it('keeps the marker with its row: through a sort, in with a row that arrives, and out with a row that leaves', async () => {
+        let board!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS, { size: 30, maxRows: 4 }))
+            s.play(board.light('c'), { duration: 0 })
+            s.wait(1)
+            // 1 to 2: the row with the light goes up one place, and the first row passes it on its way to the bottom.
+            s.play(board.sort('score'), { duration: 1 })
+            // 2 to 3: the light goes to a row of the same play.
+            s.play(board.append(D), board.light('d'), { duration: 1 })
+            // 3 to 4: the row with the light leaves.
+            s.play(board.remove('d'), { duration: 1 })
+            expect(board.lit).toBeNull()
+            s.wait(1)
+        }))
+        const c = board.row('c'), d = made(board).find((row) => row.rowId === 'd')!
+        for (let time = 1; time <= 2; time += 0.05) {
+            expect(markerAt(board, time).y, `at ${time}`).toBeCloseTo(at(time, () => c.get('y')), 6)
+            // The row with the light is the top card of the sort, also when another row goes a longer way. So the
+            // marker is never on a row that another one hides: the row shows whole at every frame.
+            expect(markerAt(board, time), `at ${time}`).toMatchObject({ shows: 1, line: 1 })
+            expect(at(time, () => shows(c.content)), `at ${time}`).toBe(1)
+        }
+        expect(at(2, () => c.get('y'))).toBeCloseTo(at(0, () => c.get('y')) - board.pitch, 6)
+        expect(at(1.5, () => c.get('z'))).toBeGreaterThan(at(1.5, () => Math.max(board.row('a').get('z'), board.row('b').get('z'))))
+        // The marker is at the new row when the move of the light ends, and it shows as much as the row does.
+        expect(markerAt(board, 3)).toMatchObject({ y: expect.closeTo(at(3, () => d.get('y')), 6), shows: 1, line: 1 })
+        for (const time of [3.1, 3.2, 3.3, 3.4]) {
+            expect(markerAt(board, time).shows, `at ${time}`).toBeCloseTo(at(time, () => d.get('opacity')), 6)
+            expect(markerAt(board, time).shows, `at ${time}`).toBeLessThan(1)
+        }
+        expect([markerAt(board, 3.5).shows, markerAt(board, 4).shows, markerAt(board, 5).shows]).toEqual([0, 0, 0])
+    })
+
+    it('brings rows under the last row, one after another, and makes room in the panel first', async () => {
+        let board!: Board, group!: Board
+        const S = 30, P = S * 1.9
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS.slice(0, 1), { size: S, maxRows: 4 }))
+            group = s.add(table(COLS, ROWS.slice(0, 1), { size: S, maxRows: 4 }))
+            s.wait(1)
+            s.play(board.append(ROWS.slice(1)), group.append(ROWS.slice(1), { lag: 0 }), { duration: 2 })
+            expect([board.ids, board.count]).toEqual([['a', 'b', 'c'], 3])
+            // A value of a row of the same play can change in it, when the film names the `append` first.
+            s.play(board.append(D), board.setCell('d', 'score', 9), { duration: 1 })
+            expect(board.value('d', 'score')).toBe(9)
+            expect(() => s.play(group.setCell('d', 'score', 9), group.append(D))).toThrow(/table: no row has the id "d"\. The table has the rows "a", "b", "c"\. When an `append` in the same play brings the row, name the `append` before this call/)
+            // The panel has room for four rows.
+            expect(() => s.play(board.append({ id: 'e', case: 'fifth' }))).toThrow(/table: append\(\["e"\]\) makes 5 rows, and the panel has room for 4\. Raise `maxRows` to 5 or more where the table is made, or remove a row first/)
+            expect(() => s.play(board.append({ id: 'a', case: 'again' }))).toThrow(/table: the table already has a row with the id "a"\. Give each row its own id/)
+            expect(() => board.append([{ id: 'x', case: 'one' }, { id: 'x', case: 'two' }])).toThrow(/table: two rows have the id "x"/)
+            s.wait(1)
+        }))
+        // One row for each second: "b" from 1 to 2, and "c" from 2 to 3. With `lag: 0`, both take the whole time.
+        expect([1, 2, 3].map((time) => seen(board, time))).toEqual([['a'], ['a', 'b'], ['a', 'b', 'c']])
+        expect([1, 2.4, 3].map((time) => seen(group, time))).toEqual([['a'], ['a'], ['a', 'b', 'c']])
+        const [together, other] = at(2.4, () => [shows(group.row('b')), shows(group.row('c'))])
+        expect(together).toBeGreaterThan(0.1)
+        expect(other).toBeCloseTo(together!, 6)
+        // Each row is at its place, one row under the row before it.
+        expect(at(4, () => board.rows.map((row) => row.get('y') - board.rows[0]!.get('y')))).toEqual([0, 1, 2, 3].map((slot) => expect.closeTo(slot * P, 6)))
+        // The panel is as high as the header, the rows and the total row. It grows before the row comes, so a row that shows is inside it.
+        expect([1, 2, 3, 4].map((time) => at(time, () => board.frame.bounds().height))).toEqual([3, 4, 5, 6].map((rows) => expect.closeTo(rows * P + 12, 6)))
+        for (let time = 1; time <= 4; time += 0.05) {
+            const [bottom, lowest] = at(time, () => [board.frame.bounds().y + board.frame.bounds().height, Math.max(...made(board).filter((row) => shows(row) > 0.01).map((row) => row.cells[0]!.words.bounds().y + row.cells[0]!.words.bounds().height))])
+            expect(lowest!, `at ${time}`).toBeLessThan(bottom! - S * 0.2)
+        }
+        // The line over a row comes with the row.
+        expect([1, 2, 3].map((time) => at(time, () => board.lines.map((line) => line.get('opacity'))))).toEqual([[0, 0, 0], [1, 0, 0], [1, 1, 0]])
+    })
+
+    it('takes rows away: they fade, the rows under them move up, and the panel gets lower', async () => {
+        let board!: Board
+        const S = 30, P = S * 1.9
+        let old!: TableRowNode
+        const nodes: Record<string, TableRowNode> = {}
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, [...ROWS, D], { size: S }))
+            for (const id of board.ids) nodes[String(id)] = board.row(id)
+            old = board.row('b')
+            s.wait(1)
+            s.play(board.remove('b'), { duration: 1 })
+            expect([board.ids, board.count]).toEqual([['a', 'c', 'd'], 3])
+            expect(() => board.row('b')).toThrow(/table: no row has the id "b"\. The table has the rows "a", "c", "d"/)
+            // 2 to 3: a function picks the rows when the film plays the change, so it sees the rows that are left.
+            s.play(board.remove((row) => (row.values['score'] as number) > 2), { duration: 1 })
+            expect(board.ids).toEqual(['c'])
+            expect(board.find((row) => row.index === 0)).toEqual(['c'])
+            // 3 to 4: the id of a row that left is free again, and the new row has a node of its own.
+            s.play(board.append({ id: 'b', case: 'again', score: 5 }), { duration: 1 })
+            expect(board.row('b')).not.toBe(old)
+            // A function that picks no row changes nothing, and takes no time of the table.
+            s.play(board.remove(() => false), board.remove('c'), { duration: 1 })
+            expect(board.ids).toEqual(['b'])
+            s.wait(1)
+            // In one sequence, a row leaves and a row with its id arrives: the id is free when the second change plays.
+            s.play(seq(board.remove('b'), board.append({ id: 'b', case: 'a third' })), { duration: 1 })
+            expect(board.ids).toEqual(['b'])
+        }))
+        expect([1, 2, 3, 4, 5].map((time) => seen(board, time))).toEqual([['a', 'b', 'c', 'd'], ['a', 'c', 'd'], ['c'], ['c', 'b'], ['b']])
+        // The row that leaves is gone before a row comes to its place: at 45% of the time. It stays hidden.
+        expect([1.2, 1.45, 3, 6].map((time) => at(time, () => shows(old) > 0))).toEqual([true, false, false, false])
+        const top = at(0, () => nodes['a']!.get('y'))
+        expect(at(2, () => ['a', 'c', 'd'].map((id) => nodes[id]!.get('y')))).toEqual([0, 1, 2].map((slot) => expect.closeTo(top + slot * P, 6)))
+        // The rows under it wait until it is nearly gone.
+        expect(at(1.3, () => nodes['c']!.get('y'))).toBeCloseTo(top + 2 * P, 6)
+        expect([1, 2, 3, 4, 5].map((time) => at(time, () => board.frame.bounds().height))).toEqual([6, 5, 3, 4, 3].map((rows) => expect.closeTo(rows * P + 12, 6)))
+        // The lines between the rows have fixed places. They are away while rows move, and back when the rows are at rest.
+        expect([1, 1.7, 2].map((time) => at(time, () => board.lines.map((line) => line.get('opacity'))))).toEqual([[1, 1, 1], [0, 0, 0], [1, 1, 0]])
+    })
+
+    it('sorts and moves rows: each row keeps its node and goes to its new place', async () => {
+        let board!: Board
+        const nodes = new Map<number, TableRowNode>()
+        const orders: unknown[] = []
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // A film is built again when a font arrives, so the list starts empty at each build.
+            orders.length = 0
+            board = s.add(table(['id', 'score', 'name'], [{ id: 1, score: 5, name: 'e' }, { id: 2, score: null, name: 'b' }, { id: 3, score: 2, name: 'd' }, { id: 4, score: 5, name: 'a' }, { id: 5, score: 9, name: 'c' }], { size: 30 }))
+            for (const id of [1, 2, 3, 4, 5]) nodes.set(id, board.row(id))
+            s.wait(1)
+            for (const change of [board.sort('score'), board.sort('score', { descending: true }), board.sort('name'), board.sort((a, b) => Number(b.id) - Number(a.id)), board.moveRow(5, 4), board.moveRow(1, 0)]) {
+                s.play(change, { duration: 1 })
+                orders.push(board.ids)
+            }
+            // A sort that changes no place takes no time of the table, so it plays with another change.
+            s.play(board.sort((a, b) => a.index - b.index), board.moveRow(1, 1), { duration: 1 })
+            orders.push(board.ids)
+            expect(() => board.sort('none')).toThrow(/table: no column "none"\. The columns are "id", "score", "name"/)
+            expect(() => board.moveRow(1, 1.5)).toThrow(/table: moveRow\(1, 1\.5\): the place of a row is a whole number, 0 for the first row/)
+            expect(() => s.play(board.moveRow(1, 5))).toThrow(/table: moveRow\(1, 5\): the table has 5 rows, so the last place is 4/)
+            expect(() => s.play(board.sort(() => Number.NaN))).toThrow(/table: the function of sort\(\) returned NaN for the rows/)
+            s.wait(1)
+        }))
+        // Numbers by size, equal rows in the order that they had, and an empty cell last in both directions. Texts by their letters.
+        expect(orders).toEqual([[3, 1, 4, 5, 2], [5, 1, 4, 3, 2], [4, 2, 5, 3, 1], [5, 4, 3, 2, 1], [4, 3, 2, 1, 5], [1, 4, 3, 2, 5], [4, 1, 3, 2, 5]])
+        // A row is one node through every change, and it is at the place of its rank after each one.
+        expect([1, 2, 3, 4, 5].map((id) => board.row(id))).toEqual([1, 2, 3, 4, 5].map((id) => nodes.get(id)))
+        const top = at(0, () => nodes.get(1)!.get('y'))
+        orders.forEach((order, index) => {
+            expect(seen(board, 2 + index), `after change ${index}`).toEqual(order)
+            expect(at(2 + index, () => (order as number[]).map((id) => nodes.get(id)!.get('y'))), `after change ${index}`).toEqual([0, 1, 2, 3, 4].map((slot) => expect.closeTo(top + slot * board.pitch, 6)))
+        })
+        // The row shows its id in the column `id`, as a number: at the right, in mono.
+        expect(first(nodes.get(1)!.cells[0]!).source).toBe('1')
+    })
+
+    it('shows a row that a sort moves as a card over the others, and hides a row while a card is at its text', async () => {
+        let board!: Board
+        const S = 30
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(['case', 'score'], [{ id: 'a', case: 'first', score: 3 }, { id: 'b', case: 'second', score: 2 }, { id: 'c', case: 'third', score: 1 }], { size: S }))
+            s.wait(1)
+            // The first row and the last row trade places, and both pass the row between them.
+            s.play(board.sort('score'), { duration: 1 })
+            s.wait(1)
+        }))
+        const rows = ['a', 'b', 'c'].map((id) => board.row(id))
+        const card = (row: TableRowNode, time: number) => at(time, () => shows(row.backing!))
+        // At rest a row has no card. A row that moves has one for the time of the move.
+        expect(rows.map((row) => [card(row, 1), card(row, 1.2), card(row, 2)])).toEqual([[0, 1, 0], [0, 0, 0], [0, 1, 0]])
+        // At the middle, the three rows are at one place, and one of them shows.
+        expect(rows.map((row) => at(1.5, () => shows(row.content)))).toEqual([0, 0, 1])
+        // At every frame, a row whose text a card of another row has reached does not show at all.
+        const reach = board.pitch / 2 + S * 0.62
+        for (let time = 1; time <= 2; time += 0.025) {
+            at(time, () => {
+                for (const lower of rows) {
+                    for (const upper of rows) {
+                        const over = upper.get('z') > lower.get('z') || (upper.get('z') === lower.get('z') && rows.indexOf(upper) > rows.indexOf(lower))
+                        if (upper === lower || !over || shows(upper.backing!) < 0.5 || Math.abs(upper.get('y') - lower.get('y')) >= reach) continue
+                        expect(shows(lower.content), `row ${lower.rowId} under ${upper.rowId} at ${time}`).toBeLessThan(0.02)
+                    }
+                }
+            })
+        }
+        expect(seen(board, 2)).toEqual(['c', 'b', 'a'])
+    })
+
+    it('changes its rows one change at a time, and a cell one change at a time, and says how to play two', async () => {
+        /** A film of its own for each case, so that the times in a message are known. */
+        const scene = (build: (s: Stage, board: Board) => void) => compileFilm(film({ fps: 20 }, (s) => build(s, s.add(table(COLS, ROWS, { size: 30, maxRows: 5 })))))
+        await scene((s, board) => {
+            expect(() => s.play(board.remove('a'), board.sort('score', { descending: true }))).toThrow(/table: sort\("score"\) plays from 0 s to 1 s, and remove\(\["a"\]\) plays from 0 s to 0\.7 s\. The table changes its rows one change at a time: a change starts when the change before it is over\. Play the two in a `seq`: each then has its share of the time of the play/)
+        })
+        await scene((s, board) => {
+            expect(() => s.play(board.append(D), board.append({ id: 'e', case: 'fifth' }))).toThrow(/Give one `append` all the rows\. With `lag: 0`, they arrive together/)
+        })
+        await scene((s, board) => {
+            s.wait(1)
+            s.play(board.sort('score'), { duration: 2 })
+            expect(() => s.at(2, () => s.play(board.remove('a')))).toThrow(/table: remove\(\["a"\]\) plays from 2 s to 2\.7 s, and sort\("score"\) plays from 1 s to 3 s\..* sort\("score"\) takes 2 s, and remove\(\["a"\]\) starts 1 s after it\. Give sort\("score"\) a `duration` of 1 or less, or play the two in a `seq`/)
+        })
+        await scene((s, board) => {
+            s.wait(1)
+            s.play(board.sort('score'), { duration: 2 })
+            // The end of one change is the start of the next.
+            s.play(board.remove('a'), { duration: 1 })
+            s.play(board.append({ id: 'a', case: 'again' }), { duration: 1 })
+            expect(board.ids).toEqual(['b', 'c', 'a'])
+            expect(() => s.at(0.5, () => s.play(board.moveRow('a', 0)))).toThrow(/The table takes the changes of its rows in the order of time, and the film calls append\(\["a"\]\) first\. Call moveRow\("a", 0\) before it/)
+        })
+        await scene((s, board) => {
+            // A cell takes one change at a time.
+            expect(() => s.play(board.setCell('b', 'score', 5), board.setCell('b', 'score', 6))).toThrow(/table: setCell\("b", "score"\) plays from 0 s to 0\.5 s, and setCell\("b", "score"\) plays from 0 s to 0\.5 s\. A cell takes one change at a time: a change starts when the change before it is over\. Play the two in a `seq`, or give the first one a shorter `duration`/)
+        })
+        await scene((s, board) => {
+            // Two cells change together, and so do a cell, the rows and the light.
+            s.play(board.setCell('b', 'score', 5), board.setCell('c', 'score', 6), board.setCell('b', 'verdict', { state: 'pass' }), board.sort('score'), board.light('b'), { duration: 1 })
+            expect([board.value('b', 'score'), board.value('c', 'score'), board.ids]).toEqual([5, 6, ['a', 'b', 'c']])
+            // Two moves of the light whose times overlap give one marker: the last one that starts takes it from where it is.
+            s.play(board.light('a'), board.light('c'), { duration: 1 })
+            expect(board.lit).toEqual({ row: 'c', column: null })
+            expect(() => board.setCell('b', 'score', 5, { duration: -1 })).toThrow(/table: the duration of setCell\("b", "score"\) is -1\. Give a number, 0 or more/)
+            expect(() => board.append(D, { lag: Number.NaN })).toThrow(/table: the lag of append\(\["d"\]\) is NaN\. Give a number, 0 or more/)
+        })
+    })
+
+    it('names what is wrong with a column, a row, a cell or an option, and what to change', async () => {
+        await compileFilm(film(() => {
+            expect(() => table([])).toThrow(/table: give it at least one column, such as table\(\['case', 'score'\], rows\)/)
+            expect(() => table(['a', 'a'])).toThrow(/table: two columns have the key "a"\. Give each column its own key/)
+            expect(() => table([{ key: ' ' }])).toThrow(/table: column 0 has no key/)
+            expect(() => table([{ key: 'a', align: 'middle' as 'center' }])).toThrow(/table: the align of the column "a" is "middle"\. It is 'left', 'right' or 'center'/)
+            expect(() => table([{ key: 'a', total: 'mean' as 'sum' }])).toThrow(/table: the total of the column "a" is "mean"\. It is 'sum', or a function of the rows/)
+            expect(() => table([{ key: 'long header', width: 20 }], [], { maxRows: 1, size: 20 })).toThrow(/table: the width of the column "long header" is 20, and its header "long header" is \d+ px wide\. Give a width of \d+ or more, or a shorter label/)
+            expect(() => table(['a'], [{ id: 1, a: 'x' }, { id: '1', a: 'y' }])).toThrow(/table: two rows have the id "1"\. Give each row its own id/)
+            expect(() => table(['a'], [{ id: Number.NaN, a: 'x' }])).toThrow(/table: row 0 has the id null\. Give each row an `id`, a number or a text: the table knows a row by it/)
+            expect(() => table(['a'], [{ a: 'x' } as unknown as TableRow])).toThrow(/table: row 0 has the id undefined/)
+            // A field that names no column would not show, and nobody would know.
+            expect(() => table(['case', 'score'], [{ id: 1, case: 'x', scroe: 3 }])).toThrow(/table: row 1 has the field "scroe", and the table has no such column\. The columns are "case", "score"/)
+            expect(() => table(['a'], [{ id: 1, a: 'two\nlines' }])).toThrow(/table: the text of row 1 in the column "a" has a line break or a tab\. A cell holds one line of text/)
+            expect(() => table(['a'], [{ id: 1, a: true as unknown as string }])).toThrow(/table: the value of row 1 in the column "a" is true\. Give a text, a number, or null for an empty cell/)
+            expect(() => table(['a'], [{ id: 1, a: Number.POSITIVE_INFINITY }])).toThrow(/table: the value of row 1 in the column "a" is Infinity\. A number of a cell is finite/)
+            expect(() => table(['a'], [{ id: 1, a: { value: 'x', color: 'red' } as unknown as string }])).toThrow(/table: the cell of row 1 in the column "a" has the part "color"\. A cell is a value, or \{ value, state \}/)
+            expect(() => table(['a'], [{ id: 1, a: { state: 'done' } }])).toThrow(/table: no state "done"\. The states are pass, fail, warn, pending, skip/)
+            expect(() => table(['a'], [], { size: 0 })).toThrow(/table: size is a text size, more than 0/)
+            expect(() => table(['a'], [], { maxRows: 1, leading: 1 })).toThrow(/table: leading is 1\. It is the height of a row as a part of the text size, 1\.4 or more/)
+            expect(() => table(['a'], [])).toThrow(/table: maxRows is 0\. It is the most rows that the table holds, a whole number, 1 or more\. A table that starts with no row needs it/)
+            expect(() => table(['a'], [{ id: 1, a: 'x' }, { id: 2, a: 'y' }], { maxRows: 1 })).toThrow(/table: the table starts with 2 rows, and maxRows is 1\. Raise `maxRows` to 2 or more/)
+            expect(() => table(['a'], [], { maxRows: 1, states: {} })).toThrow(/table: give it at least one state/)
+            expect(() => table(['a'], [], { maxRows: 1, states: { done: { color: 'green', mark: 'star' as 'dot' } } })).toThrow(/table: the mark of the state "done" is "star"\. A mark is 'check', 'cross', 'ring', 'dot', 'dash', 'bang'/)
+            expect(() => table(['a'], [], { maxRows: 1, lightColor: 'no-such-color' })).toThrow(/table: lightColor is "no-such-color", which is not a color/)
+            expect(() => table([{ key: 'a', total: () => ({ state: 'done' }) }], [{ id: 1, a: 'x' }])).toThrow(/table: no state "done"/)
+
+            const board = table([{ key: 'case' }, { key: 'score' }, { key: 'verdict', marks: true }], [{ id: 'a', case: 'first', score: 3, verdict: 'ok' }], { size: 20, maxRows: 2 })
+            expect(() => board.setCell('a', 'none', 1)).toThrow(/table: no column "none"\. The columns are "case", "score", "verdict"/)
+            expect(() => board.setCell('a', 'verdict', { state: 'done' })).toThrow(/table: no state "done"\. The states are pass, fail, warn, pending, skip/)
+            // A text shows whole in the room of its column, or the change is refused, and the message names the sample that works.
+            expect(() => board.setCell('a', 'case', 'a text that is much too long for this column')).toThrow(/table: the text "a text that is much too long for this column" of row "a" in the column "case" is \d+ px wide, and the column has \d+ px for a text\. Give the column a `sample` where the table is made, the longest value that it gets, such as sample: "a text that is much too long for this column", or use a shorter text/)
+            expect(() => board.append({ id: 'b', case: 'a text that is much too long for this column' })).toThrow(/table: the text "a text that is much too long for this column" of row "b" in the column "case" is \d+ px wide/)
+            expect(() => board.setCell('a', 'score', 123456789)).toThrow(/Give the column a `sample` where the table is made, the longest value that it gets, such as sample: 123456789, or use a shorter text/)
+            // With the sample, the column has the room from the start, at any text size.
+            for (const size of [20, 44]) {
+                const roomy = table([{ key: 'case', sample: 'a text that is much too long for this column' }, { key: 'score', sample: 123456789 }], [{ id: 'a', case: 'first', score: 3 }], { size })
+                expect(() => [roomy.setCell('a', 'case', 'a text that is much too long for this column'), roomy.setCell('a', 'score', 123456789)]).not.toThrow()
+            }
+            // A column with a width in pixels names the width that works.
+            const fixed = table([{ key: 'case', width: 100 }], [{ id: 'a', case: 'first' }], { size: 20 })
+            expect(() => fixed.setCell('a', 'case', 'a text that is much too long for this column')).toThrow(/and the column has 100 px for a text\. Set the `width` of the column to (\d+) or more where the table is made, or use a shorter text/)
+            // A text that is a few pixels wider than the column goes a little into the room between two columns: 0.35 of the text size, 7 px here.
+            const base = wide('a text of the film', { size: 20 })
+            expect(() => table([{ key: 'case', width: base - 6 }], [{ id: 'a', case: 'first' }], { size: 20 }).setCell('a', 'case', 'a text of the film')).not.toThrow()
+            expect(() => table([{ key: 'case', width: base - 9 }], [{ id: 'a', case: 'first' }], { size: 20 }).setCell('a', 'case', 'a text of the film')).toThrow(/Set the `width` of the column/)
+            // A count keeps room for its other digits: "1 of 3" is narrower than "2 of 8".
+            const counts = table([{ key: 'count', label: 'n' }], [{ id: 'a', count: '1 of 1' }], { size: 20 })
+            expect(wide('2 of 8', { size: 20 }) - wide('1 of 1', { size: 20 })).toBeGreaterThan(8)
+            expect(() => counts.setCell('a', 'count', '2 of 8')).not.toThrow()
+            expect(() => table([{ key: 'a', sample: { value: 'x', state: 'pass' } as unknown as string }], [], { maxRows: 1 })).toThrow(/table: the sample of the column "a" has a state\. A sample is a value/)
+            // An empty text is an empty cell.
+            expect(table(['a'], [{ id: 1, a: '' }]).value(1, 'a')).toBeNull()
+            // A state needs a column that keeps room for a mark.
+            expect(() => board.setCell('a', 'case', { state: 'pass' })).toThrow(/table: row "a" in the column "case" gets the state "pass", and the column has no room for the mark of a state\. Give the column `marks: true` where the table is made, or give one of its first cells a state/)
+            expect(() => board.append({ id: 'b', case: { value: 'x', state: 'pass' } })).toThrow(/table: row "b" in the column "case" gets the state "pass", and the column has no room for the mark of a state/)
+            expect(() => board.light('a', 'none')).toThrow(/table: no column "none"/)
+            expect(() => board.p('a', null, 'middle' as 'center')).toThrow(/table: the side of p\(\) is "middle"\. It is 'left', 'right', 'top', 'bottom' or 'center'/)
+            expect(() => board.value('z', 'case')).toThrow(/table: no row has the id "z"\. The table has the rows "a"/)
+            // The column `id` shows the id of a row, which does not change.
+            const ids = table(['id', 'case'], [{ id: 7, case: 'x' }])
+            expect(() => ids.setCell(7, 'id', 8)).toThrow(/table: the column "id" shows the id of a row, and an id does not change/)
+        }))
+    })
+
+    it('gives the places of a row, a column and a cell, and a cell holds a node of the film that moves with its row', async () => {
+        let board!: Board
+        const extra = rect(40, 10, { fill: 'teal', stroke: null })
+        const S = 30, P = S * 1.9
+        await compileFilm(film({ fps: 20 }, (s) => {
+            board = s.add(table(COLS, ROWS, { size: S, maxRows: 4 }).at(200, 100))
+            const half = board.frame.bounds().width / 2, high = (6 * P + 12) / 2
+            const y = board.row('b').get('y'), cell = board.cell('b', 'score')
+            const [from, top, to, bottom] = cell.box
+            expect([top, bottom]).toEqual([-P / 2, P / 2])
+            // In the coordinates of the table: a row goes from border to border, and a column from the top of the room to its bottom.
+            expect(board.p('b')).toEqual([expect.closeTo(-half, 6), expect.closeTo(y, 6)])
+            expect(board.p('b', null, 'right')).toEqual([expect.closeTo(half, 6), expect.closeTo(y, 6)])
+            expect(board.p('b', 'score', 'center')).toEqual([expect.closeTo(cell.get('x'), 6), expect.closeTo(y, 6)])
+            expect(board.p('b', 'score', 'top')).toEqual([expect.closeTo(cell.get('x'), 6), expect.closeTo(y - P / 2, 6)])
+            expect(board.p(null, 'score', 'bottom')).toEqual([expect.closeTo(cell.get('x'), 6), expect.closeTo(high, 6)])
+            // In stage pixels, for the layout: the room of the table, of a row, of a column and of a cell.
+            const room = board.region(), one = board.region('b', 'score')
+            expect([room.cx, room.cy, room.width, room.height]).toEqual([200, 100, half * 2, high * 2].map((value) => expect.closeTo(value, 6)))
+            expect([one.left, one.right, one.cy, one.height]).toEqual([200 + cell.get('x') + from, 200 + cell.get('x') + to, 100 + y, P].map((value) => expect.closeTo(value, 6)))
+            expect([board.region('b').left, board.region('b').right, board.region(null, 'score').top]).toEqual([200 - half, 200 + half, 100 - high].map((value) => expect.closeTo(value, 6)))
+            // The row of an id and its cells are nodes: a connector can end on one, and a film can add a node of its own to a cell.
+            expect([board.row('b').rowId, board.row('b').cells[1]]).toEqual(['b', cell])
+            expect(board.header('score').get('y')).toBeLessThan(board.row('a').get('y'))
+            cell.add(extra)
+            s.wait(1)
+            // The row "b" has the lowest score, so it goes from the middle to the top.
+            s.play(board.sort('score'), { duration: 1 })
+            // A place is of the row after the changes so far: the top row now.
+            expect(board.p('b')[1]).toBeCloseTo(y - P, 6)
+            expect(board.region('b').cy).toBeCloseTo(100 + y - P, 6)
+            s.wait(1)
+        }))
+        const middle = (time: number) => at(time, () => extra.bounds().y + extra.bounds().height / 2)
+        expect(middle(2) - middle(1)).toBeCloseTo(-P, 6)
+        expect(middle(1.5)).toBeCloseTo(at(1.5, () => 100 + board.row('b').get('y')), 6)
+        // The rows are in one holder. A light of the library that stays inside it dims the other rows, and not the panel, the header or the total row.
+        let records!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            records = s.add(table(COLS, ROWS, { size: S }))
+            s.wait(0.5)
+            s.play(spotlight(records.find((row) => row.states['verdict'] !== 'fail').map((id) => records.row(id)), { within: records.body }), { duration: 0.5 })
+            s.wait(0.5)
+        }))
+        expect(records.rows.every((row) => row.parent === records.body)).toBe(true)
+        const dims = at(1.2, () => [records.row('a'), records.row('b'), records.row('c'), records.frame, records.headers[0]!, records.totals!, records.body].map((node) => node.get('dim')))
+        expect(dims.map((dim) => dim === 1)).toEqual([true, false, true, true, true, true, true])
+        expect(dims[1]).toBeLessThan(0.5)
+    })
+
+    it('enters with the panel and the header first and then the rows from the top, and keeps a row that arrives in the same play', async () => {
+        let board!: Board
+        await compileFilm(film({ fps: 20 }, (s) => {
+            // The table is not on the stage: `enter()` brings it.
+            board = table(COLS, ROWS, { size: 30, maxRows: 4 })
+            s.wait(1)
+            s.play(board.enter(), board.append(D), { duration: 2 })
+            s.wait(1)
+        }))
+        expect(at(0.5, () => shows(board))).toBe(0)
+        const parts = (time: number) => at(time, () => [shows(board.frame), shows(board.headers[0]!), ...['a', 'b', 'c'].map((id) => shows(board.row(id).content)), shows(board.totals!.content)])
+        expect(parts(1)).toEqual([0, 0, 0, 0, 0, 0])
+        // The panel and the header are there after four tenths of the time.
+        expect(parts(1.8).slice(0, 2)).toEqual([1, 1])
+        // Each row starts after the row over it, and the total row is the last.
+        const order = parts(2.2).slice(2)
+        expect(order[0]).toBeGreaterThan(order[1]!)
+        expect(order[1]).toBeGreaterThan(order[2]!)
+        expect(order[2]).toBeGreaterThan(order[3]!)
+        expect(parts(3)).toEqual([1, 1, 1, 1, 1, 1].map((value) => expect.closeTo(value, 6)))
+        // The row of the `append` in the same play is not lost.
+        expect(seen(board, 3)).toEqual(['a', 'b', 'c', 'd'])
+    })
+
+    it('gives a copy with its own rows and its own bookkeeping, in the state that the table has', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const board = s.add(table(COLS, ROWS, { size: 30, maxRows: 4, lightColor: 'blue' }).at(50, 60))
+            s.play(board.setCell('a', 'score', 8), board.remove('b'), board.light('c', 'score'), { duration: 1 })
+            const copy = board.clone()
+            expect(copy).toBeInstanceOf(Table)
+            expect([copy.ids, copy.value('a', 'score'), copy.stateOf('c', 'verdict'), copy.totalOf('score'), copy.lit]).toEqual([['a', 'c'], 8, 'pending', 10, { row: 'c', column: 'score' }])
+            expect([copy.get('x'), copy.get('y'), copy.mounted]).toEqual([50, 60, false])
+            expect(boxOf(copy).width).toBeCloseTo(boxOf(board).width, 6)
+            expect(copy.row('a')).not.toBe(board.row('a'))
+            // A change of the copy does not change the table.
+            s.add(copy)
+            s.play(copy.setCell('a', 'score', 1), copy.append(D), { duration: 1 })
+            expect([copy.value('a', 'score'), copy.ids]).toEqual([1, ['a', 'c', 'd']])
+            expect([board.value('a', 'score'), board.ids, board.totalOf('score')]).toEqual([8, ['a', 'c'], 10])
+        }))
+    })
+
+    it.each([true, false])('clones the current cell values before future updates, with totals: %s', async (withTotal) => {
+        let copy!: Board
+        const movie = await compile((s) => {
+            const board = s.add(table([{ key: 'n', total: withTotal ? 'sum' : undefined, marks: true, sample: 3 }], [{ id: 1, n: { value: 1, state: 'pending' } }]))
+            s.at(10, () => s.play(board.setCell(1, 'n', { value: 2, state: 'pass' }), { duration: 1 }))
+            copy = s.add(board.clone())
+            expect(copy.value(1, 'n')).toBe(1)
+            expect(copy.stateOf(1, 'n')).toBe('pending')
+            if (withTotal) expect(copy.totalOf('n')).toBe(1)
+            s.play(copy.setCell(1, 'n', { value: 3, state: 'fail' }), { duration: 1 })
+            expect(board.value(1, 'n')).toBe(2)
+        })
+        expect(said(copy.cell(1, 'n'), 0)).toEqual(['1'])
+        expect(said(copy.cell(1, 'n'), 1)).toEqual(['3'])
+        expect(marksOf(copy.cell(1, 'n'), 1).map(([shape]) => shape)).toEqual(['cross'])
+        if (withTotal) {
+            const total = (time: number) => at(time, () => copy.totals!.cells[0]!.all().filter((node) => node instanceof TextNode && shows(node) > 0.01).map(words))
+            expect(total(0)).toEqual(['1'])
+            expect(total(1)).toEqual(['3'])
+        }
+        expectPure(movie, [0, 0.25, 0.75, 1, 10.5, 11])
+    })
+
+    it.each([true, false])('clones row membership, order, and light before future changes, with totals: %s', async (withTotal) => {
+        await compile((s) => {
+            const board = s.add(table([{ key: 'n', total: withTotal ? 'sum' : undefined, sample: 10 }], [{ id: 'a', n: 1 }, { id: 'b', n: 2 }], { maxRows: 3 }))
+            s.play(board.light('a'), { duration: 0 })
+            s.at(10, () => {
+                s.play(board.append({ id: 'c', n: 3 }), { duration: 1 })
+                s.play(board.sort('n', { descending: true }), { duration: 1 })
+                s.play(board.remove('a'), board.light('c'), { duration: 1 })
+            })
+            const copy = s.add(board.clone())
+            expect(copy.ids).toEqual(['a', 'b'])
+            expect(copy.lit).toEqual({ row: 'a', column: null })
+            if (withTotal) expect(copy.totalOf('n')).toBe(3)
+            s.play(copy.append({ id: 'c', n: 4 }), copy.setCell('a', 'n', 5), { duration: 1 })
+            expect(copy.ids).toEqual(['a', 'b', 'c'])
+            expect(copy.value('a', 'n')).toBe(5)
+            if (withTotal) expect(copy.totalOf('n')).toBe(11)
+            expect(board.ids).toEqual(['c', 'b'])
+        })
+    })
+
+    it('takes the font of the film for its header and its texts, keeps numbers in mono, and takes a font of its own', async () => {
+        const fonts = (board: Board) => [board.headers[0]!, first(board.rows[0]!.cells[0]!), first(board.rows[0]!.cells[1]!), ...board.totals!.cells[2]!.all().filter((node) => node instanceof TextNode)].map((node) => (node as TextNode).font)
+        let inFilm!: string[], own!: string[], late!: string
+        await compileFilm(film({ font: 'text-serif' }, (s) => {
+            const board = s.add(table(COLS, ROWS, { maxRows: 4 }))
+            inFilm = fonts(board)
+            own = fonts(table(COLS, ROWS, { font: 'sans' }))
+            // A row that comes later, and a text that changes, have the font of the first rows.
+            s.play(board.append(D), board.setCell('a', 'case', 'renamed'), { duration: 1 })
+            late = [first(board.row('d').cells[0]!).font, (board.cell('a', 'case').words.children[1] as TextNode).font].join(' ')
+        }))
+        expect(inFilm).toEqual(['text-serif', 'text-serif', 'mono', 'text-serif'])
+        expect(own).toEqual(['sans', 'sans', 'mono', 'sans'])
+        expect(late).toBe('text-serif text-serif')
+        // The total row is a summary: a label in a column of code is a text of the film, and a number is in mono.
+        await compileFilm(film(() => {
+            const ledger = table([{ key: 'key', mono: true, total: () => 'all' }, { key: 'units', total: 'sum' }, { key: 'plain', mono: false, total: 'sum' }], [{ id: 1, key: 'op-17', units: 3, plain: 3 }])
+            const fontOf = (cell: TableCellNode) => (cell.all().find((node) => node instanceof TextNode) as TextNode).font
+            expect(ledger.rows[0]!.cells.map(fontOf)).toEqual(['mono', 'mono', 'sans'])
+            expect(ledger.totals!.cells.map(fontOf)).toEqual(['sans', 'mono', 'sans'])
+        }))
+    })
+
+    it('keeps text off text and lines off text through every change, also for the rule of crowded text at 0.3 and at 0.7', async () => {
+        const film_ = film({ fps: 15 }, (s) => {
+            const board = s.add(table([{ key: 'case' }, { key: 'score', marks: true, format: (value) => value.toFixed(2), total: 'sum' }, { key: 'verdict', align: 'center', marks: true, total: (rows) => `${rows.filter((row) => row.states['verdict'] === 'pass').length} of ${rows.length}` }, { key: 'note', marks: true }], [
+                { id: 'a', case: 'first page is due', score: 0.62, verdict: { value: 'pending', state: 'pending' }, note: 'kept' },
+                { id: 'b', case: 'page is overdue', score: 0.4, verdict: { value: 'pass', state: 'pass' }, note: { value: 'checked', state: 'pass' } },
+                { id: 'c', case: 'no P1 was declared', score: 0.93, verdict: { value: 'fail', state: 'fail' }, note: { value: 'held', state: 'warn' } },
+            ], { size: 30, maxRows: 5 }))
+            s.play(board.enter(), { duration: 1 })
+            s.play(board.light('a', 'verdict'), board.setCell('a', 'verdict', { value: 'fail', state: 'fail' }), board.setCell('a', 'score', { value: 0.71, state: 'pass' }), { duration: 0.8 })
+            s.play(board.light('c'), { duration: 0.8 })
+            s.play(board.append([{ id: 'd', case: 'second incident', score: 0.88, verdict: { state: 'skip' }, note: 'new' }, { id: 'e', case: 'time is missing', score: 0.05, verdict: { value: 'fail', state: 'fail' }, note: 'new' }]), { duration: 1.6 })
+            s.play(board.sort('score', { descending: true }), board.light(null, 'score'), { duration: 1.2 })
+            s.play(board.moveRow('e', 0), board.light('e'), { duration: 1 })
+            s.play(board.remove(['a', 'e']), { duration: 1 })
+            s.play(board.sort('case'), board.light(null), { duration: 1 })
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(film_, { motion: true, readingSpeed: 0, textGap })).diagnostics, `text gap ${textGap}`).toEqual([])
+        // At rest, with the lowest rows and the longest texts that fit, and with the most room that the rule asks for.
+        const tight = film({ fps: 12 }, (s) => {
+            const rows = [{ id: 'a', name: 'Agjpqy(|', value: { value: 12345, state: 'pass' }, verdict: { value: 'Agjpqy', state: 'fail' } }, { id: 'b', name: 'Agjpqy(|', value: { value: 67890, state: 'warn' }, verdict: { state: 'pending' } }]
+            const columns: TableColumn[] = [{ key: 'name', total: () => 'Agjpqy(|' }, { key: 'value', total: 'sum' }, { key: 'verdict', align: 'center' }]
+            const low = s.add(table(columns, rows, { size: 26, leading: 1.4 }).at(-400, 0))
+            const high = s.add(table(columns, rows, { size: 44 }).at(400, 0))
+            s.play(low.light('a'), high.light('b', 'value'), { duration: 0 })
+            s.wait(0.5)
+        })
+        for (const textGap of [0.3, 0.7, 3]) expect((await checkFilm(tight, { textGap })).diagnostics, `at rest, text gap ${textGap}`).toEqual([])
+    })
+})
 
 describe('number line', () => {
     type Line = ReturnType<typeof numberLine>
