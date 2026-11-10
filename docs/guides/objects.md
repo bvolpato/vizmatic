@@ -1902,6 +1902,137 @@ Without `states`, a row has one of the states of `LOG_STATES`, for a history tha
 
 `log.enter()` brings the panel, the title, and the footer, and then the rows of the window as one. `log.frame`, `log.title`, `log.footer`, `log.rules` (the two lines under the title and over the footer), `log.earlier` and `log.later` (the two lines with a count), and `log.outline` are the parts. `size` is the text size, and `leading` is the height of a row as a part of it. By default, a row is as tall as the outline of the focus needs: the ink of the text, and 0.3 of the text size of clear room between that ink and the outline, at its two sides. That is about 1.9 of `size`, or 1.75 with the details in mono. A list with `focusLook: 'band'`, or with no focus, can take lower rows, such as `leading: 1.5`: the band has no line. With the outline, a `leading` under what the outline needs is an error at the first `focus`, and the error names the least value. `log.pitch` is the distance from one row to the next, so a `codeBlock` beside the list lines up with `leading: log.pitch / size`. `font` is the font of the title, the footer, and the details, and `detailFont` sets the font of the details alone: use `detailFont: 'mono'` for a detail that is data, such as a line of output. `titleSize` sets the text size of the title and the footer, which is 0.85 of `size` by default. The ids, the names, and the times are in mono.
 
+## Tables
+
+The runnable films in `examples/proofs/table/` show a prompt evaluation, model routing, and an operation ledger. Render one with `npx vizmatic film examples/proofs/table/evaluation.ts --look midnight,paper --workers 1`.
+
+`table(columns, rows, options)` draws a table with a header, named columns, and rows that have an identity: the cases of an evaluation, the candidates of a choice, the records of a ledger. A cell holds a text or a number, and a state gives a cell a color and a mark. The film changes the table: it lights a row or a cell, changes a value, adds and removes rows, and sorts them. A row keeps its node through every change, and a total row follows the rows.
+
+```film paired label="A marker passes each cell of a regression suite, the cell turns to pass or fail, and the total of each prompt counts with it"
+import { film, table, type TableColumn, type TableRowView } from 'vizmatic/stage'
+
+const CASES = [
+    { id: 'first', name: 'first page is due', old: true, revised: true },
+    { id: 'overdue', name: 'page is overdue', old: false, revised: true },
+    { id: 'prior', name: 'a page was sent before', old: true, revised: false },
+    { id: 'no-time', name: 'declaration time is missing', old: false, revised: false },
+] as const
+const passed = (key: string) => (rows: readonly TableRowView[]) => `${rows.filter((row) => row.states[key] === 'pass').length}/${rows.length}`
+const COLUMNS: TableColumn[] = [
+    { key: 'name', label: 'incident case', total: () => 'passed' },
+    { key: 'old', label: 'old prompt', align: 'center', total: passed('old') },
+    { key: 'revised', label: 'revised prompt', align: 'center', total: passed('revised') },
+]
+
+export default film({ fps: 30 }, (s) => {
+    const results = table(COLUMNS, CASES.map((item) => ({ id: item.id, name: item.name, old: { state: 'pending' }, revised: { state: 'pending' } })), { size: 40 })
+    s.play(results.enter(), { duration: 1.2 })
+    for (const key of ['old', 'revised'] as const) {
+        for (const item of CASES) s.play(results.light(item.id, key), results.setCell(item.id, key, { state: item[key] ? 'pass' : 'fail' }), { duration: 0.4 })
+    }
+    // Both prompts pass two of four. The two rows that differ light in turn.
+    s.play(results.light('overdue'), { duration: 0.5 })
+    s.wait(0.8)
+    s.play(results.light('prior'), { duration: 0.5 })
+    s.wait(0.8)
+})
+```
+
+A column is its `key`, or an object with the key and its options. `label` is the text of the header, and the key without it. A row is an object with an `id` and one field for each column, by the key of the column: `{ id: 'overdue', name: 'page is overdue', old: { state: 'pending' } }`. The id is a number or a text, and the table knows a row by it. A column with the key `id` shows the ids. A column that a row does not name is an empty cell, and `null` is an empty cell too. A field that names no column is an error, because it would not show.
+
+A cell is a value, or `{ value, state }`. A value is a text of one line or a number. A number is in mono, so the digits of a column line up, and `format` writes it: `format: (value) => value.toFixed(2)`. A column whose first rows hold numbers is at the right, and any other column is at the left. `align` sets `'left'`, `'right'` or `'center'`. `mono: true` sets the texts of a column in mono, for an id or code.
+
+The text size is 28 by default, for the header, the cells and the total row. That is over the 26 px that a viewer of a film at 1080p needs. `size` sets it. A row is 1.9 text sizes high, and `leading` sets that part: 1.5 gives lower rows, and 1.4 is the least. The header is in the dim color and in the semibold weight of its font, and the total row is in the semibold weight.
+
+The columns are set once, from the header and the first rows, so they line up over every row that comes later. A text must fit the room of its column. It may go into the room between two columns by 0.35 of the text size, and each digit has the room of the widest digit, so `1/6` keeps room for `4/6`. A text that is wider than that is an error where the film makes the change, and the message names the fix. Give such a column a `sample`: the longest text or the largest number that it gets later. A sample follows the text size. `width` is the room of the content of a column in pixels, for a column that holds a node of the film. The width of the table is the width that its columns need. With a larger `width` in the options, each column gets an equal share of the rest, and it keeps its content at its side.
+
+A state is a name with a `color` and a `mark`. The mark is the second sign beside the color, so that a viewer who does not see the color reads the state. Without `states`, a table has the states of `TABLE_STATES`: `pass` with a check, `fail` with a cross, `warn` with an exclamation mark, `pending` with a ring, and `skip` with a dash. For another subject, give your own record, such as `states: { kept: { color: 'teal', mark: 'dot' }, dropped: { color: 'red', mark: 'dash' } }`. A mark is `'check'`, `'cross'`, `'ring'`, `'dot'`, `'dash'` or `'bang'`. The state colors the text of its cell too. The mark is at the outer side of the text: before a text at the left, and after a number at the right. In a centered column, the mark and the text are centered together, so use a column at the left for words of different lengths. A column keeps room for a mark in each cell when one of its first cells has a state, or with `marks: true`. A state in a column with no such room is an error that says so.
+
+`results.setCell(row, column, cell)` changes a cell in place. A part that is not given stays: `{ state: 'pass' }` keeps the value, and a value alone keeps the state. `null` empties a part. What leaves goes in the first half of the time, and what comes arrives in the second half, so no moment shows two texts or two marks. A text that stays takes the new color.
+
+A column with a `total` gives the table a total row under the last row. `total: 'sum'` adds the numbers of the column, and writes the sum as the column writes a number. A function writes the cell from the rows that the table has: `total: (rows) => rows.length`. A row there has its `id`, its `index`, and the `values` and the `states` of its cells by the key of the column. A fixed text is a function too: `total: () => 'passed'`. The function may return a state, for a verdict: `{ value: 'hold', state: 'fail' }`. The total follows the rows at every frame: it changes when the new text of a cell comes, when a row is half there, and when a row is gone. It is written in the order of time, also when the film names a late change before an early one.
+
+`results.light(row, column)` moves one marker, and the marker stays until the next `light`. `light('overdue')` is a row, `light(null, 'old')` a column, and `light('overdue', 'old')` a cell. `light(null)` takes the marker away. The marker is a faint fill with a line around it, in yellow or in `lightColor`. It glides from one place to the next. On its way it has no line, so no line runs through the texts that it passes. In rows that are lower than about 1.75 text sizes, the marker has no line at rest too, and its fill is a little stronger: the line would be at the ink of the text. The marker is with its row at every frame: it moves with a row that a sort moves, it comes in with a row that arrives, and it leaves with a row that leaves. `results.lit` says what the marker is on. To highlight a subset and keep the totals for the full population, dim the other rows with `spotlight(results.find(test).map((id) => results.row(id)), { within: results.body })`.
+
+```film paired label="Five lanes face two requirements. Three qualify and change rank when sorted by latency."
+import { film, lagged, table, type TableColumn } from 'vizmatic/stage'
+
+const LANES = [
+    { id: 'A', context: false, schema: true, cost: 0.0012, latency: 310 },
+    { id: 'B', context: true, schema: false, cost: 0.0019, latency: 380 },
+    { id: 'C', context: true, schema: true, cost: 0.0031, latency: 940 },
+    { id: 'D', context: true, schema: true, cost: 0.0042, latency: 620 },
+    { id: 'E', context: true, schema: true, cost: 0.0048, latency: 450 },
+] as const
+const NEEDS = ['context', 'schema'] as const
+const COLUMNS: TableColumn[] = [
+    { key: 'id', label: 'lane', mono: true },
+    { key: 'context', label: '24,000 units', align: 'center', marks: true },
+    { key: 'schema', label: 'cited-v3', align: 'center', marks: true },
+    { key: 'cost', format: (value) => `$${value.toFixed(4)}` },
+    { key: 'latency', label: 'p50', format: (value) => `${value} ms` },
+]
+
+export default film({ fps: 30 }, (s) => {
+    const board = table(COLUMNS, LANES.map((lane) => ({ id: lane.id, cost: lane.cost, latency: lane.latency })), { size: 40 })
+    s.play(board.enter(), { duration: 1.2 })
+    for (const need of NEEDS) {
+        s.play(board.light(null, need), { duration: 0.35 })
+        s.play(lagged(LANES.map((lane) => board.setCell(lane.id, need, { state: lane[need] ? 'pass' : 'fail' })), { lag: 0.4 }), { duration: 0.8 })
+    }
+    s.play(board.light(null), { duration: 0.3 })
+    s.play(board.remove((row) => NEEDS.some((need) => row.states[need] === 'fail')), { duration: 1.1 })
+    s.wait(0.5)
+    s.play(board.light(null, 'latency'), board.sort('latency'), { duration: 1.2 })
+    s.wait(1)
+})
+```
+
+`board.append(rows)` brings rows under the last row, one after another. The default time is 0.4 s for each row, and 0.5 s at least. `lag: 0` brings the rows of one call together. `board.remove(which)` takes rows away: they fade, and the rows under them move up. `which` is an id, a list of ids, or a function of a row, which the table calls when the film plays the change. The id of a row that left is free again.
+
+The panel is as high as its rows. Its bottom edge and the total row follow the rows when rows arrive or leave, and the header stays where it is. The panel makes room before a row comes, so a row is never outside it. The table keeps room for `maxRows` rows, which is the number of the first rows by default. The layout measures that room, `.at()` places its middle, and one row more than `maxRows` is an error. So a table that starts with no row needs `maxRows`, and a `sample` for each column whose header is shorter than its values.
+
+`board.sort(by)` gives the rows a new order, and each row goes to its new place with its node. `by` is the key of a column, or a function that compares two rows as `Array.sort` does. A column sorts numbers by size and texts by their letters. An empty cell goes last, and `descending: true` turns the order. Rows that are equal keep their order. `board.moveRow(id, to)` moves one row to a place, 0 at the top. A row that moves is a card over the rows that stay: the row that goes the longest way is the top card, and the row with the light is over them all. A row is hidden while a card is at its text, so no two texts are read through each other and no border runs through a text. The faint lines between the rows are away while rows move.
+
+The table changes its rows one change at a time. `append`, `remove`, `sort` and `moveRow` are changes of the rows: each starts from the places that the change before it left. Two of them whose times overlap are an error that names the two calls and their times, and says what to do. A cell takes one change at a time in the same way. Changes of two cells play together, and so do `setCell`, `light` and `enter` with a change of the rows. The table takes the calls of one play in their order, so name the `append` before the `setCell` or the `light` of its row. A sort or a `remove` that changes nothing takes no time of the table.
+
+```ts
+import { film, table, type TableColumn } from 'vizmatic/stage'
+
+// A ledger of effects starts with no row, so each column names the longest value that it gets.
+const KEY = 'restore:A300:r-104'
+const COLUMNS: TableColumn[] = [
+    { key: 'id', label: 'attempt', align: 'left' },
+    { key: 'key', label: 'operation key', mono: true, sample: KEY, total: () => 'effects on the account' },
+    { key: 'status', marks: true, sample: 'committed' },
+    { key: 'effects', align: 'right', total: 'sum' },
+]
+
+export default film((s) => {
+    const ledger = s.add(table(COLUMNS, [], { size: 40, maxRows: 1 }))
+    // Attempt 1 fails before the commit: its row leaves, and the account has no effect.
+    s.play(ledger.append({ id: 1, key: KEY, status: { value: 'pending', state: 'pending' }, effects: 0 }))
+    // A text stays long enough for a viewer to read it, before the film changes it.
+    s.wait(0.6)
+    s.play(ledger.setCell(1, 'status', { value: 'failed', state: 'fail' }))
+    s.wait(0.6)
+    s.play(ledger.remove(1))
+    // Attempt 2 commits: its row stays, and the total counts one effect.
+    s.play(ledger.append({ id: 2, key: KEY, status: { value: 'pending', state: 'pending' }, effects: 0 }))
+    s.wait(0.6)
+    s.play(ledger.setCell(2, 'status', { value: 'committed', state: 'pass' }), ledger.setCell(2, 'effects', 1))
+    // Attempt 3 has the same key. The ledger has that key, so the film lights it and adds nothing.
+    s.play(ledger.light(2, 'key'))
+    s.wait(1)
+})
+```
+
+`results.row(id)` is the node of a row, `results.cell(id, column)` the node of a cell, and `results.header(column)` the text of a header. A connector to the node of a row follows the row. The origin of a cell is its middle, and `cell.box` is its room, so a film can add a node of its own to a cell, such as a small bar: `results.cell('history', 'share').add(bar)`. That node moves and fades with its row. `results.region(row, column)` is the box of a part in stage pixels, for `place` and `beside` of the layout and for the end of an arrow: `results.region('overdue', 'old').point('left')`. Give a row, a column with `null` as the row, both for a cell, or nothing for the room of the table. `results.p(row, column, side)` is a point on such a part in the coordinates of the table, on its `'left'`, `'right'`, `'top'` or `'bottom'` edge or at its `'center'`. A place is of the row after the changes that the film has played so far, and it does not follow the row.
+
+The table is an item of the layout. `fitted(region, (width) => table(columns, rows, { width }))` makes all of it as wide as a region, `place` puts it in a region, and `beside(note, results, 'right', 'wide', results.row('overdue'))` puts a note beside the table at the height of a row.
+
+`results.count`, `results.ids`, `results.find(test)`, `results.value(id, column)`, `results.stateOf(id, column)` and `results.totalOf(column)` read the table after the changes that the film has played so far. So a label can show a true number, and a film can pick the rows of the next change. `results.enter()` brings the panel and the header, then the rows from the top, and then the total row. `results.clone()` copies the cell values, states, and current row order. Nodes that a film attaches to a cell are copied with it, including when the table is inside a group. `results.frame`, `results.headers`, `results.rules` (the line under the header and the line over the total row), `results.lines` (the faint lines between the rows), `results.marker`, `results.totals` and `results.body` (the holder of the rows) are the parts, and `results.pitch` is the distance from one row to the next. A row has its `cells` and its `content`, and a cell has its `mark` and its `words`. The opacity of `content` belongs to the table, so fade the row itself to fade a row.
+
 ## Bit fields
 
 `bitField(fields, options)` draws a word that is split into named fields: a row of boxes, one per field, with the bit numbers over them. Use it for a virtual address and its table indexes, for the flags of a register or of a page table entry, and for the layout of a structure. A field has its `bits`, a `label`, and a `color`. The first field is at the left, and it holds the highest bits.

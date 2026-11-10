@@ -424,6 +424,23 @@ s.play(log.mark((row) => row.state === 'new', 'stored'))
 s.play(log.mark(5, 'answered'))
 ```
 
+A table whose rows are the data of the example: the cases of an evaluation, the candidates of a choice, the records of a ledger. Do not build it from `grid` and texts, and do not show a table that stands still. `table` keeps the columns in line, gives each row an id and a node that it keeps, and gives a cell a state with a color and a mark (`pass`, `fail`, `warn`, `pending`, `skip`, or your own). `light` moves one marker to a row, a column or a cell, `setCell` changes a value or a state in place, `append` and `remove` change the rows, and `sort` and `moveRow` move them. A column with a `total` gives a total row that follows the rows. The text size is 28 by default. The columns are set from the first rows, so give a column a `sample` when it gets a longer value later, and give a table that grows its `maxRows`. A cloned table starts its own timeline and keeps the graphics attached to its cells, including when a group contains the table. Play one change of the rows at a time: two of `append`, `remove`, `sort` and `moveRow` whose times overlap are an error, and `setCell` and `light` play with any of them:
+
+```ts
+const results = s.add(table([
+    { key: 'name', label: 'incident case', total: () => 'passed' },
+    { key: 'old', label: 'old prompt', align: 'center', total: (rows) => `${rows.filter((row) => row.states.old === 'pass').length}/${rows.length}` },
+    { key: 'score', format: (value) => value.toFixed(2) },
+], [
+    { id: 'overdue', name: 'page is overdue', old: { state: 'pending' }, score: 0.4 },
+    { id: 'prior', name: 'a page was sent before', old: { state: 'pending' }, score: 0.93 },
+], { size: 36, maxRows: 3 }))
+s.play(results.light('overdue', 'old'), results.setCell('overdue', 'old', { state: 'fail' }))
+s.play(results.append({ id: 'first', name: 'first page is due', old: { state: 'pass' }, score: 0.62 }))
+s.play(results.sort('score', { descending: true }), results.light('prior'))
+s.add(arrow(start, results.region('prior', 'score').point('left')))
+```
+
 A box with a title, a figure, and a caption. Do not place these three by hand. `card` keeps the margins, centers the figure, and scales it down when it is too large. Give the cards of a row one `width`, one `height`, and one `captionLines` (the lines of the longest caption):
 
 ```ts
