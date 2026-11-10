@@ -147,7 +147,7 @@ describe.skipIf(!ready)('the checks of the files of a film', () => {
             'verify: script.json: scenes[0].title: is missing. Give the chapter title of the scene, such as "The slow page"',
             'verify: script.json: scenes[0].beats[0].say: is missing. Give the words that the voice says',
             'verify: script.json: scenes[0].beats[0].hold: "long" is not a time. Give the silence after the beat in seconds, 0 or more',
-            'verify: script.json: scenes[0].beats[1].hlod: unknown key. The keys are: hold, say',
+            'verify: script.json: scenes[0].beats[1].hlod: unknown key. The keys are: cues, hold, say',
             'verify: script.json: scenes[1].id: "../../x" is not an id. Give letters, digits and hyphens, such as "the-answer": the id goes into the names of files',
             'verify: script.json: scenes[1].beats: is missing or empty. Give a list with one beat or more, such as [{ "say": "One sentence." }]',
             'verify: script.json: scenes[2].id: "hook" is the id of two scenes. Give each scene its own id',
@@ -160,6 +160,68 @@ describe.skipIf(!ready)('the checks of the files of a film', () => {
         expect(tool('beats', folder).said.join('\n')).toMatch(/^beats: script\.json: line 1: is not valid JSON \(.*\)\. Correct the file$/)
         await rm(join(folder, 'script.json'))
         expect(tool('beats', folder).said).toEqual(['beats: script.json: the file: is missing. It holds what the voice says, one entry for each scene and beat'])
+    }, 180_000)
+
+    it('prints one line for each mistake in a cue that script.json declares for a beat', async () => {
+        const folder = await filmFolder()
+        await twoTakes(folder)
+        // The hook says "Will it run? Will it?", and the close says "Have a plan."
+        const said = async (hook: unknown, close?: unknown, more: object = {}) => {
+            const scenes = [{ ...SCRIPT.scenes[0]!, beats: [{ ...SCRIPT.scenes[0]!.beats[0]!, cues: hook }] }, close === undefined ? SCRIPT.scenes[1]! : { ...SCRIPT.scenes[1]!, beats: [{ ...SCRIPT.scenes[1]!.beats[0]!, cues: close }] }]
+            await writeFile(join(folder, 'script.json'), JSON.stringify({ ...SCRIPT, ...more, scenes }))
+            return tool('verify', folder, '--step', 'voice').said.map((line) => line.replace('verify: script.json: scenes[0].beats[0].', ''))
+        }
+        const example = '[{ "id": "result", "phrase": "one hundred and sixty times" }]'
+        // A cue has an id, a phrase of its beat, and data that the film may read. The same id in another scene is another cue.
+        expect(await said([{ id: 'run', phrase: 'run', data: { color: 'red', targets: ['disk'] } }, { id: 'again', phrase: 'it run' }], [{ id: 'run', phrase: 'a plan' }])).toEqual(['verify: film.json and script.json are right.'])
+        expect(await said('run')).toEqual([`cues: "run" is not a list. Give a list of cues, such as ${example}`])
+        expect(await said(['run', { id: 'ok', phrase: 'run', color: 'red' }])).toEqual([
+            `cues[0]: "run" is not an object. Give an id and a phrase, such as ${example}`,
+            'cues[1].color: unknown key. The keys are: data, id, phrase',
+        ])
+        expect(await said([{ phrase: 'run' }, { id: 'a b', phrase: 'run' }, { id: 'ok' }, { id: 'sign', phrase: '%' }])).toEqual([
+            'cues[0].id: is missing. Give the name that a scene uses for the cue, with letters, digits, hyphens and underscores, such as "result"',
+            'cues[1].id: "a b" is not an id. Give the name that a scene uses for the cue, with letters, digits, hyphens and underscores, such as "result"',
+            'cues[2].phrase: is missing. Give words of the beat that the voice says',
+            'cues[3].phrase: "%" has no word. Give words of the beat that the voice says',
+        ])
+        // An id names one cue of its scene, a phrase is in its beat, and the beat says it one time.
+        expect(await said([{ id: 'run', phrase: 'run' }, { id: 'run', phrase: 'it run' }, { id: 'out', phrase: 'run out' }, { id: 'twice', phrase: 'Will it' }])).toEqual([
+            'cues[1].id: "run" is the id of two cues of the scene. Give each cue of a scene its own id',
+            'cues[2].phrase: the beat does not say "run out". Give words of the beat, one after another. The beat is "Will it run? Will it?"',
+            'cues[3].phrase: the beat says "Will it" 2 times. Give a longer phrase, which the beat says one time. The beat is "Will it run? Will it?"',
+        ])
+        // The film finds a cue in what the voice says, so a phrase is in the spoken form of the beat.
+        expect(await said([{ id: 'run', phrase: 'run' }], undefined, { pronounce: { run: 'last' } })).toEqual(['cues[0].phrase: the beat does not say "run". Give words of the beat, one after another. The beat is "Will it run? Will it?", which the voice says as "Will it last? Will it?"'])
+        expect(await said([{ id: 'run', phrase: 'it LAST' }], undefined, { pronounce: { run: 'last' } })).toEqual(['verify: film.json and script.json are right.'])
+    }, 180_000)
+
+    it('asks for a new voice when the cues of a beat changed, and drafts a timing with the cues of each beat', async () => {
+        const folder = await filmFolder()
+        await twoTakes(folder)
+        const cues = [{ id: 'run', phrase: 'run', data: { color: 'red' } }]
+        const withCues = (list: unknown) => JSON.stringify({ ...SCRIPT, scenes: [{ ...SCRIPT.scenes[0]!, beats: [{ ...SCRIPT.scenes[0]!.beats[0]!, cues: list }] }, SCRIPT.scenes[1]!] })
+        // The timing of the two takes is from a script with no cue.
+        await writeFile(join(folder, 'script.json'), withCues(cues))
+        expect(tool('verify', folder, '--step', 'beats').said).toEqual([`verify: timing.json: the script: changed after the voice was made: hook/0 (the cues). Run: vizmatic narrated voice ${folder}`])
+        // An empty list of cues is a beat with no cue: the timing stays current.
+        await writeFile(join(folder, 'script.json'), withCues([]))
+        expect(tool('verify', folder, '--step', 'beats').status).toBe(0)
+        // The draft step writes the cues of each beat beside the words of the beat.
+        await writeFile(join(folder, 'script.json'), withCues(cues))
+        await rm(join(folder, 'timing.json'))
+        expect(tool('draft', folder).status).toBe(0)
+        const timing = JSON.parse(await readFile(join(folder, 'timing.json'), 'utf8'))
+        expect(timing.scenes[0].beats[0].cues).toEqual(cues)
+        expect('cues' in timing.scenes[1].beats[0]).toBe(false)
+        expect(tool('verify', folder, '--step', 'check').status).toBe(0)
+        // Another phrase for a cue is another timing.
+        await writeFile(join(folder, 'script.json'), withCues([{ id: 'run', phrase: 'it run' }]))
+        expect(tool('verify', folder, '--step', 'check').said.join('\n')).toContain('hook/0 (the cues)')
+        await writeFile(join(folder, 'script.json'), withCues([{ id: 'run', phrase: 'run', data: false }]))
+        expect(tool('draft', folder).status).toBe(0)
+        await writeFile(join(folder, 'script.json'), withCues([{ id: 'run', phrase: 'run', data: 0 }]))
+        expect(tool('verify', folder, '--step', 'check').said.join('\n')).toContain('hook/0 (the cues)')
     }, 180_000)
 
     it('prints one line for each mistake in film.json, and no step writes outside the folder', async () => {
@@ -297,6 +359,7 @@ describe.skipIf(!ready)('the voice step, without the voice model', () => {
     }
     const spoken = ['A page takes eight hundred milliseconds.', 'Why build it again?', 'Keep the answer.']
     const places = ['hook-0', 'hook-1', 'close-0']
+    const aligned = (text: string) => text.split(/\s+/).map((token, at) => word(token, 0.1 + at * 0.25))
 
     /** A folder with the script and the three takes on the disk, as a run of the voice step left them. */
     async function withTakes(folder: string, film: unknown = {}) {
@@ -308,7 +371,7 @@ describe.skipIf(!ready)('the voice step, without the voice model', () => {
             const name = join(folder, 'audio', `${places[index]}-${takeKey(text)}`)
             // A take with sound is longer than the header of a WAV file.
             await writeFile(`${name}.wav`, 'a take of the voice'.padEnd(200, '.'))
-            await writeFile(`${name}.json`, JSON.stringify({ words: [word('first', 0.1)], duration: 2 + index }))
+            await writeFile(`${name}.json`, JSON.stringify({ words: aligned(text), duration: 2 + index }))
         }
     }
     const voice = (folder: string, ...args: string[]) => plain('voice', folder, ...args)
@@ -328,15 +391,71 @@ describe.skipIf(!ready)('the voice step, without the voice model', () => {
         expect(timing.scenes.map((scene: { id: string; title: string }) => [scene.id, scene.title])).toEqual([['hook', 'Hook'], ['close', 'Close']])
         const beats = timing.scenes.flatMap((scene: { beats: unknown[] }) => scene.beats)
         expect(beats).toEqual([
-            { wav: `hook-0-${takeKey(spoken[0]!)}.wav`, say: 'A page takes 800 milliseconds.', text: spoken[0], duration: 2, hold: 0.25, words: [word('first', 0.1)] },
-            { wav: `hook-1-${takeKey(spoken[1]!)}.wav`, say: 'Why build it again?', text: spoken[1], duration: 3, hold: 1.5, words: [word('first', 0.1)] },
-            { wav: `close-0-${takeKey(spoken[2]!)}.wav`, say: 'Keep the answer.', text: spoken[2], duration: 4, hold: 0.25, words: [word('first', 0.1)] },
+            { wav: `hook-0-${takeKey(spoken[0]!)}.wav`, say: 'A page takes 800 milliseconds.', text: spoken[0], duration: 2, hold: 0.25, words: aligned(spoken[0]!) },
+            { wav: `hook-1-${takeKey(spoken[1]!)}.wav`, say: 'Why build it again?', text: spoken[1], duration: 3, hold: 1.5, words: aligned(spoken[1]!) },
+            { wav: `close-0-${takeKey(spoken[2]!)}.wav`, say: 'Keep the answer.', text: spoken[2], duration: 4, hold: 0.25, words: aligned(spoken[2]!) },
         ])
         // The timing that it wrote is current, and a second run writes the same file.
         expect(tool('verify', folder, '--step', 'beats').status).toBe(0)
         const first = await readFile(join(folder, 'timing.json'), 'utf8')
         expect(voice(folder).status).toBe(0)
         expect(await readFile(join(folder, 'timing.json'), 'utf8')).toBe(first)
+    }, 180_000)
+
+    it('writes the cues that the script declares for a beat into the timing, with the words of the beat', async () => {
+        const folder = await filmFolder()
+        await withTakes(folder)
+        const without = voice(folder)
+        expect(without.status, without.stderr).toBe(0)
+        const fingerprint = JSON.parse(await readFile(join(folder, 'timing.json'), 'utf8')).fingerprint
+        // The takes are named by what the voice says, so a cue asks for no new take.
+        const cues = [{ id: 'cost', phrase: 'eight hundred milliseconds', data: { value: 800 } }]
+        await writeFile(join(folder, 'script.json'), JSON.stringify({ ...script, scenes: [{ ...script.scenes[0]!, beats: [{ ...script.scenes[0]!.beats[0]!, cues }, script.scenes[0]!.beats[1]!] }, script.scenes[1]!] }))
+        const result = voice(folder)
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.said).toEqual([`voice: 3 takes, 0 new, 11.0 s of voice. timing.json is written. Next: vizmatic narrated mix ${folder}`])
+        const timing = JSON.parse(await readFile(join(folder, 'timing.json'), 'utf8'))
+        expect(timing.scenes[0].beats[0]).toEqual({ wav: `hook-0-${takeKey(spoken[0]!)}.wav`, say: 'A page takes 800 milliseconds.', text: spoken[0], duration: 2, hold: 0.25, words: aligned(spoken[0]!), cues })
+        expect(Object.keys(timing.scenes[0].beats[1])).not.toContain('cues')
+        // The cues are a part of what the film was made from.
+        expect(timing.fingerprint).not.toBe(fingerprint)
+        expect(tool('verify', folder, '--step', 'beats').status).toBe(0)
+    }, 180_000)
+
+    it('rejects invalid timed words before replacing timing and when reading edited timing', async () => {
+        const folder = await filmFolder()
+        await withTakes(folder)
+        const cue = { id: 'cost', phrase: 'eight hundred milliseconds' }
+        const declared = structuredClone(script)
+        Object.assign(declared.scenes[0]!.beats[0]!, { cues: [cue] })
+        await writeFile(join(folder, 'script.json'), JSON.stringify(declared))
+        const side = join(folder, 'audio', `hook-0-${takeKey(spoken[0]!)}.json`)
+        const path = join(folder, 'timing.json')
+        // Two aligned entries may share their times, and one entry may contain several words.
+        const good = [word('eight hundred', 0.1), word('milliseconds', 0.1)]
+        await writeFile(side, JSON.stringify({ words: good, duration: 2 }))
+        expect(voice(folder).status).toBe(0)
+        const original = await readFile(path, 'utf8')
+        expect(tool('verify', folder, '--step', 'beats').status).toBe(0)
+        for (const [words, error] of [
+            [[word('first', 0.1)], 'matches the timed words 0 times'],
+            [[...good, ...good], 'matches the timed words 2 times'],
+            [[word('eight hundred', 0.2), { text: 'milliseconds', start: 0.1, end: 0.5 }], 'words[1].start'],
+            [[{ text: 'eight hundred', start: 0.1, end: 0.9 }, word('milliseconds', 0.2)], 'words[1].end'],
+        ] as const) {
+            await writeFile(path, original)
+            await writeFile(side, JSON.stringify({ words, duration: 2 }))
+            const written = voice(folder)
+            expect(written.status).not.toBe(0)
+            expect(written.stderr).toContain(error)
+            expect(await readFile(path, 'utf8')).toBe(original)
+            const edited = JSON.parse(original)
+            edited.scenes[0].beats[0].words = words
+            await writeFile(path, JSON.stringify(edited))
+            const read = tool('verify', folder, '--step', 'beats')
+            expect(read.status).not.toBe(0)
+            expect(read.stderr).toContain(error)
+        }
     }, 180_000)
 
     it('gives a script that changed another fingerprint, and asks for a new take of the beat that changed only', async () => {
@@ -414,6 +533,30 @@ describe.skipIf(!ready)('narration tools', () => {
         const unknown = tool('beats', folder, 'outro')
         expect(unknown.status).not.toBe(0)
         expect(unknown.stderr).toContain('beats: the film has no scene "outro". The scenes are: hook, close')
+    }, 120_000)
+
+    it('places a scene at its own start, for a timing that another tool wrote', async () => {
+        const folder = await filmFolder()
+        await twoTakes(folder)
+        // A tool that lays out its own sound gives each scene the time of its first word.
+        const own = { ...TIMING, scenes: [{ ...TIMING.scenes[0]!, start: 2 }, { ...TIMING.scenes[1]!, start: 6.25 }] }
+        await writeFile(join(folder, 'timing.json'), JSON.stringify(own))
+        const beats = tool('beats', folder)
+        expect(beats.status, beats.stderr).toBe(0)
+        expect(beats.stdout.split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean)).toEqual([
+            'hook 0 2.00 3.00 Will it run? Will it?',
+            'close 0 6.25 7.75 Have a plan.',
+            'end 9.75',
+        ])
+        await writeFile(join(folder, 'timing.json'), JSON.stringify({ ...own, scenes: [own.scenes[0]!, { ...own.scenes[1]!, start: 'late' }] }))
+        const wrong = tool('beats', folder)
+        expect(wrong.status).not.toBe(0)
+        expect(wrong.said.join('\n')).toContain('scenes[1].start: "late" is not a time')
+        // The hook ends at 4: one second of voice from 2, and one second of hold.
+        await writeFile(join(folder, 'timing.json'), JSON.stringify({ ...own, scenes: [own.scenes[0]!, { ...own.scenes[1]!, start: 3.5 }] }))
+        expect(tool('beats', folder).said.join('\n')).toContain('scenes[1].start: 3.5 is before the end of the scene before it, at 4 s')
+        await writeFile(join(folder, 'timing.json'), JSON.stringify({ ...own, scenes: [own.scenes[0]!, { ...own.scenes[1]!, start: 4 }] }))
+        expect(tool('beats', folder).status).toBe(0)
     }, 120_000)
 
     it('mixes two takes at their places, with the pad under the voice and above silence', async () => {
@@ -580,7 +723,7 @@ describe.skipIf(!ready)('narration tools', () => {
         await writeFile(join(folder, 'film.ts'), '')
         await writeFile(join(folder, 'script.json'), JSON.stringify({
             timeline: { intro: 2, pause: 0.6, gap: 0.4, tail: 0.5 },
-            scenes: [{ id: 'hook', title: 'Hook', beats: [{ say: 'Toto 2.0 reads 128 points. Then it stops.', hold: 1.5 }, { say: 'It is fast.' }, { say: 'GIFT-Eval is a benchmark, and 12 is not 128.' }] }],
+            scenes: [{ id: 'hook', title: 'Hook', beats: [{ say: 'Toto 2.0 reads 128 points. Then it stops.', hold: 1.5, cues: [{ id: 'read', phrase: 'Toto two reads' }] }, { say: 'It is fast.' }, { say: 'GIFT-Eval is a benchmark, and 12 is not 128.' }] }],
             pronounce: { '2.0': 'two', '128': 'one hundred and twenty eight', Toto: '[Toto](/tˈOtO/)', GIFT: 'present', 'GIFT-Eval': 'gift eval', '12': 'twelve' },
         }))
         const draft = tool('draft', folder)
@@ -616,6 +759,17 @@ describe.skipIf(!ready)('narration tools', () => {
         expect(await readFile(join(folder, 'timing.json'), 'utf8')).toBe(measured)
         expect(JSON.parse(await readFile(join(folder, 'timing.draft.json'), 'utf8'))).toMatchObject({ draft: true, lead: 1.5 })
         expect(draft.said.join('\n')).toMatch(/^draft: timing\.draft\.json is written: a draft of 2 scenes, about [\d.]+ s of voice\. timing\.json holds the measured voice and was left as it is\. To lay out scenes on the draft, import \.\/timing\.draft\.json in the film file, and check it with: vizmatic check <film file>$/)
+    }, 120_000)
+
+    it('preserves malformed existing timing when drafting', async () => {
+        const folder = await filmFolder()
+        await twoTakes(folder)
+        const path = join(folder, 'timing.json')
+        for (const raw of ['{"scenes":[', 'null', '{"draft":true}']) {
+            await writeFile(path, raw)
+            expect(tool('draft', folder).status).not.toBe(0)
+            expect(await readFile(path, 'utf8')).toBe(raw)
+        }
     }, 120_000)
 
     it('keeps the draft timing of the narrated template equal to what the draft step writes for its script', async () => {
@@ -959,6 +1113,7 @@ describe.skipIf(!ready)('narration tools', () => {
             return JSON.parse(result.stdout) as string[]
         }
         expect(changes(() => {})).toEqual([])
+        expect(changes((timing) => { Object.assign(timing.scenes[0].beats[0], { cues: [{ id: 'result', phrase: 'it' }] }) })).toEqual(['hook/0 (the declared cues changed)'])
         // The first beat of the hook holds half a second longer: its second beat moves, and so does every scene after it.
         expect(changes((timing) => { timing.scenes[0]!.beats[0]!.hold = 1.5 })).toEqual([
             'hook/1 (from 3.50 to 4.50 s in the picture, from 4.00 to 5.00 s in timing.json)',
