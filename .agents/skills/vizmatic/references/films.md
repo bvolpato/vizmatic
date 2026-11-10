@@ -75,6 +75,7 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 |---|---|
 | `attention.ts` | Compute every number on screen from small real inputs. |
 | `cache-miss.ts` | Run a small queueing model, and draw the system from its results. |
+| `beam-search.ts` | Grow a search tree, keep a beam of two, and add the log probabilities along each path. |
 | `paxos.ts` | Play a protocol through a schedule of delays and losses, and send each message of the trace along a `connector` with `send`. |
 | `gradient-descent.ts` | Drive motion from real iterates, and compare two runs. |
 | `linear-maps.ts` | Bend a grid with `applyMatrix`, and follow what it does to area. |
@@ -200,6 +201,32 @@ const strip = s.add(steps(['batching', 'SQPOLL', 'register', 'I/O polling'], { w
 s.play(strip.go(1))
 ```
 
+A tree that a search builds: a tree of continuations with a probability on each edge, a decision tree, a search over reasoning steps. Do not place boxes and lines by hand, and do not show the tree whole. A node with a `value` is a box with a name and a number, `edge` or `weight` is the label of the edge from its parent, and `score: 'product'` or `'sum'` writes the running score of each path in its node. `shown: 0` starts with the root, and `grow(ids)` brings one node at a time. `path(id)` lights the way from the root, and a second `path` moves the light. `prune(id)` turns a branch off, with dashes. `keep(ids)` is one step of a beam search: it lights the kept paths and prunes the rest of `t.frontier`. `width` fills a region:
+
+```ts
+const words = s.add(tree({ id: 'the', label: 'The dog', children: [
+    { id: 'ran', label: 'ran', weight: 0.6, children: [{ id: 'home', label: 'home', weight: 0.35 }, { id: 'away', label: 'away', weight: 0.33 }] },
+    { id: 'slept', label: 'slept', weight: 0.4, children: [{ id: 'soundly', label: 'soundly', weight: 0.9 }, { id: 'late', label: 'late', weight: 0.1 }] },
+] }, { width: 1700, score: 'product', shown: 0 }))
+s.play(words.grow(['ran', 'slept']))
+s.play(words.grow(['home', 'away', 'soundly', 'late']))
+s.play(words.keep(['soundly', 'home']))
+s.play(words.path('soundly', { color: 'green' }))
+```
+
+A graph whose nodes change: the plan of an agent, a state machine, a computation graph. Do not recolor nodes by hand, and do not draw a dot that runs on a typed path. `setState(id, state)` gives a node one of `idle`, `active`, `done`, `failed` and `off`, each with its own sign. With `token`, the graph is a state machine: `go(id)` moves the token along an edge, `refuse(id)` shows a step that the machine does not take, and a `go` with no edge stops the build. A node with a `value` is a box with a name and a number, and a `note` is a second text under it. `send(from, to, { value })` sends a light along an edge, with the arrow or against it, and the node at the end takes the text: one call for each step of a forward or a backward pass. `duration` is travel time, as in `connector.send`, followed by 0.5 seconds to change a value or note. With `shown`, `grow(ids)` builds the graph node by node. `fit: true` lets `width` and `height` fit the default layout to a region, so a film types no place for a node. Give `edgeLabelSize: 26` for a video:
+
+```ts
+const breaker = s.add(graph([{ id: 'closed', label: 'closed', width: 200 }, { id: 'open', label: 'open', width: 200, color: 'red' }, { id: 'half', label: 'half-open', width: 200, color: 'orange' }], [
+    { from: 'closed', to: 'open', label: '2 failures' }, { from: 'open', to: 'half', label: '10 s' }, { from: 'half', to: 'closed', label: 'probe passes' },
+], { fit: true, width: 1600, token: 'closed', edgeLabelSize: 26 }))
+s.play(seq(breaker.go('open'), breaker.refuse('closed'), breaker.go('half'), breaker.go('closed')))
+
+const net = s.add(graph([{ id: 'w', label: 'w', value: '3', note: '' }, { id: 'y', label: 'w · x', value: '', note: '', width: 150 }], [{ from: 'w', to: 'y', label: '× 2' }], { fit: true, width: 900, noteColor: 'pink' }))
+s.play(net.send('w', 'y', { value: '6' }))
+s.play(net.send('y', 'w', { note: 'grad 2', color: 'pink' }))
+```
+
 A sequence over time with one lane for each actor, such as a system call, a VM exit, or a request through several services. Do not draw the bars and the arrows by hand. `lanes` places the labels, and stops the build when two labels would touch. `advance` moves the cursor to a time and stops there, so one call fits one sentence of the voice. With `ticks`, one lane is a chart of durations on a time axis. With `boundaries`, a line between two lanes counts the handoffs that cross it, such as `{ between: ['user space', 'kernel'], label: 'system call line', count: true }`, so two objects side by side compare two designs by their crossings. `idle: true` is a span where the lane waits, and `dashed: true` is a handoff whose sender does not wait. When a label has no place, `labelSide` on the event names one. On a panel or in a zone with a fill, set `backing` to the color behind the object, or `backing: null` with `cursor: false`:
 
 ```ts
@@ -232,6 +259,22 @@ const note = beside(text('nothing shows before this'), trace, 'above', 'normal',
 s.play(fadeIn(note))
 s.play(trace.showAll())
 ```
+
+A path of stages or gates with an item that goes through them: a tool call through the gates of a host, a request through a serving path, rows through the filters of a data set. Do not build it from a row of boxes and a dot on an arrow, and do not use `steps` for it: a viewer learns from the item, which keeps its id while it moves and changes. `put` brings an item, `move` takes it to the next stage or to a named one, `setBadge` changes the value that it carries, `pass` and `stop` give it the verdict of a stage, with a check or with a cross and the reason, `eject` sends it to the tray under the path, and `exit` takes it away. Each item has its own lane (`lanes`), and the marks of a lane keep where its item passed and where it was stopped. `counts` shows under each name how many items reached the stage, so a row of gates is a funnel. `which` is an id, a list of ids, or a function of an item, and `lag` brings a list one after another. An item takes one change at a time: play two changes of one item in a `seq`. No text is made smaller: a name or a badge that is too wide for one stage stops the build, and the message gives the least `width`. The default text is 28 px. Keep it at 26 or more:
+
+```ts
+const flow = s.add(pipeline(['complete', 'schema', 'authorization', 'execute'], { width: 1800, gates: true, lanes: 2, tray: 'refused', counts: true }))
+s.play(flow.put({ id: 'call 17', badge: 'hold B7' }))
+s.play(flow.pass('call 17', 'complete'))                       // the gate lets it through: a check, and a stamp
+s.play(flow.move('call 17'))                                   // to the next stage. A check stays at the gate that it left
+s.play(flow.put({ id: 'call 18', color: 'orange' }), flow.move('call 17', 'execute'))
+s.play(flow.move('call 18'))
+s.play(flow.stop('call 18', 'id is a number'))                 // a cross, a red border, and the reason
+s.play(flow.eject('call 18'))                                  // to the tray, with its reason. Its lane is free
+const done = flow.find((item) => item.state !== 'stopped')     // also flow.stateOf(id), flow.count(stage), flow.reached(stage)
+```
+
+`flow.item(id)` is the node of an item, `flow.p(stage)` is a point over a stage, and `flow.region({ stage, lane })` is a box of the object: use them with `beside` for a note of the film. `flow.fork(id, item)` and `flow.join(id, into)` split and merge an item on the same path. For branches with stages of their own, use `graph`. For actors over time, use `lanes`.
 
 A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
 
