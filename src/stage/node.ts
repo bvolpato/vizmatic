@@ -10,6 +10,9 @@ import type { DrawOp } from './display'
 import type { ImageAsset, ImageCrop } from './image'
 import type { Block } from './layout'
 
+/** Internal hook used by stage objects that store state outside their child nodes. */
+export const rebindCloneParts = Symbol('rebindCloneParts')
+
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay'
 export type Edge = 'left' | 'right' | 'top' | 'bottom'
 export type Side = Edge | 'up' | 'down' | Vec
@@ -137,6 +140,9 @@ function boundsOfTarget(what: string, target: unknown): Bounds {
  * same calls set up a node before it appears and change it afterwards.
  */
 export class Node {
+    /** A returned callback connects objects after each clone has prepared its own state. */
+    protected [rebindCloneParts]?(copy: this, copies: ReadonlyMap<Node, Node>): void | (() => void)
+
     readonly id = nextId++
     parent: Node | null = null
     children: Node[] = []
@@ -287,6 +293,12 @@ export class Node {
                 }
             }
         }
+        let connections: (() => void)[] | undefined
+        for (const [from, to] of copies) {
+            const connect = from[rebindCloneParts]?.(to, copies)
+            if (connect) (connections ??= []).push(connect)
+        }
+        for (const connect of connections ?? []) connect()
         return copy
     }
 

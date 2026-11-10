@@ -1,8 +1,9 @@
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { parseSvgPath, pointAt, polyPath, rectPath, type Bounds, type Path } from '../geometry'
 import { arrow, dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { smooth } from '../ease'
+import { clock } from '../track'
 import type { ColorInput } from '../color'
 import type { Anim, AnimContext, AnimOptions } from '../anim'
 import { Box } from '../layout'
@@ -38,7 +39,7 @@ export type LaneOutcome = 'failed' | 'cancelled'
 /** Where an event is in time, as the cursor of the object sees it. */
 export type LaneEventState = 'ahead' | 'running' | 'done' | LaneOutcome
 
-export type LaneEvent =
+export type LaneTimelineEvent =
     /**
      * A span: the lane works from `start` to `end`. `open` draws a span with no end mark, for work that goes on.
      * `idle` draws a dashed outline with a faint fill, for a lane that waits while another lane works. `down`
@@ -65,6 +66,12 @@ export type LaneEvent =
      * under it with `labelSide: 'under'`. Without a lane, it is over the first lane or under the last one.
      */
     | { bracket: readonly [number, number]; lane?: LaneRef; id?: string; label?: string; labelSide?: 'over' | 'under'; color?: ColorInput }
+
+/** The original span, handoff and mark union. Use LaneTimelineEvent for lists that also contain links or brackets. */
+export type LaneEvent = Exclude<LaneTimelineEvent, { bracket: readonly [number, number] } | { at: readonly [number, number] }>
+type LaneKind = 'span' | 'handoff' | 'mark'
+type TimelineKind = LaneKind | 'link' | 'bracket'
+type EventNode<E extends LaneTimelineEvent> = LaneEventNode<[E] extends [LaneEvent] ? LaneKind : TimelineKind>
 
 /** A line at one time over all lanes, such as a deadline that a request must beat, a cutoff, or a kill time. */
 export interface LaneDeadline {
@@ -133,9 +140,9 @@ export interface LanesOptions {
 }
 
 /** One event of a `Lanes` object. It is hidden until the cursor reaches it. */
-export class LaneEventNode extends Node {
+export class LaneEventNode<K extends TimelineKind = LaneKind> extends Node {
     constructor(
-        readonly kind: 'span' | 'handoff' | 'mark' | 'link' | 'bracket',
+        readonly kind: K,
         /** The bar of a span, the arrow of a handoff or a link, the dot of a mark, or the line of a bracket. */
         readonly shape: Node,
         /** The label of the event, or null when it has none. */
@@ -301,19 +308,19 @@ function signNode(outcome: LaneOutcome, radius: number, backing: ColorInput | nu
  * or be a stretch where its lane is down. A link joins two times, and a bracket names a window of time.
  * `.at()` places the middle of the time area. The names of the lanes are outside it, at the left.
  */
-export class Lanes extends Node {
+export class Lanes<E extends LaneTimelineEvent = LaneEvent> extends Node {
     /** The name of each lane, at the left of the time area. */
     readonly names: Node[] = []
     /** A faint line along each lane. */
     readonly rails: Node[] = []
     /** One node per event, in the order given. */
-    readonly events: LaneEventNode[] = []
+    readonly events: EventNode<E>[] = []
     /** The events by kind, in the order given. */
-    readonly spans: LaneEventNode[] = []
-    readonly handoffs: LaneEventNode[] = []
-    readonly marks: LaneEventNode[] = []
-    readonly links: LaneEventNode[] = []
-    readonly brackets: LaneEventNode[] = []
+    readonly spans: EventNode<E>[] = []
+    readonly handoffs: EventNode<E>[] = []
+    readonly marks: EventNode<E>[] = []
+    readonly links: EventNode<E>[] = []
+    readonly brackets: EventNode<E>[] = []
     /** One node per deadline: its line, then its bar when it drains, then its text. */
     readonly deadlines: Node[] = []
     /** One node per boundary: its line, its label, and its counter. */
@@ -356,13 +363,14 @@ export class Lanes extends Node {
     private readonly patches: (Node | null)[] = []
     /** The ticks that the handoffs leave on the boundaries that count. */
     private readonly ticks: Node[] = []
-    /** The signs of the spans with an outcome. They are over all bars. */
-    private readonly signs: Node[] = []
     private readonly drawCursor: boolean
     private cursorTime: number
     private started = false
+    private firstAdvance = Infinity
+    private lastAdvanceEnd = -Infinity
+    private resumePose = false
 
-    constructor(lanes: readonly (string | Lane)[], events: readonly LaneEvent[], options: LanesOptions = {}) {
+    constructor(lanes: readonly (string | Lane)[], events: readonly E[], options: LanesOptions = {}) {
         super()
         if (lanes.length === 0) throw new Error('lanes: give it at least one lane')
         const size = options.size ?? 26
@@ -430,6 +438,7 @@ export class Lanes extends Node {
                     plan.kind = 'link'
                     if (!Array.isArray(event.at) || event.at.length !== 2) throw new Error(`lanes: event ${index} is a link, and \`at\` is its two times: the time on \`from\` and the time on \`to\`, such as at: [30, 12]`)
                     const [leaves, arrives] = event.at as readonly [number, number]
+                    if (!Number.isFinite(leaves) || !Number.isFinite(arrives)) throw new Error(`lanes: event ${index} is a link. Give two finite numbers for its times`)
                     plan.start = Math.min(leaves, arrives)
                     plan.end = Math.max(leaves, arrives)
                     plan.back = arrives < leaves
@@ -521,7 +530,14 @@ export class Lanes extends Node {
         specs.forEach((_, lane) => this.depths.push(Math.max(0, ...this.plans.filter((plan) => plan.lane === lane && (plan.kind === 'span' || plan.kind === 'mark')).map((plan) => plan.row)) * this.rowPitch))
 
         // The room between the bars of a lane and the bars of the next one. With a boundary, it holds two rows of text and the line.
-        const rooms = specs.slice(1).map((_, index) => pitch - this.barHeight + (this.walls.some((wall) => wall.upper === index) ? size * 1.25 : 0))
+        const rooms = specs.slice(1).map((_, index) => {
+            const walled = this.walls.some((wall) => wall.upper === index)
+            const room = pitch - this.barHeight + (walled ? size * 1.25 : 0)
+            const lostHere = this.plans.some((p) => p.kind === 'handoff' && p.outcome && (p.target > p.lane ? p.lane : p.lane - 1) === index)
+            // The disc and its short shaft must fit on the sender's side of the boundary.
+            const signRoom = size * 1.25 + Math.max(4, size * 0.11)
+            return lostHere ? Math.max(room, walled ? 2 * signRoom : signRoom) : room
+        })
         let down = 0
         specs.forEach((_, index) => {
             this.ys.push(down)
@@ -554,6 +570,7 @@ export class Lanes extends Node {
         const limitSpecs = options.deadline === undefined ? [] : Array.isArray(options.deadline) ? (options.deadline as readonly LaneDeadline[]) : [options.deadline as LaneDeadline]
         limitSpecs.forEach((limit, index) => {
             if (typeof limit !== 'object' || limit === null || !Number.isFinite(limit.at)) throw new Error(`lanes: deadline ${index} needs its time, such as deadline: { at: 20, label: 'deadline' }`)
+            if (limit.drain !== undefined && typeof limit.drain !== 'boolean' && (typeof limit.drain !== 'object' || limit.drain === null || !Number.isFinite(limit.drain.from))) throw new Error(`lanes: deadline ${index} takes drain: true, false, or { from: time }. Give a finite start time for its bar`)
             const from = typeof limit.drain === 'object' && limit.drain !== null ? limit.drain.from : undefined
             if (from !== undefined && !(Number.isFinite(from) && from < limit.at)) throw new Error(`lanes: deadline ${index} is at ${limit.at}, and its bar starts at ${from}. The bar starts before the deadline`)
             if (limit.label !== undefined && typeof limit.label !== 'string' && typeof limit.label !== 'function') throw new Error(`lanes: the label of deadline ${index} is a text, or a function from the time that is left to a text, such as (left) => \`\${left} s left\``)
@@ -581,6 +598,8 @@ export class Lanes extends Node {
             const outside = [limit.at, limit.from].find((time) => time < first || time > last)
             if (outside !== undefined) throw new Error(`lanes: deadline ${index} has the time ${outside}, outside the domain ${first} to ${last}. Give a domain that holds it`)
             if (limit.drain && !(limit.from < limit.at)) throw new Error(`lanes: deadline ${index} is at ${limit.at}, the first end of the domain, so its bar has no time to show. Give a domain that starts before the deadline, or remove \`drain\``)
+            const other = this.limits.findIndex((before, at) => at < index && before.drain && limit.drain && before.from < limit.at && limit.from < before.at)
+            if (other >= 0) throw new Error(`lanes: the bars of deadlines ${other} and ${index} overlap. Keep drain on one deadline, or give their bars separate time windows with { from }`)
         })
 
         const left = -this.w / 2, right = this.w / 2
@@ -606,8 +625,8 @@ export class Lanes extends Node {
         const overRoom = size * (this.plans.some((plan) => plan.kind === 'link' && plan.lane === 0 && plan.target === 0) ? 2.5 : 2)
         // Every line starts at one height, so the texts of two deadlines are on one line. One bar that drains moves them all up.
         const limitTop = this.y(0) - half - overRoom - (this.limits.some((limit) => limit.drain) ? drainHeight + size * 0.3 : 0)
-        // With a bar that drains, the cursor goes up to the bar, so the viewer sees that the cursor moves the end of the bar.
-        const cursorTop = this.limits.some((limit) => limit.drain) ? limitTop + size * 0.15 + drainHeight : this.y(0) - past
+        // The drain follows the cursor in x. Keep the cursor below the labels over the first lane.
+        const cursorTop = this.y(0) - past
         this.cursor = line([0, cursorTop], [0, cursorFoot], { stroke: 'faint', width: 2 }).at(this.x(first), 0).hide()
 
         // The shape of each event. A label must not touch any of them, so they are all known before a label gets its place.
@@ -757,6 +776,14 @@ export class Lanes extends Node {
 
         const clearX = size * 0.3, clearY = size * 0.1
         const touches = (a: Bounds, b: Bounds) => a.x < b.x + b.width + clearX && b.x < a.x + a.width + clearX && a.y < b.y + b.height + clearY && b.y < a.y + a.height + clearY
+        for (const [index, plan] of this.plans.entries()) {
+            if (plan.kind !== 'bracket' || plan.under) continue
+            const arc = things.find(({ event, box }) => {
+                const link = this.plans[event]
+                return link?.kind === 'link' && link.lane === plan.lane && link.target === plan.lane && touches(this.boxes[index]!, box)
+            })
+            if (arc) throw new Error(`lanes: the bracket of ${named(index)} meets the arc of ${named(arc.event)} above the same lane. Put the bracket below with labelSide: 'under', or choose another lane`)
+        }
         const advice = 'Use a wider width, a larger pitch, shorter labels, times that are further apart, or another labelSide'
         if (this.axis) things.push({ box: { x: left, y: foot - 1, width: this.w, height: size * 1.9 }, event: -1, name: 'the axis' })
         const padX = size * 0.22, padY = size * 0.16, inset = size * 0.5
@@ -815,7 +842,7 @@ export class Lanes extends Node {
         // line starts over the room that a label or a bracket takes over the first lane. With `drain`, a bar
         // over that room ends at the line, and its other end follows the cursor.
         const limitName = (index: number) => (this.limits[index]!.name === undefined ? `deadline ${index}` : `deadline ${index} (${JSON.stringify(this.limits[index]!.name)})`)
-        const limitTexts: Thing[] = []
+        const limitTexts: (Thing & { index: number; boundsAt?: (time: number) => Bounds })[] = []
         limitSpecs.forEach((spec, index) => {
             const limit = this.limits[index]!, color = spec.color ?? 'red', x = this.x(limit.at)
             limit.height = drainHeight
@@ -839,9 +866,11 @@ export class Lanes extends Node {
             if (write !== undefined && !(typeof write === 'string' && write.trim() === '')) {
                 const textY = top - size * 0.75
                 let box: Bounds
+                let boundsAt: ((time: number) => Bounds) | undefined
                 if (typeof write === 'string') {
                     const words = text(write, { size, font, color })
                     const ink = words.bounds()
+                    if (ink.width > this.w) throw new Error(`lanes: the label of ${limitName(index)} is wider than the time area. Use a shorter label, a smaller size, or a wider width`)
                     // Over the line. Near an end of the time area, the text moves to stay in it.
                     const width = Math.min(ink.width, this.w)
                     const at = Math.min(Math.max(x, left + width / 2), right - width / 2)
@@ -850,27 +879,36 @@ export class Lanes extends Node {
                 } else {
                     // A text that counts down. It starts at one x for every value, so it does not shake.
                     const whole = limit.at - limit.from
-                    const inks = [whole, whole / 2, 0].map((value) => {
+                    const wordsAt = (value: number) => {
                         const words: unknown = write(value)
                         if (typeof words !== 'string') throw new Error(`lanes: the label of ${limitName(index)} is a function, and it returned ${words === null ? 'null' : typeof words} for ${value}. It returns the text for a time that is left, such as (left) => \`\${left} s left\``)
-                        return text(words, { size, font, color }).bounds()
-                    })
+                        return text(words, { size, font, color, anchor: 'left' })
+                    }
+                    const inks = [whole, whole / 2, 0, limit.at - last].map((value) => wordsAt(value).bounds())
+                    if (inks.some((ink) => ink.width > this.w)) throw new Error(`lanes: the label of ${limitName(index)} is wider than the time area. Use a shorter label, a smaller size, or a wider width`)
                     const width = Math.min(Math.max(...inks.map((ink) => ink.width)), this.w)
                     const start = Math.min(Math.max(x - width / 2, left), right - width)
+                    const textAt = (now: number) => wordsAt(Number((limit.at - Math.max(now, limit.from)).toFixed(9))).at(start, textY)
+                    boundsAt = (now) => textAt(now).bounds()
                     const readout = new Node()
                     // The text finds its object through the tree, so the text of a copy follows the cursor of the copy.
                     readout.draw = function (this: Node) {
                         let owner: Node | null = this.parent
                         while (owner && !(owner instanceof Lanes)) owner = owner.parent
                         const now = owner instanceof Lanes ? owner.shownTime() : first
-                        return text(String(write(Number((limit.at - Math.max(now, limit.from)).toFixed(9)))), { size, font, color, anchor: 'left' }).at(start, textY)
+                        const words = textAt(now)
+                        const ink = words.bounds()
+                        if (ink.x < left - 0.5 || ink.x + ink.width > right + 0.5) throw new Error(`lanes: the label of ${limitName(index)} leaves the time area while counting down. Use a shorter format, such as (left) => left.toFixed(1), or a wider width`)
+                        const hit = limitTexts.find((other) => other.index !== index && touches(ink, other.boundsAt?.(now) ?? other.box))
+                        if (hit) throw new Error(`lanes: the label of ${limitName(index)} touches ${hit.name} while counting down. Use shorter labels, or deadlines that are further apart`)
+                        return words
                     }
                     made.add(readout)
                     box = { x: start, y: inks[0]!.y + textY, width, height: inks[0]!.height }
                 }
                 const hit = limitTexts.find((other) => touches(box, other.box))
                 if (hit) throw new Error(`lanes: the label of ${limitName(index)} touches ${hit.name}. Use shorter labels, or deadlines that are further apart`)
-                limitTexts.push({ box, event: -1, name: `the label of ${limitName(index)}` })
+                limitTexts.push({ box, event: -1, index, boundsAt, name: `the label of ${limitName(index)}` })
                 things.push(limitTexts[limitTexts.length - 1]!)
             }
             this.deadlines.push(made)
@@ -1007,7 +1045,12 @@ export class Lanes extends Node {
                 const box: Bounds = { x: ink.x + place.x, y: ink.y + place.y, width: ink.width, height: ink.height }
                 if (box.x < left - 0.5 || box.x + box.width > right + 0.5) continue
                 // A label has its place beside its own shape, or inside it.
-                const hit = things.find((thing) => thing.event !== index && !(thing.bar === true && thing.event === place.on) && touches(box, thing.box))
+                const hit = things.find((thing) => {
+                    if (thing.event === index || !touches(box, thing.box)) return false
+                    if (!thing.bar || thing.event !== place.on) return true
+                    // The mark's label can sit inside its parent bar, but its outline must not cut through a word.
+                    return box.x < thing.box.x + padX || box.x + box.width > thing.box.x + thing.box.width - padX
+                })
                 if (hit) {
                     met ??= hit
                     continue
@@ -1029,13 +1072,11 @@ export class Lanes extends Node {
 
         this.plans.forEach((plan, index) => {
             const label = texts[index] ?? null, sign = signs[index] ?? null
-            const node = new LaneEventNode(plan.kind, shapes[index]!, label, tips[index] ?? null, edges[index] ?? null, sign, plan.id)
-            // The sign of a handoff is a part of its event. The sign of a span is over all bars, so the next bar of the lane does not hide it.
-            for (const part of [node.shape, node.edge, node.tip, ...plan.ticks.map((at) => this.ticks[at]!), plan.kind === 'handoff' ? sign : null, label]) if (part) node.add(part)
+            const node = new LaneEventNode(plan.kind, shapes[index]!, label, tips[index] ?? null, edges[index] ?? null, sign, plan.id) as EventNode<E>
+            for (const part of [node.shape, node.edge, node.tip, ...plan.ticks.map((at) => this.ticks[at]!), sign, label]) if (part) node.add(part)
             node.hide()
             // A sign waits for the end of its span, or for the line of its handoff.
             sign?.hide()
-            if (plan.kind === 'span' && sign) this.signs.push(sign)
             for (const part of [this.unders[index], this.patches[index]]) if (part) ground.add(part)
             this.events.push(node)
             if (plan.kind === 'span') this.spans.push(node)
@@ -1051,19 +1092,33 @@ export class Lanes extends Node {
         // are under all that the film must see in full.
         this.add(...this.rails)
         if (this.axis) this.add(this.axis)
-        this.add(this.cursor, ground, ...this.spans, ...this.brackets, ...this.boundaries, ...this.deadlines, ...this.handoffs, ...this.links, ...this.signs, ...this.marks, ...this.names)
+        // A failure disc straddles the end of its bar. Paint that event over the next bar so the whole disc shows.
+        const signed = this.plans.map((plan, index) => ({ plan, node: this.events[index]! }))
+            .filter(({ plan }) => plan.kind === 'span' && plan.outcome)
+            .sort((a, b) => b.plan.end - a.plan.end)
+        this.add(this.cursor, ground, ...this.spans.filter((span) => !span.sign), ...this.brackets, ...this.boundaries, ...this.deadlines, ...this.handoffs, ...this.links, ...signed.map(({ node }) => node), ...this.marks, ...this.names)
         // The object places each label beside its own bars, arrows and lines. The film check does not judge that room.
         ownLabels(this, { name: 'set of lanes' })
     }
 
     /**
      * The label of an event belongs to its bar, its arrow, or its dot, so a light on that shape keeps the label
-     * bright. So does the sign of a span with an outcome, which is not in the node of its event.
+     * bright along with its outcome sign.
      */
     override labelsOf(part: Node): readonly Node[] {
         const event = this.events.find((candidate) => candidate.shape === part)
-        if (!event) return []
-        return event.sign && event.sign.parent !== event ? [...event.children, event.sign] : event.children
+        return event?.children ?? []
+    }
+
+    /** A copy keeps the visible pose. Its next advance starts at the time shown in that pose. */
+    protected override [rebindCloneParts](copy: this): void {
+        if (clock.now < this.lastAdvanceEnd) {
+            copy.cursorTime = this.shownTime()
+            copy.started = clock.now >= this.firstAdvance
+            copy.resumePose = copy.started
+        }
+        copy.firstAdvance = copy.started ? -Infinity : Infinity
+        copy.lastAdvanceEnd = -Infinity
     }
 
     /** The time of the cursor after the changes that are scheduled so far. It starts at the first end of the domain. */
@@ -1087,7 +1142,7 @@ export class Lanes extends Node {
     }
 
     /** The node of an event, by its `id` or by its index in the list of events. */
-    find(event: LaneEventRef): LaneEventNode {
+    find(event: LaneEventRef): EventNode<E> {
         return this.events[this.eventIndex(event)]!
     }
 
@@ -1156,8 +1211,7 @@ export class Lanes extends Node {
             const other = names.find((name) => name !== 'event' && (part as Record<string, unknown>)[name] !== undefined)
             if (other !== undefined) throw new Error(`lanes: region takes \`event\` alone, and it also got \`${other}\`. An event has its own lane and its own time`)
             const box = this.boxes[this.eventIndex(part.event)]!
-            const [x0, y0] = this.toWorld(box.x, box.y), [x1, y1] = this.toWorld(box.x + box.width, box.y + box.height)
-            return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+            return this.worldRegion(box.x, box.y, box.x + box.width, box.y + box.height)
         }
         if (part.at !== undefined && (part.from !== undefined || part.to !== undefined)) throw new Error('lanes: region takes `at` for one time, or `from` and `to` for a stretch of time, not both')
         const half = this.barHeight / 2
@@ -1179,8 +1233,14 @@ export class Lanes extends Node {
             if (!(Number.isFinite(time) && time >= this.domain[0] && time <= this.domain[1])) throw new Error(`lanes: region: a time is ${time}. \`from\`, \`to\` and \`at\` are times of the domain, ${this.domain[0]} to ${this.domain[1]}`)
         }
         if (from > to) throw new Error(`lanes: region: \`from\` is ${from} and \`to\` is ${to}. Give a \`from\` that is not after \`to\``)
-        const [x0, y0] = this.toWorld(this.x(from), top), [x1, y1] = this.toWorld(this.x(to), bottom)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        return this.worldRegion(this.x(from), top, this.x(to), bottom)
+    }
+
+    private worldRegion(left: number, top: number, right: number, bottom: number): Box {
+        // A rotated parent can put any of the four corners furthest left or right.
+        const corners = [this.toWorld(left, top), this.toWorld(left, bottom), this.toWorld(right, top), this.toWorld(right, bottom)]
+        const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y)
+        return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
     /**
@@ -1257,6 +1317,20 @@ export class Lanes extends Node {
             label: 'lanes.advance', duration: options.duration ?? 1.6, ease: options.ease,
             schedule: (ctx) => {
                 this.checkAdvance(time)
+                if (ctx.t0 < this.lastAdvanceEnd - 1e-9) {
+                    if (time === this.cursorTime) return
+                    throw new Error('lanes: two advances overlap on the same cursor. Play them in sequence or give each cursor its own lanes object')
+                }
+                if (this.resumePose) {
+                    // Complete any partial reveals in a copied frame before moving its cursor again.
+                    const snapshot = this.cursorTime
+                    this.cursorTime = this.domain[0]
+                    this.started = false
+                    this.sweep(snapshot, { ...ctx, t1: ctx.t0 })
+                    this.resumePose = false
+                }
+                this.firstAdvance = Math.min(this.firstAdvance, ctx.t0)
+                this.lastAdvanceEnd = ctx.t1
                 this.sweep(time, ctx)
             },
         }
@@ -1278,7 +1352,7 @@ export class Lanes extends Node {
             if (Number.isInteger(ref) && ref >= 0 && ref < this.plans.length) return ref
             throw new Error(`lanes: no event ${ref}. ${this.plans.length === 0 ? 'The object has no event' : `The events are 0 to ${this.plans.length - 1}`}`)
         }
-        const index = this.plans.findIndex((plan) => plan.id === ref)
+        const index = typeof ref === 'string' ? this.plans.findIndex((plan) => plan.id === ref) : -1
         if (index < 0) {
             const ids = this.plans.filter((plan) => plan.id !== null).map((plan) => JSON.stringify(plan.id))
             throw new Error(`lanes: no event has the id ${JSON.stringify(ref)}. ${ids.length === 0 ? 'No event has an id: give the event an `id`' : `The ids are ${ids.join(', ')}`}`)
@@ -1580,6 +1654,9 @@ export class Lanes extends Node {
  * A trace of a request with a deadline:
  * `lanes(['server'], [{ lane: 0, start: 0, end: 18, id: 'answer', label: 'answer' }, { lane: 0, start: 2, end: 9, inside: 'answer', label: 'retrieval', outcome: 'failed' }], { deadline: { at: 20, label: 'deadline', drain: true } })`.
  */
-export function lanes(names: readonly (string | Lane)[], events: readonly LaneEvent[], options: LanesOptions = {}): Lanes {
+export function lanes<E extends LaneTimelineEvent>(names: readonly (string | Lane)[], events: readonly E[], options?: LanesOptions): Lanes<E>
+// Keep ReturnType<typeof lanes> compatible with films that inspect the three original event kinds.
+export function lanes(names: readonly (string | Lane)[], events: readonly LaneEvent[], options?: LanesOptions): Lanes
+export function lanes(names: readonly (string | Lane)[], events: readonly LaneTimelineEvent[], options: LanesOptions = {}): Lanes<LaneTimelineEvent> {
     return new Lanes(names, events, options)
 }
