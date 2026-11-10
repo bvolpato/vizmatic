@@ -11,7 +11,7 @@ import {
     neuralNet, numberLine, PAGE_STATES, parseColor, parseSvgPath, pathBounds, pathLength, pathToD, pictogram, PICTOGRAMS, pie, point3d, points3d, rect, riemann, samplePath, scatter, scene3d, spin, namedBox,
     seq, sphere, stateGrid, streamLines, surface, swap, tag, tagTrack, terminal, tex, text, tokens, tokenize, trail3d, traced, tree, typewriter, unitChart, vectorField, vector3d, wipe, write, zone, textWidth,
     lanes, smooth, eventLog, LogRowNode, LOG_STATES, row,
-    delay, par, retime, ringBuffer,
+    delay, par, retime, ringBuffer, overshoot,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
     table, Table, TableCellNode, TableRowNode, TABLE_STATES, boxOf, fitted, type TableColumn, type TableRow, type TableRowView,
@@ -13508,6 +13508,89 @@ describe('table', () => {
         expect(totals(board, 0, 0.5)).toEqual(['0'])
         expect(totals(board, 0, 2)).toEqual(['9'])
         expect(board.totalOf('score')).toBe(9)
+    })
+
+    it('keeps the state of an id cell in a copy and uses it in the total', async () => {
+        await compile((s) => {
+            const board = s.add(table([{ key: 'id', marks: true, total: (rows) => rows.filter((row) => row.states.id === 'pass').length }], [{ id: 1 }]))
+            s.play(board.setCell(1, 'id', { state: 'pass' }))
+            const copy = board.clone()
+            expect(copy.stateOf(1, 'id')).toBe('pass')
+            expect(copy.totalOf('id')).toBe(1)
+            s.play(copy.setCell(1, 'id', { state: 'fail' }))
+            expect(board.totalOf('id')).toBe(1)
+        })
+    })
+
+    it('preserves exact integer counts in the total row', async () => {
+        await compile(() => {
+            const board = table([{ key: 'tokens', total: 'sum' }], [{ id: 'a', tokens: 1_234_567_890_120 }, { id: 'b', tokens: 3 }])
+            expect(board.totalOf('tokens')).toBe(1_234_567_890_123)
+            expect(totals(board, 0, 0)).toEqual(['1234567890123'])
+            const costs = table([{ key: 'cost', total: 'sum' }], [{ id: 'a', cost: 0.1 }, { id: 'b', cost: 0.2 }])
+            expect(costs.totalOf('cost')).toBe(0.3)
+            expect(totals(costs, 0, 0)).toEqual(['0.3'])
+        })
+    })
+
+    it('edits the table inside a copied group independently', async () => {
+        await compile((s) => {
+            const original = table([{ key: 'n', total: 'sum' }], [{ id: 1, n: 1 }], { maxRows: 2 })
+            const bar = rect(12, 4)
+            original.cell(1, 'n').add(bar)
+            const holder = s.add(Object.assign(group(original), { bar, heading: original.header('n') }))
+            const second = s.add(holder.clone())
+            const copy = second.children[0] as Table
+            s.play(copy.setCell(1, 'n', 2))
+            const third = s.add(second.clone())
+            const latest = third.children[0] as Table
+            s.play(latest.append({ id: 2, n: 3 }), latest.light(2))
+            expect(third.heading).toBe(latest.header('n'))
+            expect(third.bar.parent).toBe(latest.cell(1, 'n'))
+            expect(third.bar).not.toBe(second.bar)
+            expect([original, copy, latest].map((board) => totals(board, 0, 2))).toEqual([['1'], ['2'], ['5']])
+            expect([original, copy, latest].map((board) => board.ids)).toEqual([[1], [1], [1, 2]])
+            expect(markerAt(latest, 2).shows).toBe(1)
+        })
+    })
+
+    it('hands the marker to the next row while removing the previous row', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['id'], [{ id: 'a' }, { id: 'b' }]))
+            s.play(board.light('a'), { duration: 0 })
+            s.play(board.remove('a'), board.light('b'))
+        })
+        expect(board.lit).toEqual({ row: 'b', column: null })
+        expect(markerAt(board, 1).shows).toBe(1)
+    })
+
+    it('rejects a backdated cell change even if its value matches a later change', async () => {
+        await compile((s) => {
+            const board = s.add(table(['n'], [{ id: 1, n: 1 }]))
+            s.at(10, () => s.play(board.setCell(1, 'n', 2)))
+            expect(() => s.at(1, () => s.play(board.setCell(1, 'n', 2)))).toThrow(/Call .* before it/)
+        })
+    })
+
+    it('keeps a lit row visible when other rows exchange ranks around it', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['n'], [{ id: 'a', n: 3 }, { id: 'b', n: 2 }, { id: 'c', n: 1 }]))
+            s.play(board.light('b'), { duration: 0 })
+            s.play(board.sort('n'), { duration: 1 })
+        })
+        expect(at(0.5, () => shows(board.row('b').content))).toBe(1)
+        expect(markerAt(board, 0.5).shows).toBe(1)
+    })
+
+    it('keeps surviving rows apart when easing overshoots their final slots', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table(['name'], Array.from({ length: 8 }, (_, id) => ({ id, name: 'Agjpqy' }))))
+            s.play(board.remove([1, 2, 3, 4, 5, 6], { duration: 1, ease: overshoot() }))
+        })
+        expect(at(0.69, () => board.row(7).get('y') - board.row(0).get('y'))).toBeGreaterThanOrEqual(board.pitch - 1e-6)
     })
 
     it('keeps a delayed cell update with its original row when an id is reused', async () => {

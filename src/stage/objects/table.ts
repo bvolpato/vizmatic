@@ -1,4 +1,4 @@
-import { DEFAULT_PROPS, Node, ownLabels, type NodeProps, type PropName } from '../node'
+import { Node, ownLabels, rebindCloneParts, type NodeProps, type PropName } from '../node'
 import { rectPath, type Path } from '../geometry'
 import { toPaint, type ColorInput, type Paint } from '../color'
 import { circle, dot, line, polyline, rect, svgPath } from '../shapes'
@@ -349,7 +349,7 @@ export class Table extends Node {
     /** The holder of the lines between the rows. `enter()` fades it, and each line shows by the rows that the table has. */
     private readonly grid = new Node()
     /** How many rows the panel has room for at each time. It follows the rows that arrive and leave. */
-    private readonly filled: Track<number>
+    private filled: Track<number>
     /** The times in which rows move to other places. The lines between the rows are away then. */
     private moves: [number, number][] = []
     private readonly w: number
@@ -369,26 +369,28 @@ export class Table extends Node {
     private readonly cols: Column[] = []
     private readonly looks = new Map<string, Look>()
     private readonly names: string[]
-    /** The options that the table was made with, for a copy. */
-    private readonly options: TableOptions
+    private readonly markerHasLine: boolean
     /** The bookkeeping. The animations change it when they are scheduled, so two changes in one sequence chain. */
     private order: Entry[] = []
     private byId = new Map<string, Entry>()
     /** Every row that the table has made, also those that left. A row that moves reads where the others are. */
     private every: Entry[] = []
     /** The rows at the start, and each change of the data with its time. The total is written from them, in the order of time. */
-    private readonly origin: Data[]
+    private origin: Data[]
     private changes: { time: number; apply: (rows: Data[]) => void }[] = []
-    private readonly sums: Words[] = []
+    private sums: Words[] = []
     /** The last change of the rows, with its times. The next one starts after it. */
     private last: { call: string; append: boolean; t0: number; t1: number } | null = null
     /** Each call of `light()`, in the order of time, and what the marker is on after the calls so far. */
     private spots: Spot[] = []
-    private on: Target | null = null
+    private get on(): Target | null {
+        const target = this.spots.at(-1)?.target
+        if (target?.row && this.byId.get(String(target.row.id)) !== target.row) return null
+        return target ?? null
+    }
 
     constructor(columns: readonly (string | TableColumn)[], rows: readonly TableRow[] = [], options: TableOptions = {}) {
         super()
-        this.options = options
         const size = this.size = options.size ?? 28
         if (!(Number.isFinite(size) && size > 0)) throw new Error('table: size is a text size, more than 0')
         const leading = options.leading ?? 1.9
@@ -488,7 +490,6 @@ export class Table extends Node {
         this.filled = new Track<number>(given.length)
         // The panel ends under its last row. Its top is fixed, so the header does not move when a row arrives or leaves.
         this.frame = new Node().fill('surface').stroke('grid', border)
-        this.frame.track('path').add(always<Path | null>((time) => rectPath(-w / 2, top, w, padY * 2 + this.pitch * (fixed + this.filled.sample(time)), size * 0.45), null))
         this.add(this.frame, this.grid)
         // A line goes from the inside of the border at the left to the inside of the border at the right.
         const rule = (y: number, stroke: ColorInput, width: number) => {
@@ -498,8 +499,6 @@ export class Table extends Node {
         }
         for (let slot = 1; slot < slots; slot++) {
             const made = rule(this.y(slot) - this.pitch / 2, 'grid', Math.max(1, size * 0.04))
-            // The line over a row shows when the table has that row, and while the rows are at rest.
-            made.track('opacity').add(always((time) => clamp(this.filled.sample(time) - slot) * this.calm(time), 0))
             this.lines.push(made)
             this.grid.add(made)
         }
@@ -508,12 +507,8 @@ export class Table extends Node {
         // that a sort moves has a card behind it, and the marker stays on that card. In a table with low rows,
         // the line would be at the ink of the text. The marker is then a fill with no line, a little stronger.
         const stroke = Math.max(2, size * 0.085)
-        const lined = this.pitch / 2 - Math.max(2, size * 0.1) - stroke / 2 - Math.max(inkOf(font), inkOf('mono')) * size >= size * MARKER_CLEAR
+        const lined = this.markerHasLine = this.pitch / 2 - Math.max(2, size * 0.1) - stroke / 2 - Math.max(inkOf(font), inkOf('mono')) * size >= size * MARKER_CLEAR
         this.marker = new Node().fill(lightColor, lined ? MARKER_FILL : MARKER_ALONE).stroke(lightColor, stroke)
-        this.marker.track('path').add(always<Path | null>((time) => this.markerPath(time), null))
-        this.marker.track('opacity').add(always((time) => this.beam(time).strength, 0))
-        this.marker.track('strokeOpacity').add(always((time) => (lined ? this.beam(time).line : 0), 1))
-        this.marker.track('visible').add(always((time) => this.beam(time).strength > 0, false))
 
         this.rules.push(rule(this.first - this.pitch / 2, 'gridStrong', border))
         this.add(this.rules[0]!)
@@ -538,11 +533,9 @@ export class Table extends Node {
         if (this.cols.some((col) => col.total !== undefined)) {
             // The total row is under the last row at every frame, with its line over it.
             const over = rule(0, 'gridStrong', border)
-            over.track('y').add(always((time) => this.y(this.filled.sample(time)) - this.pitch / 2, 0))
             this.rules.push(over)
             this.add(over)
             const node = this.totals = new TableRowNode(null)
-            node.track('y').add(always((time) => this.y(this.filled.sample(time)), 0))
             this.cols.forEach((col, at) => {
                 const cell = this.cellNode(col)
                 node.cells.push(cell)
@@ -555,6 +548,7 @@ export class Table extends Node {
             this.retotal()
         }
         this.add(this.marker)
+        this.bindPanel()
         // The layout measures the room of the table with `maxRows` rows, so a row that arrives or leaves does not change the measure.
         this.layoutBox = [-w / 2, -h / 2, w / 2, h / 2]
     }
@@ -642,31 +636,49 @@ export class Table extends Node {
         return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
-    /**
-     * A copy with its own rows and its own bookkeeping, in the state that the table has now, so a change of
-     * the copy does not change the table. A node that a film added to a cell is not in the copy.
-     */
-    override clone(): this {
-        const rows = this.order.map((entry): TableRow => {
-            const row: TableRow = Object.create(null)
-            row.id = entry.id
-            this.cols.forEach((col, at) => {
-                // The key `id` shows the id of the row, so the copy takes it from the id.
-                if (col.key !== 'id') row[col.key] = { value: entry.cells[at]!.value, state: entry.cells[at]!.state }
-            })
-            return row
-        })
-        // The copy has the columns of the table as they are: the same widths, also for a text that came later.
-        const columns = this.cols.map((col): TableColumn => ({ key: col.key, label: col.label, align: col.align, mono: col.mono, format: col.format, total: col.total, marks: col.marks, width: col.to - col.from }))
-        const copy = new Table(columns, rows, { ...this.options, width: this.w, maxRows: this.slots, font: this.font }) as this
-        for (const key of Object.keys(DEFAULT_PROPS) as PropName[]) (copy.base as unknown as Record<string, unknown>)[key] = this.get(key)
-        copy.label = this.label
-        if (this.on) {
-            const target: Target = { row: this.on.row ? copy.byId.get(String(this.on.row.id)) ?? null : null, column: this.on.column }
-            copy.spots.push({ t0: 0, t1: 0, ease: (share) => share, target })
-            copy.on = target
+    /** The node tree is already a snapshot. Bind its cells, row order, and totals to a new timeline. */
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        const twin = <T extends Node>(node: T) => copies.get(node)! as T
+        copy.every = this.every.map((entry) => ({
+            id: entry.id, made: entry.made, node: twin(entry.node), enters: [], countedFrom: -Infinity,
+            cells: entry.cells.map((slot) => ({ ...slot, node: twin(slot.node), text: slot.text && twin(slot.text), last: null })),
+        }))
+        copy.order = this.order.map((entry) => copy.every[entry.made]!)
+        copy.byId = new Map(copy.order.map((entry) => [String(entry.id), entry]))
+        copy.origin = copy.records()
+        copy.changes = []
+        copy.moves = []
+        copy.last = null
+        copy.filled = new Track(copy.count)
+        copy.spots = []
+        const on = this.on
+        if (on) {
+            const target = { row: on.row && copy.every[on.row.made]!, column: on.column }
+            copy.spots.push({ t0: 0, t1: 0, ease: (t) => t, target })
         }
-        return copy
+        copy.sums = this.sums.map((words) => {
+            const made = new Map([...words.made].map(([key, face]) => [key, twin(face)]))
+            const sum: Words = { column: words.column, holder: twin(words.holder), made, steps: [] }
+            for (const face of made.values()) copy.bindTotal(sum, face)
+            return sum
+        })
+        for (const entry of copy.every) copy.bindRow(entry)
+        copy.bindPanel()
+        copy.retotal()
+    }
+
+    private bindPanel(): void {
+        const fixed = this.totals ? 2 : 1
+        this.frame.track('path').add(always<Path | null>((time) => rectPath(-this.w / 2, -this.h / 2, this.w, this.size * 0.4 + this.pitch * (fixed + this.filled.sample(time)), this.size * 0.45), null))
+        this.lines.forEach((rule, index) => rule.track('opacity').add(always((time) => clamp(this.filled.sample(time) - index - 1) * this.calm(time), 0)))
+        this.marker.track('path').add(always<Path | null>((time) => this.markerPath(time), null))
+        this.marker.track('opacity').add(always((time) => this.beam(time).strength, 0))
+        this.marker.track('strokeOpacity').add(always((time) => this.markerHasLine ? this.beam(time).line : 0, 1))
+        this.marker.track('visible').add(always((time) => this.beam(time).strength > 0, false))
+        if (this.totals) {
+            this.rules[1]!.track('y').add(always((time) => this.y(this.filled.sample(time)) - this.pitch / 2, 0))
+            this.totals.track('y').add(always((time) => this.y(this.filled.sample(time)), 0))
+        }
     }
 
     /** The panel and the header arrive, and then the rows, from the top, and the total row. */
@@ -713,7 +725,6 @@ export class Table extends Node {
                 reveal(this, t0, ctx.stage)
                 const target: Target | null = row === null && at === null ? null : { row: row === null ? null : this.entry(row, true), column: at }
                 this.spot({ t0, t1, ease: ctx.ease, target })
-                this.on = target
             },
         }
     }
@@ -742,11 +753,11 @@ export class Table extends Node {
                 const [t0, t1] = times(ctx, call)
                 const entry = this.entry(row, true), slot = entry.cells[at]!
                 const value = 'value' in parts ? next.value : slot.value, state = 'state' in parts ? next.state : slot.state
-                if (value === slot.value && state === slot.state) return
                 const last = slot.last
                 if (last && t0 < last.t1 - SOON) {
                     throw new Error(`table: ${call} plays from ${seconds(t0)} to ${seconds(t1)}, and ${last.call} plays from ${seconds(last.t0)} to ${seconds(last.t1)}. A cell takes one change at a time: a change starts when the change before it is over. ${t0 < last.t0 - SOON ? `Call ${call} before it` : 'Play the two in a `seq`, or give the first one a shorter `duration`'}`)
                 }
+                if (value === slot.value && state === slot.state) return
                 slot.last = { call, t0, t1 }
                 reveal(this, t0, ctx.stage)
                 this.paint(col, slot, { value, state }, t0, t1, ctx.ease)
@@ -824,27 +835,25 @@ export class Table extends Node {
                 const gone = new Set(typeof which === 'function' ? this.find(which).map((id) => this.entry(id)) : (Array.isArray(which) ? which as readonly Id[] : [which as Id]).map((id) => this.entry(id, true)))
                 if (gone.size === 0) return
                 this.claim(call, false, t0, t1)
+                reveal(this, t0, ctx.stage)
                 const next = this.order.filter((entry) => !gone.has(entry))
                 const span = t1 - t0
                 // The rows that stay start to move when the rows that leave are nearly gone, so no two texts share a
                 // place. The panel gets lower with them.
                 const out = t0 + span * 0.45, move = t0 + span * 0.35
+                const ease: Ease = (t) => clamp(ctx.ease(t))
                 for (const entry of gone) {
-                    entry.node.tween('opacity', 0, t0, out, ctx.ease)
+                    entry.node.tween('opacity', 0, t0, out, ease)
                     stepAt(entry.node, 'visible', false, out)
                     this.byId.delete(String(entry.id))
                 }
                 next.forEach((entry, slot) => {
-                    if (this.order[slot] !== entry) entry.node.tween('y', this.y(slot), move, t1, ctx.ease)
+                    if (this.order[slot] !== entry) entry.node.tween('y', this.y(slot), move, t1, ease)
                 })
                 if (next.some((entry, slot) => this.order[slot] !== entry)) this.moves.push([move, t1])
-                this.fillTo(next.length, move, t1, ctx.ease)
+                this.fillTo(next.length, move, t1, ease)
                 this.order = next
-                // The marker leaves with its row. The row does not come back, and the marker does not stay at an empty place.
-                if (this.on?.row && gone.has(this.on.row)) {
-                    this.spot({ t0: out, t1: out, ease: ctx.ease, target: null })
-                    this.on = null
-                }
+                // A marker on a removed row follows its visibility until another light takes over.
                 const keys = new Set([...gone].map((entry) => String(entry.id)))
                 this.changed(out, (rows) => {
                     for (let index = rows.length - 1; index >= 0; index--) if (keys.has(String(rows[index]!.id))) rows.splice(index, 1)
@@ -1034,7 +1043,8 @@ export class Table extends Node {
             // A field that names no column would not show, and the film would not know.
             const stray = Object.keys(row).find((name) => name !== 'id' && !this.cols.some((col) => col.key === name))
             if (stray !== undefined) throw new Error(`table: row ${show(id)} has the field "${stray}", and the table has no such column. The columns are ${this.cols.map((col) => JSON.stringify(col.key)).join(', ')}`)
-            return { id, cells: this.cols.map((col) => this.fact(Object.hasOwn(row, col.key) ? row[col.key] : null, `row ${show(id)} in the column ${JSON.stringify(col.key)}`)) }
+            const cells = this.cols.map((col) => this.fact(Object.hasOwn(row, col.key) ? row[col.key] : null, `row ${show(id)} in the column ${JSON.stringify(col.key)}`))
+            return { id, cells }
         })
     }
 
@@ -1175,12 +1185,16 @@ export class Table extends Node {
         const entry: Entry = { id: row.id, node, cells, made: this.every.length, countedFrom: -Infinity, enters: [] }
         this.every.push(entry)
         // The cells show as much as `enter()` has brought of the row, and not at all under a row that passes over them.
-        node.content.track('opacity').add(always((time) => this.arrival(entry, time) * this.clear(entry, time), 1))
+        this.bindRow(entry)
         // A row that the table is made with shows from the start. A row that arrives is hidden until its time.
         if (this.mounted) node.base.visible = false
         this.body.add(node)
         this.byId.set(String(row.id), entry)
         return entry
+    }
+
+    private bindRow(entry: Entry): void {
+        entry.node.content.track('opacity').add(always((time) => this.arrival(entry, time) * this.clear(entry, time), 1))
     }
 
     /**
@@ -1288,13 +1302,14 @@ export class Table extends Node {
         // The card is there before the row has gone far, so a row under it is hidden when the card reaches it.
         const edge = (t1 - t0) * 0.1
         next.forEach((entry, slot) => {
-            if (this.order[slot] === entry) return
+            const lit = this.on?.row === entry
+            if (this.order[slot] === entry && !lit) return
             const node = entry.node, card = node.backing!
-            node.tween('y', this.y(slot), t0, t1, ctx.ease)
+            if (this.order[slot] !== entry) node.tween('y', this.y(slot), t0, t1, (t) => clamp(ctx.ease(t)))
             // A row that moves is a card over the rows that stay: it hides a row that it passes. The row that
             // goes the longest way is the top card, so the eye can follow it. The row with the light is over
             // them all: the marker is on it, and a marker on a row that is hidden would light nothing.
-            stepAt(node, 'z', Math.abs(slot - this.order.indexOf(entry)) + (this.on?.row === entry ? next.length : 0), t0)
+            stepAt(node, 'z', Math.abs(slot - this.order.indexOf(entry)) + (lit ? next.length : 0), t0)
             stepAt(node, 'z', 0, t1)
             card.tween('opacity', 1, t0, t0 + edge, ctx.ease)
             card.tween('opacity', 0, t1 - edge, t1, ctx.ease)
@@ -1334,9 +1349,18 @@ export class Table extends Node {
     private totalOfRows(col: Column, at: number, rows: readonly Data[]): TableCell {
         if (col.total === 'sum') {
             let sum = 0
-            for (const row of rows) if (typeof row.cells[at]!.value === 'number') sum += row.cells[at]!.value as number
-            // The sum of 0.1 and 0.2 is not 0.3 in a computer. Twelve digits are more than a table shows.
-            return Number(sum.toPrecision(12))
+            let places = 0
+            for (const row of rows) {
+                const value = row.cells[at]!.value
+                if (typeof value !== 'number') continue
+                sum += value
+                if (!Number.isInteger(value)) {
+                    const [mantissa, exponent] = String(value).split('e')
+                    places = Math.max(places, (mantissa.split('.')[1]?.length ?? 0) - Number(exponent ?? 0))
+                }
+            }
+            // Adding decimals cannot introduce another decimal place. Keep the precision of the inputs.
+            return places > 0 && places <= 100 ? Number(sum.toFixed(places)) : sum
         }
         return (col.total as (rows: readonly TableRowView[]) => TableCell)(this.viewsOf(rows))
     }
@@ -1377,8 +1401,7 @@ export class Table extends Node {
                         face.base.visible = false
                         words.made.set(key, node = face)
                         words.holder.add(face)
-                        const own = node
-                        own.track('visible').add(always((at) => this.totalAt(words, at) === own, false))
+                        this.bindTotal(words, node)
                     }
                 }
                 const last = words.steps[words.steps.length - 1]
@@ -1391,6 +1414,10 @@ export class Table extends Node {
             change.apply(rows)
             take(change.time)
         }
+    }
+
+    private bindTotal(words: Words, face: Node): void {
+        face.track('visible').add(always((time) => this.totalAt(words, time) === face, false))
     }
 
     /** The text of a total at a time. */
