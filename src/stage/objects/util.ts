@@ -146,6 +146,17 @@ export function stepsBetween(min: number, max: number, step: number): number[] {
     return out
 }
 
+/** A value that a call cannot take, in a few words for a message. */
+export function said(value: unknown): string {
+    if (value === undefined) return 'undefined'
+    if (value === null) return 'null'
+    if (typeof value === 'string') return `the string ${JSON.stringify(value.length > 48 ? `${value.slice(0, 48)}...` : value)}`
+    if (typeof value === 'number' || typeof value === 'boolean') return `the value ${value}`
+    if (typeof value === 'function') return 'a function'
+    if (Array.isArray(value)) return value.length <= 4 && value.every((item) => typeof item === 'number') ? `the list [${value.join(', ')}]` : 'a list'
+    return value instanceof Node ? 'a node' : 'an object'
+}
+
 /** Round axis ticks: about `count` of them, on 1, 2, or 5 steps. */
 export function niceTicks(min: number, max: number, count = 5): { ticks: number[]; step: number } {
     const span = max - min || 1

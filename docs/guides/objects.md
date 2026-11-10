@@ -49,6 +49,61 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+`plot` draws a function as a smooth curve through even samples. It also takes a series: the list of its points, `[x, y]` with x in rising order. A series is straight lines through its own points, so its shape stays the same while it grows or scrolls, and a point with no value (`NaN`) leaves a gap. `plot(points, { to: () => now.value })` draws a curve up to a value, and `from` takes a function too. `valueAt(points, x)` gives the value of a series at any x, for a mark that follows it.
+
+`axes.marker({ x: () => now.value, label: 'now' })` draws a line across the plot at one value of x, with its label over the plot. With `y`, the line is level and its label is at the right of the plot, for a limit or a target. Near an end of the plot, the label stays beside the plot and does not pass the end. A marker that follows a value does not show while the value is outside the range.
+
+## Bands
+
+`band(axes, low, high)` fills the band between two curves on the same axes: the interval around a forecast, the range of a sensor, the room between a load and its limit. Each curve is a function or a series. `from` and `to` take a number or a function, so `to: () => t.value` opens the band from left to right, as a curve is drawn. The band stays inside the y range, and it has a gap where a curve has no value. `areaUnder(axes, high, { over: low })` is the same band.
+
+```film paired label="A median draws, and two bands open around it: the dark one inside the light one"
+import { axes, band, fadeIn, film, type Vec } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const open = s.value(0)
+    const graph = s.add(axes({ x: [0, 12], y: [0, 10], width: 1300, height: 700, tips: false }))
+    // One value for each whole x. The bands are wider at each step.
+    const middle = [4, 4.6, 5.4, 6, 5.6, 4.8, 4.4, 5, 5.8, 6.4, 6, 5.2, 4.8]
+    const around = (reach: number): Vec[] => middle.map((y, x) => [x, y + reach * Math.sqrt(x)])
+    band(graph, around(-0.8), around(0.8), { to: () => open.value, fill: 'blue', opacity: 0.2 })
+    band(graph, around(-0.3), around(0.3), { to: () => open.value, fill: 'blue', opacity: 0.3 })
+    graph.plot(around(0), { to: () => open.value, stroke: 'blue' })
+    s.play(fadeIn(graph), { duration: 0.6 })
+    s.play(open.to(12), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+## Moving windows
+
+A range can be a function, for a window that moves along a series: `axes({ x: () => [now.value - 8, now.value + 4] })`. The axes then draw their ticks and their numbers again on every frame, and a number fades before it passes an end of its axis. Give `xStep`, so that the ticks stay the same when the window changes its width. Keep the y range, or move it slowly: a y axis that jumps is hard to read.
+
+Each mark on such axes follows the range. A curve and a band are cut at the two ends of the x range. A dot, a marker, guides, a tangent, a secant, the rectangles of `riemann`, and the names of the axes move with it, and a mark at a point does not show while the point is outside the range.
+
+```film paired label="A window moves along a series, a marker follows the present, and a band opens ahead of it"
+import { axes, band, dot, dynamic, fadeIn, film, linear, valueAt, type Vec } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const now = s.value(8), ahead = s.value(0)
+    // A series with one point for each whole x.
+    const points: Vec[] = Array.from({ length: 17 }, (_, x) => [x, 5 + 3 * Math.sin(x / 2)])
+    const wave = (x: number) => 5 + 3 * Math.sin(x / 2)
+    const graph = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], width: 1300, height: 700, xStep: 2, tips: false }))
+    band(graph, (x) => wave(x) - 0.3 * (x - 16), (x) => wave(x) + 0.3 * (x - 16), { from: 16, to: () => 16 + ahead.value, fill: 'blue' })
+    graph.plot(points, { to: () => now.value, stroke: 'ink' })
+    graph.marker({ x: () => now.value, label: 'now' })
+    // A mark of the film at a place of the data: `p` gives the place for the range of each frame.
+    graph.add(dynamic(() => dot(8, 'ink').at(graph.p(now.value, valueAt(points, now.value)))))
+    s.play(fadeIn(graph), { duration: 0.6 })
+    s.play(now.to(16, { ease: linear }), { duration: 3 })
+    s.play(ahead.to(4), { duration: 1.2 })
+    s.wait(0.8)
+})
+```
+
+`p(x, y)` gives the place for the range at the time of the frame, so make a mark of your own with `dynamic`, as the dot of the example. Fade the parts of such axes in: `draw` has no line to trace on them.
+
 ## Planes and fields
 
 `plane` draws the classic grid. Its lines are dense paths, so they bend smoothly under `applyMatrix` and `warp`. `complexPlane` and `applyComplex` map the grid through a complex function.
@@ -363,6 +418,44 @@ With `shown`, only the nodes that it names show at the start. `g.grow(ids)` brin
 `g.p(id, 'bottom')` is the middle of an edge of a node, in the coordinates of the graph, for a line of the film. `g.node(id)` is the node, for `beside(note, g, 'right', 'wide', g.node(id))` of the layout, and `g.edge(from, to)` is the edge, with its `shaft`, its `tip` and its `caption`. `labelAt` on an edge moves its label along the line, from 0 at the start to 1 at the end.
 
 A graph has a `labelSize` of 26. The values and the notes have that size too, or `valueSize`. The labels of the edges have an `edgeLabelSize` of 20: give 26 for a lesson video. The texts are in the font of the film, and the labels of the edges are in mono in a film that names no font.
+
+## Messages on a line
+
+`connector(a, b)` draws a line between two nodes, and `link.send(mark)` sends a mark along it: a request, an answer, a packet. Use it for a protocol between parts, where a message takes time, and can arrive late or not at all.
+
+```film paired label="A request arrives, its answer comes back, one request is lost on the way, and one is refused at the server"
+import { chip, connector, film, namedBox } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const look = { width: 340, height: 170, size: 56 } as const
+    const client = s.add(namedBox('client', look).at(-620, 0))
+    const server = s.add(namedBox('server', look).at(620, 0))
+    const link = s.add(connector(client, server, { route: 'straight', tip: false, color: 'gridStrong', width: 4 }))
+    // A new mark for each message. Any node is a mark: a chip, a pictogram, a group.
+    const message = (word: string) => chip(word, { size: 44, round: true, anchor: 'center', stroke: 'dim' })
+    s.play(link.send(message('request'), { duration: 1.2 }))
+    s.play(link.send(message('answer'), { duration: 1.2, reverse: true }))
+    s.play(link.send(message('request'), { duration: 0.8, lost: 0.6 }))
+    s.play(link.send(message('request'), { duration: 1.2, refused: true }))
+    s.wait(0.4)
+})
+```
+
+The mark grows in beside the first node and travels to the second one at one speed. `reverse: true` sends it from the second node to the first, as an answer. `duration` is the time on the way, so a slow message has a long `duration`. The mark starts and stops clear of the two nodes, and `gap` is that room: 8 by default.
+
+A message has one of three ends:
+
+- It arrives. The mark goes into the node at the end of the line: it shrinks there, and it is gone.
+- `lost: 0.6` loses it at that part of the way, from 0 to 1. The mark stops there, and a cross shows ahead of it. With `lost`, `duration` is the time to that place.
+- `refused: true` is a message that arrives, and that the receiver does not take. The mark stops before the node, with the cross between the two.
+
+The way of a message that stops ends before the node, with room for the cross. So the cross is never on the node or on the mark, and `lost: 1` stops the mark where a refused message stops.
+
+A message that is lost or refused stays with its cross for `hold` seconds, 0.8 by default, and then both go. `stopColor` is the color of the cross, red by default. The cross is as high as the mark.
+
+The animation lasts for the way and for what comes after it: 0.12 seconds for a mark that arrives, and `hold` more for one that stops. So `s.play(link.send(mark))` ends when the mark is gone. A film that has the times of its messages, such as the trace of a simulation, plays each one at its time: `s.at(sent, () => s.play(link.send(mark, { duration: arrives - sent })))`. Several marks can be on one line at one time. Each message has its own mark: one mark is at one place at a time, so a mark that is sent again while it is on its way is an error. Send a copy, `link.send(mark.clone())`, or make a new mark for each message. A mark that has arrived can go again, as the answer.
+
+The mark never fades: it grows in and shrinks out. So the line under it does not show through a text on it. The mark follows the line as it is when the message leaves: when a node at an end moves while the message is on its way, the mark arrives at the place where the node was. A line that is too short for the mark, a `lost` outside 0 to 1, a message that is both lost and refused, and a `duration`, a `hold`, or a `gap` that is not a number or is under 0 are errors. A `duration` is more than 0. `send` works with any `route` of the connector, and it puts the line on the stage when the film did not.
 
 ## Lanes
 
