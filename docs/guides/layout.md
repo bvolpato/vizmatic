@@ -26,7 +26,9 @@ A scene types no x and no y. It cuts its area into regions, lets a container mea
 | `fitted(region, (width) => lanes(names, events, { width }))` | Build an object so that all of it, with its names and labels, is as wide as a region. |
 | `boxOf(thing)`, `between(a, b)` | The measure of a node, a block or a list, and the room between two things, each as a `Box`. |
 | `passage(text, { width }).region(part)` | Measure the selected words in stage coordinates. After `diff()` or `accept()`, `boxOf(page)` measures the new height. |
-| `lanes(...).region({ lane, between, from, to, at })` | The box of a part of a `lanes` object: a lane, the room between two lanes, a stretch of time. |
+| `lanes(...).region({ lane, between, from, to, at })` | The box of a part of a `lanes` object: a lane, the room between two lanes, a stretch of time. `region({ event })` is the box of one event. |
+| `numberLine(...).region({ at, from, to, band })` | The box around one value, a range of values, or a threshold band on a number line. |
+| `scatter(...).region({ x, y })` | The box around the selected data ranges on a scatter plot. Omit both ranges for the whole plot. |
 | `table(...).region(row, column)` | The box of a table row, column, or cell in stage pixels. Use `null` for the row to select a column. With no arguments, it measures the room for `maxRows` rows. |
 | `tokens(...).region({ from, to, row })` | The box of a run of token cells, or of their values in one named row. Read it again after a change moves the tokens. |
 
