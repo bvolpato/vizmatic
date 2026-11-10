@@ -1,14 +1,14 @@
 import { apply, arcPath, circlePath, invert, polyPath, rectPath, reverseRing, smoothPath, type Path, type Vec } from '../geometry'
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { over, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimContext, type AnimOptions } from '../anim'
 import type { Ease } from '../ease'
 import { clock, Track } from '../track'
-import { Box } from '../layout'
+import type { Box } from '../layout'
 import type { ChartOptions } from './charts'
-import { DEFAULT_SERIES, Part, propAt, reveal, small, solidColor, staggered, stepAt, tweenValue, xyAxes, xyPoint, type XYFrame } from './util'
+import { DEFAULT_SERIES, Part, propAt, reveal, small, solidColor, staggered, stepAt, tweenValue, worldBox, xyAxes, xyPoint, type XYFrame } from './util'
 
 /** The mark of a point. A group can have its own, as a second sign beside its color. */
 export type ScatterShape = 'dot' | 'ring' | 'square' | 'diamond' | 'triangle'
@@ -99,6 +99,7 @@ interface Change {
     t1: number
     ease: Ease
     from: string | undefined
+    assigned?: boolean
     to: string | undefined
 }
 
@@ -110,8 +111,10 @@ interface Entry {
     group: string | undefined
     /** The group at the start, and each change of it, in the order of time. */
     first: string | undefined
+    initialShares?: ReadonlyMap<string, number>
     changes: Change[]
     /** The color that the point has of its own, until `assign` gives it the color of a group. */
+    initialColor: ColorInput | undefined
     own: ColorInput | undefined
     radius: number
     query: boolean
@@ -134,7 +137,9 @@ interface Probe {
     ease: Ease
     from: number
     k: number
-    among: ((index: number) => boolean) | null
+    among: ((point: ScatterPointView) => boolean) | null
+    /** A copy made during a search keeps the share of the ring it showed then. */
+    frozen?: number
     color: ColorInput
     /** The state before this one. The ring starts from it. */
     before: Probe | null
@@ -147,7 +152,30 @@ const SHAPES: readonly ScatterShape[] = ['dot', 'ring', 'square', 'diamond', 'tr
 
 const seconds = (time: number): string => `${Math.round(time * 1000) / 1000} s`
 const written = (value: unknown): string => (typeof value === 'string' ? JSON.stringify(value) : typeof value === 'function' ? 'a function' : typeof value === 'object' && value !== null ? (Array.isArray(value) ? `[${value.map(written).join(', ')}]` : 'an object') : String(value))
+const readTime = (): number | null => clock.mode === 'free' ? null : clock.now
+const present = (entry: Entry, time: number | null): boolean => time === null ? entry.here : entry.alive.sample(time)
 const isVec = (value: unknown): value is Vec => Array.isArray(value) && value.length === 2 && typeof value[0] === 'number' && typeof value[1] === 'number' && Number.isFinite(value[0]) && Number.isFinite(value[1])
+
+function axisRange(given: readonly [number, number] | undefined, points: readonly ScatterPoint[], axis: 'x' | 'y'): readonly [number, number] {
+    let range = given
+    if (range === undefined) {
+        if (points.length === 0) return [0, 1]
+        let low = Infinity, high = -Infinity
+        for (const point of points) {
+            low = Math.min(low, point[axis])
+            high = Math.max(high, point[axis])
+        }
+        const pad = (high - low || 1) * 0.06
+        range = [low - pad, high + pad]
+    }
+    if (!isVec(range) || !(range[1] > range[0])) throw new Error(`scatter: the ${axis} axis range must have two finite values, the smaller one first. It got ${written(range)}`)
+    const [low, high] = range
+    const rough = (high - low) / (axis === 'x' ? 6 : 5)
+    if (!Number.isFinite(rough) || !(10 ** Math.floor(Math.log10(rough)) > 0)) {
+        throw new Error(`scatter: the ${axis} axis range ${written(range)} cannot represent its ticks. Rescale the values or give the plot a wider range`)
+    }
+    return [low, high]
+}
 
 /** A ring with a hole: the outer circle, and the inner one the other way round. */
 function annulus(outer: number, inner: number): Path {
@@ -180,12 +208,12 @@ function shownAt(node: Node, time: number): number {
     return (visible ? visible.sample(time) as boolean : node.base.visible) ? propAt(node, 'opacity', time) : 0
 }
 
-/** The part of a convex polygon where a * x + b * y is c or less. */
-function clip(polygon: readonly Vec[], a: number, b: number, c: number): Vec[] {
+/** The part of a convex polygon on the center's side of a bisector. Work relative to the center to retain precision on offset axes. */
+function clip(polygon: readonly Vec[], center: Vec, a: number, b: number, c: number): Vec[] {
     const out: Vec[] = []
     for (let index = 0; index < polygon.length; index++) {
         const p = polygon[index]!, q = polygon[(index + 1) % polygon.length]!
-        const dp = a * p[0] + b * p[1] - c, dq = a * q[0] + b * q[1] - c
+        const dp = a * (p[0] - center[0]) + b * (p[1] - center[1]) - c, dq = a * (q[0] - center[0]) + b * (q[1] - center[1]) - c
         if (dp <= 0) out.push(p)
         if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) {
             const t = dp / (dp - dq)
@@ -267,7 +295,7 @@ export class ScatterArea extends Node {
     /** How far the shade is on, from 0 to 1, at each time. */
     lit: Value
     /** True after the changes that are scheduled so far when the shade is on. */
-    private on: boolean
+    private setting: Track<boolean>
     private last: { t0: number; t1: number } | null = null
 
     constructor(
@@ -282,7 +310,7 @@ export class ScatterArea extends Node {
         shaded: boolean,
     ) {
         super()
-        this.on = shaded
+        this.setting = new Track(shaded)
         this.lit = new Value(shaded ? 1 : 0)
         // Not an arrow function: `this` is the node that draws, which is the copy in a copy of the chart.
         this.draw = function (this: ScatterArea, time: number) {
@@ -292,7 +320,7 @@ export class ScatterArea extends Node {
 
     /** True when the shade is on, after the changes that are scheduled so far. */
     get shaded(): boolean {
-        return this.on
+        return this.setting.sample(readTime() ?? Infinity)
     }
 
     /**
@@ -324,7 +352,7 @@ export class ScatterArea extends Node {
                 this.last = { t0: ctx.t0, t1: ctx.t1 }
                 reveal(this, ctx.t0, ctx.stage)
                 tweenValue(this.lit, lit ? 1 : 0, ctx.t0, ctx.t1, ctx.ease)
-                this.on = lit
+                this.setting.step(ctx.t0, lit)
             },
         }
     }
@@ -341,6 +369,13 @@ export class ScatterArea extends Node {
         // A hull has a faint fill at all times: it is the body of its group. A cell and a span are lines until they shade.
         const base = this.kind === 'hull' ? 0.07 : 0
         return { color: this.paint(this.chart), opacity: base + (0.22 - base) * lit }
+    }
+
+    protected override [rebindCloneParts](copy: this, _parts: ReadonlyMap<Node, Node>): void {
+        const now = clock.now
+        copy.setting = new Track(this.setting.sample(now))
+        copy.lit = new Value(this.lit.track.sample(now))
+        copy.last = null
     }
 
     private render(time: number): Node[] | null {
@@ -378,11 +413,11 @@ export class Scatter extends Node {
     /** The look of each group, in the order in which the chart came to know it, and the names in that order. */
     private readonly looks = new Map<string, Look>()
     private readonly groupNames: string[] = []
+    private readonly groupHalves: number[] = []
+    private labelEnd = 0
     private entries: Entry[] = []
     private probes: Probe[] = []
     private lastProbe: { call: string; t0: number; t1: number } | null = null
-    /** The names of the points that an `insert` made and that the film did not play yet. */
-    private pending = new Set<string>()
     /** The layer of the areas and the layer of the search, under the points. Made when the film first asks for one. */
     private areaLayer: Node | null = null
     private probeLayer: Node | null = null
@@ -396,19 +431,22 @@ export class Scatter extends Node {
     constructor(points: readonly ScatterPoint[], options: ScatterOptions = {}) {
         super()
         if (!Array.isArray(points)) throw new Error('scatter: the points are a list, such as [{ x: 1, y: 2 }]')
-        if (points.length === 0 && !(options.x && options.y)) throw new Error('scatter: with no point at the start, give the ranges of the two axes: x and y')
-        const xs = points.map((p) => p.x), ys = points.map((p) => p.y)
-        const pad = (lo: number, hi: number) => (hi - lo || 1) * 0.06
-        const xRange = options.x ?? [Math.min(...xs) - pad(Math.min(...xs), Math.max(...xs)), Math.max(...xs) + pad(Math.min(...xs), Math.max(...xs))]
-        const yRange = options.y ?? [Math.min(...ys) - pad(Math.min(...ys), Math.max(...ys)), Math.max(...ys) + pad(Math.min(...ys), Math.max(...ys))]
+        const specs = points.map((point, index) => this.checked(point, `point ${index}`))
+        const xRange = axisRange(options.x, specs, 'x'), yRange = axisRange(options.y, specs, 'y')
         this.frame = { xRange, yRange, w: options.width ?? 900, h: options.height ?? 520 }
         const labelSize = this.labelSize = options.labelSize ?? 18
+        for (const [key, value] of [['width', this.frame.w], ['height', this.frame.h]] as const) {
+            if (!(Number.isFinite(value) && value > 0)) throw new Error(`scatter: ${key} must be a finite number greater than 0`)
+        }
+        for (const [key, value] of [['labelSize', labelSize], ['radius', options.radius ?? 6]] as const) {
+            if (!(Number.isFinite(value) && value >= 0)) throw new Error(`scatter: ${key} must be a finite number, 0 or more`)
+        }
         this.nameSize = options.nameSize ?? 26
         if (!(Number.isFinite(this.nameSize) && this.nameSize > 0)) throw new Error('scatter: nameSize is the text size of the names of the points, more than 0')
         this.baseRadius = options.radius ?? 6
         this.font = options.font
         this.withGroupLabels = options.groupLabels ?? true
-        this.axis = xyAxes(this.frame, { labelSize, color: options.color, font: options.font, xLabel: options.xLabel, yLabel: options.yLabel })
+        this.axis = xyAxes(this.frame, { labelSize, color: options.color, font: options.font, xLabel: options.xLabel, yLabel: options.yLabel, hideXTicks: specs.length === 0 && !options.x, hideYTicks: specs.length === 0 && !options.y })
         for (const [name, look] of Object.entries(options.groups ?? {})) {
             const given: ScatterGroup = typeof look === 'object' && look !== null && !Array.isArray(look) && !('type' in look) ? look as ScatterGroup : { color: look as ColorInput }
             if (given.shape !== undefined && !SHAPES.includes(given.shape)) throw new Error(`scatter: the group ${JSON.stringify(name)} has the shape ${written(given.shape)}. A shape is ${SHAPES.map((shape) => `'${shape}'`).join(', ')}`)
@@ -417,9 +455,9 @@ export class Scatter extends Node {
             this.looks.set(name, { color, shape: given.shape ?? 'dot', label: given.label !== false })
         }
         const sums = new Map<string, { sumX: number; top: number; count: number }>()
-        const dots = points.map((point, index) => {
-            const spec = this.checked(point, `point ${index}`)
-            if (spec.name !== undefined && this.entries.some((entry) => entry.name === spec.name)) throw new Error(this.taken(spec.name, 'the points'))
+        const dots = specs.map((point, index) => {
+            if (point.name !== undefined || point.words !== null || point.query) this.inPlot([point.x, point.y], `the place of point ${index}${point.name === undefined ? '' : ` (${written(point.name)})`}`)
+            if (point.name !== undefined && this.entries.some((entry) => entry.name === point.name)) throw new Error(this.taken(point.name, 'the points'))
             let color = point.color
             if (point.group !== undefined) {
                 let look = this.looks.get(point.group)
@@ -434,8 +472,8 @@ export class Scatter extends Node {
                 sum.count++
                 sums.set(point.group, sum)
             }
-            this.entries.push(this.entryOf(spec, true))
-            return this.mark(spec, color)
+            this.entries.push(this.entryOf(point, true))
+            return this.mark(point, color)
         })
         this.dots.push(...dots)
         this.add(this.axis, ...dots)
@@ -452,6 +490,7 @@ export class Scatter extends Node {
                     // A group with no point yet has no place. Its label comes when `assign` gives it a point.
                     label.hide()
                 }
+                this.groupHalves.push(label.bounds().width / 2)
                 this.groupNames.push(name)
                 this.groupLabels.push(label)
                 this.add(label)
@@ -461,7 +500,7 @@ export class Scatter extends Node {
             const label = this.nameOf(entry)
             this.nameLabels.push(label)
             if (!label) return
-            label.at(this.namePlace(index, label))
+            label.at(this.namePlace(index))
             this.add(label)
         })
         ownLabels(this, { name: 'scatter chart', plot: true })
@@ -495,27 +534,29 @@ export class Scatter extends Node {
         const unknown = Object.keys(part).find((name) => !names.includes(name))
         if (unknown !== undefined) throw new Error(`scatter: region has no part "${unknown}". Its parts are: ${names.join(', ')}`)
         const [x0, x1] = this.rangeOf(part.x, this.frame.xRange, 'region: x'), [y0, y1] = this.rangeOf(part.y, this.frame.yRange, 'region: y')
-        const [ax, ay] = this.toWorld(...this.p(x0, y1)), [bx, by] = this.toWorld(...this.p(x1, y0))
-        return new Box(Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by))
+        const [left, top] = this.p(x0, y1), [right, bottom] = this.p(x1, y0)
+        return worldBox(this, left, top, right, bottom)
     }
 
     // ── State ─────────────────────────────────────────────────────────────
 
     /** The place of a point in the units of the axes, by its index or its name, after the changes that are scheduled so far. */
     positionOf(which: number | string): [number, number] {
-        const entry = this.entries[this.indexOf(which, 'positionOf')]!
-        return [entry.x, entry.y]
+        const index = this.indexOf(which, 'positionOf'), time = readTime()
+        return time === null ? [this.entries[index]!.x, this.entries[index]!.y] : this.placeAt(index, time)
     }
 
     /** The group of a point, by its index or its name, after the changes that are scheduled so far. */
     groupOf(which: number | string): string | undefined {
-        return this.entries[this.indexOf(which, 'groupOf')]!.group
+        const entry = this.entries[this.indexOf(which, 'groupOf')]!, time = readTime()
+        return time === null ? entry.group : this.groupAt(entry, time)
     }
 
     /** How many points a group has, after the changes that are scheduled so far. */
     count(group: string): number {
         this.lookOf(group, 'count')
-        return this.entries.filter((entry) => entry.here && entry.group === group).length
+        const time = readTime()
+        return this.entries.filter((entry) => present(entry, time) && (time === null ? entry.group : this.groupAt(entry, time)) === group).length
     }
 
     /** The indexes of the points that a function picks. It gets each point with its place and its group, after the changes that are scheduled so far. */
@@ -532,18 +573,17 @@ export class Scatter extends Node {
     nearestTo(from: number | string | Vec, k?: number, options: { among?: ScatterWhich } = {}): ScatterNeighbor[] {
         const at: Vec = isVec(from) ? from : this.positionOf(from as number | string)
         const self = isVec(from) ? -1 : this.indexOf(from as number | string, 'nearestTo')
-        const allowed = options.among === undefined ? null : new Set(this.pick(options.among, 'nearestTo: among'))
-        const found = this.ranked(at, self, allowed ? (index) => allowed.has(index) : null, null)
+        const found = this.ranked(at, self, this.filter(options.among, 'nearestTo: among'), readTime())
         if (k !== undefined && !(Number.isInteger(k) && k >= 0)) throw new Error(`scatter: nearestTo: k is ${written(k)}. Give a whole number, 0 or more`)
         return (k === undefined ? found : found.slice(0, k)).map(({ index, distance }) => ({ index, name: this.entries[index]!.name, distance }))
     }
 
     /** The indexes of the points that the search of `nearest` holds, from the nearest one, after the changes that are scheduled so far. Empty with no search. */
     get neighbors(): number[] {
-        const probe = this.probes[this.probes.length - 1]
+        const time = readTime()
+        const probe = this.probeAt(time ?? Infinity)
         if (!probe || probe.k === 0) return []
-        const from = this.entries[probe.from]!
-        return this.ranked([from.x, from.y], probe.from, probe.among, null).slice(0, probe.k).map((one) => one.index)
+        return this.ranked(this.centerAt(probe.from, time), probe.from, probe.among, time).slice(0, probe.k).map((one) => one.index)
     }
 
     // ── Verbs ─────────────────────────────────────────────────────────────
@@ -558,9 +598,9 @@ export class Scatter extends Node {
                 const span = ctx.t1 - ctx.t0
                 stepAt(this.axis, 'opacity', 0, ctx.t0)
                 this.axis.tween('opacity', 1, ctx.t0, ctx.t0 + span * 0.3, ctx.ease)
-                const order = [...this.dots].sort((a, b) => a.get('x') - b.get('x'))
+                const order = this.dots.map((point, index) => ({ point, index })).sort((a, b) => a.point.get('x') - b.point.get('x'))
                 const windows = staggered(order.length, lag, ctx.t0 + span * 0.15, ctx.t1)
-                order.forEach((point, i) => {
+                order.forEach(({ point, index }, i) => {
                     const [start, end] = windows[i]!
                     const sx = point.get('sx')
                     stepAt(point, 'sx', 0.001, ctx.t0)
@@ -568,7 +608,7 @@ export class Scatter extends Node {
                     point.tween('sx', sx, start, end, ctx.ease)
                     point.tween('sy', sx, start, end, ctx.ease)
                     // The name of a point comes with its mark.
-                    const name = this.nameLabels[this.dots.indexOf(point)]
+                    const name = this.nameLabels[index]
                     if (name) {
                         stepAt(name, 'opacity', 0, ctx.t0)
                         name.tween('opacity', 1, start, end, ctx.ease)
@@ -634,7 +674,7 @@ export class Scatter extends Node {
                 for (const index of moved) {
                     const label = this.nameLabels[index]
                     if (!label) continue
-                    const [x, y] = this.namePlace(index, label, true)
+                    const [x, y] = this.namePlace(index, true, ctx.t1)
                     label.tween('x', x, ctx.t0, ctx.t1, ctx.ease)
                     label.tween('y', y, ctx.t0, ctx.t1, ctx.ease)
                 }
@@ -651,26 +691,21 @@ export class Scatter extends Node {
     insert(point: ScatterPoint, options: AnimOptions & { from?: Vec | Node } = {}): Anim {
         const spec = this.checked(point, 'insert: the point')
         this.inPlot([spec.x, spec.y], 'insert: the place of the point')
-        if (spec.name !== undefined && (this.entries.some((entry) => entry.here && entry.name === spec.name) || this.pending.has(spec.name))) throw new Error(this.taken(spec.name, 'insert'))
+        if (spec.name !== undefined && this.entries.some((entry) => entry.here && entry.name === spec.name)) throw new Error(this.taken(spec.name, 'insert'))
         if (spec.group !== undefined) this.lookOf(spec.group, 'insert')
         const from = options.from
         if (from !== undefined && !(from instanceof Node) && !isVec(from)) throw new Error(`scatter: insert: \`from\` is ${written(from)}. Give a point [x, y] of the stage, or a node`)
-        // The nodes are made now and join the chart when the film plays the insert, so a point that is wrong stops the film at this line.
-        const entry = this.entryOf(spec, false)
-        const mark = this.mark(spec, spec.color ?? (spec.group === undefined ? undefined : this.looks.get(spec.group)!.color))
-        const label = this.nameOf(entry)
-        if (label) ownLabels(this, { labels: [label] })
-        if (spec.name !== undefined) this.pending.add(spec.name)
         return {
             label: 'scatter.insert', duration: options.duration ?? 0.7, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
                 const { t0, t1, ease } = ctx
-                if (spec.name !== undefined) {
-                    this.pending.delete(spec.name)
-                    // A film that plays one insert twice would bring two points of one name.
-                    if (this.entries.some((other) => other.here && other.name === spec.name)) throw new Error(this.taken(spec.name, 'insert'))
-                }
+                if (spec.name !== undefined && this.entries.some((other) => other.here && other.name === spec.name)) throw new Error(this.taken(spec.name, 'insert'))
+                // Each play owns its mark and its history, even when the film reuses the animation.
+                const entry = this.entryOf(spec, false)
+                const mark = this.mark(spec, spec.color ?? (spec.group === undefined ? undefined : this.looks.get(spec.group)!.color))
+                const label = this.nameOf(entry)
+                if (label) ownLabels(this, { labels: [label] })
                 const index = this.entries.length
                 // The point joins its group over the time of the insert, so a hull grows to it and does not jump.
                 entry.changes.push({ t0, t1, ease, from: undefined, to: spec.group })
@@ -699,7 +734,7 @@ export class Scatter extends Node {
                     mark.tween('y', y1, t0, t1, ease)
                 }
                 if (label) {
-                    label.at(this.namePlace(index, label))
+                    label.at(this.namePlace(index, false, t1))
                     this.add(label)
                     // The name comes when the mark is at its place, so it does not travel over the picture.
                     stepAt(label, 'opacity', 0, t0)
@@ -759,7 +794,7 @@ export class Scatter extends Node {
                     if (entry.group === group && entry.own === undefined) continue
                     this.claim(entry, 'lastLook', `assign(${written(entry.name ?? index)}, ${JSON.stringify(group)})`, index, ctx)
                     const before = entry.query ? 'target' : entry.group === undefined ? 'dot' : this.looks.get(entry.group)!.shape
-                    entry.changes.push({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, from: entry.group, to: group })
+                    entry.changes.push({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, from: entry.group, to: group, assigned: true })
                     entry.group = group
                     entry.own = undefined
                     mark.tween('fill', toPaint(look.color), ctx.t0, ctx.t1, ctx.ease)
@@ -792,14 +827,12 @@ export class Scatter extends Node {
                 const call = `nearest(${written(from)}, ${k})`
                 const last = this.lastProbe
                 if (last && ctx.t0 < last.t1 - SOON) throw new Error(`scatter: ${call} plays from ${seconds(ctx.t0)} to ${seconds(ctx.t1)}, and ${last.call} plays from ${seconds(last.t0)} to ${seconds(last.t1)}. A chart has one search, and it takes one change at a time: play the two one after the other`)
-                this.lastProbe = { call, t0: ctx.t0, t1: ctx.t1 }
                 const before = this.probes[this.probes.length - 1] ?? null
-                const allowed = options.among === undefined ? null : new Set(this.pick(options.among, 'nearest: among'))
-                // A search that ends keeps the points that it had, so its lines stay where they are while the ring closes.
-                const among = allowed ? (one: number) => allowed.has(one) : k === 0 && before && before.from === index ? before.among : null
-                const entry = this.entries[index]!
-                const found = this.ranked([entry.x, entry.y], index, among, null).length
-                if (k > found) throw new Error(`scatter: ${call}: the search has ${found} point${found === 1 ? '' : 's'} to find${allowed ? ' among the points of `among`' : ''}. Give a k of ${found} or less`)
+                // A search that ends keeps its filter while its ring closes.
+                const among = this.filter(options.among, 'nearest: among') ?? (k === 0 && before?.from === index ? before.among : null)
+                const found = this.ranked(this.placeAt(index, ctx.t0), index, among, ctx.t0).length
+                if (k > found) throw new Error(`scatter: ${call}: the search has ${found} point${found === 1 ? '' : 's'} to find${among ? ' among the points of `among`' : ''}. Give a k of ${found} or less`)
+                this.lastProbe = { call, t0: ctx.t0, t1: ctx.t1 }
                 if (!this.probeLayer) {
                     this.probeLayer = new Part<Scatter>(this, (owner, time) => owner.drawProbe(time)).zIndex(-1)
                     clock.now = ctx.t0
@@ -822,7 +855,10 @@ export class Scatter extends Node {
         const look = this.lookOf(group, 'hull')
         if (options.color !== undefined) this.paintOf(options.color, 'hull: the color')
         const color = options.color ?? look.color
-        return this.area(new ScatterArea(this, 'hull', (chart, time) => chart.hullAt(group, time), (chart) => chart.entries.flatMap((entry, index) => (entry.here && entry.group === group ? [index] : [])), () => color, options.shaded ?? true))
+        return this.area(new ScatterArea(this, 'hull', (chart, time) => chart.hullAt(group, time), (chart, data) => {
+            const ring = chart.hullAt(group, readTime() ?? Infinity)
+            return ring ? chart.find((point) => !(data && point.query) && inside(ring, ...chart.p(point.x, point.y))) : []
+        }, () => color, options.shaded ?? true))
     }
 
     /**
@@ -842,7 +878,7 @@ export class Scatter extends Node {
         const fixed = options.color
         return list.map((_, at) => this.area(new ScatterArea(this, 'cell',
             (chart, time) => chart.cellAt(list, at, time),
-            (chart, data) => chart.entries.flatMap((entry, index) => (entry.here && !(data && (entry.query || list.includes(index))) && chart.cellOf(list, [entry.x, entry.y]) === at ? [index] : [])),
+            (chart, data) => chart.find((point) => !(data && (point.query || list.includes(point.index))) && chart.cellOf(list, [point.x, point.y], readTime()) === at),
             () => fixed ?? 'dim',
             options.shaded ?? false)))
     }
@@ -857,40 +893,41 @@ export class Scatter extends Node {
         if (options.color !== undefined) this.paintOf(options.color, 'span: the color')
         const color = options.color ?? 'blue'
         const corners: Vec[] = [this.p(x0, y0), this.p(x1, y0), this.p(x1, y1), this.p(x0, y1)]
-        return this.area(new ScatterArea(this, 'span', () => corners, (chart, data) => chart.entries.flatMap((entry, index) => (entry.here && !(data && entry.query) && entry.x >= x0 && entry.x <= x1 && entry.y >= y0 && entry.y <= y1 ? [index] : [])), () => color, options.shaded ?? false))
+        return this.area(new ScatterArea(this, 'span', () => corners, (chart, data) => chart.find((point) => !(data && point.query) && point.x >= x0 && point.x <= x1 && point.y >= y0 && point.y <= y1), () => color, options.shaded ?? false))
     }
 
     /** A copy with its own points, at the places and in the groups that the chart shows now. A change of the copy does not change the chart. */
-    override clone(): this {
-        const copy = super.clone() as this & Scatter
+    protected override [rebindCloneParts](copy: this, _parts: ReadonlyMap<Node, Node>): void {
+        // The generic clone remaps arrays that contain nodes. Empty arrays and lists of null labels also belong to this copy.
+        for (const field of ['dots', 'nameLabels', 'groupLabels', 'areas'] as const) {
+            if (copy[field] === this[field]) Object.assign(copy, { [field]: [...copy[field]] })
+        }
         const now = clock.now
-        const own = copy as unknown as { entries: Entry[]; probes: Probe[]; pending: Set<string>; lastProbe: null; nameLabels: (Node | null)[]; dots: Node[]; groupLabels: Node[]; areas: ScatterArea[] }
-        // A list with no node in it is still the list of this chart. The copy gets its own.
-        if (own.nameLabels === this.nameLabels) own.nameLabels = [...this.nameLabels]
-        if (own.dots === this.dots) own.dots = [...this.dots]
-        if (own.groupLabels === this.groupLabels) own.groupLabels = [...this.groupLabels]
-        if (own.areas === this.areas) own.areas = [...this.areas]
-        own.entries = this.entries.map((entry, index) => {
-            const [x, y] = this.placeAt(index, now), group = this.groupAt(entry, now)
-            return { ...entry, x, y, group, first: group, changes: [], alive: new Track(entry.alive.sample(now)), lastMove: null, lastLook: null }
+        copy.entries = this.entries.map((entry, index) => {
+            const [x, y] = this.placeAt(index, now), group = this.groupAt(entry, now), here = entry.alive.sample(now)
+            const own = entry.changes.some((change) => change.t0 <= now && change.assigned) ? undefined : entry.initialColor
+            const initialShares = new Map<string, number>()
+            for (const name of this.looks.keys()) {
+                const share = this.shareIn(entry, name, now)
+                if (share > 0) initialShares.set(name, share)
+            }
+            return { ...entry, x, y, group, first: group, initialShares, own, initialColor: own, here, changes: [], alive: new Track(here), lastMove: null, lastLook: null }
         })
-        // The search that shows now is the search of the copy, complete.
-        const probe = [...this.probes].reverse().find((one) => one.t0 <= now)
-        own.probes = probe ? [{ ...probe, t0: -Infinity, t1: -Infinity, before: null }] : []
-        own.lastProbe = null
-        own.pending = new Set()
-        copy.areas.forEach((area, index) => (area.lit = new Value(this.areas[index]!.lit.value)))
-        return copy
+        const probe = this.probeAt(now)
+        copy.probes = probe ? [{ ...probe, frozen: this.progress(probe, now), t0: -Infinity, t1: -Infinity }] : []
+        copy.lastProbe = null
+        copy.labelEnd = 0
     }
 
     // ── Bookkeeping ───────────────────────────────────────────────────────
 
     /** The index of a point that is on the chart, by its name, after the changes that are scheduled so far. An index is checked and given back. */
     indexOf(which: number | string, call = 'indexOf'): number {
-        const index = typeof which === 'number' ? (Number.isInteger(which) && which >= 0 && which < this.entries.length && this.entries[which]!.here ? which : -1)
-            : typeof which === 'string' ? this.entries.findIndex((entry) => entry.here && entry.name === which) : -1
+        const time = readTime()
+        const index = typeof which === 'number' ? (Number.isInteger(which) && which >= 0 && which < this.entries.length && present(this.entries[which]!, time) ? which : -1)
+            : typeof which === 'string' ? this.entries.findIndex((entry) => present(entry, time) && entry.name === which) : -1
         if (index < 0) {
-            const names = this.entries.filter((entry) => entry.here && entry.name !== undefined).map((entry) => JSON.stringify(entry.name))
+            const names = this.entries.filter((entry) => present(entry, time) && entry.name !== undefined).map((entry) => JSON.stringify(entry.name))
             const known = `The chart has ${this.entries.length} point${this.entries.length === 1 ? '' : 's'}, with the indexes 0 to ${this.entries.length - 1}${names.length > 0 ? `, and the names ${names.slice(0, 12).join(', ')}${names.length > 12 ? `, and ${names.length - 12} more` : ''}` : ', and none has a name'}`
             const gone = typeof which === 'number' && this.entries[which] ? '. That point left the chart' : ''
             throw new Error(`scatter: ${call}: no point ${written(which)}${gone}. ${known}`)
@@ -900,9 +937,25 @@ export class Scatter extends Node {
 
     /** The indexes of the points that a `which` names, in the order of the chart. */
     private pick(which: ScatterWhich, call: string): number[] {
-        if (typeof which === 'function') return this.entries.flatMap((entry, index) => (entry.here && which({ index, name: entry.name, x: entry.x, y: entry.y, group: entry.group, query: entry.query }) ? [index] : []))
+        if (typeof which === 'function') {
+            const time = readTime()
+            return this.entries.flatMap((entry, index) => present(entry, time) && which(this.viewAt(index, time)) ? [index] : [])
+        }
         if (Array.isArray(which)) return [...new Set(which.map((one: number | string) => this.indexOf(one, call)))].sort((a, b) => a - b)
         return [this.indexOf(which as number | string, call)]
+    }
+
+    private viewAt(index: number, time: number | null): ScatterPointView {
+        const entry = this.entries[index]!
+        const [x, y] = this.centerAt(index, time)
+        return { index, x, y, name: entry.name, query: entry.query, group: time === null ? entry.group : this.groupAt(entry, time) }
+    }
+
+    private filter(which: ScatterWhich | undefined, call: string): Probe['among'] {
+        if (which === undefined) return null
+        if (typeof which === 'function') return which
+        const indexes = new Set(this.pick(which, call))
+        return (point) => indexes.has(point.index)
     }
 
     private lookOf(group: string, call: string): Look {
@@ -948,6 +1001,9 @@ export class Scatter extends Node {
         if (typeof point !== 'object' || point === null) throw new Error(`scatter: ${what} is ${written(point)}. Give a point such as { x: 1, y: 2 }`)
         const spec = point as ScatterPoint
         const named = spec.name === undefined ? what : `${what} (${written(spec.name)})`
+        if (!Number.isFinite(spec.x) || !Number.isFinite(spec.y)) throw new Error(`scatter: the place of ${named} must have finite x and y coordinates. It got ${written([spec.x, spec.y])}`)
+        if (spec.radius !== undefined && !(Number.isFinite(spec.radius) && spec.radius >= 0)) throw new Error(`scatter: the radius of ${named} must be a finite number, 0 or more`)
+        if (spec.color !== undefined) this.paintOf(spec.color, `the color of ${named}`)
         if (spec.name !== undefined && (typeof spec.name !== 'string' || spec.name.trim() === '')) throw new Error(`scatter: the name of ${what} is ${written(spec.name)}. A name is a text that is not empty`)
         if (spec.label !== undefined && spec.label !== false && typeof spec.label !== 'string') throw new Error(`scatter: the label of ${named} is ${written(spec.label)}. A label is a text, or false for a point with no text`)
         if (spec.side !== undefined && !['right', 'left', 'over', 'under'].includes(spec.side)) throw new Error(`scatter: ${named} has the side ${written(spec.side)}. Use 'right', 'left', 'over' or 'under'`)
@@ -959,7 +1015,7 @@ export class Scatter extends Node {
     private entryOf(spec: ScatterPoint & { words: string | null }, counted: boolean): Entry {
         const radius = spec.radius ?? (spec.query ? Math.round(this.baseRadius * 1.6) : this.baseRadius)
         return {
-            name: spec.name, x: spec.x, y: spec.y, group: spec.group, first: counted ? spec.group : undefined, changes: [], own: spec.color, radius, query: spec.query === true,
+            name: spec.name, x: spec.x, y: spec.y, group: spec.group, first: counted ? spec.group : undefined, changes: [], initialColor: spec.color, own: spec.color, radius, query: spec.query === true,
             words: spec.words, half: 0, side: spec.side, alive: new Track(counted), here: true, lastMove: null, lastLook: null,
         }
     }
@@ -1008,11 +1064,11 @@ export class Scatter extends Node {
      * the places that are left, it takes the one that covers the fewest marks of other points. A point with a
      * `side` has that place when the point is made. After a move, it has that place when the place is free.
      */
-    private namePlace(index: number, label: Node, moved = false): [number, number] {
+    private namePlace(index: number, moved = false, time = Infinity): [number, number] {
         const entry = this.entries[index]!
         const [x, y] = this.p(entry.x, entry.y)
         const size = this.nameSize, room = size * 0.4, r = entry.radius
-        const half = label.bounds().width / 2
+        const half = entry.half
         const diagonal = r * 0.7 + room * 0.5
         const centers: Record<Side, [number, number]> = {
             'right': [x + r + room + half, y],
@@ -1025,18 +1081,18 @@ export class Scatter extends Node {
             'lower left': [x - diagonal - half, y + diagonal + size * 0.3],
         }
         const { w, h } = this.frame
-        const others = this.entries.map((other, at) => ({ other, at })).filter(({ other, at }) => at !== index && other.here)
+        const others = this.entries.map((other, at) => ({ other, at })).filter(({ other, at }) => at !== index && present(other, time))
         const names = others.flatMap(({ at }) => {
             const node = this.nameLabels[at]
             if (!node || !node.parent) return []
             // The place that the other name goes to, when it is on its way.
-            const [cx, cy] = this.restOf(node)
+            const cx = propAt(node, 'x', time), cy = propAt(node, 'y', time)
             return [{ cx, cy, half: this.entries[at]!.half, high: size * 1.05 }]
         })
         // The label of a group that has members is a text of the chart too.
-        this.groupLabels.forEach((node, at) => {
-            const place = this.groupLabelAt(this.groupNames[at]!)
-            if (place) names.push({ cx: place[0], cy: place[1], half: node.bounds().width / 2, high: (size + this.labelSize + 2) * 0.55 })
+        this.groupLabels.forEach((_, at) => {
+            const place = this.groupLabelAt(this.groupNames[at]!, time)
+            if (place) names.push({ cx: place[0], cy: place[1], half: this.groupHalves[at]!, high: (size + this.labelSize + 2) * 0.55 })
         })
         let best: { side: Side; hits: number } | null = null
         for (const side of entry.side ? (moved ? [entry.side, ...SIDES] : [entry.side]) : SIDES) {
@@ -1044,8 +1100,8 @@ export class Scatter extends Node {
             const x0 = cx - half, x1 = cx + half, y0 = cy - size * 0.5, y1 = cy + size * 0.6
             if (x0 < -w / 2 - 1 || x1 > w / 2 + 1 || y0 < -h / 2 - 1 || y1 > h / 2 + 1) continue
             if (names.some((name) => Math.abs(name.cx - cx) < name.half + half + room && Math.abs(name.cy - cy) < name.high)) continue
-            const hits = others.filter(({ other }) => {
-                const [ox, oy] = this.p(other.x, other.y)
+            const hits = others.filter(({ other, at }) => {
+                const mark = this.dots[at]!, ox = propAt(mark, 'x', time), oy = propAt(mark, 'y', time)
                 return ox > x0 - other.radius - 2 && ox < x1 + other.radius + 2 && oy > y0 - other.radius - 2 && oy < y1 + other.radius + 2
             }).length
             if (!best || hits < best.hits) best = { side, hits }
@@ -1061,60 +1117,64 @@ export class Scatter extends Node {
         return centers[best.side]
     }
 
-    /** The place that a text of the chart goes to: the end of its last move, or where it is. */
-    private restOf(node: Node): [number, number] {
-        const last = (prop: 'x' | 'y') => { const keys = node.tracks?.get(prop)?.keys; return keys && keys.length > 0 ? keys[keys.length - 1]!.to as number : node.base[prop] }
-        return [last('x'), last('y')]
-    }
-
     /**
      * Where the label of a group goes for the members that it has after the changes that are scheduled so far:
      * over the highest one, at their mean x. Over the name of a point too, when a name is there. Null for a
      * group with no member.
      */
-    private groupLabelAt(group: string): [number, number] | null {
-        const members = this.entries.filter((entry) => entry.here && entry.group === group)
-        if (members.length === 0) return null
-        const [px, py] = this.p(members.reduce((sum, entry) => sum + entry.x, 0) / members.length, Math.max(...members.map((entry) => entry.y)))
-        let y = py - this.labelSize * 1.2
-        const label = this.groupLabels[this.groupNames.indexOf(group)]
-        if (!label) return [px, y]
-        const half = label.bounds().width / 2, apart = (this.nameSize + this.labelSize + 2) * 0.55
-        const names = this.nameLabels.flatMap((node, index) => (node && node.parent && this.entries[index]!.here ? [{ at: this.restOf(node), half: this.entries[index]!.half }] : []))
-        // Each pass takes the label over one name that it would meet.
+    private groupLabelAt(group: string, time = Infinity): [number, number] | null {
+        let weight = 0, sumX = 0, highest = Infinity, highestFull = Infinity
+        const members: { y: number; share: number }[] = []
+        this.entries.forEach((entry, index) => {
+            const share = this.shareIn(entry, group, time)
+            if (share <= 0) return
+            const mark = this.dots[index]!
+            const y = propAt(mark, 'y', time)
+            members.push({ y, share })
+            weight += share
+            sumX += propAt(mark, 'x', time) * share
+            highest = Math.min(highest, y)
+            if (share === 1) highestFull = Math.min(highestFull, y)
+        })
+        if (weight === 0) return null
+        if (Number.isFinite(highestFull)) highest = Math.min(...members.map(({ y, share }) => highestFull + (y - highestFull) * share))
+        const x = sumX / weight
+        let y = highest - this.labelSize * 1.2
+        const half = this.groupHalves[this.groupNames.indexOf(group)]!, apart = (this.nameSize + this.labelSize + 2) * 0.55
+        const names = this.nameLabels.flatMap((node, index) => node?.parent && shownAt(node, time) > 0
+            ? [{ x: propAt(node, 'x', time), y: propAt(node, 'y', time), half: this.entries[index]!.half }]
+            : [])
         for (let pass = 0; pass < names.length; pass++) {
-            const hit = names.find((name) => Math.abs(name.at[0] - px) < name.half + half + this.nameSize * 0.3 && Math.abs(name.at[1] - y) < apart)
+            const hit = names.find((name) => Math.abs(name.x - x) < name.half + half + this.nameSize * 0.3 && Math.abs(name.y - y) < apart)
             if (!hit) break
-            y = hit.at[1] - apart - 1
+            y = hit.y - apart - 1
         }
-        return [px, y]
+        return [x, y]
     }
 
-    /** The label of each group goes to its members as they are after this change. A group that gets its first member shows its label, and a group that loses its last one hides it. */
-    private settleGroupLabels(ctx: AnimContext): void {
-        const { t0, t1, ease } = ctx
+    /** Several verbs may move members of one group at different speeds. Read their tracks at the time of the frame. */
+    private settleGroupLabels({ t0, t1 }: AnimContext): void {
+        this.labelEnd = Math.max(this.labelEnd, t1)
+        const chart = this
+        function follow<T>(track: Track<T>, sample: (time: number) => T): void {
+            track.add({
+                t0, get t1() { return chart.labelEnd }, ease: null,
+                at: (share) => sample(t0 + (chart.labelEnd - t0) * share),
+                get to() { return sample(chart.labelEnd) },
+            })
+        }
         this.groupLabels.forEach((label, index) => {
-            const at = this.groupLabelAt(this.groupNames[index]!)
-            clock.now = t0
-            const shown = label.get('visible') && label.get('opacity') > 0.002
-            if (!at) {
-                if (!shown) return
-                label.tween('opacity', 0, t0, t1, ease)
-                label.track('visible').step(t1, false)
-                return
+            const group = this.groupNames[index]!
+            for (const [prop, axis] of [['x', 0], ['y', 1]] as const) {
+                const fallback = propAt(label, prop, t0)
+                follow(label.track(prop), (time) => this.groupLabelAt(group, time)?.[axis] ?? fallback)
             }
-            if (!shown) {
-                stepAt(label, 'x', at[0], t0)
-                stepAt(label, 'y', at[1], t0)
-                stepAt(label, 'opacity', 0, t0)
-                label.track('visible').step(t0, true)
-                label.tween('opacity', 1, t0, t1, ease)
-                return
-            }
-            if (Math.abs(label.get('x') - at[0]) > 0.01) label.tween('x', at[0], t0, t1, ease)
-            if (Math.abs(label.get('y') - at[1]) > 0.01) label.tween('y', at[1], t0, t1, ease)
+            // A move leaves a label's authored fade alone. Membership changes control its arrival and departure.
+            if (!this.entries.some((entry) => entry.changes.some((c) => c.t0 === t0 && (c.from === group || c.to === group)))) return
+            const opacity = (time: number) => this.entries.reduce((max, entry) => Math.max(max, this.shareIn(entry, group, time)), 0)
+            follow(label.track('opacity'), opacity)
+            follow(label.track('visible'), (time) => opacity(time) > 0)
         })
-        clock.now = t0
     }
 
     // ── What the chart reads at a time ────────────────────────────────────
@@ -1122,7 +1182,9 @@ export class Scatter extends Node {
     /** The place of a point at a time, in the units of the axes. */
     private placeAt(index: number, time: number): [number, number] {
         const mark = this.dots[index]!, { xRange, yRange, w, h } = this.frame
-        return [xRange[0] + (propAt(mark, 'x', time) / w + 0.5) * (xRange[1] - xRange[0]), yRange[0] + (0.5 - propAt(mark, 'y', time) / h) * (yRange[1] - yRange[0])]
+        const x = propAt(mark, 'x', time), y = propAt(mark, 'y', time), entry = this.entries[index]!
+        const [restX, restY] = this.p(entry.x, entry.y)
+        return [x === restX ? entry.x : xRange[0] + (x / w + 0.5) * (xRange[1] - xRange[0]), y === restY ? entry.y : yRange[0] + (0.5 - y / h) * (yRange[1] - yRange[0])]
     }
 
     /** The group of a point at a time: the one that it goes to, from the start of a change. */
@@ -1136,23 +1198,26 @@ export class Scatter extends Node {
     private shareIn(entry: Entry, group: string, time: number): number {
         let last: Change | null = null
         for (const change of entry.changes) if (change.t0 <= time) last = change
-        if (!last) return entry.first === group ? 1 : 0
+        const initial = entry.initialShares ? entry.initialShares.get(group) ?? 0 : Number(entry.first === group)
+        if (!last) return initial
         if (time >= last.t1) return last.to === group ? 1 : 0
         const share = Math.min(1, Math.max(0, last.ease((time - last.t0) / (last.t1 - last.t0))))
-        return last.to === group ? (last.from === group ? 1 : share) : last.from === group ? 1 - share : 0
+        const from = last === entry.changes[0] ? initial : Number(last.from === group)
+        return from + (Number(last.to === group) - from) * share
     }
 
     /**
      * The points that a search can find, from the nearest to `at`, with their distances in the units of the
      * axes. `time` is a time of the film, or null for the places after the changes that are scheduled so far.
      */
-    private ranked(at: Vec, self: number, among: ((index: number) => boolean) | null, time: number | null): { index: number; distance: number }[] {
+    private ranked(at: Vec, self: number, among: Probe['among'], time: number | null): { index: number; distance: number }[] {
         const out: { index: number; distance: number }[] = []
         this.entries.forEach((entry, index) => {
-            if (index === self || entry.query || (among && !among(index))) return
-            if (time === null ? !entry.here : !entry.alive.sample(time)) return
-            const [x, y] = time === null ? [entry.x, entry.y] : this.placeAt(index, time)
-            out.push({ index, distance: Math.hypot(x - at[0], y - at[1]) })
+            if (index === self || entry.query) return
+            if (!present(entry, time)) return
+            const point = this.viewAt(index, time)
+            if (among && !among(point)) return
+            out.push({ index, distance: Math.hypot(point.x - at[0], point.y - at[1]) })
         })
         return out.sort((a, b) => a.distance - b.distance || a.index - b.index)
     }
@@ -1182,7 +1247,7 @@ export class Scatter extends Node {
         // The label of the group is over its members. The hull holds it too, when it shows.
         const at = this.groupNames.indexOf(group), label = this.groupLabels[at]
         if (label && full.length > 0 && (label.tracks?.get('visible')?.sample(time) ?? label.base.visible)) {
-            const lx = propAt(label, 'x', time), ly = propAt(label, 'y', time), half = label.bounds().width / 2, high = this.labelSize + 2
+            const lx = propAt(label, 'x', time), ly = propAt(label, 'y', time), half = this.groupHalves[at]!, high = this.labelSize + 2
             places.push([lx - half, ly - high * 0.42], [lx + half, ly - high * 0.42], [lx + half, ly + high * 0.52], [lx - half, ly + high * 0.52])
         }
         // The only members are on their way in or out: the hull grows from nothing, and goes back to nothing.
@@ -1198,10 +1263,10 @@ export class Scatter extends Node {
     }
 
     /** The index of the center that is nearest to a place, after the changes that are scheduled so far. */
-    private cellOf(centers: readonly (number | Vec)[], place: Vec): number {
+    private cellOf(centers: readonly (number | Vec)[], place: Vec, time: number | null): number {
         let best = 0, least = Infinity
         centers.forEach((center, index) => {
-            const [x, y] = this.centerAt(center, null)
+            const [x, y] = this.centerAt(center, time)
             const distance = Math.hypot(x - place[0], y - place[1])
             if (distance < least) {
                 least = distance
@@ -1219,10 +1284,14 @@ export class Scatter extends Node {
         for (let index = 0; index < centers.length && polygon.length >= 3; index++) {
             if (index === at) continue
             const other = this.centerAt(centers[index]!, time)
-            // A place is nearer to this center than to the other one when 2 (other - own) . place <= |other|^2 - |own|^2.
-            const a = 2 * (other[0] - own[0]), b = 2 * (other[1] - own[1])
-            if (a === 0 && b === 0) continue
-            polygon = clip(polygon, a, b, other[0] ** 2 + other[1] ** 2 - own[0] ** 2 - own[1] ** 2)
+            const dx = other[0] - own[0], dy = other[1] - own[1]
+            const scale = Math.max(Math.abs(dx), Math.abs(dy))
+            if (scale === 0) {
+                if (index < at) return null
+                continue
+            }
+            const a = dx / scale, b = dy / scale
+            polygon = clip(polygon, own, a, b, a * (dx / 2) + b * (dy / 2))
         }
         return polygon.length < 3 ? null : polygon.map(([x, y]) => this.p(x, y))
     }
@@ -1244,7 +1313,7 @@ export class Scatter extends Node {
         })
         const texts: { node: Node; half: number; size: number }[] = []
         this.nameLabels.forEach((node, index) => { if (node && node.parent) texts.push({ node, half: this.entries[index]!.half, size: this.nameSize }) })
-        for (const node of this.groupLabels) texts.push({ node, half: node.bounds().width / 2, size: this.labelSize + 2 })
+        this.groupLabels.forEach((node, index) => texts.push({ node, half: this.groupHalves[index]!, size: this.labelSize + 2 }))
         const out: Node[] = []
         for (const { node, half, size } of texts) {
             // A text that fades in has its patch from the start, so no line shows through it while it comes.
@@ -1302,21 +1371,36 @@ export class Scatter extends Node {
         return found.length === 0 ? 0 : found[Math.min(probe.k, found.length) - 1]!.distance
     }
 
+    private progress(probe: Probe, time: number): number {
+        return probe.frozen ?? (time >= probe.t1 ? 1 : Math.min(1, Math.max(0, probe.ease((time - probe.t0) / (probe.t1 - probe.t0)))))
+    }
+
+    /** A search started on a clone grows from the radius visible in the copied frame. */
+    private radiusAt(probe: Probe, time: number): number {
+        const to = this.reach(probe, time), share = this.progress(probe, time)
+        if (share === 1) return to
+        const from = probe.before?.from === probe.from ? this.radiusAt(probe.before, time) : 0
+        return from + (to - from) * share
+    }
+
+    private probeAt(time: number): Probe | null {
+        for (let i = this.probes.length - 1; i >= 0; i--) if (this.probes[i]!.t0 <= time) return this.probes[i]!
+        return null
+    }
+
     /** The search at a time: the ring grows or shrinks from the state before it, and each point inside it has a line. */
     private drawProbe(time: number): Node[] | null {
-        let probe: Probe | null = null
-        for (const one of this.probes) if (one.t0 <= time) probe = one
+        const probe = this.probeAt(time)
         if (!probe) return null
-        const share = time >= probe.t1 ? 1 : Math.min(1, Math.max(0, probe.ease((time - probe.t0) / (probe.t1 - probe.t0))))
-        const before = probe.before && probe.before.k > 0 ? probe.before : null
+        const share = this.progress(probe, time)
+        const before = probe.before && (probe.before.k > 0 || (probe.before.frozen ?? 1) < 1) ? probe.before : null
         if (before && before.from === probe.from) {
             // The same point asks again: the ring goes from the size that it had to the new one.
-            const from = this.reach(before, time), to = this.reach(probe, time)
-            return this.probeMarks(probe, time, from + (to - from) * share, share >= 1 ? probe.k : Math.max(probe.k, before.k), 1)
+            return this.probeMarks(probe, time, this.radiusAt(probe, time), share >= 1 ? probe.k : Math.max(probe.k, before.k), 1)
         }
         const out: Node[] = []
         // Another point asks: the search before this one fades while the new ring grows.
-        if (before && share < 1) out.push(...this.probeMarks(before, time, this.reach(before, time), before.k, 1 - share))
+        if (before && share < 1) out.push(...this.probeMarks(before, time, this.radiusAt(before, time), before.k, 1 - share))
         if (probe.k > 0) out.push(...this.probeMarks(probe, time, this.reach(probe, time) * share, probe.k, 1))
         return out
     }

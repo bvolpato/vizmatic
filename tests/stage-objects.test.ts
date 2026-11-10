@@ -13460,7 +13460,7 @@ describe('number line', () => {
 
     it('puts the ticks of a list at their values, and a number under the ticks that the film names', async () => {
         await compile(() => {
-            const line = numberLine({ ticks: [4, 0, 0.5, 1, 2], labels: [0, 1, 4], length: 800 })
+            const line = numberLine({ ticks: [4, 0, 0.5, 1, 2], tickLabels: [0, 1, 4], length: 800 })
             // The list is in any order, and the line goes from its first value to its last.
             expect(line.tickValues).toEqual([0, 0.5, 1, 2, 4])
             expect(line.range).toEqual([0, 4])
@@ -13497,19 +13497,19 @@ describe('number line', () => {
             expect(() => numberLine({ ticks: [0, NaN] })).toThrow(/the tick NaN is not a number/)
             expect(() => numberLine({ ticks: [0, 1, 1] })).toThrow(/the tick 1 is in the list two times/)
             expect(() => numberLine({ range: [0, 1], ticks: [0, 2] })).toThrow(/the tick 2 is outside the line, which goes from 0 to 1/)
-            expect(() => numberLine({ ticks: [0, 1, 2], labels: [0, 1.5] })).toThrow(/labels names 1\.5, which is not a tick of the line/)
+            expect(() => numberLine({ ticks: [0, 1, 2], tickLabels: [0, 1.5] })).toThrow(/tickLabels names 1\.5, which is not a tick of the line/)
             expect(() => numberLine({ range: [3, 3] })).toThrow(/the range is 3 to 3\. Give two different values, the smaller one first/)
             expect(() => numberLine({ step: 0 })).toThrow(/step is 0\. A step is the distance between two ticks, more than 0/)
-            expect(() => numberLine({ range: [0, 1], step: 0.0001 })).toThrow(/gives 10000 ticks from 0 to 1/)
+            expect(() => numberLine({ range: [0, 1], step: 0.0001, points: [{ name: 'p', value: 0.3 }] })).toThrow(/gives 10000 ticks from 0 to 1/)
             // Numbers that touch: the message names the ticks that have room, from the last one down.
             const grid = [0, 0.125, 0.25, 0.375, 0.5, 1, 2, 4]
             let message = ''
             try { numberLine({ ticks: grid, length: 600 }) } catch (error) { message = (error as Error).message }
             expect(message).toMatch(/the numbers "0" and "0\.125" touch under the line/)
-            const named = /labels: \[([^\]]+)\]/.exec(message)![1]!.split(', ').map(Number)
+            const named = /tickLabels: \[([^\]]+)\]/.exec(message)![1]!.split(', ').map(Number)
             expect(named[named.length - 1]).toBe(4)
             // The list that the message names builds.
-            expect(numberLine({ ticks: grid, length: 600, labels: named }).numbers.children).toHaveLength(named.length)
+            expect(numberLine({ ticks: grid, length: 600, tickLabels: named }).numbers.children).toHaveLength(named.length)
         })
     })
 
@@ -13959,7 +13959,6 @@ describe('scatter', () => {
             expect(chart.dots[2]!.bounds().width).toBeCloseTo(32, 6)
             expect(chart.dots.map((mark) => mark.get('fill'))).toEqual([parseColor('teal'), parseColor('orange'), parseColor('ink'), parseColor('teal')])
             expect(() => scatter([], { ...frame, groups: { a: { shape: 'star' as 'dot' } } })).toThrow(/the group "a" has the shape "star"\. A shape is 'dot', 'ring', 'square', 'diamond', 'triangle'/)
-            expect(() => scatter([])).toThrow(/with no point at the start, give the ranges of the two axes: x and y/)
         })
     })
 

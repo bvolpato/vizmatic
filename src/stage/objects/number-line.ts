@@ -1,13 +1,13 @@
 import { apply, circlePath, invert, polyPath, rectPath, type Vec } from '../geometry'
-import { dynamic, Node, ownLabels } from '../node'
+import { dynamic, Node, ownLabels, rebindCloneParts } from '../node'
 import { arrow, dot, line } from '../shapes'
 import { tex } from '../tex'
 import { text, type TextOptions } from '../text'
 import { mixPaint, toPaint, type ColorInput, type Paint } from '../color'
 import { Value, type Anim, type AnimContext, type AnimOptions } from '../anim'
 import { clock, Track } from '../track'
-import { Box } from '../layout'
-import { Part, propAt, reveal, sampleAt, solidColor, staggered, stepAt, stepsBetween, tweenValue } from './util'
+import type { Box } from '../layout'
+import { Part, propAt, reveal, sampleAt, solidColor, staggered, stepAt, stepsBetween, tweenValue, worldBox } from './util'
 
 type Reactive = number | (() => number)
 const read = (value: Reactive): number => typeof value === 'function' ? value() : value
@@ -60,11 +60,10 @@ export interface NumberLineOptions {
      * quantizer, the limits of a scale. `snap` takes a point to the nearest of them.
      */
     ticks?: readonly number[]
-    /**
-     * Write a number under each tick. On by default. A list writes a number under these ticks only, for ticks
-     * that are too near for a number each: a tick with no number is shorter.
-     */
-    labels?: boolean | readonly number[]
+    /** Write a number under each tick. On by default. */
+    labels?: boolean
+    /** Write a number only under these ticks. The other ticks are shorter. */
+    tickLabels?: readonly number[]
     /** Text size of the numbers under the ticks. Defaults to 6/7 of `size`: 24. */
     labelSize?: number
     /**
@@ -112,10 +111,17 @@ export interface NumberLinePointView {
 }
 
 type Align = 'center' | 'right' | 'left'
+type BracketEnd = number | { pointId: number }
 
 interface Slot {
     level: number
     align: Align
+}
+
+interface Crossing {
+    before: number
+    now: number
+    share: number
 }
 
 interface PointEntry {
@@ -135,8 +141,10 @@ interface PointEntry {
     /** The width of the ink of the label. */
     width: number
     slot: Slot | null
-    /** The ring at the place that the last `snap` took the point from, and the line of the error. */
-    trace: Node | null
+    /** Earlier traces are needed when a film copies the line at an earlier time. */
+    traces: Node[]
+    /** A static copy can catch a dot halfway through a change of color or size. */
+    snapshot: { crossing: Crossing; traveling: boolean; resume: number } | null
     /** False from the time that a `remove` is scheduled. */
     here: boolean
     last: { call: string; t0: number; t1: number } | null
@@ -215,14 +223,14 @@ export class NumberLine extends Node {
     /** The shade of the bands, under the line. Null on a line with no band. */
     private readonly shade: Node | null = null
     private readonly captions: Node | null = null
-    private readonly traces = new Node()
-    private readonly thresholdLayer = new Node()
+    private traces = new Node()
+    private thresholdLayer = new Node()
     /**
      * A patch behind each name that the line of a threshold passes, in the color that a viewer sees behind the
      * name. It is over the thresholds and under the points: the line passes behind a name, not through it.
      */
     private readonly patches: Node | null = null
-    private readonly pointLayer = new Node()
+    private pointLayer = new Node()
 
     constructor(options: NumberLineOptions = {}) {
         super()
@@ -243,7 +251,8 @@ export class NumberLine extends Node {
         if (!(Number.isFinite(this.length) && this.length > 0)) throw new Error('numberLine: length is the length of the line in pixels, more than 0')
         const step = options.step ?? 1
         if (!(Number.isFinite(step) && step > 0)) throw new Error(`numberLine: step is ${written(step)}. A step is the distance between two ticks, more than 0`)
-        if (!listed && (max - min) / step > MOST_TICKS) throw new Error(`numberLine: a step of ${step} gives ${Math.round((max - min) / step)} ticks from ${min} to ${max}. Give a larger step, or the \`ticks\` to draw`)
+        const extendedGrid = options.points !== undefined || options.thresholds !== undefined || options.bands !== undefined || options.tickLabels !== undefined || options.levels !== undefined || options.format !== undefined
+        if (!listed && extendedGrid && (max - min) / step > MOST_TICKS) throw new Error(`numberLine: a step of ${step} gives ${Math.round((max - min) / step)} ticks from ${min} to ${max}. Give a larger step, or the \`ticks\` to draw`)
         const outside = sorted.find((tick) => tick < min || tick > max)
         if (outside !== undefined) throw new Error(`numberLine: the tick ${outside} is outside the line, which goes from ${min} to ${max}. Give a range that holds it`)
         this.size = options.size ?? 28
@@ -264,13 +273,20 @@ export class NumberLine extends Node {
             ? arrow([-half - 36, 0], [half + 36, 0], { stroke: color, width, tip: 14, both: true })
             : line([-half, 0], [half, 0], { stroke: color, width })
         this.tickValues = listed ? sorted : stepsBetween(min, max, step)
-        const named = options.labels ?? true
-        if (typeof named !== 'boolean') {
-            if (!Array.isArray(named)) throw new Error('numberLine: labels is true, false, or the list of the ticks that get a number')
-            const stray = named.find((value) => !this.tickValues.some((tick) => Math.abs(tick - value) < 1e-9 * Math.max(1, Math.abs(tick))))
-            if (stray !== undefined) throw new Error(`numberLine: labels names ${written(stray)}, which is not a tick of the line. A number is under a tick: name ticks, or add the value to \`ticks\``)
+        const labels = options.labels ?? true
+        if (typeof labels !== 'boolean') throw new Error('numberLine: labels is true or false. Use tickLabels to select which ticks get a number')
+        const named = new Set<number>()
+        if (options.tickLabels !== undefined) {
+            if (!Array.isArray(options.tickLabels)) throw new Error('numberLine: tickLabels is a list of the ticks that get a number')
+            if (!labels) throw new Error('numberLine: labels: false hides every number. Omit it to show the numbers selected by tickLabels')
+            for (const value of options.tickLabels) {
+                // A step of 0.1 can produce 0.30000000000000004 when the film names 0.3.
+                const tick = this.tickValues.includes(value) ? value : this.tickValues.find((candidate) => Number.isFinite(value) && Math.abs(candidate - value) <= Number.EPSILON * Math.abs(candidate) * 2)
+                if (tick === undefined) throw new Error(`numberLine: tickLabels names ${written(value)}, which is not a tick of the line. Name a tick, or add the value to \`ticks\``)
+                named.add(tick)
+            }
         }
-        const numbered = (value: number): boolean => typeof named === 'boolean' ? named : named.some((one) => Math.abs(one - value) < 1e-9 * Math.max(1, Math.abs(one)))
+        const numbered = (value: number): boolean => labels && (options.tickLabels === undefined || named.has(value))
         // Large numbers stand a little lower, so they keep their room under the ticks. A line that gives
         // `labelSize` alone keeps the place that its numbers always had.
         const numberY = options.format || options.size !== undefined ? Math.max(34, 7 + numberSize * 0.72) : 34
@@ -278,7 +294,7 @@ export class NumberLine extends Node {
         for (const value of this.tickValues) {
             const [x] = this.p(value)
             // With a list of the ticks to name, a tick with no number is shorter, so the named ones lead the eye.
-            const tall = typeof named === 'boolean' || numbered(value) ? 7 : 4
+            const tall = options.tickLabels === undefined || numbered(value) ? 7 : 4
             const tick = line([x, -tall], [x, tall], { stroke: color, width })
             this.ticks.add(tick)
             this.marks.push(tick)
@@ -299,7 +315,7 @@ export class NumberLine extends Node {
         }
         this.numbersBottom = stamps.length > 0 ? numberY + numberSize * 0.62 : 10
         // A list of ticks is not at equal steps, so two numbers can meet. The line with a step keeps the look that it had.
-        if (listed || typeof named !== 'boolean') {
+        if (listed || options.tickLabels !== undefined) {
             const boxes = stamps.map((stamp) => ({ ...stamp, box: stamp.node.bounds() }))
             const room = numberSize * 0.3
             const hit = boxes.findIndex((one, index) => index > 0 && one.box.x - (boxes[index - 1]!.box.x + boxes[index - 1]!.box.width) < room)
@@ -315,7 +331,7 @@ export class NumberLine extends Node {
                     }
                 }
                 const words = (index: number) => JSON.stringify(options.format ? String(options.format(boxes[index]!.value)) : String(Math.round(boxes[index]!.value * 1000) / 1000))
-                throw new Error(`numberLine: the numbers ${words(hit - 1)} and ${words(hit)} touch under the line. What works for this line: labels: [${keep.join(', ')}], which names the ticks that have room, or a longer \`length\`, or a smaller \`labelSize\``)
+                throw new Error(`numberLine: the numbers ${words(hit - 1)} and ${words(hit)} touch under the line. What works for this line: tickLabels: [${keep.join(', ')}], which names the ticks that have room, or a longer \`length\`, or a smaller \`labelSize\``)
             }
         }
 
@@ -346,7 +362,7 @@ export class NumberLine extends Node {
 
         const points = options.points ?? []
         if (!Array.isArray(points)) throw new Error('numberLine: points is a list, such as [{ name: \'A\', value: 1.8 }]')
-        const digits = Math.max(0, ...this.tickValues.map(decimalsOf), ...cuts.map((cut) => decimalsOf(cut.at)), ...points.map((point) => (typeof point?.value === 'number' ? decimalsOf(point.value) : 0)))
+        const digits = Math.max(this.tickValues.reduce((maxDigits, tick) => Math.max(maxDigits, decimalsOf(tick)), 0), ...cuts.map((cut) => decimalsOf(cut.at)), ...points.map((point) => (typeof point?.value === 'number' ? decimalsOf(point.value) : 0)))
         // A value of -0.001 with two decimals is 0.00, not -0.00.
         this.format = options.format ?? ((value) => value.toFixed(digits).replace(/^-(0(?:\.0+)?)$/, '$1'))
 
@@ -449,8 +465,7 @@ export class NumberLine extends Node {
         }
         if (from > to) throw new Error(`numberLine: region: \`from\` is ${from} and \`to\` is ${to}. Give a \`from\` that is not after \`to\``)
         const top = this.extent ? this.extent.top : -7, bottom = this.extent ? this.extent.bottom : this.numbersBottom
-        const [x0, y0] = this.toWorld(this.p(from)[0], top), [x1, y1] = this.toWorld(this.p(to)[0], bottom)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        return worldBox(this, this.p(from)[0], top, this.p(to)[0], bottom)
     }
 
     // ── State ─────────────────────────────────────────────────────────────
@@ -494,6 +509,7 @@ export class NumberLine extends Node {
      */
     nearestTick(value: number): number {
         if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`numberLine: nearestTick: the value is ${written(value)}. Give a number`)
+        this.requireTicks('nearestTick')
         const ticks = this.tickValues
         let best = 0
         for (let index = 1; index < ticks.length; index++) {
@@ -541,10 +557,12 @@ export class NumberLine extends Node {
      * The bracket is on the line from now on: fade it in with `fadeIn`.
      */
     bracket(from: number | string, to: number | string, options: NumberLineBracketOptions = {}): Node {
-        for (const end of [from, to]) {
-            if (typeof end === 'string') this.need(end, 'bracket')
-            else if (typeof end !== 'number' || !Number.isFinite(end) || end < this.range[0] || end > this.range[1]) throw new Error(`numberLine: bracket: an end is ${written(end)}. An end is a value of the line, ${this.range[0]} to ${this.range[1]}, or the name of a point`)
+        const bind = (end: number | string): BracketEnd => {
+            if (typeof end === 'string') return { pointId: this.need(end, 'bracket').id }
+            if (typeof end !== 'number' || !Number.isFinite(end) || end < this.range[0] || end > this.range[1]) throw new Error(`numberLine: bracket: an end is ${written(end)}. An end is a value of the line, ${this.range[0]} to ${this.range[1]}, or the name of a point`)
+            return end
         }
+        const start = bind(from), finish = bind(to)
         const side = options.side ?? 'under'
         if (side !== 'under' && side !== 'over') throw new Error(`numberLine: bracket: side is 'under' or 'over', not ${written(side)}`)
         const offset = options.offset ?? 0
@@ -552,7 +570,7 @@ export class NumberLine extends Node {
         const color = options.color ?? 'ink'
         this.paintOf(color, 'bracket: the color')
         const label = options.label
-        const node = new Part<NumberLine>(this, (owner, time) => owner.drawBracket(from, to, side, offset, color, label, time))
+        const node = new Part<NumberLine>(this, (owner, time) => owner.drawBracket(start, finish, side, offset, color, label, time))
         this.add(node)
         ownLabels(this, { labels: [node] })
         return node
@@ -621,14 +639,12 @@ export class NumberLine extends Node {
             label: 'numberLine.move', duration: options.duration ?? 1, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
-                const before = new Map<PointEntry, number>()
                 for (const [name, value] of changes) {
                     const entry = this.need(name, 'move')
                     this.claim(entry, `move(${JSON.stringify(name)})`, `the point ${JSON.stringify(name)}`, ctx)
-                    before.set(entry, entry.value)
                     this.slide(entry, value, ctx)
                 }
-                this.relayout(ctx, before)
+                this.relayout(ctx, true)
             },
         }
     }
@@ -645,18 +661,18 @@ export class NumberLine extends Node {
         if (list !== null) {
             if (!Array.isArray(list)) throw new Error(`numberLine: snap takes the name of a point, a list of names, or nothing for every point. It got ${written(which)}`)
             for (const name of list) this.need(name, 'snap')
+            if (list.length > 0) this.requireTicks('snap')
         }
         return {
             label: 'numberLine.snap', duration: options.duration ?? 0.8, ease: options.ease,
             schedule: (ctx) => {
                 reveal(this, ctx.t0, ctx.stage)
                 const chosen = list === null ? this.entries.filter((entry) => entry.here) : list.map((name) => this.need(name, 'snap'))
-                const before = new Map<PointEntry, number>()
+                if (chosen.length > 0) this.requireTicks('snap')
                 for (const entry of chosen) {
                     const tick = this.nearestTick(entry.value)
                     if (tick === entry.value) continue
                     this.claim(entry, `snap(${JSON.stringify(entry.name)})`, `the point ${JSON.stringify(entry.name)}`, ctx)
-                    before.set(entry, entry.value)
                     const from = this.p(entry.value)[0], to = this.p(tick)[0]
                     this.slide(entry, tick, ctx)
                     if (options.trace === false) continue
@@ -671,9 +687,9 @@ export class NumberLine extends Node {
                     // The line of the error grows with the dot: its end is under the dot at each frame.
                     stepAt(error, 'trimTo', 0, ctx.t0)
                     error.tween('trimTo', 1, ctx.t0, ctx.t1, ctx.ease)
-                    entry.trace = trace
+                    entry.traces.push(trace)
                 }
-                this.relayout(ctx, before)
+                this.relayout(ctx, true)
             },
         }
     }
@@ -688,9 +704,6 @@ export class NumberLine extends Node {
         if (this.entries.some((entry) => entry.here && entry.name === spec.name) || this.pending.has(spec.name)) throw new Error(this.taken(spec.name, 'insert'))
         const from = options.from
         if (from !== undefined && !(from instanceof Node) && !(Array.isArray(from) && from.length === 2 && Number.isFinite(from[0]) && Number.isFinite(from[1]))) throw new Error(`numberLine: insert: \`from\` is ${written(from)}. Give a point [x, y] of the stage, or a node`)
-        // The node is made now and joins the line when the film plays the insert, so a point that is wrong stops the film at this line.
-        const entry = this.entryOf(spec, false)
-        if (entry.label) ownLabels(this, { labels: [entry.label] })
         this.pending.add(spec.name)
         return {
             label: 'numberLine.insert', duration: options.duration ?? 0.7, ease: options.ease,
@@ -700,11 +713,18 @@ export class NumberLine extends Node {
                 // A film that plays one insert twice would bring two points of one name.
                 if (this.entries.some((other) => other.here && other.name === spec.name)) throw new Error(this.taken(spec.name, 'insert'))
                 const { t0, t1, ease } = ctx
+                const entry = this.entryOf(spec, false)
+                if (entry.label) ownLabels(this, { labels: [entry.label] })
                 this.entries.push(entry)
                 this.pointNodes.push(entry.node)
                 this.pointLabels.push(entry.label)
                 clock.now = t0
                 if (!this.pointLayer.parent) this.add(this.traces, this.thresholdLayer, this.pointLayer)
+                if (!this.extent) {
+                    // A copy made before a plain axis first used these layers freezes them hidden.
+                    reveal(this.pointLayer, t0, ctx.stage)
+                    reveal(this.traces, t0, ctx.stage)
+                }
                 this.pointLayer.add(entry.node)
                 entry.alive.step(t1, true)
                 entry.last = { call: `insert(${JSON.stringify(spec.name)})`, t0, t1 }
@@ -769,13 +789,19 @@ export class NumberLine extends Node {
                 reveal(this, ctx.t0, ctx.stage)
                 const entry = this.cut(options.which ?? 0, 'moveThreshold'), index = this.cuts.indexOf(entry)
                 this.claim(entry, `moveThreshold(${to})`, `threshold ${index}`, ctx)
-                const under = this.cuts[index - 1], over = this.cuts[index + 1]
-                const other = under && !(to > under.value) ? index - 1 : over && !(to < over.value) ? index + 1 : -1
-                if (other >= 0) throw new Error(`numberLine: moveThreshold: threshold ${index} cannot go to ${to}: threshold ${other} is at ${this.cuts[other]!.value}, and the thresholds keep their order. Move threshold ${other} first, or give a value on the same side of it`)
                 const from = entry.at.track.sample(ctx.t0)
+                for (const point of this.entries) if (point.snapshot) point.snapshot.resume = Math.min(point.snapshot.resume, ctx.t0)
                 tweenValue(entry.at, to, ctx.t0, ctx.t1, ctx.ease)
                 entry.node.track('x').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: this.p(to)[0], at: (alpha) => this.p(from + (to - from) * alpha)[0] })
                 entry.value = to
+                if (this.cuts.length > 1) {
+                    // A parallel move can schedule the neighbor later. Check both tracks after the film has built them.
+                    ctx.stage.checks.push(() => {
+                        this.orderedThresholds(ctx.t1, index)
+                        const samples = Math.min(256, Math.max(1, Math.ceil((ctx.t1 - ctx.t0) * ctx.stage.fps)))
+                        for (let i = 0; i < samples; i++) this.orderedThresholds(ctx.t0 + (ctx.t1 - ctx.t0) * i / samples, index)
+                    })
+                }
                 // A name that the threshold would stand on at its new place goes to the side of its dot.
                 this.relayout(ctx)
             },
@@ -786,31 +812,34 @@ export class NumberLine extends Node {
      * A copy with its own points and thresholds, at the values that the line shows now. A change of the copy
      * does not change the line.
      */
-    override clone(): this {
-        const copy = super.clone() as this & NumberLine
-        const own = copy as unknown as { entries: PointEntry[]; cuts: ThresholdEntry[]; pending: Set<string>; pointNodes: Node[]; pointLabels: (Node | null)[]; thresholdNodes: Node[]; traces: Node; pointLayer: Node; thresholdLayer: Node }
-        // A list with no node in it, and a layer that is not on the line yet, are still those of this line. The copy gets its own.
-        if (own.pointNodes === this.pointNodes) own.pointNodes = [...this.pointNodes]
-        if (own.pointLabels === this.pointLabels) own.pointLabels = [...this.pointLabels]
-        if (own.thresholdNodes === this.thresholdNodes) own.thresholdNodes = [...this.thresholdNodes]
-        if (own.pointLayer === this.pointLayer) {
-            own.traces = new Node()
-            own.pointLayer = new Node()
-            own.thresholdLayer = new Node()
+    protected override [rebindCloneParts](copy: this, parts: ReadonlyMap<Node, Node>): void {
+        // A later insert appends to these lists even when none of the original points had a label.
+        Object.assign(copy, { pointNodes: [...copy.pointNodes], pointLabels: [...copy.pointLabels], thresholdNodes: [...copy.thresholdNodes] })
+        // A plain axis only attaches these layers when its first point arrives.
+        if (!parts.has(this.pointLayer)) {
+            copy.traces = new Node()
+            copy.pointLayer = new Node()
+            copy.thresholdLayer = new Node()
         }
-        own.entries = this.entries.map((entry, index) => {
+        copy.entries = this.entries.map((entry, index) => {
             const value = entry.at.value
-            return { ...entry, value, at: new Value(value), alive: new Track(entry.alive.sample(clock.now)), node: copy.pointNodes[index]!, label: copy.pointLabels[index] ?? null, trace: null, last: null }
+            const alive = entry.alive.sample(clock.now)
+            const traces = entry.traces.filter((trace) => trace.get('visible')).map((trace) => parts.get(trace)!)
+            const snapshot = { crossing: this.crossingAt(entry, clock.now), traveling: this.traveling(entry, clock.now), resume: Infinity }
+            return { ...entry, value, at: new Value(value), here: alive, alive: new Track(alive), node: copy.pointNodes[index]!, label: copy.pointLabels[index] ?? null, traces, snapshot, last: null }
         })
-        own.cuts = this.cuts.map((cut, index) => {
+        copy.cuts = this.cuts.map((cut, index) => {
             const value = cut.at.value
             return { ...cut, value, at: new Value(value), node: copy.thresholdNodes[index]!, last: null }
         })
-        own.pending = new Set()
-        return copy
+        copy.pending = new Set()
     }
 
     // ── Bookkeeping ───────────────────────────────────────────────────────
+
+    private requireTicks(call: string): void {
+        if (this.tickValues.length === 0) throw new Error(`numberLine: ${call}: the line has no ticks in its range. Give a smaller step or list the ticks to snap to`)
+    }
 
     private need(name: string, call: string): PointEntry {
         const entry = typeof name === 'string' ? this.entries.find((one) => one.here && one.name === name) : undefined
@@ -839,6 +868,16 @@ export class NumberLine extends Node {
             throw new Error(`numberLine: ${call}: no band ${written(band)}. The bands are ${names.join(', ')}`)
         }
         return index
+    }
+
+    private orderedThresholds(time: number, moving?: number): number[] {
+        const values = this.cuts.map((cut) => cut.at.track.sample(time))
+        for (let i = 1; i < values.length; i++) {
+            if (values[i - 1]! < values[i]!) continue
+            const index = moving === i ? i : i - 1, other = index === i ? i - 1 : i
+            throw new Error(`numberLine: moveThreshold: threshold ${index} cannot go to ${values[index]}: threshold ${other} is at ${values[other]}, and the thresholds keep their order. The cuts meet or cross at ${seconds(time)}. Change their targets or play the moves in sequence`)
+        }
+        return values
     }
 
     /** The index of the band of a value: at a time of the film, or after the changes that are scheduled so far. */
@@ -894,7 +933,7 @@ export class NumberLine extends Node {
         }
         node.add(new Part<NumberLine>(this, (owner, time) => owner.drawDot(id, time)))
         if (label) node.add(label)
-        return { id, name: spec.name, value: spec.value, at: new Value(spec.value), alive: new Track(counted), color: spec.color, node, label, width, slot: null, trace: null, here: true, last: null }
+        return { id, name: spec.name, value: spec.value, at: new Value(spec.value), alive: new Track(counted), color: spec.color, node, label, width, slot: null, traces: [], snapshot: null, here: true, last: null }
     }
 
     /**
@@ -919,6 +958,7 @@ export class NumberLine extends Node {
     /** Write the keys that take a point to a value, and move the bookkeeping. */
     private slide(entry: PointEntry, to: number, ctx: AnimContext): void {
         const from = entry.at.track.sample(ctx.t0)
+        if (entry.snapshot) entry.snapshot.resume = Math.min(entry.snapshot.resume, ctx.t0)
         tweenValue(entry.at, to, ctx.t0, ctx.t1, ctx.ease)
         entry.node.track('x').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: this.p(to)[0], at: (alpha) => this.p(from + (to - from) * alpha)[0] })
         entry.value = to
@@ -927,10 +967,10 @@ export class NumberLine extends Node {
 
     /** The ring and the line of the last snap of a point leave. */
     private fadeTrace(entry: PointEntry, t0: number, t1: number, ease: AnimContext['ease']): void {
-        if (!entry.trace) return
-        entry.trace.tween('opacity', 0, t0, t1, ease)
-        entry.trace.track('visible').step(t1, false)
-        entry.trace = null
+        const trace = entry.traces.at(-1)
+        if (!trace || !sampleAt(trace, 'visible', t0)) return
+        trace.tween('opacity', 0, t0, t1, ease)
+        trace.track('visible').step(t1, false)
     }
 
     /** A dot grows and fades in at its place. `hidden` is the time from which it is away before that. */
@@ -1019,13 +1059,51 @@ export class NumberLine extends Node {
         return go(0) ? (chosen as Slot[]) : null
     }
 
-    /**
-     * Give each name its place for the values that the points have after the changes that are scheduled so
-     * far. With a context, a name whose place changes goes there during the change. Without one, the line is
-     * built now. `before` has the value that each point of a move starts from: the name of a point that passes
-     * another point goes over the names on its way, and comes down at the end.
-     */
-    private relayout(ctx: AnimContext | null, before?: ReadonlyMap<PointEntry, number>): void {
+    /** Give names that exchange places different heights for the crossing. Stationary names keep their level. */
+    private crossingLevels(items: PointEntry[], slots: Slot[], ctx: AnimContext) {
+        // A shorter parallel move can finish before a longer one passes its resting dot.
+        const stops = new Set([ctx.t0, ctx.t1])
+        for (const entry of items) for (const key of entry.at.track.keys) {
+            if (key.t0 >= ctx.t1 || key.t1 <= ctx.t0) continue
+            stops.add(Math.max(ctx.t0, key.t0))
+            stops.add(key.t1)
+        }
+        const boundaries = [...stops].sort((a, b) => a - b)
+        const end = boundaries[boundaries.length - 1]!
+        const times = [ctx.t0]
+        for (let i = 1; i < boundaries.length; i++) {
+            const start = boundaries[i - 1]!, stop = boundaries[i]!
+            for (let k = 1; k <= 8; k++) times.push(start + (stop - start) * k / 8)
+        }
+        const paths = items.map((entry, index) => ({
+            entry, level: slots[index]!.level, distance: Math.abs(entry.at.track.sample(end) - entry.at.track.sample(ctx.t0)), values: times.map((t) => entry.at.track.sample(t)), others: [] as PointEntry[],
+        }))
+        for (let i = 0; i < paths.length; i++) {
+            const a = paths[i]!
+            for (let j = i + 1; j < paths.length; j++) {
+                const b = paths[j]!
+                if (!a.values.some((v, k) => v < b.values[k]!) || !a.values.some((v, k) => v > b.values[k]!)) continue
+                a.others.push(b.entry)
+                b.others.push(a.entry)
+            }
+        }
+        const assigned = new Map<PointEntry, number>()
+        for (const path of [...paths].sort((a, b) => a.distance - b.distance)) {
+            if (path.others.length === 0) continue
+            const taken = new Set(path.others.map((other) => assigned.get(other)))
+            if (taken.has(path.level)) {
+                let level = 1
+                while (taken.has(level)) level++
+                if (level > this.levels) throw new Error(`numberLine: the labels that pass ${JSON.stringify(path.entry.name)} need more than ${this.levels} heights during this move. Increase levels, hide a label, or play the moves in sequence`)
+                path.level = level
+            }
+            assigned.set(path.entry, path.level)
+        }
+        return { paths, end }
+    }
+
+    /** Place the names at rest or schedule their paths to the new places. */
+    private relayout(ctx: AnimContext | null, moving = false): void {
         const items = this.entries.filter((entry) => entry.here && entry.label)
         if (items.length === 0) return
         let slots: Slot[] | null = null
@@ -1041,6 +1119,7 @@ export class NumberLine extends Node {
             const pair = sorted.length > 1 ? ` The points ${JSON.stringify(sorted[near - 1]!.name)} and ${JSON.stringify(sorted[near]!.name)} are the nearest two.` : ''
             throw new Error(`numberLine: the names of the points have no place over the line with ${this.levels} height${this.levels === 1 ? '' : 's'}: two names would meet, or the line from a dot would pass through a name.${pair} What works for this line: ${more ? `levels: ${more}, ` : ''}shorter labels, \`label: false\` for the points that need no name, or a longer \`length\``)
         }
+        const crossings = ctx && moving ? this.crossingLevels(items, slots, ctx) : null
         items.forEach((entry, index) => {
             const slot = slots![index]!, label = entry.label!
             const [x, y] = this.labelAt(entry, slot)
@@ -1049,16 +1128,24 @@ export class NumberLine extends Node {
                 label.at(x, y)
                 return
             }
-            if (Math.abs(sampleAt(label, 'x', ctx.t0) - x) > 0.01) label.tween('x', x, ctx.t0, ctx.t1, ctx.ease)
-            const from = before?.get(entry)
-            // The point passes another one when the two change their order on the line.
-            const passes = from !== undefined && this.levels > 1 && items.some((other) => other !== entry && (from - (before!.get(other) ?? other.value)) * (entry.value - other.value) < 0)
-            const high = this.nameY(this.levels)
-            if (passes && y > high + 0.01) {
-                const part = (ctx.t1 - ctx.t0) * 0.25
-                label.tween('y', high, ctx.t0, ctx.t0 + part, ctx.ease)
-                label.tween('y', y, ctx.t1 - part, ctx.t1, ctx.ease)
-            } else if (Math.abs(sampleAt(label, 'y', ctx.t0) - y) > 0.01) {
+            if (Math.abs(propAt(label, 'x', ctx.t0) - x) > 0.01 || Math.abs(propAt(label, 'x', ctx.t1) - x) > 0.01) label.tween('x', x, ctx.t0, ctx.t1, ctx.ease)
+            const path = crossings?.paths[index], startY = propAt(label, 'y', ctx.t0)
+            if (crossings && path && path.others.length > 0) {
+                const crossingY = this.nameY(path.level)
+                // The horizontal gap determines when the label rises, including when the two dots have different speeds.
+                label.track('y').add({ t0: ctx.t0, t1: crossings.end, to: y, ease: null, at: (progress) => {
+                    const time = ctx.t0 + progress * (crossings.end - ctx.t0)
+                    const center = propAt(entry.node, 'x', time) + propAt(label, 'x', time)
+                    let lift = 0
+                    for (const other of path.others) {
+                        const otherCenter = propAt(other.node, 'x', time) + propAt(other.label!, 'x', time)
+                        const gap = Math.abs(center - otherCenter) - (entry.width + other.width) / 2
+                        lift = Math.max(lift, Math.min(1, 1 - gap / this.size))
+                    }
+                    const rest = startY + (y - startY) * ctx.ease(progress)
+                    return rest + (crossingY - rest) * lift
+                } })
+            } else if (Math.abs(startY - y) > 0.01) {
                 label.tween('y', y, ctx.t0, ctx.t1, ctx.ease)
             }
         })
@@ -1075,12 +1162,14 @@ export class NumberLine extends Node {
         return toPaint(this.bands.some((one) => one.color !== undefined) ? 'ink' : 'yellow')
     }
 
-    /** The dot of a point at a time: it has the look of its band, and for a moment after a crossing, a mix of the two looks. */
-    private drawDot(id: number, time: number): Node[] | null {
-        const entry = this.entries.find((one) => one.id === id)
-        if (!entry) return null
+    private crossingAt(entry: PointEntry, time: number): Crossing {
         const bandAt = (t: number) => this.bandFor(entry.at.track.sample(t), t)
         const now = bandAt(time)
+        const frozen = entry.snapshot
+        if (frozen && now === frozen.crossing.now) {
+            const share = frozen.crossing.share + Math.max(0, time - frozen.resume) / CROSS
+            if (time < frozen.resume || share < 1) return { ...frozen.crossing, share }
+        }
         let before = now, share = 1
         if (this.cuts.length > 0 && bandAt(time - CROSS) !== now) {
             // The moment of the crossing: the last time in this window at which the point was in another band.
@@ -1093,6 +1182,14 @@ export class NumberLine extends Node {
             before = bandAt(low)
             share = Math.min(1, Math.max(0, (time - high) / CROSS))
         }
+        return { before, now, share }
+    }
+
+    /** The dot takes the look of its new band over the course of a crossing. */
+    private drawDot(id: number, time: number): Node[] | null {
+        const entry = this.entries.find((one) => one.id === id)
+        if (!entry) return null
+        const { before, now, share } = this.crossingAt(entry, time)
         const paint = share >= 1 ? this.colorIn(entry, now) : mixPaint(this.colorIn(entry, before), this.colorIn(entry, now), share)
         const hollowOf = (band: number) => (this.bands[band]?.hollow ? 1 : 0)
         const hollow = hollowOf(before) + (hollowOf(now) - hollowOf(before)) * share
@@ -1107,7 +1204,7 @@ export class NumberLine extends Node {
         const label = entry?.label
         if (!entry || !label) return null
         // A dot that travels has no line to its name: the line would pass through the names that the dot passes.
-        if (Math.abs(propAt(entry.node, 'x', time) - propAt(entry.node, 'x', time - 1 / 240)) > 1e-6) return null
+        if (this.traveling(entry, time)) return null
         const x = propAt(label, 'x', time), y = propAt(label, 'y', time)
         // At the first height, the name is at its dot, in the middle or at one side: it needs no line.
         if (y > this.nameY(1) - 1) return null
@@ -1116,9 +1213,15 @@ export class NumberLine extends Node {
         return line([0, -this.radius - 3], [0, end], { stroke: 'faint', width: 1.5 })
     }
 
+    private traveling(entry: PointEntry, time: number): boolean {
+        if (entry.snapshot && time < entry.snapshot.resume) return entry.snapshot.traveling
+        return Math.abs(propAt(entry.node, 'x', time) - propAt(entry.node, 'x', time - 1 / 240)) > 1e-6
+    }
+
     /** The shade of each band that has a color, from the line up to the top of the names. */
     private drawShade(time: number): Node[] {
-        const edges = [this.range[0], ...this.cuts.map((cut) => cut.at.track.sample(time)), this.range[1]]
+        // The renderer can seek between the samples of a custom easing function.
+        const edges = [this.range[0], ...this.orderedThresholds(time), this.range[1]]
         const out: Node[] = []
         this.bands.forEach((band, index) => {
             if (band.color === undefined) return
@@ -1210,13 +1313,13 @@ export class NumberLine extends Node {
     }
 
     /** The value of an end of a bracket at a time: a value, or the value of a point. Null when the point is gone. */
-    private endAt(end: number | string, time: number): number | null {
+    private endAt(end: BracketEnd, time: number): number | null {
         if (typeof end === 'number') return end
-        const entry = this.entries.find((one) => one.name === end && one.here) ?? this.entries.find((one) => one.name === end)
+        const entry = this.entries.find((one) => one.id === end.pointId)
         return entry && sampleAt(entry.node, 'visible', time) ? entry.at.track.sample(time) : null
     }
 
-    private drawBracket(from: number | string, to: number | string, side: 'under' | 'over', offset: number, color: ColorInput, label: NumberLineBracketOptions['label'], time: number): Node[] | null {
+    private drawBracket(from: BracketEnd, to: BracketEnd, side: 'under' | 'over', offset: number, color: ColorInput, label: NumberLineBracketOptions['label'], time: number): Node[] | null {
         const a = this.endAt(from, time), b = this.endAt(to, time)
         if (a === null || b === null) return null
         const size = this.size, cap = size * 0.3, way = side === 'under' ? 1 : -1

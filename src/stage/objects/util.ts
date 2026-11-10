@@ -3,6 +3,7 @@ import type { Ease } from '../ease'
 import { Node, type NodeProps, type PropName } from '../node'
 import { Value } from '../anim'
 import type { Stage } from '../stage'
+import { Box } from '../layout'
 import { tex } from '../tex'
 import { text, type TextOptions } from '../text'
 import { line } from '../shapes'
@@ -143,7 +144,10 @@ export function seededRandom(seed: number): () => number {
 export function stepsBetween(min: number, max: number, step: number): number[] {
     const out: number[] = []
     const first = Math.ceil(min / step - 1e-9) * step
-    for (let value = first; value <= max + step * 1e-6; value += step) out.push(Math.round(value / step) * step)
+    for (let value = first; value <= max + step * 1e-6; value += step) {
+        if (!(value + step > value)) throw new Error(`The tick step ${step} is too small to advance past ${value}. Use a larger step or subtract a common offset from the axis values.`)
+        out.push(Math.round(value / step) * step)
+    }
     return out
 }
 
@@ -176,6 +180,14 @@ export function formatNumber(value: number, step?: number): string {
     const rounded = Math.round(value * 1000) / 1000
     if (Math.abs(rounded) >= 1000 && Number.isInteger(rounded)) return rounded.toLocaleString('en-US')
     return String(rounded)
+}
+
+/** A local rectangle in stage coordinates. After rotation, any corner can set an edge of the box. */
+export function worldBox(node: Node, left: number, top: number, right: number, bottom: number): Box {
+    const corners = [node.toWorld(left, top), node.toWorld(right, top), node.toWorld(right, bottom), node.toWorld(left, bottom)]
+    const xs = corners.map(([x]) => x)
+    const ys = corners.map(([, y]) => y)
+    return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
 }
 
 /** A number of a node at a time, read from its track or from its first value: no change of the clock, and no new track. */
@@ -228,7 +240,7 @@ export function xyPoint(frame: XYFrame, x: number, y: number): [number, number] 
     ]
 }
 
-export function xyAxes(frame: XYFrame, options: { labelSize: number; color?: ColorInput; font?: TextOptions['font']; xLabel?: string; yLabel?: string; gridY?: boolean; xTicks?: number; yTicks?: number; xFormat?: (x: number) => string; yFormat?: (y: number) => string }): Node {
+export function xyAxes(frame: XYFrame, options: { labelSize: number; color?: ColorInput; font?: TextOptions['font']; xLabel?: string; yLabel?: string; gridY?: boolean; hideXTicks?: boolean; hideYTicks?: boolean; xTicks?: number; yTicks?: number; xFormat?: (x: number) => string; yFormat?: (y: number) => string }): Node {
     const axis = new Node()
     const size = options.labelSize
     const color = options.color ?? 'faint'
@@ -236,14 +248,14 @@ export function xyAxes(frame: XYFrame, options: { labelSize: number; color?: Col
     const { w, h } = frame
     const x = niceTicks(frame.xRange[0], frame.xRange[1], options.xTicks ?? 6)
     const y = niceTicks(frame.yRange[0], frame.yRange[1], options.yTicks ?? 5)
-    for (const value of y.ticks) {
+    for (const value of options.hideYTicks ? [] : y.ticks) {
         const [, py] = xyPoint(frame, frame.xRange[0], value)
         if (options.gridY !== false) axis.add(line([-w / 2, py], [w / 2, py], { stroke: 'grid', width: 1.25 }))
         const label = small(options.yFormat ? options.yFormat(value) : formatNumber(value, y.step), size, 'dim', font)
         axis.add(label.at(-w / 2 - 12 - label.width / 2, py))
     }
     axis.add(line([-w / 2, h / 2], [w / 2, h / 2], { stroke: color, width: 1.5 }))
-    for (const value of x.ticks) {
+    for (const value of options.hideXTicks ? [] : x.ticks) {
         const [px] = xyPoint(frame, value, frame.yRange[0])
         axis.add(line([px, h / 2], [px, h / 2 + 6], { stroke: color, width: 1.5 }))
         axis.add(small(options.xFormat ? options.xFormat(value) : formatNumber(value, x.step), size, 'dim', font).at(px, h / 2 + 12 + size * 0.6))
