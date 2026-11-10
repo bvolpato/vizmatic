@@ -13477,6 +13477,85 @@ describe('pipeline', () => {
     const counted = (flow: Flow, stage: number, time: number) => at(time, () => flow.counters[stage]!.children.filter((part) => shows(part) > 0.99).map(words))
     const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] as const }
 
+    it('admits a new item to a free lane while another item exits', async () => {
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put({ id: 'old' }))
+            s.play(flow.exit('old'), flow.put({ id: 'new' }))
+            expect(flow.stateOf('new').lane).toBe(1)
+        })
+    })
+
+    it('reuses an id only after the previous capsule finishes leaving', async () => {
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put({ id: 'x' }))
+            expect(() => s.play(flow.exit('x'), flow.put({ id: 'x', lane: 1 }))).toThrow(/id "x".*free from/)
+        })
+    })
+
+    it('fits the badge that the preceding change in a sequence leaves', async () => {
+        await compile((s) => {
+            const flow = s.add(pipeline(['a', 'b'], { width: 530, size: 28 }))
+            s.play(flow.put({ id: 'x', badge: 'WWWWWW' }))
+            s.play(seq(flow.setBadge('x', null), flow.pass('x')))
+            expect(flow.stateOf('x')).toMatchObject({ state: 'passed', badge: undefined })
+        })
+    })
+
+    it('moves only the copied pipeline when a film clones its containing group', async () => {
+        await compile((s) => {
+            const flow = pipeline(GATES, { ...sized, counts: true })
+            const holder = s.add(group(flow))
+            s.play(flow.put({ id: 'a' }))
+            const copyHolder = s.add(holder.clone())
+            const copy = copyHolder.children[0] as Flow
+            expect(copy.item('a')).not.toBe(flow.item('a'))
+            s.play(copy.move('a'))
+            const next = s.add(copyHolder.clone()).children[0] as Flow
+            s.play(next.move('a'))
+            expect([flow.stateOf('a').stage, copy.stateOf('a').stage, next.stateOf('a').stage]).toEqual([0, 1, 2])
+            expect([flow.reached(1), copy.reached(1)]).toEqual([0, 1])
+            expect([flow.reached(2), copy.reached(2), next.reached(2)]).toEqual([0, 0, 1])
+        })
+    })
+
+    it('can start a cloned pipeline earlier on the timeline than its source', async () => {
+        await compile((s) => {
+            const flow = s.add(pipeline(GATES, { ...sized, lanes: 2 }))
+            s.play(flow.put([{ id: 'a' }, { id: 'b' }]))
+            s.play(flow.move('a'), flow.exit('b'))
+            const copy = flow.clone()
+            s.at(0, () => s.play(copy.move('a'), copy.put({ id: 'b', lane: 1 })))
+            expect([copy.stateOf('a').stage, flow.stateOf('a').stage]).toEqual([2, 1])
+            expect(copy.stateOf('b').lane).toBe(1)
+        })
+    })
+
+    it('counts a long move at the destination after the item crosses the preceding gates', async () => {
+        let flow!: Flow
+        await compile((s) => {
+            flow = s.add(pipeline(GATES, { ...sized, counts: true }))
+            s.play(flow.put({ id: 'a' }), { duration: 1 })
+            s.play(flow.move('a', 3), { duration: 1, ease: (t) => t ** 6 })
+        })
+        expect(counted(flow, 2, 1.89)).toEqual(['0'])
+        expect(counted(flow, 3, 1.89)).toEqual(['0'])
+        expect(counted(flow, 3, 2)).toEqual(['1'])
+    })
+
+    it('encloses all four corners of a region inside a rotated parent', async () => {
+        await compile((s) => {
+            const flow = pipeline(GATES, sized)
+            const before = flow.region({ stage: 1, lane: 0 })
+            s.add(group(flow).rotate(Math.PI / 4))
+            const after = flow.region({ stage: 1, lane: 0 })
+            const extent = (before.width + before.height) / Math.sqrt(2)
+            expect(after.width).toBeCloseTo(extent)
+            expect(after.height).toBeCloseTo(extent)
+        })
+    })
+
     it('is as wide as its width, with the names at even steps over the path, and measures as its frame for the layout', async () => {
         await compileFilm(film(() => {
             const flow = pipeline(GATES, sized).at(100, 50)
@@ -13635,7 +13714,7 @@ describe('pipeline', () => {
         })
         // The item is at 'schema' at one third of the move, and at 'source' at two thirds. The mark and the count of a stage follow.
         expect([lookOf(flow, 'schema', 1.9), lookOf(flow, 'schema', 2.4), lookOf(flow, 'source', 2.9), lookOf(flow, 'source', 3.4)]).toEqual(['open', 'passed', 'open', 'passed'])
-        expect([counted(flow, 1, 1.9), counted(flow, 1, 2.1), counted(flow, 2, 2.9), counted(flow, 2, 3.1), counted(flow, 3, 3.5), counted(flow, 3, 3.6)]).toEqual([['0'], ['1'], ['0'], ['1'], ['0'], ['1']])
+        expect([counted(flow, 1, 1.9), counted(flow, 1, 2.1), counted(flow, 2, 2.9), counted(flow, 2, 3.1), counted(flow, 3, 3.9), counted(flow, 3, 4)]).toEqual([['0'], ['1'], ['0'], ['1'], ['0'], ['1']])
         // After the move back, no mark says that the item passed.
         expect(GATES.map((gate) => lookOf(flow, gate, 6))).toEqual(['open', 'open', 'open', 'open'])
         expect(GATES.map((_, index) => counted(flow, index, 7))).toEqual([['1'], ['1'], ['1'], ['1']])
@@ -13855,7 +13934,7 @@ describe('pipeline', () => {
         })
         // Each item counts when it is half there: at 0.5, 1.5 and 2.5 s.
         expect([0.4, 0.6, 1.4, 1.6, 2.4, 2.6].map((time) => counted(flow, 0, time))).toEqual([['0 rows'], ['1 rows'], ['1 rows'], ['2 rows'], ['2 rows'], ['3 rows']])
-        expect([4, 4.8, 4.9, 5].map((time) => counted(flow, 1, time))).toEqual([['0 rows'], ['0 rows'], ['2 rows'], ['2 rows']])
+        expect([4, 4.8, 4.9, 5].map((time) => counted(flow, 1, time))).toEqual([['0 rows'], ['0 rows'], ['0 rows'], ['2 rows']])
         expect(counted(flow, 2, 5)).toEqual(['0 rows'])
         // The count line is in the dim color, under the name, at the size of the names.
         expect(flow.counters[0]!.get('x')).toBe(flow.names[0]!.get('x'))

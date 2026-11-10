@@ -1,4 +1,4 @@
-import { Node, ownLabels } from '../node'
+import { Node, ownLabels, rebindCloneParts } from '../node'
 import { rectPath, type Path } from '../geometry'
 import { circle, dot, line, polygon, polyline, rect, svgPath } from '../shapes'
 import { filmFont, text, type TextOptions } from '../text'
@@ -242,6 +242,7 @@ export class Pipeline extends Node {
     private readonly holder = new Node()
     private recs: Rec[] = []
     private byId = new Map<string, Rec>()
+    private idFreeAt = new Map<string, number>()
     private lanes: Lane[]
     private inTray: Rec[] = []
     /** For each stage: the times at which an item reached it, and the count before the first of them. */
@@ -464,21 +465,19 @@ export class Pipeline extends Node {
                 y1 = y0 + this.capsule
             }
         }
-        const [ax, ay] = this.toWorld(x0, y0), [bx, by] = this.toWorld(x1, y1)
-        return new Box(Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by))
+        const corners = [this.toWorld(x0, y0), this.toWorld(x0, y1), this.toWorld(x1, y0), this.toWorld(x1, y1)]
+        const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y)
+        return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
     /** A copy with its own items and its own bookkeeping, at rest in the state that the pipeline has now. */
-    override clone(): this {
-        const copy = super.clone()
-        const mine = this.all(), theirs = copy.all()
-        const twin = new Map<Node, Node>()
-        mine.forEach((node, index) => twin.set(node, theirs[index]!))
+    protected override [rebindCloneParts](copy: this, twin: ReadonlyMap<Node, Node>): void {
         const recs = new Map<Rec, Rec>()
         for (const rec of this.recs) recs.set(rec, { ...rec, node: twin.get(rec.node) as PipelineItemNode, last: null })
         copy.marks = this.marks.map((row) => row.map((mark) => twin.get(mark)!))
         copy.recs = this.recs.map((rec) => recs.get(rec)!)
         copy.byId = new Map(copy.recs.map((rec) => [String(rec.id), rec]))
+        copy.idFreeAt = new Map()
         copy.inTray = this.inTray.map((rec) => recs.get(rec)!)
         // The copy can take a change at any time: its lanes are free of the times of this pipeline.
         copy.lanes = this.lanes.map((lane) => ({ owner: lane.owner ? recs.get(lane.owner)! : null, freeAt: -Infinity, left: '', shown: lane.shown, trail: [...lane.trail] }))
@@ -496,7 +495,6 @@ export class Pipeline extends Node {
             }
             return next
         })
-        return copy
     }
 
     /** The names, the line of the path, its marks and the tray arrive, stage by stage from the first. No item shows yet. */
@@ -592,7 +590,7 @@ export class Pipeline extends Node {
                     this.dress(rec, 'waiting', rec.reason ? undefined : rec.badge, false, t0, turn, ctx.ease)
                     rec.node.tween('x', this.x(next), t0, t1, ctx.ease)
                     rec.stage = next
-                    this.arrive(rec, next, t0 + span * 0.85)
+                    this.arrive(rec, next, t1)
                 })
             },
         }
@@ -607,7 +605,8 @@ export class Pipeline extends Node {
         const next = badge === null ? undefined : oneLine('the badge', badge)
         const call = `setBadge(${this.called(which)})`
         timed(call, options)
-        this.early(which, (rec) => this.fits(rec.id, rec.idEnd, rec.state, next))
+        // Earlier changes in a sequence can remove the verdict before this badge appears.
+        this.early(which, (rec) => this.fits(rec.id, rec.idEnd, 'waiting', next))
         return {
             label: 'pipeline.setBadge', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
@@ -626,7 +625,7 @@ export class Pipeline extends Node {
         const next = badge === undefined ? undefined : oneLine('the badge', badge)
         const call = `pass(${this.called(which)})`
         timed(call, options)
-        this.early(which, (rec) => this.fits(rec.id, rec.idEnd, 'passed', next ?? (rec.reason ? undefined : rec.badge)))
+        this.early(which, (rec) => this.fits(rec.id, rec.idEnd, 'passed', next))
         return {
             label: 'pipeline.pass', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
@@ -644,7 +643,7 @@ export class Pipeline extends Node {
         const next = reason === undefined ? undefined : oneLine('the reason', reason)
         const call = `stop(${this.called(which)})`
         timed(call, options)
-        this.early(which, (rec) => this.fits(rec.id, rec.idEnd, 'stopped', next ?? rec.badge))
+        this.early(which, (rec) => this.fits(rec.id, rec.idEnd, 'stopped', next))
         return {
             label: 'pipeline.stop', duration: options.duration ?? 0.6, ease: options.ease,
             schedule: (ctx) => {
@@ -680,14 +679,22 @@ export class Pipeline extends Node {
                     if (rec.width > room + 0.5) {
                         throw new Error(`pipeline: ${call}: the tray has no room for item ${shown(rec.id)}. It holds ${this.inTray.length} item${this.inTray.length === 1 ? '' : 's'}, and ${Math.max(0, Math.floor(room))} px are left for an item of ${Math.ceil(rec.width)} px. Use shorter reasons, a wider \`width\`, or send fewer items to the tray`)
                     }
+                    const crossesItems = rec.lane < this.lanes.length - 1 || this.inTray.length > 0
                     this.leave(rec, call, false, t0, t1, ctx.ease)
                     rec.where = 'tray'
                     this.inTray.push(rec)
                     // On its way, the item goes behind the items of the lanes that it passes: they stay readable.
                     stepAt(rec.node, 'z', -1, t0)
                     stepAt(rec.node, 'z', 0, t1)
-                    rec.node.tween('x', start, t0, t1, ctx.ease)
-                    rec.node.tween('y', this.trayY, t0, t1, ctx.ease)
+                    // A lower capsule can cover half a word in transit. Carry the border across and restore the label in the tray.
+                    const depart = crossesItems ? t0 + (t1 - t0) * 0.15 : t0
+                    const arrive = crossesItems ? t1 - (t1 - t0) * 0.15 : t1
+                    if (crossesItems) {
+                        rec.node.content.tween('opacity', 0, t0, depart, ctx.ease)
+                        rec.node.content.tween('opacity', 1, arrive, t1, ctx.ease)
+                    }
+                    rec.node.tween('x', start, depart, arrive, ctx.ease)
+                    rec.node.tween('y', this.trayY, depart, arrive, ctx.ease)
                 })
             },
         }
@@ -1002,7 +1009,10 @@ export class Pipeline extends Node {
     /** Bring one item to the path. With `from`, it comes out of that item. */
     private admit(spec: Spec, call: string, from: Rec | null, t0: number, t1: number, ease: Ease): void {
         if (this.byId.has(String(spec.id))) throw new Error(`pipeline: ${call}: the pipeline has an item ${shown(spec.id)} already. An id is on the pipeline one time: give the new item another id, or let the first one exit()`)
-        const lane = spec.lane ?? this.lanes.findIndex((state) => state.owner === null)
+        const freeAt = this.idFreeAt.get(String(spec.id))
+        if (freeAt !== undefined && t0 < freeAt - SOON) throw new Error(`pipeline: ${call} starts at ${seconds(t0)}. The id ${shown(spec.id)} is free from ${seconds(freeAt)}. Wait for the previous item to finish leaving`)
+        const available = this.lanes.findIndex((state) => state.owner === null && t0 >= state.freeAt - SOON)
+        const lane = spec.lane ?? (available >= 0 ? available : this.lanes.findIndex((state) => state.owner === null))
         if (lane < 0) {
             const holders = this.lanes.map((state) => shown(state.owner!.id)).join(', ')
             throw new Error(`pipeline: ${call}: no lane is free for item ${shown(spec.id)}. The pipeline has ${this.lanes.length} lane${this.lanes.length === 1 ? '' : 's'}, with ${holders}. Give it more with the option \`lanes\`, or take an item off the path first with eject() or exit()`)
@@ -1153,6 +1163,7 @@ export class Pipeline extends Node {
         stepAt(node, 'visible', false, t1)
         this.recs.splice(this.recs.indexOf(rec), 1)
         this.byId.delete(String(rec.id))
+        this.idFreeAt.set(String(rec.id), t1)
     }
 }
 
