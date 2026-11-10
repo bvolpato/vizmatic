@@ -75,12 +75,14 @@ For a film that follows a recorded voice, use `narrated({ title, timing, scenes 
 |---|---|
 | `attention.ts` | Compute every number on screen from small real inputs. |
 | `cache-miss.ts` | Run a small queueing model, and draw the system from its results. |
+| `paxos.ts` | Play a protocol through a schedule of delays and losses, and send each message of the trace along a `connector` with `send`. |
 | `gradient-descent.ts` | Drive motion from real iterates, and compare two runs. |
 | `linear-maps.ts` | Bend a grid with `applyMatrix`, and follow what it does to area. |
 | `complex-maps.ts` | Move a grid through a family of maps, and direct the camera. |
 | `fourier-epicycles.ts` | Compute motion and readouts from a real transform. |
 | `lorenz.ts` | Integrate a system, and read values from the result. |
 | `central-limit.ts` | Use seeded randomness, so that every render shows the same counts. |
+| `forecast.ts` | Move a window along a series, open a band up to a time, and count the truth against it. |
 | `taylor-series.ts` | Build a result one term at a time. |
 | `pythagoras.ts`, `euler-circle.ts` | Keep a short proof or a short idea to one picture. |
 | `deck-example.ts` | Write a talk with one chapter per step, for `<vz-film stepped>`. |
@@ -93,6 +95,19 @@ Any motion driven by a number:
 const t = s.value(0)
 s.add(dynamic(() => dot(10, 'yellow').at(plot.world(t.value, f(t.value)))))
 s.play(t.to(3, { duration: 4 }))
+```
+
+A chart of a series that moves: a window that scrolls, a line that grows, a marker for the present, and a band between two curves. Do not draw the frame, the band, and the marker by hand. A range of `axes` can be a function, and every mark on the axes then follows it. `plot` takes a function or the points of a series, `[x, y]`, and draws it up to a value. `band` fills the room between two curves. `examples/films/forecast.ts` is a whole film of it:
+
+```ts
+const now = s.value(8), ahead = s.value(0)
+const graph = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], xStep: 2, tips: false }))
+band(graph, low, high, { from: 16, to: () => 16 + ahead.value, fill: 'blue' })   // each curve is a function or a series
+graph.plot(points, { to: () => now.value, stroke: 'ink' })                       // a series: straight lines through its points
+graph.marker({ x: () => now.value, label: 'now' })
+graph.add(dynamic(() => dot(8, 'ink').at(graph.p(now.value, valueAt(points, now.value)))))
+s.play(now.to(16, { ease: linear }), { duration: 3 })
+s.play(ahead.to(4))
 ```
 
 A derivation that keeps shared terms in place:
@@ -153,6 +168,15 @@ s.play(pulse(edge.data['shaft'] as Node, { color: 'yellow' }))
 ```
 
 A dense system box with live numbers: see `infoBox`, `connector`, and `legend` in `vizmatic objects`, and the `architecture` template.
+
+A message between two parts of a protocol: a request, an answer, a packet. Do not move the mark along the line by hand. `link.send(mark)` grows the mark in beside the first node, carries it at one speed, and takes it into the node at the end. `reverse: true` is an answer. `lost: 0.6` stops it at that part of the way, and `refused: true` stops it before the node, each with a cross that stays for `hold` seconds. `duration` is the time on the way, so a slow message has a long one. For the trace of a simulation, play each message at its time with `s.at`:
+
+```ts
+const link = s.add(connector(client, server, { route: 'straight', tip: false }))
+s.play(link.send(chip('request', { anchor: 'center' }), { duration: 1.2 }))
+s.play(link.send(chip('answer', { anchor: 'center' }), { duration: 1.2, reverse: true }))
+s.play(link.send(chip('request', { anchor: 'center' }), { duration: 0.8, lost: 0.6 }))
+```
 
 A small picture of a kind of thing, for a card or a legend. Do not draw these by hand. `PICTOGRAMS` lists the names, which include `series`, `forecast`, `logs`, `traces`, `graph`, `dag`, `tree`, `database`, `service`, `vm`, `process`, `kernel`, `memory`, `disk`, `snapshot`, `core`, `drive`, `server`, `thread`, `interrupt`, `syscall`, `ring`, `page`, `workflow`, `signal`, `issue`, `pullRequest`, `browser`, `model`, `tokens`, `vector`, `event`, `alert`, `check`, and `cross`:
 

@@ -414,9 +414,19 @@ export class Node {
         const [nx, ny] = apply(invert(parent), point[0], point[1])
         this.set('px', lx)
         this.set('py', ly)
-        this.set('x', nx)
-        this.set('y', ny)
+        this.pivotPlace('x', nx)
+        this.pivotPlace('y', ny)
         return this
+    }
+
+    /**
+     * Write the place that goes with a new pivot. It keeps the node where it is, so it is not a move: on the
+     * timeline, a motion that starts at this time stays in effect. Without this, `grow` after `along` in one
+     * play would stop the node.
+     */
+    private pivotPlace(prop: 'x' | 'y', value: number): void {
+        if (clock.capture || !this.mounted || clock.mode === 'render') this.set(prop, value)
+        else this.track(prop).stepUnder(clock.now, value)
     }
 
     /** Scale around the center, or around a given stage point. */
