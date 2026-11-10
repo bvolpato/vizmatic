@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-    assertEqual, capHeight, card, checkFilm, chip, chipRow, circle, clamp, commas, compileFilm, fade, fadeIn, fadeOut, film, fitSize, lerp, namedBox, narrated, narration, rect, sceneArea, sceneKit, seededRandom, smoothstep, tag, text, textWidth,
+    assertEqual, capHeight, card, checkFilm, chip, chipRow, circle, clamp, commas, compileFilm, fade, fadeIn, fadeOut, film, fitSize, lerp, namedBox, narrated, narration, rect, sceneArea, sceneKit, seededRandom, smoothstep, tag, text, textWidth, valueAt,
     type FilmClock, type NarratedOptions, type Node, type PathOp, type SceneClock, type Stage, type TimingFile,
 } from '../src/stage/index'
 import { clock } from '../src/stage/track'
@@ -683,6 +683,27 @@ describe('number and text helpers', () => {
         expect(smoothstep(0.1)).toBeCloseTo(0.028, 6)
         expect(smoothstep(-1)).toBe(0)
         expect(smoothstep(2)).toBe(1)
+    })
+
+    it('valueAt reads a series on the straight line between its two points around x', () => {
+        const points = [[0, 2], [2, 6], [3, 6], [7, -2]] as const
+        expect(valueAt(points, 1)).toBe(4)
+        expect(valueAt(points, 0)).toBe(2)
+        expect(valueAt(points, 2)).toBe(6)
+        expect(valueAt(points, 2.5)).toBe(6)
+        expect(valueAt(points, 6)).toBe(0)
+        expect(valueAt(points, 7)).toBe(-2)
+        // Outside its points, a series has no value. An empty series has none at all.
+        expect(valueAt(points, -0.1)).toBeNaN()
+        expect(valueAt(points, 7.1)).toBeNaN()
+        expect(valueAt([], 1)).toBeNaN()
+        expect(valueAt([[3, 5]], 3)).toBe(5)
+        // A point with no value: the series has its own value at the points beside it, and none between them.
+        const gap = [[0, 1], [1, NaN], [2, 3]] as const
+        expect(valueAt(gap, 0)).toBe(1)
+        expect(valueAt(gap, 2)).toBe(3)
+        expect(valueAt(gap, 0.5)).toBeNaN()
+        expect(valueAt(gap, 1)).toBeNaN()
     })
 
     it('commas groups the digits of a whole number in threes and rounds a fraction', () => {
