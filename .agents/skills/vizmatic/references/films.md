@@ -215,6 +215,24 @@ s.play(flow.advance(60))
 s.play(flow.showAll())
 ```
 
+A request against a deadline, the trace of a request, a retry, or an outage: `lanes` has these too, so do not draw them over it by hand. `deadline: { at, label, drain: true }` is a line at a time with a bar that drains as the cursor moves, and `flow.remaining()` is the time that is left. A span with `inside: id` is a child of the span with that id, in a row under it, as in a trace. `outcome: 'failed'` or `'cancelled'` puts a cross or a square on the end of a span, makes a mark that sign, and stops a handoff on its way as a lost message. `down: true` is a hatched span where the lane is not there. A link, `{ from, to, at: [time, time] }`, joins two times, also on one lane and back in time. `{ bracket: [from, to], label }` names a window of time. Give an event an `id`: `advance(id)` stops the cursor at that event, and `flow.region({ event: id })` is its box for a note. This request trace stops at the first token. Play advances on the same cursor in sequence.
+
+```ts
+const trace = s.add(lanes(['request', 'model API'], [
+    { lane: 'request', start: 0, end: 430, id: 'answer', label: 'answer' },
+    { lane: 'request', start: 0, end: 90, inside: 'answer', label: 'retrieval' },
+    { lane: 'request', start: 90, end: 380, inside: 'answer', id: 'generation', label: 'generation', outcome: 'failed' },
+    { lane: 'request', at: 280, inside: 'generation', id: 'first-token', label: 'first token' },
+    { lane: 'model API', start: 90, end: 380, label: 'streams' },
+    { lane: 'model API', start: 380, end: 500, down: true, label: 'outage' },
+    { bracket: [0, 280], label: 'time to first token' },
+], { pitch: 200, deadline: { at: 450, label: (left) => `${Math.round(left)} ms left`, drain: true } }).at(120, 0))
+s.play(trace.advance('first-token'))
+const note = beside(text('nothing shows before this'), trace, 'above', 'normal', trace.region({ event: 'first-token' }))
+s.play(fadeIn(note))
+s.play(trace.showAll())
+```
+
 A line between two sides that counts what crosses it: user space and the kernel, a guest and its host. Do not draw the line, the ticks, and the counter by hand. `cross` sends a mark through the line and leaves a tick. `addCrossings` runs the tally up with no mark, for a number that is too large to draw, and fills the line with ticks. `clear` starts the next round. `line.x(part)` gives a place that is clear of the names and the tally. For lines that a film compares, give all of them one `tickScale`, so that their ticks compare as their counts do, and `tallySide: 'over'` when they stand side by side. `crossThrough([calls, wall], x)` sends one mark through two lines:
 
 ```ts
@@ -235,6 +253,36 @@ const record = s.add(dateLine([
 ], { width: 1600, from: 2020, to: 2027 }).at(0, 240))
 s.play(record.advance(2021))
 s.play(record.showAll())
+```
+
+One axis with values on it: a score against a cutoff, a measured value against a limit, the values that a number format can store. Do not write the comparison as a sentence, and do not draw the line, the dots and the cutoff by hand. `numberLine` takes `ticks` at any steps, `points` with a name, `thresholds`, and `bands`. `move` slides a point. `snap` takes it to the nearest tick, and leaves the error as a red line. `moveThreshold` slides a cutoff: each point takes the look of its new band at the moment of the crossing, and with `counts: true` the counts of the bands follow. `hollow: true` on a band draws its points as rings, a second sign beside the color. `bracket('A', 'B')` shows the gap between two points and follows them. `line.count(band)`, `line.bandOf(name)` and `line.value(name)` read the state, for a text beside the line. The texts are 28 px by default and the numbers 24 px, so give `size: 32` for a lesson. `length` is the width for `fitted`:
+
+```ts
+const strip = s.add(numberLine({
+    range: [0.4, 1], ticks: [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], format: (score) => score.toFixed(2), length: 1600, size: 32,
+    thresholds: [{ at: 0.7, label: 'cutoff' }],
+    bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'served at once', color: 'green' }],
+    counts: true,
+    points: [{ name: 'formal', value: 0.78 }, { name: 'plain', value: 0.67 }],
+}))
+s.play(strip.moveThreshold(0.5))                    // both are served: strip.count('served at once') is 2
+s.play(strip.move('plain', 0.45))                   // the point crosses the cutoff, and takes the look of the review side
+const grid = s.add(numberLine({ ticks: [1, 1.125, 1.25, 1.5, 2, 3, 4], tickLabels: [1, 2, 4], points: [{ name: 'w', value: 1.3 }] }))
+s.play(grid.snap('w'))                              // to 1.25, the nearest value that the format can store
+```
+
+Points on a plane that change: an embedding space, a nearest neighbor search, an index of cells, k-means. Do not draw a new small plot in each scene: keep one plane, and act on it. A point of `scatter` has a `name`, and a group has a color and a `shape`. `move`, `insert`, `remove` and `assign` change the points. `nearest('q', 3)` grows a ring from a point to its third nearest point, with a line to each point that the ring holds, and the search stays true while the points move. `among` keeps it to some points. `hull(group)` is the outline of a group, `cells(centers)` cuts the plot into one cell for each center, and `span({ x })` is a part of the axes. Each is an area: `shade()` lights it, `area.points` lists the points of the data in it, and `area.holds('q')` says if a point is in it. The distance is in the units of the axes, so give both axes the same pixels for one unit when the ring must be a circle. `chart.nearestTo('q', 2)` and `chart.neighbors` give the points for a table beside the plane. The names are 26 px by default and the numbers of the axes 18 px, so give `labelSize: 26` for a lesson:
+
+```ts
+const plane = s.add(scatter(points, {
+    x: [0, 10], y: [0, 10], width: 800, height: 800, labelSize: 26,
+    groups: { centroid: { color: 'ink', shape: 'ring' }, found: { color: 'green', shape: 'diamond' } },
+}))
+const cells = plane.cells(['c1', 'c2'])
+s.play(plane.insert({ x: 4.8, y: 5, name: 'q', query: true }))
+const first = cells.find((cell) => cell.holds('q'))!
+s.play(first.shade(), plane.nearest('q', 2, { among: first.points }))   // one probe: the search scores the vectors of one cell
+s.play(plane.assign(plane.neighbors, 'found'))                          // the two that it found take a group, a color and a shape
 ```
 
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
@@ -394,6 +442,20 @@ s.play(chat.mark(prompt, 'masked'), ...prompt.map((index) => chat.setValue('targ
 
 Use `split` and `merge` to show how a tokenizer changes its pieces. Each change reads its indexes when it plays. Merge disjoint pairs from right to left so earlier indexes stay valid. Reserve space with `width` when a strip will grow. Use `strip.p(index)` for a line endpoint and `strip.region({ from, to })` to place a note beside a range. Read these positions again after moving the tokens.
 
+Requests that wait for a server: a queue in front of the seats of a batch, the workers of a pool, a gate with a budget. Do not move chips by hand. `requestQueue` keeps each request as one item with its id, moves it from its line into a free slot on a way that meets no other item, and counts what waits, runs, is done and is rejected. `work` gives an item a bar and a number of units that are left, `lines` adds a second line or a priority, and `pool` adds fixed blocks, such as KV pages, that an item takes while it runs:
+
+```ts
+const queue = s.add(requestQueue([{ id: 'A', work: 2 }, { id: 'B', work: 4 }, { id: 'C', work: 6 }, { id: 'D', work: 4 }], { slots: 3, deadline: 250, names: { slots: 'GPU batch' } }))
+s.play(queue.admit(queue.next(3)))       // the heads of the line go to the free slots, one after another
+s.play(queue.run(2))                     // each bar grows, and each number of units that are left counts down
+s.play(queue.finish(), queue.admit())    // A leaves and D takes its seat, in one play: name the finish first
+s.play(queue.arrive({ id: 'E', work: 2 }))
+s.play(queue.wait('E', 310))             // the wait of E runs as a number, and turns red at the deadline
+s.play(queue.reject((item) => item.late, '503'))
+```
+
+A line serves its head first, and the slots take one `admit` at a time: give one `admit` a list, and do not play two. `finish` with no argument takes the items that have no work left. `queue.stateOf(id)`, `queue.count('waiting')`, `queue.next()`, `queue.freeSlots` and `queue.freeBlocks` read the state after the animations that the film has played, so a film can say why a request waits before it plays the next step. An `admit` with no free slot or too few free blocks is an error. A line with more items than places draws the first ones and three dots. For a ring with a head and a tail that wrap, use `ringBuffer`.
+
 A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
 
 ```ts
@@ -405,6 +467,26 @@ s.play(sq.pop())                                    // the consumer reads at the
 ```
 
 For the submission queue of io_uring, use `tailFollows: 'publish'`: the program stores the tail once for several entries, and a tail that counts up at each write teaches the opposite. The bounds of a ring hold the outside name at every slot, so place a ring by its bounds. `ring.length === 0` is an empty ring and `ring.length === ring.size` is a full ring: both pointers are then at one slot, and a text for the state is the work of the film. A `push()` on a full ring, a `pop()` on an empty ring, and a `pop()` of a pending entry are errors. For several pushes at once, pass them to `lagged`.
+
+A model as a block diagram: the layers of a transformer, of a vision model, or of a residual network. Do not build it from boxes and connectors in each film. `layerStack` puts the layers on one stream, with the data flowing up, and it knows what each layer does to the stream. A block is on the stream. `{ branch: [...] }` is beside the stream, and an add puts its result back, which is a residual connection. `{ repeat: 12, layers: [...] }` is a frame for layers that repeat. `feed(values)` puts a vector at the foot of the stream, and `pass(block, values)` sends it through a layer: at a branch, a copy goes through the blocks, and the add puts on the stream what the branch adds. `light(block)` lights the block that the scene is about, `mark(blocks, 'frozen')` changes states, `replace(block, label)` swaps a block, and `open(block, closeUp)` joins a block to a close-up that the film placed beside the stack. A branch with `shown: false` has its place and arrives with `show(block)`, and `around: 'W'` puts a branch around a block on the stream, for LoRA beside a frozen weight. `digits: 1` writes the values in the cells, and a `shape` on a block changes the shape beside the vector. Play one `feed` or `pass` at a time. Give a branch about three seconds:
+
+```ts
+const model = s.add(layerStack([
+    { label: 'embed', color: 'purple', shape: '(T, 768)' },
+    { repeat: 12, layers: [
+        { branch: [{ label: 'norm', id: 'norm 1' }, { label: 'attention', color: 'orange' }] },
+        { branch: [{ label: 'norm', id: 'norm 2' }, { label: 'MLP', color: 'teal' }] },
+    ] },
+    { label: 'unembed', color: 'green', shape: '(T, 50257)' },
+], { shape: '(T)', size: 26 }).at(-500, 0))
+s.play(model.enter())
+s.play(model.feed([0.6, -0.2, 0.1, 0.4]))
+s.play(model.pass('embed', [0.3, 0.7, -0.5, 0.1]))
+s.play(model.light('attention'), model.pass('attention', [0.5, 0.2, -0.1, 0.8]), { duration: 3 })
+s.play(model.mark(['embed', 'attention'], 'frozen'))
+```
+
+The stack measures as its `width`, with the room of its shapes, so `place` and `fitted` work on it. `model.block('MLP')` is the node of a block for `beside` or a connector, and `model.foot` and `model.head` are the two ends of the stream. A label is never set smaller: a `width` with no room for a label is an error that gives the least width.
 
 3D:
 
