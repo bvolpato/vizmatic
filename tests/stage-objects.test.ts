@@ -14,7 +14,7 @@ import {
     delay, par, retime, ringBuffer,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
-    table, Table, TableCellNode, TableRowNode, TABLE_STATES, boxOf, fitted, type TableColumn, type TableRow,
+    table, Table, TableCellNode, TableRowNode, TABLE_STATES, boxOf, fitted, type TableColumn, type TableRow, type TableRowView,
     circle, tangentLine, secantLine, areaUnder, band, valueAt, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
@@ -13455,6 +13455,49 @@ describe('table', () => {
         { id: 'c', case: 'third', score: 2, verdict: { state: 'pending' } },
     ]
     const D: TableRow = { id: 'd', case: 'fourth', score: 4, verdict: { state: 'fail' } }
+
+    it('counts the changed value when a row enters after a faster cell update', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table([{ key: 'score', total: 'sum' }], [], { maxRows: 1 }))
+            s.play(board.append({ id: 'new', score: 2 }, { duration: 2 }), board.setCell('new', 'score', 9, { duration: 0.2 }))
+            s.wait(1)
+        })
+        expect(totals(board, 0, 0.5)).toEqual(['0'])
+        expect(totals(board, 0, 2)).toEqual(['9'])
+        expect(board.totalOf('score')).toBe(9)
+    })
+
+    it('keeps a delayed cell update with its original row when an id is reused', async () => {
+        let board!: Board
+        await compile((s) => {
+            board = s.add(table([{ key: 'score', total: 'sum' }], [{ id: 1, score: 2 }]))
+            s.play(board.setCell(1, 'score', 9, { duration: 4 }), seq(board.remove(1, { duration: 0.5 }), board.append({ id: 1, score: 3 }, { duration: 0.5 })))
+        })
+        expect(said(board.cell(1, 'score'), 4)).toEqual(['3'])
+        expect(totals(board, 0, 4)).toEqual(['3'])
+    })
+
+    it('measures the full cell after a parent rotates it', async () => {
+        await compile((s) => {
+            const board = table(['score'], [{ id: 1, score: 2 }])
+            const cell = board.region(1, 'score')
+            s.add(group(board).rotate(Math.PI / 4))
+            const rotated = board.region(1, 'score')
+            const span = (cell.width + cell.height) / Math.sqrt(2)
+            expect(rotated.width).toBeCloseTo(span)
+            expect(rotated.height).toBeCloseTo(span)
+        })
+    })
+
+    it('treats object property names as ordinary column keys in sparse records and copies', async () => {
+        await compile(() => {
+            const board = table(['constructor', '__proto__'], [{ id: 1, ['__proto__']: 'yes' }])
+            const query = (row: TableRowView) => row.values['constructor'] === null && row.values['__proto__'] === 'yes'
+            expect(board.find(query)).toEqual([1])
+            expect(board.clone().find(query)).toEqual([1])
+        })
+    })
 
     it('centers the room of `maxRows` on its place, and draws the panel as high as its rows, with the header over them and the total row under them', async () => {
         await compileFilm(film(() => {

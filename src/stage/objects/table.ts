@@ -150,6 +150,7 @@ interface Fact {
 /** A row as data: the table replays its changes on such rows to write the total over time. */
 interface Data {
     id: Id
+    made: number
     cells: Fact[]
 }
 
@@ -169,6 +170,8 @@ interface Entry {
     cells: Slot[]
     /** The place of the row among all rows that the table made. Of two cards with one `z`, the later one is drawn over the other. */
     made: number
+    /** A cell update can finish before an appended row starts contributing to the total. */
+    countedFrom: number
     /** Each `enter()` of the table that brought the row: from `t0` the row is away, and it comes from `start` to `end`. */
     enters: { t0: number; start: number; end: number; ease: Ease }[]
 }
@@ -431,7 +434,7 @@ export class Table extends Node {
 
         // The columns are set once, from the header and the first rows, so that they line up over every row
         // that comes later.
-        this.origin = given.map((row) => ({ id: row.id, cells: row.cells.map((cell) => ({ ...cell })) }))
+        this.origin = given.map((row, made) => ({ id: row.id, made, cells: row.cells.map((cell) => ({ ...cell })) }))
         const padX = size * 0.7
         const needs = this.cols.map((col, at) => {
             const spec = specs[at]!
@@ -634,8 +637,9 @@ export class Table extends Node {
      */
     region(row: Id | null = null, column: string | null = null): Box {
         const [left, top, right, bottom] = this.edges(row, column)
-        const [x0, y0] = this.toWorld(left, top), [x1, y1] = this.toWorld(right, bottom)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        const corners = [this.toWorld(left, top), this.toWorld(right, top), this.toWorld(right, bottom), this.toWorld(left, bottom)]
+        const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y)
+        return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
     /**
@@ -644,7 +648,8 @@ export class Table extends Node {
      */
     override clone(): this {
         const rows = this.order.map((entry): TableRow => {
-            const row: TableRow = { id: entry.id }
+            const row: TableRow = Object.create(null)
+            row.id = entry.id
             this.cols.forEach((col, at) => {
                 // The key `id` shows the id of the row, so the copy takes it from the id.
                 if (col.key !== 'id') row[col.key] = { value: entry.cells[at]!.value, state: entry.cells[at]!.state }
@@ -735,7 +740,7 @@ export class Table extends Node {
             label: 'table.setCell', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = times(ctx, call)
-                const slot = this.entry(row, true).cells[at]!
+                const entry = this.entry(row, true), slot = entry.cells[at]!
                 const value = 'value' in parts ? next.value : slot.value, state = 'state' in parts ? next.state : slot.state
                 if (value === slot.value && state === slot.state) return
                 const last = slot.last
@@ -746,9 +751,8 @@ export class Table extends Node {
                 reveal(this, t0, ctx.stage)
                 this.paint(col, slot, { value, state }, t0, t1, ctx.ease)
                 // The total follows the cell when the new text comes.
-                const key = String(row)
-                this.changed((t0 + t1) / 2, (rows) => {
-                    const found = rows.find((other) => String(other.id) === key)
+                this.changed(Math.max(entry.countedFrom, (t0 + t1) / 2), (rows) => {
+                    const found = rows.find((other) => other.made === entry.made)
                     if (found) found.cells[at] = { value, state }
                 })
             },
@@ -797,8 +801,8 @@ export class Table extends Node {
                         node.tween('y', y, from, end, ctx.ease)
                         node.tween('opacity', 1, from, end, ctx.ease)
                         // The total counts a row when the row is half there.
-                        const copy: Data = { id: row.id, cells: row.cells.map((cell) => ({ ...cell })) }
-                        this.changed((start + end) / 2, (all) => { all.push({ id: copy.id, cells: copy.cells.map((cell) => ({ ...cell })) }) })
+                        entry.countedFrom = (start + end) / 2
+                        this.changed(entry.countedFrom, (all) => { all.push({ id: row.id, made: entry.made, cells: row.cells.map((cell) => ({ ...cell })) }) })
                     }
                 })
             },
@@ -1030,7 +1034,7 @@ export class Table extends Node {
             // A field that names no column would not show, and the film would not know.
             const stray = Object.keys(row).find((name) => name !== 'id' && !this.cols.some((col) => col.key === name))
             if (stray !== undefined) throw new Error(`table: row ${show(id)} has the field "${stray}", and the table has no such column. The columns are ${this.cols.map((col) => JSON.stringify(col.key)).join(', ')}`)
-            return { id, cells: this.cols.map((col) => this.fact(row[col.key], `row ${show(id)} in the column ${JSON.stringify(col.key)}`)) }
+            return { id, cells: this.cols.map((col) => this.fact(Object.hasOwn(row, col.key) ? row[col.key] : null, `row ${show(id)} in the column ${JSON.stringify(col.key)}`)) }
         })
     }
 
@@ -1168,7 +1172,7 @@ export class Table extends Node {
             node.content.add(cell)
             return { ...fact, node: cell, ...this.compose(col, cell, fact, false, cell.get('x')), last: null }
         })
-        const entry: Entry = { id: row.id, node, cells, made: this.every.length, enters: [] }
+        const entry: Entry = { id: row.id, node, cells, made: this.every.length, countedFrom: -Infinity, enters: [] }
         this.every.push(entry)
         // The cells show as much as `enter()` has brought of the row, and not at all under a row that passes over them.
         node.content.track('opacity').add(always((time) => this.arrival(entry, time) * this.clear(entry, time), 1))
@@ -1307,12 +1311,12 @@ export class Table extends Node {
 
     /** The rows as data, in the order of the table, after the changes that are scheduled so far. */
     private records(): Data[] {
-        return this.order.map((entry) => ({ id: entry.id, cells: entry.cells.map((cell) => ({ value: cell.value, state: cell.state })) }))
+        return this.order.map((entry) => ({ id: entry.id, made: entry.made, cells: entry.cells.map((cell) => ({ value: cell.value, state: cell.state })) }))
     }
 
     private viewsOf(rows: readonly Data[]): TableRowView[] {
         return rows.map((row, index) => {
-            const values: Record<string, TableValue> = {}, states: Record<string, string | null> = {}
+            const values: Record<string, TableValue> = Object.create(null), states: Record<string, string | null> = Object.create(null)
             this.cols.forEach((col, at) => {
                 values[col.key] = row.cells[at]!.value
                 states[col.key] = row.cells[at]!.state
@@ -1339,6 +1343,7 @@ export class Table extends Node {
 
     /** The data of the table changed at a time. The total is written again from all the changes. */
     private changed(time: number, apply: (rows: Data[]) => void): void {
+        if (this.sums.length === 0) return
         this.changes.push({ time, apply })
         this.retotal()
     }
@@ -1350,7 +1355,7 @@ export class Table extends Node {
      */
     private retotal(): void {
         if (this.sums.length === 0) return
-        const rows = this.origin.map((row) => ({ id: row.id, cells: row.cells.map((cell) => ({ ...cell })) }))
+        const rows = this.origin.map((row) => ({ ...row, cells: row.cells.map((cell) => ({ ...cell })) }))
         // Changes at one time keep the order in which the film scheduled them.
         const changes = this.changes.map((change, order) => ({ ...change, order })).sort((a, b) => a.time - b.time || a.order - b.order)
         for (const words of this.sums) words.steps = []
