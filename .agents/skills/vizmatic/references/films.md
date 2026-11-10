@@ -272,6 +272,28 @@ s.play(said.enter())
 s.wait(readingSeconds(said.reading))
 ```
 
+Use `passage` for prose that a viewer follows through an edit. Name a span by its words. Mark a claim with `mark(words, kind)`, connect it to its source with `link()`, and call `break()` on the link when the source contradicts the claim. Each kind has a color and a distinct sign. `diff(next)` displays the revision and `accept()` removes the deleted words.
+
+For document chunking, `cut({ size: 12, overlap: 3 })` makes windows of words. Use `select({ chunk: 0 })` to move the selection, `counter('words')` for a readout, and `slip()` with `lift()` to pull a copy out. The films in `examples/films/passage/` show how to lay out a runbook, an answer with supporting sources, and a prompt with a JSON reply.
+
+```ts
+const answer = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 700, title: 'answer' }).at(-800, -300))
+const source = s.add(passage('Closed on Sunday. A refund is paid on the next business day.', { width: 700, title: 'source' }).at(100, -300))
+s.play(answer.mark('The shop is closed on Sunday.', 'claim'), source.mark('Closed on Sunday.'))
+const tie = answer.link('The shop is closed on Sunday.', source.span('Closed on Sunday.'), { color: 'green' })
+s.play(tie.enter(), answer.mark('The shop is closed on Sunday.', 'supported'))
+s.play(answer.mark('Refunds arrive immediately.', 'contradicted'))
+s.play(source.diff('Closed on Sunday and on Monday. A refund is paid on the next business day.'))
+s.play(source.accept())
+```
+
+A tool call, the reply of a model, or a configuration file as data. `codeBlock` colors `json` and `yaml` with the keys in one color, so a viewer tells the names from the values:
+
+```ts
+const call = s.add(codeBlock('{\n  "name": "get_weather",\n  "arguments": { "city": "Paris", "days": 3 }\n}', { language: 'json', size: 40 }))
+s.play(call.focus(2))
+```
+
 The labels and the frame that the scenes of one film share. Do not copy label helpers from film to film. `sceneKit` makes them in one font, with the heading, the source line, and the area for content at their places in the frame. Its one `size` sets every size: the heading, the source line, the claim tag, the chips and the names of the boxes follow it. `claimTag(c, { word: 'MEASURED', note: 'our run' })` puts a tag for the kind of the claim at the right end of the source line:
 
 ```ts

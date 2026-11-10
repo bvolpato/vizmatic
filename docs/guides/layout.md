@@ -25,6 +25,7 @@ A scene types no x and no y. It cuts its area into regions, lets a container mea
 | `beside(item, object, 'right', gap, part)` | A note on a part of an object: beside the whole object, at the height of the part. For `above` and `under`, at the x of the part. |
 | `fitted(region, (width) => lanes(names, events, { width }))` | Build an object so that all of it, with its names and labels, is as wide as a region. |
 | `boxOf(thing)`, `between(a, b)` | The measure of a node, a block or a list, and the room between two things, each as a `Box`. |
+| `passage(text, { width }).region(part)` | Measure the selected words in stage coordinates. After `diff()` or `accept()`, `boxOf(page)` measures the new height. |
 | `lanes(...).region({ lane, between, from, to, at })` | The box of a part of a `lanes` object: a lane, the room between two lanes, a stretch of time. |
 | `tokens(...).region({ from, to, row })` | The box of a run of token cells, or of their values in one named row. Read it again after a change moves the tokens. |
 
