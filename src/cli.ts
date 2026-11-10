@@ -104,6 +104,7 @@ interface CheckArgs {
     textGap?: number
     textSize?: number
     emptySpace?: number
+    emptySeconds?: number
     /** For film files: the characters a viewer reads in one second, for the motion scan. */
     readingSpeed?: number
     /** For film files: the film plays one chapter at a time, so text that is up at a stop has time. */
@@ -190,7 +191,7 @@ function usageText() {
   vizmatic new <name> [--template explainer|equation|architecture|chart|deck|narrated] [--force]
   vizmatic narrated <build|voice|mix|check|stills|sheet|beats|transcribe|sync|lag|probe|resound|draft> <folder> [options of the step] [--dry-run]
   vizmatic preview <file> [--port <n>] [--open]
-  vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--text-gap <part>] [--text-size <px>] [--empty-space <part>] [--reading-speed <n>] [--stepped] [--json]
+  vizmatic check <file> [--look midnight,paper] [--motion] [--content-top <px>] [--text-margin <px>] [--text-gap <part>] [--text-size <px>] [--empty-space <part>] [--empty-seconds <s>] [--reading-speed <n>] [--stepped] [--json]
   vizmatic film <file...> [--out <dir>] [--look midnight,paper] [--format mp4,webm,gif,png,svg] [--quality draft|standard|high|master]
                 [--dither|--no-dither] [--fps <n>] [--width <n>] [--motion-blur <n>] [--shutter <0-1>] [--range a:b] [--frame t[,t]] [--every <seconds>]
                 [--sheet] [--columns <n>] [--poster] [--workers <n>] [--audio <file>] [--name <output name>] [--background <color|none>]
@@ -214,6 +215,7 @@ Frames:
   --text-gap <part> turns on the rule for crowded text: how near text may come to another mark, as a part of its font size. Try 0.3.
   --text-size <px> turns on the rule for small text: the least size of text on the screen, in pixels of a frame that is 1080 high. Try 26.
   --empty-space <part> turns on the rule for empty space: the largest part of the frame that may stay empty in one piece for 4 seconds. Try 0.5.
+  --empty-seconds <s> sets how long that rectangle must stay empty. Defaults to 4. Use with --empty-space.
   With --motion, text that leaves before a viewer can read it is a warning. --reading-speed sets the characters per second. The default is 20, and 0 turns the rule off.
   --stepped is for a deck, which waits at each chapter: text that is up there has time.
 
@@ -1076,6 +1078,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     let textGap: number | undefined
     let textSize: number | undefined
     let emptySpace: number | undefined
+    let emptySeconds: number | undefined
     let readingSpeed: number | undefined
     let stepped = false
 
@@ -1118,6 +1121,9 @@ function parseCheckArgs(argv: string[]): CheckArgs {
         } else if (arg === '--empty-space') {
             emptySpace = Number(argv[++index])
             if (!Number.isFinite(emptySpace) || emptySpace < 0 || emptySpace >= 1) throw new Error('--empty-space needs the largest part of the frame that may stay empty in one piece, from 0 to 1, such as 0.5. 0 turns the rule off')
+        } else if (arg === '--empty-seconds') {
+            emptySeconds = Number(argv[++index])
+            if (!Number.isFinite(emptySeconds) || emptySeconds <= 0) throw new Error('--empty-seconds needs a positive number of seconds, such as 4 or 2. Use it with --empty-space')
         } else if (arg === '--stepped') {
             stepped = true
         } else if (arg === '--reading-speed') {
@@ -1131,7 +1137,7 @@ function parseCheckArgs(argv: string[]): CheckArgs {
     }
 
     if (inputs.length === 0) usage()
-    return { inputs, themes, background, json, looks, explicitTheme, motion, contentTop, textMargin, textGap, textSize, emptySpace, readingSpeed, stepped }
+    return { inputs, themes, background, json, looks, explicitTheme, motion, contentTop, textMargin, textGap, textSize, emptySpace, emptySeconds, readingSpeed, stepped }
 }
 
 async function findFrameFiles(inputs: string[]): Promise<string[]> {
@@ -1857,7 +1863,7 @@ async function checkCommandWithArgs(args: CheckArgs) {
         if (filmFromModule(imported.value)) {
             const looks = args.looks.length > 0 ? args.looks : looksForThemes(args.themes, args.explicitTheme)
             const module = imported.value
-            const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop, textMargin: args.textMargin, textGap: args.textGap, textSize: args.textSize, emptySpace: args.emptySpace, readingSpeed: args.readingSpeed, stepped: args.stepped })
+            const filmReports = await checkFilmFile(file, async () => module, looks, { motion: args.motion, contentTop: args.contentTop, textMargin: args.textMargin, textGap: args.textGap, textSize: args.textSize, emptySpace: args.emptySpace, emptySeconds: args.emptySeconds, readingSpeed: args.readingSpeed, stepped: args.stepped })
             filmReports.forEach((filmReport, index) => {
                 reports.push({
                     source,

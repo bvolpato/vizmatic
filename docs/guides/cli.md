@@ -102,7 +102,8 @@ npx vizmatic check intro.ts --motion --content-top 200
 `--text-size <px>` turns on the rule `film.text_small`, for text that is too small to read. The value is the least size on a frame that is 1080 high, and a frame of another size has the same part of its shorter side. `26` is the size that a lesson video needs on a phone. The rule is off by default, because small text can be a texture, such as rows of a log that scroll.
 
 - The size is what a viewer sees: the font size of the text, times the scale of its node and of the groups that hold it, times the zoom of the camera. For a formula, it is the size of its letters, and an index is smaller on purpose.
-- The rule looks at the moments at rest.
+- The rule looks at the moments at rest. Automatic samples ignore text while its node, a parent group, or the camera changes scale. Explicit sample times judge the picture at that time.
+- Text fully hidden by a later solid, opaque rectangular fill does not count. A translucent or partial cover does not suppress the finding. Rasterized text inside an image is outside this rule.
 - The texts of one size are one finding, which names five of them: `8 texts are 22 px on the screen, and the least size is 26 px: "word a", "word b", "word c", "word d", "word e" and 3 more. Give them a larger size.` A film sets a size for a kind of text, so the size is the place to change.
 - The labels of one object are one finding, which names the object: `4 labels of a bar chart are under 26 px on the screen, the smallest at 20 px: "alpha", "beta", "2", "3". Give the object a larger size for its labels.` The option is `labelSize` for most objects, and `size` for some.
 
@@ -111,15 +112,19 @@ Many objects have labels under 26 px by default, because their defaults are for 
 `--empty-space <part>` turns on the rule `film.empty_space`, for a picture that leaves much of the frame with no use. The value is the largest part of the frame that may stay empty in one piece, from 0 to 1. `0.5` is a good value. The rule is off by default, because a scene can leave a part of the frame empty on purpose.
 
 - The rule looks at the film two times in each second, on a grid of 16 by 9 cells. A cell has content when a text, an image, a line or a filled shape is in it.
-- It reports a rectangle of cells that is larger than the part and has no content for 4 seconds or more: `For 5 s, 78% of the frame stays empty in one piece: the bottom 78% of the height. The limit is 50%. Make the picture larger, or use that part for what the picture explains.` `time` and `until` are the first look and the last look, and `box` is the rectangle.
+- By default, it reports a rectangle of cells that is larger than the part and has no content for 4 seconds or more: `For 5 s, 78% of the frame stays empty in one piece: the bottom 78% of the height. The limit is 50%. Make the picture larger, or use that part for what the picture explains.` `time` and `until` are the first look and the last look, and `box` is the rectangle.
 - The rectangle is empty for the whole time. A picture that moves, and a picture that uses the left half and then the right half, use the frame.
 - A scene that builds its picture in steps has an empty part for 2 or 3 seconds. That is no defect, so the rule waits for 4 seconds.
 - With 0.5 or more, the rule never reports a picture in the middle of the frame, however small it is: a title card, one formula, one sentence. Above the middle of the frame and under it, 4 of the 9 rows are free, which is 44%. A lower value, such as 0.4, reports them.
 - A line and a shape count from the contrast at which a viewer can tell them from the background, which is 1.6. So a faint grid, a panel in the color of the surface, and a text that is nearly gone are not content. An outline is content where its line is, and not inside it.
 - The rule does not look at the first half second and the last half second of the film.
+- A solid fill over the whole frame is a backdrop. It does not count as content, even when its color differs from the film background.
+- For a PNG with transparency, only cells that contain visible image pixels count. Crops and transforms apply before this check. A rotated cell uses a bounding rectangle in the source image, so it can count nearby pixels conservatively. When an older engine provides no alpha mask, the whole image rectangle counts.
+- `--empty-seconds <s>` changes the required duration. The default stays 4 seconds. Use `--empty-seconds 2` for a stricter course audit that must flag a sparse picture within a short beat. This option does not enable the rule by itself. The check includes a final sample half a second before the end, even when that time falls between the regular samples.
 
 ```bash
 npx vizmatic check lesson.ts --text-size 26 --empty-space 0.5
+npx vizmatic check lesson.ts --empty-space 0.5 --empty-seconds 2
 ```
 
 ### vizmatic film

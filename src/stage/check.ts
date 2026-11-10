@@ -3,7 +3,7 @@ import type { DrawOp, Frame, PathOp } from './display'
 import { imageOpBounds } from './display'
 import { imageHasVisiblePixels, ImageAssetError } from './image'
 import { CURVE_PIECES, encloses, pieces } from './enclose'
-import { apply, pathBounds, polyPath, signedArea, type Bounds, type Path } from './geometry'
+import { apply, invert, pathBounds, polyPath, signedArea, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
@@ -110,6 +110,8 @@ export interface FilmCheckOptions extends CompileOverrides {
      * a part of the frame empty on purpose.
      */
     emptySpace?: number
+    /** Seconds that a rectangle must stay empty. Defaults to 4. Requires `emptySpace` to enable the rule. */
+    emptySeconds?: number
 }
 
 interface Glyph {
@@ -502,6 +504,16 @@ function above(node: Node): Node | null {
     return node.parent ?? node.drawer ?? null
 }
 
+/** True while this node or one of its parents changes scale. */
+function changingScale(node: Node, time: number): boolean {
+    for (let current: Node | null = node; current; current = above(current)) {
+        for (const prop of ['sx', 'sy'] as const) {
+            if (current.tracks?.get(prop)?.keys.some((key) => key.at !== null && key.t0 <= time && time < key.t1)) return true
+        }
+    }
+    return false
+}
+
 /**
  * The object that placed a text beside its own marks, such as an axes for its numbers. Null for text that the
  * film placed, and for text that a film added to such an object: only a label with the mark of an object counts.
@@ -597,7 +609,7 @@ interface Finding extends Omit<FilmDiagnostic, 'until' | 'stage'> {
     /** For `film.text_crowded`: the names of the marks that are too near to the text. Not a part of a report. */
     pairs?: string[]
     /** For `film.text_small`: the size of the text on the screen, and the object that it is a label of. Not a part of a report. */
-    small?: { size: number; group: string; object: string }
+    small?: { size: number; group: string; object: string; node: Node }
 }
 
 /** What a viewer sees as a line, a shape or a picture: the outline that text must keep away from. */
@@ -1301,15 +1313,23 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
     // Too small to read. The size is what the screen shows: the font size with the scale of the node and of the camera.
     // The film check puts these together: the labels of one object, and the texts of one size.
     if ((limits.size ?? 0) > 0) {
+        const coversText = plates.filter((plate) => {
+            const op = ops[plate.order]!
+            if (op.kind !== 'path' || !op.fill || isGradient(op.fill) || op.fillAlpha * op.fill[3] < 1 - ROUNDING) return false
+            const area = plate.bounds.width * plate.bounds.height
+            return Math.abs(Math.abs(plate.path.reduce((sum, ring) => sum + signedArea(ring), 0)) - area) <= area * ROUNDING
+        })
         for (const block of list) {
             if (block.size <= 0 || block.size >= limits.size! - SIZE_TOLERANCE) continue
+            const hidden = block.glyphs.every((glyph) => coversText.some((plate) => plate.order > glyph.order && contains(plate.bounds, glyph.box)))
+            if (hidden) continue
             const owner = layoutOwner(block.id)
             const name = owner ? nameOf(owner.node) : ''
             const group = owner && name ? `${owner.node.mounted ? owner.node.id : 'dynamic'}:${name}` : ''
             findings.push({
                 key: `film.text_small:${group}:${block.source}`,
                 code: 'film.text_small', severity: 'warning', time, box: block.bounds, message: '', text: block.source,
-                small: { size: block.size, group, object: group ? name : '' },
+                small: { size: block.size, group, object: group ? name : '', node: block.id },
             })
         }
     }
@@ -1432,7 +1452,7 @@ function occupied(frame: Frame): boolean[] {
     const { width, height } = frame
     const { columns, rows } = spaceGrid(width, height)
     const cellW = width / columns, cellH = height / rows
-    const background = frame.background ? parseColor(frame.background) : (frame.dark ? [0, 0, 0, 1] as Rgba : [255, 255, 255, 1] as Rgba)
+    let background = frame.background ? parseColor(frame.background) : (frame.dark ? [0, 0, 0, 1] as Rgba : [255, 255, 255, 1] as Rgba)
     const taken = new Array<boolean>(columns * rows).fill(false)
     const markPoint = (x: number, y: number) => {
         if (x < 0 || y < 0 || x >= width || y >= height) return
@@ -1455,12 +1475,38 @@ function occupied(frame: Frame): boolean[] {
     }
     for (const op of frame.ops as DrawOp[]) {
         if (op.kind === 'image') {
-            if (op.alpha >= BLANK_ALPHA && imageHasVisiblePixels(op.image.asset, op.image.crop)) markBox(imageOpBounds(op))
+            if (op.alpha < BLANK_ALPHA || !imageHasVisiblePixels(op.image.asset, op.image.crop)) continue
+            const box = imageOpBounds(op), asset = op.image.asset
+            if (!asset) { markBox(box); continue }
+            const inverse = invert(op.matrix)
+            const crop = op.image.crop ?? { x: 0, y: 0, width: asset.width, height: asset.height }
+            const x0 = Math.max(0, Math.floor(box.x / cellW)), x1 = Math.min(columns - 1, Math.floor((box.x + box.width) / cellW))
+            const y0 = Math.max(0, Math.floor(box.y / cellH)), y1 = Math.min(rows - 1, Math.floor((box.y + box.height) / cellH))
+            for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+                if (taken[y * columns + x]) continue
+                // Map the cell into the image crop. Clear pixels do not use the frame.
+                const corners = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]].map(([cx, cy]) => apply(inverse, cx! * cellW, cy! * cellH))
+                const left = Math.max(0, Math.min(...corners.map(([cx]) => cx))), right = Math.min(op.image.width, Math.max(...corners.map(([cx]) => cx)))
+                const top = Math.max(0, Math.min(...corners.map(([, cy]) => cy))), bottom = Math.min(op.image.height, Math.max(...corners.map(([, cy]) => cy)))
+                if (right <= left || bottom <= top) continue
+                taken[y * columns + x] = imageHasVisiblePixels(asset, {
+                    x: crop.x + left / op.image.width * crop.width, y: crop.y + top / op.image.height * crop.height,
+                    width: (right - left) / op.image.width * crop.width, height: (bottom - top) / op.image.height * crop.height,
+                })
+            }
             continue
         }
         if (op.kind !== 'path' || op.path.length === 0) continue
         const shape = pathBounds(op.path)
         if (!shape) continue
+        // A solid fill over the whole frame is a backdrop. An opaque one also hides earlier content.
+        if (op.fill && !isGradient(op.fill) && op.fillAlpha >= BLANK_ALPHA
+            && contains(shape, { x: 0, y: 0, width, height })
+            && [[ROUNDING, ROUNDING], [width - ROUNDING, ROUNDING], [width - ROUNDING, height - ROUNDING], [ROUNDING, height - ROUNDING], [width / 2, height / 2]].every(([x, y]) => encloses(op.path, x!, y!))) {
+            if (op.fillAlpha * op.fill[3] >= 1 - ROUNDING) taken.fill(false)
+            background = over(op.fill, op.fillAlpha, background)
+            continue
+        }
         if (isGlyph(op)) {
             if (op.fillAlpha >= BLANK_ALPHA) markBox(shape)
             continue
@@ -1671,9 +1717,10 @@ function samePair(a: Finding, b: Finding): boolean {
 async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
-    const { textSize = 0, emptySpace: emptyLimit = 0 } = options
+    const { textSize = 0, emptySpace: emptyLimit = 0, emptySeconds = SPACE_SECONDS } = options
     if (!(Number.isFinite(textSize) && textSize >= 0)) throw new Error('checkFilm: textSize is the least size of text in pixels of a frame that is 1080 high, such as 26. 0 turns the rule off')
     if (!(Number.isFinite(emptyLimit) && emptyLimit >= 0 && emptyLimit < 1)) throw new Error('checkFilm: emptySpace is the largest part of the frame that may stay empty in one piece, from 0 to 1, such as 0.5. 0 turns the rule off')
+    if (!(Number.isFinite(emptySeconds) && emptySeconds > 0)) throw new Error('checkFilm: emptySeconds is a positive number of seconds that a rectangle must stay empty, such as 4 or 2')
     const limits: Limits = {
         margin: options.textMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN,
         gap: options.textGap ?? 0,
@@ -1708,6 +1755,8 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         }
         for (const { key, pairs: _, small, ...finding } of found) {
             if (small) {
+                // Automatic samples can fall inside an entrance. Judge its settled size instead.
+                if (!options.times && (small.node.all().some((node) => changingScale(node, time)) || (!pinned(small.node) && changingScale(compiled.stage.camera, time)))) continue
                 // One finding for the labels of one object, and one for the texts of one size: a film sets a size for
                 // a kind of text, and an object has one option for the size of its labels.
                 const px = Math.round(small.size * 10) / 10
@@ -1980,8 +2029,9 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
         // moves in the frame uses the frame, so only a part that stays empty counts.
         type Run = { from: number; to: number; taken: boolean[]; space: EmptySpace }
         let run = null as Run | null
+        const recent: { time: number; taken: boolean[] }[] = []
         const flush = () => {
-            if (run && run.to - run.from >= SPACE_SECONDS - 1e-6) {
+            if (run && run.to - run.from >= emptySeconds - 1e-6) {
                 const length = Math.round((run.to - run.from) * 10) / 10
                 merged.set(`film.empty_space:${run.from}`, {
                     code: 'film.empty_space', severity: 'warning',
@@ -1993,9 +2043,15 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
             run = null
         }
         // A film may open on an empty stage and close on one, so the looks start and end half a second inside it.
-        for (let k = 1; k * SPACE_STEP <= compiled.duration - BLANK_EDGE_SECONDS + 1e-6; k++) {
-            const time = k * SPACE_STEP
+        const end = compiled.duration - BLANK_EDGE_SECONDS
+        const looks: number[] = []
+        for (let time = BLANK_EDGE_SECONDS; time <= end + ROUNDING; time += SPACE_STEP) looks.push(time)
+        if (end >= BLANK_EDGE_SECONDS && end - looks[looks.length - 1]! > ROUNDING) looks.push(end)
+        for (const time of looks) {
             const taken = occupied(await frameAt(compiled, time))
+            recent.push({ time, taken })
+            // Keep the look just before the window starts. Earlier content cannot block a later window.
+            while (recent.length > 1 && recent[1]!.time <= time - emptySeconds + ROUNDING) recent.shift()
             if (run) {
                 const both: boolean[] = run.taken.map((cell, index) => cell || taken[index]!)
                 const space: EmptySpace = largestEmpty(both, compiled.width, compiled.height)
@@ -2005,8 +2061,10 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 }
                 flush()
             }
-            const space = largestEmpty(taken, compiled.width, compiled.height)
-            if (space.share > emptyLimit + 1e-9) run = { from: time, to: time, taken, space }
+            if (time - recent[0]!.time < emptySeconds - ROUNDING) continue
+            const window = taken.map((_, index) => recent.some((look) => look.taken[index]))
+            const space = largestEmpty(window, compiled.width, compiled.height)
+            if (space.share > emptyLimit + 1e-9) run = { from: recent[0]!.time, to: time, taken: window, space }
         }
         flush()
     }

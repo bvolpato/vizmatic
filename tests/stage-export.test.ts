@@ -9,7 +9,7 @@ import { build } from 'esbuild'
 import {
     angleMark, arrayCells, arrow, axes, axes3d, barChart, bitField, boundary, braceLabel, callout, card, circle, circumscribe, codeBlock, complexPlane, connector, countUp, counter,
     crossThrough, dateLine, decimal, donut, dot, dotChart, dynamic, eventLog, film, fromSvg, graph, group, heatmap, highlightSweep, histogram, image, infoBox, label3d, labeledDot, lanes, legend, line,
-    lineChart, linear, matrix, morphMatching, neuralNet, Node, numberLine, pictogram, pie, point3d, polygon, polyline, quote, quotePair, rect, ringBuffer, scatter, scene3d, seq, shift, sphere, spin,
+    lineChart, linear, matrix, morphMatching, neuralNet, Node, numberLine, pictogram, pie, point3d, polygon, polyline, quote, quotePair, rect, resolveImageAsset, ringBuffer, scatter, scene3d, seq, shift, sphere, spin,
     stateGrid, steps, surface,
     surroundingBox, svgPath, tag, tagTrack, terminal, tex, text, to, tokens, tree, typewriter, unitChart, vectorField, write, zone,
 } from '../src/stage/index'
@@ -2339,6 +2339,32 @@ describe('film check: small text', () => {
         expect(report.summary).toEqual({ errors: 0, warnings: 2 })
     })
 
+    it('ignores a scale entrance at automatic samples, but checks an explicit picture', async () => {
+        const entrance = film((s) => {
+            const label = s.add(group(tex('x_1^2', { size: 40 })).scale(0.1))
+            s.play(to(label, (node) => node.scale(10), { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        const small = (report: Awaited<ReturnType<typeof checkFilm>>) => report.diagnostics.filter((entry) => entry.code === 'film.text_small')
+        expect(small(await checkFilm(entrance, { textSize: 26, samples: 12 }))).toEqual([])
+        expect(small(await checkFilm(entrance, { textSize: 26, times: [0.25] }))).toMatchObject([{ text: 'x_1^2', message: expect.stringContaining('13 px') }])
+        expect(await messages((s) => { s.add(group(tex('x_1^2', { size: 40 })).scale(0.5)) })).toEqual(['film.text_small: Text "x_1^2" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+    })
+
+    it('ignores small text hidden by a later opaque shape', async () => {
+        const covered = (opacity: number, partial = false) => messages((s) => {
+            s.add(group(tex('x_1^2', { size: 40 }), text('hidden', { size: 40 }).at(0, 100)).scale(0.5))
+            s.add(rect(partial ? 4 : 1920, 1080, { fill: 'blue', stroke: null }).opacity(opacity))
+        })
+        expect(await covered(1)).toEqual([])
+        expect((await covered(0.5)).filter((message) => message.startsWith('film.text_small'))).toHaveLength(1)
+        expect((await covered(1, true)).filter((message) => message.startsWith('film.text_small'))).toHaveLength(1)
+        expect(await messages((s) => {
+            s.add(text('x', { size: 20 }).at(-90, -90))
+            s.add(rect(200, 200, { radius: 40, fill: 'blue', stroke: null }))
+        })).toEqual(['film.text_small: Text "x" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+    })
+
     it('sees the labels of an object, and puts the labels of one object in one finding with the name of the object', async () => {
         const bars = [{ label: 'alpha', value: 2 }, { label: 'beta', value: 3 }]
         // The labels of a bar chart are 20 px by default.
@@ -2391,6 +2417,75 @@ describe('film check: empty space', () => {
         expect(await found((s) => { s.add(circle(20, { fill: 'blue' })); s.wait(8) })).toEqual([])
         // A lower limit reports it: 4 of the 9 rows above the sentence are empty.
         expect(await found(title, 0.4)).toEqual(['film.empty_space 0.5-7.5: For 7 s, 44% of the frame stays empty in one piece: the top 44% of the height. The limit is 40%. Make the picture larger, or use that part for what the picture explains.'])
+    })
+
+    it('treats a solid full-frame fill as a backdrop, including overscan and later covers', async () => {
+        const plain = await found((s) => { s.add(corner()); s.wait(6) })
+        for (const size of [[1920, 1080], [2200, 1300]]) {
+            expect(await found((s) => {
+                s.add(rect(size[0], size[1], { fill: '#ffffff', stroke: null }))
+                s.add(corner())
+                s.wait(6)
+            })).toEqual(plain)
+        }
+        expect(await found((s) => {
+            s.add(text('A centered title', { size: 60 }))
+            s.add(rect(1920, 1080, { fill: '#ffffff', stroke: null }))
+            s.add(corner())
+            s.wait(6)
+        })).toEqual(plain)
+        expect(await found((s) => {
+            s.add(rect(1920, 1080, { fill: '#ffffff', stroke: null }))
+            s.add(text('A centered title', { size: 60 }))
+            s.wait(6)
+        })).toEqual([])
+    })
+
+    it('counts the visible part of a transparent PNG, with crop and rotation', async () => {
+        const width = 160, height = 90, data = new Uint8Array(width * height * 4)
+        for (let y = 0; y < 20; y++) for (let x = 0; x < 40; x++) {
+            data.set([70, 130, 255, 255], (y * width + x) * 4)
+        }
+        const png = `data:image/png;base64,${Buffer.from(encode({ width, height, depth: 8, channels: 4, data })).toString('base64')}`
+        const asset = await resolveImageAsset(png)
+        expect(await found((s) => { s.add(image(png, { width: 1920, height: 1080 })); s.wait(6) })).toMatchObject([expect.stringContaining('film.empty_space')])
+        expect(await found((s) => { s.add(image(png, { width: 1920, height: 1080 }).rotate(Math.PI)); s.wait(6) })).toMatchObject([expect.stringContaining('film.empty_space')])
+        expect(await found((s) => {
+            s.add(image(asset, { width: 1920, height: 1080, crop: { x: 80, y: 0, width: 80, height: 90 } }))
+            s.wait(6)
+        })).toMatchObject([expect.stringContaining('100% of the frame')])
+        expect(await found((s) => {
+            s.add(image(asset, { width: 1920, height: 1080, crop: { x: 0, y: 0, width: 40, height: 20 }, fit: 'cover' }))
+            s.wait(6)
+        })).toEqual([])
+    })
+
+    it('finds a sustained empty rectangle after earlier content leaves it', async () => {
+        const report = await checkFilm(film((s) => {
+            const top = s.add(rect(1920, 220, { fill: 'blue', stroke: null }).at(0, -430))
+            s.wait(1)
+            s.remove(top)
+            const left = s.add(rect(340, 1080, { fill: 'blue', stroke: null }).at(-790, 0))
+            s.wait(3)
+            s.remove(left)
+            s.add(rect(1920, 220, { fill: 'blue', stroke: null }).at(0, 430))
+            s.wait(3)
+        }), { emptySpace: 0.5 })
+        expect(report.diagnostics.filter((entry) => entry.code === 'film.empty_space')).toMatchObject([
+            { time: 1, until: 6.5, box: { x: 360, y: 0, width: 1560, height: 840 } },
+        ])
+    })
+
+    it('supports a shorter window and includes the final fractional sample', async () => {
+        const short = film((s) => { s.add(corner()); s.wait(3.4) })
+        const spaces = (report: Awaited<ReturnType<typeof checkFilm>>) => report.diagnostics.filter((entry) => entry.code === 'film.empty_space')
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5 }))).toEqual([])
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5, emptySeconds: 2 }))).toMatchObject([{ time: 0.5, until: 2.9 }])
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5, emptySeconds: 2.2 }))).toMatchObject([{ time: 0.5, until: 2.9 }])
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5, emptySeconds: 2.5 }))).toEqual([])
+        for (const emptySeconds of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+            await expect(checkFilm(short, { emptySpace: 0.5, emptySeconds })).rejects.toThrow('checkFilm: emptySeconds')
+        }
     })
 
     it('does not report a picture that a scene builds in steps of under 4 seconds', async () => {

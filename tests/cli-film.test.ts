@@ -349,4 +349,32 @@ export default film({ title: 'Corner' }, (s) => {
             expect(bad.stderr + bad.stdout).toContain(message)
         }
     }, 120_000)
+
+    it('keeps the four-second default and accepts a shorter empty-space window', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'short-corner.ts'), `import { film, rect, tex, group } from 'vizmatic/stage'
+export default film((s) => {
+    s.add(rect(1920, 1080, { fill: 'red', stroke: null }))
+    s.add(group(tex('x_1^2', { size: 40 })).scale(0.5).at(-700, -400))
+    s.wait(3.4)
+})
+`)
+        const findings = (...args: string[]) => {
+            const result = cli(['check', 'short-corner.ts', ...args, '--json'], directory)
+            expect(result.status, result.stderr).toBe(0)
+            return JSON.parse(result.stdout).files[0].diagnostics
+        }
+        expect(findings('--empty-space', '0.5')).toEqual([])
+        expect(findings('--empty-seconds', '2')).toEqual([])
+        expect(findings('--empty-space', '0.5', '--empty-seconds', '2')).toMatchObject([{ code: 'film.empty_space', time: 0.5, until: 2.9 }])
+        expect(findings('--text-size', '26')).toMatchObject([{ code: 'film.text_small', text: 'x_1^2', message: expect.stringContaining('20 px') }])
+        for (const value of ['0', '-1', 'NaN', 'Infinity', 'short']) {
+            const result = cli(['check', 'short-corner.ts', '--empty-seconds', value], directory)
+            expect(result.status).not.toBe(0)
+            expect(result.stderr + result.stdout).toContain('--empty-seconds needs a positive number of seconds')
+        }
+        const missing = cli(['check', 'short-corner.ts', '--empty-seconds'], directory)
+        expect(missing.status).not.toBe(0)
+        expect(missing.stderr + missing.stdout).toContain('--empty-seconds needs a positive number of seconds')
+    }, 120_000)
 })

@@ -64,7 +64,13 @@ export const NARRATED_STEPS = {
     voice: { note: 'Speak script.json on this machine. Writes audio/ and timing.json.', options: DRY_RUN },
     draft: { note: 'Write a timing with estimated times and no sound, for a first look at the scenes.', options: DRY_RUN },
     mix: { note: 'Lay the voice on the timeline with the pad and the chimes. Writes narration.wav.', options: DRY_RUN },
-    check: { note: 'Check the layout of the film, at rest and with --motion in every frame.', options: { '--motion': '', '--json': '', '--content-top': 'px', '--text-margin': 'px', '--reading-speed': 'n', '--stepped': '', ...DRY_RUN } },
+    check: {
+        note: 'Check the layout of the film, at rest and with --motion in every frame.',
+        options: {
+            '--motion': '', '--json': '', '--content-top': 'px', '--text-margin': 'px', '--text-gap': 'part',
+            '--text-size': 'px', '--empty-space': 'part', '--empty-seconds': 's', '--reading-speed': 'n', '--stepped': '', ...DRY_RUN,
+        },
+    },
     stills: { note: 'One full-size still for each beat, or for the times of --frame.', options: { '--scene': 'id,...', '--frame': 't,...', '--name': 'name', '--width': 'n', ...DRY_RUN } },
     sheet: { note: 'Contact sheets of the film.', options: { '--scene': 'id,...', '--name': 'name', '--every': 'seconds', '--range': 'a:b', '--frame': 't,...', '--columns': 'n', '--width': 'n', ...DRY_RUN } },
     beats: { note: 'Print where each beat starts and ends. With --words, the spoken words of a scene, to choose a cue.', options: { '--words': '', ...DRY_RUN }, words: 'scene ...' },

@@ -278,6 +278,8 @@ What the film makes of it:
 
 The words are in the form that the voice says: "eight", "hundred", and not "800". A tool with no measured words can estimate them, as the draft step does. The sound steps of this command line read more keys, which they write themselves: `wav` and `text` of a beat, and `voice`, `speed` and `fingerprint` of the file. A film with its own sound needs none of them. The steps of `vizmatic narrated` check the file before they read it, and they ask for a `hold` in each beat.
 
+When importing a course, use the same word forms for the timed words and cue phrases. For example, `3.5` matches a single timed word `3.5`. If the aligner splits it into `3` and `5`, supply the cue phrase as `3 5`. Convert any scene time measured from the opening picture to the start of its first take. Preserve the silence after its last beat, including any rounding to a whole video frame. If the course already stores resolved cue times, compare them with `c.cue(id).start` and `.end` during migration.
+
 ## A scene
 
 A scene is a function `(s, c, film)`. `s` is the stage, as in every film. `c` is the clock of the scene: it places a change on a spoken phrase. `film` is the clock of the whole film.
@@ -486,7 +488,7 @@ Each step also runs alone: `npx vizmatic narrated <step> .`
 | `voice` | The voice and `timing.json`. |
 | `draft` | A timing with estimated times and no sound, for a look at the scenes on a machine that has no voice model. It never replaces a measured timing: beside one, it writes `timing.draft.json`. |
 | `mix` | The sound mix. |
-| `check` | The layout check. It takes `--motion`, `--json`, `--content-top`, `--text-margin`, `--reading-speed` and `--stepped`. |
+| `check` | Run the layout check. Use `--text-size 26` for small labels or `--empty-space 0.5` for unused space. Add `--empty-seconds 2` to use a two-second window. The check also accepts `--motion`, `--json`, `--content-top`, `--text-margin`, `--text-gap`, `--reading-speed` and `--stepped`. |
 | `stills` | One full-size still for each beat. `--scene <id,...>` builds only those scenes, which is fast. `--frame`, `--name` and `--width` choose the times, the folder and the size. |
 | `sheet` | Contact sheets. It takes `--every`, `--range`, `--frame`, `--columns`, `--width`, `--scene` and `--name`. |
 | `beats` | Where each beat starts and ends. `--words <scene>` prints the spoken words. |
