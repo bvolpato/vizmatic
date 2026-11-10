@@ -1,0 +1,9 @@
+{
+  "entry": "film.ts",
+  "output": "Three-Tasks-One-Clock",
+  "look": "midnight",
+  "voice": { "name": "af_heart", "speed": 1.12 },
+  "render": { "workers": 1, "draftWorkers": 1 },
+  "check": ["--text-size", "26", "--text-gap", "0.3"],
+  "mix": { "seed": 109 }
+}

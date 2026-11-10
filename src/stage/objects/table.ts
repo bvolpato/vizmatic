@@ -5,7 +5,7 @@ import { circle, dot, line, polyline, rect, svgPath } from '../shapes'
 import { filmFont, text, type TextNode, type TextOptions } from '../text'
 import { fontFor } from '../font'
 import type { Ease } from '../ease'
-import { Track, type Key } from '../track'
+import { clock, Track, type Key } from '../track'
 import type { Anim, AnimContext, AnimOptions } from '../anim'
 import { Box } from '../layout'
 import { reveal, staggered, stepAt } from './util'
@@ -639,11 +639,18 @@ export class Table extends Node {
     /** The node tree is already a snapshot. Bind its cells, row order, and totals to a new timeline. */
     protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
         const twin = <T extends Node>(node: T) => copies.get(node)! as T
+        const rows = this.origin.map((row) => ({ ...row, cells: row.cells.map((cell) => ({ ...cell })) }))
+        const changes = this.changes.filter((change) => change.time <= clock.now).sort((a, b) => a.time - b.time)
+        for (const change of changes) change.apply(rows)
+        const facts = new Map(rows.map((row) => [row.made, row.cells]))
         copy.every = this.every.map((entry) => ({
             id: entry.id, made: entry.made, node: twin(entry.node), enters: [], countedFrom: -Infinity,
-            cells: entry.cells.map((slot) => ({ ...slot, node: twin(slot.node), text: slot.text && twin(slot.text), last: null })),
+            cells: entry.cells.map((slot, index) => {
+                const text = slot.node.words.children.find((node) => node.get('visible')) as TextNode | undefined
+                return { ...slot, ...facts.get(entry.made)?.[index], node: twin(slot.node), words: text?.source ?? null, text: text ? twin(text) : null, last: null }
+            }),
         }))
-        copy.order = this.order.map((entry) => copy.every[entry.made]!)
+        copy.order = rows.map((row) => copy.every[row.made]!)
         copy.byId = new Map(copy.order.map((entry) => [String(entry.id), entry]))
         copy.origin = copy.records()
         copy.changes = []
@@ -651,8 +658,10 @@ export class Table extends Node {
         copy.last = null
         copy.filled = new Track(copy.count)
         copy.spots = []
-        const on = this.on
-        if (on) {
+        let spot = this.spots.length - 1
+        while (spot >= 0 && this.spots[spot]!.t0 > clock.now) spot--
+        const on = this.spots[spot]?.target
+        if (on && (!on.row || copy.order.some((entry) => entry.made === on.row!.made))) {
             const target = { row: on.row && copy.every[on.row.made]!, column: on.column }
             copy.spots.push({ t0: 0, t1: 0, ease: (t) => t, target })
         }
@@ -1365,9 +1374,8 @@ export class Table extends Node {
         return (col.total as (rows: readonly TableRowView[]) => TableCell)(this.viewsOf(rows))
     }
 
-    /** The data of the table changed at a time. The total is written again from all the changes. */
+    /** Keep each data change for snapshots, and write totals again when the table has them. */
     private changed(time: number, apply: (rows: Data[]) => void): void {
-        if (this.sums.length === 0) return
         this.changes.push({ time, apply })
         this.retotal()
     }

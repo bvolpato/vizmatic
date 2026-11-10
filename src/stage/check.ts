@@ -3,11 +3,11 @@ import type { DrawOp, Frame, PathOp } from './display'
 import { imageOpBounds } from './display'
 import { imageHasVisiblePixels, ImageAssetError } from './image'
 import { CURVE_PIECES, encloses, pieces } from './enclose'
-import { apply, pathBounds, polyPath, signedArea, type Bounds, type Path } from './geometry'
+import { apply, invert, pathBounds, polyPath, signedArea, type Bounds, type Path } from './geometry'
 import type { Node } from './node'
 import { isFilm, isSuspend, Stage, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 
-export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_crowded' | 'film.text_overlap' | 'film.text_crossed' | 'film.text_brief' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
+export type FilmDiagnosticCode = 'film.off_canvas' | 'film.text_edge' | 'film.text_crowded' | 'film.text_overlap' | 'film.text_crossed' | 'film.text_brief' | 'film.text_small' | 'film.empty_space' | 'film.missing_glyph' | 'film.blank' | 'film.image_asset'
 
 export interface FilmDiagnostic {
     code: FilmDiagnosticCode
@@ -92,6 +92,26 @@ export interface FilmCheckOptions extends CompileOverrides {
      * beside a label on purpose.
      */
     textGap?: number
+    /**
+     * The least size of text on the screen, in pixels of a frame that is 1080 high, such as 26. Text that is
+     * smaller at a moment at rest is reported as `film.text_small`: one finding for the labels of one object,
+     * and one for the texts of one size. The size is what a viewer sees: the font size, with the scale of the
+     * node and the zoom of the camera. It is off unless this is set, because a small text can be a texture,
+     * such as rows of a log that scroll.
+     */
+    textSize?: number
+    /**
+     * The largest part of the frame that may stay empty in one piece, such as 0.5. The rule looks at the film
+     * two times in each second, and reports as `film.empty_space` a rectangle of the frame that is larger than
+     * this part and has no content for 4 seconds or more: the picture leaves much of the frame with no use,
+     * for long enough to see it. A text, an image, and a line or a shape that a viewer can tell from the
+     * background count as content. With 0.5 or more, a picture in the middle of the frame is never reported,
+     * however small it is: a title card, one formula. It is off unless this is set, because a scene can leave
+     * a part of the frame empty on purpose.
+     */
+    emptySpace?: number
+    /** Seconds that a rectangle must stay empty. Defaults to 4. Requires `emptySpace` to enable the rule. */
+    emptySeconds?: number
 }
 
 interface Glyph {
@@ -117,6 +137,8 @@ interface Limits {
     margin: number
     /** Least distance between text and another mark, as a part of the font size. */
     gap: number
+    /** Least size of text on the screen, in canvas pixels. */
+    size?: number
     /**
      * The texts of each dynamic drawing that have a finding, from frame to frame. A dynamic drawing makes new nodes
      * on every frame, so a text of one goes by the node that drew it, and then by its place or its words.
@@ -198,6 +220,16 @@ const READING_TOLERANCE = 0.9
 const READING_GAP_SECONDS = 2
 // Brief texts that follow each other at one place within this time are one finding, such as rows that scroll.
 const READING_CHAIN_SECONDS = 0.5
+// A font size is a whole number in most films, and a scale of the camera gives it a small error.
+const SIZE_TOLERANCE = 0.05
+// A finding for small texts names this many of them.
+const SMALL_SHOWN = 5
+// For `film.empty_space`, the frame is a grid of cells that are square for a frame of 16 by 9.
+const SPACE_COLUMNS = 16
+// The rule looks at the film this many seconds apart, and reports a part that stays empty for this long. A scene
+// that builds its picture in steps has an empty part for 2 or 3 seconds, and that is no defect.
+const SPACE_STEP = 0.5
+const SPACE_SECONDS = 4
 // Faint grid lines may run behind labels. A reader still reads the label.
 const MIN_STROKE_CONTRAST = 1.6
 // For `film.text_crowded`, a mark counts from this contrast with what a viewer sees behind it. The rule of a table in
@@ -472,6 +504,16 @@ function above(node: Node): Node | null {
     return node.parent ?? node.drawer ?? null
 }
 
+/** True while this node or one of its parents changes scale. */
+function changingScale(node: Node, time: number): boolean {
+    for (let current: Node | null = node; current; current = above(current)) {
+        for (const prop of ['sx', 'sy'] as const) {
+            if (current.tracks?.get(prop)?.keys.some((key) => key.at !== null && key.t0 <= time && time < key.t1)) return true
+        }
+    }
+    return false
+}
+
 /**
  * The object that placed a text beside its own marks, such as an axes for its numbers. Null for text that the
  * film placed, and for text that a film added to such an object: only a label with the mark of an object counts.
@@ -566,6 +608,8 @@ interface Finding extends Omit<FilmDiagnostic, 'until' | 'stage'> {
     key: string
     /** For `film.text_crowded`: the names of the marks that are too near to the text. Not a part of a report. */
     pairs?: string[]
+    /** For `film.text_small`: the size of the text on the screen, and the object that it is a label of. Not a part of a report. */
+    small?: { size: number; group: string; object: string; node: Node }
 }
 
 /** What a viewer sees as a line, a shape or a picture: the outline that text must keep away from. */
@@ -1224,7 +1268,7 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
             if (!entry) blocks.set(block, entry = { id: block, source: sourceOf(block), bounds: shape, glyphs: [], size: 0 })
             entry.bounds = union(entry.bounds, shape)
             entry.glyphs.push({ box: shape, order, op })
-            if (entry.size === 0 && limits.gap > 0) {
+            if (entry.size === 0 && (limits.gap > 0 || (limits.size ?? 0) > 0)) {
                 // The node records its font size in its own units. One glyph gives the scale from those units to the canvas.
                 const declared = block.data['size']
                 if (typeof declared === 'number') entry.size = declared * drawnScale(op.node!.get('path') ?? [], op.path)
@@ -1266,6 +1310,29 @@ function inspect(frame: Frame, time: number, zoomed: boolean, bleed: boolean, li
         fills.some((fill) => fill.order > lower && fill.order < upper && contains(fill.bounds, box))
 
     const list = [...blocks.values()]
+    // Too small to read. The size is what the screen shows: the font size with the scale of the node and of the camera.
+    // The film check puts these together: the labels of one object, and the texts of one size.
+    if ((limits.size ?? 0) > 0) {
+        const coversText = plates.filter((plate) => {
+            const op = ops[plate.order]!
+            if (op.kind !== 'path' || !op.fill || isGradient(op.fill) || op.fillAlpha * op.fill[3] < 1 - ROUNDING) return false
+            const area = plate.bounds.width * plate.bounds.height
+            return Math.abs(Math.abs(plate.path.reduce((sum, ring) => sum + signedArea(ring), 0)) - area) <= area * ROUNDING
+        })
+        for (const block of list) {
+            if (block.size <= 0 || block.size >= limits.size! - SIZE_TOLERANCE) continue
+            const hidden = block.glyphs.every((glyph) => coversText.some((plate) => plate.order > glyph.order && contains(plate.bounds, glyph.box)))
+            if (hidden) continue
+            const owner = layoutOwner(block.id)
+            const name = owner ? nameOf(owner.node) : ''
+            const group = owner && name ? `${owner.node.mounted ? owner.node.id : 'dynamic'}:${name}` : ''
+            findings.push({
+                key: `film.text_small:${group}:${block.source}`,
+                code: 'film.text_small', severity: 'warning', time, box: block.bounds, message: '', text: block.source,
+                small: { size: block.size, group, object: group ? name : '', node: block.id },
+            })
+        }
+    }
     // Near an edge. A zoom crops what moves with the camera on purpose, so it leaves only pinned text to judge.
     if (margin > 0) {
         for (const block of list) {
@@ -1362,6 +1429,133 @@ function hasContent(frame: Frame, top: number): boolean {
         const box = pathBounds(filled ? op.path : op.strokePath)
         return box !== null && box.y + box.height > top && box.y < frame.height && box.x + box.width > 0 && box.x < frame.width
     })
+}
+
+/** A part of a frame with no content, as a rectangle of cells of a grid. */
+interface EmptySpace {
+    /** The part of the frame that the rectangle is: from 0 to 1. */
+    share: number
+    box: Bounds
+}
+
+/** The grid of `film.empty_space`: 16 columns, and rows that make its cells square, or near it. */
+function spaceGrid(width: number, height: number): { columns: number; rows: number } {
+    return { columns: SPACE_COLUMNS, rows: Math.max(1, Math.round((SPACE_COLUMNS * height) / width)) }
+}
+
+/**
+ * The cells of the grid that have content in a frame, row by row. A cell has content when a text, an image,
+ * a line or a filled shape is in it. A line and a shape count from the contrast at which a viewer can tell
+ * them from the background, so a faint grid and a panel in the color of the surface are not content.
+ */
+function occupied(frame: Frame): boolean[] {
+    const { width, height } = frame
+    const { columns, rows } = spaceGrid(width, height)
+    const cellW = width / columns, cellH = height / rows
+    let background = frame.background ? parseColor(frame.background) : (frame.dark ? [0, 0, 0, 1] as Rgba : [255, 255, 255, 1] as Rgba)
+    const taken = new Array<boolean>(columns * rows).fill(false)
+    const markPoint = (x: number, y: number) => {
+        if (x < 0 || y < 0 || x >= width || y >= height) return
+        taken[Math.min(rows - 1, Math.floor(y / cellH)) * columns + Math.min(columns - 1, Math.floor(x / cellW))] = true
+    }
+    const markBox = (box: Bounds) => {
+        const x0 = Math.max(0, Math.floor(box.x / cellW)), x1 = Math.min(columns - 1, Math.floor((box.x + box.width) / cellW))
+        const y0 = Math.max(0, Math.floor(box.y / cellH)), y1 = Math.min(rows - 1, Math.floor((box.y + box.height) / cellH))
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) taken[y * columns + x] = true
+    }
+    // Each cell that a line passes, by points that are half a cell apart on it.
+    const reach = Math.min(cellW, cellH) / 2
+    const markLine = (path: Path) => {
+        const along = (x0: number, y0: number, x1: number, y1: number) => {
+            const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / reach))
+            for (let k = 0; k <= steps; k++) markPoint(x0 + ((x1 - x0) * k) / steps, y0 + ((y1 - y0) * k) / steps)
+            return false
+        }
+        for (const r of path) for (let o = 0; o + 7 < r.p.length; o += 6) pieces(r, o, along)
+    }
+    for (const op of frame.ops as DrawOp[]) {
+        if (op.kind === 'image') {
+            if (op.alpha < BLANK_ALPHA || !imageHasVisiblePixels(op.image.asset, op.image.crop)) continue
+            const box = imageOpBounds(op), asset = op.image.asset
+            if (!asset) { markBox(box); continue }
+            const inverse = invert(op.matrix)
+            const crop = op.image.crop ?? { x: 0, y: 0, width: asset.width, height: asset.height }
+            const x0 = Math.max(0, Math.floor(box.x / cellW)), x1 = Math.min(columns - 1, Math.floor((box.x + box.width) / cellW))
+            const y0 = Math.max(0, Math.floor(box.y / cellH)), y1 = Math.min(rows - 1, Math.floor((box.y + box.height) / cellH))
+            for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+                if (taken[y * columns + x]) continue
+                // Map the cell into the image crop. Clear pixels do not use the frame.
+                const corners = [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]].map(([cx, cy]) => apply(inverse, cx! * cellW, cy! * cellH))
+                const left = Math.max(0, Math.min(...corners.map(([cx]) => cx))), right = Math.min(op.image.width, Math.max(...corners.map(([cx]) => cx)))
+                const top = Math.max(0, Math.min(...corners.map(([, cy]) => cy))), bottom = Math.min(op.image.height, Math.max(...corners.map(([, cy]) => cy)))
+                if (right <= left || bottom <= top) continue
+                taken[y * columns + x] = imageHasVisiblePixels(asset, {
+                    x: crop.x + left / op.image.width * crop.width, y: crop.y + top / op.image.height * crop.height,
+                    width: (right - left) / op.image.width * crop.width, height: (bottom - top) / op.image.height * crop.height,
+                })
+            }
+            continue
+        }
+        if (op.kind !== 'path' || op.path.length === 0) continue
+        const shape = pathBounds(op.path)
+        if (!shape) continue
+        // A solid fill over the whole frame is a backdrop. An opaque one also hides earlier content.
+        if (op.fill && !isGradient(op.fill) && op.fillAlpha >= BLANK_ALPHA
+            && contains(shape, { x: 0, y: 0, width, height })
+            && [[ROUNDING, ROUNDING], [width - ROUNDING, ROUNDING], [width - ROUNDING, height - ROUNDING], [ROUNDING, height - ROUNDING], [width / 2, height / 2]].every(([x, y]) => encloses(op.path, x!, y!))) {
+            if (op.fillAlpha * op.fill[3] >= 1 - ROUNDING) taken.fill(false)
+            background = over(op.fill, op.fillAlpha, background)
+            continue
+        }
+        if (isGlyph(op)) {
+            if (op.fillAlpha >= BLANK_ALPHA) markBox(shape)
+            continue
+        }
+        if (op.fill && op.fillAlpha >= BLANK_ALPHA && contrastOver(solid(op.fill), op.fillAlpha, background) >= MIN_STROKE_CONTRAST) {
+            // The edge of the shape, and each cell whose middle is inside it.
+            markLine(op.path)
+            const x0 = Math.max(0, Math.floor(shape.x / cellW)), x1 = Math.min(columns - 1, Math.floor((shape.x + shape.width) / cellW))
+            const y0 = Math.max(0, Math.floor(shape.y / cellH)), y1 = Math.min(rows - 1, Math.floor((shape.y + shape.height) / cellH))
+            for (let y = y0; y <= y1; y++) {
+                for (let x = x0; x <= x1; x++) if (!taken[y * columns + x] && encloses(op.path, (x + 0.5) * cellW, (y + 0.5) * cellH)) taken[y * columns + x] = true
+            }
+        }
+        if (op.stroke && op.strokeWidth > 0 && op.strokeAlpha >= BLANK_ALPHA && op.strokePath.length > 0 && contrastOver(solid(op.stroke), op.strokeAlpha, background) >= MIN_STROKE_CONTRAST) markLine(op.strokePath)
+    }
+    return taken
+}
+
+/** The largest rectangle of cells with no content: for each row, the empty height of each column, and the widest run of each height. */
+function largestEmpty(taken: readonly boolean[], width: number, height: number): EmptySpace {
+    const { columns, rows } = spaceGrid(width, height)
+    const cellW = width / columns, cellH = height / rows
+    const heights = new Array<number>(columns).fill(0)
+    let best = { cells: 0, x: 0, y: 0, w: 0, h: 0 }
+    for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < columns; x++) heights[x] = taken[y * columns + x] ? 0 : heights[x]! + 1
+        for (let x = 0; x < columns; x++) {
+            let least = heights[x]!
+            for (let end = x; end < columns && heights[end]! > 0; end++) {
+                least = Math.min(least, heights[end]!)
+                const cells = least * (end - x + 1)
+                if (cells > best.cells) best = { cells, x, y: y - least + 1, w: end - x + 1, h: least }
+            }
+        }
+    }
+    return { share: best.cells / (columns * rows), box: { x: best.x * cellW, y: best.y * cellH, width: best.w * cellW, height: best.h * cellH } }
+}
+
+/** Where a part of the frame is, in words: at an edge when the part goes from side to side, or at a corner, or in the middle. */
+function partOf(box: Bounds, width: number, height: number): string {
+    const wide = box.width >= width * 0.999, tall = box.height >= height * 0.999
+    const percent = (part: number) => `${Math.round(part * 100)}%`
+    if (wide && tall) return 'the whole frame'
+    if (wide) return `the ${box.y <= 0 ? 'top' : box.y + box.height >= height * 0.999 ? 'bottom' : 'middle'} ${percent(box.height / height)} of the height`
+    if (tall) return `the ${box.x <= 0 ? 'left' : box.x + box.width >= width * 0.999 ? 'right' : 'middle'} ${percent(box.width / width)} of the width`
+    const x = (box.x + box.width / 2) / width, y = (box.y + box.height / 2) / height
+    const across = x < 0.45 ? 'left' : x > 0.55 ? 'right' : '', down = y < 0.45 ? 'top' : y > 0.55 ? 'bottom' : ''
+    const place = down && across ? `at the ${down} ${across}` : down || across ? `at the ${down || across}` : 'in the middle'
+    return `a part ${place}, ${Math.round(box.width)} by ${Math.round(box.height)} pixels`
 }
 
 /** One text in one frame, for the scan that measures how long a text stays up. */
@@ -1523,12 +1717,20 @@ function samePair(a: Finding, b: Finding): boolean {
 async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmCheckOptions): Promise<FilmCheckReport> {
     const compiled = isFilm(film) ? await film.compile(options) : film
     const times = options.times ? [...options.times] : restingMoments(compiled, options.samples ?? 0)
+    const { textSize = 0, emptySpace: emptyLimit = 0, emptySeconds = SPACE_SECONDS } = options
+    if (!(Number.isFinite(textSize) && textSize >= 0)) throw new Error('checkFilm: textSize is the least size of text in pixels of a frame that is 1080 high, such as 26. 0 turns the rule off')
+    if (!(Number.isFinite(emptyLimit) && emptyLimit >= 0 && emptyLimit < 1)) throw new Error('checkFilm: emptySpace is the largest part of the frame that may stay empty in one piece, from 0 to 1, such as 0.5. 0 turns the rule off')
+    if (!(Number.isFinite(emptySeconds) && emptySeconds > 0)) throw new Error('checkFilm: emptySeconds is a positive number of seconds that a rectangle must stay empty, such as 4 or 2')
     const limits: Limits = {
         margin: options.textMargin ?? Math.min(compiled.width, compiled.height) * EDGE_MARGIN,
         gap: options.textGap ?? 0,
+        // The size is for a frame that is 1080 high. A film of another size has the same part of its shorter side.
+        size: textSize * Math.min(compiled.width, compiled.height) / 1080,
         places: new Map(),
     }
     const merged = new Map<string, FilmDiagnostic>()
+    // The small texts, by the object that they are labels of, or by their size on the screen. Each text has its size.
+    const smalls = new Map<string, { object: string; texts: Map<string, number>; time: number; until: number; box: Bounds }>()
     // The CLI has its own copy of the engine, and a film can import an older one. An older engine does not mark the
     // labels that its objects place, so this rule would report the layout of every object.
     if (limits.gap > 0 && !('drawer' in compiled.stage.root)) {
@@ -1551,7 +1753,22 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
             const again = inspect(await frameAt(compiled, later), later, zoomAt(compiled, later) !== 1, compiled.bleed, { margin: 0, gap: limits.gap, places })
             found = found.filter((finding) => finding.code !== 'film.text_crowded' || again.some((other) => samePair(finding, other)))
         }
-        for (const { key, pairs: _, ...finding } of found) {
+        for (const { key, pairs: _, small, ...finding } of found) {
+            if (small) {
+                // Automatic samples can fall inside an entrance. Judge its settled size instead.
+                if (!options.times && (small.node.all().some((node) => changingScale(node, time)) || (!pinned(small.node) && changingScale(compiled.stage.camera, time)))) continue
+                // One finding for the labels of one object, and one for the texts of one size: a film sets a size for
+                // a kind of text, and an object has one option for the size of its labels.
+                const px = Math.round(small.size * 10) / 10
+                const name = small.group ? `object:${small.group}` : `size:${px}`
+                const group = smalls.get(name)
+                if (!group) smalls.set(name, { object: small.object, texts: new Map([[finding.text!, px]]), time, until: time, box: finding.box })
+                else {
+                    group.until = time
+                    if (!group.texts.has(finding.text!)) group.texts.set(finding.text!, px)
+                }
+                continue
+            }
             const seen = merged.get(key)
             if (seen) {
                 seen.until = time
@@ -1564,6 +1781,20 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 })
             }
         }
+    }
+
+    for (const [name, group] of smalls) {
+        const texts = [...group.texts.keys()], sizes = [...group.texts.values()]
+        const quoted = texts.slice(0, SMALL_SHOWN).map((text) => JSON.stringify(text)).join(', ') + (texts.length > SMALL_SHOWN ? ` and ${texts.length - SMALL_SHOWN} more` : '')
+        const least = `${Math.round(limits.size! * 10) / 10} px`, smallest = `${Math.min(...sizes)} px`
+        const message = group.object
+            ? texts.length === 1
+                ? `The label ${quoted} of ${group.object} is ${smallest} on the screen, and the least size is ${least}. Give the object a larger size for its labels.`
+                : `${texts.length} labels of ${group.object} are under ${least} on the screen, the smallest at ${smallest}: ${quoted}. Give the object a larger size for its labels.`
+            : texts.length === 1
+                ? `Text ${quoted} is ${smallest} on the screen, and the least size is ${least}. Give it a larger size.`
+                : `${texts.length} texts are ${smallest} on the screen, and the least size is ${least}: ${quoted}. Give them a larger size.`
+        merged.set(`film.text_small:${name}`, { code: 'film.text_small', severity: 'warning', message, time: group.time, until: group.until, box: group.box, stage: { x: 0, y: 0 }, text: texts[0]! })
     }
 
     const frameCount = options.motion ? Math.max(1, Math.round(compiled.duration * compiled.fps)) : 0
@@ -1792,6 +2023,50 @@ async function inspectFilm(film: FilmDefinition | CompiledFilm, options: FilmChe
                 motion: { spans: 1, seconds: length },
             })
         }
+    }
+    if (emptyLimit > 0) {
+        // The cells that had no content in every look of a run, and the largest rectangle of them. A picture that
+        // moves in the frame uses the frame, so only a part that stays empty counts.
+        type Run = { from: number; to: number; taken: boolean[]; space: EmptySpace }
+        let run = null as Run | null
+        const recent: { time: number; taken: boolean[] }[] = []
+        const flush = () => {
+            if (run && run.to - run.from >= emptySeconds - 1e-6) {
+                const length = Math.round((run.to - run.from) * 10) / 10
+                merged.set(`film.empty_space:${run.from}`, {
+                    code: 'film.empty_space', severity: 'warning',
+                    message: `For ${length} s, ${Math.round(run.space.share * 100)}% of the frame stays empty in one piece: ${partOf(run.space.box, compiled.width, compiled.height)}. The limit is ${Math.round(emptyLimit * 100)}%. Make the picture larger, or use that part for what the picture explains.`,
+                    time: run.from, until: run.to, box: run.space.box, stage: { x: 0, y: 0 },
+                    motion: { spans: 1, seconds: length },
+                })
+            }
+            run = null
+        }
+        // A film may open on an empty stage and close on one, so the looks start and end half a second inside it.
+        const end = compiled.duration - BLANK_EDGE_SECONDS
+        const looks: number[] = []
+        for (let time = BLANK_EDGE_SECONDS; time <= end + ROUNDING; time += SPACE_STEP) looks.push(time)
+        if (end >= BLANK_EDGE_SECONDS && end - looks[looks.length - 1]! > ROUNDING) looks.push(end)
+        for (const time of looks) {
+            const taken = occupied(await frameAt(compiled, time))
+            recent.push({ time, taken })
+            // Keep the look just before the window starts. Earlier content cannot block a later window.
+            while (recent.length > 1 && recent[1]!.time <= time - emptySeconds + ROUNDING) recent.shift()
+            if (run) {
+                const both: boolean[] = run.taken.map((cell, index) => cell || taken[index]!)
+                const space: EmptySpace = largestEmpty(both, compiled.width, compiled.height)
+                if (space.share > emptyLimit + 1e-9) {
+                    run = { from: run.from, to: time, taken: both, space }
+                    continue
+                }
+                flush()
+            }
+            if (time - recent[0]!.time < emptySeconds - ROUNDING) continue
+            const window = taken.map((_, index) => recent.some((look) => look.taken[index]))
+            const space = largestEmpty(window, compiled.width, compiled.height)
+            if (space.share > emptyLimit + 1e-9) run = { from: recent[0]!.time, to: time, taken: window, space }
+        }
+        flush()
     }
     const round = (value: number) => Math.round(value * 100) / 100
     const diagnostics = [...merged.values()].map((entry) => ({

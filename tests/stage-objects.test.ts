@@ -14,11 +14,14 @@ import {
     delay, par, retime, ringBuffer, overshoot,
     appear, circumscribe, fade, flash, grow, image, linearGradient, moveTo, paintFrame, polygon, pulse, ripple, spotlight,
     dateLine,
-    table, Table, TableCellNode, TableRowNode, TABLE_STATES, boxOf, fitted, type TableColumn, type TableRow, type TableRowView,
+    table, Table, TableCellNode, TableRowNode, TABLE_STATES, type TableColumn, type TableRow, type TableRowView,
     circle, tangentLine, secantLine, areaUnder, band, valueAt, braceLabel, surroundingBox, angleMark, rightAngle, circlePath, to, type CompiledFilm,
     type FilmDefinition, type Node, type PathOp, type PictogramName, type Rgba, type Stage, type Vec, type Vec3,
     type LaneEvent, type LogRow,
     decimal, label3d, TextNode, type FontFamily,
+    passage, shift, type Value,
+    TOKEN_STATES, Node as StageNode, rectPath, ramp, boxOf, fitted, place as placeIn, Box as LayoutBox,
+    layerStack, STACK_STATES, beside, type StackLayer,
 } from '../src/stage/index'
 import { encode } from 'fast-png'
 import { Resvg } from '@resvg/resvg-js'
@@ -209,6 +212,37 @@ describe('morphs land exactly on their targets', () => {
         expect(CODE_LANGUAGES).toEqual(expect.arrayContaining(['ts', 'python', 'rust', 'go', 'java', 'c', 'sql', 'bash', 'tla', 'dafny', 'lean', 'smt', 'plain']))
         // An unknown language still falls back to TypeScript.
         expect(kinds('const x = 1', 'unknown')[0]).toEqual(['const', 'keyword'])
+    })
+
+    it('colors the keys of JSON and YAML apart from their values', async () => {
+        const kinds = (source: string, language: string) => tokenize(source, language).filter((t) => t.kind !== 'space').map((t) => [t.text, t.role ?? t.kind])
+        // JSON: a string before a colon is a key, and true, false and null are keywords.
+        expect(kinds('{"name": "get_weather", "days": 3, "metric": true, "note": null}', 'json')).toEqual([
+            ['{', 'punctuation'], ['"name"', 'key'], [':', 'punctuation'], ['"get_weather"', 'string'], [',', 'punctuation'],
+            ['"days"', 'key'], [':', 'punctuation'], ['3', 'number'], [',', 'punctuation'],
+            ['"metric"', 'key'], [':', 'punctuation'], ['true', 'keyword'], [',', 'punctuation'],
+            ['"note"', 'key'], [':', 'punctuation'], ['null', 'keyword'], ['}', 'punctuation'],
+        ])
+        // YAML: a colon ends a key when a space or the end of the line follows it, and `#` starts a comment.
+        expect(kinds('image: nginx:1.27 # the server', 'yaml')).toEqual([['image', 'key'], [':', 'punctuation'], ['nginx', 'plain'], [':', 'punctuation'], ['1.27', 'number'], ['# the server', 'comment']])
+        // A key can be a word that is a keyword as a value. A value with a capital is not a type, and a quoted value with a colon is one string.
+        expect(kinds('- on: push\n  enabled: Yes\n  kind: Deployment\n  label: "a: b"\n  steps:', 'yml')).toEqual([
+            ['-', 'punctuation'], ['on', 'key'], [':', 'punctuation'], ['push', 'plain'],
+            ['enabled', 'key'], [':', 'punctuation'], ['Yes', 'keyword'],
+            ['kind', 'key'], [':', 'punctuation'], ['Deployment', 'plain'],
+            ['label', 'key'], [':', 'punctuation'], ['"a: b"', 'string'],
+            ['steps', 'key'], [':', 'punctuation'],
+        ])
+        expect(CODE_LANGUAGES).toEqual(expect.arrayContaining(['json', 'yaml']))
+        // In another language, a string before a colon stays a string.
+        expect(kinds('{ "a": 1 }', 'ts')[1]).toEqual(['"a"', 'string'])
+        // A code block draws a key in the color of keys, which a film can change.
+        await compileFilm(film(() => {
+            const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+            const block = codeBlock('{"city": "Paris"}', { language: 'json' })
+            expect([block.find('"city"')[0]!.get('fill'), block.find('"Paris"')[0]!.get('fill')]).toEqual([paint('blue'), paint('green')])
+            expect(codeBlock('city: Paris', { language: 'yaml', colors: { key: 'teal' } }).find('city')[0]!.get('fill')).toEqual(paint('teal'))
+        }))
     })
 })
 
@@ -8712,6 +8746,972 @@ describe('boundary', () => {
     })
 })
 
+// The request queue has its own import, so that its tests stay one block.
+import { narrated, requestQueue } from '../src/stage/index'
+
+describe('request queue', () => {
+    type Queue = ReturnType<typeof requestQueue>
+    type Rect = { x: number; y: number; width: number; height: number }
+    const words = (node: Node | null) => (node as unknown as { source?: string } | null)?.source
+    /** How much of a node a viewer gets: its opacity and that of each holder over it, and 0 when one of them is hidden. */
+    const shows = (node: Node) => {
+        let value = 1
+        for (let holder: Node | null = node; holder; holder = holder.parent) {
+            if (!holder.get('visible')) return 0
+            value *= holder.get('opacity')
+        }
+        return value
+    }
+    /** The middle of an item at a time, in the coordinates of the queue. */
+    const where = (made: Queue, id: string | number, time: number) => at(time, () => [made.item(id).parent!.get('x'), made.item(id).parent!.get('y')] as const)
+    const seen = (made: Queue, id: string | number, time: number) => at(time, () => shows(made.item(id)))
+    /** The parts of an item: its border, its bar, its id, the number of its work, and what is under it. */
+    const parts = (made: Queue, id: string | number) => { const [body, bar, name, number, under] = made.item(id).children; return { body: body!, bar: bar!, name: name!, number: number!, under: under! } }
+    /** The border of an item at a time, on the stage. */
+    const box = (made: Queue, id: string | number, time: number): Rect => at(time, () => parts(made, id).body.bounds())
+    const apart = (a: Rect, b: Rect, room = 0) => a.x + a.width + room <= b.x || b.x + b.width + room <= a.x || a.y + a.height + room <= b.y || b.y + b.height + room <= a.y
+    /** The texts that a holder draws at a time: a count, the number of an item, or what is under it. A text that does not show is left out. */
+    const said = (holder: Node, time: number): string[] => {
+        const drawn = at(time, () => holder.draw!(time))
+        const list = (drawn === null ? [] : Array.isArray(drawn) ? drawn : [drawn]) as Node[]
+        return list.filter((node) => node.get('opacity') > 0.01).map((node) => words(node) ?? node.children.map(words).filter(Boolean).join(' '))
+    }
+    const paintOf = (color: string) => rect(1, 1, { fill: color }).get('fill')
+    const abc = () => [{ id: 'A', work: 2 }, { id: 'B', work: 4 }, { id: 'C', work: 6 }]
+    /** The sizes of a queue with the default text size: an item is 120 by 50, and the next place is 133 further. */
+    const W = 120, H = 50, PITCH = 133
+
+    it('is as wide as its width, with the lines at the left and the slots in one column at the right', async () => {
+        await compileFilm(film(() => {
+            const made = requestQueue(abc(), { slots: 3, width: 1400 }).at(100, 40)
+            // The layout measures the whole object: the room where items arrive and leave is a part of it.
+            const whole = boxOf(made)
+            expect([whole.left, whole.right]).toEqual([-600, 800])
+            expect(whole.cy).toBeCloseTo(40, 6)
+            expect(made.bounds().width).toBeCloseTo(1400, 6)
+            expect([made.slots, made.itemWidth]).toEqual([3, W])
+            // The places of the line are one row, one pitch apart, with the head next to the slots.
+            const places = Array.from({ length: made.places }, (_, place) => made.p({ line: 0, place }))
+            expect(made.places).toBeGreaterThanOrEqual(3)
+            places.forEach(([x, y], place) => {
+                expect(x).toBeCloseTo(places[0]![0] - place * PITCH, 6)
+                expect(y).toBeCloseTo(places[0]![1], 6)
+            })
+            // The slots are one column, and the line is at the height of the middle slot.
+            const seats = [0, 1, 2].map((slot) => made.p({ slot }))
+            expect(new Set(seats.map(([x]) => x)).size).toBe(1)
+            expect(seats[1]![1]).toBeCloseTo(places[0]![1], 6)
+            expect(seats[2]![1] - seats[1]![1]).toBeCloseTo(seats[1]![1] - seats[0]![1], 6)
+            expect(seats[1]![1] - seats[0]![1]).toBeGreaterThan(H)
+            // An item leaves its line by one place, and comes into its slot by one place: the room between
+            // the head and the slots is more than two items wide.
+            expect(seats[0]![0] - places[0]![0]).toBeGreaterThanOrEqual(2 * PITCH)
+            // The room that an item needs to leave a slot is inside the object.
+            expect(seats[0]![0] + W / 2 + PITCH).toBeLessThanOrEqual(700 + 1e-6)
+            // The first place is clear of the left edge by the room of one item, where an item arrives.
+            expect(places[made.places - 1]![0] - W / 2 - PITCH).toBeGreaterThanOrEqual(-700 - 1e-6)
+            // With two lines or more, a line is at the height of a slot, or in the middle between two slots.
+            const two = requestQueue([], { slots: 3, lines: ['a', 'b'] })
+            expect([two.p({ line: 0, place: 0 })[1], two.p({ line: 1, place: 0 })[1]]).toEqual([two.p({ slot: 0 })[1], two.p({ slot: 2 })[1]])
+            const three = requestQueue([], { slots: 2, lines: ['a', 'b', 'c'] })
+            expect(three.p({ line: 1, place: 0 })[1]).toBeCloseTo((three.p({ slot: 0 })[1] + three.p({ slot: 1 })[1]) / 2, 6)
+            expect(three.p({ slot: 1 })[1] - three.p({ slot: 0 })[1]).toBeCloseTo((three.p({ line: 1, place: 0 })[1] - three.p({ line: 0, place: 0 })[1]) / 2, 6)
+            // The room that the places do not fill is at the far end of the lines: the head is as near to the slots at any width.
+            const odd = requestQueue(abc(), { slots: 3, width: 1450 })
+            expect(odd.places).toBe(made.places)
+            expect(odd.p({ slot: 0 })[0] - odd.p({ line: 0, place: 0 })[0]).toBeCloseTo(seats[0]![0] - places[0]![0], 6)
+            expect(odd.p({ line: 0, place: 0 })[0] + 725).toBeCloseTo(places[0]![0] + 700 + 50, 6)
+            // A wider object has more places, and the same room at the slots.
+            const wide = requestQueue(abc(), { slots: 3, width: 1800 })
+            expect(wide.places).toBe(made.places + 3)
+            expect(1800 / 2 - wide.p({ slot: 0 })[0]).toBeCloseTo(1400 / 2 - seats[0]![0], 6)
+        }))
+    })
+
+    it('gets the width of a region from fitted, and gives a region of each part on the stage', async () => {
+        await compileFilm(film(() => {
+            const made = fitted(900, (width) => requestQueue(abc(), { slots: 2, width, pool: 4 })).at(-200, 100)
+            expect(boxOf(made).width).toBeCloseTo(900, 6)
+            const slot = made.region({ slot: 1 }), [x, y] = made.p({ slot: 1 })
+            expect([slot.cx, slot.cy]).toEqual([x - 200, y + 100])
+            expect([slot.width, slot.height]).toEqual([W, H])
+            const line = made.region({ line: 0 })
+            expect(line.width).toBeCloseTo(made.places * PITCH - 13, 6)
+            expect(line.right).toBeCloseTo(made.p({ line: 0, place: 0 }, 'right')[0] - 200, 6)
+            expect(made.region('slots').height).toBeCloseTo(made.p({ slot: 1 }, 'bottom')[1] - made.p({ slot: 0 }, 'top')[1], 6)
+            // The pool is under the slots, and starts at their left edge.
+            const pool = made.region('pool')
+            expect(pool.left).toBeCloseTo(slot.left, 6)
+            expect(pool.top).toBeGreaterThan(slot.bottom)
+            expect(made.region({ block: 3 }).right).toBeCloseTo(pool.right, 6)
+            const all = made.region()
+            expect([all.left, all.right]).toEqual([-650, 250])
+            // The edges of a part.
+            expect(made.p({ slot: 0 }, 'left')[0]).toBeCloseTo(made.p({ slot: 0 })[0] - W / 2, 6)
+            expect(made.p({ slot: 0 }, 'top')[1]).toBeCloseTo(made.p({ slot: 0 })[1] - H / 2, 6)
+        }))
+    })
+
+    it('starts with the first items in their lines in order, and the running ones in the first slots', async () => {
+        let made!: Queue
+        const f = await compile((s) => {
+            made = s.add(requestQueue([{ id: 'R1', running: true }, ...abc(), { id: 'R2', running: true }], { slots: 3, names: { slots: 'GPU batch' } }))
+            s.wait(1)
+        })
+        expect(made.ids).toEqual(['R1', 'A', 'B', 'C', 'R2'])
+        expect(made.find((item) => item.state === 'running')).toEqual(['R1', 'R2'])
+        expect([made.stateOf('R1').slot, made.stateOf('R2').slot, made.freeSlots]).toEqual([0, 1, 1])
+        expect(['A', 'B', 'C'].map((id) => made.stateOf(id).place)).toEqual([0, 1, 2])
+        expect([made.count('waiting'), made.count('running'), made.count('done'), made.count('rejected')]).toEqual([3, 2, 0, 0])
+        expect(made.stateOf('B')).toEqual({ id: 'B', state: 'waiting', line: 0, place: 1, slot: null, work: 4, left: 4, blocks: 0, wait: 0, late: false, status: undefined })
+        // Each item is at the middle of its place or of its slot, and shows.
+        for (const [id, part] of [['A', { line: 0, place: 0 }], ['B', { line: 0, place: 1 }], ['C', { line: 0, place: 2 }], ['R1', { slot: 0 }], ['R2', { slot: 1 }]] as const) {
+            expect(where(made, id, 0.5)).toEqual(made.p(part))
+            expect(seen(made, id, 0.5)).toBe(1)
+        }
+        // The counts say the same, and a count of 0 draws nothing.
+        expect(said(made.captions[0]!, 0.5)).toEqual(['waiting 3'])
+        expect(said(made.slotsCaption, 0.5)).toEqual(['GPU batch 2 / 3'])
+        expect(said(made.doneTally!, 0.5)).toEqual([])
+        expect(said(made.rejectedTally!, 0.5)).toEqual([])
+        // An item with work shows the units that are left. An item with none has no number, and its id is in the middle.
+        expect(said(parts(made, 'B').number, 0.5)).toEqual(['4'])
+        expect(parts(made, 'R1').number.draw).toBeNull()
+        at(0.5, () => {
+            const id = parts(made, 'R1').name.bounds(), border = parts(made, 'R1').body.bounds()
+            expect(id.x + id.width / 2).toBeCloseTo(border.x + border.width / 2, 0)
+            // The outline of a slot shows while the slot is free.
+            expect(made.seats.map((seat) => seat.children[0]!.get('opacity'))).toEqual([0, 0, 1])
+        })
+        expectPure(f, [0, 0.5, 1])
+    })
+
+    it('brings an item to the end of its line, from one place behind, and counts it when it is half there', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.arrive({ id: 'B', work: 3 }), { duration: 2, ease: linear })
+            expect(made.ids).toEqual(['A', 'B'])
+            expect(made.stateOf('B')).toMatchObject({ state: 'waiting', place: 1, left: 3 })
+            expect(made.count('waiting')).toBe(2)
+        })
+        const [x, y] = made.p({ line: 0, place: 1 })
+        expect(seen(made, 'B', 0.99)).toBe(0)
+        expect(where(made, 'B', 1.5)).toEqual([x - PITCH * 0.75, y])
+        // The item is all there at the middle of its way, so the line of its waiting line does not show through it.
+        expect(seen(made, 'B', 1.5)).toBeCloseTo(0.5, 6)
+        expect(seen(made, 'B', 2)).toBeCloseTo(1, 6)
+        expect(where(made, 'B', 2)).toEqual([x - PITCH * 0.5, y])
+        expect(where(made, 'B', 3)).toEqual([x, y])
+        expect([1.9, 2.1].map((time) => said(made.captions[0]!, time))).toEqual([['waiting 1'], ['waiting 2']])
+        // The item that was there does not move.
+        expect([1, 2, 3].map((time) => where(made, 'A', time))).toEqual(Array(3).fill(made.p({ line: 0, place: 0 })))
+    })
+
+    it('brings the items of a list one after another, and no item is nearer to the item before it than one place', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([], { slots: 1 }))
+            s.play(made.arrive([{ id: 1 }, { id: 2 }, { id: 3 }], { lag: 0.5 }), { duration: 2 })
+            s.wait(0.5)
+            // Two calls in one play: the second item is faster, and it still stays behind the first one.
+            s.play(made.arrive({ id: 4 }, { duration: 1.5, ease: linear }), made.arrive({ id: 5 }, { duration: 1.5, ease: (share: number) => Math.sqrt(share) }))
+        })
+        expect(made.ids).toEqual([1, 2, 3, 4, 5])
+        expect([1, 2, 3, 4, 5].map((id) => made.stateOf(id).place)).toEqual([0, 1, 2, 3, 4])
+        // Each item of the list has half of the time, and starts a quarter later than the one before it.
+        expect([0.01, 0.5, 0.99].map((time) => seen(made, 2, time) > 0)).toEqual([false, false, true])
+        expect(where(made, 3, 2)).toEqual(made.p({ line: 0, place: 2 }))
+        for (let time = 0; time <= 4.01; time += 0.05) {
+            // An item has no place before it arrives, so the rule is for an item that shows.
+            for (const id of [2, 3, 4, 5]) if (seen(made, id, time) > 0) expect(where(made, id - 1, time)[0] - where(made, id, time)[0]).toBeGreaterThanOrEqual(PITCH - 1e-6)
+        }
+        // Item 5 alone would be ahead: at a quarter of its time, its own ease has it half way.
+        expect(where(made, 5, 2.5 + 1.5 / 4)[0]).toBeCloseTo(made.p({ line: 0, place: 4 })[0] - PITCH * 0.75, 6)
+        expect(where(made, 5, 4)).toEqual(made.p({ line: 0, place: 4 }))
+    })
+
+    it('moves the head of the line into the first free slot, on a way that is clear of the other items', async () => {
+        let made!: Queue
+        const f = await compile((s) => {
+            made = s.add(requestQueue([{ id: 'R1', running: true }, ...abc()], { slots: 3 }))
+            s.wait(1)
+            s.play(made.admit(), { duration: 2, ease: linear })
+            expect(made.stateOf('A')).toMatchObject({ state: 'running', place: null, slot: 1 })
+            expect(['B', 'C'].map((id) => made.stateOf(id).place)).toEqual([0, 1])
+            expect([made.count('waiting'), made.count('running'), made.freeSlots]).toEqual([2, 2, 1])
+            s.wait(1)
+            s.play(made.admit('B'), { duration: 2, ease: linear })
+            expect(made.stateOf('B').slot).toBe(2)
+        })
+        const head = made.p({ line: 0, place: 0 }), seat = made.p({ slot: 2 })
+        expect(where(made, 'A', 1)).toEqual(head)
+        expect(where(made, 'A', 3)).toEqual(made.p({ slot: 1 }))
+        expect(where(made, 'B', 6)).toEqual(seat)
+        // The line closes up with the item that leaves: half way, each item is half a place on.
+        expect(where(made, 'B', 2)[0]).toBeCloseTo(head[0] - PITCH / 2, 6)
+        expect(where(made, 'C', 2)[0]).toBeCloseTo(head[0] - PITCH * 1.5, 6)
+        expect(where(made, 'C', 3)).toEqual(made.p({ line: 0, place: 1 }))
+        // B goes to a slot at another height. It changes its height only between the lines and the slots:
+        // near its line it is at the height of the line, and near the slots at the height of its slot.
+        let across = 0
+        for (let time = 4; time <= 6.001; time += 0.02) {
+            const [x, y] = where(made, 'B', time)
+            if (x < head[0] + PITCH - 1e-6) expect(y).toBeCloseTo(head[1], 6)
+            else if (x > seat[0] - PITCH + 1e-6) expect(y).toBeCloseTo(seat[1], 6)
+            else across += 1
+            // It never meets an item in a slot, or the item that is now the head.
+            for (const other of ['R1', 'A', 'C']) expect(apart(box(made, 'B', time), box(made, other, time))).toBe(true)
+        }
+        expect(across).toBeGreaterThan(5)
+        // The counts change when the item is half way, and the outline of the slot goes when the item comes into it.
+        expect([1.9, 2.1].map((time) => [said(made.captions[0]!, time), said(made.slotsCaption, time)])).toEqual([[['waiting 3'], ['running 1 / 3']], [['waiting 2'], ['running 2 / 3']]])
+        expect([1, 2, 3].map((time) => at(time, () => made.seats[1]!.children[0]!.get('opacity')))).toEqual([1, 1, 0])
+        expectPure(f, [0.5, 2, 2.9, 5, 6])
+    })
+
+    it('admits the items of a list one after another, and refuses two admissions at one time', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue(abc(), { slots: 3 }))
+            expect(made.next(2)).toEqual(['A', 'B'])
+            s.play(made.admit(made.next(made.freeSlots)), { duration: 3, ease: linear })
+            expect(made.find((item) => item.state === 'running')).toEqual(['A', 'B', 'C'])
+            expect(made.next()).toEqual([])
+        })
+        // Each item has a third of the time: B does not leave the line before A is in its slot.
+        expect(where(made, 'A', 1)).toEqual(made.p({ slot: 0 }))
+        expect(where(made, 'B', 1)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(where(made, 'B', 2)).toEqual(made.p({ slot: 1 }))
+        expect(where(made, 'C', 2)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(where(made, 'C', 3)).toEqual(made.p({ slot: 2 }))
+        for (let time = 0; time <= 3; time += 0.05) {
+            expect(apart(box(made, 'A', time), box(made, 'B', time))).toBe(true)
+            expect(apart(box(made, 'B', time), box(made, 'C', time))).toBe(true)
+        }
+        const two = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue(abc(), { slots: 3 })), s))
+        await expect(two((q, s) => s.play(q.admit(), q.admit()))).rejects.toThrow('requestQueue: admit() starts at 0 s, and admit() ends at 0.9 s. The slots take one item at a time, so that no two items cross. Give one `admit` all the items, as a list')
+        await expect(two((q, s) => s.play(q.admit('B')))).rejects.toThrow('requestQueue: admit("B"): "B" is at place 1 of the line "waiting", behind "A". A line serves its head first. Admit "A" first, or reject the items before "B"')
+        await expect(two((q, s) => s.play(q.admit(['A', 'A'])))).rejects.toThrow('admit names an item two times')
+        await expect(two((q, s) => s.play(q.admit('Z')))).rejects.toThrow('requestQueue: admit("Z"): no item has the id "Z". The queue has "A", "B", "C". When an `arrive` in the same play brings the item, name the `arrive` before this call')
+        await expect(compile((s) => { const q = s.add(requestQueue(abc())); s.play(q.admit()); s.play(q.admit()) })).rejects.toThrow('requestQueue: admit(): no slot is free for "B": 1 of 1 run. `finish` an item first')
+        await expect(compile((s) => { s.play(s.add(requestQueue([])).admit()) })).rejects.toThrow('requestQueue: admit(): no item waits. `arrive` an item first')
+        await expect(compile((s) => { s.play(s.add(requestQueue([{ id: 'R', running: true }], { slots: 2 })).admit('R')) })).rejects.toThrow('requestQueue: admit("R"): "R" is running. `admit` takes an item that waits')
+        // An item that arrives in the same sequence can be admitted: the queue reads its state when the call is scheduled.
+        await compile((s) => {
+            const q = s.add(requestQueue([]))
+            s.play(seq(q.arrive({ id: 'N' }), q.admit('N')))
+            expect(q.stateOf('N').state).toBe('running')
+        })
+    })
+
+    it('lets the items in the slots work: the bar grows, the number counts down, and no item does more than its work', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 2, running: true }, { id: 'B', work: 4, running: true }, { id: 'N', running: true }, { id: 'W', work: 3 }], { slots: 3 }))
+            s.wait(1)
+            s.play(made.run(2), { duration: 2 })
+            expect(['A', 'B', 'N', 'W'].map((id) => made.stateOf(id).left)).toEqual([0, 2, undefined, 3])
+            s.play(made.run(3), { duration: 1 })
+            expect(['A', 'B'].map((id) => made.stateOf(id).left)).toEqual([0, 0])
+        })
+        const width = (id: string, time: number) => at(time, () => (parts(made, id).bar.get('path')!.length === 0 ? 0 : parts(made, id).bar.bounds().width))
+        // Work goes at one speed, with no ease: after a quarter of the time, a quarter of the units are done.
+        expect([1, 1.5, 2, 3].map((time) => width('A', time))).toEqual([0, W / 4, W / 2, W])
+        expect([1, 2, 3, 3.5, 4].map((time) => width('B', time))).toEqual([0, W / 4, W / 2, W * 0.75, W])
+        expect([1, 1.9, 2.1, 3].map((time) => said(parts(made, 'A').number, time))).toEqual([['2'], ['2'], ['1'], ['0']])
+        expect([3, 3.4, 3.6, 4].map((time) => said(parts(made, 'B').number, time))).toEqual([['2'], ['2'], ['1'], ['0']])
+        // The bar starts at the left edge of the item, and has its height.
+        at(2, () => {
+            const bar = parts(made, 'B').bar.bounds(), border = parts(made, 'B').body.bounds()
+            expect([bar.x, bar.y, bar.height]).toEqual([border.x, border.y, border.height])
+        })
+        // An item with no work, and an item that waits, do not change.
+        expect([width('N', 4), width('W', 4)]).toEqual([0, 0])
+        expect(said(parts(made, 'W').number, 4)).toEqual(['3'])
+        await expect(compile((s) => { s.play(s.add(requestQueue([])).run(0)) })).rejects.toThrow('requestQueue: run takes the units of work, a whole number, 1 or more. It got 0')
+    })
+
+    it('drains the slots of the items that have done their work: each one goes out at the right and fades', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 1, running: true }, { id: 'B', work: 4, running: true }, { id: 'N', running: true }], { slots: 3 }))
+            s.play(made.run(1), { duration: 1 })
+            s.play(made.finish(), { duration: 2, ease: linear })
+            expect(made.stateOf('A')).toMatchObject({ state: 'done', slot: null })
+            expect(made.find((item) => item.state === 'running')).toEqual(['B', 'N'])
+            expect([made.count('done'), made.freeSlots]).toEqual([1, 1])
+            s.wait(1)
+            // An item with no work leaves when the film names it. A function picks among the items in the slots.
+            s.play(made.finish((item) => item.work === undefined), { duration: 1 })
+            expect(made.stateOf('N').state).toBe('done')
+        })
+        const [x, y] = made.p({ slot: 0 })
+        expect(where(made, 'A', 1)).toEqual([x, y])
+        expect(where(made, 'A', 2)).toEqual([x + PITCH / 2, y])
+        expect(where(made, 'A', 3)).toEqual([x + PITCH, y])
+        // The item is all there until it is half out of its slot, and gone at the end.
+        expect([1, 1.8, 2.4, 3].map((time) => seen(made, 'A', time))).toEqual([1, 1, expect.closeTo(0.5, 6), 0])
+        // The outline of the slot comes back at the end, when the id of the item is clear of it. The count follows at the middle.
+        expect([1, 1.8, 2.4, 2.85, 3].map((time) => at(time, () => made.seats[0]!.children[0]!.get('opacity')))).toEqual([0, 0, 0, expect.closeTo(0.5, 6), 1])
+        expect([1.9, 2.1].map((time) => [said(made.slotsCaption, time), said(made.doneTally!, time)])).toEqual([[['running 3 / 3'], []], [['running 2 / 3'], ['done 1']]])
+        expect(said(made.doneTally!, 5)).toEqual(['done 2'])
+        // The item stays inside the object on its way out.
+        at(2.9, () => expect(box(made, 'A', 2.9).x + W).toBeLessThanOrEqual(made.bounds().x + made.bounds().width + 1e-6))
+        const one = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A', work: 2, running: true }, { id: 'W' }])), s))
+        await expect(one((q, s) => s.play(q.finish()))).rejects.toThrow('requestQueue: finish(): no item in a slot has done its work. `run` first, or name the item')
+        await expect(one((q, s) => s.play(q.finish('A')))).rejects.toThrow('requestQueue: finish("A"): "A" has 2 of 2 units of work left. Call run(2) first')
+        await expect(one((q, s) => s.play(q.finish('W')))).rejects.toThrow('requestQueue: finish("W"): "W" is waiting. This call takes an item that is running')
+    })
+
+    it('refills a slot in one play: the new item comes in behind the one that leaves, and never meets it', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 1, running: true }, { id: 'D', work: 3 }, { id: 'E' }], { slots: 1 }))
+            s.play(made.run(1), { duration: 1 })
+            // The new item is faster than the one that leaves, and it still waits for it.
+            s.play(made.finish(), made.admit(undefined, { ease: (share: number) => Math.sqrt(share) }), { duration: 2 })
+            expect(made.stateOf('D')).toMatchObject({ state: 'running', slot: 0 })
+            expect([made.count('running'), made.count('done'), made.freeSlots]).toEqual([1, 1, 0])
+        })
+        expect(where(made, 'D', 3)).toEqual(made.p({ slot: 0 }))
+        expect(seen(made, 'A', 3)).toBe(0)
+        for (let time = 1; time <= 3.001; time += 0.02) {
+            if (seen(made, 'A', time) > 0) expect(apart(box(made, 'A', time), box(made, 'D', time))).toBe(true)
+            // The line closes up no faster than its head leaves.
+            expect(where(made, 'D', time)[0] - where(made, 'E', time)[0]).toBeGreaterThanOrEqual(PITCH - 1e-6)
+            // The outline of the slot does not come back between the two items.
+            expect(at(time, () => made.seats[0]!.children[0]!.get('opacity'))).toBe(0)
+        }
+        // Alone, the ease of D has it at 0.71 of its way after half of the time. Behind A, it is half way, as A is.
+        const alone = await (async () => { let q!: Queue; await compile((s) => { q = s.add(requestQueue([{ id: 'D' }])); s.wait(1); s.play(q.admit(undefined, { ease: (share: number) => Math.sqrt(share) }), { duration: 2 }) }); return where(q, 'D', 2)[0] })()
+        expect(where(made, 'D', 2)[0]).toBeLessThan(alone - 20)
+        // The count of the slots stays at 1: one item leaves and one comes in.
+        expect([1.5, 2.5, 3].map((time) => said(made.slotsCaption, time))).toEqual(Array(3).fill(['running 1 / 1']))
+        const full = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A', running: true }, { id: 'D' }])), s))
+        await expect(full((q, s) => s.play(q.admit(), q.finish('A')))).rejects.toThrow('no slot is free for "D": 1 of 1 run. `finish` an item first. When a `finish` in the same play frees the slot, name the `finish` before the `admit`')
+        await expect(full((q, s) => s.play(par(q.finish('A', { duration: 2 }), q.admit(undefined, { duration: 1 }))))).rejects.toThrow('requestQueue: admit(): "D" is in slot 0 at 1 s, and the item before it leaves that slot until 2 s. Give the `finish` a duration that ends at 1 s or sooner')
+    })
+
+    it('sends a waiting item away with its status: it gets dashes, a cross and the status, it fades, and then the line closes up', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'D' }, { id: 'R', running: true }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.reject('B', '503'), { duration: 10, ease: linear })
+            expect(made.stateOf('B')).toMatchObject({ state: 'rejected', place: null, status: '503' })
+            expect(['A', 'C', 'D'].map((id) => made.stateOf(id).place)).toEqual([0, 1, 2])
+            expect([made.count('waiting'), made.count('rejected')]).toEqual([3, 1])
+            // A function picks among the items that wait, when the call is scheduled.
+            s.play(made.reject((item) => item.place === 2, 'timeout'), { duration: 1 })
+            expect(made.stateOf('D').status).toBe('timeout')
+            expect(made.find((item) => item.state === 'rejected')).toEqual(['B', 'D'])
+        })
+        const place = (index: number) => made.p({ line: 0, place: index })
+        const edge = (time: number) => at(time, () => [parts(made, 'B').body.get('stroke'), parts(made, 'B').body.get('dash') !== null])
+        // The status arrives in the first fifth of the time, under the item, after a cross.
+        expect(edge(1)).toEqual([paintOf('blue'), false])
+        expect(edge(3)).toEqual([paintOf('red'), true])
+        expect(said(parts(made, 'B').under, 1)).toEqual([])
+        expect(said(parts(made, 'B').under, 3)).toEqual(['503'])
+        at(3, () => {
+            const status = (parts(made, 'B').under.draw!(3) as Node[])[0]!
+            expect(status.children).toHaveLength(2)
+            expect(status.children[0]!.get('stroke')).toEqual(paintOf('red'))
+        })
+        // The item stays in its place while the viewer reads the status, and fades from 0.6 to 0.8 of the time.
+        expect([3, 7, 8, 9].map((time) => seen(made, 'B', time))).toEqual([1, 1, expect.closeTo(0.5, 6), 0])
+        expect([1, 8, 9].map((time) => where(made, 'B', time))).toEqual(Array(3).fill(place(1)))
+        // The line closes up in the last fifth, when the item is gone: no item moves into a place that still shows another.
+        expect([1, 9].map((time) => where(made, 'C', time))).toEqual([place(2), place(2)])
+        expect(where(made, 'C', 10)[0]).toBeCloseTo(place(2)[0] + PITCH / 2, 6)
+        expect(where(made, 'C', 11)).toEqual(place(1))
+        expect(where(made, 'D', 11)).toEqual(place(2))
+        expect([1, 11].map((time) => where(made, 'A', time))).toEqual([place(0), place(0)])
+        expect([7.9, 8.1].map((time) => [said(made.captions[0]!, time), said(made.rejectedTally!, time)])).toEqual([[['waiting 4'], []], [['waiting 3'], ['rejected 1']]])
+        const some = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'C' }, { id: 'R', running: true }])), s))
+        await expect(some((q, s) => s.play(q.reject('R', '503')))).rejects.toThrow('requestQueue: reject("R", "503"): "R" is running. This call takes an item that is waiting: an item in a slot leaves with `finish`')
+        await expect(some((q, s) => s.play(q.reject('A', '503'), q.reject('B', '503')))).rejects.toThrow('requestQueue: reject("B", "503") starts at 0 s, and the line "waiting" closes up after reject("A", "503") until 1.4 s. A line takes one change of its order at a time')
+        await expect(some((q) => q.reject('A', 'the queue is full now'))).rejects.toThrow('requestQueue: the status "the queue is full now" is')
+        await expect(some((q) => q.reject('A', ''))).rejects.toThrow('requestQueue: the status of reject is empty')
+        // An item with a wait: its number goes before its status comes, so no two texts show at one place.
+        let timed!: Queue
+        await compile((s) => {
+            timed = s.add(requestQueue([{ id: 'A' }]))
+            s.play(timed.wait('A', 7), { duration: 1 })
+            s.play(timed.reject('A', '503'), { duration: 10, ease: linear })
+        })
+        expect([1, 1.5, 2.5, 3].map((time) => said(parts(timed, 'A').under, time))).toEqual([['7'], ['7'], ['503'], ['503']])
+        expect([1.5, 2.5].map((time) => at(time, () => (parts(timed, 'A').under.draw!(time) as Node[])[0]!.get('opacity')))).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)])
+        // One call takes several items, and the items behind them close up by as many places.
+        await some((q, s) => {
+            s.play(q.reject(['A', 'B'], '429'))
+            expect(q.stateOf('C').place).toBe(0)
+            expect(where(q, 'C', 1.4)).toEqual(q.p({ line: 0, place: 0 }))
+        })
+    })
+
+    it('runs the wait of an item as a number under it, and marks the item as late at the deadline', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'R', running: true }], { slots: 2, deadline: 250, format: (ms) => `${Math.round(ms)} ms` }))
+            s.wait(1)
+            s.play(made.wait('B', 200), { duration: 2 })
+            expect(made.stateOf('B')).toMatchObject({ wait: 200, late: false })
+            s.play(made.wait('B', 300), { duration: 2 })
+            expect(made.stateOf('B')).toMatchObject({ wait: 300, late: true })
+            expect(made.find((item) => item.late)).toEqual(['B'])
+            s.wait(1)
+            s.play(made.admit(['A']), { duration: 1 })
+            s.play(made.wait('B', 320), { duration: 1 })
+        })
+        const under = (time: number) => said(parts(made, 'B').under, time)
+        const edge = (time: number) => at(time, () => [parts(made, 'B').body.get('stroke'), parts(made, 'B').body.get('dash') !== null])
+        // No number before the first wait. Then it runs at one speed.
+        expect([0.9, 1, 1.5, 2, 3, 4, 5].map(under)).toEqual([[], ['0 ms'], ['50 ms'], ['100 ms'], ['200 ms'], ['250 ms'], ['300 ms']])
+        // At the deadline the number is red, and the border of the item is red with dashes.
+        const color = (time: number) => at(time, () => ((parts(made, 'B').under.draw!(time) as Node[])[0]!.children[0]!.get('fill')))
+        // An item is late from the moment that its wait is the deadline: at 4 s it is 250 ms.
+        expect([3.9, 4, 4.1].map(color)).toEqual([paintOf('dim'), paintOf('red'), paintOf('red')])
+        expect([3.9, 4, 4.1].map(edge)).toEqual([[paintOf('blue'), false], [paintOf('red'), true], [paintOf('red'), true]])
+        // The number is under its item, and follows it when the line closes up.
+        at(7, () => {
+            const number = (parts(made, 'B').under.draw!(7) as Node[])[0]!
+            expect(parts(made, 'B').under.get('y')).toBeGreaterThan(H / 2)
+            expect(Math.abs(number.get('x'))).toBeLessThan(1e-6)
+        })
+        expect(where(made, 'B', 7)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(under(8)).toEqual(['320 ms'])
+        // An item that goes to a slot loses its number in the first part of its way, and is no longer late.
+        let served!: Queue
+        await compile((s) => {
+            served = s.add(requestQueue([{ id: 'A' }], { deadline: 100 }))
+            s.play(served.wait('A', 150), { duration: 1 })
+            s.play(served.admit(), { duration: 2, ease: linear })
+        })
+        expect([1, 1.3, 1.7, 3].map((time) => said(parts(served, 'A').under, time))).toEqual([['150'], ['150'], [], []])
+        expect([1, 1.01].map((time) => at(time, () => parts(served, 'A').body.get('dash') !== null))).toEqual([true, false])
+        expect(served.stateOf('A')).toMatchObject({ wait: 150, late: false })
+        expect(served.find((item) => item.late)).toEqual([])
+        const one = (build: (made: Queue, s: Stage) => void, options = {}) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'R', running: true }], options)), s))
+        await one((q, s) => {
+            s.play(q.wait('A', 99))
+            expect(q.stateOf('A').late).toBe(false)
+            s.play(q.wait('A', 100))
+            expect(q.stateOf('A').late).toBe(true)
+        }, { deadline: 100 })
+        await expect(one((q, s) => { s.play(q.wait('A', 100)); s.play(q.wait('A', 50)) })).rejects.toThrow('requestQueue: wait("A", 50): the wait of "A" is 100, and a wait does not go back. Give a value of 100 or more')
+        await expect(one((q, s) => s.play(q.wait('R', 100)))).rejects.toThrow('"R" is running. This call takes an item that is waiting')
+        await expect(one((q) => q.wait('A', 100), { format: (wait: number) => `${wait} milliseconds of wait` })).rejects.toThrow('requestQueue: the wait "100 milliseconds of wait" is')
+        await expect(one((q) => q.wait('A', Number.NaN))).rejects.toThrow('requestQueue: wait takes the wait to reach, a number, 0 or more. It got NaN')
+    })
+
+    it('serves the first line first, and gives each item the color of its line', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'L1', line: 'batch' }, { id: 'H1', line: 'interactive' }, { id: 'L2', line: 1, color: 'purple' }], { slots: 3, lines: [{ name: 'interactive', color: 'orange' }, 'batch'], color: 'teal' }))
+            expect(made.next(3)).toEqual(['H1', 'L1', 'L2'])
+            expect([made.count('waiting', 'interactive'), made.count('waiting', 1)]).toEqual([1, 2])
+            s.play(made.arrive({ id: 'H2', line: 'interactive' }), { duration: 1 })
+            s.play(made.admit(), { duration: 1 })
+            expect(made.stateOf('H1').state).toBe('running')
+            // An item of the second line goes when the film names it: it is the head of its own line.
+            s.play(made.admit('L1'), { duration: 1 })
+            expect(made.find((item) => item.state === 'running')).toEqual(['L1', 'H1'])
+            expect(made.next()).toEqual(['H2'])
+        })
+        const stroke = (id: string) => at(0, () => parts(made, id).body.get('stroke'))
+        expect(['H1', 'L1', 'L2'].map(stroke)).toEqual([paintOf('orange'), paintOf('teal'), paintOf('purple')])
+        // The lines are one under the other, each with its name and its count over its head.
+        const high = made.p({ line: 'interactive', place: 0 }), low = made.p({ line: 'batch', place: 0 })
+        expect(high[0]).toBe(low[0])
+        expect(low[1] - high[1]).toBeGreaterThan(H * 2)
+        expect(where(made, 'L2', 0)).toEqual(made.p({ line: 1, place: 1 }))
+        expect([said(made.captions[0]!, 0.9), said(made.captions[1]!, 0.9)]).toEqual([['interactive 2'], ['batch 2']])
+        at(0, () => expect(made.captions[1]!.get('y')).toBeLessThan(low[1] - H / 2))
+        expect(where(made, 'L1', 3)).toEqual(made.p({ slot: 1 }))
+        await expect(compile(() => { requestQueue([{ id: 'A', line: 'x' }]) })).rejects.toThrow('requestQueue: no line "x". The lines are 0 ("waiting")')
+    })
+
+    it('draws as many items as a line has places, and three dots for the others', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue(Array.from({ length: 6 }, (_, index) => ({ id: index + 1 })), { slots: 1, width: 1000 }))
+            expect(made.places).toBe(3)
+            s.wait(1)
+            s.play(made.arrive({ id: 7 }), { duration: 1 })
+            s.play(made.admit(), { duration: 2, ease: linear })
+            expect(made.stateOf(4).place).toBe(2)
+            s.play(made.finish(1), made.admit(), { duration: 1 })
+            s.play(made.reject([3, 4, 5], '429'), { duration: 1 })
+        })
+        const dots = (time: number) => at(time, () => shows(made.more[0]!.children[0]!))
+        // The count is of all the items, and the picture shows the first three.
+        expect(said(made.captions[0]!, 0.5)).toEqual(['waiting 6'])
+        expect([1, 2, 3, 4, 5, 6].map((id) => seen(made, id, 0.5))).toEqual([1, 1, 1, 0, 0, 0])
+        expect(dots(0.5)).toBe(1)
+        // An item with no place is not a part of the bounds: the object keeps its width.
+        at(0.5, () => expect(made.bounds().width).toBeCloseTo(1000, 6))
+        expect(seen(made, 7, 2)).toBe(0)
+        expect(said(made.captions[0]!, 2)).toEqual(['waiting 7'])
+        // When the head leaves, the next item comes into the last place. It shows on the second half of its
+        // way, when it is clear of the dots.
+        const last = made.p({ line: 0, place: 2 })
+        expect([2, 3, 3.5, 4].map((time) => seen(made, 4, time))).toEqual([0, 0, expect.closeTo(0.5, 6), 1])
+        expect(where(made, 4, 4)).toEqual(last)
+        at(3.5, () => expect(box(made, 4, 3.5).x).toBeGreaterThan(made.more[0]!.bounds().x + made.more[0]!.bounds().width))
+        // The dots go when every item that waits has a place: after the three rejections, 6 and 7 are left.
+        expect([4, 5, 6.1].map(dots)).toEqual([1, 1, 0])
+        expect([6, 7].map((id) => where(made, id, 6))).toEqual([made.p({ line: 0, place: 0 }), made.p({ line: 0, place: 1 })])
+        expect([6, 7].map((id) => seen(made, id, 6))).toEqual([1, 1])
+    })
+
+    it('gives the blocks of the pool to an item that runs, takes them back when it finishes, and gives them to the next one', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', blocks: 3, running: true }, { id: 'B', blocks: 2, color: 'orange' }, { id: 'C', blocks: 4, color: 'green' }], { slots: 2, pool: { blocks: 6, name: 'KV pages', columns: 3 } }))
+            expect([made.freeBlocks, made.stateOf('A').blocks, made.stateOf('B').blocks]).toEqual([3, 3, 2])
+            s.wait(1)
+            s.play(made.admit(), { duration: 2 })
+            expect(made.freeBlocks).toBe(1)
+            s.play(made.take('B', 1), { duration: 1 })
+            expect([made.freeBlocks, made.stateOf('B').blocks]).toEqual([0, 3])
+            s.wait(1)
+            // A is the item that leaves: its three blocks are free again, and C takes them and one more... which the pool does not have.
+            expect(() => s.play(made.finish('A'), made.admit())).toThrow('requestQueue: admit(): "C" needs 4 blocks, and the pool has 3 free of 6. `finish` an item first, to get its blocks back')
+        })
+        const look = (block: number, time: number) => at(time, () => [made.blocks[block]!.get('fill'), made.blocks[block]!.get('fillOpacity'), made.blocks[block]!.get('dash') !== null] as const)
+        // The first free blocks, by index: A has 0 to 2, B takes 3 and 4 as it comes into its slot, and then 5.
+        expect([0, 1, 2].map((block) => look(block, 0))).toEqual(Array(3).fill([paintOf('blue'), 0.7, false]))
+        expect([3, 4, 5].map((block) => look(block, 1)[2])).toEqual([true, true, true])
+        expect(look(3, 1)[1]).toBe(0)
+        expect([3, 4].map((block) => look(block, 3))).toEqual(Array(2).fill([paintOf('orange'), 0.7, false]))
+        expect(look(5, 3)[2]).toBe(true)
+        expect(look(5, 4)).toEqual([paintOf('orange'), 0.7, false])
+        // The blocks fill in the last part of the way of the item, one after another.
+        expect([1.5, 2].map((time) => look(3, time)[1])).toEqual([0, 0])
+        expect(look(3, 2.7)[1]).toBeGreaterThan(look(4, 2.7)[1])
+        expect([0.5, 3, 4].map((time) => said(made.poolCaption!, time))).toEqual([['KV pages 3 / 6'], ['KV pages 5 / 6'], ['KV pages 6 / 6']])
+        // The blocks are one grid, row by row, under the slots.
+        const cells = made.blocks.map((cell) => at(0, () => [cell.get('x'), cell.get('y')]))
+        expect(cells[3]![0]).toBe(cells[0]![0])
+        expect(cells[3]![1]).toBeGreaterThan(cells[0]![1])
+        expect(cells[1]![1]).toBe(cells[0]![1])
+        expect(cells[0]).toEqual(made.p({ block: 0 }))
+    })
+
+    it('uses a block again when its owner is gone, in one play with the item that leaves', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', blocks: 2, running: true }, { id: 'D', blocks: 2, color: 'orange' }], { slots: 1, pool: 2 }))
+            s.wait(1)
+            s.play(made.finish('A'), made.admit(), { duration: 2 })
+            expect([made.freeBlocks, made.stateOf('D').blocks, made.stateOf('A').blocks]).toEqual([0, 2, 0])
+        })
+        const look = (block: number, time: number) => at(time, () => [made.blocks[block]!.get('fill'), made.blocks[block]!.get('fillOpacity')] as const)
+        expect([0, 1].map((block) => look(block, 1))).toEqual(Array(2).fill([paintOf('blue'), 0.7]))
+        expect([0, 1].map((block) => look(block, 3))).toEqual(Array(2).fill([paintOf('orange'), 0.7]))
+        // No block shows a look that is not on the way from the first owner to the second: the fill never goes over 0.7.
+        for (let time = 1; time <= 3; time += 0.05) for (const block of [0, 1]) expect(look(block, time)[1]).toBeLessThanOrEqual(0.7 + 1e-9)
+        expect(said(made.poolCaption!, 3)).toEqual(['blocks 2 / 2'])
+        const pool = (build: (made: Queue, s: Stage) => void, options: Parameters<typeof requestQueue>[1] = { pool: 4 }) => compile((s) => build(s.add(requestQueue([{ id: 'A', running: true }, { id: 'W' }], options)), s))
+        await expect(pool((q, s) => s.play(q.take('A', 5)))).rejects.toThrow('requestQueue: take("A", 5): "A" needs 5 blocks, and the pool has 4 free of 4. Raise `pool`')
+        await expect(pool((q, s) => s.play(q.take('W', 1)))).rejects.toThrow('requestQueue: take("W", 1): "W" is waiting. An item holds blocks while it is in a slot')
+        await expect(pool((q) => q.take('A', 1), {})).rejects.toThrow('requestQueue: take: the queue has no pool')
+        await expect(compile(() => { requestQueue([{ id: 'A', blocks: 2 }]) })).rejects.toThrow('requestQueue: "A" has blocks, and the queue has no pool')
+        await expect(compile(() => { requestQueue([{ id: 'A', running: true, blocks: 3 }, { id: 'B', running: true, blocks: 3 }], { slots: 2, pool: 4 }) })).rejects.toThrow('requestQueue: the first items: "B" runs at the start, and it needs 3 blocks, and the pool has 1 free of 4. Raise `pool`')
+    })
+
+    it('lets an item arrive while its line closes up, behind the items that move', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 2 }))
+            s.wait(1)
+            // The new item is in a hurry: its own ease would put it in its place before B has left it.
+            s.play(made.admit(undefined, { ease: linear }), made.arrive({ id: 'C' }, { ease: (share: number) => Math.sqrt(share) }), { duration: 2 })
+            expect(['B', 'C'].map((id) => made.stateOf(id).place)).toEqual([0, 1])
+        })
+        expect(where(made, 'C', 3)).toEqual(made.p({ line: 0, place: 1 }))
+        for (let time = 1; time <= 3.001; time += 0.02) expect(where(made, 'B', time)[0] - where(made, 'C', time)[0]).toBeGreaterThanOrEqual(PITCH - 1e-6)
+        const two = (build: (made: Queue, s: Stage) => void) => compile((s) => build(s.add(requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 2 })), s))
+        await expect(two((q, s) => s.play(par(q.admit(undefined, { duration: 2 }), q.arrive({ id: 'C' }, { duration: 0.5 }))))).rejects.toThrow('requestQueue: arrive("C"): "C" is in its place at 0.5 s, and admit() moves in the line "waiting" until 2 s. An item takes its place behind the items before it. Give this arrival a duration that ends at 2 s or later')
+        await expect(compile((s) => { const q = s.add(requestQueue([])); s.play(q.arrive({ id: 'C' }), q.admit('C')) })).rejects.toThrow('requestQueue: admit("C") starts at 0 s, and arrive("C") moves "C" until 0.6 s. An item takes one change at a time')
+        await expect(two((q, s) => s.play(q.arrive({ id: 'A' })))).rejects.toThrow('requestQueue: arrive("A"): the queue has an item with the id "A"')
+        // The queue takes its changes in the order of time. A change that the film calls later and that starts sooner is an error that says so.
+        await expect(two((q, s) => s.play(par(delay(q.admit(), 1), q.arrive({ id: 'C' }))))).rejects.toThrow('requestQueue: arrive("C") starts at 0 s, and the film called admit() before it, which starts at 1 s. The queue takes its changes in the order of time: each one starts from the state that the one before it left. Call arrive("C") before admit()')
+        await two((q, s) => {
+            s.play(par(q.arrive({ id: 'C' }), delay(q.admit(), 1)))
+            expect(q.stateOf('A').state).toBe('running')
+        })
+        await expect(two((q) => q.arrive({ id: 'N', running: true }))).rejects.toThrow('requestQueue: arrive: "N" has `running`')
+        await expect(two((q) => q.arrive({ id: 'request-1234567890' }))).rejects.toThrow('requestQueue: the id "request-1234567890" is 287 px wide at size 28, and an item is 120 px wide, with 92 px for its id. An id can be 0.6 of the size at the least. Use a shorter id, or an `itemWidth` of 201 or more')
+    })
+
+    it('draws the line of a waiting line with a gap under each item, and an arrow head at the side of the slots', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.reject('B', '503'), { duration: 10, ease: linear })
+            s.play(made.admit(), { duration: 2, ease: linear })
+        })
+        const rings = (time: number) => at(time, () => (made.rails[0]!.draw!(time) as Node).get('path')!.map((ring) => pathBounds([ring])!))
+        /** The pieces of the line at a time, each from its left end to its right end, on the stage. */
+        const pieces = (time: number) => rings(time).filter((ring) => ring.height < 0.5).map((ring) => [ring.x, ring.x + ring.width] as const)
+        const drawn = (time: number, x: number) => pieces(time).some(([from, to]) => from <= x && x <= to)
+        const [a, y] = made.p({ line: 0, place: 0 }), b = made.p({ line: 0, place: 1 })[0]
+        // The line starts at the left edge of the object, is at the height of the items, and has no piece under an item.
+        expect(Math.min(...pieces(0.5).map(([from]) => from))).toBeCloseTo(-800, 6)
+        expect(rings(0.5).filter((ring) => ring.height < 0.5).every((ring) => Math.abs(ring.y - y) < 1e-6)).toBe(true)
+        expect([a, b, b - 59, b + 59, a - 59, a + 59].map((x) => drawn(0.5, x))).toEqual(Array(6).fill(false))
+        expect([b - 61, (a + b) / 2, a + 61].map((x) => drawn(0.5, x))).toEqual([true, true, true])
+        // The arrow head is after the head of the line, and points at the slots.
+        const head = rings(0.5).find((ring) => ring.height > 0.5)!
+        expect(head.x).toBeGreaterThan(a + W / 2)
+        expect(head.x + head.width).toBeLessThan(made.p({ slot: 0 }, 'left')[0] - W)
+        expect(head.y + head.height / 2).toBeCloseTo(y, 6)
+        expect(Math.max(...pieces(0.5).map(([, to]) => to))).toBeCloseTo(head.x + head.width, 6)
+        // An item that fades still has its gap, so the line does not show through it. The line is whole when the item is gone.
+        expect([8, 8.9].map((time) => drawn(time, b))).toEqual([false, false])
+        expect(drawn(9.5, b)).toBe(true)
+        // An item that leaves its line for a slot takes its gap with it, while it is at the height of the line.
+        expect([11, 11.2].map((time) => drawn(time, where(made, 'A', time)[0]))).toEqual([false, false])
+        expect(drawn(13, a)).toBe(true)
+    })
+
+    it.each(['admit', 'reject'] as const)('keeps an arrival behind a line that loses two items to %s', async (verb) => {
+        let q!: Queue
+        await compile((s) => {
+            q = s.add(requestQueue([{ id: 'A' }, { id: 'B' }, { id: 'C' }], { slots: 2 }))
+            s.play(verb === 'admit' ? q.admit(['A', 'B']) : q.reject(['A', 'B'], '429'), q.arrive({ id: 'D' }), { duration: 1, ease: linear })
+        })
+        for (let frame = 1; frame <= 30; frame++) {
+            const time = frame / 30
+            if (seen(q, 'D', time) > 0) expect(apart(box(q, 'C', time), box(q, 'D', time))).toBe(true)
+        }
+        expect(where(q, 'D', 1)).toEqual(q.p({ line: 0, place: 1 }))
+    })
+
+    it.each(['take', 'run'] as const)('finishes an item only after its %s animation ends', async (verb) => {
+        await expect(compile((s) => {
+            const q = s.add(requestQueue([{ id: 'A', running: true, work: verb === 'run' ? 1 : undefined }], { pool: 1 }))
+            const activity = verb === 'run' ? q.run(1, { duration: 2 }) : q.take('A', 1, { duration: 2 })
+            s.play(activity, q.finish('A', { duration: 0.5 }))
+        })).rejects.toThrow(/finish.*A.*until 2 s/)
+    })
+
+    it.each(['take', 'run'] as const)('starts %s after an item reaches its slot', async (verb) => {
+        await expect(compile((s) => {
+            const q = s.add(requestQueue([{ id: 'A', work: 1 }], { pool: 1 }))
+            s.play(q.admit(), verb === 'run' ? q.run(1) : q.take('A', 1))
+        })).rejects.toThrow(/A.*reaches its slot/)
+    })
+
+    it('keeps the pool count in step with the block outlines during a handoff', async () => {
+        let q!: Queue
+        await compile((s) => {
+            q = s.add(requestQueue([{ id: 'A', running: true, blocks: 1 }, { id: 'B', running: true }], { pool: 1, slots: 2 }))
+            s.play(q.finish('A', { duration: 2 }), q.take('B', 1, { duration: 0.5 }))
+        })
+        for (const time of [0, 0.3, 0.5, 1, 1.5, 2]) {
+            const used = at(time, () => q.blocks[0]!.get('dash') === null ? 1 : 0)
+            expect(said(q.poolCaption!, time)).toEqual([`blocks ${used} / 1`])
+        }
+    })
+
+    it('can retry a batch after a refused admission', async () => {
+        await compile((s) => {
+            const q = s.add(requestQueue([{ id: 'R', running: true }, { id: 'A' }, { id: 'B' }], { slots: 2 }))
+            expect(() => s.play(q.admit(['A', 'B']))).toThrow(/no slot is free/)
+            expect(q.next(2)).toEqual(['A', 'B'])
+            s.play(q.finish('R'), q.admit(['A', 'B']))
+            expect(q.count('running')).toBe(2)
+        })
+    })
+
+    it('preserves every wait and the scheduling time when one requested wait goes backward', async () => {
+        await compile((s) => {
+            const q = s.add(requestQueue([{ id: 'A' }, { id: 'B' }]))
+            s.play(q.wait('B', 10), { duration: 0 })
+            s.at(5, () => {
+                expect(() => s.play(q.wait(['A', 'B'], 8))).toThrow(/wait does not go back/)
+            })
+            expect(q.stateOf('A').wait).toBe(0)
+            s.play(q.wait('A', 4))
+            expect(q.stateOf('B').wait).toBe(10)
+        })
+    })
+
+    it('animates the queue in a copied group independently', async () => {
+        await compile((s) => {
+            const original = requestQueue([{ id: 'A' }])
+            const groupCopy = group(original).clone()
+            const copy = groupCopy.children[0] as Queue
+            s.add(groupCopy)
+            s.play(copy.admit())
+            expect(original.stateOf('A').state).toBe('waiting')
+            expect(copy.stateOf('A').state).toBe('running')
+            expect(where(copy, 'A', s.time)).toEqual(copy.p({ slot: 0 }))
+            const secondGroup = groupCopy.clone()
+            const second = secondGroup.children[0] as Queue
+            s.add(secondGroup)
+            s.play(second.finish('A'))
+            expect(second.stateOf('A').state).toBe('done')
+            expect(copy.stateOf('A').state).toBe('running')
+            expect(original.stateOf('A').state).toBe('waiting')
+        })
+    })
+
+    it('keeps its own bookkeeping in a copy, at rest in the state of the queue', async () => {
+        await compile((s) => {
+            const made = s.add(requestQueue([{ id: 'A', work: 2, blocks: 1 }, { id: 'B' }], { slots: 2, pool: 2, deadline: 10 }))
+            s.play(made.admit(), { duration: 1 })
+            s.play(made.run(1), made.wait('B', 20), { duration: 1 })
+            const copy = made.clone()
+            expect(copy.ids).toEqual(['A', 'B'])
+            expect(copy.stateOf('A')).toEqual(made.stateOf('A'))
+            expect(copy.stateOf('B')).toMatchObject({ wait: 20, late: true, place: 0 })
+            expect(copy.item('A')).not.toBe(made.item('A'))
+            // The copy is at rest: each item is where the queue has it, with its bar, its number and its wait.
+            const outer = copy.item('A').parent!
+            expect([outer.get('x'), outer.get('y')]).toEqual(copy.p({ slot: 0 }))
+            expect(copy.item('A').children[1]!.bounds().width).toBeCloseTo(W / 2, 6)
+            expect(said(copy.item('A').children[3]!, 0)).toEqual(['1'])
+            expect(said(copy.item('B').children[4]!, 0)).toEqual(['20'])
+            expect(said(copy.poolCaption!, 0)).toEqual(['blocks 1 / 2'])
+            expect(said(copy.slotsCaption, 0)).toEqual(['running 1 / 2'])
+            // A change of the copy does not change the queue, and the reverse.
+            s.add(copy)
+            s.play(copy.admit(), copy.arrive({ id: 'N' }), { duration: 1 })
+            expect([copy.count('running'), made.count('running'), copy.ids.length, made.ids.length, made.chips.length]).toEqual([2, 1, 3, 2, 2])
+            s.play(made.run(1), { duration: 1 })
+            expect([made.stateOf('A').left, copy.stateOf('A').left]).toEqual([0, 1])
+            // A copy of a queue with no item has its own lists.
+            const empty = requestQueue([])
+            const twin = empty.clone()
+            s.play(twin.arrive({ id: 'X' }))
+            expect([empty.chips.length, twin.chips.length, empty.ids]).toEqual([0, 1, []])
+        })
+    })
+
+    it('comes to the stage with its first animation, and follows a group that moves it', async () => {
+        let made!: Queue, grouped!: Queue
+        const f = await compile((s) => {
+            made = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
+            s.wait(1)
+            s.play(made.admit(), { duration: 1 })
+            grouped = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
+            const holder = s.add(group(grouped).at(100, 200))
+            holder.scale(0.5, [100, 200])
+            s.play(grouped.arrive({ id: 'B' }), { duration: 1 })
+            const region = grouped.region({ slot: 0 }), [x, y] = grouped.p({ slot: 0 })
+            expect([region.cx, region.cy]).toEqual([100 + x / 2, 200 + y / 2])
+            expect(region.width).toBeCloseTo(W / 2, 6)
+            // A queue in a zone keeps its size: the zone is around the whole object.
+            const framed = requestQueue([{ id: 'A' }], { slots: 1, width: 900 })
+            const around = zone([framed], { title: 'server' })
+            expect(around.bounds().width).toBeGreaterThanOrEqual(900)
+        })
+        expect(at(0.5, () => made.mounted && made.get('visible'))).toBe(false)
+        expect(at(1.5, () => made.get('visible'))).toBe(true)
+        // The item of the queue in the group is at half of its place from the middle of the group.
+        at(3, () => {
+            const border = parts(grouped, 'B').body.bounds(), [x, y] = grouped.p({ line: 0, place: 1 })
+            expect([border.x + border.width / 2, border.y + border.height / 2]).toEqual([100 + x / 2, 200 + y / 2])
+            expect(border.width).toBeCloseTo(W / 2, 6)
+        })
+        expectPure(f, [0.5, 1.5, 2.5, 3])
+    })
+
+    it.each([false, true])('keeps a narrated queue across scenes after show uses enter: %s', async (enter) => {
+        let first!: Queue, next!: Queue
+        const f = await compileFilm(narrated({
+            intro: false, fps: 10,
+            timing: { lead: 1, gap: 0.5, tail: 0, scenes: [
+                { id: 'queue', beats: [{ say: 'requests admit', duration: 3, hold: 0.5, words: [
+                    { text: 'requests', start: 0, end: 0.3 }, { text: 'admit', start: 1, end: 1.3 },
+                ] }] },
+                { id: 'refill', beats: [{ say: 'work refill', duration: 3, hold: 1, words: [
+                    { text: 'work', start: 0, end: 0.3 }, { text: 'refill', start: 1.5, end: 1.8 },
+                ] }] },
+            ] },
+            scenes: {
+                queue: (s, c) => {
+                    first = requestQueue([{ id: 'A', work: 1 }, { id: 'B', work: 1 }])
+                    c.show('requests', enter ? first.enter({ duration: 0.3 }) : first)
+                    c.on('admit', () => {
+                        s.play(first.admit(), { duration: 0.5 })
+                        next = first.clone()
+                    })
+                    c.keep(first)
+                },
+                refill: (s, c) => {
+                    c.take(next)
+                    c.on('work', () => s.play(next.run(1), { duration: 0.5 }))
+                    c.on('refill', () => s.play(next.finish(), next.admit(), { duration: 0.5 }))
+                },
+            },
+        }))
+        expect(first.stateOf('A').state).toBe('running')
+        expect(next.stateOf('A').state).toBe('done')
+        expect(next.stateOf('B').state).toBe('running')
+        expect(seen(first, 'A', 4.6)).toBe(1)
+        expect(seen(first, 'A', 4.8)).toBe(0)
+        expect(seen(next, 'A', 4.6)).toBe(0)
+        expect(seen(next, 'A', 4.8)).toBe(1)
+        expect(where(first, 'A', 4.6)).toEqual(where(next, 'A', 4.8))
+        expectPure(f, [0.5, 1.2, 2.5, 4.6, 4.8, 7.5])
+    })
+
+    it('measures every corner of a region through a rotated parent', async () => {
+        await compile((s) => {
+            const made = requestQueue([{ id: 'A' }], { width: 900, slots: 2, pool: 4 })
+            s.add(group(made).at(120, -60).rotate(Math.PI / 4).scale([1.3, 0.8]))
+            for (const part of [{ slot: 0 }, { line: 0 }, 'pool'] as const) {
+                const [left] = made.p(part, 'left'), [right] = made.p(part, 'right')
+                const [, top] = made.p(part, 'top'), [, bottom] = made.p(part, 'bottom')
+                const corners = [[left, top], [right, top], [right, bottom], [left, bottom]].map(([x, y]) => made.toWorld(x!, y!))
+                const region = made.region(part)
+                expect([region.left, region.top, region.right, region.bottom]).toEqual([
+                    Math.min(...corners.map(([x]) => x)), Math.min(...corners.map(([, y]) => y)),
+                    Math.max(...corners.map(([x]) => x)), Math.max(...corners.map(([, y]) => y)),
+                ])
+            }
+            expect(made.region().width).toBeCloseTo(boxOf(made).width, 6)
+        })
+    })
+
+    it('ends an animation of no length in the state that it names', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'A', work: 1 }, { id: 'B' }, { id: 'C' }], { slots: 1 }))
+            s.wait(1)
+            s.play(made.admit(), made.arrive({ id: 'D' }), { duration: 0 })
+            s.play(made.run(1), { duration: 0 })
+            s.play(made.finish(), { duration: 0 })
+            s.play(made.reject('B', '503'), made.wait('C', 5), { duration: 0 })
+            s.wait(1)
+        })
+        expect(['A', 'B', 'C', 'D'].map((id) => made.stateOf(id).state)).toEqual(['done', 'rejected', 'waiting', 'waiting'])
+        expect(where(made, 'A', 0.5)).toEqual(made.p({ line: 0, place: 0 }))
+        expect(['A', 'B', 'C', 'D'].map((id) => seen(made, id, 1.5))).toEqual([0, 0, 1, 1])
+        expect(['C', 'D'].map((id) => where(made, id, 1.5))).toEqual([made.p({ line: 0, place: 0 }), made.p({ line: 0, place: 1 })])
+        expect([said(made.captions[0]!, 1.5), said(made.slotsCaption, 1.5), said(made.doneTally!, 1.5), said(made.rejectedTally!, 1.5), said(parts(made, 'C').under, 1.5)]).toEqual([['waiting 2'], ['running 0 / 1'], ['done 1'], ['rejected 1'], ['5']])
+        await expect(compile((s) => { const q = s.add(requestQueue([{ id: 'A' }])); s.play(q.admit(undefined, { duration: Number.NaN })) })).rejects.toThrow('requestQueue: the duration of admit() is NaN. Give a number, 0 or more')
+        await expect(compile((s) => { const q = s.add(requestQueue([{ id: 'A' }])); s.play(q.admit(), { duration: Number.NaN }) })).rejects.toThrow('requestQueue: admit() plays from 0 to NaN')
+    })
+
+    it('never goes back with an ease that does, and enters with its lines, its slots and its items', async () => {
+        let made!: Queue
+        await compile((s) => {
+            made = requestQueue([{ id: 'A' }, { id: 'B' }], { slots: 1 })
+            s.play(made.enter(), { duration: 1, ease: linear })
+            // An ease that goes there and back: the item stays in its slot, where the queue has it.
+            s.play(made.admit(), { duration: 2, ease: (share: number) => Math.sin(share * Math.PI) })
+            s.wait(1)
+        })
+        // The ease is at its end at 2 s, and back at 0.7 of the way at 2.5 s. The item is in its slot from 2 s on.
+        expect([2, 2.5, 3].map((time) => where(made, 'A', time))).toEqual(Array(3).fill(made.p({ slot: 0 })))
+        expect([2, 2.5, 3].map((time) => where(made, 'B', time))).toEqual(Array(3).fill(made.p({ line: 0, place: 0 })))
+        // The line of the waiting line comes first, and the items come last.
+        expect([0, 0.3, 0.6].map((time) => at(time, () => made.rails[0]!.get('opacity')))).toEqual([0, 0.5, 1])
+        expect([0.01, 0.4, 0.7, 1].map((time) => seen(made, 'A', time))).toEqual([0, 0, expect.closeTo(0.5, 6), 1])
+        expect([0.01, 1].map((time) => at(time, () => shows(made.captions[0]!)))).toEqual([0, 1])
+        expect([0, 1].map((time) => at(time, () => shows(made.seats[0]!)))).toEqual([0, 1])
+    })
+
+    it('sets its texts at 26 px or more, in the font of the film, and sets an id that is too wide smaller', async () => {
+        let made!: Queue, plain!: Queue
+        await compile((s) => {
+            made = s.add(requestQueue([{ id: 'R-1041', work: 12 }, { id: 'B' }], { slots: 1, deadline: 5, idFont: 'mono' }))
+            plain = requestQueue([{ id: 'A', work: 1 }], { counts: false, names: { slots: 'workers', done: null }, itemWidth: 96 })
+            s.play(made.wait('B', 9), made.reject('B', '503'), { duration: 2 })
+        }, { font: 'text-serif' })
+        const sizes = (holder: Node, time: number) => (at(time, () => holder.draw!(time)) as Node | Node[])
+        const texts = (node: Node): TextNode[] => node.all().filter((part): part is TextNode => part instanceof TextNode)
+        at(0.5, () => {
+            const drawn = [made.captions[0]!, made.slotsCaption, parts(made, 'R-1041').number, parts(made, 'B').under].flatMap((holder) => [sizes(holder, 0.5)].flat().flatMap(texts))
+            expect(drawn.length).toBeGreaterThanOrEqual(4)
+            for (const node of drawn) {
+                expect(node.size).toBeGreaterThanOrEqual(26)
+                expect(node.font).toBe('text-serif')
+            }
+            const id = parts(made, 'R-1041').name as TextNode
+            expect([id.size, id.font]).toEqual([28, 'mono'])
+            // The first items set the width of an item: the longest id, its number, and the room at the two sides.
+            expect(made.itemWidth).toBeGreaterThan(W)
+            // The number ends at the place of its holder: a drawing has no parent, so its own bounds start from 0.
+            const border = parts(made, 'R-1041').body.bounds(), ink = id.bounds(), end = parts(made, 'R-1041').number.toWorld(0, 0)[0]
+            const start = end - (sizes(parts(made, 'R-1041').number, 0.5) as Node).bounds().width
+            expect(ink.x - border.x).toBeGreaterThanOrEqual(12)
+            expect(start - (ink.x + ink.width)).toBeGreaterThanOrEqual(8)
+            expect(border.x + border.width - end).toBeGreaterThanOrEqual(12)
+        })
+        // Without counts, a name stands alone, and a count that the film turned off is not a part of the object.
+        expect([said(plain.captions[0]!, 0), said(plain.slotsCaption, 0), plain.doneTally, plain.rejectedTally]).toEqual([['waiting'], ['workers'], null, null])
+        expect(plain.itemWidth).toBe(96)
+        // An id that is too wide for the item is set smaller, down to 0.6 of the size.
+        await compile((s) => {
+            const narrow = s.add(requestQueue([], { itemWidth: 110 }))
+            s.play(narrow.arrive({ id: 'R-10412' }))
+            const id = narrow.item('R-10412').children[2] as TextNode
+            expect(id.size).toBeLessThan(28)
+            expect(id.size).toBeGreaterThanOrEqual(28 * 0.6)
+            expect(id.bounds().width).toBeLessThanOrEqual(110 - 28)
+        })
+        // The check of a film finds no crowded text in the layout of the object itself: with 0.3 and 0.7, with the
+        // most room that the rule asks for, and at each frame of each animation.
+        const busy = film({ font: 'text-serif' }, (s) => {
+            const made = s.add(requestQueue([
+                { id: 'A gjpqy', work: 12, blocks: 1, running: true }, { id: 'B', work: 4, line: 'batch' }, { id: 'C', line: 'batch' },
+                ...Array.from({ length: 9 }, (_, index) => ({ id: `i${index}` })),
+            ], { slots: 2, pool: 4, lines: ['interactive', 'batch'], deadline: 5, format: (ms) => `${Math.round(ms)} ms`, width: 1500 }))
+            expect(made.data['object']).toBe('request queue')
+            // An item that arrives later is a part of the object too: its id, its wait and its status.
+            s.play(made.arrive({ id: 'N', work: 3, line: 'batch' }), { duration: 1 })
+            s.play(made.wait(['B', 'N'], 9), { duration: 1 })
+            s.play(made.run(12), made.reject(['B', 'N'], 'timeout'), { duration: 4 })
+            s.play(made.finish(), made.admit(), { duration: 1 })
+            s.wait(1)
+        })
+        for (const textGap of [0.3, 0.7, 3]) {
+            // At 1.5 s the waits run, at 3.5 s the statuses show, and at 8 s the two counts of the items that left show.
+            const still = await checkFilm(busy, { textGap, times: [0.5, 1.5, 2, 3.5, 5, 8] })
+            expect(still.diagnostics.map((finding) => `${finding.code}: ${finding.message}`), `at ${textGap}`).toEqual([])
+        }
+        const moving = await checkFilm(busy, { textGap: 0.7, motion: true })
+        expect(moving.diagnostics.map((finding) => `${finding.code}: ${finding.message}`)).toEqual([])
+    })
+
+    it('refuses a size, a width, a line or an item that it cannot draw, and says what to give', async () => {
+        const bad = (build: () => unknown) => compile(() => { build() })
+        await expect(bad(() => requestQueue([], { slots: 0 }))).rejects.toThrow('requestQueue: slots is 0. A queue has 1 to 12 slots, a whole number')
+        await expect(bad(() => requestQueue([], { slots: 13 }))).rejects.toThrow('A queue has 1 to 12 slots')
+        await expect(bad(() => requestQueue([], { width: 300 }))).rejects.toThrow('requestQueue: a width of 300 has no room for a place in the lines: the slots, the way to them and one place take 712 px. Give a width of 712 or more')
+        await compile(() => { expect(requestQueue([], { width: 712 }).places).toBe(1) })
+        await expect(bad(() => requestQueue([], { lines: [] }))).rejects.toThrow('requestQueue: lines has 0 lines. A queue has 1 to 4 waiting lines')
+        await expect(bad(() => requestQueue([], { lines: ['a', 'a'] }))).rejects.toThrow('requestQueue: two lines have the name "a"')
+        await expect(bad(() => requestQueue([], { lines: ['a line with a name that is far too long for the room over the places of one line'], width: 900 }))).rejects.toThrow('px wide, and the lines are')
+        await expect(bad(() => requestQueue([], { color: 'nope' }))).rejects.toThrow('requestQueue: color is "nope", which is not a color')
+        await expect(bad(() => requestQueue([{ id: 'A' }, { id: 'A' }]))).rejects.toThrow('requestQueue: two items have the id "A". Give each item its own id')
+        // The queue knows an id by its text.
+        await expect(bad(() => requestQueue([{ id: 7 }, { id: '7' }]))).rejects.toThrow('two items have the id "7"')
+        await expect(bad(() => requestQueue([{ id: '' }]))).rejects.toThrow('requestQueue: an id is "". An id is a text of one line or a number')
+        await expect(bad(() => requestQueue([{ id: 'A', work: 1.5 }]))).rejects.toThrow('requestQueue: the work of "A" is 1.5. It is a number of units, a whole number, 1 or more')
+        await expect(bad(() => requestQueue([{ id: 'A', running: true }, { id: 'B', running: true }]))).rejects.toThrow('requestQueue: "B" is the item number 2 that runs at the start, and the queue has 1 slot. Raise `slots`, or leave out `running`')
+        await expect(bad(() => requestQueue([], { pool: 0 }))).rejects.toThrow('requestQueue: the pool has 0 blocks. A pool has 1 to 256 blocks')
+        await expect(bad(() => requestQueue([], { deadline: 0 }))).rejects.toThrow('requestQueue: deadline is 0. It is the wait from which an item is late, more than 0')
+        await expect(bad(() => requestQueue([], { itemWidth: 10 }))).rejects.toThrow('requestQueue: itemWidth is 10. It is the width of an item, 56 or more at this text size')
+        await expect(bad(() => requestQueue({} as never))).rejects.toThrow('requestQueue: the first argument is the list of the items that are there at the start')
+        await expect(bad(() => requestQueue([]).p({ slot: 4 }))).rejects.toThrow('requestQueue: p: no slot 4. The queue has one slot, slot 0')
+        await expect(bad(() => requestQueue([]).p('gate' as never))).rejects.toThrow("requestQueue: p: the part is \"gate\". A part is { line }, { line, place }, { slot }, { block }, 'slots' or 'pool'")
+        await expect(bad(() => requestQueue([]).region('pool'))).rejects.toThrow('requestQueue: region: the queue has no pool')
+        await expect(bad(() => requestQueue([{ id: 'A' }]).stateOf('B'))).rejects.toThrow('requestQueue: stateOf: no item has the id "B". The queue has "A"')
+        await expect(bad(() => requestQueue([]).count('late' as never))).rejects.toThrow("requestQueue: no state \"late\". The states are 'waiting', 'running', 'done' and 'rejected'")
+    })
+})
+
 describe('ring buffer', () => {
     type Made = ReturnType<typeof ringBuffer>
     type Box = { x: number; y: number; width: number; height: number }
@@ -13446,6 +14446,1466 @@ describe('named box', () => {
     })
 })
 
+describe('layer stack', () => {
+    type Stack = ReturnType<typeof layerStack>
+    const edges = (node: Node) => { const box = node.bounds(); return [box.x, box.y, box.x + box.width, box.y + box.height] }
+    /** How much of a node a viewer sees: 0 when it or a group that holds it is hidden. */
+    const shows = (node: Node): number => {
+        let opacity = 1
+        for (let up: Node | null = node; up; up = up.parent) {
+            if (!up.get('visible')) return 0
+            opacity *= up.get('opacity')
+        }
+        return opacity
+    }
+    const paint = (color: string) => rect(1, 1, { fill: color, stroke: null }).get('fill')
+    const sourceOf = (node: Node | undefined) => (node as unknown as { source?: string } | undefined)?.source
+    /** The cells of a vector: its parts but the plate, which is the first, and the holder of the numbers, which is the last. */
+    const cells = (vector: Node) => vector.children.slice(1, -1)
+    const looks = (vector: Node) => cells(vector).map((cell) => [cell.get('fill'), cell.get('fillOpacity')])
+    /** The numbers that a vector shows, and how much of them a viewer sees. */
+    const numbers = (vector: Node) => vector.children[vector.children.length - 1]!.children.filter((made) => made.get('visible')).map(sourceOf)
+    const numbersShow = (vector: Node) => shows(vector.children[vector.children.length - 1]!)
+    const MODEL: readonly StackLayer[] = ['embed', { branch: ['norm', 'attention'] }, 'unembed']
+    // The places of MODEL at size 28. The vector is 95 wide and 26 high, a block is 53 high, and the room between two layers is 48.
+    const STREAM = -105
+
+    it('shows the residual relative to the output of the parallel block and zero when a pass keeps its values', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([{ branch: ['adapter'], around: 'base' }, { branch: ['attention'] }], { cells: 1, digits: 0 }))
+            s.play(stack.feed([2]), { duration: 0 })
+            s.play(stack.pass('adapter', [5], { aroundValues: [4] }), { duration: 10 })
+            s.play(stack.pass('attention'), { duration: 10 })
+        })
+        expect(at(8, () => numbers(stack.copy))).toEqual(['1'])
+        expect(at(8, () => numbers(stack.vector))).toEqual(['4'])
+        expect(at(18, () => numbers(stack.copy))).toEqual(['0'])
+        expect(stack.values).toEqual([5])
+    })
+
+    it('rejects a residual that will not fit before scheduling the pass, so the author can retry', async () => {
+        await compile((s) => {
+            const stack = s.add(layerStack([{ branch: ['adapter'] }], { cells: 1, digits: 0, font: 'mono' }))
+            s.play(stack.feed([9]))
+            expect(() => s.play(stack.pass('adapter', [-9]))).toThrow(/residual.*-18/)
+            expect(stack.passed).toBe(0)
+            s.play(stack.pass('adapter', [8]))
+            expect(stack.values).toEqual([8])
+        })
+    })
+
+    it('measures the region of a stack and its block inside a rotated parent', async () => {
+        await compile((s) => {
+            const stack = layerStack(['encoder'])
+            s.add(group(stack).rotate(Math.PI / 4))
+            expect(stack.region()).toEqual(boxOf(stack))
+            const block = stack.region('encoder')
+            expect(block.width).toBeCloseTo(block.height)
+        })
+    })
+
+    it('puts the layers on one stream from the foot up, with a block on the stream as wide as the way of the vector and the blocks of a branch together', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(MODEL)
+            expect(stack.ids).toEqual(['embed', 'norm', 'attention', 'unembed'])
+            expect([stack.count, stack.depth]).toEqual([4, 3])
+            expect(stack.ids.map((id) => stack.layerOf(id))).toEqual([0, 1, 1, 2])
+            // The first block is the lowest. The way of the vector is 68 wide at each side of the stream, and the
+            // blocks of the branch start where it ends. A block on the stream is as wide as both.
+            expect(stack.boxes.map(edges)).toEqual([[-173, 148, 173, 201], [-37, 20, 173, 73], [-37, -50, 173, 3], [-173, -185, 173, -132]])
+            expect([stack.foot, stack.head]).toEqual([[STREAM, 255], [STREAM, -255]])
+            expect(stack.labels.map(sourceOf)).toEqual(['embed', 'norm', 'attention', 'unembed'])
+            expect(stack.labels.map((label) => label.data['size'])).toEqual([28, 28, 28, 28])
+            stack.labels.forEach((label, index) => {
+                const [x0, , x1] = edges(label), [left, top, right, bottom] = edges(stack.boxes[index]!)
+                expect(Math.abs((x0! + x1!) / 2 - (left! + right!) / 2)).toBeLessThan(2)
+                expect(label.get('y') + stack.blocks[index]!.get('y')).toBe((top! + bottom!) / 2)
+            })
+            // The points of the edges of a block, for a line or a note. They are in the coordinates of the object.
+            expect(stack.p('attention')).toEqual([173, -23.5])
+            expect(stack.p('attention', 'right')).toEqual([173, -23.5])
+            expect(stack.p('attention', 'left')).toEqual([-37, -23.5])
+            expect(stack.p(2, 'top')).toEqual([68, -50])
+            expect(stack.p('embed', 'bottom')).toEqual([0, 201])
+            expect(stack.block('norm')).toBe(stack.blocks[1])
+            const moved = layerStack(MODEL).at(100, 50)
+            expect(moved.p('attention')).toEqual([173, -23.5])
+            expect(moved.toWorld(...moved.p('attention'))).toEqual([273, 26.5])
+            // In a stack with no branch, the blocks are around the stream.
+            const plain = layerStack(['conv', 'pool'])
+            expect(plain.boxes.map(edges)).toEqual([[-105, 32, 105, 85], [-105, -69, 105, -16]])
+            expect(plain.foot[0]).toBe(0)
+            // Another size gives the same picture: each measure follows the text size, and is a whole number of pixels.
+            const large = layerStack(MODEL, { size: 56 })
+            large.boxes.forEach((box, index) => edges(box).forEach((edge, side) => expect(Math.abs(edge - edges(stack.boxes[index]!)[side]! * 2)).toBeLessThanOrEqual(5)))
+            expect(Math.abs(large.foot[0] - STREAM * 2)).toBeLessThanOrEqual(5)
+            expect(large.labels[0]!.data['size']).toBe(56)
+        }))
+    })
+
+    it('measures as its whole width for the layout, with the room of its shapes and of the parts that do not show yet', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(MODEL)
+            expect(stack.layoutBox).toEqual([-173, -255, 173, 255])
+            const box = boxOf(stack)
+            expect([box.left, box.top, box.right, box.bottom]).toEqual([-173, -255, 173, 255])
+            // `width` is the width of the whole object: the blocks of the branch take what the way of the vector leaves.
+            const wide = layerStack(MODEL, { width: 700 })
+            expect(boxOf(wide).width).toBe(700)
+            expect(edges(wide.boxes[0]!)).toEqual([-350, 148, 350, 201])
+            expect(edges(wide.boxes[2]!)).toEqual([-214, -50, 350, 3])
+            // A shape has its room at the left, outside the blocks, and a group has the room of its frame at the two sides.
+            const shaped = layerStack(['embed', { repeat: 2, layers: [{ branch: ['attention'], shown: false }] }], { width: 700, shape: '(T, 768)' })
+            expect(boxOf(shaped).width).toBe(700)
+            expect(shaped.boxes[0]!.bounds().width).toBeLessThan(700 - 34 - 100)
+            // The measure does not change with what shows: the shape, the vector and the branch are not there yet.
+            expect(shaped.bounds().x).toBeGreaterThan(boxOf(shaped).left + 100)
+            const built = fitted(640, (width) => layerStack(MODEL, { width, shape: '(T, 768)' }))
+            expect(boxOf(built).width).toBeCloseTo(640, 6)
+            // `place` puts the middle of the measure in the middle of a region, and `region()` gives the same box.
+            const placed = placeIn(layerStack(MODEL), rect(1000, 900).at(300, -100))
+            const region = placed.region()
+            expect([region.left, region.top, region.right, region.bottom]).toEqual([127, -355, 473, 155])
+            const block = placed.region('norm')
+            expect([block.left, block.top, block.right, block.bottom]).toEqual([263, -80, 473, -27])
+            // A note beside the stack, at the height of one block.
+            const note = beside(text('trains', { size: 30 }), placed, 'right', 'wide', placed.block('norm'))
+            expect(boxOf(note).left).toBe(473 + 48)
+            expect(boxOf(note).cy).toBeCloseTo(-53.5, 6)
+        }))
+    })
+
+    it('draws a branch beside the stream: a line from a point of the stream into its first block, lines between its blocks, and a line from its last block to an add on the stream', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(MODEL)
+            // The point where the branch leaves the stream is under its first block, and the add is over its last one.
+            expect(edges(stack.taps[0]!)).toEqual([STREAM - 6, 88, STREAM + 6, 100])
+            expect([stack.adds[0]!.get('x'), stack.adds[0]!.get('y')]).toEqual([STREAM, -71])
+            const [read, write, chain] = [edges(stack.reads[0]!), edges(stack.writes[0]!), edges(stack.chains[0]!)]
+            // The line in starts on the stream at that point and ends at the bottom edge of "norm", under its middle.
+            expect([read[0], read[1], read[3]]).toEqual([STREAM, 73, 94])
+            expect(read[2]).toBeGreaterThan(68)
+            expect(read[2]).toBeLessThan(68 + 6)
+            // The line out starts at the top edge of "attention" and ends at the ring of the add, which is 13 wide.
+            expect([write[0], write[3]]).toEqual([STREAM + 13, -50])
+            expect(write[1]).toBeGreaterThan(-71 - 6)
+            // The line between the two blocks goes from the top edge of "norm" to the bottom edge of "attention".
+            expect([chain[1], chain[3]]).toEqual([3, 20])
+            expect([stack.taps.length, stack.adds.length, stack.reads.length, stack.writes.length, stack.chains.length]).toEqual([1, 1, 1, 1, 1])
+            // The stream is one line from the foot to the arrow head, and the blocks and the add are drawn over it.
+            const order = (node: Node) => stack.all().indexOf(node)
+            expect(order(stack.stream)).toBeLessThan(order(stack.adds[0]!))
+            expect(order(stack.adds[0]!)).toBeLessThan(order(stack.blocks[0]!))
+            expect(stack.adds[0]!.children[0]!.get('fill')).toEqual(paint('bg'))
+
+            // A branch around a block on the stream: the block is on the stream, at the middle height of the blocks of the branch.
+            const lora = layerStack(['embed', { branch: ['A', 'B'], around: 'W' }])
+            expect(lora.ids).toEqual(['embed', 'W', 'A', 'B'])
+            const [, w, a, b] = lora.boxes.map(edges)
+            expect((w![0]! + w![2]!) / 2).toBe(lora.foot[0])
+            expect((w![1]! + w![3]!) / 2).toBe((a![3]! + b![1]!) / 2)
+            // It is clear of the blocks of the branch, and it is wider than the vector, which goes behind it.
+            expect(a![0]! - w![2]!).toBe(14)
+            expect(w![2]! - w![0]!).toBeGreaterThan(95)
+            expect(lora.layerOf('W')).toBe(lora.layerOf('B'))
+        }))
+    })
+
+    it('puts the layers of a group in a frame with its label on the top line, and leaves the place where the vector rests outside the frame', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([
+                { repeat: 12, layers: [{ branch: ['attention'] }, 'norm'] },
+                { label: 'decoder', repeat: 'N', layers: ['MLP'] },
+                { label: 'head', layers: ['linear'] },
+                { layers: ['softmax'] },
+            ]))
+            s.play(stack.feed([1, 1, 1, 1]), { duration: 0.5 })
+            s.play(stack.pass('norm'), { duration: 1 })
+            s.wait(0.5)
+        })
+        const said = (frame: Node) => frame.children.map(sourceOf).filter((words) => words !== undefined)
+        expect(stack.frames.map(said)).toEqual([['× 12'], ['decoder × N'], ['head'], []])
+        const [first, second] = stack.frames.map((frame) => edges(frame.children[0]!))
+        // The frame is around the blocks of its layers, with room at each side.
+        for (const index of [0, 1]) {
+            const box = edges(stack.boxes[index]!)
+            expect(first![0]).toBeLessThan(box[0]! - 10)
+            expect(first![2]).toBeGreaterThan(box[2]! + 10)
+            expect(first![1]).toBeLessThan(box[1]! - 10)
+            expect(first![3]).toBeGreaterThan(box[3]! + 10)
+        }
+        expect(second![3]).toBeLessThan(first![1]!)
+        // The label is on the top line of its frame, and it ends before the right edge of the blocks.
+        const label = stack.frames[0]!.children[1]!
+        expect(label.get('y')).toBe(first![1])
+        expect(edges(label)[2]).toBeLessThan(edges(stack.boxes[1]!)[2]!)
+        // At the foot, the vector is under the first frame. After the last layer of the group, it is between the two frames.
+        const height = at(0.4, () => stack.vector.bounds().height)
+        expect(at(0.5, () => stack.vector.get('y')) - height / 2).toBeGreaterThan(first![3]! + 5)
+        expect(at(1.9, () => stack.vector.get('y')) + height / 2).toBeLessThan(first![1]! - 5)
+        expect(at(1.9, () => stack.vector.get('y')) - height / 2).toBeGreaterThan(second![3]! + 5)
+        expect(stack.passed).toBe(2)
+    })
+
+    it('names a block by its id or its index, and says what to do with a name that two blocks have', async () => {
+        await compileFilm(film(() => {
+            const stack = layerStack(['embed', { branch: ['norm', 'attention'] }, { branch: [{ label: 'norm', id: 'norm 2' }, 'MLP'] }, 'norm'])
+            expect(stack.ids).toEqual(['embed', 'norm', 'attention', 'norm 2', 'MLP', 'norm'])
+            expect(stack.block('norm 2')).toBe(stack.blocks[3])
+            expect(stack.block(5)).toBe(stack.blocks[5])
+            expect(stack.labelOf(3)).toBe('norm')
+            expect(() => stack.block('norm')).toThrow(/layerStack: "norm" names the blocks 1, 5\. Name one by its index, or give each block its own id, such as \{ label: "norm", id: "norm 2" \}/)
+            expect(() => stack.p('softmax')).toThrow(/layerStack: no block "softmax"\. The blocks are 0 \("embed"\), 1 \("norm"\), 2 \("attention"\), 3 \("norm 2"\), 4 \("MLP"\), 5 \("norm"\)/)
+            expect(() => stack.light(6)).toThrow(/layerStack: no block 6\. The blocks are 0 \("embed"\)/)
+            expect(() => stack.stateOf(1.5)).toThrow(/layerStack: no block 1\.5\./)
+            expect(() => stack.block(null as never)).toThrow(/layerStack: a block is named by its id or by its index, and null is neither/)
+            expect(() => stack.p('embed', 'under' as never)).toThrow(/layerStack: edge is 'left', 'right', 'top' or 'bottom', not "under"/)
+        }))
+    })
+
+    it('refuses a layer, an option or a size that gives no right picture, and says what works', async () => {
+        await compileFilm(film(() => {
+            expect(() => layerStack([])).toThrow(/layerStack: give it at least one layer, such as \['embed', \{ branch: \['attention'\] \}, 'unembed'\]/)
+            expect(() => layerStack(['embed', 7 as never])).toThrow(/layerStack: layer 1 is 7\. A block is a label, or \{ label, id, color, state, shape \}/)
+            expect(() => layerStack(['embed', { label: ' ' }])).toThrow(/layerStack: layer 1 has no label\. Give each block a label/)
+            expect(() => layerStack(['two\nlines'])).toThrow(/layerStack: the label of layer 0 \("two\\nlines"\) has a line break or a tab\. A label is one line/)
+            expect(() => layerStack([{ branch: [] }])).toThrow(/layerStack: layer 0 has the branch \[\]\. A branch is a list of one block or more, such as \{ branch: \['norm', 'attention'\] \}/)
+            expect(() => layerStack([{ layers: [] }])).toThrow(/layerStack: layer 0 is a group with no layers/)
+            expect(() => layerStack([{ layers: [{ layers: ['a'] } as never] }])).toThrow(/layerStack: layer 0 of the group of layer 0 is a group inside a group\. A group holds blocks and branches\. Give the two groups one after the other/)
+            expect(() => layerStack([{ repeat: 1, layers: ['a'] }])).toThrow(/layerStack: the repeat of layer 0 is 1\. Give a count, 2 or more, or a name such as 'N'/)
+            expect(() => layerStack([{ label: 'a', state: 'cold' }])).toThrow(/layerStack: layer 0 \("a"\) has the state "cold"\. The states are live, frozen/)
+            expect(() => layerStack([{ label: 'a', color: 'no such color' }])).toThrow(/layerStack: the color of layer 0 \("a"\) is "no such color", which is not a color\. Use a color of the look, such as 'orange', or a CSS color/)
+            // The add of a branch needs two values of one shape, so a block of a branch has no shape of its own.
+            expect(() => layerStack([{ branch: [{ label: 'MLP', shape: '(T, 3072)' }] }])).toThrow(/layerStack: block 0 of layer 0 \("MLP"\) has a shape, and it is in a branch\. The add of a branch keeps the shape of the stream\. Give the shape to a block on the stream/)
+            expect(() => layerStack(['a'], { states: { odd: { mark: 'star' as never } } })).toThrow(/layerStack: the mark of the state "odd" is "star"\. A mark is 'lock', 'check', 'cross', 'dot'/)
+            expect(() => layerStack(['a'], { cells: 0 })).toThrow(/layerStack: cells is 0\. Give the number of cells of the vector, a whole number from 1 to 16/)
+            expect(() => layerStack(['a'], { states: { broken: null as never } })).toThrow(/give the state "broken" a look/)
+            expect(() => layerStack([{ branch: ['a'], shown: 'false' as never }])).toThrow(/set shown to true or false/)
+            expect(() => layerStack([{ branch: Array(1) }])).toThrow(/block 0 of layer 0 is undefined/)
+            expect(() => layerStack(['a'], { digits: 1.5 })).toThrow(/layerStack: digits is 1\.5\. Give the number of decimals of a value in a cell, a whole number from 0 to 3/)
+            expect(() => layerStack(['a'], { size: 0 })).toThrow(/layerStack: size is a text size, more than 0/)
+            expect(() => layerStack(['a'], { blockHeight: 30 })).toThrow(/layerStack: a blockHeight of 30 has no room for a label of size 28: a letter with a tail would touch the border\. Give a blockHeight of \d+ or more/)
+            // A width with no room for a label is an error that names the label and the least width. That width works.
+            const narrow = () => layerStack(['embed', { branch: ['multi-head attention'] }], { width: 300 })
+            expect(narrow).toThrow(/layerStack: a width of 300 has no room for the label "multi-head attention", which is \d+ px wide at size 28\. Give a width of (\d+) or more, shorter labels, or a smaller size/)
+            let least = 0
+            try { narrow() } catch (error) { least = Number(/Give a width of (\d+)/.exec((error as Error).message)![1]) }
+            expect(() => layerStack(['embed', { branch: ['multi-head attention'] }], { width: least })).not.toThrow()
+            expect(() => layerStack(['embed', { branch: ['multi-head attention'] }], { width: least - 1 })).toThrow(/has no room for the label/)
+            // With short labels, the vector sets the least width: a block hides the vector that is in it.
+            expect(() => layerStack(['a'], { width: 100, cells: 8 })).toThrow(/layerStack: a width of 100 has no room for the vector of 8 cells, which is 187 px wide and must fit behind a block\. Give a width of 201 or more, fewer cells, or a smaller size/)
+            // Without a width, the stack is as wide as its labels need, so a long label is never an error.
+            const long = layerStack(['embed', { branch: ['a label of a block that is very long'] }])
+            const [box, label] = [edges(long.boxes[1]!), edges(long.labels[1]!)]
+            expect(label[0]! - box[0]!).toBeGreaterThan(15)
+            expect(box[2]! - label[2]!).toBeGreaterThan(15)
+            expect(() => layerStack([{ label: 'a very long name of a group of layers', layers: ['a'] }])).toThrow(/layerStack: the label "a very long name of a group of layers" of a group is \d+ px wide, and the top line of its frame has \d+ px for it\. Use a shorter label, or a wider stack/)
+        }))
+    })
+
+    it('enters from the foot of the stream up, with each part when the stream reaches its height, and never shows the stream through a block', async () => {
+        let stack!: Stack
+        const compiled = await compile((s) => {
+            stack = layerStack(['embed', { branch: ['attention'] }, { branch: ['LoRA'], around: 'W', shown: false }, 'unembed'], { shape: '(T)' })
+            s.wait(1)
+            s.play(stack.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+        }, { fps: 20 })
+        // The stack is not on the stage before its animation.
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        const [line, head] = stack.stream.children as [Node, Node]
+        expect([1, 1.5, 2, 3].map((time) => at(time, () => line.get('trimTo')))).toEqual([0, 0.25, 0.5, 1])
+        // The time at which the growing end of the stream is at a height. A part starts 0.16 s before that, and takes 0.5 s.
+        const reached = (y: number) => 1 + 2 * (stack.foot[1] - y) / (stack.foot[1] - stack.head[1])
+        const body = (index: number) => stack.blocks[index]!.children[1]!
+        const arrives = (node: Node, y: number) => [-0.16, 0.09, 0.34].map((after) => at(reached(y) + after, () => shows(node)))
+        // "embed" is low and comes early. "unembed" is high and comes late.
+        expect(reached(stack.p('embed', 'bottom')[1])).toBeLessThan(1.3)
+        expect(reached(stack.p('unembed', 'bottom')[1])).toBeGreaterThan(2.5)
+        expect(arrives(body(0), stack.p('embed', 'bottom')[1])).toEqual([0, expect.closeTo(0.5, 6), expect.closeTo(1, 6)])
+        expect(arrives(body(4), stack.p('unembed', 'bottom')[1])).toEqual([0, expect.closeTo(0.5, 6), expect.closeTo(1, 6)])
+        // The add of a branch comes when the stream is at the add, after the block of the branch.
+        expect(arrives(stack.adds[0]!, stack.adds[0]!.get('y'))).toEqual([0, expect.closeTo(0.5, 6), expect.closeTo(1, 6)])
+        expect(at(reached(stack.adds[0]!.get('y')) - 0.16, () => shows(body(1)))).toBeGreaterThan(0.4)
+        expect(at(3, () => [shows(stack.adds[0]!), shows(stack.reads[0]!), shows(stack.taps[0]!), shows(head)])).toEqual([1, 1, 1, 1])
+        // The backing of a block shows from the start, so the stream that grows behind a block never shows through its label.
+        const backing = stack.blocks[0]!.children[0]!
+        expect(at(1.2, () => [shows(backing), backing.get('fill'), backing.get('fillOpacity')])).toEqual([1, paint('bg'), 1])
+        // The branch that waits for `show()`, the vector and the shape stay away. The block on the stream beside that branch enters.
+        expect(at(3.4, () => [shows(stack.blocks[3]!), shows(stack.adds[1]!), shows(stack.reads[1]!), shows(stack.vector), shows(stack.tag!), shows(stack.copy), shows(stack.zoom)])).toEqual([0, 0, 0, 0, 0, 0, 0])
+        expect(at(3.4, () => shows(body(2)))).toBe(1)
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            const model = layerStack(['embed', { branch: ['LoRA'], around: 'LLM' }, 'unembed'], { shape: '(T)' })
+            s.play(model.enter(), { duration: 1.5 })
+            s.wait(0.5)
+        }), { motion: true, textGap: 0.7 })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('feeds a vector at the foot of the stream and sends it through a block, behind which it takes its new values and its new shape', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack([{ label: 'embed', shape: '(T, 768)' }, 'norm', { label: 'unembed', shape: '(T, 50257)' }], { shape: '(T)' }))
+            expect([stack.passed, stack.values, stack.shape]).toEqual([null, null, null])
+            s.wait(1)
+            s.play(stack.feed([0.5, -0.5, 0, 2]), { duration: 1, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([0, [0.5, -0.5, 0, 2], '(T)'])
+            s.play(stack.pass('embed', [1, 1, -1, 0.25]), { duration: 2, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([1, [1, 1, -1, 0.25], '(T, 768)'])
+            // A pass to a later block goes through each layer before it. Without values, the vector keeps its values.
+            s.play(stack.pass('unembed'), { duration: 2, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([3, [1, 1, -1, 0.25], '(T, 50257)'])
+            s.wait(0.5)
+        }, { fps: 20 })
+        const vector = stack.vector, [x] = stack.foot
+        const rest = (layer: number) => (layer === 0 ? stack.foot[1] - 6 - 24 : stack.p(layer - 1, 'top')[1] - 24)
+        // It comes in at the foot: under the first block, in the middle of the free room of the stream.
+        expect(at(0.9, () => shows(vector))).toBe(0)
+        expect([1.5, 2].map((time) => at(time, () => [shows(vector), vector.get('x'), vector.get('y')]))).toEqual([[0.5, x, rest(0) + 7], [1, x, rest(0)]])
+        // A cell has teal for a value over 0 and orange for one under 0, stronger for a larger value, and full from 1 on.
+        expect(at(2, () => looks(vector))).toEqual([[paint('teal'), expect.closeTo(0.545, 6)], [paint('orange'), expect.closeTo(0.545, 6)], [paint('dim'), 0.14], [paint('teal'), 0.95]])
+        // It goes up with the ease of the play, and it is behind the block at the half of its way.
+        expect([2.5, 3, 4].map((time) => at(time, () => vector.get('y')))).toEqual([rest(0) + (rest(1) - rest(0)) / 4, stack.p('embed')[1], rest(1)])
+        expect(stack.all().indexOf(vector)).toBeLessThan(stack.all().indexOf(stack.blocks[0]!))
+        const [inside, around] = at(3, () => [edges(vector), edges(stack.boxes[0]!)])
+        expect(inside![0]! > around![0]! && inside![1]! > around![1]! && inside![2]! < around![2]! && inside![3]! < around![3]!).toBe(true)
+        // It changes there, where no viewer sees the change, and the block lights for a moment.
+        expect(at(2.95, () => looks(vector)[2])).toEqual([paint('dim'), 0.14])
+        expect(at(3, () => looks(vector))).toEqual([[paint('teal'), 0.95], [paint('teal'), 0.95], [paint('orange'), 0.95], [paint('teal'), expect.closeTo(0.3425, 6)]])
+        const wash = stack.blocks[0]!.children[1]!.children[1]!
+        expect([2.6, 2.85, 3, 3.4].map((time) => at(time, () => wash.get('opacity')))).toEqual([0, expect.closeTo(0.4 * Math.SQRT1_2, 6), expect.closeTo(0.4, 6), 0])
+        // The shape is beside the vector, at its height, outside the blocks, and it changes with the vector.
+        const tag = stack.tag!
+        const says = () => tag.children.filter((made) => made.get('visible')).map(sourceOf)
+        expect([2, 2.9, 3, 4.9, 5.4, 5.6].map((time) => at(time, says))).toEqual([['(T)'], ['(T)'], ['(T, 768)'], ['(T, 768)'], ['(T, 768)'], ['(T, 50257)']])
+        expect([2, 2.5, 4].map((time) => at(time, () => tag.get('y')))).toEqual([2, 2.5, 4].map((time) => at(time, () => vector.get('y'))))
+        expect(at(4, () => edges(tag)[2])).toBeLessThan(edges(stack.boxes[0]!)[0]! - 10)
+        // The second pass takes the two layers one after the other, each in half of the time.
+        expect([4, 5, 6].map((time) => at(time, () => vector.get('y')))).toEqual([rest(1), rest(2), rest(3)])
+        expect(at(6.5, () => vector.get('y'))).toBeLessThan(stack.p('unembed', 'top')[1])
+        expect(at(6.5, () => vector.get('y'))).toBeGreaterThan(stack.head[1] + 16)
+    })
+
+    it('sends a copy of the vector through a branch while the vector stays on the stream, and the add puts on the stream what the branch adds', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(MODEL))
+            s.play(stack.feed([1, 1, 1, 1]), { duration: 1 })
+            s.play(stack.pass('embed'), { duration: 1 })
+            // The whole branch is one layer: any of its blocks names it.
+            s.play(stack.pass('norm', [0.5, 0, 1, -1]), { duration: 10 })
+            expect([stack.passed, stack.values]).toEqual([2, [0.5, 0, 1, -1]])
+            s.wait(1)
+        }, { fps: 20 })
+        const { vector, copy } = stack
+        const tap = 94, add = -71
+        // The vector never leaves the stream.
+        for (const time of [2, 3, 4.5, 6, 8.5, 10, 11.9, 12.5]) expect(at(time, () => vector.get('x'))).toBe(STREAM)
+        // It goes to the point where the branch leaves the stream. The copy leaves from there, with the values of the vector.
+        expect(at(3.2, () => [vector.get('y'), shows(copy), copy.get('x'), copy.get('y')])).toEqual([tap, 1, STREAM, tap])
+        expect(at(3.2, () => looks(copy))).toEqual(at(3.2, () => looks(vector)))
+        expect(at(3.1, () => shows(copy))).toBe(0)
+        // The copy goes into the first block of the branch, and is behind the last one when it changes.
+        expect(at(6, () => [copy.get('x'), copy.get('y')])).toEqual(stack.p('norm', 'top').map((value, index) => value + (index === 1 ? 26.5 : 0)))
+        expect(stack.all().indexOf(copy)).toBeLessThan(stack.all().indexOf(stack.blocks[1]!))
+        expect(at(6.8, () => [copy.get('x'), copy.get('y')])).toEqual([68, -23.5])
+        // It comes back with what the branch adds: the new values less the old ones.
+        expect(at(6.8, () => looks(copy))).toEqual([[paint('orange'), expect.closeTo(0.545, 6)], [paint('orange'), 0.95], [paint('dim'), 0.14], [paint('orange'), 0.95]])
+        // The blocks of the branch light one after the other while the copy is in them.
+        const wash = (index: number) => stack.blocks[index]!.children[1]!.children[1]!
+        expect(at(6.35, () => [wash(1).get('opacity'), wash(2).get('opacity')])).toEqual([expect.closeTo(0.4, 6), 0])
+        expect(at(7.25, () => [wash(1).get('opacity'), wash(2).get('opacity')])).toEqual([0, expect.closeTo(0.4, 6)])
+        // It stops at the ring of the add, on the line of the branch, and the vector waits under it.
+        expect(at(10, () => [shows(copy), copy.get('x'), copy.get('y'), copy.get('sx')])).toEqual([1, STREAM + 13 + 47.5, add, 1])
+        const [waiting, coming] = at(10, () => [edges(vector), edges(copy)])
+        expect(waiting![1]).toBeGreaterThan(coming![3]! + 2)
+        expect(at(10, () => looks(vector))).toEqual([[paint('teal'), 0.95], [paint('teal'), 0.95], [paint('teal'), 0.95], [paint('teal'), 0.95]])
+        // The add takes the copy: it gets small under the ring, and the ring swells.
+        expect(stack.all().indexOf(copy)).toBeLessThan(stack.all().indexOf(stack.adds[0]!))
+        expect(at(10.8, () => [shows(copy) > 0, copy.get('sx') < 0.6, copy.get('x') < STREAM + 30])).toEqual([true, true, true])
+        expect(at(11, () => [shows(copy), copy.get('x')])).toEqual([0, STREAM])
+        expect([10, 11, 11.9].map((time) => at(time, () => stack.adds[0]!.get('sx')))).toEqual([1, expect.closeTo(1.3, 6), 1])
+        // The vector goes through the add and takes the sum. It rests over the add.
+        expect(at(12, () => looks(vector))).toEqual([[paint('teal'), expect.closeTo(0.545, 6)], [paint('dim'), 0.14], [paint('teal'), 0.95], [paint('orange'), 0.95]])
+        expect(at(12, () => vector.get('y'))).toBe(add - 13 - 24)
+        expect(at(12.5, () => [shows(copy), copy.get('sx')])).toEqual([0, 1])
+    })
+
+    it('lets the vector do one thing at a time, chains the changes of one sequence, and says what a wrong pass needs', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(MODEL, { shape: '(T)' }))
+            // Each call of a sequence starts from the state that the call before it left.
+            s.play(seq(stack.feed([1, 0, 0, 0]), stack.pass('embed', [0, 1, 0, 0]), stack.pass('attention', [0, 0, 1, 0]), stack.pass('unembed')))
+            expect([stack.passed, stack.values]).toEqual([3, [0, 0, 1, 0]])
+            // A second vector starts at the foot again. The one that is on the stream leaves first, where it is.
+            s.play(stack.feed([0, 0, 0, 1]), { duration: 1, ease: linear })
+            expect([stack.passed, stack.values, stack.shape]).toEqual([0, [0, 0, 0, 1], '(T)'])
+        }, { fps: 20 })
+        // A pass with no duration takes the time of its last layer: 1 s for a block, 2.6 s for a branch.
+        expect([stack.feed([1, 1, 1, 1]).duration, stack.pass('embed').duration, stack.pass('attention').duration]).toEqual([0.6, 1, 2.6])
+        const start = 0.6 + 1 + 2.6 + 1
+        const top = at(start, () => stack.vector.get('y'))
+        expect(at(start + 0.2, () => [shows(stack.vector), stack.vector.get('y')])).toEqual([expect.closeTo(0.5, 6), top])
+        expect(at(start + 0.4, () => stack.vector.get('y'))).toBeGreaterThan(stack.p('embed', 'bottom')[1])
+        expect(at(start + 1, () => [shows(stack.vector), stack.vector.get('y')])).toEqual([1, stack.foot[1] - 30])
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(MODEL))
+            expect(() => s.play(model.pass('embed'))).toThrow(/layerStack: pass\("embed"\) has no vector to send\. Call feed\(\) first: it puts a vector at the foot of the stream/)
+            expect(() => model.feed([1, 2, 3])).toThrow(/layerStack: feed\(\) has 3 values, and the vector has 4 cells\. Give one value for each cell, or build the stack with `cells: 3`/)
+            expect(() => model.pass('embed', [1, 2, 3, Number.NaN])).toThrow(/layerStack: value 3 of pass\("embed"\) is NaN\. A value is a number/)
+            expect(() => model.feed([1, 1, 1, 1], { duration: -1 })).toThrow(/layerStack: the duration of feed\(\) is -1\. Give a number, 0 or more/)
+            // Two changes of the vector whose times overlap are refused, with the two calls and their times.
+            expect(() => s.play(model.feed([1, 1, 1, 1]), model.pass('embed'))).toThrow(/layerStack: pass\("embed"\) plays from 0 s to 1 s, and feed\(\) plays from 0 s to 0\.6 s\. The vector does one thing at a time\. Play the two in a `seq`, or give feed\(\) a duration of 0 or less/)
+            // The play that was refused did not move the time of the film, so the next change waits for the feed to end.
+            s.wait(1)
+            s.play(model.pass('attention'))
+            expect(() => s.play(model.pass('embed'))).toThrow(/layerStack: pass\("embed"\): the vector passed block 0 \("embed"\) already\. It does not go back\. feed\(\) starts again at the foot of the stream/)
+            // A room between two layers that is lower than the vector is refused when the film feeds a vector, with the least room.
+            const tight = layerStack(['a', 'b'], { gap: 12 })
+            expect(() => tight.feed([1, 1, 1, 1])).toThrow(/layerStack: a gap of 12 has no room for the vector, which is 26 px high and rests on the stream between two layers\. Give a gap of 38 or more, or leave the gap out/)
+            expect(() => layerStack(['a', 'b'], { gap: 38 }).feed([1, 1, 1, 1])).not.toThrow()
+        }))
+    })
+
+    it('lights one block at a time, and gives the lit block a thick border', async () => {
+        let stack!: Stack
+        const compiled = await compile((s) => {
+            stack = layerStack(MODEL)
+            s.wait(0.5)
+            // A light on a stack that is not on the stage brings the stack.
+            s.play(stack.light('attention'), { duration: 1, ease: linear })
+            expect(stack.current).toBe(2)
+            s.play(seq(stack.light('embed'), stack.light(null), stack.light(3)), { duration: 3, ease: linear })
+            expect(stack.current).toBe(3)
+            s.wait(0.5)
+        }, { fps: 20 })
+        expect(compiled.frame(0.25).ops).toHaveLength(0)
+        const halo = (index: number) => stack.blocks[index]!.children[1]!.children[2]!
+        const lit = (time: number) => at(time, () => [0, 1, 2, 3].map((index) => halo(index).get('opacity')))
+        expect(lit(0.5)).toEqual([0, 0, 0, 0])
+        expect(lit(1)).toEqual([0, 0, 0.5, 0])
+        expect(lit(1.5)).toEqual([0, 0, 1, 0])
+        // The light leaves one block while it comes to the next.
+        expect(lit(2)).toEqual([0.5, 0, 0.5, 0])
+        expect(lit(3)).toEqual([0.5, 0, 0, 0])
+        expect(lit(4.5)).toEqual([0, 0, 0, 1])
+        // The border of a lit block is wider than the border of the block, in the color of the block.
+        expect(halo(3).get('strokeWidth')).toBeGreaterThan(stack.boxes[3]!.get('strokeWidth') * 1.8)
+        expect(halo(3).get('stroke')).toEqual(stack.boxes[3]!.get('stroke'))
+        // In one play, the last light wins, and the state says so.
+        let both!: Stack
+        await compile((s) => {
+            both = s.add(layerStack(MODEL))
+            s.play(both.light('embed'), both.light('unembed'), { duration: 1 })
+        })
+        expect(both.current).toBe(3)
+        expect(at(1, () => [both.blocks[0]!, both.blocks[3]!].map((block) => block.children[1]!.children[2]!.get('opacity')))).toEqual([0, 1])
+    })
+
+    it('marks blocks with a state that has its own sign, and reads the states back', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(['embed', { branch: [{ label: 'attention', color: 'orange' }] }, { label: 'head', state: 'frozen' }]))
+            expect(stack.ids.map((id) => stack.stateOf(id))).toEqual(['live', 'live', 'frozen'])
+            s.wait(1)
+            // In a sequence, the function of the second change sees the states that the first one left.
+            s.play(seq(stack.mark(['embed', 'attention'], 'frozen'), stack.mark((block) => block.state === 'frozen' && block.layer > 0, 'live')), { duration: 2, ease: linear })
+            expect(stack.ids.map((id) => stack.stateOf(id))).toEqual(['frozen', 'live', 'live'])
+            expect(stack.find((block) => block.state === 'frozen')).toEqual([0])
+            expect(stack.find((block) => block.label === 'head')).toEqual([2])
+            s.wait(0.5)
+        }, { fps: 20 })
+        const box = (index: number) => stack.boxes[index]!
+        const look = (index: number) => [box(index).get('stroke'), box(index).get('strokeOpacity'), box(index).get('fillOpacity'), stack.labels[index]!.children[0]!.get('fill')]
+        // A frozen block keeps its color and is dim, with a dim label. It has a lock, so the color is not its only sign.
+        expect(at(0.5, () => look(2))).toEqual([paint('blue'), 0.45, 0.06, paint('dim')])
+        expect(at(0.5, () => look(1))).toEqual([paint('orange'), 1, 0.16, paint('ink')])
+        const marks = (index: number) => stack.blocks[index]!.children[1]!.children.slice(4)
+        expect(STACK_STATES.frozen.mark).toBe('lock')
+        expect(at(0.5, () => [0, 1, 2].map((index) => marks(index).map(shows)))).toEqual([[0], [0], [1]])
+        // The mark is inside the block, at its right end, clear of the label.
+        const [lock, frame, name] = at(0.5, () => [edges(marks(2)[0]!), edges(box(2)), edges(stack.labels[2]!)])
+        expect(lock![2]).toBeLessThan(frame![2]! - 10)
+        expect(lock![0]).toBeGreaterThan(name![2]! + 5)
+        // Half way: the first two blocks are between their two looks.
+        const near = (color: unknown) => (color as number[]).map((channel) => expect.closeTo(channel, 3))
+        expect(at(1.5, () => look(1))).toEqual([near(paint('orange')), expect.closeTo(0.725, 6), expect.closeTo(0.11, 6), near(mixColor(parseColor('ink'), parseColor('dim'), 0.5))])
+        expect(at(1.5, () => marks(1).map(shows))).toEqual([0.5])
+        expect(at(2, () => [look(0), look(1), look(2)])).toEqual([[paint('blue'), 0.45, 0.06, paint('dim')], [paint('orange'), 0.45, 0.06, paint('dim')], [paint('blue'), 0.45, 0.06, paint('dim')]])
+        expect(at(3, () => [look(0), look(1), look(2)])).toEqual([[paint('blue'), 0.45, 0.06, paint('dim')], [paint('orange'), 1, 0.16, paint('ink')], [paint('blue'), 1, 0.16, paint('ink')]])
+        expect(at(3, () => [0, 1, 2].map((index) => marks(index).map(shows)))).toEqual([[1], [0], [0]])
+
+        await compileFilm(film(() => {
+            // The states of a film: a color of the state, a border of dashes, and each mark.
+            const image = layerStack([{ label: 'FROM', state: 'cached' }, { label: 'COPY', state: 'skipped' }, 'RUN'], { states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } } })
+            expect(image.ids.map((id) => image.stateOf(id))).toEqual(['cached', 'skipped', 'fresh'])
+            expect(image.boxes.map((made) => made.get('stroke'))).toEqual([paint('dim'), paint('blue'), paint('blue')])
+            expect(image.boxes.map((made) => made.get('dash') !== null)).toEqual([false, true, false])
+            expect(() => image.mark('RUN', 'frozen')).toThrow(/layerStack: no state "frozen"\. The states are fresh, cached, failed, skipped/)
+            expect(() => image.mark('ADD', 'failed')).toThrow(/layerStack: no block "ADD"/)
+            expect(() => image.find('cached' as never)).toThrow(/layerStack: find takes a function of a block/)
+        }))
+    })
+
+    it('replaces a block with another: the labels change with no moment that shows two, and the block keeps its id and its state', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(['embed', { branch: [{ label: 'norm', color: 'yellow', state: 'frozen' }, 'attention'] }], { width: 440 }))
+            s.wait(1)
+            s.play(stack.replace('norm', { label: 'RMSNorm', color: 'green' }), { duration: 2, ease: linear })
+            expect([stack.labelOf('norm'), stack.ids[1], stack.stateOf('norm')]).toEqual(['RMSNorm', 'norm', 'frozen'])
+            s.play(stack.replace(1, 'norm'), { duration: 1 })
+            expect(stack.labelOf(1)).toBe('norm')
+            s.wait(0.5)
+        }, { fps: 20 })
+        const texts = stack.blocks[1]!.children[1]!.children.filter((part) => sourceOf(part) !== undefined)
+        expect(texts.map(sourceOf)).toEqual(['norm', 'RMSNorm', 'norm'])
+        const [old, made] = texts
+        expect(sourceOf(stack.labels[1])).toBe('norm')
+        expect(stack.labels[1]).toBe(texts[2])
+        // The old label is gone at 0.45 of the time, and the new one starts at 0.55, in the middle of the block.
+        expect([1, 1.45, 1.9, 2, 2.1, 2.55, 3].map((time) => at(time, () => [shows(old!), shows(made!)]))).toEqual([[1, 0], [expect.closeTo(0.5, 6), 0], [0, 0], [0, 0], [0, 0], [0, expect.closeTo(0.5, 6)], [0, 1]])
+        const [box, label] = at(3, () => [edges(stack.boxes[1]!), edges(made!)])
+        expect(Math.abs((label![0]! + label![2]!) / 2 - (box![0]! + box![2]!) / 2)).toBeLessThan(2)
+        // The block takes the new color, in its state: it is frozen, so its label stays dim.
+        const near = (color: unknown) => (color as number[]).map((channel) => expect.closeTo(channel, 3))
+        expect([1, 2, 3].map((time) => at(time, () => stack.boxes[1]!.get('stroke')))).toEqual([paint('yellow'), near(mixColor(parseColor('yellow'), parseColor('green'), 0.5)), paint('green')])
+        expect(at(3, () => made!.children[0]!.get('fill'))).toEqual(paint('dim'))
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(['embed', { branch: ['norm'] }], { width: 400 }))
+            expect(() => model.replace('norm', 'a normalization layer with a long name')).toThrow(/layerStack: replace: the label "a normalization layer with a long name" is \d+ px wide at size 28, and block 1 \("norm"\) has \d+ px for it\. Use a shorter label, or build the stack with a width of \d+ or more/)
+            expect(() => model.replace('norm', '')).toThrow(/layerStack: replace: the new block of block 1 \("norm"\) is ""\. Give a label, or \{ label, color \}/)
+            expect(() => model.replace('norm', { label: 'RMS', color: 'no such color' })).toThrow(/layerStack: the color of the new block of block 1 \("norm"\) is "no such color", which is not a color/)
+            // Two changes of one block whose times overlap are refused. Two blocks change together.
+            expect(() => s.play(model.replace('norm', 'RMS'), model.replace('norm', 'L2'))).toThrow(/layerStack: replace\("norm"\) plays from 0 s to 0\.8 s, and replace\("norm"\) plays from 0 s to 0\.8 s\. A block has one label at a time\. Play the two in a `seq`, or give the first a shorter duration/)
+            expect(() => s.play(model.replace('embed', 'tokens'))).not.toThrow()
+        }))
+    })
+
+    it('keeps the place of a branch that waits, brings it in with show(), and passes the stream there as a plain line before that', async () => {
+        let stack!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(['embed', { branch: ['LoRA'], around: 'W', shown: false }, { branch: ['adapter'], shown: false }, 'head']))
+            expect(stack.find((block) => !block.shown)).toEqual([2, 3])
+            s.play(stack.feed([1, 1, 1, 1]), { duration: 1 })
+            // The branch does not show: the vector goes through the block on the stream alone, and no copy leaves.
+            s.play(stack.pass('LoRA', [0.5, 0.5, 0.5, 0.5]), { duration: 2, ease: linear })
+            expect(stack.passed).toBe(2)
+            s.play(stack.show('adapter'), { duration: 2, ease: linear })
+            expect(stack.find((block) => !block.shown)).toEqual([2])
+            s.play(stack.pass('adapter', [1, 0, 0, 0]), { duration: 4 })
+            s.wait(0.5)
+        }, { fps: 20 })
+        const parts = (branch: number) => [stack.taps[branch]!, stack.reads[branch]!, stack.writes[branch]!, stack.adds[branch]!]
+        // A branch that waits has its place: the room beside the block on the stream is empty.
+        expect(at(0.5, () => [shows(stack.blocks[2]!), ...parts(0).map(shows), shows(stack.blocks[3]!), ...parts(1).map(shows)])).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        expect(edges(stack.boxes[2]!)[0]).toBeGreaterThan(edges(stack.boxes[1]!)[2]!)
+        // The first pass takes "embed" in its first second and the layer of "W" in the next. The vector changes
+        // behind "W", and the copy never shows.
+        const [from, to] = [at(2, () => stack.vector.get('y')), at(3, () => stack.vector.get('y'))]
+        const behind = 2 + (stack.p('W')[1] - from) / (to - from)
+        expect(behind).toBeGreaterThan(2.3)
+        expect(behind).toBeLessThan(2.7)
+        expect(at(behind, () => stack.vector.get('y'))).toBeCloseTo(stack.p('W')[1], 6)
+        expect(at(behind - 0.01, () => looks(stack.vector)[0])).toEqual([paint('teal'), 0.95])
+        expect(at(behind + 0.01, () => looks(stack.vector)[0])).toEqual([paint('teal'), expect.closeTo(0.545, 6)])
+        expect([1.2, 2, 2.5, 2.8].map((time) => at(time, () => shows(stack.copy)))).toEqual([0, 0, 0, 0])
+        // show(): the point, the line in, the block, the line out and the add arrive in the order of the data.
+        const [line, head] = stack.reads[1]!.children as [Node, Node]
+        expect(at(3.2, () => [shows(stack.taps[1]!), line.get('trimTo'), shows(head), shows(stack.blocks[3]!), shows(stack.adds[1]!)])).toEqual([expect.closeTo(0.5, 6), expect.closeTo(0.25, 6), 0, 0, 0])
+        expect(at(4, () => [shows(stack.blocks[3]!), stack.writes[1]!.children[0]!.get('trimTo'), shows(stack.adds[1]!)])).toEqual([expect.closeTo(0.5, 6), 0, 0])
+        expect(at(5, () => [shows(stack.blocks[3]!), ...parts(1).map(shows), line.get('trimTo'), shows(head)])).toEqual([1, 1, 1, 1, 1, 1, 1])
+        expect(at(5, () => [shows(stack.blocks[2]!), ...parts(0).map(shows)])).toEqual([0, 0, 0, 0, 0])
+        // After that, a pass sends a copy through the branch.
+        expect(at(7, () => shows(stack.copy))).toBe(1)
+        expect(stack.values).toEqual([1, 0, 0, 0])
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(['embed', { branch: ['adapter'], shown: false }, 'head']))
+            expect(() => model.show('embed')).toThrow(/layerStack: show: block 0 \("embed"\) is not in a branch\. show\(\) brings in a branch that was made with shown: false/)
+            expect(() => s.play(model.light('adapter'))).toThrow(/layerStack: light: block 1 \("adapter"\) is in a branch that does not show\. Call show\(\) first/)
+            expect(() => s.play(model.open('adapter', rect(100, 100).at(600, 0)))).toThrow(/layerStack: open: block 1 \("adapter"\) is in a branch that does not show\. Call show\(\) first/)
+            s.play(model.feed([1, 1, 1, 1]))
+            // Nothing changes a vector on a plain line.
+            expect(() => s.play(model.pass('adapter', [0, 0, 0, 0]))).toThrow(/layerStack: pass\("adapter"\) has values, and the branch of block 1 \("adapter"\) does not show, so nothing changes the vector there\. Call show\(\) first, or give no values/)
+            s.play(model.pass('adapter'))
+            expect(model.passed).toBe(2)
+            // With no block, it is the show() of a node.
+            expect(model.hide().show()).toBe(model)
+        }))
+    })
+
+    it('opens a block to a close-up of the film: two lines from the block to a frame around it, at the side where the close-up is', async () => {
+        let stack!: Stack, grid!: Node, formula!: Node
+        const compiled = await compile((s) => {
+            stack = s.add(layerStack(MODEL).at(-400, 0))
+            grid = rect(300, 200, { fill: 'surface', stroke: 'grid' }).at(300, -100)
+            formula = text('y = W x', { size: 40 }).at(-800, 150)
+            s.wait(1)
+            s.play(stack.open('attention', grid), { duration: 2, ease: linear })
+            expect(stack.opened).toBe(2)
+            s.wait(1)
+            // Another block opens: the first one closes in the first part of the time.
+            s.play(stack.open('embed', formula), { duration: 2, ease: linear })
+            expect(stack.opened).toBe(0)
+            s.wait(1)
+            s.play(stack.close(), { duration: 1, ease: linear })
+            expect(stack.opened).toBeNull()
+            s.wait(0.5)
+        }, { fps: 20 })
+        const [wedge, upper, lower, frame] = stack.zoom.children as [Node, Node, Node, Node]
+        expect(at(0.5, () => [shows(stack.zoom), shows(grid)])).toEqual([0, 0])
+        expect(compiled.frame(0.5).ops.some((op) => op.node === grid)).toBe(false)
+        // The frame is around the close-up, with room, in the coordinates of the stack. The close-up is at the right,
+        // so the lines leave from the right edge of the block: from its two corners to the two near corners of the frame.
+        expect(at(3, () => edges(frame))).toEqual([150 - 17, -200 - 17, 450 + 17, 17])
+        const corner = stack.toWorld(...stack.p('attention', 'right'))
+        expect(at(3, () => edges(upper))).toEqual([corner[0], -217, 133, corner[1] - 26.5])
+        expect(at(3, () => edges(lower))).toEqual([corner[0], corner[1] + 26.5, 133, 17])
+        expect(at(3, () => edges(wedge))).toEqual([corner[0], -217, 133, 17])
+        // They take the color of the block. They are a decoration, so the film check does not judge the close-up against them.
+        expect(at(3, () => frame.get('stroke'))).toEqual(paint('blue'))
+        expect(stack.zoom.data['decoration']).toBe(true)
+        // The lines come first, and the close-up fades in after them.
+        expect([1.6, 2.2, 3].map((time) => at(time, () => [shows(stack.zoom), shows(grid)]))).toEqual([[0.5, 0], [1, expect.closeTo(1 / 3, 6)], [1, 1]])
+        // The second close-up is at the left: the lines leave from the left edge of "embed". The first one fades out.
+        expect([4.35, 4.7].map((time) => at(time, () => [shows(stack.zoom), shows(grid)]))).toEqual([[expect.closeTo(0.5, 6), expect.closeTo(0.5, 6)], [0, 0]])
+        const left = stack.toWorld(...stack.p('embed', 'left'))
+        expect(at(6, () => edges(upper)[2])).toBe(left[0])
+        expect(at(6, () => edges(frame)[2])).toBeLessThan(left[0] - 50)
+        expect(at(6, () => [shows(stack.zoom), shows(grid), shows(formula)])).toEqual([1, 0, 1])
+        // close(): the lines and the close-up leave.
+        expect([7.5, 8, 8.4].map((time) => at(time, () => [shows(stack.zoom), shows(formula)]))).toEqual([[0.5, 0.5], [0, 0], [0, 0]])
+
+        await compileFilm(film((s) => {
+            const model = s.add(layerStack(['embed', { branch: ['LoRA'], around: 'W' }]))
+            const over = rect(100, 100).at(0, -500), right = rect(100, 100).at(600, 0), far = rect(100, 100).at(-600, 0)
+            expect(() => s.play(model.open('embed', over))).toThrow(/layerStack: open\("embed"\): the inside is over the stack or under it\. Place it at the right or at the left of the stack/)
+            expect(() => s.play(model.open('W', right))).toThrow(/layerStack: open\("W"\): block 1 \("W"\) has a branch at its right, and the lines to the inside would cross it\. Place the inside at the left of the stack, or open a block of the branch/)
+            expect(() => s.play(model.open('LoRA', far))).toThrow(/layerStack: open\("LoRA"\): block 2 \("LoRA"\) is at the right of the stream, and the lines to the inside would cross the stream\. Place the inside at the right of the stack/)
+            expect(() => model.open('embed', model.blocks[1]!)).toThrow(/layerStack: open: the inside is the stack or a part of it/)
+            expect(() => model.open('embed', 'grid' as never)).toThrow(/layerStack\.open: the inside is the string "grid"\. Give a node, a block of the layout, or a list of them/)
+            s.play(model.open('W', far))
+            // With no open block, close() changes nothing.
+            const fresh = s.add(layerStack(MODEL))
+            expect(() => s.play(fresh.close())).not.toThrow()
+            expect(fresh.opened).toBeNull()
+        }))
+    })
+
+    it('writes the value of each cell with `digits`, in cells that hold it, and hides the numbers while the edge of a block would cut them', async () => {
+        let stack!: Stack
+        const report = await checkFilm(film({ fps: 20 }, (s) => {
+            stack = s.add(layerStack(['embed', { branch: ['attention'] }, 'scores'], { digits: 1, cells: 3 }))
+            s.play(stack.feed([0.5, -1.25, 0]), { duration: 1, ease: linear })
+            s.wait(1)
+            s.play(stack.pass('embed', [1, -0.04, 9.9]), { duration: 2, ease: linear })
+            s.wait(1)
+            s.play(stack.pass('attention', [1.5, 0.96, 9.9]), { duration: 10 })
+            s.wait(1)
+        }), { motion: true, textGap: 0.7 })
+        // No number is cut by the edge of a block, and none touches a mark of the stack.
+        expect(report.diagnostics).toEqual([])
+        const { vector, copy } = stack
+        // A value that rounds to zero has no sign.
+        expect(at(1.5, () => numbers(vector))).toEqual(['0.5', '-1.3', '0.0'])
+        expect(at(4.5, () => numbers(vector))).toEqual(['1.0', '0.0', '9.9'])
+        // A number is in the middle of its cell, and the cell is wider than the widest number that it may hold.
+        const cell = cells(vector)[1]!, number = at(1.5, () => vector.children[vector.children.length - 1]!.children[1]!)
+        const [box, ink] = at(1.5, () => [edges(cell), edges(number)])
+        expect(Math.abs((ink![0]! + ink![2]!) / 2 - (box![0]! + box![2]!) / 2)).toBeLessThan(2)
+        expect(ink![0]! - box![0]!).toBeGreaterThan(4)
+        expect(number.data['size']).toBe(28)
+        // With numbers, the fill of a cell stays under a half, so a number in ink reads on it.
+        expect(at(1.5, () => looks(vector).map(([, fill]) => fill))).toEqual([expect.closeTo(0.3, 6), 0.5, 0.1])
+        // The numbers are away while the vector is behind "embed", and back when it is clear of the block.
+        expect([2, 2.4, 3, 3.6, 4].map((time) => at(time, () => numbersShow(vector)))).toEqual([1, 0, 0, 0, 1])
+        // The copy has no numbers on its way in. On its way out, it shows what the branch adds, and it stops at the add with them.
+        expect(at(7, () => [shows(copy), numbersShow(copy)])).toEqual([1, 0])
+        expect(at(13, () => [numbersShow(copy), numbers(copy)])).toEqual([1, ['0.5', '1.0', '0.0']])
+        expect(at(13, () => numbers(vector))).toEqual(['1.0', '0.0', '9.9'])
+        // A vector with numbers is higher than one with none. The copy at the add is clear of the block under it, and
+        // the vector that waits is clear of the copy.
+        const [coming, block, waiting] = at(13, () => [edges(copy), edges(stack.boxes[1]!), edges(vector)])
+        expect(coming![3]).toBeLessThan(block![1]! - 2)
+        expect(waiting![1]).toBeGreaterThan(coming![3]! + 2)
+        expect(at(16.5, () => [numbers(vector), numbersShow(vector)])).toEqual([['1.5', '1.0', '9.9'], 1])
+        await compileFilm(film(() => {
+            expect(() => stack.pass('scores', [100, 0, 0])).toThrow(/layerStack: value 0 of pass\("scores"\) is 100, which a cell writes as "100\.0"\. A cell has room for a number as wide as "-8\.8"\. Give smaller values, such as a tenth of each, or fewer digits/)
+            expect(() => stack.pass('scores', [-8.8, 9.9, 0])).not.toThrow()
+            // Without `digits`, a cell is a small square with no number.
+            const plain = layerStack(MODEL)
+            expect(cells(plain.vector).map((made) => [made.bounds().width, made.bounds().height])).toEqual([[20, 20], [20, 20], [20, 20], [20, 20]])
+            expect(cells(layerStack(MODEL, { cells: 7 }).vector)).toHaveLength(7)
+        }))
+    })
+
+    it('gives a copy its own state, and takes the font of the film and a backing of another color', async () => {
+        let stack!: Stack, copy!: Stack
+        await compile((s) => {
+            stack = s.add(layerStack(MODEL, { shape: '(T)' }).at(-300, 0))
+            s.play(stack.feed([1, 0, 0, 0]), stack.mark('embed', 'frozen'), stack.light('norm'), { duration: 1 })
+            copy = s.add(stack.clone().at(300, 0))
+            // A change of the copy does not change the stack, and the copy goes on from the state that it was made with.
+            s.play(copy.pass('embed', [0, 1, 0, 0]), copy.mark('unembed', 'frozen'), copy.light('attention'), { duration: 1 })
+            expect([stack.passed, stack.values, stack.current, stack.stateOf('unembed')]).toEqual([0, [1, 0, 0, 0], 1, 'live'])
+            expect([copy.passed, copy.values, copy.current, copy.stateOf('unembed'), copy.stateOf('embed')]).toEqual([1, [0, 1, 0, 0], 2, 'frozen', 'frozen'])
+        })
+        expect(copy.blocks[0]).not.toBe(stack.blocks[0])
+        expect(copy.vector.parent).toBe(copy)
+        expect(at(2, () => [stack.vector.get('y'), copy.vector.get('y')])).toEqual([225, 124])
+        expect(at(2, () => looks(copy.vector)[1])).toEqual([paint('teal'), 0.95])
+        expect(at(2, () => looks(stack.vector)[1])).toEqual([paint('dim'), 0.14])
+        await compileFilm(film({ font: 'text-serif' }, () => {
+            const inFilm = layerStack(MODEL)
+            expect((inFilm.labels[0] as TextNode).font).toBe('text-serif')
+            expect((layerStack(MODEL, { font: 'mono' }).labels[0] as TextNode).font).toBe('mono')
+            const onPanel = layerStack(MODEL, { backing: 'surface' })
+            expect(onPanel.blocks[0]!.children[0]!.get('fill')).toEqual(paint('surface'))
+            expect(() => layerStack(MODEL, { backing: 'no such color' })).toThrow(/layerStack: backing is "no such color", which is not a color/)
+        }))
+    })
+})
+
+describe('passage', () => {
+    const POLICY = 'Refunds are accepted within 14 days of delivery. A request after that date goes to a human agent, who answers within 48 hours.'
+    const RUNBOOK = 'If the error rate stays above 2% after a deploy, roll back within 15 minutes. Then page the incident commander. Write the deploy ID in the incident channel.'
+    const V1 = 'Refunds are accepted within 30 days of delivery. A request after that date is refused. Gift cards are not refundable.'
+    const V2 = 'Refunds are accepted within 15 days of delivery. A request after that date goes to a human agent. Gift cards are not refundable.'
+    type Page = ReturnType<typeof passage>
+    type Box = { x: number; y: number; right: number; bottom: number }
+    // A line of 32 px text is 1.6 of the size.
+    const PITCH = 51.2
+    const paint = (color: string) => JSON.stringify(rect(1, 1, { fill: color, stroke: null }).get('fill'))
+    const right = (node: Node) => { const box = node.bounds(); return box.x + box.width }
+    const bottom = (node: Node) => { const box = node.bounds(); return box.y + box.height }
+    const keys = (glyphs: readonly Node[]) => glyphs.map((glyph) => glyph.data['key']).join('')
+    /** The box around the ink of some glyphs. */
+    const around = (glyphs: readonly Node[]): Box => {
+        const boxes = glyphs.map((glyph) => glyph.bounds())
+        return { x: Math.min(...boxes.map((b) => b.x)), y: Math.min(...boxes.map((b) => b.y)), right: Math.max(...boxes.map((b) => b.x + b.width)), bottom: Math.max(...boxes.map((b) => b.y + b.height)) }
+    }
+    /** The box of a mark of a frame, in the coordinates of the stage: the middle of the frame of 1920 by 1080 is the point 0, 0. */
+    const boxed = (op: PathOp): Box => { const b = pathBounds(op.path)!; return { x: b.x - 960, y: b.y - 540, right: b.x + b.width - 960, bottom: b.y + b.height - 540 } }
+    /** The shapes of a frame that are filled in one color and are not glyphs, as boxes. */
+    const filled = (f: CompiledFilm, time: number, color: string) => paths(f, time).filter((op) => op.node?.data['key'] === undefined && op.fill !== null && JSON.stringify(op.fill) === paint(color) && op.fillAlpha > 0.02).map(boxed)
+    /** The lines of a frame in one color. */
+    const lined = (f: CompiledFilm, time: number, color: string) => paths(f, time).filter((op) => op.stroke !== null && JSON.stringify(op.stroke) === paint(color) && op.strokeAlpha > 0.02)
+    const covers = (box: Box, words: Box) => box.x <= words.x + 0.01 && box.right >= words.right - 0.01 && box.y <= words.y + 0.01 && box.bottom >= words.bottom - 0.01
+
+    it('starts at the corner that it is given, wraps its words at its width, and measures as its width and its height', async () => {
+        await compileFilm(film(() => {
+            const page = passage(POLICY, { width: 600 }).at(100, 50)
+            const frame = page.frame!.bounds()
+            expect([frame.x, frame.y, frame.width]).toEqual([100, 50, 600])
+            // The words are inside the frame, with room at both sides.
+            expect(page.words.bounds().x).toBeGreaterThan(116)
+            expect(right(page.words)).toBeLessThan(684)
+            expect(page.words.source).toBe(POLICY)
+            // The layout measures the object as its frame.
+            const box = boxOf(page)
+            expect([box.left, box.top, box.width, box.height]).toEqual([100, 50, 600, expect.closeTo(frame.height, 6)])
+            // A narrower passage has more lines, and each line adds its height.
+            const wide = passage(POLICY, { width: 1200 }), narrow = passage(POLICY, { width: 500 })
+            expect(narrow.lineCount).toBeGreaterThan(wide.lineCount)
+            expect(narrow.frame!.bounds().height - wide.frame!.bounds().height).toBeCloseTo((narrow.lineCount - wide.lineCount) * PITCH, 6)
+            // With no frame the object is as wide too, and no letter passes its width, at any width.
+            for (let width = 300; width <= 700; width += 7) {
+                const bare = passage(POLICY, { width, panel: false })
+                expect(bare.frame).toBeNull()
+                expect(bare.words.bounds().x).toBeGreaterThanOrEqual(0)
+                expect(right(bare.words)).toBeLessThanOrEqual(width)
+                expect(boxOf(bare).width).toBe(width)
+            }
+            // A break that the film wrote starts a line, and an empty line adds half a line.
+            const broken = passage('first line\nsecond line\n\nthird line', { width: 900 })
+            expect([broken.lineCount, broken.text]).toEqual([3, 'first line\nsecond line\n\nthird line'])
+            const tops = [0, 4, 8].map((letter) => broken.find('line')[letter]!.bounds().y)
+            expect([tops[1]! - tops[0]!, tops[2]! - tops[1]!]).toEqual([expect.closeTo(PITCH, 6), expect.closeTo(PITCH * 1.5, 6)])
+            // Tabs and spaces in a row are one space.
+            expect(passage('a \t  b').text).toBe('a b')
+            // With no width, the text is on one line and the object is as wide as that line needs, up to 900.
+            const short = passage('Refunds arrive within 14 days.')
+            expect(short.lineCount).toBe(1)
+            expect(boxOf(short).width).toBeLessThan(560)
+            expect(boxOf(short).width - right(short.words)).toBeLessThan(28)
+            expect(boxOf(passage(`${POLICY} ${POLICY}`)).width).toBe(900)
+            // The layout builds a passage that is as wide as a region.
+            expect(boxOf(fitted(700, (width) => passage(POLICY, { width }))).width).toBeCloseTo(700, 6)
+            // `lines` keeps room in the frame for lines that come later.
+            const roomy = passage('one line', { width: 400, lines: 3 })
+            expect(roomy.lineCount).toBe(1)
+            expect(roomy.frame!.bounds().height - passage('one line', { width: 400 }).frame!.bounds().height).toBeCloseTo(2 * PITCH, 6)
+            // The title is over the words, at 26 px for words of 32 px, and the frame is higher by its room.
+            const titled = passage(POLICY, { width: 600, title: 'policy.md' })
+            expect([titled.title!.source, titled.title!.data['size']]).toEqual(['policy.md', 26])
+            // The title is 0.8 of the size of the words, and not under 26 px unless the words are.
+            expect([40, 26, 20].map((size) => passage(POLICY, { width: 600, size, title: 'policy.md' }).title!.data['size'])).toEqual([32, 26, 20])
+            expect(passage(POLICY, { width: 600, title: 'policy.md', titleSize: 30 }).title!.data['size']).toBe(30)
+            expect(bottom(titled.title!)).toBeLessThan(titled.words.bounds().y)
+            expect(titled.frame!.bounds().height - passage(POLICY, { width: 600 }).frame!.bounds().height).toBeCloseTo(39, 6)
+            expect(passage(POLICY, { width: 600 }).title).toBeNull()
+            // The words are in the font of the film, or in the font that the film names.
+            const letter = (font: 'sans' | 'text-serif') => text('R', { font, size: 32 }).chars[0]!.get('path')
+            expect(passage(POLICY).words.chars[0]!.get('path')).toEqual(letter('sans'))
+            expect(passage(POLICY, { font: 'text-serif' }).words.chars[0]!.get('path')).toEqual(letter('text-serif'))
+
+            expect(() => passage('  ')).toThrow(/passage: give it the text/)
+            expect(() => passage(POLICY, { leading: 1 })).toThrow(/leading is the height of a line as a multiple of size\. The band of a span is 1\.\d+ of the size high, so give 1\.\d+ or more/)
+            // A word that is wider than the passage is an error, and the width that it names is enough.
+            const long = 'incomprehensibilities'
+            let enough = 0
+            try {
+                passage(long, { width: 200 })
+            } catch (error) {
+                enough = Number(/Give a width of (\d+) or more, or a smaller size/.exec((error as Error).message)?.[1])
+            }
+            expect(enough).toBeGreaterThan(200)
+            expect(() => passage(long, { width: enough - 1 })).toThrow(/the word "incomprehensibilities" is \d+ px wide at size 32, and a width of \d+ leaves \d+ px for the text/)
+            expect(passage(long, { width: enough }).lineCount).toBe(1)
+            expect(() => passage(POLICY, { width: 300, title: 'a title that is much wider than the passage' })).toThrow(/the title "a title that is much wider than the passage" is \d+ px wide, and a width of 300 leaves \d+ px for it\. Give a shorter title, or a width of \d+ or more/)
+            expect(() => passage(POLICY, { lines: 0 })).toThrow(/lines is the least number of lines of the frame, a whole number, 1 or more, not 0/)
+            expect(() => passage(POLICY, { width: 10 })).toThrow(/width is the width of the object\. Give more than \d+/)
+        }))
+    })
+
+    it('finds a part by its words at the borders of words, and says why it cannot find one', async () => {
+        await compileFilm(film(() => {
+            const page = passage(`${POLICY}\nGift cards have no limit of days.`, { width: 700 })
+            expect(keys(page.find('within 14 days'))).toBe('within14days')
+            // A part that is only inside longer words: `find` gives those places, and a part of a verb must be whole words.
+            expect(keys(page.find('day'))).toBe('dayday')
+            expect(page.find('never')).toEqual([])
+            expect(page.measure('within 14 days')).toEqual({ words: 3, characters: 14 })
+            // A part may run over the end of a sentence and of a line.
+            expect(page.measure('delivery. A request')).toEqual({ words: 3, characters: 19 })
+            expect(page.measure('48 hours.\nGift cards').words).toBe(4)
+            expect(() => page.measure('day')).toThrow(/measure: "day" is in the text only as a part of "days"\. A part starts and ends at the borders of words/)
+            expect(() => page.measure('never')).toThrow(/measure: the words "never" are not in the text\. A part is words of the text, letter for letter\. The text starts with "Refunds are accepted within 14 days o\.\.\."/)
+            // Words that are at two places name no part. More words, or the number of the place, do.
+            expect(() => page.measure('days')).toThrow(/the words "days" are at 2 places of the text\. Give more of the words around the place, or \{ words: "days", occurrence: 0 \} for the first place/)
+            expect(page.measure({ words: 'days', occurrence: 1 })).toEqual({ words: 1, characters: 4 })
+            expect(page.p({ words: 'days', occurrence: 1 })[1]).toBeGreaterThan(page.p({ words: 'days', occurrence: 0 })[1] + PITCH - 1)
+            expect(() => page.measure({ words: 'days', occurrence: 2 })).toThrow(/the words "days" are at 2 places of the text, and the first is occurrence 0\. There is no occurrence 2/)
+            expect(() => page.measure(7 as never)).toThrow(/measure: a part of the text is its words, \{ words, occurrence \}, \{ chunk: 0 \}, or the node of a span, not 7/)
+        }))
+    })
+
+    it('marks a part with a kind: a band behind its words, the sign of the kind, and a state that a film reads', async () => {
+        let page!: Page
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(POLICY, { width: 700 }).at(-350, -200))
+            expect([page.spans, page.count()]).toEqual([[], 0])
+            s.wait(1)
+            s.play(page.mark('within 14 days', 'supported'), { duration: 1, ease: linear })
+            expect(page.spans).toEqual([{ words: 'within 14 days', kind: 'supported' }])
+            expect([page.kindOf('within 14 days'), page.kindOf('14 days'), page.count(), page.count('supported'), page.count('claim')]).toEqual(['supported', null, 1, 1, 0])
+            expect([page.span('within 14 days').words, page.span('within 14 days').kind, page.span('within 14 days').passage]).toEqual(['within 14 days', 'supported', page])
+            s.wait(1)
+            // The span takes another kind: the same span, with another color and another sign.
+            s.play(page.mark('within 14 days', 'contradicted'), { duration: 1 })
+            expect(page.spans).toEqual([{ words: 'within 14 days', kind: 'contradicted' }])
+            // Without a kind, a part takes the first kind. The spans are in the order of the text.
+            s.play(page.mark('are accepted', 'claim'), page.mark('Refunds'), { duration: 0.5 })
+            expect(page.spans.map((span) => `${span.words}: ${span.kind}`)).toEqual(['Refunds: mark', 'are accepted: claim', 'within 14 days: contradicted'])
+            s.wait(0.5)
+            s.play(page.mark('within 14 days', null), { duration: 0.5 })
+            expect([page.count(), page.kindOf('within 14 days')]).toEqual([2, null])
+            s.wait(0.5)
+            expect(() => page.mark('Refunds', 'true')).toThrow(/passage: no kind "true"\. The kinds are mark, claim, supported, unsupported, contradicted, external, removed, added/)
+            expect(() => page.count('true')).toThrow(/no kind "true"/)
+            expect(() => page.span('of delivery')).toThrow(/span: no span is at "of delivery"\. The spans are "Refunds", "are accepted"\. Mark the words first, with mark\(\)/)
+            expect(() => page.mark('Refunds', 'claim', { duration: -1 })).toThrow(/the duration of mark\(\) is -1\. It is a number, 0 or more/)
+        }))
+        const words = around(page.find('within 14 days')), next = page.find('of delivery')[0]!.bounds()
+        expect(filled(compiled, 0.9, 'green')).toEqual([])
+        // At rest: a green band behind the words, which ends before the next word, and a green line under the tails of the letters.
+        const green = filled(compiled, 2.5, 'green')
+        const band = green.find((box) => box.bottom - box.y > 30)!, line = green.find((box) => box.bottom - box.y < 6)!
+        expect(green).toHaveLength(2)
+        expect(covers(band, words)).toBe(true)
+        expect(band.right).toBeLessThan(next.x)
+        expect([line.x, line.right]).toEqual([expect.closeTo(words.x, 6), expect.closeTo(words.right, 6)])
+        expect(line.y).toBeGreaterThan(words.bottom)
+        expect(line.bottom).toBeLessThan(band.bottom)
+        // The band and the line grow from the first word.
+        const growing = filled(compiled, 1.5, 'green')
+        expect(growing.map((box) => [box.x, (box.right - box.x) / (band.right - band.x)])).toEqual([[expect.closeTo(band.x, 6), expect.closeTo(0.5, 1)], [expect.closeTo(line.x, 6), expect.closeTo(0.5, 1)]])
+        // The new kind: the band is red, the line has given way to a wave, and nothing is green.
+        expect(filled(compiled, 4.2, 'green')).toEqual([])
+        const red = filled(compiled, 4.2, 'red')
+        expect(red).toHaveLength(2)
+        expect(red.some((box) => Math.abs(box.x - band.x) < 0.01 && Math.abs(box.right - band.right) < 0.01 && box.bottom - box.y > 30)).toBe(true)
+        const wave = red.find((box) => box.bottom - box.y < 30)!
+        expect(wave.bottom - wave.y).toBeGreaterThan(line.bottom - line.y + 2)
+        expect(wave.y).toBeGreaterThan(words.bottom)
+        // A claim has a frame around its band, which shows when the band is around the words. A plain mark has none.
+        const claim = around(page.find('are accepted'))
+        expect(lined(compiled, 4.9, 'purple').some((op) => covers(boxed(op), claim) && op.strokeAlpha === 1)).toBe(true)
+        // The line of the frame does not show while the end of the band grows over the letters.
+        expect(lined(compiled, 4.2, 'purple')).toEqual([])
+        expect(filled(compiled, 4.2, 'purple')).toHaveLength(1)
+        expect(lined(compiled, 4.9, 'blue')).toEqual([])
+        expect(filled(compiled, 4.9, 'blue').some((box) => covers(box, around(page.find('Refunds'))))).toBe(true)
+        // Taken away: nothing of the span is drawn.
+        expect(filled(compiled, 5.9, 'red')).toEqual([])
+        expectPure(compiled, [0.5, 1.5, 2.5, 3.5, 4.2, 4.9, 5.9])
+    })
+
+    it('gives each kind its own sign, refuses kinds that differ by their color only, and keeps a word in one span', async () => {
+        let page!: Page, old!: Node[]
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage('An old value and a new value. This line came from outside.', { width: 900 }).at(-450, -100))
+            old = page.find('old value')
+            s.play(page.mark('old value', 'removed'), page.mark('new value', 'added'), page.mark('This line came from outside.', 'external'), { duration: 0.5 })
+            s.wait(0.5)
+            // A film may play one mark twice: the second play changes nothing.
+            const again = page.mark('new value', 'added')
+            s.play(again, { duration: 0.5 })
+            s.wait(0.5)
+            // The kinds of a film of its own: each kind has a sign, and the first kind is the default.
+            const own = s.add(passage(POLICY, { width: 700, kinds: { rule: { color: 'teal', sign: 'underline' }, fact: { color: 'blue' } } }).at(-350, 100))
+            s.play(own.mark('within 14 days'), { duration: 0.2 })
+            expect(own.spans).toEqual([{ words: 'within 14 days', kind: 'rule' }])
+            expect(() => own.mark('Refunds', 'supported')).toThrow(/no kind "supported"\. The kinds are rule, fact/)
+        }))
+        const ops = paths(compiled, 0.9), words = around(old)
+        // Words that are gone are dim, and a bar goes through the middle of their letters, over them.
+        expect(at(0.9, () => old.every((glyph) => JSON.stringify(glyph.get('fill')) === paint('dim')))).toBe(true)
+        expect(at(0.9, () => JSON.stringify(page.find('new value')[0]!.get('fill')))).toBe(paint('ink'))
+        const bar = ops.findIndex((op) => op.node?.data['key'] === undefined && op.fill !== null && boxed(op).bottom - boxed(op).y < 6 && boxed(op).x <= words.x && boxed(op).right >= words.right)
+        const through = boxed(ops[bar]!)
+        expect((through.y + through.bottom) / 2).toBeGreaterThan(words.y + (words.bottom - words.y) * 0.25)
+        expect((through.y + through.bottom) / 2).toBeLessThan(words.bottom - (words.bottom - words.y) * 0.25)
+        expect(bar).toBeGreaterThan(ops.findIndex((op) => op.node === old[0]))
+        // New words have two lines under them: one shape of two parts.
+        const teal = paths(compiled, 0.9).filter((op) => op.fill !== null && JSON.stringify(op.fill) === paint('teal') && op.path.length === 2)
+        expect(teal).toHaveLength(1)
+        // A band that ends before a period does not reach the period, and it goes past the ink of its last letter.
+        const fresh = around(page.find('new value')), period = page.find('value.').at(-1)!.bounds().x
+        const behind = filled(compiled, 0.9, 'teal').find((box) => box.bottom - box.y > 30)!
+        expect(behind.right).toBeGreaterThan(fresh.right)
+        expect(behind.right).toBeLessThan(period)
+        // Text from outside has diagonal lines over its band: many strips, each one inside the band.
+        const orange = paths(compiled, 0.9).filter((op) => op.fill !== null && JSON.stringify(op.fill) === paint('orange'))
+        const strips = orange.find((op) => op.path.length > 20)!, band = boxed(orange.find((op) => op.path.length === 1)!)
+        expect(covers(band, boxed(strips))).toBe(true)
+        expect(compiled.frame(1.9).ops).toHaveLength(compiled.frame(0.9).ops.length)
+
+        expect(() => passage(POLICY, { kinds: { rule: { color: 'teal' }, fact: { color: 'blue' } } })).toThrow(/the kinds "rule" and "fact" have the sign 'band' both, so only their color tells them apart\. Give each kind its own sign\. The signs that are free: 'box', 'underline', 'double', 'dashed', 'wavy', 'hatch', 'strike'/)
+        expect(() => passage(POLICY, { kinds: { rule: { color: 'teal', sign: 'zigzag' as never } } })).toThrow(/the sign of the kind "rule" is "zigzag"\. A sign is 'band', 'box'/)
+        expect(() => passage(POLICY, { kinds: {} })).toThrow(/kinds is a record of the kinds of a span/)
+        // A word is in one span, and only a span can be taken away.
+        await expect(compile((s) => {
+            const made = s.add(passage(POLICY))
+            s.play(made.mark('within 14 days'))
+            s.play(made.mark('14 days of delivery', 'claim'))
+        })).rejects.toThrow(/mark: the words "14 days of delivery" share words with the span "within 14 days"\. A word is in one span\. Mark words that the other span does not hold, or take it away first with mark\("within 14 days", null\)/)
+        await expect(compile((s) => {
+            s.play(passage(POLICY).mark('Refunds', null))
+        })).rejects.toThrow(/mark: no span is at "Refunds", so there is none to take away/)
+    })
+
+    it('cuts the text into chunks: windows of words with an overlap, sentences, paragraphs, or the words of each chunk', async () => {
+        let page!: Page
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(RUNBOOK, { width: 1100 }).at(-550, -200))
+            expect(page.chunks).toEqual([])
+            expect(() => page.chunk(0)).toThrow(/chunk: the passage is not cut, so it has no chunk\. Play cut\(\) first/)
+            // The windows cut a fact in two: "15" ends one chunk, and "minutes." starts the next.
+            s.play(page.cut({ size: 7 }), { duration: 1 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2%', 'after a deploy, roll back within 15', 'minutes. Then page the incident commander. Write', 'the deploy ID in the incident channel.'])
+            s.wait(1)
+            // A new cut takes the place of the old one.
+            s.play(page.cut({ size: 7, overlap: 2 }), { duration: 1 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2%', 'above 2% after a deploy, roll back', 'roll back within 15 minutes. Then page', 'Then page the incident commander. Write the', 'Write the deploy ID in the incident', 'the incident channel.'])
+            expect([page.chunk(2).words, page.chunk(2).kind]).toEqual(['roll back within 15 minutes. Then page', null])
+            // The node of a chunk is around its words, and a part can be named by its chunk.
+            const second = page.chunk(1).bounds()
+            expect(covers({ x: second.x, y: second.y, right: second.x + second.width, bottom: second.y + second.height }, around(page.find('above 2% after a deploy, roll back')))).toBe(true)
+            expect(page.measure({ chunk: 5 })).toEqual({ words: 3, characters: 21 })
+            expect(() => page.chunk(6)).toThrow(/chunk: no chunk 6\. The passage has 6 chunks, and the first is chunk 0/)
+            s.wait(1)
+            s.play(page.cut({ by: 'sentence' }), { duration: 1 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2% after a deploy, roll back within 15 minutes.', 'Then page the incident commander.', 'Write the deploy ID in the incident channel.'])
+            s.wait(1)
+            s.play(page.cut(['If the error rate stays above 2%', 'above 2% after a deploy, roll back within 15 minutes.']), { duration: 0.5 })
+            expect(page.chunks).toEqual(['If the error rate stays above 2%', 'above 2% after a deploy, roll back within 15 minutes.'])
+            s.play(page.cut(null), { duration: 0.5 })
+            expect(page.chunks).toEqual([])
+            s.wait(0.5)
+            const two = s.add(passage('One. Two!\nThree?\n\nFour.', { width: 600 }).at(-300, 200))
+            s.play(two.cut({ by: 'paragraph' }), { duration: 0.2 })
+            expect(two.chunks).toEqual(['One. Two!\nThree?', 'Four.'])
+            s.play(two.cut({ by: 'sentence' }), { duration: 0.2 })
+            expect(two.chunks).toEqual(['One.', 'Two!', 'Three?', 'Four.'])
+
+            expect(() => s.play(page.cut({ size: 4, overlap: 3 }))).toThrow(/cut: overlap is the number of words that two chunks share, a whole number from 0 to half of size \(2\), not 3/)
+            expect(() => s.play(page.cut({ size: 0 }))).toThrow(/cut: size is the number of words of a chunk, a whole number, 1 or more, not 0/)
+            expect(() => s.play(page.cut(['Then page', 'If the error']))).toThrow(/cut: chunk 1 \("If the error"\) starts before chunk 0 or with it\. Give the chunks in the order of the text/)
+            expect(() => s.play(page.cut(['If the error rate', 'the error']))).toThrow(/cut: chunk 1 \("the error"\) is inside chunk 0\. A chunk ends after the one before it/)
+            expect(() => s.play(page.cut(['If the error rate', 'error rate stays', 'rate stays above']))).toThrow(/cut: chunks 0, 1 and 2 share the word "rate"\. A word is in two chunks at the most: give a smaller overlap/)
+            expect(() => s.play(page.cut([]))).toThrow(/cut: the list of chunks is empty/)
+            expect(() => s.play(page.cut({ by: 'word' as never }))).toThrow(/cut: by is 'sentence' or 'paragraph', not "word"/)
+            expect(() => s.play(page.cut('sentence' as never))).toThrow(/cut takes \{ size, overlap \}, \{ tokens: budget \}, \{ by: 'sentence' \} or \{ by: 'paragraph' \}, the words of each chunk, or null, not "sentence"/)
+            expect(() => s.play(page.cut({ size: 7 }, { colors: ['blue'] as never }))).toThrow(/the colors of cut\(\) are two colors/)
+        }))
+        // The chunks are bands of two colors in turn, as high as a line. Two chunks on one line have a gap between them.
+        const [purple, orange] = [filled(compiled, 1.5, 'purple'), filled(compiled, 1.5, 'orange')]
+        const first = purple.find((box) => covers(box, around(page.find('If the error rate stays above 2%'))))!, second = orange.find((box) => box.x > first.right)!
+        expect(first.bottom - first.y).toBeCloseTo(PITCH, 6)
+        expect(second.x - first.right).toBeGreaterThan(4)
+        expect(second.x).toBeLessThan(page.find('after')[0]!.bounds().x)
+        // Over the words that two chunks share, the first chunk has the upper half of the line and the next one the lower half.
+        const shared = around(page.find('above 2%')), own = around(page.find('If the error rate stays'))
+        const upper = filled(compiled, 3.5, 'purple').find((box) => covers({ ...box, bottom: shared.bottom }, shared) && box.right < shared.right + 8)!
+        const lower = filled(compiled, 3.5, 'orange').find((box) => covers({ ...box, y: shared.y }, shared) && box.right < shared.right + 8)!
+        expect([upper.bottom - upper.y, lower.bottom - lower.y, lower.y - upper.y]).toEqual([expect.closeTo(PITCH / 2, 6), expect.closeTo(PITCH / 2, 6), expect.closeTo(PITCH / 2, 6)])
+        // The words of one chunk only have the whole line, in the color of the chunk, and they join the half with no gap.
+        const whole = filled(compiled, 3.5, 'purple').find((box) => covers(box, own))!
+        expect(whole.bottom - whole.y).toBeCloseTo(PITCH, 6)
+        expect(upper.x - whole.right).toBeCloseTo(0, 6)
+        expect(filled(compiled, 3.5, 'orange').some((box) => box.x < own.right && box.y < own.bottom && box.bottom > own.y)).toBe(false)
+        // The old chunks are gone when the new ones are there, and all are gone after cut(null).
+        expect(filled(compiled, 1.5, 'purple')).toHaveLength(2)
+        expect(filled(compiled, 5.5, 'purple').length + filled(compiled, 5.5, 'orange').length).toBeLessThanOrEqual(5)
+        expect([...filled(compiled, 7.2, 'purple'), ...filled(compiled, 7.2, 'orange')]).toEqual([])
+    })
+
+    it('moves one selection, and a counter runs to its size', async () => {
+        let page!: Page, words!: Value, late!: Value
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(POLICY, { width: 700, tokens: (text) => Math.ceil(text.length / 4) }).at(-350, -200))
+            words = page.counter('words')
+            expect(page.selection).toBeNull()
+            expect(page.measure()).toEqual({ words: 23, characters: POLICY.length, tokens: Math.ceil(POLICY.length / 4) })
+            s.wait(1)
+            s.play(page.select('within 14 days'), { duration: 1, ease: linear })
+            expect(page.selection).toEqual({ words: 3, characters: 14, tokens: 4 })
+            // A counter that is made later starts at the size of the selection.
+            late = page.counter('characters')
+            expect([late.value, page.counter('words')]).toEqual([14, words])
+            s.wait(1)
+            s.play(page.select('Refunds are accepted within 14 days of delivery.'), { duration: 1, ease: linear })
+            expect(page.selection).toEqual({ words: 8, characters: 48, tokens: 12 })
+            s.wait(1)
+            s.play(page.select(null), { duration: 1, ease: linear })
+            expect(page.selection).toBeNull()
+            s.wait(1)
+            expect(() => page.counter('lines' as never)).toThrow(/a counter counts 'words', 'characters' or 'tokens', not "lines"/)
+            // A passage has no tokenizer of its own.
+            expect(() => passage(POLICY).counter('tokens')).toThrow(/counter\('tokens'\) needs the tokens function of the passage\. Give passage\(text, \{ tokens \}\) the tokenizer of the film, or an estimate/)
+            expect(passage(POLICY).measure('within 14 days')).toEqual({ words: 3, characters: 14 })
+            expect(() => passage(POLICY, { tokens: () => Number.NaN }).measure()).toThrow(/the tokens function returned NaN for "Refunds are accepted/)
+        }))
+        expect([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5].map((time) => at(time, () => words.value))).toEqual([0, 1.5, 3, 5.5, 8, 4, 0].map((value) => expect.closeTo(value, 6)))
+        expect([2.5, 3.5, 4.5, 6.5].map((time) => at(time, () => late.value))).toEqual([14, 31, 48, 0].map((value) => expect.closeTo(value, 6)))
+        // The selection is one frame around its words. Its line does not show while its ends move over letters.
+        const frame = lined(compiled, 2.5, 'yellow')
+        expect(frame).toHaveLength(1)
+        expect(covers(boxed(frame[0]!), around(page.find('within 14 days')))).toBe(true)
+        expect(boxed(frame[0]!).right).toBeLessThan(page.find('of delivery')[0]!.bounds().x)
+        expect(lined(compiled, 3.5, 'yellow')).toEqual([])
+        expect(filled(compiled, 3.5, 'yellow').length).toBeGreaterThan(0)
+        const wide = lined(compiled, 4.5, 'yellow').map(boxed)
+        expect(covers({ x: Math.min(...wide.map((box) => box.x)), y: Math.min(...wide.map((box) => box.y)), right: Math.max(...wide.map((box) => box.right)), bottom: Math.max(...wide.map((box) => box.bottom)) }, around(page.find('Refunds are accepted within 14 days of delivery.')))).toBe(true)
+        expect([...lined(compiled, 6.5, 'yellow'), ...filled(compiled, 6.5, 'yellow')]).toEqual([])
+    })
+
+    it('lifts a part out as a passage of its own, from the place of its words to the place that the film gave it', async () => {
+        let page!: Page, part!: Page
+        const definition = film({ fps: 20 }, (s) => {
+            page = s.add(passage(POLICY, { width: 700, size: 40 }).at(-800, -300))
+            part = page.slip('within 14 days of delivery', { title: 'evidence' }).at(200, 100)
+            // The slip has the words, the size and the font of the page, and the options that the film gives it.
+            expect([part.text, part.title!.source, part.lineCount, part.words.data['size']]).toEqual(['within 14 days of delivery', 'evidence', 1, 40])
+            s.wait(1)
+            s.play(page.lift(part), { duration: 1, ease: linear })
+            s.wait(1)
+            expect(page.text).toBe(POLICY)
+            // A slip is as wide as its words need, and as wide as the page at the most. A chunk is a part too.
+            s.play(page.cut({ by: 'sentence' }), { duration: 0.2 })
+            expect(boxOf(page.slip({ chunk: 1 })).width).toBe(700)
+            expect(page.slip({ chunk: 0 }).text).toBe('Refunds are accepted within 14 days of delivery.')
+            expect(() => page.lift(passage('within 14 days'))).toThrow(/lift takes a slip of this passage\. Make one with slip\(\)/)
+            expect(() => page.lift(passage(POLICY).slip('within 14 days'))).toThrow(/lift takes a slip of this passage/)
+            expect(() => page.slip('never')).toThrow(/slip: the words "never" are not in the text/)
+        })
+        const compiled = await compileFilm(definition)
+        const source = page.find('within 14 days of delivery'), landed = part.find('within 14 days of delivery')
+        const same = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.width - b.width) < 0.01
+        /** The marks of a frame that are at the place of a glyph: [glyphs, shapes that are no glyph]. */
+        const here = (time: number, glyph: Node) => {
+            const box = at(time, () => glyph.bounds())
+            const found = paths(compiled, time).filter((op) => op.fillAlpha > 0.5 && same({ x: boxed(op).x, y: boxed(op).y, width: boxed(op).right - boxed(op).x, height: 0 }, box))
+            return [found.filter((op) => op.node?.data['key'] !== undefined).length, found.filter((op) => op.node?.data['key'] === undefined).length]
+        }
+        // Before the lift, the slip is not on the stage.
+        expect(at(0.5, () => part.get('visible'))).toBe(false)
+        // The lift starts with a copy of each letter at the place of the letter in the page. A copy is a shape and not text.
+        expect(source.map((glyph) => here(1, glyph))).toEqual(source.map(() => [1, 1]))
+        expect(landed.map((glyph) => here(1, glyph))).toEqual(landed.map(() => [0, 0]))
+        // Half way, a copy is between the two places.
+        const [from, to] = [source[0]!.bounds(), landed[0]!.bounds()]
+        expect(paths(compiled, 1.4).some((op) => op.node?.data['key'] === undefined && Math.abs(boxed(op).x - (from.x + to.x) / 2) < 1 && Math.abs(boxed(op).y - (from.y + to.y) / 2) < 1)).toBe(true)
+        // At the end, the words of the slip are text at their places in the slip, and the copies are gone. The page has its words.
+        expect(landed.map((glyph) => here(2.5, glyph))).toEqual(landed.map(() => [1, 0]))
+        expect(source.map((glyph) => here(2.5, glyph))).toEqual(source.map(() => [1, 0]))
+        expect(at(2.5, () => [part.frame!.get('opacity'), part.title!.get('opacity')])).toEqual([1, 1])
+        // No frame of the lift has text on text.
+        expect((await checkFilm(definition, { motion: true })).diagnostics.filter((finding) => finding.code === 'film.text_overlap')).toEqual([])
+    })
+
+    it('ties a part to the span of another passage with a line that crosses no word, and follows the two', async () => {
+        let answer!: Page, source!: Page, tie!: ReturnType<Page['link']>
+        const definition = film({ fps: 20 }, (s) => {
+            answer = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 700, title: 'answer' }).at(-800, -300))
+            source = s.add(passage('Opening hours: Monday to Saturday.\nClosed on Sunday.', { width: 600, title: 'source' }).at(100, -200))
+            s.play(answer.mark('The shop is closed on Sunday.', 'claim'), source.mark('Closed on Sunday.'), { duration: 0.5 })
+            tie = answer.link('The shop is closed on Sunday.', source.span('Closed on Sunday.'), { color: 'green' })
+            s.play(tie.enter(), { duration: 1, ease: linear })
+            s.wait(0.5)
+            s.play(shift(source, 0, 120), { duration: 1 })
+            s.wait(0.5)
+            expect(tie.broken).toBe(false)
+            s.play(tie.break(), { duration: 0.5 })
+            expect(tie.broken).toBe(true)
+            s.wait(2)
+        })
+        const compiled = await compileFilm(definition)
+        const [claim, under, evidence] = at(1.9, () => [around(answer.find('The shop is closed on Sunday.')), around(answer.find('Refunds arrive')), around(source.find('Closed on Sunday.'))])
+        const route = at(1.9, () => tie.routeNow()!)
+        expect(route).toHaveLength(6)
+        // The line starts under the last letter of the claim, and goes down into the room between the two lines of the answer.
+        expect([route[0]![0], route[1]![0]]).toEqual([expect.closeTo(claim.right, 6), expect.closeTo(claim.right, 6)])
+        expect(route[0]![1]).toBeGreaterThan(claim.bottom)
+        expect(route[1]![1]).toBeGreaterThan(route[0]![1])
+        expect(route[1]![1]).toBeLessThan(under.y - 4)
+        // It runs level to the middle of the room between the two passages, which is at x 0, and goes down there.
+        expect(route[2]).toEqual([expect.closeTo(0, 6), expect.closeTo(route[1]![1], 6)])
+        expect(route[3]![0]).toBeCloseTo(0, 6)
+        // It comes in level under the line of the span, and ends under the first letter of the span.
+        expect([route[4]![0], route[5]![0], route[4]![1]]).toEqual([expect.closeTo(evidence.x, 6), expect.closeTo(evidence.x, 6), expect.closeTo(route[3]![1], 6)])
+        expect(route[5]![1]).toBeGreaterThan(evidence.bottom)
+        expect(route[4]![1]).toBeGreaterThan(route[5]![1])
+        // The line is drawn from the claim: half of it at half of the time.
+        const drawn = (time: number) => lined(compiled, time, 'green').filter((op) => op.fill === null && pathLength(op.path) > 100).reduce((sum, op) => sum + pathLength(op.path), 0)
+        expect(drawn(1) / drawn(1.9)).toBeCloseTo(0.5, 1)
+        // It follows the source: the end goes down with it, and the start stays.
+        const moved = at(3.2, () => tie.routeNow()!)
+        expect([moved[0], moved[5]![0], moved[5]![1] - route[5]![1]]).toEqual([route[0], route[5]![0], expect.closeTo(120, 6)])
+        // A tie that does not hold: the line is two pieces of dashes in red, with a cross between them, in the room between the two passages.
+        expect(lined(compiled, 3.2, 'red')).toEqual([])
+        const broken = lined(compiled, 4.5, 'red')
+        expect([broken.filter((op) => op.dash !== null).length, broken.filter((op) => op.dash === null).length]).toEqual([2, 2])
+        for (const arm of broken.filter((op) => op.dash === null).map(boxed)) expect((arm.x + arm.right) / 2).toBeCloseTo(0, 6)
+        expect(lined(compiled, 4.5, 'green')).toEqual([])
+        // The film check has no finding for the line and the words, with a small room and with a large one.
+        for (const textGap of [0.3, 0.7]) expect((await checkFilm(definition, { textGap, motion: true })).diagnostics.filter((finding) => finding.code !== 'film.text_brief')).toEqual([])
+    })
+
+    it('ties a part to any node, takes the nearest end of a part on two lines, and follows a part whose words change', async () => {
+        let page!: Page, tie!: ReturnType<Page['link']>, end!: Node
+        await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage('The shop is closed on Sunday.\nRefunds arrive immediately.', { width: 1000 }).at(-800, -300))
+            end = page.find('Sunday.').at(-1)!
+            const box = s.add(rect(200, 100).at(600, 300))
+            // The endpoint leaves room for the dot beside a text label.
+            const plain = page.link('Refunds arrive immediately.', box)
+            expect(plain.routeNow()!.at(-1)).toEqual([expect.closeTo(500 - 32 * 0.9, 6), expect.closeTo(300, 6)])
+            expect(plain.routeNow()![2]![0]).toBeCloseTo(350, 6)
+            // `shift` moves the part that goes up or down.
+            expect(page.link('Refunds arrive immediately.', box, { shift: 40 }).routeNow()![2]![0]).toBeCloseTo(390, 6)
+            // A target under the passage: the line goes around the two by the right side, or by the left one.
+            const low = s.add(rect(300, 80).at(-500, 200))
+            expect(page.link('Refunds arrive immediately.', low).routeNow()![2]![0]).toBeCloseTo(200 + 32 * 0.9, 6)
+            expect(page.link('Refunds arrive immediately.', low, { side: 'left' }).routeNow()![2]![0]).toBeCloseTo(-800 - 32 * 0.9, 6)
+            // A part on two lines has an end on each. The line takes the end that is nearest to its side.
+            const [lastOfFirst, firstOfSecond] = [around(page.find('Sunday.')), around(page.find('Refunds'))]
+            expect(page.leader('Sunday.\nRefunds', 'right')[0]).toEqual([expect.closeTo(lastOfFirst.right + 800, 6), expect.any(Number)])
+            expect(page.leader('Sunday.\nRefunds', 'left')[0]).toEqual([expect.closeTo(firstOfSecond.x + 800, 6), expect.any(Number)])
+            expect(page.leader('Sunday.\nRefunds', 'left')[0][1] - page.leader('Sunday.\nRefunds', 'right')[0][1]).toBeCloseTo(PITCH, 6)
+
+            expect(() => page.link('Refunds arrive immediately.', [0, 0] as never)).toThrow(/link: the target is 0,0\. Give a node: the span of another passage \(source\.span\('the words'\)\), a slip, or any node of the film/)
+            expect(() => page.link('never', box)).toThrow(/link: the words "never" are not in the text/)
+            expect(() => page.link('Refunds arrive immediately.', box, { side: 'up' as never })).toThrow(/the side of a link is 'left' or 'right', not "up"/)
+
+            // A span keeps its link when a diff gives it new words: the line starts under the last of them, at each time.
+            s.play(page.mark('The shop is closed on Sunday.', 'claim'), { duration: 0.5 })
+            tie = s.add(page.link('The shop is closed on Sunday.', box))
+            s.wait(0.5)
+            s.play(page.diff('The shop is closed on Sunday and on Monday.\nRefunds arrive immediately.'), { duration: 1 })
+            s.wait(1)
+            s.play(page.accept(), { duration: 1 })
+            s.wait(1)
+        }))
+        const starts = [0.8, 2.5, 4.5].map((time) => at(time, () => tie.routeNow()![0]![0]))
+        expect(starts[0]).toBeCloseTo(at(0.8, () => right(end)), 6)
+        expect(starts[1]).toBeCloseTo(at(2.5, () => right(page.find('Monday.').at(-1)!)), 6)
+        expect(starts[2]).toBeCloseTo(at(4.5, () => right(page.find('Monday.').at(-1)!)), 6)
+        expect(starts[1]).toBeGreaterThan(starts[0]! + 100)
+        expect(starts[2]).toBeLessThan(starts[1]! - 50)
+    })
+
+    it('changes the text to its next version: the old words are struck, the new words arrive beside them, and accept closes the text up', async () => {
+        let page!: Page, plain!: Page, slides!: Node, jumps!: Node
+        const struck: Node[] = []
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = s.add(passage(V1, { width: 700 }).at(-350, -200))
+            plain = passage(V2, { width: 700 }).at(-350, -200)
+            s.play(page.mark('within 30 days'), { duration: 0.5 })
+            struck.push(...page.find('30'), ...page.find('is refused.'))
+            // In this change, "of" stays on its line, and "refundable." goes to the next line.
+            slides = page.find('of delivery')[0]!
+            jumps = page.find('refundable.')[0]!
+            s.wait(0.5)
+            // The same text is no change.
+            s.play(page.diff(V1), { duration: 0.2 })
+            expect(page.changes).toBe(0)
+            s.wait(0.8)
+            s.play(page.diff(V2), { duration: 1 })
+            expect([page.text, page.changes, page.words.source]).toEqual([V2, 2, V2])
+            // The span keeps its words: the word that replaces one of them is a part of it. The old word is no part of the text.
+            expect(page.spans).toEqual([{ words: 'within 15 days', kind: 'mark' }])
+            expect([page.kindOf('within 15 days'), page.find('30'), page.measure().words]).toEqual(['mark', [], 23])
+            // A second change waits for accept(), and so does a cut.
+            expect(() => s.play(page.diff(V1))).toThrow(/diff: the passage shows a change that waits\. Play accept\(\) first: it takes the old words away, and the text is then one version/)
+            expect(() => s.play(page.cut({ size: 5 }))).toThrow(/cut: the passage shows a change that waits\. Play accept\(\) first/)
+            s.wait(1)
+            s.play(page.accept(), { duration: 1 })
+            expect([page.text, page.changes]).toEqual([V2, 0])
+            expect(page.spans).toEqual([{ words: 'within 15 days', kind: 'mark' }])
+            s.wait(1)
+            // With nothing to take, accept() changes nothing.
+            s.play(page.accept(), { duration: 0.5 })
+        }))
+        // Both versions show: the old words are dim, with a bar through them and over them, and the new word is beside the old one on its line.
+        const old = at(3.5, () => around(struck.slice(0, 2))), fresh = at(3.5, () => around(page.find('15')))
+        expect(at(3.5, () => struck.every((glyph) => glyph.get('visible') && glyph.get('opacity') === 1 && JSON.stringify(glyph.get('fill')) === paint('dim')))).toBe(true)
+        expect(fresh.x).toBeGreaterThan(old.right)
+        expect(fresh.x - old.right).toBeLessThan(16)
+        expect(fresh.y).toBeCloseTo(old.y, 0)
+        const ops = paths(compiled, 3.5)
+        const bar = ops.findIndex((op) => op.node?.data['key'] === undefined && op.fill !== null && JSON.stringify(op.fill) === paint('dim') && boxed(op).bottom - boxed(op).y < 6 && boxed(op).x <= old.x && boxed(op).right >= old.right)
+        expect((boxed(ops[bar]!).y + boxed(ops[bar]!).bottom) / 2).toBeGreaterThan(old.y + 4)
+        expect((boxed(ops[bar]!).y + boxed(ops[bar]!).bottom) / 2).toBeLessThan(old.bottom - 4)
+        expect(bar).toBeGreaterThan(ops.findIndex((op) => op.node === struck[0]))
+        // The words move from 2.2 s to 2.7 s. A word that stays on its line slides to its place.
+        const place = (glyph: Node) => [glyph.get('x'), glyph.get('y')]
+        const [slid, jumped] = [[at(1.9, () => place(slides)), at(3.5, () => place(slides))], [at(1.9, () => place(jumps)), at(3.5, () => place(jumps))]]
+        expect([slid[1]![1], slid[1]![0]! > slid[0]![0]! + 10, jumped[1]![1]! > jumped[0]![1]! + 40]).toEqual([slid[0]![1], true, true])
+        expect(at(2.45, () => [slides.get('opacity'), slides.get('x')])).toEqual([1, expect.closeTo((slid[0]![0]! + slid[1]![0]!) / 2, 0)])
+        // A word that goes to another line fades out where it is and comes back at its place: it does not fly across the lines.
+        expect(at(2.3, () => [place(jumps), jumps.get('opacity') < 1])).toEqual([jumped[0], true])
+        expect(at(2.45, () => jumps.get('opacity'))).toBe(0)
+        expect(at(2.6, () => [place(jumps), jumps.get('opacity') < 1])).toEqual([jumped[1], true])
+        expect(at(2.8, () => jumps.get('opacity'))).toBe(1)
+        // A new word is at its place when it starts to show, at 2.6 s: it does not fly in.
+        expect(at(2.61, () => [place(page.find('15')[0]!), page.find('15')[0]!.get('opacity') > 0])).toEqual([at(3.5, () => place(page.find('15')[0]!)), true])
+        expect(at(2.55, () => page.find('15')[0]!.get('opacity'))).toBe(0)
+        // The new words have two lines under them.
+        expect(paths(compiled, 3.5).filter((op) => op.fill !== null && JSON.stringify(op.fill) === paint('teal') && op.path.length === 2).length).toBeGreaterThanOrEqual(2)
+        // The band of the span holds the old word and the new one.
+        expect(filled(compiled, 3.5, 'blue').some((box) => covers(box, { ...old, right: fresh.right }))).toBe(true)
+        // After accept, the old words do not show, and each letter is where a new passage of the next version has it. So is the frame.
+        const placed = (made: Page) => made.words.chars.map((glyph) => [glyph.data['key'], Math.round(glyph.get('x') * 100), Math.round(glyph.get('y') * 100), glyph.get('visible'), glyph.get('opacity')])
+        expect(at(5.5, () => placed(page))).toEqual(placed(plain))
+        expect(at(5.5, () => struck.some((glyph) => glyph.get('visible')))).toBe(false)
+        expect(at(5.5, () => page.frame!.bounds().height)).toBeCloseTo(plain.frame!.bounds().height, 6)
+        expect(filled(compiled, 5.5, 'teal')).toEqual([])
+        expect(filled(compiled, 5.5, 'blue').some((box) => covers(box, at(5.5, () => around(page.find('within 15 days')))))).toBe(true)
+        expect(compiled.frame(6.4).ops).toHaveLength(compiled.frame(5.5).ops.length)
+        expectPure(compiled, [0.9, 2.4, 3.5, 4.6, 5.5])
+    })
+
+    it('keeps the breaks of the next version, takes words away, and refuses a change that has no right picture', async () => {
+        await compileFilm(film({ fps: 20 }, (s) => {
+            const placed = (made: Page) => made.words.chars.map((glyph) => [glyph.data['key'], Math.round(glyph.get('x') * 100), Math.round(glyph.get('y') * 100)])
+            // Words go, a line break goes, and one comes. After accept, the text is laid out as the next version.
+            for (const [before, after] of [['one two three four', 'one four'], ['old start of it\nsecond line', 'new start of it second line'], ['a b c d', 'a b\n\nnew c d'], ['first. second. third.', 'second. third.\nfourth.']] as const) {
+                const made = s.add(passage(before, { width: 420 }))
+                s.play(seq(made.diff(after), made.accept()), { duration: 0.4 })
+                expect([made.text, made.changes]).toEqual([after, 0])
+                expect(placed(made)).toEqual(placed(passage(after, { width: 420 })))
+                s.remove(made)
+            }
+            // A new word stands beside the old word that it replaces, also where the old word started a line.
+            const beside = s.add(passage('a b\nc d', { width: 420 }))
+            const old = beside.find('c')[0]!
+            s.play(beside.diff('a b\nx d'), { duration: 0.2 })
+            expect(beside.lineCount).toBe(2)
+            expect(beside.find('x')[0]!.bounds().x).toBeGreaterThan(right(old))
+            expect(beside.find('x')[0]!.bounds().y).toBeCloseTo(old.bounds().y, 0)
+            // When the old word leaves, the new word starts the line, as in the next version.
+            s.play(beside.accept(), { duration: 0.2 })
+            expect(placed(beside)).toEqual(placed(passage('a b\nx d', { width: 420 })))
+            s.remove(beside)
+            // Words that go with no word in their place are one change, and a span with no word left goes with them.
+            const gone = s.add(passage('one two three four', { width: 420 }))
+            s.play(gone.mark('two three', 'claim'), { duration: 0.1 })
+            s.play(gone.diff('one four'), { duration: 0.2 })
+            expect([gone.changes, gone.count()]).toEqual([1, 1])
+            s.play(gone.accept(), { duration: 0.2 })
+            expect([gone.text, gone.count()]).toEqual(['one four', 0])
+
+            expect(() => gone.diff(' ')).toThrow(/diff takes the text of the next version/)
+            expect(() => passage('alpha beta', { width: 300 }).diff('alpha incomprehensibilities-and-more')).toThrow(/diff: the word "incomprehensibilities-and-more" of the next version is \d+ px wide at size 32, and a width of 300 leaves \d+ px for the text\. Give the passage a width of \d+ or more, or a smaller size/)
+            const cut = s.add(passage(POLICY))
+            s.play(cut.cut({ size: 5 }), { duration: 0.1 })
+            expect(() => s.play(cut.diff(V2))).toThrow(/diff: the passage is cut into chunks, and a chunk is a part of one version\. Take the chunks away first with cut\(null\), and cut the next version again/)
+        }))
+        // A frame with `lines` does not grow: a change that needs more lines says how many.
+        await expect(compile((s) => {
+            s.play(passage('alpha beta gamma', { lines: 1 }).diff('alpha beta gamma delta epsilon zeta eta theta'))
+        })).rejects.toThrow(/diff: the two versions take \d lines side by side, and the passage has lines: 1\. Give lines: \d or more, or a larger width/)
+        // The words move in one change at a time, and no band arrives while they move.
+        await expect(compile((s) => {
+            const made = s.add(passage(V1, { width: 700 }))
+            s.play(made.diff(V2), made.accept(), { duration: 1 })
+        })).rejects.toThrow(/accept\(\) plays from 0 s to 1 s, and diff\(\) plays from 0 s to 1 s\. The words move in one change at a time\. Play the two in a `seq`, or start accept\(\) at 1 s or later/)
+        await expect(compile((s) => {
+            const made = s.add(passage(V1, { width: 700 }))
+            s.play(made.diff(V2), made.mark('Gift cards'), { duration: 1 })
+        })).rejects.toThrow(/mark\(\) plays from 0 s to 1 s, while diff\(\) moves the words from 0 s to 1 s\. Play mark\(\) after it, or the two in a `seq`/)
+    })
+
+    it('resolves references in play order and measures the accepted text', async () => {
+        let page!: Page
+        await compile((s) => {
+            page = s.add(passage('old text', { width: 420 }))
+            s.wait(1)
+            s.play(seq(page.cut({ size: 1 }), page.select({ chunk: 0 }), page.cut(null),
+                page.diff('old text\na new line'), page.accept(), page.mark('new line'), page.select('new line')))
+            expect(page.spans).toEqual([{ words: 'new line', kind: 'mark' }])
+            expect(boxOf(page).height).toBeCloseTo(page.frame!.bounds().height)
+            expect(page.lineCount).toBe(2)
+            // The readout can be attached after the timeline has been written.
+            expect(at(0, () => page.counter('words').value)).toBe(0)
+            expect(page.counter('words').value).toBe(2)
+        })
+    })
+
+    it('rejects overlapping edits in either order and leaves room for a shorter retry', async () => {
+        await expect(compile((s) => {
+            const page = s.add(passage('alpha beta', { width: 500 }))
+            s.play(page.mark('beta'), page.diff('alpha gamma'))
+        })).rejects.toThrow(/diff\(\) moves the words while mark\(\) plays/)
+        await compile((s) => {
+            const page = s.add(passage('one two', { width: 360, lines: 1 }))
+            s.play(page.mark('two'))
+            expect(() => s.play(page.diff('one\nthree\nfour'))).toThrow(/Give lines:/)
+            expect(page.spans).toEqual([{ words: 'two', kind: 'mark' }])
+            s.play(seq(page.diff('one six'), page.accept()))
+            expect(page.span('six').words).toBe('six')
+        })
+    })
+
+    it('uses the tokenizer on the whole candidate when cutting to a budget', async () => {
+        await compile((s) => {
+            // The pair "New York" has one token in this vocabulary.
+            const tokens = (part: string) => part.replaceAll('New York', 'NY').match(/\w+|[^\w\s]/g)!.length
+            const page = s.add(passage('New York costs $5. Paris costs $7.', { tokens }))
+            s.play(page.cut({ tokens: 3 }))
+            expect(page.chunks).toEqual(['New York costs', '$5.', 'Paris costs', '$7.'])
+            expect(page.chunks.map((_, chunk) => page.measure({ chunk }).tokens)).toEqual([2, 3, 2, 3])
+            expect(() => s.play(page.cut({ tokens: 2 }))).toThrow(/word "\$5\." exceeds the budget/)
+            expect(() => s.play(passage('one two').cut({ tokens: 3 }))).toThrow(/tokens function/)
+        })
+    })
+
+    it('drops ambiguous marks when one replacement crosses both of them', async () => {
+        await compile((s) => {
+            const page = s.add(passage('one two three four'))
+            s.play(page.mark('two'), page.mark('three'))
+            s.play(seq(page.diff('one six four'), page.accept()))
+            expect(page.text).toBe('one six four')
+            expect(page.spans).toEqual([])
+        })
+    })
+
+    it('gives the places of its parts: a region, a point on a band, and the way of a line out of the passage', async () => {
+        await compileFilm(film(() => {
+            const page = passage(POLICY, { width: 700 }).at(100, 50)
+            const words = around(page.find('within 14 days')), box = page.region('within 14 days')
+            expect(covers({ x: box.left, y: box.top, right: box.right, bottom: box.bottom }, words)).toBe(true)
+            expect(box.width).toBeLessThan(words.right - words.x + 8)
+            expect(box.right).toBeLessThan(page.find('of delivery')[0]!.bounds().x)
+            // The points on the band, in the coordinates of the object.
+            expect(page.toWorld(...page.p('within 14 days'))).toEqual([expect.closeTo(box.cx, 6), expect.closeTo(box.bottom, 6)])
+            expect(page.toWorld(...page.p('within 14 days', 'top'))).toEqual([expect.closeTo(box.cx, 6), expect.closeTo(box.top, 6)])
+            expect(page.toWorld(...page.p('within 14 days', 'left'))).toEqual([expect.closeTo(box.left, 6), expect.closeTo(box.cy, 6)])
+            expect(page.toWorld(...page.p('within 14 days', 'right'))).toEqual([expect.closeTo(box.right, 6), expect.closeTo(box.cy, 6)])
+            expect(() => page.p('within 14 days', 'middle' as never)).toThrow(/the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/)
+            // Without a part: the room of the text. A line is the row of its band.
+            const all = page.region(), first = page.region({ line: 0 }), second = page.region({ line: 1 })
+            expect([all.left, all.right]).toEqual([expect.closeTo(122.4, 6), expect.closeTo(777.6, 6)])
+            expect(all.height).toBeCloseTo(page.lineCount * PITCH, 6)
+            expect([second.left, second.width, second.top - first.top]).toEqual([expect.closeTo(all.left, 6), expect.closeTo(all.width, 6), expect.closeTo(PITCH, 6)])
+            expect(second.top).toBeGreaterThan(first.bottom)
+            expect(() => page.region({ line: 9 })).toThrow(/region: no line 9\. The text has \d lines, and the first is line 0/)
+            // The way out: from under the end of the words, down into the room between two lines, and level to the side.
+            const [start, turn, edge] = page.leader('within 14 days').map((point) => page.toWorld(...point))
+            expect(start).toEqual([expect.closeTo(words.right, 6), expect.closeTo(box.bottom, 6)])
+            expect(turn).toEqual([expect.closeTo(words.right, 6), expect.closeTo((box.bottom + second.top) / 2, 6)])
+            expect(edge).toEqual([expect.closeTo(800, 6), expect.closeTo(turn![1], 6)])
+            const left = page.leader('within 14 days', 'left').map((point) => page.toWorld(...point))
+            expect([left[0]![0], left[2]![0]]).toEqual([expect.closeTo(words.x, 6), expect.closeTo(100, 6)])
+            expect(() => page.leader('within 14 days', 'up' as never)).toThrow(/the side of leader\(\) is 'left' or 'right', not "up"/)
+        }))
+    })
+
+    it('enters with its frame and its title, and then its words in the order of the text', async () => {
+        let page!: Page
+        const compiled = await compileFilm(film({ fps: 20 }, (s) => {
+            page = passage(POLICY, { width: 700, title: 'policy.md' })
+            s.wait(1)
+            s.play(page.enter(), { duration: 2, ease: linear })
+            s.wait(0.5)
+            expect(() => page.enter({ lag: 'slow' as never })).toThrow(/the lag of enter\(\) is "slow"\. It is a number, 0 or more/)
+        }))
+        expect(compiled.frame(0.5).ops).toHaveLength(0)
+        const [first, middle, last] = [page.words.chars[0]!, page.find('date')[0]!, page.words.chars.at(-1)!]
+        expect(at(1.4, () => [page.frame!.get('opacity'), page.title!.get('opacity')])).toEqual([expect.closeTo(0.4 / 0.7, 6), expect.closeTo(0.4 / 0.7, 6)])
+        expect(at(1.4, () => [first, middle, last].map((glyph) => glyph.get('opacity')))).toEqual([expect.closeTo(0.67, 1), 0, 0])
+        expect(at(2.2, () => [first, last].map((glyph) => glyph.get('opacity')))).toEqual([1, 0])
+        expect(at(2.2, () => middle.get('opacity'))).toBeGreaterThan(0)
+        expect(at(3.2, () => page.words.chars.every((glyph) => glyph.get('opacity') === 1))).toBe(true)
+    })
+
+    it('takes the font of the film for its words, its title and a slip, and a font of its own when it names one', async () => {
+        await compile(() => {
+            const letter = (font: 'sans' | 'text-serif' | 'mono', size: number) => text('R', { font, size }).chars[0]!.get('path')
+            const page = passage(POLICY, { width: 700, title: 'Rules' })
+            expect([page.words.chars[0]!.get('path'), page.title!.chars[0]!.get('path'), page.words.font]).toEqual([letter('text-serif', 32), letter('text-serif', 26), 'text-serif'])
+            expect(page.slip('Refunds are accepted').words.chars[0]!.get('path')).toEqual(letter('text-serif', 32))
+            const own = passage(POLICY, { width: 700, font: 'mono' })
+            expect([own.words.chars[0]!.get('path'), own.slip('Refunds are accepted').words.chars[0]!.get('path')]).toEqual([letter('mono', 32), letter('mono', 32)])
+            expect(letter('text-serif', 32)).not.toEqual(letter('sans', 32))
+        }, { font: 'text-serif' })
+    })
+
+    it('passes the film check with its own layout, at a small text gap and at a large one', async () => {
+        const definition = film({ fps: 20 }, (s) => {
+            const kinds = s.add(passage('A plain mark, then a claim of the answer. One part is supported, one part is unsupported, and one is contradicted. This line came from outside. An old value and a new value.', { width: 880, title: 'answer.md' }).at(-900, -400))
+            s.play(kinds.mark('plain mark', 'mark'), kinds.mark('a claim of the answer', 'claim'), kinds.mark('is supported', 'supported'), kinds.mark('is unsupported', 'unsupported'), kinds.mark('is contradicted', 'contradicted'),
+                kinds.mark('This line came from outside.', 'external'), kinds.mark('old value', 'removed'), kinds.mark('new value', 'added'), { duration: 0.6 })
+            const cut = s.add(passage(RUNBOOK, { width: 800, size: 26 }).at(60, -400))
+            s.play(cut.cut({ size: 7, overlap: 2 }), cut.mark('within 15 minutes', 'supported'), { duration: 1 })
+            s.play(cut.select('Then page the incident commander.'), { duration: 0.6 })
+            const bare = s.add(passage('Refunds arrive within 14 days.', { panel: false, size: 48 }).at(-900, 200))
+            s.play(bare.mark('within 14 days', 'claim'), { duration: 0.6 })
+            s.wait(2)
+        })
+        // With 0.3 and 0.7, and with the most room that the rule asks for: 2% of the shorter side of the frame.
+        for (const textGap of [0.3, 0.7, 3]) expect((await checkFilm(definition, { textGap, motion: true })).diagnostics.filter((finding) => finding.code !== 'film.text_brief')).toEqual([])
+    })
+})
+
 export type { Vec, Vec3 }
 
 describe('table', () => {
@@ -14253,6 +16713,50 @@ describe('table', () => {
         }))
     })
 
+    it.each([true, false])('clones the current cell values before future updates, with totals: %s', async (withTotal) => {
+        let copy!: Board
+        const movie = await compile((s) => {
+            const board = s.add(table([{ key: 'n', total: withTotal ? 'sum' : undefined, marks: true, sample: 3 }], [{ id: 1, n: { value: 1, state: 'pending' } }]))
+            s.at(10, () => s.play(board.setCell(1, 'n', { value: 2, state: 'pass' }), { duration: 1 }))
+            copy = s.add(board.clone())
+            expect(copy.value(1, 'n')).toBe(1)
+            expect(copy.stateOf(1, 'n')).toBe('pending')
+            if (withTotal) expect(copy.totalOf('n')).toBe(1)
+            s.play(copy.setCell(1, 'n', { value: 3, state: 'fail' }), { duration: 1 })
+            expect(board.value(1, 'n')).toBe(2)
+        })
+        expect(said(copy.cell(1, 'n'), 0)).toEqual(['1'])
+        expect(said(copy.cell(1, 'n'), 1)).toEqual(['3'])
+        expect(marksOf(copy.cell(1, 'n'), 1).map(([shape]) => shape)).toEqual(['cross'])
+        if (withTotal) {
+            const total = (time: number) => at(time, () => copy.totals!.cells[0]!.all().filter((node) => node instanceof TextNode && shows(node) > 0.01).map(words))
+            expect(total(0)).toEqual(['1'])
+            expect(total(1)).toEqual(['3'])
+        }
+        expectPure(movie, [0, 0.25, 0.75, 1, 10.5, 11])
+    })
+
+    it.each([true, false])('clones row membership, order, and light before future changes, with totals: %s', async (withTotal) => {
+        await compile((s) => {
+            const board = s.add(table([{ key: 'n', total: withTotal ? 'sum' : undefined, sample: 10 }], [{ id: 'a', n: 1 }, { id: 'b', n: 2 }], { maxRows: 3 }))
+            s.play(board.light('a'), { duration: 0 })
+            s.at(10, () => {
+                s.play(board.append({ id: 'c', n: 3 }), { duration: 1 })
+                s.play(board.sort('n', { descending: true }), { duration: 1 })
+                s.play(board.remove('a'), board.light('c'), { duration: 1 })
+            })
+            const copy = s.add(board.clone())
+            expect(copy.ids).toEqual(['a', 'b'])
+            expect(copy.lit).toEqual({ row: 'a', column: null })
+            if (withTotal) expect(copy.totalOf('n')).toBe(3)
+            s.play(copy.append({ id: 'c', n: 4 }), copy.setCell('a', 'n', 5), { duration: 1 })
+            expect(copy.ids).toEqual(['a', 'b', 'c'])
+            expect(copy.value('a', 'n')).toBe(5)
+            if (withTotal) expect(copy.totalOf('n')).toBe(11)
+            expect(board.ids).toEqual(['c', 'b'])
+        })
+    })
+
     it('takes the font of the film for its header and its texts, keeps numbers in mono, and takes a font of its own', async () => {
         const fonts = (board: Board) => [board.headers[0]!, first(board.rows[0]!.cells[0]!), first(board.rows[0]!.cells[1]!), ...board.totals!.cells[2]!.all().filter((node) => node instanceof TextNode)].map((node) => (node as TextNode).font)
         let inFilm!: string[], own!: string[], late!: string
@@ -14304,6 +16808,1060 @@ describe('table', () => {
             s.wait(0.5)
         })
         for (const textGap of [0.3, 0.7, 3]) expect((await checkFilm(tight, { textGap })).diagnostics, `at rest, text gap ${textGap}`).toEqual([])
+    })
+})
+
+describe('tokens', () => {
+    type Strip = ReturnType<typeof tokens>
+    const message = (run: () => unknown) => { try { run() } catch (error) { return (error as Error).message } return '' }
+    /** The message of the error that stops a film, or '' for a film that builds. */
+    const failure = async (build: (s: Stage) => void) => { try { await compile(build, { fps: 20 }) } catch (error) { return (error as Error).message } return '' }
+    const shows = (node: Node | null) => (node && node.get('visible') ? node.get('opacity') : 0)
+    const ends = (node: Node) => { const box = node.bounds(); return [box.x, box.x + box.width] as const }
+    const middle = (node: Node) => { const box = node.bounds(); return box.x + box.width / 2 }
+    const paint = (color: string) => text('a', { color }).children[0]!.get('fill')
+    const source = (node: Node | null) => (node as unknown as { source: string } | null)?.source
+    /** The places of the letters of the tokens that show, from the left: the letter and the middle of its ink. */
+    const letters = (strip: Strip) => strip.all()
+        .filter((node) => node.data['key'] !== undefined && strip.chips.some((cell) => cell.text === node.parent) && node.parent!.get('visible') && (node.parent!.parent as Node).get('visible'))
+        .map((node) => [node.data['key'] as string, Math.round(middle(node) * 100) / 100] as const).sort((a, b) => a[1] - b[1])
+
+    /** The row of chips as the library drew it before the strip had rows, spans and states. */
+    const oldRow = (items: readonly (string | { text: string; sub?: string; color?: string })[], options: { size?: number; maxWidth?: number; gap?: number; color?: string; colors?: readonly string[]; font?: FontFamily; subSize?: number; radius?: number } = {}) => {
+        const made = new StageNode()
+        const size = options.size ?? 22, gap = options.gap ?? size * 0.28, subSize = options.subSize ?? size * 0.62
+        const padX = size * 0.42, padY = size * 0.3
+        const specs = items.map((item) => (typeof item === 'string' ? { text: item } : item))
+        const palette = options.colors ? ramp(specs.length, ...options.colors) : null
+        let x = 0, y = 0
+        const placed: { node: Node; x: number; y: number; w: number }[] = []
+        const rowHeight = size + padY * 2 + (specs.some((spec) => spec.sub) ? subSize * 1.4 : 0)
+        specs.forEach((spec, i) => {
+            const color = spec.color ?? (palette ? palette[i]! : options.color ?? 'blue')
+            const label = text(spec.text.replace(/ /g, '·'), { size, font: options.font ?? 'mono', color: 'ink' })
+            const w = Math.max(label.width, size * 0.5) + padX * 2, h = size + padY * 2
+            if (options.maxWidth !== undefined && x > 0 && x + w > options.maxWidth) {
+                x = 0
+                y += rowHeight + gap
+            }
+            const chip = new StageNode().add(new StageNode(rectPath(-w / 2, -h / 2, w, h, options.radius ?? 4)).fill(color, 0.18).stroke(color, 1.5), label.at(0, 0))
+            if (spec.sub) chip.add(text(spec.sub, { size: subSize, font: 'mono', color: 'dim' }).at(0, h / 2 + subSize * 0.82))
+            placed.push({ node: chip, x: x + w / 2, y, w })
+            x += w + gap
+        })
+        const maxX = Math.max(...placed.map((p) => p.x + p.w / 2), 0), maxY = Math.max(...placed.map((p) => p.y), 0)
+        for (const entry of placed) made.add(entry.node.at(entry.x - maxX / 2, entry.y - maxY / 2))
+        return made
+    }
+
+    it('draws a strip with the old options as the row of chips drew it', async () => {
+        const cases: [Parameters<typeof oldRow>[0], Parameters<typeof oldRow>[1]][] = [
+            [['The', 'cat', 'sat'], {}],
+            [['The', { text: ' cat', sub: '9246' }, { text: ' sat', sub: '3332', color: 'orange' }, ''], { size: 44, color: 'teal' }],
+            [['a', 'b', 'c', 'd', 'e'], { size: 36, colors: ['blue', 'purple', 'red'], gap: 20, radius: 12 }],
+            ['the quick brown fox jumps over the lazy dog'.split(' ').map((word, i) => ({ text: word, sub: String(i) })), { size: 30, maxWidth: 420, font: 'sans', subSize: 20 }],
+            [['hello', '\n', 'world'], {}],
+            [['a', 'b'], { maxWidth: Infinity }],
+            [['a'], { size: 0 }],
+            [[{ text: 'a', sub: '1' }], { subSize: 0 }],
+            [['a', 'b'], { gap: -1 }],
+            [['a', 'b'], { maxWidth: 0 }],
+        ]
+        for (const [items, options] of cases) {
+            const now = await compile((s) => { s.add(tokens(items, options).at(40, -30)) })
+            const before = await compile((s) => { s.add(oldRow(items, options).at(40, -30)) })
+            expect(svgAt(now, 0)).toBe(svgAt(before, 0))
+        }
+        await compile(() => {
+            // A plain strip holds its chips and no other part.
+            const plain = tokens(['The', 'cat'])
+            expect(plain.children).toEqual(plain.chips)
+            expect(plain.chips.every((chip) => chip.children.length === 2)).toBe(true)
+        })
+    })
+
+    it('brings the chips in from the left, each with its values, and the names, a bracket and the window with them', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = tokens(['The', 'cat', 'sat'], { size: 40, label: 'input', rows: { id: [464, 3797, 3332] }, spans: [{ from: 1, to: 2, label: 'words' }] }).at(0, 0)
+            s.play(strip.enter(), { duration: 2 })
+        }, { fps: 20 })
+        const [first, last] = [strip.token(0), strip.token(2)]
+        const value = strip.row('id').values[2]!, bracket = strip.spans[0]!
+        at(0, () => {
+            expect(shows(first)).toBe(0)
+            expect(first.get('y')).toBeCloseTo(16, 6)
+            expect(shows(value)).toBe(0)
+            expect(shows(bracket)).toBe(0)
+        })
+        // The first chip is there while the last one has not started. A value comes with its chip.
+        at(0.4, () => {
+            expect(shows(first)).toBeGreaterThan(0.05)
+            expect(shows(last)).toBe(0)
+            expect(shows(value)).toBe(0)
+        })
+        at(2, () => {
+            for (const node of [first, last, value, bracket, strip.caption, strip.row('id').name]) expect(shows(node)).toBe(1)
+            expect(first.get('y')).toBeCloseTo(0, 6)
+        })
+    })
+
+    it('gives a token the look of its state: a color, a fill, an outline, and a mark that is not a color', async () => {
+        await compile(() => {
+            const strip = tokens([{ text: 'kept' }, { text: 'masked', state: 'masked' }, { text: 'generated', state: 'generated' }, { text: 'cached', state: 'cached' }, { text: 'dropped', state: 'dropped' }], { size: 40, color: 'teal' })
+            const [kept, masked, generated, cached, dropped] = strip.chips
+            // A token with no state is in the first one, with the color of the strip and no mark.
+            expect(strip.stateOf(0)).toBe('kept')
+            expect(kept!.box.get('fill')).toEqual(paint('teal'))
+            expect(kept!.box.get('fillOpacity')).toBe(0.18)
+            expect(kept!.signs).toEqual([])
+            expect(kept!.text.chars[0]!.get('fill')).toEqual(paint('ink'))
+            // Each other state has its color and one mark, so color is not its only sign.
+            expect(masked!.box.get('stroke')).toEqual(paint('dim'))
+            expect(masked!.text.chars[0]!.get('fill')).toEqual(paint('dim'))
+            expect(generated!.box.get('fill')).toEqual(paint('green'))
+            expect(cached!.box.get('fill')).toEqual(paint('yellow'))
+            expect(dropped!.box.get('dash')).not.toBeNull()
+            expect(generated!.box.get('dash')).toBeNull()
+            for (const cell of [masked, generated, cached, dropped]) expect(cell!.signs).toHaveLength(1)
+            // The four marks are four shapes: lines over the cell, a bar on its bottom edge, a disc on its corner, a line through its text.
+            const box = (cell: Node) => cell.bounds()
+            const [lines, bar, disc, strike] = [masked!.signs[0]!, generated!.signs[0]!, cached!.signs[0]!, dropped!.signs[0]!]
+            expect(lines.get('path')!.length).toBeGreaterThan(6)
+            expect(box(bar).y + box(bar).height / 2).toBeCloseTo(box(generated!.box).y + box(generated!.box).height, 6)
+            expect(box(bar).width).toBeGreaterThan(box(generated!.box).width * 0.8)
+            expect(box(disc).x + box(disc).width).toBeGreaterThan(box(cached!.box).x + box(cached!.box).width)
+            expect(box(disc).y).toBeLessThan(box(cached!.box).y)
+            const ink = box(dropped!.text)
+            expect(box(strike).x).toBeLessThan(ink.x)
+            expect(box(strike).x + box(strike).width).toBeGreaterThan(ink.x + ink.width)
+            expect(box(strike).y).toBeGreaterThan(ink.y)
+            expect(box(strike).y).toBeLessThan(ink.y + ink.height)
+        })
+    })
+
+    it('keeps the lines of a masked token clear of its text', async () => {
+        await compile(() => {
+            for (const word of ['a', 'masked', ' tokenization']) {
+                const cell = tokens([{ text: word, state: 'masked' }], { size: 48 }).token(0)
+                const ink = cell.text.bounds()
+                for (const ring of cell.signs[0]!.get('path')!) {
+                    for (let step = 0; step <= 10; step++) {
+                        const x = ring.p[0]! + ((ring.p[ring.p.length - 2]! - ring.p[0]!) * step) / 10, y = ring.p[1]! + ((ring.p[ring.p.length - 1]! - ring.p[1]!) * step) / 10
+                        expect(x > ink.x - 4 && x < ink.x + ink.width + 4 && y > ink.y - 4 && y < ink.y + ink.height + 4, `${word}: a line at ${x}, ${y}`).toBe(false)
+                    }
+                }
+            }
+        })
+    })
+
+    it('changes the state of tokens at the time of the change, one after another, and reads the states', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens(['a', 'b', 'c', { text: 'd', state: 'masked' }], { size: 40 }))
+            s.wait(1)
+            expect(strip.find((token) => token.state === 'masked')).toEqual([3])
+            s.play(strip.mark([0, 1, 3], 'masked'), { duration: 1 })
+            expect(strip.stateOf(0)).toBe('masked')
+            expect(strip.stateOf(2)).toBe('kept')
+            expect(strip.find((token) => token.state === 'masked')).toEqual([0, 1, 3])
+            expect(strip.find('c')).toEqual([2])
+        }, { fps: 20 })
+        const [first, second, , last] = strip.chips
+        at(1, () => {
+            expect(first!.box.get('fill')).toEqual(paint('blue'))
+            expect(first!.signs.every((sign) => shows(sign) === 0)).toBe(true)
+        })
+        // The first token is on its way while the second one has not started.
+        at(1.25, () => {
+            expect(first!.box.get('fill')).not.toEqual(paint('blue'))
+            expect(second!.box.get('fill')).toEqual(paint('blue'))
+        })
+        at(2, () => {
+            for (const cell of [first, second]) {
+                expect(cell!.box.get('fill')).toEqual(paint('dim'))
+                expect(cell!.box.get('fillOpacity')).toBeCloseTo(0.05, 6)
+                expect(cell!.text.chars[0]!.get('fill')).toEqual(paint('dim'))
+                expect(shows(cell!.signs[0]!)).toBe(1)
+            }
+        })
+        // A token that has the state already gets no change: its one mark is the mark that it was made with.
+        expect(last!.children.filter((node) => node !== last!.box && node !== last!.text)).toHaveLength(1)
+    })
+
+    it('takes the old mark of a token away when the state changes, and picks tokens when the change plays', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens(['a', 'b', 'c'], { size: 40, states: { ...TOKEN_STATES, accepted: { color: 'green', mark: 'check' } } }))
+            // The second change runs after the first in one sequence, and it finds the tokens that the first one changed.
+            s.play(seq(strip.mark([0, 2], 'generated'), strip.mark((token) => token.state === 'generated', 'accepted')), { duration: 2 })
+        }, { fps: 20 })
+        expect(strip.chips.map((cell) => cell.state)).toEqual(['accepted', 'kept', 'accepted'])
+        const cell = strip.token(0)
+        const marks = cell.children.filter((node) => node !== cell.box && node !== cell.text)
+        expect(marks).toHaveLength(2)
+        at(1, () => expect(marks.map(shows)).toEqual([1, 0]))
+        at(2, () => {
+            expect(marks.map(shows)).toEqual([0, 1])
+            expect(cell.box.get('stroke')).toEqual(paint('green'))
+        })
+    })
+
+    it('rejects conflicting marks even when a sweep reaches a token later', async () => {
+        for (const sweep of [false, true]) {
+            const error = await failure((s) => {
+                const strip = s.add(tokens(['a', 'b']))
+                s.play(strip.mark(sweep ? [0, 1] : 1, 'dropped', { duration: 2, lag: 1 }), strip.mark(1, 'kept', { duration: 0.5 }))
+            })
+            expect(error).toMatch(/token 1.*previous mark ends at 2 s.*seq\(\)/)
+        }
+        const f = await compile((s) => {
+            const strip = s.add(tokens(['a', 'b']))
+            s.play(strip.mark(0, 'cached'), strip.mark(1, 'dropped'))
+            s.play(strip.mark(1, 'kept'))
+            expect(strip.stateOf(1)).toBe('kept')
+            expect(strip.token(1).box.get('dash')).toBeNull()
+        })
+        expectPure(f, [0, 0.3, f.duration])
+    })
+
+    it('puts each value of a row under the middle of its token, and the names at the left of the first cell', async () => {
+        await compile(() => {
+            const strip = tokens(['The', ' cat', ' sat'], { size: 40, label: 'input', rows: { position: [0, 1, 2], id: [464, 3797] } }).at(100, 50)
+            const [position, id] = [strip.row('position'), strip.row('id')]
+            strip.chips.forEach((cell, index) => {
+                expect(middle(position.values[index]!)).toBeCloseTo(middle(cell.box), 0)
+                expect(position.values[index]!.bounds().y).toBeGreaterThan(cell.box.bounds().y + cell.box.bounds().height)
+            })
+            // A row with fewer values than tokens leaves the rest empty. The second row is under the first.
+            expect(id.values.map(source)).toEqual(['464', '3797', undefined])
+            expect(strip.value('id', 1)).toBe('3797')
+            expect(strip.value('id', 2)).toBeNull()
+            expect(id.values[0]!.bounds().y).toBeGreaterThan(position.values[0]!.bounds().y + position.values[0]!.bounds().height)
+            // The names of the two rows and of the line of cells end at one x, left of the first cell.
+            const rights = [strip.caption!, position.name!, id.name!].map((name) => ends(name)[1])
+            // The ink of a name ends a little before its line box, by the side of its last letter.
+            expect(Math.abs(rights[1]! - rights[0]!)).toBeLessThan(3)
+            expect(Math.abs(rights[2]! - rights[0]!)).toBeLessThan(3)
+            expect(rights[0]!).toBeLessThan(ends(strip.token(0).box)[0] - 40 * 0.3)
+            expect(strip.caption!.bounds().y + strip.caption!.bounds().height / 2).toBeCloseTo(50, -1)
+            // The column of a token is its cell and its values.
+            expect(strip.column(1)).toEqual([strip.token(1), position.values[1], id.values[1]])
+            expect(strip.column(2)).toEqual([strip.token(2), position.values[2]])
+        })
+    })
+
+    it('makes a cell as wide as its widest value needs, and with even gives every cell the width of the widest', async () => {
+        await compile(() => {
+            const width = (strip: Strip, index: number) => strip.token(index).box.bounds().width
+            const plain = tokens(['a', 'b'], { size: 40 })
+            const valued = tokens(['a', 'b'], { size: 40, rows: { id: [29889, 7] } })
+            expect(width(valued, 0)).toBeGreaterThan(width(plain, 0) + 20)
+            expect(width(valued, 0)).toBeGreaterThan(valued.row('id').values[0]!.bounds().width)
+            expect(width(valued, 1)).toBeCloseTo(width(plain, 1), 6)
+            const even = tokens(['a', 'tokenization', 'b'], { size: 40, even: true })
+            expect(width(even, 0)).toBeCloseTo(width(even, 1), 6)
+            expect(width(even, 2)).toBeCloseTo(width(even, 1), 6)
+            expect(width(even, 1)).toBeCloseTo(width(tokens(['tokenization'], { size: 40 }), 0), 6)
+            expect(width(tokens(['a'], { size: 40, minWidth: 200 }), 0)).toBeCloseTo(200, 6)
+        })
+    })
+
+    it('changes a value in place: the old text is gone before the new one shows', async () => {
+        let strip!: Strip, old!: Node
+        await compile((s) => {
+            strip = s.add(tokens(['a', 'b'], { size: 40, minWidth: 140, rows: { p: ['0.12', '0.88'] } }))
+            old = strip.row('p').values[0]!
+            s.wait(1)
+            s.play(strip.setValue('p', 0, '0.31'), { duration: 1 })
+            expect(strip.value('p', 0)).toBe('0.31')
+            s.play(strip.setValue('p', 1, null), { duration: 1 })
+            expect(strip.value('p', 1)).toBeNull()
+        }, { fps: 20 })
+        const next = strip.row('p').values[0]!
+        expect(next).not.toBe(old)
+        at(1.25, () => expect([shows(old) > 0, shows(next)]).toEqual([true, 0]))
+        at(1.5, () => expect([shows(old), shows(next)]).toEqual([0, 0]))
+        at(2, () => {
+            expect([shows(old), shows(next)]).toEqual([0, 1])
+            expect(middle(next)).toBeCloseTo(middle(strip.token(0).box), 0)
+        })
+        expect(strip.row('p').values[1]).toBeNull()
+    })
+
+    it('moves the values of a row by one cell, so each target is under the token before it', async () => {
+        const words = ['<s>', 'Sit', 'Good', 'dog']
+        let strip!: Strip, values!: (Node | null)[]
+        await compile((s) => {
+            strip = s.add(tokens(words, { size: 40, even: true, rows: { target: words } }))
+            values = [...strip.row('target').values]
+            s.wait(1)
+            s.play(strip.shiftRow('target', -1), { duration: 1 })
+            expect(words.map((_, index) => strip.value('target', index))).toEqual(['Sit', 'Good', 'dog', null])
+        }, { fps: 20 })
+        at(1, () => expect(middle(values[1]!)).toBeCloseTo(middle(strip.token(1).box), 0))
+        at(2, () => {
+            for (const index of [1, 2, 3]) expect(middle(values[index]!)).toBeCloseTo(middle(strip.token(index - 1).box), 0)
+            // The first value has no token before it: it left the strip.
+            expect(shows(values[0]!)).toBe(0)
+        })
+        // On its way out, the value does not reach the place where the name of the row is.
+        at(1.4, () => expect(ends(values[0]!)[0]).toBeGreaterThan(ends(strip.row('target').name!)[1]))
+        expect(strip.row('target').values[3]).toBeNull()
+    })
+
+    it('refuses a value that is too wide for its cell, and says which option gives it room', async () => {
+        const wide = await failure((s) => { const strip = s.add(tokens(['a', 'tokenization'], { size: 40, rows: { target: ['a', 'tokenization'] } })); s.play(strip.shiftRow('target', -1)) })
+        expect(wide).toMatch(/shiftRow: the value "tokenization" of the row "target" needs \d+ px, and the cell of token 0 \("a"\) is \d+ px wide\. Give the strip even: true, or minWidth: \d+/)
+        const set = await failure((s) => { const strip = s.add(tokens(['a', 'b'], { size: 40, even: true, rows: { id: [1, 2] } })); s.play(strip.setValue('id', 0, '1234567')) })
+        expect(set).toMatch(/setValue: the value "1234567" of the row "id" needs (\d+) px.*Give the strip minWidth: \1, or a shorter value/)
+        // The width that the message names is enough.
+        const need = Number(/minWidth: (\d+)/.exec(set)![1])
+        expect(await failure((s) => { const strip = s.add(tokens(['a', 'b'], { size: 40, even: true, minWidth: need, rows: { id: [1, 2] } })); s.play(strip.setValue('id', 0, '1234567')) })).toBe('')
+    })
+
+    it('draws a bracket from the first cell of its run to the last, with its label over its middle, and a bracket that holds another one a level higher', async () => {
+        await compile(() => {
+            const strip = tokens(['<s>', 'You', 'are', 'kind', 'Hello', 'there', 'OK'], {
+                size: 40, spans: [{ from: 0, to: 5, label: 'prompt' }, { from: 0, to: 3, label: 'system' }, { from: 4, to: 5, label: 'user' }, { from: 6, to: 6, label: 'assistant' }],
+            })
+            const [prompt, system, user, assistant] = ['prompt', 'system', 'user', 'assistant'].map((id) => strip.spans.find((span) => span.key === id)!)
+            for (const [span, from, to] of [[prompt, 0, 5], [system, 0, 3], [user, 4, 5], [assistant, 6, 6]] as const) {
+                expect(ends(span!.bracket)[0]).toBeCloseTo(ends(strip.token(from).box)[0], 6)
+                expect(ends(span!.bracket)[1]).toBeCloseTo(ends(strip.token(to).box)[1], 6)
+                expect(Math.abs(middle(span!.text!) - middle(span!.bracket))).toBeLessThan(2)
+                // The label is over the line of the bracket, and the line is over the cells.
+                expect(span!.text!.bounds().y + span!.text!.bounds().height).toBeLessThan(span!.bracket.bounds().y)
+                expect(span!.bracket.bounds().y + span!.bracket.bounds().height).toBeLessThan(strip.token(from).box.bounds().y)
+                expect(strip.spanRange(span!.key)).toEqual([from, to])
+            }
+            // The three brackets that follow each other are on one line. The label of the last one is wider than its cell.
+            expect([system!.level, user!.level, assistant!.level, prompt!.level]).toEqual([0, 0, 0, 1])
+            expect(assistant!.text!.bounds().width).toBeGreaterThan(assistant!.bracket.bounds().width)
+            expect(ends(assistant!.text!)[0]).toBeLessThan(ends(user!.bracket)[1])
+            expect(prompt!.bracket.bounds().y + prompt!.bracket.bounds().height).toBeLessThan(system!.text!.bounds().y)
+            // Two labels that would meet are on two levels.
+            const near = tokens(['a', 'b'], { size: 40, spans: [{ from: 0, to: 0, label: 'a long label' }, { from: 1, to: 1, label: 'one more long label' }] })
+            expect(near.spans.map((span) => span.level).sort()).toEqual([0, 1])
+        })
+    })
+
+    it('draws a new bracket, slides it to other tokens with a new label, and takes it away', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens(['a', 'b', 'c', 'd', 'e'], { size: 40 }))
+            s.play(strip.span('chunk', 0, 1, { label: 'chunk 1', color: 'teal' }), { duration: 1 })
+            expect(strip.spanRange('chunk')).toEqual([0, 1])
+            s.play(strip.span('chunk', 2, 4, { label: 'chunk 2' }), { duration: 1 })
+            expect(strip.spanRange('chunk')).toEqual([2, 4])
+            s.play(strip.span('chunk', null), { duration: 1 })
+            expect(strip.spanRange('chunk')).toBeNull()
+            expect(strip.spans).toEqual([])
+        }, { fps: 20 })
+        const span = strip.children.find((node) => (node as { key?: string }).key === 'chunk') as Node & { bracket: Node; text: Node }
+        const labels = span.children.filter((node) => source(node) !== undefined)
+        expect(labels.map(source)).toEqual(['chunk 1', 'chunk 2'])
+        at(0, () => expect(span.bracket.get('trimTo')).toBe(0))
+        at(1, () => {
+            expect(span.bracket.get('trimTo')).toBe(1)
+            expect(ends(span.bracket)).toEqual([ends(strip.token(0).box)[0], ends(strip.token(1).box)[1]])
+            expect(labels.map(shows)).toEqual([1, 0])
+            expect(span.bracket.get('stroke')).toEqual(paint('teal'))
+        })
+        // Half way, the bracket is between its two places, and no label shows.
+        at(1.5, () => {
+            expect(ends(span.bracket)[0]).toBeGreaterThan(ends(strip.token(0).box)[0] + 10)
+            expect(ends(span.bracket)[0]).toBeLessThan(ends(strip.token(2).box)[0] - 10)
+            expect(labels.map(shows)).toEqual([0, 0])
+        })
+        at(2, () => {
+            expect(ends(span.bracket)[0]).toBeCloseTo(ends(strip.token(2).box)[0], 6)
+            expect(ends(span.bracket)[1]).toBeCloseTo(ends(strip.token(4).box)[1], 6)
+            expect(labels.map(shows)).toEqual([0, 1])
+            expect(middle(labels[1]!)).toBeCloseTo(middle(span.bracket), 0)
+        })
+        at(3, () => expect(shows(span)).toBe(0))
+    })
+
+    it('stops a bracket that would move onto another one, and names the two', async () => {
+        const clash = await failure((s) => {
+            const strip = s.add(tokens(['a', 'b', 'c', 'd'], { size: 40, spans: [{ from: 0, to: 1, label: 'one' }, { from: 2, to: 3, label: 'two' }] }))
+            s.play(strip.span('one', 1, 2))
+        })
+        expect(clash).toMatch(/the span "one" would be on the span "two".*strip\.span\("two", null\)/)
+    })
+
+    it('puts one window around a run of tokens, slides it, and takes it away', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens(['a', 'b', 'c', 'd', 'e'], { size: 40 }))
+            expect(strip.windowRange).toBeNull()
+            s.play(strip.window(0, 1), { duration: 1 })
+            expect(strip.windowRange).toEqual([0, 1])
+            s.play(strip.window(2, 4), { duration: 1 })
+            expect(strip.windowRange).toEqual([2, 4])
+            s.play(strip.window(null), { duration: 1 })
+            expect(strip.windowRange).toBeNull()
+            // A window that comes back does not slide from its old place: it comes in at the new one.
+            s.play(strip.window(0), { duration: 1 })
+            expect(strip.windowRange).toEqual([0, 0])
+        }, { fps: 20 })
+        const frame = strip.frame!
+        const around = (from: number, to: number) => {
+            const [left, right] = [ends(strip.token(from).box)[0], ends(strip.token(to).box)[1]], [a, b] = ends(frame)
+            // The outline is around its cells, in the room before the next cell.
+            expect(a).toBeLessThan(left)
+            expect(a).toBeGreaterThan(left - 40 * 0.28)
+            expect(b).toBeGreaterThan(right)
+            expect(b).toBeLessThan(right + 40 * 0.28)
+            expect(frame.bounds().y).toBeLessThan(strip.token(from).box.bounds().y)
+        }
+        at(0, () => expect(shows(frame)).toBe(0))
+        at(1, () => { expect(shows(frame)).toBe(1); around(0, 1) })
+        at(1.5, () => {
+            expect(ends(frame)[0]).toBeGreaterThan(ends(strip.token(0).box)[1])
+            expect(ends(frame)[0]).toBeLessThan(ends(strip.token(2).box)[0] - 10)
+            expect(shows(frame)).toBe(1)
+        })
+        at(2, () => around(2, 4))
+        at(3, () => expect(shows(frame)).toBe(0))
+        at(3.05, () => around(0, 0))
+        at(4, () => { expect(shows(frame)).toBe(1); around(0, 0) })
+    })
+
+    it('adds tokens at the end, one after another, and leaves the tokens before them where they are', async () => {
+        let strip!: Strip, before!: number[]
+        await compile((s) => {
+            strip = s.add(tokens(['The', ' cat'], { size: 40, rows: { id: [464, 3797] } }).at(-200, 0))
+            before = strip.chips.map((cell) => cell.get('x'))
+            s.wait(1)
+            s.play(strip.append([{ text: ' sat', state: 'generated', values: { id: 3332 } }, ' on']), { duration: 2 })
+            expect(strip.count).toBe(4)
+            expect(strip.texts).toEqual(['The', ' cat', ' sat', ' on'])
+            expect(strip.stateOf(2)).toBe('generated')
+            expect(strip.value('id', 2)).toBe('3332')
+            expect(strip.value('id', 3)).toBeNull()
+        }, { fps: 20 })
+        const [, cat, sat, on] = strip.chips
+        at(1, () => expect([shows(sat!), shows(on!)]).toEqual([0, 0]))
+        // The first new token is there while the second one has not started.
+        at(1.6, () => {
+            expect(shows(sat!)).toBeGreaterThan(0.2)
+            expect(shows(on!)).toBe(0)
+        })
+        at(3, () => {
+            expect(strip.chips.slice(0, 2).map((cell) => cell.get('x'))).toEqual(before)
+            // Each new cell is one gap after the cell before it.
+            expect(ends(sat!.box)[0] - ends(cat!.box)[1]).toBeCloseTo(40 * 0.28, 6)
+            expect(ends(on!.box)[0] - ends(sat!.box)[1]).toBeCloseTo(40 * 0.28, 6)
+            expect([shows(sat!), shows(on!), shows(strip.row('id').values[2]!)]).toEqual([1, 1, 1])
+            expect(middle(strip.row('id').values[2]!)).toBeCloseTo(middle(sat!.box), 0)
+            expect(sat!.box.get('fill')).toEqual(paint('green'))
+        })
+    })
+
+    it('flies a new token from a point of the stage to the end of the strip', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens(['The'], { size: 40 }).at(-300, -100))
+            const source = s.add(rect(120, 60).at(400, 250))
+            s.wait(1)
+            s.play(strip.append(' cat', { from: source }), { duration: 1 })
+        }, { fps: 20 })
+        const cell = strip.token(1)
+        at(1, () => {
+            expect(shows(cell)).toBe(0)
+            expect(middle(cell.box)).toBeCloseTo(400, 6)
+            expect(cell.box.bounds().y + cell.box.bounds().height / 2).toBeCloseTo(250, 6)
+        })
+        // It shows early, so the viewer sees it fly.
+        at(1.5, () => {
+            expect(shows(cell)).toBe(1)
+            expect(middle(cell.box)).toBeGreaterThan(-200)
+            expect(middle(cell.box)).toBeLessThan(380)
+        })
+        at(2, () => {
+            expect(ends(cell.box)[0] - ends(strip.token(0).box)[1]).toBeCloseTo(40 * 0.28, 6)
+            expect(cell.box.bounds().y).toBeCloseTo(strip.token(0).box.bounds().y, 6)
+        })
+    })
+
+    it('measures a strip with a width as its room, starts at the left end of the room, and stops a token that does not fit', async () => {
+        await compile((s) => {
+            const strip = s.add(tokens(['The', ' cat'], { size: 40, width: 600 }).at(100, 0))
+            expect(boxOf(strip).left).toBeCloseTo(-200, 6)
+            expect(boxOf(strip).right).toBeCloseTo(400, 6)
+            expect(ends(strip.token(0).box)[0]).toBeCloseTo(-200, 6)
+            // With the names of its rows, all of the strip is as wide as the region that `fitted` gets.
+            const region = new LayoutBox(-700, -100, 700, 100)
+            const fit = placeIn(fitted(region, (width) => tokens(['The', ' cat'], { size: 40, width, label: 'input', rows: { position: [0, 1] } })), region)
+            expect(boxOf(fit).left).toBeCloseTo(-700, 0)
+            expect(boxOf(fit).right).toBeCloseTo(700, 0)
+            expect(ends(fit.token(0).box)[0]).toBeGreaterThan(ends(fit.row('position').name!)[1])
+            // A strip with no width is as wide as its cells, and `place` centers it.
+            const plain = placeIn(tokens(['The', ' cat', ' sat'], { size: 40 }), region)
+            expect((ends(plain.token(0).box)[0] + ends(plain.token(2).box)[1]) / 2).toBeCloseTo(0, 6)
+        })
+        expect(message(() => tokens(['tokenization', 'is', 'hard'], { size: 40, width: 300 }))).toMatch(/the 3 tokens are (\d+) px wide at size 40, and the width is 300\. Give a width of \1 or more/)
+        const full = await failure((s) => { const strip = s.add(tokens(['The', ' cat'], { size: 40, width: 260 })); s.play(strip.append(' sat')) })
+        expect(full).toMatch(/append: the tokens would be (\d+) px wide, and the width of the strip is 260\. Give the strip a width of \1 or more/)
+        const need = Number(/width of (\d+) or more/.exec(full)![1])
+        expect(await failure((s) => { const strip = s.add(tokens(['The', ' cat'], { size: 40, width: need })); s.play(strip.append(' sat')) })).toBe('')
+        expect(await failure((s) => { const strip = s.add(tokens(['rain'], { size: 40, width: 200 })); s.play(strip.split(0, ['r', 'a', 'i', 'n'])) })).toMatch(/split: the tokens would be \d+ px wide/)
+    })
+
+    it('checks the fixed room before replacing tokens in a merge', async () => {
+        let strip!: Strip
+        const full = await failure((s) => {
+            strip = s.add(tokens(['a', 'b'], { size: 40, width: 150 }))
+            s.play(strip.merge(0, 1, 'tokenization'))
+        })
+        expect(full).toMatch(/merge: the tokens would be (\d+) px wide, and the width of the strip is 150\. Give the strip a width of \1 or more/)
+        expect(strip.texts).toEqual(['a', 'b'])
+        const need = Number(/width of (\d+) or more/.exec(full)![1])
+        const f = await compile((s) => {
+            strip = s.add(tokens(['a', 'b'], { size: 40, width: need }))
+            s.play(strip.merge(0, 1, 'tokenization'))
+        })
+        at(f.duration, () => expect(ends(strip.token(0).box)[1]).toBeLessThanOrEqual(need / 2 + 0.5))
+        expect(await failure((s) => {
+            const valued = s.add(tokens(['a', 'b', 'c'], { size: 40, width: 220, rows: { id: [] } }))
+            s.play(valued.merge(0, 1, { values: { id: '1234567890' } }))
+        })).toMatch(/merge: the tokens would be \d+ px wide/)
+        expect(await failure((s) => {
+            const fit = s.add(tokens(['a', 'b', 'c'], { size: 40, width: 220 }))
+            s.play(fit.merge(0, 1))
+        })).toBe('')
+    })
+
+    it('cuts a token into its pieces: each letter goes from its place in the token to its piece, and the tokens after it make room', async () => {
+        let strip!: Strip, old!: Node, after!: Node, start!: (readonly [string, number])[], afterAt!: number, oldEnds!: readonly [number, number]
+        await compile((s) => {
+            strip = s.add(tokens([{ text: 'unkind', state: 'cached', color: 'teal' }, ' words'], { size: 40, rows: { id: [1, 2] }, states: { ...TOKEN_STATES, rare: { color: 'orange', mark: 'dot' } } }))
+            old = strip.token(0)
+            after = strip.token(1)
+            s.wait(1)
+            start = at(1, () => letters(strip))
+            afterAt = after.get('x')
+            oldEnds = ends(strip.token(0).box)
+            s.play(strip.split(0, ['un', { text: 'kind', state: 'rare', values: { id: 7 } }]), { duration: 1 })
+            expect(strip.texts).toEqual(['un', 'kind', ' words'])
+            expect(strip.count).toBe(3)
+            // A piece has the state of its token, and a piece that names a state has that one.
+            expect([strip.stateOf(0), strip.stateOf(1)]).toEqual(['cached', 'rare'])
+            expect([strip.value('id', 0), strip.value('id', 1), strip.value('id', 2)]).toEqual([null, '7', '2'])
+        }, { fps: 20 })
+        const [un, kind] = strip.chips
+        // Just after the start, the picture is the same: each letter is where it was, in its piece now.
+        at(1.001, () => {
+            const now = letters(strip)
+            expect(now.map(([key]) => key).join('')).toBe('unkind·words')
+            now.forEach(([, x], index) => expect(x).toBeCloseTo(start[index]![1], 1))
+            expect(shows(old)).toBeGreaterThan(0)
+            // The boxes of the two pieces are the two parts of the box of the token: they start at its ends, and they meet.
+            expect(ends(un!.box)[0]).toBeCloseTo(oldEnds[0], 1)
+            expect(ends(kind!.box)[1]).toBeCloseTo(oldEnds[1], 1)
+            expect(ends(kind!.box)[0]).toBeCloseTo(ends(un!.box)[1], 1)
+        })
+        at(2, () => {
+            // The old cell is gone, and the two pieces are side by side with one gap between them.
+            expect(old.get('visible')).toBe(false)
+            expect(ends(kind!.box)[0] - ends(un!.box)[1]).toBeCloseTo(40 * 0.28, 6)
+            expect(ends(after)[0] - ends(kind!.box)[1]).toBeCloseTo(40 * 0.28, 6)
+            // The token after them moved right, by the room that the cut needs: a gap, and the sides of one more box.
+            expect(after.get('x') - afterAt).toBeGreaterThan(40 * 0.28 + 20)
+            for (const cell of [un!, kind!]) expect(Math.abs(middle(cell.text) - middle(cell.box))).toBeLessThan(2)
+            expect([shows(un!.box), shows(kind!.box), shows(kind!.signs[0]!)]).toEqual([1, 1, 1])
+            expect(middle(strip.row('id').values[1]!)).toBeCloseTo(middle(kind!.box), 0)
+            expect(middle(strip.row('id').values[2]!)).toBeCloseTo(middle(after), 0)
+        })
+        // A piece keeps the color of the token for a state with no color, and a piece with its own state has the look of that state.
+        at(2, () => {
+            expect(un!.box.get('stroke')).toEqual(paint('yellow'))
+            expect(un!.tint).toBe('teal')
+            expect(kind!.box.get('stroke')).toEqual(paint('orange'))
+        })
+    })
+
+    it('joins tokens into one: the letters go to their places in the new token, and the tokens after it close the room', async () => {
+        let strip!: Strip, olds!: Node[], after!: Node, start!: (readonly [string, number])[], afterAt!: number
+        await compile((s) => {
+            strip = s.add(tokens([{ text: 'r', state: 'cached' }, { text: 'a', state: 'cached' }, 'i', 'n'], { size: 40, color: 'teal', rows: { id: [114, 97, 105, 110] } }))
+            olds = [strip.token(0), strip.token(1)]
+            after = strip.token(2)
+            s.wait(1)
+            start = at(1, () => letters(strip))
+            afterAt = after.get('x')
+            s.play(strip.merge(0, 1, { values: { id: 256 } }), { duration: 1 })
+            expect(strip.texts).toEqual(['ra', 'i', 'n'])
+            // The new token has the state that the old ones share.
+            expect(strip.stateOf(0)).toBe('cached')
+            expect(strip.value('id', 0)).toBe('256')
+        }, { fps: 20 })
+        const made = strip.token(0)
+        at(1.001, () => {
+            const now = letters(strip)
+            expect(now.map(([key]) => key).join('')).toBe('rain')
+            now.forEach(([, x], index) => expect(x).toBeCloseTo(start[index]![1], 1))
+        })
+        at(2, () => {
+            expect(olds.map((old) => old.get('visible'))).toEqual([false, false])
+            expect(shows(made.box)).toBe(1)
+            expect(Math.abs(middle(made.text) - middle(made.box))).toBeLessThan(2)
+            expect(ends(after)[0] - ends(made.box)[1]).toBeCloseTo(40 * 0.28, 6)
+            // The token after the pair moved left, by the room that the pair gave up: a gap, and the sides of one box.
+            expect(afterAt - after.get('x')).toBeGreaterThan(40 * 0.28 + 20)
+            // The copies of the two old boxes are gone, and only the new box shows.
+            expect(made.children.filter((node) => !made.signs.includes(node) && node.get('path') !== null && node.get('stroke') !== null && node.get('visible'))).toEqual([made.box])
+            expect(middle(strip.row('id').values[0]!)).toBeCloseTo(middle(made.box), 0)
+            expect(shows(strip.row('id').values[0]!)).toBe(1)
+        })
+        // Half way, the two old boxes are still two boxes, nearer to each other than at the start.
+        at(1.5, () => {
+            const copies = made.children.filter((node) => node !== made.box && !made.signs.includes(node) && node.get('path') !== null && node.get('stroke') !== null)
+            expect(copies).toHaveLength(2)
+            expect(copies.map(shows)).toEqual([1, 1])
+            const room = ends(copies[1]!)[0] - ends(copies[0]!)[1]
+            expect(room).toBeGreaterThan(0)
+            expect(room).toBeLessThan(40 * 0.28)
+        })
+    })
+
+    it('never cuts a box through a letter: the parts of a split and of a merge meet between two letters', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            // The values make the cells of these letters as wide as three digits, so parts in proportion to the cells would cut "rai" inside its "a".
+            strip = s.add(tokens(['ra', 'i'], { size: 40, rows: { id: [256, 105] } }))
+            s.wait(1)
+            s.play(strip.merge(0, 1), { duration: 1 })
+            s.play(strip.split(0, ['r', 'ai']), { duration: 1 })
+        }, { fps: 20 })
+        const boxes = (cell: Node, own: Node) => cell.children.filter((node) => node !== own && node.get('path') !== null && node.get('stroke') !== null)
+        // At the end of the merge, the two copies meet between the "a" and the "i" of the new text.
+        const merged = strip.children.find((node) => source((node as { text?: Node }).text ?? null) === 'rai') as Node & { box: Node; text: Node }
+        at(1.999, () => {
+            const cut = ends(boxes(merged, merged.box)[0]!)[1]
+            const [, a, i] = merged.text.children
+            expect(cut).toBeGreaterThan(ends(a!)[1])
+            expect(cut).toBeLessThan(ends(i!)[0])
+        })
+        // At the start of the split, the two pieces meet between the "r" and the "a" of the old text.
+        at(2.001, () => {
+            const [r, ai] = strip.chips
+            const cut = ends(r!.box)[1]
+            expect(cut).toBeCloseTo(ends(ai!.box)[0], 1)
+            expect(cut).toBeGreaterThan(ends(r!.text.children[0]!)[1])
+            expect(cut).toBeLessThan(ends(ai!.text.children[0]!)[0])
+        })
+    })
+
+    it('plays two merges in one play: each pair joins where it is, and the strip is right at the end', async () => {
+        let strip!: Strip, start!: (readonly [string, number])[]
+        await compile((s) => {
+            strip = s.add(tokens([...'rain·train'], { size: 40 }))
+            s.wait(1)
+            start = at(1, () => letters(strip))
+            // From the right, so the first merge does not change the index of the second pair.
+            s.play(strip.merge(6, 7), strip.merge(0, 1), { duration: 1 })
+            expect(strip.texts).toEqual(['ra', 'i', 'n', '·', 't', 'ra', 'i', 'n'])
+        }, { fps: 20 })
+        // No letter jumps at the start, also in the pair that the other merge moves.
+        at(1.001, () => letters(strip).forEach(([, x], index) => expect(x).toBeCloseTo(start[index]![1], 1)))
+        // Half way, the letters of the second pair are inside the copies of their boxes, which go with the new cell.
+        at(1.5, () => {
+            const cell = strip.token(5)
+            const copies = cell.children.filter((node) => node !== cell.box && node.get('path') !== null && node.get('stroke') !== null)
+            cell.text.children.forEach((glyph, index) => {
+                expect(middle(glyph)).toBeGreaterThan(ends(copies[index]!)[0])
+                expect(middle(glyph)).toBeLessThan(ends(copies[index]!)[1])
+            })
+        })
+        at(2, () => {
+            strip.chips.forEach((cell, index) => {
+                expect(Math.abs(middle(cell.text) - middle(cell.box))).toBeLessThan(2)
+                if (index > 0) expect(ends(cell.box)[0] - ends(strip.token(index - 1).box)[1]).toBeCloseTo(40 * 0.28, 6)
+            })
+        })
+        // Two splits in one play, from the left: the first split moves the second token, which starts where it is.
+        let cut!: Strip, whole!: (readonly [string, number])[]
+        await compile((s) => {
+            cut = s.add(tokens(['rain', 'train'], { size: 40 }))
+            s.wait(1)
+            whole = at(1, () => letters(cut))
+            s.play(cut.split(0, ['ra', 'in']), cut.split(2, ['tra', 'in']), { duration: 1 })
+            expect(cut.texts).toEqual(['ra', 'in', 'tra', 'in'])
+        }, { fps: 20 })
+        at(1.001, () => letters(cut).forEach(([, x], index) => expect(x).toBeCloseTo(whole[index]![1], 1)))
+        // From the left, the first merge moves the second pair. That pair still starts where it is.
+        let other!: Strip, before!: (readonly [string, number])[]
+        await compile((s) => {
+            other = s.add(tokens([...'rain·train'], { size: 40 }))
+            s.wait(1)
+            before = at(1, () => letters(other))
+            s.play(other.merge(0, 1), other.merge(5, 6), { duration: 1 })
+            expect(other.texts).toEqual(['ra', 'i', 'n', '·', 't', 'ra', 'i', 'n'])
+        }, { fps: 20 })
+        at(1.001, () => letters(other).forEach(([, x], index) => expect(x).toBeCloseTo(before[index]![1], 1)))
+        at(2, () => other.chips.forEach((cell, index) => {
+            expect(Math.abs(middle(cell.text) - middle(cell.box))).toBeLessThan(2)
+            if (index > 0) expect(ends(cell.box)[0] - ends(other.token(index - 1).box)[1]).toBeCloseTo(40 * 0.28, 6)
+        }))
+    })
+
+    it('with another text for the new token, shows the old texts and the new one at different times', async () => {
+        let strip!: Strip, olds!: Node[]
+        await compile((s) => {
+            strip = s.add(tokens([{ text: 'c3', color: 'orange' }, 'a9', '!'], { size: 40 }))
+            olds = [strip.token(0).text, strip.token(1).text]
+            s.play(strip.merge(0, 1, 'é'), { duration: 1 })
+            expect(strip.texts).toEqual(['é', '!'])
+            s.play(strip.split(0, ['c3', 'a9']), { duration: 1 })
+            expect(strip.texts).toEqual(['c3', 'a9', '!'])
+        }, { fps: 20 })
+        const merged = strip.children.find((node) => source((node as { text?: Node }).text ?? null) === 'é') as Node & { text: Node }
+        const pieces = [strip.token(0).text, strip.token(1).text]
+        const up = (node: Node) => (node.get('visible') && (node.parent as Node).get('visible') ? node.get('opacity') : 0)
+        for (let time = 0; time <= 2.0001; time += 0.05) {
+            at(time, () => {
+                const texts = [olds.some((old) => up(old) > 0), up(merged.text) > 0, pieces.some((piece) => up(piece) > 0)]
+                expect(texts.filter(Boolean).length, `at ${time}`).toBeLessThanOrEqual(1)
+            })
+        }
+        // An old text fades: it is nearly gone when its cell is hidden.
+        at(0.38, () => { for (const old of olds) expect(old.get('opacity')).toBeLessThan(0.1) })
+        at(1, () => {
+            expect(up(merged.text)).toBe(1)
+            // The new token has the color of the first old one.
+            expect((merged as unknown as { box: Node }).box.get('stroke')).toEqual(paint('orange'))
+        })
+        at(2, () => expect(pieces.map(up)).toEqual([1, 1]))
+    })
+
+    it('keeps a bracket and the window on their tokens when a change moves or replaces them', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens(['a', 'b', 'c', 'd', 'e'], { size: 40, spans: [{ from: 1, to: 2, label: 'pair' }, { from: 4, to: 4, label: 'end' }] }))
+            s.play(strip.window(3, 4), { duration: 0.5 })
+            // The pair becomes one token, and the last token becomes two.
+            s.play(strip.merge(1, 2), { duration: 1 })
+            expect(strip.spanRange('pair')).toEqual([1, 1])
+            expect(strip.spanRange('end')).toEqual([3, 3])
+            expect(strip.windowRange).toEqual([2, 3])
+            s.play(strip.split(3, ['e', 'f']), { duration: 1 })
+            expect(strip.spanRange('end')).toEqual([3, 4])
+            expect(strip.windowRange).toEqual([2, 4])
+        }, { fps: 20 })
+        const [pair, end] = ['pair', 'end'].map((id) => strip.spans.find((span) => span.key === id)), frame = strip.frame!
+        at(1.5, () => {
+            expect(ends(pair!.bracket)[0]).toBeCloseTo(ends(strip.token(1).box)[0], 6)
+            expect(ends(pair!.bracket)[1]).toBeCloseTo(ends(strip.token(1).box)[1], 6)
+            expect(Math.abs(middle(pair!.text!) - middle(strip.token(1).box))).toBeLessThan(2)
+            expect(ends(frame)[0]).toBeLessThan(ends(strip.token(2).box)[0])
+            expect(ends(frame)[0]).toBeGreaterThan(ends(strip.token(1).box)[1])
+        })
+        at(2.5, () => {
+            expect(ends(end!.bracket)[0]).toBeCloseTo(ends(strip.token(3).box)[0], 6)
+            expect(ends(end!.bracket)[1]).toBeCloseTo(ends(strip.token(4).box)[1], 6)
+            expect(ends(frame)[1]).toBeGreaterThan(ends(strip.token(4).box)[1])
+            expect(ends(frame)[1]).toBeLessThan(ends(strip.token(4).box)[1] + 40 * 0.28)
+        })
+    })
+
+    it('stops a split or a merge of a token that the change before it still brings in', async () => {
+        const early = await failure((s) => { const strip = s.add(tokens(['r', 'a', 'i'], { size: 40 })); s.play(strip.merge(0, 1), strip.split(0, ['r', 'a'])) })
+        expect(early).toMatch(/split at 0 s takes token 0 \("ra"\), which the change before it still brings in until 0\.9 s\. Play the two one after the other/)
+        const flying = await failure((s) => { const strip = s.add(tokens(['r'], { size: 40 })); s.play(strip.append('a'), strip.merge(0, 1)) })
+        expect(flying).toMatch(/merge at 0 s takes token 1 \("a"\)/)
+        // One after the other, the same two changes work.
+        expect(await failure((s) => { const strip = s.add(tokens(['r', 'a', 'i'], { size: 40 })); s.play(seq(strip.merge(0, 1), strip.split(0, ['r', 'a']), strip.merge(1, 2))); expect(strip.texts).toEqual(['r', 'ai']) })).toBe('')
+    })
+
+    it('gives the points where a line to a token ends: under the rows, over the brackets, and at the sides', async () => {
+        await compile((s) => {
+            const strip = s.add(tokens(['The', ' cat', ' sat'], { size: 40, rows: { position: [0, 1, 2], id: [464, 3797, 3332] }, spans: [{ from: 1, to: 2, label: 'words' }] }).at(120, -60))
+            const world = (index: number, edge?: 'top' | 'bottom' | 'left' | 'right') => strip.toWorld(...strip.p(index, edge))
+            const cell = strip.token(1).box.bounds(), value = strip.row('id').values[1]!.bounds(), label = strip.spans[0]!.text!.bounds()
+            // The bottom point is under the last row, and the top point is over the label of the bracket.
+            expect(world(1)[0]).toBeCloseTo(cell.x + cell.width / 2, 6)
+            expect(world(1)[1]).toBeGreaterThan(value.y + value.height)
+            expect(world(1)[1]).toBeLessThan(value.y + value.height + 40)
+            expect(world(1, 'top')[1]).toBeLessThan(label.y)
+            expect(world(1, 'top')[1]).toBeGreaterThan(label.y - 40)
+            // A token with no bracket over it has its top point on its box.
+            expect(world(0, 'top')[1]).toBeCloseTo(strip.token(0).box.bounds().y, 6)
+            expect(world(1, 'left')).toEqual([cell.x, cell.y + cell.height / 2])
+            expect(world(1, 'right')).toEqual([cell.x + cell.width, cell.y + cell.height / 2])
+            // A strip with no rows has its bottom point on the box.
+            const bare = tokens(['a'], { size: 40 })
+            expect(bare.p(0)[1]).toBeCloseTo(bare.token(0).box.bounds().height / 2, 6)
+            // The region of a run of tokens is the box of their cells, and the region of a row is the part of the row under them.
+            const run = strip.region({ from: 1, to: 2 })
+            expect([run.left, run.right, run.top, run.bottom]).toEqual([cell.x, ends(strip.token(2).box)[1], cell.y, cell.y + cell.height])
+            const all = strip.region()
+            expect(all.left).toBeCloseTo(ends(strip.token(0).box)[0], 6)
+            const row = strip.region({ from: 1, to: 1, row: 'id' })
+            expect(row.top).toBeLessThan(value.y)
+            expect(row.bottom).toBeGreaterThan(value.y + value.height)
+            expect(row.top).toBeGreaterThan(strip.row('position').values[1]!.bounds().y)
+        })
+    })
+
+    it('measures the full boundary of a region in a rotated group', async () => {
+        await compile((s) => {
+            const strip = tokens(['a'], { size: 40, rows: { id: [7] } })
+            s.add(group(strip).rotate(Math.PI / 4).scale([1.2, 0.8]).at(120, -60))
+            const region = strip.region(), cell = strip.token(0).box.bounds()
+            expect(region.left).toBeCloseTo(cell.x, 6)
+            expect(region.top).toBeCloseTo(cell.y, 6)
+            expect(region.width).toBeCloseTo(cell.width, 6)
+            expect(region.height).toBeCloseTo(cell.height, 6)
+            const row = strip.region({ row: 'id' }), value = strip.value('id', 0)
+            expect(value).toBe('7')
+            const ink = strip.row('id').values[0]!.bounds()
+            expect(row.left).toBeLessThan(ink.x)
+            expect(row.right).toBeGreaterThan(ink.x + ink.width)
+            expect(row.top).toBeLessThan(ink.y)
+            expect(row.bottom).toBeGreaterThan(ink.y + ink.height)
+        })
+    })
+
+    it('links the tokens of two strips: one line for each pair, from under the upper token to over the lower one', async () => {
+        await compile((s) => {
+            const upper = s.add(tokens(['the', 'red', 'bicycle'], { size: 40, rows: { id: [1, 2, 3] } }).at(-100, -200))
+            const lower = s.add(tokens(['le', 'vélo', 'rouge'], { size: 40, spans: [{ from: 1, to: 2, label: 'noun' }] }).at(80, 150))
+            const lines = upper.links(lower, [[0, 0], [1, 2], [2, 1, 0.5]])
+            expect(lines.children).toHaveLength(3)
+            const tip = (line: Node, part: 'start' | 'end') => { const p = line.get('path')![0]!.p; return part === 'start' ? [p[0]!, p[1]!] : [p[p.length - 2]!, p[p.length - 1]!] }
+            const pairs = [[0, 0], [1, 2], [2, 1]] as const
+            pairs.forEach(([from, to], index) => {
+                expect(tip(lines.children[index]!, 'start')).toEqual(upper.toWorld(...upper.p(from, 'bottom')))
+                expect(tip(lines.children[index]!, 'end')).toEqual(lower.toWorld(...lower.p(to, 'top')))
+            })
+            // A line ends under the values of the upper strip, and over the label of the bracket of the lower one.
+            expect(tip(lines.children[1]!, 'start')[1]).toBeGreaterThan(upper.row('id').values[1]!.bounds().y + upper.row('id').values[1]!.bounds().height)
+            expect(tip(lines.children[1]!, 'end')[1]).toBeLessThan(lower.spans[0]!.text!.bounds().y)
+            // A pair with a weight has a line that is weaker than a pair with none.
+            expect(lines.children[2]!.get('strokeOpacity')).toBeLessThan(lines.children[0]!.get('strokeOpacity'))
+            // From the lower strip, the same pair has the same two points.
+            const back = lower.links(upper, [[0, 0]])
+            expect(tip(back.children[0]!, 'start')).toEqual(tip(lines.children[0]!, 'end'))
+            expect(tip(back.children[0]!, 'end')).toEqual(tip(lines.children[0]!, 'start'))
+        })
+        expect(await failure((s) => { const a = s.add(tokens(['a']).at(-200, 0)), b = s.add(tokens(['b']).at(200, 0)); a.links(b, [[0, 0]]) })).toMatch(/links: the two strips are at one height.*Put one strip over the other/)
+        expect(await failure((s) => { const a = s.add(tokens(['a']).at(0, -200)), b = s.add(tokens(['b']).at(0, 200)); a.links(b, [[0, 3]]) })).toMatch(/links: no token 3\. The strip has 1 token, 0/)
+        // Two strips with too little room between them: the room is from under the values of one to over the brackets of the other.
+        const near = await failure((s) => {
+            const a = s.add(tokens(['a', 'b'], { size: 40, rows: { id: [1, 2] } }).at(0, -110)), b = s.add(tokens(['c', 'd'], { size: 40, spans: [{ from: 0, to: 1, label: 'pair' }] }).at(0, 110))
+            a.links(b, [[0, 1]])
+        })
+        expect(near).toMatch(/links: the room between the two strips is \d+ px, from under the values of the upper one to over the brackets of the lower one\. A line needs 60 px or more\. Move the strips apart/)
+    })
+
+    it('reports zero room when endpoint clearances overlap at different heights', async () => {
+        for (const reverse of [false, true]) {
+            const error = await failure((s) => {
+                const upper = tokens(['a'], { size: 40, rows: { id: [1] } }).at(0, -70)
+                const lower = tokens(['b'], { size: 40, spans: [{ from: 0, to: 0, label: 'label' }] }).at(0, 70)
+                s.add(group(upper, lower).scale(0.8))
+                if (reverse) lower.links(upper, [[0, 0]])
+                else upper.links(lower, [[0, 0]])
+            })
+            expect(error).toMatch(/links: the room between the two strips is 0 px,.*A line needs 48 px or more\. Move the strips apart/)
+        }
+    })
+
+    it('keeps links clear of row values and bracket labels in a scaled group', async () => {
+        const film = await compile((s) => {
+            const upper = tokens(['le', ' vélo', ' rouge'], { size: 40, rows: { id: [1, 2, 3] } }).at(0, -70)
+            const lower = tokens(['the', ' red', ' bicycle'], { size: 40, spans: [{ from: 1, to: 2, label: 'noun phrase' }] }).at(40, 250)
+            s.add(group(upper, lower).at(350, 0).scale(0.8))
+            s.add(upper.links(lower, [[0, 0], [1, 2, 0.9], [2, 1, 0.4]]))
+            s.wait(2)
+        })
+        const report = await checkFilm(film, { textGap: 0.7 })
+        expect(report.diagnostics).toEqual([])
+    })
+
+    it('starts an arc over the box of a token, also when the token has a mark on its corner', async () => {
+        await compile((s) => {
+            const strip = s.add(tokens(['a', { text: 'b', state: 'cached' }, 'c'], { size: 40 }))
+            const arcs = strip.arcs(1, [1, 0, 1])
+            const box = strip.token(1).box.bounds()
+            for (const arc of arcs.children) {
+                const p = arc.get('path')![0]!.p
+                expect(p[0]).toBeCloseTo(box.x + box.width / 2, 6)
+                expect(p[1]).toBeCloseTo(box.y - 3, 6)
+            }
+        })
+    })
+
+    it('keeps a strip that wraps a plain row of chips: its tokens take a state, and it takes no part that needs one line', async () => {
+        let strip!: Strip
+        await compile((s) => {
+            strip = s.add(tokens('the quick brown fox jumps over the lazy dog'.split(' '), { size: 40, maxWidth: 500 }))
+            // The strip has more than one line.
+            expect(new Set(strip.chips.map((cell) => cell.get('y'))).size).toBeGreaterThan(1)
+            s.play(strip.mark((_, index) => index % 2 === 1, 'masked'), { duration: 1 })
+            expect(strip.find((token) => token.state === 'masked')).toEqual([1, 3, 5, 7])
+            // The points of a token on a second line are on that line.
+            expect(strip.p(8, 'left')[1]).toBeCloseTo(strip.token(8).get('y'), 6)
+            const box = strip.region({ from: 0, to: 8 })
+            expect(box.height).toBeGreaterThan(strip.token(0).box.bounds().height * 2)
+        }, { fps: 20 })
+        at(1, () => expect(strip.token(1).box.get('stroke')).toEqual(paint('dim')))
+        for (const run of [() => strip.append('x'), () => strip.split(0, ['t', 'he']), () => strip.merge(0, 1), () => strip.window(0, 1), () => strip.span('s', 0, 1)]) {
+            expect(message(run)).toMatch(/works on a strip of one line, and this strip starts new lines at maxWidth 500\. Leave out maxWidth, or give width/)
+        }
+        for (const options of [{ rows: { id: [1] } }, { spans: [{ from: 0, to: 0 }] }, { label: 'input' }, { even: true }, { width: 400 }]) {
+            expect(message(() => tokens(['a'], { maxWidth: 300, ...options }))).toMatch(/is for a strip of one line, and maxWidth starts new lines/)
+        }
+    })
+
+    it('makes a copy with its own tokens: a change of the copy leaves the first strip as it is', async () => {
+        await compile((s) => {
+            const first = s.add(tokens(['The', ' cat'], { size: 40, rows: { id: [464, 3797] }, spans: [{ from: 0, to: 1, label: 'words' }] }).at(0, -200))
+            const copy = s.add(first.clone().at(0, 200))
+            s.play(copy.append(' sat'), copy.mark(0, 'masked'), copy.span('more', 1, 1), copy.setValue('id', 0, 7))
+            expect([copy.count, copy.stateOf(0), copy.value('id', 0), copy.spans.length]).toEqual([3, 'masked', '7', 2])
+            expect([first.count, first.stateOf(0), first.value('id', 0), first.spans.length]).toEqual([2, 'kept', '464', 1])
+            // The parts of the copy are its own nodes.
+            expect(copy.token(0)).not.toBe(first.token(0))
+            expect(copy.token(0).parent).toBe(copy)
+            expect(copy.row('id').values[1]!.parent).toBe(copy.row('id'))
+            expect(copy.spans[0]!.first).toBe(copy.token(0))
+            // A strip with no token, no value and no bracket gives its copy lists of its own too.
+            const empty = s.add(tokens([], { size: 40, rows: { id: [] } }).at(-600, 0))
+            const filled = s.add(empty.clone().at(-600, 300))
+            s.play(filled.append('a'))
+            s.play(filled.span('all', 0, 0), filled.setValue('id', 0, 7))
+            expect([filled.count, filled.spans.length, filled.value('id', 0), filled.row('id').values.length]).toEqual([1, 1, '7', 1])
+            expect([empty.count, empty.spans.length, empty.row('id').values.length]).toEqual([0, 0, 0])
+            const bare = s.add(tokens(['a', 'b'], { size: 40, rows: { id: [] } }).at(600, 0))
+            const valued = s.add(bare.clone().at(600, 300))
+            s.play(valued.setValue('id', 1, 9))
+            expect([valued.value('id', 1), bare.value('id', 1)]).toEqual(['9', null])
+        })
+    })
+
+    it.each([false, true])('isolates empty lists when a grouped strip or its copy changes (source: %s)', async (changeSource) => {
+        await compile((s) => {
+            const empty = tokens([], { size: 40, rows: { id: [] } })
+            const bare = tokens(['a', 'b'], { size: 40, rows: { id: [] } })
+            const original = s.add(group(group(empty, bare)))
+            const copy = s.add(original.clone())
+            const strips = copy.children[0]!.children as Strip[]
+            const [filled, untouched] = changeSource ? [empty, strips[0]!] : [strips[0]!, empty]
+            const [valued, unvalued] = changeSource ? [bare, strips[1]!] : [strips[1]!, bare]
+            s.play(filled.append({ text: 'a', values: { id: 7 } }), valued.setValue('id', 1, 9), valued.span('only', 0, 1), valued.mark(0, 'dropped'))
+            expect([filled.count, filled.value('id', 0)]).toEqual([1, '7'])
+            expect([untouched.count, untouched.row('id').values.length]).toEqual([0, 0])
+            expect([valued.value('id', 1), valued.spanRange('only'), valued.stateOf(0)]).toEqual(['9', [0, 1], 'dropped'])
+            expect([unvalued.value('id', 1), unvalued.spanRange('only'), unvalued.stateOf(0)]).toEqual([null, null, 'kept'])
+            s.play(valued.span('only', null), valued.split(1, ['b', 'c']))
+            s.play(valued.merge(1, 2))
+            expect(unvalued.texts).toEqual(['a', 'b'])
+        })
+    })
+
+    it('keeps the edits of a cloned strip independent across a second group clone', async () => {
+        await compile((s) => {
+            const original = tokens(['a'], { rows: { id: [1] } })
+            const parent = s.add(group(original))
+            const copy = s.add(parent.clone())
+            const second = copy.children[0] as Strip
+            s.play(second.append({ text: 'b', values: { id: 2 } }))
+            s.play(second.span('pair', 0, 1), second.window(0, 1))
+            const third = s.add(copy.clone()).children[0] as Strip
+            s.play(third.merge(0, 1, { values: { id: 3 } }))
+            expect([original.texts, second.texts, third.texts]).toEqual([['a'], ['a', 'b'], ['ab']])
+            expect([second.spanRange('pair'), third.spanRange('pair')]).toEqual([[0, 1], [0, 0]])
+            expect([second.windowRange, third.windowRange]).toEqual([[0, 1], [0, 0]])
+            expect([second.value('id', 1), third.value('id', 0)]).toEqual(['2', '3'])
+            expect(second.token(0).data['box']).toBe(second.token(0).box)
+        })
+    })
+
+    it('lets a grouped clone change cells whose source is still arriving', async () => {
+        expect(await failure((s) => {
+            const strip = tokens(['r'], { size: 40 })
+            const original = s.add(group(strip))
+            s.play(strip.append('a', { duration: 2 }))
+            s.at(0.5, () => {
+                const copy = s.add(original.clone()).children[0] as Strip
+                s.play(copy.merge(0, 1))
+                expect(copy.texts).toEqual(['ra'])
+            })
+            expect(strip.texts).toEqual(['r', 'a'])
+        })).toBe('')
+    })
+
+    it('places every text of its own with room: the film check finds nothing in a strip with all its parts, in both looks', async () => {
+        const all = film({ fps: 20 }, (s) => {
+            const strip = tokens([{ text: '<s>' }, { text: 'You', state: 'cached' }, { text: ' are', state: 'masked' }, { text: ' kind', state: 'generated' }, { text: '.', state: 'dropped' }, { text: 'Hi', state: 'accepted' }], {
+                size: 40, label: 'input', rows: { position: [0, 1, 2, 3, 4, 5], id: [1, 887, 526, 8444, 29889, 6324] },
+                spans: [{ from: 0, to: 4, label: 'system' }, { from: 5, to: 5, label: 'user' }, { from: 0, to: 5, label: 'prompt' }],
+                states: { ...TOKEN_STATES, accepted: { color: 'green', mark: 'check' } },
+            })
+            s.play(strip.enter(), { duration: 1 })
+            s.play(strip.window(1, 3), { duration: 0.5 })
+            s.wait(1.5)
+            // The texts that a change makes are texts of the strip too: a token and its values, a value, a label.
+            s.play(strip.span('user', null), { duration: 0.3 })
+            s.play(strip.append({ text: ' there', values: { position: 6, id: 727 } }), strip.setValue('id', 0, 2), { duration: 0.6 })
+            s.play(strip.span('turn', 5, 6, { label: 'user turn' }), { duration: 0.4 })
+            s.wait(1.5)
+        })
+        for (const look of ['midnight', 'paper'] as const) {
+            for (const textGap of [0.3, 0.7]) expect((await checkFilm(all, { look, textGap })).diagnostics, `${look}, ${textGap}`).toEqual([])
+        }
+    })
+
+    it('says what is wrong with an input, and what to give', async () => {
+        await compile(() => { tokens(['a'], { rows: { id: [1] } }) })
+        const strip = tokens(['The', 'cat', 'sat'], { size: 40, rows: { id: [1, 2, 3] } })
+        const cases: [() => unknown, RegExp][] = [
+            [() => tokens('abc' as never), /the first argument is "abc"\. Give the list of the tokens/],
+            [() => tokens([{ text: null } as never]), /the text of token 0 is null/],
+            [() => tokens(['a\nb'], { rows: {} }), /token 0 \("a\\nb"\) has a line break\. A token is one line/],
+            [() => tokens([{ text: 'a', state: 'gone' }]), /no state "gone"\. The states are kept, masked, generated, cached, dropped/],
+            [() => tokens(['a'], { states: {} }), /states has no state/],
+            [() => tokens(['a'], { states: { kept: { mark: 'star' as never } } }), /the mark of the state "kept" is "star"/],
+            [() => tokens(['a'], { states: { kept: { color: 'nope' } } }), /the color of the state "kept" is "nope", which is not a color/],
+            [() => tokens(['a'], { size: 0, rows: {} }), /size is 0\. It is the text size of the tokens, more than 0/],
+            [() => tokens(['a'], { size: Infinity }), /size is Infinity/],
+            [() => tokens(['a'], { subSize: NaN }), /subSize is NaN/],
+            [() => tokens(['a'], { size: 0 }).mark(0, 'masked'), /size is 0/],
+            [() => tokens(['a\nb']).append('c'), /has a line break/],
+            [() => tokens(['a'], { rows: { id: [1, 2] } }), /the row "id" has 2 values, and the strip has 1 token/],
+            [() => tokens([{ text: 'a', sub: '1' }], { rows: { id: [1] } }), /token 0 has a sub, and a strip with rows has no line under a chip.*values: \{ id: "1" \}/],
+            [() => tokens([{ text: 'a', values: { nope: 1 } }], { rows: { id: [1] } }), /no row "nope"\. The rows are "id"/],
+            [() => tokens(['a', 'b'], { spans: [{ from: 0, to: 4 }] }), /span 0: no token 4\. The strip has 2 tokens, 0 to 1/],
+            [() => tokens(['a', 'b'], { spans: [{ from: 1, to: 0 }] }), /span 0: the run starts at token 1 and ends at token 0/],
+            [() => tokens(['a', 'b'], { spans: [{ from: 0, to: 0, label: 'x' }, { from: 1, to: 1, label: 'x' }] }), /two spans have the id "x"/],
+            [() => strip.token(9), /no token 9\. The strip has 3 tokens, 0 to 2/],
+            [() => strip.p(0, 'middle' as never), /the edge of p\(\) is 'top', 'bottom', 'left' or 'right', not "middle"/],
+            [() => strip.row('nope'), /no row "nope"\. The rows are "id"/],
+            [() => tokens(['a']).row('id'), /no row "id"\. The strip has no rows/],
+            [() => strip.region({ lane: 1 } as never), /region has no part "lane"\. Its parts are: from, to, row/],
+            [() => strip.mark(0, 'nope'), /no state "nope"/],
+            [() => strip.mark('cat' as never, 'masked'), /mark takes an index, a list of indexes, or a function/],
+            [() => strip.split(0, ['a']), /split takes the pieces of the token, two or more.*it got 1 piece/],
+            [() => strip.merge(2, 1), /merge takes the first and the last token of a run of two or more/],
+            [() => strip.merge(0, 1, { duration: 1 } as never), /the third argument of merge is the new token, and the options are the fourth/],
+            [() => strip.shiftRow('id', 0), /shiftRow moves the values of a row by a whole number of cells/],
+            [() => strip.window(0.5), /window takes the first and the last token under it/],
+            [() => strip.span('', 0), /span takes the id of the bracket first/],
+            [() => strip.links(strip, [[0, 0]]), /links joins two strips, and it got the same strip two times/],
+            [() => strip.append([]), /append got an empty list/],
+            [() => strip.append('x', { from: 'here' as never }), /append: from is "here"\. Give a node, or a point/],
+        ]
+        for (const [run, wanted] of cases) expect(message(run)).toMatch(wanted)
+        // An index is read when the change plays, so a token of an append before it is there.
+        expect(await failure((s) => { const made = s.add(tokens(['a'])); s.play(seq(made.append('b'), made.mark(1, 'generated'))) })).toBe('')
+        expect(await failure((s) => { const made = s.add(tokens(['a', 'b'])); s.play(made.mark(5, 'masked')) })).toMatch(/mark: no token 5\. The strip has 2 tokens, 0 to 1 now\. A change reads its index when the film plays it, after the changes before it in the same play/)
+        // A merge before a split in one play changes the index of the token to split, and the error says so.
+        expect(await failure((s) => { const made = s.add(tokens(['to', 'ken', 'ize', 'r'])); s.play(made.merge(0, 2), made.split(3, ['r', 's'])) })).toMatch(/split: no token 3\. The strip has 2 tokens, 0 to 1 now\. A change reads its index when the film plays it/)
+        expect(await failure((s) => { const made = s.add(tokens(['a', 'b'], { size: 40, even: true })); s.play(made.append('tokenization')) })).toMatch(/the token of append \("tokenization"\) needs a cell of (\d+) px.*Give the strip minWidth: \1, or leave out even/)
     })
 })
 
