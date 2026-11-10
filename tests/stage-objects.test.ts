@@ -1023,6 +1023,44 @@ describe('bar chart and histogram: states, a second series, cuts and a sort', ()
         expect(at(3, () => chart.values.map((value) => value.value))).toEqual([0.25, 0.75, 0])
     })
 
+    it('refuses an update that overlaps a mask in another branch of a play', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            // The sequence schedules its update at 2 s before the other branch schedules its update at 0.5 s.
+            const sequence = seq(chart.mask(2, { duration: 2 }), chart.update([0.2, 0.3, 0.5], { duration: 1 }))
+            const duringMask = delay(chart.update([0.1, 0.1, 0.8], { duration: 0.5 }), 0.5)
+            expect(() => s.play(par(sequence, duringMask))).toThrow(/(?=.*\bmask\b)(?=.*\bupdate\b).*\bseq\b/i)
+        })
+    })
+
+    it.each([
+        ['both bounds', {}, 1, false],
+        ['the upper bound', { min: 0 }, 1, true],
+        ['the lower bound', { max: 0 }, -1, false],
+    ] as const)('refuses concurrent reference and update calls when the scale sets %s', async (_bounds, scale, start, referenceFirst) => {
+        await compile((s) => {
+            const chart = s.add(barChart([{ label: 'a', value: start }], scale))
+            const update = chart.update([3 * start], { duration: 2 })
+            const reference = chart.reference([5 * start], { duration: 1 })
+            const play = () => referenceFirst ? s.play(reference, update) : s.play(update, reference)
+            expect(play).toThrow(/(?=.*\bmin\b)(?=.*\bmax\b).*\bseq\b/i)
+        })
+    })
+
+    it('lets the bar finish its update after its reference reaches the top of a fixed scale', async () => {
+        let chart!: Chart
+        const f = await compile((s) => {
+            chart = s.add(barChart([{ label: 'a', value: 1 }], { min: 0, max: 5, height: 100 }))
+            s.play(chart.update([3], { duration: 2 }), chart.reference([5], { duration: 1 }), { ease: linear })
+        })
+        const height = (part: Node, time: number) => pathBounds(drawn(f, time, part)[0]!.path)!.height
+        expect(height(chart.outlines[0]!, 1)).toBeCloseTo(100)
+        expect(height(chart.bar(0), 1)).toBeCloseTo(40)
+        expect(height(chart.outlines[0]!, 2)).toBeCloseTo(100)
+        expect(height(chart.bar(0), 2)).toBeCloseTo(60)
+        expect(at(2, () => chart.values[0]!.value)).toBe(3)
+    })
+
     it('holds the values of the bars as outlines, so an update shows before and after', async () => {
         let chart!: Chart
         const f = await compile((s) => {
@@ -1430,6 +1468,39 @@ describe('bar chart and histogram: states, a second series, cuts and a sort', ()
         })
     })
 
+    it('keeps a moving column and its connector anchor together in a rotated group', async () => {
+        let chart!: Chart
+        await compile((s) => {
+            chart = make()
+            s.add(group(chart).rotate(Math.PI / 4))
+            s.play(chart.sort([2, 0, 1]), { duration: 2, ease: linear })
+        })
+        for (const [time, x] of [[0, 200], [1, 0], [2, -200]] as const) {
+            at(time, () => {
+                expect(chart.p(2)[0]).toBeCloseTo(x)
+                const box = chart.region(2)
+                const [cx, cy] = chart.toWorld(x, 0)
+                expect(box.cx).toBeCloseTo(cx)
+                expect(box.cy).toBeCloseTo(cy)
+                expect(box.width).toBeCloseTo(600 / Math.sqrt(2))
+                expect(box.height).toBeCloseTo(600 / Math.sqrt(2))
+            })
+        }
+    })
+
+    it('reads the threshold and counts that are visible at the current frame', async () => {
+        let bars!: Chart, hist!: ReturnType<typeof histogram>
+        await compile((s) => {
+            bars = s.add(make({ cutAt: { value: 0.25 } }))
+            hist = s.add(bins({ cutAt: { value: 2 } }))
+            s.play(bars.cutAt(0.45), hist.cutAt(4), { duration: 2, ease: linear })
+            s.play(bars.cutAt(null), hist.cutAt(null))
+        })
+        expect(at(0, () => bars.below())).toEqual([2])
+        expect(at(1, () => bars.below())).toEqual([1, 2])
+        expect(at(1, () => hist.sides())).toEqual({ below: 5, above: 5 })
+    })
+
     it('lays a chart of rows out the other way: marks at the left of the labels, and the two cuts turned', async () => {
         let chart!: Chart
         const f = await compile((s) => {
@@ -1481,7 +1552,7 @@ describe('bar chart and histogram: states, a second series, cuts and a sort', ()
             expect(copy.state(0)).toBe('target')
             expect(copy.bars[0]).not.toBe(chart.bars[0])
             for (const act of [() => copy.mark(1, 'chosen'), () => copy.clearStates(), () => copy.mask(1), () => copy.reference(), () => copy.cutAt(0.5), () => copy.cutAfter(1), () => copy.sort()]) {
-                expect(act).toThrow(/^barChart: \w+\(\) is called on a copy of a chart\. A copy is a still picture, and its numbers follow the chart that it is a copy of\. Build a second chart from the data/)
+                expect(act).toThrow(/^barChart: \w+\(\) is called on a copy of a chart\. Build a second chart from the data/)
             }
             // The source is as it was: a later change of its order leaves the copy alone.
             s.play(chart.sort(), { duration: 1 })
@@ -1492,6 +1563,85 @@ describe('bar chart and histogram: states, a second series, cuts and a sort', ()
             expect(() => twin.outline([1])).toThrow('histogram: outline() is called on a copy of a histogram')
         })
     })
+
+    it('refuses to change a bar chart, a histogram, or its outline inside a cloned group', async () => {
+        let copies: Node[] = [], before = 0
+        const f = await compile((s) => {
+            const bars = make({ cutAt: { value: 0.25 }, cutAfter: { count: 1 } })
+            const hist = bins({ cutAt: { value: 2 } })
+            const outline = hist.outline([1, 4])
+            const original = s.add(group(group(bars, hist)))
+            s.play(bars.sort([2, 0, 1]), bars.mark(0, 'target'))
+            const first = s.add(original.clone())
+
+            // The second copy must take its order and state from the first copy.
+            s.play(bars.sort([1, 2, 0]), bars.mark(0, 'chosen'))
+            const second = s.add(first.clone())
+            copies = [first, second]
+            before = s.time
+            s.play(bars.update([0.4, 0.5, 0.1]), bars.cutAt(0.75), bars.cutAfter(2), hist.cutAt(4))
+
+            const nodes = [original, first, second].flatMap((root) => root.all())
+            expect(new Set(nodes).size).toBe(nodes.length)
+            for (const root of [first, second]) {
+                const parts = root.children[0]!.children
+                const barCopy = parts[0] as typeof bars, histCopy = parts[1] as typeof hist
+                const outlineCopy = histCopy.children[hist.children.indexOf(outline)] as typeof outline
+                for (const part of [barCopy.bar(0), barCopy.valueCut, barCopy.rankCut]) expect(barCopy.children).toContain(part)
+                expect(histCopy.children).toContain(histCopy.threshold)
+                expect(barCopy.order).toEqual([2, 0, 1])
+                expect(barCopy.state(0)).toBe('target')
+                expect(barCopy.cut).toEqual({ at: 0.25, after: 1 })
+                expect(histCopy.cut).toBe(2)
+                for (const change of [
+                    () => barCopy.mark(0, 'chosen'), () => barCopy.clearStates(), () => barCopy.mask(0),
+                    () => barCopy.reference(), () => barCopy.cutAt(0.5), () => barCopy.cutAfter(2),
+                    () => barCopy.sort(), () => histCopy.cutAt(3), () => outlineCopy.fillUp({ count: 1 }),
+                ]) expect(() => s.play(change())).toThrow(/copy|clone/i)
+                expect(() => histCopy.outline([2])).toThrow(/copy|clone/i)
+            }
+            expect(bars.order).toEqual([1, 2, 0])
+            expect(bars.state(0)).toBe('chosen')
+            expect(bars.cut).toEqual({ at: 0.75, after: 2 })
+            expect(hist.cut).toBe(4)
+            expect(outline.shown.value).toBe(2)
+        })
+        for (const copy of copies) {
+            const picture = (time: number) => drawn(f, time, copy).map((op) => [op.path, op.fillAlpha, op.strokeAlpha])
+            expect(picture(before).length).toBeGreaterThan(0)
+            expect(picture(f.duration)).toEqual(picture(before))
+        }
+    })
+
+    it('refuses overlapping state changes on one bar and recommends a sequence', async () => {
+        await compile((s) => {
+            const chart = s.add(make())
+            const changes = ['target', 'chosen', 'target'].map((state) => chart.mark(0, state, { duration: 1 }))
+            expect(() => s.play(lagged(changes, { lag: 0.2 }))).toThrow(/(?=.*\b(?:mark|state)\b).*\bseq\b/i)
+        })
+    })
+
+    for (const [name, makeCut] of [
+        ['barChart.cutAt', () => { const chart = make({ max: 3 }); return chart.cutAt.bind(chart) }],
+        ['barChart.cutAfter', () => { const chart = make(); return chart.cutAfter.bind(chart) }],
+        ['histogram.cutAt', () => { const chart = bins(); return chart.cutAt.bind(chart) }],
+    ] as const) {
+        it(`refuses overlapping calls to ${name} and recommends a sequence`, async () => {
+            await compile((s) => {
+                const cut = makeCut()
+                expect(() => s.play(cut(1, { duration: 1 }), delay(cut(2, { duration: 1 }), 0.5))).toThrow(/\bseq\b/i)
+            })
+        })
+
+        it(`refuses disjoint calls to ${name} scheduled in reverse time order`, async () => {
+            await compile((s) => {
+                const cut = makeCut()
+                const late = delay(cut(2, { label: 'late', duration: 1 }), 2)
+                const early = cut(1, { label: 'early', duration: 1 })
+                expect(() => s.play(late, early)).toThrow(/chronolog|\border\b|earl(?:y|ier).*first/i)
+            })
+        })
+    }
 
     it('refuses a color that the look does not have where the film names it', async () => {
         expect(() => make({ referenceColor: 'nope' })).toThrow('Unknown color: "nope"')

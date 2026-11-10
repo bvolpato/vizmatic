@@ -342,6 +342,8 @@ s.play(chart.cutAt(0.1, { label: 'min p' }))           // a line at a value. cha
 s.play(chart.sort())                                   // into rank order, one bar at a time
 ```
 
+To add a state and keep `mask()`, import `BAR_STATES` and spread it into the custom `states` table. To change a reference and bar values in one play, fix both ends of the scale with `min` and `max`, or use `ticks` with `max`. Sequence changes to the same bar state or cut. During motion, `below()` and `sides()` use the visible threshold, and `p(which)` and `region(which)` follow the bar. Animate the original chart or outline. For a complete example, see `examples/proofs/decoding-bars.ts`.
+
 Samples against a threshold, and two distributions on one axis. `histogram` counts the samples on each side of a line, and draws a second distribution as an outline on the same bins:
 
 ```ts

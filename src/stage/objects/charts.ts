@@ -1,5 +1,5 @@
 import { arcPath, polyPath, rectPath, ring, smoothPath, type Path, type Vec } from '../geometry'
-import { dynamic, Node, ownLabels } from '../node'
+import { dynamic, Node, ownLabels, rebindCloneParts } from '../node'
 import { circle, dot, line, polyline, svgPath } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { sampleStops, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
@@ -117,6 +117,7 @@ interface Look {
 }
 
 interface Cut {
+    last?: PlayWindow
     /** The line and the label. */
     node: Node
     /** The value of a cut at a value, or the number of bars before a cut after a rank. */
@@ -140,6 +141,37 @@ interface Move {
 
 /** Two times that differ by less than this are one time: the rounding of a sum of durations. */
 const SOON = 1e-6
+type PlayWindow = { t0: number; t1: number }
+type ValueChange = PlayWindow & { call: string; strict: boolean }
+
+function overlaps(a: PlayWindow, b: PlayWindow): boolean {
+    return a.t0 < b.t1 - SOON && b.t0 < a.t1 - SOON
+}
+
+function claimCut(cut: { last?: PlayWindow }, next: PlayWindow, call: string): void {
+    if (cut.last && next.t0 < cut.last.t1 - SOON) {
+        throw new Error(`${call} starts at ${seconds(next.t0)}, before the previous cut ends at ${seconds(cut.last.t1)}. Play changes to the same cut in a seq, in chronological order.`)
+    }
+    cut.last = next
+}
+
+function visibleCut(cut: { node: Node; drawn: Value; where: Value } | null): number | null {
+    return cut && cut.node.get('visible') && cut.drawn.value > 0 ? cut.where.value : null
+}
+
+// A dynamic drawing closes over its chart. A static copy must keep the drawing from the time of the copy.
+function snapshotDrawing(part: Node, copies: ReadonlyMap<Node, Node>): void {
+    if (!part.draw) return
+    const drawing = part.draw(clock.now)
+    const still = drawing instanceof Node ? drawing.clone() : drawing?.map((node) => node.clone()) ?? null
+    copies.get(part)!.draw = () => still
+}
+
+function snapshotCut<T extends { node: Node; where: Value; drawn: Value }>(cut: T | null, copies: ReadonlyMap<Node, Node>): T | null {
+    if (!cut) return null
+    for (const part of cut.node.children) snapshotDrawing(part, copies)
+    return { ...cut, node: copies.get(cut.node)!, where: new Value(cut.where.value), drawn: new Value(cut.drawn.value) }
+}
 /** The opacity of the fill of a bar, and of a bar whose state is dim. */
 const BAR_FILL = 0.84, DIM_FILL = 0.3
 /** How much of its number a dim bar keeps. */
@@ -181,6 +213,8 @@ function stateMark(kind: BarMark, r: number, width: number, paint: Paint): Node 
  * `sort()` moves the bars to a new order. A bar keeps its index through all of them.
  */
 export class BarChart extends Node {
+    private isCopy = false
+    private staticCopy = false
     readonly bars: Node[] = []
     readonly labels: Node[] = []
     readonly readouts: Node[] = []
@@ -227,20 +261,19 @@ export class BarChart extends Node {
     private slots: number[]
     private stateOf: string[]
     /** The time of the last change of the state of each bar. */
-    private changed: number[]
+    private changed: (PlayWindow | null)[]
     /** The moves of each bar, in the order of time. A part that a bar gets later follows them. */
     private moves: Move[][]
     private referenceTargets: number[] | null = null
     private cuts: { at: Cut | null; after: Cut | null } = { at: null, after: null }
     private lastSort: { t0: number; t1: number } | null = null
-    private lastValues: { call: string; t0: number; t1: number; strict: boolean } | null = null
+    private readonly valueChanges: ValueChange[] = []
+    private readonly protectedChanges: ValueChange[] = []
     /** What a bar gets beside its label and its number: the outline of the second series, and the mark of its state. */
     private carriers: (Node | null)[]
     private holders: (Node | null)[]
     /** How much of its number a bar shows, for a bar that was dim at some time. */
     private fades: (Value | undefined)[] = []
-    /** The chart that this one is a copy of, or null. */
-    private source: BarChart | null = null
 
     constructor(data: readonly BarDatum[], options: BarChartOptions = {}) {
         super()
@@ -272,7 +305,7 @@ export class BarChart extends Node {
         this.colors = data.map((d, i) => d.color ?? options.barColor ?? DEFAULT_SERIES[i % DEFAULT_SERIES.length]!)
         this.slots = data.map((_, i) => i)
         this.stateOf = data.map(() => 'plain')
-        this.changed = data.map(() => -Infinity)
+        this.changed = data.map(() => null)
         this.moves = data.map(() => [])
         this.carriers = data.map(() => null)
         this.holders = data.map(() => null)
@@ -456,7 +489,7 @@ export class BarChart extends Node {
      * it is the value of the cut that `cutAt()` drew.
      */
     below(value?: number): number[] {
-        const limit = value ?? this.cuts.at?.target ?? null
+        const limit = value ?? visibleCut(this.cuts.at)
         if (limit === null) throw new Error('barChart: below() needs a value, or a cut that `cutAt()` drew. Give the threshold, such as below(0.1)')
         if (!Number.isFinite(limit)) throw new Error(`barChart: below() got ${limit}. A threshold is a finite number`)
         return this.order.filter((index) => this.values[index]!.value < limit)
@@ -470,7 +503,10 @@ export class BarChart extends Node {
         const index = this.index(which, 'p()')
         const at = value ?? this.values[index]!.value
         if (!Number.isFinite(at)) throw new Error(`barChart: p() got the value ${at}. A value is a finite number`)
-        return this.spot(this.slots[index]! + 0.5, at)
+        const point = this.tip(index, at)
+        const axis = this.horizontal ? 1 : 0
+        point[axis] += this.bars[index]!.get(this.horizontal ? 'y' : 'x')
+        return point
     }
 
     /**
@@ -482,19 +518,22 @@ export class BarChart extends Node {
         const along = this.horizontal ? this.h : this.w
         let from = -along / 2, to = along / 2
         if (which !== undefined) {
-            const slot = this.slots[this.index(which, 'region()')]!
-            from = slot * this.band - along / 2
+            const index = this.index(which, 'region()')
+            from = index * this.band - along / 2 + this.bars[index]!.get(this.horizontal ? 'y' : 'x')
             to = from + this.band
         }
-        const [x0, y0] = this.horizontal ? this.toWorld(-this.w / 2, from) : this.toWorld(from, -this.h / 2)
-        const [x1, y1] = this.horizontal ? this.toWorld(this.w / 2, to) : this.toWorld(to, this.h / 2)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        const [left, right] = this.horizontal ? [-this.w / 2, this.w / 2] : [from, to]
+        const [top, bottom] = this.horizontal ? [from, to] : [-this.h / 2, this.h / 2]
+        const corners = [this.toWorld(left, top), this.toWorld(right, top), this.toWorld(left, bottom), this.toWorld(right, bottom)]
+        const xs = corners.map(([x]) => x), ys = corners.map(([, y]) => y)
+        return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
     // ── What a film plays ─────────────────────────────────────────────────
 
     /** Baseline and labels appear, then bars rise one after another while readouts count up. The second series and the cuts of the options arrive with them. */
     enter(options: AnimOptions = {}): Anim {
+        if (this.staticCopy) this.own('enter()')
         const lag = options.lag ?? 0.12
         return {
             label: 'barChart.enter', duration: options.duration ?? 1.6, ease: options.ease,
@@ -552,6 +591,7 @@ export class BarChart extends Node {
 
     /** Animate to new values. The scale follows unless it was fixed at creation. */
     update(values: readonly number[], options: AnimOptions = {}): Anim {
+        if (this.staticCopy) this.own('update()')
         if (values.length > this.bars.length) throw new Error(`barChart: update() got ${values.length} values, and the chart has ${this.bars.length} bars. Give one value for each bar`)
         this.checkValues('update()', values)
         this.checkScale('update()', values)
@@ -608,9 +648,10 @@ export class BarChart extends Node {
             label: 'barChart.mark', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = windowOf(ctx, 'barChart: mark()')
-                reveal(this, t0, ctx.stage)
                 const windows = staggered(picked.length, Math.max(0, options.lag ?? 0), t0, t1)
-                picked.forEach((index, order) => this.paint(index, state, windows[order]![0], windows[order]![1], ctx.ease, 'mark()'))
+                picked.forEach((index, order) => this.checkStateChange(index, state, windows[order]![0], 'mark()'))
+                reveal(this, t0, ctx.stage)
+                picked.forEach((index, order) => this.paint(index, state, windows[order]![0], windows[order]![1], ctx.ease))
             },
         }
     }
@@ -622,8 +663,9 @@ export class BarChart extends Node {
             label: 'barChart.clearStates', duration: options.duration ?? 0.5, ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = windowOf(ctx, 'barChart: clearStates()')
+                this.bars.forEach((_, index) => this.checkStateChange(index, 'plain', t0, 'clearStates()'))
                 reveal(this, t0, ctx.stage)
-                this.bars.forEach((_, index) => this.paint(index, 'plain', t0, t1, ctx.ease, 'clearStates()'))
+                this.bars.forEach((_, index) => this.paint(index, 'plain', t0, t1, ctx.ease))
             },
         }
     }
@@ -652,10 +694,11 @@ export class BarChart extends Node {
                     if (rest > 0) for (let i = 0; i < next.length; i++) next[i] = next[i]! * all / rest
                 }
                 this.checkScale('mask()', next)
+                for (const index of picked) this.checkStateChange(index, 'masked', t0, 'mask()')
                 this.claimValues('mask()', t0, t1, true)
                 reveal(this, t0, ctx.stage)
                 this.retarget(next, ctx)
-                for (const index of picked) this.paint(index, 'masked', t0, t1, ctx.ease, 'mask()')
+                for (const index of picked) this.paint(index, 'masked', t0, t1, ctx.ease)
             },
         }
     }
@@ -676,6 +719,7 @@ export class BarChart extends Node {
             label: 'barChart.reference', duration: options.duration ?? (values === null ? 0.5 : values ? 1.1 : 0.5), ease: options.ease,
             schedule: (ctx) => {
                 const [t0, t1] = windowOf(ctx, 'barChart: reference()')
+                this.claimValues('reference()', t0, t1, false)
                 reveal(this, t0, ctx.stage)
                 const shown = this.referenceShown.track.sample(t0) > 0
                 if (values === null) {
@@ -735,13 +779,18 @@ export class BarChart extends Node {
                 const [t0, t1] = windowOf(ctx, `barChart: ${call}`)
                 reveal(this, t0, ctx.stage)
                 let cut = this.cuts[kind]
+                if (cut) claimCut(cut, { t0, t1 }, `barChart: ${call}`)
                 if (where === null) {
                     if (!cut || cut.target === null) return
                     tweenValue(cut.drawn, 0, t0, t1, ctx.ease)
                     cut.target = null
                     return
                 }
-                if (!cut) cut = this.cuts[kind] = this.makeCut(kind, where, options, t0)
+                if (!cut) {
+                    cut = this.makeCut(kind, where, options, t0)
+                    cut.last = { t0, t1 }
+                    this.cuts = { ...this.cuts, [kind]: cut }
+                }
                 else if (options.label !== undefined || options.color !== undefined) {
                     // A call names what it changes. The rest of the look stays.
                     const look = cut.looks[cut.looks.length - 1]!
@@ -982,12 +1031,18 @@ export class BarChart extends Node {
         return made
     }
 
+    private checkStateChange(index: number, state: string, t0: number, call: string): void {
+        const last = this.changed[index]
+        if (last && t0 < last.t0 - SOON) throw new Error(`barChart: ${call} changes the state of ${this.nameOf(index)} at ${seconds(t0)}, and the film named a change of the same bar at ${seconds(last.t0)} before it. Name changes in chronological order.`)
+        if (this.stateOf[index] === state) return
+        if (last && t0 < last.t1 - SOON) throw new Error(`barChart: ${call} changes the state of ${this.nameOf(index)} before its previous change ends. Play changes to the same bar in a seq.`)
+    }
+
     /** A bar takes the look of a state. A mark of another shape comes in as the old one goes. */
-    private paint(index: number, state: string, t0: number, t1: number, ease: Ease, call: string): void {
+    private paint(index: number, state: string, t0: number, t1: number, ease: Ease): void {
         const from = this.stateOf[index]!
         if (from === state) return
-        if (t0 < this.changed[index]! - SOON) throw new Error(`barChart: ${call} changes the state of ${this.nameOf(index)} at ${seconds(t0)}, and the film named a change of the same bar at ${seconds(this.changed[index]!)} before it. The chart takes the changes of a bar in the order of time. Name this call first`)
-        this.changed[index] = t0
+        this.changed[index] = { t0, t1 }
         this.stateOf[index] = state
         const was = this.looks.get(from)!, look = this.looks.get(state)!
         const bar = this.bars[index]!
@@ -1087,23 +1142,26 @@ export class BarChart extends Node {
     // ── Checks ────────────────────────────────────────────────────────────
 
     /**
-     * A copy with its own nodes, and with the order and the states that the chart has now. The numbers, the
-     * outlines and the cuts of a copy are drawn from the values of its source, as the numbers always were.
-     * So a copy is a still picture: the verbs that this file adds refuse to act on it.
+     * Keep the shipped behavior of plain charts. Once a chart uses the new parts, copy its current picture,
+     * including dynamic numbers and cuts, so a change on the source cannot move a line on the copy.
      */
-    override clone(): this {
-        const copy = super.clone()
-        const own = copy as unknown as { source: BarChart; slots: number[]; stateOf: string[]; changed: number[]; moves: Move[][] }
-        own.source = this
-        own.slots = [...this.slots]
-        own.stateOf = [...this.stateOf]
-        own.changed = [...this.changed]
-        own.moves = this.moves.map((list) => [...list])
-        return copy
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        copy.isCopy = true
+        copy.slots = [...this.slots]
+        copy.stateOf = [...this.stateOf]
+        copy.staticCopy = Boolean(this.ticks || this.cuts.at || this.cuts.after || this.lastSort || this.carriers.some(Boolean))
+        if (!copy.staticCopy) return
+        for (const part of [...this.readouts, ...this.outlines]) snapshotDrawing(part, copies)
+        copy.cuts = { at: snapshotCut(this.cuts.at, copies), after: snapshotCut(this.cuts.after, copies) }
+        Object.assign(copy, {
+            values: this.values.map((value) => new Value(value.value)),
+            maxValue: new Value(this.maxValue.value),
+            minValue: new Value(this.minValue.value),
+        })
     }
 
     private own(call: string): void {
-        if (this.source) throw new Error(`barChart: ${call} is called on a copy of a chart. A copy is a still picture, and its numbers follow the chart that it is a copy of. Build a second chart from the data, and call ${call} on it`)
+        if (this.isCopy) throw new Error(`barChart: ${call} is called on a copy of a chart. Build a second chart from the data to animate it independently.`)
     }
 
     private nameOf(index: number): string {
@@ -1169,11 +1227,23 @@ export class BarChart extends Node {
      * a change of the values at the same time would leave a picture that follows one of the two only.
      */
     private claimValues(call: string, t0: number, t1: number, strict: boolean): void {
-        const last = this.lastValues
-        if (last && (strict || last.strict) && t0 < last.t1 - SOON && t1 > last.t0 + SOON) {
+        if (this.isCopy) return
+        const protectedChange = strict || call === 'reference()'
+        const change = { call, t0, t1, strict }
+        // Existing films can schedule many ordinary updates. Only the new verbs can conflict with them.
+        for (const last of protectedChange ? this.valueChanges : this.protectedChanges) {
+            if (call === 'reference()' && last.call === call && t0 < last.t1 - SOON) throw new Error('barChart: play changes to the reference in a seq, in chronological order.')
+            if (!overlaps(change, last)) continue
+            if (call === 'reference()' || last.call === 'reference()') {
+                if (call === 'enter()' || last.call === 'enter()') throw new Error('barChart: enter() animates the outlines. Play reference() after enter() in a seq.')
+                if (this.fixedMin === undefined || this.fixedMax === undefined) throw new Error('barChart: reference() and a bar update share the automatic scale. Set both min and max for concurrent changes, or play the changes in a seq.')
+                continue
+            }
+            if (!(strict || last.strict)) continue
             throw new Error(`barChart: ${call} plays from ${seconds(t0)} to ${seconds(t1)}, and ${last.call} plays from ${seconds(last.t0)} to ${seconds(last.t1)}. Both set the values of the bars, so the picture would follow one of them only. Play the two in a \`seq\`, or give one \`update()\` the last values`)
         }
-        this.lastValues = { call, t0, t1, strict }
+        this.valueChanges.push(change)
+        if (protectedChange) this.protectedChanges.push(change)
     }
 }
 
@@ -1212,6 +1282,7 @@ export interface HistogramOptions extends ChartOptions {
 }
 
 interface HistogramCut {
+    last?: PlayWindow
     node: Node
     where: Value
     drawn: Value
@@ -1238,6 +1309,7 @@ function binned(samples: readonly number[], bins: number, low: number, high: num
  * makes it. `fillUp()` drops its samples in, in order, as the histogram does with its own.
  */
 export class HistogramOutline extends Node {
+    private isCopy = false
     readonly shown: Value
     readonly total: number
     private readonly samples: readonly number[]
@@ -1245,7 +1317,7 @@ export class HistogramOutline extends Node {
 
     constructor(private readonly owner: Histogram, samples: readonly number[], options: { color?: ColorInput; width?: number } = {}) {
         super()
-        this.samples = samples
+        this.samples = [...samples]
         this.total = samples.length
         this.assigned = binned(samples, owner.bins, owner.range[0], owner.range[1])
         this.shown = new Value(samples.length)
@@ -1292,8 +1364,15 @@ export class HistogramOutline extends Node {
         return { below, above }
     }
 
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        copy.isCopy = true
+        Object.assign(copy, { shown: new Value(this.shown.value) })
+        snapshotDrawing(this.children[0]!, copies)
+    }
+
     /** Samples arrive in order, from none to `count` (all of them by default). */
     fillUp(options: AnimOptions & { count?: number } = {}): Anim {
+        if (this.isCopy) throw new Error('histogram: fillUp() is called on a copy of an outline. Build a second outline to animate its samples.')
         const shown = this.shown
         const target = options.count ?? this.total
         if (!(Number.isFinite(target) && target >= 0 && target <= this.total)) throw new Error(`histogram: outline: fillUp() got the count ${target}. It is from 0 to ${this.total}, the number of samples`)
@@ -1314,6 +1393,8 @@ export class HistogramOutline extends Node {
  * `outline()` draws a second distribution over the first.
  */
 export class Histogram extends Node {
+    private isCopy = false
+    private staticCopy = false
     readonly shown: Value
     readonly bins: number
     readonly range: readonly [number, number]
@@ -1329,8 +1410,6 @@ export class Histogram extends Node {
     private readonly labelSize: number
     private readonly font: TextOptions['font']
     private line: HistogramCut | null = null
-    /** The histogram that this one is a copy of, or null. */
-    private source: Histogram | null = null
 
     constructor(samples: readonly number[], options: HistogramOptions = {}) {
         super()
@@ -1341,7 +1420,7 @@ export class Histogram extends Node {
         const high = options.range?.[1] ?? Math.max(...samples)
         this.range = [low, high]
         this.total = samples.length
-        this.samples = samples
+        this.samples = [...samples]
         this.assigned = new Int32Array(samples.length)
         const counts = new Int32Array(this.bins)
         samples.forEach((sample, i) => {
@@ -1434,7 +1513,7 @@ export class Histogram extends Node {
      * it is the value of the threshold. A sample outside the range of the histogram is in no bar and in no count.
      */
     sides(value?: number): { below: number; above: number } {
-        const limit = value ?? this.line?.target ?? null
+        const limit = value ?? visibleCut(this.line)
         if (limit === null) throw new Error('histogram: sides() needs a value, or a threshold that `cutAt()` drew')
         if (!Number.isFinite(limit)) throw new Error(`histogram: sides() got ${limit}. A threshold is a finite number`)
         return this.sidesAt(limit)
@@ -1477,6 +1556,7 @@ export class Histogram extends Node {
 
     /** Samples arrive in order, from none to `count` (all of them by default). */
     fillUp(options: AnimOptions & { count?: number } = {}): Anim {
+        if (this.staticCopy) this.own('fillUp()')
         const shown = this.shown
         const target = options.count ?? this.total
         return {
@@ -1505,13 +1585,17 @@ export class Histogram extends Node {
                 const [t0, t1] = windowOf(ctx, 'histogram: cutAt()')
                 reveal(this, t0, ctx.stage)
                 let cut = this.line
+                if (cut) claimCut(cut, { t0, t1 }, 'histogram: cutAt()')
                 if (value === null) {
                     if (!cut || cut.target === null) return
                     tweenValue(cut.drawn, 0, t0, t1, ctx.ease)
                     cut.target = null
                     return
                 }
-                if (!cut) cut = this.line = this.makeCut(value, look, t0)
+                if (!cut) {
+                    cut = this.line = this.makeCut(value, look, t0)
+                    cut.last = { t0, t1 }
+                }
                 // A call names what it changes. The rest of the look stays.
                 else if (Object.keys(look).length > 0) cut.looks.push({ time: t0, options: { ...this.cutLook(t0), ...look } })
                 const visible = sampleAt(cut.node, 'visible', t0) && cut.drawn.track.sample(t0) > 0
@@ -1585,17 +1669,20 @@ export class Histogram extends Node {
     }
 
     /**
-     * A copy with its own nodes. Its bars, its threshold and its outlines are drawn from the samples that show
-     * in its source, as its bars always were. So a copy is a still picture: `cutAt()` and `outline()` refuse it.
+     * A histogram with a threshold or an outline keeps its current bins and counts when copied.
+     * A plain histogram retains the shipped behavior of its dynamic bars.
      */
-    override clone(): this {
-        const copy = super.clone()
-        ;(copy as unknown as { source: Histogram }).source = this
-        return copy
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        copy.isCopy = true
+        copy.staticCopy = Boolean(this.line || this.children.some((part) => part instanceof HistogramOutline))
+        if (!copy.staticCopy) return
+        Object.assign(copy, { shown: new Value(this.shown.value) })
+        snapshotDrawing(this.children[0]!, copies)
+        copy.line = snapshotCut(this.line, copies)
     }
 
     private own(call: string): void {
-        if (this.source) throw new Error(`histogram: ${call} is called on a copy of a histogram. A copy is a still picture, and its bars follow the histogram that it is a copy of. Build a second histogram from the samples, and call ${call} on it`)
+        if (this.isCopy) throw new Error(`histogram: ${call} is called on a copy of a histogram. Build a second histogram from the samples to animate it independently.`)
     }
 
     /** Overlay a curve, such as the fitted density, on the same axes. f returns a count. */
