@@ -84,6 +84,41 @@ describe('vizmatic film', () => {
         }
     }, 120_000)
 
+    it.skipIf(process.platform === 'win32')('turns the dither of the bloom on with --dither and off with --no-dither, at any quality', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'short.ts'), shortFilm)
+        // A stand-in for FFmpeg: it keeps its arguments beside the output, and copies the raw frames to the output path.
+        const encoder = join(directory, 'keep-frames.sh')
+        await writeFile(encoder, '#!/bin/sh\ncase "$1" in -h) exit 0;; esac\nfor last; do :; done\nprintf \'%s\\n\' "$@" > "$last.args"\nexec cat > "$last"\n', { mode: 0o755 })
+        const render = async (name: string, flags: string[]) => {
+            const out = join(directory, name)
+            const result = cli(['film', 'short.ts', '--out', out, '--format', 'mp4,png', '--width', '160', '--workers', '1', '--ffmpeg', encoder, '--json', ...flags], directory)
+            expect(result.status, result.stderr).toBe(0)
+            const args = (await readFile(join(out, (await readdir(out)).find((file) => file.endsWith('.args'))!), 'utf8')).split('\n')
+            const at = args.indexOf('-x264-params')
+            return { frames: await readFile(join(out, 'short.mp4')), still: await readFile(join(out, 'short.png')), settings: at < 0 ? undefined : args[at + 1] }
+        }
+        // At standard, the default is the plain bloom and the encoder settings of a film alone.
+        const standard = await render('standard', [])
+        expect(standard.settings).toBeUndefined()
+        const on = await render('standard-on', ['--dither'])
+        expect(on.settings).toBe('aq-strength=1.0:subme=6:trellis=0')
+        expect(Buffer.compare(on.frames, standard.frames)).not.toBe(0)
+        const off = await render('standard-off', ['--no-dither'])
+        expect(off.settings).toBeUndefined()
+        expect(Buffer.compare(off.frames, standard.frames)).toBe(0)
+        // A still has the dither unless --no-dither turns it off.
+        expect(Buffer.compare(on.still, standard.still)).toBe(0)
+        expect(Buffer.compare(off.still, standard.still)).not.toBe(0)
+        // At high, the default is the dither, with the settings that keep its grain.
+        const high = await render('high', ['--quality', 'high'])
+        expect(high.settings).toBe('subme=6:trellis=0')
+        const highOff = await render('high-off', ['--quality', 'high', '--no-dither'])
+        expect(highOff.settings).toBeUndefined()
+        expect(Buffer.compare(highOff.frames, high.frames)).not.toBe(0)
+        expect((await render('draft-on', ['--quality', 'draft', '--dither'])).settings).toBe('aq-strength=2.0')
+    }, 240_000)
+
     it('writes only stills for --frame', async () => {
         const directory = await tempDirectory()
         await writeFile(join(directory, 'short.ts'), shortFilm)

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { encode } from 'fast-png'
 import { circle, compileFilm, film, frameToSvg, image, resolveImageAsset, type CompiledFilm, type Frame } from '../src/stage/index'
 import { renderFilmGif, renderFilmVideo } from '../src/stage/export'
-import { RasterPool, framesToJob, sameRasterJob, type RasterJob } from '../src/stage/raster'
+import { BLOOM_SOURCE, RasterPool, framesToJob, sameRasterJob, type RasterJob } from '../src/stage/raster'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
 
@@ -51,7 +51,49 @@ async function fixture(moving = false, bloom = .8, transparent = false) {
     return { compiled, updates: () => updates }
 }
 
+/** The bloom of the worker, to run on pixels in the test. */
+const bloom = new Function(`${BLOOM_SOURCE}; return bloom`)() as (pixels: Uint8Array, w: number, h: number, amount: number, background: readonly number[], dither: boolean) => void
+
+/** A frame with motion blur from three samples that differ, and the average of the samples with no bloom. */
+async function blurred() {
+    const f = await fixture(true), pool = new RasterPool(1)
+    try {
+        const samples = [f.compiled.frame(.1), f.compiled.frame(.6), f.compiled.frame(.9)]
+        const job = raw(framesToJob(samples, 97, background, 57))
+        const frame = await pool.run(job)
+        // The same job with no bloom is the average alone.
+        const average = await pool.run({ ...raw(job), bloom: 0 })
+        const alone = await Promise.all(samples.map((sample) => pool.run({ ...raw(framesToJob([sample], 97, background, 57)), bloom: 0 })))
+        expect(Buffer.compare(alone[0]!, alone[1]!)).not.toBe(0)
+        expect(Buffer.compare(alone[1]!, alone[2]!)).not.toBe(0)
+        return { job, frame, average }
+    } finally {
+        await pool.close()
+    }
+}
+
 describe('the shutter samples of one frame', () => {
+    it('writes the bloom and its dither once, on the average of the samples, and not on each sample', async () => {
+        const { job, frame, average } = await blurred()
+        const expected = average.slice()
+        bloom(expected, job.width, job.height, job.bloom, job.background, true)
+        expect(Buffer.compare(frame, expected)).toBe(0)
+    })
+
+    it('dithers a frame with motion blur: each byte is the plain byte or one level above it, and many are above', async () => {
+        const { job, frame, average } = await blurred()
+        const plain = average.slice()
+        bloom(plain, job.width, job.height, job.bloom, job.background, false)
+        let lifted = 0, outside = 0
+        for (let i = 0; i < frame.length; i++) {
+            const step = frame[i]! - plain[i]!
+            if (step === 1) lifted++
+            else if (step !== 0) outside++
+        }
+        expect(outside).toBe(0)
+        expect(lifted).toBeGreaterThan(500)
+    })
+
     it('rasterizes equal neighbors among the sub-frames once, and averages them as if each had its own raster', async () => {
         const f = await fixture(true, 0), pool = new RasterPool(1)
         const a = f.compiled.frame(.1), b = f.compiled.frame(.6), c = f.compiled.frame(.9)
@@ -143,6 +185,7 @@ describe('a frame that is equal to the frame before', () => {
         for (const change of [
             (job: RasterJob) => { job.width = 99 }, (job: RasterJob) => { job.height = 59 }, (job: RasterJob) => { job.bloom = .1 },
             (job: RasterJob) => { job.background = [255, 255, 255] },
+            (job: RasterJob) => { job.dither = false },
         ]) {
             const changed = make()
             change(changed)
