@@ -340,6 +340,19 @@ const word = s.add(bitField([
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
 
+Use `tokens` for a sentence, a sequence of bytes, or the parts of a prompt. Put IDs, positions, or targets in named rows under the cells. Mark prompt tokens as masked, or append generated tokens as they arrive. A bracket names a span, and a window highlights a range. Give the strip `size: 32` or larger for a 1080p film. The default token size is 22, and the row values use 0.82 of the token size.
+
+```ts
+const words = ['<s>', 'user', 'Sit', '!', 'bot', 'Good', 'dog', '</s>']
+const chat = tokens(words, { size: 44, even: true, label: 'input', rows: { target: words } })
+s.play(chat.enter())
+s.play(chat.shiftRow('target', -1))
+const prompt = [0, 1, 2, 3]
+s.play(chat.mark(prompt, 'masked'), ...prompt.map((index) => chat.setValue('target', index, -100)))
+```
+
+Use `split` and `merge` to show how a tokenizer changes its pieces. Each change reads its indexes when it plays. Merge disjoint pairs from right to left so earlier indexes stay valid. Reserve space with `width` when a strip will grow. Use `strip.p(index)` for a line endpoint and `strip.region({ from, to })` to place a note beside a range. Read these positions again after moving the tokens.
+
 A bounded queue with a head and a tail, such as a ring of io_uring or a virtqueue. Do not draw the slots and the two pointers by hand. `ringBuffer` keeps the pointers apart when both are at one slot, and `counts` shows that the index runs on while the slot wraps:
 
 ```ts

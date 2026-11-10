@@ -1170,9 +1170,120 @@ export default film({ fps: 30 }, (s) => {
 
 `word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
 
+## Token strips
+
+`tokens(items, options)` draws a strip of cells, one for each token, word, character or byte: the text as a language model reads it. Put IDs or training targets in rows below the tokens. Use a bracket to name a span, or slide a window across the strip. When you split or merge tokens, their values, brackets, and window move with them.
+
+```film paired label="Shift next-token targets left and exclude the four prompt targets from the loss"
+import { fadeIn, film, lagged, text, tokens } from 'vizmatic/stage'
+
+const WORDS = ['<s>', 'user', 'Sit', '!', 'bot', 'Good', 'dog', '</s>']
+
+export default film({ fps: 30 }, (s) => {
+    const chat = tokens(WORDS, {
+        size: 44, even: true, label: 'input',
+        rows: { position: WORDS.map((_, index) => index), target: WORDS },
+        spans: [{ from: 1, to: 3, label: 'user turn', color: 'orange' }, { from: 4, to: 7, label: 'assistant turn', color: 'green' }],
+    }).at(90, -70)
+    s.play(chat.enter(), { duration: 1.6 })
+    s.wait(0.6)
+    // Each position predicts the token after it, so the row of targets moves one cell to the left.
+    s.play(chat.shiftRow('target', -1), { duration: 1.4 })
+    s.wait(1)
+    // The loss counts what the assistant writes. The four targets that the prompt gives get the label -100.
+    const prompt = [0, 1, 2, 3]
+    s.play(chat.mark(prompt, 'masked'), lagged(prompt.map((index) => chat.setValue('target', index, '-100')), { lag: 0.5 }), { duration: 1.8 })
+    s.play(fadeIn(text(`the loss counts ${chat.count - 1 - prompt.length} of ${chat.count - 1} targets`, { size: 44 }).at(0, 260)), { duration: 0.5 })
+    s.wait(1.5)
+})
+```
+
+A token is a text, or an object with its `text`: `{ text: ' cat', state: 'generated', color: 'teal', values: { id: 3797 } }`. A space in a token shows as a middle dot, as a tokenizer shows it. An empty string leaves a cell blank. For a line break in an annotated strip, use a visible token such as `\\n`. `color` is the color of the cells, `colors` a ramp of colors across the strip, `gap` the room between two cells, and `radius` the corners.
+
+`size` is the text size of the tokens. It is 22 when the film gives none, as it always was: a size for a figure in a document. For a film at 1080p, give `size: 32` or more. The values of the rows, the names of the rows and the labels of the brackets are 0.82 of `size`, which is 26 px at `size: 32`, and `rowSize` sets them. The tokens and the values are in mono, and `font` is the font of the tokens. The names and the labels are in the font of the film.
+
+A cell is as wide as its text and its values need. `minWidth` is the least width of a cell, and `even: true` gives every cell the width of the widest one, so the columns are a grid. `width` is the room of the strip on one line: the first token is at the left end of the room, `.at()` places the middle of the room, and the layout measures the room, so `fitted(region, (width) => tokens(words, { width }))` fills a region. Tokens that do not fit in the room are an error that names the width that fits. Without `width`, the strip is as wide as its tokens, and `.at()` places their middle. The left edge stays fixed as the strip grows or shrinks. A split or merge can move a token center when its width changes.
+
+A token has one of the states of `TOKEN_STATES`: `kept`, `masked`, `generated`, `cached`, and `dropped`. A kept token has a plain outline. Hatching marks a masked cell, a bottom bar marks a generated token, and a corner dot marks a cached token. A dropped token has a dashed outline and a line through its text. For another subject, give your own record, such as `states: { ...TOKEN_STATES, accepted: { color: 'green', mark: 'check' }, rejected: { color: 'red', mark: 'cross', dim: true } }`. A state has a `color` (without one, the cell keeps its own color), a `fill` opacity, a `dash` outline, a `dim` text, and a `mark`: `'hatch'`, `'strike'`, `'bar'`, `'dot'`, `'check'`, or `'cross'`. A token with no state is in the first state of the record.
+
+`strip.mark(which, state)` changes the state of tokens, one after another from the left. `which` is an index, a list of indexes, or a function of a token and its index. The strip calls the function when the film plays the change, so in `seq(strip.mark([0, 1], 'cached'), strip.mark((token) => token.state === 'cached', 'dropped'))` the second change finds the tokens of the first. `strip.stateOf(index)`, `strip.count`, `strip.texts`, and `strip.find(test)` read the strip after the changes that the film has played so far. `find` takes the text of a token, or a function, and gives indexes: `strip.find('the')`, `strip.find((token) => token.state === 'masked')`.
+
+`rows` gives the rows of values under the cells, by name: `rows: { position: [0, 1, 2], id: [464, 3797, 3332] }`. A value is a text or a number, and each value is under the middle of its token. The name of a row is at its left, and `label` names the line of cells in the same way. `strip.setValue(row, index, value)` changes one value in place: the old text fades out, then the new one fades in. `strip.shiftRow(row, by)` moves the values of a row by whole cells: with -1, each value goes under the token before its own, as the targets of a language model are under its inputs, and the value that leaves the strip fades out. A value that is too wide for its cell is an error that names the `minWidth` that fits, so give `even: true` to a strip whose values change cells. `strip.value(row, index)` reads a value. `strip.row(name)` is the node of a row, with its `name` and its `values`, and `strip.column(index)` is the cell of a token with its value in each row, so `indicate(strip.column(5))` lights one column through all rows. A strip with rows has no `sub` under a chip: `sub` is the one line of the old row of chips, and a row takes its place.
+
+`spans` gives the brackets over runs of tokens: `spans: [{ from: 0, to: 4, label: 'system prompt', color: 'purple' }]`. A bracket goes from the first cell of its run to the last, with its label over its middle. A bracket whose line or label would meet another one is a level higher. `strip.span(id, from, to, { label, color })` draws a new bracket by its id, with the id as its label unless `label` gives another. A later call with the same id slides the bracket to other tokens, and a new `label` takes the place of the old one. `strip.span(id, null)` takes it away. A bracket that would move onto another one is an error that names the two. `strip.window(from, to)` puts one outline around a run of cells. The next call slides it and changes its size, and `strip.window(null)` takes it away. `strip.windowRange` and `strip.spanRange(id)` give the first and the last token of each.
+
+```film paired label="Split two words into ASCII bytes and merge a repeated pair in both words"
+import { fadeIn, film, text, tokens } from 'vizmatic/stage'
+
+// Each character in these two ASCII words occupies one byte.
+const bytes = (ascii: string) => [...ascii].map((letter) => ({ text: letter, values: { id: letter.charCodeAt(0) } }))
+
+export default film({ fps: 30 }, (s) => {
+    // The room is for the ten bytes: the strip is at its widest after the split.
+    const strip = tokens(['rain', ' train'], { size: 56, width: 1100, rows: { id: [] } }).at(40, -80)
+    s.play(strip.enter(), { duration: 0.8 })
+    s.wait(0.6)
+    // The later word splits first, so the index of the first one stays.
+    s.play(strip.split(1, bytes(' train')), strip.split(0, bytes('rain')), { duration: 1.2 })
+    s.wait(0.5)
+    const byteCount = strip.count
+    // Count each pair of neighbors: a window of two cells goes along the strip.
+    for (let index = 0; index + 1 < strip.count; index++) s.play(strip.window(index, index + 1), { duration: index === 0 ? 0.4 : 0.22 })
+    s.play(strip.window(null), { duration: 0.3 })
+    // Merge each occurrence of the chosen pair and assign the same ID to both results.
+    const mergeAll = (left: string, right: string, id: number) => {
+        const starts = strip.find((token, index) => token.text === left && strip.texts[index + 1] === right)
+        // From the right, so that a merge does not change the index of a pair that is still to come.
+        s.play(...starts.reverse().map((index) => strip.merge(index, index + 1, { values: { id } })), { duration: 1.1 })
+    }
+    mergeAll('r', 'a', 256)
+    mergeAll('ra', 'i', 257)
+    mergeAll('rai', 'n', 258)
+    s.play(fadeIn(text(`${byteCount} bytes become ${strip.count} tokens`, { size: 44 }).at(0, 200)))
+    s.wait(2)
+})
+```
+
+`strip.append(token)` adds a token at the end, or a list of tokens one after another, and the tokens that are there do not move. `from` is a node or a point of the stage: the token starts there and flies to its place, such as the bar of the candidate that the model picked. `strip.split(index, pieces)` cuts one token into two pieces or more, and `strip.merge(from, to, token)` joins the tokens from `from` to `to` into one. Without `token`, the new text is the old texts, joined. A piece has the state and the color of its token unless it names its own, and the new token of a merge has the color of the first old one, and their state when they share one. A piece and a new token give their `values`, and the values of the old tokens leave. When the pieces spell the token, each letter keeps its place and moves to its piece, and the box is cut between two letters. With another text, such as a character that becomes its bytes, the old text leaves before the new one comes.
+
+The indexes of a change are those of the strip when the film plays the change: after the changes before it in the same play. So merge pairs from the right, as the example does, or play one change after another. An index that the strip does not have then is an error that names the tokens that it has. Changes to different tokens can share one play. Schedule marks on the same token in time order. Each mark must finish before the next one starts. Use `seq` or separate calls to `s.play` if their times overlap. A `split` or a `merge` of a token that the change before it still brings in is an error that says to play them one after the other. A strip with `maxWidth` wraps and is a plain row of chips: its tokens take states, and it takes no rows, brackets, window, or change of its tokens.
+
+`strip.token(index)` is the cell of a token, with its `box`, its `text` and the marks of its state. `strip.p(index, edge)` is the middle of an edge of the cell, in the coordinates of the strip: `'bottom'` by default, and `'top'`, `'left'` or `'right'`. The bottom point is under the rows of values and the top point is over the brackets, so a line from it crosses no text of the strip. `strip.region({ from, to, row })` is the box of a run of cells in stage pixels, or of the part of a row under them, for `place` and `beside` of the layout. These places are fixed: read them again after a change moves a token. `strip.arcs(from, weights)` draws curved lines from one token to others of the same strip, for attention. `strip.links(other, pairs)` draws lines to the tokens of another strip, one for each pair of indexes, from under the upper token to over the lower one: a source and its translation, a question and the words of a passage. A pair with a third number, a weight from 0 to 1, has a wider and brighter line for a weight near 1. Create the lines after placing both strips. Recreate the lines after moving their endpoints. The two strips are one over the other, with a room of 1.5 of `size` or more from under the values of the upper one to over the brackets of the lower one: with less, the call is an error that says to move the strips apart.
+
+```film paired label="Reuse a cached prefix and append the generated answer one token at a time"
+import { draw, fade, fadeIn, film, namedBox, tokens } from 'vizmatic/stage'
+
+const SYSTEM = ['You', ' are', ' a', ' helpful', ' bot', '.']
+
+export default film({ fps: 30 }, (s) => {
+    const first = tokens([...SYSTEM, ' Hi'], { size: 40, label: 'request 1', width: 1300 }).at(110, -300)
+    const second = tokens([...SYSTEM, ' Bye'], { size: 40, label: 'request 2', width: 1300, color: 'purple' }).at(110, 0)
+    s.play(first.enter(), { duration: 1 })
+    s.play(second.enter(), { duration: 1 })
+    // A line joins each pair of tokens that are the same, from the left.
+    const same = first.links(second, SYSTEM.map((_, index) => [index, index] as const), { color: 'yellow' })
+    s.play(draw(same, { lag: 0.35 }), { duration: 1.8 })
+    s.wait(0.6)
+    // The model has the state of these tokens: it reads them from the cache.
+    s.play(second.mark((_, index) => index < SYSTEM.length, 'cached'), fade(same, 0), fade(first, 0.35), { duration: 1.2 })
+    s.play(second.span('prefix', 0, SYSTEM.length - 1, { label: 'read from the cache', color: 'yellow' }), { duration: 0.7 })
+    // The model writes the answer one token at a time. Each token flies from over the model to the end of the strip.
+    const model = namedBox('model', { width: 260, height: 110, color: 'green' }).at(540, 300)
+    s.play(fadeIn(model), { duration: 0.4 })
+    for (const word of [' See', ' you', '!']) {
+        s.play(second.append({ text: word, state: 'generated' }, { from: [model.top[0], model.top[1] - 50] }), { duration: 0.8 })
+        s.wait(0.25)
+    }
+    s.play(second.span('answer', SYSTEM.length + 1, second.count - 1, { label: 'written by the model', color: 'green' }), { duration: 0.7 })
+    s.wait(1.5)
+})
+```
+
+`strip.enter()` brings the chips in from the left, each with its values, and the names, the brackets and the window with them. `strip.chips`, `strip.rows`, `strip.spans`, `strip.frame` (the outline of the window) and `strip.caption` (the name of the line of cells) are the parts, after the changes that the film has played so far. While a window slides, its outline passes over the token text. A motion scan can report these frames as `film.text_crossed`. Check that the outline clears the text when the window settles.
+
 ## Code and tokens
 
-`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
+`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a strip of cells for the tokens of a language model: see [Token strips](#token-strips). `attentionMatrix` draws a heatmap with labels.
 
 `block.find(fragment)` returns the glyphs of a piece of the code, to color them or to move them. A fragment that is one token, such as `lo`, matches every such token. Any other fragment, such as `lo + hi`, matches as text inside a line, and spaces do not count. Pass a line, counted from 0, as the second argument to search that line only.
 
@@ -1270,7 +1381,7 @@ The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`
 | `tex`, and each label that is math: the numbers and the labels of `axes` and `numberLine`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
 | The center label of a `donut`. | The display serif. |
 
-Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
+Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. In a strip of `tokens`, `font` is the font of the tokens: the values of its rows stay in mono, and the names of its rows and the labels of its brackets are in the font of the film. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
 
 The layout follows the font. A text measures its glyphs when it is made, so a card wraps its caption and a zone opens its border for the title with the widths of the font of the film. `'sans'` and `'text-serif'` have a semibold for `weight: 600`, so the title of an `infoBox` or of a `callout` is heavier than its body in both. `'serif'`, `'mono'` and `'noto'` have one weight, and such a title is regular there.
 
