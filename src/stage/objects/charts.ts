@@ -1,12 +1,10 @@
 import { arcPath, polyPath, rectPath, ring, smoothPath, type Path, type Vec } from '../geometry'
 import { dynamic, Node, ownLabels } from '../node'
-import { dot, line } from '../shapes'
+import { line } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { sampleStops, type ColorInput, type Rgba } from '../color'
 import { type Anim, type AnimOptions, Value } from '../anim'
-import { formatNumber, luminance, niceTicks, reveal, solidColor, staggered, stepAt, tweenValue } from './util'
-
-const DEFAULT_SERIES: readonly string[] = ['blue', 'yellow', 'teal', 'orange', 'purple', 'green', 'pink', 'red']
+import { DEFAULT_SERIES, formatNumber, luminance, niceTicks, reveal, small, solidColor, staggered, stepAt, tweenValue, xyAxes, xyPoint, type XYFrame } from './util'
 
 export interface ChartOptions {
     width?: number
@@ -16,11 +14,6 @@ export interface ChartOptions {
     color?: ColorInput
     /** The font of the labels and the ticks. Defaults to the font of the film. A value that the chart prints is in mono. */
     font?: TextOptions['font']
-}
-
-/** A label or a tick. With no `font`, it is in the font of the film. */
-function small(content: string, size: number, color: ColorInput = 'dim', font?: TextOptions['font']): Node {
-    return text(content, { size, color, font })
 }
 
 // ── Bars ────────────────────────────────────────────────────────────────────
@@ -348,174 +341,6 @@ export class Histogram extends Node {
 
 export function histogram(samples: readonly number[], options: HistogramOptions = {}): Histogram {
     return new Histogram(samples, options)
-}
-
-// ── Shared XY frame ─────────────────────────────────────────────────────────
-
-interface XYFrame {
-    xRange: readonly [number, number]
-    yRange: readonly [number, number]
-    w: number
-    h: number
-}
-
-function xyPoint(frame: XYFrame, x: number, y: number): [number, number] {
-    const { xRange, yRange, w, h } = frame
-    return [
-        ((x - xRange[0]) / ((xRange[1] - xRange[0]) || 1) - 0.5) * w,
-        (0.5 - (y - yRange[0]) / ((yRange[1] - yRange[0]) || 1)) * h,
-    ]
-}
-
-function xyAxes(frame: XYFrame, options: { labelSize: number; color?: ColorInput; font?: TextOptions['font']; xLabel?: string; yLabel?: string; gridY?: boolean; xTicks?: number; yTicks?: number; xFormat?: (x: number) => string; yFormat?: (y: number) => string }): Node {
-    const axis = new Node()
-    const size = options.labelSize
-    const color = options.color ?? 'faint'
-    const font = options.font
-    const { w, h } = frame
-    const x = niceTicks(frame.xRange[0], frame.xRange[1], options.xTicks ?? 6)
-    const y = niceTicks(frame.yRange[0], frame.yRange[1], options.yTicks ?? 5)
-    for (const value of y.ticks) {
-        const [, py] = xyPoint(frame, frame.xRange[0], value)
-        if (options.gridY !== false) axis.add(line([-w / 2, py], [w / 2, py], { stroke: 'grid', width: 1.25 }))
-        const label = small(options.yFormat ? options.yFormat(value) : formatNumber(value, y.step), size, 'dim', font)
-        axis.add(label.at(-w / 2 - 12 - label.width / 2, py))
-    }
-    axis.add(line([-w / 2, h / 2], [w / 2, h / 2], { stroke: color, width: 1.5 }))
-    for (const value of x.ticks) {
-        const [px] = xyPoint(frame, value, frame.yRange[0])
-        axis.add(line([px, h / 2], [px, h / 2 + 6], { stroke: color, width: 1.5 }))
-        axis.add(small(options.xFormat ? options.xFormat(value) : formatNumber(value, x.step), size, 'dim', font).at(px, h / 2 + 12 + size * 0.6))
-    }
-    if (options.xLabel) {
-        const label = small(options.xLabel, size, 'ink', font)
-        axis.add(label.at(w / 2 - label.width / 2, h / 2 + 18 + size * 1.6))
-    }
-    if (options.yLabel) {
-        const label = small(options.yLabel, size, 'ink', font)
-        axis.add(label.at(-w / 2 + label.width / 2, -h / 2 - 12 - size / 2))
-    }
-    return axis
-}
-
-// ── Scatter ─────────────────────────────────────────────────────────────────
-
-export interface ScatterPoint {
-    x: number
-    y: number
-    color?: ColorInput
-    radius?: number
-    /** Points with the same group share a color and one direct label. */
-    group?: string
-}
-
-export interface ScatterOptions extends ChartOptions {
-    x?: readonly [number, number]
-    y?: readonly [number, number]
-    radius?: number
-    xLabel?: string
-    yLabel?: string
-    /** Label each group near its center, instead of using a legend. */
-    groupLabels?: boolean
-}
-
-export class Scatter extends Node {
-    readonly dots: Node[] = []
-    readonly axis: Node
-    readonly groupLabels: Node[] = []
-    private readonly frame: XYFrame
-
-    constructor(points: readonly ScatterPoint[], options: ScatterOptions = {}) {
-        super()
-        const xs = points.map((p) => p.x), ys = points.map((p) => p.y)
-        const pad = (lo: number, hi: number) => (hi - lo || 1) * 0.06
-        const xRange = options.x ?? [Math.min(...xs) - pad(Math.min(...xs), Math.max(...xs)), Math.max(...xs) + pad(Math.min(...xs), Math.max(...xs))]
-        const yRange = options.y ?? [Math.min(...ys) - pad(Math.min(...ys), Math.max(...ys)), Math.max(...ys) + pad(Math.min(...ys), Math.max(...ys))]
-        this.frame = { xRange, yRange, w: options.width ?? 900, h: options.height ?? 520 }
-        const labelSize = options.labelSize ?? 18
-        this.axis = xyAxes(this.frame, { labelSize, color: options.color, font: options.font, xLabel: options.xLabel, yLabel: options.yLabel })
-        const groups = new Map<string, { color: ColorInput; sumX: number; top: number; count: number }>()
-        const dots = points.map((point) => {
-            let color = point.color
-            if (point.group !== undefined) {
-                let entry = groups.get(point.group)
-                if (!entry) {
-                    entry = { color: color ?? DEFAULT_SERIES[groups.size % DEFAULT_SERIES.length]!, sumX: 0, top: -Infinity, count: 0 }
-                    groups.set(point.group, entry)
-                }
-                color ??= entry.color
-                entry.sumX += point.x
-                entry.top = Math.max(entry.top, point.y)
-                entry.count++
-            }
-            const made = dot(point.radius ?? options.radius ?? 6, color ?? 'blue').at(xyPoint(this.frame, point.x, point.y))
-            made.set('fillOpacity', 0.92)
-            return made
-        })
-        this.dots.push(...dots)
-        this.add(this.axis, ...dots)
-        if (options.groupLabels ?? true) {
-            for (const [name, entry] of groups) {
-                const label = small(name, labelSize + 2, entry.color, options.font)
-                // Above the cluster, so the label never sits on top of its own points.
-                const [px, py] = xyPoint(this.frame, entry.sumX / entry.count, entry.top)
-                label.at(px, py - labelSize * 1.2)
-                this.groupLabels.push(label)
-                this.add(label)
-            }
-        }
-        ownLabels(this, { name: 'scatter chart', plot: true })
-    }
-
-    p(x: number, y: number): [number, number] {
-        return xyPoint(this.frame, x, y)
-    }
-
-    /** Axes draw, then points land from left to right. */
-    enter(options: AnimOptions = {}): Anim {
-        const lag = options.lag ?? Math.min(0.2, 8 / Math.max(1, this.dots.length))
-        return {
-            label: 'scatter.enter', duration: options.duration ?? 2, ease: options.ease,
-            schedule: (ctx) => {
-                reveal(this, ctx.t0, ctx.stage)
-                const span = ctx.t1 - ctx.t0
-                stepAt(this.axis, 'opacity', 0, ctx.t0)
-                this.axis.tween('opacity', 1, ctx.t0, ctx.t0 + span * 0.3, ctx.ease)
-                const order = [...this.dots].sort((a, b) => a.get('x') - b.get('x'))
-                const windows = staggered(order.length, lag, ctx.t0 + span * 0.15, ctx.t1)
-                order.forEach((point, i) => {
-                    const [start, end] = windows[i]!
-                    const sx = point.get('sx')
-                    stepAt(point, 'sx', 0.001, ctx.t0)
-                    stepAt(point, 'sy', 0.001, ctx.t0)
-                    point.tween('sx', sx, start, end, ctx.ease)
-                    point.tween('sy', sx, start, end, ctx.ease)
-                })
-                for (const label of this.groupLabels) {
-                    stepAt(label, 'opacity', 0, ctx.t0)
-                    label.tween('opacity', 1, ctx.t0 + span * 0.7, ctx.t1, ctx.ease)
-                }
-            },
-        }
-    }
-
-    /** A straight or curved fit through the data, drawn on the same axes. */
-    fit(f: (x: number) => number, options: { color?: ColorInput; width?: number; samples?: number } = {}): Node {
-        const [x0, x1] = this.frame.xRange
-        const samples = options.samples ?? 60
-        const points: Vec[] = []
-        for (let i = 0; i <= samples; i++) {
-            const x = x0 + (x1 - x0) * i / samples
-            points.push(this.p(x, f(x)))
-        }
-        const node = new Node(smoothPath(points)).stroke(options.color ?? 'yellow', options.width ?? 3.5)
-        this.add(node)
-        return node
-    }
-}
-
-export function scatter(points: readonly ScatterPoint[], options: ScatterOptions = {}): Scatter {
-    return new Scatter(points, options)
 }
 
 // ── Lines ───────────────────────────────────────────────────────────────────
