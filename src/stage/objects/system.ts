@@ -7,7 +7,7 @@ import { morphMatching, type Anim, type AnimOptions } from '../anim'
 import { linear, smooth, type Ease } from '../ease'
 import { clock } from '../track'
 import { reveal, staggered, stepAt } from './util'
-import { nodeOrPoint, oneNode } from '../layout'
+import { Block, nodeOrPoint, oneNode } from '../layout'
 import type { Stage } from '../stage'
 import { pictogram } from './pictograms'
 
@@ -263,7 +263,8 @@ export function sparkline(values: readonly number[], options: SparklineOptions =
 
 // ── Connector ───────────────────────────────────────────────────────────────
 
-export type ConnectorEnd = Node | Vec
+/** An end of a connector: a node, a block of the layout, or a point of the stage. */
+export type ConnectorEnd = Node | Block | Vec
 
 export interface ConnectorOptions {
     /** Side to leave from and arrive at. Chosen automatically when omitted. */
@@ -391,8 +392,15 @@ export class Connector extends Node {
     constructor(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}) {
         // An empty path lets the standard draw and write verbs animate trimTo here.
         super([])
-        nodeOrPoint('connector', from, 'the first end')
-        nodeOrPoint('connector', to, 'the second end')
+        // A block of the layout is an end as a node is: the line meets the middle of the edge of its box.
+        for (const [end, name] of [[from, 'the first end'], [to, 'the second end']] as const) {
+            if (end instanceof Block) continue
+            try {
+                nodeOrPoint('connector', end, name)
+            } catch (error) {
+                throw new Error((error as Error).message.replace('Give a node, or a point', 'Give a node, a block of the layout, or a point'))
+            }
+        }
         this.fromEnd = from
         this.toEnd = to
         this.options = options
@@ -403,20 +411,22 @@ export class Connector extends Node {
         // The label sits on the line, on a plate. `build` makes it later.
         ownLabels(this, { name: 'connector', labels: [] })
         // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
-        this.data['attached'] = [from, to].filter((end) => end instanceof Node)
+        this.data['attached'] = [from, to].flatMap((end) => (end instanceof Block ? end.nodes : end instanceof Node ? [end] : []))
         this.data['line'] = true
     }
 
     private anchors(): [Anchor, Anchor] {
         const { fromEnd, toEnd, options } = this
         const gap = options.gap ?? 3
-        const boxOf = (end: ConnectorEnd) => end instanceof Node ? end.bounds() : { x: end[0], y: end[1], width: 0, height: 0 }
+        // A block has the measure of the layout, so the line leaves from the box that the layout placed.
+        const measure = (block: Block) => { const box = block.box; return { x: box.left, y: box.top, width: box.width, height: box.height } }
+        const boxOf = (end: ConnectorEnd) => end instanceof Block ? measure(end) : end instanceof Node ? end.bounds() : { x: end[0], y: end[1], width: 0, height: 0 }
         const a = boxOf(fromEnd), b = boxOf(toEnd)
         const [autoFrom, autoTo] = chooseSides(a, b)
         const sideFrom = options.from ?? autoFrom, sideTo = options.to ?? autoTo
         const anchor = (end: ConnectorEnd, box: typeof a, side: Edge, offset: number): Anchor => {
             const normal = NORMALS[side]
-            if (!(end instanceof Node)) return { point: end, normal }
+            if (!(end instanceof Node || end instanceof Block)) return { point: end, normal }
             const [x, y] = sidePoint(box, side, offset)
             return { point: [x + normal[0] * gap, y + normal[1] * gap], normal }
         }
@@ -600,6 +610,11 @@ export class Connector extends Node {
     }
 }
 
+/**
+ * A line from one end to another, which follows its ends while they move. An end is a node, a block of the
+ * layout, or a point of the stage. At a node and at a block, the line meets the middle of the edge of the box
+ * that faces the other end.
+ */
 export function connector(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}): Connector {
     return new Connector(from, to, options)
 }
