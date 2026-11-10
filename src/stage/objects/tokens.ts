@@ -213,6 +213,9 @@ export class TokenCell extends Node {
     settles = -Infinity
 }
 
+// Each cloned cell starts a new timeline, so it has no pending mark.
+const markEnd = new WeakMap<TokenCell, number>()
+
 /** One row of values under the cells of a strip. `strip.row(name)` gives it. */
 export class TokenValueRow extends Node {
     /** The name at the left of the row. */
@@ -657,7 +660,17 @@ export class TokenRow extends Node {
                 // Each cell takes three tenths of the time, so the change reads as a sweep.
                 const lag = options.lag ?? Math.min(1, (1 / 0.3 - 1) / Math.max(1, chosen.length - 1))
                 const windows = staggered(chosen.length, Math.max(0, lag), ctx.t0, ctx.t1)
-                chosen.forEach((cell, order) => this.restyle(cell, state, windows[order]![0], windows[order]![1], ctx.ease))
+                chosen.forEach((cell, order) => {
+                    const end = markEnd.get(cell)
+                    if (end !== undefined && windows[order]![0] < end - 1e-9) {
+                        throw new Error(`tokens: mark starts at ${seconds(windows[order]![0])} on token ${this.chips.indexOf(cell)}, but its previous mark ends at ${seconds(end)}. Play marks on the same token in time order with seq() or separate calls to s.play()`)
+                    }
+                })
+                chosen.forEach((cell, order) => {
+                    const [start, end] = windows[order]!
+                    this.restyle(cell, state, start, end, ctx.ease)
+                    markEnd.set(cell, end)
+                })
             },
         }
     }
@@ -1471,9 +1484,6 @@ export class TokenRow extends Node {
         cell.box.tween('fill', paint, t0, t1, ease)
         cell.box.tween('stroke', paint, t0, t1, ease)
         cell.box.tween('fillOpacity', look.fill, t0, t1, ease)
-        // A later mark cancels outline switches that have not happened yet.
-        const keys = cell.box.track('dash').keys, pending = keys.findIndex((key) => key.t0 > t0)
-        if (pending >= 0) keys.splice(pending)
         // Dashes cannot fade to a line, so they switch when the colors are half way.
         stepAt(cell.box, 'dash', look.dash ? this.dashes() : null, turn)
         const ink = toPaint(look.dim ? 'dim' : 'ink')

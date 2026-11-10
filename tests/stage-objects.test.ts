@@ -13644,22 +13644,22 @@ describe('tokens', () => {
         })
     })
 
-    it('keeps the latest state when marks overlap before the outline switches', async () => {
-        let strip!: Strip
+    it('rejects conflicting marks even when a sweep reaches a token later', async () => {
+        for (const sweep of [false, true]) {
+            const error = await failure((s) => {
+                const strip = s.add(tokens(['a', 'b']))
+                s.play(strip.mark(sweep ? [0, 1] : 1, 'dropped', { duration: 2, lag: 1 }), strip.mark(1, 'kept', { duration: 0.5 }))
+            })
+            expect(error).toMatch(/token 1.*previous mark ends at 2 s.*seq\(\)/)
+        }
         const f = await compile((s) => {
-            strip = s.add(tokens(['a'], { size: 40 }))
-            s.play(strip.mark(0, 'dropped', { duration: 2 }), strip.mark(0, 'kept', { duration: 0.5 }))
+            const strip = s.add(tokens(['a', 'b']))
+            s.play(strip.mark(0, 'cached'), strip.mark(1, 'dropped'))
+            s.play(strip.mark(1, 'kept'))
+            expect(strip.stateOf(1)).toBe('kept')
+            expect(strip.token(1).box.get('dash')).toBeNull()
         })
-        expect(strip.stateOf(0)).toBe('kept')
-        for (const time of [0.5, 1, f.duration]) at(time, () => {
-            const cell = strip.token(0)
-            expect(cell.box.get('dash')).toBeNull()
-            expect(cell.box.get('fill')).toEqual(paint('blue'))
-            expect(cell.box.get('fillOpacity')).toBe(0.18)
-            expect(cell.text.chars[0]!.get('fill')).toEqual(paint('ink'))
-            expect(cell.children.filter((node) => node !== cell.box && node !== cell.text).every((node) => shows(node) === 0)).toBe(true)
-        })
-        expectPure(f, [0, 0.25, 0.5, 1, f.duration])
+        expectPure(f, [0, 0.3, f.duration])
     })
 
     it('puts each value of a row under the middle of its token, and the names at the left of the first cell', async () => {
