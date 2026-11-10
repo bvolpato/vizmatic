@@ -1,4 +1,4 @@
-/** Small number helpers for a scene: a value between two values, a value held in a range, a number as text, and a check of a number. */
+/** Small number helpers for a scene: a value between two values, a value held in a range, the value of a series, a number as text, and a check of a number. */
 
 /** The value at share `t` of the way from `a` to `b`: `lerp(100, 200, 0.25)` is 125. */
 export function lerp(a: number, b: number, t: number): number {
@@ -17,6 +17,27 @@ export function clamp(value: number, low = 0, high = 1): number {
 export function smoothstep(t: number): number {
     const u = clamp(t)
     return u * u * (3 - 2 * u)
+}
+
+/**
+ * The value of a series at x: on the straight line between its two points around x. The points are `[x, y]`
+ * with x in rising order. `valueAt([[0, 2], [2, 6]], 1)` is 4. It is not a number outside the points of the
+ * series, where the series has no value.
+ */
+export function valueAt(points: readonly (readonly [number, number])[], x: number): number {
+    const last = points.length - 1
+    if (last < 0 || !(x >= points[0]![0] && x <= points[last]![0])) return NaN
+    let low = 0, high = last
+    while (high - low > 1) {
+        const middle = (low + high) >> 1
+        if (points[middle]![0] <= x) low = middle
+        else high = middle
+    }
+    const [x0, y0] = points[low]!, [x1, y1] = points[high]!
+    // At a point of the series, the value is the value of that point, also when the next point has none.
+    if (x <= x0) return y0
+    if (x >= x1) return y1
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 }
 
 /** A whole number with its digits in groups of three: `commas(21915584)` is "21,915,584". A fraction is rounded. */
