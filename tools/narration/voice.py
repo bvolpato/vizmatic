@@ -98,10 +98,11 @@ def main(found, _words, _options):
         for index, beat in enumerate(scene["beats"]):
             wav, info, made = take(root, scene["id"], index, beat["text"], voice)
             new += made
-            beats.append({"wav": wav, "say": beat["say"], "text": beat["text"], "duration": info["duration"], "hold": beat["hold"], "words": info["words"]})
+            # The cues that the script declares for the beat go to the film with the times of its words.
+            beats.append({"wav": wav, "say": beat["say"], "text": beat["text"], "duration": info["duration"], "hold": beat["hold"], "words": info["words"], **({"cues": beat["cues"]} if "cues" in beat else {})})
             print(scene["id"], index, round(info["duration"], 2), flush=True)
         out["scenes"].append({"id": scene["id"], "title": scene["title"], "beats": beats})
-    film.write_json(root / "timing.json", out)
+    film.write_timing(root / "timing.json", out)
     takes = [beat for scene in out["scenes"] for beat in scene["beats"]]
     seconds = sum(beat["duration"] + beat["hold"] for beat in takes)
     print("total", round(seconds, 1))
