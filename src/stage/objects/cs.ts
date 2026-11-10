@@ -630,6 +630,8 @@ export type TokenKind = 'keyword' | 'string' | 'number' | 'comment' | 'function'
 export interface CodeToken {
     text: string
     kind: TokenKind
+    /** A data key keeps its lexical kind and can have a separate color. */
+    role?: 'key'
     line: number
     glyphs: Node[]
 }
@@ -654,6 +656,11 @@ interface LanguageRule {
     number?: RegExp
     /** The word after an opening parenthesis names a function, as in Lisp. */
     headIsFunction?: boolean
+    /**
+     * For a data format: what follows a key, such as the colon of `"name": 1`. A string or a word with this
+     * after it is a key. Every other word is a keyword or plain: no word names a function or a type.
+     */
+    keyBefore?: RegExp
 }
 
 const words = (list: string): ReadonlySet<string> => new Set(list.split(' '))
@@ -689,12 +696,17 @@ const LANGUAGES: Record<string, LanguageRule> = {
         word: /^[A-Za-z_~!@$%^&*+=<>.?/-][\w~!@$%^&*+=<>.?/-]*/, number: /^(#x[\da-fA-F]+|#b[01]+)/,
         keywords: words('assert check-sat check-sat-assuming declare-const declare-datatypes declare-fun declare-sort define-const define-fun define-fun-rec define-sort echo exit get-info get-model get-option get-proof get-unsat-core get-value pop push reset set-info set-logic set-option exists forall let match par as _ !'),
     },
+    // Data formats. A key has its own color, so a reader tells the names from the values.
+    json: { lineComments: [], quotes: '"', keyBefore: /^\s*:/, number: /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/, keywords: words('true false null') },
+    // In YAML, a colon ends a key when a space or the end of the line follows it: `image: nginx:1.27` has one key.
+    yaml: { lineComments: ['#'], quotes: '"\'', insensitive: true, keyBefore: /^\s*:(?:\s|$)/, keywords: words('true false null yes no on off') },
     plain: { lineComments: [], quotes: '', keywords: new Set() },
 }
 
 const ALIASES: Record<string, string> = {
     js: 'ts', jsx: 'ts', tsx: 'ts', typescript: 'ts', javascript: 'ts', py: 'python', rs: 'rust', golang: 'go', sh: 'bash', shell: 'bash',
     'tla+': 'tla', tlaplus: 'tla', dfy: 'dafny', lean4: 'lean', smt2: 'smt', smtlib: 'smt', 'smt-lib': 'smt', cpp: 'c', 'c++': 'c', h: 'c', text: 'plain',
+    yml: 'yaml', jsonl: 'json',
 }
 
 /** The languages that `tokenize` and `codeBlock` color. An unknown name falls back to TypeScript. */
@@ -704,6 +716,7 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
 
 function stringPattern(rule: LanguageRule): RegExp | null {
     const forms = [...rule.quotes].map((quote) => {
+        if (rule === LANGUAGES['yaml'] && quote === "'") return "'(?:[^']|'')*'?"
         const q = escapeRegExp(quote)
         return `${q}(?:[^${q}\\\\]|\\\\.)*${q}?`
     })
@@ -712,10 +725,19 @@ function stringPattern(rule: LanguageRule): RegExp | null {
     return forms.length > 0 ? new RegExp(`^(?:${forms.join('|')})`) : null
 }
 
+// A single-line plain key at a block or flow entry. Complex keys, block scalar bodies,
+// tags and multiline flow context need a YAML parser and are outside this highlighter.
+function yamlKeyLength(rest: string): number {
+    if (/^[\s'"#,\[\]{}&*!|>@%\x60]|^[-?:](?:\s|$)/.test(rest)) return 0
+    const separator = /:(?=\s|$)|[ \t]+#|[\[\]{},]/.exec(rest)
+    return separator?.[0] === ':' ? separator.index : 0
+}
+
 /** A small tokenizer for film code. It colors the common cases and never blocks on odd input. */
 export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyphs'>[] {
     const name = language.toLowerCase()
     const rule = LANGUAGES[ALIASES[name] ?? name] ?? LANGUAGES['ts']!
+    const yaml = rule === LANGUAGES['yaml']
     const string = stringPattern(rule)
     const word = rule.word ?? /^[A-Za-z_$][\w$]*/
     const out: Omit<CodeToken, 'glyphs'>[] = []
@@ -724,10 +746,14 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
     source.split('\n').forEach((row, line) => {
         let i = 0
         let afterOpen = false
+        let entryStart = true
+        let keyEnd = 0
         while (i < row.length) {
             const rest = row.slice(i)
-            const push = (value: string, kind: TokenKind) => {
-                out.push({ text: value, kind, line })
+            const push = (value: string, kind: TokenKind, key = false) => {
+                const token = { text: value, kind, line }
+                out.push(key || (kind !== 'space' && i < keyEnd) ? { ...token, role: 'key' } : token)
+                if (yaml && kind !== 'space') entryStart = value === '{' || value === ',' || (entryStart && value === '-')
                 i += value.length
             }
             const space = /^\s+/.exec(rest)
@@ -741,7 +767,8 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 push(close < 0 ? rest : rest.slice(0, close + rule.blockComment![1].length), 'comment')
                 continue
             }
-            if (rule.lineComments.some((marker) => rest.startsWith(marker))) {
+            if (yaml && entryStart) keyEnd = i + yamlKeyLength(rest)
+            if ((!yaml || i === 0 || /\s/.test(row[i - 1]!)) && rule.lineComments.some((marker) => rest.startsWith(marker))) {
                 push(rest, 'comment')
                 continue
             }
@@ -755,7 +782,7 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
             afterOpen = rest[0] === '('
             const quoted = string?.exec(rest)
             if (quoted) {
-                push(quoted[0], 'string')
+                push(quoted[0], 'string', yaml && entryStart && rule.keyBefore!.test(rest.slice(quoted[0].length)))
                 continue
             }
             const number = rule.number?.exec(rest) ?? /^(0x[\da-fA-F_]+|\d[\d_]*(?:\.\d+)?(?:e[-+]?\d+)?)/.exec(rest)
@@ -773,26 +800,38 @@ export function tokenize(source: string, language = 'ts'): Omit<CodeToken, 'glyp
                 const value = found[0]
                 const after = rest.slice(value.length)
                 const isKeyword = rule.keywords.has(rule.insensitive ? value.toLowerCase() : value)
+                // A data format has no function or type names.
                 const kind: TokenKind = isKeyword ? 'keyword'
-                    : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
-                        : /^[A-Z]/.test(value) ? 'type'
-                            : 'plain'
+                    : rule.keyBefore ? 'plain'
+                        : (rule.headIsFunction ? headed : /^\s*\(/.test(after)) ? 'function'
+                            : /^[A-Z]/.test(value) ? 'type'
+                                : 'plain'
                 push(value, kind)
                 continue
             }
             push(rest[0]!, 'punctuation')
         }
     })
+    if (rule === LANGUAGES['json']) {
+        // JSON permits a line break between a key and its colon.
+        let previous: Omit<CodeToken, 'glyphs'> | undefined
+        for (const token of out) {
+            if (token.kind === 'space') continue
+            if (token.text === ':' && previous?.kind === 'string') previous.role = 'key'
+            previous = token
+        }
+    }
     return out
 }
 
-const CODE_COLORS: Record<Exclude<TokenKind, 'space'>, string> = {
+type CodeColor = Exclude<TokenKind, 'space'> | 'key'
+const CODE_COLORS: Record<CodeColor, string> = {
     keyword: 'purple', string: 'green', number: 'orange', comment: 'faint',
-    function: 'blue', type: 'teal', punctuation: 'dim', plain: 'ink',
+    function: 'blue', type: 'teal', key: 'blue', punctuation: 'dim', plain: 'ink',
 }
 
 export interface CodeBlockOptions {
-    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, or `smt2`. Defaults to TypeScript. */
+    /** One of `CODE_LANGUAGES`, or an alias such as `py`, `tla+`, `smt2`, or `yml`. Defaults to TypeScript. */
     language?: string
     size?: number
     /** Line height as a multiple of size. */
@@ -803,7 +842,7 @@ export interface CodeBlockOptions {
     padding?: number
     /** Minimum panel width, so versions of a snippet can share one frame. */
     minWidth?: number
-    colors?: Partial<Record<Exclude<TokenKind, 'space'>, ColorInput>>
+    colors?: Partial<Record<CodeColor, ColorInput>>
 }
 
 /**
@@ -872,7 +911,7 @@ export class CodeBlock extends Node {
             const entry: CodeToken = { ...token, glyphs: [] }
             this.tokens.push(entry)
             if (token.kind === 'space') continue
-            const color = colors[token.kind]
+            const color = colors[token.role ?? token.kind]
             ;[...token.text].forEach((char, offset) => {
                 const leaf = makeGlyph(font, char, size, color, left + (start + offset) * advance, top + token.line * rowHeight)
                 entry.glyphs.push(leaf)

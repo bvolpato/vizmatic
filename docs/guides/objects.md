@@ -948,6 +948,110 @@ export default film((s) => {
 })
 ```
 
+## Passages
+
+`passage(text, options)` displays prose that a film can annotate and revise. It wraps words at `width`, collapses consecutive spaces and tabs, and preserves line and paragraph breaks. Use a passage to cut a document into chunks, connect claims to evidence, or show how a prompt revision changes a reply. The runnable films in `examples/films/passage/` demonstrate all three uses.
+
+```film paired label="A runbook is cut into windows of words, then with an overlap, then by sentence, and the first chunk lifts out"
+import { film, passage } from 'vizmatic/stage'
+
+const RUNBOOK = 'If the error rate stays above 2% after a deploy, roll back within 15 minutes. Then page the incident commander. Write the deploy ID in the incident channel.'
+
+export default film({ fps: 30 }, (s) => {
+    const page = passage(RUNBOOK, { width: 1500, size: 44, title: 'runbook.md' }).at(-750, -330)
+    s.play(page.enter(), { duration: 1 })
+    // The fact that a chunk must hold whole.
+    s.play(page.mark('within 15 minutes'), { duration: 0.5 })
+    // Windows of 7 words cut the fact in two. With an overlap of 2 words, one chunk holds it whole.
+    s.play(page.cut({ size: 7 }), { duration: 1.2 })
+    s.wait(0.8)
+    s.play(page.cut({ size: 7, overlap: 2 }), { duration: 1.2 })
+    s.wait(0.8)
+    s.play(page.cut({ by: 'sentence' }), { duration: 1.2 })
+    // The first chunk is selected, and it leaves the page as a passage of its own.
+    const chunk = page.slip({ chunk: 0 }, { title: 'chunk 1 of 3', width: 820 }).at(-410, 130)
+    s.play(page.select({ chunk: 0 }), page.lift(chunk), { duration: 1.2 })
+    s.wait(1.2)
+})
+```
+
+Use `quote` for a fixed quotation with attribution, `codeBlock` when columns and spacing matter, and `tokens` for tokenizer output. A passage keeps the same words on screen as annotations change.
+
+`width` is the width of the object, and no letter passes it. Without a width, the text is on one line and the object is as wide as that line needs, 900 at the most. A line breaks at a space. A line break in the text starts a line, and an empty line starts a paragraph, with half a line of room. A no-break space (` `) keeps two words on one line. A word that is wider than the passage is an error, and the message gives the width that is enough. `size` is the text size, 32 by default, and `leading` is the height of a line as a multiple of it, 1.6 by default. The bands and the links need that room: a smaller `leading` is an error when a band does not fit. The words are in the font of the film, or in `font`.
+
+`title` is one line over the words: the name of a file, or a role such as `user`. It is 0.8 of `size`, and 26 px at the least when `size` is 26 or more. `color` is the color of the border and of the title, so the sections of a prompt can each have their own. `panel: false` draws no frame, for one sentence in a picture. `.at(x, y)` places the top left corner, so passages of different lengths start at one corner. The layout measures a passage as its width and its height, with or without a frame, so it is an item of `row`, `column` and `place`, and `fitted(region, (width) => passage(text, { width }))` makes it as wide as a region.
+
+### Parts of the text
+
+A film names a part of the text by its words: `'within 15 minutes'`. The words are matched letter for letter, spaces do not count, and a part may run over the end of a line or of a sentence. A part starts and ends at the borders of words: `'day'` is not a part of "days". Words that are at two places name no part, and the error says so: give more of the words around the place, or `{ words: 'days', occurrence: 1 }` for the second place. `{ chunk: 0 }` is the first chunk of the last cut, and the node of a span or a chunk names its own words. Words that are not in the text are an error that shows how the text starts.
+
+### Spans and kinds
+
+`page.mark(words, kind)` gives a part a kind. A band in the color of the kind grows behind the words in the order of the text, with the sign of the kind. A second `mark` of the same words changes the kind: the color changes, and the old sign gives way to the new one. `page.mark(words, null)` takes the span away. A word is in one span, so words that share a word with another span are an error. Without a kind, a part takes the first kind of the passage.
+
+A kind has a color and a sign, so that color is never the only sign. Without `kinds`, a passage has the kinds of `PASSAGE_KINDS`:
+
+| Kind | Color | Sign | Use |
+|---|---|---|---|
+| `mark` | blue | a plain band | A part that the film points at: a clause, a name, a number |
+| `claim` | purple | a frame around the band | A statement of an answer that is not checked yet |
+| `supported` | green | a line under the words | A source says the same |
+| `unsupported` | yellow | dashes under the words | No source says it |
+| `contradicted` | red | a wave under the words | A source says another thing |
+| `external` | orange | diagonal lines over the band | Text that came from outside, such as a web page in a prompt |
+| `removed` | dim | a line through the words, which are dim | Words that the next version does not have |
+| `added` | teal | two lines under the words | Words that the next version brings |
+
+For another subject, give your own record, such as `kinds: { rule: { color: 'teal', sign: 'underline' }, fact: { color: 'blue' } }`. A sign is `'band'`, `'box'`, `'underline'`, `'double'`, `'dashed'`, `'wavy'`, `'hatch'` or `'strike'`, and a kind with none has a band. Each kind of a passage has its own sign: two kinds with one sign would differ by their color only, so they are an error that lists the signs that are free. `dim: true` sets the words of a span in dim.
+
+`page.spans` lists the spans in the order of the text, with the words and the kind of each. `page.kindOf(words)` is the kind of a span, or null, and `page.count('supported')` counts the spans of a kind, so a label can show a true share. All of them read the state after the changes that the film has played so far.
+
+### Chunks
+
+`page.cut(how)` cuts the text into chunks. `{ size: 12, overlap: 3 }` makes windows of 12 words, and each window shares 3 words with the next. `{ by: 'paragraph' }` starts a chunk at each blank line. `{ by: 'sentence' }` also starts a chunk after a word that ends in a period, exclamation point, or question mark. Use an explicit list of chunks for abbreviations or other language-specific boundaries. The chunks arrive one after another as bands of two colors in turn, as high as a line, with a gap between two chunks. Over the words that two chunks share, the first chunk has the upper half of the line and the next chunk has the lower half, so the overlap shows both. A word is in two chunks at the most: an overlap of more than half of `size` is an error.
+
+For a token budget, pass the tokenizer as the `tokens` option of `passage`, then play `page.cut({ tokens: 128 })`. The passage appends whole words and counts each candidate chunk as one string. It starts a new chunk when the next word would exceed the budget. If one word exceeds the budget on its own, the cut reports that word. For an estimated token count, label the budget as an estimate in the film.
+
+A new cut takes the place of the old one, so each way to cut is an operation on the same page. `page.cut(null)` takes the chunks away. `page.chunks` holds the words of each chunk. `colors` gives the two colors, which are purple and orange by default. Keep them apart from the colors of the kinds that the film uses.
+
+### The selection and its count
+
+`page.select(part)` moves the selection, which is one frame around some words. A passage has one selection. It grows and shrinks line by line, as a selection in an editor does, and `page.select(null)` takes it away. `page.selection` is its size: `{ words, characters }`, and `tokens` when the passage has a `tokens` function. `page.measure(part)` gives the same for any part, and for the whole text with no part.
+
+`page.counter('words')` is a number that follows the selection. It is 0 with no selection, and it runs to the new count while `select` plays. Show it with `decimal(() => page.counter('words').value, { digits: 0, suffix: ' words' })`, or give it to a bar. A passage has no tokenizer of its own. For tokens, give `passage(text, { tokens })` the function of the film that counts them, or an estimate such as `(text) => Math.ceil(text.length / 4)`, and say on the screen that it is an estimate.
+
+### A part that lifts out
+
+`page.slip(part, options)` makes a passage of its own from a span, a chunk or any words, with the same size and font. It is not on the stage yet. Give it its place, and play `page.lift(slip)`: a copy of each letter leaves the page and lands in the slip, and the frame of the slip arrives. The words stay in the page too. The options are those of `passage`, such as a `title` and a `width`. Without a width, a slip is as wide as its words need, and as wide as the page at the most. A slip is a passage, so a film can mark it, link it, and lift a part out of it.
+
+### Links
+
+`answer.link(words, target)` makes a line from a part of a passage to a node: the span of another passage (`source.span('Closed on Sunday.')`), a slip, or any node of the film. The line leaves under the end of the part, runs in the room between two lines of text to the side of the passage, goes up or down between the passage and the target, and reaches the span of the target the same way. So it crosses no word. A part on two lines has an end on each, and the line takes the end that is nearest to its side. The line is drawn on every frame: it follows the two when they move, and it follows a span whose words a `diff` changes.
+
+`link.enter()` draws the line from the part to the target. `link.break()` is for a tie that does not hold: a gap opens between the two with a cross in it, the line becomes dashes, and it turns red. `link.broken` says so. For a claim that no source supports, play no link, and mark the claim `unsupported`. The line goes up or down in the middle of the room between the two, and `shift` moves that part sideways by so many pixels, so that two links do not share it. For a target over or under the passage, the line goes around both by the right side, or by the left one with `side: 'left'`. Two links that leave under one line of text share the room under it: let one of them leave by the other side, or mark parts on two lines. A node that arrives later is drawn over a link, so call `link.zIndex(1)` for a line that must stay over a panel.
+
+The film in `examples/films/passage/evidence.ts` compares four claims with two sources. It draws a solid link for each supported claim, breaks the link for a contradicted claim, and leaves the unsupported claim unlinked.
+
+### The next version
+
+`page.diff(next)` changes the text to its next version. The film gives the whole next text, and the passage finds the words that differ. The words that go get a line through them and turn dim, the rest of the text moves, and the words that come arrive beside the words that they replace, with two lines under them. Both versions are then on the screen, and `page.text` is the next version. `page.changes` is the number of places that show a change. `page.accept()` takes the old words away, and the text closes up: the passage is then laid out as a new passage of the next version.
+
+A word that stays on its line slides to its place. A word that goes to another line fades out where it is and comes back at its place, so that no word flies across the lines between the two. A replacement inside one span stays in that span. When one replacement covers several entire spans, `accept()` removes those spans. Links follow the words that remain.
+
+The frame is as high as its text, so a `diff` that adds a line makes the frame higher. `lines` is the least number of lines that the frame holds. With it, the frame has one height from the start, and a `diff` that needs more lines is an error that gives the number. One change is on the screen at a time: a second `diff` before `accept` is an error, and so is a `diff` of a passage with chunks, because a chunk is a part of one version. The words move in one change at a time. A `diff` and an `accept` whose times overlap are an error, and so is a `mark`, a `cut`, a `select` or a `lift` that plays while the words move. Play them in a `seq`, or one after the other.
+
+To display a version number beside an edit, place a `tagTrack` beside the passage and start its next state when the edit is accepted.
+
+The film in `examples/films/passage/prompt.ts` links a prompt to two JSON fields. When the prompt specifies a deadline, `diff()` marks the edit and `morphCode()` updates the reply. The unchanged deploy identifier stays visible.
+
+### Places, parts and time
+
+`page.span(words)` is the node of a span, and `page.chunk(index)` the node of a chunk: the bands behind the words. Give one to `beside` as the part of an object, to a light, or to `link` as a target. `page.region(part)` is the box of the band of a part on the stage, for `place` and `beside`. With no part it is the room of the text, and `{ line: 1 }` is the row of one line. `page.p(part, edge)` is a point on the band in the coordinates of the object: the middle of the bottom of its last line by default, or `'top'`, `'left'` and `'right'`. `page.leader(part, side)` gives the three points of the way of a line out of the passage, for a line of your own. These places are for the text after the changes that the film has played so far, and they do not follow a later change. `page.find(words)` gives the glyphs of some words, to color them with `recolor`. `page.frame`, `page.title` and `page.words` are the parts, `page.text` is the text of now, and `page.lineCount` is the number of its lines.
+
+A clone has its own text, spans, selection, and counters. In a `seq`, each verb resolves its words and chunks when it plays. For example, `seq(page.cut({ size: 7 }), page.select({ chunk: 0 }))` selects the first chunk created by that cut.
+
+`page.enter()` brings the frame and the title, and then the words in the order of the text. With a long duration, the words arrive as a reply that a model writes. A verb that is played on a passage that is not on the stage brings the passage. A viewer reads about 20 characters in one second, and the film check reads a passage as one text. So a passage of 160 characters stays up for 8 seconds: `readingSeconds(page.text)` gives that time. A slip is a text of its own for the check.
+
 ## Chips and named boxes
 
 `chip(label, options)` draws a short label in a box that fits it: a name, a state, a unit. The box takes its width from the label, with room on every side, so a chip is never smaller than its text. `.at(x, y)` places the left end of the box, as for a tag and a row of chips: the three take their width from their text, and they have one rule. `anchor: 'center'` places the middle of the box, and `anchor: 'right'` its right end. `minWidth` gives the chips of a column one width, `round` makes a pill, `room` sets the room at the sides of the label, and `dash` is for a thing that is absent or only planned.
@@ -1310,6 +1414,20 @@ export default film({ fps: 30 }, (s) => {
 ```
 
 The `language` option names the syntax. The languages are `ts`, `python`, `rust`, `go`, `java`, `c`, `sql`, `bash`, and `plain`, and four languages for specifications and proofs: `tla` for TLA+, `dafny`, `lean`, and `smt` for SMT-LIB. In those four, a prime such as the one in `x'` is part of the code and does not start a string. An unknown name uses the TypeScript rules.
+
+Use `json` or `yaml` to color the fields of a tool call, model reply, or configuration file. The aliases are `jsonl` and `yml`. A key keeps its lexical `kind` and gains an optional `role: 'key'`. Set `colors: { key: 'teal' }` to change its color. YAML highlighting covers simple keys on a single line, including quoted keys, numeric keys, and keys with spaces. Complex keys, block scalars, tags, and flow collections across lines require a YAML parser. Use `language: 'ts'` explicitly to reproduce the earlier fallback coloring for these language names.
+
+```ts
+import { codeBlock, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    // A tool call as the model wrote it. The line of one argument is lit.
+    const call = s.add(codeBlock('{\n  "name": "get_weather",\n  "arguments": { "city": "Paris", "days": 3 }\n}', { language: 'json', size: 40 }))
+    s.wait(0.6)
+    s.play(call.focus(2))
+    s.wait(1.2)
+})
+```
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
 
