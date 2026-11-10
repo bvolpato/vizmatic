@@ -63,7 +63,7 @@ export const NARRATED_STEPS = {
     build: { note: 'Bring the film up to date, from the script to the movie: the voice of each beat that changed, the mix, the beat list, the check, and the render. It says why it runs or skips each step. With --draft, the movie is <name>-draft.mp4.', options: { '--draft': '', '--scene': 'id,...', '--quality': 'draft|standard|high|master', '--dither': '', '--no-dither': '', '--workers': 'n', '--allow-findings': '', ...DRY_RUN } },
     voice: { note: 'Speak script.json on this machine. Writes audio/ and timing.json.', options: DRY_RUN },
     draft: { note: 'Write a timing with estimated times and no sound, for a first look at the scenes.', options: DRY_RUN },
-    mix: { note: 'Lay the voice on the timeline with the pad and the chimes. Writes narration.wav.', options: DRY_RUN },
+    mix: { note: 'Mix the voice, background pad, and selected sound effects into narration.wav.', options: DRY_RUN },
     check: {
         note: 'Check the layout of the film, at rest and with --motion in every frame.',
         options: {
@@ -113,6 +113,16 @@ const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const SCENE_ID = /^[A-Za-z0-9][A-Za-z0-9-]*$/
 // The Python tools sit beside dist/ in the package, and beside src/ in the repository.
 const TOOLS = fileURLToPath(new URL('../tools/narration/', import.meta.url))
+
+/** Export a cue for a film that has its own audio mixer. */
+export function runSoundsCommand(args: string[]): void {
+    const result = spawnSync('uv', [
+        'run', '--no-project', '--script', join(TOOLS, 'soundbed.py'),
+        ...(args.length ? args : ['list']),
+    ], { stdio: 'inherit', env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1' } })
+    if (result.error) throw new Error(`Could not start uv for the sound library: ${result.error.message}`)
+    process.exitCode = result.status ?? 1
+}
 
 function optionList(command: NarratedCommand): string {
     return Object.entries(NARRATED_STEPS[command].options).map(([name, takes]) => (takes ? `${name} <${takes}>` : name)).join(', ')

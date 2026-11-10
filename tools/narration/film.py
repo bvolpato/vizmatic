@@ -56,6 +56,7 @@ class Film:
             "levels": {**checks.LEVELS, **mix.get("levels", {})},
             "swells": mix.get("swells"),
             "chimes": mix.get("chimes"),
+            "effects": mix.get("effects"),
         }
 
     def movie(self, words, options, writes=False):
@@ -223,7 +224,7 @@ def mix_record(root):
 
 def mix_inputs(found):
     """A short name for all that a mix is made from: the timing, the mix of film.json, and the tools that mix."""
-    tools = hashlib.sha256(b"".join((Path(__file__).parent / name).read_bytes() for name in ("mix.py", "soundbed.py"))).hexdigest()
+    tools = hashlib.sha256(b"".join((Path(__file__).parent / name).read_bytes() for name in ("mix.py", "soundbed.py", "checks.py", "film.py"))).hexdigest()
     return hashlib.sha256(json.dumps([found.timing, found.mix, tools], sort_keys=True).encode()).hexdigest()[:16]
 
 

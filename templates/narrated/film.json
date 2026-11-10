@@ -3,5 +3,10 @@
   "output": "A-Cache-in-Two-Scenes",
   "look": "midnight",
   "voice": { "name": "af_heart", "speed": 1.12 },
-  "mix": { "seed": 7 }
+  "mix": {
+    "seed": 7,
+    "effects": [
+      { "sound": "resolve", "scene": "answer", "beat": -1, "edge": "end", "offset": 0.12 }
+    ]
+  }
 }
