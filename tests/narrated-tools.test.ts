@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/pr
 import { tmpdir } from 'os'
 import { basename, dirname, join, resolve } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { aacWaveformError, syntheticAacFixture, writeFfmpegWithoutPns } from './aac-fixture'
 
 // The sound tools are Python scripts that uv runs. These tests need uv and FFmpeg, and no voice model.
 const has = (command: string, flag: string) => spawnSync(command, [flag], { encoding: 'utf8' }).status === 0
@@ -1171,6 +1172,36 @@ describe.skipIf(!ready)('narration tools', () => {
         expect((await readdir(join(folder, 'dist'))).sort()).toEqual(['Tiny-Film.mp4', 'Tiny-Film.timing.json'])
         // The record is still valid for the movie with the new sound: its picture did not change.
         expect(JSON.parse(tool('probe', folder).stdout).timing).toEqual({ record: 'valid', differs: [] })
+    }, 240_000)
+
+    it('preserves synthetic speech-like transients through normal resound', async () => {
+        const folder = await filmFolder()
+        const movie = await built(folder)
+        const { wav, samples } = syntheticAacFixture(8.5)
+        await writeFile(join(folder, 'narration.wav'), wav)
+        // Record this synthetic mix as current, so the public step also checks the picture timing.
+        const record = bare(['-c', 'import sys, pathlib, film; film.write_mix_record(film.open_film(pathlib.Path(sys.argv[1]), "resound"))', folder])
+        expect(record.status, record.stderr).toBe(0)
+        const result = tool('resound', folder)
+        expect(result.status, result.stderr).toBe(0)
+        const error = aacWaveformError(samples, ffmpeg('-i', movie, '-map', '0:a:0', '-t', '8.5', '-f', 'f32le', '-'))
+        expect(error.peak).toBeLessThan(0.06)
+        expect(error.maxMillisecondRms).toBeLessThan(0.025)
+    }, 240_000)
+
+    it.skipIf(process.platform === 'win32')('resounds with an encoder that has no PNS control', async () => {
+        const folder = await filmFolder()
+        const movie = await built(folder)
+        const picture = pictureHash(movie)
+        const bin = join(folder, 'bin')
+        await mkdir(bin)
+        await writeFfmpegWithoutPns(join(bin, 'ffmpeg'))
+        const result = spawnSync('uv', ['run', join(TOOLS, 'resound.py'), folder], {
+            encoding: 'utf8', env: { ...process.env, ...QUIET, PATH: `${bin}:${process.env['PATH']}` },
+        })
+        expect(result.status, result.stderr).toBe(0)
+        expect(pictureHash(movie)).toBe(picture)
+        expect(JSON.parse(tool('probe', folder).stdout)).toMatchObject({ audio: { codec_name: 'aac', sample_rate: '48000', channels: 2 }, timing: { record: 'valid', differs: [] } })
     }, 240_000)
 
     it('gives each run of resound its own files, so that a run for the draft and one for the delivered movie do not meet', async () => {

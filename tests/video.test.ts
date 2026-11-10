@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import React from 'react'
 import { defineAnimation, hold, tween, type AnimationFrameContext } from '../src/timeline'
 import { renderAnimationVideo, renderRgbaVideo, videoFrameSchedule } from '../src/video'
+import { aacWaveformError, syntheticAacFixture, writeFfmpegWithoutPns } from './aac-fixture'
 
 const tempDirs: string[] = []
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
@@ -144,6 +145,22 @@ describe('RGBA video export', () => {
         }
     }, 30_000)
 
+    it.skipIf(!hasFfmpeg)('preserves synthetic speech-like transients through native AAC', async () => {
+        const directory = await tempDirectory()
+        const audioPath = join(directory, 'synthetic.wav'), outputPath = join(directory, 'synthetic.mp4')
+        const { wav, samples } = syntheticAacFixture()
+        await writeFile(audioPath, wav)
+        await renderRgbaVideo(() => new Uint8Array(16 * 16 * 4), {
+            width: 16, height: 16, duration: 8000, fps: 10, threads: 1, outputPath, audioPath,
+        })
+        const decoded = spawnSync('ffmpeg', ['-v', 'error', '-i', outputPath, '-map', '0:a:0', '-t', '8', '-f', 'f32le', '-'], { maxBuffer: 8 << 20 })
+        expect(decoded.status, decoded.stderr.toString()).toBe(0)
+        const error = aacWaveformError(samples, decoded.stdout)
+        // Default PNS on FFmpeg 9 produced 0.162 peak error and 0.057 maximum 1 ms RMS error.
+        expect(error.peak).toBeLessThan(0.06)
+        expect(error.maxMillisecondRms).toBeLessThan(0.025)
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg || !hasFfprobe)('keeps a chapter of some minutes in a movie with captions and sound', async () => {
         const directory = await tempDirectory()
         const outputPath = join(directory, 'long.mp4')
@@ -168,6 +185,24 @@ describe('RGBA video export', () => {
         expect(chapters.map((chapter) => [chapter.tags.title, Math.round(Number(chapter.start_time)), Math.round(Number(chapter.end_time))]))
             .toEqual([['One', 0, 400], ['Two', 400, 420]])
     }, 120_000)
+
+    it.skipIf(!hasFfmpeg || !hasFfprobe || process.platform === 'win32')('exports AAC with an older encoder and keeps Opus audio in WebM', async () => {
+        const directory = await tempDirectory()
+        const encoder = join(directory, 'ffmpeg')
+        await writeFfmpegWithoutPns(encoder)
+        const audioPath = join(directory, 'tone.wav')
+        const tone = spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.2:sample_rate=48000', audioPath])
+        expect(tone.status).toBe(0)
+        for (const [codec, extension, audioCodec] of [['h264', 'mp4', 'aac'], ['vp9', 'webm', 'opus']] as const) {
+            const outputPath = join(directory, `older.${extension}`)
+            await renderRgbaVideo(() => new Uint8Array(16 * 16 * 4), {
+                width: 16, height: 16, duration: 300, fps: 10, outputPath, audioPath, codec, ffmpegPath: encoder,
+            })
+            const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_name,sample_rate,channels', '-of', 'json', outputPath], { encoding: 'utf8' })
+            expect(probe.status, probe.stderr).toBe(0)
+            expect(JSON.parse(probe.stdout).streams[0]).toMatchObject({ codec_name: audioCodec, sample_rate: '48000', channels: 2 })
+        }
+    }, 60_000)
 
     it.skipIf(process.platform === 'win32')('hands every byte of every frame to the encoder, in order', async () => {
         const directory = await tempDirectory()

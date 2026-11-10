@@ -359,8 +359,24 @@ async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefi
     }
 }
 
-/** The answer for each FFmpeg program, so that a process asks one time. */
-const movieTimescale = new Map<string, Promise<boolean>>()
+/** Ask each FFmpeg program about an option only once, including during concurrent exports. */
+const ffmpegOptions = new Map<string, Promise<boolean>>()
+
+function hasFfmpegOption(ffmpegPath: string, component: string, option: string): Promise<boolean> {
+    const key = JSON.stringify([ffmpegPath, component, option])
+    let answer = ffmpegOptions.get(key)
+    if (!answer) {
+        answer = new Promise<boolean>((done) => {
+            // Close stdin so a wrapper that reads it can exit. A busy encoder may take time to answer.
+            const child = execFile(ffmpegPath, ['-hide_banner', '-h', component], { maxBuffer: 1 << 20 }, (error, stdout) => {
+                done(!error && stdout.includes(option))
+            })
+            child.stdin?.end()
+        })
+        ffmpegOptions.set(key, answer)
+    }
+    return answer
+}
 
 /**
  * Says if this FFmpeg can set the time scale of an MP4.
@@ -372,19 +388,7 @@ const movieTimescale = new Map<string, Promise<boolean>>()
  * An FFmpeg with no such option, which is 4.3 and older, writes one millisecond always.
  */
 function hasMovieTimescale(ffmpegPath: string): Promise<boolean> {
-    let answer = movieTimescale.get(ffmpegPath)
-    if (!answer) {
-        answer = new Promise<boolean>((done) => {
-            // No time limit: on a busy machine a limit would end the question early, and the movie would then
-            // lose the option and a long chapter with no message. The input is closed, so a program that reads it ends.
-            const child = execFile(ffmpegPath, ['-hide_banner', '-h', 'muxer=mp4'], { maxBuffer: 1 << 20 }, (error, stdout) => {
-                done(!error && String(stdout).includes('movie_timescale'))
-            })
-            child.stdin?.end()
-        })
-        movieTimescale.set(ffmpegPath, answer)
-    }
-    return answer
+    return hasFfmpegOption(ffmpegPath, 'muxer=mp4', 'movie_timescale')
 }
 
 /**
@@ -509,7 +513,11 @@ export async function renderRgbaVideo(
     if (options.audioPath) {
         if (codec === 'vp9') args.push('-c:a', 'libopus', '-b:a', '160k', '-ar', '48000', '-ac', '2')
         // 384 kbit/s is what YouTube asks for in a stereo upload. A site encodes the sound again, so the file keeps more than a viewer needs.
-        else args.push('-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-ac', '2')
+        else {
+            args.push('-c:a', 'aac', '-b:a', '384k', '-ar', '48000', '-ac', '2')
+            // Noise reconstruction can produce isolated decoder-dependent spikes, even at this bitrate.
+            if (await hasFfmpegOption(ffmpegPath, 'encoder=aac', '-aac_pns')) args.push('-aac_pns', '0')
+        }
     }
     if (codec === 'h264') {
         args.push('-movflags', '+faststart')

@@ -110,6 +110,12 @@ def millisecond_scale():
     return ["-movie_timescale", "1000"] if "movie_timescale" in listed else []
 
 
+def aac_options():
+    """Disable noise substitution when supported, to avoid decoder-dependent spikes."""
+    listed = subprocess.run(["ffmpeg", "-hide_banner", "-h", "encoder=aac"], capture_output=True, text=True)
+    return ["-aac_pns", "0"] if listed.returncode == 0 and "-aac_pns" in listed.stdout else []
+
+
 def remux(movie, sound, info, made):
     """Write the movie again with the new sound, into `made`. The picture is copied as it is."""
     notes = temporary(movie, ".resound.txt")
@@ -120,7 +126,7 @@ def remux(movie, sound, info, made):
             "-map", "0:v:0", "-map", "1:a:0", "-map", "0:s?", "-map_metadata", "2", "-map_chapters", "2",
             "-af", f"asetpts=PTS-STARTPTS,apad,atrim=duration={info['format']['duration']}",
             "-c:v", "copy", "-c:s", "copy",
-            "-c:a", "aac", "-b:a", "384k", "-ar", "48000", "-ac", "2", *millisecond_scale(), "-movflags", "+faststart", "-f", "mp4", str(made),
+            "-c:a", "aac", "-b:a", "384k", "-ar", "48000", "-ac", "2", *aac_options(), *millisecond_scale(), "-movflags", "+faststart", "-f", "mp4", str(made),
         ], check=True)
     finally:
         notes.unlink(missing_ok=True)
