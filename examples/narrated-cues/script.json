@@ -1,0 +1,57 @@
+{
+  "timeline": { "intro": 2.4, "pause": 0.5, "gap": 0.4, "tail": 0.8 },
+  "pronounce": { "4": "four", "6": "six", "2": "two", "12": "twelve", "50": "fifty" },
+  "scenes": [
+    {
+      "id": "serial",
+      "title": "Tasks run one after another",
+      "beats": [
+        {
+          "say": "In this invented example, load takes 4 milliseconds, parse takes 6, and save takes 2.",
+          "hold": 0.6,
+          "cues": [
+            { "id": "load-name", "phrase": "load" },
+            { "id": "numeric-four", "phrase": "four milliseconds", "data": 4 },
+            { "id": "parse-name", "phrase": "parse" },
+            { "id": "save-name", "phrase": "save" }
+          ]
+        },
+        { "say": "The tasks run in order. Each waits for the task before it.", "hold": 1.0 }
+      ]
+    },
+    {
+      "id": "sum",
+      "title": "Serial time is a sum",
+      "beats": [
+        {
+          "say": "To find the total, add their times. Four plus six plus two is 12 milliseconds.",
+          "hold": 2.0,
+          "cues": [
+            { "id": "add-times", "phrase": "add their times" },
+            { "id": "total", "phrase": "twelve milliseconds" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "skip",
+      "title": "Remove work to save its time",
+      "beats": [
+        {
+          "say": "Suppose we skip parse. Subtract six milliseconds. The remaining work takes 6 milliseconds.",
+          "hold": 1.0,
+          "cues": [
+            { "id": "skip-parse", "phrase": "skip parse" },
+            { "id": "subtract", "phrase": "Subtract six milliseconds" },
+            { "id": "remaining", "phrase": "remaining work takes six milliseconds", "data": { "remaining": 6 } }
+          ]
+        },
+        {
+          "say": "That is half the original time. For serial work, removing a task saves that task's time.",
+          "hold": 2.0,
+          "cues": [{ "id": "saved-percent", "phrase": "half the original time" }]
+        }
+      ]
+    }
+  ]
+}
