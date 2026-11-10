@@ -255,6 +255,36 @@ s.play(record.advance(2021))
 s.play(record.showAll())
 ```
 
+One axis with values on it: a score against a cutoff, a measured value against a limit, the values that a number format can store. Do not write the comparison as a sentence, and do not draw the line, the dots and the cutoff by hand. `numberLine` takes `ticks` at any steps, `points` with a name, `thresholds`, and `bands`. `move` slides a point. `snap` takes it to the nearest tick, and leaves the error as a red line. `moveThreshold` slides a cutoff: each point takes the look of its new band at the moment of the crossing, and with `counts: true` the counts of the bands follow. `hollow: true` on a band draws its points as rings, a second sign beside the color. `bracket('A', 'B')` shows the gap between two points and follows them. `line.count(band)`, `line.bandOf(name)` and `line.value(name)` read the state, for a text beside the line. The texts are 28 px by default and the numbers 24 px, so give `size: 32` for a lesson. `length` is the width for `fitted`:
+
+```ts
+const strip = s.add(numberLine({
+    range: [0.4, 1], ticks: [0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], format: (score) => score.toFixed(2), length: 1600, size: 32,
+    thresholds: [{ at: 0.7, label: 'cutoff' }],
+    bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'served at once', color: 'green' }],
+    counts: true,
+    points: [{ name: 'formal', value: 0.78 }, { name: 'plain', value: 0.67 }],
+}))
+s.play(strip.moveThreshold(0.5))                    // both are served: strip.count('served at once') is 2
+s.play(strip.move('plain', 0.45))                   // the point crosses the cutoff, and takes the look of the review side
+const grid = s.add(numberLine({ ticks: [1, 1.125, 1.25, 1.5, 2, 3, 4], tickLabels: [1, 2, 4], points: [{ name: 'w', value: 1.3 }] }))
+s.play(grid.snap('w'))                              // to 1.25, the nearest value that the format can store
+```
+
+Points on a plane that change: an embedding space, a nearest neighbor search, an index of cells, k-means. Do not draw a new small plot in each scene: keep one plane, and act on it. A point of `scatter` has a `name`, and a group has a color and a `shape`. `move`, `insert`, `remove` and `assign` change the points. `nearest('q', 3)` grows a ring from a point to its third nearest point, with a line to each point that the ring holds, and the search stays true while the points move. `among` keeps it to some points. `hull(group)` is the outline of a group, `cells(centers)` cuts the plot into one cell for each center, and `span({ x })` is a part of the axes. Each is an area: `shade()` lights it, `area.points` lists the points of the data in it, and `area.holds('q')` says if a point is in it. The distance is in the units of the axes, so give both axes the same pixels for one unit when the ring must be a circle. `chart.nearestTo('q', 2)` and `chart.neighbors` give the points for a table beside the plane. The names are 26 px by default and the numbers of the axes 18 px, so give `labelSize: 26` for a lesson:
+
+```ts
+const plane = s.add(scatter(points, {
+    x: [0, 10], y: [0, 10], width: 800, height: 800, labelSize: 26,
+    groups: { centroid: { color: 'ink', shape: 'ring' }, found: { color: 'green', shape: 'diamond' } },
+}))
+const cells = plane.cells(['c1', 'c2'])
+s.play(plane.insert({ x: 4.8, y: 5, name: 'q', query: true }))
+const first = cells.find((cell) => cell.holds('q'))!
+s.play(first.shade(), plane.nearest('q', 2, { among: first.points }))   // one probe: the search scores the vectors of one cell
+s.play(plane.assign(plane.neighbors, 'found'))                          // the two that it found take a group, a color and a shape
+```
+
 A mark for the kind of a claim and its source, in a corner of the frame, that changes as the film moves from a plan to a result. Do not build it from a pill and two texts in each film:
 
 ```ts

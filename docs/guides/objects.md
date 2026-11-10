@@ -26,7 +26,7 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-`riemann`, `areaUnder`, `tangentLine`, and `secantLine` work with an `Axes`. `numberLine` draws one axis alone.
+`riemann`, `areaUnder`, `tangentLine`, and `secantLine` work with an `Axes`. `numberLine` draws one axis alone: see [Number lines](#number-lines).
 
 ```film paired label="Rectangles under a curve grow more numerous and approach the area"
 import { axes, draw, fadeIn, film, morph, riemann } from 'vizmatic/stage'
@@ -170,7 +170,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Charts
 
-`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation.
+`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation. `scatter` also has points with a name, a search for the nearest points, and areas that shade: see [Scatter planes](#scatter-planes).
 
 ```film paired label="Bars grow up from an axis"
 import { barChart, film, grow, lagged } from 'vizmatic/stage'
@@ -832,6 +832,139 @@ export default film((s) => {
 ```
 
 `record.events` holds one node per event, in the order of the list, with its `mark`, its `stem`, its `text`, its `note`, and its `halo`, the ring of the lit event. The stem and the text are null for an event with no label. `record.axis` is the line with its ticks and their texts, `record.cursor` is the cursor, and `record.unit` is the unit of the ticks. `record.x(date)` gives the x of a date, and `record.p(index)` the place of the mark of an event. Both are in the coordinates of the object, as `extent` is: the middle of the line is at (0, 0). `record.toWorld(...record.p(index))` gives the place on the stage, for a brace or a line to a picture. `size` is the text size of the labels. The notes and the texts under the line are a little smaller. `font` is the font of every text of the object.
+
+## Number lines
+
+`numberLine(options)` places values on a single axis. `range` sets the endpoints and `length` sets the distance between them in stage pixels. Use `step` for regular ticks or `ticks` for a list of representable values.
+
+```film paired label="Unequal ticks show the rounding error for two inputs"
+import { assertEqual, fadeIn, film, numberLine, sceneKit } from 'vizmatic/stage'
+
+const GRID = [1, 2, 4].flatMap((power) => Array.from({ length: 8 }, (_, k) => power * (1 + k / 8))).concat(8)
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('The distance to the nearest tick is the rounding error'), source('Three fraction bits give eight steps between each power of two and the next.'))
+    const ruler = numberLine({
+        ticks: GRID, tickLabels: [1, 2, 4, 5.5, 8], length: 1600, size: 40,
+        points: [{ name: 'a', value: 1.04, label: 'input a: 1.04', color: 'teal' }, { name: 'b', value: 5.3, label: 'input b: 5.30', color: 'orange' }],
+    }).at(0, 20)
+    s.play(ruler.enter(), { duration: 1.5 })
+    s.wait(2.5)
+    for (const name of ['a', 'b']) {
+        const lost = ruler.bracket(ruler.value(name), name, { label: (gap) => `error: ${gap.toFixed(2)}` })
+        s.play(ruler.snap(name), fadeIn(lost), { duration: 1.5 })
+        s.wait(2.5)
+    }
+    assertEqual(ruler.value('a'), 1, 'rounded a')
+    assertEqual(ruler.value('b'), 5.5, 'rounded b')
+    s.wait(2)
+})
+```
+
+With two or more custom `ticks`, the smallest and largest values set the range unless you supply `range`. Set `labels: false` to hide every tick label. Use `tickLabels` to label selected ticks when the full set would be too dense. Ticks outside that selection are shorter. If the labels on a custom tick list touch, the error suggests ticks with room for labels. `format` writes a value: under a tick, at a threshold, and in a bracket. With `format`, the numbers under the ticks are plain text in the font of the film, so a function such as `(value) => value + ' ms'` adds a unit. Without it, they are math, as the numbers of `axes` are.
+
+`size` sets the point names, threshold labels, band names, and brackets. The default is 28 px. Tick labels default to 6/7 of that size (24 px), and `labelSize` overrides it. For text of at least 26 px at 1080p, set `size: 32` or larger. Plain text uses `font` or the film font.
+
+Give each point a unique `name` and a `value`. `line.move('a', 2.4)` moves one point. `line.move({ a: 2.4, b: 1.3 })` moves several together. `line.insert(point, { from })` brings a new point from an optional stage position or node, and `line.remove(name)` takes it away.
+
+`line.snap('a')` moves a point to `line.nearestTick(value)`. Omit the name to snap every point. A ring marks the original position and a red segment shows the distance to the tick until the next move. Pass `{ trace: false }` as the second argument to omit the trace. At a midpoint, `nearestTick` chooses the tick with the even index in the sorted `tickValues` list.
+
+A point label defaults to its name. Set `label: false` to draw just the mark. `levels` sets how many rows of names the line can use (two by default). When names cannot fit, the error suggests more room or another row.
+
+```film paired label="A moving cutoff changes which requests need review"
+import { assertEqual, film, numberLine, sceneKit } from 'vizmatic/stage'
+
+const SCORES = [0.48, 0.56, 0.63, 0.69, 0.74, 0.81, 0.87, 0.94]
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('A stricter cutoff sends more cases to review'), source('Eight fixed scores. Rings wait for a person. Dots pass the gate.'))
+    const strip = numberLine({
+        range: [0.4, 1], step: 0.1, length: 1600, size: 40, format: (score) => score.toFixed(2),
+        points: SCORES.map((value, i) => ({ name: `request ${i + 1}`, value, label: i === 3 ? 'request 4' : false as const })),
+        thresholds: [{ at: 0.7, label: 'cutoff' }],
+        bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'served at once', color: 'teal' }], counts: true,
+    }).at(0, 40)
+    s.play(strip.enter(), { duration: 1.5 })
+    s.wait(2.5)
+    for (const cutoff of [0.9, 0.5, 0.7]) {
+        s.play(strip.moveThreshold(cutoff), { duration: 1.5 })
+        const expected = SCORES.filter((score) => score < cutoff).length
+        assertEqual(strip.count(0), expected, 'requests in review')
+        assertEqual(strip.count(1), SCORES.length - expected, 'requests served')
+        s.wait(2.5)
+    }
+})
+```
+
+Supply `thresholds` in increasing order. Each cut is a number or an object with `at`, `label`, `color`, `ties`, and `readout`. The label follows the moving cut and shows its current value unless `readout` is false. The cuts divide the line into bands. Each band can have a name and color. `hollow: true` uses rings for its points. Set `counts: true` to show each population under the line.
+
+`line.moveThreshold(to, { which })` moves a cut. Use its index or label for `which`, or omit it for the first cut. A point that meets the cut belongs to the upper band by default. Set `ties: 'under'` for the lower band. The fill, point marks, and counts follow the crossing as it happens. Thresholds must stay in increasing order throughout the motion.
+
+Use `line.value(name)`, `line.bandOf(name)`, `line.count(band)`, and `line.find(test)` to read the state after a scheduled change. `line.names` lists active points and `line.thresholds` lists the current cut values.
+
+`line.bracket(from, to)` follows two values or named points. By default, it shows the gap below the axis. `label` accepts text or a function of the gap and both values. Set `side: 'over'` or use `offset` to make room for another bracket. A bracket, marker, or interval joins the line when you create it. Use `fadeIn` to introduce it later. `line.marker(value)` also accepts a function for a continuously changing value.
+
+Sequence changes to the same point. Changes to distinct points can run together, and a point can move while a threshold moves.
+
+`.at()` places the center of the axis. `line.p(value)` gives a local coordinate and `line.world(value)` gives a stage coordinate. `line.point(name)` and `line.threshold(which)` return nodes for connectors or emphasis. `line.region({ at })`, `line.region({ from, to })`, and `line.region({ band })` give stage boxes for layout. Use `fitted(region, (length) => numberLine({ length, points }))` to include the arrow tips and text when fitting the line.
+
+## Scatter planes
+
+`scatter(points, options)` draws points on two axes. Each point needs `x` and `y`. Give it a `name` to move it by name and a `group` to share a color and shape. A search grows a ring from a point to its nearest points, and a hull, a cell, or a span of the axes is an area that shades. Use it for an embedding plane, a nearest neighbor search, an index of cells, k-means, or a decision region.
+
+```film paired label="A second probe finds a nearer vector across a cell border"
+import { assertEqual, fadeIn, film, scatter, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('The nearest vector can be across a cell border'), source('One probe misses B. Two probes recover the true nearest pair A and B.'))
+    const plane = scatter([
+        { x: 1, y: 1, group: 'left' }, { x: 1.5, y: 7, group: 'left' }, { x: 3, y: 8, group: 'left' },
+        { x: 8, y: 1, group: 'right' }, { x: 8.5, y: 7, group: 'right' }, { x: 7, y: 8, group: 'right' },
+        { x: 4.4, y: 5.6, name: 'A', group: 'left', side: 'over' },
+        { x: 5.2, y: 4.6, name: 'B', group: 'right', side: 'right' },
+        { x: 2.5, y: 5, name: 'c1', group: 'centers', side: 'left' },
+        { x: 7.5, y: 5, name: 'c2', group: 'centers', side: 'right' },
+    ], {
+        x: [0, 10], y: [0, 10], width: 760, height: 760, labelSize: 26, nameSize: 32, radius: 9, groupLabels: false,
+        groups: { left: { color: 'blue', shape: 'dot' }, right: { color: 'purple', shape: 'square' }, centers: { color: 'ink', shape: 'ring' }, found: { color: 'green', shape: 'diamond' } },
+    }).at(0, 10)
+    s.play(plane.enter(), { duration: 1.5 })
+    s.wait(1.5)
+    const cells = plane.cells(['c1', 'c2'])
+    s.play(fadeIn(cells), { duration: 0.6 })
+    s.play(plane.insert({ x: 4.8, y: 5, name: 'q', query: true, side: 'under' }), { duration: 0.9 })
+    const first = cells.find((cell) => cell.holds('q'))!, other = cells.find((cell) => !cell.holds('q'))!
+    s.play(first.shade(), plane.nearest('q', 2, { among: first.points }), { duration: 1.5 })
+    assertEqual(plane.neighbors.includes(plane.indexOf('B')), false, 'one probe finds B')
+    s.wait(3)
+    s.play(other.shade(), plane.nearest('q', 2, { among: [...first.points, ...other.points] }), { duration: 1.5 })
+    assertEqual(plane.neighbors[0], plane.indexOf('B'), 'nearest vector')
+    assertEqual(plane.neighbors[1], plane.indexOf('A'), 'second nearest vector')
+    s.play(plane.assign(plane.neighbors, 'found'), { duration: 0.8 })
+    s.wait(3.5)
+})
+```
+
+`width` and `height` set the plot dimensions. Axis numbers sit outside the plot. By default, `x` and `y` span the initial points. When starting empty, give both ranges to draw labeled axes for points that will arrive later.
+
+A point label defaults to its name. Set `label` for different text or `label: false` to hide it. The chart chooses a place inside the plot. Set `side` to `right`, `left`, `over`, or `under` to request a particular place. The default `nameSize` is 26 px. Axis numbers default to 18 px. Use `labelSize: 26` for a lesson at 1080p.
+
+Points in one group share a color and a label. Set `groups` to give each group a color or `{ color, shape, label }`. The shapes are `dot`, `ring`, `square`, `diamond`, and `triangle`. Set `label: false` to hide that group name. Declare groups with no initial members before assigning points to them. `query: true` draws a target and excludes that point from search results.
+
+`chart.move('q', [4, 5])` moves a point in data units. Use `chart.move({ q: [4, 5], c1: [2, 3] })` to move several at once. `insert(point, { from })` brings in a new point from an optional stage position or node. `remove(which)` takes points away. `assign(which, group)` changes the color and shape of the selected marks. Choose points by index, name, a list of either, or a predicate such as `(point) => point.group === 'left'`.
+
+`chart.nearest('q', 3)` draws a ring to the third nearest neighbor and links the query to the selected points. Distances are Euclidean in data units, so the ring looks circular when the axes use the same number of pixels per unit. The search follows later point movements. Use `among` to restrict candidates, change `k` to resize the search, or set `k` to zero to end it.
+
+`chart.hull(group)` follows the outline of a group as its membership changes. `chart.cells(centers)` partitions the plot by distance to each center. Give a point index, a name, or a coordinate pair for each center. `chart.span({ x: [0, 3.35] })` selects a vertical strip. Add a `y` range for a rectangle. Infinity denotes the corresponding edge of the axis. Each area joins the chart when you create it.
+
+`area.shade()` adds fill and emphasizes the outline. `area.shade(false)` returns to the resting appearance. A hull starts shaded. `area.points` returns the indexes of data points in the area. It excludes queries and, for a cell, the listed center points. `area.holds('q')` tests the location of a query too.
+
+`positionOf(which)`, `groupOf(which)`, `count(group)`, and `find(test)` read the state after the changes played so far. `nearestTo('q', 2)` returns neighbors with their distances. `neighbors` returns the indexes selected by the active search.
+
+A point can move and change group together. Sequence two position changes to the same point, two changes to its group, or two changes to the search. Moves and inserts need coordinates inside the axes.
+
+`chart.point(which)` returns a mark for a connector or emphasis. `chart.p(x, y)` gives local coordinates. `chart.region({ x: [0, 5] })` gives a stage box for part of the plot. `fitted(region, (width) => scatter(points, { width, height }))` includes axis labels in the measured width. The chart exposes `dots`, `nameLabels`, `groupLabels`, `areas`, and `axis` for animation.
 
 ## Pictograms
 
@@ -1782,7 +1915,7 @@ The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`
 | The label of a `connector`, and the label of an edge of a `graph`. | The font that the film names. Mono in a film with no `font`, as before. |
 | The text of an SVG from `fromSvg`. | The font that the film names, and mono for text that the SVG sets in a monospace family. Sans in a film with no `font`, as before. |
 | The words and the source line of a `quote`. | The serif text font, in every film. |
-| `tex`, and each label that is math: the numbers and the labels of `axes` and `numberLine`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
+| `tex`, and each label that is math: the numbers and the labels of `axes`, the numbers of a `numberLine` with no `format` and the label of its `marker`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
 | The center label of a `donut`. | The display serif. |
 
 Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. In a strip of `tokens`, `font` is the font of the tokens: the values of its rows stay in mono, and the names of its rows and the labels of its brackets are in the font of the film. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
