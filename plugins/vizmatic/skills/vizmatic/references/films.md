@@ -627,6 +627,8 @@ s.play(fade(logo, 1, { duration: 0.4 }))
 
 `image` reads the size of a PNG, GIF, or JPEG data URL, so one of `width` and `height` is enough. `preview` runs in the browser and cannot read a file, so pass a URL there, with both `width` and `height`.
 
+Use `fromSvg` for a company mark supplied as SVG paths. For catalog imports, PNG artwork, and sizing, see the [company logo example](https://bvolpato.github.io/vizmatic/docs/objects.html#company-logos).
+
 ## Check codes
 
 - `film.off_canvas`: a mark leaves the frame. Text that is clipped is an error. Other marks are warnings. A mark that spans the whole frame, such as a grid line, is not reported.

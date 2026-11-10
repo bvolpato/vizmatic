@@ -1411,6 +1411,41 @@ export default film({ fps: 30 }, (s) => {
 
 Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
 
+### Company logos
+
+Use a company’s brand kit or an optional catalog such as Lobe Icons or Simple Icons. Keep the selected artwork, its source, and the applicable notices in your project. A shared assets folder lets several films use the same copy. [Lobe Icons static SVGs](https://github.com/lobehub/lobe-icons/tree/ea434b96e75813517b377825e01c0df61dee8836/packages/static-svg/icons) · [Simple Icons](https://github.com/simple-icons/simple-icons/tree/16.0.0)
+
+For example, these commands copy the Claude product mark from a specific version of Lobe Icons. For Anthropic itself, choose the company's mark.
+
+```bash
+mkdir -p assets
+curl -fL https://unpkg.com/@lobehub/icons-static-svg@1.102.0/icons/claude-color.svg -o assets/company.svg
+```
+
+Save the following film as `logos.mjs`. The SVG becomes a Stage node that you can position, group with a label, or animate.
+
+```js
+import { readFileSync } from 'node:fs'
+import { film, fromSvg } from 'vizmatic/stage'
+
+const artwork = readFileSync(new URL('./assets/company.svg', import.meta.url), 'utf8')
+
+export default film({ look: 'paper', imageNetwork: 'deny' }, (s) => {
+    s.add(fromSvg(artwork, { width: 420, height: 220, background: true, splitGlyphs: false }))
+    s.wait(2)
+})
+```
+
+`fromSvg` fits the original proportions inside the box. `splitGlyphs: false` keeps compound paths together. `background: true` retains a background rectangle supplied with the art. If the SVG uses `currentColor`, set the intended foreground color before importing it.
+
+For marks that rely on masks, clipping, or an unsupported fill rule, export the artwork to a transparent PNG. Prepare it with `resolveImageAsset` and use `image(asset, { width: 420, height: 220, fit: "contain" })`. For browser playback, embed the SVG markup or PNG bytes in the film.
+
+With Vizmatic installed locally, render a frame to check the logo at its intended size.
+
+```bash
+npx --no-install vizmatic film logos.mjs --frame 1 --width 640 --out out
+```
+
 ## Cards
 
 `card(options)` draws a box with a `title` at the top, a `figure` in the middle, and a `caption` at the bottom. All three are optional. The title and the caption sit at fixed distances from the border. The figure is centered in the space between them, and a figure that is too large is scaled down to fit. So the cards of a row share one layout whatever they hold: give them one `width`, one `height`, and one `captionLines`, which is the number of lines of the longest caption.
