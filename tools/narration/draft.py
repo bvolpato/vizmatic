@@ -25,31 +25,31 @@ CHARACTERS_PER_SECOND = 11.6
 PAUSE = 0.17  # The same breath between sentences as the voice step.
 
 
-def plain(text):
-    """The text without the phoneme notes of the voice engine: "[Toto](/tˈOtO/)" becomes "Toto"."""
-    return re.sub(r"\[([^\]]+)\]\(/[^)]*/\)", r"\1", text)
-
-
 def draft_take(beat, speed):
     """One beat with estimated word times. A word is a run of characters without a space."""
     words, now = [], 0.0
-    for sentence in re.split(r"(?<=[.?!])\s+", plain(beat["text"])):
+    for sentence in re.split(r"(?<=[.?!])\s+", checks.plain(beat["text"])):
         for word in sentence.split():
             length = max(0.12, len(word) / CHARACTERS_PER_SECOND / speed)
             if re.search(r"\w", word):
                 words.append({"text": word, "start": round(now, 3), "end": round(now + length, 3)})
             now += length
         now += PAUSE
-    return {"say": beat["say"], "text": beat["text"], "duration": round(max(0.3, now - PAUSE), 3), "hold": beat["hold"], "words": words}
+    return {"say": beat["say"], "text": beat["text"], "duration": round(max(0.3, now - PAUSE), 3), "hold": beat["hold"], "words": words, **({"cues": beat["cues"]} if "cues" in beat else {})}
 
 
 def measured_timing(root):
     """True when timing.json holds a measured voice, which a draft must not replace."""
     path = root / "timing.json"
-    try:
-        return path.exists() and not json.loads(path.read_text()).get("draft")
-    except (json.JSONDecodeError, AttributeError):
+    if not path.exists():
         return False
+    try:
+        timing = json.loads(path.read_text())
+    except (OSError, ValueError):
+        film.fail("timing.json cannot be read as JSON. Restore or rename it before drafting")
+    if checks.timing_defect(timing):
+        film.fail("timing.json is not a usable timing. Restore or rename it before drafting")
+    return timing.get("draft") is not True
 
 
 def main(found, _words, _options):
@@ -59,7 +59,7 @@ def main(found, _words, _options):
         out["scenes"].append({"id": scene["id"], "title": scene["title"], "beats": [draft_take(beat, found.voice["speed"]) for beat in scene["beats"]]})
     kept = measured_timing(found.root)
     target = "timing.draft.json" if kept else "timing.json"
-    (found.root / target).write_text(json.dumps(out) + "\n")
+    film.write_timing(found.root / target, out)
     total = sum(beat["duration"] + beat["hold"] for scene in out["scenes"] for beat in scene["beats"])
     summary = f"{target} is written: a draft of {len(out['scenes'])} scenes, about {total:.1f} s of voice."
     if kept:

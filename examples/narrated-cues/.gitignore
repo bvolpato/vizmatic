@@ -1,0 +1,8 @@
+# Sound, stills and movies are built from the sources. The film folder says how.
+audio/
+dist/
+stills/
+node_modules/
+narration.wav
+timing.draft.json
+.narrated.lock

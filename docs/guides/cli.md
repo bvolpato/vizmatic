@@ -74,7 +74,7 @@ The rule measures in this way:
 
 The rule judges the text that the film places, also in a `group`, in a class of the film, in markup from `fromSvg`, in a `zone`, and in the figure of a `card`. It does not judge a distance that a rule of the library sets:
 
-- A label that an object places, against the marks of the same object: the numbers of `axes` beside its ticks, the title of a `card` or a `zone`, the word in a `tag`, the labels of a chart, of `lanes`, and of a `bitField`, the lines of a `terminal`, the names in the legend of a `stateGrid`, the labels and the notes of `steps`, the names, the tally, and the text of a crossing of a `boundary`, the words and the source of a `quote`, the numbers, the names, and the labels of the entries of a `ringBuffer`, the numbers, the labels, and the notes of a `dateLine`, the rows, the title, the footer, and the counts of an `eventLog`, and the names, the counts, and the ids and the badges of the items of a `pipeline`. Text that the film adds to such an object is judged.
+- A label that an object places, against the marks of the same object: the numbers of `axes` beside its ticks, the title of a `card` or a `zone`, the word in a `tag`, the labels of a chart, of `lanes`, and of a `bitField`, the lines of a `terminal`, the names in the legend of a `stateGrid`, the labels and the notes of `steps`, the names, the tally, and the text of a crossing of a `boundary`, the words and the source of a `quote`, the numbers, the names, and the labels of the entries of a `ringBuffer`, the numbers, the labels, and the notes of a `dateLine`, the rows, the title, the footer, and the counts of an `eventLog`, and the names, the counts, and the texts of the items of a `requestQueue`. This rule also covers stage names, counts, item IDs, and badges in a `pipeline`. Text that the film adds to such an object is judged.
 - A label of a plot against a line of the film, because a curve passes the numbers of an axis on purpose. The plots are `axes`, `numberLine`, `complexPlane`, the charts with an axis, `angleMark`, and a 3D scene. An arrow, a brace, the head of a `connector`, and the arrows of a `vectorField` are lines. A closed shape of the film, filled or not, is judged there too. So is the border of a `zone` around a chart, when the zone has a title and when it has none.
 - A `connector`, a `callout`, and a `braceLabel` against the text of the nodes that they are tied to: a connector ends 3 px from the word that it connects.
 - A label of a 3D scene against the marks of that scene, because their distance changes with the camera.
@@ -97,6 +97,34 @@ The rule has these limits:
 
 ```bash
 npx vizmatic check intro.ts --motion --content-top 200
+```
+
+`--text-size <px>` turns on the rule `film.text_small`, for text that is too small to read. The value is the least size on a frame that is 1080 high, and a frame of another size has the same part of its shorter side. `26` is the size that a lesson video needs on a phone. The rule is off by default, because small text can be a texture, such as rows of a log that scroll.
+
+- The size is what a viewer sees: the font size of the text, times the scale of its node and of the groups that hold it, times the zoom of the camera. For a formula, it is the size of its letters, and an index is smaller on purpose.
+- The rule looks at the moments at rest. Automatic samples ignore text while its node, a parent group, or the camera changes scale. Explicit sample times judge the picture at that time.
+- Text fully hidden by a later solid, opaque rectangular fill does not count. A translucent or partial cover does not suppress the finding. Rasterized text inside an image is outside this rule.
+- The texts of one size are one finding, which names five of them: `8 texts are 22 px on the screen, and the least size is 26 px: "word a", "word b", "word c", "word d", "word e" and 3 more. Give them a larger size.` A film sets a size for a kind of text, so the size is the place to change.
+- The labels of one object are one finding, which names the object: `4 labels of a bar chart are under 26 px on the screen, the smallest at 20 px: "alpha", "beta", "2", "3". Give the object a larger size for its labels.` The option is `labelSize` for most objects, and `size` for some.
+
+Many objects have labels under 26 px by default, because their defaults are for a figure and not for a lesson on a phone: the numbers of `axes` and of the charts are 18 to 20 px, the label of a `connector` is 12 px, and the names of a `legend` are 13 px. The rule reports them, so a film that asks for 26 px sets the size of each one.
+
+`--empty-space <part>` turns on the rule `film.empty_space`, for a picture that leaves much of the frame with no use. The value is the largest part of the frame that may stay empty in one piece, from 0 to 1. `0.5` is a good value. The rule is off by default, because a scene can leave a part of the frame empty on purpose.
+
+- The rule looks at the film two times in each second, on a grid of 16 by 9 cells. A cell has content when a text, an image, a line or a filled shape is in it.
+- By default, it reports a rectangle of cells that is larger than the part and has no content for 4 seconds or more: `For 5 s, 78% of the frame stays empty in one piece: the bottom 78% of the height. The limit is 50%. Make the picture larger, or use that part for what the picture explains.` `time` and `until` are the first look and the last look, and `box` is the rectangle.
+- The rectangle is empty for the whole time. A picture that moves, and a picture that uses the left half and then the right half, use the frame.
+- A scene that builds its picture in steps has an empty part for 2 or 3 seconds. That is no defect, so the rule waits for 4 seconds.
+- With 0.5 or more, the rule never reports a picture in the middle of the frame, however small it is: a title card, one formula, one sentence. Above the middle of the frame and under it, 4 of the 9 rows are free, which is 44%. A lower value, such as 0.4, reports them.
+- A line and a shape count from the contrast at which a viewer can tell them from the background, which is 1.6. So a faint grid, a panel in the color of the surface, and a text that is nearly gone are not content. An outline is content where its line is, and not inside it.
+- The rule does not look at the first half second and the last half second of the film.
+- A solid fill over the whole frame is a backdrop. It does not count as content, even when its color differs from the film background.
+- For a PNG with transparency, only cells that contain visible image pixels count. Crops and transforms apply before this check. A rotated cell uses a bounding rectangle in the source image, so it can count nearby pixels conservatively. When an older engine provides no alpha mask, the whole image rectangle counts.
+- `--empty-seconds <s>` changes the required duration. The default stays 4 seconds. Use `--empty-seconds 2` for a stricter course audit that must flag a sparse picture within a short beat. This option does not enable the rule by itself. The check includes a final sample half a second before the end, even when that time falls between the regular samples.
+
+```bash
+npx vizmatic check lesson.ts --text-size 26 --empty-space 0.5
+npx vizmatic check lesson.ts --empty-space 0.5 --empty-seconds 2
 ```
 
 ### vizmatic film
