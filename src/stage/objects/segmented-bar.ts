@@ -1,5 +1,5 @@
-import { Node, ownLabels, type Edge } from '../node'
-import { linePath, polyPath, rectPath, type Path, type Ring } from '../geometry'
+import { Node, ownLabels, rebindCloneParts, type Edge } from '../node'
+import { invert, linePath, polyPath, rectPath, transformPath, type Path, type Ring } from '../geometry'
 import { line, rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import { toPaint, type ColorInput } from '../color'
@@ -7,7 +7,7 @@ import { clock, Track } from '../track'
 import { Value, type Anim, type AnimContext, type AnimOptions } from '../anim'
 import { Box } from '../layout'
 import type { Stage } from '../stage'
-import { reveal, staggered, stepAt, tweenValue } from './util'
+import { lerpSame, reveal, staggered, stepAt, tweenValue } from './util'
 
 export interface SegmentedBarPart {
     /** The name of the part, on one line. It is the label of the part, and the film names the part by it. No two parts of a bar have one name. */
@@ -97,6 +97,8 @@ interface Entry {
     value: number
     /** True while the bar has the part, after the changes that are scheduled so far. */
     here: boolean
+    /** A zero amount alone cannot distinguish an empty part from a part that has left. */
+    present: Track<boolean>
     /** The amount at each time. */
     amount: Value
     /** How much of the room of its label the part has at each time, 0 to 1. */
@@ -223,8 +225,6 @@ export class SegmentedBar extends Node {
     private entries: Entry[] = []
     /** The parts from the left to the right, with the parts that left. */
     private order: Entry[] = []
-    /** The names that an `insert()` or a `send()` brings when the film plays it. */
-    private readonly pending = new Set<string>()
     private readonly w: number
     private readonly h: number
     private readonly size: number
@@ -273,7 +273,7 @@ export class SegmentedBar extends Node {
             if (word !== undefined && (typeof word !== 'string' || word.trim() === '' || /[\r\n]/.test(word))) throw new Error(`segmentedBar: ${name} is ${shown(word)}. Give one line of text`)
         }
 
-        const specs = parts.map((part, index) => this.checked(part, index, `part ${index}`))
+        const specs = parts.map((part, index) => this.checked(part, `part ${index}`))
         specs.forEach((spec, index) => {
             if (specs.findIndex((other) => other.name === spec.name) !== index) throw new Error(`segmentedBar: two parts have the name ${JSON.stringify(spec.name)}. A name is the identity of a part: give each part its own name`)
         })
@@ -295,7 +295,7 @@ export class SegmentedBar extends Node {
         if (typeof written !== 'string') throw new Error(`segmentedBar: format gave ${shown(written)} for the amount ${capacity}. A format gives a text, such as (value) => \`\${value} GB\``)
         if (total > max + this.slack) throw new Error(this.tooMuch(total, specs.map((spec) => spec.name)))
 
-        this.border = Math.max(2, size * 0.08)
+        this.border = Math.min(height / 2, Math.max(2, size * 0.08))
         this.seam = Math.max(3, size * 0.12)
         this.hair = Math.max(1.5, size * 0.07)
         // The highest and the lowest point of the letters of the two fonts, from the place that `.at()` gives a
@@ -471,15 +471,13 @@ export class SegmentedBar extends Node {
             // The labels after the changes that are scheduled so far: the layout at the end of the last one.
             const slot = this.layoutAt(Number.POSITIVE_INFINITY).slots.find((own) => own.entry === entry)
             const middle = slot ? slot.x : this.p(piece.label, 'bottom')[0]
-            const [x0, y0] = this.toWorld(middle - entry.wide / 2, this.labelTop), [x1, y1] = this.toWorld(middle + entry.wide / 2, this.labelBottom)
-            return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+            return this.worldBox(middle - entry.wide / 2, this.labelTop, middle + entry.wide / 2, this.labelBottom)
         }
         if (piece.part !== undefined && (amounts || piece.at !== undefined)) throw new Error('segmentedBar: region takes `part` for one part, or amounts with `from`, `to` and `at`, not both')
         if (piece.at !== undefined && amounts) throw new Error('segmentedBar: region takes `at` for one amount, or `from` and `to` for a stretch, not both')
         const [from, to] = piece.part !== undefined ? this.range(piece.part).map((value) => Math.min(value, this.max)) as [number, number] : [piece.at ?? piece.from ?? 0, piece.at ?? piece.to ?? this.capacity]
         if (from > to) throw new Error(`segmentedBar: region: \`from\` is ${from} and \`to\` is ${to}. Give a \`from\` that is not after \`to\``)
-        const [x0, y0] = this.toWorld(this.x(from), -this.h / 2), [x1, y1] = this.toWorld(this.x(to), this.h / 2)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        return this.worldBox(this.x(from), -this.h / 2, this.x(to), this.h / 2)
     }
 
     /** The label of a part belongs to its box, so a light on the box keeps the label bright. */
@@ -488,23 +486,24 @@ export class SegmentedBar extends Node {
         return entry ? [entry.node.children[1]!] : []
     }
 
-    /** A copy with its own parts, at the amounts that the bar shows now. A change of the copy does not change the bar. */
-    override clone(): this {
-        const copy = super.clone()
-        const nodes = this.layer.children, copies = copy.layer.children
-        copy.entries = this.entries.map((entry) => ({
-            ...entry,
-            amount: new Value(entry.amount.value),
-            show: new Value(entry.show.value),
-            box: new Track(entry.box.sample(clock.now)),
-            node: copies[nodes.indexOf(entry.node)]!,
-            last: null,
-        }))
-        copy.order = this.order.map((entry) => copy.entries[this.entries.indexOf(entry)]!)
+    /** A parent can clone the whole group. Snapshot both the visible values and the membership at that time. */
+    protected override [rebindCloneParts](copy: this, copies: ReadonlyMap<Node, Node>): void {
+        const entries = new Map<Entry, Entry>()
+        copy.entries = this.entries.map((entry) => {
+            const value = Math.max(0, entry.amount.value)
+            const here = entry.present.sample(clock.now)
+            const snapshot = {
+                ...entry, value, here, last: null,
+                present: new Track(here), amount: new Value(value), show: new Value(entry.show.value),
+                box: new Track(entry.box.sample(clock.now)),
+                node: copies.get(entry.node)!,
+            }
+            entries.set(entry, snapshot)
+            return snapshot
+        })
+        copy.order = this.order.map((entry) => entries.get(entry)!)
         copy.cache = null
         copy.watched = null
-        ;(copy as unknown as { pending: Set<string> }).pending = new Set()
-        return copy
     }
 
     /** The frame arrives, and then the parts grow from the left, one after another, each with its label. The total counts up with them. */
@@ -547,10 +546,9 @@ export class SegmentedBar extends Node {
         const changes: [string, number][] = one ? [[first, second as number]] : Object.entries(first)
         const options = ((one ? third : second) ?? {}) as AnimOptions
         if (changes.length === 0) throw new Error('segmentedBar: resize got no part. Give names and values, such as { cache: 4 }')
-        // Find a wrong name or value now, where the film names it. The amounts change when the animation is
-        // scheduled, so that a second change in the same sequence starts from the first.
+        // A previous step of a sequence can add or remove the part before this resize plays.
         for (const [name, value] of changes) {
-            this.known(name, 'resize')
+            this.checkName(name, 'resize')
             this.amountOk(value, `resize: the new value of ${JSON.stringify(name)}`)
         }
         return {
@@ -574,22 +572,14 @@ export class SegmentedBar extends Node {
      * the right end. A part that makes the total pass the capacity shows as over.
      */
     insert(part: SegmentedBarPart, options: AnimOptions & { before?: string } = {}): Anim {
-        const spec = this.checked(part, this.entries.length + this.pending.size, 'insert: the part')
-        if (this.has(spec.name) || this.pending.has(spec.name)) throw new Error(this.taken(spec.name, 'insert'))
-        if (options.before !== undefined) this.known(options.before, 'insert')
-        // The node is made now and joins the bar when the film plays the insert, so a name that is wrong stops the film at this line.
-        const node = this.partNode()
-        ownLabels(this, { labels: [node.children[1]!] })
-        this.pending.add(spec.name)
+        const spec = this.checked(part, 'insert: the part')
+        if (options.before !== undefined) this.checkName(options.before, 'insert')
         return {
             label: 'segmentedBar.insert', duration: options.duration ?? 0.8, ease: options.ease,
             schedule: (ctx) => {
+                const at = this.arrivalIndex(spec.name, options.before, 'insert', ctx.t0)
                 reveal(this, ctx.t0, ctx.stage)
-                this.pending.delete(spec.name)
-                // A film that plays one insert twice would bring two parts of one name.
-                if (this.has(spec.name)) throw new Error(this.taken(spec.name, 'insert'))
-                const at = options.before === undefined ? this.order.length : this.order.indexOf(this.partNamed(options.before, 'insert'))
-                const entry = this.entryOf(spec, node, 0, 0)
+                const entry = this.entryOf(spec, this.partNode(), 0, 0)
                 this.put(entry, at, ctx.t0)
                 tweenValue(entry.amount, spec.value, ctx.t0, ctx.t1, ctx.ease)
                 tweenValue(entry.show, 1, ctx.t0, ctx.t0 + (ctx.t1 - ctx.t0) * NAMED, ctx.ease)
@@ -657,25 +647,20 @@ export class SegmentedBar extends Node {
      * goes in front of. Without it, the part goes to the right end.
      */
     send(name: string, to: SegmentedBar, options: AnimOptions & { before?: string } = {}): Anim {
-        this.known(name, 'send')
+        this.checkName(name, 'send')
         if (!(to instanceof SegmentedBar)) throw new Error(`segmentedBar: send: the second argument is the bar that takes the part, and it is ${shown(to)}`)
         if (to === this) throw new Error('segmentedBar: send: the part is in this bar already. Give the other bar')
-        if (to.has(name) || to.pending.has(name)) throw new Error(to.taken(name, 'send'))
-        if (options.before !== undefined) to.known(options.before, 'send')
-        const node = to.partNode()
-        ownLabels(to, { labels: [node.children[1]!] })
-        to.pending.add(name)
+        if (options.before !== undefined) to.checkName(options.before, 'send')
         return {
             label: 'segmentedBar.send', duration: options.duration ?? 1.2, ease: options.ease,
             schedule: (ctx) => {
+                const from = this.partNamed(name, 'send')
+                const place = to.arrivalIndex(name, options.before, 'send', ctx.t0)
+                this.claim(from, `send(${JSON.stringify(name)})`, ctx)
                 reveal(this, ctx.t0, ctx.stage)
                 reveal(to, ctx.t0, ctx.stage)
-                to.pending.delete(name)
-                const from = this.partNamed(name, 'send')
-                this.claim(from, `send(${JSON.stringify(name)})`, ctx)
-                if (to.has(name)) throw new Error(to.taken(name, 'send'))
-                const place = options.before === undefined ? to.order.length : to.order.indexOf(to.partNamed(options.before, 'send'))
                 const value = from.value, span = ctx.t1 - ctx.t0
+                const node = to.partNode()
                 const entry = to.entryOf({ name, value, color: from.color }, node, 0, 0)
                 // The box that travels stands for the two boxes: the one that left, and the one that is not there yet.
                 const start = this.slotAt(from, ctx.t0)
@@ -691,23 +676,37 @@ export class SegmentedBar extends Node {
                 tweenValue(from.amount, 0, at(0.25), at(0.7), ctx.ease)
                 from.value = 0
                 from.here = false
+                from.present.step(at(0.7), false)
                 tweenValue(entry.amount, value, at(0.3), at(0.75), ctx.ease)
                 tweenValue(entry.show, 1, at(0.6), ctx.t1, ctx.ease)
                 entry.value = value
                 entry.last = { call: `send(${JSON.stringify(name)})`, t0: ctx.t0, t1: ctx.t1 }
 
+                // The carrier is under the stage root, so inherit each part's opacity up to that root once.
+                const opacityOf = (box: Node): number => {
+                    let alpha = 1
+                    for (let own: Node | null = box; own && own !== ctx.stage.root; own = own.parent) {
+                        if (!own.get('visible')) return 0
+                        alpha *= own.get('opacity')
+                    }
+                    return alpha
+                }
                 const carrier = new Node()
                 // The box is on its way from one bar to the other. The film check does not take it as a mark beside a text.
                 carrier.data['decoration'] = true
                 carrier.draw = (time) => {
                     const share = clamp(ctx.ease(span > 0 ? clamp((time - ctx.t0) / span) : 1))
-                    const a = this.cornersOf(start.from, start.to)
+                    // Both paths follow their bars and parents, including rotation and nonuniform scale.
+                    const source = from.node.children[0]!, target = node.children[0]!
+                    const a = transformPath(this.blockPath(start.from, start.to), source.worldMatrix())
                     // The place where the box lands follows the other bar, while its parts make room.
                     const landing = to.slotAt(entry, time), wide = (value / to.max) * to.w
-                    const b = to.cornersOf(landing.from, landing.from + wide)
-                    const [x0, y0, x1, y1] = a.map((own, index) => own + (b[index]! - own) * share) as [number, number, number, number]
-                    if (x1 - x0 < 0.05) return null
-                    return new Node(rectPath(x0, y0, x1 - x0, y1 - y0, Math.min(this.size * 0.14, (x1 - x0) / 2))).fill(from.color, FILL)
+                    if ((start.to - start.from) * (1 - share) + wide * share < 0.05) return null
+                    const b = transformPath(to.blockPath(landing.from, landing.from + wide), target.worldMatrix())
+                    const alpha = opacityOf(source), beta = opacityOf(target)
+                    // The renderer applies the carrier's parents, so return the path in its own coordinates.
+                    const path = transformPath(lerpSame(a, b)(share), invert(carrier.worldMatrix()))
+                    return new Node(path).fill(from.color, FILL).opacity(alpha + (beta - alpha) * share)
                 }
                 ctx.stage.mountAt(carrier, ctx.t0)
                 carrier.track('visible').step(ctx.t1, false)
@@ -728,17 +727,24 @@ export class SegmentedBar extends Node {
         this.version++
         if (this.watched === ctx.stage) return
         this.watched = ctx.stage
-        ctx.stage.checks.push(() => this.settle())
+        ctx.stage.checks.push(() => this.settle(ctx.stage.fps))
     }
 
     /**
-     * The parts must have room at each moment of the film, and so must their labels. The largest sum is at
-     * the start or the end of a change of a part, or between two of them while two changes overlap.
+     * A spring can cross the end of the bar between its keys. Check the frames of each change and its
+     * endpoints. A long hold adds no work.
      */
-    private settle(): void {
+    private settle(fps: number): void {
         const marks = new Set<number>([0])
         for (const entry of this.order) {
-            for (const key of [...entry.amount.track.keys, ...entry.show.track.keys]) marks.add(key.t0).add(key.t1)
+            for (const key of [...entry.amount.track.keys, ...entry.show.track.keys]) {
+                marks.add(key.t0).add(key.t1)
+                const first = Math.ceil(key.t0 * fps), end = Math.ceil(key.t1 * fps)
+                if (!(fps > 0 && Number.isSafeInteger(first) && Number.isSafeInteger(end))) {
+                    throw new Error('segmentedBar: give the film a positive finite frame rate and each change a finite duration')
+                }
+                for (let frame = first; frame < end; frame++) marks.add(frame / fps)
+            }
         }
         const times = [...marks].sort((a, b) => a - b)
         // The first time of the largest sum is the one to name: the change that starts there is the cause.
@@ -748,11 +754,7 @@ export class SegmentedBar extends Node {
             if (layout.total > most + this.slack) [most, when] = [layout.total, time]
             if (layout.need > widest + 0.5) [widest, crowded] = [layout.need, time]
         }
-        times.forEach((time, index) => {
-            look(time)
-            const next = times[index + 1]
-            if (next !== undefined) for (let step = 1; step < 8; step++) look(time + ((next - time) * step) / 8)
-        })
+        times.forEach(look)
         if (most > this.max + this.slack) throw new Error(this.tooMuch(most, this.layoutAt(when).slots.filter((slot) => slot.amount > 0).map((slot) => slot.entry!.name), when))
         if (widest > this.w + 0.5) throw new Error(this.tooWide(widest, this.layoutAt(crowded).slots.filter((slot) => slot.show > 0).length, crowded))
     }
@@ -769,8 +771,11 @@ export class SegmentedBar extends Node {
         return `segmentedBar: ${parts} add up to ${room}${time === undefined ? '' : ` at ${seconds(time)}`}, and the bar ends at ${this.max}. Give the bar max: ${room} or more: the amount over the capacity of ${this.capacity} then has room at the right of the frame`
     }
 
-    private taken(name: string, call: string): string {
-        return `segmentedBar: ${call}: the bar has a part ${JSON.stringify(name)} already. A name is the identity of a part: give the part that arrives another name, or change the part with resize()`
+    private arrivalIndex(name: string, before: string | undefined, call: string, time: number): number {
+        if (this.has(name)) throw new Error(`segmentedBar: ${call}: the bar has a part ${JSON.stringify(name)} already. A name is the identity of a part: give the part that arrives another name, or change the part with resize()`)
+        const departing = this.entries.find((entry) => entry.name === name && entry.last && time < entry.last.t1 - SOON)
+        if (departing) throw new Error(`segmentedBar: ${call} brings ${JSON.stringify(name)} at ${seconds(time)}. Its previous change ends at ${seconds(departing.last!.t1)}. Play the arrival after that change`)
+        return before === undefined ? this.order.length : this.order.indexOf(this.partNamed(before, call))
     }
 
     /**
@@ -800,23 +805,23 @@ export class SegmentedBar extends Node {
         tweenValue(entry.show, 0, t0 + (t1 - t0) * (1 - NAMED), t1, ctx.ease)
         entry.value = 0
         entry.here = false
+        entry.present.step(t1, false)
     }
 
     /** A part of the film, checked: its name, its value, and its color. */
-    private checked(part: unknown, index: number, what: string): { name: string; value: number; color: ColorInput } {
+    private checked(part: unknown, what: string): SegmentedBarPart {
         if (typeof part !== 'object' || part === null) throw new Error(`segmentedBar: ${what} is ${shown(part)}. Give a part such as { name: 'history', value: 8200 }`)
         const { name, value, color } = part as SegmentedBarPart
         if (typeof name !== 'string' || name.trim() === '') throw new Error(`segmentedBar: ${what} has no name. Give each part a name, such as { name: 'history', value: 8200 }`)
         // The lines of a text with a line break start at the left, so they leave the middle of the label.
         if (/[\r\n]/.test(name)) throw new Error(`segmentedBar: the name ${JSON.stringify(name)} has a line break. A name is one line: give a shorter name`)
         this.amountOk(value, `the value of ${JSON.stringify(name)}`)
-        const paint = color ?? COLORS[index % COLORS.length]!
         try {
-            toPaint(paint)
+            if (color !== undefined) toPaint(color)
         } catch {
             throw new Error(`segmentedBar: the color of ${JSON.stringify(name)} is ${shown(color)}, which is not a color. Use a color of the look, such as 'teal', or a CSS color`)
         }
-        return { name, value, color: paint }
+        return { name, value, color }
     }
 
     private amountOk(value: unknown, what: string): void {
@@ -827,7 +832,7 @@ export class SegmentedBar extends Node {
     private listed(names: string | readonly string[], call: string): string[] {
         const list = typeof names === 'string' ? [names] : Array.isArray(names) ? [...new Set(names as readonly string[])] : null
         if (!list || list.length === 0) throw new Error(`segmentedBar: ${call} takes the name of a part, or a list of names with one name at least. It got ${shown(names)}`)
-        for (const name of list) this.known(name, call)
+        for (const name of list) this.checkName(name, call)
         return list
     }
 
@@ -839,9 +844,8 @@ export class SegmentedBar extends Node {
         throw new Error(`segmentedBar: ${call}: no part ${shown(name)}. ${names.length > 0 ? `The parts are ${names.map((own) => JSON.stringify(own)).join(', ')}` : 'The bar has no part'}`)
     }
 
-    /** At the call of a verb: a name that the bar has, or that an `insert()` or a `send()` brings when the film plays it. */
-    private known(name: string, call: string): void {
-        if (!this.pending.has(name)) this.partNamed(name, call)
+    private checkName(name: string, call: string): void {
+        if (typeof name !== 'string' || !name.trim() || /[\r\n]/.test(name)) throw new Error(`segmentedBar: ${call} needs a part name on one line. It got ${shown(name)}`)
     }
 
     private widthOf(content: string, font: TextOptions['font']): number {
@@ -850,16 +854,21 @@ export class SegmentedBar extends Node {
         return Math.max(made.get('px') * 2, made.bounds().width)
     }
 
-    private entryOf(spec: { name: string; value: number; color: ColorInput }, node: Node, amount: number, show: number): Entry {
+    private entryOf(spec: SegmentedBarPart, node: Node, amount: number, show: number): Entry {
         return {
-            name: spec.name, color: spec.color, value: spec.value, here: true,
-            amount: new Value(amount), show: new Value(show), box: new Track(true), node,
+            name: spec.name, color: spec.color ?? COLORS[this.entries.length % COLORS.length]!, value: spec.value, here: true,
+            present: new Track(true), amount: new Value(amount), show: new Value(show), box: new Track(true), node,
             wide: Math.max(this.widthOf(spec.name, this.font), this.valueRoom), last: null,
         }
     }
 
     /** Give a part its place in the bar, and its node to the tree from a time on. */
     private put(entry: Entry, at: number, time?: number): void {
+        if (time !== undefined) {
+            entry.present.initial = false
+            entry.present.step(time, true)
+        }
+        ownLabels(this, { labels: [entry.node.children[1]!] })
         this.entries.push(entry)
         entry.node.data['part'] = this.entries.length - 1
         this.order.splice(at, 0, entry)
@@ -950,11 +959,17 @@ export class SegmentedBar extends Node {
         return [from + room / 2, -high / 2, to - from - room, high]
     }
 
-    /** The corners of the box of a part on the stage: left, top, right, bottom. */
-    private cornersOf(from: number, to: number): [number, number, number, number] {
+    /** The rounded path shared by a part and its traveling box, in the coordinates of the bar. */
+    private blockPath(from: number, to: number): Path {
         const [x, y, width, height] = this.block(from, to)
-        const [x0, y0] = this.toWorld(x, y), [x1, y1] = this.toWorld(x + width, y + height)
-        return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)]
+        return rectPath(x, y, width, height, Math.min(this.size * 0.14, width / 2))
+    }
+
+    /** The bounds of all four corners after the transform. */
+    private worldBox(left: number, top: number, right: number, bottom: number): Box {
+        const corners = [this.toWorld(left, top), this.toWorld(right, top), this.toWorld(right, bottom), this.toWorld(left, bottom)]
+        const xs = corners.map((point) => point[0]), ys = corners.map((point) => point[1])
+        return new Box(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys))
     }
 
     /**
@@ -970,7 +985,7 @@ export class SegmentedBar extends Node {
         const slot = layout.slots.find((own) => own.entry === entry)
         if (!slot || slot.to - slot.from < 0.05) return null
         const [x, y, width, height] = this.block(slot.from, slot.to)
-        const box = new Node(rectPath(x, y, width, height, Math.min(this.size * 0.14, width / 2))).fill(entry.color, FILL)
+        const box = new Node(this.blockPath(slot.from, slot.to)).fill(entry.color, FILL)
         // A part that the line cuts is red from the line on.
         const from = Math.max(x, this.x(this.capacity)), wide = x + width - from
         if (layout.total - this.capacity <= this.slack || wide < 0.05) return box

@@ -340,7 +340,7 @@ const word = s.add(bitField([
 s.add(connector(word.toWorld(...word.p('table')), pageTable, { color: 'orange' }))
 ```
 
-One bar in named parts to scale: a context window against its limit, the memory of a GPU, or shares that add up to one. Do not draw the parts, their labels, and the total by hand. `segmentedBar` keeps each part at its scale, puts the name and the amount of each part under it, keeps the labels apart, and counts the total against the `capacity`. `resize` grows or shrinks parts, `insert` and `remove` bring a part and take one out, `cut` takes parts out and gives their room to the rest (a renormalization), and `send` moves a part to another bar. Give a `max` over the capacity when the parts can pass it: the amount over the capacity then stands at the right of the frame, in red with a hatch. `bar.total`, `bar.free`, `bar.over`, and `bar.find(test)` read the state. `bar.region({ part })` is the box of a part, and `bar.region({ label })` is the box of its label, for a note under it. All its texts are 28 px by default:
+Use `segmentedBar` for a budget against a limit or for shares of a whole. Each part keeps its name and color as its value changes. Set `capacity` to draw a limit and `max` to reserve space for a red hatch over any excess. The labels and readout default to 28 px. Use `resize`, `insert`, and `remove` to change parts. `cut` removes selected parts and scales the others to restore the total. `send` moves one part between bars. Use `bar.region({ label: name })` to place a note under the label of a narrow part.
 
 ```ts
 const context = s.add(segmentedBar([

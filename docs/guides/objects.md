@@ -1039,7 +1039,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Segmented bars
 
-`segmentedBar(parts, options)` draws one bar in named parts, to scale. Use it for a budget against a capacity: a context window in tokens, the memory of a GPU, the time of a request. Use it also for shares that add up to one, such as a distribution over the next token. A part has a `name`, a `value`, and a `color`. A part keeps its name and its color while its amount changes, so the viewer follows one thing through the film.
+`segmentedBar(parts, options)` draws one bar whose segment widths match their values. Use it to compare a budget with a capacity, or to show shares of a whole. Give each part a unique `name`, a nonnegative `value`, and an optional `color`. The name and color stay with the part as it grows, shrinks, or moves between bars.
 
 ```film paired label="A context window holds more than its capacity. The raw trace moves to an archive, one finding of it stays, and the tool schemas shrink"
 import { beside, fadeIn, fadeOut, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
@@ -1074,15 +1074,15 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-`capacity` is the amount that the bar holds. The frame of the bar goes from 0 to the capacity and ends with a line, and the room that the parts leave is the free room. `max` is the amount at the right end of the object, and `width` is the width from 0 to `max`. Without `max`, the bar ends at its capacity. Without `capacity`, the bar has no limit: its frame goes to its right end, it has no line and no readout, and no amount is over. The right end is then the total of the parts, so the parts are shares of the whole bar. With a `max` and no `capacity`, the right end is `max`, and the parts can grow up to it. `.at()` places the middle of the bar from 0 to `max`. Two bars with one `width` and one `max` have one scale: a unit is as wide in both.
+`capacity` sets the limit and puts a vertical mark at that value. `max` sets the value at the right edge of the drawing. It defaults to `capacity`, or to the initial total for a bar of shares. Set `max` above `capacity` to leave room for overflow. For an empty bar, give `capacity` or `max` to set its scale. Two bars with the same `width` and `max` draw one unit at the same width. `.at()` places the center of this scale.
 
-Each part has a label under it: its name, and its amount under the name. The labels stand in one row. A label is under the middle of its part when it has room there. The labels of narrow parts push each other apart, in the order of the parts, and a thin line joins each label to its part. So no two labels meet, and none leaves the width of the bar. Labels that have no room in one row are an error, and the message gives the width that has room. `free: 'free'` names the free room, which then has a label with its amount. `labels: false` draws no label, for a small bar whose parts the film names itself.
+Each part has a name and an amount below the bar. Leader lines connect narrow parts to their labels when the labels need more room. If the row does not fit, the error gives the required width. Set `free` to a name such as `'available'` to label unused capacity. Set `labels: false` to omit the row.
 
-The names are in the font of the film, and the amounts are in mono, so a number that counts keeps its width. All the texts have one size, `size`, which is 28 by default. `height` is the height of the bar, 2.4 of `size` by default. `format` writes an amount, such as a function that adds `GB` or that writes a share as a percentage. Without it, an amount has the most decimals of the values that the bar is made with, and commas: `8,200`.
+Names use the film font. Amounts use a monospaced font. The default `size` is 28 px and the default `height` is 2.4 times that size, rounded to the nearest pixel. The default number format groups thousands and uses the greatest number of decimal places in the initial values, capacity, and maximum, up to three. Use `format` for percentages, units, or a different precision.
 
-`title` is the name of the bar, over its left end. The readout is over the right end of the frame: the total against the capacity, such as `12,436 / 16,000`. It counts while the parts change. A bar with a `capacity` has a readout, and `readout: false` takes it away. A bar with no capacity shows its total with `readout: true`.
+`title` appears above the left edge. With a capacity, the readout shows the current total and the limit above the capacity mark. Use `readout: false` to hide it or `readout: true` to show the total on a bar of shares.
 
-Parts that add up to more than the capacity are over it. The amount over the capacity stands at the right of the frame, past the line. Each part is red from the line on, with a hatch, so that color is not the only sign. The readout turns red and says the amount: `12,436 / 8,192  over 4,244`. `over` sets that word. The amount over the capacity needs room: give a `max` that is as large as the largest total of the film. Parts that pass `max` at any moment stop the build. The message has the sum, the parts, the time, and the `max` that works.
+When the total exceeds capacity, a red hatch covers the excess and the readout reports the difference. Set `over` to change the word before the excess amount. If the total exceeds `max` on an animation frame, the build reports the parts, the time, and the required maximum.
 
 Each verb is an animation that changes the parts:
 
@@ -1097,9 +1097,9 @@ Each verb is an animation that changes the parts:
 
 The parts at the right of a part that changes move with it. The amounts under the parts count, and so do the readout and the free room. `cut` is a renormalization, such as top-k on a distribution: the cut parts shrink first, so the viewer sees the room that they leave, and then the rest grow. With `send`, the part keeps its name, its amount, and its color. The first bar closes the room of the part, and the second bar makes room before the box lands.
 
-A part takes one change at a time. Two changes of one part whose times overlap are an error that names the two calls. Changes of different parts play together, in one `s.play` or with a `delay`: the bar lays its parts out from all of them at each frame. Each verb leaves the state that the next one starts from, so `seq(bar.insert(part), bar.resize(part.name, 4))` works.
+Changes to different parts can play together. Schedule changes to the same part in time order, with each change ending before the next begins. Use `seq` to remove and replace a part with the same name, or to send a part to an archive and back. The bar resolves part names when each animation plays.
 
-`bar.names`, `bar.count`, `bar.total`, `bar.free`, and `bar.over` read the state after the changes that the film has played so far. `bar.amount(name)` is the amount of one part, `bar.range(name)` holds its two ends as amounts, and `bar.has(name)` says if the bar has the part. `bar.find(test)` gives the names of the parts that a function picks. The function gets a part with its `name`, its `value`, its `share` of the total, its two ends `from` and `to`, and its `index`. So `bar.cut(bar.find((part) => part.index >= 2))` is top-k with k = 2, and `bar.find((part) => part.from <= u && u < part.to)` is the part that a draw `u` lands on.
+`bar.names`, `bar.count`, `bar.total`, `bar.free`, and `bar.over` read the state after the changes that the film has played so far. `bar.amount(name)` is the amount of one part, `bar.range(name)` holds its two ends as amounts, and `bar.has(name)` says if the bar has the part. `bar.find(test)` gives the names of the parts that a function picks. The function gets a part with its `name`, its `value`, its `share` of the total, its two ends `from` and `to`, and its `index`. If the parts are sorted by decreasing probability, `bar.cut(bar.find((part) => part.index >= 2))` keeps the two most probable outcomes. `bar.find((part) => part.from <= u && u < part.to)` locates a draw on the cumulative scale.
 
 ```film paired label="A distribution over the next token: the temperature changes its shape, top-k cuts it, and a draw lands on one part"
 import { arrow, beside, fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
@@ -1145,31 +1145,36 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-The bar gives places for a note and a line. `bar.region({ part: 'history' })` is the box of a part on the stage, for `beside` and `place` of the [layout](layout.md). `bar.region({ label: 'history' })` is the box of the label of a part. A note under a part goes there, with `beside(note, bar.region({ label: 'history' }), 'under')`, because the label of a narrow part is not under its box. `bar.region({ from: 0, to: 352 })` is a stretch of amounts, `bar.region({ at: 0.71 })` is one amount, and `bar.region()` is the frame. `.point('top')` of a region is a point for the tip of an arrow, and two corners are the ends of a `brace`: `brace(box.point('top right'), box.point('top left'))` is a brace over a stretch. `bar.part(name)` is the node of a part, with its box and its label: light it with `spotlight(bar.part('history'), { within: bar })`. The amount over the capacity is a piece of the box of its part, so it stays bright with the part. `bar.p(name)` is the middle of the top edge of a part in the coordinates of the bar, and `'bottom'`, `'left'`, and `'right'` give the other edges. `bar.x(value)` is the x of an amount. The labels are under the bar, so a line to a part ends at its top edge. A place is read after the changes that the film has played so far, and it does not follow the part: read it again after the next change. `bar.frame`, `bar.limit` (the line of the capacity), `bar.title`, and `bar.readout` are the fixed parts.
+Use `bar.region({ part: name })` for the box of a part on the stage. To put a note below its label, use `beside(note, bar.region({ label: name }), 'under')`. For a brace, use `region({ from, to })` and connect two corners. For a marker at one value, use `region({ at: value }).point('top')`. `region()` covers the frame up to the capacity. Read the region again after moving the bar or changing its parts.
 
-The layout measures a bar as the room that it can take at any time: the bar to its right end, the row of the title and the readout, and the rows of the labels. So a bar that starts empty has its place for the parts that come, and `fitted(region, (width) => segmentedBar(parts, { width }))` makes a bar as wide as a region. In the next example, the two bars end at 34 GB, so the cache has the same width in the host as in the device.
+`bar.x(value)` and `bar.p(name, edge)` return local coordinates. The default edge is `'top'`. Use `bar.part(name)` to select the box and label together, for example with `spotlight`. The frame, capacity mark, title, and readout are available as `bar.frame`, `bar.limit`, `bar.title`, and `bar.readout`.
 
-```ts
-import { fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+The layout reserves room for the full bar and its label rows, including when the bar starts empty. Use `fitted(region, (width) => segmentedBar(parts, { width }))` to fit a bar to a region. The GPU and host below use the same scale, so the cache keeps its width during transfer.
 
-const { area, heading } = sceneKit({ size: 36 })
-const gb = (value: number) => `${value.toFixed(1)} GB`
+```film paired label="Four sequences grow beyond GPU capacity. Their KV cache moves to host memory."
+import { beside, fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, note } = sceneKit({ size: 40 })
+const gb = (value: number) => value.toFixed(1)
 
 export default film({ fps: 30 }, (s) => {
-    const [upper, lower] = area.rows(2)
+    const [left, right] = area.columns(2)
     // One scale for the two bars: both end at 34 GB, so one GB is as wide in the host as in the device.
-    const device = place(fitted(upper!, (width) => segmentedBar([
+    const device = place(fitted(left!, (width) => segmentedBar([
         { name: 'weights', value: 7.6 },
         { name: 'workspace', value: 2.0, color: 'purple' },
-    ], { width, capacity: 24, max: 34, title: 'GPU memory', free: 'free', format: gb, size: 32 })), upper!)
-    const host = place(fitted(lower!, (width) => segmentedBar([], { width, capacity: 32, max: 34, title: 'host memory', free: 'free', format: gb, size: 32 })), lower!)
-    s.add(heading('It loads. Does it fit the workload?'))
+    ], { width, capacity: 24, max: 34, title: 'GPU (GB)', free: 'free', format: gb, size: 30 })), left!)
+    const host = place(fitted(right!, (width) => segmentedBar([], { width, capacity: 32, max: 34, title: 'Host (GB)', free: 'free', format: gb, size: 30 })), right!)
+    s.add(heading('Where does the KV cache fit?'))
     s.play(device.enter(), fadeIn(host), { duration: 1.6 })
     s.wait(1)
     // With a cap of 1,024 tokens for each of the four sequences, the cache stops at 1.3 GB.
+    const short = s.add(beside(note('4 sequences of 1,024 tokens'), device, 'under', 'wide'))
     s.play(device.insert({ name: 'KV cache', value: 1.3, color: 'teal' }), { duration: 1 })
     s.wait(1.4)
     // With no cap, the four sequences run to 16,384 tokens.
+    s.remove(short)
+    s.add(beside(note('4 sequences of 16,384 tokens'), device, 'under', 'wide'))
     s.play(device.resize('KV cache', 22.5), { duration: 2.4 })
     s.wait(1.8)
     // The cache moves to the host, where it has room.

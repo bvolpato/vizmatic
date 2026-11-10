@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import {
     CODE_LANGUAGES, arrayCells, attentionMatrix, axes, axes3d, barChart, boundary, callout, card, checkFilm, codeBlock, compileFilm, complexPlane, applyComplex, connector, countUp, crossThrough, chip, chipRow,
     bitField,
-    segmentedBar, boxOf, fitted,
+    segmentedBar, boxOf, fitted, spring,
     quote, quotePair, readingSeconds,
     counter, curve3d, dashedGuides, donut, dotChart, draw, dynamic, epicycles, fadeIn, film, fourier, fourierPoint, frameToSvg, fromSvg, graph, group,
     heatmap, highlightSweep, histogram, infoBox, lagged, labeledDot, legend, line, lineChart, linear, matrix, mixColor, morph, morphCode, morphMatching,
@@ -7443,6 +7443,40 @@ describe('segmented bar', () => {
         expect(ends(bar.part('b'), 0.9)![0]).toBeCloseTo(-500 + SEAM / 2, 6)
     })
 
+    it('preserves earlier frames when the film replays an insertion', async () => {
+        let first!: Node, second!: Node
+        await compile((s) => {
+            const bar = s.add(two())
+            const insert = bar.insert({ name: 'cache', value: 1 })
+            s.play(insert, { duration: 1 })
+            first = bar.part('cache')
+            s.play(bar.remove('cache'), { duration: 1 })
+            s.play(insert, { duration: 1 })
+            second = bar.part('cache')
+        })
+        expect(label(first, 1)?.amount).toBe('1')
+        expect(ends(first, 1)).toEqual(ends(second, 3))
+        expect(ends(second, 1)).toBeNull()
+    })
+
+    it('resolves part names when each step of a sequence plays', async () => {
+        await compile((s) => {
+            const bar = s.add(two()), archive = s.add(segmentedBar([], { capacity: 10 }))
+            s.play(seq(bar.remove('a'), bar.insert({ name: 'a', value: 3 })))
+            s.play(seq(bar.send('a', archive), archive.send('a', bar, { before: 'b' })))
+            expect(bar.names).toEqual(['a', 'b'])
+            expect(bar.amount('a')).toBe(3)
+            expect(archive.count).toBe(0)
+        })
+    })
+
+    it('refuses a replacement while the previous part is leaving', async () => {
+        await expect(compile((s) => {
+            const bar = s.add(two())
+            s.play(bar.remove('a'), bar.insert({ name: 'a', value: 1 }), { duration: 1 })
+        })).rejects.toThrow(/previous.*ends at 1 s/)
+    })
+
     it('knows in one sequence a part that an insert before it brings, and refuses a part that is not there', async () => {
         let bar!: Bar
         await compile((s) => {
@@ -7451,23 +7485,23 @@ describe('segmented bar', () => {
             expect(bar.names).toEqual(['b', 'n'])
             expect(bar.amount('n')).toBe(2)
         })
-        await compileFilm(film(() => {
+        await compileFilm(film((s) => {
             const made = two()
-            expect(message(() => made.resize('zz', 1))).toBe('segmentedBar: resize: no part "zz". The parts are "a", "b"')
+            expect(message(() => s.play(made.resize('zz', 1)))).toBe('segmentedBar: resize: no part "zz". The parts are "a", "b"')
             expect(message(() => made.resize('a', -1))).toBe('segmentedBar: resize: the new value of "a" is -1. An amount is a number, 0 or more')
             expect(message(() => made.resize('a', '3' as never))).toMatch(/the new value of "a" is "3"\. An amount is a number/)
             expect(message(() => made.resize({}))).toMatch(/resize got no part/)
             expect(message(() => made.resize(['a'] as never))).toMatch(/resize takes the name of a part and its new value, or an object of names and values/)
-            expect(message(() => made.remove('zz'))).toBe('segmentedBar: remove: no part "zz". The parts are "a", "b"')
+            expect(message(() => s.play(made.remove('zz')))).toBe('segmentedBar: remove: no part "zz". The parts are "a", "b"')
             expect(message(() => made.remove([]))).toMatch(/remove takes the name of a part, or a list of names with one name at least/)
-            expect(message(() => made.cut('zz'))).toMatch(/cut: no part "zz"/)
-            expect(message(() => made.insert({ name: 'a', value: 1 }))).toBe('segmentedBar: insert: the bar has a part "a" already. A name is the identity of a part: give the part that arrives another name, or change the part with resize()')
-            expect(message(() => made.insert({ name: 'c', value: 1 }, { before: 'zz' }))).toMatch(/insert: no part "zz"/)
+            expect(message(() => s.play(made.cut('zz')))).toMatch(/cut: no part "zz"/)
+            expect(message(() => s.play(made.insert({ name: 'a', value: 1 })))).toBe('segmentedBar: insert: the bar has a part "a" already. A name is the identity of a part: give the part that arrives another name, or change the part with resize()')
+            expect(message(() => s.play(made.insert({ name: 'c', value: 1 }, { before: 'zz' })))).toMatch(/insert: no part "zz"/)
             expect(message(() => made.insert({ name: '', value: 1 }))).toMatch(/insert: the part has no name/)
             expect(message(() => made.insert({ name: 'c', value: 1, color: 'no-color' }))).toMatch(/the color of "c" is "no-color", which is not a color/)
             expect(message(() => made.send('a', made))).toBe('segmentedBar: send: the part is in this bar already. Give the other bar')
             expect(message(() => made.send('a', {} as never))).toMatch(/send: the second argument is the bar that takes the part/)
-            expect(message(() => made.send('a', two()))).toMatch(/send: the bar has a part "a" already/)
+            expect(message(() => s.play(made.send('a', two())))).toMatch(/send: the bar has a part "a" already/)
             expect(message(() => made.find('a' as never))).toMatch(/find takes a function of a part/)
         }))
         // A film that plays one insert two times would bring two parts of one name.
@@ -7477,6 +7511,13 @@ describe('segmented bar', () => {
             s.play(arrive)
             s.play(arrive)
         })).rejects.toThrow(/insert: the bar has a part "c" already/)
+    })
+
+    it('checks for overflow on the frames of a spring animation', async () => {
+        await expect(compile((s) => {
+            const bar = s.add(segmentedBar([{ name: 'cache', value: 0 }], { capacity: 10 }))
+            s.play(bar.resize('cache', 9), { duration: 1, ease: spring({ frequency: 8 }) })
+        }, { fps: 30 })).rejects.toThrow(/add up to .* and the bar ends at 10/)
     })
 
     it('refuses parts that add up to more than the bar holds, and says which max has room for them', async () => {
@@ -7562,6 +7603,52 @@ describe('segmented bar', () => {
         expect(ends(copy.part('a'), 1)![1]).toBeCloseTo(-300 - SEAM / 2, 6)
         expect(ends(bar.part('b'), 2)![1]).toBeCloseTo(500 - SEAM / 2, 6)
         expect([label(bar.part('a'), 2)!.amount, label(copy.part('a'), 2)!.amount]).toEqual(['4', '2'])
+    })
+
+    it('takes an independent snapshot of the current values and parts when cloning a group', async () => {
+        let original!: Bar, copy!: Bar
+        await compile((s) => {
+            original = two()
+            const parent = s.add(group(original))
+            s.at(4, () => s.play(original.remove('b'), original.resize('a', 3), original.insert({ name: 'future', value: 0 })))
+            copy = s.add(parent.clone().shift(0, 200)).children[0] as Bar
+            expect(copy.names).toEqual(['a', 'b'])
+            expect(copy.amount('a')).toBe(2)
+            expect(copy.part('a')).not.toBe(original.part('a'))
+            s.play(copy.resize('a', 4))
+            const again = s.add(copy.clone())
+            s.play(again.remove('b'))
+            expect(again.names).toEqual(['a'])
+            expect(copy.names).toEqual(['a', 'b'])
+        })
+        expect(original.names).toEqual(['a', 'future'])
+        expect(original.amount('a')).toBe(3)
+        expect(label(original.part('a'), 1)?.amount).toBe('2')
+        expect(label(copy.part('a'), 5)?.amount).toBe('4')
+    })
+
+    it('keeps the shape and opacity of a part at both ends of a rotated transfer', async () => {
+        let teal!: Rgba
+        const compiled = await compile((s) => {
+            teal = parseColor('teal')
+            const source = two(), target = segmentedBar([], { capacity: 20 })
+            s.add(group(source.at(-200, 0), target.at(200, 0)).rotate(Math.PI / 4).opacity(0.4))
+            const region = source.region({ part: 'b' })
+            const corners = [-300, 300].flatMap((x) => [-33.5, 33.5].map((y) => source.toWorld(x, y)))
+            expect(region.left).toBeCloseTo(Math.min(...corners.map(([x]) => x)))
+            expect(region.right).toBeCloseTo(Math.max(...corners.map(([x]) => x)))
+            s.wait(1)
+            s.play(source.send('b', target), { duration: 1, ease: linear })
+            s.wait(1)
+        })
+        const box = (t: number) => paths(compiled, t).find((op) => same(op.fill, teal) && op.node?.data['key'] === undefined)!
+        for (const t of [1, 2]) {
+            const previous = box(t - 1e-8), next = box(t)
+            expect(next.fillAlpha).toBeCloseTo(previous.fillAlpha)
+            const before = pathBounds(previous.path)!, after = pathBounds(next.path)!
+            for (const key of ['x', 'y', 'width', 'height'] as const) expect(after[key]).toBeCloseTo(before[key], 3)
+        }
+        expect(box(1.5).fillAlpha).toBeCloseTo(box(0.9).fillAlpha)
     })
 
     it('places its own labels, so the film check reports nothing on a crowded bar while its parts change', async () => {
