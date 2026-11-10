@@ -228,6 +228,36 @@ function badgeMark(mark: 'done' | 'failed', radius: number): Path {
     return concat(polyPath([[-u * 0.8, -u * 0.8], [u * 0.8, u * 0.8]]), polyPath([[u * 0.8, -u * 0.8], [-u * 0.8, u * 0.8]]))
 }
 
+interface GraphWord {
+    node: Node
+    content: string
+}
+
+interface WordChange extends GraphWord {
+    t0: number
+    t1: number
+    ease: Ease
+}
+
+interface WordHistory {
+    initial: GraphWord
+    changes: WordChange[]
+}
+
+// A repeated string stays readable through the switch. A different string fades in after the old one leaves.
+function replaceWord(from: GraphWord, to: WordChange): void {
+    const { t0, t1, ease } = to, turn = (t0 + t1) / 2
+    const same = from.content === to.content
+    const opacity = sampleAt(from.node, 'opacity', t0)
+    if (same) stepAt(from.node, 'opacity', opacity, t0)
+    else from.node.tween('opacity', 0, t0, turn, ease)
+    stepAt(from.node, 'visible', false, turn)
+    stepAt(to.node, 'visible', true, t0)
+    stepAt(to.node, 'opacity', 0, t0)
+    stepAt(to.node, 'opacity', same ? opacity : 0, turn)
+    if (!same) to.node.tween('opacity', 1, turn, t1, ease)
+}
+
 interface NodeLook {
     paint: Paint
     fillOpacity: number
@@ -281,6 +311,7 @@ export class Graph extends Node {
     private readonly words = new Map<string, { value: string | null; note: string | null }>()
     /** The nodes and the edges that do not show yet. */
     protected readonly waiting = new Set<string>()
+    private readonly wordHistory = new Map<string, WordHistory>()
     private readonly waitingEdges = new Set<GraphEdge>()
     // The dot that carries the token along an edge. Null in a graph with no token.
     private readonly tokenDot: Node | null = null
@@ -556,6 +587,7 @@ export class Graph extends Node {
             waiting: new Set(this.waiting),
             waitingEdges: new Set([...this.waitingEdges].map((edge) => parts.get(edge) as GraphEdge)),
             lookMoves: new Map(),
+            wordHistory: new Map(),
             tokenMove: null,
         })
         for (const view of copy.nodes.values()) if (view.value) copy.bindValueInk(view, view.value)
@@ -1062,32 +1094,38 @@ export class Graph extends Node {
         const next = this.word(content, what)
         const wide = next.bounds().width, room = view.halfWidth * 2 - this.labelSize
         if (what === 'value' && wide > room) throw new Error(`${this.kind}: ${call}: the value ${JSON.stringify(content)} of the node ${quoted(id)} is ${Math.ceil(wide)} px wide, and its box has ${Math.max(0, Math.floor(room))} px for a text. Give the node a width of ${Math.ceil(wide + this.labelSize)} or more when you build the ${this.kind}, or a shorter value`)
-        ownLabels(this, { labels: [next] })
-        // The new text has the place of the text that the node was built with: a text of a node does not move.
-        next.at(view[what]!.get('x'), view[what]!.get('y'))
-        // Measure the patch of a note now, while the text is not a part of the node and its bounds are in the coordinates of the node.
+        const x = view[what]!.get('x'), y = view[what]!.get('y')
+        next.at(x, y)
         const patch = what === 'note' ? this.plate(next) : null
         return (t0, t1, ease) => {
-            // Read the text that the node shows when this change starts, so that a second change in one sequence follows the first.
-            const words = this.words.get(id)!, old = view[what]!
-            // A film may play one animation twice. The node shows this text already, so nothing changes.
-            if (old === next || words[what] === content) return
-            const turn = (t0 + t1) / 2
-            // The new text is a part of the node from here on. It is hidden until this change starts.
-            if (!next.mounted) next.base.visible = false
-            view.add(next)
-            // The patch of a note takes the size of the new text while no text shows.
-            if (patch && view.notePlate) stepAt(view.notePlate, 'path', patch, turn)
-            stepAt(next, 'visible', true, t0)
-            stepAt(next, 'opacity', 0, t0)
-            // A value in a node that is off is dim, as the label of the node is.
-            if (what === 'value') this.bindValueInk(view, next)
-            old.tween('opacity', 0, t0, turn, ease)
-            // The old text is hidden from the turn on. So when a film changes one text twice at one time, the text of the first change does not arrive under the text of the second.
-            stepAt(old, 'visible', false, turn)
-            next.tween('opacity', 1, turn, t1, ease)
-            view[what] = next
-            words[what] = content
+            const words = this.words.get(id)!, key = what + ':' + id
+            const history: WordHistory = this.wordHistory.get(key) ?? { initial: { node: view[what]!, content: words[what]! }, changes: [] }
+            const changes = history.changes
+            const last = changes.at(-1)
+            const index = last && t0 <= last.t0 ? changes.findIndex((change) => change.t0 >= t0) : changes.length
+            const atStart = changes[index]
+            const replaced = atStart?.t0 === t0 && atStart.t1 === t1
+            const before = changes[index - 1], after = changes[index + (replaced ? 1 : 0)]
+            const overlap = before && before.t1 > t0 + 1e-9 ? before : after && after.t0 < t1 - 1e-9 ? after : null
+            if (overlap) throw new Error(`${this.kind}: ${call}: two changes to the ${what} of node ${quoted(id)} overlap (${secondsOf(t0)} to ${secondsOf(t1)} and ${secondsOf(overlap.t0)} to ${secondsOf(overlap.t1)}). Leave time for one replacement to finish before the next`)
+
+            // A replay needs its own node so its windows of visibility stay independent.
+            const node = next.mounted ? this.word(content, what).at(x, y) : next
+            ownLabels(this, { labels: [node] })
+            node.base.visible = false
+            view.add(node)
+            if (what === 'value') this.bindValueInk(view, node)
+            const change = { node, content, t0, t1, ease }
+            if (replaced) stepAt(atStart.node, 'visible', false, t0)
+            changes.splice(index, replaced ? 1 : 0, change)
+            this.wordHistory.set(key, history)
+            replaceWord(before ?? history.initial, change)
+            // An earlier arrival now supplies the text that leaves at the next arrival.
+            if (after) replaceWord(change, after)
+            if (patch && view.notePlate) stepAt(view.notePlate, 'path', patch, (t0 + t1) / 2)
+            const final = changes[changes.length - 1]!
+            view[what] = final.node
+            words[what] = final.content
         }
     }
 

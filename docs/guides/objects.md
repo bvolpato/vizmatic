@@ -413,6 +413,8 @@ export default film((s) => {
 })
 ```
 
+Parallel signals update the destination in arrival order. For example, a one-second signal can display an intermediate value before a two-second signal displays the final value, even when the film schedules the longer trip first. Values and notes change independently. Leave time for each replacement of the same field to finish. Partially overlapping replacement windows are an error. If two replacements have exactly the same window, the last call supplies the text.
+
 For a reduction on a tree, calculate the parent value in the film and pass the formatted result to `send`. For example, a film can display a result of 0.21 with `t.send('home', 'ran', { value: '0.21' })`.
 
 ### A graph that fills a region, and a graph that is built

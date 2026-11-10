@@ -592,6 +592,39 @@ describe('graph and tree that change', () => {
         expect(await fails((s) => { s.play(s.add(chain()).send('a', 'c')) })).toMatch(/graph: send: no edge joins "a" and "c". The edges of "a" join it to "b"/)
     })
 
+    it('replaces a value and note by arrival time when parallel signals reach the same node', async () => {
+        for (const longFirst of [true, false]) {
+            for (const final of ['late', 'start']) {
+                let g!: G
+                await compile((s) => {
+                    g = s.add(graph([{ id: 'a' }, { id: 'b' }, { id: 'c', value: 'start', note: 'start note', width: 160 }], [{ from: 'a', to: 'c' }, { from: 'b', to: 'c' }]))
+                    const slow = g.send('a', 'c', { duration: 2, value: final, note: final + ' note' })
+                    const fast = g.send('b', 'c', { duration: 1, value: 'early', note: 'early note' })
+                    s.play(...(longFirst ? [slow, fast] : [fast, slow]))
+                })
+                const visible = (time: number) => at(time, () => g.node('c').children
+                    .filter((n): n is TextNode => n instanceof TextNode && n.get('visible') && n.get('opacity') > 0.001)
+                    .map((n) => n.source).sort())
+                expect(visible(0.9)).toEqual(['start', 'start note'])
+                expect(visible(1.6)).toEqual(['early', 'early note'])
+                expect(visible(2.5)).toEqual([final, final + ' note'])
+                expect([g.valueOf('c'), g.noteOf('c')]).toEqual([final, final + ' note'])
+                for (const time of [1.1, 1.25, 1.4, 2.1, 2.25, 2.4]) expect(visible(time).length).toBeLessThanOrEqual(2)
+            }
+        }
+    })
+
+    it('refuses partially overlapping replacements of one field in either call order', async () => {
+        for (const longFirst of [true, false]) {
+            expect(await fails((s) => {
+                const g = s.add(graph([{ id: 'a' }, { id: 'c', value: '0', width: 160 }], [{ from: 'a', to: 'c' }]))
+                const first = g.send('a', 'c', { duration: 1, value: '1' })
+                const second = g.send('a', 'c', { duration: 1.25, value: '2' })
+                s.play(...(longFirst ? [second, first] : [first, second]))
+            })).toMatch(/two changes to the value of node "c" overlap/)
+        }
+    })
+
     it('send uses duration for travel and changes a value only after arrival', async () => {
         let g!: G
         const f = await compile((s) => {
