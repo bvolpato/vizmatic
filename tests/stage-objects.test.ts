@@ -13455,6 +13455,12 @@ describe('tokens', () => {
             [['The', { text: ' cat', sub: '9246' }, { text: ' sat', sub: '3332', color: 'orange' }, ''], { size: 44, color: 'teal' }],
             [['a', 'b', 'c', 'd', 'e'], { size: 36, colors: ['blue', 'purple', 'red'], gap: 20, radius: 12 }],
             ['the quick brown fox jumps over the lazy dog'.split(' ').map((word, i) => ({ text: word, sub: String(i) })), { size: 30, maxWidth: 420, font: 'sans', subSize: 20 }],
+            [['hello', '\n', 'world'], {}],
+            [['a', 'b'], { maxWidth: Infinity }],
+            [['a'], { size: 0 }],
+            [[{ text: 'a', sub: '1' }], { subSize: 0 }],
+            [['a', 'b'], { gap: -1 }],
+            [['a', 'b'], { maxWidth: 0 }],
         ]
         for (const [items, options] of cases) {
             const now = await compile((s) => { s.add(tokens(items, options).at(40, -30)) })
@@ -13594,6 +13600,24 @@ describe('tokens', () => {
             expect(marks.map(shows)).toEqual([0, 1])
             expect(cell.box.get('stroke')).toEqual(paint('green'))
         })
+    })
+
+    it('keeps the latest state when marks overlap before the outline switches', async () => {
+        let strip!: Strip
+        const f = await compile((s) => {
+            strip = s.add(tokens(['a'], { size: 40 }))
+            s.play(strip.mark(0, 'dropped', { duration: 2 }), strip.mark(0, 'kept', { duration: 0.5 }))
+        })
+        expect(strip.stateOf(0)).toBe('kept')
+        for (const time of [0.5, 1, f.duration]) at(time, () => {
+            const cell = strip.token(0)
+            expect(cell.box.get('dash')).toBeNull()
+            expect(cell.box.get('fill')).toEqual(paint('blue'))
+            expect(cell.box.get('fillOpacity')).toBe(0.18)
+            expect(cell.text.chars[0]!.get('fill')).toEqual(paint('ink'))
+            expect(cell.children.filter((node) => node !== cell.box && node !== cell.text).every((node) => shows(node) === 0)).toBe(true)
+        })
+        expectPure(f, [0, 0.25, 0.5, 1, f.duration])
     })
 
     it('puts each value of a row under the middle of its token, and the names at the left of the first cell', async () => {
@@ -13881,6 +13905,30 @@ describe('tokens', () => {
         expect(await failure((s) => { const strip = s.add(tokens(['rain'], { size: 40, width: 200 })); s.play(strip.split(0, ['r', 'a', 'i', 'n'])) })).toMatch(/split: the tokens would be \d+ px wide/)
     })
 
+    it('checks the fixed room before replacing tokens in a merge', async () => {
+        let strip!: Strip
+        const full = await failure((s) => {
+            strip = s.add(tokens(['a', 'b'], { size: 40, width: 150 }))
+            s.play(strip.merge(0, 1, 'tokenization'))
+        })
+        expect(full).toMatch(/merge: the tokens would be (\d+) px wide, and the width of the strip is 150\. Give the strip a width of \1 or more/)
+        expect(strip.texts).toEqual(['a', 'b'])
+        const need = Number(/width of (\d+) or more/.exec(full)![1])
+        const f = await compile((s) => {
+            strip = s.add(tokens(['a', 'b'], { size: 40, width: need }))
+            s.play(strip.merge(0, 1, 'tokenization'))
+        })
+        at(f.duration, () => expect(ends(strip.token(0).box)[1]).toBeLessThanOrEqual(need / 2 + 0.5))
+        expect(await failure((s) => {
+            const valued = s.add(tokens(['a', 'b', 'c'], { size: 40, width: 220, rows: { id: [] } }))
+            s.play(valued.merge(0, 1, { values: { id: '1234567890' } }))
+        })).toMatch(/merge: the tokens would be \d+ px wide/)
+        expect(await failure((s) => {
+            const fit = s.add(tokens(['a', 'b', 'c'], { size: 40, width: 220 }))
+            s.play(fit.merge(0, 1))
+        })).toBe('')
+    })
+
     it('cuts a token into its pieces: each letter goes from its place in the token to its piece, and the tokens after it make room', async () => {
         let strip!: Strip, old!: Node, after!: Node, start!: (readonly [string, number])[], afterAt!: number, oldEnds!: readonly [number, number]
         await compile((s) => {
@@ -14153,6 +14201,25 @@ describe('tokens', () => {
         })
     })
 
+    it('measures the full boundary of a region in a rotated group', async () => {
+        await compile((s) => {
+            const strip = tokens(['a'], { size: 40, rows: { id: [7] } })
+            s.add(group(strip).rotate(Math.PI / 4).scale([1.2, 0.8]).at(120, -60))
+            const region = strip.region(), cell = strip.token(0).box.bounds()
+            expect(region.left).toBeCloseTo(cell.x, 6)
+            expect(region.top).toBeCloseTo(cell.y, 6)
+            expect(region.width).toBeCloseTo(cell.width, 6)
+            expect(region.height).toBeCloseTo(cell.height, 6)
+            const row = strip.region({ row: 'id' }), value = strip.value('id', 0)
+            expect(value).toBe('7')
+            const ink = strip.row('id').values[0]!.bounds()
+            expect(row.left).toBeLessThan(ink.x)
+            expect(row.right).toBeGreaterThan(ink.x + ink.width)
+            expect(row.top).toBeLessThan(ink.y)
+            expect(row.bottom).toBeGreaterThan(ink.y + ink.height)
+        })
+    })
+
     it('links the tokens of two strips: one line for each pair, from under the upper token to over the lower one', async () => {
         await compile((s) => {
             const upper = s.add(tokens(['the', 'red', 'bicycle'], { size: 40, rows: { id: [1, 2, 3] } }).at(-100, -200))
@@ -14183,6 +14250,31 @@ describe('tokens', () => {
             a.links(b, [[0, 1]])
         })
         expect(near).toMatch(/links: the room between the two strips is \d+ px, from under the values of the upper one to over the brackets of the lower one\. A line needs 60 px or more\. Move the strips apart/)
+    })
+
+    it('reports zero room when endpoint clearances overlap at different heights', async () => {
+        for (const reverse of [false, true]) {
+            const error = await failure((s) => {
+                const upper = tokens(['a'], { size: 40, rows: { id: [1] } }).at(0, -70)
+                const lower = tokens(['b'], { size: 40, spans: [{ from: 0, to: 0, label: 'label' }] }).at(0, 70)
+                s.add(group(upper, lower).scale(0.8))
+                if (reverse) lower.links(upper, [[0, 0]])
+                else upper.links(lower, [[0, 0]])
+            })
+            expect(error).toMatch(/links: the room between the two strips is 0 px,.*A line needs 48 px or more\. Move the strips apart/)
+        }
+    })
+
+    it('keeps links clear of row values and bracket labels in a scaled group', async () => {
+        const film = await compile((s) => {
+            const upper = tokens(['le', ' vélo', ' rouge'], { size: 40, rows: { id: [1, 2, 3] } }).at(0, -70)
+            const lower = tokens(['the', ' red', ' bicycle'], { size: 40, spans: [{ from: 1, to: 2, label: 'noun phrase' }] }).at(40, 250)
+            s.add(group(upper, lower).at(350, 0).scale(0.8))
+            s.add(upper.links(lower, [[0, 0], [1, 2, 0.9], [2, 1, 0.4]]))
+            s.wait(2)
+        })
+        const report = await checkFilm(film, { textGap: 0.7 })
+        expect(report.diagnostics).toEqual([])
     })
 
     it('starts an arc over the box of a token, also when the token has a mark on its corner', async () => {
@@ -14246,6 +14338,40 @@ describe('tokens', () => {
         })
     })
 
+    it.each([false, true])('isolates empty lists when a grouped strip or its copy changes (source: %s)', async (changeSource) => {
+        await compile((s) => {
+            const empty = tokens([], { size: 40, rows: { id: [] } })
+            const bare = tokens(['a', 'b'], { size: 40, rows: { id: [] } })
+            const original = s.add(group(group(empty, bare)))
+            const copy = s.add(original.clone())
+            const strips = copy.children[0]!.children as Strip[]
+            const [filled, untouched] = changeSource ? [empty, strips[0]!] : [strips[0]!, empty]
+            const [valued, unvalued] = changeSource ? [bare, strips[1]!] : [strips[1]!, bare]
+            s.play(filled.append({ text: 'a', values: { id: 7 } }), valued.setValue('id', 1, 9), valued.span('only', 0, 1), valued.mark(0, 'dropped'))
+            expect([filled.count, filled.value('id', 0)]).toEqual([1, '7'])
+            expect([untouched.count, untouched.row('id').values.length]).toEqual([0, 0])
+            expect([valued.value('id', 1), valued.spanRange('only'), valued.stateOf(0)]).toEqual(['9', [0, 1], 'dropped'])
+            expect([unvalued.value('id', 1), unvalued.spanRange('only'), unvalued.stateOf(0)]).toEqual([null, null, 'kept'])
+            s.play(valued.span('only', null), valued.split(1, ['b', 'c']))
+            s.play(valued.merge(1, 2))
+            expect(unvalued.texts).toEqual(['a', 'b'])
+        })
+    })
+
+    it('lets a grouped clone change cells whose source is still arriving', async () => {
+        expect(await failure((s) => {
+            const strip = tokens(['r'], { size: 40 })
+            const original = s.add(group(strip))
+            s.play(strip.append('a', { duration: 2 }))
+            s.at(0.5, () => {
+                const copy = s.add(original.clone()).children[0] as Strip
+                s.play(copy.merge(0, 1))
+                expect(copy.texts).toEqual(['ra'])
+            })
+            expect(strip.texts).toEqual(['r', 'a'])
+        })).toBe('')
+    })
+
     it('places every text of its own with room: the film check finds nothing in a strip with all its parts, in both looks', async () => {
         const all = film({ fps: 20 }, (s) => {
             const strip = tokens([{ text: '<s>' }, { text: 'You', state: 'cached' }, { text: ' are', state: 'masked' }, { text: ' kind', state: 'generated' }, { text: '.', state: 'dropped' }, { text: 'Hi', state: 'accepted' }], {
@@ -14273,12 +14399,16 @@ describe('tokens', () => {
         const cases: [() => unknown, RegExp][] = [
             [() => tokens('abc' as never), /the first argument is "abc"\. Give the list of the tokens/],
             [() => tokens([{ text: null } as never]), /the text of token 0 is null/],
-            [() => tokens(['a\nb']), /token 0 \("a\\nb"\) has a line break\. A token is one line/],
+            [() => tokens(['a\nb'], { rows: {} }), /token 0 \("a\\nb"\) has a line break\. A token is one line/],
             [() => tokens([{ text: 'a', state: 'gone' }]), /no state "gone"\. The states are kept, masked, generated, cached, dropped/],
             [() => tokens(['a'], { states: {} }), /states has no state/],
             [() => tokens(['a'], { states: { kept: { mark: 'star' as never } } }), /the mark of the state "kept" is "star"/],
             [() => tokens(['a'], { states: { kept: { color: 'nope' } } }), /the color of the state "kept" is "nope", which is not a color/],
-            [() => tokens(['a'], { size: 0 }), /size is 0\. It is the text size of the tokens, more than 0/],
+            [() => tokens(['a'], { size: 0, rows: {} }), /size is 0\. It is the text size of the tokens, more than 0/],
+            [() => tokens(['a'], { size: Infinity }), /size is Infinity/],
+            [() => tokens(['a'], { subSize: NaN }), /subSize is NaN/],
+            [() => tokens(['a'], { size: 0 }).mark(0, 'masked'), /size is 0/],
+            [() => tokens(['a\nb']).append('c'), /has a line break/],
             [() => tokens(['a'], { rows: { id: [1, 2] } }), /the row "id" has 2 values, and the strip has 1 token/],
             [() => tokens([{ text: 'a', sub: '1' }], { rows: { id: [1] } }), /token 0 has a sub, and a strip with rows has no line under a chip.*values: \{ id: "1" \}/],
             [() => tokens([{ text: 'a', values: { nope: 1 } }], { rows: { id: [1] } }), /no row "nope"\. The rows are "id"/],

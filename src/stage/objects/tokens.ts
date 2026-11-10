@@ -1,5 +1,5 @@
-import { Node, mountTree, ownLabels } from '../node'
-import { apply, circlePath, invert, linePath, parseSvgPath, pathBounds, polyPath, rectPath, unionBounds, type Bounds, type Path, type Ring, type Vec } from '../geometry'
+import { CLONE_STATE, Node, mountTree, ownLabels } from '../node'
+import { apply, circlePath, invert, linePath, parseSvgPath, pathBounds, polyPath, rectPath, transformPath, unionBounds, type Bounds, type Path, type Ring, type Vec } from '../geometry'
 import { text, type TextNode, type TextOptions } from '../text'
 import { ramp, toPaint, type ColorInput } from '../color'
 import { clock } from '../track'
@@ -146,6 +146,22 @@ const plural = (count: number, word: string): string => `${count} ${word}${count
 
 const seconds = (time: number): string => `${Math.round(time * 100) / 100} s`
 
+function dimensions(options: TokensOptions, strict = true): void {
+    const number = (name: 'size' | 'gap' | 'subSize' | 'rowSize' | 'radius' | 'maxWidth' | 'width' | 'minWidth', least: 'more than 0' | '0 or more', what: string) => {
+        const value = options[name]
+        const valid = typeof value === 'number' && (Number.isFinite(value) && (!strict || (least === '0 or more' ? value >= 0 : value > 0)) || (!strict && name === 'maxWidth' && value === Infinity))
+        if (value !== undefined && !valid) throw new Error(`tokens: ${name} is ${shown(value)}. It is ${what}, ${least}`)
+    }
+    number('size', 'more than 0', 'the text size of the tokens')
+    number('gap', '0 or more', 'the room between two cells')
+    number('subSize', 'more than 0', 'the text size of the line under a chip')
+    number('rowSize', 'more than 0', 'the text size of the values of the rows')
+    number('radius', '0 or more', 'the radius of the corners of a cell')
+    number('maxWidth', 'more than 0', 'the width at which the strip starts a new line')
+    number('width', 'more than 0', 'the room of the strip')
+    number('minWidth', '0 or more', 'the least width of a cell')
+}
+
 /** Diagonal lines over a box. They stop around `clear`, so that no line crosses the text of the cell. */
 function hatch(box: Bounds, step: number, clear: Bounds | null): Path {
     const right = box.x + box.width, bottom = box.y + box.height
@@ -257,6 +273,7 @@ export class TokenRow extends Node {
     private readonly least: number
     private readonly looks = new Map<string, Look>()
     private readonly stateNames: string[]
+    private extended = false
     /** The x and the y of the left end of the first line, from the origin of the strip: the strip is centered on its origin. */
     private readonly originX: number
     private readonly originY: number
@@ -271,18 +288,10 @@ export class TokenRow extends Node {
         super()
         if (!Array.isArray(items)) throw new Error(`tokens: the first argument is ${shown(items)}. Give the list of the tokens, such as ['The', 'cat']`)
         if (typeof options !== 'object' || options === null) throw new Error(`tokens: the second argument is ${shown(options)}. Give the options, such as { size: 40 }`)
-        const number = (name: 'size' | 'gap' | 'subSize' | 'rowSize' | 'radius' | 'maxWidth' | 'width' | 'minWidth', least: 'more than 0' | '0 or more', what: string) => {
-            const value = options[name]
-            if (value !== undefined && !(typeof value === 'number' && Number.isFinite(value) && (least === '0 or more' ? value >= 0 : value > 0))) throw new Error(`tokens: ${name} is ${shown(value)}. It is ${what}, ${least}`)
-        }
-        number('size', 'more than 0', 'the text size of the tokens')
-        number('gap', '0 or more', 'the room between two cells')
-        number('subSize', 'more than 0', 'the text size of the line under a chip')
-        number('rowSize', 'more than 0', 'the text size of the values of the rows')
-        number('radius', '0 or more', 'the radius of the corners of a cell')
-        number('maxWidth', 'more than 0', 'the width at which the strip starts a new line')
-        number('width', 'more than 0', 'the room of the strip')
-        number('minWidth', '0 or more', 'the least width of a cell')
+        const strict = ['width', 'even', 'minWidth', 'rows', 'label', 'rowSize', 'spans', 'states'].some((name) => options[name as keyof TokensOptions] !== undefined)
+            || items.some((item) => typeof item === 'number' || (typeof item === 'object' && item !== null && (item.state !== undefined || item.values !== undefined)))
+        dimensions(options, strict)
+        this.extended = strict
         const size = this.size = options.size ?? 22
         const gap = this.gap = options.gap ?? size * 0.28
         const subSize = this.subSize = options.subSize ?? size * 0.62
@@ -327,7 +336,7 @@ export class TokenRow extends Node {
             this.rows.push(row)
         }
 
-        const specs = items.map((item, index) => this.spec(item, `token ${index}`))
+        const specs = items.map((item, index) => this.spec(item, `token ${index}`, strict))
         specs.forEach((spec, index) => {
             for (const name of rowNames) if (!(name in spec.values)) spec.values[name] = this.valueText(rows[name]![index], `value ${index} of the row ${JSON.stringify(name)}`)
         })
@@ -476,12 +485,12 @@ export class TokenRow extends Node {
         if (edge === 'right') return [cell.cx + cell.wide / 2, cell.cy]
         if (edge === 'bottom') {
             const last = this.rows[this.rows.length - 1]
-            return [cell.cx, last ? last.line + this.rowSize * 0.75 : cell.cy + half + (cell.sub ? this.subSize * 1.4 : 0)]
+            return [cell.cx, last ? last.line + this.rowSize * 1.35 : cell.cy + half + (cell.sub ? this.subSize * 1.4 : 0)]
         }
         if (edge === 'top') {
             const over = this.spans.filter((span) => this.chips.indexOf(span.first) <= at && at <= this.chips.indexOf(span.last))
             const highest = over.reduce<TokenSpanNode | null>((top, span) => (!top || span.level > top.level ? span : top), null)
-            return [cell.cx, highest ? this.spanLine(highest.level) - (highest.text ? this.rowSize * 1.45 : this.size * 0.2) : cell.cy - half]
+            return [cell.cx, highest ? this.spanLine(highest.level) - (highest.text ? this.rowSize * 2.05 : this.size * 0.2) : cell.cy - half]
         }
         throw new Error(`tokens: the edge of p() is 'top', 'bottom', 'left' or 'right', not ${shown(edge)}`)
     }
@@ -508,25 +517,23 @@ export class TokenRow extends Node {
             top = line - this.rowSize * 0.7
             bottom = line + this.rowSize * 0.7
         }
-        const [x0, y0] = this.toWorld(left, top), [x1, y1] = this.toWorld(right, bottom)
-        return new Box(Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1))
+        const outline = rectPath(left, top, right - left, bottom - top, part.row === undefined ? this.radius : 0)
+        const bounds = pathBounds(transformPath(outline, this.worldMatrix()))!
+        return new Box(bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height)
     }
 
-    /** A copy with its own tokens, rows and brackets, at rest in the state that the strip has now. */
-    override clone(): this {
-        const copy = super.clone()
+    protected override [CLONE_STATE](): void {
         // A list with no node in it is not copied with the tree, so give the copy lists of its own.
-        const own = copy as unknown as { chips: TokenCell[]; rows: TokenValueRow[]; spans: TokenSpanNode[]; windowEnds: [number, number] }
-        own.chips = [...copy.chips]
-        own.rows = [...copy.rows]
-        own.spans = [...copy.spans]
-        own.windowEnds = [...copy.windowEnds]
-        for (const cell of copy.chips) {
+        const own = this as unknown as { chips: TokenCell[]; rows: TokenValueRow[]; spans: TokenSpanNode[]; windowEnds: [number, number] }
+        own.chips = [...this.chips]
+        own.rows = [...this.rows]
+        own.spans = [...this.spans]
+        own.windowEnds = [...this.windowEnds]
+        for (const cell of this.chips) {
             cell.signs = [...cell.signs]
             cell.settles = -Infinity
         }
-        for (const row of copy.rows) row.values = [...row.values]
-        return copy
+        for (const row of this.rows) row.values = [...row.values]
     }
 
     /** Chips arrive from left to right, each with its values. The names, the brackets and the window come with them. */
@@ -602,6 +609,8 @@ export class TokenRow extends Node {
     links(other: TokenRow, pairs: readonly (readonly [number, number] | readonly [number, number, number])[], options: { color?: ColorInput; width?: number } = {}): Node {
         if (!(other instanceof TokenRow)) throw new Error(`tokens: links: the first argument is ${shown(other)}. Give the other strip of tokens`)
         if (other === this) throw new Error('tokens: links joins two strips, and it got the same strip two times. For lines inside one strip, use arcs()')
+        this.validateStrip()
+        other.validateStrip()
         if (!Array.isArray(pairs)) throw new Error(`tokens: links: the second argument is ${shown(pairs)}. Give the pairs, such as [[0, 0], [1, 2]]`)
         const width = options.width ?? Math.max(2.5, this.size * 0.09)
         const made = new Node()
@@ -613,13 +622,14 @@ export class TokenRow extends Node {
             if (!(typeof weight === 'number' && weight >= 0 && weight <= 1)) throw new Error(`tokens: links: the weight of pair ${at} is ${shown(weight)}. A weight is a number from 0 to 1`)
             const down = this.toWorld(...this.p(here, 'bottom')), up = this.toWorld(...this.p(here, 'top'))
             const below = other.toWorld(...other.p(there, 'bottom')), above = other.toWorld(...other.p(there, 'top'))
+            const y = this.toWorld(this.chips[here]!.cx, this.chips[here]!.cy)[1], otherY = other.toWorld(other.chips[there]!.cx, other.chips[there]!.cy)[1]
             let start: [number, number], end: [number, number]
-            if (down[1] < above[1]) [start, end] = [down, above]
-            else if (below[1] < up[1]) [start, end] = [up, below]
+            if (y < otherY) [start, end] = [down, above]
+            else if (otherY < y) [start, end] = [up, below]
             else throw new Error('tokens: links: the two strips are at one height, so a line between them has no room. Put one strip over the other')
             // A line that has to go far to the side in a low room is flat, and it reads as a rule under the values.
             const matrix = this.worldMatrix(), least = this.size * 1.5 * Math.hypot(matrix[0], matrix[1])
-            const room = Math.abs(end[1] - start[1])
+            const room = Math.max(0, y < otherY ? end[1] - start[1] : start[1] - end[1])
             if (room < least) throw new Error(`tokens: links: the room between the two strips is ${Math.floor(room)} px, from under the values of the upper one to over the brackets of the lower one. A line needs ${Math.ceil(least)} px or more. Move the strips apart`)
             // The line leaves and arrives straight up or down, so it reads as a link of two cells.
             const middle = (start[1] + end[1]) / 2
@@ -637,6 +647,7 @@ export class TokenRow extends Node {
      * change takes `duration`. A token that already has the state does not change.
      */
     mark(which: TokenPick, state: string, options: AnimOptions = {}): Anim {
+        this.validateStrip()
         // Find a wrong name now, where the film names it.
         this.look(state)
         if (typeof which !== 'number' && typeof which !== 'function' && !Array.isArray(which)) throw new Error(`tokens: mark takes an index, a list of indexes, or a function of a token and its index, and it got ${shown(which)}`)
@@ -804,6 +815,7 @@ export class TokenRow extends Node {
                 const state = given?.state ?? (olds.every((old) => old.state === olds[0]!.state) ? olds[0]!.state : this.stateNames[0]!)
                 const spec: Spec = { ...(given ?? { values: {} }), text: named ? given!.text : olds.map((old) => old.source).join(''), state }
                 const cell = this.make(spec, spec.color ?? olds[0]!.tint, 'the token of merge')
+                this.fits('merge', cell.wide - olds.reduce((sum, old) => sum + old.wide + this.gap, -this.gap))
                 this.chips.splice(first, olds.length, cell)
                 cell.cx = this.middles()[first]! - this.originX
                 cell.cy = olds[0]!.cy
@@ -1098,18 +1110,26 @@ export class TokenRow extends Node {
 
     /** The parts that follow the tokens need one line: a chip that goes to another line would leave its values and its bracket. */
     private oneLine(what: string): void {
+        this.validateStrip()
         if (this.wraps !== null) throw new Error(`tokens: ${what} works on a strip of one line, and this strip starts new lines at maxWidth ${this.wraps}. Leave out maxWidth, or give width for the room of one line`)
     }
 
+    private validateStrip(): void {
+        if (this.extended) return
+        dimensions({ size: this.size, gap: this.gap, subSize: this.subSize, rowSize: this.rowSize, radius: this.radius, maxWidth: this.wraps ?? undefined })
+        this.chips.forEach((cell, index) => this.spec(cell.source, `token ${index}`))
+        this.extended = true
+    }
+
     /** A token as the strip keeps it, from what the film gave. */
-    private spec(item: unknown, what: string): Spec {
+    private spec(item: unknown, what: string, strict = true): Spec {
         if (typeof item === 'string' || typeof item === 'number') item = { text: item }
         if (typeof item !== 'object' || item === null || Array.isArray(item)) throw new Error(`tokens: ${what} is ${shown(item)}. A token is a text, such as 'cat', or an object, such as { text: 'cat', state: 'masked' }`)
         const given = item as { text?: unknown; sub?: unknown; color?: ColorInput; state?: unknown; values?: unknown }
         if (typeof given.text !== 'string' && typeof given.text !== 'number') throw new Error(`tokens: the text of ${what} is ${shown(given.text)}. Give a text, such as { text: 'cat' }`)
         const content = String(given.text)
         // A second line would leave the cell.
-        if (/[\r\n]/.test(content)) throw new Error(`tokens: ${what} (${JSON.stringify(content)}) has a line break. A token is one line. Write the line break as the two characters that a tokenizer shows: '\\\\n'`)
+        if (strict && /[\r\n]/.test(content)) throw new Error(`tokens: ${what} (${JSON.stringify(content)}) has a line break. A token is one line. Write the line break as the two characters that a tokenizer shows: '\\\\n'`)
         if (given.sub !== undefined && typeof given.sub !== 'string' && typeof given.sub !== 'number') throw new Error(`tokens: the sub of ${what} is ${shown(given.sub)}. It is the small line under the chip, such as '9246'`)
         if (given.sub !== undefined && given.sub !== '' && this.rows.length > 0) throw new Error(`tokens: ${what} has a sub, and a strip with rows has no line under a chip. Give the text as a value of a row, such as values: { ${this.rows[0]!.key}: ${JSON.stringify(String(given.sub))} }`)
         if (given.state !== undefined) this.look(given.state)
@@ -1453,6 +1473,9 @@ export class TokenRow extends Node {
         cell.box.tween('fill', paint, t0, t1, ease)
         cell.box.tween('stroke', paint, t0, t1, ease)
         cell.box.tween('fillOpacity', look.fill, t0, t1, ease)
+        // A later mark cancels outline switches that have not happened yet.
+        const keys = cell.box.track('dash').keys, pending = keys.findIndex((key) => key.t0 > t0)
+        if (pending >= 0) keys.splice(pending)
         // Dashes cannot fade to a line, so they switch when the colors are half way.
         stepAt(cell.box, 'dash', look.dash ? this.dashes() : null, turn)
         const ink = toPaint(look.dim ? 'dim' : 'ink')
