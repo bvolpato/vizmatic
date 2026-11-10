@@ -21,8 +21,9 @@ const limits = {
     // In November 2026 the package was at 14.92 MB. A check rule and three objects for system films (lanes, the
     // bit field and the terminal) add 0.29 MB together, and more objects of that kind follow.
     // The budget is a tripwire for an accident, such as a font that ships two times. It leaves room for features.
-    // With token strips, tensor grids and matrix products, the unpacked package is 18.24 MB. The tensor
-    // objects add 0.35 MB of JavaScript and declarations across the entry points, with no extra package files.
+    // With the semibold of the serif text font (one file of 0.33 MB), the package is at 16.03 MB.
+    // Passage adds 0.28 MB of runtime code, 0.08 MB of declarations, and 8 KB of examples to the 17.89 MB package.
+    // Tensor grids and matrix products add 0.35 MB of runtime code and declarations across the entry points.
     unpackedSize: 19_000_000,
     // Includes the bundled raster codec license notice and film examples. The narration tools (15 files) and the
     // narrated film template (13 files) are 28 files: with them the package holds 209 files.
