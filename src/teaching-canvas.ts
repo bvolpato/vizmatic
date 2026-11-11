@@ -6,6 +6,7 @@ import {
 } from './canvas-components'
 import { tracePolyline } from './motion'
 import { createTeachingTransfer } from './teaching-transfer'
+import { createTeachingWaveform } from './teaching-waveform'
 import { createTeachingGrid } from './teaching-grid'
 import { createTeachingTimeline } from './teaching-timeline'
 import { createTeachingAllocation } from './teaching-allocation'
@@ -340,6 +341,8 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
 
     return {
         axes, curve, scatter, bars, flowGraph,
+        waveform: createTeachingWaveform(painter),
+
         transfer: createTeachingTransfer(painter),
         routedTransfer: createTeachingRoutedTransfer(painter),
         grid: createTeachingGrid(painter),
