@@ -5,7 +5,7 @@ import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import React from 'react'
 import { defineAnimation, hold, tween, type AnimationFrameContext } from '../src/timeline'
-import { renderAnimationVideo, renderRgbaVideo, videoFrameSchedule } from '../src/video'
+import { renderAnimationVideo, renderRgbaVideo, resolveH264Encoder, videoFrameSchedule } from '../src/video'
 import { aacWaveformError, syntheticAacFixture, writeFfmpegWithoutPns } from './aac-fixture'
 
 const tempDirs: string[] = []
@@ -50,6 +50,44 @@ describe('RGBA video export', () => {
             width: 2, height: 2, duration: 1, fps: 30, outputPath,
         })).rejects.toThrow('duration must round to at least one frame')
     })
+
+    it.skipIf(!hasFfmpeg)('falls back before drawing and preserves an existing file when hardware is required', async () => {
+        const directory = await tempDirectory()
+        const ffmpegPath = join(directory, 'ffmpeg')
+        await writeFile(ffmpegPath, '#!/bin/sh\ncase " $* " in *" -f lavfi "*) exit 1;; esac\nexec ffmpeg "$@"\n', { mode: 0o755 })
+        const outputPath = join(directory, 'fallback.mp4')
+        const options = { width: 64, height: 64, fps: 30, duration: 100, outputPath, ffmpegPath, h264Encoder: 'videotoolbox' as const }
+        const indices: number[] = []
+        const paint = ({ index }: { index: number }) => {
+            indices.push(index)
+            return new Uint8Array(64 * 64 * 4)
+        }
+        const output = await renderRgbaVideo(paint, options)
+        expect(output.h264Encoder).toBe('libx264')
+        expect(indices).toEqual([0, 1, 2])
+        const previous = await readFile(outputPath)
+        await expect(renderRgbaVideo(paint, { ...options, requireH264Encoder: true })).rejects.toThrow('unavailable')
+        await expect(renderRgbaVideo(paint, { ...options, width: 65 })).rejects.toThrow('positive even integer')
+        await expect(renderRgbaVideo(paint, { ...options, codec: 'vp9' })).rejects.toThrow('only to H.264')
+        expect(indices).toEqual([0, 1, 2])
+        expect(await readFile(outputPath)).toEqual(previous)
+    })
+
+    it.skipIf(!hasFfmpeg || !hasFfprobe)('encodes the negotiated hardware format with its requested frame clock and color tags', async ({ skip }) => {
+        const format = { width: 320, height: 180, fps: 30 }
+        if (await resolveH264Encoder('videotoolbox', 'ffmpeg', format) !== 'videotoolbox') return skip()
+        const outputPath = join(await tempDirectory(), 'hardware.mp4')
+        const out = await renderRgbaVideo(({ index }) => new Uint8Array(320 * 180 * 4).fill(index * 32), {
+            ...format, duration: 200, outputPath, h264Encoder: 'videotoolbox', requireH264Encoder: true,
+        })
+        expect(out.h264Encoder).toBe('videotoolbox')
+        const info = spawnSync('ffprobe', ['-v', 'error', '-count_frames', '-show_streams', '-of', 'json', outputPath], { encoding: 'utf8' })
+        expect(info.status).toBe(0)
+        expect(JSON.parse(info.stdout).streams[0]).toMatchObject({
+            codec_name: 'h264', profile: 'High', width: 320, height: 180, r_frame_rate: '30/1',
+            color_space: 'bt709', color_transfer: 'bt709', color_primaries: 'bt709', nb_read_frames: '6',
+        })
+    }, 30_000)
 
     it.skipIf(!hasFfmpeg || !hasFfprobe)('tags BT.709 and keeps colors through a decode', async () => {
         const swatches = [[255, 215, 94], [92, 196, 240], [79, 216, 196], [255, 107, 107]] as const

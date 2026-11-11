@@ -25,6 +25,7 @@ export interface VideoFrameInfo {
 }
 
 export type VideoCodec = 'h264' | 'vp9'
+export type H264Encoder = 'libx264' | 'videotoolbox'
 
 export interface RgbaVideoOptions {
     width: number
@@ -39,6 +40,10 @@ export interface RgbaVideoOptions {
     ffmpegPath?: string
     /** H.264 writes MP4. VP9 writes WebM. */
     codec?: VideoCodec
+    /** Prefer Apple's hardware encoder for standard-quality H.264. The default is libx264. */
+    h264Encoder?: H264Encoder
+    /** Fail before painting if the requested encoder cannot encode this format. */
+    requireH264Encoder?: boolean
     preset?: string
     /** Encoder tuning for H.264, such as "animation" for flat color and line art. */
     tune?: string
@@ -97,6 +102,8 @@ export interface RgbaVideoOutput {
     bytes: number
     outputPath: string
     audioIncluded: boolean
+    /** The encoder that produced the H.264 stream. Absent for other codecs. */
+    h264Encoder?: H264Encoder
 }
 
 export interface AnimationVideoOptions extends Omit<RgbaVideoOptions, 'duration'> {
@@ -362,6 +369,46 @@ async function loopbackPair(): Promise<{ ours: Socket; theirs: Socket } | undefi
 /** Ask each FFmpeg program about an option only once, including during concurrent exports. */
 const ffmpegOptions = new Map<string, Promise<boolean>>()
 
+type H264Format = { width: number; height: number; fps: number }
+
+function videoToolboxArgs({ width, height, fps }: H264Format): string[] {
+    const args = ['-c:v', 'h264_videotoolbox', '-allow_sw', '0', '-profile:v', 'high', '-q:v', '75', '-g', '250']
+    const blocks = Math.ceil(width / 16) * Math.ceil(height / 16)
+    if (blocks <= 8192 && blocks * fps <= 245760) args.push('-level:v', '4.0')
+    else if (blocks <= 8704 && blocks * fps <= 522240) args.push('-level:v', '4.2')
+    return args
+}
+
+const hardwareProbes = new Map<string, Promise<boolean>>()
+
+/** Check that FFmpeg can encode a frame with the requested hardware and format. */
+export async function resolveH264Encoder(
+    requested: H264Encoder = 'libx264',
+    ffmpegPath = 'ffmpeg',
+    format: H264Format = { width: 1920, height: 1080, fps: 30 },
+): Promise<H264Encoder> {
+    if (requested === 'libx264') return requested
+    if (requested !== 'videotoolbox') throw new Error('h264Encoder must be libx264 or videotoolbox')
+    const { width, height, fps } = format
+    if (![width, height].every(value => Number.isSafeInteger(value) && value > 0 && value % 2 === 0)
+        || !Number.isInteger(fps) || fps < 1 || fps > 120) throw new Error('Invalid H.264 probe dimensions or FPS')
+    const key = JSON.stringify([ffmpegPath, width, height, fps])
+    let probe = hardwareProbes.get(key)
+    if (!probe) {
+        probe = new Promise<boolean>((done) => {
+            const args = ['-nostdin', '-v', 'error', '-f', 'lavfi', '-i', `color=size=${width}x${height}:rate=${fps}`,
+                '-frames:v', '1', ...videoToolboxArgs(format), '-pix_fmt', 'yuv420p', '-f', 'null', '-']
+            const child = execFile(ffmpegPath, args, { timeout: 15000, killSignal: 'SIGKILL', maxBuffer: 65536 }, error => {
+                if (error) hardwareProbes.delete(key)
+                done(!error)
+            })
+            child.stdin?.end()
+        })
+        hardwareProbes.set(key, probe)
+    }
+    return await probe ? requested : 'libx264'
+}
+
 function hasFfmpegOption(ffmpegPath: string, component: string, option: string): Promise<boolean> {
     const key = JSON.stringify([ffmpegPath, component, option])
     let answer = ffmpegOptions.get(key)
@@ -443,6 +490,16 @@ export async function renderRgbaVideo(
     }
     if (options.signal?.aborted) throw abortError()
 
+    if (codec !== 'h264' && (options.h264Encoder !== undefined || options.requireH264Encoder))
+        throw new Error('h264Encoder applies only to H.264 output')
+    const requested = options.h264Encoder ?? 'libx264'
+    const useSoftwareSettings = crf !== 18 || options.x264Params !== undefined || (options.tune !== undefined && options.tune !== 'animation')
+    const h264Encoder = requested === 'videotoolbox' && useSoftwareSettings
+        ? 'libx264'
+        : await withAbort(resolveH264Encoder(requested, ffmpegPath, { width, height, fps }), options.signal)
+    if (options.requireH264Encoder && requested !== h264Encoder)
+        throw new Error(`Requested H.264 encoder ${requested} is unavailable for these settings`)
+
     const outputPath = resolve(options.outputPath)
     const outputDirectory = dirname(outputPath)
     await mkdir(outputDirectory, { recursive: true })
@@ -499,6 +556,8 @@ export async function renderRgbaVideo(
     if (codec === 'vp9') {
         // The quality mode needs a zero bitrate. Row threading makes VP9 practical at HD and above.
         args.push('-c:v', 'libvpx-vp9', '-crf', String(crf), '-b:v', '0', '-deadline', 'good', '-cpu-used', '2', '-row-mt', '1', '-threads:v', String(threads))
+    } else if (h264Encoder === 'videotoolbox') {
+        args.push(...videoToolboxArgs({ width, height, fps }))
     } else {
         args.push('-c:v', 'libx264', '-preset', preset)
         if (options.tune) args.push('-tune', options.tune)
@@ -637,6 +696,7 @@ export async function renderRgbaVideo(
             bytes: outputStat.size,
             outputPath,
             audioIncluded: options.audioPath !== undefined,
+            ...(codec === 'h264' ? { h264Encoder } : {}),
         }
     } catch (error) {
         await stopEncoder(child, exited)
