@@ -12,6 +12,9 @@ the seed and the levels of the film. Everything is synthesized here: no sample i
 Run this script with `list` to see the effects, or `render NAME --out PATH.wav` to audition one.
 """
 import argparse
+import json
+import os
+import tempfile
 import sys
 from math import gcd
 from numbers import Integral
@@ -99,19 +102,23 @@ def pad(total, rate, parts):
     out = np.zeros((n, 2), dtype=np.float32)
     for k, (start, end, chord, texture) in enumerate(parts):
         a, b = max(0, int((start - CROSS / 2) * rate)), min(n, int((end + CROSS / 2) * rate))
-        t = np.arange(a, b) / rate
-        # The gains of two neighbors add up to 1 through the crossfade, so a note that both chords have stays level.
-        rise = np.ones_like(t) if k == 0 else np.sin(np.clip((t - (start - CROSS / 2)) / CROSS, 0, 1) * np.pi / 2) ** 2
-        fall = np.ones_like(t) if k == len(parts) - 1 else np.sin(np.clip(((end + CROSS / 2) - t) / CROSS, 0, 1) * np.pi / 2) ** 2
-        for j, note in enumerate(PALETTE[chord].split()):
-            f = hz(note)
-            gain = TEXTURES[texture][j] * (1 + 0.3 * np.sin(2 * np.pi * t / DRIFT[j] + j)) * rise * fall
-            # The phase is linear in time, so the pitch is constant. The two channels differ by 0.3 percent, which moves the
-            # sound slowly between left and right. The phase depends on the note only, so a note that two chords share lines up.
-            out[a:b, 0] += (gain * np.sin(2 * np.pi * f * 0.9985 * t + f)).astype(np.float32)
-            out[a:b, 1] += (gain * np.sin(2 * np.pi * f * 1.0015 * t + f + 0.6)).astype(np.float32)
+        _paint_chord(out[a:b], a, b, rate, start, end, chord, TEXTURES[texture], k == 0, k == len(parts) - 1)
     out = sosfilt(butter(2, 900, "low", fs=rate, output="sos"), out, axis=0).astype(np.float32)
     return out / np.sqrt(np.mean(np.square(out, dtype=np.float64)))
+
+
+def _paint_chord(out, a, b, rate, start, end, chord, gains, first, last):
+    t = np.arange(a, b) / rate
+    # The gains of two neighbors add up to 1 through the crossfade, so a note that both chords have stays level.
+    rise = np.ones_like(t) if first else np.sin(np.clip((t - (start - CROSS / 2)) / CROSS, 0, 1) * np.pi / 2) ** 2
+    fall = np.ones_like(t) if last else np.sin(np.clip(((end + CROSS / 2) - t) / CROSS, 0, 1) * np.pi / 2) ** 2
+    for j, note in enumerate(PALETTE[chord].split()):
+        f = hz(note)
+        gain = gains[j] * (1 + 0.3 * np.sin(2 * np.pi * t / DRIFT[j] + j)) * rise * fall
+        # The phase is linear in time, so the pitch is constant. The two channels differ by 0.3 percent, which moves the
+        # sound slowly between left and right. The phase depends on the note only, so a note that two chords share lines up.
+        out[:, 0] += (gain * np.sin(2 * np.pi * f * 0.9985 * t + f)).astype(np.float32)
+        out[:, 1] += (gain * np.sin(2 * np.pi * f * 1.0015 * t + f + 0.6)).astype(np.float32)
 
 
 def level(voice, rate, under=-22.0, pause=-15.0):
@@ -122,14 +129,19 @@ def level(voice, rate, under=-22.0, pause=-15.0):
     hop = rate // 50
     frames = len(voice) // hop
     energy = np.sqrt(np.mean(voice[: frames * hop].reshape(frames, hop).astype(np.float64) ** 2, axis=1))
+    gains, speaking = _level_frames(energy, under, pause)
+    at = (np.arange(len(voice), dtype=np.float32) / hop)
+    gain = np.interp(at, np.arange(frames) + 0.5, gains).astype(np.float32)
+    return gain, np.interp(at, np.arange(frames) + 0.5, speaking.astype(np.float64)) > 0.5
+
+
+def _level_frames(energy, under, pause):
     silent = (energy <= 0.012).astype(np.float64)
     speaking = np.clip(uniform_filter1d(1 - silent, 25, mode="nearest") * 2.2, 0, 1) > 0.5
     lift = np.clip((uniform_filter1d(silent, 120, mode="nearest") - 0.42) / 0.5, 0, 1)
     lift = uniform_filter1d(lift, 25, mode="nearest")
     low, high = 10 ** (under / 20), 10 ** (pause / 20)
-    at = (np.arange(len(voice), dtype=np.float32) / hop)
-    gain = np.interp(at, np.arange(frames) + 0.5, low + (high - low) * lift).astype(np.float32)
-    return gain, np.interp(at, np.arange(frames) + 0.5, speaking.astype(np.float64)) > 0.5
+    return low + (high - low) * lift, speaking
 
 
 def decibels(x):
@@ -249,6 +261,64 @@ def _fade_effect(samples, rate):
     samples[-release:] *= np.sin(np.linspace(np.pi / 2, 0, release)) ** 2
 
 
+BED_TEXTURES = {"warm": "full", "open": "open", "low": "low"}
+
+
+def render_bed(voice_path, output, seed=0, palette="warm", beats=(), scenes=()):
+    """Write a stereo PCM bed aligned to an existing narration recording."""
+    import soundfile as sf
+
+    if Path(voice_path).resolve() == Path(output).resolve():
+        raise ValueError("The bed and voice must have different paths.")
+    with sf.SoundFile(voice_path) as voice:
+        rate, n = voice.samplerate, voice.frames
+        if rate < 8000 or not n or voice.channels not in (1, 2):
+            raise ValueError("Use a nonempty mono or stereo recording at 8000 Hz or higher.")
+        total = n / rate
+        for marks in (beats, scenes):
+            if not isinstance(marks, (list, tuple)) or not all(type(m) in (int, float) and 0 <= m <= total for m in marks):
+                raise ValueError("Beat and scene times must be numbers within the recording.")
+        parts = plan(total, beats, sorted({0.0, *scenes}), seed)
+        hop = rate // 50
+        energy = np.empty((n + hop - 1) // hop)
+        for k, block in enumerate(voice.blocks(blocksize=hop * 128, dtype="float32", always_2d=True)):
+            power = np.mean(np.square(block, dtype=np.float64), axis=1)
+            if not np.isfinite(power).all():
+                raise ValueError("Voice samples must be finite.")
+            starts = np.arange(0, len(power), hop)
+            energy[k * 128:k * 128 + len(starts)] = np.sqrt(np.add.reduceat(power, starts) / np.minimum(hop, len(power) - starts))
+    gains, speaking = _level_frames(energy, -23, -17)
+    reference = np.sqrt(np.mean(energy[speaking] ** 2)) if np.any(speaking) else 0.0
+    centers = np.arange(len(energy)) + 0.5
+    texture = np.array(TEXTURES[BED_TEXTURES[palette]])
+    filt = butter(2, 900, "low", fs=rate, output="sos")
+    state = np.zeros((len(filt), 2, 2))
+    current = 0
+    # Keep the original voice and any previous bed intact if writing fails.
+    with tempfile.TemporaryDirectory(dir=Path(output).parent) as directory:
+        temporary = Path(directory) / "bed.wav"
+        with sf.SoundFile(temporary, "w", rate, 2, subtype="PCM_24", format="WAV") as target:
+            for a in range(0, n, rate):
+                b = min(a + rate, n)
+                samples = np.zeros((b - a, 2), dtype=np.float32)
+                while current + 1 < len(parts) and int((parts[current][1] + CROSS / 2) * rate) <= a:
+                    current += 1
+                for k in range(current, len(parts)):
+                    start, end, chord, name = parts[k]
+                    lo, hi = max(a, int((start - CROSS / 2) * rate)), min(b, int((end + CROSS / 2) * rate))
+                    if lo >= b:
+                        break
+                    weights = texture * np.array(TEXTURES[name])
+                    weights /= np.sqrt(0.5 * np.sum(weights ** 2))
+                    _paint_chord(samples[lo-a:hi-a], lo, hi, rate, start, end, chord, weights, k == 0, k == len(parts) - 1)
+                samples, state = sosfilt(filt, samples, axis=0, zi=state)
+                at = np.arange(a, b)
+                envelope = np.minimum(1, np.minimum(at / (1.5 * rate), (n - 1 - at) / (2 * rate)))
+                gain = np.interp(at / hop, centers, gains) * reference * envelope
+                target.write(samples * gain[:, None])
+        os.replace(temporary, output)
+
+
 def main():
     parser = argparse.ArgumentParser(description="List or render original sound effects for narrated films.")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -256,6 +326,12 @@ def main():
     render = commands.add_parser("render", help="Render an effect as a quiet mono 48 kHz PCM WAV file.")
     render.add_argument("name", choices=SOUND_EFFECTS)
     render.add_argument("--out", type=Path, required=True, help="The output WAV path.")
+    bed = commands.add_parser("bed", help="Write a stereo ambient bed under an existing narration.")
+    bed.add_argument("--voice", type=Path, required=True)
+    bed.add_argument("--out", type=Path, required=True)
+    bed.add_argument("--seed", type=int, default=0)
+    bed.add_argument("--palette", choices=BED_TEXTURES, default="warm")
+    bed.add_argument("--timing", type=Path, help="JSON with optional beats and scenes arrays, in seconds.")
     args = parser.parse_args()
     if args.command == "list":
         for name in SOUND_EFFECTS:
@@ -264,6 +340,12 @@ def main():
     import soundfile as sf
 
     try:
+        if args.command == "bed":
+            marks = json.loads(args.timing.read_text()) if args.timing else {}
+            if not isinstance(marks, dict) or marks.keys() - {"beats", "scenes"}:
+                raise ValueError("Timing must be an object with optional beats and scenes arrays.")
+            render_bed(args.voice, args.out, args.seed, args.palette, marks.get("beats", ()), marks.get("scenes", ()))
+            return
         sf.write(args.out, sound_effect(args.name) * 0.16, SOUND_EFFECT_RATE, subtype="PCM_16", format="WAV")
     except (OSError, RuntimeError, ValueError) as error:
         parser.exit(1, f"error: {error}\n")
