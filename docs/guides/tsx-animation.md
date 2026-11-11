@@ -259,6 +259,19 @@ The corresponding pure helpers are `weightedVectorState`,
 `tokenHistoryState`. They sample explicit inputs and support out-of-order frame
 rendering. The lesson supplies the data, model assumptions, and narration cues.
 
+To show sampling with replacement, use `planSampleCopies` from `vizmatic`. Give each source a stable ID and list the destination of each draw. Draw the source objects once per frame, then paint each copy with the same label and artwork as its source.
+
+```ts
+const sample = planSampleCopies(
+    [{ id: 'B', x: 40, y: 80 }],
+    [{ sourceId: 'B', x: 320, y: 40 }, { sourceId: 'B', x: 320, y: 120 }],
+)
+for (const copy of sample.at(1.5)) {
+    // The first B has landed. The second B is halfway from the original to its slot.
+    drawCard(copy.sourceId, copy.x, copy.y)
+}
+```
+
 Provide `painter.measureText(value, size, font)` to size moving token copies with
 the same font metrics used by `painter.text`. The helper adds the label's padding
 and keeps the copy inside its occurrence column. Without this optional method,
