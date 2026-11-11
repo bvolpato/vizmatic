@@ -72,6 +72,32 @@ export function isGradient(paint: Paint): paint is Gradient {
     return !Array.isArray(paint)
 }
 
+/** Relative luminance of a color, as WCAG defines it: 0 is black and 1 is white. */
+export function luminance(color: Rgba): number {
+    const channel = (value: number) => {
+        const x = value / 255
+        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
+    }
+    return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2])
+}
+
+/** Contrast of two opaque colors, as WCAG defines the ratio: 1 for equal colors, 21 for black on white. */
+export function contrast(first: Rgba, second: Rgba): number {
+    const x = luminance(first), y = luminance(second)
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+}
+
+/** The color that a viewer sees where a translucent mark is over a background. */
+export function over(color: Rgba, alpha: number, background: Rgba): Rgba {
+    const a = color[3] * alpha
+    return [
+        color[0] * a + background[0] * (1 - a),
+        color[1] * a + background[1] * (1 - a),
+        color[2] * a + background[2] * (1 - a),
+        1,
+    ]
+}
+
 export function css(color: Rgba, alpha = 1): string {
     const a = color[3] * alpha
     const r = Math.round(color[0]), g = Math.round(color[1]), b = Math.round(color[2])
@@ -154,6 +180,25 @@ export function mixPaint(a: Paint, b: Paint, t: number): Paint {
     const solidA = ga ? sampleStops(a.stops, 0.5) : a as Rgba
     const solidB = gb ? sampleStops(b.stops, 0.5) : b as Rgba
     return mixColor(solidA, solidB, t)
+}
+
+function toward(backdrop: Rgba, color: Rgba, dim: number): Rgba {
+    return [
+        backdrop[0] + (color[0] - backdrop[0]) * dim,
+        backdrop[1] + (color[1] - backdrop[1]) * dim,
+        backdrop[2] + (color[2] - backdrop[2]) * dim,
+        color[3],
+    ]
+}
+
+/**
+ * Take a paint toward a backdrop color: at `dim` 1 the paint is as it is, and at 0 it is the backdrop.
+ * The alpha stays, so a dim shape still hides what is behind it. On a plain background, the result is
+ * the color that the paint would show at an opacity of `dim`.
+ */
+export function dimPaint(paint: Paint, dim: number, backdrop: Rgba): Paint {
+    if (!isGradient(paint)) return toward(backdrop, paint as Rgba, dim)
+    return { ...paint, stops: paint.stops.map(([at, color]) => [at, toward(backdrop, color, dim)] as const) }
 }
 
 export function sampleStops(stops: readonly (readonly [number, Rgba])[], at: number): Rgba {

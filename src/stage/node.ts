@@ -8,6 +8,10 @@ import type { Ease } from './ease'
 import { pathMixer } from './morph'
 import type { DrawOp } from './display'
 import type { ImageAsset, ImageCrop } from './image'
+import type { Block } from './layout'
+
+/** Internal hook used by stage objects that store state outside their child nodes. */
+export const rebindCloneParts = Symbol('rebindCloneParts')
 
 export type BlendMode = 'normal' | 'screen' | 'multiply' | 'overlay'
 export type Edge = 'left' | 'right' | 'top' | 'bottom'
@@ -22,6 +26,14 @@ export interface NodeProps {
     px: number
     py: number
     opacity: number
+    /**
+     * The part of its color that a node keeps while a light is on something else: at 1 the node has its own
+     * look, and at 0 its paints are the background color of the film. `spotlight` owns it, so a film that
+     * fades a node and a light that dims it do not write the same value. It does not change the alpha, so a
+     * dim node still hides what is behind it. It does not add up along a branch: a node draws with the
+     * least `dim` of itself and its ancestors.
+     */
+    dim: number
     visible: boolean
     z: number
     path: Path | null
@@ -60,7 +72,7 @@ export type PropName = keyof NodeProps
 // assigning over a frozen inherited property throws.
 export const DEFAULT_PROPS: Readonly<NodeProps> = {
     x: 0, y: 0, rotation: 0, sx: 1, sy: 1, px: 0, py: 0,
-    opacity: 1, visible: true, z: 0,
+    opacity: 1, dim: 1, visible: true, z: 0,
     path: null, fill: null, fillOpacity: 1, stroke: null, strokeOpacity: 1, strokeWidth: 3,
     cap: 'round', join: 'round', dash: null, dashOffset: 0,
     trimFrom: 0, trimTo: 1, trimEach: false,
@@ -68,7 +80,7 @@ export const DEFAULT_PROPS: Readonly<NodeProps> = {
 }
 
 const NUMERIC: ReadonlySet<PropName> = new Set<PropName>([
-    'x', 'y', 'rotation', 'sx', 'sy', 'px', 'py', 'opacity', 'z', 'fillOpacity', 'strokeOpacity',
+    'x', 'y', 'rotation', 'sx', 'sy', 'px', 'py', 'opacity', 'dim', 'z', 'fillOpacity', 'strokeOpacity',
     'strokeWidth', 'dashOffset', 'trimFrom', 'trimTo', 'glow',
 ])
 
@@ -99,6 +111,28 @@ export function mixer<K extends PropName>(prop: K, from: NodeProps[K], to: NodeP
 let nextId = 1
 
 /**
+ * A block of the layout, as this file sees it. The layout is made from nodes, so this file cannot load it:
+ * a block is known here by its shape. It stands for its nodes where a node takes other nodes.
+ */
+const isBlock = (value: unknown): value is Block => typeof value === 'object' && value !== null && !(value instanceof Node) && !Array.isArray(value)
+    && Array.isArray((value as { items?: unknown }).items) && typeof (value as { kind?: unknown }).kind === 'string'
+
+/** A value that is not a node, in a few words for a message. */
+const notNode = (value: unknown): string => (value === null ? 'null' : Array.isArray(value) ? 'a list' : typeof value === 'object' ? 'an object that is not a node' : typeof value === 'string' ? JSON.stringify(value) : String(value))
+
+/** The bounds of what a node moves to or lines up with: a node, a point of the stage, or a block of the layout. */
+function boundsOfTarget(what: string, target: unknown): Bounds {
+    if (target instanceof Node) return target.bounds()
+    if (isBlock(target)) {
+        const boxes = target.nodes.map((node) => node.bounds())
+        const x = Math.min(...boxes.map((b) => b.x)), y = Math.min(...boxes.map((b) => b.y))
+        return { x, y, width: Math.max(...boxes.map((b) => b.x + b.width)) - x, height: Math.max(...boxes.map((b) => b.y + b.height)) - y }
+    }
+    if (Array.isArray(target) && target.length === 2 && Number.isFinite(target[0]) && Number.isFinite(target[1])) return { x: target[0], y: target[1], width: 0, height: 0 }
+    throw new Error(`${what}: the target is ${Array.isArray(target) && target.length === 2 ? `the point [${target[0]}, ${target[1]}], which is not a place` : notNode(target)}. Give a node, a block of the layout, or a point [x, y] of the stage`)
+}
+
+/**
  * Every visible thing on stage. A node with a path draws. A node with children
  * groups. Both can carry a transform, and every property can change over time.
  *
@@ -106,6 +140,9 @@ let nextId = 1
  * same calls set up a node before it appears and change it afterwards.
  */
 export class Node {
+    /** A returned callback connects objects after each clone has prepared its own state. */
+    protected [rebindCloneParts]?(copy: this, copies: ReadonlyMap<Node, Node>): void | (() => void)
+
     readonly id = nextId++
     parent: Node | null = null
     children: Node[] = []
@@ -113,6 +150,12 @@ export class Node {
     data: Record<string, unknown> = {}
     /** Label shown in timelines and diagnostics. */
     label = ''
+    /**
+     * The box that the layout measures for this node, in the coordinates of the node: left, top, right and
+     * bottom. Null for a node that measures as its bounds. A text sets its line box, and a pictogram sets the
+     * square of its grid, so that items of one size line up whatever they draw. `boxOf` reads it.
+     */
+    layoutBox: readonly [left: number, top: number, right: number, bottom: number] | null = null
     base: NodeProps = Object.create(DEFAULT_PROPS) as NodeProps
     tracks: Map<PropName, Track<unknown>> | null = null
     overlay: Map<string, unknown> | null = null
@@ -123,6 +166,11 @@ export class Node {
     draw: ((time: number) => Node | readonly Node[] | null) | null = null
     /** Emits draw operations directly, for objects with thousands of marks such as 3D meshes. */
     rawOps: ((matrix: Mat, alpha: number, ops: DrawOp[]) => void) | null = null
+    /**
+     * The node whose `draw` built this node for the frame that is on screen. A node that `draw` returns has no
+     * parent, so this is the way from a mark of a dynamic drawing up to the object that made it.
+     */
+    drawer: Node | null = null
 
     constructor(path?: Path | null) {
         if (path) this.base.path = path
@@ -187,8 +235,10 @@ export class Node {
 
     // ── Tree ──────────────────────────────────────────────────────────────
 
-    add(...nodes: Node[]): this {
-        for (const child of nodes) {
+    add(...nodes: (Node | Block)[]): this {
+        // A block of the layout stands for its nodes.
+        for (const child of nodes.flatMap((item) => (isBlock(item) ? item.nodes : [item]))) {
+            if (!(child instanceof Node)) throw new Error(`add: a child is ${notNode(child)}. Give nodes, or blocks of the layout`)
             if (child.parent === this) continue
             child.parent?.drop(child)
             child.parent = this
@@ -228,6 +278,8 @@ export class Node {
     clone(): this {
         const copies = new Map<Node, Node>()
         const copy = this.copyTree(copies)
+        // A copy of one label of an object is text of the film. A copy of the whole object keeps the marks of its labels.
+        delete copy.data['ownLabel']
         for (const [from, to] of copies) {
             for (const [key, value] of Object.entries(from)) {
                 if (key === 'parent' || key === 'children') continue
@@ -241,6 +293,12 @@ export class Node {
                 }
             }
         }
+        let connections: (() => void)[] | undefined
+        for (const [from, to] of copies) {
+            const connect = from[rebindCloneParts]?.(to, copies)
+            if (connect) (connections ??= []).push(connect)
+        }
+        for (const connect of connections ?? []) connect()
         return copy
     }
 
@@ -249,6 +307,7 @@ export class Node {
         Object.assign(copy, this)
         ;(copy as { id: number }).id = nextId++
         copy.parent = null
+        copy.drawer = null
         copy.mounted = false
         copy.tracks = null
         copy.overlay = null
@@ -349,8 +408,9 @@ export class Node {
     }
 
     /** Move so the center of the bounds lands on a stage point or on another node's center. */
-    moveTo(target: Vec | Node): this {
-        const destination: Vec = target instanceof Node ? target.center : target
+    moveTo(target: Vec | Node | Block): this {
+        const to = boundsOfTarget('moveTo', target)
+        const destination: Vec = target instanceof Node ? target.center : [to.x + to.width / 2, to.y + to.height / 2]
         const [cx, cy] = this.center
         const inverse = this.parent ? invert(this.parent.worldMatrix()) : IDENTITY
         const [lx0, ly0] = apply(inverse, cx, cy)
@@ -366,9 +426,19 @@ export class Node {
         const [nx, ny] = apply(invert(parent), point[0], point[1])
         this.set('px', lx)
         this.set('py', ly)
-        this.set('x', nx)
-        this.set('y', ny)
+        this.pivotPlace('x', nx)
+        this.pivotPlace('y', ny)
         return this
+    }
+
+    /**
+     * Write the place that goes with a new pivot. It keeps the node where it is, so it is not a move: on the
+     * timeline, a motion that starts at this time stays in effect. Without this, `grow` after `along` in one
+     * play would stop the node.
+     */
+    private pivotPlace(prop: 'x' | 'y', value: number): void {
+        if (clock.capture || !this.mounted || clock.mode === 'render') this.set(prop, value)
+        else this.track(prop).stepUnder(clock.now, value)
     }
 
     /** Scale around the center, or around a given stage point. */
@@ -399,9 +469,9 @@ export class Node {
     // ── Layout ────────────────────────────────────────────────────────────
 
     /** Place beside another node or stage point, with a gap measured between bounds. */
-    nextTo(target: Node | Vec, side: Side = 'right', gap = 28): this {
+    nextTo(target: Node | Vec | Block, side: Side = 'right', gap = 28): this {
         const [dx, dy] = direction(side)
-        const b = target instanceof Node ? target.bounds() : { x: target[0], y: target[1], width: 0, height: 0 }
+        const b = boundsOfTarget('nextTo', target)
         const own = this.bounds()
         const cx = b.x + b.width / 2, cy = b.y + b.height / 2
         const anchorX = cx + dx * (b.width / 2 + gap + own.width / 2)
@@ -410,16 +480,20 @@ export class Node {
     }
 
     /** Line up one edge with another node's same edge. */
-    alignTo(target: Node | Vec, edge: Edge): this {
+    alignTo(target: Node | Vec | Block, edge: Edge): this {
         const own = this.bounds()
-        const b = target instanceof Node ? target.bounds() : { x: target[0], y: target[1], width: 0, height: 0 }
+        const b = boundsOfTarget('alignTo', target)
         if (edge === 'left') return this.shift(b.x - own.x, 0)
         if (edge === 'right') return this.shift(b.x + b.width - own.x - own.width, 0)
         if (edge === 'top') return this.shift(0, b.y - own.y)
         return this.shift(0, b.y + b.height - own.y - own.height)
     }
 
-    /** Lay out children in a row or column, keeping the group's center. */
+    /**
+     * Lay out children in a row or column, keeping the group's center. It stays for the films that use it.
+     * In a new film, use `row` and `column` of the layout: they line up left edges and base lines, they nest,
+     * and they leave each node its own, so one node fades in without the others.
+     */
     arrange(side: Side = 'right', gap = 24): this {
         const [dx, dy] = direction(side)
         const center = this.center
@@ -502,6 +576,14 @@ export class Node {
         this.label = label
         return this
     }
+
+    /**
+     * The labels that belong to one part of this object, such as the name and the readout of a bar. A light
+     * on the part keeps them bright. An object that has such labels says so here.
+     */
+    labelsOf(_part: Node): readonly Node[] {
+        return []
+    }
 }
 
 function boundsOfRect(m: Mat, width: number, height: number): Bounds {
@@ -530,8 +612,42 @@ export function mountTree(node: Node, time: number): void {
     }
 }
 
+/**
+ * Say that an object places its own labels beside its own marks, such as an axes with its numbers. The film
+ * check then does not judge the distance between one of these labels and a mark of the same object, because
+ * a film cannot move the two apart. The object gets `data.ownLayout`, and each label gets `data.ownLabel`.
+ *
+ * Call it when the object is built. Without `labels`, each text and each dynamic drawing that is in the object
+ * now is a label of the object. An object that also holds nodes of a film, such as a card with its figure,
+ * names its labels. Text that a film adds later has no mark, so the check judges it as any other text.
+ *
+ * `plot` is for an object that a film draws data on. A line of the film may then pass a label of the object,
+ * as a curve passes the numbers of an axis. `name` is the name of the object in a message of the check: see
+ * `objectName`.
+ */
+export function ownLabels<T extends Node>(owner: T, options: { name?: string; labels?: readonly (Node | null)[]; plot?: boolean } = {}): T {
+    if (!(owner instanceof Node)) throw new Error(`ownLabels: the owner is ${isBlock(owner) ? 'a block of the layout' : notNode(owner)}. Give the node of the object`)
+    if (options.name) objectName(owner, options.name)
+    // A plot stays a plot when a method of the object marks one more label.
+    if (options.plot || !owner.data['ownLayout']) owner.data['ownLayout'] = options.plot ? 'plot' : true
+    const labels = options.labels ?? owner.all().filter((node) => node.draw !== null || node.children.some((child) => child.data['key'] !== undefined))
+    for (const label of labels) if (label) label.data['ownLabel'] = true
+    return owner
+}
+
+/**
+ * Give an object of the library the name that the film check prints for its marks: `a line of a connector`. The
+ * name is a string in `data.object`. The check does not read the name of a class, because a minified build
+ * changes that name to one letter.
+ */
+export function objectName<T extends Node>(node: T, name: string): T {
+    if (!(node instanceof Node)) throw new Error(`objectName: the first argument is ${isBlock(node) ? 'a block of the layout' : notNode(node)}. Give the node of the object`)
+    node.data['object'] = name
+    return node
+}
+
 /** A group. Children keep their own transforms inside it. */
-export function group(...children: Node[]): Node {
+export function group(...children: (Node | Block)[]): Node {
     return new Node().add(...children)
 }
 

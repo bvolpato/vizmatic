@@ -137,6 +137,8 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
+A verb that scales or turns the node about a point plays with `along` in one `s.play`, in any order: `s.play(grow(mark), along(mark, road))` and `s.play(along(mark, road), grow(mark))` are the same film. Such verbs are `grow`, `fadeIn` with a `scale`, `scaleBy`, `rotate`, `spin`, `shake`, and `indicate`. For a message that travels between two nodes, [`connector.send`](objects.md#messages-on-a-line) does both.
+
 ### morph
 
 `morph` turns one shape into another. Afterwards the target is on stage and the source is hidden, so later code always refers to the node you can see.
@@ -198,7 +200,7 @@ export default film({ fps: 30 }, (s) => {
 
 ## Emphasis
 
-These leave a node as they found it.
+These leave a node as they found it. `spotlight` is the exception: its light stays on until the film turns it off.
 
 ### indicate
 
@@ -212,6 +214,38 @@ export default film({ fps: 30 }, (s) => {
     s.wait(0.6)
 })
 ```
+
+`indicate` swells a target and tints it for a moment. A fill that another part of the target is drawn on is a backing, and a backing and its content never take the tint together: the tint goes to the one of the two that leaves more contrast between them.
+
+That gives two pictures:
+
+- **On a dark panel, the border and the text light up.** The panel keeps its color. This is a numbered ring, a box or a card in the `midnight` look with a yellow tint.
+- **On a light panel, the panel lights up under its dark text.** The text keeps its color. This is a solid badge under a dark number. It is also the same ring, box or card in the `paper` look with a yellow tint, when each text on it is dark: yellow has no contrast on a light panel, so the panel takes it.
+
+The least readable part on the panel decides. A card in `paper` with an ink caption becomes a yellow panel. The same card with a `dim` caption gets only a lit border: the caption is hard to read on yellow, and yellow text is hard to read on the panel, so the panel and its texts keep their colors.
+
+So pass a shape together with what is on it, as one group or a list: `indicate([ring, number])`. A shape with nothing on it, such as a dot or a bar, takes the tint in full.
+
+What is a part, and what is on a fill:
+
+- A part is on a fill when the stage draws it after the fill, it is smaller than the fill, and its middle is inside the shape of the fill. The order of the list does not count. A label in the box of a triangle and outside the triangle is beside it, and a number in the hole of a donut is on no wedge.
+- A text, a formula and a pictogram are one part each. So the integral sign and the root sign of a formula take the tint with the rest, and no glyph is the backing of the next.
+- A part that does not show, hidden or at opacity 0, is not counted.
+- An object with a `color()` of its own gets that call. A `tag` tints the border of its pill and its word, and its note keeps its color.
+- The choice is made when the animation starts, from the places and the colors of that moment. So `seq(moveTo(number, ring), indicate([ring, number]))` sees the number on its ring.
+- `fill: true` is `node.color(color)` for the whole target, with no choice: every paint takes the tint.
+
+The limits:
+
+- A pair keeps its colors when no tint leaves it readable and it is more readable as it is. Readable is a contrast of 3 to 1 between a part and its fill. Only the border of the fill lights up then, and a target with no border only swells. A light number on a light badge is such a pair: give the number a dark color.
+- With a tint that is near the page color, such as yellow in `paper`, expect lit borders more often than lit panels. A chip, a named box, and a panel under a `dim` or a colored word get only a lit border there. For a stronger emphasis, use a tint with contrast to the page, such as `red` in `paper`.
+- The limit of 3 to 1 is a line, so two colors that look alike can get two pictures. In `paper` with a yellow tint, a white number on a blue badge has 3.3 to 1 on a yellow badge, and the badge takes the tint. A number in the `bg` color has a little less than 3 to 1, and that pair keeps its colors.
+- A fill that is not opaque keeps its alpha under the tint, and it counts as the color that a viewer sees through it. On a wash, the content takes the tint when that is readable, because a wash hardly shows a tint. With `fill: true`, as before, the fill takes the tint and loses its alpha.
+- A gradient counts as the color of its middle. When it takes the tint, it becomes one color.
+- A `counter`, and any drawing that a function makes again on each frame, cannot take a tint. It is one part: its ring keeps its color under it when that is more readable, and takes the tint when not.
+- A part whose middle is off its fill, such as a number at the edge of a disc, is not on the fill: both take the tint.
+- The tint `ink` on a target in the ink color changes no color. The target only swells.
+- The choice takes about a quarter of a second for 10,000 parts, at the start of the animation.
 
 ### shake
 
@@ -265,6 +299,67 @@ export default film({ fps: 30 }, (s) => {
     s.wait(0.2)
 })
 ```
+
+### spotlight
+
+`spotlight` dims the rest of the stage, so that the viewer looks at one node. The targets keep their look. A second `spotlight` moves the light, and `spotlight(null)` turns it off. Use it in place of a list of fades: a film that fades the other nodes by hand forgets one, and that node stays bright or stays dim.
+
+```film paired label="A light moves across four boxes while the heading stays bright, then every box comes back"
+import { beside, film, group, rect, row, spotlight, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const heading = s.add(text('Four steps of a request', { font: 'text-serif', size: 90 }).at(0, -330))
+    const steps = ['parse', 'plan', 'run', 'reply'].map((name) => group(rect(360, 240, { radius: 16, stroke: 'blue', width: 6 }), text(name, { font: 'text-serif', size: 80 })))
+    // A row measures the boxes, and it goes under the heading.
+    beside(row(steps, { gap: 60 }), heading, 'under', 'loose')
+    for (const step of steps) s.add(step)
+    s.wait(0.5)
+    for (const step of steps) {
+        s.play(spotlight(step, { keep: [heading] }))
+        s.wait(0.7)
+    }
+    s.play(spotlight(null))
+    s.wait(0.6)
+})
+```
+
+The target is one node, a list of nodes, or `null`. A part of a text is a target too: `spotlight(eq.part('c^2'))` lights one term, and the other glyphs of the equation dim. The light takes half a second unless you give a `duration`. The options are `dim`, `within`, and `keep`:
+
+- `dim` is the part of its color that the rest keeps, from 0 to 1. The default is 0.3 on a dark look and 0.4 on a light look. Both leave dim ink text at a contrast of about 2.4 to 1, which a viewer can still read. On paper, 0.3 leaves it at 1.9.
+- `within: chart` dims only inside one node, such as one chart or one group. The rest of the stage does not change, so two charts can each have a light. `spotlight(null, { within: chart })` turns off the light of that node, and `spotlight(null)` turns off every light.
+- `keep: heading` or `keep: [heading, source]` names nodes that stay bright with the targets: a heading, a source line, a claim tag, a backdrop. `keep` belongs to one call, so give it to each `spotlight`. Pinned nodes (`.pin()`) stay bright without it.
+
+**What dims.** The rest is every node that shows before the light starts and still shows at that time, and that is not a target, not in a target, and not an ancestor of a target. An ancestor keeps its look, and its other children dim. A node at opacity 0 does not show.
+
+Three objects know which labels belong to a part, and a light on the part keeps them bright. In a `barChart`, a bar has its name and its readout: `spotlight(chart.bar(2))` dims the other bars, their labels, and the base line. In a `dotChart`, a dot or an interval has its row. In `lanes`, the bar, the arrow or the dot of an event has its label. For another object, name the labels as targets too: `spotlight([cell, label])`.
+
+A node that enters at the very time that a light starts is not a part of the rest. It arrives with its own look, as a node that enters later does. That is one rule for `fadeIn`, `write`, `draw`, `grow`, `appear`, `morph`, and `s.add`, and the order of the arguments of `s.play` does not change it: `s.play(write(note), spotlight(row))` and `s.play(spotlight(row), write(note))` are the same film. The next `spotlight` dims such a node with the rest. Three cases to know:
+
+- At time 0, the nodes that the film put there with `s.add` are a part of the rest. A film has no time before 0.
+- A node that comes into a dim group is dim with its group.
+- A dim node that the film hides and shows again under the same light is still dim. A node that is hidden when a light starts is not a part of its rest, so it comes back with its own look.
+
+A mark that a verb adds for a node is as bright as that node, at any time: the line of `circumscribe`, the rays of `flash`, the ring of `ripple`, the segment of `pulse`, the stroke of `highlightSweep`, and the cursor of `typewriter`. A `flash` or a `ripple` at a point belongs to no node, and has its own look.
+
+**How a dim node looks.** The light does not write the `opacity` of a node. It writes a value of its own, `dim`, and a dim node keeps its opacity: each of its colors goes toward the background color of the film. That is its fill, its stroke, the color of its text, each stop of a gradient, and its glow. So a dim node still hides what is behind it. A dim label on a line does not show the line, and two dim shapes that overlap do not blend. A picture has no one color to change, so each of its pixels goes toward the background color and keeps its alpha: the clear parts of a logo stay clear. A node in a dim group is as dim as the group, not dimmer.
+
+The background color is the `background` of the film, or the one of its look. If the film draws its own backdrop, such as a gradient or a picture, set `background` to the main color of that backdrop, because dim nodes go toward it.
+
+The film can fade a node while the light is on, and the two do not undo each other. `spotlight(null)` gives every node the look that the film gave it: a node that the film fades to 0.5 under the light is at 0.5 when the light goes off.
+
+**Lights follow time.** A light does not change the stage when the film names it. It joins the lights of the film, and what is dim at a time comes from that list in time order, when the film is complete. So a narrated film can name its lights, and bring its nodes, in any order with `s.at`, and the result is the same. At a time, the light that started last decides. A light of the whole stage takes the place of every light before it. A light with `within` decides inside its node and leaves the rest of the stage to the lights before it.
+
+A light that would show nothing, or that would make a frame jump, stops the build, and the error says what to do:
+
+- A target that is not on the stage, or is hidden, when the light starts. A node that enters at that time is a target, and so is a part of it, such as one term of an equation that `write` brings. For a morph that starts at that time, light the node that the morph starts from.
+- The camera or the root of the stage as a target, and two nodes as two arguments: `spotlight([a, b])` takes one list.
+- A light with `within` in a node that another light dimmed, or in a node whose group it dimmed. Make that node a target of the other light, or turn the other light off first.
+- Two lights that start at the same time in the same place. They have no order, so give one light all the targets. Two times that differ by less than a millionth of a second are the same time.
+- A light that dims a node while it morphs. The shape that travels is a new node with its own look, so a dim source would jump to bright, and a result in a dim group would jump to dim. Make the source of the morph a target or a `keep` of the light, or turn the light off before the morph. The result of a morph has its own look, and the next `spotlight` decides for it.
+
+The light has one limit. A `scene3d` draws its own objects, so the light does not act on one object in it: the scene is bright or dim as a whole.
+
+The film check reads dim text as text, and a light gives it no new finding: a dim label keeps its plate, so no line crosses it. The check has no rule for the contrast of a text, so it counts a dim text as readable at any `dim`. Keep the default, or more, for text that a viewer must still read.
 
 ## Composition
 

@@ -62,7 +62,7 @@ Satori uses the package's patched `fflate` 0.7.5 dependency.
 - Source Serif 4: SIL Open Font License 1.1.
   Copyright 2014 The Source Serif 4 Project Authors.
   Source: https://github.com/adobe-fonts/source-serif
-  `SourceSerif4-24pt-Regular.ttf` and `SourceSerif4-24pt-Italic.ttf` are static cuts of the variable fonts at optical size 24. `scripts/build-stage-fonts.py` makes them.
+  `SourceSerif4-24pt-Regular.ttf`, `SourceSerif4-24pt-SemiBold.ttf` and `SourceSerif4-24pt-Italic.ttf` are static cuts of the variable fonts at optical size 24. `scripts/build-stage-fonts.py` makes them.
 - Noto Sans: SIL Open Font License 1.1.
   Copyright Google Inc.
   Source: https://github.com/notofonts/noto-fonts

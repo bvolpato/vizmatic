@@ -25,8 +25,8 @@ export default film({ fps: 30 }, (s) => {
 | Option | Meaning |
 |---|---|
 | `size` | Font size in stage units. |
-| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'text-serif'` (Source Serif 4), `'mono'` (JetBrains Mono), or `'noto'`. |
-| `weight` | `400`, `600`, or `700` where the family has that weight. |
+| `font` | `'sans'` (Inter), `'serif'` (Instrument Serif), `'text-serif'` (Source Serif 4), `'mono'` (JetBrains Mono), or `'noto'`. Defaults to the font of the film, which is `'sans'` unless `film({ font })` sets another. |
+| `weight` | `400`, `600`, or `700`. `'sans'` has all three, and `'text-serif'` has 400 and 600. A family that has no file for a weight uses its regular. |
 | `italic` | Use the italic of the family. |
 | `color` | A look token, CSS color, or gradient. |
 | `align` | `'left'`, `'center'`, or `'right'` inside the block. |
@@ -46,9 +46,11 @@ const value = text('5.0 ms', { size: 32, anchor: 'left' }).at(20, 0)       // st
 
 Use `'text-serif'` for sentences, labels, and numbers. Its strokes stay visible when a film plays at phone size, and it keeps `1` and `l`, and `O` and `0`, easy to tell apart. It also sits well next to TeX. Use `'serif'` for short titles at a large size. It is narrow and has fine strokes, and it has no Greek letters or math symbols.
 
+To use one font in a whole film, set it once: `film({ font: 'text-serif' }, (s) => { ... })`. Every `text()` with no `font` then has that font, and so has each label that an object draws. The Objects guide lists the texts that stay in mono.
+
 If a font does not have a character, the engine draws that character with the next bundled font. `'serif'` tries Source Serif 4 first. Then every family tries Noto Sans and Noto Sans Math. If no bundled font has the character, the engine draws an empty box and `vizmatic check` reports `film.missing_glyph`.
 
-Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment, so you can color or animate one word.
+Glyphs are in `node.chars`. `node.find('word')` returns the glyphs of a fragment, so you can color or animate one word. `node.font` is the family that the text is set in.
 
 ```film paired label="One word turns yellow inside a sentence"
 import { film, recolor, text } from 'vizmatic/stage'

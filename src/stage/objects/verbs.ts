@@ -1,14 +1,16 @@
 import { dynamic, Node } from '../node'
 import { apply, invert, rectPath, type Vec } from '../geometry'
-import { text } from '../text'
+import { text, type TextOptions } from '../text'
 import { smooth, linear } from '../ease'
 import { toPaint, type ColorInput } from '../color'
 import { Value, type Anim, type AnimOptions, type Target } from '../anim'
+import { addLight, inside } from '../light'
+import { Block, nodesFor, oneNode } from '../layout'
 import { clock } from '../track'
 import { reveal, stepAt, tweenValue } from './util'
 
-function list(target: Target): Node[] {
-    return Array.isArray(target) ? [...target] as Node[] : [target as Node]
+function list(target: Target, what = 'an animation'): Node[] {
+    return nodesFor(what, target)
 }
 
 function glyphsOf(target: Target): Node[] {
@@ -36,7 +38,10 @@ export function typewriter(target: Target, options: TypewriterOptions = {}): Ani
                 const first = leaves[0]!.bounds()
                 const height = first.height * 1.35 || 24
                 cursor = new Node(rectPath(0, -height / 2, Math.max(3, height * 0.1), height)).fill(options.cursorColor ?? 'ink')
+                // The cursor stands beside the last letter on purpose, so the film check does not judge the text against it.
+                cursor.data['decoration'] = true
                 ctx.stage.add(cursor)
+                ctx.stage.marks.set(cursor, list(target)[0]!)
             }
             leaves.forEach((leaf, i) => {
                 const at = ctx.t0 + span * ctx.ease(i / leaves.length)
@@ -111,7 +116,8 @@ export interface CounterOptions {
     digits?: number
     size?: number
     color?: ColorInput
-    font?: 'mono' | 'sans' | 'serif'
+    /** Defaults to mono, in every film: a number that changes keeps its width in mono. */
+    font?: TextOptions['font']
     weight?: 400 | 600 | 700
     prefix?: string
     suffix?: string
@@ -142,6 +148,8 @@ export function counter(initial = 0, options: CounterOptions = {}): Counter {
 
 /** Count a Counter or Value to a target. */
 export function countUp(target: Counter | Value, to: number, options: AnimOptions = {}): Anim {
+    const given: unknown = target
+    if (!(given instanceof Counter || given instanceof Value)) throw new Error(`countUp: the first argument is ${given instanceof Block ? 'a block of the layout' : given instanceof Node ? 'a node of another kind' : String(given)}. Give a counter, such as counter(0), or a value of the stage`)
     const value = target instanceof Counter ? target.value : target
     return {
         label: 'countUp', duration: options.duration ?? 1.2, ease: options.ease,
@@ -154,6 +162,7 @@ export function countUp(target: Counter | Value, to: number, options: AnimOption
 
 /** Steady rotation for as long as it plays: radians per second, around the center or a point. */
 export function spin(node: Node, rate: number, options: AnimOptions & { about?: Vec } = {}): Anim {
+    oneNode('spin', node, 'the first argument')
     return {
         label: 'spin', duration: options.duration ?? 2, ease: options.ease ?? linear,
         schedule(ctx) {
@@ -169,6 +178,8 @@ export function spin(node: Node, rate: number, options: AnimOptions & { about?: 
 
 /** Two nodes trade places along opposite arcs. */
 export function swap(a: Node, b: Node, options: AnimOptions & { lift?: number } = {}): Anim {
+    oneNode('swap', a, 'the first argument')
+    oneNode('swap', b, 'the second argument')
     return {
         label: 'swap', duration: options.duration ?? 0.9, ease: options.ease,
         schedule(ctx) {
@@ -205,8 +216,10 @@ export interface HighlightOptions extends AnimOptions {
  * A marker stroke sweeps across a target and stays behind it. `.mark` is the
  * node, so it can be faded out later.
  */
-export function highlightSweep(target: Node | readonly Node[], options: HighlightOptions = {}): Anim & { mark: Node } {
+export function highlightSweep(target: Target, options: HighlightOptions = {}): Anim & { mark: Node } {
     const mark = new Node([])
+    // A film puts this mark behind a text on purpose, so the film check does not judge the text against it.
+    mark.data['decoration'] = true
     const nodes = list(target)
     return {
         mark,
@@ -229,6 +242,7 @@ export function highlightSweep(target: Node | readonly Node[], options: Highligh
             // The mark sits behind the target in draw order.
             const parent = ctx.stage.root
             parent.add(mark)
+            ctx.stage.marks.set(mark, nodes[0]!)
             const first = nodes[0]!
             let anchor: Node = first
             while (anchor.parent && anchor.parent !== parent) anchor = anchor.parent
@@ -242,6 +256,67 @@ export function highlightSweep(target: Node | readonly Node[], options: Highligh
             }
             mark.track('path').step(ctx.t0, shape(0))
             mark.track('path').add({ t0: ctx.t0, t1: ctx.t1, ease: ctx.ease, to: shape(1), at: shape })
+        },
+    }
+}
+
+export interface SpotlightOptions extends AnimOptions {
+    /**
+     * The part of its color that the rest keeps, from 0 to 1. At 0 the rest has the color of the background.
+     * Defaults to 0.3 on a dark look and to 0.4 on a light look, which leave dim text at the same contrast.
+     */
+    dim?: number
+    /** Dim only inside this node, such as one chart or one group. The rest of the stage does not change. */
+    within?: Node
+    /** One node or more that stay bright with the targets, such as a heading, a source line, or a backdrop. */
+    keep?: Target
+}
+
+/** A film can read a node from a list at an index that is not there, such as `rows[7]` of six rows. Say so. */
+function mustBeNodes(nodes: readonly unknown[], what: string): void {
+    for (const node of nodes) {
+        if (!(node instanceof Node)) throw new Error(`spotlight: ${what} is ${node === null ? 'null' : typeof node}, not a node. Check the index or the name that the film reads it from`)
+    }
+}
+
+/**
+ * Put the light on one node or more: `s.play(spotlight(row3))`. The rest of the stage dims, and the targets
+ * keep their look. The light stays on. A second `spotlight` moves it, and `spotlight(null)` turns it off.
+ *
+ * The rest is every node that shows before the light starts and that is not a target, not in a target,
+ * and not an ancestor of a target. An ancestor keeps its look, and its other children dim. Pinned nodes
+ * and the nodes in `keep` stay bright as the targets do. A node that comes to the stage with the light, or
+ * later, is not dimmed.
+ *
+ * A dim node keeps its opacity. Its colors go toward the background of the film, so it still hides what is
+ * behind it, and a fade that the film makes while the light is on is still there when the light goes off.
+ *
+ * The verb only adds a light to the list of the stage. What is dim at a time comes from that list in time
+ * order, when the film is complete. So a film can name its lights, and bring its nodes, in any order.
+ */
+export function spotlight(target: Target | null, options: SpotlightOptions = {}): Anim {
+    // A film that writes spotlight(a, b) means a light on two nodes, and the second one would be lost as an option.
+    if (options instanceof Node || options instanceof Block || Array.isArray(options)) throw new Error('spotlight: the second argument is a node, and it must be the options. To light more than one node, give them as one list: spotlight([a, b])')
+    // A block of the layout stands for its nodes. Each other value has the message of `mustBeNodes`.
+    const each = (value: unknown): unknown[] => (Array.isArray(value) ? value : [value]).flatMap((item) => (item instanceof Block ? item.nodes : [item]))
+    const targets = target === null ? null : each(target) as Node[]
+    const keep = options.keep === undefined ? [] : each(options.keep) as Node[]
+    const within = options.within
+    if (targets?.length === 0) throw new Error('spotlight: the list of targets is empty. Give it a node to light, or null to turn the light off')
+    mustBeNodes(targets ?? [], 'a target')
+    mustBeNodes(keep, 'a node in keep')
+    if (within !== undefined) mustBeNodes([within], 'the node for within')
+    const { dim, duration } = options
+    if (dim !== undefined && !(typeof dim === 'number' && dim >= 0 && dim <= 1)) throw new Error(`spotlight: dim is ${typeof dim === 'string' ? JSON.stringify(dim) : String(dim)}. It is the part of its color that the rest keeps, a number from 0 to 1`)
+    if (duration !== undefined && !(Number.isFinite(duration) && duration >= 0)) throw new Error(`spotlight: duration is ${duration}. It is the time that the light takes to change, in seconds, 0 or more`)
+    if (within && targets?.some((node) => !inside(node, within))) throw new Error('spotlight: a target is not inside the node for within. Give a part of that node, or leave within out to dim the whole stage')
+    return {
+        label: 'spotlight', duration: duration ?? 0.5, ease: options.ease,
+        schedule(ctx) {
+            const { stage } = ctx
+            if (targets?.includes(stage.camera)) throw new Error('spotlight: a target is the camera, which is not a part of the picture. Give it a node that the film draws')
+            if (targets?.includes(stage.root)) throw new Error('spotlight: a target is the root of the stage, which holds every node, so nothing would dim. Give it one node or more, or null to turn the light off')
+            addLight(stage, { start: ctx.t0, end: ctx.t1, ease: ctx.ease, targets, keep, within: within ?? null, dim: dim ?? (stage.look.dark ? 0.3 : 0.4) })
         },
     }
 }

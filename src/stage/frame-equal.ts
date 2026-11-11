@@ -23,7 +23,7 @@ export function sameFrame(a: Frame, b: Frame): boolean {
 function sameOp(a: DrawOp, b: DrawOp): boolean {
     if (a === b) return true
     if (a.kind === 'image') {
-        if (b.kind !== 'image' || a.alpha !== b.alpha) return false
+        if (b.kind !== 'image' || a.alpha !== b.alpha || a.dim !== b.dim || !sameNumbers(a.backdrop, b.backdrop)) return false
         const x = a.image, y = b.image
         // A prepared asset holds the bytes of the picture, so one asset is one picture.
         if (x.asset !== y.asset || x.src !== y.src || x.width !== y.width || x.height !== y.height) return false
@@ -41,7 +41,7 @@ function sameOp(a: DrawOp, b: DrawOp): boolean {
         && samePath(a.path, b.path) && samePath(a.strokePath, b.strokePath)
 }
 
-function sameNumbers(a: ArrayLike<number> | null, b: ArrayLike<number> | null): boolean {
+function sameNumbers(a: ArrayLike<number> | null | undefined, b: ArrayLike<number> | null | undefined): boolean {
     if (a === b) return true
     if (!a || !b || a.length !== b.length) return false
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false

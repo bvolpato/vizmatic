@@ -1,0 +1,5 @@
+{
+  "note": "Invented numbers, for the template. Replace them with numbers that have a source, and name the source in sources.md.",
+  "database": { "ms": 800 },
+  "cache": { "ms": 5 }
+}

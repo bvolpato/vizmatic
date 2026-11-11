@@ -40,6 +40,40 @@ The regular test suite runs the Node image checks without requiring a browser.
 - Give rendered diagrams accessible labels where the primitive supports them.
 - Preserve deterministic output. Generated assets should not change between identical runs.
 
+## Generated files
+
+The website is generated, and it is not committed. `pnpm site:build` writes it into `docs/`, beside its sources. `.gitignore` names each generated file. CI builds the website for each pull request, and fails when the build or `pnpm docs:check` fails.
+
+Build the website before you open a page, run `pnpm site:serve`, or run `pnpm docs:check`:
+
+```bash
+pnpm build
+pnpm site:build
+```
+
+| Files in `docs/` | Committed | How to change them |
+|---|---|---|
+| Templates (`*.template.html`), guides (`guides/*.md`), `site.js`, and the style sheets | Yes | Edit them. They are sources. |
+| Pages, bundles, component previews, search index, sitemap, and the files for agents | No | Edit the source, then run `pnpm site:build`. |
+| Rendered examples (`assets/examples`), film posters, and measured data | Yes | Run the command that writes them, such as `pnpm render:examples`, and commit the result. |
+
+Do not commit a website file with `git add -f`. If the build writes a new file, add an exact rule for it to `.gitignore`. CI fails when the build writes a file that has no rule, or changes a committed file.
+
+The skill has one source: `plugins/vizmatic/skills/vizmatic/`. After you edit it, run `pnpm sync:skill` and commit both folders. The command copies the skill to `.agents/skills/vizmatic/`, which `npx skills add` reads.
+
+### When the public site changes
+
+The public site shows the last release. A merge to `main` does not deploy it. The `Release` workflow publishes the package, then starts the `Pages` workflow, which builds the site from the release tag and deploys it.
+
+A maintainer can also start a deploy by hand, for example for a fix of the docs between two releases:
+
+```bash
+gh workflow run pages.yml -f ref=main      # Deploy the site of main.
+gh workflow run pages.yml -f ref=v0.8.1    # Deploy the site of one tag.
+```
+
+Do not add `--ref` to these commands. The workflow must start on `main`, which is the default, because the `github-pages` environment accepts a deployment from `main` only. The runs are on the [page of the Pages workflow](https://github.com/bvolpato/vizmatic/actions/workflows/pages.yml), which also has a "Run workflow" button.
+
 ## Visual and animation changes
 
 Examples under `examples/` generate tracked files under `docs/assets/examples/` and website source metadata. Regenerate them with:
@@ -52,7 +86,7 @@ pnpm docs:check
 
 Review both themes at full size. Check labels, contrast, canvas edges, whitespace, motion continuity, loop transitions, and reduced-motion fallbacks. Animations should explain a state change or process, not add motion without teaching value.
 
-Commit generated outputs when source changes affect them. `./test.sh` fails if regeneration leaves tracked changes.
+Commit the rendered examples when a source change affects them. Do not commit the website: see [Generated files](#generated-files). `./test.sh` fails if regeneration leaves tracked changes.
 
 ## Film changes
 
@@ -92,7 +126,7 @@ Use the pull request checklist in `.github/pull_request_template.md`. Releases a
 
 ## Repository checks
 
-Generated examples and website files are committed. CI fails when a build changes them without a matching source update.
+Rendered examples are committed. The website is not: see [Generated files](#generated-files). CI fails when a build changes a committed file, or writes a file that `.gitignore` does not name.
 
 | Gate | What it protects |
 |---|---|
@@ -102,7 +136,7 @@ Generated examples and website files are committed. CI fails when a build change
 | `pnpm check:examples` | Every example renders in both themes without errors or visual warnings |
 | `pnpm docs:check` | Local asset references, `PROMPT.md` sync, source modal themes, and homepage affordances |
 | `pnpm deps:check` | npm audit plus package tarball contents, size, and file-count budgets before release |
-| `./test.sh` drift check | Confirms render and docs commands leave no uncommitted output |
+| `./test.sh` drift check | Confirms that the build changes no committed file and writes no file that `.gitignore` does not name |
 
 Run the full local gate:
 
@@ -117,6 +151,7 @@ Prepare release commit locally, push it to protected `main`, and wait for requir
 ```bash
 npm version patch --no-git-tag-version
 pnpm sync:plugin-versions
+pnpm site:build # The pages carry the version, and the check below compares it.
 pnpm docs:check
 git add package.json plugins/vizmatic/.codex-plugin/plugin.json plugins/vizmatic/.claude-plugin/plugin.json .claude-plugin/marketplace.json
 git commit -m "Release v$(node -p "require('./package.json').version")"
@@ -124,6 +159,6 @@ git push origin main
 # Push annotated vX.Y.Z tag only after CI passes on release commit.
 ```
 
-Tag push starts GitHub `Release` workflow. It verifies exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. Retry existing tag with `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`. Workflow requires `NPM_TOKEN` repository secret with publish access.
+Tag push starts GitHub `Release` workflow. It verifies exact commit again, publishes npm provenance, and creates release notes with compare link and commits since previous version. Its last step starts the `Pages` workflow, which deploys the site of that tag. Retry existing tag with `gh workflow run release.yml --ref vX.Y.Z -f tag=vX.Y.Z`. Workflow requires `NPM_TOKEN` repository secret with publish access.
 
 The workflow keeps package version, plugin metadata, tag, release notes, and npm provenance in sync.

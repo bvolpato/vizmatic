@@ -8,20 +8,13 @@ interface PackResult {
     entryCount?: number
 }
 
+// The full course component build packs to 7,346,603 bytes, or 21,157,943 bytes unpacked.
+// Its 232 files include the new component examples. The growth is in the stage runtime,
+// type declarations, examples and narration tools. The offline assets are unchanged.
 const limits = {
-    // Adds validated image preparation to the shared renderer and offline assets. CI packs about 32 KB larger than a
-    // laptop does, so leave room: this is a tripwire for an accident, like the unpacked size below.
-    // In November 2026 the package was at 5.60 MB, and the objects for system films add about 0.1 MB.
-    size: 6_000_000,
-    // Includes image preflight, browser/Node rendering, declarations, and examples. Contact sheets of film stills
-    // add the film and text code to the CommonJS export bundle, which holds its own copy of what it imports.
-    // A stage object ships in four bundles and three declaration files, so the pictograms cost 48 KB.
-    // In November 2026 the package was at 14.92 MB. A check rule and three objects for system films (lanes, the
-    // bit field and the terminal) add 0.29 MB together, and more objects of that kind follow.
-    // The budget is a tripwire for an accident, such as a font that ships two times. It leaves room for features.
-    unpackedSize: 16_000_000,
-    // Includes the bundled raster codec license notice and film examples.
-    entryCount: 190,
+    size: 7_400_000,
+    unpackedSize: 21_200_000,
+    entryCount: 232,
 }
 
 // Inspect the existing build. npm also runs prepare for a dry run unless suppressed.

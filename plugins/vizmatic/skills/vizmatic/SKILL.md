@@ -24,8 +24,8 @@ For pnpm 11, allow esbuild's install script with `allowBuilds: { esbuild: true }
 
 ## Film workflow
 
-1. Start from `assets/starter-film.ts`, or run `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`.
-2. Read `references/films.md` for the engine rules and patterns. Run `npx vizmatic objects` for the object catalog and `npx vizmatic looks` for the looks.
+1. Start from `assets/starter-film.ts`, or run `npx vizmatic new intro --template explainer`. Templates are `explainer`, `equation`, `architecture`, `chart`, and `deck`. The `narrated` template writes a folder for a film that follows a recorded voice.
+2. Read `references/films.md` for the engine rules and patterns. Lay each picture out with `row`, `column`, `grid`, `place` and `beside` before you type a coordinate: see "Layout" there. Run `npx vizmatic objects` for the object catalog and `npx vizmatic looks` for the looks.
 3. Check it, and fix every error. Each finding has times, a `box` in canvas pixels, and a `stage` center in authoring coordinates.
    ```bash
    npx vizmatic check intro.ts --json
@@ -54,7 +54,7 @@ For a person, `npx vizmatic preview intro.ts` gives a live player with a timelin
 
 ### Lessons and narrated films
 
-When a film must teach, read `references/lessons.md` before you write the script. For a film that follows a recorded voice, `narration(s, timing)` places each change on a spoken phrase, and it stops the build if the voice does not say the phrase. Compute every number with an `assert`, and keep the voice and the screen in agreement. Keep every title true for as long as it is visible. Change pictures without a collision or a blank, and scan every frame. Accuracy comes before brevity. Do not cut content that teaches to reach a target length.
+When a film must teach, read `references/lessons.md` before you write the script. For a film that follows a recorded voice, start with `npx vizmatic new <name> --template narrated`, and build it with one command: `npx vizmatic narrated build <folder> --draft` for a draft, and without `--draft` for the delivered movie. It makes the voice on this machine, the sound mix, the layout check and the movie, and runs only the steps that have work to do. `narrated({ title, timing, scenes })` draws the title card, opens and ends each scene, and gives each scene a clock that places each change on a spoken phrase. It stops the build if the voice does not say the phrase. The [narrated films guide](https://bvolpato.github.io/vizmatic/docs/narrated-films.html) has the folder, the build, the checks, and the review. Compute every number, check it with `assertEqual`, and keep the voice and the screen in agreement. Keep every title true for as long as it is visible. Change pictures without a collision or a blank, and scan every frame. Accuracy comes before brevity. Do not cut content that teaches to reach a target length.
 
 The package computes some mechanisms for you, with helpers such as `weightedVectorState` and `tokenHistoryState`. `references/lessons.md` lists them, the limits of each, and how to use them in a film or a canvas host.
 

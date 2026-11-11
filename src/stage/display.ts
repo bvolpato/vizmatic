@@ -2,10 +2,11 @@ import {
     apply, compose, matScale, mul, pathBounds, pathLength, pathToD, transformPath, trimPath,
     type Mat, type Path, type Ring,
 } from './geometry'
-import { css, isGradient, sampleStops, type Gradient, type Paint, type Rgba } from './color'
+import { css, dimPaint, isGradient, sampleStops, type Gradient, type Paint, type Rgba } from './color'
 import { clock } from './track'
 import type { BlendMode, Node, StageImage } from './node'
 import { browserImageSource, imageHasVisiblePixels, ImageAssetError } from './image'
+import { drawnDim } from './light'
 
 const clockNow = () => clock.now
 
@@ -36,6 +37,12 @@ export interface ImageOp {
     readonly matrix: Mat
     readonly alpha: number
     readonly node?: Node
+    /**
+     * A dim picture: each pixel keeps this part of its color, and the rest of it is `backdrop`. The alpha of
+     * each pixel stays, so the clear parts of the picture stay clear.
+     */
+    readonly dim?: number
+    readonly backdrop?: Rgba
 }
 
 export type DrawOp = PathOp | ImageOp
@@ -150,22 +157,67 @@ function splitAlong(op: PathOp, paint: Gradient, ops: DrawOp[]): void {
     }
 }
 
-function walk(node: Node, parent: Mat, screen: Mat, alpha: number, ops: DrawOp[]): void {
+/** What is the same for every node of one frame. */
+interface Pass {
+    readonly screen: Mat
+    /** The color that a dim node goes toward: the background of the film. */
+    readonly backdrop: Rgba
+    /** The node that each mark of a verb belongs to, in a film with a light. */
+    readonly marks: ReadonlyMap<Node, Node> | null
+    readonly ops: DrawOp[]
+}
+
+/**
+ * Dim the marks that one node drew, which are `ops` from `first` on. Each paint goes toward the backdrop and
+ * no alpha changes, so a dim plate still hides the line behind it. A picture has no paint to mix: the
+ * painter mixes its pixels.
+ */
+function dimOps(ops: DrawOp[], first: number, dim: number, backdrop: Rgba): void {
+    for (let i = first; i < ops.length; i++) {
+        const op = ops[i]!
+        ops[i] = op.kind === 'image' ? { ...op, dim, backdrop } : {
+            ...op,
+            fill: op.fill && dimPaint(op.fill, dim, backdrop),
+            stroke: op.stroke && dimPaint(op.stroke, dim, backdrop),
+            // A glow with no color of its own takes the dim color of the stroke or the fill.
+            glowColor: op.glowColor && dimPaint(op.glowColor, dim, backdrop) as Rgba,
+        }
+    }
+}
+
+/** The `dim` that a mark of a verb takes from the node that it belongs to, so that it is as bright as that node. */
+function markDim(node: Node, marks: ReadonlyMap<Node, Node>): number {
+    const target = marks.get(node)
+    return target ? Math.min(drawnDim(target), markDim(target, marks)) : 1
+}
+
+/**
+ * `alpha` is the product of the opacities above the node. `dim` is the least `dim` above it: opacities
+ * multiply along a branch, and a node in a dim group is not dimmed a second time.
+ */
+function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): void {
     if (!node.get('visible')) return
     const opacity = node.get('opacity') * alpha
     if (opacity <= 0.002) return
+    const { screen, ops, marks } = pass
+    const least = Math.min(node.get('dim'), dim, marks ? markDim(node, marks) : 1)
     const base = node.get('fixed') ? screen : parent
     const m = mul(base, node.localMatrix())
+    const first = ops.length
     const path = node.get('path')
     if (path && path.length > 0) emit(node, path, m, opacity, ops)
     const image = node.get('image')
     if (image) ops.push({ kind: 'image', image, matrix: m, alpha: opacity, node })
     if (node.rawOps) node.rawOps(m, opacity, ops)
+    if (least < 1) dimOps(ops, first, least, pass.backdrop)
     if (node.draw) {
         const built = node.draw(clockNow())
         if (built) {
             const list: readonly Node[] = Array.isArray(built) ? built as readonly Node[] : [built as Node]
-            for (const child of list) walk(child, m, screen, opacity, ops)
+            for (const child of list) {
+                child.drawer = node
+                walk(child, m, opacity, least, pass)
+            }
         }
     }
     const children = node.children
@@ -179,14 +231,21 @@ function walk(node: Node, parent: Mat, screen: Mat, alpha: number, ops: DrawOp[]
     }
     const ordered = sorted ? children.map((child, index) => ({ child, index, z: child.get('z') }))
         .sort((a, b) => a.z - b.z || a.index - b.index).map((entry) => entry.child) : children
-    for (const child of ordered) walk(child, m, screen, opacity, ops)
+    for (const child of ordered) walk(child, m, opacity, least, pass)
 }
 
-export function buildOps(root: Node, camera: CameraState, width: number, height: number): DrawOp[] {
+/**
+ * The draw list of a tree. `backdrop` is the color that a dim node goes toward, and `marks` gives the node
+ * that each mark of a verb is as bright as. They have an effect only in a film with a light, where
+ * `spotlight` gives nodes a `dim` under 1.
+ */
+export function buildOps(root: Node, camera: CameraState, width: number, height: number, backdrop: Rgba = [0, 0, 0, 1], marks: ReadonlyMap<Node, Node> | null = null): DrawOp[] {
+    // The root is one node, such as the root of a stage. A block of the layout and a list are not.
+    if (typeof (root as { localMatrix?: unknown } | null)?.localMatrix !== 'function') throw new Error('buildOps: the root is not a node. Give one node, such as the root of a stage, or a group of the nodes: group(block)')
     const screen: Mat = [1, 0, 0, 1, width / 2, height / 2]
     const view = mul(screen, compose(0, 0, -camera.rotation, camera.zoom, camera.zoom, camera.x, camera.y))
     const ops: DrawOp[] = []
-    walk(root, view, screen, 1, ops)
+    walk(root, view, 1, 1, { screen, backdrop, marks, ops })
     return ops
 }
 
@@ -228,6 +287,11 @@ function fmt(value: number): string {
     return String(Math.round(value * 1000) / 1000)
 }
 
+/** A number for a color matrix, where a thousandth is more than one step of a color. */
+function exact(value: number): string {
+    return String(Math.round(value * 1e6) / 1e6)
+}
+
 function gradientDef(id: string, paint: Gradient): string {
     const stops = paint.stops.map(([at, color]) =>
         `<stop offset="${fmt(at)}" stop-color="${css([color[0], color[1], color[2], 1])}"${color[3] < 1 ? ` stop-opacity="${fmt(color[3])}"` : ''}/>`).join('')
@@ -256,7 +320,7 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
     const w = frame.width, h = frame.height
     const defs: string[] = []
     const body: string[] = []
-    let gradientCount = 0
+    let gradientCount = 0, dimCount = 0
     const paintAttr = (paint: Paint, attr: 'fill' | 'stroke', alpha: number): string => {
         if (isGradient(paint)) {
             const id = `g${gradientCount++}`
@@ -277,7 +341,15 @@ export function frameToSvg(frame: Frame, options: { scale?: number; transparent?
             const content = crop
                 ? `<svg width="${fmt(image.width)}" height="${fmt(image.height)}" viewBox="${[crop.x, crop.y, crop.width, crop.height].map(fmt).join(' ')}" preserveAspectRatio="none" overflow="hidden">${picture}</svg>`
                 : picture
-            body.push(`<g transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''}>${content}</g>`)
+            let filter = ''
+            if (op.dim !== undefined && op.dim < 1 && op.backdrop) {
+                // Each color is `dim` of the pixel and the rest of the backdrop. The alpha row is as it is, so clear pixels stay clear.
+                const id = `d${dimCount++}`, keep = exact(op.dim)
+                const [r, g, b] = [0, 1, 2].map((i) => exact((1 - op.dim!) * op.backdrop![i]! / 255))
+                defs.push(`<filter id="${id}" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${keep} 0 0 0 ${r} 0 ${keep} 0 0 ${g} 0 0 ${keep} 0 ${b} 0 0 0 1 0"/></filter>`)
+                filter = ` filter="url(#${id})"`
+            }
+            body.push(`<g transform="matrix(${m.map(fmt).join(' ')})"${op.alpha < 1 ? ` opacity="${fmt(op.alpha)}"` : ''}${filter}>${content}</g>`)
             continue
         }
         const style = op.blend !== 'normal' ? ` style="mix-blend-mode:${op.blend}"` : ''
@@ -358,8 +430,37 @@ export interface ImageLookup {
     (image: StageImage): CanvasImageSource | null
 }
 
+/** The last dim copy of each picture. A light is still for most frames, so the next frame asks for the same copy. */
+const dimCopies = new WeakMap<object, { key: string; copy: CanvasImageSource }>()
+
+function browserImageContext(width: number, height: number): Canvas2D {
+    const canvas = typeof OffscreenCanvas === 'undefined' ? Object.assign(document.createElement('canvas'), { width, height }) : new OffscreenCanvas(width, height)
+    return canvas.getContext('2d') as Canvas2D
+}
+
+/**
+ * A copy of a picture, or of its crop, with each pixel mixed toward the backdrop. It paints the backdrop
+ * over the picture and keeps the alpha of the picture, which is what the color matrix of the SVG does.
+ */
+function dimCopy(source: CanvasImageSource, image: StageImage, dim: number, backdrop: Rgba, createContext: typeof browserImageContext): CanvasImageSource {
+    const crop = image.crop
+    const width = Math.max(1, Math.ceil(crop?.width ?? image.asset?.width ?? image.width)), height = Math.max(1, Math.ceil(crop?.height ?? image.asset?.height ?? image.height))
+    const key = [dim, backdrop[0], backdrop[1], backdrop[2], crop?.x, crop?.y, width, height].join(' ')
+    const kept = dimCopies.get(source)
+    if (kept?.key === key) return kept.copy
+    const pen = createContext(width, height)
+    if (crop) pen.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, width, height)
+    else pen.drawImage(source, 0, 0, width, height)
+    pen.globalCompositeOperation = 'source-atop'
+    pen.globalAlpha = 1 - dim
+    pen.fillStyle = css([backdrop[0], backdrop[1], backdrop[2], 1])
+    pen.fillRect(0, 0, width, height)
+    dimCopies.set(source, { key, copy: pen.canvas })
+    return pen.canvas
+}
+
 /** Paint a frame to a 2D context at a device scale. Same result as the SVG backend. */
-export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: ImageLookup): void {
+export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: ImageLookup, createImageContext = browserImageContext): void {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
@@ -379,7 +480,8 @@ export function paintFrame(ctx: Canvas2D, frame: Frame, scale = 1, images?: Imag
             ctx.globalAlpha = op.alpha
             ctx.globalCompositeOperation = 'source-over'
             const crop = op.image.crop
-            if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)
+            if (op.dim !== undefined && op.dim < 1 && op.backdrop) ctx.drawImage(dimCopy(source, op.image, op.dim, op.backdrop, createImageContext), 0, 0, op.image.width, op.image.height)
+            else if (crop) ctx.drawImage(source, crop.x, crop.y, crop.width, crop.height, 0, 0, op.image.width, op.image.height)
             else ctx.drawImage(source, 0, 0, op.image.width, op.image.height)
             ctx.restore()
             continue

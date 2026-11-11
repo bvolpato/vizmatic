@@ -11,6 +11,7 @@ import { encode } from 'fast-png'
 import { GIFEncoder } from 'gifenc'
 import { Resvg } from '@resvg/resvg-js'
 import { compileFilm, film, image, Node, checkFilm, frameInkBounds, resolveImageAsset, type ImageOp } from '../src/stage/index'
+import { CanvasRenderer } from '../src/stage/canvas-raster'
 
 const directories: string[] = []
 afterEach(async () => { vi.unstubAllEnvs(); await Promise.all(directories.splice(0).map(p => rm(p, { recursive: true, force: true }))) })
@@ -167,6 +168,22 @@ describe('prepared image assets', () => {
 })
 
 describe('image geometry and actual pixels', () => {
+    it('updates canvas export pixels when only the image lighting changes', async () => {
+        vi.stubEnv('VIZMATIC_CANVAS_GPU', '0')
+        const asset = await resolveImageAsset(bytes())
+        const op: ImageOp = { kind: 'image', image: { asset, src: asset.src, width: 2, height: 1 }, matrix: [1, 0, 0, 1, 0, 0], alpha: 1 }
+        const renderer = new CanvasRenderer(1)
+        const render = async (dim: number, backdrop: NonNullable<ImageOp['backdrop']>) => {
+            const frame = { width: 2, height: 1, background: null, dark: false, bloom: 0, ops: [{ ...op, dim, backdrop }] }
+            return pixel(await renderer.render([frame], 2, 1, { reuse: true }), 0, 0, 2)
+        }
+        try {
+            expect(await render(1, [0, 0, 0, 1])).toEqual([255, 0, 0, 255])
+            expect(await render(0, [0, 0, 0, 1])).toEqual([0, 0, 0, 255])
+            expect(await render(0, [0, 255, 0, 1])).toEqual([0, 255, 0, 255])
+        } finally { await renderer.close() }
+    })
+
     it('retains alpha metadata in separately built engines and the packaged CLI', async () => {
         const transparent = uri(encode({ width: 1, height: 1, depth: 8, channels: 4, data: new Uint8Array(4) }))
         const partial = uri(encode({ width: 2, height: 1, depth: 8, channels: 4, data: new Uint8Array([255, 0, 0, 255, 0, 0, 0, 0]) }))

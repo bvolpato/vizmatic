@@ -253,7 +253,7 @@ export class CanvasRenderer implements FrameRenderer {
             ctx.fillStyle = frame.background
             ctx.fillRect(0, 0, width, height)
         }
-        paintFrame(ctx, frame, scale, this.lookup)
+        paintFrame(ctx, frame, scale, this.lookup, this.createImageContext)
     }
 
     private bloom(surface: Surface, frame: Frame, width: number, height: number): void {
@@ -287,6 +287,8 @@ export class CanvasRenderer implements FrameRenderer {
     }
 
     private readonly lookup = (image: StageImage): CanvasImageSource | null => this.images.get(image.asset ?? image.src) ?? null
+
+    private readonly createImageContext = (width: number, height: number): Canvas2D => this.blank(width, height).ctx
 
     private async prepareImages(frames: readonly Frame[]): Promise<void> {
         for (const frame of frames) {

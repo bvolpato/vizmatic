@@ -1,6 +1,7 @@
 import { existsSync } from 'fs'
-import { mkdir, stat, writeFile } from 'fs/promises'
+import { cp, mkdir, rename, stat, writeFile } from 'fs/promises'
 import { basename, dirname, extname, join, relative, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { captionsToVtt, posterTime, renderFilmFrame, renderFilmGif, renderFilmSheet, renderFilmSvg, renderFilmVideo, type Quality } from './stage/export'
 import { checkFilm, type FilmCheckOptions, type FilmCheckReport } from './stage/check'
 import { LOOKS, type LookName } from './stage/look'
@@ -22,6 +23,8 @@ export interface FilmArgs {
     fps?: number
     width?: number
     quality: Quality
+    /** Turn the dither of the bloom on or off. Without it, the quality and the format decide. */
+    dither?: boolean
     motionBlur?: number
     shutter?: number
     from?: number
@@ -36,6 +39,8 @@ export interface FilmArgs {
     poster: boolean
     formats: FilmFormat[]
     workers?: number
+    /** The name of the output files and of the manifest, in place of the name of the film file. For one film only. */
+    name?: string
     audioPath?: string
     ffmpegPath?: string
     background?: string | null
@@ -134,8 +139,16 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
             case '--width': args.width = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--motion-blur': args.motionBlur = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--shutter': args.shutter = positiveNumber(requireValue(argv, i++, arg), arg); break
+            case '--dither': args.dither = true; break
+            case '--no-dither': args.dither = false; break
             case '--workers': args.workers = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--audio': args.audioPath = requireValue(argv, i++, arg); break
+            case '--name': {
+                const value = requireValue(argv, i++, arg)
+                if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) throw new Error(`--name is the name of the output files, with letters, digits, dots, hyphens and underscores and no folder, but received ${JSON.stringify(value)}`)
+                args.name = value
+                break
+            }
             case '--ffmpeg': args.ffmpegPath = requireValue(argv, i++, arg); break
             case '--background': {
                 const value = requireValue(argv, i++, arg)
@@ -178,6 +191,7 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
     if (args.inputs.length === 0) throw new Error('vizmatic film needs a film file, such as: vizmatic film ./intro.ts --out dist/films')
     if (args.every !== undefined && args.frames.length > 0) throw new Error('Use --frame or --every, not both: --frame lists times, and --every samples the film at an interval.')
     if (args.columns !== undefined && !args.sheet) throw new Error('--columns sets the width of a contact sheet, so it needs --sheet.')
+    if (args.name !== undefined && args.inputs.length !== 1) throw new Error('--name names the output of one film, so it needs one film file.')
     return args
 }
 
@@ -192,9 +206,17 @@ export function filmFromModule(mod: unknown): FilmDefinition | undefined {
 
 /** Load a module and return its film, with a clear message for the common mistakes. */
 export async function loadFilmDefinition(file: string, load: FilmLoader): Promise<FilmDefinition> {
-    const candidate = filmFromModule(await load(file))
-    if (candidate) return candidate
     const shown = relative(process.cwd(), file)
+    const loaded = await load(file).catch((error: unknown) => {
+        // Only require() refuses a file URL, and only a CommonJS file calls it. So this error does not mean that a
+        // file is missing: the film was loaded as CommonJS, and the cause is the package.json beside it.
+        if (error instanceof Error && /Cannot find module 'file:\/\//.test(error.message)) {
+            throw new Error(`${shown} was loaded as CommonJS, because the package.json beside it has no "type": "module". A film is an ES module. Add "type": "module" to the package.json beside the film.`)
+        }
+        throw error
+    })
+    const candidate = filmFromModule(loaded)
+    if (candidate) return candidate
     throw new Error(`${shown} must export a film as its default export: export default film({ title: 'Intro' }, (s) => { ... })`)
 }
 
@@ -283,7 +305,7 @@ async function renderOneLook(
     const stem = lookLabel ? `${name}_${lookLabel}` : name
     const shown = (path: string) => relative(process.cwd(), path)
     const common = {
-        quality: args.quality, motionBlur: args.motionBlur, shutter: args.shutter, workers: args.workers,
+        quality: args.quality, dither: args.dither, motionBlur: args.motionBlur, shutter: args.shutter, workers: args.workers,
         from: args.from, to: args.to, audioPath: args.audioPath, ffmpegPath: args.ffmpegPath, signal, width: args.width,
     }
     const look = compiled.look.name
@@ -297,7 +319,7 @@ async function renderOneLook(
         const pages = Math.ceil(times.length / perSheet)
         for (let page = 0; page < pages; page++) {
             const suffix = pages > 1 ? `_sheet_${String(page + 1).padStart(String(pages).length, '0')}` : '_sheet'
-            const written = await renderFilmSheet(compiled, times.slice(page * perSheet, (page + 1) * perSheet), join(args.outDir, `${stem}${suffix}.png`), { width: args.width, columns, workers: args.workers })
+            const written = await renderFilmSheet(compiled, times.slice(page * perSheet, (page + 1) * perSheet), join(args.outDir, `${stem}${suffix}.png`), { width: args.width, columns, workers: args.workers, dither: args.dither })
             const bytes = (await stat(written.outputPath)).size
             outputs.push({ format: 'png', path: shown(written.outputPath), look, width: written.width, height: written.height, bytes, times: written.times, columns: written.columns, rows: written.rows })
             say(`rendered ${shown(written.outputPath)} (${written.times.length} frames from ${written.times[0]!.toFixed(2)}s to ${written.times[written.times.length - 1]!.toFixed(2)}s, ${written.width}x${written.height}, ${formatBytes(bytes)})`)
@@ -314,7 +336,7 @@ async function renderOneLook(
         for (const format of still.formats) {
             const path = join(args.outDir, `${stem}${still.suffix}.${format}`)
             const written = format === 'png'
-                ? await renderFilmFrame(compiled, still.time, path, { width: args.width })
+                ? await renderFilmFrame(compiled, still.time, path, { width: args.width, dither: args.dither })
                 : await renderFilmSvg(compiled, still.time, path, { width: args.width })
             const bytes = (await stat(written.outputPath)).size
             outputs.push({ format, path: shown(written.outputPath), look, width: written.width, height: written.height, bytes, time: Math.round(still.time * 1000) / 1000 })
@@ -367,7 +389,7 @@ export async function runFilmCommand(args: FilmArgs, files: readonly string[], s
         await mkdir(args.outDir, { recursive: true })
         for (const file of files) {
             const definition = await loadFilmDefinition(file, load)
-            const name = stems.get(file) ?? basename(file, extname(file))
+            const name = args.name ?? stems.get(file) ?? basename(file, extname(file))
             const looks: (LookName | undefined)[] = args.looks.length > 0 ? args.looks : [undefined]
             const outputs: FilmOutputRecord[] = []
             let first: CompiledFilm | undefined
@@ -401,7 +423,8 @@ export async function runFilmCommand(args: FilmArgs, files: readonly string[], s
         }
         const report = { schemaVersion: 1, command: 'film', ok: true, elapsedSeconds: Math.round((performance.now() - started) / 10) / 100, films: manifest }
         const text = `${JSON.stringify(report, null, 2)}\n`
-        await writeFile(join(args.outDir, 'film-manifest.json'), text)
+        // With a name for its files, a run writes its manifest under that name too, so it replaces no file of another run.
+        await writeFile(join(args.outDir, args.name ? `${args.name}.manifest.json` : 'film-manifest.json'), text)
         if (args.json) process.stdout.write(text)
     } finally {
         process.removeListener('SIGINT', abort)
@@ -419,7 +442,7 @@ export async function checkFilmFile(
     file: string,
     load: FilmLoader,
     looks: readonly LookName[],
-    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'readingSpeed' | 'stepped'> = {},
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'textSize' | 'emptySpace' | 'emptySeconds' | 'readingSpeed' | 'stepped'> = {},
 ): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)
@@ -465,10 +488,14 @@ export async function runNewCommand(argv: readonly string[]): Promise<void> {
     const template = FILM_TEMPLATES.find((entry) => entry.name === templateName)
     if (!template) throw new Error(`Unknown template ${JSON.stringify(templateName)}. Use one of: ${FILM_TEMPLATES.map((entry) => entry.name).join(', ')}.`)
     if (!target) throw new Error(`vizmatic new needs a name, such as: vizmatic new intro --template ${template.name}`)
+    if (template.folder) {
+        await writeFolderTemplate(template.folder, template.name, target, force)
+        return
+    }
     const path = resolve(extname(target) ? target : `${target}.ts`)
     if (existsSync(path) && !force) throw new Error(`${relative(process.cwd(), path)} already exists. Pass --force to replace it.`)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, template.source)
+    await writeFile(path, template.source!)
     const shown = relative(process.cwd(), path)
     console.log(`created ${shown} from the ${template.name} template
 
@@ -476,6 +503,24 @@ Next:
   vizmatic preview ${shown}
   vizmatic check ${shown}
   vizmatic film ${shown} --out dist/films`)
+}
+
+/** Copy a template of many files from the package into a new folder. */
+async function writeFolderTemplate(folder: string, name: string, target: string, force: boolean): Promise<void> {
+    const path = resolve(target)
+    if (existsSync(path) && !force) throw new Error(`${relative(process.cwd(), path)} already exists. Pass --force to replace its files.`)
+    // The templates sit beside dist/ in the package, and beside src/ in the repository.
+    await cp(fileURLToPath(new URL(`../templates/${folder}/`, import.meta.url)), path, { recursive: true })
+    // npm leaves a file named .gitignore out of a package, so the template has it under another name.
+    await rename(join(path, 'gitignore'), join(path, '.gitignore'))
+    const shown = relative(process.cwd(), path)
+    console.log(`created ${shown}/ from the ${name} template
+
+Next, one command makes the voice, the sound mix, the layout check and a draft movie:
+  vizmatic narrated build ${shown} --draft
+
+Change the script and the scenes, and run it again: it runs only the steps that have work to do.
+The film must find the vizmatic package: create the folder inside a project that has it installed.`)
 }
 
 const LOOK_NOTES: Record<LookName, string> = {

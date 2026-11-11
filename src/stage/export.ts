@@ -6,7 +6,7 @@ import * as gifenc from 'gifenc'
 import { renderRgbaVideo, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
-import { RasterPool, defaultPoolSize, framesToJob, rasterMemoBytes } from './raster'
+import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type RasterJob } from './raster'
 import { CanvasRenderer, type FrameRenderer } from './canvas-raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
 import { text } from './text'
@@ -18,6 +18,12 @@ export interface FilmRenderOptions extends CompileOverrides {
     /** Output width in pixels. Defaults to the film's logical width. */
     width?: number
     quality?: Quality
+    /**
+     * Dither the SVG renderer's bloom, so that soft light on a dark look has no contour lines. Without this option, a movie
+     * has the dither at `high` and `master` and not at `draft` and `standard`, and a PNG has it. A GIF never
+     * has it. An MP4 with the dither also gets the encoder settings that keep the grain.
+     */
+    dither?: boolean
     /** Sub-frames averaged per frame for real motion blur. 1 turns it off. */
     motionBlur?: number
     /** Fraction of the frame interval the shutter stays open. */
@@ -57,11 +63,27 @@ export interface FilmGifOutput {
     title: string
 }
 
-const QUALITY: Record<Quality, { crf: number; vp9Crf: number; preset: string; motionBlur: number }> = {
-    draft: { crf: 26, vp9Crf: 40, preset: 'veryfast', motionBlur: 1 },
-    standard: { crf: 18, vp9Crf: 31, preset: 'medium', motionBlur: 1 },
-    high: { crf: 15, vp9Crf: 24, preset: 'slow', motionBlur: 4 },
-    master: { crf: 11, vp9Crf: 15, preset: 'slow', motionBlur: 8 },
+/**
+ * `dither` says if a movie at this quality has a dithered bloom when the export does not say. `grain` is what
+ * the H.264 encoder gets in addition when the film has a dithered bloom, as x264 settings.
+ *
+ * A dithered bloom is fine grain of one level, in place of contour lines in soft light. It costs time, in the
+ * bloom pass and in the encoder. So `draft` and `standard`, the qualities for work on a film, have none unless
+ * the export asks for it. `high` and `master`, the qualities for a copy to publish, have it.
+ *
+ * With the settings of a film alone, the encoder drops the grain and leaves squares of 16 px in its place.
+ * - `trellis=0` keeps the small values that are the grain.
+ * - `subme=6` stops the search for the best mode at P-frames. In B-frames, that search costs about 40% more
+ *   encoder time with the grain.
+ * - `aq-strength` gives the flat dark parts the bits that keep the grain. `high` and `master` have enough bits
+ *   with the 0.6 of the animation tune. `standard` needs 1.0, and `draft` needs 2.0.
+ * None of these changes the decoder settings of the file, so `filmEncoderSettings` stays true.
+ */
+const QUALITY: Record<Quality, { crf: number; vp9Crf: number; preset: string; motionBlur: number; dither: boolean; grain: string }> = {
+    draft: { crf: 26, vp9Crf: 40, preset: 'veryfast', motionBlur: 1, dither: false, grain: 'aq-strength=2.0' },
+    standard: { crf: 18, vp9Crf: 31, preset: 'medium', motionBlur: 1, dither: false, grain: 'aq-strength=1.0:subme=6:trellis=0' },
+    high: { crf: 15, vp9Crf: 24, preset: 'slow', motionBlur: 4, dither: true, grain: 'subme=6:trellis=0' },
+    master: { crf: 11, vp9Crf: 15, preset: 'slow', motionBlur: 8, dither: true, grain: 'subme=6:trellis=0' },
 }
 
 const DEFAULT_GIF_WIDTH = 960
@@ -95,9 +117,10 @@ function backgroundBytes(color: string | null): readonly [number, number, number
 class SvgRenderer implements FrameRenderer {
     readonly label = 'svg (resvg)'
     readonly stats = { frames: 0, svgMs: 0 }
-    private readonly pool: RasterPool
+    readonly pool: RasterPool
+    private last?: { job: RasterJob; pixels: Promise<Uint8Array> }
 
-    constructor(workers: number) {
+    constructor(workers: number, private readonly dither: boolean) {
         this.pool = new RasterPool(workers)
     }
 
@@ -105,12 +128,21 @@ class SvgRenderer implements FrameRenderer {
         return this.pool.size
     }
 
-    render(frames: readonly Frame[], width: number, height: number): Promise<Uint8Array> {
+    render(frames: readonly Frame[], width: number, height: number, options: { reuse?: boolean } = {}): Promise<Uint8Array> {
         const t0 = performance.now()
-        const job = framesToJob(frames, width, backgroundBytes, height)
+        const job = framesToJob(frames, width, backgroundBytes, height, this.dither)
         this.stats.frames++
         this.stats.svgMs += performance.now() - t0
-        return this.pool.run(job)
+        const last = this.last
+        const same = options.reuse && last && sameRasterJob(last.job, job)
+        this.pool.stats.mainMs += performance.now() - t0
+        if (same) {
+            this.pool.stats.reused++
+            return last.pixels
+        }
+        const pixels = this.pool.run(job)
+        this.last = options.reuse ? { job, pixels } : undefined
+        return pixels
     }
 
     close(): Promise<void> {
@@ -130,8 +162,8 @@ export function canvasRendererRequested(): boolean {
  * Open the renderer of the films. `workers` is the number of frames that the SVG renderer may work on at
  * one time. The canvas renderer has its own count, because a frame in flight costs it less memory.
  */
-function openRenderer(workers: number, inFlight?: number): FrameRenderer {
-    return canvasRendererRequested() ? new CanvasRenderer(inFlight ?? workers) : new SvgRenderer(workers)
+function openRenderer(workers: number, dither: boolean, inFlight?: number): FrameRenderer {
+    return canvasRendererRequested() ? new CanvasRenderer(inFlight ?? workers) : new SvgRenderer(workers, dither)
 }
 
 /**
@@ -182,8 +214,7 @@ export function planRender(width: number, height: number, motionBlur: number, op
     const requested = Math.max(1, Math.floor(options.workers ?? defaultPoolSize()))
     // Measured at 4K: a worker holds about three frames without motion blur. With motion
     // blur it also holds every sub-frame until garbage collection, plus the running sum.
-    // Include the private retained RGBA result and its bounded serialized key.
-    const perWorker = frameBytes * (motionBlur > 1 ? motionBlur + 4 : 3) + rasterMemoBytes(width, height)
+    const perWorker = frameBytes * (motionBlur > 1 ? motionBlur + 4 : 3)
     const workers = Math.max(1, Math.min(requested, Math.floor(budget * 0.75 / perWorker)))
     const extra = Math.floor(budget * 0.25 / frameBytes)
     return { workers, readAhead: Math.max(workers + 1, Math.min(workers * 2, workers + extra)) }
@@ -192,6 +223,9 @@ export function planRender(width: number, height: number, motionBlur: number, op
 /**
  * Rasterize frames in parallel and hand them out in order, holding only a bounded
  * number at a time. Call `next(i)` with i increasing from 0.
+ *
+ * A frame that is equal to the frame before takes its pixels, and no worker sees it. The two frames
+ * share one buffer, so the caller must not write to the pixels.
  */
 function frameStream(
     film: CompiledFilm,
@@ -205,7 +239,7 @@ function frameStream(
     times?: RenderTimes,
 ): (index: number) => Promise<Uint8Array> {
     const inFlight = new Map<number, Promise<Uint8Array>>()
-    const submit = async (index: number): Promise<Uint8Array> => {
+    const sample = async (index: number): Promise<Frame[]> => {
         const base = timeOf(index)
         const frames: Frame[] = []
         for (let sub = 0; sub < subframes; sub++) {
@@ -214,8 +248,16 @@ function frameStream(
             if (times) times.sampleMs += performance.now() - t0
             frames.push(await sampled)
         }
-        // The stream only reads the pixels, so a frame that repeats may come back as the same array.
-        return renderer.render(frames, size.width, size.height, { reuse: true })
+        return frames
+    }
+    let submitted = Promise.resolve()
+    const submit = (index: number): Promise<Uint8Array> => {
+        // A suspended sample can finish out of order. Compare frames in order while their pixels render in parallel.
+        const started = Promise.all([submitted, sample(index)]).then(([, frames]) => ({
+            pixels: renderer.render(frames, size.width, size.height, { reuse: true }),
+        }))
+        submitted = started.then(() => {}, () => {})
+        return started.then(({ pixels }) => pixels)
     }
     return async (index) => {
         for (let ahead = index; ahead < Math.min(count, index + readAhead); ahead++) {
@@ -225,9 +267,7 @@ function frameStream(
             job.catch(() => {})
             inFlight.set(ahead, job)
         }
-        const t0 = performance.now()
         const pixels = await inFlight.get(index)!
-        if (times) times.waitMs += performance.now() - t0
         inFlight.delete(index)
         return pixels
     }
@@ -282,18 +322,22 @@ export async function renderFilmVideo(
     const codec = options.codec ?? 'h264'
     const { from, to } = timeRange(compiled, options)
     const plan = planRender(size.width, size.height, motionBlur, options)
-    const renderer = openRenderer(plan.workers, canvasInFlight(size.width, size.height, options))
+    const dither = options.dither ?? quality.dither
+    const renderer = openRenderer(plan.workers, dither, canvasInFlight(size.width, size.height, options))
     try {
         const count = Math.max(1, Math.round((to - from) * fps))
         const times: RenderTimes = { sampleMs: 0, waitMs: 0, pipeMs: 0 }
         const next = frameStream(compiled, renderer, (index) => from + index / fps, size, count, readAheadOf(renderer, plan), motionBlur, shutter / fps, times)
         const started = performance.now()
+        const grain = renderer instanceof SvgRenderer && dither && compiled.bloom > 0 && compiled.look?.dark === true
         let handed = 0
         const output = await renderRgbaVideo(async (info) => {
             // The time between two requests is the time that FFmpeg took to accept the frame before.
-            if (handed > 0) times.pipeMs += performance.now() - handed
+            const asked = performance.now()
+            if (handed > 0) times.pipeMs += asked - handed
             const pixels = await next(info.index)
             handed = performance.now()
+            times.waitMs += handed - asked
             return pixels
         }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
@@ -302,6 +346,7 @@ export async function renderFilmVideo(
             preset: quality.preset,
             // Flat color and fine lines keep their edges better with this tuning.
             tune: codec === 'h264' ? filmEncoderSettings(options.quality).tune : undefined,
+            x264Params: codec === 'h264' && grain ? quality.grain : undefined,
             threads: options.threads ?? 6,
             audioPath: options.audioPath,
             audioOffset: from > 0 ? from : undefined,
@@ -313,7 +358,16 @@ export async function renderFilmVideo(
             signal: options.signal,
             onProgress: options.onProgress,
         })
-        reportTimes(renderer, times, output.frameCount, performance.now() - started)
+        const finished = performance.now()
+        if (renderer instanceof SvgRenderer) {
+            const stats = renderer.pool.stats
+            stats.mainMs += times.sampleMs
+            stats.frameWaitMs = times.waitMs
+            stats.encoderWaitMs = times.pipeMs
+            stats.encoderFinishMs = finished - handed
+            reportExportStats(stats)
+        }
+        reportTimes(renderer, times, output.frameCount, finished - started)
         return { ...output, title: compiled.title, workers: renderer.size, motionBlur, codec }
     } finally {
         await renderer.close()
@@ -378,7 +432,8 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
     const count = Math.max(1, Math.round((to - from) * fps))
     const delay = 1000 / fps
     const plan = planRender(size.width, size.height, 1, options)
-    const renderer = openRenderer(plan.workers, canvasInFlight(size.width, size.height, options))
+    // A GIF palette has too few colors to keep the grain of a dithered bloom.
+    const renderer = openRenderer(plan.workers, false, canvasInFlight(size.width, size.height, options))
     try {
         // Build one palette from frames across the film, so colors do not flicker between frames.
         const sampleCount = Math.min(count, GIF_PALETTE_FRAMES)
@@ -461,7 +516,7 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
 export async function renderFilmFrame(film: FilmDefinition | CompiledFilm, time: number, outputPath: string, options: FilmRenderOptions = {}): Promise<{ width: number; height: number; outputPath: string }> {
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
-    const renderer = openRenderer(1)
+    const renderer = openRenderer(1, options.dither !== false)
     try {
         const frame = await frameAt(compiled, time)
         const pixels = await renderer.render([frame], width, height)
@@ -479,7 +534,7 @@ export async function renderFilmFrames(film: FilmDefinition | CompiledFilm, time
     const compiled = await resolveFilm(film, options)
     const { width, height } = outputSize(compiled, options.width)
     const plan = planRender(width, height, 1, options)
-    const renderer = openRenderer(plan.workers)
+    const renderer = openRenderer(plan.workers, options.dither !== false)
     try {
         await mkdir(dirname(resolve(outputPrefix)), { recursive: true })
         // Frames are sampled one at a time because the engine's clock is shared.
@@ -501,6 +556,8 @@ export interface FilmSheetOptions extends CompileOverrides {
     width?: number
     /** Tiles in a row. Defaults to 3 for up to nine tiles, and 4 for more. */
     columns?: number
+    /** Set to false for tiles with no dither in their bloom. */
+    dither?: boolean
     workers?: number
     /** Approximate limit in bytes for frame buffers held at one time. */
     memoryBudget?: number
@@ -542,7 +599,7 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
     const height = rows * (tile.height + band) + (rows + 1) * gap
     const corner = (index: number) => ({ x: gap + (index % columns) * (tile.width + gap), y: gap + Math.floor(index / columns) * (tile.height + band + gap) })
     const plan = planRender(tile.width, tile.height, 1, options)
-    const renderer = openRenderer(plan.workers)
+    const renderer = openRenderer(plan.workers, options.dither !== false)
     try {
         // Frames are sampled one at a time because the engine's clock is shared.
         const frames: Frame[] = []

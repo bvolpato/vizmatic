@@ -2,9 +2,11 @@ import { fallbackGlyph, fontFor, glyphPath, type FontFamily, type FontWeight, ty
 import { Node } from './node'
 import { pathBounds, transformPath, type Path } from './geometry'
 import { toPaint, type ColorInput } from './color'
+import { clock, LIBRARY_FONT } from './track'
 
 export interface TextOptions {
     size?: number
+    /** Defaults to the `font` of the film, and to sans in a film that has none. */
     font?: FontFamily
     weight?: FontWeight
     italic?: boolean
@@ -33,6 +35,19 @@ export interface TextOptions {
 export class TextNode extends Node {
     readonly chars: Node[] = []
     source = ''
+    /** The font of the text: the font that it names, or the font of the film. `text()` records it when it makes the node. */
+    font: FontFamily = LIBRARY_FONT
+    /** The size of the text, in the pixels of the node. `text()` records it. */
+    size = 0
+    /** The y of the base line of the first line, in the coordinates of the node. A row of the layout puts texts of two sizes on one base line with it. */
+    readonly baseline = 0
+    /**
+     * The top and the bottom of the letters of the font at the size of the text, in the coordinates of the
+     * node: the highest letter over the first base line, and the lowest one under the last. It is the same for
+     * every text of one font and one size, whatever its letters. The layout measures the room over and under
+     * a text from it, so a named gap is even from row to row.
+     */
+    letters: readonly [top: number, bottom: number] = [0, 0]
 
     /** Glyph nodes whose characters match, such as every "x". */
     find(fragment: string): Node[] {
@@ -54,9 +69,48 @@ function centered(path: Path): { path: Path; x: number; y: number } {
     return { path: transformPath(path, [1, 0, 0, 1, -x, -y]), x, y }
 }
 
+/**
+ * The font that the film names, or null in a film that names none and outside a film. It is for a label that
+ * an object set in mono before films had a font, such as the label of a connector: `font ?? filmFont() ?? 'mono'`
+ * follows a film that names a font, and leaves a film that names none as it was.
+ */
+export function filmFont(): FontFamily | null {
+    return clock.font
+}
+
+/** The height of the line box of one line of text, in text sizes. The layout measures a text by its line box. */
+const LINE_BOX = 1.2
+
+const letterLines = new WeakMap<LoadedFont, readonly [over: number, under: number]>()
+
+/**
+ * How far the letters of a font go over and under the base line, as parts of the text size: the highest and
+ * the lowest point of its ASCII letters, digits and signs. A text with tails and a text with none have the
+ * same two lines.
+ */
+function linesOf(font: LoadedFont): readonly [over: number, under: number] {
+    let lines = letterLines.get(font)
+    if (!lines) {
+        let over = 0, under = 0
+        for (let code = 33; code < 127; code++) {
+            const glyph = font.glyphFor(code)
+            // Glyph 0 is the empty box of a sign that the font does not have.
+            if (glyph === 0) continue
+            for (const contour of font.outline(glyph)?.contours ?? []) {
+                for (let i = 1; i < contour.length; i += 2) {
+                    over = Math.max(over, contour[i]!)
+                    under = Math.max(under, -contour[i]!)
+                }
+            }
+        }
+        letterLines.set(font, lines = [over / font.unitsPerEm, under / font.unitsPerEm])
+    }
+    return lines
+}
+
 export function text(content: string, options: TextOptions = {}): TextNode {
     const size = options.size ?? 40
-    const family = options.font ?? 'sans'
+    const family = options.font ?? clock.font ?? LIBRARY_FONT
     const weight = options.weight ?? 400
     const italic = options.italic ?? false
     const font = fontFor(family, weight, italic)
@@ -115,6 +169,7 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     const align = options.align ?? 'left'
     const node = new TextNode()
     node.source = content
+    node.font = family
     lines.forEach((line, row) => {
         const start = align === 'left' ? 0 : align === 'center' ? (blockWidth - line.width) / 2 : blockWidth - line.width
         for (const placed of line.glyphs) {
@@ -125,6 +180,8 @@ export function text(content: string, options: TextOptions = {}): TextNode {
             leaf.base.fill = paint
             leaf.base.trimEach = true
             leaf.data['key'] = placed.char
+            // The outline has its middle at the origin. The film check reads where the base line is.
+            leaf.data['base'] = -shape.y
             // Glyph 0 draws the font's empty box. The film check reports it.
             if (placed.glyph === 0) leaf.data['missingGlyph'] = true
             node.chars.push(leaf)
@@ -139,5 +196,13 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     node.base.px = anchor === 'left' ? 0 : anchor === 'right' ? blockWidth : blockWidth / 2
     node.base.py = height / 2 - ascent * 0.36
     node.data['size'] = size
+    node.size = size
+    // The line box of the block, for the layout: its advance width, and 1.2 text sizes for one line, around
+    // the middle of the capital letters. The box holds the letters that go under the base line, so a gap
+    // from the box is a gap from the ink.
+    const half = (height + size * LINE_BOX) / 2
+    node.layoutBox = [0, node.base.py - half, blockWidth, node.base.py + half]
+    const [over, under] = linesOf(font)
+    node.letters = [-over * size, height + under * size]
     return node
 }

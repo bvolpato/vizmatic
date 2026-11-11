@@ -1,8 +1,9 @@
 import type { Bounds } from '../geometry'
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
+import { oneNode } from '../layout'
 
 export interface CardOptions {
     /** Outer width, in pixels. Defaults to 420. */
@@ -90,6 +91,7 @@ export class Card extends Node {
         const font = options.font
         const color = options.color ?? 'ink'
         const figure = options.figure ?? null
+        if (figure !== null) oneNode('card', figure, 'the figure')
         if (figure?.parent) throw new Error('card: the figure is already on the stage or in a group. Pass a node that has no parent, such as figure.clone()')
 
         let title = options.title ? text(options.title, { size, font, color }) : null
@@ -144,6 +146,8 @@ export class Card extends Node {
         this.title = title
         this.figure = figure
         this.caption = caption
+        // The card places its title and its caption. The figure is of the film, so the film check judges its text.
+        ownLabels(this, { name: 'card', labels: [title, caption] })
     }
 }
 

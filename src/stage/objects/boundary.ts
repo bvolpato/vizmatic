@@ -1,4 +1,4 @@
-import { Node } from '../node'
+import { Node, ownLabels } from '../node'
 import { apply, invert, rectPath, type Bounds } from '../geometry'
 import { dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
@@ -314,6 +314,8 @@ export class Boundary extends Node {
             throw new Error(`boundary: a line of ${length} has no room for a crossing between its two ends. The names and the tally need ${needed}. Make the line longer or the names shorter, or put the tally on a row of its own with tallySide: 'over'`)
         }
         this.blocks = [...names.map((node) => node.bounds()), ...(this.tally ? [this.tally.box] : [])]
+        // The line places its names and its tally beside its stroke and its ticks. The film check does not judge that room.
+        ownLabels(this, { name: 'boundary' })
     }
 
     /**
@@ -472,6 +474,8 @@ export class Boundary extends Node {
         })
         const mark = dot(top.size * 0.27, options.color ?? 'ink')
         const caption = options.label ? top.caption(options.label, x, -way * reach) : null
+        // This mark is on the stage, and not a part of one line. The top line places the text beside it.
+        if (caption) mark.data['attached'] = [caption]
         return {
             mark, labelNode: caption,
             label: 'boundary.crossThrough', duration: options.duration ?? (direction === 'round' ? 1.4 : 0.8) * lines.length, ease: options.ease,
@@ -591,6 +595,7 @@ export class Boundary extends Node {
         // On a short line, a place that is on the line and touches no name and no tally is good enough.
         const clear = (left: number) => left >= -half && left + ink.width <= half
             && !this.blocks.some((block) => overlaps({ ...ink, x: left }, block, this.size * 0.3, this.size * 0.15))
+        ownLabels(this, { labels: [node] })
         const place = sides.find((left) => beside(left) && clear(left)) ?? sides.find(clear)
         if (place === undefined) throw new Error(`boundary: the text ${JSON.stringify(content)} of the crossing at x = ${Math.round(x)} has no room beside its mark: it is ${Math.ceil(ink.width)} wide, and it must stay on the line and clear of the names and the tally. Give a shorter text, another place, another reach, or a longer line`)
         return node.shift(place - ink.x, 0)
@@ -684,6 +689,7 @@ export class Boundary extends Node {
         if (beside && this.underEnd !== null && note.bounds().x < this.underEnd + this.size * 0.6) throw new Error(`boundary: a line of ${this.length} has no room under it for the note "${words}" beside the name of the side. Make the line longer, or the name shorter`)
         // The note comes at the start of the change, so a viewer has the time of the run to read it.
         const arrives = old ? t0 + part : t0
+        ownLabels(this, { labels: [note] })
         this.attach(note, arrives)
         stepAt(note, 'opacity', 0, arrives)
         note.tween('opacity', 1, arrives, arrives + part, null)

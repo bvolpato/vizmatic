@@ -1,5 +1,5 @@
 import { arcPath, circlePath, parseSvgPath, polyPath, rectPath, transformPath, type Path, type Vec } from '../geometry'
-import { Node } from '../node'
+import { Node, objectName } from '../node'
 import type { ColorInput } from '../color'
 
 /**
@@ -388,10 +388,13 @@ export class Pictogram extends Node {
 
     constructor(readonly name: PictogramName, options: PictogramOptions = {}) {
         super()
+        objectName(this, 'pictogram')
         if (!Object.hasOwn(ART, name)) throw new Error(`pictogram: unknown name ${JSON.stringify(name)}. Names: ${PICTOGRAMS.join(', ')}`)
         const size = options.size ?? 96, unit = size / GRID
         const place = [unit, 0, 0, unit, -size / 2, -size / 2] as const
         this.size = size
+        // The layout measures the square of the grid, not the ink, so pictures of one size line up in a column.
+        this.layoutBox = [-size / 2, -size / 2, size / 2, size / 2]
         const draw = ART[name]
         const color = options.color ?? 'ink', accent = options.accent ?? color
         const weight = (options.weight ?? 1.6) * unit

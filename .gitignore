@@ -9,3 +9,62 @@ coverage/
 .playwright-mcp/
 /docs/assets/video/
 /docs/assets/films/*.mp4
+
+# The website. `pnpm site:build` writes these files into docs/, and the Pages workflow builds and
+# publishes them. They are not committed.
+# Sources live in docs/ too. So each rule names one generated file, or one folder that holds only
+# generated files. Do not add a pattern such as *.html here: it can hide a source file.
+# When the build writes a new file, add its rule here. CI fails until the rule exists.
+
+# Pages. Each one comes from its docs/<name>.template.html.
+/docs/agents.html
+/docs/benchmarks.html
+/docs/components.html
+/docs/examples.html
+/docs/films.html
+/docs/index.html
+/docs/playground.html
+/docs/studio.html
+# The guides, from docs/guides/*.md, and one page for each film.
+/docs/docs/
+/docs/film/
+
+# Files for agents: copies of PROMPT.md and of the skill, and the component catalog.
+/docs/PROMPT.md
+/docs/components.json
+/docs/components.md
+/docs/llms-full.txt
+/docs/llms.txt
+/docs/patterns.md
+/docs/references/
+/docs/skill.md
+/docs/assets/animated-frame.tsx
+/docs/assets/starter-film.ts
+/docs/assets/starter-frame.tsx
+
+# Bundles of the playground, the stage engine with the films and the guide demos, and the Studio.
+/docs/playground-redirect.js
+/docs/playground-scene.js
+/docs/playground-worker.js
+/docs/playground.js
+/docs/assets/playground/
+/docs/assets/stage/
+/docs/assets/studio/
+
+# Search, sitemap, and robots.
+/docs/robots.txt
+/docs/search-index.json
+/docs/sitemap.xml
+
+# Images and data that the build renders or copies.
+/docs/assets/THIRD_PARTY_LICENSES.md
+/docs/assets/components/
+/docs/assets/fonts/
+/docs/assets/icon.svg
+/docs/assets/licenses/
+/docs/assets/logo.svg
+/docs/assets/site/og.png
+/docs/assets/sources/
+
+# Python writes these beside the narration tools when one of them runs.
+__pycache__/

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
+import { captionLines, circle, compileFilm, dynamic, fadeIn, film, image, narrated, narration, point3d, scene3d, surface, trail3d, vector3d, type ImageOp, type NarrationTiming, type PathOp } from '../src/stage/index'
 import { captionsToSrt, chapterMetadata } from '../src/video'
 
 const timing: NarrationTiming = {
@@ -13,6 +13,12 @@ const timing: NarrationTiming = {
         { id: 'model', title: 'The model', beats: [{ say: 'One pass.', duration: 1.5, hold: 0.5, words: [{ text: 'One', start: 0.1, end: 0.4 }, { text: 'pass.', start: 0.4, end: 1 }] }] },
     ],
 }
+
+// Synthetic product names cover dotted tokens and version numbers.
+const productCaptionSamples = [
+    'Acme.io ships Nova.js 22.23.4 with OrbitDB 1.25.0. Values include 3.8, 0.17, and .5.',
+    'Northstar.dev starts Comet.js. A second line keeps 4.6 intact!',
+]
 
 describe('narration', () => {
     it('places beats after the lead, with holds inside a scene and a gap between scenes', async () => {
@@ -52,12 +58,51 @@ describe('narration', () => {
         }))).rejects.toThrow('no scene "outro". The scenes are: intro, model')
     })
 
+    it('stops the build when the voice says the phrase two times, and takes a longer phrase or the beat', async () => {
+        // The voice says "we" two times in one beat, and "the" in two beats.
+        const word = (text: string, start: number) => ({ text, start, end: start + 0.2 })
+        const said: NarrationTiming = { scenes: [{ id: 'intro', beats: [
+            { say: 'We page when we see the alert.', duration: 3, words: [word('We', 0.1), word('page', 0.4), word('when', 0.7), word('we', 1.0), word('see', 1.3), word('the', 1.6), word('alert.', 1.9)] },
+            { say: 'The model decides.', duration: 2, words: [word('The', 0.1), word('model', 0.4), word('decides.', 0.9)] },
+        ] }] }
+        const built: number[] = []
+        await compileFilm(film({ fps: 10 }, (s) => {
+            const scene = narration(s, said, { lead: 1 }).scene('intro')
+            // A longer phrase with more words after it starts at the same word, so the cue keeps its time.
+            expect(() => scene.on('we', () => {})).toThrow('narration: scene "intro": the voice says "we" 2 times: in beat 0 at 1.1 s and in beat 0 at 2 s. Use a longer phrase: "we page" for the one at 1.1 s; "we see" for the one at 2 s')
+            expect(() => scene.after('the', () => {})).toThrow('the voice says "the" 2 times: in beat 0 at 2.6 s and in beat 1 at 4.1 s. Use a longer phrase: "the alert" for the one at 2.6 s; "the model" for the one at 4.1 s. Or name the beat: the option `beat` of show, hide and swap, and the last argument of on and after')
+            expect(() => scene.cue('we', 0)).toThrow('the voice says "we" 2 times: in beat 0 at 1.1 s and in beat 0 at 2 s. Use a longer phrase: "we page" for the one at 1.1 s; "we see" for the one at 2 s')
+            expect(scene.cue('we see').start).toBeCloseTo(scene.cue('when we').start + 0.3, 6)
+            // Each way that the message names works.
+            scene.on('we see', () => built.push(s.time))
+            scene.on('the', () => built.push(s.time), 0, 1)
+            expect(scene.cue('the', 0).start).toBeCloseTo(2.6, 6)
+        }))
+        expect(built[0]).toBeCloseTo(2, 6)
+        expect(built[1]).toBeCloseTo(4.1, 6)
+    })
+
     it('builds on a phrase at the time the voice reaches it', async () => {
         const compiled = await compileFilm(film({ fps: 10 }, (s) => {
             const scene = narration(s, timing, { lead: 2 }).scene('intro')
             scene.on('page', () => s.play(fadeIn(circle(50)), { duration: 0.5 }), -0.2)
         }))
         expect(compiled.clips.some((clip) => Math.abs(clip.t0 - 4) < 1e-9 && Math.abs(clip.t1 - 4.5) < 1e-9)).toBe(true)
+    })
+
+    it('takes the cues that a timing declares, with no shell: a scene names the id, and a cue that drives nothing stops the build', async () => {
+        const declared: NarrationTiming = { scenes: [{ ...timing.scenes[0]!, beats: [{ ...timing.scenes[0]!.beats[0]!, cues: [{ id: 'page', phrase: 'should we page', data: 7 }] }, timing.scenes[0]!.beats[1]!] }, timing.scenes[1]!] }
+        let built = -1
+        await compileFilm(film({ fps: 10 }, (s) => {
+            const scene = narration(s, declared, { lead: 2 }).scene('intro')
+            expect(scene.cues).toEqual([{ id: 'page', phrase: 'should we page', beat: 0, data: 7 }])
+            scene.on('page', () => { built = s.time })
+        }))
+        expect(built).toBeCloseTo(3.8, 6)
+        const unused = compileFilm(film({ fps: 10 }, (s) => { narration(s, declared, { lead: 2 }).scene('intro') }))
+        await expect(unused).rejects.toThrow(`narration: 1 cue that the script declares drives nothing in the film: scene "intro": page. Use each one in its scene, such as c.show('page', nodes), or remove it from the script`)
+        // A film that does not ask for the scene does not build it, so its cues are not counted.
+        await expect(compileFilm(film({ fps: 10 }, (s) => { narration(s, declared, { lead: 2 }).scene('model') }))).resolves.toBeDefined()
     })
 
     it('clears nodes and values just before a scene ends', async () => {
@@ -93,8 +138,41 @@ describe('narration', () => {
     })
 
     it('splits captions by sentence and by length, and keeps a decimal number whole', () => {
-        expect(captionLines('The network is Qwen 3.8. It runs once.')).toEqual(['The network is Qwen 3.8.', 'It runs once.'])
+        expect(captionLines('The demo uses Nova 3.8. It runs once.')).toEqual(['The demo uses Nova 3.8.', 'It runs once.'])
         expect(captionLines('one two three four five six', 12)).toEqual(['one two', 'three four', 'five six'])
+    })
+
+    it.each([
+        ['Acme.io runs Nova.js. Comet.js too!', ['Acme.io runs Nova.js.', 'Comet.js too!']],
+        ['Acme.io release 22.23.4 uses Nova.js 1.25.0. Values: 3.8, 0.17 and .5.', ['Acme.io release 22.23.4 uses Nova.js 1.25.0.', 'Values: 3.8, 0.17 and .5.']],
+        ["In the '80s, then the 1990s... Really?! Yes!", ["In the '80s, then the 1990s...", 'Really?!', 'Yes!']],
+        ['.Env, "Acme.js", (Nova.io): keep all punctuation.', ['.Env, "Acme.js", (Nova.io): keep all punctuation.']],
+        ['... ?! .', ['...', '?!', '.']],
+        ['\tFirst.\nSecond?  Third!\r\nAn unfinished sentence', ['First.', 'Second?', 'Third!', 'An unfinished sentence']],
+        ['', []],
+        [' \n\t ', []],
+    ] as const)('preserves tokens and punctuation when splitting %j', (text, expected) => {
+        expect(captionLines(text)).toEqual(expected)
+    })
+
+    it.each(productCaptionSamples)('preserves every token of a synthetic product caption when wrapping: %s', (text) => {
+        for (const length of [12, 40, 74, 1000]) {
+            const lines = captionLines(text, length)
+            expect(lines.flatMap((line) => line.split(' '))).toEqual(text.split(' '))
+            expect(lines.every((line) => line.length <= length || !line.includes(' '))).toBe(true)
+        }
+    })
+
+    it.each(['narration', 'narrated'])('preserves synthetic product captions through %s and their timing', async (caller) => {
+        const timing: NarrationTiming = { lead: 1, scenes: [{ id: 'captions', beats: productCaptionSamples.map((say) => ({ say, duration: 3 })) }] }
+        const compiled = await compileFilm(caller === 'narration'
+            ? film({}, (s) => { narration(s, timing) })
+            : narrated({ timing, scenes: { captions: () => {} } }))
+        expect(compiled.captions.flatMap((cue) => cue.text.split(' '))).toEqual(productCaptionSamples.flatMap((text) => text.split(' ')))
+        expect(compiled.captions[0]!.t0).toBe(1)
+        expect(compiled.captions.at(-1)!.t1).toBeCloseTo(7, 6)
+        expect(compiled.captions.every((cue) => cue.t1 > cue.t0)).toBe(true)
+        for (let i = 1; i < compiled.captions.length; i++) expect(compiled.captions[i]!.t0).toBeCloseTo(compiled.captions[i - 1]!.t1, 6)
     })
 })
 

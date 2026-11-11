@@ -1,11 +1,15 @@
-import { invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
-import { Node, type Edge } from '../node'
-import { text } from '../text'
+import { apply, invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
+import { Node, ownLabels, type Edge, objectName } from '../node'
+import { filmFont, text, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
 import { toPaint, type ColorInput } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
-import type { Ease } from '../ease'
+import { linear, smooth, type Ease } from '../ease'
+import { clock } from '../track'
 import { reveal, staggered, stepAt } from './util'
+import { Block, nodeOrPoint, oneNode } from '../layout'
+import type { Stage } from '../stage'
+import { pictogram } from './pictograms'
 
 /** Left, right, or center a single line of text on a stage position. Its baseline never shifts. */
 function place(node: Node, x: number, y: number, align: 'left' | 'right' | 'center' = 'left'): Node {
@@ -48,6 +52,8 @@ export interface InfoBoxOptions {
     fill?: ColorInput
     border?: ColorInput
     radius?: number
+    /** The font of the title and the row labels. Defaults to the font of the film. The subtitle, the badge, the values and the tags are in mono. */
+    font?: TextOptions['font']
 }
 
 /**
@@ -76,11 +82,11 @@ export class InfoBox extends Node {
         const pad = size * 0.8
         const rows = options.rows ?? []
         const rowHeight = size * 1.56
-        const title = text(options.title, { size: size * 1.14, weight: 600, color: 'ink' })
+        const title = text(options.title, { size: size * 1.14, font: options.font, weight: 600, color: 'ink' })
         const subtitle = options.subtitle ? text(options.subtitle, { size: size * 0.86, font: 'mono', color: 'dim' }) : null
         const badgeTone = options.badgeTone ?? options.accent ?? 'dim'
         const badge = options.badge ? text(options.badge, { size: size * 0.78, font: 'mono', color: badgeTone }) : null
-        const labels = rows.map((row) => text(row.label, { size, color: 'dim' }))
+        const labels = rows.map((row) => text(row.label, { size, font: options.font, color: 'dim' }))
         const values = rows.map((row) => row.value !== undefined ? text(row.value, { size, font: 'mono', color: row.tone ?? 'ink' }) : null)
         const sparkWidth = size * 3.6
         const contentWidth = Math.max(
@@ -162,6 +168,7 @@ export class InfoBox extends Node {
                 x += w + size * 0.34
             }
         }
+        ownLabels(this, { name: 'info box' })
     }
 
     /** Stage point on one side of the box. `at` moves along the side, from -1 to 1. */
@@ -211,6 +218,7 @@ export class InfoBox extends Node {
             label: 'infoBox.setValue',
             schedule: (ctx) => {
                 this.add(next)
+                ownLabels(this, { labels: [next] })
                 this.rowValues[row] = next
                 anim.schedule(ctx)
             },
@@ -250,12 +258,13 @@ export function sparkline(values: readonly number[], options: SparklineOptions =
     }
     made.add(new Node(values.length > 2 ? smoothPath(points) : polyPath(points)).stroke(color, options.weight ?? 1.5))
     if (options.dotted) made.add(dot((options.weight ?? 1.5) * 1.5, color).at(points[points.length - 1]!))
-    return made
+    return objectName(made, 'sparkline')
 }
 
 // ── Connector ───────────────────────────────────────────────────────────────
 
-export type ConnectorEnd = Node | Vec
+/** An end of a connector: a node, a block of the layout, or a point of the stage. */
+export type ConnectorEnd = Node | Block | Vec
 
 export interface ConnectorOptions {
     /** Side to leave from and arrive at. Chosen automatically when omitted. */
@@ -270,6 +279,8 @@ export interface ConnectorOptions {
     tipSize?: number
     /** Label on the line, on a plate so the line never crosses its text. */
     label?: string
+    /** The font of the label. Defaults to the font that the film names, and to mono in a film that names none. */
+    font?: TextOptions['font']
     labelSize?: number
     labelColor?: ColorInput
     labelBackground?: ColorInput
@@ -285,6 +296,33 @@ export interface ConnectorOptions {
     /** Dashes travel along the line at this many pixels per second. */
     flow?: number
 }
+
+/** How `connector.send` sends a mark along a line. */
+export interface SendOptions extends AnimOptions {
+    /** Travel from the second end of the line to the first, as the answer to a request does. */
+    reverse?: boolean
+    /**
+     * The part of the way where the message is lost, from 0 to 1. It stops there, with a cross ahead of it.
+     * The way of a message that stops ends before the node, with room for the cross: at 1, it stops where a
+     * refused message stops.
+     */
+    lost?: number
+    /** The receiver does not take the message. It stops before the end of the line, with a cross between it and the receiver. */
+    refused?: boolean
+    /** Seconds that a message that is lost or refused stays with its cross, before both go. Defaults to 0.8. */
+    hold?: number
+    /** The color of the cross. Defaults to red. */
+    stopColor?: ColorInput
+    /** Room between the mark and the node at each end of the line, and between the mark and its cross. Defaults to 8. */
+    gap?: number
+}
+
+/** Seconds for a mark to grow in at the start of its way, and to shrink out when it goes. */
+const SEND_GROW = 0.15, SEND_LEAVE = 0.12
+/** A time for a message, with two digits. */
+const round = (seconds: number): number => Math.round(seconds * 100) / 100
+/** The times at which each mark of a film is on its way, so that one mark is not sent two times at once. A film that is built again has a new stage. */
+const ON_ITS_WAY = new WeakMap<Stage, Map<Node, [from: number, to: number][]>>()
 
 interface Anchor {
     point: Vec
@@ -346,30 +384,49 @@ export class Connector extends Node {
     private readonly toEnd: ConnectorEnd
     private readonly options: ConnectorOptions
     private readonly pulses: ActivePulse[] = []
+    /** The label is made on the first frame that shows it. Its font is the one of the film that made the connector. */
+    private readonly labelFont: NonNullable<TextOptions['font']>
     private plate: Node | null = null
     private caption: Node | null = null
 
     constructor(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}) {
         // An empty path lets the standard draw and write verbs animate trimTo here.
         super([])
+        // A block of the layout is an end as a node is: the line meets the middle of the edge of its box.
+        for (const [end, name] of [[from, 'the first end'], [to, 'the second end']] as const) {
+            if (end instanceof Block) continue
+            try {
+                nodeOrPoint('connector', end, name)
+            } catch (error) {
+                throw new Error((error as Error).message.replace('Give a node, or a point', 'Give a node, a block of the layout, or a point'))
+            }
+        }
         this.fromEnd = from
         this.toEnd = to
         this.options = options
+        this.labelFont = options.font ?? filmFont() ?? 'mono'
         this.base.stroke = toPaint(options.color ?? 'dim')
         this.base.strokeWidth = options.width ?? 1.6
         this.draw = (time) => this.build(time)
+        // The label sits on the line, on a plate. `build` makes it later.
+        ownLabels(this, { name: 'connector', labels: [] })
+        // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
+        this.data['attached'] = [from, to].flatMap((end) => (end instanceof Block ? end.nodes : end instanceof Node ? [end] : []))
+        this.data['line'] = true
     }
 
     private anchors(): [Anchor, Anchor] {
         const { fromEnd, toEnd, options } = this
         const gap = options.gap ?? 3
-        const boxOf = (end: ConnectorEnd) => end instanceof Node ? end.bounds() : { x: end[0], y: end[1], width: 0, height: 0 }
+        // A block has the measure of the layout, so the line leaves from the box that the layout placed.
+        const measure = (block: Block) => { const box = block.box; return { x: box.left, y: box.top, width: box.width, height: box.height } }
+        const boxOf = (end: ConnectorEnd) => end instanceof Block ? measure(end) : end instanceof Node ? end.bounds() : { x: end[0], y: end[1], width: 0, height: 0 }
         const a = boxOf(fromEnd), b = boxOf(toEnd)
         const [autoFrom, autoTo] = chooseSides(a, b)
         const sideFrom = options.from ?? autoFrom, sideTo = options.to ?? autoTo
         const anchor = (end: ConnectorEnd, box: typeof a, side: Edge, offset: number): Anchor => {
             const normal = NORMALS[side]
-            if (!(end instanceof Node)) return { point: end, normal }
+            if (!(end instanceof Node || end instanceof Block)) return { point: end, normal }
             const [x, y] = sidePoint(box, side, offset)
             return { point: [x + normal[0] * gap, y + normal[1] * gap], normal }
         }
@@ -441,7 +498,10 @@ export class Connector extends Node {
         }
         if (options.label && progress > 0.5) {
             const size = options.labelSize ?? 12
-            this.caption ??= text(options.label, { size, font: 'mono', color: options.labelColor ?? 'dim' })
+            if (!this.caption) {
+                this.caption = text(options.label, { size, font: this.labelFont, color: options.labelColor ?? 'dim' })
+                ownLabels(this, { labels: [this.caption] })
+            }
             const textWidth = advanceWidth(this.caption)
             const pad = size * 0.35
             this.plate ??= new Node(rectPath(-textWidth / 2 - pad, -size * 0.72, textWidth + pad * 2, size * 1.44, 2)).fill(options.labelBackground ?? 'bg')
@@ -467,12 +527,94 @@ export class Connector extends Node {
         }
     }
 
+    /**
+     * Send a mark along the line, as a message between the two ends: a request, an answer, a packet. The mark
+     * grows in beside the first node and travels at one speed. `duration` is its time on the way, so a slow
+     * message has a long one. A message that arrives goes into the node at the end. One that is lost stops on
+     * the way, and one that is refused stops before the node: each has a cross, and stays for `hold`. The
+     * animation lasts for the way and for what comes after it. The mark never fades, so the line under it does
+     * not show through a text on it.
+     */
+    send(mark: Node, options: SendOptions = {}): Anim {
+        oneNode('connector.send', mark, 'the mark')
+        const { lost, refused = false, reverse = false } = options
+        if (lost !== undefined && !(lost >= 0 && lost <= 1)) throw new Error(`connector.send: lost is the part of the way where the message is lost, from 0 to 1, and it is ${lost}`)
+        if (lost !== undefined && refused) throw new Error('connector.send: a message is lost on the way or refused at the end, and this one is both. Give lost or refused')
+        const travel = options.duration ?? 0.9, gap = options.gap ?? 8, hold = options.hold ?? 0.8
+        // A time that is not a number would put the mark nowhere, and the film would say nothing.
+        if (!(Number.isFinite(travel) && travel > 0)) throw new Error(`connector.send: duration is the time of the message on its way, in seconds, more than 0, and it is ${travel}`)
+        if (!(Number.isFinite(hold) && hold >= 0)) throw new Error(`connector.send: hold is how long a message that is lost or refused stays with its cross, in seconds, 0 or more, and it is ${hold}`)
+        if (!(Number.isFinite(gap) && gap >= 0)) throw new Error(`connector.send: gap is the room between the mark and a node, in pixels, 0 or more, and it is ${gap}`)
+        const stopped = lost !== undefined || refused
+        const after = (stopped ? hold : 0) + SEND_LEAVE
+        return {
+            label: 'connector.send', duration: travel + after, ease: options.ease ?? linear,
+            schedule: (ctx) => {
+                const stretch = (ctx.t1 - ctx.t0) / (travel + after)
+                const arrives = ctx.t0 + travel * stretch, leaves = ctx.t1 - SEND_LEAVE * stretch
+                // A mark is at one place at a time. A second message at the same time needs its own mark.
+                const marks = ON_ITS_WAY.get(ctx.stage) ?? new Map<Node, [number, number][]>()
+                ON_ITS_WAY.set(ctx.stage, marks)
+                const busy = (marks.get(mark) ?? []).find(([from, to]) => ctx.t0 < to - 1e-9 && from < ctx.t1 - 1e-9)
+                if (busy) throw new Error(`connector.send: the mark is on its way from ${round(busy[0])} s to ${round(busy[1])} s, and this message is from ${round(ctx.t0)} s to ${round(ctx.t1)} s. One mark is at one place at a time. Send a copy of it, such as link.send(mark.clone()), or a new mark for each message`)
+                marks.set(mark, [...(marks.get(mark) ?? []), [ctx.t0, ctx.t1]])
+                clock.now = ctx.t0
+                reveal(this, ctx.t0, ctx.stage)
+                reveal(mark, ctx.t0, ctx.stage)
+                // The pivot of the mark is its middle: its place is the place of its middle, and it grows about it.
+                mark.pivotAt(mark.center)
+                const route = this.routeNow(), length = pathLength(route), box = mark.bounds()
+                const point = (part: number): Vec => pointAt(route, reverse ? 1 - part : part)
+                // Half of the mark along the line, at a part of the way.
+                const half = (part: number) => {
+                    const [ux, uy] = tangentAt(route, Math.min(0.999, Math.max(0.001, reverse ? 1 - part : part)))
+                    return (box.width * Math.abs(ux) + box.height * Math.abs(uy)) / 2
+                }
+                const cross = Math.round(Math.min(box.width, box.height) * 0.92)
+                // The mark starts and stops clear of the two nodes. One that is lost or refused leaves room for its
+                // cross before the node, so a message that is lost at the end of its way stops there too.
+                const first = (half(0) + gap) / length, last = 1 - (half(1) + gap + (stopped ? cross + gap : 0)) / length
+                if (!(last > first)) throw new Error(`connector.send: the line is ${Math.round(length)} long, and a mark that is ${Math.round(box.width)} by ${Math.round(box.height)} needs more to travel. Move the two nodes apart, or send a smaller mark`)
+                const stop = first + (last - first) * (lost ?? 1)
+                const inverse = mark.parent ? invert(mark.parent.worldMatrix()) : IDENTITY
+                const place = (alpha: number): Vec => apply(inverse, ...point(first + (stop - first) * alpha))
+                mark.track('x').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: place(1)[0], at: (alpha) => place(alpha)[0] })
+                mark.track('y').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: place(1)[1], at: (alpha) => place(alpha)[1] })
+                // A node grows in over a moment, stays, and shrinks out. It is hidden after that, at its own size.
+                const life = (node: Node, from: number) => {
+                    for (const prop of ['sx', 'sy'] as const) {
+                        const size = node.get(prop)
+                        stepAt(node, prop, size * 0.001, from)
+                        node.tween(prop, size, from, Math.min(from + SEND_GROW * stretch, (from + leaves) / 2), smooth)
+                        node.tween(prop, size * 0.01, leaves, ctx.t1, smooth)
+                        stepAt(node, prop, size, ctx.t1)
+                    }
+                    node.track('visible').step(ctx.t1, false)
+                }
+                life(mark, ctx.t0)
+                if (!stopped) return
+                // The cross is ahead of the mark, and never nearer to the node than the room at an end of the line.
+                const ahead = point(Math.min(stop + (half(stop) + gap + cross / 2) / length, 1 - (gap + cross / 2) / length))
+                const stopMark = pictogram('cross', { size: cross, accent: options.stopColor ?? 'red', weight: 2.4 }).at(ahead)
+                ctx.stage.mountAt(stopMark, arrives)
+                clock.now = arrives
+                life(stopMark, arrives)
+                clock.now = ctx.t0
+            },
+        }
+    }
+
     /** Point at a fraction along the current route, for placing notes beside the line. */
     pointNow(fraction = 0.5): [number, number] {
         return pointAt(this.routeNow(), fraction)
     }
 }
 
+/**
+ * A line from one end to another, which follows its ends while they move. An end is a node, a block of the
+ * layout, or a point of the stage. At a node and at a block, the line meets the middle of the edge of the box
+ * that faces the other end.
+ */
 export function connector(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}): Connector {
     return new Connector(from, to, options)
 }
@@ -489,6 +631,8 @@ export interface LegendOptions {
     direction?: 'row' | 'column'
     size?: number
     gap?: number
+    /** The font of the labels. Defaults to the font of the film. */
+    font?: TextOptions['font']
 }
 
 /** A small key. Prefer direct labels. Use this when a figure holds too many marks to label. */
@@ -508,7 +652,7 @@ export function legend(items: readonly LegendItem[], options: LegendOptions = {}
                 : kind === 'dot' ? dot(size * 0.32, color)
                     : kind === 'ring' ? circle(size * 0.32, { stroke: color, width: 1.6 })
                         : new Node(rectPath(-size * 0.42, -size * 0.42, size * 0.84, size * 0.84, 1.5)).fill(color)
-        const caption = text(item.label, { size, color: 'dim' })
+        const caption = text(item.label, { size, font: options.font, color: 'dim' })
         const width = keyWidth + size * 0.5 + advanceWidth(caption)
         const entry = new Node()
         entry.add(key.at(keyWidth / 2, 0))
@@ -528,7 +672,7 @@ export function legend(items: readonly LegendItem[], options: LegendOptions = {}
         }
         made.add(entry.node)
     })
-    return made
+    return ownLabels(made, { name: 'legend' })
 }
 
 // ── Callout ─────────────────────────────────────────────────────────────────
@@ -548,6 +692,8 @@ export interface CalloutOptions {
     bodyColor?: ColorInput
     /** Plate behind the text, for placing a note over busy marks. */
     plate?: boolean
+    /** The font of the title and the body. Defaults to the font of the film. */
+    font?: TextOptions['font']
 }
 
 /**
@@ -562,6 +708,7 @@ export class Callout extends Node {
 
     constructor(target: Node | Vec, body: string, options: CalloutOptions = {}) {
         super()
+        nodeOrPoint('callout', target, 'the target')
         const size = options.size ?? 15
         const color = options.color ?? 'yellow'
         const side = options.side ?? 'right'
@@ -570,8 +717,8 @@ export class Callout extends Node {
         const normal = NORMALS[side]
         const box = target instanceof Node ? target.bounds() : { x: target[0], y: target[1], width: 0, height: 0 }
         const anchor = target instanceof Node ? sidePoint(box, side, 0) : target
-        const title = options.title ? text(options.title, { size, weight: 600, color }) : null
-        const copy = text(body, { size: size * 0.94, color: options.bodyColor ?? 'dim', maxWidth: wrap, leading: 1.36 })
+        const title = options.title ? text(options.title, { size, font: options.font, weight: 600, color }) : null
+        const copy = text(body, { size: size * 0.94, font: options.font, color: options.bodyColor ?? 'dim', maxWidth: wrap, leading: 1.36 })
         const titleHeight = title ? size * 1.42 : 0
         const blockWidth = Math.max(copy.width, title ? advanceWidth(title) : 0)
         const copyHeight = copy.height
@@ -602,6 +749,9 @@ export class Callout extends Node {
         this.leader = new Node(polyPath([anchor, elbow, reach])).stroke(color, 1.25)
         this.marker = dot(3, color).at(anchor)
         this.add(this.leader, this.marker)
+        ownLabels(this, { name: 'callout' })
+        // The leader ends at the target on purpose, so the film check does not judge the text of the target against it.
+        if (target instanceof Node) this.data['attached'] = [target]
     }
 
     /** The marker lands, the leader runs out, and the text settles at the end of it. */
