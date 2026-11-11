@@ -243,7 +243,7 @@ host's paint, containment, or opacity checks.
 
 ### Construct a result before revealing it
 
-The teaching canvas also offers five components for explanations with persistent
+The teaching canvas also offers components for explanations with persistent
 objects and computed intermediate states:
 
 | Method | State and drawing contract |
@@ -263,11 +263,17 @@ rendering. The lesson supplies the data, model assumptions, and narration cues.
 For a pixel comparison, pass flat arrays with the same row and column order. Set `split` to the fraction of the width that should show the left image. The method returns the divider’s x coordinate so you can attach your own pointer. When both colors match, it paints the entire cell once to avoid an antialiasing seam.
 
 ```ts
-const { dividerX } = charts.rasterWipe({
-    x: 40, y: 120, width: 640, height: 480, rows: 12, columns: 16,
-    left: reference, right: reconstruction, split: progress,
-    color: sample => grayscale(sample),
-})
+import { createTeachingCanvas, type TeachingPainter } from 'vizmatic'
+
+export function comparePixels(painter: TeachingPainter, progress: number) {
+    const reference = [24, 96, 48, 32, 112, 64]
+    const reconstruction = [24, 80, 48, 32, 80, 64]
+    return createTeachingCanvas(painter).rasterWipe({
+        x: 40, y: 120, width: 360, height: 240, rows: 2, columns: 3,
+        left: reference, right: reconstruction, split: progress,
+        color: value => `rgb(${value} ${value} ${value})`,
+    })
+}
 ```
 
 Provide `painter.measureText(value, size, font)` to size moving token copies with
