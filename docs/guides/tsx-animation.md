@@ -401,6 +401,20 @@ Supply `{ x, y, width, height, rows, columns }`; returns
 `{ shape, bounds, cells, cell(row, column) }`. Connect to the painted `shape`;
 cells are label/math geometry. `layoutCellGrid` returns layout without paint.
 
+
+Use `tileTransfer` to follow labeled cells between grid addresses. For example, this load takes two rows from a larger memory grid and places them in a scratch tile. The first row can land while the second is still in flight.
+
+```typescript
+const load = charts.tileTransfer({
+  source: { grid: memory, row: 2, column: 1 },
+  target: { grid: scratch },
+  cells: [[{ label: 8 }, { label: 9 }], [{ label: 12 }, { label: 13 }]],
+  progress: clock, rowStagger: 0.4,
+})
+```
+
+Pass a grid returned by `layoutCellGrid` or `charts.grid` at each endpoint. Omitted row and column offsets start at zero. `rowStagger` gives the fraction of the transfer between the first and last row launches. Set it to zero to move the tile as one block. Use `load.arrived` to count cells at the destination and `load.complete` to advance a transaction counter after the last row lands.
+
 `timeline` draws supplied intervals on named lanes. One `time` controls elapsed
 fills, completion flags, and the axis cursor. Intervals on the same lane must
 not overlap; use separate lanes for concurrent work. Bounds include the lane
