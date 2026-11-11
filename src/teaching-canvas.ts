@@ -7,6 +7,7 @@ import {
 import { tracePolyline } from './motion'
 import { createTeachingTransfer } from './teaching-transfer'
 import { createTeachingGrid } from './teaching-grid'
+import { createTeachingTileTransfer } from './teaching-tile-transfer'
 import { createTeachingTimeline } from './teaching-timeline'
 import { createTeachingAllocation } from './teaching-allocation'
 import { createTeachingValueChange } from './teaching-value'
@@ -343,6 +344,7 @@ export function createTeachingCanvas<Shape extends CanvasBounds>(painter: Teachi
         transfer: createTeachingTransfer(painter),
         routedTransfer: createTeachingRoutedTransfer(painter),
         grid: createTeachingGrid(painter),
+        tileTransfer: createTeachingTileTransfer(painter),
         timeline: createTeachingTimeline(painter),
         allocation: createTeachingAllocation(painter),
         vectorAccumulation: createTeachingVectorAccumulation(painter),
