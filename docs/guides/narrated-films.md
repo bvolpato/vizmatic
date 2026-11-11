@@ -152,6 +152,7 @@ It does what every film needs, so no scene types a time for it:
 - It lays the measured voice on the stage, with the captions and the chapters.
 - It sets the text font of the film once: text-serif, which stays readable at the size of a phone. `font: 'sans'` names another. Every text with no `font` has it: the labels of the kit, a `text()` of a scene, and the labels that an object draws.
 - It draws the title card from the title, for the `intro` seconds of the script. `intro: { title: 'A cache', subtitle: 'in two scenes' }` gives the card other words, `intro: (s, film) => { ... }` draws a card of your own, and `intro: false` shows none.
+- To show an object on frame zero, set `intro: false` and `firstSceneTransition: 'cut'`, then add the object with `s.add` at the start of the first scene. The shell preserves its authored opacity and animations. Later scenes keep their entrance fades.
 - It calls each scene at the moment that the picture of the scene opens, and fades in what the scene adds there.
 - At the end of a scene, it fades out every node that the scene put on the stage. The picture of the last scene stays while the sound fades.
 

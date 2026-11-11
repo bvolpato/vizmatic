@@ -56,6 +56,9 @@ export interface TitleCard {
     font?: FontFamily
 }
 
+/** How the shell introduces nodes at the start of the first scripted scene. */
+export const firstSceneTransitions = { fade: 'fade', cut: 'cut' } as const
+
 export interface NarratedOptions extends FilmOptions {
     /**
      * The font of every text of the film that names none: the labels of the kit, a `text()` with no `font`, and
@@ -72,6 +75,8 @@ export interface NarratedOptions extends FilmOptions {
      * film, or `false` for no card.
      */
     intro?: TitleCard | IntroFunction | false
+    /** Use 'cut' to leave the first scene's starting opacity and animations as authored. Defaults to 'fade'. */
+    firstSceneTransition?: keyof typeof firstSceneTransitions
     /** The captions and the chapters. The lead and the gap come from the timing, because the sound mix uses the same numbers. */
     narration?: Pick<NarrationOptions, 'captions' | 'captionLength' | 'chapters'>
 }
@@ -290,7 +295,8 @@ function named<T>(what: string, build: () => T): T {
  * the script does not have. The film lasts one gap and the tail past the last word.
  */
 export function narrated(options: NarratedOptions): FilmDefinition {
-    const { timing, scenes, intro: _intro, narration: voiceOptions, ...filmOptions } = options
+    const { timing, scenes, intro: _intro, narration: voiceOptions, firstSceneTransition = 'fade', ...filmOptions } = options
+    if (firstSceneTransition !== 'fade' && firstSceneTransition !== 'cut') throw new Error('narrated: firstSceneTransition must be fade or cut')
     checkTiming(timing)
     const building = scenesToBuild(options)
     const whole = building.length === timing.scenes.length
@@ -330,7 +336,9 @@ export function narrated(options: NarratedOptions): FilmDefinition {
             const nodes = named(`scene "${id}"`, () => addedBy(s, opens, () => scenes[id]!(s, scene, clock)))
             // The plays of the scene, without the fades of the shell, which come after this line.
             const plays = s.clips.slice(firstPlay)
-            fadeInOpening(s, nodes.filter((node) => !scene.taken.has(node)), opens, OPEN_FADE)
+            if (id !== first || firstSceneTransition === 'fade') {
+                fadeInOpening(s, nodes.filter((node) => !scene.taken.has(node)), opens, OPEN_FADE)
+            }
             // The scene before this one is built too when its end is one gap before the start of this one.
             if (before && Math.abs(before.next - scene.start) < 1e-6) checkHandover(s, before, scene)
             before = scene
