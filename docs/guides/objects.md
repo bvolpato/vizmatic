@@ -1425,21 +1425,27 @@ mkdir -p assets
 curl -fL https://unpkg.com/@lobehub/icons-static-svg@1.102.0/icons/claude-color.svg -o assets/company.svg
 ```
 
-Save the following film as `logos.mjs`. The SVG becomes a Stage node that you can position, group with a label, or animate.
+Save the following film as `logos.mjs`. It places a mark beside its name. The group measures both objects, so a narrow mark and a wide mark have the same gap before the text.
 
 ```js
 import { readFileSync } from 'node:fs'
-import { film, fromSvg } from 'vizmatic/stage'
+import { film, fromSvg, group, text } from 'vizmatic/stage'
 
 const artwork = readFileSync(new URL('./assets/company.svg', import.meta.url), 'utf8')
 
 export default film({ look: 'paper', imageNetwork: 'deny' }, (s) => {
-    s.add(fromSvg(artwork, { width: 420, height: 220, background: true, splitGlyphs: false }))
+    const size = 40
+    const markSize = Math.round(size * 1.6)
+    const mark = fromSvg(artwork, { background: true, splitGlyphs: false })
+    mark.fitTo({ width: markSize, height: markSize })
+    const name = text('Claude', { size })
+    const label = group(mark, name).arrange('right', Math.round(size * 0.36))
+    s.add(label.moveTo([0, 0]))
     s.wait(2)
 })
 ```
 
-`fromSvg` fits the original proportions inside the box. `splitGlyphs: false` keeps compound paths together. `background: true` retains a background rectangle supplied with the art. If the SVG uses `currentColor`, set the intended foreground color before importing it.
+`fitTo` sizes the imported shapes by their bounds and preserves their proportions. For an embedded image, those bounds include transparent padding inside the bitmap. Trim the asset first if the padding creates a visible gap. `splitGlyphs: false` keeps compound paths together. `background: true` retains a background rectangle supplied with the art. If the SVG uses `currentColor`, set the intended foreground color before importing it.
 
 For marks that rely on masks, clipping, or an unsupported fill rule, export the artwork to a transparent PNG. Prepare it with `resolveImageAsset` and use `image(asset, { width: 420, height: 220, fit: "contain" })`. For browser playback, embed the SVG markup or PNG bytes in the film.
 
