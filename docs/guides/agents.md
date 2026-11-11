@@ -8,7 +8,7 @@ description: Vizmatic suits coding agents. Sources are plain text, output is det
 
 ## A loop that works
 
-An agent cannot watch a video, so the loop relies on checks and stills.
+Inspect the layout in stills and the timing in playback.
 
 1. Write the film as a TypeScript file.
 2. Run `vizmatic check --json` and fix what it reports.
@@ -25,7 +25,7 @@ The check inspects moments of rest. It misses a crossfade where two sentences ov
 
 ## Films that teach
 
-A lesson needs more than a clean check. [The lesson reference](../references/lessons.md) covers the plan, computed numbers, narration, changes of picture, a frame scan, delivery, and review. An agent cannot judge a lesson at full speed, so a person must watch it with sound before it is published.
+A lesson needs more than a clean check. [The lesson reference](../references/lessons.md) covers the plan, computed numbers, narration, changes of picture, a frame scan, delivery, and review. A person must watch the complete lesson at full speed with sound before it is published.
 
 [Finished films](../films.html) show the full source for each topic. The package includes them in `examples/films/`.
 
