@@ -488,12 +488,16 @@ Use `pcmEnvelope` to group normalized mono PCM samples into signed amplitude bin
 ```ts
 import { createTeachingCanvas, pcmEnvelope } from 'vizmatic'
 
-const microphone = pcmEnvelope(samples, { sampleRate: 24000, bins: 160, startTime: 0 })
-const charts = createTeachingCanvas(painter)
-charts.waveform({
-    x: 80, y: 120, width: 800, height: 100,
-    envelope: microphone, domain: [0, 1.2], cursorTime: elapsedSeconds, reveal: true,
-})
+function recordedSignal(samples: Float32Array) {
+    const microphone = pcmEnvelope(samples, { sampleRate: 24000, bins: 160, startTime: 0 })
+    return (painter: Parameters<typeof createTeachingCanvas>[0], elapsedSeconds: number) => {
+        const charts = createTeachingCanvas(painter)
+        charts.waveform({
+            x: 80, y: 120, width: 800, height: 100,
+            envelope: microphone, domain: [0, 1.2], cursorTime: elapsedSeconds, reveal: true,
+        })
+    }
+}
 ```
 
 All times are in seconds. Each bin spans consecutive samples and keeps their lowest and highest values on a fixed amplitude scale from −1 to +1. With `reveal: true`, a bin appears when the cursor reaches its end. Omit `cursorTime` and `reveal` to draw the complete signal.
