@@ -38,6 +38,14 @@ The bloom dither is for soft light on a dark look. Without it, the halo of a bri
 
 MP4 files stay at H.264 level 4.2 at 1080p60, so they play in QuickTime, Quick Look, and on Apple devices. To join another clip to a film without encoding it again, encode the clip with `filmEncoderSettings(quality)` from `vizmatic/stage/export`. QuickTime reads one set of decoder settings from the start of a file, and it stops at a clip that uses different ones.
 
+### Hardware H.264 on macOS
+
+For standard-quality MP4s, pass `h264Encoder: 'videotoolbox'` to `renderFilmVideo` or `renderRgbaVideo`. The exporter checks that FFmpeg can encode a frame at the requested dimensions and frame rate using Apple hardware. If the check fails, it uses the default software encoder, `libx264`. The result’s `h264Encoder` field records the encoder used. An error during the actual encode fails the export and preserves any existing destination file.
+
+The hardware path uses VideoToolbox quality 75 and a maximum interval of 250 frames between keyframes. Different CRF values, custom x264 parameters and tuning other than `animation` use the software encoder. Hardware files can be larger. Rasterization, audio, captions and frame timing still use the same paths.
+
+When joining independently rendered scenes, call `resolveH264Encoder('videotoolbox', ffmpegPath, { width, height, fps })` from `vizmatic` once. Pass its result as `h264Encoder` with `requireH264Encoder: true` to every scene and the intro. This keeps all segments on the same encoder. If the selected hardware becomes unavailable, the export fails before publishing an incompatible segment.
+
 ## Resolution
 
 A film is authored in stage units, so `--width` changes only the pixel count. MP4 and WebM need even dimensions, so the export rounds an odd width or height up to the next even number.

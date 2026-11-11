@@ -60,6 +60,17 @@ describe('render planning', () => {
 type Build = (s: Parameters<Parameters<typeof film>[1]>[0]) => void
 
 describe('film export', () => {
+    it('honors a required hardware encoder in a range export', async () => {
+        const directory = await tempDirectory()
+        const output = join(directory, 'existing.mp4')
+        await writeFile(output, 'previous delivery')
+        await expect(renderFilmVideo(simple, output, {
+            from: 0, to: 0.2, width: 319, workers: 1,
+            ffmpegPath: join(directory, 'unavailable-ffmpeg'), h264Encoder: 'videotoolbox', requireH264Encoder: true,
+        })).rejects.toThrow('unavailable')
+        expect(await readFile(output, 'utf8')).toBe('previous delivery')
+    }, 30_000)
+
     it('writes a PNG of the requested size, in the film\'s colors', async () => {
         const directory = await tempDirectory()
         const output = await renderFilmFrame(simple, 1, join(directory, 'frame.png'), { width: 320 })
