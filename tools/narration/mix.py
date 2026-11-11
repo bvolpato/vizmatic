@@ -3,10 +3,10 @@
 # requires-python = ">=3.12,<3.13"
 # dependencies = ["numpy", "scipy", "soundfile"]
 # ///
-"""Lay the voice on the timeline of the film, and add a quiet pad and soft bell chimes.
+"""Lay the voice on the timeline of the film, and add a quiet pad and selected sound effects.
 
 The voice stays on top: the pad from soundbed.py stays well under it, and rises only in a long pause
-and where the film asks for a swell. The film gives its seed, its levels, its swells and its chimes
+and where the film asks for a swell. The film gives its seed, its levels, its swells and its effects
 in film.json, under "mix". The README of this folder describes each key.
 
 It writes narration.wav for the render. An agent cannot hear the result, so it prints the levels and
@@ -19,6 +19,7 @@ import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
 
+import checks
 import film
 import soundbed
 
@@ -77,9 +78,7 @@ def chime(samples, at, notes=BELL, gain=0.11, until=None):
     start = int(at * RATE)
     length = min(samples - start, int(5 * RATE))
     t = np.arange(length) / RATE
-    for index, pitch in enumerate(notes):
-        decay = np.exp(-t / (1.5 - index * 0.3)) * np.clip((t - index * 0.09) / 0.006, 0, 1)
-        out[start:start + length] += (gain / (1 + index * 0.6) * decay * (np.sin(2 * np.pi * pitch * t) + 0.25 * np.sin(2 * np.pi * 2.01 * pitch * t))).astype(np.float32)
+    out[start:start + length] = soundbed.bell_samples(t, notes, gain)
     if until is not None:
         out[start:start + length] *= np.clip((until - (at + t)) / 0.5, 0, 1).astype(np.float32)
     return out
@@ -140,6 +139,30 @@ def bells(samples, line, chimes):
     return track, placed
 
 
+def effects(samples, line, entries):
+    """Place each procedural clip with its own gain and cutoff, in the order that the author gives."""
+    track, placed = np.zeros(samples, dtype=np.float32), []
+    for index, spec in enumerate(entries):
+        where = f"film.json: mix.effects[{index}]"
+        at = anchor(spec, line, where)
+        until = anchor(spec["until"], line, f'{where} "until"') if "until" in spec else None
+        if not 0 <= at < line.total:
+            film.fail(f"{where}: the effect is at {at:.2f} s, and the film is {line.total:.2f} s long. Give a time inside the film")
+        if until is not None and until <= at:
+            film.fail(f"{where}: the effect starts at {at:.2f} s and must be silent from {until:.2f} s. Give an until time after the start")
+        start = int(at * RATE)
+        end = int(min(line.total, until) * RATE) if until is not None else samples
+        clip = soundbed.sound_effect(spec["sound"], RATE)[:max(0, end - start)].copy()
+        clip *= spec.get("gain", checks.SOUND_EFFECTS[spec["sound"]]["gain"])
+        # A cut fades only this clip. It must not change effects that already occupy the track.
+        if len(clip) and end - start <= len(clip):
+            fade = min(len(clip), int(0.02 * RATE))
+            clip[-fade:] *= np.linspace(1, 0, fade, dtype=np.float32) if fade > 1 else 0
+        track[start:start + len(clip)] += clip
+        placed.append((at, until))
+    return track, placed
+
+
 def write_sound(root, mix, voice, bed):
     """The mix at -16 LUFS for the render, and the three tracks that a check can read."""
     stills = root / "stills"
@@ -150,7 +173,7 @@ def write_sound(root, mix, voice, bed):
     sf.write(stills / "bed-only.wav", bed, RATE, subtype="PCM_24")
 
 
-def report(line, levels, mix, voice, bed, level, spoke, track, parts, swells, chimes):
+def report(line, levels, mix, voice, bed, level, spoke, track, parts, swells, chimes, named=False):
     """Print the levels, because nobody hears the mix before the film is rendered."""
     rms = soundbed.decibels
     quiet = ~spoke & (level >= 10 ** (levels["pause"] / 20) * 0.98)
@@ -158,11 +181,13 @@ def report(line, levels, mix, voice, bed, level, spoke, track, parts, swells, ch
     print(f"voice RMS while speaking {rms(voice[spoke]):.1f} dB; bed RMS under voice {rms(bed[spoke, 0]):.1f} dB; gap {rms(voice[spoke]) - rms(bed[spoke, 0]):.1f} dB")
     if line.intro > 0:
         intro = int(line.intro * RATE)
-        print(f"intro: bed RMS {rms(bed[:intro, 0]):.1f} dB, chime peak {np.abs(track[:intro]).max():.3f}")
+        print(f"intro: bed RMS {rms(bed[:intro, 0]):.1f} dB, {'effect' if named else 'chime'} peak {np.abs(track[:intro]).max():.3f}")
     long_pauses = f"{rms(bed[quiet, 0]):.1f} dB" if quiet.any() else "none"
-    print(f"bed RMS in long pauses {long_pauses}; chimes at {', '.join(f'{at:.2f}s' for at, _ in chimes)}; swells at {', '.join(f'{at:.2f}s' for at in swells)}")
+    print(f"bed RMS in long pauses {long_pauses}; {'effects' if named else 'chimes'} at {', '.join(f'{at:.2f}s' for at, _ in chimes)}; swells at {', '.join(f'{at:.2f}s' for at in swells)}")
     for at, until in chimes:
-        if until is not None:
+        if until is not None and named:
+            print(f"the effect of {at:.2f}s is silent from {until:.2f}s")
+        elif until is not None:
             # What sounds under the words that follow the bell: the voice, the pad at its usual level, and no bell.
             a, b = int((until + 0.5) * RATE), int((until + 1.0) * RATE)
             print(f"the bell of {at:.2f}s is silent from {until:.2f}s; from {until + 0.5:.2f}s to {until + 1.0:.2f}s, voice RMS {rms(voice[a:b]):.1f} dB, bed RMS {rms(bed[a:b, 0]):.1f} dB, bell peak {np.abs(track[a:b]).max():.4f}")
@@ -187,8 +212,12 @@ def main(found, _words, _options):
     level, spoke, swell_times = pad_level(voice, seconds, line, levels, swells)
     bed = pad * (level * 10 ** (soundbed.decibels(voice[spoke]) / 20))[:, None]
 
-    chimes = settings["chimes"] if settings["chimes"] is not None else default_chimes(line)
-    track, chime_times = bells(samples, line, chimes)
+    named = settings["effects"] is not None
+    if named:
+        track, chime_times = effects(samples, line, settings["effects"])
+    else:
+        chimes = settings["chimes"] if settings["chimes"] is not None else default_chimes(line)
+        track, chime_times = bells(samples, line, chimes)
     # The voice is the same in both channels. The pad differs between them, and the bells are a little quieter at the right.
     mix = np.stack([voice + bed[:, 0] + track, voice + bed[:, 1] + track * 0.92], axis=1)
     peak = np.abs(mix).max()
@@ -197,7 +226,7 @@ def main(found, _words, _options):
     write_sound(root, mix, voice, bed)
     # A build reads this record, and leaves a mix that is made from the timing and the film.json of now.
     film.write_mix_record(found)
-    report(line, levels, mix, voice, bed, level, spoke, track, parts, swell_times, chime_times)
+    report(line, levels, mix, voice, bed, level, spoke, track, parts, swell_times, chime_times, named)
     under = soundbed.decibels(voice[spoke]) - soundbed.decibels(bed[spoke, 0])
     summary = f"narration.wav is written: {line.total:.2f} s, {len(line.beats)} takes, the pad {under:.1f} dB under the voice."
     if under < CLEAR_VOICE:

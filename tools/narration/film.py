@@ -56,6 +56,7 @@ class Film:
             "levels": {**checks.LEVELS, **mix.get("levels", {})},
             "swells": mix.get("swells"),
             "chimes": mix.get("chimes"),
+            "effects": mix.get("effects"),
         }
 
     def movie(self, words, options, writes=False):
@@ -126,9 +127,12 @@ class Timeline:
 
 def place(measured):
     """Lay the takes on the timeline of the film, with the numbers that `narration()` uses in the film:
-    the lead, then each take and its hold, and one gap after each scene."""
+    the lead, then each take and its hold, and one gap after each scene. A scene with a start of its own,
+    which a tool that lays out its own sound writes, starts there."""
     now, beats, scenes = measured["lead"], [], {}
     for scene in measured["scenes"]:
+        if "start" in scene:
+            now = scene["start"]
         scenes[scene["id"]] = now
         for index, take in enumerate(scene["beats"]):
             start = now
@@ -204,6 +208,14 @@ def write_json(path, content):
     os.replace(part, path)
 
 
+def write_timing(path, timing):
+    defect = checks.timing_defect(timing)
+    if defect:
+        field, reason = defect
+        fail(f"{path.name}: {field}: {reason}")
+    write_json(path, timing)
+
+
 # ── The record of a mix: what narration.wav was made from ────────────────────────────────────────
 
 def mix_record(root):
@@ -212,7 +224,7 @@ def mix_record(root):
 
 def mix_inputs(found):
     """A short name for all that a mix is made from: the timing, the mix of film.json, and the tools that mix."""
-    tools = hashlib.sha256(b"".join((Path(__file__).parent / name).read_bytes() for name in ("mix.py", "soundbed.py"))).hexdigest()
+    tools = hashlib.sha256(b"".join((Path(__file__).parent / name).read_bytes() for name in ("mix.py", "soundbed.py", "checks.py", "film.py"))).hexdigest()
     return hashlib.sha256(json.dumps([found.timing, found.mix, tools], sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -277,6 +289,9 @@ def timeline_changes(picture, sound):
                 break
             if old.take.get("say") != new.take.get("say") or old.take.get("words") != new.take.get("words"):
                 found.append(f"{scene}/{old.index} (other words, or other times of its words)")
+                break
+            if checks.cue_record(old.take) != checks.cue_record(new.take):
+                found.append(f"{scene}/{old.index} (the declared cues changed)")
                 break
     if not found and abs(a.total - b.total) > TICK:
         found.append(f"the end of the film ({a.total:.2f} s in the picture, {b.total:.2f} s in timing.json)")

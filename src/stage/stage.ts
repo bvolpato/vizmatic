@@ -8,6 +8,7 @@ import { STEADY, changesAt, changesNow, clock } from './track'
 import { Value, type Anim } from './anim'
 import type { FontFamily } from './font'
 import { settleLights, type Light, type MorphRecord } from './light'
+import { Block, nodesFor, oneNode, type LayoutItem } from './layout'
 
 export type Aspect = '16:9' | '9:16' | '1:1' | '4:3' | '21:9'
 
@@ -116,6 +117,11 @@ export class Stage {
     readonly morphs: MorphRecord[] = []
     /** The color that a dim node goes toward: the background of the film, or of its look when the film has none. */
     readonly backdrop: Rgba
+    /**
+     * Checks that run when the timeline is complete, in order. The clock of a narrated scene adds one: it
+     * asks then what was on the stage at each of its cues. A check that fails throws, and the film does not build.
+     */
+    readonly checks: (() => void)[] = []
     time = 0
     private ending = 0
 
@@ -154,14 +160,20 @@ export class Stage {
      * since the last call. A stage whose callback does not run leaves the clock alone.
      */
     private claim(): void {
-        if (building(this)) clock.font = this.font
+        if (building(this)) {
+            clock.font = this.font
+            clock.canvas = this
+        }
     }
 
-    /** Put nodes on stage now. Returns the first, so setup reads as one line. */
-    add<T extends Node>(first: T, ...rest: Node[]): T {
+    /**
+     * Put nodes on stage now. A block of the layout, and a list that the layout placed, put their nodes there:
+     * `s.add(place(row([a, b]), region))`. Returns the first, so setup reads as one line.
+     */
+    add<T extends LayoutItem>(first: T, ...rest: LayoutItem[]): T {
         this.claim()
         clock.now = this.time
-        for (const node of [first, ...rest]) {
+        for (const node of [first, ...rest].flatMap((item, index) => nodesFor('s.add', item, `argument ${index}`))) {
             if (!node.mounted) {
                 node.parent?.drop(node)
                 node.parent = this.root
@@ -177,6 +189,7 @@ export class Stage {
     /** Put a node on stage so it first shows at `time`, which may differ from the cursor. */
     mountAt(node: Node, time: number): void {
         this.claim()
+        oneNode('s.mountAt', node)
         if (node.mounted) return
         node.parent?.drop(node)
         node.parent = this.root
@@ -186,14 +199,19 @@ export class Stage {
         this.arrivals.set(node, time)
     }
 
-    remove(...nodes: Node[]): void {
+    remove(...nodes: LayoutItem[]): void {
         this.claim()
-        for (const node of nodes) node.track('visible').step(this.time, false)
+        for (const node of nodes.flatMap((item, index) => nodesFor('s.remove', item, `argument ${index}`))) node.track('visible').step(this.time, false)
     }
 
     /** Run animations together and advance the timeline past them. */
     play(...items: (Anim | PlayOptions)[]): this {
         this.claim()
+        items.forEach((item: unknown, index) => {
+            // A node is not an animation: without this, the call would do nothing and say nothing.
+            if (item instanceof Node || item instanceof Block) throw new Error(`s.play: argument ${index} is ${item instanceof Node ? 'a node' : 'a block of the layout'}, and play takes animations. Give an animation of it, such as fadeIn(${item instanceof Node ? 'node' : 'block'}), or put it on the stage with s.add`)
+            if (typeof item !== 'object' || item === null) throw new Error(`s.play: argument ${index} is ${String(item)}. Give animations, such as fadeIn(node), and then the options of the play`)
+        })
         const anims = items.filter((item): item is Anim => 'schedule' in item)
         const options = (items.find((item) => !('schedule' in item)) ?? {}) as PlayOptions
         if (anims.length === 0) return this
@@ -260,6 +278,7 @@ export class Stage {
     /** Re-run a function each frame while the node shows. It can set any property on the node. */
     update<T extends Node>(node: T, fn: (node: T, time: number) => void, window: { from?: number; to?: number } = {}): T {
         this.claim()
+        oneNode('s.update', node)
         this.updaters.push({
             node, fn: fn as (node: Node, time: number) => void,
             from: window.from ?? this.time, to: window.to ?? Infinity,
@@ -413,7 +432,7 @@ export class CompiledFilm {
     frame(time: number): Frame {
         const t = Math.max(0, Math.min(this.duration, time))
         const stage = this.stage
-        const previous = { mode: clock.mode, now: clock.now, font: clock.font, at: clock.at, steady: clock.steady }
+        const previous = { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas, at: clock.at, steady: clock.steady }
         setColorTokens(stage.look.colors)
         clock.mode = 'render'
         clock.now = t
@@ -421,6 +440,7 @@ export class CompiledFilm {
         clock.steady = Infinity
         // A drawing that is rebuilt on each frame makes its texts now, so they need the font of the film here too.
         clock.font = stage.font
+        clock.canvas = stage
         clock.frame++
         try {
             for (const updater of stage.updaters) {
@@ -452,6 +472,7 @@ export class CompiledFilm {
             clock.mode = previous.mode
             clock.now = previous.now
             clock.font = previous.font
+            clock.canvas = previous.canvas
             clock.at = previous.at
             // A frame that is drawn inside another frame used a time that the outer frame did not prove.
             clock.steady = previous.mode === 'render' ? -Infinity : previous.steady
@@ -467,7 +488,7 @@ export class CompiledFilm {
 /** A film whose callback runs now, and the clock that it found when it started. */
 interface Build {
     readonly stage: Stage
-    found: { mode: typeof clock.mode; now: number; font: FontFamily | null }
+    found: { mode: typeof clock.mode; now: number; font: FontFamily | null; canvas: typeof clock.canvas }
 }
 
 /**
@@ -482,11 +503,12 @@ function building(stage: Stage): boolean {
 
 /** The callback of a film starts: the film takes the clock, and keeps what it found. */
 function begin(stage: Stage): Build {
-    const build: Build = { stage, found: { mode: clock.mode, now: clock.now, font: clock.font } }
+    const build: Build = { stage, found: { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas } }
     builds.push(build)
     clock.mode = 'compile'
     clock.now = 0
     clock.font = stage.font
+    clock.canvas = stage
     return build
 }
 
@@ -501,6 +523,7 @@ function end(build: Build): void {
         clock.mode = build.found.mode
         clock.now = build.found.now
         clock.font = build.found.font
+        clock.canvas = build.found.canvas
         return
     }
     // A film that started later still builds, because the two callbacks await. It found the clock of this
@@ -508,6 +531,7 @@ function end(build: Build): void {
     // clock from before them all. Until its next call, the clock has the font of the newest film.
     later.found = build.found
     clock.font = builds[builds.length - 1]!.stage.font
+    clock.canvas = builds[builds.length - 1]!.stage
 }
 
 const TWO_ENGINES = 'Two copies of vizmatic/stage built this film, so a part of it is on another timeline. '
@@ -530,7 +554,8 @@ export async function compileFilm(definition: FilmDefinition, overrides: Compile
             // back before any other film can start, so two such films never have the clock of each other.
             const pending = definition.build(stage) as unknown
             if (pending !== null && typeof pending === 'object' && typeof (pending as PromiseLike<void>).then === 'function') await pending
-            // The timeline is complete, so each light can ask what was on the stage at its start.
+            // The timeline is complete, so each check and each light can ask what was on the stage at a time.
+            for (const check of stage.checks) check()
             settleLights(stage)
             end(build)
             const compiled = new CompiledFilm(stage, options, overrides)

@@ -37,6 +37,17 @@ export class TextNode extends Node {
     source = ''
     /** The font of the text: the font that it names, or the font of the film. `text()` records it when it makes the node. */
     font: FontFamily = LIBRARY_FONT
+    /** The size of the text, in the pixels of the node. `text()` records it. */
+    size = 0
+    /** The y of the base line of the first line, in the coordinates of the node. A row of the layout puts texts of two sizes on one base line with it. */
+    readonly baseline = 0
+    /**
+     * The top and the bottom of the letters of the font at the size of the text, in the coordinates of the
+     * node: the highest letter over the first base line, and the lowest one under the last. It is the same for
+     * every text of one font and one size, whatever its letters. The layout measures the room over and under
+     * a text from it, so a named gap is even from row to row.
+     */
+    letters: readonly [top: number, bottom: number] = [0, 0]
 
     /** Glyph nodes whose characters match, such as every "x". */
     find(fragment: string): Node[] {
@@ -65,6 +76,36 @@ function centered(path: Path): { path: Path; x: number; y: number } {
  */
 export function filmFont(): FontFamily | null {
     return clock.font
+}
+
+/** The height of the line box of one line of text, in text sizes. The layout measures a text by its line box. */
+const LINE_BOX = 1.2
+
+const letterLines = new WeakMap<LoadedFont, readonly [over: number, under: number]>()
+
+/**
+ * How far the letters of a font go over and under the base line, as parts of the text size: the highest and
+ * the lowest point of its ASCII letters, digits and signs. A text with tails and a text with none have the
+ * same two lines.
+ */
+function linesOf(font: LoadedFont): readonly [over: number, under: number] {
+    let lines = letterLines.get(font)
+    if (!lines) {
+        let over = 0, under = 0
+        for (let code = 33; code < 127; code++) {
+            const glyph = font.glyphFor(code)
+            // Glyph 0 is the empty box of a sign that the font does not have.
+            if (glyph === 0) continue
+            for (const contour of font.outline(glyph)?.contours ?? []) {
+                for (let i = 1; i < contour.length; i += 2) {
+                    over = Math.max(over, contour[i]!)
+                    under = Math.max(under, -contour[i]!)
+                }
+            }
+        }
+        letterLines.set(font, lines = [over / font.unitsPerEm, under / font.unitsPerEm])
+    }
+    return lines
 }
 
 export function text(content: string, options: TextOptions = {}): TextNode {
@@ -155,5 +196,13 @@ export function text(content: string, options: TextOptions = {}): TextNode {
     node.base.px = anchor === 'left' ? 0 : anchor === 'right' ? blockWidth : blockWidth / 2
     node.base.py = height / 2 - ascent * 0.36
     node.data['size'] = size
+    node.size = size
+    // The line box of the block, for the layout: its advance width, and 1.2 text sizes for one line, around
+    // the middle of the capital letters. The box holds the letters that go under the base line, so a gap
+    // from the box is a gap from the ink.
+    const half = (height + size * LINE_BOX) / 2
+    node.layoutBox = [0, node.base.py - half, blockWidth, node.base.py + half]
+    const [over, under] = linesOf(font)
+    node.letters = [-over * size, height + under * size]
     return node
 }

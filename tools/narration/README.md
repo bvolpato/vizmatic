@@ -7,7 +7,7 @@ These tools make the sound of a narrated film and check the result. `vizmatic na
 | `verify.py` | before every step | Checks `film.json`, `script.json`, and the timing against the script. Prints one line for each problem: the file, the field, what is wrong, and what to do. For a build, it also says if the voice and the mix are current, and why. |
 | `voice.py` | `voice` | Speaks `script.json` with Kokoro on this machine. Writes one WAV for each beat under `audio/`, and `timing.json` with the time of each word and a fingerprint of what the voice was made from. A take that a run left empty is made again. |
 | `draft.py` | `draft` | Writes a timing with estimated times and no sound, for a look at the scenes without the voice model. Beside a measured timing, it writes `timing.draft.json` and leaves `timing.json`. |
-| `mix.py` | `mix` | Lays the takes on the timeline, adds the pad of `soundbed.py` and the chimes, and writes `narration.wav`. It writes `audio/mix.json`, which says what the mix was made from. |
+| `mix.py` | `mix` | Lays the takes on the timeline, adds the pad of `soundbed.py` and the selected effects or legacy chimes, and writes `narration.wav`. It writes `audio/mix.json`, which says what the mix was made from. |
 | `beats.py` | `beats` | Prints where each beat starts and ends, or the spoken words of a scene with their times. |
 | `transcribe.py` | `transcribe` | Transcribes each take with `faster-whisper` and shows the words that differ from the script. |
 | `record.py` | a step of `build` | Writes `<name>.timing.json` beside a rendered movie: the timing that its picture was rendered with, and the hash of the picture. |
@@ -16,7 +16,7 @@ These tools make the sound of a narrated film and check the result. `vizmatic na
 | `probe.py` | `probe` | Prints the streams, the chapters, the caption count and the hash of a movie, and if its picture was rendered with the timing of the folder. |
 | `resound.py` | `resound` | Puts a new `narration.wav` into a rendered movie without a new render of the picture. |
 
-`checks.py` holds the checks of the files, in one place. `film.py` holds what the tools share: the checked film, the place of each beat on the timeline, the records of a mix and of a picture, and how a tool reads its options. `soundbed.py` makes the pad.
+`checks.py` holds the checks of the files, in one place. Its `SOUND_EFFECTS` metadata shares the names, descriptions, durations, and default gains without audio dependencies. `film.py` holds what the tools share: the checked film, the place of each beat on the timeline, the records of a mix and of a picture, and how a tool reads its options. `soundbed.py` makes the pad and the named effects.
 
 - Every tool checks the files of the film before it does anything, so a mistake in a file is one line and never a stack. This holds for a `timing.json` that was changed by hand too.
 - A tool refuses an option that it does not have.
@@ -73,9 +73,9 @@ In `script.json`, `timeline.pause` is the silence between the title card and the
 }
 ```
 
-Every key has a default, so a film can leave out `voice` and `mix`. Without `swells`, the pad rises under the title card, and again a quarter of a second after the last word. Without `chimes`, a bell rings on the title card and a fuller chord rings after the last word.
+The `voice` and `mix` settings have defaults, so a film can leave them out. Without `swells`, the pad rises under the title card, and again a quarter of a second after the last word. When `effects` is omitted, `chimes` keeps its legacy behavior: an explicit list selects the bells, and `[]` removes them. With neither key, a bell rings on the title card when there is one, and a fuller chord rings after the last word.
 
-A swell and a chime each name a time in one of three ways:
+A swell, a chime, and a named effect each name a time in one of three ways:
 
 - `"at": 12.5` is a time in the film, in seconds. A negative value counts from the end of the film.
 - `"intro": 0.5` is a share of the title card: 0.5 is its middle.
@@ -85,4 +85,37 @@ A swell and a chime each name a time in one of three ways:
 
 A swell also takes `width` (seconds, 2.0 by default), `db` (the level at its top, below the voice, `card` by default), and `after` (a time: the swell is silent before it, so that it does not start under the last words).
 
-A chime also takes `gain` (0.11 by default), `notes` (three frequencies in hertz), `full` (a second, lower bell, for the last card), and `until` (a time: the bell fades over half a second and is silent from then on). Use `until` when a name follows a chime: a transcript of one film heard a name wrong with a bell under it.
+A chime also takes `gain` (0.11 by default), `notes` (three frequencies in hertz), `full` (a second, lower bell, for the last card), and `until` (a time: the bell fades over half a second and is silent from then on). A legacy chime needs at least one second between its start and `until`. Use `until` when a name follows a chime: a transcript of one film heard a name wrong with a bell under it.
+
+### Named effects
+
+Use `mix.effects` to choose named effects explicitly. It is an ordered list of objects, each with a required `sound` and one of the time anchors above. The mixer adds them in the given order. The four new sounds are the recommended choices for new films. For example:
+
+```json
+{
+  "mix": {
+    "effects": [
+      { "sound": "tap", "scene": "hook", "beat": 0 },
+      { "sound": "slide", "scene": "hook", "beat": 6, "offset": 0.2, "until": { "scene": "hook", "beat": 6, "offset": 0.35 } },
+      { "sound": "latch", "scene": "close", "beat": 0 },
+      { "sound": "resolve", "scene": "close", "beat": -1, "edge": "end", "offset": 0.2, "gain": 0.04 }
+    ]
+  }
+}
+```
+
+`"effects": []` mixes only the voice and the pad. Named effects are an explicit author choice and are never added automatically. A mix cannot contain both `chimes` and `effects`, even when either list is empty.
+
+| `sound` | Description | Duration (seconds) | Default `gain` |
+|---|---|---|---|
+| `tap` | A short wooden tap. | 0.14 | 0.045 |
+| `slide` | A soft brush that sweeps into motion. | 0.32 | 0.035 |
+| `latch` | A two-part mechanical catch. | 0.26 | 0.05 |
+| `resolve` | A rounded two-note resolution with a short tail. | 0.76 | 0.045 |
+| `bell` | The original soft three-note bell. | 5.0 | 0.05 |
+
+These defaults keep the effects quiet under speech. Each effect can override its own level with a positive `gain`. `soundbed.sound_effect(name, rate)` returns mono `float32` samples with an absolute peak of 1, before the mixer applies the gain.
+
+Use `"sound": "bell"` to combine the original bell shape with other named effects in the same list. Its named gain applies to a normalized clip. The legacy `chimes` path keeps its original samples and gain through `soundbed.bell_samples(t, notes, gain)`.
+
+Each effect can also give an `until` anchor using the same time fields as its start. The start must be inside the film, and `until` must be after the start. Short cutoffs are allowed. Named effects have no one-second minimum. Each effect's gain and cutoff apply only to that clip, including when effects overlap. At `until` or the end of the film, the mixer clips the sound if needed and fades its final samples over up to 20 ms.

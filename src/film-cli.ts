@@ -23,6 +23,8 @@ export interface FilmArgs {
     fps?: number
     width?: number
     quality: Quality
+    /** Turn the dither of the bloom on or off. Without it, the quality and the format decide. */
+    dither?: boolean
     motionBlur?: number
     shutter?: number
     from?: number
@@ -137,6 +139,8 @@ export function parseFilmArgs(argv: readonly string[]): FilmArgs {
             case '--width': args.width = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--motion-blur': args.motionBlur = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--shutter': args.shutter = positiveNumber(requireValue(argv, i++, arg), arg); break
+            case '--dither': args.dither = true; break
+            case '--no-dither': args.dither = false; break
             case '--workers': args.workers = positiveInteger(requireValue(argv, i++, arg), arg); break
             case '--audio': args.audioPath = requireValue(argv, i++, arg); break
             case '--name': {
@@ -301,7 +305,7 @@ async function renderOneLook(
     const stem = lookLabel ? `${name}_${lookLabel}` : name
     const shown = (path: string) => relative(process.cwd(), path)
     const common = {
-        quality: args.quality, motionBlur: args.motionBlur, shutter: args.shutter, workers: args.workers,
+        quality: args.quality, dither: args.dither, motionBlur: args.motionBlur, shutter: args.shutter, workers: args.workers,
         from: args.from, to: args.to, audioPath: args.audioPath, ffmpegPath: args.ffmpegPath, signal, width: args.width,
     }
     const look = compiled.look.name
@@ -315,7 +319,7 @@ async function renderOneLook(
         const pages = Math.ceil(times.length / perSheet)
         for (let page = 0; page < pages; page++) {
             const suffix = pages > 1 ? `_sheet_${String(page + 1).padStart(String(pages).length, '0')}` : '_sheet'
-            const written = await renderFilmSheet(compiled, times.slice(page * perSheet, (page + 1) * perSheet), join(args.outDir, `${stem}${suffix}.png`), { width: args.width, columns, workers: args.workers })
+            const written = await renderFilmSheet(compiled, times.slice(page * perSheet, (page + 1) * perSheet), join(args.outDir, `${stem}${suffix}.png`), { width: args.width, columns, workers: args.workers, dither: args.dither })
             const bytes = (await stat(written.outputPath)).size
             outputs.push({ format: 'png', path: shown(written.outputPath), look, width: written.width, height: written.height, bytes, times: written.times, columns: written.columns, rows: written.rows })
             say(`rendered ${shown(written.outputPath)} (${written.times.length} frames from ${written.times[0]!.toFixed(2)}s to ${written.times[written.times.length - 1]!.toFixed(2)}s, ${written.width}x${written.height}, ${formatBytes(bytes)})`)
@@ -332,7 +336,7 @@ async function renderOneLook(
         for (const format of still.formats) {
             const path = join(args.outDir, `${stem}${still.suffix}.${format}`)
             const written = format === 'png'
-                ? await renderFilmFrame(compiled, still.time, path, { width: args.width })
+                ? await renderFilmFrame(compiled, still.time, path, { width: args.width, dither: args.dither })
                 : await renderFilmSvg(compiled, still.time, path, { width: args.width })
             const bytes = (await stat(written.outputPath)).size
             outputs.push({ format, path: shown(written.outputPath), look, width: written.width, height: written.height, bytes, time: Math.round(still.time * 1000) / 1000 })
@@ -438,7 +442,7 @@ export async function checkFilmFile(
     file: string,
     load: FilmLoader,
     looks: readonly LookName[],
-    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'readingSpeed' | 'stepped'> = {},
+    options: Pick<FilmCheckOptions, 'motion' | 'contentTop' | 'textMargin' | 'textGap' | 'textSize' | 'emptySpace' | 'emptySeconds' | 'readingSpeed' | 'stepped'> = {},
 ): Promise<FilmCheckFileReport[]> {
     const definition = await loadFilmDefinition(file, load)
     const source = relative(process.cwd(), file)

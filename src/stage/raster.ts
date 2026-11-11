@@ -127,11 +127,43 @@ function boxBlur(data, tmp, sums, w, h, radius) {
   }
 }
 
+// The thresholds of the dither for one frame size: a byte for each pixel, from interleaved gradient noise
+// (Jimenez, 2014). The byte k stands for the threshold (k + 0.5) / 256, so a threshold is never 0 and never 1.
+// The table depends on the place of a pixel only, so a frame is the same in every frame and on every run.
+// A worker keeps the table of its last size: a film has one size, and the table costs more than a frame to make.
+let grainBytes = null, grainWidth = 0, grainHeight = 0
+function grainOf(w, h) {
+  if (grainBytes && grainWidth === w && grainHeight === h) return grainBytes
+  const bytes = new Uint8Array(w * h)
+  for (let y = 0, i = 0; y < h; y++) {
+    const down = 0.00583715 * y
+    for (let x = 0; x < w; x++, i++) {
+      const place = 0.06711056 * x + down
+      const noise = 52.9829189 * (place - Math.floor(place))
+      bytes[i] = (noise - Math.floor(noise)) * 256
+    }
+  }
+  grainBytes = bytes; grainWidth = w; grainHeight = h
+  return bytes
+}
+
 // Bloom: bright marks spill soft light. Blurred layers add on top of the sharp image.
 //
-// Each expression keeps the order of the first version of this function, which looped over each pixel,
-// layer and channel. So the bytes are the same. tests/stage-bloom.test.ts keeps that version and compares.
-function bloom(pixels, w, h, amount, background) {
+// In the plain write, each expression keeps the order of the first version of this function, which looped over
+// each pixel, layer and channel. So the bytes are the same. tests/stage-bloom.test.ts keeps that version and
+// compares.
+//
+// The light is a smooth ramp over a few of the 256 levels of a channel. The plain write cuts each value down
+// to a whole level, which draws a contour line where the ramp passes a level. With a dither, the write first
+// adds the threshold of the pixel, which is between 0 and 1. Each pixel then goes to the level below or above
+// in the right share, and a line becomes fine grain. What holds for each pixel and channel:
+// - With no light, the value is the whole number of the byte, and a threshold below 1 leaves it there.
+// - The byte is the byte of the plain write, or one level above it. The dithered blend is the same sum in
+//   another order, so it is the plain value give or take 1e-9, and a threshold is 0.002 or more from 0 and 1.
+// - Over the 256 thresholds, the mean of the byte is the value, give or take 1/512 of a level.
+// - A pixel with alpha 0 gets no threshold, so it has no grain: a film with no page stays clean where nothing
+//   is drawn.
+function bloom(pixels, w, h, amount, background, dither) {
   const layers = []
   // The spread follows output width, so a small preview and a 4K master look alike.
   const k = w / 1920
@@ -210,6 +242,13 @@ function bloom(pixels, w, h, amount, background) {
   const w0 = l0.weight, w1 = l1.weight, w2 = l2.weight
   // The runs of pixels that a row computes, as pairs of a start and an end.
   const runs = new Int32Array(spans * 2)
+  // With a dither, for each run: -1 where the plain write changes a byte, so each pixel has work. For a dim
+  // span, the least threshold byte that can lift a pixel of the span.
+  const leasts = dither ? new Int16Array(spans) : null
+  const grain = dither ? grainOf(w, h) : null
+  // The pixels of a dim span that have work.
+  const picks = new Int32Array(SPAN)
+  const STEP = 1 / 256, HALF = 0.5 / 256, INV = 1 / 255, gain = amount * 2.4
   let count = 0
   for (let y = 0; y < h; y++) {
     let moved = false
@@ -237,24 +276,78 @@ function bloom(pixels, w, h, amount, background) {
       for (let span = 0; span < spans; span++) {
         const c0 = m0[span] > n0[span] ? m0[span] : n0[span], c1 = m1[span] > n1[span] ? m1[span] : n1[span], c2 = m2[span] > n2[span] ? m2[span] : n2[span]
         const limit = (c0 * w0 + c1 * w1 + c2 * w2) * amount * 2.4
-        if (limit >= 0 && limit < 0.999) continue
+        const dim = limit >= 0 && limit < 0.999
         const from = span * SPAN, to = Math.min(w, from + SPAN)
-        if (count > 0 && runs[count - 1] === from) runs[count - 1] = to
-        else { runs[count] = from; runs[count + 1] = to; count += 2 }
+        if (!leasts) {
+          if (dim) continue
+          if (count > 0 && runs[count - 1] === from) runs[count - 1] = to
+          else { runs[count] = from; runs[count + 1] = to; count += 2 }
+          continue
+        }
+        // With a dither, a span with no light at all keeps every byte. A dim span is a run of its own. There a
+        // pixel gets less light than the limit, so its byte goes up only when its threshold and the limit pass
+        // 1: that is from the threshold byte least. A limit under half a threshold step lifts no pixel.
+        if (limit === 0) continue
+        if (dim) {
+          const least = Math.ceil((0.999999 - limit) * 256 - 0.5)
+          if (least > 255) continue
+          runs[count] = from; runs[count + 1] = to; leasts[count >> 1] = least; count += 2
+        } else if (count > 0 && runs[count - 1] === from && leasts[(count >> 1) - 1] < 0) runs[count - 1] = to
+        else { runs[count] = from; runs[count + 1] = to; leasts[count >> 1] = -1; count += 2 }
       }
     }
     const a0 = l0.rows[l0.top], b0 = l0.rows[l0.low], a1 = l1.rows[l1.top], b1 = l1.rows[l1.low], a2 = l2.rows[l2.top], b2 = l2.rows[l2.low]
     const s0 = l0.sy, t0 = l0.ty, s1 = l1.sy, t1 = l1.ty, s2 = l2.sy, t2 = l2.ty
     const line = y * w * 4
+    if (!leasts) {
+      for (let n = 0; n < count; n += 2) {
+        for (let o = runs[n] * 3, p = line + runs[n] * 4, end = runs[n + 1] * 3; o < end; o += 3, p += 4) {
+          const r = 0 + (a0[o] * s0 + b0[o] * t0) * w0 + (a1[o] * s1 + b1[o] * t1) * w1 + (a2[o] * s2 + b2[o] * t2) * w2
+          const g = 0 + (a0[o + 1] * s0 + b0[o + 1] * t0) * w0 + (a1[o + 1] * s1 + b1[o + 1] * t1) * w1 + (a2[o + 1] * s2 + b2[o + 1] * t2) * w2
+          const b = 0 + (a0[o + 2] * s0 + b0[o + 2] * t0) * w0 + (a1[o + 2] * s1 + b1[o + 2] * t1) * w1 + (a2[o + 2] * s2 + b2[o + 2] * t2) * w2
+          // Screen blend keeps highlights from clipping harshly.
+          pixels[p] = 255 - (255 - pixels[p]) * (255 - Math.min(255, r * amount * 2.4)) / 255
+          pixels[p + 1] = 255 - (255 - pixels[p + 1]) * (255 - Math.min(255, g * amount * 2.4)) / 255
+          pixels[p + 2] = 255 - (255 - pixels[p + 2]) * (255 - Math.min(255, b * amount * 2.4)) / 255
+        }
+      }
+      continue
+    }
+    // The dithered blend. It is the screen blend above as p + m * (255 - p) / 255, with the weight of a layer,
+    // its share of the two rows and the gain in one factor. That is fewer steps for each pixel.
+    const A0 = s0 * w0 * gain, B0 = t0 * w0 * gain, A1 = s1 * w1 * gain, B1 = t1 * w1 * gain, A2 = s2 * w2 * gain, B2 = t2 * w2 * gain
+    const rowGrain = y * w
     for (let n = 0; n < count; n += 2) {
-      for (let o = runs[n] * 3, p = line + runs[n] * 4, end = runs[n + 1] * 3; o < end; o += 3, p += 4) {
-        const r = 0 + (a0[o] * s0 + b0[o] * t0) * w0 + (a1[o] * s1 + b1[o] * t1) * w1 + (a2[o] * s2 + b2[o] * t2) * w2
-        const g = 0 + (a0[o + 1] * s0 + b0[o + 1] * t0) * w0 + (a1[o + 1] * s1 + b1[o + 1] * t1) * w1 + (a2[o + 1] * s2 + b2[o + 1] * t2) * w2
-        const b = 0 + (a0[o + 2] * s0 + b0[o + 2] * t0) * w0 + (a1[o + 2] * s1 + b1[o + 2] * t1) * w1 + (a2[o + 2] * s2 + b2[o + 2] * t2) * w2
-        // Screen blend keeps highlights from clipping harshly.
-        pixels[p] = 255 - (255 - pixels[p]) * (255 - Math.min(255, r * amount * 2.4)) / 255
-        pixels[p + 1] = 255 - (255 - pixels[p + 1]) * (255 - Math.min(255, g * amount * 2.4)) / 255
-        pixels[p + 2] = 255 - (255 - pixels[p + 2]) * (255 - Math.min(255, b * amount * 2.4)) / 255
+      const least = leasts[n >> 1]
+      if (least < 0) {
+        for (let x = runs[n], o = x * 3, p = line + x * 4, i = rowGrain + x, end = runs[n + 1]; x < end; x++, o += 3, p += 4, i++) {
+          // A choice with no branch: a branch here made the pass a tenth slower.
+          const t = pixels[p + 3] === 0 ? 0 : grain[i] * STEP + HALF
+          const r = a0[o] * A0 + b0[o] * B0 + a1[o] * A1 + b1[o] * B1 + a2[o] * A2 + b2[o] * B2
+          const g = a0[o + 1] * A0 + b0[o + 1] * B0 + a1[o + 1] * A1 + b1[o + 1] * B1 + a2[o + 1] * A2 + b2[o + 1] * B2
+          const b = a0[o + 2] * A0 + b0[o + 2] * B0 + a1[o + 2] * A1 + b1[o + 2] * B1 + a2[o + 2] * A2 + b2[o + 2] * B2
+          const pr = pixels[p], pg = pixels[p + 1], pb = pixels[p + 2]
+          pixels[p] = pr + Math.min(255, r) * (255 - pr) * INV + t
+          pixels[p + 1] = pg + Math.min(255, g) * (255 - pg) * INV + t
+          pixels[p + 2] = pb + Math.min(255, b) * (255 - pb) * INV + t
+        }
+        continue
+      }
+      // A dim span: first find the pixels with a threshold of least or more, with no branch. Then give only
+      // those their light. The light is under one level there, so it has no limit of 255 to keep. The plain
+      // write keeps every byte of a dim span, so a pixel with alpha 0 takes no light: its factor q is 0.
+      let found = 0
+      for (let x = runs[n], i = rowGrain + x, end = runs[n + 1]; x < end; x++, i++) { picks[found] = x; found += ((grain[i] - least) >>> 31) ^ 1 }
+      for (let j = 0; j < found; j++) {
+        const x = picks[j], o = x * 3, p = line + x * 4
+        const t = grain[rowGrain + x] * STEP + HALF, q = pixels[p + 3] === 0 ? 0 : INV
+        const r = a0[o] * A0 + b0[o] * B0 + a1[o] * A1 + b1[o] * B1 + a2[o] * A2 + b2[o] * B2
+        const g = a0[o + 1] * A0 + b0[o + 1] * B0 + a1[o + 1] * A1 + b1[o + 1] * B1 + a2[o + 1] * A2 + b2[o + 1] * B2
+        const b = a0[o + 2] * A0 + b0[o + 2] * B0 + a1[o + 2] * A1 + b1[o + 2] * B1 + a2[o + 2] * A2 + b2[o + 2] * B2
+        const pr = pixels[p], pg = pixels[p + 1], pb = pixels[p + 2]
+        pixels[p] = pr + r * (255 - pr) * q + t
+        pixels[p + 1] = pg + g * (255 - pg) * q + t
+        pixels[p + 2] = pb + b * (255 - pb) * q + t
       }
     }
   }
@@ -374,7 +467,10 @@ parentPort.on('message', (job) => {
     }
     const averageMs = performance.now() - started - clock.rasterMs
     const beforeBloom = performance.now()
-    if (job.bloom > 0) bloom(out, job.width, job.height, job.bloom, job.background)
+    // With motion blur, the bloom and its dither come once, after the average of the shutter samples. The
+    // average cuts each value to a whole level, so grain in a sample would not reach the frame. The bloom is
+    // the last write before the encoder, so nothing after it rounds the grain away.
+    if (job.bloom > 0) bloom(out, job.width, job.height, job.bloom, job.background, job.dither !== false)
     const bloomMs = performance.now() - beforeBloom
     parentPort.postMessage({ id: job.id, pixels: out, rasterMs: clock.rasterMs, averageMs, bloomMs }, [out.buffer])
   } catch (error) {
@@ -390,6 +486,13 @@ export interface RasterJob {
     bloom: number
     /** Background color in 0-255 RGB. Light above it blooms. */
     background: readonly [number, number, number]
+    /**
+     * Round the light of the bloom to whole levels with a fixed pattern of thresholds, so that soft light
+     * has fine grain and no contour lines. On unless false. The pattern depends on the place of a pixel
+     * only, so two equal jobs give the same bytes. The export turns it off for a GIF, whose palette cannot
+     * hold the grain, and for a movie at `draft` or `standard` that does not ask for it.
+     */
+    dither?: boolean
 }
 
 interface Pending {
@@ -540,7 +643,7 @@ export function sameRasterJob(a: RasterJob, b: RasterJob): boolean {
         const original = embeddedJobs.get(job)
         return !!original && original.length === job.svgs.length && original.every((svg, i) => svg === job.svgs[i])
     }
-    return a.width === b.width && a.height === b.height && a.bloom === b.bloom
+    return a.width === b.width && a.height === b.height && a.bloom === b.bloom && (a.dither !== false) === (b.dither !== false)
         && a.background.length === b.background.length && a.background.every((channel, i) => channel === b.background[i])
         && a.svgs.length === b.svgs.length && admitted(a) && admitted(b) && a.svgs.every((svg, i) => svg === b.svgs[i])
 }
@@ -549,15 +652,16 @@ export function defaultPoolSize(): number {
     return Math.max(1, Math.min(12, cpus().length - 2))
 }
 
-export function framesToJob(frames: readonly Frame[], width: number, parseBackground: (color: string | null) => readonly [number, number, number], height?: number): RasterJob {
+export function framesToJob(frames: readonly Frame[], width: number, parseBackground: (color: string | null) => readonly [number, number, number], height?: number, dither = true): RasterJob {
     const first = frames[0]!
     const scale = width / first.width
-    const job = {
+    const job: RasterJob = {
         svgs: frames.map((frame) => frameToSvg(frame)),
         width,
         height: height ?? Math.round(first.height * scale),
         bloom: first.dark ? first.bloom : 0,
         background: parseBackground(first.background),
+        dither,
     }
     if (frames.every(embeddedResources)) embeddedJobs.set(job, job.svgs.slice())
     return job

@@ -1,21 +1,22 @@
 import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decode, encode } from 'fast-png'
 import { build } from 'esbuild'
 import {
     angleMark, arrayCells, arrow, axes, axes3d, barChart, bitField, boundary, braceLabel, callout, card, circle, circumscribe, codeBlock, complexPlane, connector, countUp, counter,
     crossThrough, dateLine, decimal, donut, dot, dotChart, dynamic, eventLog, film, fromSvg, graph, group, heatmap, highlightSweep, histogram, image, infoBox, label3d, labeledDot, lanes, legend, line,
-    lineChart, linear, matrix, morphMatching, neuralNet, Node, numberLine, pictogram, pie, point3d, polygon, polyline, quote, quotePair, rect, ringBuffer, scatter, scene3d, seq, shift, sphere, spin,
-    stateGrid, steps, surface,
+    lineChart, linear, matrix, morphMatching, neuralNet, Node, numberLine, pictogram, pie, point3d, polygon, polyline, quote, quotePair, rect, resolveImageAsset, ringBuffer, scatter, scene3d, seq, shift, sphere, spin,
+    segmentedBar, stateGrid, steps, surface,
     surroundingBox, svgPath, tag, tagTrack, terminal, tex, text, to, tokens, tree, typewriter, unitChart, vectorField, write, zone,
 } from '../src/stage/index'
 import { filmEncoderSettings, planRender, posterTime, renderFilmFrame, renderFilmGif, renderFilmSvg, renderFilmVideo, captionsToVtt } from '../src/stage/export'
 import { checkFilm, readingSeconds } from '../src/stage/check'
 import { compileFilm } from '../src/stage/stage'
+import { RasterPool, framesToJob, sameRasterJob } from '../src/stage/raster'
 import { renderRgbaVideo } from '../src/video'
 
 const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { encoding: 'utf8' }).status === 0
@@ -91,6 +92,116 @@ describe('film export', () => {
         expect(bytes.subarray(0, 6).toString('ascii')).toBe('GIF89a')
         // A static hold at the end costs nothing, so far fewer bytes than ten full frames.
         expect(bytes.length).toBeLessThan(240 * 135 * 2)
+    })
+
+    describe.skipIf(process.platform === 'win32')('the dither of the bloom', () => {
+        const width = 320, height = 180, bytes = width * height * 4
+        const page = () => [11, 12, 16] as const
+        // A ring of light on the dark page of the default look, or on paper, which has no bloom. Nothing moves.
+        const ring = (look?: 'paper') => compileFilm(film({ fps: 10, bloom: 0.6 }, (s) => {
+            s.add(circle(200, { stroke: 'yellow', width: 10 }))
+            s.wait(0.5)
+        }), look ? { look } : {})
+        type Ring = Awaited<ReturnType<typeof ring>>
+
+        /** The frame of the ring with the plain bloom and with the dithered bloom. */
+        async function expectedFrames(dark: Ring): Promise<{ plain: Uint8Array; dithered: Uint8Array }> {
+            const pool = new RasterPool(1)
+            try {
+                const frame = await dark.frame(0.1)
+                const plain = await pool.run(framesToJob([frame], width, page, height, false))
+                const dithered = await pool.run(framesToJob([frame], width, page, height))
+                expect(Buffer.compare(plain, dithered)).not.toBe(0)
+                return { plain, dithered }
+            } finally {
+                await pool.close()
+            }
+        }
+
+        /** Render a movie with a stand-in for FFmpeg that keeps its arguments and copies the raw frames to the output path. */
+        async function movie(directory: string, name: string, compiled: Ring, options: Parameters<typeof renderFilmVideo>[2]) {
+            const encoder = join(directory, 'keep-frames.sh')
+            await writeFile(encoder, '#!/bin/sh\ncase "$1" in -h) exit 0;; esac\nfor last; do :; done\nprintf \'%s\\n\' "$@" > "$last.args"\nexec cat > "$last"\n', { mode: 0o755 })
+            const output = await renderFilmVideo(compiled, join(directory, name), { width, workers: 1, ffmpegPath: encoder, ...options })
+            // The encoder gets a temporary path, so find its arguments beside the frames by name.
+            const kept = (await readdir(directory, { recursive: true })).find((file) => file.includes(name) && file.endsWith('.args'))
+            const args = (await readFile(join(directory, kept!), 'utf8')).split('\n')
+            const at = args.indexOf('-x264-params')
+            return { frames: await readFile(output.outputPath), settings: at < 0 ? undefined : args[at + 1] }
+        }
+
+        // The defaults: a quality for work on a film has no dither, and a quality for a copy to publish has it.
+        // The settings are what the H.264 encoder gets with the dither, so that it keeps the grain.
+        it.each([
+            ['draft', false, 'aq-strength=2.0'],
+            ['standard', false, 'aq-strength=1.0:subme=6:trellis=0'],
+            ['high', true, 'subme=6:trellis=0'],
+            ['master', true, 'subme=6:trellis=0'],
+        ] as const)('at %s, a movie has the dither by default: %s, and the option turns it on with %s and off with no settings', async (quality, byDefault, settings) => {
+            const directory = await tempDirectory()
+            const dark = await ring(), { plain, dithered } = await expectedFrames(dark)
+            // The first frame and a later frame: a still picture has the same grain in each. The motion blur is
+            // that of the quality, so at high and master each frame is an average of shutter samples.
+            const shows = (frames: Buffer, expected: Uint8Array) => frames.length === 5 * bytes
+                && Buffer.compare(frames.subarray(0, bytes), expected) === 0 && Buffer.compare(frames.subarray(3 * bytes, 4 * bytes), expected) === 0
+            const unset = await movie(directory, `${quality}.raw`, dark, { quality })
+            expect(shows(unset.frames, byDefault ? dithered : plain)).toBe(true)
+            expect(unset.settings).toBe(byDefault ? settings : undefined)
+            const on = await movie(directory, `${quality}-on.raw`, dark, { quality, dither: true })
+            expect(shows(on.frames, dithered)).toBe(true)
+            expect(on.settings).toBe(settings)
+            const off = await movie(directory, `${quality}-off.raw`, dark, { quality, dither: false })
+            expect(shows(off.frames, plain)).toBe(true)
+            expect(off.settings).toBeUndefined()
+        }, 120_000)
+
+        it('gives the settings of the grain to H.264 only, and only for a film with bloom', async () => {
+            const directory = await tempDirectory()
+            const dark = await ring(), { dithered } = await expectedFrames(dark)
+            // VP9 takes no x264 settings. Its frames have the dither all the same.
+            const webm = await movie(directory, 'high.webm.raw', dark, { quality: 'high', codec: 'vp9' })
+            expect(webm.settings).toBeUndefined()
+            expect(Buffer.compare(webm.frames.subarray(0, bytes), dithered)).toBe(0)
+            // A look with no bloom has no grain to keep, with the dither by default or by the option.
+            expect((await movie(directory, 'paper.raw', await ring('paper'), { quality: 'high' })).settings).toBeUndefined()
+            expect((await movie(directory, 'paper-on.raw', await ring('paper'), { quality: 'standard', dither: true })).settings).toBeUndefined()
+        }, 120_000)
+
+        it('dithers a PNG unless the option turns it off, and never a GIF', async () => {
+            const directory = await tempDirectory()
+            const dark = await ring(), { plain, dithered } = await expectedFrames(dark)
+            const still = async (name: string, options: Parameters<typeof renderFilmFrame>[3]) => {
+                await renderFilmFrame(dark, 0.1, join(directory, name), { width, ...options })
+                return decode(await readFile(join(directory, name))).data as Uint8Array
+            }
+            // A still is for a look at the picture, at any quality.
+            expect(Buffer.compare(await still('ring.png', {}), dithered)).toBe(0)
+            expect(Buffer.compare(await still('ring-draft.png', { quality: 'draft' }), dithered)).toBe(0)
+            expect(Buffer.compare(await still('ring-off.png', { dither: false }), plain)).toBe(0)
+            // A palette of 256 colors cannot hold the grain, so each frame of a GIF asks for the plain write.
+            const run = vi.spyOn(RasterPool.prototype, 'run')
+            try {
+                await renderFilmGif(dark, join(directory, 'ring.gif'), { width, fps: 10, workers: 1, quality: 'high', dither: true })
+                expect(run.mock.calls.length).toBeGreaterThan(0)
+                expect(run.mock.calls.every(([job]) => job.dither === false)).toBe(true)
+            } finally {
+                run.mockRestore()
+            }
+        }, 120_000)
+
+        it('keeps a still picture one job with the same bytes at two times, and has nothing to switch in a look with no bloom', async () => {
+            const dark = await ring(), pool = new RasterPool(1)
+            try {
+                const [first, later] = [await dark.frame(0.1), await dark.frame(0.4)]
+                // The grain does not move: the frame reuse of the export takes the pixels of the frame before.
+                expect(sameRasterJob(framesToJob([first], width, page, height), framesToJob([later], width, page, height))).toBe(true)
+                expect(Buffer.compare(await pool.run(framesToJob([first], width, page, height)), await pool.run(framesToJob([later], width, page, height)))).toBe(0)
+                const paper = await (await ring('paper')).frame(0.1)
+                expect(Buffer.compare(await pool.run(framesToJob([paper], width, page, height)), await pool.run(framesToJob([paper], width, page, height, false)))).toBe(0)
+            } finally {
+                await pool.close()
+            }
+        })
     })
 
     it.skipIf(!hasFfmpeg)('stays at H.264 level 4.2 at 1080p60, and a clip with the film settings shares its decoder settings', async () => {
@@ -1154,6 +1265,8 @@ describe('film check', () => {
                 s.play(log.focus(4), { duration: 0.2 })
             },
             'terminal, tight, with a part that find() selects': (s) => { const run = s.add(terminal([{ text: 'perf stat ./one-byte', kind: 'command' }, '          1      page-faults', { text: '...', kind: 'note' }], { title: 'runs/02.txt', note: 'Linux 7.0', size: 40 })); run.find('page-faults').set('opacity', 0.9) },
+            'segmentedBar with a title, a readout, the free room, and labels that push each other': (s) => { s.add(segmentedBar([{ name: 'system', value: 1200 }, { name: 'trace export', value: 8200 }, { name: 'note gjpqy', value: 186 }, { name: 'question', value: 450 }], { capacity: 16000, title: 'context window', free: 'free', width: 1700 })) },
+            'segmentedBar, tight, over its capacity': (s) => { s.add(segmentedBar([{ name: 'weights', value: 7.6 }, { name: 'gjpqy', value: 0.4 }, { name: 'KV cache', value: 22.5 }], { capacity: 24, max: 34, width: 900, height: 30, size: 26, title: 'GPU', format: (value) => `${value.toFixed(1)} GB` })) },
         }
         // With 0.3 and 0.7, and with the most room that the rule asks for: 2% of the shorter side of the frame, for a text of any size.
         for (const textGap of [0.3, 0.7, 3]) {
@@ -2171,6 +2284,263 @@ console.log(JSON.stringify(report.diagnostics.map((entry) => entry.message)))
         const messages = JSON.parse(result.stdout) as string[]
         expect(messages.map((message) => / of (an? [a-z]+) (above|below|left of|right of) it/.exec(message)?.[1]).sort()).toEqual(['a card', 'a connector', 'a zone'])
     }, 60_000)
+})
+
+describe('film check: small text', () => {
+    const messages = async (build: (s: Parameters<Parameters<typeof film>[1]>[0]) => void, options: { textSize?: number; times?: number[] } = { textSize: 26 }, size: { width?: number; height?: number } = {}) =>
+        (await checkFilm(film({ fps: 10, ...size }, (s) => { build(s); s.wait(1) }), options)).diagnostics.map((entry) => `${entry.code}: ${entry.message}`)
+
+    it('reports text under a size on the screen, when the rule is on', async () => {
+        const caption = (size: number, options?: { textSize?: number }) => checkFilm(film({ fps: 10 }, (s) => { s.add(text('caption', { size })); s.wait(1) }), options ?? { textSize: 26 })
+        const small = await caption(20)
+        expect(small.ok).toBe(true)
+        expect(small.diagnostics).toMatchObject([{ code: 'film.text_small', severity: 'warning', text: 'caption', message: 'Text "caption" is 20 px on the screen, and the least size is 26 px. Give it a larger size.' }])
+        expect((await caption(25.9)).diagnostics).toMatchObject([{ code: 'film.text_small' }])
+        expect((await caption(26)).diagnostics).toEqual([])
+        // The rule is off by default, and 0 turns it off.
+        expect((await caption(20, {})).diagnostics).toEqual([])
+        expect((await caption(20, { textSize: 0 })).diagnostics).toEqual([])
+        expect((await caption(30, { textSize: 32 })).diagnostics).toMatchObject([{ message: 'Text "caption" is 30 px on the screen, and the least size is 32 px. Give it a larger size.' }])
+        await expect(caption(20, { textSize: -1 })).rejects.toThrow('checkFilm: textSize is the least size of text in pixels of a frame that is 1080 high, such as 26. 0 turns the rule off')
+        await expect(caption(20, { textSize: Number.NaN })).rejects.toThrow('checkFilm: textSize is the least size of text')
+    })
+
+    it('measures the size that a viewer sees: with the scale of the node, the zoom of the camera, and the size of the frame', async () => {
+        // A text of 40 at half its size is a text of 20.
+        expect(await messages((s) => { s.add(text('half', { size: 40 }).scale(0.5)) })).toEqual(['film.text_small: Text "half" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+        expect(await messages((s) => { s.add(text('grown', { size: 20 }).scale(1.3)) })).toEqual([])
+        // A group that is smaller makes its text smaller.
+        expect(await messages((s) => { s.add(group(text('in a group', { size: 30 })).scale(0.8)) })).toEqual(['film.text_small: Text "in a group" is 24 px on the screen, and the least size is 26 px. Give it a larger size.'])
+        // The camera comes nearer: the text of 20 is 30 on the screen.
+        const zoomed = (factor: number) => messages((s) => {
+            s.add(text('far', { size: 20 }))
+            s.play(to(s.camera, (camera) => camera.set('sx', factor).set('sy', factor), { duration: 0.2 }))
+        }, { textSize: 26, times: [0.6] })
+        expect(await zoomed(1.5)).toEqual([])
+        expect(await zoomed(1)).toEqual(['film.text_small: Text "far" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+        // The size is for a frame that is 1080 high. In a frame of 1280 by 720, it is 17.3 px.
+        expect(await messages((s) => { s.add(text('small frame', { size: 18 })) }, { textSize: 26 }, { width: 1280, height: 720 })).toEqual([])
+        expect(await messages((s) => { s.add(text('small frame', { size: 17 })) }, { textSize: 26 }, { width: 1280, height: 720 })).toEqual(['film.text_small: Text "small frame" is 17 px on the screen, and the least size is 17.3 px. Give it a larger size.'])
+        // A formula has the size of its letters. An index is smaller on purpose.
+        expect(await messages((s) => { s.add(tex('x_1^2', { size: 30 })) })).toEqual([])
+        expect(await messages((s) => { s.add(tex('x_1^2', { size: 24 })) })).toEqual(['film.text_small: Text "x_1^2" is 24 px on the screen, and the least size is 26 px. Give it a larger size.'])
+    })
+
+    it('puts the texts of one size in one finding, with the time of the first one and of the last one', async () => {
+        const report = await checkFilm(film({ fps: 10 }, (s) => {
+            'abcdefg'.split('').forEach((letter, index) => s.add(text(`word ${letter}`, { size: 22 }).at(-750 + index * 250, -200)))
+            s.add(text('note', { size: 18 }).at(0, 200))
+            s.wait(1)
+            s.add(text('late', { size: 22 }).at(0, 0))
+            s.wait(1)
+        }), { textSize: 26, times: [0.5, 1.5] })
+        expect(report.diagnostics.map((entry) => [entry.message, entry.time, entry.until, entry.text])).toEqual([
+            ['8 texts are 22 px on the screen, and the least size is 26 px: "word a", "word b", "word c", "word d", "word e" and 3 more. Give them a larger size.', 0.5, 1.5, 'word a'],
+            ['Text "note" is 18 px on the screen, and the least size is 26 px. Give it a larger size.', 0.5, 1.5, 'note'],
+        ])
+        expect(report.summary).toEqual({ errors: 0, warnings: 2 })
+    })
+
+    it('ignores a scale entrance at automatic samples, but checks an explicit picture', async () => {
+        const entrance = film((s) => {
+            const label = s.add(group(tex('x_1^2', { size: 40 })).scale(0.1))
+            s.play(to(label, (node) => node.scale(10), { duration: 1, ease: linear }))
+            s.wait(1)
+        })
+        const small = (report: Awaited<ReturnType<typeof checkFilm>>) => report.diagnostics.filter((entry) => entry.code === 'film.text_small')
+        expect(small(await checkFilm(entrance, { textSize: 26, samples: 12 }))).toEqual([])
+        expect(small(await checkFilm(entrance, { textSize: 26, times: [0.25] }))).toMatchObject([{ text: 'x_1^2', message: expect.stringContaining('13 px') }])
+        expect(await messages((s) => { s.add(group(tex('x_1^2', { size: 40 })).scale(0.5)) })).toEqual(['film.text_small: Text "x_1^2" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+    })
+
+    it('ignores small text hidden by a later opaque shape', async () => {
+        const covered = (opacity: number, partial = false) => messages((s) => {
+            s.add(group(tex('x_1^2', { size: 40 }), text('hidden', { size: 40 }).at(0, 100)).scale(0.5))
+            s.add(rect(partial ? 4 : 1920, 1080, { fill: 'blue', stroke: null }).opacity(opacity))
+        })
+        expect(await covered(1)).toEqual([])
+        expect((await covered(0.5)).filter((message) => message.startsWith('film.text_small'))).toHaveLength(1)
+        expect((await covered(1, true)).filter((message) => message.startsWith('film.text_small'))).toHaveLength(1)
+        expect(await messages((s) => {
+            s.add(text('x', { size: 20 }).at(-90, -90))
+            s.add(rect(200, 200, { radius: 40, fill: 'blue', stroke: null }))
+        })).toEqual(['film.text_small: Text "x" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+    })
+
+    it('sees the labels of an object, and puts the labels of one object in one finding with the name of the object', async () => {
+        const bars = [{ label: 'alpha', value: 2 }, { label: 'beta', value: 3 }]
+        // The labels of a bar chart are 20 px by default.
+        expect(await messages((s) => { s.add(barChart(bars)) })).toEqual(['film.text_small: 4 labels of a bar chart are under 26 px on the screen, the smallest at 20 px: "alpha", "beta", "2", "3". Give the object a larger size for its labels.'])
+        expect(await messages((s) => { s.add(barChart(bars, { labelSize: 26 })) })).toEqual([])
+        // Two objects are two findings.
+        expect(await messages((s) => { s.add(barChart(bars).at(-500, 0)); s.add(barChart(bars).at(500, 0)) })).toHaveLength(2)
+        expect(await messages((s) => { s.add(connector(s.add(rect(100, 60, { stroke: 'blue' }).at(-300, 0)), s.add(rect(100, 60, { stroke: 'blue' }).at(300, 0)), { label: 'publish' })) }))
+            .toEqual(['film.text_small: The label "publish" of a connector is 12 px on the screen, and the least size is 26 px. Give the object a larger size for its labels.'])
+        expect(await messages((s) => { s.add(legend([{ label: 'read', color: 'blue', kind: 'line' }, { label: 'write', color: 'red', kind: 'line' }])) }))
+            .toEqual(['film.text_small: 2 labels of a legend are under 26 px on the screen, the smallest at 13 px: "read", "write". Give the object a larger size for its labels.'])
+        // The title and the note of a terminal are 0.8 of the size of its lines.
+        expect(await messages((s) => { s.add(terminal(['one line'], { title: 'runs/one.txt', note: 'Linux 7.0' })) }))
+            .toEqual(['film.text_small: 2 labels of a terminal are under 26 px on the screen, the smallest at 20.8 px: "runs/one.txt", "Linux 7.0". Give the object a larger size for its labels.'])
+        // A text that the film puts on an object is a text of the film.
+        expect(await messages((s) => { s.add(barChart(bars, { labelSize: 30 })); s.add(text('n = 5', { size: 20 }).at(0, -300)) })).toEqual(['film.text_small: Text "n = 5" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+    })
+})
+
+describe('film check: empty space', () => {
+    // A frame of 1920 by 1080 is a grid of 16 by 9 cells of 120 px. This picture is in 4 by 2 cells at the top left.
+    const corner = () => rect(400, 180, { fill: 'blue', stroke: null }).at(-700, -420)
+    const found = async (build: (s: Parameters<Parameters<typeof film>[1]>[0]) => void, emptySpace = 0.5) =>
+        (await checkFilm(film({ fps: 10 }, build), { emptySpace })).diagnostics.map((entry) => `${entry.code} ${entry.time}-${entry.until}: ${entry.message}`)
+
+    it('reports a part of the frame that stays empty for 4 seconds or more, when the rule is on', async () => {
+        const report = await checkFilm(film({ fps: 10 }, (s) => { s.add(corner()); s.wait(6) }), { emptySpace: 0.5 })
+        expect(report.ok).toBe(true)
+        expect(report.diagnostics).toEqual([{
+            code: 'film.empty_space', severity: 'warning', time: 0.5, until: 5.5,
+            message: 'For 5 s, 78% of the frame stays empty in one piece: the bottom 78% of the height. The limit is 50%. Make the picture larger, or use that part for what the picture explains.',
+            box: { x: 0, y: 240, width: 1920, height: 840 }, stage: { x: 0, y: 120 }, motion: { spans: 1, seconds: 5 },
+        }])
+        // The rule is off by default, and 0 turns it off.
+        expect((await checkFilm(film({ fps: 10 }, (s) => { s.add(corner()); s.wait(6) }))).diagnostics).toEqual([])
+        expect(await found((s) => { s.add(corner()); s.wait(6) }, 0)).toEqual([])
+        // A limit above the part that is empty reports nothing.
+        expect(await found((s) => { s.add(corner()); s.wait(6) }, 0.8)).toEqual([])
+        // The looks are half a second apart, from 0.5 to 4.5 in a film of 5 seconds: that is 4 seconds.
+        expect(await found((s) => { s.add(corner()); s.wait(5) })).toHaveLength(1)
+        expect(await found((s) => { s.add(corner()); s.wait(4.5) })).toEqual([])
+        await expect(found((s) => { s.add(corner()); s.wait(6) }, 1)).rejects.toThrow('checkFilm: emptySpace is the largest part of the frame that may stay empty in one piece, from 0 to 1, such as 0.5. 0 turns the rule off')
+        await expect(found((s) => { s.add(corner()); s.wait(6) }, -0.1)).rejects.toThrow('checkFilm: emptySpace is the largest part of the frame')
+    })
+
+    it('does not report a picture in the middle of the frame at one half, however small it is', async () => {
+        const title = (s: Parameters<Parameters<typeof film>[1]>[0]) => { s.add(text('One sentence.', { size: 60 })); s.wait(8) }
+        expect(await found(title)).toEqual([])
+        expect(await found((s) => { s.add(tex('e^{i\\pi} + 1 = 0', { size: 90 })); s.wait(8) })).toEqual([])
+        expect(await found((s) => { s.add(circle(20, { fill: 'blue' })); s.wait(8) })).toEqual([])
+        // A lower limit reports it: 4 of the 9 rows above the sentence are empty.
+        expect(await found(title, 0.4)).toEqual(['film.empty_space 0.5-7.5: For 7 s, 44% of the frame stays empty in one piece: the top 44% of the height. The limit is 40%. Make the picture larger, or use that part for what the picture explains.'])
+    })
+
+    it('treats a solid full-frame fill as a backdrop, including overscan and later covers', async () => {
+        const plain = await found((s) => { s.add(corner()); s.wait(6) })
+        for (const size of [[1920, 1080], [2200, 1300]]) {
+            expect(await found((s) => {
+                s.add(rect(size[0], size[1], { fill: '#ffffff', stroke: null }))
+                s.add(corner())
+                s.wait(6)
+            })).toEqual(plain)
+        }
+        expect(await found((s) => {
+            s.add(text('A centered title', { size: 60 }))
+            s.add(rect(1920, 1080, { fill: '#ffffff', stroke: null }))
+            s.add(corner())
+            s.wait(6)
+        })).toEqual(plain)
+        expect(await found((s) => {
+            s.add(rect(1920, 1080, { fill: '#ffffff', stroke: null }))
+            s.add(text('A centered title', { size: 60 }))
+            s.wait(6)
+        })).toEqual([])
+    })
+
+    it('counts the visible part of a transparent PNG, with crop and rotation', async () => {
+        const width = 160, height = 90, data = new Uint8Array(width * height * 4)
+        for (let y = 0; y < 20; y++) for (let x = 0; x < 40; x++) {
+            data.set([70, 130, 255, 255], (y * width + x) * 4)
+        }
+        const png = `data:image/png;base64,${Buffer.from(encode({ width, height, depth: 8, channels: 4, data })).toString('base64')}`
+        const asset = await resolveImageAsset(png)
+        expect(await found((s) => { s.add(image(png, { width: 1920, height: 1080 })); s.wait(6) })).toMatchObject([expect.stringContaining('film.empty_space')])
+        expect(await found((s) => { s.add(image(png, { width: 1920, height: 1080 }).rotate(Math.PI)); s.wait(6) })).toMatchObject([expect.stringContaining('film.empty_space')])
+        expect(await found((s) => {
+            s.add(image(asset, { width: 1920, height: 1080, crop: { x: 80, y: 0, width: 80, height: 90 } }))
+            s.wait(6)
+        })).toMatchObject([expect.stringContaining('100% of the frame')])
+        expect(await found((s) => {
+            s.add(image(asset, { width: 1920, height: 1080, crop: { x: 0, y: 0, width: 40, height: 20 }, fit: 'cover' }))
+            s.wait(6)
+        })).toEqual([])
+    })
+
+    it('finds a sustained empty rectangle after earlier content leaves it', async () => {
+        const report = await checkFilm(film((s) => {
+            const top = s.add(rect(1920, 220, { fill: 'blue', stroke: null }).at(0, -430))
+            s.wait(1)
+            s.remove(top)
+            const left = s.add(rect(340, 1080, { fill: 'blue', stroke: null }).at(-790, 0))
+            s.wait(3)
+            s.remove(left)
+            s.add(rect(1920, 220, { fill: 'blue', stroke: null }).at(0, 430))
+            s.wait(3)
+        }), { emptySpace: 0.5 })
+        expect(report.diagnostics.filter((entry) => entry.code === 'film.empty_space')).toMatchObject([
+            { time: 1, until: 6.5, box: { x: 360, y: 0, width: 1560, height: 840 } },
+        ])
+    })
+
+    it('supports a shorter window and includes the final fractional sample', async () => {
+        const short = film((s) => { s.add(corner()); s.wait(3.4) })
+        const spaces = (report: Awaited<ReturnType<typeof checkFilm>>) => report.diagnostics.filter((entry) => entry.code === 'film.empty_space')
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5 }))).toEqual([])
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5, emptySeconds: 2 }))).toMatchObject([{ time: 0.5, until: 2.9 }])
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5, emptySeconds: 2.2 }))).toMatchObject([{ time: 0.5, until: 2.9 }])
+        expect(spaces(await checkFilm(short, { emptySpace: 0.5, emptySeconds: 2.5 }))).toEqual([])
+        for (const emptySeconds of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+            await expect(checkFilm(short, { emptySpace: 0.5, emptySeconds })).rejects.toThrow('checkFilm: emptySeconds')
+        }
+    })
+
+    it('does not report a picture that a scene builds in steps of under 4 seconds', async () => {
+        const rows = (pause: number) => found((s) => {
+            for (let row = 0; row < 4; row++) {
+                s.add(rect(1600, 150, { fill: 'blue', stroke: null }).at(0, -390 + row * 260))
+                s.wait(pause)
+            }
+        })
+        // The first row is alone for 3 seconds, then the second row comes: more than a half is empty for 3 seconds.
+        expect(await rows(3)).toEqual([])
+        // With a row every 5 seconds, the first row is alone for too long.
+        expect(await rows(5)).toEqual(['film.empty_space 0.5-4.5: For 4 s, 78% of the frame stays empty in one piece: the bottom 78% of the height. The limit is 50%. Make the picture larger, or use that part for what the picture explains.'])
+    })
+
+    it('reports the part that stays empty, and not a picture that uses two parts of the frame in turn', async () => {
+        const side = (x: number) => rect(700, 900, { fill: 'blue', stroke: null }).at(x, 0)
+        // The left half for 3 seconds, then the right half for 3 seconds: a half is empty at each moment, and no part stays empty.
+        expect(await found((s) => {
+            const left = s.add(side(-480))
+            s.wait(3)
+            s.remove(left)
+            s.add(side(480))
+            s.wait(3)
+        }, 0.4)).toEqual([])
+        // The same picture for 6 seconds on one side.
+        expect(await found((s) => { s.add(side(-480)); s.wait(6) }, 0.4)).toEqual(['film.empty_space 0.5-5.5: For 5 s, 56% of the frame stays empty in one piece: the right 56% of the width. The limit is 40%. Make the picture larger, or use that part for what the picture explains.'])
+        // The part that the message names is empty for the whole time: here the corner that neither picture uses.
+        expect(await found((s) => {
+            const first = s.add(rect(1800, 300, { fill: 'blue', stroke: null }).at(0, -380))
+            s.wait(3)
+            s.remove(first)
+            s.add(rect(500, 1000, { fill: 'blue', stroke: null }).at(-700, 0))
+            s.wait(3)
+        }, 0.3)).toEqual(['film.empty_space 0.5-5.5: For 5 s, 46% of the frame stays empty in one piece: a part at the bottom right, 1320 by 720 pixels. The limit is 30%. Make the picture larger, or use that part for what the picture explains.'])
+    })
+
+    it('counts what a viewer can tell from the background: a text, an image, a line and a shape, and not a faint mark', async () => {
+        const withMark = (mark: () => Node) => found((s) => { s.add(corner()); s.add(mark()); s.wait(6) })
+        // Each of these is in the middle of the frame, so no part of more than a half stays empty.
+        expect(await withMark(() => text('a caption', { size: 40 }).at(0, 30))).toEqual([])
+        expect(await withMark(() => line([-100, 30], [100, 30], { stroke: 'ink', width: 4 }))).toEqual([])
+        expect(await withMark(() => rect(200, 100, { stroke: 'blue', fill: null }).at(0, 30))).toEqual([])
+        expect(await withMark(() => circle(60, { fill: 'red', stroke: null }).at(0, 30))).toEqual([])
+        // A panel in the color of the surface, a text that is nearly gone, and a faint line are not content.
+        expect(await withMark(() => rect(1800, 700, { fill: 'surface', stroke: null }).at(0, 150))).toHaveLength(1)
+        expect(await withMark(() => text('a caption', { size: 40 }).at(0, 30).opacity(0.1))).toHaveLength(1)
+        expect(await withMark(() => line([-100, 30], [100, 30], { stroke: 'ink', width: 4 }).opacity(0.1))).toHaveLength(1)
+        // A large outline is content where its line is, and not inside it: a frame around an empty stage is an empty stage.
+        expect(await found((s) => { s.add(rect(1800, 1000, { stroke: 'blue', fill: null })); s.wait(6) })).toEqual(['film.empty_space 0.5-5.5: For 5 s, 68% of the frame stays empty in one piece: a part in the middle, 1680 by 840 pixels. The limit is 50%. Make the picture larger, or use that part for what the picture explains.'])
+        // A filled shape is content inside too.
+        expect(await found((s) => { s.add(rect(1800, 1000, { fill: 'blue', stroke: null })); s.wait(6) })).toEqual([])
+    })
 })
 
 describe('film check and bleed', () => {

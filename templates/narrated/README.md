@@ -25,7 +25,7 @@ The start times are the chapter marks of the movie. `npx vizmatic narrated beats
 | `script.json` | What the voice says: one entry for each scene and beat, the chapter title of each scene, the `timeline` (title card, pause, gap and tail, in seconds), and the `pronounce` map. |
 | `film.json` | The particulars of this film: the name of the movie, the voice, and the seed and the levels of the sound mix. |
 | `film.ts` | The film: its title, the words of its title card, and one function for each scene of the script. |
-| `scenes/kit.ts` | What the scenes share: the labels, the colors, and the numbers. |
+| `scenes/kit.ts` | What the scenes share: the labels, the colors, the numbers, the three sizes that are not the size of a label, and the regions of the picture. |
 | `scenes/*.ts` | One file for each scene. Each file asserts the numbers that the voice says before it draws. |
 | `data/numbers.json` | Every number on screen. |
 | `sources.md` | One entry for each fact in the narration, with its source. |
@@ -40,7 +40,8 @@ One command brings the film up to date, from the script to the movie. It makes t
 ```bash
 npx vizmatic narrated build . --draft                  # dist/A-Cache-in-Two-Scenes-draft.mp4, to look at
 npx vizmatic narrated build . --draft --scene answer   # one scene alone, faster
-npx vizmatic narrated build .                          # dist/A-Cache-in-Two-Scenes.mp4, at high quality: the delivered movie
+npx vizmatic narrated build .                          # dist/A-Cache-in-Two-Scenes.mp4: the delivered movie
+npx vizmatic narrated build . --quality high           # the same movie for an upload: with motion blur, and slower
 ```
 
 In `dist/`, a draft writes only files with "draft" in their name, so it never replaces the delivered movie. It also brings `timing.json` and `narration.wav` up to date. The single steps are `voice`, `mix`, `check`, `stills`, `sheet`, `beats`, `transcribe`, `sync`, `lag`, `probe` and `resound`. `npx vizmatic narrated` lists them.

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-    applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, lagged,
-    line, linePath, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
-    plane, pointAt, rect, rotate, scaleBy, seq, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type PathOp,
+    along, applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, grow, indicate, lagged,
+    line, linePath, linear, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
+    plane, pointAt, rect, rotate, scaleBy, seq, shake, spin, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type Anim, type PathOp,
 } from '../src/stage/index'
+import { Track } from '../src/stage/track'
 import { alignPaths, matchSequence, pathMixer } from '../src/stage/morph'
 import { renderFilmFrame } from '../src/stage/export'
 import { RasterPool, framesToJob } from '../src/stage/raster'
@@ -160,6 +161,61 @@ describe('timeline', () => {
             expect(b.x + b.width / 2 - compiled.width / 2).toBeCloseTo(compiledCenter[0], 1)
             expect(b.y + b.height / 2 - compiled.height / 2).toBeCloseTo(compiledCenter[1], 1)
         }
+    })
+
+    // A verb that scales or turns a node about a point sets the pivot of the node, and that writes the place of the
+    // node at the start of the verb. The write must not take the place of a motion that starts at the same time.
+    const aboutAPoint: [string, (node: Node) => Anim][] = [
+        ['grow', (node) => grow(node, { duration: 0.3 })],
+        ['fadeIn with a scale', (node) => fadeIn(node, { duration: 0.3, scale: 0.5 })],
+        ['fadeOut with a scale', (node) => fadeOut(node, { duration: 1.8, scale: 0.5 })],
+        ['shake', (node) => shake(node, { duration: 0.6 })],
+        ['indicate', (node) => indicate(node, { duration: 0.6 })],
+        ['scaleBy', (node) => scaleBy(node, 2, { duration: 0.6 })],
+        ['rotate', (node) => rotate(node, 1, { duration: 0.6 })],
+        ['spin', (node) => spin(node, 2, { duration: 0.6 })],
+    ]
+    it.each(aboutAPoint)('moves a node along its track while %s plays, whatever the order of the two in the play', async (_name, verb) => {
+        const way = linePath([-600, 0], [600, 0])
+        // A mark with its middle at its origin, and one with its middle away from its origin.
+        for (const shape of [() => circle(30, { fill: 'teal' }), () => group(rect(80, 40, { fill: 'teal' }).at(120, 60))]) {
+            const made: Awaited<ReturnType<typeof compileFilm>>[] = []
+            for (const travelFirst of [true, false]) {
+                made.push(await compileFilm(film({ fps: 30 }, (s) => {
+                    const node = shape()
+                    const travel = along(node, way, { duration: 2, ease: linear })
+                    s.play(...(travelFirst ? [travel, verb(node)] : [verb(node), travel]))
+                })))
+            }
+            const middle = (index: number, t: number) => {
+                const b = pathBounds(paths(made[index]!, t)[0]!.path)!
+                return [b.x + b.width / 2 - made[index]!.width / 2, b.y + b.height / 2 - made[index]!.height / 2]
+            }
+            for (const t of [0.1, 0.45, 1, 1.5]) {
+                // The middle of the mark is on the track, at the part of the way that the time gives.
+                expect(middle(0, t)[0]).toBeCloseTo(-600 + 600 * t, 3)
+                expect(middle(0, t)[1]).toBeCloseTo(0, 3)
+                expect(made[0]!.svg(t)).toBe(made[1]!.svg(t))
+            }
+        }
+    })
+
+    it('keeps a motion in effect over the step that a change of pivot writes at its start, in either order', () => {
+        const motion = { t0: 1, t1: 3, ease: null, to: 20, at: (alpha: number) => 20 * alpha }
+        const stepLast = new Track(0), stepFirst = new Track(0)
+        stepLast.add(motion)
+        stepLast.stepUnder(1, 5)
+        stepFirst.stepUnder(1, 5)
+        stepFirst.add(motion)
+        for (const track of [stepLast, stepFirst]) expect([0.5, 1, 2, 3, 4].map((t) => track.sample(t))).toEqual([0, 0, 10, 20, 20])
+        // With no motion at its time, it is a step as any other, and the later of two steps wins.
+        const steps = new Track(0)
+        steps.step(1, 5)
+        steps.stepUnder(1, 7)
+        expect([0.5, 1, 2].map((t) => steps.sample(t))).toEqual([0, 7, 7])
+        // A plain step still takes the place of a motion that starts at its time: a film can stop a motion that way.
+        stepLast.step(1, -1)
+        expect(stepLast.sample(2)).toBe(-1)
     })
 
     it('leaves the target on stage after a morph and hides the source', async () => {
@@ -428,6 +484,42 @@ describe('raster', () => {
             expect(onNear[0]!).toBeGreaterThan(offNear[0]! + 4)
         } finally {
             await rm(directory, { recursive: true, force: true })
+        }
+    })
+
+    it('rounds the spill of a bloom with a dither, so soft light has no contour lines', async () => {
+        const background = (color: string | null) => { void color; return [11, 12, 16] as const }
+        const compiled = await compileFilm(film({ bloom: 0.6 }, (s) => {
+            s.add(circle(200, { stroke: 'yellow', width: 10 }))
+            s.wait(1)
+        }))
+        const pool = new RasterPool(1)
+        try {
+            const frame = await compiled.frame(0.5)
+            const dithered = await pool.run(framesToJob([frame], 960, background, 540))
+            const plain = await pool.run(framesToJob([frame], 960, background, 540, false))
+            // The light falls off from the ring (radius 100 px at this scale) to the page. Read the red of nine
+            // rows through the middle, from outside the ring to where the light ends.
+            const row = (pixels: Uint8Array, y: number) => Array.from({ length: 110 }, (_, i) => pixels[(y * 960 + 480 + 108 + i) * 4]!)
+            const rows = (pixels: Uint8Array) => Array.from({ length: 9 }, (_, i) => row(pixels, 266 + i))
+            const rises = (values: number[]) => values.filter((value, i) => i > 0 && value > values[i - 1]!).length
+            const total = (pixels: Uint8Array) => rows(pixels).reduce((sum, values) => sum + rises(values), 0)
+            // Cut to whole levels, the falloff is a staircase: it only goes down, in long flat steps.
+            expect(total(plain)).toBe(0)
+            // Dithered, a step is a mix of its two levels, so a row goes up and down by one level.
+            expect(total(dithered)).toBeGreaterThan(30)
+            // No pixel is more than one level from the plain one. The plain one is cut down, so the dithered
+            // light is half a level brighter on average, which is the true value.
+            const a = rows(dithered).flat(), b = rows(plain).flat()
+            a.forEach((value, i) => expect(value - b[i]!).toBeGreaterThanOrEqual(0))
+            a.forEach((value, i) => expect(value - b[i]!).toBeLessThanOrEqual(1))
+            const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+            expect(mean(a) - mean(b)).toBeGreaterThan(0.2)
+            expect(mean(a) - mean(b)).toBeLessThan(0.8)
+            // A pixel that the light does not reach keeps the exact page color.
+            expect([dithered[0], dithered[1], dithered[2]]).toEqual([11, 12, 16])
+        } finally {
+            await pool.close()
         }
     })
 

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-    boundary, circle, compileFilm, connector, dynamic, film, frameToSvg, linear, rect, ringBuffer, scene3d, seq, shift, sphere,
+    barChart, boundary, circle, compileFilm, connector, dynamic, film, frameToSvg, linear, rect, ringBuffer, scatter, scene3d, seq, shift, sphere,
     spotlight, surface, tagTrack, text, to, trail3d, typewriter, type CompiledFilm, type FilmDefinition, type Frame,
 } from '../src/stage/index'
 import { renderFilmVideo } from '../src/stage/export'
@@ -79,6 +79,32 @@ describe('the time before which a frame stays the same', () => {
         expect(steadyAt(compiled, 1.5)).toBe(-Infinity)
         expect(steadyAt(compiled, 2.5)).toBe(Infinity)
         expect(undrawn(compiled, 10)).toEqual([...range(1, 9), ...range(21, 29)])
+    })
+
+    it.each(['group', 'neighbors'] as const)('redraws when a hidden scatter changes its %s', async (query) => {
+        const compiled = await compileFilm(film(small, (s) => {
+            const chart = s.add(scatter([{ x: 0, y: 0 }, { x: 1, y: 1 }], { groups: { selected: 'blue' } }).opacity(0))
+            s.add(dynamic(() => {
+                const selected = query === 'group' ? chart.groupOf(0) === 'selected' : chart.neighbors.includes(1)
+                return mark().at(selected ? 50 : 0, 0)
+            }))
+            s.wait(1)
+            s.play(query === 'group' ? chart.assign(0, 'selected') : chart.nearest(0, 1), { duration: 0 })
+            s.wait(1)
+        }))
+        expect(frameToSvg(compiled.frame(0))).not.toBe(frameToSvg(compiled.frame(1)))
+        expect(undrawn(compiled, 10)).not.toContain(10)
+    })
+
+    it('redraws a chart clone whose readout uses the frame time', async () => {
+        const compiled = await compileFilm(film(small, (s) => {
+            const chart = barChart([{ label: 'A', value: 1 }], { max: 1, ticks: 1 })
+            chart.readouts[0]!.draw = (time) => mark().at(time * 100, 0)
+            s.add(dynamic(() => chart.clone()))
+            s.wait(1)
+        }))
+        expect(frameToSvg(compiled.frame(0))).not.toBe(frameToSvg(compiled.frame(0.5)))
+        expect(undrawn(compiled, 10)).toEqual([])
     })
 
     it.each([

@@ -24,6 +24,12 @@ export const clock = {
      * makes on the stage, and while one of its frames is drawn.
      */
     font: null as FontFamily | null,
+    /**
+     * The stage of the film whose callback runs now, or null outside a film. The stage puts itself here where
+     * it puts its font. The layout reads the frame from it, and adds a check for the end of the build: a node
+     * that it put off the frame stops the build.
+     */
+    canvas: null as { readonly width: number; readonly height: number; readonly checks: (() => void)[] } | null,
     /** The time of the frame that is drawn now, in render mode. A value that is read at another time is not this frame's. */
     at: 0,
     /**
@@ -70,6 +76,9 @@ export interface Key<T> {
     until?: (time: number) => number
 }
 
+/** A key with a duration: the value moves from the start of the key to its end. Every other key is a step, which sets a value at one time. */
+const moves = <T>(key: Key<T>): boolean => key.at !== null && key.t1 > key.t0
+
 /** One property over time. Keys sort by start time, and a later key wins from its start. */
 export class Track<T> {
     readonly keys: Key<T>[] = []
@@ -112,6 +121,19 @@ export class Track<T> {
 
     step(t: number, value: T): void {
         this.add({ t0: t, t1: t, ease: null, to: value, at: null })
+    }
+
+    /**
+     * A step that does not take the place of a motion. It sets the value at a time, and a motion that starts
+     * at that time stays in effect, whatever the order in which the two were written. A change of the pivot
+     * of a node writes the place of the node this way: it keeps the node where it is, and it is not a move.
+     * So the order of two animations of one play does not decide if a node moves.
+     */
+    stepUnder(t: number, value: T): void {
+        const keys = this.keys
+        let index = keys.length
+        while (index > 0 && (keys[index - 1]!.t0 > t || (keys[index - 1]!.t0 === t && moves(keys[index - 1]!)))) index--
+        keys.splice(index, 0, { t0: t, t1: t, ease: null, to: value, at: null })
     }
 
     /** Last time this track changes. */

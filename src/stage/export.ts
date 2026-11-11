@@ -18,6 +18,12 @@ export interface FilmRenderOptions extends CompileOverrides {
     /** Output width in pixels. Defaults to the film's logical width. */
     width?: number
     quality?: Quality
+    /**
+     * Dither the bloom, so that soft light on a dark look has no contour lines. Without this option, a movie
+     * has the dither at `high` and `master` and not at `draft` and `standard`, and a PNG has it. A GIF never
+     * has it. An MP4 with the dither also gets the encoder settings that keep the grain.
+     */
+    dither?: boolean
     /** Sub-frames averaged per frame for real motion blur. 1 turns it off. */
     motionBlur?: number
     /** Fraction of the frame interval the shutter stays open. */
@@ -57,11 +63,27 @@ export interface FilmGifOutput {
     title: string
 }
 
-const QUALITY: Record<Quality, { crf: number; vp9Crf: number; preset: string; motionBlur: number }> = {
-    draft: { crf: 26, vp9Crf: 40, preset: 'veryfast', motionBlur: 1 },
-    standard: { crf: 18, vp9Crf: 31, preset: 'medium', motionBlur: 1 },
-    high: { crf: 15, vp9Crf: 24, preset: 'slow', motionBlur: 4 },
-    master: { crf: 11, vp9Crf: 15, preset: 'slow', motionBlur: 8 },
+/**
+ * `dither` says if a movie at this quality has a dithered bloom when the export does not say. `grain` is what
+ * the H.264 encoder gets in addition when the film has a dithered bloom, as x264 settings.
+ *
+ * A dithered bloom is fine grain of one level, in place of contour lines in soft light. It costs time, in the
+ * bloom pass and in the encoder. So `draft` and `standard`, the qualities for work on a film, have none unless
+ * the export asks for it. `high` and `master`, the qualities for a copy to publish, have it.
+ *
+ * With the settings of a film alone, the encoder drops the grain and leaves squares of 16 px in its place.
+ * - `trellis=0` keeps the small values that are the grain.
+ * - `subme=6` stops the search for the best mode at P-frames. In B-frames, that search costs about 40% more
+ *   encoder time with the grain.
+ * - `aq-strength` gives the flat dark parts the bits that keep the grain. `high` and `master` have enough bits
+ *   with the 0.6 of the animation tune. `standard` needs 1.0, and `draft` needs 2.0.
+ * None of these changes the decoder settings of the file, so `filmEncoderSettings` stays true.
+ */
+const QUALITY: Record<Quality, { crf: number; vp9Crf: number; preset: string; motionBlur: number; dither: boolean; grain: string }> = {
+    draft: { crf: 26, vp9Crf: 40, preset: 'veryfast', motionBlur: 1, dither: false, grain: 'aq-strength=2.0' },
+    standard: { crf: 18, vp9Crf: 31, preset: 'medium', motionBlur: 1, dither: false, grain: 'aq-strength=1.0:subme=6:trellis=0' },
+    high: { crf: 15, vp9Crf: 24, preset: 'slow', motionBlur: 4, dither: true, grain: 'subme=6:trellis=0' },
+    master: { crf: 11, vp9Crf: 15, preset: 'slow', motionBlur: 8, dither: true, grain: 'subme=6:trellis=0' },
 }
 
 const DEFAULT_GIF_WIDTH = 960
@@ -178,6 +200,7 @@ function frameStream(
     readAhead: number,
     subframes = 1,
     shutterSpan = 0,
+    dither = true,
 ): (index: number) => Promise<Uint8Array> {
     const inFlight = new Map<number, Promise<Uint8Array>>()
     const stats = pool.stats
@@ -206,7 +229,7 @@ function frameStream(
                 frames.push(await frame)
             }
             let started = performance.now()
-            const job = framesToJob(frames, size.width, backgroundBytes, size.height)
+            const job = framesToJob(frames, size.width, backgroundBytes, size.height, dither)
             stats.mainMs += performance.now() - started
             if (steady) {
                 // The test switch: the film said that this frame is the frame before. Check that.
@@ -274,7 +297,11 @@ export async function renderFilmVideo(
     const pool = new RasterPool(plan.workers)
     try {
         const count = Math.max(1, Math.round((to - from) * fps))
-        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps)
+        const dither = options.dither ?? quality.dither
+        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, motionBlur, shutter / fps, dither)
+        // Only a dark look has bloom, so only its film has the grain of the dither. A film object with no look
+        // counts as a film with no bloom.
+        const grain = dither && compiled.bloom > 0 && compiled.look?.dark === true
         const stats = pool.stats
         // When the export loop took the last frame. From then, it waits for the encoder.
         let handed = 0
@@ -292,6 +319,7 @@ export async function renderFilmVideo(
             preset: quality.preset,
             // Flat color and fine lines keep their edges better with this tuning.
             tune: codec === 'h264' ? filmEncoderSettings(options.quality).tune : undefined,
+            x264Params: codec === 'h264' && grain ? quality.grain : undefined,
             threads: options.threads ?? 6,
             audioPath: options.audioPath,
             audioOffset: from > 0 ? from : undefined,
@@ -367,7 +395,7 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         const sampleCount = Math.min(count, GIF_PALETTE_FRAMES)
         const samples = await Promise.all(Array.from({ length: sampleCount }, async (_, i) => {
             const index = Math.floor((i + 0.5) * count / sampleCount)
-            return pool.run(framesToJob([await frameAt(compiled, from + index / fps)], size.width, backgroundBytes, size.height))
+            return pool.run(framesToJob([await frameAt(compiled, from + index / fps)], size.width, backgroundBytes, size.height, false))
         }))
         const perFrame = Math.max(1, Math.floor(GIF_PALETTE_PIXELS / sampleCount))
         const combined = new Uint8Array(perFrame * sampleCount * 4)
@@ -380,7 +408,8 @@ export async function renderFilmGif(film: FilmDefinition | CompiledFilm, outputP
         })
         const palette = gifApi.quantize(combined, 256, { format: 'rgb565' })
         const gif = gifApi.GIFEncoder()
-        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead)
+        // A palette of 256 colors cannot hold the grain of a dithered bloom, so a GIF gets the plain write.
+        const next = frameStream(compiled, pool, (index) => from + index / fps, size, count, plan.readAhead, 1, 0, false)
         const repeat = options.loop === false ? -1 : 0
         let previous: Uint8Array | null = null
         let pending: { index: Uint8Array; region: { x: number; y: number; width: number; height: number }; delay: number } | null = null
@@ -447,7 +476,8 @@ export async function renderFilmFrame(film: FilmDefinition | CompiledFilm, time:
     const pool = new RasterPool(1)
     try {
         const frame = await frameAt(compiled, time)
-        const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height))
+        // A still is for a look at the picture, so it has the dither unless the export turns it off.
+        const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height, options.dither !== false))
         const path = resolve(outputPath)
         await mkdir(dirname(path), { recursive: true })
         await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
@@ -469,7 +499,7 @@ export async function renderFilmFrames(film: FilmDefinition | CompiledFilm, time
         const frames: Frame[] = []
         for (const time of times) frames.push(await frameAt(compiled, time))
         return await Promise.all(frames.map(async (frame, index) => {
-            const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height))
+            const pixels = await pool.run(framesToJob([frame], width, backgroundBytes, height, options.dither !== false))
             const path = resolve(`${outputPrefix}${String(index).padStart(3, '0')}.png`)
             await writeFile(path, encodePng({ width, height, data: pixels, depth: 8, channels: 4 }))
             return path
@@ -484,6 +514,8 @@ export interface FilmSheetOptions extends CompileOverrides {
     width?: number
     /** Tiles in a row. Defaults to 3 for up to nine tiles, and 4 for more. */
     columns?: number
+    /** Set to false for tiles with no dither in their bloom. */
+    dither?: boolean
     workers?: number
     /** Approximate limit in bytes for frame buffers held at one time. */
     memoryBudget?: number
@@ -530,7 +562,7 @@ export async function renderFilmSheet(film: FilmDefinition | CompiledFilm, times
         // Frames are sampled one at a time because the engine's clock is shared.
         const frames: Frame[] = []
         for (const time of times) frames.push(await frameAt(compiled, time))
-        const tiles = await Promise.all(frames.map((frame) => pool.run(framesToJob([frame], tile.width, backgroundBytes, tile.height))))
+        const tiles = await Promise.all(frames.map((frame) => pool.run(framesToJob([frame], tile.width, backgroundBytes, tile.height, options.dither !== false))))
         // The times are a film frame of their own, so they use the film's look and its fonts.
         const labels = await defineFilm({ width, height, look: compiled.look, background: 'surface', bloom: 0 }, (stage) => {
             times.forEach((time, index) => {

@@ -43,6 +43,30 @@ export default film({ title: 'Short', fps: 10 }, (s) => {
 `
 
 describe('vizmatic film', () => {
+    it.skipIf(!hasFfmpeg).each(['narration', 'narrated'])('renders intact synthetic %s captions into WebVTT and MP4', async (caller) => {
+        const directory = await tempDirectory()
+        const samples = [
+            'Acme.io ships Nova.js 22.23.4 with OrbitDB 1.25.0.',
+            'Values: 3.8, 0.17, and .5! Northstar.dev starts Comet.js.',
+            "In the '80s... Keep 0.17 and 4.6 intact.",
+        ]
+        const timing = { lead: 0, gap: 0, scenes: [{ id: 'captions', beats: samples.map((say) => ({ say, duration: 1 })) }] }
+        const definition = caller === 'narration'
+            ? `film({ fps: 10 }, (s) => { narration(s, timing) })`
+            : `narrated({ fps: 10, timing, scenes: { captions: () => {} } })`
+        await writeFile(join(directory, 'captions.ts'), `import { film, narration, narrated } from 'vizmatic/stage'\nconst timing = ${JSON.stringify(timing)}\nexport default ${definition}\n`)
+        const out = join(directory, 'out')
+        const result = cli(['film', 'captions.ts', '--out', out, '--width', '160', '--quality', 'draft', '--workers', '1', '--json'], directory)
+        expect(result.status, result.stderr).toBe(0)
+        // Read the subtitles from the encoded movie, as well as the sidecar that the CLI writes.
+        const embedded = spawnSync('ffmpeg', ['-v', 'error', '-i', join(out, 'captions.mp4'), '-map', '0:s:0', '-f', 'srt', '-'], { encoding: 'utf8' })
+        expect(embedded.status, embedded.stderr).toBe(0)
+        for (const subtitles of [await readFile(join(out, 'captions.vtt'), 'utf8'), embedded.stdout]) {
+            const text = subtitles.split(/\r?\n/).filter((line) => line && line !== 'WEBVTT' && !/^\d+$/.test(line) && !line.includes(' --> ')).join(' ')
+            expect(text.split(' ')).toEqual(samples.flatMap((sample) => sample.split(' ')))
+        }
+    }, 60_000)
+
     it.skipIf(!hasFfmpeg)('renders every format with a manifest, captions, and a look suffix for several looks', async () => {
         const directory = await tempDirectory()
         await writeFile(join(directory, 'short.ts'), shortFilm)
@@ -83,6 +107,41 @@ describe('vizmatic film', () => {
             expect(JSON.parse(webm.stdout).streams[0]).toMatchObject({ codec_name: 'vp9', color_space: 'bt709' })
         }
     }, 120_000)
+
+    it.skipIf(process.platform === 'win32')('turns the dither of the bloom on with --dither and off with --no-dither, at any quality', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'short.ts'), shortFilm)
+        // A stand-in for FFmpeg: it keeps its arguments beside the output, and copies the raw frames to the output path.
+        const encoder = join(directory, 'keep-frames.sh')
+        await writeFile(encoder, '#!/bin/sh\ncase "$1" in -h) exit 0;; esac\nfor last; do :; done\nprintf \'%s\\n\' "$@" > "$last.args"\nexec cat > "$last"\n', { mode: 0o755 })
+        const render = async (name: string, flags: string[]) => {
+            const out = join(directory, name)
+            const result = cli(['film', 'short.ts', '--out', out, '--format', 'mp4,png', '--width', '160', '--workers', '1', '--ffmpeg', encoder, '--json', ...flags], directory)
+            expect(result.status, result.stderr).toBe(0)
+            const args = (await readFile(join(out, (await readdir(out)).find((file) => file.endsWith('.args'))!), 'utf8')).split('\n')
+            const at = args.indexOf('-x264-params')
+            return { frames: await readFile(join(out, 'short.mp4')), still: await readFile(join(out, 'short.png')), settings: at < 0 ? undefined : args[at + 1] }
+        }
+        // At standard, the default is the plain bloom and the encoder settings of a film alone.
+        const standard = await render('standard', [])
+        expect(standard.settings).toBeUndefined()
+        const on = await render('standard-on', ['--dither'])
+        expect(on.settings).toBe('aq-strength=1.0:subme=6:trellis=0')
+        expect(Buffer.compare(on.frames, standard.frames)).not.toBe(0)
+        const off = await render('standard-off', ['--no-dither'])
+        expect(off.settings).toBeUndefined()
+        expect(Buffer.compare(off.frames, standard.frames)).toBe(0)
+        // A still has the dither unless --no-dither turns it off.
+        expect(Buffer.compare(on.still, standard.still)).toBe(0)
+        expect(Buffer.compare(off.still, standard.still)).not.toBe(0)
+        // At high, the default is the dither, with the settings that keep its grain.
+        const high = await render('high', ['--quality', 'high'])
+        expect(high.settings).toBe('subme=6:trellis=0')
+        const highOff = await render('high-off', ['--quality', 'high', '--no-dither'])
+        expect(highOff.settings).toBeUndefined()
+        expect(Buffer.compare(highOff.frames, high.frames)).not.toBe(0)
+        expect((await render('draft-on', ['--quality', 'draft', '--dither'])).settings).toBe('aq-strength=2.0')
+    }, 240_000)
 
     it('writes only stills for --frame', async () => {
         const directory = await tempDirectory()
@@ -281,4 +340,65 @@ export default film({ title: 'Tight' }, (s) => {
         expect(bad.status).not.toBe(0)
         expect(bad.stderr + bad.stdout).toContain('--text-gap needs a part of the font size')
     }, 60_000)
+
+    it('reports small text only with --text-size, and empty space only with --empty-space', async () => {
+        const directory = await tempDirectory()
+        // A small caption at the top left of the frame, for 6 seconds.
+        await writeFile(join(directory, 'corner.ts'), `import { film, text } from 'vizmatic/stage'
+export default film({ title: 'Corner' }, (s) => {
+    s.add(text('caption', { size: 20 }).at(-700, -420))
+    s.wait(6)
+})
+`)
+        const codes = (...options: string[]) => (JSON.parse(cli(['check', 'corner.ts', ...options, '--json'], directory).stdout).files[0].diagnostics as { code: string; message: string }[]).map((entry) => `${entry.code}: ${entry.message}`)
+        expect(codes()).toEqual([])
+        expect(codes('--text-size', '26')).toEqual(['film.text_small: Text "caption" is 20 px on the screen, and the least size is 26 px. Give it a larger size.'])
+        expect(codes('--text-size', '20')).toEqual([])
+        expect(codes('--empty-space', '0.5')).toEqual(['film.empty_space: For 5 s, 81% of the frame stays empty in one piece: the right 81% of the width. The limit is 50%. Make the picture larger, or use that part for what the picture explains.'])
+        expect(codes('--empty-space', '0.9')).toEqual([])
+        expect(codes('--text-size', '26', '--empty-space', '0.5').map((line) => line.split(':')[0])).toEqual(['film.text_small', 'film.empty_space'])
+        // The two findings are warnings: the check passes, and the report in words names each one.
+        const words = cli(['check', 'corner.ts', '--text-size', '26', '--empty-space', '0.5'], directory)
+        expect(words.status).toBe(0)
+        expect(words.stdout + words.stderr).toContain('film.text_small')
+        expect(words.stdout + words.stderr).toContain('film.empty_space')
+        for (const [option, value, message] of [
+            ['--text-size', 'big', '--text-size needs the least size of text in pixels of a frame that is 1080 high, such as 26'],
+            ['--text-size', '-3', '--text-size needs the least size of text in pixels'],
+            ['--empty-space', '50', '--empty-space needs the largest part of the frame that may stay empty in one piece, from 0 to 1, such as 0.5'],
+            ['--empty-space', 'half', '--empty-space needs the largest part of the frame'],
+        ] as const) {
+            const bad = cli(['check', 'corner.ts', option, value], directory)
+            expect(bad.status, option).not.toBe(0)
+            expect(bad.stderr + bad.stdout).toContain(message)
+        }
+    }, 120_000)
+
+    it('keeps the four-second default and accepts a shorter empty-space window', async () => {
+        const directory = await tempDirectory()
+        await writeFile(join(directory, 'short-corner.ts'), `import { film, rect, tex, group } from 'vizmatic/stage'
+export default film((s) => {
+    s.add(rect(1920, 1080, { fill: 'red', stroke: null }))
+    s.add(group(tex('x_1^2', { size: 40 })).scale(0.5).at(-700, -400))
+    s.wait(3.4)
+})
+`)
+        const findings = (...args: string[]) => {
+            const result = cli(['check', 'short-corner.ts', ...args, '--json'], directory)
+            expect(result.status, result.stderr).toBe(0)
+            return JSON.parse(result.stdout).files[0].diagnostics
+        }
+        expect(findings('--empty-space', '0.5')).toEqual([])
+        expect(findings('--empty-seconds', '2')).toEqual([])
+        expect(findings('--empty-space', '0.5', '--empty-seconds', '2')).toMatchObject([{ code: 'film.empty_space', time: 0.5, until: 2.9 }])
+        expect(findings('--text-size', '26')).toMatchObject([{ code: 'film.text_small', text: 'x_1^2', message: expect.stringContaining('20 px') }])
+        for (const value of ['0', '-1', 'NaN', 'Infinity', 'short']) {
+            const result = cli(['check', 'short-corner.ts', '--empty-seconds', value], directory)
+            expect(result.status).not.toBe(0)
+            expect(result.stderr + result.stdout).toContain('--empty-seconds needs a positive number of seconds')
+        }
+        const missing = cli(['check', 'short-corner.ts', '--empty-seconds'], directory)
+        expect(missing.status).not.toBe(0)
+        expect(missing.stderr + missing.stdout).toContain('--empty-seconds needs a positive number of seconds')
+    }, 120_000)
 })

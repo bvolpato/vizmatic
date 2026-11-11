@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-    assertEqual, capHeight, card, checkFilm, chip, chipRow, circle, clamp, commas, compileFilm, fade, fadeIn, fadeOut, film, fitSize, lerp, namedBox, narrated, narration, rect, sceneKit, seededRandom, smoothstep, tag, text, textWidth,
+    assertEqual, capHeight, card, checkFilm, chip, chipRow, circle, clamp, commas, compileFilm, fade, fadeIn, fadeOut, film, fitSize, lerp, namedBox, narrated, narration, rect, sceneArea, sceneKit, seededRandom, smoothstep, tag, text, textWidth, valueAt,
     type FilmClock, type NarratedOptions, type Node, type PathOp, type SceneClock, type Stage, type TimingFile,
 } from '../src/stage/index'
 import { clock } from '../src/stage/track'
@@ -370,6 +370,246 @@ describe('what the shell does for every film', () => {
     })
 })
 
+describe('cues that the script declares', () => {
+    // The hook says "Will it run out?" from 2 to 4, and the answer says "Not today." from 5.5 to 7.
+    const declared: TimingFile = {
+        ...timing,
+        scenes: [
+            { ...timing.scenes[0]!, beats: [{ ...timing.scenes[0]!.beats[0]!, cues: [{ id: 'question', phrase: 'Will it' }, { id: 'out', phrase: 'run out', data: { color: 'red', parts: ['disk'] } }] }] },
+            { ...timing.scenes[1]!, beats: [{ ...timing.scenes[1]!.beats[0]!, cues: [{ id: 'today', phrase: 'today' }] }] },
+            timing.scenes[2]!,
+        ],
+    }
+    const useAll = { hook: (_s: Stage, c: SceneClock) => { c.cue('question'); c.cue('out') }, answer: (_s: Stage, c: SceneClock) => { c.cue('today') }, close: nothing }
+
+    it('lets a scene name the id of a cue where it can name a phrase: on, after, show, hide, swap and cue', async () => {
+        const marks = { on: circle(40), after: circle(40), show: circle(40), swapped: circle(40) }
+        const times: Record<string, number> = {}
+        let found: unknown
+        await compile({ timing: declared, scenes: {
+            hook: (s, c) => {
+                c.on('question', () => { times['on'] = s.time; s.add(marks.on) })
+                c.after('out', () => { times['after'] = s.time; s.add(marks.after) })
+                c.show('question', marks.show)
+                c.swap('out', marks.show, marks.swapped)
+                c.hide(0, marks.on, { after: true })
+                found = c.cue('out')
+                // The clock lists the cues of the scene, each with its beat.
+                expect(c.cues).toEqual([{ id: 'question', phrase: 'Will it', beat: 0 }, { id: 'out', phrase: 'run out', beat: 0, data: { color: 'red', parts: ['disk'] } }])
+            },
+            answer: (_s, c) => { c.cue('today') },
+            close: nothing,
+        } })
+        // "Will" starts at 2.1, "run" at 2.9, and "out?" ends at 3.6.
+        expect(times['on']).toBeCloseTo(2.1, 6)
+        expect(times['after']).toBeCloseTo(3.6, 6)
+        // A declared cue gives its times, and what the script says of it.
+        expect(found).toEqual({ start: expect.closeTo(2.9, 6), end: expect.closeTo(3.6, 6), id: 'out', phrase: 'run out', beat: 0, data: { color: 'red', parts: ['disk'] } })
+        // show starts 0.1 seconds before the cue, as with a phrase.
+        expect(opacityAt(marks.show, 1.95)).toBe(0)
+        expect(opacityAt(marks.show, 2.4)).toBe(1)
+        expect(opacityAt(marks.swapped, 2.7)).toBe(0)
+        expect(opacityAt(marks.swapped, 3.4)).toBe(1)
+    })
+
+    it('stops at the end of the build on declared cues that drive nothing, in one error that lists them by scene', async () => {
+        const unused = compile({ timing: declared, scenes: { hook: (_s, c) => { c.cue('question') }, answer: nothing, close: nothing } })
+        await expect(unused).rejects.toThrow(`narration: 2 cues that the script declares drive nothing in the film: scene "hook": out; scene "answer": today. Use each one in its scene, such as c.show('out', nodes), or remove it from the script`)
+        await expect(compile({ timing: declared, scenes: { ...useAll, answer: nothing } })).rejects.toThrow('narration: 1 cue that the script declares drives nothing in the film: scene "answer": today.')
+        // Each cue drives something: the film builds.
+        await expect(compile({ timing: declared, scenes: useAll })).resolves.toBeDefined()
+        // A phrase that a scene types is no use of a cue, also when it is the phrase of that cue.
+        await expect(compile({ timing: declared, scenes: { ...useAll, answer: (_s, c) => { c.cue('today.') } } })).rejects.toThrow('scene "answer": today')
+        // A film with no declared cue works as before, and so does a typed phrase beside declared cues.
+        await expect(compile({ scenes: { hook: (_s, c) => { c.cue('run out') }, answer: nothing, close: nothing } })).resolves.toBeDefined()
+        await expect(compile({ timing: declared, scenes: { ...useAll, close: (_s, c) => { c.cue('a plan') } } })).resolves.toBeDefined()
+    })
+
+    it('does not count the cues of a scene that a draft does not build', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(nothing)
+        process.env['VIZMATIC_SCENES'] = 'answer'
+        await expect(compile({ timing: declared, scenes: { hook: nothing, answer: (_s, c) => { c.cue('today') }, close: nothing } })).resolves.toBeDefined()
+        await expect(compile({ timing: declared, scenes: { hook: nothing, answer: nothing, close: nothing } })).rejects.toThrow('1 cue that the script declares drives nothing in the film: scene "answer": today')
+    })
+
+    it('stops on a declared cue that the script got wrong, with the name of its scene, its beat and its id', async () => {
+        const withCues = (cues: unknown, scene = 0) => ({ ...timing, scenes: timing.scenes.map((each, index) => (index === scene ? { ...each, beats: [{ ...each.beats[0]!, cues: cues as never }] } : each)) })
+        const fails = (cues: unknown) => compile({ timing: withCues(cues), scenes: { hook: nothing, answer: nothing, close: nothing } })
+        await expect(fails([{ id: 'never', phrase: 'never said' }])).rejects.toThrow('narration: scene "hook": the cue "never" that the script declares for beat 0: the voice never says "never said" in beat 0')
+        await expect(fails([{ id: 'a', phrase: 'Will it' }, { id: 'a', phrase: 'run' }])).rejects.toThrow('narration: scene "hook": two cues have the id "a", in beat 0 and in beat 0. An id names one cue of its scene')
+        await expect(fails([{ phrase: 'Will it' }])).rejects.toThrow(`narration: scene "hook": beat 0: cue 0 needs an id, the name that a scene uses for it, such as { id: 'result', phrase: "Will it" }`)
+        await expect(fails([{ id: 'a' }])).rejects.toThrow('narration: scene "hook": beat 0: the cue "a" needs a phrase, the words of the beat that it stands for')
+        await expect(fails('Will it')).rejects.toThrow('narration: scene "hook": beat 0: cues is "Will it", and it is a list such as')
+        await expect(fails(['Will it'])).rejects.toThrow('narration: scene "hook": beat 0: cue 0 is "Will it", and a cue is an object such as')
+        // A declared cue has its beat, so a scene does not name another one.
+        const other = compile({ timing: declared, scenes: { ...useAll, hook: (_s, c) => { c.cue('question'); c.on('out', nothing, 0, 1) } } })
+        await expect(other).rejects.toThrow('narration: scene "hook": the script declares the cue "out" for beat 0, and the call names beat 1. A declared cue has its beat: leave the beat out')
+    })
+
+    it('takes the id of a cue before the words of the voice, so an id can be a word of its phrase', async () => {
+        // The id "run" is a word that the voice says at 2.9. The cue stands for "Will it", at 2.1.
+        const named: TimingFile = { ...timing, scenes: [{ ...timing.scenes[0]!, beats: [{ ...timing.scenes[0]!.beats[0]!, cues: [{ id: 'run', phrase: 'Will it' }] }] }, timing.scenes[1]!, timing.scenes[2]!] }
+        let start = 0
+        await compile({ timing: named, scenes: { hook: (_s, c) => { start = c.cue('run').start }, answer: nothing, close: nothing } })
+        expect(start).toBeCloseTo(2.1, 6)
+    })
+})
+
+describe('a film that runs past its narration', () => {
+    const scenes = { hook: nothing, answer: nothing, close: nothing }
+
+    it('stops on a play that ends after its scene, and names the scene, the play and by how much', async () => {
+        // The hook ends at 5 seconds, with the hold of its beat.
+        const late = compile({ scenes: { ...scenes, hook: (s, c) => { c.on('run', () => s.play(fadeIn(circle(40)), { duration: 20 })) } } })
+        await expect(late).rejects.toThrow('narrated: scene "hook": the play of fadeIn that starts at 2.9 seconds ends at 22.9, and the scene ends at 5 seconds, with the hold of its last beat. That is 17.9 seconds too late, so the film would run past its narration. Give the play a shorter duration, start it on an earlier cue, or give the last beat of the scene a longer hold in the script')
+        // A play of two animations has both names, and a play with a label has its label.
+        const two = compile({ scenes: { ...scenes, hook: (s, c) => { c.on('run', () => s.play(fadeIn(circle(40)), fadeOut(circle(40)), { duration: 3 })) } } })
+        await expect(two).rejects.toThrow('the play of fadeIn and fadeOut that starts at 2.9 seconds ends at 5.9')
+        // A play that ends with the scene is in time, and so is the fade of clear, which ends 0.02 seconds after it.
+        const ring = circle(40)
+        const film = await compile({ scenes: { ...scenes, hook: (s, c) => { s.add(ring); c.on('run', () => s.play(fadeIn(circle(40)), { duration: 2.1 })); c.clear([ring]) } } })
+        expect(film.duration).toBeCloseTo(10.25, 6)
+        await expect(compile({ scenes: { ...scenes, hook: (s, c) => { c.on('run', () => s.play(fadeIn(circle(40)), { duration: 2.2 })) } } })).rejects.toThrow('That is 0.1 seconds too late')
+    })
+
+    it('lets the last scene hold its picture for the gap and the tail, and no longer', async () => {
+        // The close ends at 9, and the film at 10.25: one gap of 0.5 and the tail of 0.75 after the last word.
+        const held = await compile({ scenes: { ...scenes, close: (s, c) => { c.on('plan', () => s.play(fadeIn(circle(40)), { duration: 2.1 })) } } })
+        expect(held.duration).toBeCloseTo(10.25, 6)
+        const late = compile({ scenes: { ...scenes, close: (s, c) => { c.on('plan', () => s.play(fadeIn(circle(40)), { duration: 4 })) } } })
+        await expect(late).rejects.toThrow('narrated: scene "close": the play of fadeIn that starts at 8.1 seconds ends at 12.1, and the film ends at 10.25 seconds, one gap and the tail after its last word. That is 1.85 seconds too late')
+        // A wait has no play to name. The film is still not longer than its narration.
+        const waits = compile({ scenes: { ...scenes, close: (s, c) => { c.on('plan', () => s.wait(30)) } } })
+        await expect(waits).rejects.toThrow('narrated: the film is 38.1 seconds long, and its narration ends at 10.25 seconds, one gap and the tail after the last word. A scene waits or holds a caption past that time')
+    })
+})
+
+describe('a result at the end of its clause', () => {
+    const scenes = { hook: nothing, answer: nothing, close: nothing }
+
+    it('starts a change when the voice has said the phrase, with the option after', async () => {
+        const named = circle(40), result = circle(40), out = circle(40), next = circle(40), beat = circle(40)
+        await compile({ scenes: { ...scenes, hook: (s, c) => {
+            s.add(out)
+            // "it run" is said from 2.5 to 3.2.
+            c.show('it run', named)
+            c.show('it run', result, { after: true })
+            c.swap('Will', out, next, { after: true })
+            c.show(0, beat, { after: true })
+        } } })
+        // A thing that the voice names is there as the voice says it: 0.1 seconds before the phrase.
+        expect(opacityAt(named, 2.39)).toBe(0)
+        expect(opacityAt(named, 2.45)).toBeGreaterThan(0)
+        expect(opacityAt(named, 2.71)).toBe(1)
+        // A result comes when the voice has said it: at the end of the phrase, with no lead.
+        expect(opacityAt(result, 3.19)).toBe(0)
+        expect(opacityAt(result, 3.3)).toBeGreaterThan(0)
+        expect(opacityAt(result, 3.51)).toBe(1)
+        // "Will" ends at 2.4: the old node leaves then, and the new one comes 0.2 seconds later.
+        expect(opacityAt(out, 2.39)).toBe(1)
+        expect(opacityAt(out, 2.71)).toBe(0)
+        expect(opacityAt(next, 2.59)).toBe(0)
+        expect(opacityAt(next, 2.91)).toBe(1)
+        // With the index of a beat, the change waits for the end of the voice of the beat, at 4.
+        expect(opacityAt(beat, 3.99)).toBe(0)
+        expect(opacityAt(beat, 4.31)).toBe(1)
+    })
+
+    it('counts a lead from the end of the phrase, and stops on a value of after that is not true or false', async () => {
+        const early = circle(40)
+        await compile({ scenes: { ...scenes, hook: (_s, c) => { c.show('it run', early, { after: true, lead: 0.2 }) } } })
+        expect(opacityAt(early, 2.99)).toBe(0)
+        expect(opacityAt(early, 3.31)).toBe(1)
+        await expect(compile({ scenes: { ...scenes, hook: (_s, c) => { c.show('it run', circle(40), { after: 'yes' as never }) } } })).rejects.toThrow('scene "hook": show: after is "yes", and it is true, for a change that starts when the voice has said the phrase')
+        // A result at the end of the last words of a scene needs a hold for its fade: the message says so.
+        const noRoom = compile({ timing: { ...timing, scenes: [{ ...timing.scenes[0]!, beats: [{ ...timing.scenes[0]!.beats[0]!, hold: 0.1 }] }, timing.scenes[1]!, timing.scenes[2]!] }, scenes: { ...scenes, hook: (_s, c) => { c.show('run out', circle(40), { after: true }) } } })
+        await expect(noRoom).rejects.toThrow('or give the last beat of the scene a hold')
+    })
+})
+
+describe('a timing that another tool writes', () => {
+    // A course lays out its own sound: each scene has its start, 0.4 seconds of silence before its first word,
+    // and the film ends 0.3 seconds after the last hold.
+    const own: TimingFile = {
+        intro: 0, lead: 0.4, gap: 0, tail: 0.3,
+        scenes: [
+            { id: 'hook', title: 'The question', start: 0.4, beats: [{ say: 'Will it run out?', duration: 2, hold: 0.6, words: [word('Will', 0.1), word('it', 0.5), word('run', 0.9), word('out?', 1.3)] }] },
+            { id: 'answer', title: 'The answer', start: 3.7, beats: [{ say: 'Not today.', duration: 1.5, hold: 0.5, words: [word('Not', 0.2), word('today.', 0.7)] }] },
+            { id: 'close', start: 6.3, beats: [{ say: 'Have a plan.', duration: 1, hold: 0.5, words: [word('Have', 0.1), word('a', 0.4), word('plan.', 0.6)] }] },
+        ],
+    }
+    const scenes = { hook: nothing, answer: nothing, close: nothing }
+
+    it('places each scene at its own start, and ends the film one tail after the last hold', async () => {
+        const seen: Record<string, number[]> = {}
+        const scene = (s: Stage, c: SceneClock) => { seen[c.id] = [s.time, c.start, c.end, c.next] }
+        const film = await compile({ timing: own, intro: false, scenes: { hook: scene, answer: scene, close: scene } })
+        // The hook ends at 3, and the answer starts at 3.7: its picture opens 0.05 seconds before the hook is gone.
+        expect(seen['hook']!.map((time) => Math.round(time * 100) / 100)).toEqual([0, 0.4, 3, 3.7])
+        expect(seen['answer']!.map((time) => Math.round(time * 100) / 100)).toEqual([2.95, 3.7, 5.7, 6.3])
+        expect(seen['close']!.map((time) => Math.round(time * 100) / 100)).toEqual([5.65, 6.3, 7.8, 7.8])
+        expect(film.duration).toBeCloseTo(8.1, 6)
+        expect(film.chapters).toEqual([{ title: 'The question', time: 0 }, { title: 'The answer', time: 3.7 }])
+        // The captions are at the words of each scene.
+        expect(film.captions.map((caption) => [caption.text, Math.round(caption.t0 * 100) / 100])).toEqual([['Will it run out?', 0.4], ['Not today.', 3.7], ['Have a plan.', 6.3]])
+    })
+
+    it('opens, closes and hands over a picture with the times of such a timing', async () => {
+        const first = circle(40), kept = circle(40), taken = circle(40), second = circle(40), last = circle(40)
+        await compile({ timing: own, intro: false, scenes: {
+            hook: (s, c) => { s.add(first, kept); c.keep(kept) },
+            answer: (s, c) => { s.add(second); c.take(taken) },
+            close: (s) => { s.add(last) },
+        } })
+        // The hook leaves in its last quarter of a second, which ends at 3.
+        expect(opacityAt(first, 2.7)).toBeCloseTo(1, 6)
+        expect(opacityAt(first, 3.03)).toBe(0)
+        // The picture of the answer opens when the hook is gone, long before its first word at 3.7.
+        expect(opacityAt(second, 2.94)).toBe(0)
+        expect(opacityAt(second, 3.21)).toBeCloseTo(1, 6)
+        // The two copies change places 0.3 seconds before the first word of the answer.
+        expect(opacityAt(kept, 3.39)).toBe(1)
+        expect(opacityAt(kept, 3.41)).toBe(0)
+        expect(opacityAt(taken, 3.39)).toBe(0)
+        expect(opacityAt(taken, 3.41)).toBe(1)
+        // The last picture stays to the end of the film, 0.3 seconds after its hold, and leaves in its last moments.
+        expect(opacityAt(last, 7.7)).toBeCloseTo(1, 6)
+        expect(opacityAt(last, 8.06)).toBe(0)
+    })
+
+    it('stops when a scene starts before the scene before it has ended, and on a start that is not a time', async () => {
+        const early = { ...own, scenes: [own.scenes[0]!, { ...own.scenes[1]!, start: 2.9 }, own.scenes[2]!] }
+        await expect(compile({ timing: early, intro: false, scenes })).rejects.toThrow('narration: scene "answer" starts at 2.9 s, and the scene before it, "hook", ends at 3 s with the hold of its last beat. A scene starts when the scene before it has ended: give it a later start, or give the last beat of "hook" a shorter hold')
+        const wrong = { ...own, scenes: [{ ...own.scenes[0]!, start: 'soon' as never }, own.scenes[1]!, own.scenes[2]!] }
+        await expect(compile({ timing: wrong, intro: false, scenes })).rejects.toThrow('narration: scene "hook": start is "soon", and it is the time of the first word of the scene, in film seconds, 0 or more')
+        // A scene with no start follows the scene before it by one gap, as before.
+        const mixed = { ...own, gap: 0.5, scenes: [own.scenes[0]!, { ...own.scenes[1]!, start: undefined }, own.scenes[2]!] }
+        let start = 0
+        await compile({ timing: mixed, intro: false, scenes: { ...scenes, answer: (_s, c) => { start = c.start } } })
+        expect(start).toBeCloseTo(3.5, 6)
+    })
+})
+
+describe('a cue with no ASCII letter', () => {
+    const spoken = (words: string[]): TimingFile => ({ lead: 0.5, gap: 0.5, tail: 0.5, scenes: [{ id: 'one', beats: [{ say: words.join(' '), duration: words.length * 0.4, hold: 1, words: words.map((text, index) => ({ text, start: index * 0.4, end: index * 0.4 + 0.3 })) }] }] })
+
+    it('finds a word of another script, a word with an accent, and a number', async () => {
+        const starts: number[] = []
+        await compileFilm(narrated({ fps: 10, timing: spoken(['Tokyo', 'is', '東京', 'and', 'café', 'has', '42', 'seats', 'at', '3.5', 'stars.']), scenes: { one: (_s, c) => {
+            for (const phrase of ['東京', 'café', '42 seats', '3.5 stars', 'CAFÉ has']) starts.push(Math.round(c.cue(phrase).start * 10) / 10)
+        } } }))
+        expect(starts).toEqual([1.3, 2.1, 2.9, 4.1, 2.1])
+    })
+
+    it('says what to write for a cue that is a symbol', async () => {
+        const film = (phrase: string) => compileFilm(narrated({ fps: 10, timing: spoken(['It', 'grows', 'by', '5', 'percent.']), scenes: { one: (_s, c) => { c.cue(phrase) } } }))
+        await expect(film('%')).rejects.toThrow('narration: scene "one": the cue "%" has no letter and no digit, so it names no word of the voice. A cue is a word or a number that the voice says: write the words that the voice says for a symbol, such as "percent" for "%".')
+        await expect(film('→ …')).rejects.toThrow('the cue "→ …" has no letter and no digit')
+        // The number and the word that the voice says for the sign work.
+        await expect(film('5 percent')).resolves.toBeDefined()
+    })
+})
+
 describe('a picture that two scenes share', () => {
     // A film without the shell: the clocks of narration() alone.
     const build = (gap: number, onStage: (s: Stage, hook: SceneClock, answer: SceneClock) => void) => compileFilm(film({ fps: 20 }, (s) => {
@@ -443,6 +683,27 @@ describe('number and text helpers', () => {
         expect(smoothstep(0.1)).toBeCloseTo(0.028, 6)
         expect(smoothstep(-1)).toBe(0)
         expect(smoothstep(2)).toBe(1)
+    })
+
+    it('valueAt reads a series on the straight line between its two points around x', () => {
+        const points = [[0, 2], [2, 6], [3, 6], [7, -2]] as const
+        expect(valueAt(points, 1)).toBe(4)
+        expect(valueAt(points, 0)).toBe(2)
+        expect(valueAt(points, 2)).toBe(6)
+        expect(valueAt(points, 2.5)).toBe(6)
+        expect(valueAt(points, 6)).toBe(0)
+        expect(valueAt(points, 7)).toBe(-2)
+        // Outside its points, a series has no value. An empty series has none at all.
+        expect(valueAt(points, -0.1)).toBeNaN()
+        expect(valueAt(points, 7.1)).toBeNaN()
+        expect(valueAt([], 1)).toBeNaN()
+        expect(valueAt([[3, 5]], 3)).toBe(5)
+        // A point with no value: the series has its own value at the points beside it, and none between them.
+        const gap = [[0, 1], [1, NaN], [2, 3]] as const
+        expect(valueAt(gap, 0)).toBe(1)
+        expect(valueAt(gap, 2)).toBe(3)
+        expect(valueAt(gap, 0.5)).toBeNaN()
+        expect(valueAt(gap, 1)).toBeNaN()
     })
 
     it('commas groups the digits of a whole number in threes and rounds a fraction', () => {
@@ -783,6 +1044,47 @@ describe('scene kit', () => {
     })
 
     it('has no helper that a film can make in one line from the library: no mono label, and no panel', () => {
-        expect(Object.keys(sceneKit()).sort()).toEqual(['area', 'card', 'chip', 'chipRow', 'claimTag', 'fitSize', 'font', 'heading', 'label', 'left', 'namedBox', 'para', 'right', 'source', 'textWidth'])
+        // `note` and `display` are here because they hold a size of the kit, which a film would type as a number.
+        expect(Object.keys(sceneKit()).sort()).toEqual(['area', 'card', 'chip', 'chipRow', 'claimTag', 'display', 'fitSize', 'font', 'heading', 'label', 'left', 'namedBox', 'note', 'para', 'right', 'source', 'textWidth'])
+    })
+
+    it('makes a text with no place, for the layout: a label, a block, a note and a display line in the sizes of the kit', async () => {
+        await inFilm(() => {
+            const kit = sceneKit({ size: 50 })
+            // With no x and no y, the text is at the origin, and it has the look that it has with a place.
+            const free = kit.label('requests', { color: 'blue' }), placed = kit.label('requests', 120, 80, { color: 'blue' })
+            expect([free.get('x'), free.get('y'), placed.get('x'), placed.get('y')]).toEqual([0, 0, 120, 80])
+            expect(free.bounds().width).toBeCloseTo(placed.bounds().width, 6)
+            // A text with no place takes the options of a text, as a text with a place does.
+            expect([kit.label('requests', { size: 80 }).data['size'], kit.label('requests', 0, 0, { size: 80 }).data['size'], free.data['size']]).toEqual([80, 80, 50])
+            expect(kit.left('requests').get('px')).toBe(0)
+            expect(kit.right('requests').get('px')).toBeGreaterThan(0)
+            // A block wraps at its width, with a place or with none.
+            const long = 'one process for each microVM, and one thread for each virtual CPU'
+            expect(kit.para(long, 400).bounds().width).toBeLessThanOrEqual(400)
+            expect(kit.para(long, 400).bounds().height).toBeCloseTo(kit.para(long, -300, 0, 400).bounds().height, 6)
+            // The note has the size of the source line, and the display line is 1.78 of the label: both follow the one size.
+            expect(kit.note('our run').data['size']).toBe(kit.source('our run').data['size'])
+            expect(kit.note('our run').data['size']).toBe(36)
+            // A note is dim, as the source line is, and it takes a color of its own.
+            const paint = (node: { chars: readonly { get(prop: 'fill'): unknown }[] }) => node.chars[0]!.get('fill')
+            expect(paint(kit.note('our run'))).toEqual(paint(kit.source('our run')))
+            expect(paint(kit.note('our run'))).not.toEqual(paint(kit.label('our run')))
+            expect(paint(kit.note('our run', { color: 'ink' }))).toEqual(paint(kit.label('our run')))
+            expect(kit.display('160 times faster').data['size']).toBe(89)
+            expect(sceneKit().display('160 times faster').data['size']).toBe(64)
+            expect(() => (kit.label as (content: string, x: number) => unknown)('requests', 120)).toThrow('the text "requests" has an x and no y')
+            expect(() => kit.para(long, 0)).toThrow('para wraps at a width, more than 0, and it is 0')
+        })
+    })
+
+    it('gives the area as a region that cuts into columns and rows, and the same region to a film with no kit', async () => {
+        await inFilm(() => {
+            const { area } = sceneKit({ area: { left: -800, right: 800 } })
+            expect(area.columns(2).map((part) => [part.left, part.right])).toEqual([[-800, -24], [24, 800]])
+            expect(area.rows([3, 1], 'none').map((part) => [part.top, part.bottom])).toEqual([[-400, 230], [230, 440]])
+            expect(sceneArea()).toEqual(sceneKit().area)
+            expect(sceneArea({ bottom: 300 }).height).toBe(700)
+        })
     })
 })

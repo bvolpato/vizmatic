@@ -1,12 +1,15 @@
-import { invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
+import { apply, invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
 import { Node, ownLabels, reportsTime, type Edge, objectName } from '../node'
-import { changesAt, changesNow } from '../track'
 import { filmFont, text, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
 import { toPaint, type ColorInput } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
-import type { Ease } from '../ease'
+import { linear, smooth, type Ease } from '../ease'
+import { changesAt, changesNow, clock } from '../track'
 import { reveal, staggered, stepAt } from './util'
+import { Block, nodeOrPoint, oneNode } from '../layout'
+import type { Stage } from '../stage'
+import { pictogram } from './pictograms'
 
 /** Left, right, or center a single line of text on a stage position. Its baseline never shifts. */
 function place(node: Node, x: number, y: number, align: 'left' | 'right' | 'center' = 'left'): Node {
@@ -260,7 +263,8 @@ export function sparkline(values: readonly number[], options: SparklineOptions =
 
 // ── Connector ───────────────────────────────────────────────────────────────
 
-export type ConnectorEnd = Node | Vec
+/** An end of a connector: a node, a block of the layout, or a point of the stage. */
+export type ConnectorEnd = Node | Block | Vec
 
 export interface ConnectorOptions {
     /** Side to leave from and arrive at. Chosen automatically when omitted. */
@@ -292,6 +296,33 @@ export interface ConnectorOptions {
     /** Dashes travel along the line at this many pixels per second. */
     flow?: number
 }
+
+/** How `connector.send` sends a mark along a line. */
+export interface SendOptions extends AnimOptions {
+    /** Travel from the second end of the line to the first, as the answer to a request does. */
+    reverse?: boolean
+    /**
+     * The part of the way where the message is lost, from 0 to 1. It stops there, with a cross ahead of it.
+     * The way of a message that stops ends before the node, with room for the cross: at 1, it stops where a
+     * refused message stops.
+     */
+    lost?: number
+    /** The receiver does not take the message. It stops before the end of the line, with a cross between it and the receiver. */
+    refused?: boolean
+    /** Seconds that a message that is lost or refused stays with its cross, before both go. Defaults to 0.8. */
+    hold?: number
+    /** The color of the cross. Defaults to red. */
+    stopColor?: ColorInput
+    /** Room between the mark and the node at each end of the line, and between the mark and its cross. Defaults to 8. */
+    gap?: number
+}
+
+/** Seconds for a mark to grow in at the start of its way, and to shrink out when it goes. */
+const SEND_GROW = 0.15, SEND_LEAVE = 0.12
+/** A time for a message, with two digits. */
+const round = (seconds: number): number => Math.round(seconds * 100) / 100
+/** The times at which each mark of a film is on its way, so that one mark is not sent two times at once. A film that is built again has a new stage. */
+const ON_ITS_WAY = new WeakMap<Stage, Map<Node, [from: number, to: number][]>>()
 
 interface Anchor {
     point: Vec
@@ -361,6 +392,15 @@ export class Connector extends Node {
     constructor(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}) {
         // An empty path lets the standard draw and write verbs animate trimTo here.
         super([])
+        // A block of the layout is an end as a node is: the line meets the middle of the edge of its box.
+        for (const [end, name] of [[from, 'the first end'], [to, 'the second end']] as const) {
+            if (end instanceof Block) continue
+            try {
+                nodeOrPoint('connector', end, name)
+            } catch (error) {
+                throw new Error((error as Error).message.replace('Give a node, or a point', 'Give a node, a block of the layout, or a point'))
+            }
+        }
         this.fromEnd = from
         this.toEnd = to
         this.options = options
@@ -372,20 +412,22 @@ export class Connector extends Node {
         // The label sits on the line, on a plate. `build` makes it later.
         ownLabels(this, { name: 'connector', labels: [] })
         // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
-        this.data['attached'] = [from, to].filter((end) => end instanceof Node)
+        this.data['attached'] = [from, to].flatMap((end) => (end instanceof Block ? end.nodes : end instanceof Node ? [end] : []))
         this.data['line'] = true
     }
 
     private anchors(): [Anchor, Anchor] {
         const { fromEnd, toEnd, options } = this
         const gap = options.gap ?? 3
-        const boxOf = (end: ConnectorEnd) => end instanceof Node ? end.bounds() : { x: end[0], y: end[1], width: 0, height: 0 }
+        // A block has the measure of the layout, so the line leaves from the box that the layout placed.
+        const measure = (block: Block) => { const box = block.box; return { x: box.left, y: box.top, width: box.width, height: box.height } }
+        const boxOf = (end: ConnectorEnd) => end instanceof Block ? measure(end) : end instanceof Node ? end.bounds() : { x: end[0], y: end[1], width: 0, height: 0 }
         const a = boxOf(fromEnd), b = boxOf(toEnd)
         const [autoFrom, autoTo] = chooseSides(a, b)
         const sideFrom = options.from ?? autoFrom, sideTo = options.to ?? autoTo
         const anchor = (end: ConnectorEnd, box: typeof a, side: Edge, offset: number): Anchor => {
             const normal = NORMALS[side]
-            if (!(end instanceof Node)) return { point: end, normal }
+            if (!(end instanceof Node || end instanceof Block)) return { point: end, normal }
             const [x, y] = sidePoint(box, side, offset)
             return { point: [x + normal[0] * gap, y + normal[1] * gap], normal }
         }
@@ -491,12 +533,94 @@ export class Connector extends Node {
         }
     }
 
+    /**
+     * Send a mark along the line, as a message between the two ends: a request, an answer, a packet. The mark
+     * grows in beside the first node and travels at one speed. `duration` is its time on the way, so a slow
+     * message has a long one. A message that arrives goes into the node at the end. One that is lost stops on
+     * the way, and one that is refused stops before the node: each has a cross, and stays for `hold`. The
+     * animation lasts for the way and for what comes after it. The mark never fades, so the line under it does
+     * not show through a text on it.
+     */
+    send(mark: Node, options: SendOptions = {}): Anim {
+        oneNode('connector.send', mark, 'the mark')
+        const { lost, refused = false, reverse = false } = options
+        if (lost !== undefined && !(lost >= 0 && lost <= 1)) throw new Error(`connector.send: lost is the part of the way where the message is lost, from 0 to 1, and it is ${lost}`)
+        if (lost !== undefined && refused) throw new Error('connector.send: a message is lost on the way or refused at the end, and this one is both. Give lost or refused')
+        const travel = options.duration ?? 0.9, gap = options.gap ?? 8, hold = options.hold ?? 0.8
+        // A time that is not a number would put the mark nowhere, and the film would say nothing.
+        if (!(Number.isFinite(travel) && travel > 0)) throw new Error(`connector.send: duration is the time of the message on its way, in seconds, more than 0, and it is ${travel}`)
+        if (!(Number.isFinite(hold) && hold >= 0)) throw new Error(`connector.send: hold is how long a message that is lost or refused stays with its cross, in seconds, 0 or more, and it is ${hold}`)
+        if (!(Number.isFinite(gap) && gap >= 0)) throw new Error(`connector.send: gap is the room between the mark and a node, in pixels, 0 or more, and it is ${gap}`)
+        const stopped = lost !== undefined || refused
+        const after = (stopped ? hold : 0) + SEND_LEAVE
+        return {
+            label: 'connector.send', duration: travel + after, ease: options.ease ?? linear,
+            schedule: (ctx) => {
+                const stretch = (ctx.t1 - ctx.t0) / (travel + after)
+                const arrives = ctx.t0 + travel * stretch, leaves = ctx.t1 - SEND_LEAVE * stretch
+                // A mark is at one place at a time. A second message at the same time needs its own mark.
+                const marks = ON_ITS_WAY.get(ctx.stage) ?? new Map<Node, [number, number][]>()
+                ON_ITS_WAY.set(ctx.stage, marks)
+                const busy = (marks.get(mark) ?? []).find(([from, to]) => ctx.t0 < to - 1e-9 && from < ctx.t1 - 1e-9)
+                if (busy) throw new Error(`connector.send: the mark is on its way from ${round(busy[0])} s to ${round(busy[1])} s, and this message is from ${round(ctx.t0)} s to ${round(ctx.t1)} s. One mark is at one place at a time. Send a copy of it, such as link.send(mark.clone()), or a new mark for each message`)
+                marks.set(mark, [...(marks.get(mark) ?? []), [ctx.t0, ctx.t1]])
+                clock.now = ctx.t0
+                reveal(this, ctx.t0, ctx.stage)
+                reveal(mark, ctx.t0, ctx.stage)
+                // The pivot of the mark is its middle: its place is the place of its middle, and it grows about it.
+                mark.pivotAt(mark.center)
+                const route = this.routeNow(), length = pathLength(route), box = mark.bounds()
+                const point = (part: number): Vec => pointAt(route, reverse ? 1 - part : part)
+                // Half of the mark along the line, at a part of the way.
+                const half = (part: number) => {
+                    const [ux, uy] = tangentAt(route, Math.min(0.999, Math.max(0.001, reverse ? 1 - part : part)))
+                    return (box.width * Math.abs(ux) + box.height * Math.abs(uy)) / 2
+                }
+                const cross = Math.round(Math.min(box.width, box.height) * 0.92)
+                // The mark starts and stops clear of the two nodes. One that is lost or refused leaves room for its
+                // cross before the node, so a message that is lost at the end of its way stops there too.
+                const first = (half(0) + gap) / length, last = 1 - (half(1) + gap + (stopped ? cross + gap : 0)) / length
+                if (!(last > first)) throw new Error(`connector.send: the line is ${Math.round(length)} long, and a mark that is ${Math.round(box.width)} by ${Math.round(box.height)} needs more to travel. Move the two nodes apart, or send a smaller mark`)
+                const stop = first + (last - first) * (lost ?? 1)
+                const inverse = mark.parent ? invert(mark.parent.worldMatrix()) : IDENTITY
+                const place = (alpha: number): Vec => apply(inverse, ...point(first + (stop - first) * alpha))
+                mark.track('x').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: place(1)[0], at: (alpha) => place(alpha)[0] })
+                mark.track('y').add({ t0: ctx.t0, t1: arrives, ease: ctx.ease, to: place(1)[1], at: (alpha) => place(alpha)[1] })
+                // A node grows in over a moment, stays, and shrinks out. It is hidden after that, at its own size.
+                const life = (node: Node, from: number) => {
+                    for (const prop of ['sx', 'sy'] as const) {
+                        const size = node.get(prop)
+                        stepAt(node, prop, size * 0.001, from)
+                        node.tween(prop, size, from, Math.min(from + SEND_GROW * stretch, (from + leaves) / 2), smooth)
+                        node.tween(prop, size * 0.01, leaves, ctx.t1, smooth)
+                        stepAt(node, prop, size, ctx.t1)
+                    }
+                    node.track('visible').step(ctx.t1, false)
+                }
+                life(mark, ctx.t0)
+                if (!stopped) return
+                // The cross is ahead of the mark, and never nearer to the node than the room at an end of the line.
+                const ahead = point(Math.min(stop + (half(stop) + gap + cross / 2) / length, 1 - (gap + cross / 2) / length))
+                const stopMark = pictogram('cross', { size: cross, accent: options.stopColor ?? 'red', weight: 2.4 }).at(ahead)
+                ctx.stage.mountAt(stopMark, arrives)
+                clock.now = arrives
+                life(stopMark, arrives)
+                clock.now = ctx.t0
+            },
+        }
+    }
+
     /** Point at a fraction along the current route, for placing notes beside the line. */
     pointNow(fraction = 0.5): [number, number] {
         return pointAt(this.routeNow(), fraction)
     }
 }
 
+/**
+ * A line from one end to another, which follows its ends while they move. An end is a node, a block of the
+ * layout, or a point of the stage. At a node and at a block, the line meets the middle of the edge of the box
+ * that faces the other end.
+ */
 export function connector(from: ConnectorEnd, to: ConnectorEnd, options: ConnectorOptions = {}): Connector {
     return new Connector(from, to, options)
 }
@@ -590,6 +714,7 @@ export class Callout extends Node {
 
     constructor(target: Node | Vec, body: string, options: CalloutOptions = {}) {
         super()
+        nodeOrPoint('callout', target, 'the target')
         const size = options.size ?? 15
         const color = options.color ?? 'yellow'
         const side = options.side ?? 'right'

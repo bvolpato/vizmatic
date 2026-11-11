@@ -1,109 +1,16 @@
-import { Axes, NumberPlane, type PlaneOptions } from '../objects'
+import { Axes, NumberPlane, curveOf, endOf, sampleXs, type Curve, type PlaneOptions, type Reactive, type Sampled } from '../objects'
 import { apply, arcPath, circlePath, invert, parametricPath, pathBounds, pathLength, pointAt, polyPath, ring, type Path, type Ring, type Vec } from '../geometry'
 import { dynamic, Node, ownLabels, type Side, direction, objectName } from '../node'
-import { arrow, brace, dot, line, rect, type ShapeStyle } from '../shapes'
+import { brace, dot, line, rect, type ShapeStyle } from '../shapes'
 import { tex, TexNode } from '../tex'
 import type { TextOptions } from '../text'
 import { ramp, sampleStops, toPaint, type ColorInput, type Rgba } from '../color'
 import { clock } from '../track'
 import { morphMatching, warp, type Anim, type AnimOptions } from '../anim'
 import { labelNode, polylineRing, seededRandom, stepsBetween } from './util'
+import { nodesFor, oneObject, type Block } from '../layout'
 
-type Reactive = number | (() => number)
 const read = (value: Reactive): number => typeof value === 'function' ? value() : value
-
-// ── Number line ─────────────────────────────────────────────────────────────
-
-export interface NumberLineOptions {
-    range?: readonly [number, number]
-    /** On-screen length in stage pixels. */
-    length?: number
-    step?: number
-    labels?: boolean
-    labelSize?: number
-    color?: ColorInput
-    tips?: boolean
-    width?: number
-}
-
-export class NumberLine extends Node {
-    readonly range: readonly [number, number]
-    readonly length: number
-    readonly line: Node
-    readonly ticks = new Node()
-    readonly numbers = new Node()
-
-    constructor(options: NumberLineOptions = {}) {
-        super()
-        this.range = options.range ?? [-5, 5]
-        this.length = options.length ?? 1200
-        const color = options.color ?? 'dim'
-        const width = options.width ?? 2
-        const half = this.length / 2
-        const tips = options.tips ?? true
-        this.line = tips
-            ? arrow([-half - 36, 0], [half + 36, 0], { stroke: color, width, tip: 14, both: true })
-            : line([-half, 0], [half, 0], { stroke: color, width })
-        const step = options.step ?? 1
-        for (const value of stepsBetween(this.range[0], this.range[1], step)) {
-            const [x] = this.p(value)
-            this.ticks.add(line([x, -7], [x, 7], { stroke: color, width }))
-            if (options.labels ?? true) {
-                const size = options.labelSize ?? 24
-                const label = tex(String(Math.round(value * 1000) / 1000), { size, color: 'dim', display: false })
-                label.set('py', -size * 0.25)
-                this.numbers.add(label.at(x, 34))
-            }
-        }
-        this.add(this.line, this.ticks, this.numbers)
-        ownLabels(this, { name: 'number line', plot: true })
-    }
-
-    /** Value to local stage coordinates. */
-    p(value: number): [number, number] {
-        const [min, max] = this.range
-        return [((value - min) / (max - min) - 0.5) * this.length, 0]
-    }
-
-    world(value: number): [number, number] {
-        const [x, y] = this.p(value)
-        return this.toWorld(x, y)
-    }
-
-    /** A point on the line. Pass a function to follow a Value over time. */
-    marker(value: Reactive, options: { color?: ColorInput; label?: string; radius?: number; labelSize?: number } = {}): Node {
-        const color = options.color ?? 'yellow'
-        const size = options.labelSize ?? 28
-        const build = (): Node[] => {
-            const [x] = this.p(read(value))
-            const parts: Node[] = [dot(options.radius ?? 9, color).at(x, 0)]
-            if (options.label) parts.push(tex(options.label, { size, color, display: false }).at(x, -size * 1.15))
-            return parts
-        }
-        const node = typeof value === 'function' ? dynamic(build) : new Node().add(...build())
-        this.add(node)
-        ownLabels(this, { labels: [node] })
-        return node
-    }
-
-    /** A highlighted span, with open or closed endpoints. */
-    interval(from: number, to: number, options: { color?: ColorInput; width?: number; offset?: number; openLeft?: boolean; openRight?: boolean } = {}): Node {
-        const color = options.color ?? 'blue'
-        const offset = options.offset ?? 0
-        const [a] = this.p(from), [b] = this.p(to)
-        const band = line([a, offset], [b, offset], { stroke: color, width: options.width ?? 7 })
-        const end = (x: number, open?: boolean) => open
-            ? dot(9, 'bg').stroke(color, 4).at(x, offset)
-            : dot(9, color).at(x, offset)
-        const node = new Node().add(band, end(a, options.openLeft), end(b, options.openRight))
-        this.add(node)
-        return node
-    }
-}
-
-export function numberLine(options: NumberLineOptions = {}): NumberLine {
-    return new NumberLine(options)
-}
 
 // ── Complex plane ───────────────────────────────────────────────────────────
 
@@ -149,6 +56,7 @@ export function complexPlane(options: ComplexPlaneOptions = {}): ComplexPlane {
  * separately, so this moves only the grid.
  */
 export function applyComplex(plane: NumberPlane, f: (re: number, im: number) => Vec, options: AnimOptions & { subdivisions?: number } = {}): Anim {
+    oneObject('applyComplex', plane, 'the first argument', NumberPlane, 'a number plane, such as complexPlane()')
     const inverse = invert(plane.worldMatrix())
     const world = plane.worldMatrix()
     const unit = plane.unit
@@ -444,24 +352,41 @@ export interface RiemannOptions {
     strokeWidth?: number
 }
 
-/** Rectangles under a curve. Morph one set into a finer one to show the integral appear. */
+/**
+ * Rectangles under a curve. Morph one set into a finer one to show the integral appear. On axes with a range
+ * that moves, the rectangles follow the range: each one is cut at the ends of the ranges, and one that is
+ * outside does not show. They are then drawn again on every frame, so they have no leaves to morph.
+ */
 export function riemann(axes: Axes, f: (x: number) => number, options: RiemannOptions = {}): Node {
-    const from = options.from ?? axes.xRange[0], to = options.to ?? axes.xRange[1]
+    oneObject('riemann', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const n = options.n ?? 12
     const rule = options.rule ?? 'mid'
     const colors = ramp(n, ...(options.colors ?? ['blue', 'teal', 'green']))
-    const made = new Node()
-    const dx = (to - from) / n
-    for (let i = 0; i < n; i++) {
-        const left = from + i * dx
-        const sample = rule === 'left' ? left : rule === 'right' ? left + dx : left + dx / 2
-        const y = f(sample)
-        const [ax, ay] = axes.p(left, 0), [bx, by] = axes.p(left + dx, y)
-        const leaf = recenter(polyPath([[ax, ay], [bx, ay], [bx, by], [ax, by]], true))
-        leaf.fill(colors[i]!, options.opacity ?? 0.72)
-        leaf.stroke(options.stroke ?? 'bg', options.strokeWidth ?? (n > 40 ? 0.5 : 1.4))
-        made.add(leaf)
+    const leaves = (): Node[] => {
+        const from = options.from ?? axes.xRange[0], to = options.to ?? axes.xRange[1]
+        const dx = (to - from) / n
+        const out: Node[] = []
+        for (let i = 0; i < n; i++) {
+            const left = from + i * dx
+            const sample = rule === 'left' ? left : rule === 'right' ? left + dx : left + dx / 2
+            let x0 = left, x1 = left + dx, low = 0, high = f(sample)
+            if (axes.moving) {
+                const [a, b] = axes.xRange, [c, d] = axes.yRange
+                x0 = Math.max(x0, a)
+                x1 = Math.min(x1, b)
+                low = Math.max(c, Math.min(d, low))
+                high = Math.max(c, Math.min(d, high))
+                if (!(x1 > x0) || low === high) continue
+            }
+            const [ax, ay] = axes.p(x0, low), [bx, by] = axes.p(x1, high)
+            const leaf = recenter(polyPath([[ax, ay], [bx, ay], [bx, by], [ax, by]], true))
+            leaf.fill(colors[i]!, options.opacity ?? 0.72)
+            leaf.stroke(options.stroke ?? 'bg', options.strokeWidth ?? (n > 40 ? 0.5 : 1.4))
+            out.push(leaf)
+        }
+        return out
     }
+    const made = axes.moving ? dynamic(leaves) : new Node().add(...leaves())
     axes.add(made)
     return objectName(made, 'Riemann sum')
 }
@@ -469,35 +394,85 @@ export function riemann(axes: Axes, f: (x: number) => number, options: RiemannOp
 export interface AreaOptions {
     from?: Reactive
     to?: Reactive
+    /**
+     * The lower edge of the area, for the band between two curves: `areaUnder(axes, high, { over: low })` is
+     * under `high` and over `low`. It is a function or a series, as the curve is. Without it, the area goes
+     * down to the x axis. `band(axes, low, high)` is the same band by its name.
+     */
+    over?: Curve
     fill?: ColorInput
     opacity?: number
+    /** The number of equal parts that functions are sampled at. A series has its own points. */
     samples?: number
 }
 
-function areaPath(axes: Axes, f: (x: number) => number, from: number, to: number, samples: number): Path {
-    const points: Vec[] = []
-    for (let i = 0; i <= samples; i++) {
-        const x = from + (to - from) * i / samples
-        points.push(axes.p(x, f(x)))
+/** The options of a band: those of `areaUnder`, with no `over`. */
+export type BandOptions = Omit<AreaOptions, 'over'>
+
+/** The outline of an area: from a curve down to the x axis, or the band between two curves. */
+function areaPath(axes: Axes, top: Sampled, base: Sampled | null, from: number, to: number, samples = 96): Path {
+    const xs = sampleXs(from, to, samples, base ? [top, base] : [top])
+    if (!base) return polyPath([...xs.map((x) => axes.p(x, top.at(x))), axes.p(to, 0), axes.p(from, 0)], true)
+    const [y0, y1] = axes.yRange
+    const inside = (y: number) => Math.max(y0, Math.min(y1, y))
+    // One closed shape for each run of samples where both curves have a value. A sample with no value leaves a gap.
+    const rings: Ring[] = []
+    let upper: Vec[] = [], lower: Vec[] = []
+    const close = () => {
+        if (upper.length >= 2) rings.push(...polyPath([...upper, ...lower.reverse()], true))
+        upper = []
+        lower = []
     }
-    points.push(axes.p(to, 0), axes.p(from, 0))
-    return polyPath(points, true)
+    for (const x of xs) {
+        const a = top.at(x), b = base.at(x)
+        if (!Number.isFinite(a) || !Number.isFinite(b)) {
+            close()
+            continue
+        }
+        // The band is between the two curves, whichever of them is the higher one at this x.
+        upper.push(axes.p(x, inside(Math.max(a, b))))
+        lower.push(axes.p(x, inside(Math.min(a, b))))
+    }
+    close()
+    return rings
 }
 
-/** Shaded region between a curve and the x axis. Pass functions for bounds that move. */
-export function areaUnder(axes: Axes, f: (x: number) => number, options: AreaOptions = {}): Node {
-    const samples = options.samples ?? 96
+function fillBetween(what: string, axes: Axes, top: Sampled, base: Sampled | null, options: BandOptions): Node {
     const color = options.fill ?? 'blue'
     const opacity = options.opacity ?? 0.28
-    const from = options.from ?? axes.xRange[0], to = options.to ?? axes.xRange[1]
-    const node = typeof from === 'function' || typeof to === 'function'
+    const from = endOf(what, 'from', options.from), to = endOf(what, 'to', options.to)
+    const shape = (a: number, b: number) => new Node(areaPath(axes, top, base, a, b, options.samples)).fill(color, opacity)
+    const node = axes.moving || typeof from === 'function' || typeof to === 'function'
         ? dynamic(() => {
-            const a = read(from), b = read(to)
-            return Math.abs(b - a) < 1e-9 ? null : new Node(areaPath(axes, f, a, b, samples)).fill(color, opacity)
+            const [a, b] = axes.span(from, to, what)
+            // On axes with a range that moves, an area that is outside the range now has nothing to show.
+            return Math.abs(b - a) < 1e-9 || (axes.moving && b < a) ? null : shape(a, b)
         })
-        : new Node(areaPath(axes, f, from, to, samples)).fill(color, opacity)
+        : shape(from ?? axes.xRange[0], to ?? axes.xRange[1])
     axes.add(node)
-    return objectName(node, 'area under a curve')
+    return objectName(node, base ? 'band between two curves' : 'area under a curve')
+}
+
+/**
+ * Shaded region between a curve and the x axis, or between two curves with `over`. The curve is a function
+ * or a series. Pass functions for bounds that move: `to: () => t.value` opens the area from left to right,
+ * up to a time.
+ */
+export function areaUnder(axes: Axes, f: Curve, options: AreaOptions = {}): Node {
+    oneObject('areaUnder', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
+    const top = curveOf('areaUnder', 'the curve', f)
+    return fillBetween('areaUnder', axes, top, options.over === undefined ? null : curveOf('areaUnder', 'over', options.over), options)
+}
+
+/**
+ * The band between two curves on the same axes: the interval around a forecast, the range of a sensor, the
+ * room between a load and its limit. Each curve is a function of x, or the points of a series. `from` and
+ * `to` take a number or a function, so `to: () => t.value` opens the band from left to right, up to a time.
+ * The band stays inside the y range, and it has a gap where a curve has no value.
+ */
+export function band(axes: Axes, low: Curve, high: Curve, options: BandOptions = {}): Node {
+    oneObject('band', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
+    return fillBetween('band', axes, curveOf('band', 'the high curve', high), curveOf('band', 'the low curve', low), options)
 }
 
 function slopeAt(axes: Axes, f: (x: number) => number, x: number): { point: Vec; ux: number; uy: number } {
@@ -515,12 +490,15 @@ export interface TangentOptions extends ShapeStyle {
     point?: boolean
 }
 
-/** The tangent at x, as a line on the axes. Pass a function of time to make it slide. */
+/** The tangent at x, as a line on the axes. Pass a function of time to make it slide. On axes with a range that moves, it follows the range, and it does not show while its point is outside. */
 export function tangentLine(axes: Axes, f: (x: number) => number, x: Reactive, style: TangentOptions = {}): Node {
+    oneObject('tangentLine', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const length = style.length ?? 420
     const color = style.stroke ?? 'yellow'
     const build = (): Node[] => {
-        const { point, ux, uy } = slopeAt(axes, f, read(x))
+        const at = read(x)
+        if (axes.moving && !axes.holds(at, f(at))) return []
+        const { point, ux, uy } = slopeAt(axes, f, at)
         const parts = [line(
             [point[0] - ux * length / 2, point[1] - uy * length / 2],
             [point[0] + ux * length / 2, point[1] + uy * length / 2],
@@ -529,7 +507,7 @@ export function tangentLine(axes: Axes, f: (x: number) => number, x: Reactive, s
         if (style.point ?? true) parts.push(dot(8, color).at(point))
         return parts
     }
-    const node = typeof x === 'function' ? dynamic(build) : new Node().add(...build())
+    const node = typeof x === 'function' || axes.moving ? dynamic(build) : new Node().add(...build())
     axes.add(node)
     return objectName(node, 'tangent line')
 }
@@ -543,12 +521,14 @@ export interface SecantOptions extends ShapeStyle {
     legColor?: ColorInput
 }
 
-/** The line through two points on a curve. Pass functions to shrink h on screen. */
+/** The line through two points on a curve. Pass functions to shrink h on screen. On axes with a range that moves, it follows the range, and it does not show while one of its points is outside. */
 export function secantLine(axes: Axes, f: (x: number) => number, a: Reactive, b: Reactive, style: SecantOptions = {}): Node {
+    oneObject('secantLine', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const extend = style.extend ?? 140
     const color = style.stroke ?? 'yellow'
     const build = (): Node[] => {
         const xa = read(a), xb = read(b)
+        if (axes.moving && !(axes.holds(xa, f(xa)) && axes.holds(xb, f(xb)))) return []
         const pa = axes.p(xa, f(xa)), pb = axes.p(xb, f(xb))
         const length = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) || 1
         const ux = (pb[0] - pa[0]) / length, uy = (pb[1] - pa[1]) / length
@@ -561,21 +541,23 @@ export function secantLine(axes: Axes, f: (x: number) => number, a: Reactive, b:
         if (style.points ?? true) parts.push(dot(8, color).at(pa), dot(8, color).at(pb))
         return parts
     }
-    const node = typeof a === 'function' || typeof b === 'function' ? dynamic(build) : new Node().add(...build())
+    const node = typeof a === 'function' || typeof b === 'function' || axes.moving ? dynamic(build) : new Node().add(...build())
     axes.add(node)
     return objectName(node, 'secant line')
 }
 
-/** Dashed drop lines from a point on the axes. Pass functions to follow a moving point. */
+/** Dashed drop lines from a point on the axes. Pass functions to follow a moving point. On axes with a range that moves, they follow the range, and they do not show while the point is outside. */
 export function dashedGuides(axes: Axes, x: Reactive, y: Reactive, style: ShapeStyle = {}): Node {
+    oneObject('dashedGuides', axes, 'the first argument', Axes, 'a pair of axes, such as axes()')
     const build = (): Node[] => {
         const px = read(x), py = read(y)
+        if (axes.moving && !axes.holds(px, py)) return []
         const originX = Math.max(axes.xRange[0], Math.min(axes.xRange[1], 0))
         const originY = Math.max(axes.yRange[0], Math.min(axes.yRange[1], 0))
         const common = { stroke: 'dim', width: 2, dash: [6, 7], ...style }
         return [line(axes.p(px, originY), axes.p(px, py), common), line(axes.p(originX, py), axes.p(px, py), common)]
     }
-    const node = typeof x === 'function' || typeof y === 'function' ? dynamic(build) : new Node().add(...build())
+    const node = typeof x === 'function' || typeof y === 'function' || axes.moving ? dynamic(build) : new Node().add(...build())
     axes.add(node)
     return objectName(node, 'pair of guides')
 }
@@ -752,8 +734,10 @@ export function matrix(rows: readonly (readonly (string | number)[])[], options:
 
 // ── Annotation marks ────────────────────────────────────────────────────────
 
-function boundsOf(target: Node | readonly Node[]): { x: number; y: number; width: number; height: number } {
-    const list: readonly Node[] = Array.isArray(target) ? target as readonly Node[] : [target as Node]
+function boundsOf(what: string, target: Node | Block | readonly (Node | Block)[]): { x: number; y: number; width: number; height: number } {
+    // A block of the layout stands for its nodes.
+    const list = nodesFor(what, target)
+    if (list.length === 0) throw new Error(`${what}: the target is an empty list. Give it at least one node`)
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
     for (const node of list) {
         const b = node.bounds()
@@ -778,8 +762,8 @@ export interface BraceLabelOptions {
 }
 
 /** A brace along one side of a node or nodes, with a label at its point. */
-export function braceLabel(target: Node | readonly Node[], label: string, options: BraceLabelOptions = {}): Node {
-    const b = boundsOf(target)
+export function braceLabel(target: Node | Block | readonly (Node | Block)[], label: string, options: BraceLabelOptions = {}): Node {
+    const b = boundsOf('braceLabel', target)
     const side = options.side ?? 'bottom'
     const gap = options.gap ?? 12
     const color = options.color ?? 'ink'
@@ -813,8 +797,8 @@ export interface SurroundOptions {
 }
 
 /** A rounded box around a node or nodes, measured now. */
-export function surroundingBox(target: Node | readonly Node[], options: SurroundOptions = {}): Node {
-    const b = boundsOf(target)
+export function surroundingBox(target: Node | Block | readonly (Node | Block)[], options: SurroundOptions = {}): Node {
+    const b = boundsOf('surroundingBox', target)
     const pad = options.pad ?? 12
     const box = rect(b.width + pad * 2, b.height + pad * 2, { radius: options.radius ?? 8, stroke: options.color ?? 'yellow', width: options.width ?? 2.5, glow: options.glow })
     if (options.fill) box.fill(options.fill, options.fillOpacity ?? 0.14)

@@ -26,7 +26,7 @@ export default film({ fps: 30 }, (s) => {
 })
 ```
 
-`riemann`, `areaUnder`, `tangentLine`, and `secantLine` work with an `Axes`. `numberLine` draws one axis alone.
+`riemann`, `areaUnder`, `tangentLine`, and `secantLine` work with an `Axes`. `numberLine` draws one axis alone: see [Number lines](#number-lines).
 
 ```film paired label="Rectangles under a curve grow more numerous and approach the area"
 import { axes, draw, fadeIn, film, morph, riemann } from 'vizmatic/stage'
@@ -48,6 +48,63 @@ export default film({ fps: 30 }, (s) => {
     s.wait(0.6)
 })
 ```
+
+`plot` draws a function as a smooth curve through even samples. It also takes a series: the list of its points, `[x, y]` with x in rising order. A series is straight lines through its own points, so its shape stays the same while it grows or scrolls, and a point with no value (`NaN`) leaves a gap. `plot(points, { to: () => now.value })` draws a curve up to a value, and `from` takes a function too. `valueAt(points, x)` gives the value of a series at any x, for a mark that follows it.
+
+`axes.marker({ x: () => now.value, label: 'now' })` draws a line across the plot at one value of x, with its label over the plot. With `y`, the line is level and its label is at the right of the plot, for a limit or a target. Near an end of the plot, the label stays beside the plot and does not pass the end. A marker that follows a value does not show while the value is outside the range.
+
+## Bands
+
+`band(axes, low, high)` fills the band between two curves on the same axes: the interval around a forecast, the range of a sensor, the room between a load and its limit. Each curve is a function or a series. `from` and `to` take a number or a function, so `to: () => t.value` opens the band from left to right, as a curve is drawn. The band stays inside the y range, and it has a gap where a curve has no value. `areaUnder(axes, high, { over: low })` is the same band.
+
+```film paired label="A median draws, and two bands open around it: the dark one inside the light one"
+import { axes, band, fadeIn, film, type Vec } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const open = s.value(0)
+    const graph = s.add(axes({ x: [0, 12], y: [0, 10], width: 1300, height: 700, tips: false }))
+    // One value for each whole x. The bands are wider at each step.
+    const middle = [4, 4.6, 5.4, 6, 5.6, 4.8, 4.4, 5, 5.8, 6.4, 6, 5.2, 4.8]
+    const around = (reach: number): Vec[] => middle.map((y, x) => [x, y + reach * Math.sqrt(x)])
+    band(graph, around(-0.8), around(0.8), { to: () => open.value, fill: 'blue', opacity: 0.2 })
+    band(graph, around(-0.3), around(0.3), { to: () => open.value, fill: 'blue', opacity: 0.3 })
+    graph.plot(around(0), { to: () => open.value, stroke: 'blue' })
+    s.play(fadeIn(graph), { duration: 0.6 })
+    s.play(open.to(12), { duration: 2.4 })
+    s.wait(0.8)
+})
+```
+
+## Moving windows
+
+A range can be a function, for a window that moves along a series: `axes({ x: () => [now.value - 8, now.value + 4] })`. The axes then draw their ticks and their numbers again on every frame, and a number fades before it passes an end of its axis. Give `xStep`, so that the ticks stay the same when the window changes its width. Keep the y range, or move it slowly: a y axis that jumps is hard to read.
+
+Each mark on such axes follows the range. A curve and a band are cut at the two ends of the x range. A dot, a marker, guides, a tangent, a secant, the rectangles of `riemann`, and the names of the axes move with it, and a mark at a point does not show while the point is outside the range.
+
+On fixed axes, the numbers have one place at every `labelSize`: the middle of a number is 26 pixels under the x axis, or 28 pixels beside the y axis. A number that would touch its tick there moves away as far as it must to clear the tick. On axes with a range that moves, that room grows with `labelSize`.
+
+```film paired label="A window moves along a series, a marker follows the present, and a band opens ahead of it"
+import { axes, band, dot, dynamic, fadeIn, film, linear, valueAt, type Vec } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const now = s.value(8), ahead = s.value(0)
+    // A series with one point for each whole x.
+    const points: Vec[] = Array.from({ length: 17 }, (_, x) => [x, 5 + 3 * Math.sin(x / 2)])
+    const wave = (x: number) => 5 + 3 * Math.sin(x / 2)
+    const graph = s.add(axes({ x: () => [now.value - 8, now.value + 4], y: [0, 10], width: 1300, height: 700, xStep: 2, tips: false }))
+    band(graph, (x) => wave(x) - 0.3 * (x - 16), (x) => wave(x) + 0.3 * (x - 16), { from: 16, to: () => 16 + ahead.value, fill: 'blue' })
+    graph.plot(points, { to: () => now.value, stroke: 'ink' })
+    graph.marker({ x: () => now.value, label: 'now' })
+    // A mark of the film at a place of the data: `p` gives the place for the range of each frame.
+    graph.add(dynamic(() => dot(8, 'ink').at(graph.p(now.value, valueAt(points, now.value)))))
+    s.play(fadeIn(graph), { duration: 0.6 })
+    s.play(now.to(16, { ease: linear }), { duration: 3 })
+    s.play(ahead.to(4), { duration: 1.2 })
+    s.wait(0.8)
+})
+```
+
+`p(x, y)` gives the place for the range at the time of the frame, so make a mark of your own with `dynamic`, as the dot of the example. Fade the parts of such axes in: `draw` has no line to trace on them.
 
 ## Planes and fields
 
@@ -91,7 +148,7 @@ The [Fourier film](../films.html) uses these three together.
 
 | Object | Use |
 |---|---|
-| `matrix(rows)` | A bracketed matrix of numbers or TeX. |
+| `matrix(rows)` | A bracketed matrix of numbers or TeX, for a formula. For cells that light and change, use `heatmap` with a `size`. |
 | `braceLabel(target, label)` | A curly brace beside a node, with a label. |
 | `surroundingBox(target)` | A rounded box around a node. |
 | `labeledDot(label)` | A dot with a label, as a graph vertex. |
@@ -113,7 +170,9 @@ export default film({ fps: 30 }, (s) => {
 
 ## Charts
 
-`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation.
+`barChart`, `histogram`, `scatter`, `lineChart`, `pie`, `donut`, and `heatmap` take data and expose their parts for animation. Films can act on `barChart` and `histogram` objects. See [Bars that a film acts on](#bars-that-a-film-acts-on) and [A threshold and a second distribution on a histogram](#a-threshold-and-a-second-distribution-on-a-histogram). The `scatter` chart also supports named points, nearest-point searches, and shaded areas. See [Scatter planes](#scatter-planes). For `numberLine`, see [Number lines](#number-lines).
+
+For slices, masks, or image patches, see [Tensor grids](#tensor-grids).
 
 ```film paired label="Bars grow up from an axis"
 import { barChart, film, grow, lagged } from 'vizmatic/stage'
@@ -197,6 +256,149 @@ The chart has three arrangements. By default the groups follow each other in one
 
 `.at()` places the middle of the grid, or of the row of blocks. A block is as wide as its marks or its label, so a row of blocks is wider than the grid: check both arrangements. A group with a count of 0 and a label keeps the room of its label, such as "0 failed". `chart.marks` holds every mark, `chart.groups` the marks of each group, and `chart.p(index)` the place of a mark. `shape: 'square'` draws squares. A chart of more than 20,000 marks is an error: let one mark stand for more than one unit, and say so in a label. Above about 2,000 marks, a move reads as a wipe.
 
+### Bars that a film acts on
+
+`barChart(data, options)` draws one bar for each item, with its label and its value. `chart.enter()` grows the bars, and `chart.update(values)` moves them to new values while the numbers count. Without `max`, the scale follows the data. With `max: 1`, the chart is a small distribution on a fixed scale: the next-token probabilities of a model, the weights of a router, the shares of one row of attention. A film then acts on the same bars. Each verb is an animation, and it leaves the chart in the state that the next verb starts from.
+
+```film paired label="Next-token probabilities: a temperature flattens them, a cut keeps three, and one token is drawn"
+import { barChart, film } from 'vizmatic/stage'
+
+const LOGITS = [2.0, 1.2, 0.6, 0.1, -0.9]
+const softmax = (temperature: number) => {
+    const weights = LOGITS.map((logit) => Math.exp(logit / temperature))
+    const sum = weights.reduce((a, b) => a + b, 0)
+    return weights.map((weight) => weight / sum)
+}
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(barChart(['sat', 'slept', 'ran', 'ate', 'flew'].map((label, i) => ({ label, value: softmax(1)[i]! })), {
+        width: 1300, height: 560, max: 1, labelSize: 44, barColor: 'blue', states: true, format: (v) => v.toFixed(2),
+    }).at(0, 60))
+    s.play(chart.enter(), { duration: 1.2 })
+    s.play(chart.update(softmax(2)), { duration: 1.2 })
+    s.play(chart.update(softmax(1)), { duration: 1 })
+    s.play(chart.cutAfter(3, { label: (count) => `top ${count}` }), { duration: 0.8 })
+    s.play(chart.mask(chart.tail()), { duration: 1.4 })
+    s.play(chart.mark('slept', 'chosen'), { duration: 0.6 })
+    s.wait(1)
+})
+```
+
+**States.** `chart.mark(which, state)` gives bars a state. `which` is an index, a label, or a list of them. The states are `target` (green, with a ring), `chosen` (yellow, with a check), `masked` (faint, with a cross), and `plain`, which is the bar as the data gives it. The bar takes the color of the state, and the mark of the state comes under its label, so color is not the only sign. The label of a bar with a mark is bright, and a `masked` bar has a faint label and a faint number. `chart.clearStates()` puts every bar back to `plain`, and `chart.state(which)` reads the state. A custom `states` table replaces the built-in states. To add a state and keep `mask()`, import `BAR_STATES` and use `states: { ...BAR_STATES, legal: { color: 'teal', mark: 'dot' } }`. Schedule state changes on each bar in chronological order. Let one finish before the next starts. A mark is `'dot'`, `'ring'`, `'check'` or `'cross'`, and a state with no mark is an error. `dim: true` makes a state faint, as `masked` is.
+
+**Mask.** `chart.mask(which)` sends bars to 0 and gives them the state `masked`. The other bars grow by one factor, so the sum of all bars stays what it was: a distribution stays a distribution, and the sum is the same at every frame. `renormalize: false` leaves the other bars as they are. A bar under 0 has no share, and a mask that leaves no bar with a value has no bar to give the share to: both are errors. `mask()` computes from the values at its start. So a `mask()` and an `update()` at one time are an error: play them in a `seq`. A bar keeps its state when its value changes. After a mask, `chart.clearStates()` or `chart.mark(bar, 'plain')` gives a bar its look back, before an `update()` gives it a value again.
+
+**A second series.** `chart.reference(values)` draws one outline on each column: the truth beside a prediction, a teacher beside a student. Outlines that show move to new values, and `chart.reference(null)` takes them away. With no values, `chart.reference()` holds the values that the bars have now, so the next `update()` shows before and after. The option `reference` draws the outlines from the start, and `chart.enter()` brings them with the bars. An automatic scale holds both series. To play `reference()` alongside `update()` or `mask()`, set both `min` and `max`. Using `ticks` with `max` also fixes both ends. With an automatic scale, play the changes in a `seq`. The number of a bar stands over its outline when the outline is the higher one. The chart draws no key for the two series: add a `legend()`.
+
+```film paired label="A student learns from a teacher: the outlines are the teacher, and each update halves the gap"
+import { barChart, film, legend } from 'vizmatic/stage'
+
+const softmax = (logits: readonly number[], temperature: number) => {
+    const weights = logits.map((logit) => Math.exp(logit / temperature))
+    const sum = weights.reduce((a, b) => a + b, 0)
+    return weights.map((weight) => weight / sum)
+}
+const TEACHER = [3, 1, 0], STUDENT = [0.3, 1.2, 0.7]
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(barChart(['bird', 'dog', 'cat'].map((label, i) => ({ label, value: softmax(STUDENT, 1)[i]! })), {
+        width: 1100, height: 560, max: 1, ticks: [0, 0.5, 1], labelSize: 44, barColor: 'blue', format: (v) => v.toFixed(2),
+        reference: softmax(TEACHER, 1),
+    }).at(40, 90))
+    s.add(legend([{ label: 'student', color: 'blue' }, { label: 'teacher', color: 'ink', kind: 'line' }], { size: 40 }).at(0, -420))
+    s.play(chart.enter(), { duration: 1.2 })
+    // A temperature of 3 flattens both, so the small preferences of the teacher show.
+    s.play(chart.reference(softmax(TEACHER, 3)), chart.update(softmax(STUDENT, 3)), { duration: 1.6 })
+    let student = softmax(STUDENT, 3)
+    for (let step = 0; step < 3; step++) {
+        student = student.map((value, i) => value + (softmax(TEACHER, 3)[i]! - value) * 0.5)
+        s.play(chart.update(student), { duration: 0.8 })
+    }
+    s.wait(1)
+})
+```
+
+**Cuts.** `chart.cutAt(value, { label })` draws a line across the bars at a value: a threshold, a mean, a limit. `chart.cutAfter(count, { label })` draws a line after a number of bars, between two columns: the cut of a top-k rule. The first call draws the line, a later call moves it, and `null` takes it away. A label is a text, or a function of the value or of the count, and it follows the line while the line moves. `color` sets the color of the line and of its label. `chart.below()` gives the bars under the value line, and `chart.tail()` gives the bars after the rank line, so `chart.mask(chart.tail())` drops what a top-k rule drops. A value cut checks each fixed bound. For a threshold that must stay on screen while the data changes, set both `min` and `max`. Schedule changes to the same cut in chronological order and let each one finish. During a move, `below()` uses the visible line. Pass a threshold explicitly when the line is hidden. A number that the value line would cross stands over the line.
+
+**Sort.** `chart.sort()` moves the bars to a new order: `'descending'` by default, `'ascending'`, or a list of the bars. The sort plays in steps. In each step one bar goes to its new column in front of the others, and the bars that it passes move one column on, so a viewer follows one bar at a time. The steps share the time of the sort. A bar keeps its index: `chart.bar(2)` is the same bar after the sort, and `chart.order` lists the bars by column. The line of `cutAfter` counts columns, so it stays where it is. The order is by the values at the end of the sort. In one play, name an `update()` before the `sort()`. A sort that starts while another sort moves the bars is an error. A bar that passes others has a patch in the color of `backing` under it, so its label does not print over theirs. The default `backing` is the background of the look. On a panel of another color, set `backing` to that color. With `backing: null`, the chart draws no patch, and the bars pass through each other.
+
+```film paired label="Four documents get their scores, change places into rank order, and a cut admits two"
+import { barChart, film } from 'vizmatic/stage'
+
+// The part of each term of the query "queue timeout" in the score of each document.
+const QUEUE = [0.42, 0.0, 0.31, 0.58]
+const TIMEOUT = [0.0, 0.64, 0.22, 0.49]
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(barChart(['retries.md', 'alerts.md', 'faq.md', 'queue-guide.md'].map((label) => ({ label, value: 0 })), {
+        width: 1000, height: 600, horizontal: true, max: 1.2, labelSize: 42, barColor: 'teal', states: true, format: (v) => v.toFixed(2),
+    }).at(150, 0))
+    s.play(chart.update(QUEUE), { duration: 1 })
+    s.play(chart.update(QUEUE.map((part, i) => part + TIMEOUT[i]!)), { duration: 1 })
+    s.play(chart.sort(), { duration: 2.4 })
+    s.play(chart.cutAfter(2, { label: 'top 2' }), { duration: 0.8 })
+    s.play(chart.mark(chart.tail(), 'masked'), chart.mark(chart.order[0]!, 'chosen'), { duration: 0.6 })
+    s.wait(1)
+})
+```
+
+**The scale, the sizes and the places.** `ticks` draws the lines of the scale behind the bars, each with its value: about that many, or a list such as `[0, 0.5, 1]`. They need `max`, and a value that is not on the scale is then an error. Without `ticks`, a bar may pass the end of the plot. `barColor` gives every bar one color, so the color of a state stands out. `labelSize` sets every text of the chart: the labels, the numbers, the values of the scale and the labels of the cuts. The marks follow it too. The default is 20. For a frame of 1080p, give 28 or more.
+
+As with the other charts, `width` and `height` are the size of the plot, and the plot is centered on the chart. The labels, the marks and the labels of the cuts are outside the plot. The marks are 1.2 text sizes under the labels, or at the left of the labels in a chart with `horizontal: true`. The label of a value line is after the right end of the line, and the label of a rank line is over the plot. The layout measures the parts that the options name: `ticks`, `states`, `reference`, `cutAt: { value, label }` and `cutAfter: { count, label }`. So name them in the options of a chart that is in a layout. A cut of the options shows from the start: hide it until its verb, as in `chart.rankCut?.hide()`. A part that a verb adds later is measured from that call. `fitted(region, (width) => barChart(data, { width, ticks: 3, max: 1 }))` makes all of the chart as wide as a region.
+
+`chart.p(which, value)` gives a place on the column of a bar, in the coordinates of the chart: the end of the bar, or the height of another value. `chart.region(which)` gives the box of the column in stage pixels, for `place` and `beside`. `chart.find(label)` gives the index of a bar. `chart.bars`, `chart.labels`, `chart.readouts`, `chart.outlines`, `chart.ticks`, `chart.valueCut` and `chart.rankCut` are the parts. Both places follow the bar during a sort. Direct copies and copies inside cloned groups retain the bar order and states at the time of the copy. A copy of a chart with states, ticks, outlines, cuts or a sort keeps the picture from the time of the copy, including its readouts. Call the chart animations on the original. Plain chart copies retain their source-driven readouts. To animate a second chart independently, construct it from the data.
+
+### A threshold and a second distribution on a histogram
+
+`histogram(samples, options)` puts samples in bins. `chart.fillUp()` drops them in, in their order, and `chart.fillUp({ count })` stops at a count, so a film drops five samples slowly and then all of them. `chart.cutAt(value, options)` draws a threshold: a line at a value, with the count of the samples on each side over the plot. The count at the left is of the samples under the value, and the count at the right is of the samples at or over it. `keep` names the side that stays bright: `'above'` by default, `'below'`, or `'both'`. The other side goes faint, and the line cuts the bar that it is in. The counts are of the samples, and a bar does not show where its samples are inside its bin. So put the threshold on an edge of a bin when the two must agree in that bar. `count` writes a count as the film wants it, such as a share. `label` puts a name over the line. A later `cutAt` moves the line, and the counts follow it. `chart.cutAt(null)` takes the threshold away. `chart.sides()` counts the visible samples at the current position of the line. If it is hidden, pass a threshold explicitly. `chart.counts()` gives the number of samples in each bin. Schedule changes to the same threshold in chronological order and let each one finish. A value outside the axis is an error.
+
+```film paired label="A null histogram fills up, and a threshold shows the share of 8 wins or more"
+import { film, histogram, linear } from 'vizmatic/stage'
+
+// Every way to give 13 disagreements to model A or to model B: 8,192 ways. The wins of B are the bits that are set.
+const wins = (way: number) => way.toString(2).split('').filter((bit) => bit === '1').length
+// A fixed order that mixes them, so the bars rise together.
+const SAMPLES = Array.from({ length: 8192 }, (_, i) => wins((i * 5741 + 4099) % 8192))
+
+export default film({ fps: 30 }, (s) => {
+    const chart = histogram(SAMPLES, { bins: 14, range: [-0.5, 13.5], width: 1400, height: 560, labelSize: 40, ticks: 14 }).at(0, 80)
+    s.play(chart.fillUp({ count: 5, ease: linear }), { duration: 2 })
+    s.play(chart.fillUp(), { duration: 2.5 })
+    // The observed result is a line. The bars at 8 wins and more stay bright, and their share is the p-value.
+    s.play(chart.cutAt(7.5, { label: 'observed: 8 wins', count: (count, total) => (count / total).toFixed(3) }), { duration: 1 })
+    s.wait(1)
+    s.play(chart.cutAt(10.5, { label: '11 wins' }), { duration: 1.4 })
+    s.wait(1)
+})
+```
+
+`chart.outline(samples)` draws a second distribution on the same bins and the same scale, as one line over the bars: this week over the reference week, the effect over the null. It returns the outline, which has its own `fillUp()`, `counts()` and `sides(value)`. A bin of the second distribution that is higher than the scale is an error: give the histogram a `max` that holds both. The chart draws no key: add a `legend()`.
+
+```film paired label="The scores of this week arrive over the scores of the reference week"
+import { film, histogram, legend, linear } from 'vizmatic/stage'
+
+// The scores of a model in two weeks. A fixed list: a film is built more than once.
+const scores = (seed: number, shift: number) => Array.from({ length: 400 }, (_, i) => {
+    const a = ((i + seed) * 7919) % 1000 / 1000, b = ((i + seed) * 104729) % 1000 / 1000, c = ((i + seed) * 1299709) % 1000 / 1000
+    return Math.min(0.999, (a + b + c) / 3 * 0.9 + shift)
+})
+
+export default film({ fps: 30 }, (s) => {
+    const chart = s.add(histogram(scores(0, 0), { bins: 10, range: [0, 1], width: 1300, height: 520, labelSize: 40, ticks: 5, max: 110 }).at(0, 110))
+    const current = chart.outline(scores(11, 0.08), { color: 'orange' })
+    current.hide()
+    s.add(legend([{ label: 'reference week', color: 'blue' }, { label: 'this week', color: 'orange', kind: 'line' }], { size: 38 }).at(0, -420))
+    s.wait(0.6)
+    s.play(current.fillUp({ ease: linear }), { duration: 2.5 })
+    s.play(chart.cutAt(0.7, { label: 'scores at or above 0.7' }), { duration: 1 })
+    s.wait(1.2)
+})
+```
+
+`labelSize` sets the texts of a histogram, and the default is 20: for a frame of 1080p, give 28 or more. The counts of a threshold are over the plot, and its label is over them: together they take about 3 text sizes. The option `cutAt: { value, label }` draws the threshold from the start, so the layout measures it. Hide it until its verb with `chart.threshold?.hide()`. Use the original histogram for `cutAt()` and `outline()`, and the original outline for `fillUp()`. A copy of a histogram with a threshold or an outline keeps its bins and counts from the time of the copy. This also applies when a group is copied. To animate its samples independently, build a second histogram.
+
+To render the complete decoding example from the repository root, run `node dist/cli.js film examples/proofs/decoding-bars.ts --quality standard --workers 1 --out out/decoding-bars`. The film shows how a top-k cut redistributes probability before a token is selected.
+
 ## Graphs and networks
 
 `graph(nodes, edges)` draws a node-link diagram, and `tree(root)` lays out a tree. Edges work with `pulse`, so a signal can run along them.
@@ -214,6 +416,199 @@ export default film({ fps: 30 }, (s) => {
     s.wait(0.4)
 })
 ```
+
+Both objects change while the film plays. Each change is an animation, each leaves the object in a state that the next one starts from, and the object gives that state back: `g.stateOf('run')`, `g.current`, `t.frontier`.
+
+### A search tree: grow, light a path, prune
+
+The [beam search film](../film/beam-search.html) shows a second-place prefix finish first. Edge labels give log probabilities, and each node adds them along its path.
+
+A node of a tree with a `value` is a box with a name and a number, and all boxes have one size. `edge` is the label of the edge from the parent: a condition, a probability. `weight` is the number of that edge, and with `score: 'product'` or `score: 'sum'` each node shows the product or the sum of the weights on its way from the root. `t.score(id)` reads it. So a tree of continuations shows how the probability of a sentence is made, one edge at a time.
+
+```film paired label="Greedy takes the best word, and a beam of two finds a better sentence"
+import { film, tree } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const words = s.add(tree({ id: 'the', label: 'The dog', children: [
+        { id: 'ran', label: 'ran', weight: 0.6, children: [
+            { id: 'home', label: 'home', weight: 0.35 },
+            { id: 'away', label: 'away', weight: 0.33 },
+            { id: 'fast', label: 'fast', weight: 0.32 },
+        ] },
+        { id: 'slept', label: 'slept', weight: 0.4, children: [
+            { id: 'soundly', label: 'soundly', weight: 0.9 },
+            { id: 'late', label: 'late', weight: 0.1 },
+        ] },
+    ] }, { width: 1800, score: 'product', format: (value) => value.toFixed(2), shown: 0, levelGap: 250 }))
+    s.wait(0.5)
+    // Greedy: the largest edge at each node.
+    s.play(words.grow(['ran', 'slept']))
+    s.play(words.path('ran'))
+    s.play(words.grow(['home', 'away', 'fast']))
+    s.play(words.path('home'))
+    s.wait(0.8)
+    // A beam of width 2 also scores the children of "slept", and keeps the best two of the five.
+    s.play(words.path(null))
+    s.play(words.grow(['soundly', 'late']))
+    s.play(words.keep(['soundly', 'home']))
+    s.wait(0.5)
+    s.play(words.path('soundly', { color: 'green' }))
+    s.play(words.setState('soundly', 'done'))
+    s.wait(1)
+})
+```
+
+`shown` says which nodes show at the start: a depth, where 0 is the root alone, or a list of ids. `t.grow(ids)` brings the other nodes one after another, each with the edge from its parent. The tree has its full size from the start, so no node moves when another one arrives. A node grows after its parent: a `grow` that names a child first is an error.
+
+`t.path(id)` lights the way from the root to a node: a light runs down the edges, the edges get wider, and the nodes are active. The lit paths are then the paths of the call, in its `color`, and no other. So a second `path` moves the light, a list of ids lights two paths, and `path(null)` turns the light off. With `add: true`, the paths that are lit stay, and the call lights one more, such as the best path in green beside the greedy one. `t.litPath` lists the lit nodes.
+
+`t.prune(id)` turns a branch off: the node and all under it get a border of dashes and dim text, and the edges of the branch are lines of dashes. The nodes of the branch that wait are off too, and a `grow` of one of them is an error: a pruned branch does no more work.
+
+`t.keep(ids)` is one step of a beam search. `t.frontier` is the list of the open leaves: the nodes that show, have no child that shows, and are idle or active. `keep` lights the paths to the nodes that it names, and prunes every other node of the frontier, with each branch that then has no open node. A node that is not in the frontier is an error that names the frontier. A leaf that is done, such as a finished sentence, is not in the frontier, and `keep` leaves it and the way to it as they are.
+
+`width` is the width of the whole tree, so `fitted(region, (width) => tree(root, { width }))` fills a region. It sets the room between the leaves of a tree that grows down, and the room between the levels with `direction: 'right'`. A width with no room for the nodes is an error that names the least width. The tree places the label of each edge on its line, nearer to the child. Two labels that meet, or a label that meets a node, are an error that names the distance to change: `siblingGap`, `levelGap` or `width`.
+
+A tree with a value or a score has box nodes, with a `labelSize` of 28 and a `valueSize` and an `edgeLabelSize` of 26. Those sizes read in a lesson video at 1080p. `shape: 'box'` gives boxes to a tree with no value, and `nodeWidth` sets the width of the boxes. A tree of circles keeps a `labelSize` of 24: give it 26 or more, and a `radius` that holds the label, for a video.
+
+### States of a node, and a token for a state machine
+
+Schedule state changes for the same node in time order, including calls inside `s.at`. Changes on separate nodes can run together. A node of a graph or of a tree is in one of five states. Each state has a sign beside its color, so a viewer who cannot tell red from green reads it too.
+
+| State | Color | Sign |
+|---|---|---|
+| `idle` | the color of the node | none |
+| `active` | yellow | a wide border |
+| `done` | green | a check at the top right corner |
+| `failed` | red | a cross at the top right corner |
+| `off` | faint | a border of dashes, and dim text |
+
+`g.setState(id, state)` changes the state, and `g.stateOf(id)` reads it. `state` in the spec of a node is its state at the start. `color` in the options of `setState` replaces the color of the state. Two changes of the look of one node at one time are an error: play them in a `seq`.
+
+With the option `token`, the graph is a state machine. The token is a ring around the node where it is. `g.go(id)` moves it to another node: a dot runs along the edge, and the ring comes to the new node. An edge with an arrow takes the token one way, and `go` to a node that no edge reaches is an error that names the nodes that the token can go to. `g.refuse(id)` shows a step that the machine does not take: the dot starts toward the node and turns back, and the ring is red for a moment. `g.current` is the node of the token. The token makes one move at a time: play two moves in a `seq`. A tree takes the option `token` too. Its edges have no arrow, so the token goes down a decision tree and up again.
+
+```ts
+import { film, graph, seq } from 'vizmatic/stage'
+
+// The loop of an agent: the model chooses, the runtime admits the call, the tool runs, and the observation comes back.
+export default film((s) => {
+    const loop = s.add(graph([
+        { id: 'choose', label: 'model chooses', width: 240, height: 84 },
+        { id: 'admit', label: 'runtime admits', width: 240, height: 84 },
+        { id: 'run', label: 'tool runs', width: 240, height: 84 },
+        { id: 'observe', label: 'observation', width: 240, height: 84 },
+        { id: 'answer', label: 'answer', width: 240, height: 84, color: 'purple' },
+    ], [
+        { from: 'choose', to: 'admit', label: 'tool call' },
+        { from: 'admit', to: 'run' },
+        { from: 'run', to: 'observe', label: 'receipt' },
+        { from: 'observe', to: 'choose' },
+        { from: 'choose', to: 'answer', label: 'enough facts' },
+    ], { fit: true, width: 1800, token: 'choose', labelSize: 30, edgeLabelSize: 26, nodeGap: 150 }))
+    // Lap 1: the tool times out. The error is the observation.
+    s.play(seq(loop.go('admit'), loop.go('run')))
+    s.play(loop.setState('run', 'failed'))
+    s.play(seq(loop.go('observe'), loop.go('choose')))
+    // The model has no fact yet, so the runtime refuses the answer.
+    s.play(loop.refuse('answer'))
+    // Lap 2: the same call works.
+    s.play(seq(loop.go('admit'), loop.go('run')), loop.setState('run', 'idle'))
+    s.play(loop.setState('run', 'done'))
+    s.play(seq(loop.go('observe'), loop.go('choose'), loop.go('answer')))
+    s.play(loop.setState('answer', 'done'))
+    const state = loop.current // 'answer'
+})
+```
+
+### Values that a pass computes
+
+A node with a `value` is a box with its label over a number. A `note` is a second text under the box, such as a gradient under a value, in the color of `noteColor`. Give `''` for a text that arrives later: the box has its room from the start. `g.setValue(id, text)` and `g.setNote(id, text)` change a text in place, and `g.valueOf(id)` and `g.noteOf(id)` read it. A node with no `width` is as wide as the texts that it is built with, so give a `width` to a node whose later value is longer. A value that is too wide for its box is an error that names the width to give.
+
+`g.send(from, to)` sends a light along the edge between two nodes, in the direction that the call names: with the arrow, or against it. With `value` or `note`, the node at the end takes the text after the light arrives. So one call is one step of a pass, forward or back, and the label of an edge is the local factor.
+
+As with `connector.send`, `duration` is the travel time, 0.9 seconds by default, with linear motion unless `ease` is given. A value or a note then changes over 0.5 seconds, and the animation includes that change. `length` is the share of the edge that lights at once, 0.3 by default. The graph sends a light along the edge as it was when the light left. For a separate message mark, loss, or refusal at a receiver, use `connector.send(mark, options)`. A graph call names both ends to set its direction, while a connector uses `reverse: true` for an answer.
+
+```ts
+import { film, graph } from 'vizmatic/stage'
+
+// One request: the prediction is w times x, the target is 5, and the loss is the square of the error.
+export default film((s) => {
+    const net = s.add(graph([
+        { id: 'w', label: 'w', value: '3', note: '', color: 'teal', width: 130 },
+        { id: 'x', label: 'x', value: '2', note: '', color: 'teal', width: 130 },
+        { id: 'pred', label: 'w · x', value: '', note: '', width: 170 },
+        { id: 'y', label: 'target', value: '5', color: 'teal', width: 150 },
+        { id: 'err', label: 'error', value: '', note: '', width: 170 },
+        { id: 'loss', label: 'error²', value: '', note: '', color: 'orange', width: 170 },
+    ], [
+        { from: 'w', to: 'pred', label: '× 2' },
+        { from: 'x', to: 'pred', label: '× 3' },
+        { from: 'pred', to: 'err', label: '× 1' },
+        { from: 'y', to: 'err' },
+        { from: 'err', to: 'loss', label: '× 2' },
+    ], { fit: true, width: 1800, labelSize: 30, valueSize: 30, edgeLabelSize: 26, noteColor: 'pink', nodeGap: 90 }))
+    // Forward: a node takes its value when the light of its inputs arrives.
+    s.play(net.send('w', 'pred'), net.send('x', 'pred', { value: '6' }))
+    s.play(net.send('y', 'err'), net.send('pred', 'err', { value: '1' }))
+    s.play(net.send('err', 'loss', { value: '1' }))
+    // Backward: the gradient of a node is the gradient after it, times the factor on the edge.
+    s.play(net.setNote('loss', 'grad 1'))
+    s.play(net.send('loss', 'err', { note: 'grad 2', color: 'pink' }))
+    s.play(net.send('err', 'pred', { note: 'grad 2', color: 'pink' }))
+    s.play(net.send('pred', 'w', { note: 'grad 4', color: 'pink' }), net.send('pred', 'x', { note: 'grad 6', color: 'pink' }))
+})
+```
+
+Parallel signals update the destination in arrival order. For example, a one-second signal can display an intermediate value before a two-second signal displays the final value, even when the film schedules the longer trip first. Values and notes change independently. Leave time for each replacement of the same field to finish. Partially overlapping replacement windows are an error. If two replacements have exactly the same window, the last call supplies the text.
+
+For a reduction on a tree, calculate the parent value in the film and pass the formatted result to `send`. For example, a film can display a result of 0.21 with `t.send('home', 'ran', { value: '0.21' })`.
+
+### A graph that fills a region, and a graph that is built
+
+With `fit: true` and the default layout, `width` and `height` are the size of the graph, from the outline of its first node to the outline of its last one. The layout keeps its order and moves the nodes apart or together, so `fitted(region, (width) => graph(nodes, edges, { fit: true, width }))` fills a region and a film types no place for a node. A size with no room between two nodes, or for the label of their edge, is an error that names the least size. Without `fit: true`, the default layout ignores `width` and `height`, as it did before. With the force and the circle layout, `width` and `height` are the bounding size, as before.
+
+With `shown`, only the nodes that it names show at the start. `g.grow(ids)` brings the others one after another, each with the edges that join it to the nodes that show: an edge that comes to the new node draws first, and the node pops in at its end. `g.isShown(id)` reads it. Define the nodes and edges before playback. To reveal another relation between two visible nodes later, animate its edge separately.
+
+`g.p(id, 'bottom')` is the middle of an edge of a node, in the coordinates of the graph, for a line of the film. `g.node(id)` is the node, for `beside(note, g, 'right', 'wide', g.node(id))` of the layout, and `g.edge(from, to)` is the edge, with its `shaft`, its `tip` and its `caption`. `labelAt` on an edge moves its label along the line, from 0 at the start to 1 at the end.
+
+A graph has a `labelSize` of 26. The values and the notes have that size too, or `valueSize`. The labels of the edges have an `edgeLabelSize` of 20: give 26 for a lesson video. The texts are in the font of the film, and the labels of the edges are in mono in a film that names no font.
+
+## Messages on a line
+
+`connector(a, b)` draws a line between two nodes, and `link.send(mark)` sends a mark along it: a request, an answer, a packet. Use it for a protocol between parts, where a message takes time, and can arrive late or not at all.
+
+```film paired label="A request arrives, its answer comes back, one request is lost on the way, and one is refused at the server"
+import { chip, connector, film, namedBox } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const look = { width: 340, height: 170, size: 56 } as const
+    const client = s.add(namedBox('client', look).at(-620, 0))
+    const server = s.add(namedBox('server', look).at(620, 0))
+    const link = s.add(connector(client, server, { route: 'straight', tip: false, color: 'gridStrong', width: 4 }))
+    // A new mark for each message. Any node is a mark: a chip, a pictogram, a group.
+    const message = (word: string) => chip(word, { size: 44, round: true, anchor: 'center', stroke: 'dim' })
+    s.play(link.send(message('request'), { duration: 1.2 }))
+    s.play(link.send(message('answer'), { duration: 1.2, reverse: true }))
+    s.play(link.send(message('request'), { duration: 0.8, lost: 0.6 }))
+    s.play(link.send(message('request'), { duration: 1.2, refused: true }))
+    s.wait(0.4)
+})
+```
+
+The mark grows in beside the first node and travels to the second one at one speed. `reverse: true` sends it from the second node to the first, as an answer. `duration` is the time on the way, so a slow message has a long `duration`. The mark starts and stops clear of the two nodes, and `gap` is that room: 8 by default.
+
+A message has one of three ends:
+
+- It arrives. The mark goes into the node at the end of the line: it shrinks there, and it is gone.
+- `lost: 0.6` loses it at that part of the way, from 0 to 1. The mark stops there, and a cross shows ahead of it. With `lost`, `duration` is the time to that place.
+- `refused: true` is a message that arrives, and that the receiver does not take. The mark stops before the node, with the cross between the two.
+
+The way of a message that stops ends before the node, with room for the cross. So the cross is never on the node or on the mark, and `lost: 1` stops the mark where a refused message stops.
+
+A message that is lost or refused stays with its cross for `hold` seconds, 0.8 by default, and then both go. `stopColor` is the color of the cross, red by default. The cross is as high as the mark.
+
+The animation lasts for the way and for what comes after it: 0.12 seconds for a mark that arrives, and `hold` more for one that stops. So `s.play(link.send(mark))` ends when the mark is gone. A film that has the times of its messages, such as the trace of a simulation, plays each one at its time: `s.at(sent, () => s.play(link.send(mark, { duration: arrives - sent })))`. Several marks can be on one line at one time. Each message has its own mark: one mark is at one place at a time, so a mark that is sent again while it is on its way is an error. Send a copy, `link.send(mark.clone())`, or make a new mark for each message. A mark that has arrived can go again, as the answer.
+
+The mark never fades: it grows in and shrinks out. So the line under it does not show through a text on it. The mark follows the line as it is when the message leaves: when a node at an end moves while the message is on its way, the mark arrives at the place where the node was. A line that is too short for the mark, a `lost` outside 0 to 1, a message that is both lost and refused, and a `duration`, a `hold`, or a `gap` that is not a number or is under 0 are errors. A `duration` is more than 0. `send` works with any `route` of the connector, and it puts the line on the stage when the film did not.
 
 ## Lanes
 
@@ -259,7 +654,7 @@ The object places the labels. The label of a span is inside its bar, at the star
 
 When the object cannot settle a case, the film can: an event takes `labelSide`. For a span, `'over'` and `'under'` are over and under the bar, and `'left'` and `'right'` are beside the bar, on the lane. A short span at the foot of an arrow has no room for a label over it, and `labelSide: 'under'` or `'right'` gives it one. For a handoff, `'left'` and `'right'` are the two sides of its arrow, and `'over'` and `'under'` are the two sides of the boundary that it crosses first. For a mark, the four sides are around its dot. A label with a `labelSide` has that place or none: when the place is taken, `lanes()` throws.
 
-Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
+Two spans that overlap on one lane are an error, because a lane does one thing at a time. A span may start at the time where another one ends. A span that is a part of another span is a child span, with `inside`: see "Child spans" below. A `pitch` with no room for an arrow between two bars is an error when the object has a handoff, and the message names the least pitch.
 
 With `ticks`, the object draws a time axis under the lanes, and one lane makes a chart of durations:
 
@@ -300,9 +695,287 @@ export default film((s) => {
 
 Two such objects side by side compare two designs by their crossings: ten against two. The label and the number of a boundary need room at the right of the object, so a handoff can be at any time, to the last end of the domain. The labels of all boundaries start at one x, and the numbers end at one x. The two lanes of a boundary are further apart, by 1.25 of the text size, for the line. The label of a handoff is then over the line or under it, beside the lane that the handoff leaves. `flow.boundaries` holds one node per boundary, and `flow.counters` the number of each boundary that counts, or null.
 
-`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, and `flow.marks` hold the same events by kind. An event has a `shape` (its bar, its arrow, or its dot), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), and an `edge` (the outline of an idle span, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
+`.at()` places the middle of the time area. The names are outside it, at the left, so a long name needs room there. `width` is the width of the time area, `barHeight` the height of a bar, `pitch` the distance from one lane to the next, and `size` the text size. `flow.names`, `flow.rails` (the line of each lane), `flow.events`, `flow.axis`, and `flow.cursor` are the parts. `flow.spans`, `flow.handoffs`, `flow.marks`, `flow.links`, and `flow.brackets` hold the same events by kind. An event has a `shape` (its bar, its arrow, its dot, or the line of its bracket), a `text` (its label, or null), a `tip` (the arrow head of an open span, or null), an `edge` (the outline of an idle span or the hatch of a down span, or null), a `sign` (the sign of its outcome, or null), and an `eventId` (its `id`, or null). `flow.x(time)` and `flow.y(lane)` give a place on the object for a brace or a note.
 
-The object draws by kind, whatever the order of the list: the lines of the lanes, then the bars, then the boundaries, then the arrows, then the dots. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+The object draws rails and ordinary bars first, followed by brackets, boundaries, deadlines, arrows, and links. A span with an outcome draws above the bar that starts at its end, so the whole outcome sign stays visible. Marks draw last. The cursor is under all of them, and it passes behind the labels: each label, each bar and each arrow of dashes has a patch under it, in the color of `backing`. The default `backing` is the background of the look, which fits an object on the background of the film. On a panel of another color, set `backing` to the color of the panel. Where no one color is behind the object, set `backing: null`: inside a zone with a fill, over a picture, or in a film that is rendered with `--background none`. Then the object draws no patch, the line of a lane shows through its bars, and the cursor passes through the labels. So with `backing: null`, also set `cursor: false`.
+
+### A deadline, and the time that is left
+
+`deadline` draws a line of dashes at one time, over all lanes: the time that a request must beat. Its `label` is over the top of the line. With `drain: true`, a bar over the lanes shows the time that is left. The bar ends at the deadline. While its clock runs, the other end follows the cursor. The bar empties at the deadline. A `label` that is a function gets the time that is left and returns the text, so the text counts down.
+
+```film paired label="Two failed attempts and a backoff leave 3.5 seconds for a proposed six-second retry"
+import { assertEqual, beside, fadeIn, film, lanes, place, sceneArea, text } from 'vizmatic/stage'
+
+export default film({ title: 'Can the caller afford another retry?', fps: 30 }, (s) => {
+    const budget = 20, attempt = 6, backoff = 2
+    const firstStart = 0.5, firstEnd = firstStart + attempt
+    const secondStart = firstEnd + backoff, secondEnd = secondStart + attempt
+    const retryAt = secondEnd + backoff, wouldFinish = retryAt + attempt
+    const flow = place(lanes(['caller', { name: 'provider', color: 'teal' }], [
+        { lane: 'caller', start: 0, end: retryAt, idle: true, label: 'waiting for an answer', outcome: 'cancelled' },
+        { from: 'caller', to: 'provider', at: firstStart, label: 'request' },
+        { lane: 'provider', start: firstStart, end: firstEnd, id: 'first', label: 'attempt 1', outcome: 'failed' },
+        { from: 'provider', to: 'provider', at: [firstEnd, secondStart], label: 'retry' },
+        { lane: 'provider', start: secondStart, end: secondEnd, id: 'second', label: 'attempt 2', outcome: 'failed' },
+        { lane: 'provider', start: secondEnd, end: retryAt, idle: true, id: 'backoff', label: 'wait' },
+        { bracket: [retryAt, wouldFinish], lane: 'provider', labelSide: 'under', id: 'next', label: `retry (${attempt} s)` },
+    ], {
+        domain: [0, 24], width: 1440, pitch: 180, barHeight: 60, size: 32,
+        ticks: [0, 4, 8, 12, 16, 20, 24], format: (t) => `${t} s`,
+        deadline: { at: budget, drain: true, label: (left) => left > 0 ? `${left.toFixed(1)} s left` : 'deadline' },
+    }), sceneArea())
+    s.add(beside(text('Can the caller afford another retry?', { size: 64 }), flow, 'above', 'loose'))
+    s.play(flow.enter())
+    s.play(flow.advance('first'), { duration: 2.4 })
+    s.wait(1)
+    s.play(flow.advance('second'), { duration: 2.8 })
+    s.wait(1)
+    s.play(flow.advance('backoff'), { duration: 1.2 })
+    const left = flow.remaining()
+    assertEqual(left, 3.5, 'time left after backoff')
+    const note = beside(text(`At ${retryAt} s, the caller has ${left} s left for a ${attempt} s retry.`, { size: 38 }), flow, 'under', 'loose')
+    s.play(fadeIn(note), { duration: 0.4 })
+    s.wait(2)
+    // Only the bracket advances through the proposed attempt.
+    s.play(flow.advance('next'), { duration: 2.8 })
+    assertEqual(flow.remaining(), -2.5, 'time past the deadline if the caller retries')
+    s.wait(2.5)
+})
+```
+
+`flow.remaining()` is the time that is left to the deadline at the time of the cursor. After the deadline it is less than 0, and so is the value that a `label` function gets. `drain: { from: 4 }` starts the clock of the bar at a time that is not the first end of the domain. `deadline` also takes a list, such as a timeout and a later limit. Then `flow.remaining(1)` or `flow.remaining('give up')` names one deadline, by its index or by its label. Drain bars share one row, so give them separate time windows when several deadlines have bars. Keep the countdown text short at every value, including negative values. Deadline labels share a row. If two labels touch, use shorter text or move the deadlines farther apart. The line defaults to red. Without a `domain`, the domain holds the deadlines. A deadline comes in with `flow.enter()`. `flow.deadlines` holds one node per deadline: its line, then the two bars when it drains, then its text.
+
+The line starts over the room that a label takes over the first lane. No label of an event is on the line: a label takes a place that is clear of the line, and when it has none, `lanes()` throws. The drain follows the horizontal position of the cursor. The cursor stops below the labels over the first lane. A line with no `drain` serves any time that matters, such as a cutoff or a kill time. Use a bracket to compare a proposed attempt with the deadline. In the film above, the caller stops after the backoff. The bracket shows when another attempt would finish.
+
+### Outcomes, and a lane that is down
+
+An event that does not end well takes `outcome`. `'failed'` is an error or a timeout, and its sign is a cross on a red disc. `'cancelled'` is a stop on purpose, and its sign is a square on an orange disc. The shape says the outcome, so the sign reads without its color. A span has the sign on its end, and the sign arrives when the cursor reaches that end. A mark with an outcome is the sign, in place of the dot. A handoff with an outcome shows a lost message. Its line ends at the sign on the sending side of the boundary. The lanes leave enough room for the shaft and sign at small pitches. It crosses no boundary, so no counter counts it. An `idle` span with `outcome: 'failed'` is a wait that runs out. An `open` span has no end, so it takes no outcome.
+
+`down: true` is a span where the lane is not there: an outage, a GPU that is lost, a worker in quarantine. It is a hatched block with a faint fill, in red unless it has a `color`. The hatch says the state without the color. Its label is over the block, because the hatch would cross a text inside it. A lane that is down does no work, so a down span and a work span that overlap are an error, and a down span takes no `outcome` and no `inside`. With `open`, the lane stays down to the end.
+
+### Links and brackets
+
+A link is an arrow from a time on one lane to another time on a lane: `{ from: 'R3', to: 'R1', at: [50, 40] }`. `at` has two times, the time on `from` and the time on `to`. Use it for a retry, for a cache hit that points at the write that made the entry, or for one record on two clocks. The arrow can point back in time. The link shows when the cursor reaches the later of its two times. Between two lanes it is a straight line. On one lane it is an arc above the top row, with its label over the arc. If a bracket would cross that arc, put the bracket below the lane with `labelSide: 'under'`. The endpoints refer to lanes. Use a mark with `inside` to point to a particular child span. An end of a link is on the edge of the bar that the lane has at that time. With no bar there, it is near the line of the lane, where a dot would be. No control passes with a link, so it crosses no boundary. `dashed: true` draws it with dashes.
+
+A bracket names a window of time: `{ bracket: [0, 280], label: 'time to first token: 280 ms' }`. It is over its `lane`, or under it with `labelSide: 'under'`. Without a lane, it is over the first lane or under the last one. It starts when the cursor leaves its first time, its line grows with the cursor, and it gets its second end and its name when the cursor reaches its last time. A name that is wider than its bracket stays at the middle. Beside a line at one end of the bracket, such as a deadline, the name starts a little after that end. Two brackets at one side of a lane may meet at one time, as the gaps between tokens do. Two that overlap are an error: put one of them at the other side, or on another lane.
+
+```film paired label="A GPU fails. The process and its requests end with their signs, the reply is lost, one request runs again on the other GPU, and the first GPU stays out"
+import { beside, fadeIn, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const fleet = lanes(
+        [{ name: 'router', color: 'dim' }, { name: 'GPU-0', color: 'blue' }, { name: 'GPU-1', color: 'teal' }],
+        [
+            { lane: 'GPU-0', start: 0, end: 22, id: 'process', label: 'process 4117', outcome: 'failed' },
+            { lane: 'GPU-0', start: 2, end: 22, inside: 'process', label: 'R1', outcome: 'cancelled' },
+            { lane: 'GPU-0', start: 8, end: 22, inside: 'process', label: 'R2', outcome: 'failed' },
+            { from: 'GPU-0', to: 'router', at: 22, label: 'reply', outcome: 'failed' },
+            { lane: 'GPU-0', start: 22, end: 50, down: true, label: 'quarantine' },
+            { lane: 'GPU-0', start: 50, end: 60, open: true, label: 'readmitted' },
+            { lane: 'GPU-1', start: 4, end: 18, label: 'R3' },
+            { from: 'GPU-0', to: 'GPU-1', at: [22, 27], id: 'retry', label: 'R2 again' },
+            { lane: 'GPU-1', start: 27, end: 41, label: 'R2' },
+            { lane: 'GPU-1', start: 44, end: 56, label: 'R4' },
+            { bracket: [22, 50], lane: 'GPU-1', labelSide: 'under', label: 'GPU-0 out for 28 min' },
+        ],
+        { width: 1400, size: 30, barHeight: 52, pitch: 190, ticks: [0, 10, 20, 30, 40, 50, 60], format: (time) => `${time} min`, domain: [0, 60] },
+    ).at(110, 0)
+    s.play(fleet.enter(), { duration: 1 })
+    // The cursor stops where the process fails, and a note names the cause over that time.
+    s.play(fleet.advance('process'), { duration: 2.6 })
+    const note = beside(text('a CUDA error: the process is not safe', { size: 30, color: 'yellow' }), fleet, 'above', 'normal', fleet.region({ lane: 'GPU-0', at: 22 }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(1.8)
+    s.play(fleet.advance('retry'), { duration: 1.6 })
+    s.wait(1)
+    s.play(fleet.showAll(), { duration: 3.2 })
+    s.wait(2)
+})
+```
+
+One lane for each clock makes a timeline of two clocks: the time of an event, and the time when its record became readable. A link joins the two marks of one record, a deadline with no bar is the cutoff, and a bracket is the window:
+
+```ts
+import { film, lanes } from 'vizmatic/stage'
+
+export default film((s) => {
+    const clocks = lanes(['event time', 'readable at'], [
+        { lane: 'event time', at: 8, label: 'H1', labelSide: 'right' },
+        { lane: 'readable at', at: 8.2, label: 'H1', labelSide: 'under' },
+        { from: 'event time', to: 'readable at', at: [8, 8.2] },
+        { lane: 'event time', at: 8.5, label: 'H2', labelSide: 'right' },
+        { lane: 'readable at', at: 10.5, label: 'H2', labelSide: 'under' },
+        { from: 'event time', to: 'readable at', at: [8.5, 10.5], label: 'arrives 2 h late' },
+        { bracket: [8, 9], lane: 'event time', label: 'window 08:00 to 09:00' },
+    ], { width: 1300, pitch: 200, domain: [7.5, 11], ticks: [8, 9, 10, 11], format: (time) => `${time}:00`, deadline: { at: 9, label: 'predict now' } })
+    s.play(clocks.enter())
+    // At the cutoff, H2 happened and is not readable yet.
+    s.play(clocks.advance(9))
+    s.play(clocks.showAll())
+})
+```
+
+### Child spans: the trace of a request
+
+A span with `inside` is a child of the span with that `id`, on the same lane: retrieval inside an answer, a tool call inside a turn. A child has a row of its own under its parent, as high as the parent and close under it, so the lane reads as the trace of a request. Each child takes the first free row below its parent. Children that overlap in time need separate rows, so the row number can exceed the nesting depth. The lanes under a lane with children move down by its rows.
+
+```film paired label="The trace of request 205: retrieval, generation and a tool call inside the answer. The cursor stops at the first token"
+import { beside, fadeIn, fadeOut, film, lanes, text } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const trace = lanes(
+        [{ name: 'request 205', color: 'blue' }, { name: 'model API', color: 'purple' }],
+        [
+            { lane: 'request 205', start: 0, end: 430, id: 'answer', label: 'answer' },
+            { lane: 'request 205', start: 0, end: 90, inside: 'answer', id: 'retrieval', label: 'retrieval', color: 'teal' },
+            { lane: 'request 205', start: 90, end: 380, inside: 'answer', id: 'generation', label: 'generation', color: 'purple' },
+            { lane: 'request 205', start: 150, end: 230, inside: 'generation', id: 'tool', label: 'tool call', color: 'orange' },
+            { lane: 'request 205', at: 280, inside: 'generation', id: 'first-token', label: 'first token' },
+            { lane: 'request 205', start: 380, end: 430, inside: 'answer', label: 'gate', color: 'green' },
+            { from: 'request 205', to: 'model API', at: 90, label: 'prompt' },
+            { lane: 'model API', start: 90, end: 380, label: 'streams 120 tokens' },
+            { bracket: [0, 280], label: 'time to first token: 280 ms' },
+        ],
+        { width: 1400, size: 30, barHeight: 52, ticks: [0, 100, 200, 300, 400], format: (time) => `${time} ms`, domain: [0, 440] },
+    ).at(120, 20)
+    s.play(trace.enter(), { duration: 1 })
+    s.play(trace.advance('retrieval'), { duration: 1.6 })
+    s.wait(0.6)
+    s.play(trace.advance('tool'), { duration: 2 })
+    s.wait(0.6)
+    // The cursor stops at the first token, and a note points at it.
+    s.play(trace.advance('first-token'), { duration: 1.4 })
+    const note = beside(text('the user sees nothing before this', { size: 30, color: 'yellow' }), trace, 'above', 'normal', trace.region({ event: 'first-token' }))
+    s.play(fadeIn(note), { duration: 0.5 })
+    s.wait(2)
+    s.play(fadeOut(note), { duration: 0.4 })
+    s.play(trace.showAll(), { duration: 2.2 })
+    s.wait(2)
+})
+```
+
+A child is in the time of its parent and on the lane of its parent: a child that is outside either one is an error, and so is an `inside` that names no span. The label of a child is in its bar, or beside its bar in its row, because its parent is over it. A mark with `inside` is on the bar of that span, and its label can be on that bar, beside the dot. A handoff between a lane with children and a lane under it meets the lowest bar that the lane has at that time, so its arrow passes through no child. `flow.y(lane)` is the middle of the first row of a lane, and `flow.region({ lane })` holds all its rows.
+
+### Stop at an event, and point at it
+
+An event takes an `id`. `flow.advance('first-token')` moves the cursor to the time of that event and stops there: the end of a span or a bracket, the time of a mark or a handoff, the later time of a link. Events through that time appear together. Use consecutive plays or `seq` for advances on one cursor. A clone starts at the visible cursor position and can advance independently. `flow.region({ event: id })` is the box of the event on the stage, for a note: `beside(note, flow, 'above', 'normal', flow.region({ event: 'first-token' }))` puts the note over the whole object, at the x of the event. `flow.p(id)` is the middle of the top of the event, in the coordinates of the object, for the end of an arrow from a note. It takes `'bottom'`, `'left'`, or `'right'` for another edge, and `flow.toWorld(...flow.p(id))` is that point on the stage. Both give the place of the complete event, also before the cursor reaches it.
+
+`flow.find(id)` is the node of an event, so `spotlight(flow.find('retrieval').shape)` lights one bar with its label. `flow.timeOf(id)` is the time where `advance(id)` stops, and `flow.timeOf(id, 'start')` is the start of a span or a bracket. `flow.stateOf(id)` says where the event is at the time of the cursor: `'ahead'`, `'running'` for a span or a bracket that the cursor is in, and `'done'`. An event with an outcome is `'failed'` or `'cancelled'` in place of `'done'`. `find`, `timeOf`, `stateOf`, `region`, and `p` also take the index of the event in the list in place of an id. A number is a time for `advance`. Two events with one id are an error, and so is an id that no event has. The message lists the ids.
+
+For a typed list of the original spans, handoffs, and marks, use `LaneEvent[]`. Use `LaneTimelineEvent[]` for a list that also contains links or brackets. Both lists work with `lanes()`.
+
+Every text of the object has the size `size`, 26 by default: the names of the lanes, the labels, the ticks, the text of a deadline, and the name of a bracket. A mark or handoff uses a sign as wide as `size`. A span with a short bar uses a smaller sign.
+
+## Pipelines
+
+`pipeline(stages, options)` follows an item through a sequence of named stages. A request, tool call, or data row keeps its ID as it moves, receives a verdict, or leaves the path. Use `steps` for a recap with one step highlighted, `lanes` for actors over time, and `graph` for branches with different stages.
+
+From a built checkout, run `node dist/cli.js film examples/proofs/pipeline.ts --out out/pipeline` to render two tool calls passing through the host gates.
+
+```film paired label="A tool call passes the four gates of the host and takes a stamp at each, and a call with a wrong argument stops at the schema gate"
+import { film, pipeline } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const flow = pipeline(['complete', 'schema', 'authorization', 'execute'], { width: 1800, size: 34, gates: true, lanes: 2 })
+    s.play(flow.enter(), { duration: 1 })
+    // Call 17 has all its arguments, a text id, and a grant. It takes one stamp at each gate.
+    s.play(flow.put({ id: 'call 17', badge: 'hold B7' }))
+    s.wait(0.6)
+    for (const stamp of ['complete', 'schema ok', 'grant: Lena', 'held B7']) {
+        s.play(flow.pass('call 17', stamp), { duration: 0.5 })
+        s.wait(0.4)
+        if (stamp !== 'held B7') s.play(flow.move('call 17'), { duration: 0.7 })
+    }
+    // Call 18 gives the book id as a number. The schema gate stops it, and the call does not reach the tool.
+    s.play(flow.put({ id: 'call 18', badge: 'hold 4412', color: 'orange' }))
+    s.play(flow.move('call 18'), { duration: 0.7 })
+    s.play(flow.stop('call 18', 'id is a number'))
+    s.wait(1.4)
+})
+```
+
+A stage is a name, or `{ name, gate }`. A gate checks an item, and lets it through or stops it. Its mark on the path is a diamond, and the mark of a plain stage is a ring. `gates: true` makes every stage a gate, apart from a stage with `gate: false`. The names are over the path, at even steps, and each one is one line.
+
+`flow.put({ id, badge, color, at, lane })` brings an item to the path. Only `id` is required. The capsule shows the ID and its optional badge. By default, the item starts at the first stage in the first lane available when its animation begins. `flow.put(items, { lag })` staggers the arrivals.
+
+`flow.move(which)` takes an item to the next stage, and `flow.move(which, 'schema')` takes it to a stage by its name or its index. An item that leaves a stage leaves a mark there: a dot at a plain stage, and a check at a gate. So the path behind an item shows what happened to it. A move over several stages goes through each stage between them, and leaves its mark there too. A move back to an earlier stage takes the marks from that stage on away, for a second run of the same item.
+
+`flow.setBadge(which, text)` changes the badge in place: the old text fades out, the capsule takes its new width, and the new text fades in. The id does not move. `null` takes the badge away. `flow.pass(which, text)` is the verdict of a stage that lets an item through: the item shows a check, and takes the text as its badge when the call gives one. `flow.stop(which, reason)` is the other verdict: the item shows a cross, its border goes red, and the reason is its badge. A stop has two signs beside the color: the cross and the words. The check or the cross stays at the stage when the item leaves, and the badge goes with the item. An item that is stopped does not move on. `flow.pass(which)` ends the stop, and the reason goes with it.
+
+`which` is an id, a list of ids, or a function of an item, as in `flow.move((item) => item.state !== 'stopped')`. A number selects an item ID. Pass the destination stage as the second argument. The pipeline calls the function when the film plays the change, so a second change in one sequence sees what the first one left. A function picks items on the path only. With `lag`, the items of one call change one after another.
+
+Each item occupies one lane. Set `lanes` to the most items you need on the path at once. The first lane is visible from the start. Each additional lane appears with its first item. Its marks record that item’s path until another item takes the lane. The frame reserves space for all lanes and the tray from the start.
+
+```film paired label="Rows of a data set go through three gates: each gate stops the rows that break its rule, the counts follow, and the stopped rows go to the tray with their reasons"
+import { film, pipeline } from 'vizmatic/stage'
+
+// Five support tickets, and the first gate that refuses each one.
+const TICKETS = [
+    { id: 'T1' },
+    { id: 'T2', gate: 'not empty', reason: 'no text' },
+    { id: 'T3', gate: 'parses', reason: 'bad JSON' },
+    { id: 'T4' },
+    { id: 'T5', gate: 'not a copy', reason: 'copy of T1' },
+]
+const GATES = ['parses', 'not empty', 'not a copy']
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const flow = pipeline([...GATES, { name: 'training set', gate: false }], {
+        width: 1800, size: 32, gates: true, lanes: TICKETS.length, tray: 'quarantine', counts: (count) => `${count} rows`, color: 'teal',
+    })
+    // The rows come with the path: each lane shows from its first item.
+    s.play(flow.enter(), flow.put(TICKETS.map((ticket) => ({ id: ticket.id })), { lag: 0.3 }), { duration: 1.6 })
+    s.wait(0.8)
+    for (const gate of GATES) {
+        // The gate stops the rows that break its rule. They go to the tray, and the other rows go on together.
+        const refused = TICKETS.filter((ticket) => ticket.gate === gate)
+        s.play(...refused.map((ticket) => flow.stop(ticket.id, ticket.reason)), { duration: 0.6 })
+        s.wait(0.7)
+        s.play(flow.eject(refused.map((ticket) => ticket.id)), { duration: 0.8 })
+        s.play(flow.move((row) => row.name === gate), { duration: 0.8 })
+    }
+    s.wait(1.2)
+})
+```
+
+`counts: true` writes under each name how many items reached the stage so far. A function writes the line, such as ``(count) => `${count} rows` ``. A move counts each intermediate stage as the item crosses it and the destination when it arrives. An item counts once per stage, including on a return trip. So the counts of a row of gates are a funnel: 5, 4, 3. `flow.reached(stage)` is that number, and `flow.count(stage)` is the number of items that are at the stage now.
+
+`flow.eject(which)` sends an item to the tray named by `tray`. The tray keeps the ID, verdict, and badge. When the capsule crosses lower lanes or a tray that already holds items, its label fades out for the trip and returns at its destination. Items fill the tray from the left and remain there. If the tray runs out of room, shorten the reasons or increase `width`. `flow.exit(which)` removes an item instead. Its lane and ID become available when the exit finishes.
+
+```ts
+import { beside, fadeIn, film, pipeline, text } from 'vizmatic/stage'
+
+export default film({ font: 'text-serif' }, (s) => {
+    // One lane, and two requests one after another. The ids and the badges are in mono.
+    const rail = s.add(pipeline(['gateway', 'auth', 'quota', { name: 'admission', gate: true }, 'model worker'], { width: 1800, tray: '503', itemFont: 'mono' }))
+    s.play(rail.put({ id: 'R-104', badge: 'id set' }))
+    for (const field of ['tenant A', 'slot 3/5', '40 ms', '412 tok']) {
+        s.play(rail.move('R-104'))
+        s.play(rail.setBadge('R-104', field))
+    }
+    // R-104 is done. R-105 takes its lane, and the marks of the lane start again.
+    s.play(rail.exit('R-104'))
+    s.play(rail.put({ id: 'R-105', color: 'purple' }))
+    s.play(rail.move('R-105', 'admission'), { duration: 1.6 })
+    s.play(rail.stop('R-105', '310 ms'))
+    // A note of the film on one item: under the whole object, at the x of the item.
+    const limit = beside(text('the budget for the first token is 250 ms', { size: 28, color: 'dim' }), rail, 'under', 'normal', rail.item('R-105'))
+    s.play(fadeIn(limit))
+    s.wait(2)
+    s.play(rail.eject('R-105'))
+    const state = rail.stateOf('R-105') // { id: 'R-105', stage: 3, name: 'admission', lane: null, state: 'stopped', where: 'tray', badge: '310 ms' }
+})
+```
+
+An item takes one change at a time. Two changes of one item whose times overlap are an error that names the two calls and their times, and says what to do: play the two in a `seq`, or give the first one a shorter `duration`. Changes of two items play together, so `s.play(flow.move('a'), flow.stop('b', 'late'))` is right. An `exit` or an `eject` frees a lane when it is over, so the `put` of the next item into that lane starts then or later.
+
+`flow.fork(id, item)` makes one item two: the new item comes out of the item `id`, at the same stage, and takes a free lane. Use it for a request that goes on as two parts, such as the text of an answer and the action that it asks for. `flow.join(id, into)` makes two items one: the item `id` goes to the item `into` and ends there. Both parts go through the same stages. For branches with stages of their own, use `graph`.
+
+The getters return the state after the changes scheduled so far. `flow.stateOf(id)` gives the stage, lane, verdict (`waiting`, `passed`, or `stopped`), location (`path` or `tray`), and badge. `flow.find(test)` selects IDs from both the path and tray. `flow.ids` lists all current IDs. `flow.trailOf(stage, lane)` returns `open`, `visited`, `passed`, or `stopped`. A clone has its own items, counts, and marks, including when the film clones a group containing the pipeline.
+
+The names, counts, IDs, and badges default to 28 px. `width` reserves space for the arrowhead and divides the rest equally among the stages. The pipeline measures text in the selected font and reports a fit error if a stage cannot hold it. For a 1080p lesson, keep `size` at 26 or above. Use a wider pipeline, a shorter badge, or a note beside the item for a long reason.
+
+`.at()` places the middle of the object, and the object measures as its frame for the layout, with all its lanes and its tray, whatever its items do. So `fitted(region, (width) => pipeline(stages, { width }))` builds it for a region. `flow.p(stage, 'top')` and `flow.p(stage, 'bottom')` are points over and under a stage, in the coordinates of the object, for the end of an arrow. `flow.region({ stage, lane })` is the box of a stage, of a lane, or of the place of one item, and `flow.region({ tray: true })` is the box of the tray, in stage pixels. `flow.item(id)` is the node of an item, and `flow.mark(stage, lane)` is the node of a mark: give one to `beside` as the part, or to `spotlight`. `flow.enter()` brings the names, the line of the path, the marks and the tray, stage by stage. `flow.names`, `flow.counters`, `flow.rails`, `flow.laneNodes`, `flow.tray`, `flow.trayName` and `flow.items` are the parts. An item has a `capsule`, an `idText`, a `check`, a `cross` and a `badge`. `font` sets the font of the names, the counts and the name of the tray, and `itemFont` the font of the ids and the badges. Both default to the font of the film. `color` is the color of an item that has none of its own.
 
 ## Ring buffers
 
@@ -353,6 +1026,139 @@ To write several entries at once, pass the pushes to `lagged`, to `par`, or to o
 `.at()` places the center of the ring, and `label` is a caption under it. The distance of the caption follows from `radius`, `size`, and `numbers`, and from no other option: it is the room of an arrow head and a name of 5 em under the band. So two rings that share these three have their captions on one line, whatever their names, counts and slots. For two rings that differ, or for a longer outside name, set `captionGap`: the distance from the band to the top of the caption. An outside name that can reach the caption is an error that gives the `captionGap` to set.
 
 The bounds of a ring hold the outside name at every slot, with a count of two digits. So a `zone` or a `card` around a ring has room for the name wherever the pointer goes, and `nextTo` keeps two rings apart. `ring.p(slot)` gives the middle of a slot in the coordinates of the ring, to fly an entry in from another place. The slot wraps, so `ring.p(ring.tail)` is the slot that the next `push()` fills. `ring.enter()` draws the band slot by slot, then brings the pointers and the caption. `ring.slots`, `ring.entries`, `ring.numbers`, `ring.headPointer`, `ring.tailPointer`, `ring.writeMarker`, and `ring.caption` are the parts. A ring has 2 to 64 slots.
+
+## Request queues
+
+`requestQueue(items, options)` moves identifiable requests from waiting lines into server slots. Use it to show how a batch refills, why a request misses its deadline, or what happens when two tenants share a block pool.
+
+```film paired label="Five requests share three batch slots across six decode steps"
+import { beside, countUp, counter, film, fitted, linear, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+// Work is the number of decode iterations the request needs.
+const REQUESTS = [
+    { id: 'A', work: 2, color: 'blue' }, { id: 'B', work: 4, color: 'teal' }, { id: 'C', work: 6, color: 'purple' },
+    { id: 'D', work: 4, color: 'orange' }, { id: 'E', work: 2, color: 'green' },
+]
+
+export default film({ fps: 30, font: 'text-serif', title: 'Continuous batching refills each free slot' }, (s) => {
+    const { area, heading } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue(REQUESTS, { width, slots: 3, size: 36, names: { slots: 'batch slots' } })), area)
+    // Count completed work across all requests, including those that have left the batch.
+    const totalWork = REQUESTS.reduce((sum, request) => sum + request.work, 0)
+    const done = () => queue.ids.reduce<number>((sum, id) => sum + queue.stateOf(id).work! - queue.stateOf(id).left!, 0)
+    const steps = beside(counter(0, { size: 40, font: 'text-serif', suffix: ` of ${totalWork} decode steps complete` }), queue, 'under', 'loose')
+    s.add(heading('Continuous batching refills each free slot'))
+    s.play(queue.enter(), { duration: 1 })
+    s.play(queue.admit(queue.next(3)), { duration: 2.4 })
+    s.add(steps)
+    s.wait(0.4)
+    // Refill the first free slot after each pair of iterations.
+    for (let round = 0; round < 3; round++) {
+        const units = queue.find((item) => item.state === 'running').reduce<number>((sum, id) => sum + Math.min(2, queue.stateOf(id).left!), 0)
+        s.play(queue.run(2), countUp(steps, done() + units), { duration: 1.6, ease: linear })
+        s.play(queue.finish(), ...(queue.count('waiting') > 0 ? [queue.admit()] : []), { duration: 1.2 })
+        s.wait(0.4)
+    }
+    s.wait(1)
+})
+```
+
+An item has an `id`, a text or a number, and an id is in the queue once. The queue knows an id by its text, so `7` and `'7'` are one id. `work` is the size of the item in units of work: decode steps, tokens, seconds. It is a whole number. An item with `work` shows the units that are left at its right end, and a bar fills it from the left as it runs. An item with no `work` has no number and no bar, and its id is in the middle. `color` sets the color of the border and the bar. `running: true` on an item of the first list puts it in a slot from the start.
+
+The texts are large enough for a lesson at 1080p. With the default `size` of 28, an id is 28 px and bold, and the names, the counts, the numbers of work, the waits and the statuses are 26 px. All of them follow `size`, and they are in the font of the film. `idFont: 'mono'` sets the ids in mono. All items have one width, `itemWidth`. Without it, the width has room for the longest id of the first items with its number, and it is 4.3 text sizes at the least. An id that is too wide for an item is set smaller, down to 0.6 of `size`. An id that is still too wide is an error that gives the `itemWidth` to set.
+
+`width` is the width of the whole object, and `.at()` places its middle. The slots are one column at the right, and the lines get the places that fit: `queue.places`. An item enters from behind the items already in line, and an item that leaves a slot goes out at the right by one place, so the object has that room at its two ends. The layout measures the object at its full `width`, also while no item is there, so `fitted(region, (width) => requestQueue(items, { width }))` fills a region. A line with more items than places draws the first ones, and three dots at its far end stand for the others. The count over the line is of all its items. A width with no room for one place is an error that gives the least width.
+
+Each line has its name and its count over its head, such as "waiting 4". The slots have theirs over the first slot, such as "running 2 / 3". Two more counts come with the first item that they count: "done" under the slots, and "rejected" under the lines. `names` sets the three words, and `null` for `done` or `rejected` draws no count there. `counts: false` leaves the names alone. `queue.enter()` brings the lines, the slots and the names, and then the items.
+
+`queue.admit()` takes the head of the first line that has an item, and gives it the first free slot. The item leaves its line by one place, crosses to the height of its slot, and comes into the slot by one place. It changes its height only in the room between the lines and the slots, so it meets no item of another line and no item in a slot. Its line closes up behind it. With an id, `admit` takes that item, and with a list it takes the items one after another, each in its own part of the time. `queue.next(count)` gives the ids that `admit()` takes next, so `queue.admit(queue.next(queue.freeSlots))` fills the free slots. A line serves its head first: an id that is not the head of its line is an error, and so is an `admit` with no free slot.
+
+`queue.run(units)` lets every item in a slot work for a number of units. The bar grows and the number counts down, at one speed. An item never does more than its work. `queue.finish()` drains the slots: with no argument, each item that has no work left goes out at the right and fades, and its slot shows its outline again. `queue.finish(which)` takes an id, a list of ids, or a function of an item. Use it for an item with no `work`. An item that has work left is an error: `run` it first.
+
+A batch that refills is one play: `s.play(queue.finish(), queue.admit())`. Name the `finish` first. The slot that the item leaves is then free for the next one, and the new item comes in behind the one that leaves: it is never nearer to the slot than that one is to its way out. The `finish` must end no later than the `admit`.
+
+`queue.reject(which, status)` sends waiting items away with a status, such as `'503'`, `'429'` or `'timeout'`. In the first fifth of the time the border of the item turns red with dashes, and a cross and the status show under it. The item stays for the viewer to read it. It fades from 0.6 to 0.8 of the time, and its line closes up in the last fifth, when the place is empty. `which` is an id, a list of ids, or a function of an item, which the queue calls when the film plays the change: `queue.reject((item) => item.late, 'timeout')`. Only an item that waits can be rejected. A status that is wider than the room under an item is an error.
+
+`queue.wait(which, value)` runs the wait of waiting items to a value, as a number under each item. The value is in the unit of the film, and `format` writes it. With a `deadline`, the number turns red and bold when the wait reaches it, and the border of the item turns red with dashes. `queue.stateOf(id).late` is true while the item waits at or past its deadline. When the item leaves the line, the flag clears and `stateOf(id).wait` retains its last wait.
+
+```film paired label="Request R-105 exceeds its wait budget and receives a 503"
+import { beside, fadeIn, film, fitted, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif', title: 'R-105 runs out of time in the queue' }, (s) => {
+    const { area, heading, note } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue([
+        { id: 'R-103', work: 4, running: true }, { id: 'R-104', work: 5 },
+    ], { width, slots: 1, size: 36, idFont: 'mono', deadline: 250, format: (ms) => `${Math.round(ms)} ms`, names: { slots: 'model worker', rejected: 'refused' } })), area)
+    const budget = beside(note('Queue wait budget: 250 ms'), queue, 'above', 'loose', queue.region({ line: 0 }))
+    s.add(heading('R-105 runs out of time in the queue'))
+    s.play(queue.enter(), fadeIn(budget), { duration: 1 })
+    s.play(queue.arrive([{ id: 'R-105', work: 3 }, { id: 'R-106', work: 2 }]), { duration: 1.2 })
+    s.wait(0.4)
+    // The worker is busy, and the two waits run.
+    s.play(queue.run(4), queue.wait('R-104', 190), queue.wait('R-105', 130), { duration: 2.4 })
+    // R-104 is in time: the worker is free 60 ms before its budget ends.
+    s.play(queue.finish(), queue.admit(), { duration: 1.2 })
+    s.wait(0.4)
+    // R-105 crosses its deadline while R-104 is still running.
+    s.play(queue.run(3), queue.wait('R-105', 310), { duration: 2.6 })
+    s.wait(0.6)
+    s.play(queue.reject((item) => item.late, '503'), { duration: 2 })
+    s.wait(1.2)
+})
+```
+
+`lines` gives the queue more than one waiting line, from the top: a line is a name, or `{ name, color }`. Use it for a second tenant, or for a priority. An item names its line by its name or its index, and takes the color of its line. `queue.admit()` serves the first line that has an item, so the order of the lines is their priority. A scheduler of the film that picks another line names the head of that line: `queue.admit('B-1')`. With two lines or more, two slots are as far apart as half of two lines, so a line is at the height of a slot or in the middle between two slots.
+
+`pool` adds a pool of fixed blocks under the slots, such as the pages of a KV cache: a number of blocks, or `{ blocks, name, columns }`. An item with `blocks` takes that many when it comes into its slot, and gives them back when it finishes. `queue.take(id, count)` gives an item in a slot more blocks, as a request whose cache grows with each token. An item takes the first free blocks by index, so the next item uses again the blocks that another gave back. A free block is an outline of dashes, and a block that is taken has the color of its owner. The name over the pool shows the count, such as "KV blocks 6 / 8", and `queue.freeBlocks` gives the free ones. An `admit` or a `take` for more blocks than are free is an error. So a film reads the state first, and shows why a request waits:
+
+```film paired label="Tenant B gets a slot when tenant A releases its KV blocks"
+import { beside, fadeIn, fadeOut, film, fitted, place, requestQueue, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif', title: 'A free GPU slot still needs KV blocks' }, (s) => {
+    const { area, heading, note } = sceneKit()
+    const queue = place(fitted(area, (width) => requestQueue([
+        { id: 'A-1', line: 'tenant A', work: 2, blocks: 3, running: true },
+        { id: 'A-2', line: 'tenant A', work: 3, blocks: 2 },
+        { id: 'B-1', line: 'tenant B', work: 2, blocks: 4 }, { id: 'B-2', line: 'tenant B', work: 2, blocks: 2 },
+    ], { width, slots: 3, size: 34, lines: [{ name: 'tenant A', color: 'teal' }, { name: 'tenant B', color: 'orange' }], names: { slots: 'GPU slots' }, pool: { blocks: 8, name: 'KV blocks' } })), area)
+    s.add(heading('A free GPU slot still needs KV blocks'))
+    s.play(queue.enter(), { duration: 1 })
+    s.play(queue.admit('A-2'), { duration: 1.2 })
+    s.wait(0.4)
+    // A seat is free for B-1, and the pool is short: the film reads both from the queue.
+    const needs = queue.stateOf('B-1').blocks, free = queue.freeBlocks
+    const short = beside(note(`B-1 needs ${needs} blocks, and ${free} are free`, { color: 'ink' }), queue, 'under', 'normal', queue.region({ line: 'tenant B' }))
+    s.play(fadeIn(short), { duration: 0.5 })
+    s.wait(1)
+    s.play(queue.run(2), { duration: 1.4 })
+    // A-1 ends. Its three blocks go back to the pool, and B-1 takes them and one more.
+    s.play(queue.finish(), queue.admit('B-1'), fadeOut(short), { duration: 1.6 })
+    s.wait(0.6)
+    // The cache of A-2 grows by two blocks, and the pool is full.
+    s.play(queue.take('A-2', 2), { duration: 0.8 })
+    s.wait(1.6)
+})
+```
+
+`queue.arrive(items)` takes one item or a list. The items of a list arrive one after another, and `lag` sets how much later each one starts, as a part of the time of one. An id that the queue has is an error. An item is all there at the middle of its way in.
+
+Each animation leaves the queue in the state that the next one starts from, and the queue changes its bookkeeping when the film plays an animation. So in `seq(queue.arrive({ id: 'N' }), queue.admit('N'))` the second call finds the item of the first. `queue.stateOf(id)` gives what an item is and where: its `state` (`'waiting'`, `'running'`, `'done'` or `'rejected'`), its `line`, its `place` in the line from 0 at the head, its `slot`, its `work` and the units that are `left`, its `blocks`, its `wait`, `late`, and the `status` that it left with. `queue.find(test)` gives the ids that a function picks, `queue.count(state, line)` counts the items in a state, and `queue.ids` holds all ids in the order of arrival. `queue.freeSlots` is the number of free slots.
+
+A rejected call leaves the queue ready to retry. The queue takes the calls of one play in their order, and the calls of a film in the order of their times: a call that starts before a call that the film made earlier is an error. Some calls cannot share their time:
+
+- An item takes one change of its state at a time: it arrives, then it goes to a slot, then it leaves.
+- The slots take one `admit` at a time, so that no two items cross. Give one `admit` all the items, as a list.
+- A line takes one change of its order at a time: an `admit` from it, or a `reject` from it.
+- An `arrive` can share its time with an `admit` or a `reject` of its line, and with another `arrive`. The item that arrives stays behind the items that move, so it must be in its place no sooner than they are.
+- Call `run` or `take` after the request reaches its slot. Wait for its work and block allocation to end before calling `finish` on it. A `wait` in the line can run alongside work in a slot.
+
+A call that breaks one of these is an error that names the two calls and their times, and says what to change. An ease that goes back, or past its end, does not move an item back: the queue takes the furthest point that the ease has reached.
+
+`queue.item(id)` is the node of one item: its box, its bar, its id and its numbers. Fade it, light it or circle it as one node, and a connector to it follows the item. The queue moves the item, so do not move that node. `queue.p(part, edge)` is a point of a part in the coordinates of the object, and `queue.region(part)` is its box on the stage, for `place` and `beside` of the layout. A region encloses all four corners, including when a parent rotates or scales the queue. A part is `{ line }` for the row of a line, `{ line, place }` for one place, `{ slot }`, `{ block }`, `'slots'` or `'pool'`. `queue.rails` (the line of each waiting line), `queue.captions`, `queue.more` (the three dots), `queue.seats`, `queue.slotsCaption`, `queue.doneTally`, `queue.rejectedTally`, `queue.blocks`, `queue.poolCaption` and `queue.chips` are the parts. A queue has 1 to 12 slots, 1 to 4 lines, and a pool of 256 blocks at the most.
+
+Each state has a sign beside its color. An item that waits is in a line, and one that runs is in a slot with its bar. A late item has dashes and a red number, and a rejected one has dashes, a cross and its status. A free slot and a free block are outlines of dashes.
+
+Use `ringBuffer` where the lesson is about the ring: two indexes that wrap. Use `requestQueue` for admission, batching and scheduling. For a population of a hundred requests or more, draw one mark for each with `unitChart` or `stateGrid`, and keep the queue for the few that the viewer follows.
 
 ## Date lines
 
@@ -438,6 +1244,142 @@ export default film((s) => {
 
 `record.events` holds one node per event, in the order of the list, with its `mark`, its `stem`, its `text`, its `note`, and its `halo`, the ring of the lit event. The stem and the text are null for an event with no label. `record.axis` is the line with its ticks and their texts, `record.cursor` is the cursor, and `record.unit` is the unit of the ticks. `record.x(date)` gives the x of a date, and `record.p(index)` the place of the mark of an event. Both are in the coordinates of the object, as `extent` is: the middle of the line is at (0, 0). `record.toWorld(...record.p(index))` gives the place on the stage, for a brace or a line to a picture. `size` is the text size of the labels. The notes and the texts under the line are a little smaller. `font` is the font of every text of the object.
 
+## Number lines
+
+`numberLine(options)` places values on a single axis. `range` sets the endpoints and `length` sets the distance between them in stage pixels. Use `step` for regular ticks or `ticks` for a list of representable values.
+
+```film paired label="Unequal ticks show the rounding error for two inputs"
+import { assertEqual, fadeIn, film, numberLine, sceneKit } from 'vizmatic/stage'
+
+const GRID = [1, 2, 4].flatMap((power) => Array.from({ length: 8 }, (_, k) => power * (1 + k / 8))).concat(8)
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('The distance to the nearest tick is the rounding error'), source('Three fraction bits give eight steps between each power of two and the next.'))
+    const ruler = numberLine({
+        ticks: GRID, tickLabels: [1, 2, 4, 5.5, 8], length: 1600, size: 40,
+        points: [{ name: 'a', value: 1.04, label: 'input a: 1.04', color: 'teal' }, { name: 'b', value: 5.3, label: 'input b: 5.30', color: 'orange' }],
+    }).at(0, 20)
+    s.play(ruler.enter(), { duration: 1.5 })
+    s.wait(2.5)
+    for (const name of ['a', 'b']) {
+        const lost = ruler.bracket(ruler.value(name), name, { label: (gap) => `error: ${gap.toFixed(2)}` })
+        s.play(ruler.snap(name), fadeIn(lost), { duration: 1.5 })
+        s.wait(2.5)
+    }
+    assertEqual(ruler.value('a'), 1, 'rounded a')
+    assertEqual(ruler.value('b'), 5.5, 'rounded b')
+    s.wait(2)
+})
+```
+
+With two or more custom `ticks`, the smallest and largest values set the range unless you supply `range`. Set `labels: false` to hide every tick label. Use `tickLabels` to label selected ticks when the full set would be too dense. Ticks outside that selection are shorter. If the labels on a custom tick list touch, the error suggests ticks with room for labels. `format` writes a value: under a tick, at a threshold, and in a bracket. With `format`, the numbers under the ticks are plain text in the font of the film, so a function such as `(value) => value + ' ms'` adds a unit. Without it, they are math, as the numbers of `axes` are.
+
+`size` sets the point names, threshold labels, band names, and brackets. The default is 28 px. Tick labels default to 6/7 of that size (24 px), and `labelSize` overrides it. For text of at least 26 px at 1080p, set `size: 32` or larger. Plain text uses `font` or the film font.
+
+Give each point a unique `name` and a `value`. `line.move('a', 2.4)` moves one point. `line.move({ a: 2.4, b: 1.3 })` moves several together. `line.insert(point, { from })` brings a new point from an optional stage position or node, and `line.remove(name)` takes it away.
+
+`line.snap('a')` moves a point to `line.nearestTick(value)`. Omit the name to snap every point. A ring marks the original position and a red segment shows the distance to the tick until the next move. Pass `{ trace: false }` as the second argument to omit the trace. At a midpoint, `nearestTick` chooses the tick with the even index in the sorted `tickValues` list.
+
+A point label defaults to its name. Set `label: false` to draw just the mark. `levels` sets how many rows of names the line can use (two by default). When names cannot fit, the error suggests more room or another row.
+
+```film paired label="A moving cutoff changes which requests need review"
+import { assertEqual, film, numberLine, sceneKit } from 'vizmatic/stage'
+
+const SCORES = [0.48, 0.56, 0.63, 0.69, 0.74, 0.81, 0.87, 0.94]
+const scoreLabel = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('A stricter cutoff sends more cases to review'), source('Eight fixed scores. Rings wait for a person. Dots pass the gate.'))
+    const strip = numberLine({
+        range: [0.4, 1], step: 0.1, length: 1600, size: 40, format: scoreLabel.format,
+        points: SCORES.map((value, i) => ({ name: `request ${i + 1}`, value, label: i === 3 ? 'request 4' : false as const })),
+        thresholds: [{ at: 0.7, label: 'cutoff' }],
+        bands: [{ name: 'human review', color: 'orange', hollow: true }, { name: 'served at once', color: 'teal' }], counts: true,
+    }).at(0, 40)
+    s.play(strip.enter(), { duration: 1.5 })
+    s.wait(2.5)
+    for (const cutoff of [0.9, 0.5, 0.7]) {
+        s.play(strip.moveThreshold(cutoff), { duration: 1.5 })
+        const expected = SCORES.filter((score) => score < cutoff).length
+        assertEqual(strip.count(0), expected, 'requests in review')
+        assertEqual(strip.count(1), SCORES.length - expected, 'requests served')
+        s.wait(2.5)
+    }
+})
+```
+
+Supply `thresholds` in increasing order. Each cut is a number or an object with `at`, `label`, `color`, `ties`, and `readout`. The label follows the moving cut and shows its current value unless `readout` is false. The cuts divide the line into bands. Each band can have a name and color. `hollow: true` uses rings for its points. Set `counts: true` to show each population under the line.
+
+By default, threshold and bracket labels show up to four decimal places. They show extra digits when rounding would hide a nonzero gap or change where a cutoff appears relative to a point. If you supply `format`, it controls the displayed precision even during motion.
+
+`line.moveThreshold(to, { which })` moves a cut. Use its index or label for `which`, or omit it for the first cut. A point that meets the cut belongs to the upper band by default. Set `ties: 'under'` for the lower band. The fill, point marks, and counts follow the crossing as it happens. Thresholds must stay in increasing order throughout the motion.
+
+Use `line.value(name)`, `line.bandOf(name)`, `line.count(band)`, and `line.find(test)` to read the state after a scheduled change. `line.names` lists active points and `line.thresholds` lists the current cut values.
+
+`line.bracket(from, to)` follows two values or named points. By default, it shows the gap below the axis. `label` accepts text or a function of the gap and both values. Set `side: 'over'` or use `offset` to make room for another bracket. A bracket, marker, or interval joins the line when you create it. Use `fadeIn` to introduce it later. `line.marker(value)` also accepts a function for a continuously changing value.
+
+Sequence changes to the same point. Changes to distinct points can run together, and a point can move while a threshold moves.
+
+`.at()` places the center of the axis. `line.p(value)` gives a local coordinate and `line.world(value)` gives a stage coordinate. `line.point(name)` and `line.threshold(which)` return nodes for connectors or emphasis. `line.region({ at })`, `line.region({ from, to })`, and `line.region({ band })` give stage boxes for layout. Use `fitted(region, (length) => numberLine({ length, points }))` to include the arrow tips and text when fitting the line.
+
+## Scatter planes
+
+`scatter(points, options)` draws points on two axes. Each point needs `x` and `y`. Give it a `name` to move it by name and a `group` to share a color and shape. A search grows a ring from a point to its nearest points, and a hull, a cell, or a span of the axes is an area that shades. Use it for an embedding plane, a nearest neighbor search, an index of cells, k-means, or a decision region.
+
+```film paired label="A second probe finds a nearer vector across a cell border"
+import { assertEqual, fadeIn, film, scatter, sceneKit } from 'vizmatic/stage'
+
+export default film({ fps: 24 }, (s) => {
+    const { heading, source } = sceneKit({ size: 40 })
+    s.add(heading('The nearest vector can be across a cell border'), source('One probe misses B. Two probes recover the true nearest pair A and B.'))
+    const plane = scatter([
+        { x: 1, y: 1, group: 'left' }, { x: 1.5, y: 7, group: 'left' }, { x: 3, y: 8, group: 'left' },
+        { x: 8, y: 1, group: 'right' }, { x: 8.5, y: 7, group: 'right' }, { x: 7, y: 8, group: 'right' },
+        { x: 4.4, y: 5.6, name: 'A', group: 'left', side: 'over' },
+        { x: 5.2, y: 4.6, name: 'B', group: 'right', side: 'right' },
+        { x: 2.5, y: 5, name: 'c1', group: 'centers', side: 'left' },
+        { x: 7.5, y: 5, name: 'c2', group: 'centers', side: 'right' },
+    ], {
+        x: [0, 10], y: [0, 10], width: 760, height: 760, labelSize: 26, nameSize: 32, radius: 9, groupLabels: false,
+        groups: { left: { color: 'blue', shape: 'dot' }, right: { color: 'purple', shape: 'square' }, centers: { color: 'ink', shape: 'ring' }, found: { color: 'green', shape: 'diamond' } },
+    }).at(0, 10)
+    s.play(plane.enter(), { duration: 1.5 })
+    s.wait(1.5)
+    const cells = plane.cells(['c1', 'c2'])
+    s.play(fadeIn(cells), { duration: 0.6 })
+    s.play(plane.insert({ x: 4.8, y: 5, name: 'q', query: true, side: 'under' }), { duration: 0.9 })
+    const first = cells.find((cell) => cell.holds('q'))!, other = cells.find((cell) => !cell.holds('q'))!
+    s.play(first.shade(), plane.nearest('q', 2, { among: first.points }), { duration: 1.5 })
+    assertEqual(plane.neighbors.includes(plane.indexOf('B')), false, 'one probe finds B')
+    s.wait(3)
+    s.play(other.shade(), plane.nearest('q', 2, { among: [...first.points, ...other.points] }), { duration: 1.5 })
+    assertEqual(plane.neighbors[0], plane.indexOf('B'), 'nearest vector')
+    assertEqual(plane.neighbors[1], plane.indexOf('A'), 'second nearest vector')
+    s.play(plane.assign(plane.neighbors, 'found'), { duration: 0.8 })
+    s.wait(3.5)
+})
+```
+
+`width` and `height` set the plot dimensions. Axis numbers sit outside the plot. By default, `x` and `y` span the initial points. When starting empty, give both ranges to draw labeled axes for points that will arrive later.
+
+A point label defaults to its name. Set `label` for different text or `label: false` to hide it. The chart chooses a place inside the plot. Set `side` to `right`, `left`, `over`, or `under` to request a particular place. The default `nameSize` is 26 px. Axis numbers default to 18 px. Use `labelSize: 26` for a lesson at 1080p.
+
+Points in one group share a color and a label. Set `groups` to give each group a color or `{ color, shape, label }`. The shapes are `dot`, `ring`, `square`, `diamond`, and `triangle`. Set `label: false` to hide that group name. Declare groups with no initial members before assigning points to them. `query: true` draws a target and excludes that point from search results.
+
+`chart.move('q', [4, 5])` moves a point in data units. Use `chart.move({ q: [4, 5], c1: [2, 3] })` to move several at once. `insert(point, { from })` brings in a new point from an optional stage position or node. `remove(which)` takes points away. `assign(which, group)` changes the color and shape of the selected marks. Choose points by index, name, a list of either, or a predicate such as `(point) => point.group === 'left'`.
+
+`chart.nearest('q', 3)` draws a ring to the third nearest neighbor and links the query to the selected points. Distances are Euclidean in data units, so the ring looks circular when the axes use the same number of pixels per unit. The search follows later point movements. Use `among` to restrict candidates, change `k` to resize the search, or set `k` to zero to end it.
+
+`chart.hull(group)` follows the outline of a group as its membership changes. `chart.cells(centers)` partitions the plot by distance to each center. Give a point index, a name, or a coordinate pair for each center. `chart.span({ x: [0, 3.35] })` selects a vertical strip. Add a `y` range for a rectangle. Infinity denotes the corresponding edge of the axis. Each area joins the chart when you create it.
+
+`area.shade()` adds fill and emphasizes the outline. `area.shade(false)` returns to the resting appearance. A hull starts shaded. `area.points` returns the indexes of data points in the area. It excludes queries and, for a cell, the listed center points. `area.holds('q')` tests the location of a query too.
+
+`positionOf(which)`, `groupOf(which)`, `count(group)`, and `find(test)` read the state after the changes played so far. `nearestTo('q', 2)` returns neighbors with their distances. `neighbors` returns the indexes selected by the active search.
+
+A point can move and change group together. Sequence two position changes to the same point, two changes to its group, or two changes to the search. Moves and inserts need coordinates inside the axes.
+
+`chart.point(which)` returns a mark for a connector or emphasis. `chart.p(x, y)` gives local coordinates. `chart.region({ x: [0, 5] })` gives a stage box for part of the plot. `fitted(region, (width) => scatter(points, { width, height }))` includes axis labels in the measured width. The chart exposes `dots`, `nameLabels`, `groupLabels`, `areas`, and `axis` for animation.
+
 ## Pictograms
 
 `pictogram(name)` draws a small picture of a concept: a time series, a forecast, logs, traces, a graph, a database, a model. All pictures share one 24-unit grid and one line style, so pictures in a row read as one family. `color` sets the lines, and `accent` sets the part that carries the meaning. A picture with one part, such as `series` or `check`, is all in the accent. `.at(x, y)` places the middle of the grid, so pictures of one `size` line up.
@@ -472,22 +1414,64 @@ export default film({ fps: 30 }, (s) => {
 
 Use a pictogram when a card or a legend needs a picture of a kind of thing. When the picture must show real data or a real topology, use `sparkline`, `graph`, or `tree`, and size it with `fitTo`.
 
+### Company logos
+
+Use a company’s brand kit or an optional catalog such as Lobe Icons or Simple Icons. Keep the selected artwork, its source, and the applicable notices in your project. A shared assets folder lets several films use the same copy. [Lobe Icons static SVGs](https://github.com/lobehub/lobe-icons/tree/ea434b96e75813517b377825e01c0df61dee8836/packages/static-svg/icons) · [Simple Icons](https://github.com/simple-icons/simple-icons/tree/16.0.0)
+
+For example, these commands copy the Claude product mark from a specific version of Lobe Icons. For Anthropic itself, choose the company's mark.
+
+```bash
+mkdir -p assets
+curl -fL https://unpkg.com/@lobehub/icons-static-svg@1.102.0/icons/claude-color.svg -o assets/company.svg
+```
+
+Save the following film as `logos.mjs`. It places a mark beside its name. The group measures both objects, so a narrow mark and a wide mark have the same gap before the text.
+
+```js
+import { readFileSync } from 'node:fs'
+import { film, fromSvg, group, text } from 'vizmatic/stage'
+
+const artwork = readFileSync(new URL('./assets/company.svg', import.meta.url), 'utf8')
+
+export default film({ look: 'paper', imageNetwork: 'deny' }, (s) => {
+    const size = 40
+    const markSize = Math.round(size * 1.6)
+    const mark = fromSvg(artwork, { background: true, splitGlyphs: false })
+    mark.fitTo({ width: markSize, height: markSize })
+    const name = text('Claude', { size })
+    const label = group(mark, name).arrange('right', Math.round(size * 0.36))
+    s.add(label.moveTo([0, 0]))
+    s.wait(2)
+})
+```
+
+`fitTo` sizes the imported shapes by their bounds and preserves their proportions. For an embedded image, those bounds include transparent padding inside the bitmap. Trim the asset first if the padding creates a visible gap. `splitGlyphs: false` keeps compound paths together. `background: true` retains a background rectangle supplied with the art. If the SVG uses `currentColor`, set the intended foreground color before importing it.
+
+For marks that rely on masks, clipping, or an unsupported fill rule, export the artwork to a transparent PNG. Prepare it with `resolveImageAsset` and use `image(asset, { width: 420, height: 220, fit: "contain" })`. For browser playback, embed the SVG markup or PNG bytes in the film.
+
+With Vizmatic installed locally, render a frame to check the logo at its intended size.
+
+```bash
+npx --no-install vizmatic film logos.mjs --frame 1 --width 640 --out out
+```
+
 ## Cards
 
 `card(options)` draws a box with a `title` at the top, a `figure` in the middle, and a `caption` at the bottom. All three are optional. The title and the caption sit at fixed distances from the border. The figure is centered in the space between them, and a figure that is too large is scaled down to fit. So the cards of a row share one layout whatever they hold: give them one `width`, one `height`, and one `captionLines`, which is the number of lines of the longest caption.
 
 ```film paired label="Three cards with one layout hold three different figures"
-import { card, fadeIn, film, group, lagged, pictogram, sparkline } from 'vizmatic/stage'
+import { card, fadeIn, film, lagged, pictogram, row, sparkline } from 'vizmatic/stage'
 
 export default film({ fps: 30 }, (s) => {
     const values = Array.from({ length: 48 }, (_, i) => Math.sin(i / 5) + 0.4 * Math.sin(i / 1.7))
-    const row = { width: 500, height: 460, captionLines: 2, font: 'text-serif' } as const
+    const shared = { width: 500, height: 460, captionLines: 2, font: 'text-serif' } as const
     const cards = [
-        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', ...row }),
-        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', ...row }),
-        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', ...row }),
+        card({ title: 'Metrics', figure: sparkline(values, { width: 380, height: 150, color: 'teal', weight: 5 }), caption: 'a number every ten seconds', color: 'teal', ...shared }),
+        card({ title: 'Logs', figure: pictogram('logs', { size: 170, color: 'dim', accent: 'yellow' }), caption: 'one line per event', color: 'yellow', ...shared }),
+        card({ title: 'Traces', figure: pictogram('traces', { size: 170, color: 'dim', accent: 'purple' }), caption: 'the path of one request through the services', color: 'purple', ...shared }),
     ]
-    group(...cards).arrange('right', 40).moveTo([0, 0])
+    // A row measures the cards and puts them around the middle of the stage.
+    row(cards, { gap: 40 })
     s.play(lagged(cards.map((made) => fadeIn(made, { shift: [0, 24] })), { lag: 0.25 }), { duration: 1.6 })
     s.wait(0.8)
 })
@@ -719,6 +1703,110 @@ export default film((s) => {
 })
 ```
 
+## Passages
+
+`passage(text, options)` displays prose that a film can annotate and revise. It wraps words at `width`, collapses consecutive spaces and tabs, and preserves line and paragraph breaks. Use a passage to cut a document into chunks, connect claims to evidence, or show how a prompt revision changes a reply. The runnable films in `examples/films/passage/` demonstrate all three uses.
+
+```film paired label="A runbook is cut into windows of words, then with an overlap, then by sentence, and the first chunk lifts out"
+import { film, passage } from 'vizmatic/stage'
+
+const RUNBOOK = 'If the error rate stays above 2% after a deploy, roll back within 15 minutes. Then page the incident commander. Write the deploy ID in the incident channel.'
+
+export default film({ fps: 30 }, (s) => {
+    const page = passage(RUNBOOK, { width: 1500, size: 44, title: 'runbook.md' }).at(-750, -330)
+    s.play(page.enter(), { duration: 1 })
+    // The fact that a chunk must hold whole.
+    s.play(page.mark('within 15 minutes'), { duration: 0.5 })
+    // Windows of 7 words cut the fact in two. With an overlap of 2 words, one chunk holds it whole.
+    s.play(page.cut({ size: 7 }), { duration: 1.2 })
+    s.wait(0.8)
+    s.play(page.cut({ size: 7, overlap: 2 }), { duration: 1.2 })
+    s.wait(0.8)
+    s.play(page.cut({ by: 'sentence' }), { duration: 1.2 })
+    // The first chunk is selected, and it leaves the page as a passage of its own.
+    const chunk = page.slip({ chunk: 0 }, { title: 'chunk 1 of 3', width: 820 }).at(-410, 130)
+    s.play(page.select({ chunk: 0 }), page.lift(chunk), { duration: 1.2 })
+    s.wait(1.2)
+})
+```
+
+Use `quote` for a fixed quotation with attribution, `codeBlock` when columns and spacing matter, and `tokens` for tokenizer output. A passage keeps the same words on screen as annotations change.
+
+`width` is the width of the object, and no letter passes it. Without a width, the text is on one line and the object is as wide as that line needs, 900 at the most. A line breaks at a space. A line break in the text starts a line, and an empty line starts a paragraph, with half a line of room. A no-break space (` `) keeps two words on one line. A word that is wider than the passage is an error, and the message gives the width that is enough. `size` is the text size, 32 by default, and `leading` is the height of a line as a multiple of it, 1.6 by default. The bands and the links need that room: a smaller `leading` is an error when a band does not fit. The words are in the font of the film, or in `font`.
+
+`title` is one line over the words: the name of a file, or a role such as `user`. It is 0.8 of `size`, and 26 px at the least when `size` is 26 or more. `color` is the color of the border and of the title, so the sections of a prompt can each have their own. `panel: false` draws no frame, for one sentence in a picture. `.at(x, y)` places the top left corner, so passages of different lengths start at one corner. The layout measures a passage as its width and its height, with or without a frame, so it is an item of `row`, `column` and `place`, and `fitted(region, (width) => passage(text, { width }))` makes it as wide as a region.
+
+### Parts of the text
+
+A film names a part of the text by its words: `'within 15 minutes'`. The words are matched letter for letter, spaces do not count, and a part may run over the end of a line or of a sentence. A part starts and ends at the borders of words: `'day'` is not a part of "days". Words that are at two places name no part, and the error says so: give more of the words around the place, or `{ words: 'days', occurrence: 1 }` for the second place. `{ chunk: 0 }` is the first chunk of the last cut, and the node of a span or a chunk names its own words. Words that are not in the text are an error that shows how the text starts.
+
+### Spans and kinds
+
+`page.mark(words, kind)` gives a part a kind. A band in the color of the kind grows behind the words in the order of the text, with the sign of the kind. A second `mark` of the same words changes the kind: the color changes, and the old sign gives way to the new one. `page.mark(words, null)` takes the span away. A word is in one span, so words that share a word with another span are an error. Without a kind, a part takes the first kind of the passage.
+
+A kind has a color and a sign, so that color is never the only sign. Without `kinds`, a passage has the kinds of `PASSAGE_KINDS`:
+
+| Kind | Color | Sign | Use |
+|---|---|---|---|
+| `mark` | blue | a plain band | A part that the film points at: a clause, a name, a number |
+| `claim` | purple | a frame around the band | A statement of an answer that is not checked yet |
+| `supported` | green | a line under the words | A source says the same |
+| `unsupported` | yellow | dashes under the words | No source says it |
+| `contradicted` | red | a wave under the words | A source says another thing |
+| `external` | orange | diagonal lines over the band | Text that came from outside, such as a web page in a prompt |
+| `removed` | dim | a line through the words, which are dim | Words that the next version does not have |
+| `added` | teal | two lines under the words | Words that the next version brings |
+
+For another subject, give your own record, such as `kinds: { rule: { color: 'teal', sign: 'underline' }, fact: { color: 'blue' } }`. A sign is `'band'`, `'box'`, `'underline'`, `'double'`, `'dashed'`, `'wavy'`, `'hatch'` or `'strike'`, and a kind with none has a band. Each kind of a passage has its own sign: two kinds with one sign would differ by their color only, so they are an error that lists the signs that are free. `dim: true` sets the words of a span in dim.
+
+`page.spans` lists the spans in the order of the text, with the words and the kind of each. `page.kindOf(words)` is the kind of a span, or null, and `page.count('supported')` counts the spans of a kind, so a label can show a true share. All of them read the state after the changes that the film has played so far.
+
+### Chunks
+
+`page.cut(how)` cuts the text into chunks. `{ size: 12, overlap: 3 }` makes windows of 12 words, and each window shares 3 words with the next. `{ by: 'paragraph' }` starts a chunk at each blank line. `{ by: 'sentence' }` also starts a chunk after a word that ends in a period, exclamation point, or question mark. Use an explicit list of chunks for abbreviations or other language-specific boundaries. The chunks arrive one after another as bands of two colors in turn, as high as a line, with a gap between two chunks. Over the words that two chunks share, the first chunk has the upper half of the line and the next chunk has the lower half, so the overlap shows both. A word is in two chunks at the most: an overlap of more than half of `size` is an error.
+
+For a token budget, pass the tokenizer as the `tokens` option of `passage`, then play `page.cut({ tokens: 128 })`. The passage appends whole words and counts each candidate chunk as one string. It starts a new chunk when the next word would exceed the budget. If one word exceeds the budget on its own, the cut reports that word. For an estimated token count, label the budget as an estimate in the film.
+
+A new cut takes the place of the old one, so each way to cut is an operation on the same page. `page.cut(null)` takes the chunks away. `page.chunks` holds the words of each chunk. `colors` gives the two colors, which are purple and orange by default. Keep them apart from the colors of the kinds that the film uses.
+
+### The selection and its count
+
+`page.select(part)` moves the selection, which is one frame around some words. A passage has one selection. It grows and shrinks line by line, as a selection in an editor does, and `page.select(null)` takes it away. `page.selection` is its size: `{ words, characters }`, and `tokens` when the passage has a `tokens` function. `page.measure(part)` gives the same for any part, and for the whole text with no part.
+
+`page.counter('words')` is a number that follows the selection. It is 0 with no selection, and it runs to the new count while `select` plays. Show it with `decimal(() => page.counter('words').value, { digits: 0, suffix: ' words' })`, or give it to a bar. A passage has no tokenizer of its own. For tokens, give `passage(text, { tokens })` the function of the film that counts them, or an estimate such as `(text) => Math.ceil(text.length / 4)`, and say on the screen that it is an estimate.
+
+### A part that lifts out
+
+`page.slip(part, options)` makes a passage of its own from a span, a chunk or any words, with the same size and font. It is not on the stage yet. Give it its place, and play `page.lift(slip)`: a copy of each letter leaves the page and lands in the slip, and the frame of the slip arrives. The words stay in the page too. The options are those of `passage`, such as a `title` and a `width`. Without a width, a slip is as wide as its words need, and as wide as the page at the most. A slip is a passage, so a film can mark it, link it, and lift a part out of it.
+
+### Links
+
+`answer.link(words, target)` makes a line from a part of a passage to a node: the span of another passage (`source.span('Closed on Sunday.')`), a slip, or any node of the film. The line leaves under the end of the part, runs in the room between two lines of text to the side of the passage, goes up or down between the passage and the target, and reaches the span of the target the same way. So it crosses no word. A part on two lines has an end on each, and the line takes the end that is nearest to its side. The line is drawn on every frame: it follows the two when they move, and it follows a span whose words a `diff` changes.
+
+`link.enter()` draws the line from the part to the target. `link.break()` is for a tie that does not hold: a gap opens between the two with a cross in it, the line becomes dashes, and it turns red. `link.broken` says so. For a claim that no source supports, play no link, and mark the claim `unsupported`. The line goes up or down in the middle of the room between the two, and `shift` moves that part sideways by so many pixels, so that two links do not share it. For a target over or under the passage, the line goes around both by the right side, or by the left one with `side: 'left'`. Two links that leave under one line of text share the room under it: let one of them leave by the other side, or mark parts on two lines. A node that arrives later is drawn over a link, so call `link.zIndex(1)` for a line that must stay over a panel.
+
+The film in `examples/films/passage/evidence.ts` compares four claims with two sources. It draws a solid link for each supported claim, breaks the link for a contradicted claim, and leaves the unsupported claim unlinked.
+
+### The next version
+
+`page.diff(next)` changes the text to its next version. The film gives the whole next text, and the passage finds the words that differ. The words that go get a line through them and turn dim, the rest of the text moves, and the words that come arrive beside the words that they replace, with two lines under them. Both versions are then on the screen, and `page.text` is the next version. `page.changes` is the number of places that show a change. `page.accept()` takes the old words away, and the text closes up: the passage is then laid out as a new passage of the next version.
+
+A word that stays on its line slides to its place. A word that goes to another line fades out where it is and comes back at its place, so that no word flies across the lines between the two. A replacement inside one span stays in that span. When one replacement covers several entire spans, `accept()` removes those spans. Links follow the words that remain.
+
+The frame is as high as its text, so a `diff` that adds a line makes the frame higher. `lines` is the least number of lines that the frame holds. With it, the frame has one height from the start, and a `diff` that needs more lines is an error that gives the number. One change is on the screen at a time: a second `diff` before `accept` is an error, and so is a `diff` of a passage with chunks, because a chunk is a part of one version. The words move in one change at a time. A `diff` and an `accept` whose times overlap are an error, and so is a `mark`, a `cut`, a `select` or a `lift` that plays while the words move. Play them in a `seq`, or one after the other.
+
+To display a version number beside an edit, place a `tagTrack` beside the passage and start its next state when the edit is accepted.
+
+The film in `examples/films/passage/prompt.ts` links a prompt to two JSON fields. When the prompt specifies a deadline, `diff()` marks the edit and `morphCode()` updates the reply. The unchanged deploy identifier stays visible.
+
+### Places, parts and time
+
+`page.span(words)` is the node of a span, and `page.chunk(index)` the node of a chunk: the bands behind the words. Give one to `beside` as the part of an object, to a light, or to `link` as a target. `page.region(part)` is the box of the band of a part on the stage, for `place` and `beside`. With no part it is the room of the text, and `{ line: 1 }` is the row of one line. `page.p(part, edge)` is a point on the band in the coordinates of the object: the middle of the bottom of its last line by default, or `'top'`, `'left'` and `'right'`. `page.leader(part, side)` gives the three points of the way of a line out of the passage, for a line of your own. These places are for the text after the changes that the film has played so far, and they do not follow a later change. `page.find(words)` gives the glyphs of some words, to color them with `recolor`. `page.frame`, `page.title` and `page.words` are the parts, `page.text` is the text of now, and `page.lineCount` is the number of its lines.
+
+A clone has its own text, spans, selection, and counters. In a `seq`, each verb resolves its words and chunks when it plays. For example, `seq(page.cut({ size: 7 }), page.select({ chunk: 0 }))` selects the first chunk created by that cut.
+
+`page.enter()` brings the frame and the title, and then the words in the order of the text. With a long duration, the words arrive as a reply that a model writes. A verb that is played on a passage that is not on the stage brings the passage. A viewer reads about 20 characters in one second, and the film check reads a passage as one text. So a passage of 160 characters stays up for 8 seconds: `readingSeconds(page.text)` gives that time. A slip is a text of its own for the check.
+
 ## Chips and named boxes
 
 `chip(label, options)` draws a short label in a box that fits it: a name, a state, a unit. The box takes its width from the label, with room on every side, so a chip is never smaller than its text. `.at(x, y)` places the left end of the box, as for a tag and a row of chips: the three take their width from their text, and they have one rule. `anchor: 'center'` places the middle of the box, and `anchor: 'right'` its right end. `minWidth` gives the chips of a column one width, `round` makes a pill, `room` sets the room at the sides of the label, and `dash` is for a thing that is absent or only planned.
@@ -777,6 +1865,186 @@ In `grid.change(which, state)`, `which` is an index, a list of indexes, or a fun
 `grid.stateOf(index)`, `grid.count(state)`, and `grid.indexes(state)` read the states after the changes that the film has played so far, so a label can show a true count, such as `${grid.count('dirty')} dirty pages`. `grid.enter()` brings the cells in row by row. `grid.cells` holds one node per cell, and `grid.p(index)` gives the middle of a cell in the coordinates of the grid, for an arrow or a note.
 
 `grid.legend(items)` makes a key: one sample cell and one name for each state, in one row. The key is a node of its own, so add it to the stage and place it. `.at(x, y)` places the left end of the row, and `y` is the middle line of the cells and the names. An item is the name of a state, or a `[state, label]` pair for a display name. Without `items`, the key lists the states that the grid has now, in the order of `states`. `size`, `gap`, and `font` set the look. The key does not wrap, so make two keys for many long names.
+
+## Tensor grids
+
+`heatmap(rows, options)` shades each cell by its value. Use it to show how the same tensor changes through an operation. In the example, the outline selects one word. The bias row then stays in view as the film adds its four values to each word.
+
+```film paired label="A tensor with three named axes: the row of one word lights, and a bias is added to each row in place"
+import { beside, fadeIn, fadeOut, film, heatmap, text } from 'vizmatic/stage'
+
+const X = [[0.2, -0.4, 0.9, 0.1], [0.5, 0.3, -0.7, 0.6], [-0.1, 0.8, 0.4, -0.5]]
+const BIAS = [0.1, -0.2, 0.3, 0.1]
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const x = heatmap(X, {
+        size: 34, values: true, rowLabels: ['Birds', 'migrate', 'south'], axes: ['batch', 'seq', 'd'], depth: 2, name: 'x',
+        domain: [-1, 1.5], colors: ['orange', 'surface', 'blue'],
+    }).at(-330, -40)
+    const slice = text('x[0, 1, :]', { size: 48, font: 'mono', color: 'yellow' }).at(480, -40)
+    const bias = heatmap([BIAS], { size: 34, values: true, name: 'bias', domain: [-1, 1.5], colors: ['orange', 'surface', 'blue'] }).at(480, -40)
+    const sum = beside(text('Add to every row', { size: 44, color: 'yellow' }), bias, 'above', 'wide')
+    s.play(x.enter(), { duration: 1.4 })
+    s.play(x.light({ row: 1 }), fadeIn(slice), { duration: 0.6 })
+    s.wait(1.4)
+    s.play(x.light(null), fadeOut(slice), { duration: 0.5 })
+    s.play(fadeIn(sum), fadeIn(bias), { duration: 0.4 })
+    // One row of four values is added to each of the three rows.
+    for (const row of [0, 1, 2]) {
+        s.play(x.light({ row }), x.setValue({ row }, (_row, col, old) => old + BIAS[col]!, { lag: 0.5 }), { duration: 1.1 })
+    }
+    s.play(x.light(null), { duration: 0.4 })
+    s.wait(2.4)
+})
+```
+
+Choose the object that matches the operation.
+
+| Need | Object |
+|---|---|
+| Cells with a number and a shade, names, braces, a shape, a lit slice, a window, patches, growth, a state over a cell | `heatmap` |
+| The same grid between a column of query tokens and a row of key tokens | `attentionMatrix`, which is a `heatmap` with tilted token names and a causal mask |
+| Two operands and their product, with a row paired with a column | `matrixProduct`, which is three `heatmap` grids |
+| A matrix in a formula, with brackets, in the type of the math | `matrix` |
+| Cells that are only in a state, with no value and no name, by the thousand | `stateGrid` |
+| One row of boxes whose items swap places | `arrayCells` |
+
+`size` controls cell numbers, labels, braces, and the shape caption. It defaults to 28 when you give `width`, `axes`, `name`, `depth`, `states`, `initial`, `shown`, or `values: 'lit'`. For a 1080p lesson, use at least 26. A heatmap with only the original chart options keeps its 44-pixel cells and 16-pixel labels.
+
+`values: true` prints numbers in a monospaced font. In tensor mode, the default cell fits the widest number and leaves room for a four-character value such as `0.25`. Set `cell` for square cells or use `cellWidth` and `cellHeight`. `width` sets the combined width of the columns. To include labels and braces in a width budget, use `fitted(region, width => heatmap(rows, { width, rowLabels }))`. If a number or label does not fit, the error gives a minimum size. You can also shorten a number with `format` or tilt a column label with `columnLabelAngle: -Math.PI / 4`. `.at()` places the center of the cells.
+
+`axes` names each axis from outermost to innermost. For example, `axes: ['batch', 'seq', 'd']` and `depth: 2` draw two sheets and label the shape `[2, 3, 4]` for three rows of four values. The values supplied to `heatmap` describe the front sheet. The stack shows up to four sheets, and the depth label gives the full batch size. `name` adds a name to the shape. `grid.axis('seq')` returns the brace and its label for an animation such as `indicate`. `grid.shape` returns the dimensions.
+
+`grid.light(slice)` outlines a row, column, cell, or block. Indices start at zero and ranges include both ends. For example, `{ row: 1 }` selects the second row, `{ row: 1, col: 2 }` selects one cell, and `{ row: [0, 2], col: [1, 3] }` selects a 3-by-3 block. A second `light` moves the outline to the next slice and brightens its labels. If every cell displays a number, the outline fades between slices to keep the numbers clear. Set `color` to change the outline. `grid.lit` returns the selection, and `grid.light(null)` clears it.
+
+`values: 'lit'` prints the numbers of the lit slice only. Use it for an image, where a number in each pixel is too much: the window shows the numbers that it reads. A number leaves before the outline passes its cell and comes in after it, so no line crosses a number.
+
+`grid.setValue(cells, values)` updates the selected cells. Supply a single number, a list in row order, a matrix, or a function of `(row, col, oldValue)`. The old number fades out before its replacement appears. `lag` staggers the cells. `grid.value(row, col)` reads one value, and `grid.values(slice)` reads the rows of a slice. To update the same cells twice, play the changes in sequence. Set `domain` when later values can fall outside the initial range. Values outside an explicit domain take the nearest endpoint color.
+
+`grid.update(rows)` changes the supplied cells together. On a tensor grid it updates both their shades and their printed values. On a chart that uses only the original heatmap options, `update` recolors cells and keeps their existing labels.
+
+An `open` cell shows its value. `grid.mark(cells, state)` hides it behind a mark. The built-in states use different shapes in both looks. `empty` draws an outline, `masked` a cross, `future` diagonal lines, and `padding` a dashed outline. Mark a cell `open` to reveal it again. Use `initial` for the starting states and `states` for a custom set, such as `{ ignored: { mark: 'cross', color: 'red' } }`. Available marks are `none`, `cross`, `hatch`, and `dash`. Both `mark` and `setValue` accept a slice or a predicate on `(row, col, value, state)`. Predicates run when the animation plays, so the second step in a sequence sees the first step’s changes. `grid.stateOf(row, col)` reads one state. `grid.count(state)` and `grid.find(test)` inspect the visible rows and columns.
+
+`setValue` takes a `state` too. `grid.setValue({ row: 0, col: 1 }, 3, { state: 'open' })` writes a value and opens the cell in one motion, which fills a cell of an output grid that started `empty`.
+
+```film paired label="A window slides over an image, and each sum fills one cell of the map"
+import { film, heatmap, text } from 'vizmatic/stage'
+
+// An image with one vertical edge: dark at the left, bright from column 3 on.
+const IMAGE = Array.from({ length: 6 }, () => [0, 0, 0, 1, 1, 1])
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const image = s.add(heatmap(IMAGE, { size: 30, cell: 96, values: 'lit', domain: [0, 1], colors: ['surface', 'teal'], name: 'image' }).at(-420, -30))
+    // The kernel takes the right column of the window and subtracts the left one.
+    const places = image.windows(3)
+    const edge = (slice: (typeof places)[number][number]) => image.values(slice).reduce((sum, row) => sum + row[2]! - row[0]!, 0)
+    const map = s.add(heatmap(places.map((line) => line.map(edge)), { size: 30, cell: 96, values: true, initial: 'empty', domain: [0, 3], colors: ['surface', 'orange'], name: 'map' }).at(480, -30))
+    s.add(text('sum(right) − sum(left)', { size: 34, color: 'dim' }).at(480, 310))
+    s.wait(0.6)
+    // Three slow steps: the window moves one column, and its sum lands in the map.
+    for (const col of [0, 1, 2]) {
+        s.play(image.light(places[0]![col]!), { duration: 0.7 })
+        s.play(map.mark({ row: 0, col }, 'open'), map.light({ row: 0, col }), { duration: 0.5 })
+        s.wait(0.4)
+    }
+    // Then the scan runs fast over the other places.
+    for (let row = 0; row < places.length; row++) {
+        for (let col = row === 0 ? 3 : 0; col < places[row]!.length; col++) {
+            s.play(image.light(places[row]![col]!), map.mark({ row, col }, 'open'), map.light({ row, col }), { duration: 0.28 })
+        }
+    }
+    s.play(image.light(null), map.light({ col: [1, 2] }, { color: 'yellow' }), { duration: 0.6 })
+    s.wait(1.2)
+})
+```
+
+`grid.windows(size, { stride })` returns a matrix of slices in output order. Use it to drive convolution or pooling. Give a single size or stride for both axes, or a `[rows, columns]` pair. To show padding, include the border in the input and mark those cells `padding`.
+
+`shown: { rows, columns }` sets the initial visible shape. Supply the full matrix at construction so the layout can reserve its final size. `grid.grow({ columns: 1 })` reveals the next column. Add both `rows` and `columns` to grow a square attention matrix. The braces and shape caption follow the visible cells. Read `grid.shownRows` and `grid.shownCols` for the current dimensions. Reveal a cell before highlighting it. Value and state updates can include hidden cells, so marking a padding column applies to future rows too.
+
+`grid.cut(rows, cols)` divides an image into patches of that many rows and columns. Each patch dimension must divide its image dimension evenly. `gap` sets the space between patches. With `unroll: true`, each patch becomes a row containing the same cells in row order. A vision model can use these rows as inputs to a patch projection. The whole-image labels disappear while the grid is cut. `grid.light({ patch: 2 })` highlights the third patch, and `grid.region({ patch: 2 })` gives its current box. `grid.join()` restores the image. Allow room for both arrangements.
+
+`grid.p(row, col)` returns the cell center in grid coordinates. Pass `'top'`, `'right'`, `'bottom'`, or `'left'` for an edge. `grid.region(slice)` returns a box in stage coordinates for `place` or `beside`. For example, `beside(note, grid, 'right', 'wide', grid.cell(1, 0))` aligns a note with the second row. `grid.cell`, `grid.row`, and `grid.col` return cell nodes. `grid.numbers`, `grid.rowLabels`, `grid.columnLabels`, `grid.slabs`, `grid.caption`, and `grid.frame` expose the other parts. A `spotlight` on a cell includes its number.
+
+## Matrix products
+
+`matrixProduct(a, b, options)` draws both operands and their result with the same cell size. The shapes above the grids highlight the two dimensions that must match. The result starts empty. In the example, the first row meets the first column to produce `1 × 7 + 2 × 8 + 3 × 9 = 50`.
+
+```film paired label="One cell of a product: a row meets a column, each pair of numbers adds to the sum, and the sum goes to its cell"
+import { film, matrixProduct } from 'vizmatic/stage'
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const product = matrixProduct([[1, 2, 3], [4, 5, 6]], [[7, 4], [8, 5], [9, 6]], { size: 40 }).at(0, -30)
+    s.play(product.enter(), { duration: 1.4 })
+    // The first cell, one term at a time.
+    s.play(product.pair(0, 0), { duration: 0.8 })
+    for (let term = 0; term < 3; term++) {
+        s.play(product.addTerm(), { duration: 0.8 })
+        s.wait(0.3)
+    }
+    s.play(product.store(), { duration: 0.9 })
+    s.wait(0.6)
+    // The next cell in one play, and then the cells that are left.
+    s.play(product.compute(0, 1), { duration: 3 })
+    s.play(product.complete(), { duration: 1.2 })
+    s.wait(1.2)
+})
+```
+
+`product.pair(row, col)` selects one row of the left operand, one column of the right operand, and their result cell. `product.addTerm()` highlights the next pair of source cells and adds their product to the running sum. `product.addTerm(3)` takes three terms in sequence. After the final term, `product.store()` moves the sum into the result cell. `product.compute(row, col)` plays the whole sequence for one cell, and `product.complete()` reveals the remaining results.
+
+`product.lit` gives the selected result cell, `product.terms` counts its accumulated terms, and `product.sum` gives the subtotal. `product.filled` counts the visible results. `product.result(row, col)` gives a numerical result even before the film reveals it. `product.shape` returns all three shapes. Play the steps in sequence. The product reports an error if the steps overlap, the film adds too many terms, or it stores an incomplete sum.
+
+A row vector and a column vector make a dot product. For example, `matrixProduct([[1, 2]], [[3], [4]])` produces one result cell with the value 11. For every product, the number of columns in the first operand must equal the number of rows in the second. The calculation uses the input numbers at full precision. The default formatter displays up to two decimal places. Use `format` for a different precision.
+
+`size` sets the text size and defaults to 30. `cell` sets the side of each cell across all three grids. `names` labels the grids, `colors` selects the two operand highlights, and `filled: true` starts with the result visible. Use `width` in a fitted layout. Extra width goes between the grids. Each grid and the longest line of arithmetic reserve their space from the start. If the text and cells need more room, the error gives the minimum width.
+
+`product.a`, `product.b`, and `product.c` are the three grids. Use `product.c.p(row, col)` or `product.a.region({ row: 0 })` to anchor a note. The product computes its results from the original operands. To show a different multiplication, create a new product. `product.signs`, `product.captions`, and `product.line` are the other parts.
+
+## Attention matrices
+
+`attentionMatrix(rows, columns, weights, options)` labels the rows of a heatmap with query tokens and the columns with key tokens. With `mask: 'causal'`, diagonal lines cover the future keys for each query. The grid retains their numbers under the mask. The film chooses which scores enter the softmax.
+
+```film paired label="A token reads the tokens before it: its row of scores becomes weights, and the grid gains a token"
+import { attentionMatrix, fadeIn, fadeOut, film, text } from 'vizmatic/stage'
+
+const TOKENS = ['function', 'returns', 'the', 'result']
+const third = [2, 5, 3].map(Math.log)
+const fourth = [1, 2, 3, 4].map(Math.log)
+// Earlier queries already have weights. The current and next queries start with scores.
+const initial = [[1, 0, 0, 0], [0.25, 0.75, 0, 0], [...third, 0], fourth]
+const softmax = (row: readonly number[]) => {
+    const parts = row.map(Math.exp), whole = parts.reduce((sum, part) => sum + part, 0)
+    return parts.map((part) => part / whole)
+}
+
+export default film({ fps: 30, font: 'text-serif' }, (s) => {
+    const grid = s.add(attentionMatrix(TOKENS, TOKENS, initial, {
+        size: 34, values: true, mask: 'causal', domain: [0, 2], axes: ['queries', 'keys'], shown: { rows: 3, columns: 3 },
+    }).at(-140, 20))
+    const scores = s.add(text('Scores for “the”', { size: 44, color: 'dim' }).at(600, -40))
+    const weights = text('Row weights sum to 1', { size: 44, color: 'yellow' }).at(600, -40)
+    s.wait(0.8)
+    // The query "the": its row of scores, and then its row of weights.
+    s.play(grid.light({ row: 2 }), { duration: 0.6 })
+    s.play(grid.setValue({ row: 2, col: [0, 2] }, softmax(third), { lag: 0.6 }), fadeOut(scores), { duration: 1.8 })
+    s.play(fadeIn(weights), { duration: 0.4 })
+    s.wait(1.2)
+    // The model writes "result": the grid gains a row and a column, and the new query reads every key.
+    s.play(grid.light(null), fadeOut(weights), { duration: 0.4 })
+    s.play(grid.grow({ rows: 1, columns: 1 }), { duration: 1.2 })
+    s.play(grid.light({ row: 3 }), { duration: 0.6 })
+    s.play(grid.setValue({ row: 3 }, softmax(fourth), { lag: 0.6 }), { duration: 2 })
+    s.play(fadeIn(weights), { duration: 0.4 })
+    s.wait(1.2)
+})
+```
+
+`mask: 'causal'` allows keys up to and including the query’s own position. For a custom mask, supply `initial` instead. For example, `initial: (row, col) => col === 0 ? 'padding' : col > row ? 'future' : 'open'` also masks a leading padding token. Use `grid.mark({ col: 0 }, 'padding')` to apply padding later. `grid.count('future')` counts blocked future cells in the part of the grid on screen.
+
+`grid.setValue({ row: 2 }, weights, { lag: 0.6 })` sweeps one row from its scores to its weights, from the left. The film computes the weights: the grid shows numbers, and it does not know which cells a softmax reads. `grid.light({ row: 2, col: 1 })` lights one cell, and the names of its two tokens go bright. `grid.light({ row: [0, 1], col: [0, 1] })` lights a tile. `shown` and `grid.grow({ rows: 1, columns: 1 })` add a token, as for any grid.
+
+Without tensor options, `attentionMatrix` uses its original 42-pixel cells, 18-pixel labels, and a color range from zero to the largest weight. With tensor options, the default range is 0 to 1. Use `domain` to compare scores or weights on a fixed scale. Column labels tilt in both modes.
 
 ## Event logs
 
@@ -860,6 +2128,137 @@ Without `states`, a row has one of the states of `LOG_STATES`, for a history tha
 
 `log.enter()` brings the panel, the title, and the footer, and then the rows of the window as one. `log.frame`, `log.title`, `log.footer`, `log.rules` (the two lines under the title and over the footer), `log.earlier` and `log.later` (the two lines with a count), and `log.outline` are the parts. `size` is the text size, and `leading` is the height of a row as a part of it. By default, a row is as tall as the outline of the focus needs: the ink of the text, and 0.3 of the text size of clear room between that ink and the outline, at its two sides. That is about 1.9 of `size`, or 1.75 with the details in mono. A list with `focusLook: 'band'`, or with no focus, can take lower rows, such as `leading: 1.5`: the band has no line. With the outline, a `leading` under what the outline needs is an error at the first `focus`, and the error names the least value. `log.pitch` is the distance from one row to the next, so a `codeBlock` beside the list lines up with `leading: log.pitch / size`. `font` is the font of the title, the footer, and the details, and `detailFont` sets the font of the details alone: use `detailFont: 'mono'` for a detail that is data, such as a line of output. `titleSize` sets the text size of the title and the footer, which is 0.85 of `size` by default. The ids, the names, and the times are in mono.
 
+## Tables
+
+The runnable films in `examples/proofs/table/` show a prompt evaluation, model routing, and an operation ledger. Render one with `npx vizmatic film examples/proofs/table/evaluation.ts --look midnight,paper --workers 1`.
+
+`table(columns, rows, options)` draws a table with a header, named columns, and rows that have an identity: the cases of an evaluation, the candidates of a choice, the records of a ledger. A cell holds a text or a number, and a state gives a cell a color and a mark. The film changes the table: it lights a row or a cell, changes a value, adds and removes rows, and sorts them. A row keeps its node through every change, and a total row follows the rows.
+
+```film paired label="A marker passes each cell of a regression suite, the cell turns to pass or fail, and the total of each prompt counts with it"
+import { film, table, type TableColumn, type TableRowView } from 'vizmatic/stage'
+
+const CASES = [
+    { id: 'first', name: 'first page is due', old: true, revised: true },
+    { id: 'overdue', name: 'page is overdue', old: false, revised: true },
+    { id: 'prior', name: 'a page was sent before', old: true, revised: false },
+    { id: 'no-time', name: 'declaration time is missing', old: false, revised: false },
+] as const
+const passed = (key: string) => (rows: readonly TableRowView[]) => `${rows.filter((row) => row.states[key] === 'pass').length}/${rows.length}`
+const COLUMNS: TableColumn[] = [
+    { key: 'name', label: 'incident case', total: () => 'passed' },
+    { key: 'old', label: 'old prompt', align: 'center', total: passed('old') },
+    { key: 'revised', label: 'revised prompt', align: 'center', total: passed('revised') },
+]
+
+export default film({ fps: 30 }, (s) => {
+    const results = table(COLUMNS, CASES.map((item) => ({ id: item.id, name: item.name, old: { state: 'pending' }, revised: { state: 'pending' } })), { size: 40 })
+    s.play(results.enter(), { duration: 1.2 })
+    for (const key of ['old', 'revised'] as const) {
+        for (const item of CASES) s.play(results.light(item.id, key), results.setCell(item.id, key, { state: item[key] ? 'pass' : 'fail' }), { duration: 0.4 })
+    }
+    // Both prompts pass two of four. The two rows that differ light in turn.
+    s.play(results.light('overdue'), { duration: 0.5 })
+    s.wait(0.8)
+    s.play(results.light('prior'), { duration: 0.5 })
+    s.wait(0.8)
+})
+```
+
+A column is its `key`, or an object with the key and its options. `label` is the text of the header, and the key without it. A row is an object with an `id` and one field for each column, by the key of the column: `{ id: 'overdue', name: 'page is overdue', old: { state: 'pending' } }`. The id is a number or a text, and the table knows a row by it. A column with the key `id` shows the ids. A column that a row does not name is an empty cell, and `null` is an empty cell too. A field that names no column is an error, because it would not show.
+
+A cell is a value, or `{ value, state }`. A value is a text of one line or a number. A number is in mono, so the digits of a column line up, and `format` writes it: `format: (value) => value.toFixed(2)`. A column whose first rows hold numbers is at the right, and any other column is at the left. `align` sets `'left'`, `'right'` or `'center'`. `mono: true` sets the texts of a column in mono, for an id or code.
+
+The text size is 28 by default, for the header, the cells and the total row. That is over the 26 px that a viewer of a film at 1080p needs. `size` sets it. A row is 1.9 text sizes high, and `leading` sets that part: 1.5 gives lower rows, and 1.4 is the least. The header is in the dim color and in the semibold weight of its font, and the total row is in the semibold weight.
+
+The columns are set once, from the header and the first rows, so they line up over every row that comes later. A text must fit the room of its column. It may go into the room between two columns by 0.35 of the text size, and each digit has the room of the widest digit, so `1/6` keeps room for `4/6`. A text that is wider than that is an error where the film makes the change, and the message names the fix. Give such a column a `sample`: the longest text or the largest number that it gets later. A sample follows the text size. `width` is the room of the content of a column in pixels, for a column that holds a node of the film. The width of the table is the width that its columns need. With a larger `width` in the options, each column gets an equal share of the rest, and it keeps its content at its side.
+
+A state is a name with a `color` and a `mark`. The mark is the second sign beside the color, so that a viewer who does not see the color reads the state. Without `states`, a table has the states of `TABLE_STATES`: `pass` with a check, `fail` with a cross, `warn` with an exclamation mark, `pending` with a ring, and `skip` with a dash. For another subject, give your own record, such as `states: { kept: { color: 'teal', mark: 'dot' }, dropped: { color: 'red', mark: 'dash' } }`. A mark is `'check'`, `'cross'`, `'ring'`, `'dot'`, `'dash'` or `'bang'`. The state colors the text of its cell too. The mark is at the outer side of the text: before a text at the left, and after a number at the right. In a centered column, the mark and the text are centered together, so use a column at the left for words of different lengths. A column keeps room for a mark in each cell when one of its first cells has a state, or with `marks: true`. A state in a column with no such room is an error that says so.
+
+`results.setCell(row, column, cell)` changes a cell in place. A part that is not given stays: `{ state: 'pass' }` keeps the value, and a value alone keeps the state. `null` empties a part. What leaves goes in the first half of the time, and what comes arrives in the second half, so no moment shows two texts or two marks. A text that stays takes the new color.
+
+A column with a `total` gives the table a total row under the last row. `total: 'sum'` adds the numbers of the column, and writes the sum as the column writes a number. A function writes the cell from the rows that the table has: `total: (rows) => rows.length`. A row there has its `id`, its `index`, and the `values` and the `states` of its cells by the key of the column. A fixed text is a function too: `total: () => 'passed'`. The function may return a state, for a verdict: `{ value: 'hold', state: 'fail' }`. The total follows the rows at every frame: it changes when the new text of a cell comes, when a row is half there, and when a row is gone. It is written in the order of time, also when the film names a late change before an early one.
+
+`results.light(row, column)` moves one marker, and the marker stays until the next `light`. `light('overdue')` is a row, `light(null, 'old')` a column, and `light('overdue', 'old')` a cell. `light(null)` takes the marker away. The marker is a faint fill with a line around it, in yellow or in `lightColor`. It glides from one place to the next. On its way it has no line, so no line runs through the texts that it passes. In rows that are lower than about 1.75 text sizes, the marker has no line at rest too, and its fill is a little stronger: the line would be at the ink of the text. The marker is with its row at every frame: it moves with a row that a sort moves, it comes in with a row that arrives, and it leaves with a row that leaves. `results.lit` says what the marker is on. To highlight a subset and keep the totals for the full population, dim the other rows with `spotlight(results.find(test).map((id) => results.row(id)), { within: results.body })`.
+
+```film paired label="Five lanes face two requirements. Three qualify and change rank when sorted by latency."
+import { film, lagged, table, type TableColumn } from 'vizmatic/stage'
+
+const LANES = [
+    { id: 'A', context: false, schema: true, cost: 0.0012, latency: 310 },
+    { id: 'B', context: true, schema: false, cost: 0.0019, latency: 380 },
+    { id: 'C', context: true, schema: true, cost: 0.0031, latency: 940 },
+    { id: 'D', context: true, schema: true, cost: 0.0042, latency: 620 },
+    { id: 'E', context: true, schema: true, cost: 0.0048, latency: 450 },
+] as const
+const NEEDS = ['context', 'schema'] as const
+const COLUMNS: TableColumn[] = [
+    { key: 'id', label: 'lane', mono: true },
+    { key: 'context', label: '24,000 units', align: 'center', marks: true },
+    { key: 'schema', label: 'cited-v3', align: 'center', marks: true },
+    { key: 'cost', format: (value) => `$${value.toFixed(4)}` },
+    { key: 'latency', label: 'p50', format: (value) => `${value} ms` },
+]
+
+export default film({ fps: 30 }, (s) => {
+    const board = table(COLUMNS, LANES.map((lane) => ({ id: lane.id, cost: lane.cost, latency: lane.latency })), { size: 40 })
+    s.play(board.enter(), { duration: 1.2 })
+    for (const need of NEEDS) {
+        s.play(board.light(null, need), { duration: 0.35 })
+        s.play(lagged(LANES.map((lane) => board.setCell(lane.id, need, { state: lane[need] ? 'pass' : 'fail' })), { lag: 0.4 }), { duration: 0.8 })
+    }
+    s.play(board.light(null), { duration: 0.3 })
+    s.play(board.remove((row) => NEEDS.some((need) => row.states[need] === 'fail')), { duration: 1.1 })
+    s.wait(0.5)
+    s.play(board.light(null, 'latency'), board.sort('latency'), { duration: 1.2 })
+    s.wait(1)
+})
+```
+
+`board.append(rows)` brings rows under the last row, one after another. The default time is 0.4 s for each row, and 0.5 s at least. `lag: 0` brings the rows of one call together. `board.remove(which)` takes rows away: they fade, and the rows under them move up. `which` is an id, a list of ids, or a function of a row, which the table calls when the film plays the change. The id of a row that left is free again.
+
+The panel is as high as its rows. Its bottom edge and the total row follow the rows when rows arrive or leave, and the header stays where it is. The panel makes room before a row comes, so a row is never outside it. The table keeps room for `maxRows` rows, which is the number of the first rows by default. The layout measures that room, `.at()` places its middle, and one row more than `maxRows` is an error. So a table that starts with no row needs `maxRows`, and a `sample` for each column whose header is shorter than its values.
+
+`board.sort(by)` gives the rows a new order, and each row goes to its new place with its node. `by` is the key of a column, or a function that compares two rows as `Array.sort` does. A column sorts numbers by size and texts by their letters. An empty cell goes last, and `descending: true` turns the order. Rows that are equal keep their order. `board.moveRow(id, to)` moves one row to a place, 0 at the top. A row that moves is a card over the rows that stay: the row that goes the longest way is the top card, and the row with the light is over them all. A row is hidden while a card is at its text, so no two texts are read through each other and no border runs through a text. The faint lines between the rows are away while rows move.
+
+The table changes its rows one change at a time. `append`, `remove`, `sort` and `moveRow` are changes of the rows: each starts from the places that the change before it left. Two of them whose times overlap are an error that names the two calls and their times, and says what to do. A cell takes one change at a time in the same way. Changes of two cells play together, and so do `setCell`, `light` and `enter` with a change of the rows. The table takes the calls of one play in their order, so name the `append` before the `setCell` or the `light` of its row. A sort or a `remove` that changes nothing takes no time of the table.
+
+```ts
+import { film, table, type TableColumn } from 'vizmatic/stage'
+
+// A ledger of effects starts with no row, so each column names the longest value that it gets.
+const KEY = 'restore:A300:r-104'
+const COLUMNS: TableColumn[] = [
+    { key: 'id', label: 'attempt', align: 'left' },
+    { key: 'key', label: 'operation key', mono: true, sample: KEY, total: () => 'effects on the account' },
+    { key: 'status', marks: true, sample: 'committed' },
+    { key: 'effects', align: 'right', total: 'sum' },
+]
+
+export default film((s) => {
+    const ledger = s.add(table(COLUMNS, [], { size: 40, maxRows: 1 }))
+    // Attempt 1 fails before the commit: its row leaves, and the account has no effect.
+    s.play(ledger.append({ id: 1, key: KEY, status: { value: 'pending', state: 'pending' }, effects: 0 }))
+    // A text stays long enough for a viewer to read it, before the film changes it.
+    s.wait(0.6)
+    s.play(ledger.setCell(1, 'status', { value: 'failed', state: 'fail' }))
+    s.wait(0.6)
+    s.play(ledger.remove(1))
+    // Attempt 2 commits: its row stays, and the total counts one effect.
+    s.play(ledger.append({ id: 2, key: KEY, status: { value: 'pending', state: 'pending' }, effects: 0 }))
+    s.wait(0.6)
+    s.play(ledger.setCell(2, 'status', { value: 'committed', state: 'pass' }), ledger.setCell(2, 'effects', 1))
+    // Attempt 3 has the same key. The ledger has that key, so the film lights it and adds nothing.
+    s.play(ledger.light(2, 'key'))
+    s.wait(1)
+})
+```
+
+`results.row(id)` is the node of a row, `results.cell(id, column)` the node of a cell, and `results.header(column)` the text of a header. A connector to the node of a row follows the row. The origin of a cell is its middle, and `cell.box` is its room, so a film can add a node of its own to a cell, such as a small bar: `results.cell('history', 'share').add(bar)`. That node moves and fades with its row. `results.region(row, column)` is the box of a part in stage pixels, for `place` and `beside` of the layout and for the end of an arrow: `results.region('overdue', 'old').point('left')`. Give a row, a column with `null` as the row, both for a cell, or nothing for the room of the table. `results.p(row, column, side)` is a point on such a part in the coordinates of the table, on its `'left'`, `'right'`, `'top'` or `'bottom'` edge or at its `'center'`. A place is of the row after the changes that the film has played so far, and it does not follow the row.
+
+The table is an item of the layout. `fitted(region, (width) => table(columns, rows, { width }))` makes all of it as wide as a region, `place` puts it in a region, and `beside(note, results, 'right', 'wide', results.row('overdue'))` puts a note beside the table at the height of a row.
+
+`results.count`, `results.ids`, `results.find(test)`, `results.value(id, column)`, `results.stateOf(id, column)` and `results.totalOf(column)` read the table after the changes that the film has played so far. So a label can show a true number, and a film can pick the rows of the next change. `results.enter()` brings the panel and the header, then the rows from the top, and then the total row. `results.clone()` copies the cell values, states, and current row order. Nodes that a film attaches to a cell are copied with it, including when the table is inside a group. `results.frame`, `results.headers`, `results.rules` (the line under the header and the line over the total row), `results.lines` (the faint lines between the rows), `results.marker`, `results.totals` and `results.body` (the holder of the rows) are the parts, and `results.pitch` is the distance from one row to the next. A row has its `cells` and its `content`, and a cell has its `mark` and its `words`. The opacity of `content` belongs to the table, so fade the row itself to fade a row.
+
 ## Bit fields
 
 `bitField(fields, options)` draws a word that is split into named fields: a row of boxes, one per field, with the bit numbers over them. Use it for a virtual address and its table indexes, for the flags of a register or of a page table entry, and for the layout of a structure. A field has its `bits`, a `label`, and a `color`. The first field is at the left, and it holds the highest bits.
@@ -941,9 +2340,387 @@ export default film({ fps: 30 }, (s) => {
 
 `word.field('PTE')` is the node of one field, by its label or by its index. It holds the box, the texts and the numbers of the field, so fade the other fields to light one. `word.p('PTE')` is the middle of the bottom edge of its box, and `word.p('PTE', 'top')` the middle of the top edge, in any row. A line to a table starts there. `'left'` and `'right'` give the middles of the side edges, for the field at an end of a row. The points are in the coordinates of the object, and `word.toWorld(x, y)` gives the place on the stage. When the label is under the box, start the line from the top edge. A point from `p()` is fixed: it does not follow the object when the object or its group moves later. `connector(word.boxes[i], node)` takes the box itself, so that line follows. `word.range('PTE')` gives the high and the low bit of a field, or its first and its last offset. `word.total` is the sum of the bits, and `word.enter()` brings the fields in from the left, row by row. `word.fields`, `word.boxes`, `word.labels`, `word.values`, and `word.numbers` are the parts. Two fields may have one label, such as "reserved". Name such a field by its index.
 
+## Segmented bars
+
+`segmentedBar(parts, options)` draws one bar whose segment widths match their values. Use it to compare a budget with a capacity, or to show shares of a whole. Give each part a unique `name`, a nonnegative `value`, and an optional `color`. The name and color stay with the part as it grows, shrinks, or moves between bars.
+
+```film paired label="A context window holds more than its capacity. The raw trace moves to an archive, one finding of it stays, and the tool schemas shrink"
+import { beside, fadeIn, fadeOut, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, note } = sceneKit({ size: 36 })
+
+export default film({ fps: 30 }, (s) => {
+    const [upper, lower] = area.rows(2)
+    // The two bars have one scale: the right end of both is the first total, 12,436 units.
+    const context = place(fitted(upper!, (width) => segmentedBar([
+        { name: 'system', value: 1200 },
+        { name: 'tool schemas', value: 2400 },
+        { name: 'trace export', value: 8200, color: 'orange' },
+        { name: 'question', value: 636, color: 'purple' },
+    ], { width, capacity: 8192, max: 12436, title: 'context window of RUN-842, in units', free: 'free' })), upper!)
+    const shelf = place(fitted(lower!, (width) => segmentedBar([], { width, capacity: 12436, title: 'archive, outside the window', readout: false })), lower!)
+    s.add(heading('Build the input: compress, then select'))
+    s.play(context.enter(), fadeIn(shelf), { duration: 1.8 })
+    s.wait(1.6)
+    // Compress: the raw trace goes to the archive, and one finding of it stays.
+    s.play(context.send('trace export', shelf), { duration: 1.6 })
+    s.play(context.insert({ name: 'finding', value: 186, color: 'orange' }, { before: 'question' }), { duration: 0.8 })
+    s.wait(1.4)
+    // Select: only the tools that this phase allows.
+    s.play(context.resize('tool schemas', 1324), { duration: 1.2 })
+    // A note on a part: under the label of the part. It is placed after the change, where the label is then.
+    const allowed = beside(note('3 of the 9 tools', { color: 'teal' }), context.region({ label: 'tool schemas' }), 'under', 'tight')
+    s.play(fadeIn(allowed), { duration: 0.4 })
+    s.wait(2)
+    s.play(fadeOut(allowed), { duration: 0.4 })
+    s.wait(0.4)
+})
+```
+
+`capacity` sets the limit and puts a vertical mark at that value. `max` sets the value at the right edge of the drawing. It defaults to `capacity`, or to the initial total for a bar of shares. Set `max` above `capacity` to leave room for overflow. For an empty bar, give `capacity` or `max` to set its scale. Two bars with the same `width` and `max` draw one unit at the same width. `.at()` places the center of this scale.
+
+Each part has a name and an amount below the bar. Leader lines connect narrow parts to their labels when the labels need more room. If the row does not fit, the error gives the required width. Set `free` to a name such as `'available'` to label unused capacity. Set `labels: false` to omit the row.
+
+Names use the film font. Amounts use a monospaced font. The default `size` is 28 px and the default `height` is 2.4 times that size, rounded to the nearest pixel. The default number format groups thousands and uses the greatest number of decimal places in the initial values, capacity, and maximum, up to three. Use `format` for percentages, units, or a different precision.
+
+`title` appears above the left edge. With a capacity, the readout shows the current total and the limit above the capacity mark. Use `readout: false` to hide it or `readout: true` to show the total on a bar of shares.
+
+When the total exceeds capacity, a red hatch covers the excess and the readout reports the difference. Set `over` to change the word before the excess amount. If the total exceeds `max` on an animation frame, the build reports the parts, the time, and the required maximum.
+
+Each verb is an animation that changes the parts:
+
+| Verb | What it does |
+|---|---|
+| `bar.resize('cache', 4)` | A part grows or shrinks to a new amount. `bar.resize({ weights: 3.4, cache: 4 })` changes several parts at one time. |
+| `bar.insert({ name, value, color }, { before })` | A part arrives. Its box grows from nothing at its place: in front of the part `before`, or at the right end. |
+| `bar.remove('trace')` | A part leaves, and its room is free. A list of names takes several parts out. |
+| `bar.cut(['rename', 'quota'])` | Parts leave, and the parts that stay take their room: each one grows by the same factor, so the total stays. |
+| `bar.send('trace', archive, { before })` | A part moves to another bar. Its box travels and lands at its place there, to the scale of that bar. |
+| `bar.enter()` | The frame arrives, and then the parts grow from the left, one after another. |
+
+The parts at the right of a part that changes move with it. The amounts under the parts count, and so do the readout and the free room. `cut` is a renormalization, such as top-k on a distribution: the cut parts shrink first, so the viewer sees the room that they leave, and then the rest grow. With `send`, the part keeps its name, its amount, and its color. The first bar closes the room of the part, and the second bar makes room before the box lands.
+
+To freeze a transfer, clone the group that contains both bars. The snapshot keeps the travelling box at its current position as the original continues. Cloning a single endpoint captures only that bar.
+
+Changes to different parts can play together. Schedule changes to the same part in time order, with each change ending before the next begins. Use `seq` to remove and replace a part with the same name, or to send a part to an archive and back. The bar resolves part names when each animation plays.
+
+`bar.names`, `bar.count`, `bar.total`, `bar.free`, and `bar.over` read the state after the changes that the film has played so far. `bar.amount(name)` is the amount of one part, `bar.range(name)` holds its two ends as amounts, and `bar.has(name)` says if the bar has the part. `bar.find(test)` gives the names of the parts that a function picks. The function gets a part with its `name`, its `value`, its `share` of the total, its two ends `from` and `to`, and its `index`. If the parts are sorted by decreasing probability, `bar.cut(bar.find((part) => part.index >= 2))` keeps the two most probable outcomes. `bar.find((part) => part.from <= u && u < part.to)` locates a draw on the cumulative scale.
+
+```film paired label="A distribution over the next token: the temperature changes its shape, top-k cuts it, and a draw lands on one part"
+import { arrow, beside, fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, label, note } = sceneKit({ size: 36 })
+const TOKENS = ['create', 'revoke', 'rename', 'quota']
+const P = [0.5, 0.25, 0.15, 0.1]
+/** The shares at a temperature: each one to the power of 1 / T, and then all divided by their sum. */
+function heated(temperature: number): Record<string, number> {
+    const raised = P.map((p) => p ** (1 / temperature)), sum = raised.reduce((a, b) => a + b, 0)
+    return Object.fromEntries(TOKENS.map((token, i) => [token, raised[i]! / sum]))
+}
+
+export default film({ fps: 30 }, (s) => {
+    const strip = place(fitted(area, (width) => segmentedBar(TOKENS.map((name, i) => ({ name, value: P[i]! })), {
+        width, height: 130, size: 44, title: 'the next token', format: (share) => `${Math.round(share * 100)}%`,
+    })), area)
+    s.add(heading('Each sampler changes one distribution'))
+    s.play(strip.enter(), { duration: 1.6 })
+    s.wait(1)
+    // Temperature: a low one makes the largest share larger, and a high one makes the shares more equal.
+    const dial = beside(note('temperature 0.5'), strip, 'under', 'wide')
+    s.play(strip.resize(heated(0.5)), fadeIn(dial), { duration: 1.2 })
+    s.wait(1)
+    s.remove(dial)
+    const warm = s.add(beside(note('temperature 2'), strip, 'under', 'wide'))
+    s.play(strip.resize(heated(2)), { duration: 1.2 })
+    s.wait(1)
+    s.remove(warm)
+    s.play(strip.resize(heated(1)), { duration: 0.8 })
+    // Top-k with k = 2: the tokens after the second leave, and the two that stay share the whole.
+    const rule = s.add(beside(note('top-k, k = 2'), strip, 'under', 'wide'))
+    s.play(strip.cut(strip.find((part) => part.index >= 2)), { duration: 1.8 })
+    s.wait(1)
+    // The draw: a number from 0 to 1 lands on the strip, and the part under it is the token.
+    const u = 0.71, drawn = strip.find((part) => part.from <= u && u < part.to)[0]!
+    const tip = strip.region({ at: u }).point('top')
+    const marker = arrow([tip[0], tip[1] - 110], [tip[0], tip[1] - 12], { stroke: 'yellow', width: 5 })
+    const pick = beside(label(`u = ${u}: ${drawn}`, { color: 'yellow' }), marker, 'above')
+    s.play(fadeIn(marker, { shift: [0, -30] }), fadeIn(pick), { duration: 0.6 })
+    s.wait(2)
+    s.remove(rule)
+})
+```
+
+Use `bar.region({ part: name })` for the box of a part on the stage. To put a note below its label, use `beside(note, bar.region({ label: name }), 'under')`. For a brace, use `region({ from, to })` and connect two corners. For a marker at one value, use `region({ at: value }).point('top')`. `region()` covers the frame up to the capacity. Read the region again after moving the bar or changing its parts.
+
+`bar.x(value)` and `bar.p(name, edge)` return local coordinates. The default edge is `'top'`. Use `bar.part(name)` to select the box and label together, for example with `spotlight`. The frame, capacity mark, title, and readout are available as `bar.frame`, `bar.limit`, `bar.title`, and `bar.readout`.
+
+The layout reserves room for the full bar and its label rows, including when the bar starts empty. Use `fitted(region, (width) => segmentedBar(parts, { width }))` to fit a bar to a region. The GPU and host below use the same scale, so the cache keeps its width during transfer.
+
+```film paired label="Four sequences grow beyond GPU capacity. Their KV cache moves to host memory."
+import { beside, fadeIn, film, fitted, place, sceneKit, segmentedBar } from 'vizmatic/stage'
+
+const { area, heading, note } = sceneKit({ size: 40 })
+const gb = (value: number) => value.toFixed(1)
+
+export default film({ fps: 30 }, (s) => {
+    const [left, right] = area.columns(2)
+    // One scale for the two bars: both end at 34 GB, so one GB is as wide in the host as in the device.
+    const device = place(fitted(left!, (width) => segmentedBar([
+        { name: 'weights', value: 7.6 },
+        { name: 'workspace', value: 2.0, color: 'purple' },
+    ], { width, capacity: 24, max: 34, title: 'GPU (GB)', free: 'free', format: gb, size: 30 })), left!)
+    const host = place(fitted(right!, (width) => segmentedBar([], { width, capacity: 32, max: 34, title: 'Host (GB)', free: 'free', format: gb, size: 30 })), right!)
+    s.add(heading('Where does the KV cache fit?'))
+    s.play(device.enter(), fadeIn(host), { duration: 1.6 })
+    s.wait(1)
+    // With a cap of 1,024 tokens for each of the four sequences, the cache stops at 1.3 GB.
+    const short = s.add(beside(note('4 sequences of 1,024 tokens'), device, 'under', 'wide'))
+    s.play(device.insert({ name: 'KV cache', value: 1.3, color: 'teal' }), { duration: 1 })
+    s.wait(1.4)
+    // With no cap, the four sequences run to 16,384 tokens.
+    s.remove(short)
+    s.add(beside(note('4 sequences of 16,384 tokens'), device, 'under', 'wide'))
+    s.play(device.resize('KV cache', 22.5), { duration: 2.4 })
+    s.wait(1.8)
+    // The cache moves to the host, where it has room.
+    s.play(device.send('KV cache', host), { duration: 1.8 })
+    s.wait(2)
+})
+```
+
+## Layer stacks
+
+`layerStack(layers, options)` draws a model from its input at the bottom to its output at the top. A block transforms values on the main path. A branch reads those values and joins the main path at a plus sign. Use the same diagram across scenes to show where each step happens.
+
+```film paired label="A token goes up one decoder block: each branch reads the stream, and its add puts the result back"
+import { film, layerStack } from 'vizmatic/stage'
+
+export default film({ fps: 30 }, (s) => {
+    const model = layerStack([
+        { label: 'embed', color: 'purple', shape: '4 numbers' },
+        { repeat: 'N', label: 'block', layers: [
+            { branch: [{ label: 'norm', id: 'norm 1', color: 'yellow' }, { label: 'attention', color: 'orange' }] },
+            { branch: [{ label: 'norm', id: 'norm 2', color: 'yellow' }, { label: 'feed forward', color: 'blue' }] },
+        ] },
+        { label: 'unembed', color: 'green', shape: '4 scores' },
+    ], { shape: 'token "the"', size: 30 })
+    s.play(model.enter(), { duration: 1.6 })
+    s.play(model.feed([0.6, -0.2, 0.1, 0.4]))
+    s.play(model.pass('embed', [0.3, 0.7, -0.5, 0.1]))
+    s.play(model.light('attention'))
+    s.play(model.pass('attention', [0.5, 0.2, -0.1, 0.8]), { duration: 3 })
+    s.play(model.light('feed forward'))
+    s.play(model.pass('feed forward', [0.9, 0.1, -0.6, 0.6]), { duration: 3 })
+    s.play(model.light(null), model.pass('unembed', [-0.4, 0.2, 0.9, 0.1]))
+    s.wait(0.8)
+})
+```
+
+The layers are a list from the foot of the stream up. A layer is one of three things. A block is a label, or `{ label, id, color, state, shape }`: it is on the stream, and the data passes through it. A branch is `{ branch: [blocks] }`: its blocks are beside the stream, from the lowest one. A line leaves the stream under the first block, goes through the blocks, and ends at an add on the stream over the last block. That is a residual connection, and `{ branch: ['norm', 'attention'] }` is a pre-norm attention layer. A group is `{ layers, repeat, label }`: a frame around its layers, for a block that repeats. `repeat` is a count, 2 or more, or a name such as `'N'`, and the frame then says "× 12" or "block × N" on its top line. A group holds blocks and branches, and no other group.
+
+A branch can go around a block on the stream: `{ branch: ['A', 'B'], around: 'W' }`. The stream then passes through `W`, and the branch adds to what `W` writes. That is LoRA beside a frozen weight, or a shortcut with a projection in a residual network. `shown: false` gives a branch its place from the start and does not draw it, and `stack.show('A')` brings it in later: the line leaves the stream, the blocks arrive, and the add lands on the stream.
+
+A block has an `id`, which is its label unless the film gives another. The film names a block by its id or by its index. The blocks count from the foot of the stream up. A branch counts from its first block, and the block that a branch goes around comes before the blocks of that branch. Two blocks can have one label, such as "norm". A name that two blocks have is an error that lists their indexes, so give one of them an id, or name it by its index.
+
+`stack.feed(values)` puts a vector at the foot of the stream: a row of cells, one for each value. A cell is teal for a value over 0 and orange for a value under 0, and it is stronger for a larger value, up to 1. `stack.pass('attention', values)` sends the vector up through the layer of a block, and it leaves that layer with the new values. In a block on the stream, the vector goes behind the block and comes out changed, and the block lights for a moment. At a branch, the vector stays on the stream, and a copy of it goes through the blocks of the branch. The copy comes back with what the branch adds, which is the new values less the old ones, and stops at the add. Then the add takes the copy, and the vector goes through the add and takes the sum. So a viewer sees that a layer adds to the stream and does not replace it.
+
+Name any block of a branch to pass the branch. A pass to a later block goes through each layer before it, and gives each one its share of the time. Without values, the vector keeps its values. When you create a pass, the destination sets its default duration. A visible branch gets 2.6 s. A block or hidden branch gets 1 s. A pass across several layers shares that duration among them. The vector does not go back: `feed` starts again at the foot, and the vector that is on the stream leaves first. Schedule changes to the same part in timeline order. Use `seq` for two operations that move the vector. Finish revealing a branch before the vector reaches it. Changes to separate parts can run together, such as lighting attention while a vector passes it. `stack.passed` is the number of layers that the vector passed, `stack.values` its values, and `stack.shape` the shape beside it. All of these follow the changes that the film has played so far.
+
+`cells` is the number of cells, 4 by default. With `digits`, each cell shows its value with that many decimals, and a cell is as wide as a value under 10 needs:
+
+```ts
+import { barChart, film, layerStack } from 'vizmatic/stage'
+
+export default film((s) => {
+    const model = s.add(layerStack([
+        { label: 'token + position', color: 'purple', shape: '4 numbers' },
+        { branch: [{ label: 'masked attention', color: 'orange' }] },
+        { branch: [{ label: 'MLP', color: 'blue' }] },
+        { label: 'scores', color: 'green', shape: '4 scores' },
+    ], { digits: 1, shape: '"Birds"' }).at(-420, 0))
+    const scores = [2.1, 1.4, 0.2, 0.6]
+    const bars = barChart(['fly', 'sing', 'swim', 'sleep'].map((label, index) => ({ label, value: scores[index]! })), { width: 620, height: 400, labelSize: 34 }).at(480, 0)
+    s.play(model.feed([0, 0, 0, 0]))
+    s.play(model.pass('token + position', [0.5, -1.2, 0.3, 0.9]))
+    // The copy comes back with 0.4, 0.7, 0.0 and 0.5, and the add makes 0.9, -0.5, 0.3 and 1.4 of them.
+    s.play(model.pass('masked attention', [0.9, -0.5, 0.3, 1.4]), { duration: 3.4 })
+    s.play(model.pass('MLP', [1.6, -0.5, -0.4, 1.4]), { duration: 3.4 })
+    s.play(model.pass('scores', scores))
+    s.play(model.light('scores'), bars.enter())
+})
+```
+
+The copy shows the numbers that the branch adds while it stops at the add, so give a branch three seconds or more when the viewer must read them. The numbers of the vector fade before the vector goes behind a block, and come back when it is clear of the block, so the edge of a block never cuts a number. A value that is too wide for its cell is an error that names the value. A `shape` is a short text for the data on the stream, such as `'(T, 768)'`. The option `shape` is the shape at the foot of the stream, and the `shape` of a block is the shape after that block. The shape is beside the vector, at the left of the blocks, and goes up with it. It changes when the vector passes a block that has one, so a projector that keeps 576 tokens and makes each one wider changes "576 x 1024" to "576 x 4096". Only a block on the stream has a shape, because the add of a branch keeps the shape of the stream.
+
+`stack.light('attention')` lights the block that a scene is about: a thick border and a stronger fill. One block is lit at a time, `stack.light(null)` puts the light off, and `stack.current` is the index of the lit block. `stack.mark(which, state)` moves blocks to another state. `which` is a block, a list of blocks, or a function of a block, which the stack calls when the film plays the change. Without `states`, a block is `live` or `frozen`, from `STACK_STATES`. A frozen block is dim and has a lock at its right end, so color is not the only sign of the state. `stack.replace('norm', 'RMSNorm')` puts another block in the place of a block: the label fades out and the new one fades in. The block keeps its id, its place and its state, and `{ label, color }` gives it a new color too.
+
+```ts
+import { beside, fadeIn, film, layerStack, text } from 'vizmatic/stage'
+
+export default film((s) => {
+    const model = s.add(layerStack([
+        { label: 'patch embed', color: 'purple', shape: '576 x 1024' },
+        { label: 'vision encoder', color: 'purple' },
+        { label: 'projector', color: 'orange', shape: '576 x 4096' },
+        { branch: [{ label: 'LoRA', color: 'orange' }], around: 'LLM', shown: false },
+        { label: 'answer head', color: 'green' },
+    ], { shape: '576 patches' }))
+    // A note beside the whole stack, at the height of one block.
+    const note = beside(text('the projector trains', { size: 30, color: 'orange' }), model, 'right', 'wide', model.block('projector'))
+    s.play(model.mark(['patch embed', 'vision encoder', 'LLM'], 'frozen'))
+    s.play(model.feed([0.4, -0.3, 0.8, 0.1]))
+    s.play(model.pass('projector', [-0.2, 0.9, 0.3, -0.6]), model.light('projector'), fadeIn(note), { duration: 2.4 })
+    // The branch arrives beside the frozen model, and adds to what the model writes.
+    s.play(model.show('LoRA'))
+    s.play(model.pass('LoRA', [0.1, 0.6, 0.7, -0.3], { aroundValues: [0, 0.7, 0.5, -0.2] }), { duration: 3 })
+})
+```
+
+For another subject, give your own states: `states: { fresh: {}, cached: { color: 'dim', mark: 'check' }, failed: { color: 'red', mark: 'cross' }, skipped: { dim: true, dash: true } }` makes the layers of a container image. A state can set a `color` to override the block color, `dim` for a block that does not run, `dash` for a border of dashes, and a `mark` at the right end of the block: `'lock'`, `'check'`, `'cross'` or `'dot'`. A block with no state starts in the first state of the record. `stack.stateOf(ref)`, `stack.labelOf(ref)` and `stack.find((block) => block.state === 'frozen')` read the blocks after the changes that the film has played so far. If the film uses only block states, it can use a small `gap`, such as 14.
+
+`stack.open('attention', inside)` joins a block to a close-up of its inside: two lines go from the block to a frame around `inside`, and `inside` fades in. `inside` is a node of the film, a block of the layout, or a list: another stack, a grid of numbers, a formula. The film places it at the right or at the left of the stack first. One block is open at a time: `open` of another block closes the first one, and `stack.close()` closes the open block and fades its close-up out. The lines use the positions of the stack and the close-up when `open` plays. Close and reopen the detail after moving it. A clone starts closed with its own timeline, including when you clone the group that contains the stack. A close-up over the stack or under it is an error, and so is a side where the lines would cross a part of the stack: a block on the stream that has a branch beside it opens to the left, and a block of a branch opens to the right.
+
+```ts
+import { film, heatmap, layerStack, place, sceneArea } from 'vizmatic/stage'
+
+export default film((s) => {
+    const [left, right] = sceneArea().columns(2)
+    const model = s.add(place(layerStack(['embed', { branch: ['norm', { label: 'attention', color: 'orange' }] }, 'unembed']), left!))
+    const weights = place(heatmap([[0.2, 0.3, 0.5]], { cell: 150, values: true, valueSize: 40, labelSize: 34, rowLabels: ['the'], columnLabels: ['function', 'returns', 'the'], colors: ['surface', 'orange'], domain: [0, 1] }), right!)
+    s.play(model.light('attention'), model.open('attention', weights))
+    s.wait(2)
+    s.play(model.close(), model.light(null))
+})
+```
+
+`width` is the width of the whole object: the blocks, the frames of the groups, and the room of the shapes at the left. The layout measures that same box, also before the vector, a shape or a branch shows, so `place(stack, region)` and `fitted(region, (width) => layerStack(layers, { width }))` work with no other number. Without `width`, the stack is as wide as its labels need. A label is never set smaller: a `width` with no room for a label is an error that names the label and the least width. `.at()` places the middle of that box. In a stack with a branch, the stream is at the left, in a free way that is as wide as the vector, and the blocks of the branches are at the right. A block on the stream is as wide as both. In a stack with no branch, the blocks are around the stream.
+
+`size` is the size of every text of the stack: the labels, the shapes, the label of a group, and the numbers. It is 28 by default, which is over the 26 px that a film of 1920 by 1080 needs. Each measure follows it. `blockHeight` is the height of a block, 1.9 of `size` by default, and `gap` is the room on the stream between two layers, where the vector rests. The default gap holds the vector with room around it. A `feed` on a stack whose `gap` is lower than the vector is an error that gives the least gap. A decoder with two branches of two blocks is about 800 px high at the default size, so give a tall model `size: 26`, or put the layers that the lesson does not name in one block. `color` is the color of a block that has none, `font` the font of every text, and `backing` the color behind the blocks, which hides the stream and the vector there. It is the background of the look by default. On a panel of another color, give the color of the panel.
+
+`stack.block(ref)` is the node of a block, for `beside`, a `connector`, or a `spotlight`. `stack.p(ref, edge)` is the middle of an edge of a block, `'right'` by default, and `stack.foot` and `stack.head` are the two ends of the stream: a row of tokens goes under the foot, and the bars of the output go over the head. These points are in the coordinates of the object, and `stack.toWorld(x, y)` gives the place on the stage. `stack.region()` is the box of the object in stage pixels, and `stack.region(ref)` the box of one block. `stack.enter()` builds the stack from the foot up: the stream grows, and each part arrives when the stream reaches its height. `stack.blocks`, `stack.boxes`, `stack.labels`, `stack.stream`, `stack.taps`, `stack.adds`, `stack.reads`, `stack.writes`, `stack.chains`, `stack.frames`, `stack.vector`, `stack.copy`, `stack.tag` and `stack.zoom` are the parts. `stack.count` is the number of blocks, `stack.ids` their ids, and `stack.depth` the number of layers.
+
+`neuralNet` draws neurons and the weights between them, and its motion is an activation. `steps` lights one box of a row, and nothing joins its boxes. A layer stack knows the order of its layers and what each one does to the stream, so it can send one vector through them and keep its values.
+
+The film supplies the values at each step. The cells can show a sample of a larger tensor. The shape label describes the full tensor and travels with the sample.
+
+For a branch around a block, pass the output of that block as `aroundValues`. The branch returns the final values minus that output. For example, if the input is 2, the frozen block produces 6, and the final value is 7, the adapter adds 1. Without `aroundValues`, the example carries the input values along the main path. A pass that keeps those values shows a zero contribution at the add.
+
+The runnable examples in `examples/_teaching` cover a decoder block, a multimodal projector with LoRA, and a tiny GPT forward pass. In `layer-stack-recurrence.ts`, a repeated cell opens onto a second stack with one block per word. Each pass applies the same recurrence to the hidden state.
+
+## Token strips
+
+`tokens(items, options)` draws a strip of cells, one for each token, word, character or byte: the text as a language model reads it. Put IDs or training targets in rows below the tokens. Use a bracket to name a span, or slide a window across the strip. When you split or merge tokens, their values, brackets, and window move with them.
+
+```film paired label="Shift next-token targets left and exclude the four prompt targets from the loss"
+import { fadeIn, film, lagged, text, tokens } from 'vizmatic/stage'
+
+const WORDS = ['<s>', 'user', 'Sit', '!', 'bot', 'Good', 'dog', '</s>']
+
+export default film({ fps: 30 }, (s) => {
+    const chat = tokens(WORDS, {
+        size: 44, even: true, label: 'input',
+        rows: { position: WORDS.map((_, index) => index), target: WORDS },
+        spans: [{ from: 1, to: 3, label: 'user turn', color: 'orange' }, { from: 4, to: 7, label: 'assistant turn', color: 'green' }],
+    }).at(90, -70)
+    s.play(chat.enter(), { duration: 1.6 })
+    s.wait(0.6)
+    // Each position predicts the token after it, so the row of targets moves one cell to the left.
+    s.play(chat.shiftRow('target', -1), { duration: 1.4 })
+    s.wait(1)
+    // The loss counts what the assistant writes. The four targets that the prompt gives get the label -100.
+    const prompt = [0, 1, 2, 3]
+    s.play(chat.mark(prompt, 'masked'), lagged(prompt.map((index) => chat.setValue('target', index, '-100')), { lag: 0.5 }), { duration: 1.8 })
+    s.play(fadeIn(text(`the loss counts ${chat.count - 1 - prompt.length} of ${chat.count - 1} targets`, { size: 44 }).at(0, 260)), { duration: 0.5 })
+    s.wait(1.5)
+})
+```
+
+A token is a text, or an object with its `text`: `{ text: ' cat', state: 'generated', color: 'teal', values: { id: 3797 } }`. A space in a token shows as a middle dot, as a tokenizer shows it. An empty string leaves a cell blank. For a line break in an annotated strip, use a visible token such as `\\n`. `color` is the color of the cells, `colors` a ramp of colors across the strip, `gap` the room between two cells, and `radius` the corners.
+
+`size` is the text size of the tokens. It is 22 when the film gives none, as it always was: a size for a figure in a document. For a film at 1080p, give `size: 32` or more. The values of the rows, the names of the rows and the labels of the brackets are 0.82 of `size`, which is 26 px at `size: 32`, and `rowSize` sets them. The tokens and the values are in mono, and `font` is the font of the tokens. The names and the labels are in the font of the film.
+
+A cell is as wide as its text and its values need. `minWidth` is the least width of a cell, and `even: true` gives every cell the width of the widest one, so the columns are a grid. `width` is the room of the strip on one line: the first token is at the left end of the room, `.at()` places the middle of the room, and the layout measures the room, so `fitted(region, (width) => tokens(words, { width }))` fills a region. Tokens that do not fit in the room are an error that names the width that fits. Without `width`, the strip is as wide as its tokens, and `.at()` places their middle. The left edge stays fixed as the strip grows or shrinks. A split or merge can move a token center when its width changes.
+
+A token has one of the states of `TOKEN_STATES`: `kept`, `masked`, `generated`, `cached`, and `dropped`. A kept token has a plain outline. Hatching marks a masked cell, a bottom bar marks a generated token, and a corner dot marks a cached token. A dropped token has a dashed outline and a line through its text. For another subject, give your own record, such as `states: { ...TOKEN_STATES, accepted: { color: 'green', mark: 'check' }, rejected: { color: 'red', mark: 'cross', dim: true } }`. A state has a `color` (without one, the cell keeps its own color), a `fill` opacity, a `dash` outline, a `dim` text, and a `mark`: `'hatch'`, `'strike'`, `'bar'`, `'dot'`, `'check'`, or `'cross'`. A token with no state is in the first state of the record.
+
+`strip.mark(which, state)` changes the state of tokens, one after another from the left. `which` is an index, a list of indexes, or a function of a token and its index. The strip calls the function when the film plays the change, so in `seq(strip.mark([0, 1], 'cached'), strip.mark((token) => token.state === 'cached', 'dropped'))` the second change finds the tokens of the first. `strip.stateOf(index)`, `strip.count`, `strip.texts`, and `strip.find(test)` read the strip after the changes that the film has played so far. `find` takes the text of a token, or a function, and gives indexes: `strip.find('the')`, `strip.find((token) => token.state === 'masked')`.
+
+`rows` gives the rows of values under the cells, by name: `rows: { position: [0, 1, 2], id: [464, 3797, 3332] }`. A value is a text or a number, and each value is under the middle of its token. The name of a row is at its left, and `label` names the line of cells in the same way. `strip.setValue(row, index, value)` changes one value in place: the old text fades out, then the new one fades in. `strip.shiftRow(row, by)` moves the values of a row by whole cells: with -1, each value goes under the token before its own, as the targets of a language model are under its inputs, and the value that leaves the strip fades out. A value that is too wide for its cell is an error that names the `minWidth` that fits, so give `even: true` to a strip whose values change cells. `strip.value(row, index)` reads a value. `strip.row(name)` is the node of a row, with its `name` and its `values`, and `strip.column(index)` is the cell of a token with its value in each row, so `indicate(strip.column(5))` lights one column through all rows. A strip with rows has no `sub` under a chip: `sub` is the one line of the old row of chips, and a row takes its place.
+
+`spans` gives the brackets over runs of tokens: `spans: [{ from: 0, to: 4, label: 'system prompt', color: 'purple' }]`. A bracket goes from the first cell of its run to the last, with its label over its middle. A bracket whose line or label would meet another one is a level higher. `strip.span(id, from, to, { label, color })` draws a new bracket by its id, with the id as its label unless `label` gives another. A later call with the same id slides the bracket to other tokens, and a new `label` takes the place of the old one. `strip.span(id, null)` takes it away. A bracket that would move onto another one is an error that names the two. `strip.window(from, to)` puts one outline around a run of cells. The next call slides it and changes its size, and `strip.window(null)` takes it away. `strip.windowRange` and `strip.spanRange(id)` give the first and the last token of each.
+
+```film paired label="Split two words into ASCII bytes and merge a repeated pair in both words"
+import { fadeIn, film, text, tokens } from 'vizmatic/stage'
+
+// Each character in these two ASCII words occupies one byte.
+const bytes = (ascii: string) => [...ascii].map((letter) => ({ text: letter, values: { id: letter.charCodeAt(0) } }))
+
+export default film({ fps: 30 }, (s) => {
+    // The room is for the ten bytes: the strip is at its widest after the split.
+    const strip = tokens(['rain', ' train'], { size: 56, width: 1100, rows: { id: [] } }).at(40, -80)
+    s.play(strip.enter(), { duration: 0.8 })
+    s.wait(0.6)
+    // The later word splits first, so the index of the first one stays.
+    s.play(strip.split(1, bytes(' train')), strip.split(0, bytes('rain')), { duration: 1.2 })
+    s.wait(0.5)
+    const byteCount = strip.count
+    // Count each pair of neighbors: a window of two cells goes along the strip.
+    for (let index = 0; index + 1 < strip.count; index++) s.play(strip.window(index, index + 1), { duration: index === 0 ? 0.4 : 0.22 })
+    s.play(strip.window(null), { duration: 0.3 })
+    // Merge each occurrence of the chosen pair and assign the same ID to both results.
+    const mergeAll = (left: string, right: string, id: number) => {
+        const starts = strip.find((token, index) => token.text === left && strip.texts[index + 1] === right)
+        // From the right, so that a merge does not change the index of a pair that is still to come.
+        s.play(...starts.reverse().map((index) => strip.merge(index, index + 1, { values: { id } })), { duration: 1.1 })
+    }
+    mergeAll('r', 'a', 256)
+    mergeAll('ra', 'i', 257)
+    mergeAll('rai', 'n', 258)
+    s.play(fadeIn(text(`${byteCount} bytes become ${strip.count} tokens`, { size: 44 }).at(0, 200)))
+    s.wait(2)
+})
+```
+
+`strip.append(token)` adds a token at the end, or a list of tokens one after another, and the tokens that are there do not move. `from` is a node or a point of the stage: the token starts there and flies to its place, such as the bar of the candidate that the model picked. `strip.split(index, pieces)` cuts one token into two pieces or more, and `strip.merge(from, to, token)` joins the tokens from `from` to `to` into one. Without `token`, the new text is the old texts, joined. A piece has the state and the color of its token unless it names its own, and the new token of a merge has the color of the first old one, and their state when they share one. A piece and a new token give their `values`, and the values of the old tokens leave. When the pieces spell the token, each letter keeps its place and moves to its piece, and the box is cut between two letters. With another text, such as a character that becomes its bytes, the old text leaves before the new one comes.
+
+The indexes of a change are those of the strip when the film plays the change: after the changes before it in the same play. So merge pairs from the right, as the example does, or play one change after another. An index that the strip does not have then is an error that names the tokens that it has. Changes to different tokens can share one play. Schedule marks on the same token in time order. Each mark must finish before the next one starts. Use `seq` or separate calls to `s.play` if their times overlap. A `split` or a `merge` of a token that the change before it still brings in is an error that says to play them one after the other. A strip with `maxWidth` wraps and is a plain row of chips: its tokens take states, and it takes no rows, brackets, window, or change of its tokens.
+
+`strip.token(index)` is the cell of a token, with its `box`, its `text` and the marks of its state. `strip.p(index, edge)` is the middle of an edge of the cell, in the coordinates of the strip: `'bottom'` by default, and `'top'`, `'left'` or `'right'`. The bottom point is under the rows of values and the top point is over the brackets, so a line from it crosses no text of the strip. `strip.region({ from, to, row })` is the box of a run of cells in stage pixels, or of the part of a row under them, for `place` and `beside` of the layout. These places are fixed: read them again after a change moves a token. `strip.arcs(from, weights)` draws curved lines from one token to others of the same strip, for attention. `strip.links(other, pairs)` draws lines to the tokens of another strip, one for each pair of indexes, from under the upper token to over the lower one: a source and its translation, a question and the words of a passage. A pair with a third number, a weight from 0 to 1, has a wider and brighter line for a weight near 1. Create the lines after placing both strips. Recreate the lines after moving their endpoints. The two strips are one over the other, with a room of 1.5 of `size` or more from under the values of the upper one to over the brackets of the lower one: with less, the call is an error that says to move the strips apart.
+
+```film paired label="Reuse a cached prefix and append the generated answer one token at a time"
+import { draw, fade, fadeIn, film, namedBox, tokens } from 'vizmatic/stage'
+
+const SYSTEM = ['You', ' are', ' a', ' helpful', ' bot', '.']
+
+export default film({ fps: 30 }, (s) => {
+    const first = tokens([...SYSTEM, ' Hi'], { size: 40, label: 'request 1', width: 1300 }).at(110, -300)
+    const second = tokens([...SYSTEM, ' Bye'], { size: 40, label: 'request 2', width: 1300, color: 'purple' }).at(110, 0)
+    s.play(first.enter(), { duration: 1 })
+    s.play(second.enter(), { duration: 1 })
+    // A line joins each pair of tokens that are the same, from the left.
+    const same = first.links(second, SYSTEM.map((_, index) => [index, index] as const), { color: 'yellow' })
+    s.play(draw(same, { lag: 0.35 }), { duration: 1.8 })
+    s.wait(0.6)
+    // The model has the state of these tokens: it reads them from the cache.
+    s.play(second.mark((_, index) => index < SYSTEM.length, 'cached'), fade(same, 0), fade(first, 0.35), { duration: 1.2 })
+    s.play(second.span('prefix', 0, SYSTEM.length - 1, { label: 'read from the cache', color: 'yellow' }), { duration: 0.7 })
+    // The model writes the answer one token at a time. Each token flies from over the model to the end of the strip.
+    const model = namedBox('model', { width: 260, height: 110, color: 'green' }).at(540, 300)
+    s.play(fadeIn(model), { duration: 0.4 })
+    for (const word of [' See', ' you', '!']) {
+        s.play(second.append({ text: word, state: 'generated' }, { from: [model.top[0], model.top[1] - 50] }), { duration: 0.8 })
+        s.wait(0.25)
+    }
+    s.play(second.span('answer', SYSTEM.length + 1, second.count - 1, { label: 'written by the model', color: 'green' }), { duration: 0.7 })
+    s.wait(1.5)
+})
+```
+
+`strip.enter()` brings the chips in from the left, each with its values, and the names, the brackets and the window with them. `strip.chips`, `strip.rows`, `strip.spans`, `strip.frame` (the outline of the window) and `strip.caption` (the name of the line of cells) are the parts, after the changes that the film has played so far. While a window slides, its outline passes over the token text. A motion scan can report these frames as `film.text_crossed`. Check that the outline clears the text when the window settles.
+
 ## Code and tokens
 
-`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a row of labeled cells for language models, and `attentionMatrix` draws a heatmap with labels.
+`codeBlock(source)` draws syntax-colored code as glyphs. `morphCode(a, b)` morphs one version into another, and tokens that stayed travel to their new places. `tokens(items)` draws a strip of cells for the tokens of a language model: see [Token strips](#token-strips). `attentionMatrix` draws a heatmap with token labels. See [Attention matrices](#attention-matrices).
 
 `block.find(fragment)` returns the glyphs of a piece of the code, to color them or to move them. A fragment that is one token, such as `lo`, matches every such token. Any other fragment, such as `lo + hi`, matches as text inside a line, and spaces do not count. Pass a line, counted from 0, as the second argument to search that line only.
 
@@ -970,6 +2747,20 @@ export default film({ fps: 30 }, (s) => {
 ```
 
 The `language` option names the syntax. The languages are `ts`, `python`, `rust`, `go`, `java`, `c`, `sql`, `bash`, and `plain`, and four languages for specifications and proofs: `tla` for TLA+, `dafny`, `lean`, and `smt` for SMT-LIB. In those four, a prime such as the one in `x'` is part of the code and does not start a string. An unknown name uses the TypeScript rules.
+
+Use `json` or `yaml` to color the fields of a tool call, model reply, or configuration file. The aliases are `jsonl` and `yml`. A key keeps its lexical `kind` and gains an optional `role: 'key'`. Set `colors: { key: 'teal' }` to change its color. YAML highlighting covers simple keys on a single line, including quoted keys, numeric keys, and keys with spaces. Complex keys, block scalars, tags, and flow collections across lines require a YAML parser. Use `language: 'ts'` explicitly to reproduce the earlier fallback coloring for these language names.
+
+```ts
+import { codeBlock, film } from 'vizmatic/stage'
+
+export default film((s) => {
+    // A tool call as the model wrote it. The line of one argument is lit.
+    const call = s.add(codeBlock('{\n  "name": "get_weather",\n  "arguments": { "city": "Paris", "days": 3 }\n}', { language: 'json', size: 40 }))
+    s.wait(0.6)
+    s.play(call.focus(2))
+    s.wait(1.2)
+})
+```
 
 `arrayCells(values)` draws a row of cells for algorithms, and `neuralNet(layers)` draws a layered network whose edges you can pulse.
 
@@ -1038,10 +2829,10 @@ The font is one of the families of `text()`: `'sans'`, `'serif'`, `'text-serif'`
 | The label of a `connector`, and the label of an edge of a `graph`. | The font that the film names. Mono in a film with no `font`, as before. |
 | The text of an SVG from `fromSvg`. | The font that the film names, and mono for text that the SVG sets in a monospace family. Sans in a film with no `font`, as before. |
 | The words and the source line of a `quote`. | The serif text font, in every film. |
-| `tex`, and each label that is math: the numbers and the labels of `axes` and `numberLine`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
+| `tex`, and each label that is math: the numbers and the labels of `axes`, the numbers of a `numberLine` with no `format` and the label of its `marker`, `matrix`, `angleMark`, the names of `axes3d`, a `braceLabel` or a `labeledDot` without `plain: true`, and a `label3d` without `math: false`. | The math font. |
 | The center label of a `donut`. | The display serif. |
 
-Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
+Each object that draws a label in the font of the film takes `font`, and that option wins: `barChart(data, { font: 'sans' })`. For a `tag`, `font` is the font of the word and `noteFont` is the font of the note. For a `graph`, `font` is the font of the node labels and `edgeFont` is the font of the edge labels. For `arrayCells`, `tokens`, `counter` and `decimal`, `font` replaces mono. In a strip of `tokens`, `font` is the font of the tokens: the values of its rows stay in mono, and the names of its rows and the labels of its brackets are in the font of the film. `font: 'sans'` is a font that the film names: the label of a connector is then sans, not mono.
 
 The layout follows the font. A text measures its glyphs when it is made, so a card wraps its caption and a zone opens its border for the title with the widths of the font of the film. `'sans'` and `'text-serif'` have a semibold for `weight: 600`, so the title of an `infoBox` or of a `callout` is heavier than its body in both. `'serif'`, `'mono'` and `'noto'` have one weight, and such a title is regular there.
 
