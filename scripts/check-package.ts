@@ -8,12 +8,11 @@ interface PackResult {
     entryCount?: number
 }
 
-// The full course component build packs to 7,346,603 bytes, or 21,157,943 bytes unpacked.
-// Its 232 files include the new component examples. The growth is in the stage runtime,
-// type declarations, examples and narration tools. The offline assets are unchanged.
+// The named tile transfer build packs to 7,359,548 bytes and 21,204,677 bytes unpacked.
+// The painter adds runtime code and declarations. The package still contains 232 files.
 const limits = {
     size: 7_400_000,
-    unpackedSize: 21_200_000,
+    unpackedSize: 21_250_000,
     entryCount: 232,
 }
 
