@@ -73,6 +73,32 @@ describe('RGBA video export', () => {
         expect(await readFile(outputPath)).toEqual(previous)
     })
 
+    it.skipIf(!hasFfmpeg)('rejects a successful encoder that omitted a middle picture and keeps the previous movie', async () => {
+        const directory = await tempDirectory()
+        const fixture = join(directory, 'missing.mp4')
+        // Preserve the duration and the other five timestamps when picture 3 is missing.
+        const made = spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=s=64x64:r=30:d=0.2',
+            '-vf', "select='not(eq(n,3))'", '-fps_mode', 'passthrough', '-c:v', 'libx264', fixture])
+        expect(made.status).toBe(0)
+        const ffmpegPath = join(directory, 'ffmpeg')
+        await writeFile(ffmpegPath, [
+            '#!/bin/sh', 'case " $* " in', '*" -f lavfi "*) exit 0;;',
+            '*" -f rawvideo "*) cat >/dev/null; for output do :; done; cp "$(dirname "$0")/missing.mp4" "$output";;',
+            '*) exec ffmpeg "$@";;', 'esac',
+        ].join('\n'), { mode: 0o755 })
+        const outputPath = join(directory, 'previous.mp4')
+        await writeFile(outputPath, 'previous movie')
+        const indices: number[] = []
+        await expect(renderRgbaVideo(({ index }) => {
+            indices.push(index)
+            return new Uint8Array(64 * 64 * 4)
+        }, { width: 64, height: 64, fps: 30, duration: 200, outputPath, ffmpegPath, h264Encoder: 'videotoolbox' }))
+            .rejects.toThrow('expected 6 frames at 30 fps, found 5; missing frame 3')
+        expect(indices).toEqual([0, 1, 2, 3, 4, 5])
+        expect(await readFile(outputPath, 'utf8')).toBe('previous movie')
+        expect((await readdir(directory)).sort()).toEqual(['ffmpeg', 'missing.mp4', 'previous.mp4'])
+    })
+
     it.skipIf(!hasFfmpeg || !hasFfprobe)('encodes the negotiated hardware format with its requested frame clock and color tags', async ({ skip }) => {
         const format = { width: 320, height: 180, fps: 30 }
         if (await resolveH264Encoder('videotoolbox', 'ffmpeg', format) !== 'videotoolbox') return skip()

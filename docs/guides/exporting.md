@@ -40,7 +40,7 @@ MP4 files stay at H.264 level 4.2 at 1080p60, so they play in QuickTime, Quick L
 
 ### Hardware H.264 on macOS
 
-For standard-quality MP4s, pass `h264Encoder: 'videotoolbox'` to `renderFilmVideo` or `renderRgbaVideo`. The exporter checks that FFmpeg can encode a frame at the requested dimensions and frame rate using Apple hardware. If the check fails, it uses the default software encoder, `libx264`. The result’s `h264Encoder` field records the encoder used. An error during the actual encode fails the export and preserves any existing destination file.
+For standard-quality MP4s, pass `h264Encoder: 'videotoolbox'` to `renderFilmVideo` or `renderRgbaVideo`. The exporter checks that FFmpeg can encode a frame at the requested dimensions and frame rate using Apple hardware. If the check fails, it uses the default software encoder, `libx264`. The result’s `h264Encoder` field records the encoder used. Before publishing a hardware encode, the exporter reads its video packets and checks that every scheduled frame has exactly one presentation timestamp. If the encoder drops a picture or reports an error, the exporter preserves the existing destination file.
 
 The hardware path uses VideoToolbox quality 75 and a maximum interval of 250 frames between keyframes. Different CRF values, custom x264 parameters and tuning other than `animation` use the software encoder. Hardware files can be larger. Rasterization, audio, captions and frame timing still use the same paths.
 

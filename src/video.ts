@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { chmod, mkdir, open, rename, rm, stat, writeFile } from 'fs/promises'
 import { connect, createServer, type Socket } from 'net'
+import { createInterface } from 'readline'
 import { basename, dirname, join, resolve } from 'path'
 import { Resvg } from '@resvg/resvg-js'
 import parseCssColor from 'parse-css-color'
@@ -379,6 +380,48 @@ function videoToolboxArgs({ width, height, fps }: H264Format): string[] {
     return args
 }
 
+/** Check each encoded presentation time before replacing the caller's movie. */
+async function verifyHardwareFrames(ffmpeg: string, path: string, count: number, fps: number, signal?: AbortSignal): Promise<void> {
+    const seen = new Uint8Array(Math.ceil(count / 8))
+    // Stream copy preserves the packet timestamps and avoids a second encode or decode.
+    const child = spawn(ffmpeg, ['-nostdin', '-v', 'error', '-xerror', '-copyts', '-i', path, '-map', '0:v:0',
+        '-c:v', 'copy', '-avoid_negative_ts', 'disabled', '-f', 'framecrc', 'pipe:1'], { stdio: ['ignore', 'pipe', 'pipe'], signal })
+    let timeScale = 0, timeUnit = 0, packets = 0
+    let stderr = '', invalid = false
+    child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-MAX_STDERR_CHARS) })
+    const lines = createInterface({ input: child.stdout })
+    lines.on('line', line => {
+        if (line.startsWith('#')) {
+            const clock = /^#tb 0:\s*(\d+)\/(\d+)$/.exec(line)
+            if (clock) {
+                timeUnit = Number(clock[1])
+                timeScale = Number(clock[2])
+            }
+            return
+        }
+        const pts = /^0,\s*-?\d+,\s*(-?\d+),/.exec(line)
+        const index = pts ? Number(pts[1]) * timeUnit * fps / timeScale : NaN
+        if (!timeScale || !timeUnit || !Number.isSafeInteger(index) || index < 0 || index >= count) {
+            invalid = true
+            return
+        }
+        const byte = Math.floor(index / 8), mask = 1 << (index % 8)
+        if (seen[byte]! & mask) invalid = true
+        seen[byte] = seen[byte]! | mask
+        packets++
+    })
+    await new Promise<void>((done, fail) => {
+        child.once('error', fail)
+        child.once('close', (code, sig) => code === 0 ? done() : fail(describeExit(code, sig, stderr)))
+    })
+    if (invalid || packets !== count) {
+        let missing = 0
+        while (missing < count && (seen[Math.floor(missing / 8)]! & (1 << (missing % 8)))) missing++
+        const detail = missing < count ? `; missing frame ${missing}` : ''
+        throw new Error(`VideoToolbox packet timing mismatch: expected ${count} frames at ${fps} fps, found ${packets}${detail}`)
+    }
+}
+
 const hardwareProbes = new Map<string, Promise<boolean>>()
 
 /** Check that FFmpeg can encode a frame with the requested hardware and format. */
@@ -683,6 +726,7 @@ export async function renderRgbaVideo(
         if (exit.error) throw new Error(`Unable to start FFmpeg: ${exit.error.message}`, { cause: exit.error })
         if (exit.code !== 0) throw describeExit(exit.code, exit.signal, stderr)
 
+        if (h264Encoder === 'videotoolbox') await verifyHardwareFrames(ffmpegPath, tempPath, schedule.count, fps, options.signal)
         const outputStat = await stat(tempPath)
         // The temp file is private while it is incomplete. The finished video is a normal file.
         await chmod(tempPath, 0o644)
