@@ -3,7 +3,7 @@ import { totalmem } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { encode as encodePng } from 'fast-png'
 import * as gifenc from 'gifenc'
-import { renderRgbaVideo, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
+import { renderRgbaVideo, type H264Encoder, type RgbaVideoOutput, type VideoCodec, type VideoFrameInfo } from '../video'
 import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
 import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type RasterJob } from './raster'
@@ -12,12 +12,14 @@ import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileO
 import { text } from './text'
 
 export type Quality = 'draft' | 'standard' | 'high' | 'master'
-export type { VideoCodec } from '../video'
+export type { H264Encoder, VideoCodec } from '../video'
 
 export interface FilmRenderOptions extends CompileOverrides {
     /** Output width in pixels. Defaults to the film's logical width. */
     width?: number
     quality?: Quality
+    h264Encoder?: H264Encoder
+    requireH264Encoder?: boolean
     /**
      * Dither the SVG renderer's bloom, so that soft light on a dark look has no contour lines. Without this option, a movie
      * has the dither at `high` and `master` and not at `draft` and `standard`, and a PNG has it. A GIF never
@@ -341,7 +343,7 @@ export async function renderFilmVideo(
             return pixels
         }, {
             width: size.width, height: size.height, fps, duration: (to - from) * 1000, outputPath,
-            codec,
+            codec, h264Encoder: options.h264Encoder, requireH264Encoder: options.requireH264Encoder,
             crf: codec === 'vp9' ? quality.vp9Crf : quality.crf,
             preset: quality.preset,
             // Flat color and fine lines keep their edges better with this tuning.
