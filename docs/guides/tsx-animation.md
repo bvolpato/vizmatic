@@ -251,6 +251,7 @@ objects and computed intermediate states:
 | `vectorAccumulation` | Accumulate ordered weighted vectors. Each term retains its ID, contribution, and endpoints. Use an equal-unit two-dimensional plot or declare a projection. `revealTotal` controls the displayed result independently of construction progress. |
 | `categoricalSampling` | Map supplied uniform draws through a categorical CDF. Declare probabilities or weights, retain draw IDs, and expose the empirical distribution with a separate `showEmpirical` flag after all retained draws arrive. |
 | `routedTransfer` | Plan an orthogonal route around declared obstacles. Clearance includes the stroke and moving marker. An impossible route fails before painting. |
+| `rasterWipe` | Move a divider across two row-major pixel fields. Both fields keep their coordinates as the divider crosses a cell. |
 | `byteDifference` | Compare `Uint8Array` values with stable byte offsets, escaped controls, and explicit gaps. Scanning and the final equality verdict have separate controls. |
 | `tokenHistory` | Align prompt, accepted, processed, KV, and emitted occurrence IDs. Dropping and replaying KV preserve accepted output and rebuild the processed prefix. |
 
@@ -258,6 +259,16 @@ The corresponding pure helpers are `weightedVectorState`,
 `categoricalSampling`, `planTeachingRoutedTransfer`, `byteDifferenceState`, and
 `tokenHistoryState`. They sample explicit inputs and support out-of-order frame
 rendering. The lesson supplies the data, model assumptions, and narration cues.
+
+For a pixel comparison, pass flat arrays with the same row and column order. Set `split` to the fraction of the width that should show the left image. The method returns the divider’s x coordinate so you can attach your own pointer. When both colors match, it paints the entire cell once to avoid an antialiasing seam.
+
+```ts
+const { dividerX } = charts.rasterWipe({
+    x: 40, y: 120, width: 640, height: 480, rows: 12, columns: 16,
+    left: reference, right: reconstruction, split: progress,
+    color: sample => grayscale(sample),
+})
+```
 
 Provide `painter.measureText(value, size, font)` to size moving token copies with
 the same font metrics used by `painter.text`. The helper adds the label's padding
