@@ -260,6 +260,24 @@ The corresponding pure helpers are `weightedVectorState`,
 `tokenHistoryState`. They sample explicit inputs and support out-of-order frame
 rendering. The lesson supplies the data, model assumptions, and narration cues.
 
+To show sampling with replacement, use `planSampleCopies` from `vizmatic`. Give each source a stable ID and list the destination of each draw. Draw the source objects once per frame, then paint each copy with the same label and artwork as its source.
+
+```ts
+import { planSampleCopies } from 'vizmatic'
+
+const sample = planSampleCopies(
+    [{ id: 'B', x: 40, y: 80 }],
+    [{ sourceId: 'B', x: 320, y: 40 }, { sourceId: 'B', x: 320, y: 120 }],
+)
+function paintCopies(drawCount: number, drawCard: (label: string, x: number, y: number) => void) {
+    for (const copy of sample.at(drawCount)) {
+        drawCard(copy.sourceId, copy.x, copy.y)
+    }
+}
+```
+
+At 1.5 draws, the first B has landed. The second B is halfway from the original to its slot.
+
 For a pixel comparison, pass flat arrays with the same row and column order. Set `split` to the fraction of the width that should show the left image. The method returns the divider’s x coordinate so you can attach your own pointer. When both colors match, it paints the entire cell once to avoid an antialiasing seam.
 
 ```ts
