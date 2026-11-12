@@ -190,3 +190,31 @@ describe('bounded dense teaching grids', () => {
         expect(() => layoutCellGrid(options).cell(0, 0.5)).toThrow('outside')
     })
 })
+
+describe('grid tile transfers', () => {
+    const source = { grid: layoutCellGrid({ x: 0, y: 0, width: 120, height: 60, rows: 3, columns: 4 }), row: 1, column: 1 }
+    const target = { grid: layoutCellGrid({ x: 240, y: 20, width: 80, height: 120, rows: 3, columns: 2 }), row: 0, column: 0 }
+    const cells = [[{ label: 'a' }, { label: 0 }], [{ label: 'b' }, { label: '×', fill: 'gray' }]]
+
+    it('keeps the payload attached to its addresses while rows arrive at different times', () => {
+        const { painter, events } = hostPainter()
+        const transfer = createTeachingCanvas(painter).tileTransfer
+        const sample = (progress: number) => transfer({ source, target, cells, progress, rowStagger: 0.5, gap: 0 })
+        const halfway = sample(0.5)
+        expect(halfway.arrived).toBe(2)
+        expect(halfway.complete).toBe(false)
+        expect(halfway.cells[0][1]).toMatchObject(target.grid.cell(0, 1))
+        expect(halfway.cells[1][0]).toMatchObject(source.grid.cell(2, 1))
+        expect(events.filter(e => e.kind === 'text').map(e => e.value)).toEqual(['a', '0', 'b', '×'])
+        expect(sample(0.75).cells[1][0]).toMatchObject({ x: 135, y: 50, width: 35, height: 30 })
+        expect(sample(1)).toMatchObject({ arrived: 4, complete: true })
+        expect(sample(0).cells[0][0]).toMatchObject(source.grid.cell(1, 1))
+    })
+
+    it('rejects an out-of-bounds tile before painting any row', () => {
+        const { painter, events } = hostPainter()
+        const transfer = createTeachingCanvas(painter).tileTransfer
+        expect(() => transfer({ source, target: { ...target, column: 1 }, cells, progress: 0.5 })).toThrow(/outside/)
+        expect(events).toEqual([])
+    })
+})
