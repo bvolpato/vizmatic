@@ -54,8 +54,8 @@ pnpm site:build
 | Files in `docs/` | Committed | How to change them |
 |---|---|---|
 | Templates (`*.template.html`), guides (`guides/*.md`), `site.js`, and the style sheets | Yes | Edit them. They are sources. |
-| Pages, bundles, component previews, search index, sitemap, and the files for agents | No | Edit the source, then run `pnpm site:build`. |
-| Rendered examples (`assets/examples`), film posters, and measured data | Yes | Run the command that writes them, such as `pnpm render:examples`, and commit the result. |
+| Pages, bundles, component previews, example source JSON, search index, sitemap, and the files for agents | No | Edit the source, then run `pnpm site:build`. |
+| Example images and render manifests in `assets/examples/`, film posters, and measured data | Yes | Run the command that writes them, such as `pnpm render:examples`, and commit the result. |
 
 Do not commit a website file with `git add -f`. If the build writes a new file, add an exact rule for it to `.gitignore`. CI fails when the build writes a file that has no rule, or changes a committed file.
 
@@ -76,7 +76,7 @@ Do not add `--ref` to these commands. The workflow must start on `main`, which i
 
 ## Visual and animation changes
 
-Examples under `examples/` generate tracked files under `docs/assets/examples/` and website source metadata. Regenerate them with:
+The site build reads `examples/*.tsx` to generate the highlighted source index and the editable playground examples. To refresh the rendered previews as well, run the following commands.
 
 ```bash
 pnpm render:examples

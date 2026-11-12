@@ -1,10 +1,12 @@
 import { access, copyFile, mkdir, readFile, readdir, rm, writeFile } from 'fs/promises'
+import { codeToHtml } from 'shiki'
 import { buildPlayground } from './build-playground'
 import { buildComponentPreviews } from './build-component-previews'
 import { catalogComponentCount, componentCatalog, diagramCategories, type ComponentCatalogCategory } from './component-catalog'
 import { buildAgentDocs } from './build-agent-docs'
 import { buildLogo } from './build-logo'
 import { buildStage } from './build-stage'
+import { exampleTitle, listGalleryExamples } from './gallery-examples'
 import { prepareGuides, writeGuides } from './build-guides'
 import { buildSiteMedia } from './build-site-media'
 import { applySiteShell, configureSiteShell, registerSitePages, sitePages } from './site-shell'
@@ -233,19 +235,28 @@ await buildComponentPreviews()
 
 const prompt = await readFile(promptPath, 'utf8')
 const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as { version: string }
-interface ExampleSource {
-    name: string
-    title: string
-    source: string
-    code: string
-    html: { dark: string; light: string }
+function sourceForGallery(code: string): string {
+    if (!code.includes('createScenes') && !code.includes('createAnimation')) return code
+    return code
+        .replace(/\nexport function create\(theme: ThemeMode = 'dark'\) \{\n    return buildFrame\(theme, stages\.length - 1\)\n\}\n(?=\nexport function createScenes)/, '\n')
+        .replace(/\nexport default create\('dark'\)\n?$/, '\n')
+        .replace(/\n{3,}/g, '\n\n')
 }
+
+function highlightExample(code: string, theme: 'dark' | 'light') {
+    return codeToHtml(code, {
+        lang: 'tsx',
+        theme: `github-${theme}-high-contrast`,
+        // Embedded image strings must retain the same grammar state on slower CI runners.
+        tokenizeTimeLimit: 0,
+    })
+}
+
 /**
  * A density variant re-exports another example and overrides its size and density. The builder
  * runs one source with no imports, so it opens the base example with those settings applied.
  */
-async function playgroundCodeFor(path: string): Promise<string> {
-    const source = await readFile(path, 'utf8')
+async function playgroundCodeFor(source: string): Promise<string> {
     const base = source.match(/from ['"]\.\/([\w-]+)['"]/)?.[1]
     const settings = source.match(/^export const (?:density|width|height) = .+$/gm)
     if (!base || !settings || !/^export const density\b/m.test(source)) return toPlaygroundExample(source)
@@ -257,13 +268,19 @@ async function playgroundCodeFor(path: string): Promise<string> {
     return `${settings.map((line) => line.replace('export const ', '')).join('\n')}\n${body}`
 }
 
-const sources = JSON.parse(await readFile('docs/assets/examples/sources.json', 'utf8')) as ExampleSource[]
-const sourceByName = new Map(sources.map((source) => [source.name, source]))
 await mkdir('docs/assets/sources', { recursive: true })
-await Promise.all(sources.map(async (source) => {
-    const playgroundCode = await playgroundCodeFor(source.source)
-    await writeFile(`docs/assets/sources/${source.name}.json`, JSON.stringify({ ...source, playgroundCode }))
-}))
+const sources = []
+for (const { name, source } of await listGalleryExamples()) {
+    const raw = await readFile(source, 'utf8')
+    const code = sourceForGallery(raw)
+    const html = { dark: await highlightExample(code, 'dark'), light: await highlightExample(code, 'light') }
+    const entry = { name, title: exampleTitle(name), source, code, html }
+    const playgroundCode = await playgroundCodeFor(raw)
+    await writeFile(`docs/assets/sources/${name}.json`, JSON.stringify({ ...entry, playgroundCode }))
+    sources.push(entry)
+}
+await writeFile('docs/assets/examples/sources.json', `${JSON.stringify(sources, null, 2)}\n`)
+const sourceByName = new Map(sources.map((source) => [source.name, source]))
 
 const prepared = await prepareGuides()
 await buildStage({ demos: prepared.demos })
