@@ -8,10 +8,10 @@ interface PackResult {
     entryCount?: number
 }
 
-// The named tile transfer build packs to 7,359,548 bytes and 21,204,677 bytes unpacked.
-// The painter adds runtime code and declarations. The package still contains 232 files.
+// In Linux CI, the waveform build packs to 7,400,441 bytes. The painters and their
+// declarations fit within 21,250,000 unpacked bytes across the same 232 files.
 const limits = {
-    size: 7_400_000,
+    size: 7_420_000,
     unpackedSize: 21_250_000,
     entryCount: 232,
 }
