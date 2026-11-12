@@ -8,6 +8,8 @@ export interface TeachingRasterWipeOptions<Value> extends CanvasBounds {
     right: ArrayLike<Value>
     /** Fraction of the image occupied by the left raster. */
     split: number
+    /** Assign each output pixel to the sample under its center. Use final pixel coordinates. */
+    snapToPixels?: boolean
     color(value: Value, row: number, column: number): string
 }
 
@@ -28,13 +30,16 @@ export function createTeachingRasterWipe(painter: Pick<CanvasPainter, 'rect'>) {
             throw new Error('Raster split must be a fraction between zero and one')
         }
 
-        const dividerX = x + width * split
+        const edge = options.snapToPixels ? (v: number) => Math.ceil(v - 0.5) : (v: number) => v
+        const dividerX = edge(x + width * split)
         for (let row = 0; row < rows; row++) {
-            const top = y + height * (row / rows)
-            const bottom = y + height * ((row + 1) / rows)
+            const top = edge(y + height * (row / rows))
+            const bottom = edge(y + height * ((row + 1) / rows))
+            if (top === bottom) continue
             for (let column = 0; column < columns; column++) {
-                const start = x + width * (column / columns)
-                const end = x + width * ((column + 1) / columns)
+                const start = edge(x + width * (column / columns))
+                const end = edge(x + width * ((column + 1) / columns))
+                if (start === end) continue
                 const cut = Math.max(start, Math.min(end, dividerX))
                 const index = row * columns + column
                 if (start < cut && cut < end) {

@@ -1,3 +1,4 @@
+import { Resvg } from '@resvg/resvg-js'
 import { describe, expect, it } from 'vitest'
 import { createTeachingRasterWipe } from '../src/teaching-raster-wipe'
 
@@ -44,5 +45,40 @@ describe('raster wipe', () => {
         expect(() => wipe({ ...options, width: 0 })).toThrow(/bounds/)
         expect(() => wipe({ ...options, split: NaN })).toThrow(/split/)
         expect(tiles).toEqual([])
+    })
+
+    it('samples pixel centers at a fractional origin, scale and divider', () => {
+        const palette = ['#000000', '#ffffff', '#ff0000', '#00ff00']
+        const fields = { left: [1, 1, 2, 3, 2, 0], right: [2, 0, 3, 1, 3, 2] }
+        for (const [x, y, width, height] of [[0.5, 1.25, 13.5, 5.25], [2.5, 2.5, 1, 1]]) {
+            const rectangles: string[] = []
+            const wipe = createTeachingRasterWipe({
+                rect(x, y, w, h, fill) {
+                    expect(w).toBeGreaterThan(0)
+                    expect(h).toBeGreaterThan(0)
+                    rectangles.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}"/>`)
+                },
+            })
+            const split = 0.5
+            const { dividerX } = wipe({
+                ...fields, x, y, width, height, rows: 2, columns: 3, split,
+                snapToPixels: true, color: value => palette[value],
+            })
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="8">${rectangles.join('')}</svg>`
+            const pixels = new Resvg(svg).render().pixels
+            for (let row = 0; row < 8; row++) {
+                for (let column = 0; column < 16; column++) {
+                    const u = (column + 0.5 - x) / width
+                    const v = (row + 0.5 - y) / height
+                    const outside = u < 0 || u >= 1 || v < 0 || v >= 1
+                    const field = u < split ? fields.left : fields.right
+                    const index = Math.floor(v * 2) * 3 + Math.floor(u * 3)
+                    const expected = outside ? [0, 0, 0, 0] : [...Buffer.from(palette[field[index]].slice(1), 'hex'), 255]
+                    const offset = (row * 16 + column) * 4
+                    expect([...pixels.subarray(offset, offset + 4)]).toEqual(expected)
+                }
+            }
+            expect(dividerX).toBe(Math.ceil(x + width * split - 0.5))
+        }
     })
 })
