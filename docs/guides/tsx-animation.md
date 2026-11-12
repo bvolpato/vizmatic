@@ -524,6 +524,13 @@ Numerical helpers include `seededRandom(seed)`, `lerpArray`, `dotProduct`,
 `sampleGaussian(random)`. Softmax subtracts the largest logit before scaling;
 entropy accepts normalized probabilities; normalization preserves zero vectors.
 Seeded sampling makes simulations reproducible during rendering and review.
+
+For a scalar softmax blend, `softmaxTileMass(scores, values, allowed?)` returns a reference score, the sum of exponential weights (`mass`), and the sum of weight times value (`weightedSum`). Supply finite scores and values of equal length. The optional Boolean mask has the same length. Only entries marked `true` contribute. The default includes every entry.
+
+`combineSoftmaxMass(tiles, reference?)` expresses saved summaries at the largest nonempty reference and adds them. You can supply a finite reference at least that large. To animate a change of reference, pass one saved tile and raise the reference gradually. Draw its width from `mass` and keep its height at the original `weightedSum / mass`. Both sums receive the same exponential factor.
+
+An empty or fully masked tile has reference `-Infinity`, mass zero, and weighted sum zero. It contributes nothing to a later merge. A row with zero mass has no defined mean. A film can apply its own empty-row output convention. Use nearby references for a picture. The helpers use binary64 arithmetic, so small individual contributions can round to zero. They reject accumulator overflow. If the combined visible mass falls below the smallest positive normal number, the helper rejects the reference because the ratio of the rounded sums can give a misleading height.
+
 Camera helpers keep world geometry and screen annotations aligned:
 
 - `interpolateCamera(from, to, progress)` eases a camera's world-space center

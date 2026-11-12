@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     dotProduct, entropy, gaussian, lerpArray, multiplyMatrices, normalizeVector,
-    sampleFunction, sampleGaussian, seededRandom, stableSoftmax,
+    sampleFunction, sampleGaussian, seededRandom, stableSoftmax, softmaxTileMass, combineSoftmaxMass,
 } from '../src/teaching-math'
 
 describe('teaching numerical utilities', () => {
@@ -45,6 +45,37 @@ describe('teaching numerical utilities', () => {
         expect(stableSoftmax([])).toEqual([])
         expect(() => stableSoftmax([1, Infinity])).toThrow('finite')
         expect(() => stableSoftmax([1], 0)).toThrow('positive')
+    })
+
+    it('keeps masked tiles empty and merges a later visible tile at its own reference', () => {
+        const empty = softmaxTileMass([999, 5], [8, 9], [false, false])
+        const visible = softmaxTileMass([3, 99], [40, 7], [true, false])
+        expect(empty).toEqual({ reference: -Infinity, mass: 0, weightedSum: 0 })
+        expect(combineSoftmaxMass([empty, softmaxTileMass([], [])])).toEqual(empty)
+        expect(combineSoftmaxMass([empty, empty, visible])).toEqual({ reference: 3, mass: 1, weightedSum: 40 })
+        expect(combineSoftmaxMass([visible, empty])).toEqual(visible)
+    })
+
+    it('changes both sums at each reference and recovers the dense scalar blend', () => {
+        const old = softmaxTileMass([1, 2], [10, 20])
+        for (const reference of [2.25, 2.5, 2.75, 3]) {
+            const part = combineSoftmaxMass([old], reference)
+            expect(part.mass).toBeCloseTo(Math.exp(1 - reference) + Math.exp(2 - reference), 14)
+            expect(part.weightedSum / part.mass).toBeCloseTo(old.weightedSum / old.mass, 12)
+        }
+        for (const value of [40, 22, 4]) {
+            const joined = combineSoftmaxMass([old, softmaxTileMass([3], [value])])
+            expect(joined.mass).toBeCloseTo(1 + Math.exp(-1) + Math.exp(-2), 14)
+            expect(joined.weightedSum / joined.mass).toBeCloseTo(dotProduct(stableSoftmax([1, 2, 3]), [10, 20, value]), 12)
+        }
+        expect(() => softmaxTileMass([0], [])).toThrow()
+        expect(() => softmaxTileMass([0], [2], [])).toThrow()
+        expect(() => softmaxTileMass([-Infinity], [2])).toThrow()
+        expect(() => combineSoftmaxMass([old], 1)).toThrow()
+        // At this reference, rounding the two subnormal sums gives a mean of 24.
+        expect(() => combineSoftmaxMass([old], 747)).toThrow('mass')
+        expect(() => combineSoftmaxMass([{ reference: 0, mass: 0, weightedSum: 1 }])).toThrow()
+        expect(() => softmaxTileMass([0, 0], [1e308, 1e308])).toThrow()
     })
 
     it('measures entropy with zero terms and rejects unnormalized distributions', () => {

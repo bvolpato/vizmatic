@@ -81,6 +81,56 @@ export function stableSoftmax(values: readonly number[], temperature = 1): numbe
     return weights.map((value) => value / total)
 }
 
+export interface SoftmaxMass {
+    reference: number
+    mass: number
+    weightedSum: number
+}
+
+/** Combine scalar tile summaries at their largest reference, or at a supplied higher reference. */
+export function combineSoftmaxMass(tiles: readonly SoftmaxMass[], reference?: number): SoftmaxMass {
+    if (reference !== undefined) finite(reference, 'Softmax reference')
+    let largest = -Infinity
+    for (const tile of tiles) {
+        if (tile.mass === 0 && tile.weightedSum === 0 && tile.reference === -Infinity) continue
+        finite(tile.reference, 'Tile reference')
+        finite(tile.mass, 'Tile mass')
+        finite(tile.weightedSum, 'Tile weighted sum')
+        if (tile.mass <= 0) throw new Error('A nonempty tile needs positive mass')
+        largest = Math.max(largest, tile.reference)
+    }
+    if (largest === -Infinity) return { reference: -Infinity, mass: 0, weightedSum: 0 }
+    const target = reference ?? largest
+    if (target < largest) throw new Error('Softmax reference must cover all nonempty tiles')
+    let mass = 0, weightedSum = 0
+    for (const tile of tiles) {
+        if (tile.mass === 0) continue
+        const scale = Math.exp(tile.reference - target)
+        mass += scale * tile.mass
+        weightedSum += scale * tile.weightedSum
+    }
+    finite(mass, 'Combined mass')
+    finite(weightedSum, 'Combined weighted sum')
+    // A subnormal denominator can change the displayed mean by whole units when both sums round.
+    if (mass < 2 ** -1022) throw new Error('Combined mass is too small at this reference')
+    return { reference: target, mass, weightedSum }
+}
+
+/** Summarize finite scores and scalar values. A false mask entry excludes the pair. */
+export function softmaxTileMass(scores: readonly number[], values: readonly number[], allowed?: readonly boolean[]): SoftmaxMass {
+    if (scores.length !== values.length || (allowed !== undefined && allowed.length !== scores.length)) {
+        throw new Error('Scores, values and mask must have equal lengths')
+    }
+    const terms: SoftmaxMass[] = []
+    for (let i = 0; i < scores.length; i++) {
+        finite(scores[i], 'Softmax score')
+        finite(values[i], 'Softmax value')
+        if (allowed !== undefined && typeof allowed[i] !== 'boolean') throw new Error('Softmax mask entries must be booleans')
+        if (allowed?.[i] !== false) terms.push({ reference: scores[i], mass: 1, weightedSum: values[i] })
+    }
+    return combineSoftmaxMass(terms)
+}
+
 /** Shannon entropy of a normalized probability distribution. Zero terms contribute zero. */
 export function entropy(probabilities: readonly number[], base = 2): number {
     finite(base, 'Entropy base')
