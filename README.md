@@ -134,7 +134,7 @@ Agents can also read [`llms.txt`](https://bvolpato.github.io/vizmatic/llms.txt),
 
 ## Package installation
 
-Vizmatic 0.7.0 bundles its tested Satori renderer and uses patched `fflate` 0.7.5. Consumer dependency overrides are no longer required.
+Vizmatic bundles its tested Satori renderer and pins its compression dependency. You can install the package without dependency overrides.
 
 For pnpm 11, allow esbuild's install script in the root `pnpm-workspace.yaml`. The CLI uses esbuild to compile films and frames:
 
