@@ -60,3 +60,32 @@ export function createCueTrack<Snapshot>(options: CueTrackOptions<Snapshot>) {
         },
     })
 }
+
+export interface CueRevealOptions {
+    result: string
+    phrase: string
+    /** First frame to inspect while the viewer can still predict the result. */
+    fromFrame: number
+    /** First frame allowed to show the result, resolved from the phrase by the host clock. */
+    cueFrame: number
+    /** Last frame allowed for the result to appear. Defaults to cueFrame for a cut. */
+    byFrame?: number
+    /** Observe the named result in this frame. Throw if the evidence is inconclusive. */
+    visibleAt: (frame: number) => boolean
+}
+
+/** Check one prediction and return the two frames on either side of its observed reveal. */
+export function assertCueReveal({ result, phrase, fromFrame, cueFrame, byFrame = cueFrame, visibleAt }: CueRevealOptions) {
+    if (!result.trim() || !phrase.trim()) throw new Error('A cue reveal needs a result and a spoken phrase')
+    if (![fromFrame, cueFrame, byFrame].every(Number.isSafeInteger) || fromFrame < 0 || fromFrame >= cueFrame || cueFrame > byFrame) {
+        throw new RangeError('Cue reveal frames must be safe integers with 0 <= fromFrame < cueFrame <= byFrame')
+    }
+    for (let frame = fromFrame; frame <= byFrame; frame++) {
+        const visible = visibleAt(frame)
+        if (typeof visible !== 'boolean') throw new TypeError(`Expected a boolean observation of "${result}" at frame ${frame}`)
+        if (!visible) continue
+        if (frame < cueFrame) throw new Error(`"${result}" is visible at frame ${frame}, before "${phrase}" permits it at frame ${cueFrame}`)
+        return { lastHiddenFrame: frame - 1, firstVisibleFrame: frame }
+    }
+    throw new Error(`"${result}" is still missing at frame ${byFrame} for "${phrase}" (cue frame ${cueFrame})`)
+}

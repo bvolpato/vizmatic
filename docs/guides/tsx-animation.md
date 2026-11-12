@@ -492,6 +492,30 @@ nonnegative safe integers; progress is `[0, 1]`. Definitions are copied and resu
 records frozen; snapshots retain identity without mutation or cloning. Treat
 snapshots as immutable. The timeline still owns audio timing and motion.
 
+Use `assertCueReveal` when the viewer should have time to predict a particular result. In this example the two ticket fractions and the full-batch weight stay visible while the viewer works out the rounded mean. The host supplies `firstFrameAt` for its frame rate and `meanVisibleAt` to inspect the finished readout.
+
+```ts
+import { assertCueReveal } from 'vizmatic'
+import type { SceneClock } from 'vizmatic/stage'
+
+function checkTicketMean(
+  scene: SceneClock,
+  firstFrameAt: (seconds: number) => number,
+  meanVisibleAt: (frame: number) => boolean,
+) {
+  const phrase = 'point six nine three'
+  return assertCueReveal({
+    result: 'Mean loss ≈ 0.693',
+    phrase,
+    fromFrame: firstFrameAt(scene.cue('Together the tickets').start),
+    cueFrame: firstFrameAt(scene.cue(phrase).end),
+    visibleAt: meanVisibleAt,
+  })
+}
+```
+
+The check samples each frame from `fromFrame` until it observes the result. An early appearance reports the offending frame. For a fade, set `byFrame` to the last frame by which the result should be visible. The default is a cut on `cueFrame`. Use final pixels to check the finished picture, or a state predicate to check the model. The observer must return a boolean and should throw if it cannot identify the result. The returned pair describes the first appearance in the chosen interval.
+
 Numerical helpers include `seededRandom(seed)`, `lerpArray`, `dotProduct`,
 `multiplyMatrices`, `stableSoftmax(values, temperature)`, `entropy`,
 `normalizeVector`, `sampleFunction`, `gaussian(mean, sigma, x)`, and
