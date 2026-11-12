@@ -59,6 +59,7 @@ coverage/
 # Images and data that the build renders or copies.
 /docs/assets/THIRD_PARTY_LICENSES.md
 /docs/assets/components/
+/docs/assets/examples/sources.json
 /docs/assets/fonts/
 /docs/assets/icon.svg
 /docs/assets/licenses/
