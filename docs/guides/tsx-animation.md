@@ -280,6 +280,8 @@ At 1.5 draws, the first B has landed. The second B is halfway from the original 
 
 For a pixel comparison, pass flat arrays with the same row and column order. Set `split` to the fraction of the width that should show the left image. The method returns the divider’s x coordinate so you can attach your own pointer. When both colors match, it paints the entire cell once to avoid an antialiasing seam.
 
+To magnify individual source pixels during a camera move, pass bounds in final output pixels and set `snapToPixels: true`. Each output pixel takes the color of the source cell under its center. A center on a boundary belongs to the cell on the right or below. The returned divider follows the same rule.
+
 ```ts
 import { createTeachingCanvas, type TeachingPainter } from 'vizmatic'
 
