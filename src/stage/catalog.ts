@@ -56,6 +56,7 @@ export const FILM_OBJECTS: readonly FilmObjectEntry[] = [
     { name: 'dashedGuides', group: MATH, usage: 'dashedGuides(axes, x, y): dashed lines down to both axes' },
     { name: 'angleMark', group: MATH, usage: 'angleMark(vertex, from, to): an arc between two rays' },
     { name: 'rightAngle', group: MATH, usage: 'rightAngle(vertex, a, b): a square corner mark' },
+    { name: 'projectionMark', group: MATH, usage: 'projectionMark(point, origin, towards): the perpendicular guide and its foot on an oriented line' },
     { name: 'matrix', group: MATH, usage: 'matrix([[1, 2], [3, 4]]): a bracketed matrix of numbers or TeX, for a formula. For cells that light and change, use heatmap with a size' },
     { name: 'matrixProduct', group: MATH, usage: "matrixProduct(a, b) draws both operands and their result. pair(row, col), addTerm(), and store() show a dot product step by step. compute(row, col) plays the sequence for one cell, and complete() fills the remaining cells." },
     { name: 'braceLabel', group: MATH, usage: "braceLabel(node, 'x^2'): a curly brace beside a node, with a label" },

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
     along, applyMatrix, arcPath, arrow, checkFilm, circle, circlePath, compileFilm, curveThrough, dot, draw, dynamic, fadeIn, fadeOut, film, fontFor, group, grow, indicate, lagged,
     line, linePath, linear, mixColor, morph, morphMatching, Node, parseColor, parseSvgPath, pathBounds, pathLength,
-    plane, pointAt, rect, rotate, scaleBy, seq, shake, spin, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type Anim, type PathOp,
+    plane, pointAt, projectionMark, projectToLine, rect, rotate, scaleBy, seq, shake, spin, tex, text, to, trimPath, write, smooth, spring, thereAndBack, type Anim, type PathOp,
 } from '../src/stage/index'
 import { Track } from '../src/stage/track'
 import { alignPaths, matchSequence, pathMixer } from '../src/stage/morph'
@@ -18,6 +18,28 @@ function paths(film: { frame(t: number): { ops: readonly unknown[] } }, time: nu
 }
 
 describe('geometry', () => {
+    it('measures signed reach along a line past either endpoint', () => {
+        const forward = projectToLine([12, 6], [2, 2], [3, 2])
+        const backward = projectToLine([12, 6], [2, 2], [1, 2])
+        expect(forward).toEqual({ foot: [12, 2], signedDistance: 10 })
+        expect(backward).toEqual({ foot: [12, 2], signedDistance: -10 })
+        expect(() => projectToLine([1, 2], [3, 4], [3, 4])).toThrow(RangeError)
+    })
+
+    it('keeps the projected foot on the rotating line as the film seeks', async () => {
+        const compiled = await compileFilm(film((s) => {
+            const angle = s.value(0)
+            s.add(dynamic(() => projectionMark([80, 40], [0, 0], [Math.cos(angle.value), Math.sin(angle.value)])))
+            s.play(angle.to(Math.PI / 2, { duration: 1, ease: linear }))
+        }))
+        for (const [time, x, y] of [[1, 0, 40], [0, 80, 0], [0.5, 60, 60]] as const) {
+            const foot = paths(compiled, time).find((op) => op.fill)!
+            const bounds = pathBounds(foot.path)!
+            expect(bounds.x + bounds.width / 2 - compiled.width / 2).toBeCloseTo(x, 3)
+            expect(bounds.y + bounds.height / 2 - compiled.height / 2).toBeCloseTo(y, 3)
+        }
+    })
+
     it('measures a circle close to its true circumference', () => {
         expect(pathLength(circlePath(0, 0, 100))).toBeCloseTo(2 * Math.PI * 100, 0)
     })
