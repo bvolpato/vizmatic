@@ -3,10 +3,12 @@ import {
     type Mat, type Path, type Ring,
 } from './geometry'
 import { css, dimPaint, isGradient, sampleStops, type Gradient, type Paint, type Rgba } from './color'
-import { drawNow, type BlendMode, type Node, type StageImage } from './node'
+import { clock } from './track'
+import type { BlendMode, Node, StageImage } from './node'
 import { browserImageSource, imageHasVisiblePixels, ImageAssetError } from './image'
 import { drawnDim } from './light'
 
+const clockNow = () => clock.now
 
 export interface PathOp {
     readonly kind: 'path'
@@ -209,7 +211,7 @@ function walk(node: Node, parent: Mat, alpha: number, dim: number, pass: Pass): 
     if (node.rawOps) node.rawOps(m, opacity, ops)
     if (least < 1) dimOps(ops, first, least, pass.backdrop)
     if (node.draw) {
-        const built = drawNow(node)
+        const built = node.draw(clockNow())
         if (built) {
             const list: readonly Node[] = Array.isArray(built) ? built as readonly Node[] : [built as Node]
             for (const child of list) {

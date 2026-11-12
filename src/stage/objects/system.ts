@@ -1,11 +1,11 @@
 import { apply, invert, parseSvgPath, pathLength, pointAt, polyPath, rectPath, tangentAt, transformPath, trimPath, smoothPath, IDENTITY, type Path, type Vec, type Mat } from '../geometry'
-import { Node, ownLabels, reportsTime, type Edge, objectName } from '../node'
+import { Node, ownLabels, type Edge, objectName } from '../node'
 import { filmFont, text, type TextOptions } from '../text'
 import { circle, dot, line } from '../shapes'
 import { toPaint, type ColorInput } from '../color'
 import { morphMatching, type Anim, type AnimOptions } from '../anim'
 import { linear, smooth, type Ease } from '../ease'
-import { changesAt, changesNow, clock } from '../track'
+import { clock } from '../track'
 import { reveal, staggered, stepAt } from './util'
 import { Block, nodeOrPoint, oneNode } from '../layout'
 import type { Stage } from '../stage'
@@ -407,8 +407,7 @@ export class Connector extends Node {
         this.labelFont = options.font ?? filmFont() ?? 'mono'
         this.base.stroke = toPaint(options.color ?? 'dim')
         this.base.strokeWidth = options.width ?? 1.6
-        // The line uses the time for its flow and its pulses only, and `build` reports both.
-        this.draw = reportsTime((time) => this.build(time))
+        this.draw = (time) => this.build(time)
         // The label sits on the line, on a plate. `build` makes it later.
         ownLabels(this, { name: 'connector', labels: [] })
         // The line ends at the two nodes on purpose, so the film check does not judge their text against it.
@@ -479,8 +478,6 @@ export class Connector extends Node {
             const node = new Node(shaft).stroke(color, width)
             if (options.dash || options.flow) {
                 node.dash(options.dash ?? [6, 6], options.flow ? -time * options.flow : 0)
-                // The dashes of a flow move with the time.
-                if (options.flow) changesNow()
             }
             node.set('strokeOpacity', this.get('strokeOpacity'))
             out.push(node)
@@ -493,10 +490,7 @@ export class Connector extends Node {
             out.push(new Node(polyPath([[x, y], [bx - uy * half, by + ux * half], [bx + uy * half, by - ux * half]], true)).fill(color))
         }
         for (const entry of this.pulses) {
-            // A pulse changes the line from its start to its end, and not before or after.
-            if (time < entry.t0) changesAt(entry.t0)
             if (time < entry.t0 || time >= entry.t1) continue
-            changesNow()
             const a = entry.ease((time - entry.t0) / (entry.t1 - entry.t0))
             const from = Math.max(0, a * (1 + entry.length) - entry.length), to = Math.min(1, a * (1 + entry.length))
             const lit = trimPath(whole, from, to)

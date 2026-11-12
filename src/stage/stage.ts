@@ -4,7 +4,7 @@ import { buildOps, frameToSvg, type Frame } from './display'
 import { resolveLook, type Look, type LookName } from './look'
 import { Node, mountTree, type StageImage } from './node'
 import { isImageAsset, resolveLegacyImage, validateStageImage, ImageAssetError, type ImageAsset } from './image'
-import { STEADY, changesAt, changesNow, clock } from './track'
+import { clock } from './track'
 import { Value, type Anim } from './anim'
 import type { FontFamily } from './font'
 import { settleLights, type Light, type MorphRecord } from './light'
@@ -432,25 +432,17 @@ export class CompiledFilm {
     frame(time: number): Frame {
         const t = Math.max(0, Math.min(this.duration, time))
         const stage = this.stage
-        const previous = { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas, at: clock.at, steady: clock.steady }
+        const previous = { mode: clock.mode, now: clock.now, font: clock.font, canvas: clock.canvas }
         setColorTokens(stage.look.colors)
         clock.mode = 'render'
         clock.now = t
-        clock.at = t
-        clock.steady = Infinity
         // A drawing that is rebuilt on each frame makes its texts now, so they need the font of the film here too.
         clock.font = stage.font
         clock.canvas = stage
         clock.frame++
         try {
             for (const updater of stage.updaters) {
-                if (t >= updater.from && t <= updater.to) {
-                    // An updater gets the time, so no one can tell when its picture changes.
-                    changesNow()
-                    updater.fn(updater.node, t)
-                } else if (updater.from > t) {
-                    changesAt(updater.from)
-                }
+                if (t >= updater.from && t <= updater.to) updater.fn(updater.node, t)
             }
             const camera = stage.camera
             const ops = buildOps(stage.root, {
@@ -464,18 +456,12 @@ export class CompiledFilm {
                 validateStageImage(op.image, asset)
                 return { ...op, image: { ...op.image, src: asset.src, asset } }
             })
-            const frame: Frame = { width: stage.width, height: stage.height, background: this.background, bloom: this.bloom, dark: stage.look.dark, ops: preparedOps }
-            // The frame keeps the time before which it is proven to stay the same. A copy of the frame does not take it.
-            Object.defineProperty(frame, STEADY, { value: clock.steady })
-            return frame
+            return { width: stage.width, height: stage.height, background: this.background, bloom: this.bloom, dark: stage.look.dark, ops: preparedOps }
         } finally {
             clock.mode = previous.mode
             clock.now = previous.now
             clock.font = previous.font
             clock.canvas = previous.canvas
-            clock.at = previous.at
-            // A frame that is drawn inside another frame used a time that the outer frame did not prove.
-            clock.steady = previous.mode === 'render' ? -Infinity : previous.steady
         }
     }
 

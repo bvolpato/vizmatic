@@ -8,7 +8,6 @@ import { parseColor } from './color'
 import { frameToSvg, type Frame } from './display'
 import { RasterPool, defaultPoolSize, framesToJob, reportExportStats, sameRasterJob, type RasterJob } from './raster'
 import { film as defineFilm, isFilm, isSuspend, type CompiledFilm, type CompileOverrides, type FilmDefinition } from './stage'
-import { STEADY } from './track'
 import { text } from './text'
 
 export type Quality = 'draft' | 'standard' | 'high' | 'master'
@@ -163,24 +162,7 @@ export function planRender(width: number, height: number, motionBlur: number, op
 interface Rendered {
     job: RasterJob
     pixels: Promise<Uint8Array>
-    /**
-     * For each shutter sample of the job: the time before which the film proves that the sample stays as it
-     * is. `film.frame()` gives it with the frame. A frame from an engine that gives none has -Infinity.
-     */
-    steady: readonly number[]
 }
-
-/** The time before which a frame is proven to stay the same, as the engine that drew it left it on the frame. */
-function steadyTime(frame: Frame): number {
-    const value = (frame as { [STEADY]?: unknown })[STEADY]
-    return typeof value === 'number' ? value : -Infinity
-}
-
-/**
- * For tests only. With `VIZMATIC_VERIFY_STEADY=1`, the export draws every frame, as it did before it could
- * skip one. It fails when a frame that the film proves equal to the frame before it has another SVG text.
- */
-const verifySteady = (): boolean => process.env.VIZMATIC_VERIFY_STEADY === '1'
 
 /**
  * Rasterize frames in parallel and hand them out in order, holding only a bounded
@@ -189,9 +171,6 @@ const verifySteady = (): boolean => process.env.VIZMATIC_VERIFY_STEADY === '1'
  * A frame that is equal to the frame before takes its pixels, and no worker sees it. The two frames
  * share one buffer, so the caller must not write to the pixels. For the comparison, the stream keeps
  * the SVG text of the last job, and the pixels of the last frame until the stream ends.
- *
- * A frame is not drawn at all when the film proves that it is equal to the frame before: each of its
- * shutter samples is before the steady time of the same sample of the last frame that was drawn.
  */
 function frameStream(
     film: CompiledFilm,
@@ -208,49 +187,30 @@ function frameStream(
     const stats = pool.stats
     // The job of the frame before. Jobs are compared in the order of the frames.
     let before: Promise<Rendered | null> = Promise.resolve(null)
-    const verify = verifySteady()
     const submit = (index: number): Promise<Uint8Array> => {
         const previous = before
         const rendered = (async (): Promise<Rendered> => {
             const base = timeOf(index)
-            const times = Array.from({ length: subframes }, (_, sub) => base + (sub / subframes) * shutterSpan)
-            // A frame before that failed has nothing to share. Its own index reports the failure.
-            const last = await previous.catch(() => null)
-            const steady = last !== null && times.every((time, sub) => time < last.steady[sub]!)
-            if (steady && !verify) {
-                stats.skipped++
-                // The pixels of a job that reads a file are not shared: the file can change. The job runs again.
-                if (sameRasterJob(last.job, last.job)) return last
-                return { job: last.job, pixels: pool.run(last.job), steady: last.steady }
-            }
             const frames: Frame[] = []
-            for (const time of times) {
+            for (let sub = 0; sub < subframes; sub++) {
                 const started = performance.now()
-                const frame = frameAt(film, time)
+                const frame = frameAt(film, base + (sub / subframes) * shutterSpan)
                 stats.mainMs += performance.now() - started
                 frames.push(await frame)
             }
             let started = performance.now()
             const job = framesToJob(frames, size.width, backgroundBytes, size.height, dither)
             stats.mainMs += performance.now() - started
-            if (steady) {
-                // The test switch: the film said that this frame is the frame before. Check that.
-                const differs = job.svgs.findIndex((svg, sub) => svg !== last.job.svgs[sub])
-                if (differs >= 0) {
-                    throw new Error(`The frame at ${times[differs]} s differs from the frame before it, but the film proves it steady until ${last.steady[differs]} s.`)
-                }
-                stats.skipped++
-            }
+            // A frame before that failed has nothing to share. Its own index reports the failure.
+            const last = await previous.catch(() => null)
             started = performance.now()
             const same = last !== null && sameRasterJob(last.job, job)
             stats.mainMs += performance.now() - started
-            // In the test, a frame that the film proves steady keeps the steady times of the frame that proved it.
-            const kept = steady ? last.steady : frames.map(steadyTime)
             if (same) {
-                if (!steady) stats.reused++
-                return { job: last.job, pixels: last.pixels, steady: kept }
+                stats.reused++
+                return last!
             }
-            return { job, pixels: pool.run(job), steady: kept }
+            return { job, pixels: pool.run(job) }
         })()
         before = rendered
         return rendered.then((entry) => entry.pixels)

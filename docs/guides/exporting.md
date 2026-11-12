@@ -133,11 +133,9 @@ A PNG still with bloom was about three times as large with the dither. A `draft`
 
 ## Speed
 
-The exporter compiles frames to SVG on the main thread and rasterizes them on workers. It chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
+Each frame compiles to SVG on the main thread and rasterizes on a worker. The exporter chooses the thread count from your CPU count and frame size. Use `--workers` to change it. See the [benchmarks](../benchmarks.html) for measured numbers from the component renderer.
 
-For generated frames with embedded assets, a movie or GIF export reuses the previous frame's pixels when every SVG sample, the dimensions, the bloom and dither settings, and the background value match. A frame with an unresolved image reference always rasterizes again because the file can change between frames.
-
-The exporter can also skip drawing a frame. When the film draws a frame, it records the next time any timeline value it reads can change. With motion blur, the exporter skips drawing only if every shutter sample falls before the next change for its corresponding sample in the previous frame. A `dynamic` drawing that reads only timeline values can use this optimization. While an updater runs or a user drawing takes the current time as an argument, the exporter draws each frame and compares the result with the previous frame.
+A movie or GIF export compares each frame with the frame before it, on the main thread. A frame that is equal takes the pixels of that frame, and no worker rasterizes it. Two frames are equal when every SVG sample, the dimensions, the bloom and dither settings, and the background value are identical. This applies to generated frames with prepared, embedded image assets. A frame with an unresolved image reference always rasterizes again, because the file can change between two frames. Updaters and every shutter sample still run before this comparison.
 
 With motion blur, shutter samples next to each other with the same SVG share one raster inside a frame. This applies to every frame, with any image, because one frame is one render.
 
@@ -151,4 +149,4 @@ To measure an export, run the benchmark on a short range of a film:
 pnpm benchmark:export examples/films/lorenz.ts --from 5 --to 15 --quality standard --workers 6,12 --repeat 3
 ```
 
-It prints the frames per second, the count of frames that a worker computed, the count of frames that the export drew and found equal to the frame before, the count of frames that it did not draw, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.
+It prints the frames per second, the count of frames that a worker computed, the count of frames that took the pixels of the frame before, and the time in each step: the main thread, the raster, the average of the shutter samples, the bloom, and the waits for frames and for the encoder. The load of the machine changes the numbers, so compare two runs only at a similar load.

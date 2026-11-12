@@ -83,7 +83,7 @@ async function main(): Promise<void> {
                 if (!stats) continue
                 const s: ExportStats = stats
                 const worked = s.computed
-                console.log(`  frames: ${s.computed} computed, ${s.reused} drawn and equal to the frame before, ${s.skipped} skipped with no sample`)
+                console.log(`  frames: ${s.computed} computed, ${s.reused} reused from the frame before`)
                 console.log(`  main thread: ${seconds(s.mainMs)} (${each(s.mainMs, video.frameCount)} a frame)`)
                 console.log(`  workers, added over ${s.workers}: raster ${seconds(s.rasterMs)} (${each(s.rasterMs, worked)} a computed frame), motion blur average ${seconds(s.averageMs)} (${each(s.averageMs, worked)}), bloom ${seconds(s.bloomMs)} (${each(s.bloomMs, worked)})`)
                 console.log(`  export loop: waits for frames ${seconds(s.frameWaitMs)}, waits for the encoder ${seconds(s.encoderWaitMs)}, encoder finish ${seconds(s.encoderFinishMs)}`)

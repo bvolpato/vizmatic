@@ -5,7 +5,7 @@ import { text, type TextOptions } from '../text'
 import { over, toPaint, type ColorInput, type Paint, type Rgba } from '../color'
 import { Value, type Anim, type AnimContext, type AnimOptions } from '../anim'
 import type { Ease } from '../ease'
-import { changesNow, clock, Track } from '../track'
+import { clock, Track } from '../track'
 import type { Box } from '../layout'
 import type { ChartOptions } from './charts'
 import { DEFAULT_SERIES, Part, propAt, reveal, small, solidColor, staggered, stepAt, tweenValue, worldBox, xyAxes, xyPoint, type XYFrame } from './util'
@@ -152,14 +152,9 @@ const SHAPES: readonly ScatterShape[] = ['dot', 'ring', 'square', 'diamond', 'tr
 
 const seconds = (time: number): string => `${Math.round(time * 1000) / 1000} s`
 const written = (value: unknown): string => (typeof value === 'string' ? JSON.stringify(value) : typeof value === 'function' ? 'a function' : typeof value === 'object' && value !== null ? (Array.isArray(value) ? `[${value.map(written).join(', ')}]` : 'an object') : String(value))
+const readTime = (): number | null => clock.mode === 'free' ? null : clock.now
 const present = (entry: Entry, time: number | null): boolean => time === null ? entry.here : entry.alive.sample(time)
 const isVec = (value: unknown): value is Vec => Array.isArray(value) && value.length === 2 && typeof value[0] === 'number' && typeof value[1] === 'number' && Number.isFinite(value[0]) && Number.isFinite(value[1])
-
-function readTime(): number | null {
-    // Group assignments and searches have their own timelines outside Track.
-    if (clock.mode === 'render') changesNow()
-    return clock.mode === 'free' ? null : clock.now
-}
 
 function axisRange(given: readonly [number, number] | undefined, points: readonly ScatterPoint[], axis: 'x' | 'y'): readonly [number, number] {
     let range = given

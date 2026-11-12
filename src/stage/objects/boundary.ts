@@ -1,11 +1,11 @@
-import { Node, ownLabels, reportsTime } from '../node'
+import { Node, ownLabels } from '../node'
 import { apply, invert, rectPath, type Bounds } from '../geometry'
 import { dot, line } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
 import type { Anim, AnimOptions } from '../anim'
 import type { Ease } from '../ease'
-import { changesAt, changesNow, clock } from '../track'
+import { clock } from '../track'
 import { reveal, sampleAt, stepAt } from './util'
 
 export interface BoundaryOptions {
@@ -294,10 +294,9 @@ export class Boundary extends Node {
             this.tally = { size: tallySize, y, over: side === 'over', digit, separator, words, rest, box: { x: right - tallyRoom, y: y - tallySize * 0.45, width: tallyRoom, height: tallySize * 1.01 } }
             // Each part has a paint and no shape: it draws its glyphs in that paint. So a film that recolors
             // the tally recolors the digits too, which are made again for each frame.
-            // The two drawings use the time for the tally only, and each reports it with `tallyTime`.
-            const part = (draw: NonNullable<Node['draw']>, paint: ColorInput) => {
+            const part = (draw: Node['draw'], paint: ColorInput) => {
                 const node = new Node().fill(paint).at(right, y)
-                node.draw = reportsTime(draw)
+                node.draw = draw
                 return node
             }
             this.tallyNode = new Node().add(part(Boundary.drawNumber, options.tallyColor ?? 'ink'), ...(words.length ? [part(Boundary.drawWord, 'dim')] : []))
@@ -512,7 +511,6 @@ export class Boundary extends Node {
     private static drawNumber(this: Node, time: number): Node | null {
         const owner = Boundary.owner(this)
         if (!owner?.tally) return null
-        owner.tallyTime(time)
         const { size, digit, separator, words } = owner.tally
         const paint = this.get('fill') ?? 'ink'
         const glyphs = [...whole(owner.shown(time))]
@@ -529,7 +527,6 @@ export class Boundary extends Node {
     private static drawWord(this: Node, time: number): Node | null {
         const owner = Boundary.owner(this)
         if (!owner?.tally) return null
-        owner.tallyTime(time)
         const word = owner.tally.words[owner.wordAt(time)]!
         return text(word.content, { size: owner.tally.size, font: owner.font, color: this.get('fill') ?? 'dim', anchor: 'right' }).at(word.shift, 0)
     }
@@ -697,20 +694,6 @@ export class Boundary extends Node {
         stepAt(note, 'opacity', 0, arrives)
         note.tween('opacity', 1, arrives, arrives + part, null)
         this.noteNode = note
-    }
-
-    /**
-     * Tell the frame when the tally changes. The number follows each change and each clear while it runs.
-     * The word looks at the number up to `rest` seconds before and after the time, so a change counts from
-     * `rest` before its start to `rest` after its end.
-     */
-    private tallyTime(time: number): void {
-        const rest = this.tally?.rest ?? 0
-        for (const span of [...this.changes, ...this.clears]) {
-            if (span.t1 <= time - rest) continue
-            if (span.t0 > time + rest) changesAt(span.t0 - rest)
-            else changesNow()
-        }
     }
 
     /** The tally on screen at a time. Each change counts from its own moment, so crossings that overlap in time add up. */

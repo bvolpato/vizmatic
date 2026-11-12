@@ -1,5 +1,4 @@
-import { Node, dynamic, objectName, ownLabels, reportsTime } from '../node'
-import { changesAt, changesNow } from '../track'
+import { Node, dynamic, objectName, ownLabels } from '../node'
 import { rect } from '../shapes'
 import { text, type TextOptions } from '../text'
 import type { ColorInput } from '../color'
@@ -115,22 +114,16 @@ export function tagTrack(states: readonly TagState[], options: TagTrackOptions):
     // Build each state once, now. A text needs its font, and the film loads fonts while it is built.
     const { until, fadeIn: _in, fadeOut: _out, ...shared } = options
     const tags = states.map(({ at: _at, word, ...own }) => tag(word, { ...shared, ...own }))
-    // The track uses the time for its states and their fades, and it reports each of them.
-    const made = dynamic(reportsTime((time) => {
+    const made = dynamic((time) => {
         let index = -1
         for (let k = 0; k < states.length; k++) if (time >= states[k]!.at) index = k
-        // Nothing shows before the first state, and nothing after the last one leaves.
-        if (index < 0) changesAt(states[0]!.at)
         if (index < 0 || time >= until) return null
         const start = states[index]!.at
         const end = index + 1 < states.length ? states[index + 1]!.at : until
         const rise = fadeIn > 0 ? (time - start) / fadeIn : 1
         const fall = fadeOut > 0 ? (end - time) / fadeOut : 1
-        // Between its two fades a state is whole. It stays so until its fade out starts.
-        if (rise >= 1 && fall >= 1) changesAt(fadeOut > 0 ? end - fadeOut : end)
-        else changesNow()
         const alpha = Math.max(0, Math.min(1, rise, fall))
         return alpha < 0.01 ? null : tags[index]!.opacity(alpha)
-    }))
+    })
     return objectName(made.pin(), 'tag track')
 }
